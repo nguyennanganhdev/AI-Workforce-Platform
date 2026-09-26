@@ -1,0 +1,26 @@
+openapi: 3.1.0
+info:
+  title: AI Workforce Platform scaffold
+  version: 0.1.0
+  description: Only the implemented liveness endpoint. Business API contracts follow per use case.
+paths:
+  /api/platform/health:
+    get:
+      operationId: getPlatformHealth
+      security: []
+      responses:
+        '200':
+          description: Hono is serving requests; no database or runtime readiness guarantee.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status, mode]
+                properties:
+                  status:
+                    type: string
+                    const: ok
+                  mode:
+                    type: string
+                    const: scaffold

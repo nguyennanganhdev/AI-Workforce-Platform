@@ -1,0 +1,9 @@
+[project]
+name = "ai-workforce-agent-runtime"
+version = "0.1.0"
+description = "Generic runtime contracts; AgentScope implementation follows in P0"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.ruff]
+line-length = 100
