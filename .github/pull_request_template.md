@@ -8,4 +8,4 @@ Module sở hữu; contract, schema hoặc consumer bị ảnh hưởng. Nêu re
 
 ## Kiểm tra
 
-Kết quả `npm run check` và kiểm thử hành vi liên quan. Nêu phần chưa triển khai hoặc giới hạn.
+Kết quả `bun run check` và kiểm thử hành vi liên quan. Nêu phần chưa triển khai hoặc giới hạn.

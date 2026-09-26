@@ -29,8 +29,7 @@ Tránh global service locator; inject port/client/repository từ `server/src/ap
 - MCP provider chứa client hệ thống ngoài. Không đưa rule/approval hoặc DB business repository vào MCP.
 
 TypeScript dùng strict mode, ESM và relative import với đuôi `.js` (TypeScript resolve sang `.ts`).
-Scaffold dùng một npm package ở root để tránh chọn lại workspace conventions trước khi nhập OpenBot.
-Chưa thêm path alias/package workspace; nếu thêm phải cập nhật boundary checker và CI cùng PR.
+Repo dùng Bun 1.3.14 workspace app/server/worker. Alias resolve theo tsconfig gần file nhất; thay boundary cần cập nhật checker/tests cùng PR.
 
 ## Luồng xử lý chuẩn
 
@@ -61,12 +60,12 @@ Proposal producer metadata là provenance cần xác minh từ integration tin c
 ## Kiểm tra và PR
 
 ```sh
-npm run check
+bun run check
 ```
 
 Lệnh này chạy TypeScript check, import boundary, Python syntax/import smoke và test scaffold.
-Thêm test module vào script test hoặc test runner phù hợp cùng PR; hiện tại script chỉ chạy `tests/*.test.*`.
-Khi nhập React/OpenBot, thêm TSX config/test/build của upstream vào CI; scaffold hiện chưa build UI.
+Thêm test module vào script test hoặc test runner phù hợp cùng PR; test:workforce chạy integration riêng; test:ci chạy full Bun suite.
+CI đã typecheck/build React/OpenBot; thêm suite cho feature mới khi triển khai.
 
 PR mô tả trigger và hành vi sau thay đổi, owner, contract/schema đổi gì và kết quả kiểm tra.
 Business features cần test quyền tenant/actor, state transition, concurrency/idempotency khi liên quan.
