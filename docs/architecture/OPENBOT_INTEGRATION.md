@@ -80,6 +80,7 @@ Mỗi lần cập nhật baseline cần ghi SHA cũ/mới, phần đã port và 
 - Import boundary, Python Protocol smoke và 12 tests Workforce (route/auth/alias boundary): qua.
 - Build app/server/worker: qua. Vite còn cảnh báo externalized Node modules từ dependencies và một số chunk lớn; chưa coi đây là chứng nhận runtime UI end-to-end.
 - Full suite Windows chỉ root install: 3932 pass, 27 skip, 133 fail, 70 errors. Môi trường này thiếu test database, dependencies package ngoài workspace và có lỗi Windows path/symlink/subprocess; không báo full suite xanh.
+- Đã thử đối chứng full suite trên checkout upstream nguyên gốc cùng Bun/root install; lần chạy không kết thúc sau khoảng 6 phút và được dừng. Chưa có đối chứng hoàn chỉnh để quy toàn bộ lỗi Windows cho baseline.
 - CI Linux có pgvector/PostgreSQL, migration và installs agent-bot/agent-langgraph/agent-mastra/desktop theo upstream để kiểm full suite đúng môi trường.
 - Docker daemon local chưa chạy, credential Intelligence/model chưa cấu hình; chưa kiểm thử live chat, provider, database migration hay toàn bộ stack.
 

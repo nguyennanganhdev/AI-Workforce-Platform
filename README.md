@@ -239,7 +239,7 @@ Root chịu trách nhiệm tái lập môi trường, thống nhất dependency 
 
 **Nhiệm vụ triển khai:**
 
-1. Đối chiếu Node/package manager của OpenBot với scaffold Node 24/npm; ghi rõ lựa chọn cuối cùng và cập nhật CI cùng lúc.
+1. Duy trì Bun 1.3.14 workspace đã chọn; cập nhật lockfile, Node tooling và CI cùng lúc khi đổi phiên bản.
 2. Nếu dùng workspace, thêm manifest cho những package thực sự cần dependency/build riêng, khai báo exports và điều chỉnh module resolution/boundary checker.
 3. Bổ sung lệnh UI build/dev, server production build và test suites khi implementation xuất hiện. Chỉ công bố lệnh đã chạy được trong repo.
 4. Thêm `.env.example` sau khi có tên biến cấu hình thực tế; kiểm tra config lúc khởi động và tài liệu hóa giá trị bắt buộc.
