@@ -1,7 +1,7 @@
 # Bản đồ kiến trúc triển khai
 
 Thiết kế gốc: [04 — System Design](../../docx/04_SYSTEM_DESIGN_STRUCTURE_ARCHITECTURE.md).
-Các quyết định platform/domain giữ nguyên; đây là bản áp dụng vào repo hiện chỉ có tài liệu.
+Các quyết định platform/domain giữ nguyên; nền OpenBot đã nhập; module custom tiếp tục được triển khai theo use case.
 
 ## Ranh giới hệ thống
 
@@ -26,7 +26,7 @@ flowchart TB
   D --> FILE[(Object storage)]
 ```
 
-Sơ đồ biểu diễn kiến trúc đích; chỉ Hono health và contract đã có code.
+Sơ đồ biểu diễn kiến trúc đích; shell/server/auth upstream đã có code; Vinhomes/AgentScope vẫn là khung.
 MCP READ/ANALYZE có thể được runtime gọi trong scope được cấp; WRITE phải đi qua domain.
 
 ## Điểm nối code
@@ -64,7 +64,7 @@ Domain nhận gateway/runtime port qua dependency injection, không import imple
 Giữa các module cùng team, chỉ import public `index.ts` khi module đã có implementation;
 không tạo barrel trống cho mọi thư mục. Composition root được biết cả platform và domain.
 
-`npm run check:architecture` kiểm tra import/re-export/require/dynamic import tĩnh,
+`bun run check:architecture` kiểm tra import/re-export/require/dynamic import tĩnh,
 resolve bằng TypeScript và chặn ranh giới trên. Import động có tên module tính toán bị từ chối.
 Python check kiểm tra syntax, import Protocol, vị trí import AgentScope và dependency domain adapter.
 Các check này không chứng minh authorization, transaction hay chính sách network;
@@ -80,13 +80,12 @@ các yêu cầu đó phải được kiểm thử cùng use case. Python check c
 - Ghi state và outbox trong cùng transaction khi triển khai event delivery. Consumer phải idempotent.
 - Incident/Task/WorkOrder là business vocabulary; WorkflowSession/RunStep/AgentRun là runtime vocabulary.
 
-## Khác biệt có chủ đích so với cây thư mục đề xuất
+## Trạng thái sau khi nhập OpenBot
 
-1. Chưa có OpenBot upstream nên không di chuyển `vin-platform`, không dựng lại UI khác.
-2. Module chưa có use case được giữ bằng README trách nhiệm, thay vì file repository/service rỗng.
-3. Thêm `context.ts`, `domain-contracts.ts`, composition root, scripts, tests và CI để ranh giới dùng được ngay.
-4. DomainAdapter nhận `RequestContext` ở mọi lời gọi, kể cả evidence, để không bỏ sót tenant/actor. Đây là draft signature cho review liên team.
-5. Chưa chốt ORM, runtime web framework, version SDK AgentScope, object storage vendor hoặc topology deploy. Các lựa chọn này cần dựa trên OpenBot upstream thực tế.
-6. Chưa có Dockerfile/Compose/Helm thực thi. `charts/openbot` ghi rõ điểm tiếp nhận upstream, không chứa deployment giả.
+Đã nhập React/Vite, Hono/auth, Drizzle, Bun workspaces và Docker/Helm tại baseline ghi trong [hồ sơ tích hợp](OPENBOT_INTEGRATION.md). Code generic upstream giữ vị trí hiện tại và chuyển dần vào platform theo use case. Domain/custom contract và Python Protocol được giữ lại.
 
-Xem [ownership](OWNERSHIP.md), [quy ước code](TEAM_GUIDE.md) và [ADR](../adr/README.md).
+Shared helper upstream ở root là implementation kế thừa; pure contracts dưới shared/platform và shared/domains vẫn giữ boundary strict. Production import checks dùng tsconfig workspace; upstream asset resolution do typecheck/build kiểm chứng.
+
+DomainAdapter nhận RequestContext ở mọi method. Chưa tạo business mutation trước khi ánh xạ actor OpenBot sang tenant/subject scope đáng tin cậy. Runtime Python/AgentScope và Qdrant chưa triển khai.
+
+Xem [ownership](OWNERSHIP.md), [quy ước code](TEAM_GUIDE.md) và [hồ sơ tích hợp](OPENBOT_INTEGRATION.md).

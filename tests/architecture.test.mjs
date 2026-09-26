@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'bun:test';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { checkArchitecture, dependencyViolation, externalViolation, importSpecifiers } from '../scripts/check-architecture.mjs';
 
 test('platform cannot access domain code, domain DTOs or domain schema', () => {
@@ -49,4 +52,26 @@ test('scanner checks re-exports, dynamic imports, require and type imports', () 
 
 test('current repository respects import boundaries', () => {
   assert.deepEqual(checkArchitecture(), []);
+});
+
+test('workspace aliases cannot hide platform imports of domain implementations', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'workforce-boundary-'));
+  try {
+    mkdirSync(join(repo, 'server/src/platform/runtime'), { recursive: true });
+    mkdirSync(join(repo, 'server/src/domains/vinhomes'), { recursive: true });
+    writeFileSync(join(repo, 'server/tsconfig.json'), JSON.stringify({
+      compilerOptions: {
+        moduleResolution: 'bundler', module: 'ESNext', baseUrl: '.',
+        paths: { '@domain/*': ['src/domains/*'] },
+      },
+    }));
+    writeFileSync(join(repo, 'server/src/platform/runtime/gateway.ts'),
+      "import { data } from '@domain/vinhomes/repository'; export { data };\n");
+    writeFileSync(join(repo, 'server/src/domains/vinhomes/repository.ts'), 'export const data = 1;\n');
+    const errors = checkArchitecture(repo);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /Platform must use DomainAdapter/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
 });

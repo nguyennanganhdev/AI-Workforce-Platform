@@ -6,9 +6,9 @@ README này là tài liệu bàn giao cho technical lead và các team: code n�
 
 **Repository sản phẩm:** [nguyennanganhdev/AI-Workforce-Platform](https://github.com/nguyennanganhdev/AI-Workforce-Platform). Đây là repo các thành viên clone để làm việc và gửi PR.
 
-**Trạng thái repo: architecture scaffold.** Hono health và các contract nền tảng đã có code. OpenBot UI, business API, database persistence, AgentScope thực thi và MCP server chưa được tích hợp. Các nhiệm vụ dưới đây là kế hoạch triển khai, trừ phần được ghi rõ là đã có.
+**Trạng thái repo: đã nhập nền OpenBot trên nhánh tích hợp.** React/Vite, Hono/auth, Drizzle, worker và deployment assets đã nằm trong repo. Router Platform/Vinhomes dùng chung host; business use cases Vinhomes, AgentScope, Qdrant và multi-tenant domain mapping vẫn cần triển khai.
 
-**OpenBot nguồn đã clone:** [CopilotKit/OpenBot](https://github.com/CopilotKit/OpenBot) tại `E:\openbot-upstream`, ghim commit `3c73cf00efba46122dfd0447485e2b61f1d6a2cd`. Đây là checkout riêng để tích hợp; xem [hồ sơ nguồn và mapping](docs/architecture/OPENBOT_INTEGRATION.md).
+**OpenBot nguồn đã clone:** [CopilotKit/OpenBot](https://github.com/CopilotKit/OpenBot) tại `E:\openbot-upstream`, ghim commit `3c73cf00efba46122dfd0447485e2b61f1d6a2cd`. Source đã nhập vào repo sản phẩm; checkout riêng dùng để đối chiếu; xem [hồ sơ nguồn và mapping](docs/architecture/OPENBOT_INTEGRATION.md).
 
 ## Mục lục
 
@@ -70,21 +70,21 @@ flowchart TB
 
 Trong tài liệu này, **package kiến trúc** là một vùng code có trách nhiệm và owner rõ ràng. Nó chưa mặc nhiên là npm workspace, Python distribution đã đóng gói hay service deploy độc lập.
 
-Hiện tại repo có **một npm package ở root** và một `pyproject.toml` dành cho runtime. Các thư mục `app`, `server`, `shared` và MCP chưa có `package.json` riêng. Chỉ chuyển sang workspace sau khi đối chiếu conventions của OpenBot được chọn.
+Repo dùng **Bun 1.3.14 workspace app/server/worker** và `bun.lock`. Agent-computer/supervisor có manifest riêng. Python runtime giữ pyproject.toml; shared/domain-tools chưa phải workspace độc lập.
 
 | Package / vùng code | Owner chính | Đơn vị chạy dự kiến | Trạng thái hiện tại |
 |---|---|---|---|
-| Root | Technical lead + DevOps | Tooling chung | npm manifest, lockfile, TS config, scripts |
-| `app/` | Frontend | UI build theo shell OpenBot | Khung feature, chưa có React app chạy được |
-| `server/` | Platform + Vinhomes | Một Hono API process | Composition root, health và router domain rỗng |
+| Root | Technical lead + DevOps | Tooling chung | Bun manifest/lockfile, TS config, scripts |
+| `app/` | Frontend | UI build theo shell OpenBot | React/Vite shell đã nhập; custom features còn khung |
+| `server/` | Platform + Vinhomes | Một Hono API process | Hono/auth/services đã nhập; custom domain router rỗng |
 | `server/src/platform/` | Platform | Module trong Hono server | Port DomainAdapter, health, README module |
 | `server/src/domains/vinhomes/` | Vinhomes | Module trong Hono server | Khung nghiệp vụ, chưa có use case thực thi |
-| `server/src/db/` | Data + owner schema | Persistence dùng bởi server | Khung schema/migration, chưa có ORM/table |
+| `server/src/db/` | Data + owner schema | Persistence dùng bởi server | Drizzle upstream và khung schema domain đích |
 | `shared/platform/` | Platform | Contract import bởi producer/consumer | Context, domain/action/runtime DTO, event envelope |
 | `shared/domains/vinhomes/` | Vinhomes | Contract nghiệp vụ | Event envelope và status vocabulary |
 | `agent-runtime/` | Runtime, thuộc Platform | Python service | TypedDict và RuntimeAdapter Protocol |
 | `domain-tools/` | Integrations, phối hợp Vinhomes | MCP service theo integration | Khung tool/provider, chưa có executable |
-| `charts/openbot/` | DevOps | Deployment manifests | README tiếp nhận upstream, chưa có chart |
+| `charts/openbot/` | DevOps | Deployment manifests | Chart upstream đã nhập; chưa nghiệm thu deployment |
 | `scripts/`, `tests/`, `.github/` | Các team + QA/DevOps | Kiểm tra local/CI | Boundary checks, scaffold tests, workflow CI |
 | `docs/`, `docx/`, `research/` | Owner từng chủ đề | Tài liệu và spike | Kiến trúc, ERD, ADR, contract và khu vực nghiên cứu |
 
@@ -133,7 +133,7 @@ AI-Workforce-Platform/
 ├── docx/                                 # Thiết kế/ERD gốc dạng Markdown
 ├── research/                             # Platform và domain spike
 ├── package.json
-├── package-lock.json
+├── bun.lock
 └── tsconfig.json
 ```
 
@@ -141,177 +141,91 @@ Tên thư mục MCP trong repo hiện tại là `technical`, `cleaning`, `securi
 
 <a id="quickstart"></a>
 
-## 3. Chạy bộ khung hiện tại
+## 3. Cài đặt, kiểm tra và chạy dự án
 
-### 3.1. Yêu cầu và lệnh chạy
+### 3.1. Cài dependency và kiểm tra source
 
-Máy phát triển cần Node.js 24, npm, Python 3.11+ và Git. Lệnh `python` phải có trong PATH. Bộ khung hiện chưa cần PostgreSQL, Qdrant, Docker hoặc API key để chạy health và tests.
-
-Thành viên mới clone repo sản phẩm vào thư mục làm việc. Ví dụ dưới đây chạy từ `E:\` khi `E:\AI-Workforce-Platform` chưa tồn tại; nếu đã mở repo này, bỏ qua bước clone:
-
-```powershell
-Set-Location 'E:\'
-git clone https://github.com/nguyennanganhdev/AI-Workforce-Platform.git AI-Workforce-Platform
-if ($LASTEXITCODE -ne 0) { throw 'Clone repo san pham khong thanh cong.' }
-Set-Location 'E:\AI-Workforce-Platform'
-```
-
-Trong terminal tại repo root:
+Yêu cầu: Bun **1.3.14**, Node.js 24 và Python 3.11+ (`python` trong PATH). Repo sản phẩm đã chứa source OpenBot; không cần checkout upstream bên cạnh để build.
 
 ```sh
-npm ci
-npm run check
-npm run dev
+git clone https://github.com/nguyennanganhdev/AI-Workforce-Platform.git
+cd AI-Workforce-Platform
+git switch chore/import-openbot
+npm install --global bun@1.3.14
+bun install --frozen-lockfile
+bun run check
+bun run build
 ```
 
-Endpoint hiện có: `http://127.0.0.1:3000/api/platform/health`.
+Nhánh `chore/import-openbot` dùng trong thời gian review; sau khi merge, dùng nhánh chính. npm ở trên chỉ cài Bun; dependency dự án dùng Bun và `bun.lock`. Build/check không cần credential AI. UI build tạo `app/dist`, không commit output.
 
-```json
-{"status":"ok","mode":"scaffold"}
+### 3.2. Chạy toàn bộ stack local
+
+Đọc [quickstart upstream đã nhập](OPENBOT_README.md#quick-start) và [configuration](docs/configuration.md). Thực hiện trong repo sản phẩm:
+
+1. Bật Docker Desktop Linux containers hoặc Docker Engine.
+2. Sao chép `.env.example` thành `.env` nếu chưa có. Điền CopilotKit Intelligence/project key, model credential và cấu hình theo deployment của bạn. Có thể dùng Intelligence managed hoặc self-hosted.
+3. Trên Windows, dùng Bash có Bun và Docker CLI hoạt động, ví dụ WSL2 đã tích hợp Docker Desktop. Cài dependency trong môi trường chạy; không dùng chung `node_modules` Windows/Linux.
+4. Chạy từ Bash:
+
+```sh
+bun install --frozen-lockfile
+bash scripts/start.sh
 ```
 
-Health chỉ xác nhận Hono nhận request. Nó không xác nhận kết nối database, runtime hoặc model. Business endpoint chưa triển khai trả 404.
+Script khởi động dependency, áp dụng migration upstream và chạy service. UI mặc định `http://localhost:3010`; API `http://localhost:3001`. Dừng bằng `bash scripts/stop.sh`.
 
-Đổi port trong PowerShell:
+Template dùng `OPENBOT_SINGLE_USER=true` cho phát triển local; cấu hình sign-in trước khi cho nhiều người truy cập. Không commit `.env`. `bun run dev` chỉ chạy UI + server khi database/config đã sẵn sàng, không thay script Docker. Example hiện là `examples/fintech`, chưa phải tenant package Vinhomes.
 
-```powershell
-$env:PORT = '3001'
-npm run dev
-```
+### 3.3. Lệnh và endpoint
 
-Server hiện bind `127.0.0.1`. Khi container hóa, DevOps phải bổ sung cấu hình bind address phù hợp và kiểm tra network policy; đổi port không làm server tự mở ra mạng bên ngoài.
+| Lệnh | Phạm vi |
+|---|---|
+| `bun install --frozen-lockfile` | Cài workspace app/server/worker đúng lockfile |
+| `bun run dev` | Generate config, chạy UI và Hono |
+| `bun run build` | Build UI và kiểm build server/worker |
+| `bun run typecheck` | Typecheck ba workspace |
+| `bun run typecheck:workforce` | Strict check module/contract custom |
+| `bun run check:architecture` | Import boundaries với tsconfig từng workspace |
+| `bun run check:runtime` | Python syntax/import; chưa chạy AgentScope |
+| `bun run test:workforce` | Tests auth/router integration và boundary |
+| `bun run check` | Typechecks, boundaries, Python và Workforce tests |
+| `bun run test:ci` | Full Bun suite; cần dependency ngoài workspace và test PostgreSQL theo CI |
 
-### 3.2. Ý nghĩa các script
+`GET /health` là health upstream. `GET /api/platform/health` trả `{"status":"ok","mode":"scaffold"}`; mode mô tả các module custom còn là khung, không phản ánh DB/AI readiness.
 
-| Lệnh | Thực hiện | Giới hạn |
-|---|---|---|
-| `npm run dev` | Hono qua `tsx watch` | Chỉ chạy backend scaffold, chưa chạy UI/runtime/MCP |
-| `npm start` | Hono qua `tsx` | Chưa phải production build pipeline |
-| `npm run typecheck` | Kiểm tra TS trong server/shared/domain-tools/tests | Chưa compile React/TSX trong `app` |
-| `npm run check:architecture` | Kiểm tra dependency boundary từ import | Không chứng minh runtime authorization hoặc network isolation |
-| `npm run check:runtime` | Python syntax, import Protocol và một số import boundary | Chưa chạy AgentScope, chưa phải static type checker |
-| `npm test` | Tests trực tiếp trong `tests/*.test.ts` và `tests/*.test.mjs` | Test colocated trong module chưa tự được thu thập |
-| `npm run check` | Chạy toàn bộ kiểm tra trên | Team phải mở rộng CI khi thêm executable/component mới |
+`/api/platform/*` và `/api/domains/*` dùng guard OpenBot; chỉ GET platform health công khai. Domain route chưa triển khai trả 404 sau auth. Trusted tenant/subject context cho business use case vẫn phải bổ sung trước mutation đầu tiên.
+
+Full suite được cấu hình ở [.github/workflows/architecture.yml](.github/workflows/architecture.yml) với pgvector/PostgreSQL, migration và các dependency agent/desktop riêng. Chạy `bun run test:ci` chỉ sau root install trên Windows chưa tái tạo đầy đủ môi trường CI. Xem [validation](docs/architecture/OPENBOT_INTEGRATION.md).
 
 <a id="openbot"></a>
 
-## 4. Clone và tích hợp OpenBot
+## 4. OpenBot đã được nhập vào dự án
 
-### 4.1. Nguồn đã xác định và thông tin tích hợp
+Nguồn: [CopilotKit/OpenBot](https://github.com/CopilotKit/OpenBot), commit `3c73cf00efba46122dfd0447485e2b61f1d6a2cd`, version `0.0.15`, license MIT. `E:/openbot-upstream` là checkout đối chiếu; source đã nằm trong repo sản phẩm.
 
-Repo sản phẩm là [AI-Workforce-Platform](https://github.com/nguyennanganhdev/AI-Workforce-Platform), cũng là `origin` của workspace này. Nguồn OpenBot đã chọn là [CopilotKit/OpenBot](https://github.com/CopilotKit/OpenBot), phù hợp React/Hono/AG-UI trong thiết kế. Hai repository có checkout và Git history riêng.
-
-| Repository | Vai trò | Đường dẫn local mẫu |
-|---|---|---|
-| `nguyennanganhdev/AI-Workforce-Platform` | Repo sản phẩm, nhận code và PR của tất cả team | `E:\AI-Workforce-Platform` |
-| `CopilotKit/OpenBot` | Nguồn UI/server đã clone, chưa nhập vào sản phẩm | `E:\openbot-upstream` |
-
-Baseline đã clone từ `main` và checkout detached tại `3c73cf00efba46122dfd0447485e2b61f1d6a2cd` (package version `0.0.15`, license MIT). [Hồ sơ tích hợp](docs/architecture/OPENBOT_INTEGRATION.md) lưu manifest và mapping đã đối chiếu. PR nhập source tiếp tục hoàn thiện các thông tin sau:
-
-| Thông tin | Mục đích |
+| Source | Vị trí / xử lý trong dự án |
 |---|---|
-| URL repository/fork và upstream gốc nếu có | Xác định đúng sản phẩm và nguồn cập nhật |
-| Branch/tag để khảo sát và commit SHA chốt | Tái lập được baseline đã nhập |
-| Layout UI/server/shared và entrypoint | Mapping đúng thư mục, không giả định mọi fork giống nhau |
-| Node/Python version, package manager và lockfile | Hợp nhất toolchain có kiểm soát |
-| Auth/session/tenant integration | Tái sử dụng identity mà vẫn giữ tenant isolation |
-| Runtime/AG-UI/MCP integration hiện có | Xác định phần giữ lại và phần bọc qua adapter |
-| LICENSE/NOTICE và hướng dẫn upstream | Giữ attribution cùng phần mã nguồn được nhập |
-| Build/test/Docker/Helm conventions | Làm baseline để kiểm chứng trước và sau tích hợp |
+| UI React/Vite | `app/`; giữ shell/router/auth, bổ sung các feature Platform/Vinhomes |
+| Hono/auth/services | `server/`; một host và guard chung, router custom compose trong `src/app.ts` |
+| Drizzle/schema/migration | `server/src/db/`, `server/drizzle/`; giữ baseline, mapping logical schema domain tiếp theo |
+| Shared helper | `shared/*.ts`; khác với pure contracts ở `shared/platform` và `shared/domains` |
+| Routines worker | `worker/`; workspace riêng theo upstream |
+| Computer/browser lifecycle | `agent-computer/`, `supervisor/`; giữ dependency/build assets |
+| Agent mẫu, examples, desktop | Giữ source để tránh cắt dependency; chưa phải AgentScope/Vinhomes implementation |
+| Docker/Helm | Root deployment assets, `charts/openbot/`; cần image/config của sản phẩm khi deploy |
+| Tooling | Bun workspace, `bun.lock`, `tsconfig.base.json`, test preloads và scripts Workforce |
+| License/README | `LICENSE`, `OPENBOT_README.md` giữ attribution và hướng dẫn nguồn |
 
-### 4.2. Clone vào đâu?
+Không nhập `.git`, `.claude` hoặc các workflow phát hành upstream. CI riêng của dự án chạy check/build/test, không publish/deploy tự động. Tài liệu release/signing upstream là tài liệu tham khảo; các workflow đó chưa được kích hoạt trong repo sản phẩm.
 
-**Clone toàn bộ OpenBot vào một thư mục nguồn nằm song song với repo này**, ví dụ:
+Generic code upstream được giữ vị trí để bảo toàn hành vi. Team sẽ chuyển dần sang `server/src/platform` theo use case; không tạo hai nguồn state cho cùng aggregate. Vinhomes persistence/use cases, AgentScope runtime, Qdrant và domain tenant mapping vẫn cần triển khai.
 
-```text
-E:/
-├── AI-Workforce-Platform/                # Repo sản phẩm và nơi team làm việc
-│   ├── app/                             # UI OpenBot sau khi được tích hợp
-│   ├── server/                          # Hono/OpenBot backend đã hợp nhất
-│   ├── shared/
-│   └── ...
-└── openbot-upstream/                    # Bản nguồn dùng để khảo sát/đối chiếu
-    ├── .git/
-    └── ...                              # Layout thực tế của fork được chọn
-```
+Boundary checker kiểm dependency Platform/Vinhomes và UI/MCP; shared helper upstream ở root là vùng implementation kế thừa. Resolve alias theo tsconfig gần file nhất; module custom vẫn chặn unresolved/computed import. Upstream asset resolution được workspace typecheck/build kiểm tra; test fixtures tách khỏi production import rules.
 
-`E:\openbot-upstream` là checkout tham chiếu cục bộ; sản phẩm sau tích hợp phải build được chỉ từ `AI-Workforce-Platform`. Không cấu hình dependency bằng đường dẫn tuyệt đối hoặc `file:../openbot-upstream`.
+Mọi thành viên làm feature và PR trong **AI-Workforce-Platform**. Không dùng `file:../openbot-upstream`. Khi nâng cấp, so sánh commit upstream với baseline, port qua PR và kiểm thử; source import không tự hợp nhất hai Git history bằng `git pull`.
 
-Không clone nguyên repository OpenBot vào `app/`: đó chỉ là vị trí UI của sản phẩm. Cũng không tạo `app/openbot/`, `server/openbot/` hoặc nested `.git` để chứa toàn bộ fork. Cách tổ chức mặc định ở đây là nhập source có chọn lọc vào repo hiện tại; submodule/subtree chỉ dùng nếu team có quyết định quản lý upstream riêng.
-
-### 4.3. Lệnh clone mẫu trên Windows
-
-Đoạn dưới đây để thành viên khác tái lập checkout đã clone. Trên máy hiện tại, `E:\openbot-upstream` đã tồn tại nên không cần chạy lại. Đổi đường dẫn nếu workspace của máy khác ổ `E:`.
-
-```powershell
-$openBotRepoUrl = 'https://github.com/CopilotKit/OpenBot.git'
-$openBotSourcePath = 'E:\openbot-upstream'
-
-if ([string]::IsNullOrWhiteSpace($openBotRepoUrl)) {
-    throw 'Can URL OpenBot truoc khi clone.'
-}
-if (Test-Path -LiteralPath $openBotSourcePath) {
-    throw 'Thu muc dich da ton tai; kiem tra checkout cu hoac chon duong dan moi.'
-}
-
-git clone -- $openBotRepoUrl $openBotSourcePath
-if ($LASTEXITCODE -ne 0) { throw 'Clone OpenBot khong thanh cong.' }
-
-git -C $openBotSourcePath remote -v
-git -C $openBotSourcePath log -1 --format='%H %s'
-```
-
-Checkout đúng baseline đã ghi nhận trong bản nguồn:
-
-```powershell
-$openBotCommit = '3c73cf00efba46122dfd0447485e2b61f1d6a2cd'
-if ($openBotCommit -notmatch '^[0-9a-fA-F]{40}$|^[0-9a-fA-F]{64}$') {
-    throw 'Can commit SHA day du.'
-}
-git -C $openBotSourcePath switch --detach $openBotCommit
-if ($LASTEXITCODE -ne 0) { throw 'Khong checkout duoc commit baseline.' }
-git -C $openBotSourcePath rev-parse HEAD
-```
-
-Clone tạo checkout riêng; detached checkout giúp khảo sát đúng commit đã chốt. Tham khảo cú pháp chính thức của [git clone](https://git-scm.com/docs/git-clone) và [git switch](https://git-scm.com/docs/git-switch).
-
-### 4.4. Quy trình nhập source vào repo sản phẩm
-
-1. **Khảo sát baseline độc lập.** Đọc README, manifest, lockfile, auth flow và deployment của fork; chạy build/test theo hướng dẫn của đúng commit trong `openbot-upstream`. Ghi nhận các lỗi có sẵn trước khi tích hợp.
-2. **Tạo nhánh tích hợp trong repo sản phẩm.** Đảm bảo thay đổi đang làm đã được lưu thành commit hoặc tách riêng. Từ `AI-Workforce-Platform`, dùng `git switch -c chore/import-openbot`. Không đổi `origin` của repo sản phẩm sang OpenBot.
-3. **Hoàn thiện mapping source → target.** Dùng bảng dưới làm đích kiến trúc và [hồ sơ tích hợp](docs/architecture/OPENBOT_INTEGRATION.md) làm baseline thực tế. Cập nhật mapping cùng upstream URL/SHA trong PR nhập source.
-4. **Nhập UI và server foundation.** Giữ shell/router/auth conventions phù hợp; hợp nhất vào `app` và `server`. Giữ các module `platform`, `domains/vinhomes` và contract hiện có. Chuyển logic cũ từng phần theo ownership.
-5. **Hợp nhất manifest/config.** Review dependency, script, TS aliases, environment loading, workspace, formatter và test runner. Chọn một package manager; sinh lockfile từ manifest đã hợp nhất. Không chép đè lockfile rồi giả định dependencies đã khớp.
-6. **Hợp nhất entrypoint và middleware.** Dùng một server bootstrap/composition root. Gắn platform/domain router vào Hono app thực tế; thiết lập auth, RequestContext, error handling và lifecycle cho client/runtime.
-7. **Nhập deployment sau khi app build được.** Chuyển Docker/Helm conventions, sửa path/build context/service names, thêm runtime/MCP theo nhu cầu. Cấu hình hạ tầng phải chạy từ repo sản phẩm.
-8. **Kiểm chứng và review.** Chạy checks hiện có, build/test từ upstream đã tích hợp, UI smoke và auth/tenant smoke. Thêm CI cho UI và các service mới; ghi rõ các phần còn deferred trong PR.
-
-Chỉ nhập source/config cần thiết; không nhập `.git`, `node_modules`, `.venv`, build output hoặc môi trường/credentials cá nhân. Các file trùng tên như `server/src/index.ts`, `package.json`, `tsconfig.json` phải hợp nhất theo nội dung thay vì copy đè toàn cây.
-
-### 4.5. Mapping OpenBot vào kiến trúc hiện tại
-
-| Thành phần tìm thấy ở fork | Đích trong repo này | Cách xử lý |
-|---|---|---|
-| UI shell, router, components, assets | `app/` | Giữ conventions upstream; đăng ký feature platform/domain vào shell |
-| Hono server bootstrap/middleware | `server/src/` | Hợp nhất với `index.ts` và `app.ts`, tránh hai app/auth stack tách biệt |
-| Agent registry/factory/evaluation/memory generic | `server/src/platform/` | Chuyển về module tương ứng; gỡ dependency nghiệp vụ khỏi generic code |
-| Vinhomes intake/ticket/operation nếu fork đã có | `server/src/domains/vinhomes/` | Ticket persistence quy về Incident; tách business approval khỏi publish approval |
-| DTO dùng chung | `shared/platform/` hoặc `shared/domains/vinhomes/` | Phân loại theo nghĩa; giữ serializer/consumer đồng bộ |
-| ORM, migration và database initialization | `server/src/db/` | Đối chiếu identity, schema ownership, migration ledger trước khi chạy |
-| Runtime Python cũ như `agent-vinhomes`, nếu có | `agent-runtime/` | Giữ generic runtime, chuyển prompt/context nghiệp vụ vào domain adapters |
-| MCP integration nghiệp vụ | `domain-tools/vinhomes/<service>/` | Tách provider, kiểm service identity và execution grant |
-| Helm chart | `charts/openbot/` | Hợp nhất chart và values theo service topology thực tế |
-| Root tooling, Dockerfile/Compose | Root hoặc vị trí conventions được chốt | Cập nhật build context, scripts, lockfile và CI trong cùng PR |
-
-Mapping này là phương án tích hợp của dự án; phần Vinhomes và AgentScope là code riêng cần triển khai. Upstream thực tế còn có `worker`, `supervisor`, `agent-computer` và các agent mẫu; phạm vi giữ lại cần được quyết định trước khi đổi cây repo/boundary checker. Xem chi tiết trong [hồ sơ tích hợp](docs/architecture/OPENBOT_INTEGRATION.md).
-
-### 4.6. Bàn giao và cập nhật upstream về sau
-
-PR nhập OpenBot phải bàn giao URL/SHA nguồn, mapping, danh sách phần đã sửa, package manager đã chọn, lệnh build/dev/test mới và báo cáo smoke. Giữ thông tin license/attribution từ source được nhập.
-
-Với cách nhập source có chọn lọc, repo này không tự có quan hệ lịch sử fork với OpenBot. Lần nâng cấp tiếp theo cần lấy diff giữa hai baseline upstream, đánh giá module bị ảnh hưởng và port thay đổi trong PR riêng. Không dùng `git pull` để kỳ vọng tự hợp nhất hai lịch sử chưa liên quan.
-
-**Nghiệm thu tích hợp:** checkout mới của `AI-Workforce-Platform` tự cài/build/chạy được shell và API, không cần thư mục `openbot-upstream`; có identity flow, route health và routes feature; các boundary checks vẫn chạy với config mới.
+Chi tiết mapping, thay đổi và giới hạn kiểm chứng: [OpenBot integration](docs/architecture/OPENBOT_INTEGRATION.md).
 
 <a id="implementation"></a>
 
@@ -334,7 +248,7 @@ Root chịu trách nhiệm tái lập môi trường, thống nhất dependency 
 
 ### 5.2. `app/` — UI shell và feature frontend
 
-**Owner:** Frontend; Platform/Vinhomes review nghiệp vụ tương ứng. **Đã có:** cây feature và README trách nhiệm; chưa có React entrypoint, router thực thi hoặc UI build.
+**Owner:** Frontend; Platform/Vinhomes review nghiệp vụ tương ứng. **Đã có:** React/Vite shell, router/auth và build; custom feature vẫn là khung.
 
 Nhập UI shell từ OpenBot vào package này. Team Frontend sở hữu navigation, layout, session UX, API client, màn hình và trạng thái loading/error/empty. Backend vẫn kiểm quyền; việc ẩn nút trên UI không thay thế authorization.
 
@@ -359,7 +273,7 @@ Nhập UI shell từ OpenBot vào package này. Team Frontend sở hữu navigat
 
 ### 5.3. `server/` — API host và composition root
 
-**Owner:** Platform cho server foundation; các team sở hữu router/use case của mình. **Đã có:** `index.ts`, `app.ts`, platform health và Vinhomes router rỗng.
+**Owner:** Platform cho server foundation; các team sở hữu router/use case của mình. **Đã có:** OpenBot bootstrap/auth/services; router Workforce ghép vào cùng app.
 
 | File / vùng | Nhiệm vụ |
 |---|---|
@@ -443,7 +357,7 @@ ResidentRequest → Case → IssueCandidate → ResidentReport → Incident
 
 ### 5.6. `server/src/db/` — persistence và migration
 
-**Owner:** Data/DevOps cho connection/migration infrastructure; Platform và Vinhomes sở hữu schema tương ứng. **Đã có:** thư mục schema/migration và quy tắc ownership; chưa chọn ORM, chưa có migration thực thi.
+**Owner:** Data/DevOps cho connection/migration infrastructure; Platform và Vinhomes sở hữu schema tương ứng. **Đã có:** Drizzle/schema/migration upstream và khung logical schema domain. Mapping trước khi thêm nghiệp vụ.
 
 | Vùng | Logical schema đích | Dữ liệu chính |
 |---|---|---|
@@ -546,7 +460,7 @@ src/
 
 ### 5.11. `charts/openbot/` và deployment assets
 
-**Owner:** DevOps, phối hợp các owner service. **Đã có:** README; chưa có Helm chart, Dockerfile hoặc `docker-compose.yml` chạy được.
+**Owner:** DevOps, phối hợp các owner service. **Đã có:** Helm chart, Dockerfile và Compose upstream; chưa kiểm chứng deployment sản phẩm.
 
 **Nhiệm vụ triển khai:** nhập conventions từ fork, cấu hình image/build context, service ports, liveness/readiness, resource requests/limits, secret injection và ingress. Bổ sung PostgreSQL/Qdrant/object storage theo topology đã chọn; thiết kế migration job chạy một lần trước rollout service phụ thuộc.
 
@@ -556,7 +470,7 @@ Local Compose nên cho developer khởi động được đúng tập dependency
 
 ### 5.12. `scripts/`, `tests/`, `.github/` — chất lượng và cộng tác
 
-**Owner:** mỗi team chịu test của mình; QA/DevOps duy trì convention và CI. **Đã có:** import boundary checks, Python smoke, health/architecture tests và GitHub Actions chạy `npm ci` + `npm run check`.
+**Owner:** mỗi team chịu test của mình; QA/DevOps duy trì convention và CI. **Đã có:** import boundary checks, Python smoke, health/architecture tests và GitHub Actions chạy Bun frozen install, checks/build và full tests.
 
 | Vùng | Nhiệm vụ tiếp theo |
 |---|---|
@@ -663,7 +577,7 @@ Python runtime và MCP không được tự sửa business tables. Deployment t�
 
 ### 7.2. Cấu hình cần bàn giao
 
-**Hiện chỉ `PORT` được server scaffold đọc.** Các nhóm sau là yêu cầu cấu hình khi triển khai, chưa phải tên biến môi trường có sẵn:
+**Server đã đọc cấu hình OpenBot tại `server/src/config.ts`; tên biến thực tế ở `.env.example`.** Các nhóm sau mô tả trách nhiệm cấu hình; tham chiếu `.env.example` và `docs/configuration.md` cho required settings:
 
 | Nhóm | Nội dung phải chốt |
 |---|---|
@@ -687,7 +601,7 @@ Service owner định nghĩa biến/config thực tế, `.env.example`, validati
 4. Khởi động MCP/provider integration, rồi runtime với capability được cấp và transport đã xác thực.
 5. Serve UI, kiểm request → domain → runtime/proposal → approval/execution theo luồng đã triển khai.
 
-Đây là thứ tự triển khai đề xuất. Hiện chưa có lệnh `docker compose up`, Helm install hay migration command hoạt động để đưa vào quickstart. DevOps cập nhật lệnh cụ thể sau khi manifests được nhập và kiểm chứng.
+Đây là thứ tự triển khai đề xuất. Đã có scripts/Compose/Helm upstream; xem quickstart mục 3. DevOps vẫn cần nghiệm thu image/config sản phẩm trước deployment.
 
 <a id="delivery"></a>
 
@@ -743,7 +657,7 @@ Một package được coi là bàn giao khi có implementation tương ứng ph
 | Deployment | Dependency lock, image/manifests, health/readiness, config và recovery hướng dẫn |
 | Bàn giao | README module cập nhật trạng thái; owner/consumer biết phần đã có và deferred |
 
-PR cần mô tả vấn đề và hành vi sau thay đổi, package bị ảnh hưởng, contract/schema thay đổi, kết quả checks/tests và giới hạn còn lại. Chạy `npm run check` cho scaffold và các lệnh bổ sung của package đã triển khai. Không bỏ import rule chỉ để làm xanh CI; nếu boundary thay đổi có chủ đích, cập nhật ADR/rule/tests cùng PR.
+PR cần mô tả vấn đề và hành vi sau thay đổi, package bị ảnh hưởng, contract/schema thay đổi, kết quả checks/tests và giới hạn còn lại. Chạy `bun run check` cho scaffold và các lệnh bổ sung của package đã triển khai. Không bỏ import rule chỉ để làm xanh CI; nếu boundary thay đổi có chủ đích, cập nhật ADR/rule/tests cùng PR.
 
 <a id="references"></a>
 

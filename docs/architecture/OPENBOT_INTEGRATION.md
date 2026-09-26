@@ -19,7 +19,7 @@
 
 Nguồn này khớp React/Vite, Hono và AG-UI mà thiết kế dự án yêu cầu. Đây là bản source nguyên gốc có Git history; chưa có chỉnh sửa trong checkout upstream.
 
-Đã hoàn tất tải source, kiểm tra manifest/layout/license và ghi baseline. **Chưa cài dependency, tạo `.env`, chạy Docker, migration, build/test upstream hoặc ghép code vào repo sản phẩm.** Clone source không yêu cầu model key hay tài khoản dịch vụ.
+**Đã nhập source vào repo sản phẩm trên nhánh `chore/import-openbot`.** Giữ baseline ở checkout riêng để đối chiếu; sản phẩm không phụ thuộc checkout đó. Dependency root đã cài bằng Bun 1.3.14. Chưa tạo `.env`/credential, chạy migration hoặc vận hành toàn stack với AI thật.
 
 ## 2. Toolchain và thành phần đã đối chiếu
 
@@ -43,7 +43,7 @@ Các dữ kiện dưới đây lấy từ file tại commit ghim, không suy ra 
 
 Nguồn để đối chiếu: [manifest tại commit ghim](https://github.com/CopilotKit/OpenBot/blob/3c73cf00efba46122dfd0447485e2b61f1d6a2cd/package.json), [README upstream](https://github.com/CopilotKit/OpenBot/blob/3c73cf00efba46122dfd0447485e2b61f1d6a2cd/README.md), [LICENSE](https://github.com/CopilotKit/OpenBot/blob/3c73cf00efba46122dfd0447485e2b61f1d6a2cd/LICENSE).
 
-## 3. Mapping cần triển khai
+## 3. Mapping baseline đã nhập và công việc tiếp theo
 
 | Source trong `E:\openbot-upstream` | Target trong repo sản phẩm | Công việc tiếp theo |
 |---|---|---|
@@ -58,7 +58,11 @@ Nguồn để đối chiếu: [manifest tại commit ghim](https://github.com/Co
 | Docker/Compose/Helm | Deployment assets root và `charts/openbot/` | Sửa build context/service topology sau khi hợp nhất executable |
 | `LICENSE` và attribution | Đi kèm source được nhập | Giữ thông tin giấy phép khi sao chép phần mã nguồn tương ứng |
 
-Scaffold sản phẩm hiện dùng Node 24/npm, một root package và strict import boundaries. Upstream dùng Bun workspace, có thư viện/auth/schema riêng. Bước nhập source phải xử lý các khác biệt này; `npm ci` ở repo sản phẩm chưa cài được OpenBot trong checkout bên cạnh.
+Sản phẩm đã chuyển sang Bun workspace app/server/worker, thay package-lock.json bằng bun.lock. Code upstream giữ ở vị trí gốc; khung Platform/Vinhomes và shared contracts được giữ cùng tree. Shared helper upstream ở root không bị coi là pure DTO. Checker resolve theo tsconfig workspace, tiếp tục chặn dependency domain/platform và UI/MCP vào backend/database.
+
+Hai router custom được compose trong Hono `server/src/app.ts`, sử dụng guard OpenBot. GET platform health công khai; domain routes và các route platform còn lại yêu cầu auth. Đây chưa phải implementation tenant/subject authorization nghiệp vụ.
+
+Giữ source desktop, worker, agent mẫu, computer/supervisor và deployment assets để tránh cắt dependency. Không nhập upstream `.github` workflows hoặc `.claude`; CI dự án chạy check/build/tests, không có release/publish tự động. LICENSE và OPENBOT_README.md giữ attribution/hướng dẫn nguồn.
 
 Các bảng/logic Vinhomes, Qdrant memory theo thiết kế dự án và AgentScope adapter vẫn là nhiệm vụ của các team. Không đồng nhất cơ chế memory/identity/governance upstream với toàn bộ mô hình đích mà chưa có mapping.
 
@@ -68,4 +72,15 @@ Mở `E:\openbot-upstream` trong cửa sổ IDE riêng để tra cứu. Làm fea
 
 Các thành viên khác clone cùng URL và checkout cùng SHA theo [README sản phẩm](../../README.md#openbot). Không cần có checkout này để chạy scaffold hiện tại; sau tích hợp, sản phẩm cũng phải build độc lập, không tham chiếu `file:../openbot-upstream`.
 
-Mỗi lần cập nhật baseline cần ghi SHA cũ/mới, phần đã port và kiểm thử liên quan. Git clone đã hoàn tất; cài/chạy upstream và nhập source là các mốc triển khai tiếp theo, chưa được đánh dấu hoàn thành.
+Mỗi lần cập nhật baseline cần ghi SHA cũ/mới, phần đã port và kiểm thử liên quan. Source integration đã hoàn tất; cấu hình deployment và business features là các mốc tiếp theo.
+
+## 5. Validation của nhánh tích hợp
+
+- Bun frozen install, typecheck app/server/worker và Workforce strict typecheck: qua.
+- Import boundary, Python Protocol smoke và 12 tests Workforce (route/auth/alias boundary): qua.
+- Build app/server/worker: qua. Vite còn cảnh báo externalized Node modules từ dependencies và một số chunk lớn; chưa coi đây là chứng nhận runtime UI end-to-end.
+- Full suite Windows chỉ root install: 3932 pass, 27 skip, 133 fail, 70 errors. Môi trường này thiếu test database, dependencies package ngoài workspace và có lỗi Windows path/symlink/subprocess; không báo full suite xanh.
+- CI Linux có pgvector/PostgreSQL, migration và installs agent-bot/agent-langgraph/agent-mastra/desktop theo upstream để kiểm full suite đúng môi trường.
+- Docker daemon local chưa chạy, credential Intelligence/model chưa cấu hình; chưa kiểm thử live chat, provider, database migration hay toàn bộ stack.
+
+Kết quả CI trên commit được push là nguồn bổ sung cho validation; nhánh tích hợp cần review trước merge.

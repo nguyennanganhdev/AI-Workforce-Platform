@@ -7,6 +7,8 @@ const roots = ['server', 'shared', 'app', 'domain-tools'];
 const normalize = (value) => value.replaceAll('\\', '/');
 const inside = (file, directory) => file === directory || file.startsWith(`${directory}/`);
 const databasePackages = /^(pg|postgres|postgresql|drizzle-orm|prisma|@prisma\/client|@qdrant\/[^/]+)(\/|$)/;
+const ownedRoots = ['server/src/platform', 'server/src/domains', 'shared/platform', 'shared/domains', 'domain-tools', 'app/src/features'];
+const isOwned = (file) => ownedRoots.some((root) => inside(file, root));
 
 /** Paths are repo-relative and resolved before applying these rules. */
 export function dependencyViolation(from, to) {
@@ -57,7 +59,7 @@ export function dependencyViolation(from, to) {
 }
 
 export function externalViolation(from, specifier) {
-  if (inside(from, 'shared')) return 'Shared contracts cannot import external runtime/framework packages';
+  if (inside(from, 'shared/platform') || inside(from, 'shared/domains')) return 'Shared contracts cannot import external runtime/framework packages';
   if ((inside(from, 'domain-tools') || inside(from, 'app')) && databasePackages.test(specifier)) {
     return 'UI/MCP must not access PostgreSQL or Qdrant directly';
   }
@@ -101,16 +103,27 @@ function* sourceFiles(directory) {
 }
 
 export function checkArchitecture(repo = process.cwd()) {
-  const config = ts.readConfigFile(path.join(repo, 'tsconfig.json'), ts.sys.readFile);
-  if (config.error) throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, '\n'));
-  const { options } = ts.parseJsonConfigFileContent(config.config, ts.sys, repo);
+  const configurations = new Map();
+  function optionsFor(file) {
+    const configPath = ts.findConfigFile(path.dirname(file), ts.sys.fileExists);
+    if (!configPath) throw new Error(`No TypeScript configuration for ${file}`);
+    if (!configurations.has(configPath)) {
+      const config = ts.readConfigFile(configPath, ts.sys.readFile);
+      if (config.error) throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, '\n'));
+      configurations.set(configPath, ts.parseJsonConfigFileContent(config.config, ts.sys, path.dirname(configPath)).options);
+    }
+    return configurations.get(configPath);
+  }
   const errors = [];
   for (const root of roots) {
     for (const file of sourceFiles(path.join(repo, root))) {
       const from = normalize(path.relative(repo, file));
+      // Tests may intentionally cross boundaries; production source may not.
+      if (from.includes('/tests/') || /\.(test|spec)\.[cm]?[jt]sx?$/.test(from)) continue;
+      const options = optionsFor(file);
       for (const specifier of importSpecifiers(fs.readFileSync(file, 'utf8'))) {
         if (specifier === null) {
-          errors.push(`${from}: computed module imports require an explicit static boundary`);
+          if (isOwned(from)) errors.push(`${from}: computed module imports require an explicit static boundary`);
           continue;
         }
         const resolved = ts.resolveModuleName(specifier, file, options, ts.sys).resolvedModule;
@@ -118,10 +131,10 @@ export function checkArchitecture(repo = process.cwd()) {
         if (resolved && !resolved.isExternalLibraryImport) {
           error = dependencyViolation(from, normalize(path.relative(repo, resolved.resolvedFileName)));
         } else if (specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('#')) {
-          error = 'Unresolved local import';
+          if (isOwned(from)) error = 'Unresolved local import';
         } else {
           error = externalViolation(from, specifier);
-          if (!error && !resolved && !specifier.startsWith('node:')) error = 'Unresolved package or alias';
+          if (!error && !resolved && isOwned(from) && !specifier.startsWith('node:')) error = 'Unresolved package or alias';
         }
         if (error) errors.push(`${from} -> ${specifier}: ${error}`);
       }

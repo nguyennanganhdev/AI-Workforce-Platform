@@ -1,8 +1,8 @@
 # OpenBot UI shell
 
-Owner: Frontend. Chưa có mã nguồn React/OpenBot upstream trong repo này.
+Owner: Frontend. React/Vite OpenBot đã được nhập vào package này.
 
-Nhập shell, router, auth UI và design system từ fork đã chọn. Gắn generic UX vào
+Shell, router, auth UI và design system giữ theo baseline upstream. Gắn generic UX vào
 `src/features/platform`, UX nghiệp vụ vào `src/features/domains/vinhomes`.
 `src/routes` là composition layer, chỉ điều phối page/feature.
-Không cài một scaffold UI khác trước khi xác định OpenBot conventions.
+Chạy từ root: `bun run dev`, `bun run build`. Cấu hình backend/dependency theo README root.

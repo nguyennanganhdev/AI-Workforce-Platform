@@ -31,7 +31,7 @@ Một team có thể kiêm nhiều vai trò. Lead gán người/GitHub team th�
 
 | Giai đoạn | Công việc | Phụ thuộc / tiêu chí hoàn tất |
 |---|---|---|
-| 0 — Khung hiện tại | Thư mục, port, Hono health, CI/import checks | `npm ci && npm run check` chạy được |
+| 0 — Khung hiện tại | Thư mục, port, Hono health, CI/import checks | `bun install --frozen-lockfile && bun run check` chạy được |
 | 1 — Foundation | Nhập OpenBot; xác thực tenant; schema identity/property; review DTO và chọn ORM/migration | RequestContext từ identity thật; fixture ít nhất 2 tenant; không tin tenant/actor từ body |
 | 2A — Platform | Factory/Registry/Version, catalog và evaluation gate | Agent không tự publish; version formal evaluation bất biến |
 | 2B — Domain | Intake → Incident → Task; human/system flows | Domain hoạt động khi runtime không khả dụng |
