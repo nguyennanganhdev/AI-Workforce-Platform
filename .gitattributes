@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Generated database metadata/catalogs: collapse noisy diffs while keeping SQL visible.
+server/drizzle/meta/*_snapshot.json linguist-generated=true
+docs/erd/physical/*.md text eol=lf linguist-generated=true
