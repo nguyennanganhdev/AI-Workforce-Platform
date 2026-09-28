@@ -52,7 +52,7 @@ export const MOCK_SECURITY_CHECKPOINTS: SecurityCheckpoint[] = [
 export const MOCK_SECURITY_INCIDENTS: SecurityIncidentReport[] = [
   {
     id: 'SEC-INC-001',
-    incident_id: 'INC-2026-002',
+    incident_id: 'INC-2026-007',
     title: 'Xe giao hàng đỗ chắn lối xe cứu hỏa',
     location: 'Đường nội bộ trước sảnh Tòa S2.02',
     severity: 'P2',

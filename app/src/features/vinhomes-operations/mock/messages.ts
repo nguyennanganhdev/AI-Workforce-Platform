@@ -36,9 +36,9 @@ export const MOCK_MESSAGES: VhMessage[] = [
     incident_id: 'INC-2026-001',
     body: 'Đội vệ sinh mang 2 máy hút nước công nghiệp lên sảnh 12 rồi nhé anh Hùng, đang hút nước đọng để tránh thấm trần tầng 11.',
     author_type: 'STAFF',
-    author_id: 'usr-san-01',
-    author_name: 'Trần Thị Mai (Giám sát Vệ sinh)',
-    author_avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&auto=format&fit=crop&q=80',
+    author_id: 'usr-sup-01',
+    author_name: 'Trần Thị Mai (Giám sát Vận hành)',
+    author_avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=120&auto=format&fit=crop&q=80',
     created_at: new Date(Date.now() - 36 * 60 * 1000).toISOString(),
   },
   {

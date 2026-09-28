@@ -281,8 +281,10 @@ export function IncidentsWorkspace() {
                         className="p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none"
                       >
                         <option value="">-- Chưa chỉ định --</option>
-                        <option value="usr-tech-01">Nguyễn Văn Hùng (Kỹ sư Trưởng)</option>
-                        <option value="usr-san-01">Trần Thị Mai (Giám sát Vệ sinh)</option>
+                        <option value="usr-tech-01">Nguyễn Văn Hùng (Kỹ sư MEP)</option>
+                        <option value="usr-cleaner-01">Lê Thị Bích (Nhân viên Vệ sinh A5)</option>
+                        <option value="usr-sec-01">Phạm Văn Đạt (Đội An ninh)</option>
+                        <option value="usr-sup-01">Trần Thị Mai (Giám sát Vận hành)</option>
                         <option value="usr-mgr-01">Vũ Đức Thịnh (Trưởng BQL)</option>
                       </select>
                     </div>

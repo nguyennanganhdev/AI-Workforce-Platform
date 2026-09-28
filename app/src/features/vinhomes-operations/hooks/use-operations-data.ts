@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo, createContext, useContext, c
 import {
   type VhIncident,
   type VhTask,
+  type VhTaskDependency,
   type VhWorkOrder,
   type VhEvidenceRef,
   type VhQcResult,
@@ -24,6 +25,7 @@ import { PERSONA_PROFILES } from '../types/persona';
 import {
   MOCK_INCIDENTS,
   MOCK_TASKS,
+  MOCK_TASK_DEPENDENCIES,
   MOCK_WORK_ORDERS,
   MOCK_EVIDENCE,
   MOCK_QC_RESULTS,
@@ -35,7 +37,17 @@ import {
   MOCK_SECURITY_HANDOVERS,
 } from '../mock';
 
-const STORAGE_KEY_PREFIX = 'vhm_operations_data_v3';
+const STORAGE_KEY_PREFIX = 'vhm_operations_data_v4';
+
+export const DOMAIN_CHECKLIST_MAP: Record<string, string> = {
+  MEP: 'CKL-VER-MEP-01',
+  TECHNICAL: 'CKL-VER-MEP-01',
+  SANITATION: 'CKL-VER-SAN-01',
+  LANDSCAPE: 'CKL-VER-SAN-01',
+  ELEVATOR: 'CKL-VER-ELEV-01',
+  SECURITY: 'CKL-VER-SEC-01',
+  GENERAL: 'CKL-VER-MEP-01',
+};
 
 export function useOperationsDataInternal() {
   // 1. Cases & Issue Candidates (Intake / Triage)
@@ -67,13 +79,22 @@ export function useOperationsDataInternal() {
     }
   });
 
-  // 3. Tasks
+  // 3. Tasks & Dependencies
   const [tasks, setTasks] = useState<VhTask[]>(() => {
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_tasks`);
       return stored ? JSON.parse(stored) : MOCK_TASKS;
     } catch {
       return MOCK_TASKS;
+    }
+  });
+
+  const [taskDependencies, setTaskDependencies] = useState<VhTaskDependency[]>(() => {
+    try {
+      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_task_deps`);
+      return stored ? JSON.parse(stored) : MOCK_TASK_DEPENDENCIES;
+    } catch {
+      return MOCK_TASK_DEPENDENCIES;
     }
   });
 
@@ -224,6 +245,7 @@ export function useOperationsDataInternal() {
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_candidates`, JSON.stringify(issueCandidates));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_incidents`, JSON.stringify(incidents));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_tasks`, JSON.stringify(tasks));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_task_deps`, JSON.stringify(taskDependencies));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_work_orders`, JSON.stringify(workOrders));
 
       // Sanitize evidence URLs to avoid exceeding 5MB browser quota
@@ -404,12 +426,36 @@ export function useOperationsDataInternal() {
       const pendingTasks = incidentTasks.filter((t) => t.status !== 'DONE');
 
       if (pendingTasks.length > 0) {
-        throw new Error(`Không thể đóng sự cố: Còn ${pendingTasks.length} nhiệm vụ chưa hoàn thành (DONE).`);
+        throw new Error(`Không thể giải quyết sự cố: Còn ${pendingTasks.length} nhiệm vụ chưa hoàn thành (DONE).`);
       }
 
-      const pendingWos = workOrders.filter((w) => w.incident_id === incidentId && w.status !== 'COMPLETED');
+      const incidentWos = workOrders.filter((w) => w.incident_id === incidentId);
+      const pendingWos = incidentWos.filter((w) => w.status !== 'COMPLETED');
       if (pendingWos.length > 0) {
-        throw new Error(`Không thể đóng sự cố: Còn ${pendingWos.length} phiếu thi công chưa hoàn tất.`);
+        throw new Error(`Không thể giải quyết sự cố: Còn ${pendingWos.length} phiếu thi công chưa hoàn tất.`);
+      }
+
+      // Check QC results: Ensure all failed work orders have completed redos that passed QC
+      for (const wo of incidentWos) {
+        const qc = qcResults.find((q) => q.work_order_id === wo.id);
+        if (qc?.outcome === 'FAIL' && qc.redo_required) {
+          const redoWo = incidentWos.find((r) => r.redo_of_work_order_id === wo.id);
+          if (!redoWo || redoWo.status !== 'COMPLETED') {
+            throw new Error(`Không thể giải quyết sự cố: Phiếu ${wo.id} bị đánh FAIL kiểm định và phiếu làm lại (Redo) chưa hoàn thành!`);
+          }
+          const redoQc = qcResults.find((q) => q.work_order_id === redoWo.id);
+          if (redoQc?.outcome !== 'PASS') {
+            throw new Error(`Không thể giải quyết sự cố: Phiếu làm lại ${redoWo.id} chưa có kết quả nghiệm thu QC PASS!`);
+          }
+        }
+      }
+
+      // Check Pending Approvals
+      const pendingApprovals = approvals.filter(
+        (a) => a.action_request?.incident_id === incidentId && a.status === 'PENDING',
+      );
+      if (pendingApprovals.length > 0) {
+        throw new Error(`Không thể giải quyết sự cố: Còn ${pendingApprovals.length} đề xuất phê duyệt đang chờ duyệt (PENDING)!`);
       }
 
       setIncidents((prev) =>
@@ -426,7 +472,7 @@ export function useOperationsDataInternal() {
         ),
       );
     },
-    [tasks, workOrders],
+    [tasks, workOrders, qcResults, approvals],
   );
 
   const residentConfirmIncident = useCallback((incidentId: string, confirmed: boolean) => {
@@ -533,6 +579,35 @@ export function useOperationsDataInternal() {
         );
       }
 
+      // Guard 1B: Enforce Task Dependency before starting IN_PROGRESS
+      if (targetStatus === 'IN_PROGRESS') {
+        const parentTask = tasks.find((t) => t.id === targetWo.task_id);
+        if (parentTask) {
+          const unresolvedDeps = taskDependencies
+            .filter((dep) => dep.task_id === parentTask.id && dep.required)
+            .filter((dep) => {
+              const prereqTask = tasks.find((t) => t.id === dep.depends_on_task_id);
+              if (dep.dependency_type === 'FINISH_TO_START') {
+                return prereqTask?.status !== 'DONE';
+              }
+              if (dep.dependency_type === 'START_TO_START') {
+                return prereqTask?.status !== 'IN_PROGRESS' && prereqTask?.status !== 'DONE';
+              }
+              return false;
+            });
+
+          if (unresolvedDeps.length > 0) {
+            const depNames = unresolvedDeps
+              .map((d) => {
+                const t = tasks.find((task) => task.id === d.depends_on_task_id);
+                return `${d.depends_on_task_id} (${t?.title || 'Chưa xong'})`;
+              })
+              .join(', ');
+            throw new Error(`Vi phạm phụ thuộc quy trình (Task Dependency): Nhiệm vụ tiền nhiệm chưa hoàn tất [${depNames}]. Vui lòng hoàn thành nhiệm vụ trước khi bắt đầu thi công!`);
+          }
+        }
+      }
+
       // Guard 2: Checks before transitioning to COMPLETED
       if (targetStatus === 'COMPLETED') {
         // 2A. Mandatory Evidence (1 BEFORE + 1 AFTER)
@@ -628,12 +703,28 @@ export function useOperationsDataInternal() {
       checklist_version_id?: string | null;
       contractor_organization_id?: string | null;
     }) => {
-      // Guard: Only SUPERVISOR or MANAGER can assign work
+      // Guard 1: Only SUPERVISOR or MANAGER can assign work
       if (!currentProfile.canAssignWork) {
         throw new Error(
           `Tài khoản vai trò "${currentProfile.roleTitle}" không có quyền giao phiếu thi công (canAssignWork: false)! Chỉ Trưởng nhóm/Giám sát (SUPERVISOR) hoặc Ban Quản Lý (MANAGER) mới có thẩm quyền này.`,
         );
       }
+
+      // Guard 2: Invariant Check - Task must belong to specified incident!
+      const targetTask = tasks.find((t) => t.id === params.task_id);
+      if (!targetTask) {
+        throw new Error(`Nhiệm vụ ${params.task_id} không tồn tại trên hệ thống!`);
+      }
+      if (targetTask.incident_id !== params.incident_id) {
+        throw new Error(
+          `Lỗi toàn vẹn dữ liệu: Nhiệm vụ ${targetTask.id} thuộc sự cố ${targetTask.incident_id}, không khớp với sự cố ${params.incident_id} được chỉ định!`,
+        );
+      }
+
+      const deducedChecklist =
+        params.checklist_version_id ||
+        (targetTask.domain_type && DOMAIN_CHECKLIST_MAP[targetTask.domain_type]) ||
+        'CKL-VER-MEP-01';
 
       const now = new Date().toISOString();
       const newWoId = `WO-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
@@ -663,7 +754,7 @@ export function useOperationsDataInternal() {
         status: 'ASSIGNED',
         attempt_no: 1,
         redo_of_work_order_id: null,
-        checklist_version_id: params.checklist_version_id || 'CKL-VER-MEP-01',
+        checklist_version_id: deducedChecklist,
         execution_started_at: null,
         execution_completed_at: null,
         result: null,
@@ -680,7 +771,7 @@ export function useOperationsDataInternal() {
 
       return wo;
     },
-    [currentProfile],
+    [currentProfile, tasks],
   );
 
   // ==========================================
@@ -1177,17 +1268,36 @@ export function useOperationsDataInternal() {
         );
       }
 
-      const now = new Date().toISOString();
       const targetApproval = approvals.find((a) => a.id === approvalId);
-      if (!targetApproval) return;
+      if (!targetApproval) throw new Error('Không tìm thấy yêu cầu phê duyệt!');
 
+      // Guard: Only PENDING approvals can be approved
+      if (targetApproval.status !== 'PENDING') {
+        throw new Error(`Yêu cầu phê duyệt ${targetApproval.id} không ở trạng thái PENDING (hiện tại: ${targetApproval.status})!`);
+      }
+
+      // Guard: Cannot approve expired approval
+      if (targetApproval.expires_at && new Date(targetApproval.expires_at).getTime() < Date.now()) {
+        throw new Error(`Yêu cầu phê duyệt ${targetApproval.id} đã hết hạn vào lúc ${targetApproval.expires_at}! Không thể phê duyệt.`);
+      }
+
+      // Guard: Avoid duplicate grants for the same approval
+      const existingGrant = executionGrants.find((g) => g.approval_id === approvalId);
+      if (existingGrant) {
+        throw new Error(`Đã tồn tại Execution Grant (${existingGrant.id}) cho phê duyệt này! Không được tạo trùng lặp.`);
+      }
+
+      const now = new Date().toISOString();
       const grantId = `GRNT-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+
+      // Issue grant to requester or executor (NOT the reviewer/Manager)
+      const targetActor = targetApproval.requested_by_id || targetApproval.action_request?.requested_by_id || 'usr-tech-01';
 
       const newGrant: VhExecutionGrant = {
         id: grantId,
         action_request_id: targetApproval.action_request_id,
         approval_id: targetApproval.id,
-        granted_to: currentProfile.id,
+        granted_to: targetActor,
         allowed_action_type: (targetApproval.action_request?.action_type || 'PURCHASE_MATERIAL') as any,
         granted_at: now,
         expires_at: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
@@ -1213,7 +1323,7 @@ export function useOperationsDataInternal() {
         ),
       );
     },
-    [approvals, currentProfile],
+    [approvals, currentProfile, executionGrants],
   );
 
   const rejectAction = useCallback(
@@ -1248,6 +1358,7 @@ export function useOperationsDataInternal() {
     setIssueCandidates(MOCK_ISSUE_CANDIDATES);
     setIncidents(MOCK_INCIDENTS);
     setTasks(MOCK_TASKS);
+    setTaskDependencies(MOCK_TASK_DEPENDENCIES);
     setWorkOrders(MOCK_WORK_ORDERS);
     setEvidence(MOCK_EVIDENCE);
     setQcResults(MOCK_QC_RESULTS);
@@ -1264,6 +1375,7 @@ export function useOperationsDataInternal() {
     issueCandidates,
     incidents,
     tasks,
+    taskDependencies,
     workOrders,
     myWorkOrders,
     teamWorkOrders,

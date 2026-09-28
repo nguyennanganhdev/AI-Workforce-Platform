@@ -732,6 +732,7 @@ interface CreateWorkOrderModalProps {
     executor_name?: string;
     executor_phone?: string;
     checklist_version_id?: string | null;
+    contractor_organization_id?: string | null;
   }) => void;
 }
 
@@ -742,7 +743,18 @@ interface AssignableWorker {
   type: 'STAFF' | 'CONTRACTOR';
   roleTitle: string;
   defaultChecklist: string;
+  contractor_organization_id?: string;
 }
+
+const DOMAIN_CHECKLIST_MAP: Record<string, string> = {
+  MEP: 'CKL-VER-MEP-01',
+  TECHNICAL: 'CKL-VER-MEP-01',
+  SANITATION: 'CKL-VER-SAN-01',
+  LANDSCAPE: 'CKL-VER-SAN-01',
+  ELEVATOR: 'CKL-VER-ELEV-01',
+  SECURITY: 'CKL-VER-SEC-01',
+  GENERAL: 'CKL-VER-MEP-01',
+};
 
 const ASSIGNABLE_WORKERS: AssignableWorker[] = [
   {
@@ -759,7 +771,7 @@ const ASSIGNABLE_WORKERS: AssignableWorker[] = [
     phone: '0977 123 456',
     type: 'STAFF',
     roleTitle: 'Nhân viên Vệ sinh Môi trường & Cảnh quan A5',
-    defaultChecklist: 'CKL-VER-A5-01',
+    defaultChecklist: 'CKL-VER-SAN-01',
   },
   {
     id: 'usr-sec-01',
@@ -776,6 +788,7 @@ const ASSIGNABLE_WORKERS: AssignableWorker[] = [
     type: 'CONTRACTOR',
     roleTitle: 'Đại diện Kỹ thuật Nhà thầu Thang máy Otis',
     defaultChecklist: 'CKL-VER-ELEV-01',
+    contractor_organization_id: 'org-otis',
   },
   {
     id: 'usr-contractor-02',
@@ -783,7 +796,8 @@ const ASSIGNABLE_WORKERS: AssignableWorker[] = [
     phone: '0909 112 233',
     type: 'CONTRACTOR',
     roleTitle: 'Đội thi công Cảnh quan & Cây xanh',
-    defaultChecklist: 'CKL-VER-A5-01',
+    defaultChecklist: 'CKL-VER-SAN-01',
+    contractor_organization_id: 'org-greenx',
   },
 ];
 
@@ -815,19 +829,30 @@ function CreateWorkOrderModal({ incidents, tasks, onClose, onCreate }: CreateWor
     }
   };
 
+  const handleTaskChange = (taskId: string) => {
+    setSelectedTaskId(taskId);
+    const targetTask = tasks.find((t) => t.id === taskId);
+    if (targetTask?.domain_type && DOMAIN_CHECKLIST_MAP[targetTask.domain_type]) {
+      setChecklistVersion(DOMAIN_CHECKLIST_MAP[targetTask.domain_type]);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedIncidentId || !selectedTaskId) return;
+
+    const worker = ASSIGNABLE_WORKERS.find((w) => w.id === selectedWorkerId);
 
     onCreate({
       incident_id: selectedIncidentId,
       task_id: selectedTaskId,
       execution_grant_id: selectedGrantId || null,
-      executor_type: executorType,
+      executor_type: worker?.type || executorType,
       executor_id: selectedWorkerId || (executorType === 'STAFF' ? 'usr-tech-01' : 'usr-contractor-01'),
       executor_name: executorName,
       executor_phone: executorPhone,
       checklist_version_id: checklistVersion,
+      contractor_organization_id: worker?.contractor_organization_id || null,
     });
   };
 
@@ -881,7 +906,7 @@ function CreateWorkOrderModal({ incidents, tasks, onClose, onCreate }: CreateWor
             {availableTasks.length > 0 ? (
               <select
                 value={selectedTaskId}
-                onChange={(e) => setSelectedTaskId(e.target.value)}
+                onChange={(e) => handleTaskChange(e.target.value)}
                 className="w-full p-2.5 bg-white border border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none font-medium text-slate-800"
               >
                 {availableTasks.map((t) => (
@@ -966,7 +991,7 @@ function CreateWorkOrderModal({ incidents, tasks, onClose, onCreate }: CreateWor
               className="w-full p-2.5 border border-slate-200 rounded-xl bg-white focus:border-blue-500 focus:outline-none"
             >
               <option value="CKL-VER-MEP-01">Quy chuẩn kỹ thuật cơ điện MEP & PCCC</option>
-              <option value="CKL-VER-A5-01">Tiêu chuẩn vệ sinh khu vực A5 & Cảnh quan</option>
+              <option value="CKL-VER-SAN-01">Tiêu chuẩn vệ sinh khu vực A5 & Cảnh quan</option>
               <option value="CKL-VER-SEC-01">Quy chuẩn tuần tra an ninh & Bảo vệ hiện trường</option>
               <option value="CKL-VER-ELEV-01">Kiểm định an toàn thang máy Otis</option>
             </select>

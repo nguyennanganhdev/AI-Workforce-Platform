@@ -20,7 +20,7 @@ export const MOCK_APPROVALS: VhActionApproval[] = [
     urgency_level: 'CRITICAL',
   },
 
-  // 2. Phê duyệt APPROVED: Hợp đồng sửa chữa guốc thang máy Schindler (8.2 triệu VND)
+  // 2. Phê duyệt APPROVED: Hợp đồng sửa chữa guốc thang máy Otis (8.2 triệu VND)
   {
     id: 'APP-2026-002',
     action_request_id: 'ACT-2026-05',
@@ -41,16 +41,17 @@ export const MOCK_APPROVALS: VhActionApproval[] = [
   // 3. Phê duyệt REJECTED: Đề xuất thay toàn bộ cáp kéo thang máy (120 triệu VND)
   {
     id: 'APP-2026-003',
-    action_request_id: 'ACT-2026-REJECTED',
+    action_request_id: 'ACT-2026-08',
     action_payload_hash: 'sha256:8899aabbccddeeff00112233445566778899aabbccddeeff0011223344556677',
     status: 'REJECTED',
     requested_by_id: 'usr-contractor-01',
     reviewer_id: 'usr-mgr-01',
     reviewer_name: 'Vũ Đức Thịnh (Trưởng BQL)',
     expires_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    decided_at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    decided_at: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
     reason: 'Chưa đủ điều kiện thay thế theo chu kỳ kiểm định kỹ thuật 6 tháng. Yêu cầu kiểm tra lại độ mòn cáp và thí nghiệm kéo mẫu trước.',
     version: 2,
+    action_request: MOCK_ACTION_REQUESTS.find((a) => a.id === 'ACT-2026-08'),
     estimated_cost_vnd: 120000000,
     urgency_level: 'NORMAL',
   },
@@ -58,7 +59,7 @@ export const MOCK_APPROVALS: VhActionApproval[] = [
   // 4. Phê duyệt EXPIRED: Đề xuất thuê xe thang phun nước cổng chào
   {
     id: 'APP-2026-004',
-    action_request_id: 'ACT-2026-EXPIRED',
+    action_request_id: 'ACT-2026-07',
     action_payload_hash: 'sha256:11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff',
     status: 'EXPIRED',
     requested_by_id: 'agent-vinhomes-dispatcher',
@@ -67,6 +68,7 @@ export const MOCK_APPROVALS: VhActionApproval[] = [
     decided_at: null,
     reason: 'Hết hạn phản hồi (Quá hạn 12 giờ tự động hủy yêu cầu).',
     version: 1,
+    action_request: MOCK_ACTION_REQUESTS.find((a) => a.id === 'ACT-2026-07'),
     estimated_cost_vnd: 4500000,
     urgency_level: 'NORMAL',
   },
