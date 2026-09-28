@@ -14,6 +14,7 @@ import { Route as SignRouteImport } from './routes/sign'
 import { Route as AuthedAppRouteImport } from './routes/_authed/_app'
 import { Route as AuthedAdminRouteRouteImport } from './routes/_authed/admin/route'
 import { Route as AuthedOnboardingRouteImport } from './routes/_authed/onboarding'
+import { Route as AuthedOperationsRouteRouteImport } from './routes/_authed/operations/route'
 import { Route as AuthedSettingsRouteRouteImport } from './routes/_authed/settings/route'
 import { Route as AuthedAppIndexRouteImport } from './routes/_authed/_app/index'
 import { Route as AuthedAppBotRouteImport } from './routes/_authed/_app/bot'
@@ -28,6 +29,15 @@ import { Route as AuthedAdminIdentityProvidersRouteImport } from './routes/_auth
 import { Route as AuthedAdminPeopleRouteImport } from './routes/_authed/admin/people'
 import { Route as AuthedAdminPlaygroundRouteImport } from './routes/_authed/admin/playground'
 import { Route as AuthedAdminSkillsRouteImport } from './routes/_authed/admin/skills'
+import { Route as AuthedOperationsIndexRouteImport } from './routes/_authed/operations/index'
+import { Route as AuthedOperationsApprovalsRouteImport } from './routes/_authed/operations/approvals'
+import { Route as AuthedOperationsEvidenceRouteImport } from './routes/_authed/operations/evidence'
+import { Route as AuthedOperationsIncidentsRouteImport } from './routes/_authed/operations/incidents'
+import { Route as AuthedOperationsKanbanRouteImport } from './routes/_authed/operations/kanban'
+import { Route as AuthedOperationsQcRouteImport } from './routes/_authed/operations/qc'
+import { Route as AuthedOperationsSanitationRouteImport } from './routes/_authed/operations/sanitation'
+import { Route as AuthedOperationsTriageRouteImport } from './routes/_authed/operations/triage'
+import { Route as AuthedOperationsWorkOrdersRouteImport } from './routes/_authed/operations/work-orders'
 import { Route as AuthedSettingsIndexRouteImport } from './routes/_authed/settings/index'
 import { Route as AuthedAppAgentsIndexRouteImport } from './routes/_authed/_app/agents/index'
 import { Route as AuthedAppChannelChannelIdRouteImport } from './routes/_authed/_app/channel/$channelId'
@@ -65,6 +75,11 @@ const AuthedAdminRouteRoute = AuthedAdminRouteRouteImport.update({
 const AuthedOnboardingRoute = AuthedOnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedOperationsRouteRoute = AuthedOperationsRouteRouteImport.update({
+  id: '/operations',
+  path: '/operations',
   getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedSettingsRouteRoute = AuthedSettingsRouteRouteImport.update({
@@ -138,6 +153,56 @@ const AuthedAdminSkillsRoute = AuthedAdminSkillsRouteImport.update({
   path: '/skills',
   getParentRoute: () => AuthedAdminRouteRoute,
 } as any)
+const AuthedOperationsIndexRoute = AuthedOperationsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthedOperationsRouteRoute,
+} as any)
+const AuthedOperationsApprovalsRoute =
+  AuthedOperationsApprovalsRouteImport.update({
+    id: '/approvals',
+    path: '/approvals',
+    getParentRoute: () => AuthedOperationsRouteRoute,
+  } as any)
+const AuthedOperationsEvidenceRoute =
+  AuthedOperationsEvidenceRouteImport.update({
+    id: '/evidence',
+    path: '/evidence',
+    getParentRoute: () => AuthedOperationsRouteRoute,
+  } as any)
+const AuthedOperationsIncidentsRoute =
+  AuthedOperationsIncidentsRouteImport.update({
+    id: '/incidents',
+    path: '/incidents',
+    getParentRoute: () => AuthedOperationsRouteRoute,
+  } as any)
+const AuthedOperationsKanbanRoute = AuthedOperationsKanbanRouteImport.update({
+  id: '/kanban',
+  path: '/kanban',
+  getParentRoute: () => AuthedOperationsRouteRoute,
+} as any)
+const AuthedOperationsQcRoute = AuthedOperationsQcRouteImport.update({
+  id: '/qc',
+  path: '/qc',
+  getParentRoute: () => AuthedOperationsRouteRoute,
+} as any)
+const AuthedOperationsSanitationRoute =
+  AuthedOperationsSanitationRouteImport.update({
+    id: '/sanitation',
+    path: '/sanitation',
+    getParentRoute: () => AuthedOperationsRouteRoute,
+  } as any)
+const AuthedOperationsTriageRoute = AuthedOperationsTriageRouteImport.update({
+  id: '/triage',
+  path: '/triage',
+  getParentRoute: () => AuthedOperationsRouteRoute,
+} as any)
+const AuthedOperationsWorkOrdersRoute =
+  AuthedOperationsWorkOrdersRouteImport.update({
+    id: '/work-orders',
+    path: '/work-orders',
+    getParentRoute: () => AuthedOperationsRouteRoute,
+  } as any)
 const AuthedSettingsIndexRoute = AuthedSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -228,6 +293,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthedAppIndexRoute
   '/sign': typeof SignRoute
   '/admin': typeof AuthedAdminRouteRouteWithChildren
+  '/operations': typeof AuthedOperationsRouteRouteWithChildren
   '/settings': typeof AuthedSettingsRouteRouteWithChildren
   '/onboarding': typeof AuthedOnboardingRoute
   '/bot': typeof AuthedAppBotRoute
@@ -241,7 +307,16 @@ export interface FileRoutesByFullPath {
   '/admin/people': typeof AuthedAdminPeopleRoute
   '/admin/playground': typeof AuthedAdminPlaygroundRoute
   '/admin/skills': typeof AuthedAdminSkillsRoute
+  '/operations/approvals': typeof AuthedOperationsApprovalsRoute
+  '/operations/evidence': typeof AuthedOperationsEvidenceRoute
+  '/operations/incidents': typeof AuthedOperationsIncidentsRoute
+  '/operations/kanban': typeof AuthedOperationsKanbanRoute
+  '/operations/qc': typeof AuthedOperationsQcRoute
+  '/operations/sanitation': typeof AuthedOperationsSanitationRoute
+  '/operations/triage': typeof AuthedOperationsTriageRoute
+  '/operations/work-orders': typeof AuthedOperationsWorkOrdersRoute
   '/admin/': typeof AuthedAdminIndexRoute
+  '/operations/': typeof AuthedOperationsIndexRoute
   '/settings/': typeof AuthedSettingsIndexRoute
   '/channel/$channelId': typeof AuthedAppChannelChannelIdRoute
   '/channel/new': typeof AuthedAppChannelNewRoute
@@ -273,7 +348,16 @@ export interface FileRoutesByTo {
   '/admin/people': typeof AuthedAdminPeopleRoute
   '/admin/playground': typeof AuthedAdminPlaygroundRoute
   '/admin/skills': typeof AuthedAdminSkillsRoute
+  '/operations/approvals': typeof AuthedOperationsApprovalsRoute
+  '/operations/evidence': typeof AuthedOperationsEvidenceRoute
+  '/operations/incidents': typeof AuthedOperationsIncidentsRoute
+  '/operations/kanban': typeof AuthedOperationsKanbanRoute
+  '/operations/qc': typeof AuthedOperationsQcRoute
+  '/operations/sanitation': typeof AuthedOperationsSanitationRoute
+  '/operations/triage': typeof AuthedOperationsTriageRoute
+  '/operations/work-orders': typeof AuthedOperationsWorkOrdersRoute
   '/admin': typeof AuthedAdminIndexRoute
+  '/operations': typeof AuthedOperationsIndexRoute
   '/settings': typeof AuthedSettingsIndexRoute
   '/channel/$channelId': typeof AuthedAppChannelChannelIdRoute
   '/channel/new': typeof AuthedAppChannelNewRoute
@@ -295,6 +379,7 @@ export interface FileRoutesById {
   '/_authed': typeof AuthedRouteWithChildren
   '/sign': typeof SignRoute
   '/_authed/admin': typeof AuthedAdminRouteRouteWithChildren
+  '/_authed/operations': typeof AuthedOperationsRouteRouteWithChildren
   '/_authed/settings': typeof AuthedSettingsRouteRouteWithChildren
   '/_authed/_app': typeof AuthedAppRouteWithChildren
   '/_authed/onboarding': typeof AuthedOnboardingRoute
@@ -309,8 +394,17 @@ export interface FileRoutesById {
   '/_authed/admin/people': typeof AuthedAdminPeopleRoute
   '/_authed/admin/playground': typeof AuthedAdminPlaygroundRoute
   '/_authed/admin/skills': typeof AuthedAdminSkillsRoute
+  '/_authed/operations/approvals': typeof AuthedOperationsApprovalsRoute
+  '/_authed/operations/evidence': typeof AuthedOperationsEvidenceRoute
+  '/_authed/operations/incidents': typeof AuthedOperationsIncidentsRoute
+  '/_authed/operations/kanban': typeof AuthedOperationsKanbanRoute
+  '/_authed/operations/qc': typeof AuthedOperationsQcRoute
+  '/_authed/operations/sanitation': typeof AuthedOperationsSanitationRoute
+  '/_authed/operations/triage': typeof AuthedOperationsTriageRoute
+  '/_authed/operations/work-orders': typeof AuthedOperationsWorkOrdersRoute
   '/_authed/_app/': typeof AuthedAppIndexRoute
   '/_authed/admin/': typeof AuthedAdminIndexRoute
+  '/_authed/operations/': typeof AuthedOperationsIndexRoute
   '/_authed/settings/': typeof AuthedSettingsIndexRoute
   '/_authed/_app/channel/$channelId': typeof AuthedAppChannelChannelIdRoute
   '/_authed/_app/channel/new': typeof AuthedAppChannelNewRoute
@@ -333,6 +427,7 @@ export interface FileRouteTypes {
     | '/'
     | '/sign'
     | '/admin'
+    | '/operations'
     | '/settings'
     | '/onboarding'
     | '/bot'
@@ -346,7 +441,16 @@ export interface FileRouteTypes {
     | '/admin/people'
     | '/admin/playground'
     | '/admin/skills'
+    | '/operations/approvals'
+    | '/operations/evidence'
+    | '/operations/incidents'
+    | '/operations/kanban'
+    | '/operations/qc'
+    | '/operations/sanitation'
+    | '/operations/triage'
+    | '/operations/work-orders'
     | '/admin/'
+    | '/operations/'
     | '/settings/'
     | '/channel/$channelId'
     | '/channel/new'
@@ -378,7 +482,16 @@ export interface FileRouteTypes {
     | '/admin/people'
     | '/admin/playground'
     | '/admin/skills'
+    | '/operations/approvals'
+    | '/operations/evidence'
+    | '/operations/incidents'
+    | '/operations/kanban'
+    | '/operations/qc'
+    | '/operations/sanitation'
+    | '/operations/triage'
+    | '/operations/work-orders'
     | '/admin'
+    | '/operations'
     | '/settings'
     | '/channel/$channelId'
     | '/channel/new'
@@ -399,6 +512,7 @@ export interface FileRouteTypes {
     | '/_authed'
     | '/sign'
     | '/_authed/admin'
+    | '/_authed/operations'
     | '/_authed/settings'
     | '/_authed/_app'
     | '/_authed/onboarding'
@@ -413,8 +527,17 @@ export interface FileRouteTypes {
     | '/_authed/admin/people'
     | '/_authed/admin/playground'
     | '/_authed/admin/skills'
+    | '/_authed/operations/approvals'
+    | '/_authed/operations/evidence'
+    | '/_authed/operations/incidents'
+    | '/_authed/operations/kanban'
+    | '/_authed/operations/qc'
+    | '/_authed/operations/sanitation'
+    | '/_authed/operations/triage'
+    | '/_authed/operations/work-orders'
     | '/_authed/_app/'
     | '/_authed/admin/'
+    | '/_authed/operations/'
     | '/_authed/settings/'
     | '/_authed/_app/channel/$channelId'
     | '/_authed/_app/channel/new'
@@ -472,6 +595,13 @@ declare module '@tanstack/react-router' {
       path: '/onboarding'
       fullPath: '/onboarding'
       preLoaderRoute: typeof AuthedOnboardingRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/operations': {
+      id: '/_authed/operations'
+      path: '/operations'
+      fullPath: '/operations'
+      preLoaderRoute: typeof AuthedOperationsRouteRouteImport
       parentRoute: typeof AuthedRoute
     }
     '/_authed/settings': {
@@ -571,6 +701,69 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/skills'
       preLoaderRoute: typeof AuthedAdminSkillsRouteImport
       parentRoute: typeof AuthedAdminRouteRoute
+    }
+    '/_authed/operations/': {
+      id: '/_authed/operations/'
+      path: '/'
+      fullPath: '/operations/'
+      preLoaderRoute: typeof AuthedOperationsIndexRouteImport
+      parentRoute: typeof AuthedOperationsRouteRoute
+    }
+    '/_authed/operations/approvals': {
+      id: '/_authed/operations/approvals'
+      path: '/approvals'
+      fullPath: '/operations/approvals'
+      preLoaderRoute: typeof AuthedOperationsApprovalsRouteImport
+      parentRoute: typeof AuthedOperationsRouteRoute
+    }
+    '/_authed/operations/evidence': {
+      id: '/_authed/operations/evidence'
+      path: '/evidence'
+      fullPath: '/operations/evidence'
+      preLoaderRoute: typeof AuthedOperationsEvidenceRouteImport
+      parentRoute: typeof AuthedOperationsRouteRoute
+    }
+    '/_authed/operations/incidents': {
+      id: '/_authed/operations/incidents'
+      path: '/incidents'
+      fullPath: '/operations/incidents'
+      preLoaderRoute: typeof AuthedOperationsIncidentsRouteImport
+      parentRoute: typeof AuthedOperationsRouteRoute
+    }
+    '/_authed/operations/kanban': {
+      id: '/_authed/operations/kanban'
+      path: '/kanban'
+      fullPath: '/operations/kanban'
+      preLoaderRoute: typeof AuthedOperationsKanbanRouteImport
+      parentRoute: typeof AuthedOperationsRouteRoute
+    }
+    '/_authed/operations/qc': {
+      id: '/_authed/operations/qc'
+      path: '/qc'
+      fullPath: '/operations/qc'
+      preLoaderRoute: typeof AuthedOperationsQcRouteImport
+      parentRoute: typeof AuthedOperationsRouteRoute
+    }
+    '/_authed/operations/sanitation': {
+      id: '/_authed/operations/sanitation'
+      path: '/sanitation'
+      fullPath: '/operations/sanitation'
+      preLoaderRoute: typeof AuthedOperationsSanitationRouteImport
+      parentRoute: typeof AuthedOperationsRouteRoute
+    }
+    '/_authed/operations/triage': {
+      id: '/_authed/operations/triage'
+      path: '/triage'
+      fullPath: '/operations/triage'
+      preLoaderRoute: typeof AuthedOperationsTriageRouteImport
+      parentRoute: typeof AuthedOperationsRouteRoute
+    }
+    '/_authed/operations/work-orders': {
+      id: '/_authed/operations/work-orders'
+      path: '/work-orders'
+      fullPath: '/operations/work-orders'
+      preLoaderRoute: typeof AuthedOperationsWorkOrdersRouteImport
+      parentRoute: typeof AuthedOperationsRouteRoute
     }
     '/_authed/settings/': {
       id: '/_authed/settings/'
@@ -721,6 +914,35 @@ const AuthedAdminRouteRouteChildren: AuthedAdminRouteRouteChildren = {
 const AuthedAdminRouteRouteWithChildren =
   AuthedAdminRouteRoute._addFileChildren(AuthedAdminRouteRouteChildren)
 
+interface AuthedOperationsRouteRouteChildren {
+  AuthedOperationsApprovalsRoute: typeof AuthedOperationsApprovalsRoute
+  AuthedOperationsEvidenceRoute: typeof AuthedOperationsEvidenceRoute
+  AuthedOperationsIncidentsRoute: typeof AuthedOperationsIncidentsRoute
+  AuthedOperationsKanbanRoute: typeof AuthedOperationsKanbanRoute
+  AuthedOperationsQcRoute: typeof AuthedOperationsQcRoute
+  AuthedOperationsSanitationRoute: typeof AuthedOperationsSanitationRoute
+  AuthedOperationsTriageRoute: typeof AuthedOperationsTriageRoute
+  AuthedOperationsWorkOrdersRoute: typeof AuthedOperationsWorkOrdersRoute
+  AuthedOperationsIndexRoute: typeof AuthedOperationsIndexRoute
+}
+
+const AuthedOperationsRouteRouteChildren: AuthedOperationsRouteRouteChildren = {
+  AuthedOperationsApprovalsRoute: AuthedOperationsApprovalsRoute,
+  AuthedOperationsEvidenceRoute: AuthedOperationsEvidenceRoute,
+  AuthedOperationsIncidentsRoute: AuthedOperationsIncidentsRoute,
+  AuthedOperationsKanbanRoute: AuthedOperationsKanbanRoute,
+  AuthedOperationsQcRoute: AuthedOperationsQcRoute,
+  AuthedOperationsSanitationRoute: AuthedOperationsSanitationRoute,
+  AuthedOperationsTriageRoute: AuthedOperationsTriageRoute,
+  AuthedOperationsWorkOrdersRoute: AuthedOperationsWorkOrdersRoute,
+  AuthedOperationsIndexRoute: AuthedOperationsIndexRoute,
+}
+
+const AuthedOperationsRouteRouteWithChildren =
+  AuthedOperationsRouteRoute._addFileChildren(
+    AuthedOperationsRouteRouteChildren,
+  )
+
 interface AuthedSettingsRouteRouteChildren {
   AuthedSettingsIndexRoute: typeof AuthedSettingsIndexRoute
   AuthedSettingsComponentsGalleryNameRoute: typeof AuthedSettingsComponentsGalleryNameRoute
@@ -770,6 +992,7 @@ const AuthedAppRouteWithChildren = AuthedAppRoute._addFileChildren(
 
 interface AuthedRouteChildren {
   AuthedAdminRouteRoute: typeof AuthedAdminRouteRouteWithChildren
+  AuthedOperationsRouteRoute: typeof AuthedOperationsRouteRouteWithChildren
   AuthedSettingsRouteRoute: typeof AuthedSettingsRouteRouteWithChildren
   AuthedAppRoute: typeof AuthedAppRouteWithChildren
   AuthedOnboardingRoute: typeof AuthedOnboardingRoute
@@ -777,6 +1000,7 @@ interface AuthedRouteChildren {
 
 const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedAdminRouteRoute: AuthedAdminRouteRouteWithChildren,
+  AuthedOperationsRouteRoute: AuthedOperationsRouteRouteWithChildren,
   AuthedSettingsRouteRoute: AuthedSettingsRouteRouteWithChildren,
   AuthedAppRoute: AuthedAppRouteWithChildren,
   AuthedOnboardingRoute: AuthedOnboardingRoute,

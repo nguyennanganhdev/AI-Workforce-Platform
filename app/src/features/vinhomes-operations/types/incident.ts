@@ -1,0 +1,52 @@
+/**
+ * Canonical Incident types from docx/02_VINHOMES_DOMAIN_ERD.md (Section 6: vh_incident)
+ */
+
+export type IncidentStatus = 'NEW' | 'OPEN' | 'RESOLVED' | 'CLOSED';
+
+export type IncidentStage =
+  | 'INTAKE'
+  | 'TRIAGE'
+  | 'PLANNING'
+  | 'EXECUTION'
+  | 'QC'
+  | 'RESIDENT_CONFIRMATION';
+
+export type IncidentSeverity = 'P1' | 'P2' | 'P3' | 'P4';
+
+export interface LocationJson {
+  towerCode?: string;
+  floor?: number | string;
+  apartmentCode?: string;
+  areaCode?: string;
+  description?: string;
+}
+
+export interface VhIncident {
+  id: string;
+  tenant_id: string;
+  project_id: string;
+  tower_id: string | null;
+  category: string;
+  title: string;
+  location_json: LocationJson;
+  severity: IncidentSeverity;
+  status: IncidentStatus;
+  stage: IncidentStage;
+  owner_user_id: string | null;
+  sla_due_at: string | null;
+  resolved_at: string | null;
+  closed_at: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VhIncidentRelation {
+  source_incident_id: string;
+  target_incident_id: string;
+  relation_type: 'RELATED' | 'DUPLICATE' | 'CAUSED_BY' | 'BLOCKS' | 'RECURRING_WITH';
+  reason: string;
+  created_by: string;
+  created_at: string;
+}
