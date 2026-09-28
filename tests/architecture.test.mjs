@@ -25,6 +25,17 @@ test('business schema may reference identity but cannot hard-link runtime schema
   assert.ok(dependencyViolation(from, 'server/src/db/schema/platform/runtime.ts'));
 });
 
+test('schema utilities and the identity bridge do not open a backdoor to shell runtime', () => {
+  const platform = 'server/src/db/schema/platform/agents.ts';
+  const domain = 'server/src/db/schema/domains/vinhomes/operations.ts';
+  assert.equal(dependencyViolation(platform, 'server/src/db/schema/columns.ts'), null);
+  assert.equal(dependencyViolation(domain, 'server/src/db/schema/columns.ts'), null);
+  assert.equal(dependencyViolation('server/src/db/schema/platform/identity.ts', 'server/src/db/schema/core.ts'), null);
+  assert.ok(dependencyViolation(platform, 'server/src/db/schema/core.ts'));
+  assert.ok(dependencyViolation(domain, 'server/src/db/schema/core.ts'));
+  assert.ok(dependencyViolation(domain, 'server/src/db/client.ts'));
+});
+
 test('UI and MCP cannot import backend repositories or database clients', () => {
   for (const from of ['domain-tools/vinhomes/technical-mcp/src/tools.ts', 'app/src/features/domains/vinhomes/resident/api.ts']) {
     assert.ok(dependencyViolation(from, 'server/src/domains/vinhomes/incidents/repository.ts'));

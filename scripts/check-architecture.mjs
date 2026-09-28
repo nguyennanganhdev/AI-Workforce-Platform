@@ -30,11 +30,13 @@ export function dependencyViolation(from, to) {
   if (domain && !inAny(`server/src/domains/${domain}`, `shared/domains/${domain}`, 'shared/platform', `server/src/db/schema/domains/${domain}`)) {
     return 'Domain must use contracts/injected ports instead of another module implementation';
   }
-  if (inside(from, 'server/src/db/schema/platform') && !inAny('server/src/db/schema/platform', 'shared/platform')) {
+  const schemaUtility = inAny('server/src/db/schema/columns.ts', 'server/src/db/schema/json.ts');
+  const identityBridge = from === 'server/src/db/schema/platform/identity.ts' && to === 'server/src/db/schema/core.ts';
+  if (inside(from, 'server/src/db/schema/platform') && !schemaUtility && !identityBridge && !inAny('server/src/db/schema/platform', 'shared/platform')) {
     return 'Platform schema must not depend on domain schemas';
   }
   const schemaDomain = from.match(/^server\/src\/db\/schema\/domains\/([^/]+)\//)?.[1];
-  if (schemaDomain && !inAny(`server/src/db/schema/domains/${schemaDomain}`, `shared/domains/${schemaDomain}`, 'shared/platform', 'server/src/db/schema/platform/identity.ts')) {
+  if (schemaDomain && !schemaUtility && !inAny(`server/src/db/schema/domains/${schemaDomain}`, `shared/domains/${schemaDomain}`, 'shared/platform', 'server/src/db/schema/platform/identity.ts')) {
     return 'Domain schema may reference only its own schema and shared identity';
   }
   if (inside(from, 'app') && !inAny('app', 'shared')) {

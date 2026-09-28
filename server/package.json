@@ -8,6 +8,8 @@
     "build": "tsc --noEmit",
     "db:generate": "bun --env-file=../.env drizzle-kit generate --config=drizzle.config.ts",
     "db:migrate": "bun --env-file=../.env drizzle-kit migrate --config=drizzle.config.ts",
+    "db:erd": "bun scripts/export-workforce-erd.ts",
+    "db:erd:check": "bun scripts/export-workforce-erd.ts --check",
     "dev": "bun --env-file=../.env --watch src/index.ts",
     "typecheck": "tsc --noEmit"
   },
