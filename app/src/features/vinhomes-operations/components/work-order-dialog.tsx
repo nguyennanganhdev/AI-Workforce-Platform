@@ -102,10 +102,10 @@ export function WorkOrderDialog({ workOrder, onClose }: WorkOrderDialogProps) {
               <IconClipboardList className="w-4 h-4 text-blue-600" />
               Nhiệm vụ: {task?.title || 'Nhiệm vụ kỹ thuật'}
             </h4>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
               <div className="p-3 bg-white border border-slate-200 rounded-xl">
                 <span className="text-[11px] text-slate-400 block font-medium">Bộ phận phụ trách</span>
-                <span className="font-bold text-slate-800 mt-0.5 block">
+                <span className="font-bold text-slate-800 mt-0.5 block truncate">
                   {task?.domain_type === 'MEP'
                     ? 'Điện Nước'
                     : task?.domain_type === 'SANITATION'
@@ -119,20 +119,28 @@ export function WorkOrderDialog({ workOrder, onClose }: WorkOrderDialogProps) {
               </div>
               <div className="p-3 bg-white border border-slate-200 rounded-xl">
                 <span className="text-[11px] text-slate-400 block font-medium">Người thực hiện</span>
-                <span className="font-bold text-slate-800 mt-0.5 block">
+                <span className="font-bold text-slate-800 mt-0.5 block truncate">
                   {workOrder.executor_name || 'Chưa phân công'}
                 </span>
               </div>
               <div className="p-3 bg-white border border-slate-200 rounded-xl">
+                <span className="text-[11px] text-slate-400 block font-medium">Tiêu chuẩn Checklist</span>
+                <span className="font-mono font-bold text-blue-700 mt-0.5 block text-xs truncate">
+                  {workOrder.checklist_version_id || 'CKL-VER-MEP-01'}
+                </span>
+              </div>
+              <div className="p-3 bg-white border border-slate-200 rounded-xl">
                 <span className="text-[11px] text-slate-400 block font-medium">Trạng thái hiện tại</span>
-                <span className="font-bold text-blue-600 mt-0.5 block">
+                <span className="font-bold text-blue-600 mt-0.5 block truncate">
                   {currentStatus === 'COMPLETED'
                     ? 'Đã hoàn thành'
                     : currentStatus === 'IN_PROGRESS'
                       ? 'Đang thực hiện'
-                      : currentStatus === 'FAILED'
-                        ? 'Chưa đạt'
-                        : 'Mới giao việc'}
+                      : currentStatus === 'BLOCKED'
+                        ? 'Tạm dừng / Bị chặn'
+                        : currentStatus === 'FAILED'
+                          ? 'Chưa đạt'
+                          : 'Mới giao việc'}
                 </span>
               </div>
             </div>

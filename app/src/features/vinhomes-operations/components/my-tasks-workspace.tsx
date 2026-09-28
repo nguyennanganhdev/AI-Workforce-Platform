@@ -388,12 +388,11 @@ export function MyTasksWorkspace() {
                   onClick={() => setSortAsc(!sortAsc)}
                 >
                   <div className="flex items-center gap-1.5">
-                    <span>Mã & Tên công việc</span>
+                    <span>Tên công việc</span>
                     <IconArrowsSort className="w-3.5 h-3.5 text-slate-400" />
                   </div>
                 </th>
                 <th className="py-3 px-4">Vị trí / Tòa</th>
-                <th className="py-3 px-4">Checklist</th>
                 <th className="py-3 px-4">Bằng chứng (Trước / Sau)</th>
                 <th className="py-3 px-4">Trạng thái</th>
                 <th className="py-3 px-4 text-right">Thao tác</th>
@@ -402,7 +401,7 @@ export function MyTasksWorkspace() {
             <tbody className="divide-y divide-slate-100 text-xs">
               {paginatedOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={6} className="py-12 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <IconBriefcase className="w-8 h-8 text-slate-300" />
                       <p className="font-semibold text-slate-600 text-xs">
@@ -441,31 +440,25 @@ export function MyTasksWorkspace() {
                         />
                       </td>
 
-                      {/* Code & Title */}
+                      {/* Title */}
                       <td className="py-3.5 px-4">
                         <div className="space-y-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/60">
-                              {wo.id}
-                            </span>
-                            <span className="text-[11px] font-semibold text-slate-600">
-                              #{wo.attempt_no}
-                            </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedWoForDetail(wo)}
+                              className="font-bold text-slate-900 hover:text-blue-600 text-left line-clamp-1 block cursor-pointer transition-colors max-w-xs sm:max-w-md text-[13px]"
+                              title="Bấm để xem chi tiết phiếu thi công"
+                            >
+                              {inc?.title || `Công việc hiện trường #${wo.id}`}
+                            </button>
                             {wo.redo_of_work_order_id && (
-                              <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 font-bold text-[10px] rounded flex items-center gap-0.5">
+                              <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 font-bold text-[10px] rounded flex items-center gap-0.5 shrink-0">
                                 <IconRotateClockwise className="w-2.5 h-2.5" />
                                 <span>Làm lại</span>
                               </span>
                             )}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedWoForDetail(wo)}
-                            className="font-bold text-slate-900 hover:text-blue-600 text-left line-clamp-1 block cursor-pointer transition-colors max-w-xs sm:max-w-md"
-                            title={inc?.title || 'Xem chi tiết'}
-                          >
-                            {inc?.title || `Công việc hiện trường #${wo.id}`}
-                          </button>
                           {wo.status === 'BLOCKED' && wo.blocked_reason && (
                             <p className="text-[10px] text-amber-700 italic flex items-center gap-1">
                               <IconInfoCircle className="w-3 h-3 text-amber-600 shrink-0" />
@@ -485,13 +478,6 @@ export function MyTasksWorkspace() {
                           <span className="text-slate-300">•</span>
                           <span>Tầng {inc?.location_json.floor || '12'}</span>
                         </div>
-                      </td>
-
-                      {/* Checklist */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 font-mono text-[11px] font-semibold rounded">
-                          {wo.checklist_version_id || 'CKL-VER-MEP-01'}
-                        </span>
                       </td>
 
                       {/* Evidence (Before/After) */}
