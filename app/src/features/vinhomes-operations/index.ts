@@ -4,6 +4,7 @@
 export { OperationsLayout } from './layout/operations-layout';
 export { OperationsHeader } from './layout/operations-header';
 export { OperationsSidebar } from './layout/operations-sidebar';
+export { OperationsRouteGuard } from './layout/operations-route-guard';
 
 // Workspace Components
 export { OperationsDashboard } from './components/operations-dashboard';

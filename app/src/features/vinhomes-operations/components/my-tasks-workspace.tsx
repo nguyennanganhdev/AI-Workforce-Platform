@@ -135,80 +135,108 @@ export function MyTasksWorkspace() {
 
       {/* Notifications */}
       {successMessage && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-800 flex items-center justify-between shadow-2xs">
+        <div
+          role="status"
+          aria-live="polite"
+          className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-800 flex items-center justify-between shadow-2xs"
+        >
           <div className="flex items-center gap-2">
             <IconCheck className="w-4 h-4 text-emerald-600" />
             <span>{successMessage}</span>
           </div>
-          <button type="button" onClick={() => setSuccessMessage(null)} className="text-emerald-500 text-xs">
+          <button
+            type="button"
+            onClick={() => setSuccessMessage(null)}
+            aria-label="Đóng thông báo thành công"
+            className="text-emerald-500 hover:text-emerald-700 text-xs p-1"
+          >
             ✕
           </button>
         </div>
       )}
 
       {errorMessage && (
-        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-800 flex items-center justify-between shadow-2xs">
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-800 flex items-center justify-between shadow-2xs"
+        >
           <div className="flex items-start gap-2">
             <IconAlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
             <span>{errorMessage}</span>
           </div>
-          <button type="button" onClick={() => setErrorMessage(null)} className="text-rose-500 text-xs">
+          <button
+            type="button"
+            onClick={() => setErrorMessage(null)}
+            aria-label="Đóng thông báo lỗi"
+            className="text-rose-500 hover:text-rose-700 text-xs p-1"
+          >
             ✕
           </button>
         </div>
       )}
 
-      {/* Metric Cards */}
+      {/* Metric Cards - Keyboard accessible buttons */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div
+        <button
+          type="button"
           onClick={() => setActiveTab('ASSIGNED')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            activeTab === 'ASSIGNED' ? 'bg-blue-50/80 border-blue-500 shadow-2xs' : 'bg-white border-slate-200/80'
+          aria-pressed={activeTab === 'ASSIGNED'}
+          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+            activeTab === 'ASSIGNED' ? 'bg-blue-50/80 border-blue-500 shadow-2xs' : 'bg-white border-slate-200/80 hover:bg-slate-50'
           }`}
         >
           <div className="text-[11px] font-semibold text-slate-500">Mới được giao</div>
           <div className="text-xl font-bold text-slate-800 mt-1">{assignedCount}</div>
-        </div>
+        </button>
 
-        <div
+        <button
+          type="button"
           onClick={() => setActiveTab('IN_PROGRESS')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            activeTab === 'IN_PROGRESS' ? 'bg-blue-50/80 border-blue-500 shadow-2xs' : 'bg-white border-slate-200/80'
+          aria-pressed={activeTab === 'IN_PROGRESS'}
+          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+            activeTab === 'IN_PROGRESS' ? 'bg-blue-50/80 border-blue-500 shadow-2xs' : 'bg-white border-slate-200/80 hover:bg-slate-50'
           }`}
         >
           <div className="text-[11px] font-semibold text-blue-600">Đang thực hiện</div>
           <div className="text-xl font-bold text-blue-700 mt-1">{inProgressCount}</div>
-        </div>
+        </button>
 
-        <div
+        <button
+          type="button"
           onClick={() => setActiveTab('BLOCKED')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            activeTab === 'BLOCKED' ? 'bg-amber-50/80 border-amber-500 shadow-2xs' : 'bg-white border-slate-200/80'
+          aria-pressed={activeTab === 'BLOCKED'}
+          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
+            activeTab === 'BLOCKED' ? 'bg-amber-50/80 border-amber-500 shadow-2xs' : 'bg-white border-slate-200/80 hover:bg-slate-50'
           }`}
         >
           <div className="text-[11px] font-semibold text-amber-600">Bị chặn / Tạm dừng</div>
           <div className="text-xl font-bold text-amber-700 mt-1">{blockedCount}</div>
-        </div>
+        </button>
 
-        <div
+        <button
+          type="button"
           onClick={() => setActiveTab('REDO')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            activeTab === 'REDO' ? 'bg-rose-50/80 border-rose-500 shadow-2xs' : 'bg-white border-slate-200/80'
+          aria-pressed={activeTab === 'REDO'}
+          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 ${
+            activeTab === 'REDO' ? 'bg-rose-50/80 border-rose-500 shadow-2xs' : 'bg-white border-slate-200/80 hover:bg-slate-50'
           }`}
         >
           <div className="text-[11px] font-semibold text-rose-600">Làm lại (QC Fail)</div>
           <div className="text-xl font-bold text-rose-700 mt-1">{redoCount}</div>
-        </div>
+        </button>
 
-        <div
+        <button
+          type="button"
           onClick={() => setActiveTab('COMPLETED')}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            activeTab === 'COMPLETED' ? 'bg-emerald-50/80 border-emerald-500 shadow-2xs' : 'bg-white border-slate-200/80'
+          aria-pressed={activeTab === 'COMPLETED'}
+          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+            activeTab === 'COMPLETED' ? 'bg-emerald-50/80 border-emerald-500 shadow-2xs' : 'bg-white border-slate-200/80 hover:bg-slate-50'
           }`}
         >
           <div className="text-[11px] font-semibold text-emerald-600">Đã xong / Chờ QC</div>
           <div className="text-xl font-bold text-emerald-700 mt-1">{completedCount}</div>
-        </div>
+        </button>
       </div>
 
       {/* Filter Tabs */}

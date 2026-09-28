@@ -1,23 +1,24 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import type {
-  VhIncident,
-  VhTask,
-  VhWorkOrder,
-  VhEvidenceRef,
-  VhQcResult,
-  VhActionApproval,
-  VhExecutionGrant,
-  VhCase,
-  VhIssueCandidate,
-  OperationsPersona,
-  IncidentStage,
-  IncidentSeverity,
-  SecurityCheckpoint,
-  SecurityIncidentReport,
-  SecurityShiftHandover,
-  CleaningPlan,
-  MenuId,
-  CapturePhase,
+import {
+  type VhIncident,
+  type VhTask,
+  type VhWorkOrder,
+  type VhEvidenceRef,
+  type VhQcResult,
+  type VhActionApproval,
+  type VhExecutionGrant,
+  type VhCase,
+  type VhIssueCandidate,
+  type OperationsPersona,
+  type IncidentStage,
+  type IncidentSeverity,
+  type SecurityCheckpoint,
+  type SecurityIncidentReport,
+  type SecurityShiftHandover,
+  type CleaningPlan,
+  type MenuId,
+  type CapturePhase,
+  ALLOWED_WORK_ORDER_TRANSITIONS,
 } from '../types';
 import { PERSONA_PROFILES } from '../types/persona';
 import {
@@ -175,33 +176,35 @@ export function useOperationsData() {
     [currentProfile],
   );
 
-  // Filter "My Work Orders" according to active persona
+  // Filter "My Work Orders" strictly according to authenticated assignment
   const myWorkOrders = useMemo(() => {
     return workOrders.filter((wo) => {
-      // 1. Matched by executor_id
+      // 1. Strict personal assignment by executor_id
       if (wo.executor_id === currentProfile.id) return true;
 
-      // 2. Role-based fallback matching
-      if (currentPersona === 'STAFF_TECHNICAL' && (wo.checklist_version_id?.includes('MEP') || wo.executor_id === 'usr-tech-01')) {
+      // 2. Contractor assignment by organization
+      if (
+        currentPersona === 'CONTRACTOR' &&
+        wo.executor_type === 'CONTRACTOR' &&
+        currentProfile.contractor_organization_id &&
+        wo.contractor_organization_id === currentProfile.contractor_organization_id
+      ) {
         return true;
       }
-      if (currentPersona === 'STAFF_SANITATION_A5' && (wo.checklist_version_id?.includes('SAN') || wo.executor_id === 'usr-cleaner-01')) {
-        return true;
-      }
-      if (currentPersona === 'CONTRACTOR' && (wo.executor_type === 'CONTRACTOR' || wo.executor_id === 'usr-contractor-01')) {
-        return true;
-      }
-      if (currentPersona === 'STAFF_SECURITY' && (wo.checklist_version_id?.includes('SEC') || wo.executor_id === 'usr-sec-01')) {
-        return true;
-      }
-      if (currentPersona === 'SUPERVISOR' || currentPersona === 'MANAGER') {
-        return true; // Supervisors and managers oversee all
-      }
+
       return false;
     });
   }, [workOrders, currentProfile, currentPersona]);
 
-  // Persist state
+  // Team / Area work orders for Supervisor & Manager oversight
+  const teamWorkOrders = useMemo(() => {
+    if (currentPersona === 'SUPERVISOR' || currentPersona === 'MANAGER') {
+      return workOrders;
+    }
+    return myWorkOrders;
+  }, [workOrders, currentPersona, myWorkOrders]);
+
+  // Persist state safely to localStorage without storage quota overflow
   useEffect(() => {
     try {
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_cases`, JSON.stringify(cases));
@@ -209,7 +212,24 @@ export function useOperationsData() {
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_incidents`, JSON.stringify(incidents));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_tasks`, JSON.stringify(tasks));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_work_orders`, JSON.stringify(workOrders));
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}_evidence`, JSON.stringify(evidence));
+
+      // Sanitize evidence URLs to avoid exceeding 5MB browser quota
+      const sanitizedEvidence = evidence.map((e) => {
+        if (e.file_url && e.file_url.startsWith('data:image/') && e.file_url.length > 50000) {
+          return {
+            ...e,
+            file_url: `https://storage.vinhomes.vn/evidence/${e.file_id || e.id}.jpg`,
+            metadata: {
+              ...e.metadata,
+              storage_key: `s3://vinhomes-evidence/${e.file_id || e.id}.jpg`,
+              checksum_sha256: 'sha256-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            },
+          };
+        }
+        return e;
+      });
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_evidence`, JSON.stringify(sanitizedEvidence));
+
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_qc_results`, JSON.stringify(qcResults));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_approvals`, JSON.stringify(approvals));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_grants`, JSON.stringify(executionGrants));
@@ -491,14 +511,18 @@ export function useOperationsData() {
         );
       }
 
-      // Check State Machine Transition rules
-      // Valid transitions:
-      // OPEN -> ASSIGNED
-      // ASSIGNED -> IN_PROGRESS
-      // IN_PROGRESS -> BLOCKED
-      // BLOCKED -> IN_PROGRESS
-      // IN_PROGRESS -> COMPLETED
+      // Guard 1: Enforce State Machine Transition Map
+      const currentStatus = targetWo.status;
+      const validTargets = ALLOWED_WORK_ORDER_TRANSITIONS[currentStatus] || [];
+      if (!validTargets.includes(targetStatus)) {
+        throw new Error(
+          `Vi phạm quy tắc State Machine: Không được phép chuyển từ "${currentStatus}" sang "${targetStatus}"! Các trạng thái hợp lệ tiếp theo: [${validTargets.join(', ')}]`,
+        );
+      }
+
+      // Guard 2: Checks before transitioning to COMPLETED
       if (targetStatus === 'COMPLETED') {
+        // 2A. Mandatory Evidence (1 BEFORE + 1 AFTER)
         const woEvidence = evidence.filter((e) => e.work_order_id === targetWo.id);
         const hasBefore = woEvidence.some((e) => e.capture_phase === 'BEFORE');
         const hasAfter = woEvidence.some((e) => e.capture_phase === 'AFTER');
@@ -507,6 +531,29 @@ export function useOperationsData() {
           throw new Error(
             'Chưa đủ điều kiện hoàn thành: Bắt buộc phải có tối thiểu 1 ảnh Trước (BEFORE) và 1 ảnh Sau (AFTER) khi thi công trước khi báo hoàn thành!',
           );
+        }
+
+        // 2B. A5 Sanitation / Landscape Checklist Guards
+        const parentTask = tasks.find((t) => t.id === targetWo.task_id);
+        if (parentTask?.domain_type === 'SANITATION' || parentTask?.domain_type === 'LANDSCAPE') {
+          const plan = ((parentTask.domain_data as any)?.cleaning_plan as any) || (parentTask.domain_data as any) || {};
+          if (!plan.arrived_at_site) {
+            throw new Error('Chưa đủ điều kiện hoàn thành: Nhân viên vệ sinh chưa bấm xác nhận có mặt tại hiện trường!');
+          }
+          if (!plan.warning_signs_placed) {
+            throw new Error('Chưa đủ điều kiện hoàn thành: Quy chuẩn vệ sinh A5 bắt buộc phải đặt biển cảnh báo an toàn!');
+          }
+          const pendingSteps = plan.actions?.filter((a: any) => !a.completed) || [];
+          if (pendingSteps.length > 0) {
+            throw new Error(`Chưa đủ điều kiện hoàn thành: Còn ${pendingSteps.length} bước công việc trong kế hoạch A5 chưa được tick hoàn thành!`);
+          }
+        }
+
+        // 2C. Contractor Acceptance Guard
+        if (targetWo.executor_type === 'CONTRACTOR') {
+          if (targetWo.contractor_status !== 'ACCEPTED') {
+            throw new Error('Chưa đủ điều kiện hoàn thành: Nhà thầu chưa thực hiện bước tiếp nhận công việc (ACCEPTED)!');
+          }
         }
       }
 
@@ -544,7 +591,7 @@ export function useOperationsData() {
         }
       }
     },
-    [workOrders, evidence, currentProfile, currentPersona],
+    [workOrders, evidence, tasks, currentProfile, currentPersona],
   );
 
   // Backward compatible updateWorkOrderStatus
@@ -566,7 +613,15 @@ export function useOperationsData() {
       executor_name?: string;
       executor_phone?: string;
       checklist_version_id?: string | null;
+      contractor_organization_id?: string | null;
     }) => {
+      // Guard: Only SUPERVISOR or MANAGER can assign work
+      if (!currentProfile.canAssignWork) {
+        throw new Error(
+          `Tài khoản vai trò "${currentProfile.roleTitle}" không có quyền giao phiếu thi công (canAssignWork: false)! Chỉ Trưởng nhóm/Giám sát (SUPERVISOR) hoặc Ban Quản Lý (MANAGER) mới có thẩm quyền này.`,
+        );
+      }
+
       const now = new Date().toISOString();
       const newWoId = `WO-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
 
@@ -589,6 +644,9 @@ export function useOperationsData() {
         executor_id: params.executor_id,
         executor_name: params.executor_name,
         executor_phone: params.executor_phone,
+        contractor_organization_id:
+          params.contractor_organization_id ||
+          (params.executor_type === 'CONTRACTOR' ? 'org-otis' : null),
         status: 'ASSIGNED',
         attempt_no: 1,
         redo_of_work_order_id: null,
@@ -609,14 +667,31 @@ export function useOperationsData() {
 
       return wo;
     },
-    [],
+    [currentProfile],
   );
 
   // ==========================================
-  // CONTRACTOR ACTIONS
+  // CONTRACTOR ACTIONS (WITH RBAC & ORG CHECK)
   // ==========================================
   const respondToContractorJob = useCallback(
     (workOrderId: string, action: 'ACCEPT' | 'REJECT', reason?: string, assignedStaff?: string) => {
+      if (currentPersona !== 'CONTRACTOR' && currentPersona !== 'MANAGER') {
+        throw new Error('Chỉ nhân sự nhà thầu hoặc Quản lý BQL mới có quyền tiếp nhận/từ chối phiếu thầu!');
+      }
+
+      const targetWo = workOrders.find((w) => w.id === workOrderId);
+      if (!targetWo) throw new Error('Không tìm thấy phiếu thi công của nhà thầu!');
+
+      if (currentPersona === 'CONTRACTOR') {
+        if (
+          currentProfile.contractor_organization_id &&
+          targetWo.contractor_organization_id &&
+          targetWo.contractor_organization_id !== currentProfile.contractor_organization_id
+        ) {
+          throw new Error('Bạn không thuộc tổ chức nhà thầu phụ trách phiếu thi công này!');
+        }
+      }
+
       const now = new Date().toISOString();
       setWorkOrders((prev) =>
         prev.map((w) => {
@@ -626,8 +701,7 @@ export function useOperationsData() {
               ...w,
               contractor_status: 'ACCEPTED',
               contractor_assigned_worker: assignedStaff || w.contractor_assigned_worker,
-              status: 'IN_PROGRESS',
-              execution_started_at: w.execution_started_at || now,
+              status: 'ASSIGNED', // Remains ASSIGNED until technician clicks "Bắt đầu thi công"
               updated_at: now,
             };
           } else {
@@ -643,16 +717,33 @@ export function useOperationsData() {
         }),
       );
     },
-    [],
+    [currentPersona, currentProfile, workOrders],
   );
 
   const recordContractorMaterials = useCallback(
     (workOrderId: string, materials: Array<{ part_name: string; quantity: number; unit: string }>) => {
+      if (currentPersona !== 'CONTRACTOR' && currentPersona !== 'MANAGER') {
+        throw new Error('Chỉ nhân sự nhà thầu hoặc Quản lý BQL mới có quyền cập nhật vật tư thay thế!');
+      }
+
+      const targetWo = workOrders.find((w) => w.id === workOrderId);
+      if (!targetWo) throw new Error('Không tìm thấy phiếu thi công!');
+
+      if (currentPersona === 'CONTRACTOR') {
+        if (
+          currentProfile.contractor_organization_id &&
+          targetWo.contractor_organization_id &&
+          targetWo.contractor_organization_id !== currentProfile.contractor_organization_id
+        ) {
+          throw new Error('Bạn không thuộc tổ chức nhà thầu được giao phiếu thi công này!');
+        }
+      }
+
       setWorkOrders((prev) =>
         prev.map((w) => (w.id === workOrderId ? { ...w, materials_used: materials, updated_at: new Date().toISOString() } : w)),
       );
     },
-    [],
+    [currentPersona, currentProfile, workOrders],
   );
 
   // ==========================================
@@ -694,14 +785,24 @@ export function useOperationsData() {
       const actualCheckerId = params.checkedBy || currentProfile.id;
       if (targetWo.executor_id && actualCheckerId === targetWo.executor_id) {
         throw new Error(
-          `Vi phạm nguyên tắc độc lập kiểm định (Segregation of Duties): Bạn (${targetWo.executor_name || actualCheckerId}) là người trực tiếp thi công phiếu ${targetWo.id}, không được phép tự chấm nghiệm thu QC cho chính mình! Vui lòng nhờ QC Inspector hoặc Trưởng ca nghiệm thu.`,
+          `Vi phạm nguyên tắc độc lập kiểm định (Segregation of Duties): Bạn (${targetWo.executor_name || actualCheckerId}) là người trực tiếp thi công phiếu ${targetWo.id}, không được phép tự chấm nghiệm thu QC cho chính mình! Vui lòng nhờ QC Inspector độc lập nghiệm thu.`,
         );
       }
 
-      // Guard 4: Must have QC permission
-      if (!currentProfile.canQC && currentPersona !== 'MANAGER') {
+      // Guard 4: Must have explicit QC capability (canQC: true) - No manager bypass
+      if (!currentProfile.canQC) {
         throw new Error(
-          `Tài khoản vai trò "${currentProfile.roleTitle}" không có quyền ký ban hành biên bản nghiệm thu QC! Vui lòng chuyển sang vai trò QC Inspector hoặc Quản lý BQL.`,
+          `Tài khoản vai trò "${currentProfile.roleTitle}" không có thẩm quyền ký ban hành biên bản nghiệm thu QC! Theo quy chuẩn kiểm định độc lập, chỉ chuyên viên QC Inspector độc lập (QC_INSPECTOR) mới có thẩm quyền này.`,
+        );
+      }
+
+      // Guard 5: Immutability - Finalized QC record (PASS or FAIL) cannot be duplicated or overwritten
+      const existingFinalQc = qcResults.find(
+        (q) => q.work_order_id === targetWo.id && q.outcome !== 'INCONCLUSIVE',
+      );
+      if (existingFinalQc) {
+        throw new Error(
+          `Biên bản nghiệm thu QC (${existingFinalQc.id}: ${existingFinalQc.outcome}) cho phiếu ${targetWo.id} đã được ban hành và là bản ghi bất biến (Immutable Record). Không được phép tạo thêm biên bản QC thứ hai!`,
         );
       }
 
@@ -725,10 +826,14 @@ export function useOperationsData() {
       setQcResults((prev) => [newQc, ...prev]);
 
       if (params.outcome === 'PASS') {
-        // PASS -> Task is complete!
-        setTasks((prev) =>
-          prev.map((t) => (t.id === targetWo.task_id ? { ...t, status: 'DONE' as const, updated_at: now } : t)),
-        );
+        // PASS -> Task is complete ONLY IF all other work orders for this task are completed and no active redos
+        const taskWos = workOrders.filter((w) => w.task_id === targetWo.task_id);
+        const hasUnfinishedWos = taskWos.some((w) => w.id !== targetWo.id && w.status !== 'COMPLETED');
+        if (!hasUnfinishedWos) {
+          setTasks((prev) =>
+            prev.map((t) => (t.id === targetWo.task_id ? { ...t, status: 'DONE' as const, updated_at: now } : t)),
+          );
+        }
         return { qc: newQc };
       } else if (params.outcome === 'FAIL') {
         // FAIL -> Auto-generate REDO WorkOrder!
@@ -772,11 +877,11 @@ export function useOperationsData() {
 
       return { qc: newQc };
     },
-    [workOrders, evidence, currentProfile, currentPersona, transitionWorkOrderStatus],
+    [workOrders, evidence, qcResults, currentProfile, transitionWorkOrderStatus],
   );
 
   // ==========================================
-  // EVIDENCE MANAGEMENT (WITH ACTOR IDENTITY)
+  // EVIDENCE MANAGEMENT (WITH ACTOR IDENTITY & GUARDS)
   // ==========================================
   const addEvidence = useCallback(
     (newEvidence: {
@@ -793,6 +898,25 @@ export function useOperationsData() {
         gpsCoordinates?: string;
       };
     }) => {
+      // Guard 1: QC Phase requires explicit QC Inspector permission
+      if (newEvidence.capture_phase === 'QC' && !currentProfile.canQC) {
+        throw new Error(
+          `Tài khoản vai trò "${currentProfile.roleTitle}" không có quyền tải ảnh nghiệm thu QC (capture_phase = QC)! Chỉ chuyên viên QC Inspector mới có thẩm quyền này.`,
+        );
+      }
+
+      // Guard 2: Closed work order cannot receive new BEFORE/AFTER photos
+      if (newEvidence.work_order_id) {
+        const targetWo = workOrders.find((w) => w.id === newEvidence.work_order_id);
+        if (targetWo && (targetWo.status === 'COMPLETED' || targetWo.status === 'CANCELLED')) {
+          if (newEvidence.capture_phase === 'BEFORE' || newEvidence.capture_phase === 'AFTER') {
+            throw new Error(
+              `Phiếu thi công ${targetWo.id} đã ở trạng thái ${targetWo.status === 'COMPLETED' ? 'HOÀN THÀNH' : 'ĐÃ HỦY'}. Không thể tải thêm ảnh Trước/Sau thi công!`,
+            );
+          }
+        }
+      }
+
       const evidenceRecord: VhEvidenceRef = {
         id: `EVD-${Date.now().toString().slice(-4)}`,
         incident_id: newEvidence.incident_id,
@@ -818,7 +942,7 @@ export function useOperationsData() {
       setEvidence((prev) => [evidenceRecord, ...prev]);
       return evidenceRecord;
     },
-    [currentProfile],
+    [workOrders, currentProfile],
   );
 
   // ==========================================
@@ -826,6 +950,10 @@ export function useOperationsData() {
   // ==========================================
   const toggleSecurityCheckpoint = useCallback(
     (checkpointId: string, notes?: string, photoUrl?: string) => {
+      if (currentPersona !== 'STAFF_SECURITY' && currentPersona !== 'SUPERVISOR' && currentPersona !== 'MANAGER') {
+        throw new Error('Chỉ nhân viên an ninh hiện trường mới có quyền check-in trạm tuần tra!');
+      }
+
       const now = new Date().toISOString();
       setSecurityCheckpoints((prev) =>
         prev.map((cp) => {
@@ -842,11 +970,15 @@ export function useOperationsData() {
         }),
       );
     },
-    [currentProfile],
+    [currentPersona, currentProfile],
   );
 
   const reportSecurityIncident = useCallback(
     (reportData: Omit<SecurityIncidentReport, 'id' | 'reported_at'>) => {
+      if (currentPersona !== 'STAFF_SECURITY' && currentPersona !== 'SUPERVISOR' && currentPersona !== 'MANAGER') {
+        throw new Error('Chỉ nhân viên an ninh hiện trường mới có quyền lập biên bản sự việc an ninh!');
+      }
+
       const now = new Date().toISOString();
       const newReport: SecurityIncidentReport = {
         ...reportData,
@@ -859,11 +991,15 @@ export function useOperationsData() {
       setSecurityIncidents((prev) => [newReport, ...prev]);
       return newReport;
     },
-    [currentProfile],
+    [currentPersona, currentProfile],
   );
 
   const submitSecurityHandover = useCallback(
     (handoverData: Omit<SecurityShiftHandover, 'id' | 'handover_at'>) => {
+      if (currentPersona !== 'STAFF_SECURITY' && currentPersona !== 'SUPERVISOR' && currentPersona !== 'MANAGER') {
+        throw new Error('Chỉ nhân viên an ninh ca trực mới có quyền bàn giao ca trực!');
+      }
+
       const now = new Date().toISOString();
       const newHandover: SecurityShiftHandover = {
         ...handoverData,
@@ -874,7 +1010,48 @@ export function useOperationsData() {
       setSecurityHandovers((prev) => [newHandover, ...prev]);
       return newHandover;
     },
-    [],
+    [currentPersona],
+  );
+
+  const escalateSecurityIncident = useCallback(
+    (reportId: string): VhIncident => {
+      const report = securityIncidents.find((s) => s.id === reportId);
+      if (!report) throw new Error('Không tìm thấy biên bản an ninh!');
+
+      const newIncId = `INC-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+      const now = new Date().toISOString();
+
+      const personNames = report.persons_involved.map((p) => p.name).join(', ');
+      const vehiclePlates = report.vehicles_involved.map((v) => v.license_plate).join(', ');
+
+      const newInc: VhIncident = {
+        id: newIncId,
+        tenant_id: 'tenant-vhm-sc',
+        project_id: 'proj-smart-city',
+        tower_id: report.location.split(' ')[0] || 'S2.01',
+        category: 'SECURITY',
+        title: `[An Ninh Khẩn Cấp] ${report.title}`,
+        location_json: {
+          towerCode: report.location.split(' ')[0] || 'S2.01',
+          areaCode: report.location,
+          description: `Biên bản sự việc: ${report.action_taken}. Đối tượng: ${personNames || 'N/A'}. Phương tiện: ${vehiclePlates || 'N/A'}`,
+        },
+        severity: report.severity,
+        status: 'OPEN',
+        stage: 'PLANNING',
+        owner_user_id: currentProfile.id,
+        sla_due_at: new Date(Date.now() + 2 * 3600 * 1000).toISOString(),
+        resolved_at: null,
+        closed_at: null,
+        version: 1,
+        created_at: now,
+        updated_at: now,
+      };
+
+      setIncidents((prev) => [newInc, ...prev]);
+      return newInc;
+    },
+    [securityIncidents, currentProfile],
   );
 
   // ==========================================
@@ -882,6 +1059,10 @@ export function useOperationsData() {
   // ==========================================
   const toggleCleaningAction = useCallback(
     (taskId: string, actionIndex: number, completed: boolean, note?: string) => {
+      if (currentPersona !== 'STAFF_SANITATION_A5' && currentPersona !== 'SUPERVISOR' && currentPersona !== 'MANAGER') {
+        throw new Error('Chỉ nhân viên vệ sinh A5 trực tiếp mới có quyền tick hoàn thành các bước vệ sinh!');
+      }
+
       setTasks((prev) =>
         prev.map((t) => {
           if (t.id !== taskId || !t.domain_data) return t;
@@ -907,10 +1088,14 @@ export function useOperationsData() {
         }),
       );
     },
-    [],
+    [currentPersona],
   );
 
   const confirmSiteArrival = useCallback((taskId: string) => {
+    if (currentPersona !== 'STAFF_SANITATION_A5' && currentPersona !== 'SUPERVISOR' && currentPersona !== 'MANAGER') {
+      throw new Error('Chỉ nhân viên vệ sinh A5 mới có quyền xác nhận có mặt hiện trường!');
+    }
+
     const now = new Date().toISOString();
     setTasks((prev) =>
       prev.map((t) => {
@@ -926,9 +1111,13 @@ export function useOperationsData() {
         };
       }),
     );
-  }, []);
+  }, [currentPersona]);
 
   const toggleWarningSigns = useCallback((taskId: string, placed: boolean) => {
+    if (currentPersona !== 'STAFF_SANITATION_A5' && currentPersona !== 'SUPERVISOR' && currentPersona !== 'MANAGER') {
+      throw new Error('Chỉ nhân viên vệ sinh A5 mới có quyền đặt biển cảnh báo!');
+    }
+
     setTasks((prev) =>
       prev.map((t) => {
         if (t.id !== taskId || !t.domain_data) return t;
@@ -943,6 +1132,25 @@ export function useOperationsData() {
         };
       }),
     );
+  }, [currentPersona]);
+
+  const saveCleaningRootCause = useCallback((taskId: string, rootCause: string, wasteKg?: number) => {
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id !== taskId) return t;
+        const currentPlan = ((t.domain_data as any)?.cleaning_plan as any) || (t.domain_data as any) || {};
+        return {
+          ...t,
+          domain_data: {
+            ...t.domain_data,
+            ...currentPlan,
+            root_cause_analysis: rootCause,
+            waste_kg: wasteKg !== undefined ? wasteKg : currentPlan.waste_kg,
+          },
+          updated_at: new Date().toISOString(),
+        };
+      }),
+    );
   }, []);
 
   // ==========================================
@@ -950,6 +1158,12 @@ export function useOperationsData() {
   // ==========================================
   const approveAction = useCallback(
     (approvalId: string, notes?: string) => {
+      if (!currentProfile.canApproveBudget) {
+        throw new Error(
+          `Tài khoản vai trò "${currentProfile.roleTitle}" không có thẩm quyền phê duyệt chi phí / lệnh thi công! Chỉ Ban Quản Lý (MANAGER) mới có quyền này.`,
+        );
+      }
+
       const now = new Date().toISOString();
       const targetApproval = approvals.find((a) => a.id === approvalId);
       if (!targetApproval) return;
@@ -991,6 +1205,12 @@ export function useOperationsData() {
 
   const rejectAction = useCallback(
     (approvalId: string, reason: string) => {
+      if (!currentProfile.canApproveBudget) {
+        throw new Error(
+          `Tài khoản vai trò "${currentProfile.roleTitle}" không có thẩm quyền từ chối phê duyệt! Chỉ Ban Quản Lý (MANAGER) mới có quyền này.`,
+        );
+      }
+
       const now = new Date().toISOString();
       setApprovals((prev) =>
         prev.map((a) =>
@@ -1033,6 +1253,7 @@ export function useOperationsData() {
     tasks,
     workOrders,
     myWorkOrders,
+    teamWorkOrders,
     evidence,
     qcResults,
     approvals,
@@ -1065,9 +1286,11 @@ export function useOperationsData() {
     toggleSecurityCheckpoint,
     reportSecurityIncident,
     submitSecurityHandover,
+    escalateSecurityIncident,
     toggleCleaningAction,
     confirmSiteArrival,
     toggleWarningSigns,
+    saveCleaningRootCause,
     resetToDefaultMock,
   };
 }

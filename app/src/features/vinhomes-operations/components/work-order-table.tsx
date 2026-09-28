@@ -302,19 +302,22 @@ export function WorkOrderTable() {
                     type="checkbox"
                     checked={isAllSelected}
                     onChange={(e) => handleSelectAll(e.target.checked)}
+                    aria-label="Chọn tất cả phiếu thi công"
                     className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
                   />
                 </th>
 
-                {/* Name / Task Title with Sort */}
-                <th
-                  onClick={() => toggleSort('id')}
-                  className="py-3.5 px-3 cursor-pointer hover:text-slate-900 select-none min-w-[220px]"
-                >
-                  <div className="flex items-center gap-1">
+                {/* Name / Task Title with Accessible Sort Button */}
+                <th className="py-3.5 px-3 min-w-[220px]">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort('id')}
+                    className="flex items-center gap-1 font-bold text-slate-500 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1 -ml-1 transition-colors select-none"
+                    aria-label="Sắp xếp theo Mã và Tên công việc"
+                  >
                     <span>Mã & Tên công việc</span>
                     <IconArrowsSort className="w-3.5 h-3.5 text-slate-400" />
-                  </div>
+                  </button>
                 </th>
 
                 {/* Location */}
@@ -329,15 +332,17 @@ export function WorkOrderTable() {
                 {/* SLA / Priority */}
                 <th className="py-3.5 px-3 min-w-[110px]">SLA / Hạn</th>
 
-                {/* Status */}
-                <th
-                  onClick={() => toggleSort('status')}
-                  className="py-3.5 px-3 cursor-pointer hover:text-slate-900 select-none min-w-[120px]"
-                >
-                  <div className="flex items-center gap-1">
+                {/* Status with Accessible Sort Button */}
+                <th className="py-3.5 px-3 min-w-[120px]">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort('status')}
+                    className="flex items-center gap-1 font-bold text-slate-500 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded px-1 -ml-1 transition-colors select-none"
+                    aria-label="Sắp xếp theo Trạng thái"
+                  >
                     <span>Trạng thái</span>
                     <IconArrowsSort className="w-3.5 h-3.5 text-slate-400" />
-                  </div>
+                  </button>
                 </th>
 
                 {/* Action Column */}
@@ -491,6 +496,7 @@ export function WorkOrderTable() {
                         onClick={() => setOpenActionId(isActionOpen ? null : wo.id)}
                         className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
                         title="Tùy chọn thao tác"
+                        aria-label={`Tùy chọn thao tác cho phiếu ${wo.id}`}
                       >
                         <IconDotsVertical className="w-4 h-4" />
                       </button>

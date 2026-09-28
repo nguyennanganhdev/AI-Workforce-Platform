@@ -1,6 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { OperationsDashboard } from '@/features/vinhomes-operations';
+import { OperationsDashboard, OperationsRouteGuard } from '@/features/vinhomes-operations';
 
 export const Route = createFileRoute('/_authed/operations/')({
-  component: OperationsDashboard,
+  component: () => (
+    <OperationsRouteGuard menuId="dashboard">
+      <OperationsDashboard />
+    </OperationsRouteGuard>
+  ),
 });

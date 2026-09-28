@@ -21,14 +21,23 @@ export function SanitationWorkspace() {
     tasks,
     workOrders,
     currentProfile,
+    currentPersona,
     toggleCleaningAction,
     confirmSiteArrival,
     toggleWarningSigns,
+    saveCleaningRootCause,
   } = useOperationsData();
 
-  const sanitationTasks = tasks.filter(
-    (t) => (t.domain_type === 'SANITATION' || t.domain_type === 'LANDSCAPE') && t.domain_data,
-  );
+  // Filter tasks: STAFF_SANITATION_A5 only sees their assigned tasks or tasks with work orders assigned to them
+  const sanitationTasks = tasks.filter((t) => {
+    if ((t.domain_type !== 'SANITATION' && t.domain_type !== 'LANDSCAPE') || !t.domain_data) return false;
+    if (currentPersona === 'STAFF_SANITATION_A5') {
+      const isDirectAssignee = t.assignee_id === currentProfile.id;
+      const hasMyWo = workOrders.some((w) => w.task_id === t.id && w.executor_id === currentProfile.id);
+      return isDirectAssignee || hasMyWo;
+    }
+    return true; // Supervisors and Managers oversee all sanitation tasks
+  });
 
   const [selectedTaskId, setSelectedTaskId] = useState<string>(
     sanitationTasks[0]?.id || tasks.find((t) => t.domain_type === 'SANITATION')?.id || '',
@@ -52,6 +61,10 @@ export function SanitationWorkspace() {
 
   const handleToggleStep = (idx: number, currentCompleted: boolean) => {
     if (!selectedTask) return;
+    if (!plan?.arrived_at_site) {
+      alert('Vui lòng bấm nút "Xác nhận có mặt tại điểm làm việc" trước khi thực hiện các bước vệ sinh!');
+      return;
+    }
     toggleCleaningAction(selectedTask.id, idx, !currentCompleted);
   };
 
@@ -69,6 +82,8 @@ export function SanitationWorkspace() {
   };
 
   const handleSaveRootCause = () => {
+    if (!selectedTask) return;
+    saveCleaningRootCause(selectedTask.id, `${rootCause}: ${rootCauseNote}`, wasteWeight);
     setRootCauseSaved(true);
     setTimeout(() => setRootCauseSaved(false), 3000);
   };
@@ -315,27 +330,43 @@ export function SanitationWorkspace() {
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-700">Nguyên nhân chính dẫn đến sự cố:</label>
-                  <select
-                    value={rootCause}
-                    onChange={(e) => setRootCause(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
-                  >
-                    <option value="RESIDENT_PEAK_OVERFLOW">Quá tải rác sinh hoạt giờ cao điểm (18h-20h)</option>
-                    <option value="UNPACKED_BULK_CARDBOARD">Thùng carton cồng kềnh chưa gấp gọn gây kẹt miệng họng rác</option>
-                    <option value="LEAKING_LIQUID_CONTAINER">Nước thải sinh hoạt rò rỉ từ túi rác không bọc kín</option>
-                    <option value="SCHEDULE_IRREGULARITY">Xe thu gom đô thị đến chậm so với lịch định kỳ</option>
-                  </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label htmlFor="waste-weight-input" className="text-xs font-bold text-slate-700">Khối lượng rác phát sinh (kg):</label>
+                    <input
+                      id="waste-weight-input"
+                      type="number"
+                      min="0"
+                      value={wasteWeight}
+                      onChange={(e) => setWasteWeight(Number(e.target.value))}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label htmlFor="root-cause-select" className="text-xs font-bold text-slate-700">Nguyên nhân chính:</label>
+                    <select
+                      id="root-cause-select"
+                      value={rootCause}
+                      onChange={(e) => setRootCause(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                    >
+                      <option value="RESIDENT_PEAK_OVERFLOW">Quá tải rác sinh hoạt giờ cao điểm (18h-20h)</option>
+                      <option value="UNPACKED_BULK_CARDBOARD">Thùng carton cồng kềnh chưa gấp gọn gây kẹt miệng họng rác</option>
+                      <option value="LEAKING_LIQUID_CONTAINER">Nước thải sinh hoạt rò rỉ từ túi rác không bọc kín</option>
+                      <option value="SCHEDULE_IRREGULARITY">Xe thu gom đô thị đến chậm so với lịch định kỳ</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Kiến nghị biện pháp ngăn tái diễn:</label>
+                  <label htmlFor="root-cause-note" className="text-xs font-bold text-slate-700">Kiến nghị biện pháp ngăn tái diễn:</label>
                   <textarea
+                    id="root-cause-note"
                     rows={2}
                     value={rootCauseNote}
                     onChange={(e) => setRootCauseNote(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                   />
                 </div>
 

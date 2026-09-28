@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   IconX,
   IconShieldCheck,
@@ -22,9 +22,17 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
   const { checklistVersion, existingQcResult, submitQcInspection } = useQcWorkflow(workOrder.id);
   const { currentProfile, currentPersona } = useOperationsData();
 
-  // Segregation of Duties Check:
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  // Segregation of Duties Check: Only users with canQC can sign QC results (Manager does not bypass)
   const isSelfExecutor = Boolean(workOrder.executor_id && workOrder.executor_id === currentProfile.id);
-  const hasQcPermission = Boolean(currentProfile.canQC || currentPersona === 'MANAGER');
+  const hasQcPermission = Boolean(currentProfile.canQC);
   const isAlreadyFinalized = Boolean(existingQcResult && existingQcResult.outcome !== 'INCONCLUSIVE');
 
   // Criteria checkbox states
@@ -123,7 +131,12 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="qc-modal-title"
+      className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans"
+    >
       <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200">
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
@@ -131,7 +144,7 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
             <div className="w-1.5 h-6 bg-purple-600 rounded-full" />
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-slate-900 text-base">Biên Bản Nghiệm Thu Chất Lượng (QC)</h3>
+                <h3 id="qc-modal-title" className="font-bold text-slate-900 text-base">Biên Bản Nghiệm Thu Chất Lượng (QC)</h3>
                 <span className="font-mono text-xs px-2 py-0.5 bg-purple-50 text-purple-700 font-bold rounded">
                   {workOrder.id}
                 </span>
@@ -145,6 +158,7 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
           <button
             type="button"
             onClick={onClose}
+            aria-label="Đóng cửa sổ nghiệm thu"
             className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors"
           >
             <IconX className="w-5 h-5" />

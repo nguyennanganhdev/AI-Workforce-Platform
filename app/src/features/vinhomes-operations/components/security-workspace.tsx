@@ -28,6 +28,7 @@ export function SecurityWorkspace() {
     toggleSecurityCheckpoint,
     reportSecurityIncident,
     submitSecurityHandover,
+    escalateSecurityIncident,
   } = useOperationsData();
 
   const [activeTab, setActiveTab] = useState<'PATROL' | 'INCIDENTS' | 'HANDOVER' | 'EMERGENCY'>('PATROL');
@@ -43,6 +44,19 @@ export function SecurityWorkspace() {
   const [licensePlate, setLicensePlate] = useState('');
   const [areaIsolated, setAreaIsolated] = useState(false);
   const [actionTaken, setActionTaken] = useState('');
+  const [incidentPhotoUrl, setIncidentPhotoUrl] = useState<string | null>(null);
+
+  // Handover modal
+  const [showHandoverModal, setShowHandoverModal] = useState(false);
+  const [handoverToName, setHandoverToName] = useState('Đỗ Tuấn Kiệt (Ca 2 - 14h-22h)');
+  const [handoverShiftName, setHandoverShiftName] = useState<'CA_SANG' | 'CA_CHIEU' | 'CA_DEM'>('CA_CHIEU');
+  const [handoverWalkieCount, setHandoverWalkieCount] = useState(4);
+  const [handoverBatonCount, setHandoverBatonCount] = useState(4);
+  const [handoverFlashlightCount, setHandoverFlashlightCount] = useState(4);
+  const [handoverIssuesNote, setHandoverIssuesNote] = useState('');
+
+  // Emergency Call Modal
+  const [callingEmergency, setCallingEmergency] = useState<{ number: string; title: string } | null>(null);
 
   // Checkpoint modal
   const [checkingCpId, setCheckingCpId] = useState<string | null>(null);
@@ -54,6 +68,16 @@ export function SecurityWorkspace() {
     setCpNote('');
     setSuccessMsg('Đã check-in thành công tại điểm tuần tra!');
     setTimeout(() => setSuccessMsg(null), 3000);
+  };
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setIncidentPhotoUrl(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleCreateIncident = (e: React.FormEvent) => {
@@ -70,9 +94,9 @@ export function SecurityWorkspace() {
       vehicles_involved: licensePlate ? [{ license_plate: licensePlate, vehicle_type: 'CAR' }] : [],
       area_isolated: areaIsolated,
       action_taken: actionTaken || 'Đã kiểm tra và xử lý lập biên bản tại chỗ.',
-      evidence_urls: [
-        'https://images.unsplash.com/photo-1541888946425-d0fbb18f15f7?w=800&auto=format&fit=crop&q=80',
-      ],
+      evidence_urls: incidentPhotoUrl
+        ? [incidentPhotoUrl]
+        : ['https://images.unsplash.com/photo-1541888946425-d0fbb18f15f7?w=800&auto=format&fit=crop&q=80'],
       status: 'INVESTIGATING',
     });
 
@@ -81,7 +105,34 @@ export function SecurityWorkspace() {
     setPersonName('');
     setLicensePlate('');
     setActionTaken('');
+    setIncidentPhotoUrl(null);
     setSuccessMsg('Đã lập biên bản sự việc an ninh thành công!');
+    setTimeout(() => setSuccessMsg(null), 3000);
+  };
+
+  const handleCreateHandover = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitSecurityHandover({
+      shift_name: handoverShiftName,
+      date: new Date().toISOString().split('T')[0],
+      handover_from_id: currentProfile.id,
+      handover_from_name: currentProfile.name,
+      handover_to_id: 'usr-sec-02',
+      handover_to_name: handoverToName,
+      equipment_status: {
+        walkie_talkie_count: handoverWalkieCount,
+        patrol_baton_count: handoverBatonCount,
+        flashlight_count: handoverFlashlightCount,
+        master_keys_intact: true,
+      },
+      open_security_issues: handoverIssuesNote
+        ? [handoverIssuesNote]
+        : ['Khu vực trật tự ổn định, không có sự cố tồn đọng'],
+      notes: 'Bàn giao đầy đủ trang thiết bị và công cụ hỗ trợ',
+      confirmed: true,
+    });
+    setShowHandoverModal(false);
+    setSuccessMsg('Đã lập và ký xác nhận biên bản bàn giao ca trực thành công!');
     setTimeout(() => setSuccessMsg(null), 3000);
   };
 
@@ -302,9 +353,23 @@ export function SecurityWorkspace() {
                   </div>
                 )}
 
-                <p className="text-xs text-slate-700 leading-relaxed">
-                  <strong>Biện pháp xử lý:</strong> {inc.action_taken}
-                </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2.5 border-t border-slate-100">
+                  <p className="text-xs text-slate-700 leading-relaxed">
+                    <strong>Biện pháp xử lý:</strong> {inc.action_taken}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newOfficialInc = escalateSecurityIncident(inc.id);
+                      setSuccessMsg(`Đã nâng cấp sự việc an ninh thành Sự Cố Chính Thức (${newOfficialInc.id}) trên hệ thống BQL!`);
+                      setTimeout(() => setSuccessMsg(null), 4000);
+                    }}
+                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs shrink-0 self-end sm:self-auto"
+                  >
+                    <IconAlertTriangle className="w-3.5 h-3.5" />
+                    <span>Nâng cấp thành Sự Cố BQL</span>
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -315,14 +380,24 @@ export function SecurityWorkspace() {
       {activeTab === 'HANDOVER' && (
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
               <div>
                 <h3 className="font-bold text-sm text-slate-900">Biên bản bàn giao ca trực an ninh</h3>
                 <p className="text-xs text-slate-500">Kiểm kê công cụ hỗ trợ và các sự vụ an ninh còn tồn đọng</p>
               </div>
-              <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full">
-                ✓ Ca hiện tại đã xác nhận
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full">
+                  {securityHandovers.length} Biên bản ca
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowHandoverModal(true)}
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center gap-1 shadow-2xs transition-colors"
+                >
+                  <IconPlus className="w-4 h-4" />
+                  <span>Lập biên bản bàn giao mới</span>
+                </button>
+              </div>
             </div>
 
             {securityHandovers.map((sh) => (
@@ -399,8 +474,8 @@ export function SecurityWorkspace() {
                 <div className="font-mono text-lg font-bold text-rose-600">114</div>
                 <button
                   type="button"
-                  onClick={() => alert('Đang kết nối đến Đội PCCC cơ sở Vinhomes Smart City')}
-                  className="px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700"
+                  onClick={() => setCallingEmergency({ number: '114', title: 'Cứu Hỏa & PCCC Cơ Sở Smart City' })}
+                  className="px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors"
                 >
                   Gọi khẩn cấp
                 </button>
@@ -414,8 +489,8 @@ export function SecurityWorkspace() {
                 <div className="font-mono text-lg font-bold text-rose-600">115 / 024 3974</div>
                 <button
                   type="button"
-                  onClick={() => alert('Đang kết nối xe cấp cứu Vinmec Smart City')}
-                  className="px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700"
+                  onClick={() => setCallingEmergency({ number: '115 / 024 3974', title: 'Cấp Cứu Y Tế Vinmec Smart City' })}
+                  className="px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition-colors"
                 >
                   Gọi cấp cứu
                 </button>
@@ -429,8 +504,8 @@ export function SecurityWorkspace() {
                 <div className="font-mono text-lg font-bold text-slate-800">0903 888 999</div>
                 <button
                   type="button"
-                  onClick={() => alert('Đang kết nối Trưởng Ban Quản Lý Vũ Đức Thịnh')}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700"
+                  onClick={() => setCallingEmergency({ number: '0903 888 999', title: 'Trưởng Ban Quản Lý (Hotline 24/7)' })}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
                 >
                   Báo cáo BQL
                 </button>
@@ -444,8 +519,8 @@ export function SecurityWorkspace() {
                 <div className="font-mono text-lg font-bold text-slate-800">113 / 024 3837</div>
                 <button
                   type="button"
-                  onClick={() => alert('Đang kết nối Công an Phường Tây Mỗ')}
-                  className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-bold hover:bg-purple-700"
+                  onClick={() => setCallingEmergency({ number: '113 / 024 3837', title: 'Công An Phường Tây Mỗ' })}
+                  className="px-3 py-1.5 bg-purple-600 text-white rounded-lg text-xs font-bold hover:bg-purple-700 transition-colors"
                 >
                   Báo Công an
                 </button>
@@ -457,9 +532,14 @@ export function SecurityWorkspace() {
 
       {/* Modal Check-in */}
       {checkingCpId && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="checkin-title"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+        >
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl">
-            <h3 className="font-bold text-sm text-slate-900">Xác nhận có mặt tại điểm tuần tra {checkingCpId}</h3>
+            <h3 id="checkin-title" className="font-bold text-sm text-slate-900">Xác nhận có mặt tại điểm tuần tra {checkingCpId}</h3>
             <p className="text-xs text-slate-500">Ghi chú nhanh tình trạng khu vực:</p>
             <input
               value={cpNote}
@@ -489,18 +569,24 @@ export function SecurityWorkspace() {
 
       {/* Modal Create Incident */}
       {showIncidentModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sec-incident-title"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+        >
           <form
             onSubmit={handleCreateIncident}
             className="bg-white rounded-2xl max-w-lg w-full p-5 space-y-3.5 shadow-xl max-h-[90vh] overflow-y-auto"
           >
-            <h3 className="font-bold text-sm text-slate-900 pb-2 border-b border-slate-100">
+            <h3 id="sec-incident-title" className="font-bold text-sm text-slate-900 pb-2 border-b border-slate-100">
               Lập biên bản sự việc an ninh mới
             </h3>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Tiêu đề sự việc:</label>
+              <label htmlFor="sec-incident-name" className="text-xs font-bold text-slate-700 block">Tiêu đề sự việc:</label>
               <input
+                id="sec-incident-name"
                 required
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
@@ -511,8 +597,9 @@ export function SecurityWorkspace() {
 
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Vị trí xảy ra:</label>
+                <label htmlFor="sec-incident-loc" className="text-xs font-bold text-slate-700 block">Vị trí xảy ra:</label>
                 <input
+                  id="sec-incident-loc"
                   required
                   value={newLocation}
                   onChange={(e) => setNewLocation(e.target.value)}
@@ -521,8 +608,9 @@ export function SecurityWorkspace() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Mức độ ưu tiên:</label>
+                <label htmlFor="sec-incident-sev" className="text-xs font-bold text-slate-700 block">Mức độ ưu tiên:</label>
                 <select
+                  id="sec-incident-sev"
                   value={newSeverity}
                   onChange={(e) => setNewSeverity(e.target.value as any)}
                   className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none"
@@ -536,8 +624,9 @@ export function SecurityWorkspace() {
 
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Người liên quan (nếu có):</label>
+                <label htmlFor="sec-person" className="text-xs font-bold text-slate-700 block">Người liên quan (nếu có):</label>
                 <input
+                  id="sec-person"
                   value={personName}
                   onChange={(e) => setPersonName(e.target.value)}
                   placeholder="Họ tên người vi phạm/liên quan"
@@ -546,8 +635,9 @@ export function SecurityWorkspace() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Biển số phương tiện:</label>
+                <label htmlFor="sec-plate" className="text-xs font-bold text-slate-700 block">Biển số phương tiện:</label>
                 <input
+                  id="sec-plate"
                   value={licensePlate}
                   onChange={(e) => setLicensePlate(e.target.value)}
                   placeholder="VD: 29A-123.45"
@@ -557,14 +647,37 @@ export function SecurityWorkspace() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Biện pháp đã xử lý ban đầu:</label>
+              <label htmlFor="sec-action" className="text-xs font-bold text-slate-700 block">Biện pháp đã xử lý ban đầu:</label>
               <textarea
+                id="sec-action"
                 rows={2}
                 value={actionTaken}
                 onChange={(e) => setActionTaken(e.target.value)}
                 placeholder="VD: Đã nhắc nhở, yêu cầu di dời xe, lập biên bản ghi nhận..."
                 className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none"
               />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="sec-incident-photo" className="text-xs font-bold text-slate-700 block">
+                Chụp ảnh hiện trường / Biên bản giấy:
+              </label>
+              <input
+                id="sec-incident-photo"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handlePhotoSelect}
+                className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+              />
+              {incidentPhotoUrl && (
+                <div className="mt-2 relative w-28 h-20 rounded-lg overflow-hidden border border-slate-200 shadow-2xs">
+                  <img src={incidentPhotoUrl} alt="Ảnh sự cố" className="w-full h-full object-cover" />
+                  <span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] text-center py-0.5">
+                    Đã đính kèm ảnh
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2 pt-1">
@@ -575,7 +688,7 @@ export function SecurityWorkspace() {
                 onChange={(e) => setAreaIsolated(e.target.checked)}
                 className="rounded text-blue-600"
               />
-              <label htmlFor="areaIso" className="text-xs text-slate-700 font-semibold">
+              <label htmlFor="areaIso" className="text-xs text-slate-700 font-semibold cursor-pointer">
                 Đã căng dây phản quang / đặt biển cô lập khu vực hiện trường
               </label>
             </div>
@@ -596,6 +709,169 @@ export function SecurityWorkspace() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Modal Shift Handover */}
+      {showHandoverModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="handover-modal-title"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <form
+            onSubmit={handleCreateHandover}
+            className="bg-white rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto"
+          >
+            <h3 id="handover-modal-title" className="font-bold text-sm text-slate-900 pb-2 border-b border-slate-100">
+              Lập Biên Bản Bàn Giao Ca Trực An Ninh
+            </h3>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="space-y-1">
+                <label className="text-slate-500 font-medium block">Người bàn giao (Hiện tại):</label>
+                <div className="p-2 bg-slate-100 rounded-xl font-bold text-slate-800">
+                  {currentProfile.name}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="handover-to" className="text-slate-500 font-medium block">Người nhận ca:</label>
+                <input
+                  id="handover-to"
+                  required
+                  value={handoverToName}
+                  onChange={(e) => setHandoverToName(e.target.value)}
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1 text-xs">
+              <label htmlFor="shift-name" className="text-slate-500 font-medium block">Tên ca bàn giao:</label>
+              <select
+                id="shift-name"
+                value={handoverShiftName}
+                onChange={(e) => setHandoverShiftName(e.target.value as 'CA_SANG' | 'CA_CHIEU' | 'CA_DEM')}
+                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
+              >
+                <option value="CA_SANG">Ca Sáng (06:00 - 14:00)</option>
+                <option value="CA_CHIEU">Ca Chiều (14:00 - 22:00)</option>
+                <option value="CA_DEM">Ca Đêm (22:00 - 06:00)</option>
+              </select>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <label className="font-bold text-slate-800 block">Kiểm kê công cụ hỗ trợ giao ca:</label>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <label htmlFor="walkie-count" className="text-[11px] text-slate-500 block">Bộ đàm (chiếc):</label>
+                  <input
+                    id="walkie-count"
+                    type="number"
+                    min="0"
+                    value={handoverWalkieCount}
+                    onChange={(e) => setHandoverWalkieCount(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="baton-count" className="text-[11px] text-slate-500 block">Dùi cui (chiếc):</label>
+                  <input
+                    id="baton-count"
+                    type="number"
+                    min="0"
+                    value={handoverBatonCount}
+                    onChange={(e) => setHandoverBatonCount(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="flashlight-count" className="text-[11px] text-slate-500 block">Đèn pin (chiếc):</label>
+                  <input
+                    id="flashlight-count"
+                    type="number"
+                    min="0"
+                    value={handoverFlashlightCount}
+                    onChange={(e) => setHandoverFlashlightCount(Number(e.target.value))}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1 text-xs">
+              <label htmlFor="handover-issues" className="font-bold text-slate-800 block">
+                Sự vụ cần ca sau tiếp tục theo dõi:
+              </label>
+              <textarea
+                id="handover-issues"
+                rows={2}
+                value={handoverIssuesNote}
+                onChange={(e) => setHandoverIssuesNote(e.target.value)}
+                placeholder="VD: Xe máy đỗ sai vị trí tại sảnh S2.01 đang theo dõi..."
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowHandoverModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-2xs"
+              >
+                Ký xác nhận bàn giao
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Emergency Dialing Simulator Modal */}
+      {callingEmergency && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 font-sans"
+        >
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-rose-200">
+            <div className="w-16 h-16 rounded-full bg-rose-100 text-rose-600 mx-auto flex items-center justify-center animate-pulse">
+              <IconPhoneCall className="w-8 h-8" />
+            </div>
+
+            <div>
+              <h3 className="font-extrabold text-base text-slate-900">{callingEmergency.title}</h3>
+              <p className="text-xl font-mono font-bold text-rose-600 mt-1">{callingEmergency.number}</p>
+              <p className="text-xs text-slate-500 mt-1">Đang thiết lập kênh thoại khẩn cấp hiện trường...</p>
+            </div>
+
+            <div className="pt-2 flex justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  window.open(`tel:${callingEmergency.number.split('/')[0].trim()}`);
+                  setCallingEmergency(null);
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-2xs flex items-center gap-1.5"
+              >
+                <IconPhoneCall className="w-4 h-4" />
+                <span>Gọi trên thiết bị</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCallingEmergency(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -37,6 +37,7 @@ export interface UserProfile {
   assignedProject: string;
   assignedTower?: string;
   avatarUrl: string;
+  contractor_organization_id?: string;
   allowedMenuIds: MenuId[];
   canQC: boolean;
   canApproveBudget: boolean;
@@ -99,6 +100,7 @@ export const PERSONA_PROFILES: Record<OperationsPersona, UserProfile> = {
     role: 'CONTRACTOR',
     roleTitle: 'Đại diện Kỹ thuật Nhà thầu Thang máy Otis',
     department: 'Đối tác Kỹ thuật Ngoài',
+    contractor_organization_id: 'org-otis',
     phone: '0933 555 444',
     assignedProject: 'Vinhomes Smart City',
     assignedTower: 'Cụm thang máy Tòa S2.01 - S2.03',

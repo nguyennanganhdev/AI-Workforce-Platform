@@ -11,6 +11,16 @@ export type WorkOrderStatus =
   | 'FAILED'
   | 'CANCELLED';
 
+export const ALLOWED_WORK_ORDER_TRANSITIONS: Record<WorkOrderStatus, WorkOrderStatus[]> = {
+  OPEN: ['ASSIGNED', 'CANCELLED'],
+  ASSIGNED: ['IN_PROGRESS', 'CANCELLED'],
+  IN_PROGRESS: ['BLOCKED', 'COMPLETED', 'FAILED'],
+  BLOCKED: ['IN_PROGRESS', 'CANCELLED'],
+  COMPLETED: [], // Trạng thái cuối của thi công, chuyển sang chờ QC nghiệm thu
+  FAILED: [],
+  CANCELLED: [],
+};
+
 export type ExecutorType = 'STAFF' | 'CONTRACTOR' | 'ROBOT' | 'AUTOMATION';
 
 export interface VhWorkOrder {
@@ -23,6 +33,7 @@ export interface VhWorkOrder {
   executor_name?: string;
   executor_phone?: string;
   executor_avatar?: string;
+  contractor_organization_id?: string | null;
   status: WorkOrderStatus;
   attempt_no: number;
   redo_of_work_order_id: string | null;

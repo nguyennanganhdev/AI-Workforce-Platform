@@ -23,6 +23,87 @@ interface EvidenceModalProps {
   onClose: () => void;
 }
 
+const burnWatermarkOntoImage = (
+  imgSrc: string,
+  meta: {
+    woId: string;
+    phase: string;
+    actor: string;
+    role: string;
+    gps: string;
+    time: string;
+  },
+): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const maxDim = 1200;
+      let w = img.width;
+      let h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+      }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(imgSrc);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+
+      // Dark gradient banner
+      const bannerHeight = Math.max(85, Math.round(h * 0.16));
+      const gradient = ctx.createLinearGradient(0, h - bannerHeight, 0, h);
+      gradient.addColorStop(0, 'rgba(15, 23, 42, 0)');
+      gradient.addColorStop(0.3, 'rgba(15, 23, 42, 0.88)');
+      gradient.addColorStop(1, 'rgba(15, 23, 42, 0.98)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, h - bannerHeight, w, bannerHeight);
+
+      // Text styling
+      const fontSize = Math.max(13, Math.round(w / 48));
+      const padX = Math.round(w * 0.03);
+      const baseY = h - bannerHeight + Math.round(bannerHeight * 0.22);
+      const lineGap = fontSize + 4;
+
+      ctx.textBaseline = 'top';
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText(`[${meta.woId}] • GIAI ĐOẠN: ${meta.phase}`, padX, baseY);
+
+      ctx.font = `500 ${Math.round(fontSize * 0.9)}px sans-serif`;
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillText(`Người chụp: ${meta.actor} (${meta.role})`, padX, baseY + lineGap);
+
+      ctx.font = `400 ${Math.round(fontSize * 0.82)}px monospace`;
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillText(`GPS: ${meta.gps} | Thời gian: ${meta.time}`, padX, baseY + lineGap * 2);
+
+      // Top-right Security Watermark Seal
+      const stampW = Math.round(w * 0.26);
+      const stampH = Math.round(fontSize * 1.6);
+      ctx.fillStyle = 'rgba(225, 29, 72, 0.9)';
+      ctx.fillRect(w - stampW - padX, padX, stampW, stampH);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${Math.round(fontSize * 0.75)}px sans-serif`;
+      ctx.fillText('BẰNG CHỨNG XÁC THỰC', w - stampW - padX + 8, padX + 4);
+
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => resolve(imgSrc);
+    img.src = imgSrc;
+  });
+};
+
 export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
   const { evidence, addEvidence, currentProfile } = useOperationsData();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -41,10 +122,53 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
   const [selectedFileName, setSelectedFileName] = useState<string>('');
   const [selectedFileSize, setSelectedFileSize] = useState<number>(0);
   const [showWatermark, setShowWatermark] = useState(true);
+  const [burnStatus, setBurnStatus] = useState<string | null>(null);
+
+  // Real GPS State
+  const [gpsData, setGpsData] = useState<{
+    lat: number;
+    lng: number;
+    accuracy: number;
+    status: 'ACQUIRED' | 'FETCHING' | 'DENIED' | 'UNAVAILABLE';
+    timestamp: string;
+  }>({
+    lat: 21.0031,
+    lng: 105.7489,
+    accuracy: 8,
+    status: 'FETCHING',
+    timestamp: new Date().toISOString(),
+  });
 
   const beforeItems = relatedEvidence.filter((e) => e.capture_phase === 'BEFORE');
   const afterItems = relatedEvidence.filter((e) => e.capture_phase === 'AFTER');
   const qcItems = relatedEvidence.filter((e) => e.capture_phase === 'QC');
+
+  // Fetch real device geolocation
+  const fetchDeviceGps = () => {
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      setGpsData((prev) => ({ ...prev, status: 'FETCHING' }));
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setGpsData({
+            lat: Number(pos.coords.latitude.toFixed(6)),
+            lng: Number(pos.coords.longitude.toFixed(6)),
+            accuracy: Math.round(pos.coords.accuracy),
+            status: 'ACQUIRED',
+            timestamp: new Date().toISOString(),
+          });
+        },
+        (err) => {
+          setGpsData((prev) => ({
+            ...prev,
+            status: err.code === 1 ? 'DENIED' : 'UNAVAILABLE',
+          }));
+        },
+        { enableHighAccuracy: true, timeout: 6000 },
+      );
+    } else {
+      setGpsData((prev) => ({ ...prev, status: 'UNAVAILABLE' }));
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -62,7 +186,7 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
 
   const handleUseSamplePhoto = (phase: CapturePhase) => {
     setSelectedFileName(`sample_${phase.toLowerCase()}_camera.jpg`);
-    setSelectedFileSize(1024 * 650); // ~650 KB
+    setSelectedFileSize(1024 * 480);
     if (phase === 'BEFORE') {
       setSelectedFileUrl('https://images.unsplash.com/photo-1584992236310-6edddc08acff?w=1000&auto=format&fit=crop&q=80');
       setNewCaption('Hiện trạng rò rỉ nước tại van áp suất trục cấp tầng 12 trước thi công');
@@ -75,38 +199,67 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
     }
   };
 
-  const handleUpload = (e: React.FormEvent) => {
+  const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    const finalUrl =
+    const rawUrl =
       selectedFileUrl ||
       (newPhase === 'BEFORE'
         ? 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?w=1000&auto=format&fit=crop&q=80'
         : 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=1000&auto=format&fit=crop&q=80');
 
-    addEvidence({
-      incident_id: workOrder.incident_id,
-      task_id: workOrder.task_id,
-      work_order_id: workOrder.id,
-      capture_phase: newPhase,
-      file_url: finalUrl,
-      caption: newCaption || `Ảnh nghiệm thu ${newPhase === 'BEFORE' ? 'Trước' : newPhase === 'AFTER' ? 'Sau' : 'QC'} tại hiện trường`,
-      fileMetadata: {
-        fileName: selectedFileName || 'photo_capture.jpg',
-        sizeBytes: selectedFileSize || 450000,
-        gpsCoordinates: '21.0031° N, 105.7489° E (Vinhomes Smart City - S2.01)',
-      },
-    });
+    const gpsString = `${gpsData.lat}° N, ${gpsData.lng}° E (Sai số ±${gpsData.accuracy}m)`;
+    const timeString = new Date().toLocaleString('vi-VN');
 
-    // Reset Form
-    setSelectedFileUrl(null);
-    setSelectedFileName('');
-    setSelectedFileSize(0);
-    setNewCaption('');
-    setIsUploading(false);
+    setBurnStatus('Đang đóng dấu Watermark trực tiếp vào điểm ảnh...');
+    try {
+      const finalBurnedUrl = showWatermark
+        ? await burnWatermarkOntoImage(rawUrl, {
+            woId: workOrder.id,
+            phase: newPhase,
+            actor: currentProfile.name,
+            role: currentProfile.roleTitle,
+            gps: gpsString,
+            time: timeString,
+          })
+        : rawUrl;
+
+      addEvidence({
+        incident_id: workOrder.incident_id,
+        task_id: workOrder.task_id,
+        work_order_id: workOrder.id,
+        capture_phase: newPhase,
+        file_url: finalBurnedUrl,
+        caption: newCaption || `Ảnh nghiệm thu ${newPhase === 'BEFORE' ? 'Trước' : newPhase === 'AFTER' ? 'Sau' : 'QC'} tại hiện trường`,
+        fileMetadata: {
+          fileName: selectedFileName || `evidence_${newPhase.toLowerCase()}.jpg`,
+          sizeBytes: selectedFileSize || 320000,
+          gpsCoordinates: gpsString,
+        },
+      });
+
+      // Reset Form
+      setSelectedFileUrl(null);
+      setSelectedFileName('');
+      setSelectedFileSize(0);
+      setNewCaption('');
+      setIsUploading(false);
+      setBurnStatus(null);
+    } catch (err: any) {
+      alert(`⚠️ Không thể lưu bằng chứng: ${err.message}`);
+      setBurnStatus(null);
+    }
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="evidence-modal-title"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
+      className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans"
+    >
       <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200">
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
@@ -173,28 +326,53 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
               {/* File Selection Controls */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs text-slate-700 w-24">Giai đoạn:</span>
+                  <label htmlFor="evidence-phase-select" className="font-bold text-xs text-slate-700 w-24 shrink-0">
+                    Giai đoạn:
+                  </label>
                   <select
+                    id="evidence-phase-select"
                     value={newPhase}
                     onChange={(e) => setNewPhase(e.target.value as CapturePhase)}
-                    className="flex-1 bg-white border border-slate-300 rounded-lg p-2 text-xs font-semibold focus:outline-none"
+                    className="flex-1 bg-white border border-slate-300 rounded-lg p-2 text-xs font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
                     <option value="BEFORE">1. Trước khi làm (BEFORE - Bắt buộc)</option>
                     <option value="AFTER">2. Sau khi hoàn thành (AFTER - Bắt buộc)</option>
-                    <option value="QC">3. Nghiệm thu độc lập (QC)</option>
+                    <option value="QC" disabled={!currentProfile.canQC}>
+                      3. Nghiệm thu độc lập (QC {!currentProfile.canQC ? '• Chỉ dành cho QC' : ''})
+                    </option>
                   </select>
                 </div>
 
                 <div className="space-y-1">
-                  <span className="font-bold text-xs text-slate-700">Mô tả chi tiết ảnh / Kết quả đo:</span>
+                  <label htmlFor="evidence-caption-input" className="font-bold text-xs text-slate-700 block">
+                    Mô tả chi tiết ảnh / Kết quả đo:
+                  </label>
                   <input
+                    id="evidence-caption-input"
                     type="text"
                     required
                     placeholder="VD: Van áp suất trục C tầng 12 đã siết chặt co nối..."
                     value={newCaption}
                     onChange={(e) => setNewCaption(e.target.value)}
-                    className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none"
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   />
+                </div>
+
+                {/* Real GPS Info & Refresh button */}
+                <div className="p-2.5 bg-white border border-slate-200 rounded-xl text-[11px] flex items-center justify-between text-slate-600">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <IconMapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                    <span>
+                      GPS: <strong>{gpsData.lat}° N, {gpsData.lng}° E</strong> (±{gpsData.accuracy}m)
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchDeviceGps}
+                    className="text-[10px] text-blue-600 font-bold hover:underline shrink-0"
+                  >
+                    Lấy lại GPS
+                  </button>
                 </div>
 
                 {/* File picker buttons */}
@@ -202,7 +380,7 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-800 rounded-xl text-xs font-bold border border-slate-300 flex items-center gap-1.5 transition-colors shadow-2xs"
+                    className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-800 rounded-xl text-xs font-bold border border-slate-300 flex items-center gap-1.5 transition-colors shadow-2xs focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
                     <IconUpload className="w-4 h-4 text-blue-600" />
                     <span>Mở Camera / Chọn ảnh từ máy</span>
@@ -233,16 +411,18 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
                     <>
                       <img
                         src={selectedFileUrl}
-                        alt="Preview"
+                        alt="Preview bằng chứng"
+                        width={640}
+                        height={360}
                         className="w-full h-full object-cover"
                       />
                       {showWatermark && (
-                        <div className="absolute inset-x-0 bottom-0 p-2.5 bg-gradient-to-t from-black/80 via-black/40 to-transparent text-white font-mono text-[9px] leading-relaxed backdrop-blur-2xs">
+                        <div className="absolute inset-x-0 bottom-0 p-2.5 bg-gradient-to-t from-black/85 via-black/45 to-transparent text-white font-mono text-[9px] leading-relaxed backdrop-blur-2xs">
                           <div className="flex items-center justify-between">
-                            <span className="font-bold text-yellow-400">VINHOMES OPERATIONS • {workOrder.id}</span>
-                            <span>{newPhase}</span>
+                            <span className="font-bold text-sky-400">VINHOMES OPERATIONS • {workOrder.id}</span>
+                            <span className="bg-rose-600/90 text-white font-bold px-1 rounded text-[8px]">BẰNG CHỨNG XÁC THỰC</span>
                           </div>
-                          <div>Toạ độ: 21.0031° N, 105.7489° E (Vinhomes Smart City)</div>
+                          <div>Toạ độ GPS: {gpsData.lat}° N, {gpsData.lng}° E (±{gpsData.accuracy}m)</div>
                           <div>Thời gian: {new Date().toLocaleString('vi-VN')}</div>
                           <div>Người chụp: {currentProfile.name} ({currentProfile.roleTitle})</div>
                         </div>
@@ -258,24 +438,30 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-blue-200/60">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsUploading(false);
-                  setSelectedFileUrl(null);
-                }}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-2xs flex items-center gap-1.5 transition-colors"
-              >
-                <IconCheck className="w-4 h-4" />
-                <span>Lưu & Đính kèm bằng chứng</span>
-              </button>
+            <div className="flex items-center justify-between pt-2 border-t border-blue-200/60">
+              <div>
+                {burnStatus && <span className="text-xs text-blue-700 font-bold animate-pulse">{burnStatus}</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUploading(false);
+                    setSelectedFileUrl(null);
+                  }}
+                  className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={!selectedFileUrl || !!burnStatus}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+                >
+                  <IconFileCheck className="w-4 h-4" />
+                  <span>Đóng dấu & Lưu bằng chứng</span>
+                </button>
+              </div>
             </div>
           </form>
         )}

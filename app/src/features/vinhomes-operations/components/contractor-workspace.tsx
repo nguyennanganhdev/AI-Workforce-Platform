@@ -22,6 +22,7 @@ export function ContractorWorkspace() {
     incidents,
     evidence,
     currentProfile,
+    currentPersona,
     respondToContractorJob,
     recordContractorMaterials,
     transitionWorkOrderStatus,
@@ -44,12 +45,25 @@ export function ContractorWorkspace() {
   const [partQty, setPartQty] = useState(1);
   const [partUnit, setPartUnit] = useState('Bộ');
 
-  // Filter contractor work orders
-  const contractorOrders = workOrders.filter(
-    (w) => w.executor_type === 'CONTRACTOR' || w.executor_id === 'usr-contractor-01',
-  );
+  // Filter contractor work orders strictly by contractor organization or executor
+  const contractorOrders = workOrders.filter((w) => {
+    if (w.executor_type !== 'CONTRACTOR') return false;
+    if (currentPersona === 'CONTRACTOR') {
+      if (currentProfile.contractor_organization_id && w.contractor_organization_id) {
+        return (
+          w.contractor_organization_id === currentProfile.contractor_organization_id ||
+          w.executor_id === currentProfile.id
+        );
+      }
+      return w.executor_id === currentProfile.id;
+    }
+    return true;
+  });
 
   const pendingAcceptanceOrders = contractorOrders.filter((w) => w.contractor_status === 'PENDING_ACCEPTANCE');
+  const acceptedWaitingStartOrders = contractorOrders.filter(
+    (w) => w.contractor_status === 'ACCEPTED' && w.status === 'ASSIGNED',
+  );
   const inProgressOrders = contractorOrders.filter((w) => w.status === 'IN_PROGRESS');
   const completedOrders = contractorOrders.filter((w) => w.status === 'COMPLETED');
 
@@ -57,8 +71,20 @@ export function ContractorWorkspace() {
     if (!acceptWoId) return;
     respondToContractorJob(acceptWoId, 'ACCEPT', undefined, assignedWorkerName);
     setAcceptWoId(null);
-    setSuccessMsg('Đã tiếp nhận công việc và phân công nhân viên kỹ thuật!');
+    setSuccessMsg('Đã tiếp nhận công việc và cử kỹ sư phụ trách! Nhấn "Bắt đầu thi công" khi có mặt tại hiện trường.');
     setTimeout(() => setSuccessMsg(null), 3000);
+  };
+
+  const handleStartWork = (woId: string) => {
+    try {
+      transitionWorkOrderStatus(woId, 'IN_PROGRESS', {
+        note: 'Nhà thầu đã có mặt tại hiện trường và bắt đầu quy trình thi công.',
+      });
+      setSuccessMsg('Đã chuyển sang trạng thái Đang thi công!');
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err: any) {
+      alert(err.message || 'Lỗi khi bắt đầu thi công');
+    }
   };
 
   const handleConfirmReject = () => {
@@ -184,16 +210,24 @@ export function ContractorWorkspace() {
                       className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
                         wo.contractor_status === 'PENDING_ACCEPTANCE'
                           ? 'bg-amber-100 text-amber-800'
-                          : wo.status === 'COMPLETED'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-blue-100 text-blue-700'
+                          : wo.contractor_status === 'ACCEPTED' && wo.status === 'ASSIGNED'
+                            ? 'bg-purple-100 text-purple-700'
+                            : wo.status === 'COMPLETED'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : wo.contractor_status === 'REJECTED'
+                                ? 'bg-rose-100 text-rose-700'
+                                : 'bg-blue-100 text-blue-700'
                       }`}
                     >
                       {wo.contractor_status === 'PENDING_ACCEPTANCE'
                         ? '⏳ Chờ nhà thầu nhận việc'
-                        : wo.status === 'COMPLETED'
-                          ? '✓ Đã hoàn thành (Chờ QC)'
-                          : '⚡ Đang thi công'}
+                        : wo.contractor_status === 'ACCEPTED' && wo.status === 'ASSIGNED'
+                          ? '📋 Đã nhận việc • Chờ bắt đầu thi công'
+                          : wo.status === 'COMPLETED'
+                            ? '✓ Đã hoàn thành (Chờ QC)'
+                            : wo.contractor_status === 'REJECTED'
+                              ? '✕ Nhà thầu từ chối'
+                              : '⚡ Đang thi công'}
                     </span>
                   </div>
                 </div>
@@ -289,6 +323,17 @@ export function ContractorWorkspace() {
                       </>
                     )}
 
+                    {wo.contractor_status === 'ACCEPTED' && wo.status === 'ASSIGNED' && (
+                      <button
+                        type="button"
+                        onClick={() => handleStartWork(wo.id)}
+                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs flex items-center gap-1.5"
+                      >
+                        <IconArrowRight className="w-3.5 h-3.5" />
+                        <span>Bắt đầu thi công</span>
+                      </button>
+                    )}
+
                     {wo.status === 'IN_PROGRESS' && (
                       <>
                         <button
@@ -327,15 +372,25 @@ export function ContractorWorkspace() {
 
       {/* Modal Accept Worker */}
       {acceptWoId && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="accept-wo-title"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+        >
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl">
-            <h3 className="font-bold text-sm text-slate-900">Tiếp nhận phiếu công việc {acceptWoId}</h3>
-            <p className="text-xs text-slate-500">Chỉ định kỹ sư/nhân viên nhà thầu trực tiếp thi công:</p>
-            <input
-              value={assignedWorkerName}
-              onChange={(e) => setAssignedWorkerName(e.target.value)}
-              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none"
-            />
+            <h3 id="accept-wo-title" className="font-bold text-sm text-slate-900">Tiếp nhận phiếu công việc {acceptWoId}</h3>
+            <div className="space-y-1">
+              <label htmlFor="assigned-worker-name" className="text-xs text-slate-600 font-medium block">
+                Chỉ định kỹ sư/nhân viên nhà thầu trực tiếp thi công:
+              </label>
+              <input
+                id="assigned-worker-name"
+                value={assignedWorkerName}
+                onChange={(e) => setAssignedWorkerName(e.target.value)}
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              />
+            </div>
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
@@ -358,17 +413,27 @@ export function ContractorWorkspace() {
 
       {/* Modal Reject Reason */}
       {rejectWoId && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reject-wo-title"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+        >
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl">
-            <h3 className="font-bold text-sm text-slate-900">Từ chối tiếp nhận công việc {rejectWoId}</h3>
-            <p className="text-xs text-slate-500">Vui lòng nêu rõ lý do (hết vật tư, ngoài phạm vi bảo trì...):</p>
-            <textarea
-              rows={3}
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="Nhập lý do chi tiết..."
-              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none"
-            />
+            <h3 id="reject-wo-title" className="font-bold text-sm text-slate-900">Từ chối tiếp nhận công việc {rejectWoId}</h3>
+            <div className="space-y-1">
+              <label htmlFor="reject-reason-text" className="text-xs text-slate-600 font-medium block">
+                Vui lòng nêu rõ lý do (hết vật tư, ngoài phạm vi bảo trì...):
+              </label>
+              <textarea
+                id="reject-reason-text"
+                rows={3}
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Nhập lý do chi tiết..."
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
+              />
+            </div>
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
@@ -391,38 +456,54 @@ export function ContractorWorkspace() {
 
       {/* Modal Add Material */}
       {materialsWoId && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="material-wo-title"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+        >
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl">
-            <h3 className="font-bold text-sm text-slate-900">Ghi nhận vật tư & linh kiện thay thế</h3>
+            <h3 id="material-wo-title" className="font-bold text-sm text-slate-900">Ghi nhận vật tư & linh kiện thay thế</h3>
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Tên vật tư / linh kiện:</label>
+              <label htmlFor="part-name-input" className="text-xs font-bold text-slate-700">Tên vật tư / linh kiện:</label>
               <input
+                id="part-name-input"
                 value={partName}
                 onChange={(e) => setPartName(e.target.value)}
                 placeholder="VD: Cảm biến quang Otis, Bo điều khiển..."
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Số lượng:</label>
+                <label htmlFor="part-qty-input" className="text-xs font-bold text-slate-700">Số lượng:</label>
                 <input
+                  id="part-qty-input"
                   type="number"
                   min="1"
                   value={partQty}
                   onChange={(e) => setPartQty(Number(e.target.value))}
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none"
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Đơn vị tính:</label>
+                <label htmlFor="part-unit-input" className="text-xs font-bold text-slate-700">Đơn vị tính:</label>
                 <input
+                  id="part-unit-input"
                   value={partUnit}
                   onChange={(e) => setPartUnit(e.target.value)}
-                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none"
+                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                 />
               </div>
             </div>
+
+            {partQty > 10 && (
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+                <IconAlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Số lượng vật tư lớn ({partQty}). Yêu cầu có phiếu phê duyệt ngân sách (Execution Grant) từ BQL.</span>
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
