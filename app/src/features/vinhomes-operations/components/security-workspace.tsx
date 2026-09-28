@@ -25,11 +25,19 @@ export function SecurityWorkspace() {
     securityIncidents,
     securityHandovers,
     currentProfile,
+    workOrders,
+    transitionWorkOrderStatus,
     toggleSecurityCheckpoint,
     reportSecurityIncident,
     submitSecurityHandover,
     escalateSecurityIncident,
   } = useOperationsData();
+
+  const securityWo = workOrders.find(
+    (w) => (w.id === 'WO-2026-090' || w.task_id === 'TSK-2026-111') && w.status !== 'CANCELLED',
+  );
+  const checkedCheckpointsCount = securityCheckpoints.filter((cp) => cp.status === 'CHECKED').length;
+  const allCheckpointsChecked = securityCheckpoints.length > 0 && checkedCheckpointsCount === securityCheckpoints.length;
 
   const [activeTab, setActiveTab] = useState<'PATROL' | 'INCIDENTS' | 'HANDOVER' | 'EMERGENCY'>('PATROL');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -202,9 +210,72 @@ export function SecurityWorkspace() {
               <p className="text-xs text-slate-500">Nhân viên tuần tra bấm Check-in khi có mặt tại từng vị trí</p>
             </div>
             <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-              Đã check {securityCheckpoints.filter((c) => c.status === 'CHECKED').length}/{securityCheckpoints.length} điểm
+              Đã check {checkedCheckpointsCount}/{securityCheckpoints.length} điểm
             </span>
           </div>
+
+          {/* Active Security Work Order Direct Status & Action */}
+          {securityWo && (
+            <div
+              className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs ${
+                securityWo.status === 'COMPLETED'
+                  ? 'bg-emerald-50/70 border-emerald-200'
+                  : allCheckpointsChecked
+                    ? 'bg-blue-50/80 border-blue-200'
+                    : 'bg-slate-50 border-slate-200'
+              }`}
+            >
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
+                    {securityWo.id}
+                  </span>
+                  <span className="text-xs font-bold text-slate-900">
+                    Phiếu tuần tra hiện trường (TSK-2026-111)
+                  </span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      securityWo.status === 'COMPLETED'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}
+                  >
+                    {securityWo.status === 'COMPLETED' ? '✓ ĐÃ HOÀN THÀNH' : 'ĐANG THỰC HIỆN'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600">
+                  {allCheckpointsChecked
+                    ? '✓ Đã hoàn thành 100% trạm kiểm soát! Sẵn sàng báo hoàn tất ca tuần tra.'
+                    : `Tiến độ tuyến tuần tra: Đã check-in ${checkedCheckpointsCount}/${securityCheckpoints.length} trạm bắt buộc.`}
+                </p>
+              </div>
+
+              {securityWo.status !== 'COMPLETED' && (
+                <button
+                  type="button"
+                  disabled={!allCheckpointsChecked}
+                  onClick={() => {
+                    try {
+                      transitionWorkOrderStatus(securityWo.id, 'COMPLETED', {
+                        note: 'Hoàn tất ca tuần tra an ninh trạm kỹ thuật B2, đã kiểm tra 100% các trạm chốt theo quy định.',
+                      });
+                      setSuccessMsg('Đã hoàn thành phiếu tuần tra an ninh (WO-2026-090)!');
+                      setTimeout(() => setSuccessMsg(null), 3500);
+                    } catch (err: any) {
+                      alert(err.message);
+                    }
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-2xs ${
+                    allCheckpointsChecked
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  {allCheckpointsChecked ? '✓ Hoàn thành phiếu tuần tra (COMPLETED)' : 'Cần check-in đủ trạm để hoàn thành'}
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {securityCheckpoints.map((cp) => (

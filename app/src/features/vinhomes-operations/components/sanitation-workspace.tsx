@@ -58,6 +58,11 @@ export function SanitationWorkspace() {
   const selectedTask = sanitationTasks.find((t) => t.id === selectedTaskId) || sanitationTasks[0];
   const plan = selectedTask?.domain_data as CleaningPlan | null;
   const taskWorkOrders = selectedTask ? workOrders.filter((w) => w.task_id === selectedTask.id) : [];
+  const activeWorkOrder = selectedTask
+    ? [...taskWorkOrders]
+        .sort((a, b) => (b.attempt_no || 1) - (a.attempt_no || 1))
+        .find((w) => w.status === 'IN_PROGRESS' || w.status === 'ASSIGNED') || taskWorkOrders[0]
+    : null;
 
   const handleToggleStep = (idx: number, currentCompleted: boolean) => {
     if (!selectedTask) return;
@@ -283,10 +288,10 @@ export function SanitationWorkspace() {
                           </div>
 
                           <div className="flex items-center gap-1.5 shrink-0">
-                            {taskWorkOrders[0] && (
+                            {activeWorkOrder && (
                               <button
                                 type="button"
-                                onClick={() => setSelectedWoForPhoto(taskWorkOrders[0])}
+                                onClick={() => setSelectedWoForPhoto(activeWorkOrder)}
                                 className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-[11px] font-bold border border-slate-200 flex items-center gap-1 shadow-2xs"
                               >
                                 <IconPhoto className="w-3.5 h-3.5 text-blue-600" />

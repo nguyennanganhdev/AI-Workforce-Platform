@@ -7,6 +7,7 @@ import {
   type VhEvidenceRef,
   type VhQcResult,
   type VhActionApproval,
+  type VhActionRequest,
   type VhExecutionGrant,
   type VhCase,
   type VhIssueCandidate,
@@ -36,8 +37,9 @@ import {
   MOCK_SECURITY_INCIDENTS,
   MOCK_SECURITY_HANDOVERS,
 } from '../mock';
+import { MOCK_ACTION_REQUESTS } from '../mock/action-requests';
 
-const STORAGE_KEY_PREFIX = 'vhm_operations_data_v4';
+const STORAGE_KEY_PREFIX = 'vhm_operations_data_v5';
 
 export const DOMAIN_CHECKLIST_MAP: Record<string, string> = {
   MEP: 'CKL-VER-MEP-01',
@@ -128,7 +130,16 @@ export function useOperationsDataInternal() {
     }
   });
 
-  // 7. Action Approvals & Grants
+  // 7. Action Requests, Approvals & Grants
+  const [actionRequests, setActionRequests] = useState<VhActionRequest[]>(() => {
+    try {
+      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_action_requests`);
+      return stored ? JSON.parse(stored) : MOCK_ACTION_REQUESTS;
+    } catch {
+      return MOCK_ACTION_REQUESTS;
+    }
+  });
+
   const [approvals, setApprovals] = useState<VhActionApproval[]>(() => {
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_approvals`);
@@ -266,6 +277,7 @@ export function useOperationsDataInternal() {
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_evidence`, JSON.stringify(sanitizedEvidence));
 
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_qc_results`, JSON.stringify(qcResults));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_action_requests`, JSON.stringify(actionRequests));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_approvals`, JSON.stringify(approvals));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_grants`, JSON.stringify(executionGrants));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_sec_cp`, JSON.stringify(securityCheckpoints));
@@ -283,6 +295,7 @@ export function useOperationsDataInternal() {
     workOrders,
     evidence,
     qcResults,
+    actionRequests,
     approvals,
     executionGrants,
     securityCheckpoints,
@@ -435,17 +448,21 @@ export function useOperationsDataInternal() {
         throw new Error(`Không thể giải quyết sự cố: Còn ${pendingWos.length} phiếu thi công chưa hoàn tất.`);
       }
 
-      // Check QC results: Ensure all failed work orders have completed redos that passed QC
-      for (const wo of incidentWos) {
-        const qc = qcResults.find((q) => q.work_order_id === wo.id);
-        if (qc?.outcome === 'FAIL' && qc.redo_required) {
-          const redoWo = incidentWos.find((r) => r.redo_of_work_order_id === wo.id);
-          if (!redoWo || redoWo.status !== 'COMPLETED') {
-            throw new Error(`Không thể giải quyết sự cố: Phiếu ${wo.id} bị đánh FAIL kiểm định và phiếu làm lại (Redo) chưa hoàn thành!`);
+      // Check QC results: Every task's latest attempt work order must have a passing QC result
+      for (const t of incidentTasks) {
+        const taskWos = incidentWos.filter((w) => w.task_id === t.id);
+        if (taskWos.length > 0) {
+          const latestWo = [...taskWos].sort((a, b) => (b.attempt_no || 1) - (a.attempt_no || 1))[0];
+          if (latestWo.status !== 'COMPLETED') {
+            throw new Error(`Không thể giải quyết sự cố: Phiếu thi công mới nhất (${latestWo.id}) của nhiệm vụ "${t.title}" chưa hoàn tất!`);
           }
-          const redoQc = qcResults.find((q) => q.work_order_id === redoWo.id);
-          if (redoQc?.outcome !== 'PASS') {
-            throw new Error(`Không thể giải quyết sự cố: Phiếu làm lại ${redoWo.id} chưa có kết quả nghiệm thu QC PASS!`);
+
+          const latestQc = qcResults.find((q) => q.work_order_id === latestWo.id);
+          if (!latestQc) {
+            throw new Error(`Không thể giải quyết sự cố: Phiếu thi công ${latestWo.id} chưa có kết quả kiểm định chất lượng (QC)!`);
+          }
+          if (latestQc.outcome !== 'PASS') {
+            throw new Error(`Không thể giải quyết sự cố: Kết quả kiểm định của phiếu ${latestWo.id} chưa đạt (kết quả: ${latestQc.outcome})!`);
           }
         }
       }
@@ -475,7 +492,18 @@ export function useOperationsDataInternal() {
     [tasks, workOrders, qcResults, approvals],
   );
 
-  const residentConfirmIncident = useCallback((incidentId: string, confirmed: boolean) => {
+  const residentConfirmIncident = useCallback((incidentId: string, confirmed: boolean, rejectionReason?: string) => {
+    const targetIncident = incidents.find((i) => i.id === incidentId);
+    if (!targetIncident) throw new Error('Không tìm thấy sự cố!');
+
+    if (targetIncident.status === 'CLOSED') {
+      throw new Error(`Sự cố ${incidentId} đã được đóng (CLOSED), không thể thực hiện xác nhận lại!`);
+    }
+
+    if (targetIncident.status !== 'RESOLVED') {
+      throw new Error(`Sự cố ${incidentId} chưa ở trạng thái ĐÃ XỬ LÝ (RESOLVED), hiện tại: ${targetIncident.status}!`);
+    }
+
     const now = new Date().toISOString();
     setIncidents((prev) =>
       prev.map((i) => {
@@ -493,12 +521,16 @@ export function useOperationsDataInternal() {
             ...i,
             status: 'OPEN',
             stage: 'EXECUTION',
+            location_json: {
+              ...i.location_json,
+              rejectionNote: rejectionReason || 'Cư dân/Khách hàng từ chối nghiệm thu, yêu cầu xử lý lại hiện trường.',
+            },
             updated_at: now,
           };
         }
       }),
     );
-  }, []);
+  }, [incidents]);
 
   // ==========================================
   // TASK MANAGEMENT
@@ -556,6 +588,7 @@ export function useOperationsDataInternal() {
         blockedReason?: string;
         materialsUsed?: Array<{ part_name: string; quantity: number; unit: string }>;
         measurements?: Record<string, string | number>;
+        isQcInconclusive?: boolean;
       },
     ) => {
       const targetWo = workOrders.find((w) => w.id === workOrderId);
@@ -570,10 +603,15 @@ export function useOperationsDataInternal() {
         );
       }
 
-      // Guard 1: Enforce State Machine Transition Map
+      // Guard 1: Enforce State Machine Transition Map (with conditional bypass for QC INCONCLUSIVE)
       const currentStatus = targetWo.status;
       const validTargets = ALLOWED_WORK_ORDER_TRANSITIONS[currentStatus] || [];
-      if (!validTargets.includes(targetStatus)) {
+      const isQcInconclusiveBypass =
+        currentStatus === 'COMPLETED' &&
+        targetStatus === 'IN_PROGRESS' &&
+        Boolean(options?.isQcInconclusive);
+
+      if (!validTargets.includes(targetStatus) && !isQcInconclusiveBypass) {
         throw new Error(
           `Vi phạm quy tắc State Machine: Không được phép chuyển từ "${currentStatus}" sang "${targetStatus}"! Các trạng thái hợp lệ tiếp theo: [${validTargets.join(', ')}]`,
         );
@@ -674,7 +712,11 @@ export function useOperationsDataInternal() {
       if (targetWo.task_id) {
         if (targetStatus === 'IN_PROGRESS') {
           setTasks((prev) =>
-            prev.map((t) => (t.id === targetWo.task_id && t.status === 'OPEN' ? { ...t, status: 'IN_PROGRESS' as const } : t)),
+            prev.map((t) =>
+              t.id === targetWo.task_id && t.status !== 'IN_PROGRESS'
+                ? { ...t, status: 'IN_PROGRESS' as const, updated_at: now }
+                : t,
+            ),
           );
         }
       }
@@ -721,15 +763,83 @@ export function useOperationsDataInternal() {
         );
       }
 
-      const deducedChecklist =
-        params.checklist_version_id ||
-        (targetTask.domain_type && DOMAIN_CHECKLIST_MAP[targetTask.domain_type]) ||
-        'CKL-VER-MEP-01';
+      // Guard 3: Duplicate active WorkOrder prevention for same task
+      const existingActiveWo = workOrders.find(
+        (w) => w.task_id === params.task_id && w.status !== 'CANCELLED' && w.status !== 'FAILED',
+      );
+      if (existingActiveWo) {
+        throw new Error(
+          `Nhiệm vụ ${params.task_id} đã có phiếu thi công đang hoạt động (${existingActiveWo.id}, trạng thái: ${existingActiveWo.status})! Không thể tạo thêm phiếu mới cho cùng nhiệm vụ.`,
+        );
+      }
+
+      // Guard 4: Domain-appropriate Executor Check
+      if (targetTask.domain_type === 'SANITATION' || targetTask.domain_type === 'LANDSCAPE') {
+        if (params.executor_id === 'usr-tech-01' || params.executor_id === 'usr-sec-01') {
+          throw new Error(`Nhiệm vụ ${targetTask.domain_type} phải giao cho nhân sự vệ sinh/cảnh quan (STAFF_SANITATION_A5), không thể giao cho kỹ thuật viên hoặc an ninh!`);
+        }
+      }
+      if (targetTask.domain_type === 'SECURITY') {
+        if (params.executor_id === 'usr-cleaner-01' || params.executor_id === 'usr-tech-01') {
+          throw new Error(`Nhiệm vụ AN NINH phải giao cho nhân viên an ninh (STAFF_SECURITY), không thể giao cho nhân viên vệ sinh hoặc kỹ thuật viên!`);
+        }
+      }
+      if (targetTask.domain_type === 'MEP' || targetTask.domain_type === 'TECHNICAL') {
+        if (params.executor_id === 'usr-cleaner-01' || params.executor_id === 'usr-sec-01') {
+          throw new Error(`Nhiệm vụ KỸ THUẬT/MEP phải giao cho kỹ thuật viên chuyên trách (STAFF_TECHNICAL), không thể giao cho nhân viên vệ sinh hoặc an ninh!`);
+        }
+      }
+      if (targetTask.domain_type === 'ELEVATOR') {
+        if (params.executor_type !== 'CONTRACTOR') {
+          throw new Error('Nhiệm vụ Thang máy chuyên sâu bắt buộc phải giao cho Đối tác Nhà thầu (CONTRACTOR)!');
+        }
+        if (params.contractor_organization_id && params.contractor_organization_id !== 'org-otis') {
+          throw new Error(`Tổ chức nhà thầu "${params.contractor_organization_id}" không có thẩm quyền đối với hệ thống thang máy Otis tại dự án!`);
+        }
+      }
+
+      // Guard 5: Strict Checklist Derivation & Validation
+      const expectedChecklist = (targetTask.domain_type && DOMAIN_CHECKLIST_MAP[targetTask.domain_type]) || 'CKL-VER-MEP-01';
+      if (params.checklist_version_id && params.checklist_version_id !== expectedChecklist) {
+        throw new Error(
+          `Checklist ${params.checklist_version_id} không phù hợp với lĩnh vực ${targetTask.domain_type} của nhiệm vụ! (Checklist yêu cầu: ${expectedChecklist})`,
+        );
+      }
+      const deducedChecklist = expectedChecklist;
 
       const now = new Date().toISOString();
       const newWoId = `WO-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
 
+      // Guard 6: Execution Grant Validation upon consumption
       if (params.execution_grant_id) {
+        const targetGrant = executionGrants.find((g) => g.id === params.execution_grant_id);
+        if (!targetGrant) {
+          throw new Error(`Execution Grant "${params.execution_grant_id}" không tồn tại trên hệ thống!`);
+        }
+        if (targetGrant.status !== 'ACTIVE') {
+          throw new Error(`Execution Grant "${params.execution_grant_id}" không ở trạng thái ACTIVE (hiện tại: ${targetGrant.status})!`);
+        }
+        if (new Date(targetGrant.expires_at).getTime() < Date.now()) {
+          throw new Error(`Execution Grant "${params.execution_grant_id}" đã hết hạn vào lúc ${targetGrant.expires_at}! Không thể sử dụng.`);
+        }
+
+        const linkedReq = actionRequests.find((r) => r.id === targetGrant.action_request_id);
+        if (linkedReq) {
+          if (linkedReq.incident_id !== params.incident_id) {
+            throw new Error(`Execution Grant thuộc sự cố ${linkedReq.incident_id}, không thể sử dụng cho sự cố ${params.incident_id}!`);
+          }
+          if (linkedReq.task_id && linkedReq.task_id !== params.task_id) {
+            throw new Error(`Execution Grant thuộc nhiệm vụ ${linkedReq.task_id}, không thể sử dụng cho nhiệm vụ ${params.task_id}!`);
+          }
+        }
+
+        if (targetGrant.granted_to && params.executor_id && targetGrant.granted_to !== params.executor_id) {
+          const isGrantRecipient = targetGrant.granted_to === params.executor_id || targetGrant.granted_to === linkedReq?.requested_by_id;
+          if (!isGrantRecipient) {
+            throw new Error(`Execution Grant được cấp riêng cho tài khoản ${targetGrant.granted_to}, không thể chuyển giao cho ${params.executor_id}!`);
+          }
+        }
+
         setExecutionGrants((prev) =>
           prev.map((g) =>
             g.id === params.execution_grant_id
@@ -765,13 +875,14 @@ export function useOperationsDataInternal() {
 
       setWorkOrders((prev) => [wo, ...prev]);
 
+      // Move task from OPEN to ASSIGNED (not straight to IN_PROGRESS)
       setTasks((prev) =>
-        prev.map((t) => (t.id === params.task_id && t.status === 'OPEN' ? { ...t, status: 'IN_PROGRESS' as const } : t)),
+        prev.map((t) => (t.id === params.task_id && t.status === 'OPEN' ? { ...t, status: 'ASSIGNED' as const, updated_at: now } : t)),
       );
 
       return wo;
     },
-    [currentProfile, tasks],
+    [currentProfile, tasks, workOrders, executionGrants, actionRequests],
   );
 
   // ==========================================
@@ -976,6 +1087,7 @@ export function useOperationsDataInternal() {
         // Inconclusive keeps WO in-progress for additional evidence
         transitionWorkOrderStatus(params.workOrderId, 'IN_PROGRESS', {
           note: `QC INCONCLUSIVE: Cần bổ sung tài liệu kiểm định - ${params.note}`,
+          isQcInconclusive: true,
         });
       }
 
@@ -1009,14 +1121,47 @@ export function useOperationsDataInternal() {
         );
       }
 
-      // Guard 2: Closed work order cannot receive new BEFORE/AFTER photos
+      // Guard 2: Work Order Phase & Ownership Check
       if (newEvidence.work_order_id) {
         const targetWo = workOrders.find((w) => w.id === newEvidence.work_order_id);
-        if (targetWo && (targetWo.status === 'COMPLETED' || targetWo.status === 'CANCELLED')) {
-          if (newEvidence.capture_phase === 'BEFORE' || newEvidence.capture_phase === 'AFTER') {
+        if (targetWo) {
+          // Closed work order cannot receive new BEFORE/AFTER photos
+          if (targetWo.status === 'COMPLETED' || targetWo.status === 'CANCELLED') {
+            if (newEvidence.capture_phase === 'BEFORE' || newEvidence.capture_phase === 'AFTER') {
+              throw new Error(
+                `Phiếu thi công ${targetWo.id} đã ở trạng thái ${targetWo.status === 'COMPLETED' ? 'HOÀN THÀNH' : 'ĐÃ HỦY'}. Không thể tải thêm ảnh Trước/Sau thi công!`,
+              );
+            }
+          }
+
+          // AFTER photo requires IN_PROGRESS status
+          if (newEvidence.capture_phase === 'AFTER' && targetWo.status !== 'IN_PROGRESS') {
             throw new Error(
-              `Phiếu thi công ${targetWo.id} đã ở trạng thái ${targetWo.status === 'COMPLETED' ? 'HOÀN THÀNH' : 'ĐÃ HỦY'}. Không thể tải thêm ảnh Trước/Sau thi công!`,
+              `Phiếu thi công ${targetWo.id} đang ở trạng thái "${targetWo.status}". Ảnh Sau thi công (AFTER) chỉ được tải lên khi công việc đang được tiến hành (IN_PROGRESS)!`,
             );
+          }
+
+          // QC photo requires COMPLETED status
+          if (newEvidence.capture_phase === 'QC' && targetWo.status !== 'COMPLETED') {
+            throw new Error(
+              `Phiếu thi công ${targetWo.id} chưa hoàn thành (hiện tại: ${targetWo.status}). Ảnh nghiệm thu (QC) chỉ được chụp khi công việc đã hoàn tất (COMPLETED)!`,
+            );
+          }
+
+          // Evidence Ownership Guard
+          if (newEvidence.capture_phase === 'BEFORE' || newEvidence.capture_phase === 'AFTER') {
+            const isExecutor = targetWo.executor_id === currentProfile.id;
+            const isSameContractorOrg =
+              currentPersona === 'CONTRACTOR' &&
+              currentProfile.contractor_organization_id &&
+              targetWo.contractor_organization_id === currentProfile.contractor_organization_id;
+            const isSupervisorOrManager = currentPersona === 'SUPERVISOR' || currentPersona === 'MANAGER';
+
+            if (!isExecutor && !isSameContractorOrg && !isSupervisorOrManager) {
+              throw new Error(
+                `Bạn không có quyền tải ảnh Trước/Sau cho phiếu ${targetWo.id}! Chỉ người thi công được giao (${targetWo.executor_name || targetWo.executor_id}) hoặc Giám sát/BQL mới được tải ảnh.`,
+              );
+            }
           }
         }
       }
@@ -1036,7 +1181,7 @@ export function useOperationsDataInternal() {
           caption: newEvidence.caption || 'Hình ảnh hiện trường',
           uploadedByName: currentProfile.name,
           uploadedByRole: currentProfile.roleTitle,
-          gpsCoordinates: newEvidence.fileMetadata?.gpsCoordinates || '21.0031° N, 105.7489° E (Vinhomes Smart City)',
+          gpsCoordinates: newEvidence.fileMetadata?.gpsCoordinates || null,
           fileSizeKb: newEvidence.fileMetadata?.sizeBytes ? Math.round(newEvidence.fileMetadata.sizeBytes / 1024) : 480,
           fileName: newEvidence.fileMetadata?.fileName || 'evidence_capture.jpg',
           timestamp: new Date().toISOString(),
@@ -1046,7 +1191,7 @@ export function useOperationsDataInternal() {
       setEvidence((prev) => [evidenceRecord, ...prev]);
       return evidenceRecord;
     },
-    [workOrders, currentProfile],
+    [workOrders, currentProfile, currentPersona],
   );
 
   // ==========================================
@@ -1142,7 +1287,7 @@ export function useOperationsDataInternal() {
         },
         severity: report.severity,
         status: 'OPEN',
-        stage: 'PLANNING',
+        stage: 'TRIAGE',
         owner_user_id: currentProfile.id,
         sla_due_at: new Date(Date.now() + 2 * 3600 * 1000).toISOString(),
         resolved_at: null,
@@ -1152,7 +1297,31 @@ export function useOperationsDataInternal() {
         updated_at: now,
       };
 
+      const newTaskId = `TSK-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+      const newTask: VhTask = {
+        id: newTaskId,
+        incident_id: newIncId,
+        title: `[Xử lý an ninh khẩn cấp] ${report.title}`,
+        domain_type: 'SECURITY',
+        domain_data: {
+          reportId: report.id,
+          location: report.location,
+          actionTaken: report.action_taken,
+        },
+        domain_schema_version: 1,
+        assignee_type: 'STAFF',
+        assignee_id: currentProfile.id,
+        assignee_name: currentProfile.name,
+        status: 'OPEN',
+        priority: report.severity === 'P1' ? 'URGENT' : 'HIGH',
+        due_at: new Date(Date.now() + 2 * 3600 * 1000).toISOString(),
+        version: 1,
+        created_at: now,
+        updated_at: now,
+      };
+
       setIncidents((prev) => [newInc, ...prev]);
+      setTasks((prev) => [newTask, ...prev]);
       return newInc;
     },
     [securityIncidents, currentProfile],
@@ -1308,6 +1477,15 @@ export function useOperationsDataInternal() {
 
       setExecutionGrants((prev) => [newGrant, ...prev]);
 
+      // Synchronize Action Request status to APPROVED
+      if (targetApproval.action_request_id) {
+        setActionRequests((prev) =>
+          prev.map((r) =>
+            r.id === targetApproval.action_request_id ? { ...r, status: 'APPROVED' as const } : r,
+          ),
+        );
+      }
+
       setApprovals((prev) =>
         prev.map((a) =>
           a.id === approvalId
@@ -1334,7 +1512,36 @@ export function useOperationsDataInternal() {
         );
       }
 
+      const targetApproval = approvals.find((a) => a.id === approvalId);
+      if (!targetApproval) throw new Error('Không tìm thấy yêu cầu phê duyệt!');
+
+      // Guard: Only PENDING approvals can be rejected
+      if (targetApproval.status !== 'PENDING') {
+        throw new Error(`Yêu cầu phê duyệt ${targetApproval.id} không ở trạng thái PENDING (hiện tại: ${targetApproval.status})!`);
+      }
+
+      // Guard: Cannot reject expired approval
+      if (targetApproval.expires_at && new Date(targetApproval.expires_at).getTime() < Date.now()) {
+        throw new Error(`Yêu cầu phê duyệt ${targetApproval.id} đã hết hạn vào lúc ${targetApproval.expires_at}! Không thể từ chối.`);
+      }
+
+      // Guard: Cannot reject if an active execution grant already exists
+      const existingGrant = executionGrants.find((g) => g.approval_id === approvalId && g.status === 'ACTIVE');
+      if (existingGrant) {
+        throw new Error(`Phê duyệt này đã được ban hành Execution Grant (${existingGrant.id})! Không thể từ chối.`);
+      }
+
       const now = new Date().toISOString();
+
+      // Synchronize Action Request status to REJECTED
+      if (targetApproval.action_request_id) {
+        setActionRequests((prev) =>
+          prev.map((r) =>
+            r.id === targetApproval.action_request_id ? { ...r, status: 'REJECTED' as const } : r,
+          ),
+        );
+      }
+
       setApprovals((prev) =>
         prev.map((a) =>
           a.id === approvalId
@@ -1349,7 +1556,7 @@ export function useOperationsDataInternal() {
         ),
       );
     },
-    [currentProfile],
+    [approvals, currentProfile, executionGrants],
   );
 
   // Reset to default mock
@@ -1362,6 +1569,7 @@ export function useOperationsDataInternal() {
     setWorkOrders(MOCK_WORK_ORDERS);
     setEvidence(MOCK_EVIDENCE);
     setQcResults(MOCK_QC_RESULTS);
+    setActionRequests(MOCK_ACTION_REQUESTS);
     setApprovals(MOCK_APPROVALS);
     setExecutionGrants([]);
     setSecurityCheckpoints(MOCK_SECURITY_CHECKPOINTS);
@@ -1381,6 +1589,7 @@ export function useOperationsDataInternal() {
     teamWorkOrders,
     evidence,
     qcResults,
+    actionRequests,
     approvals,
     executionGrants,
     securityCheckpoints,

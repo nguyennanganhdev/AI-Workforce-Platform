@@ -185,4 +185,74 @@ describe('Vinhomes Operations Data Integrity Audit Suite', () => {
     expect(secWo?.checklist_version_id).toBe('CKL-VER-SEC-01');
     expect(secWo?.executor_id).toBe('usr-sec-01');
   });
+
+  test('11. Invariant: Task status synchronization with Redo chains', () => {
+    // TSK-101 has an active redo attempt 2 (WO-085) which is ASSIGNED, so task must be IN_PROGRESS
+    const tsk101 = MOCK_TASKS.find((t) => t.id === 'TSK-2026-101')!;
+    const wo085 = MOCK_WORK_ORDERS.find((w) => w.id === 'WO-2026-085')!;
+    expect(wo085.status).toBe('ASSIGNED');
+    expect(tsk101.status).toBe('IN_PROGRESS');
+
+    // TSK-107 has completed redo attempt 2 (WO-089) with QC PASS, so task must be DONE
+    const tsk107 = MOCK_TASKS.find((t) => t.id === 'TSK-2026-107')!;
+    const wo089 = MOCK_WORK_ORDERS.find((w) => w.id === 'WO-2026-089')!;
+    expect(wo089.status).toBe('COMPLETED');
+    expect(tsk107.status).toBe('DONE');
+  });
+
+  test('12. Invariant: Evidence capture phase strictly respects WorkOrder status', () => {
+    const woMap = new Map(MOCK_WORK_ORDERS.map((w) => [w.id, w]));
+
+    for (const ev of MOCK_EVIDENCE) {
+      if (ev.work_order_id) {
+        const wo = woMap.get(ev.work_order_id)!;
+
+        // No AFTER photo if work order is still ASSIGNED
+        if (wo.status === 'ASSIGNED') {
+          expect(ev.capture_phase).not.toBe('AFTER');
+        }
+
+        // No QC photo unless work order is COMPLETED
+        if (ev.capture_phase === 'QC') {
+          expect(wo.status).toBe('COMPLETED');
+        }
+      }
+    }
+  });
+
+  test('13. Invariant: Contractor interactive demo readiness', () => {
+    const contractorWo = MOCK_WORK_ORDERS.find(
+      (w) => w.executor_type === 'CONTRACTOR' && w.contractor_status === 'PENDING_ACCEPTANCE',
+    );
+    expect(contractorWo).toBeDefined();
+    expect(contractorWo?.status).toBe('ASSIGNED');
+    expect(contractorWo?.contractor_organization_id).toBe('org-otis');
+    expect(contractorWo?.checklist_version_id).toBe('CKL-VER-ELEV-01');
+  });
+
+  test('14. Invariant: QC Inspector pending inspection demo readiness', () => {
+    // Must have at least one COMPLETED work order with BEFORE and AFTER evidence, but NO QC result yet
+    const qcWoIds = new Set(MOCK_QC_RESULTS.map((q) => q.work_order_id));
+    const pendingQcWos = MOCK_WORK_ORDERS.filter(
+      (w) => w.status === 'COMPLETED' && !qcWoIds.has(w.id),
+    );
+    expect(pendingQcWos.length).toBeGreaterThanOrEqual(1);
+
+    for (const wo of pendingQcWos) {
+      const woEvidence = MOCK_EVIDENCE.filter((e) => e.work_order_id === wo.id);
+      expect(woEvidence.some((e) => e.capture_phase === 'BEFORE')).toBe(true);
+      expect(woEvidence.some((e) => e.capture_phase === 'AFTER')).toBe(true);
+    }
+  });
+
+  test('15. Invariant: Incident resolution consistency (INC-2026-003)', () => {
+    const inc003 = MOCK_INCIDENTS.find((i) => i.id === 'INC-2026-003')!;
+    expect(inc003.status).toBe('RESOLVED');
+    expect(inc003.stage).toBe('RESIDENT_CONFIRMATION');
+
+    const inc003Tasks = MOCK_TASKS.filter((t) => t.incident_id === 'INC-2026-003');
+    for (const t of inc003Tasks) {
+      expect(t.status).toBe('DONE');
+    }
+  });
 });

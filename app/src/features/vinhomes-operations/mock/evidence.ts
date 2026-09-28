@@ -85,22 +85,6 @@ export const MOCK_EVIDENCE: VhEvidenceRef[] = [
     uploaded_by: 'usr-cleaner-01',
     created_at: new Date(Date.now() - 52 * 60 * 1000).toISOString(),
   },
-  {
-    id: 'EVD-2026-06',
-    incident_id: 'INC-2026-002',
-    task_id: 'TSK-2026-105',
-    work_order_id: 'WO-2026-088',
-    file_id: 'FILE-06',
-    kind: 'IMAGE',
-    capture_phase: 'AFTER',
-    metadata: {
-      caption: 'Đã đóng bao toàn bộ rác tràn và xếp lên xe gom rác thùng kín',
-      locationNote: 'Phòng gom rác tầng 8 tháp S1.05',
-    },
-    file_url: 'https://images.unsplash.com/photo-1618252277439-d3e91122bf57?w=800&auto=format&fit=crop&q=80',
-    uploaded_by: 'usr-cleaner-01',
-    created_at: new Date(Date.now() - 22 * 60 * 1000).toISOString(),
-  },
 
   // Thang máy rung lắc P03 S2.03 (INC-2026-003 / WO-2026-084 Lần 1 & WO-2026-089 Redo)
   {
@@ -232,5 +216,39 @@ export const MOCK_EVIDENCE: VhEvidenceRef[] = [
     file_url: 'https://images.unsplash.com/photo-1563245372-f21724e3856d?w=800&auto=format&fit=crop&q=80',
     uploaded_by: 'usr-cleaner-01',
     created_at: new Date(Date.now() - 28 * 60 * 1000).toISOString(),
+  },
+
+  // Sự cố An ninh trạm kỹ thuật B2 (INC-2026-007 / WO-2026-090)
+  {
+    id: 'EVD-2026-13',
+    incident_id: 'INC-2026-007',
+    task_id: 'TSK-2026-111',
+    work_order_id: 'WO-2026-090',
+    file_id: 'FILE-13',
+    kind: 'IMAGE',
+    capture_phase: 'BEFORE',
+    metadata: {
+      caption: 'Bắt đầu tuần tra: Cửa trạm biến áp hầm B2 mở hé, có dấu hiệu người lạ',
+      locationNote: 'Trạm biến áp hầm B2 tháp S2.01',
+    },
+    file_url: 'https://images.unsplash.com/photo-1541888946425-d0fbb18f15f7?w=800&auto=format&fit=crop&q=80',
+    uploaded_by: 'usr-sec-01',
+    created_at: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'EVD-2026-14',
+    incident_id: 'INC-2026-007',
+    task_id: 'TSK-2026-111',
+    work_order_id: 'WO-2026-090',
+    file_id: 'FILE-14',
+    kind: 'IMAGE',
+    capture_phase: 'AFTER',
+    metadata: {
+      caption: 'Đã lập biên bản trục xuất người lạ và khóa chốt kiểm soát an ninh trạm điện B2',
+      locationNote: 'Trạm biến áp hầm B2 tháp S2.01',
+    },
+    file_url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=800&auto=format&fit=crop&q=80',
+    uploaded_by: 'usr-sec-01',
+    created_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
   },
 ];
