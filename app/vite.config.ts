@@ -85,7 +85,7 @@ const serving = {
   // to, which is ::1 under Node and 127.0.0.1 under bun, and the other address is then refused.
   // Whoever is told the URL has no way to know which they were given.
   // Empty APP_PORT=/SERVER_PORT= is unset (compose / leftover .env), not NaN — same trap as Bot PORT.
-  host: "::",
+  host: process.platform === "win32" ? "0.0.0.0" : "::",
   port: appPort.port,
   strictPort: true,
   proxy: {
