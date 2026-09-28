@@ -66,7 +66,11 @@ function announceServerPort(port: number): Plugin {
  * app rather than the dev server gets no `/api` proxy unless it is repeated here. A desktop install
  * serves the build, and without this every call it makes returns the app's own HTML.
  */
-const appPort = listenPort(process.env.APP_PORT, 3010);
+const cliPortIndex = process.argv.indexOf("--port");
+const cliPort = cliPortIndex !== -1 && process.argv[cliPortIndex + 1] ? process.argv[cliPortIndex + 1] : undefined;
+const resolvedAppPort = process.env.APP_PORT || cliPort;
+
+const appPort = listenPort(resolvedAppPort, 3010);
 if (!appPort.ok) {
   throw new Error(appPort.reason.replace(/^PORT /, "APP_PORT "));
 }

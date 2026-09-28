@@ -1,9 +1,18 @@
+import { useEffect } from 'react';
 import { Outlet } from '@tanstack/react-router';
 import { OperationsSidebar } from './operations-sidebar';
 import { OperationsHeader } from './operations-header';
 import { OperationsProvider } from '../hooks/use-operations-data';
 
 export function OperationsLayout() {
+  useEffect(() => {
+    const originalTitle = document.title;
+    document.title = 'Vinhomes Operations Platform';
+    return () => {
+      document.title = originalTitle;
+    };
+  }, []);
+
   return (
     <OperationsProvider>
       <div className="flex h-screen w-screen overflow-hidden bg-slate-50 font-sans">

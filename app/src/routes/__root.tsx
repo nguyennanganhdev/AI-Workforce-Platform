@@ -16,7 +16,10 @@ export const Route = createRootRouteWithContext<RouterContext>()({
    * auth gate, so the guard decides what that means: /sign for a visitor, /onboarding for somebody
    * who has not finished it, the app for everyone else.
    */
-  notFoundComponent: () => <Navigate replace to="/" />,
+  notFoundComponent: () => {
+    const isOperations = typeof window !== "undefined" && window.location.port === "3020";
+    return <Navigate replace to={isOperations ? "/operations/my-tasks" : "/"} />;
+  },
 });
 
 /**
