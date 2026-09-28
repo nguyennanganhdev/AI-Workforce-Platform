@@ -6,6 +6,7 @@ export type WorkOrderStatus =
   | 'OPEN'
   | 'ASSIGNED'
   | 'IN_PROGRESS'
+  | 'BLOCKED'
   | 'COMPLETED'
   | 'FAILED'
   | 'CANCELLED';
@@ -28,6 +29,11 @@ export interface VhWorkOrder {
   checklist_version_id: string | null;
   execution_started_at: string | null;
   execution_completed_at: string | null;
+  blocked_reason?: string | null;
+  contractor_status?: 'PENDING_ACCEPTANCE' | 'ACCEPTED' | 'REJECTED';
+  contractor_reject_reason?: string;
+  contractor_assigned_worker?: string;
+  materials_used?: Array<{ part_name: string; quantity: number; unit: string }>;
   result: Record<string, unknown> | null;
   version: number;
   created_at: string;

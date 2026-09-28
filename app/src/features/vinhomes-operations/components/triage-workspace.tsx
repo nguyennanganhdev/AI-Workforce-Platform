@@ -63,8 +63,8 @@ export function TriageWorkspace() {
     if (!splitCandidate) return;
     splitIssueCandidate(
       splitCandidate.id,
-      { domain: splitPartA.domain, normalized_summary: splitPartA.summary },
-      { domain: splitPartB.domain, normalized_summary: splitPartB.summary }
+      { domain: splitPartA.domain, summary: splitPartA.summary },
+      { domain: splitPartB.domain, summary: splitPartB.summary }
     );
     setSplitCandidate(null);
     setActionSuccessMsg(`Đã tách thành 2 vấn đề riêng biệt để giao cho 2 bộ phận.`);

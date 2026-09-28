@@ -33,7 +33,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export function OperationsDashboard() {
-  const { incidents, workOrders, qcResults, approvals, currentPersona } = useOperationsData();
+  const { incidents, workOrders, qcResults, approvals, currentPersona, currentProfile } = useOperationsData();
 
   const p1Incidents = incidents.filter((i) => i.severity === 'P1' && i.status !== 'CLOSED');
   const inProgressWo = workOrders.filter((w) => w.status === 'IN_PROGRESS');
@@ -66,9 +66,7 @@ export function OperationsDashboard() {
         <div className="flex items-center gap-2">
           <span className="text-xs text-slate-500 font-medium">Không gian làm việc:</span>
           <span className="px-3 py-1 bg-blue-50 text-blue-700 font-bold text-xs rounded-full border border-blue-200/60 shadow-2xs">
-            {currentPersona === 'STAFF_TECHNICAL' && '👷 Kỹ sư Hiện trường MEP & PCCC'}
-            {currentPersona === 'STAFF_SANITATION' && '🧹 Giám sát Vệ sinh A5 & Cảnh quan'}
-            {currentPersona === 'MANAGER' && '🏢 Ban Quản Lý (BQL) Đô Thị'}
+            {currentProfile?.roleTitle || 'Ban Quản Lý (BQL) Đô Thị'}
           </span>
         </div>
       </div>

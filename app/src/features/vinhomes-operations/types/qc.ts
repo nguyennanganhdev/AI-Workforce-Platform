@@ -8,6 +8,7 @@ export interface VhChecklistCriterion {
   id: string;
   code: string;
   label: string;
+  description?: string;
   required: boolean;
   type: 'BOOLEAN' | 'NUMERIC_RANGE' | 'IMAGE_CONFIRMATION' | 'TEXT';
   acceptableMin?: number;
@@ -26,7 +27,9 @@ export interface VhChecklist {
 export interface VhChecklistVersion {
   id: string;
   checklist_id: string;
+  name?: string;
   version_no: number;
+  version?: number;
   criteria_json: VhChecklistCriterion[];
   status: 'PUBLISHED' | 'DRAFT' | 'DEPRECATED';
   published_at: string;
@@ -36,6 +39,7 @@ export interface VhChecklistVersion {
 export interface VhQcResult {
   id: string;
   work_order_id: string;
+  checklist_version_id?: string;
   outcome: QcOutcome;
   criteria: Array<{
     criterion_id: string;

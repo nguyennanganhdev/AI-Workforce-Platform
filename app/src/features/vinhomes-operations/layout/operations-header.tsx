@@ -38,8 +38,17 @@ function getBreadcrumb(pathname: string): BreadcrumbConfig {
   if (pathname.includes('/incidents')) {
     return { section: 'Vận hành đô thị', page: 'Quản lý sự cố' };
   }
+  if (pathname.includes('/my-tasks')) {
+    return { section: 'Hiện trường', page: 'Việc của tôi' };
+  }
+  if (pathname.includes('/security')) {
+    return { section: 'Hiện trường', page: 'An ninh & Trật tự' };
+  }
+  if (pathname.includes('/contractor')) {
+    return { section: 'Đối tác', page: 'Cổng nhà thầu kỹ thuật' };
+  }
   if (pathname.includes('/sanitation')) {
-    return { section: 'Vận hành đô thị', page: 'Kế hoạch vệ sinh A5' };
+    return { section: 'Hiện trường', page: 'Vệ sinh môi trường A5' };
   }
   return { section: 'Vận hành đô thị', page: 'Tổng quan' };
 }

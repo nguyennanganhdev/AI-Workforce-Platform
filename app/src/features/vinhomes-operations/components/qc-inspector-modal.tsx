@@ -6,10 +6,12 @@ import {
   IconAlertTriangle,
   IconArrowBackUp,
   IconInfoCircle,
+  IconLock,
 } from '@tabler/icons-react';
 import type { VhWorkOrder } from '../types/work-order';
 import type { VhChecklistCriterion } from '../types/qc';
 import { useQcWorkflow } from '../hooks/use-qc-workflow';
+import { useOperationsData } from '../hooks/use-operations-data';
 
 interface QcInspectorModalProps {
   workOrder: VhWorkOrder;
@@ -18,26 +20,36 @@ interface QcInspectorModalProps {
 
 export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) {
   const { checklistVersion, existingQcResult, submitQcInspection } = useQcWorkflow(workOrder.id);
+  const { currentProfile, currentPersona } = useOperationsData();
+
+  // Segregation of Duties Check:
+  const isSelfExecutor = Boolean(workOrder.executor_id && workOrder.executor_id === currentProfile.id);
+  const hasQcPermission = Boolean(currentProfile.canQC || currentPersona === 'MANAGER');
+  const isAlreadyFinalized = Boolean(existingQcResult && existingQcResult.outcome !== 'INCONCLUSIVE');
 
   // Criteria checkbox states
   const [criteriaState, setCriteriaState] = useState<Record<string, { passed: boolean; note: string }>>(() => {
     const initial: Record<string, { passed: boolean; note: string }> = {};
     checklistVersion?.criteria_json.forEach((c: VhChecklistCriterion) => {
-      initial[c.id] = { passed: true, note: '' };
+      // If already inspected, match existing failure list
+      const isFailedInOld = existingQcResult?.failed_criteria.includes(c.label);
+      initial[c.id] = { passed: !isFailedInOld, note: '' };
     });
     return initial;
   });
 
-  const [overallOutcome, setOverallOutcome] = useState<'PASS' | 'FAIL' | 'INCONCLUSIVE'>('PASS');
-  const [qcNote, setQcNote] = useState('');
+  const [overallOutcome, setOverallOutcome] = useState<'PASS' | 'FAIL' | 'INCONCLUSIVE'>(
+    existingQcResult ? existingQcResult.outcome : 'PASS',
+  );
+  const [qcNote, setQcNote] = useState(existingQcResult?.note || '');
   const [submitting, setSubmitting] = useState(false);
   const [resultSuccess, setResultSuccess] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const toggleCriterion = (id: string, passed: boolean) => {
+    if (isAlreadyFinalized || isSelfExecutor || !hasQcPermission) return;
     setCriteriaState((prev) => {
       const updated = { ...prev, [id]: { ...prev[id], passed } };
-      // If any required criterion is false, default overallOutcome to FAIL
       const hasFailed = Object.values(updated).some((val) => !val.passed);
       if (hasFailed) {
         setOverallOutcome('FAIL');
@@ -49,6 +61,7 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
   };
 
   const handleCriterionNote = (id: string, note: string) => {
+    if (isAlreadyFinalized || isSelfExecutor || !hasQcPermission) return;
     setCriteriaState((prev) => ({
       ...prev,
       [id]: { ...prev[id], note },
@@ -57,6 +70,15 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSelfExecutor) {
+      setErrorMessage('Vi phạm nguyên tắc độc lập kiểm định: Người thi công không được phép tự nghiệm thu!');
+      return;
+    }
+    if (!hasQcPermission) {
+      setErrorMessage(`Vai trò "${currentProfile.roleTitle}" không có quyền ký ban hành kết quả QC.`);
+      return;
+    }
+
     setSubmitting(true);
     setErrorMessage(null);
 
@@ -76,8 +98,8 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
         outcome: overallOutcome,
         criteria: formattedCriteria,
         note: qcNote || (overallOutcome === 'PASS' ? 'Nghiệm thu đạt chuẩn' : overallOutcome === 'INCONCLUSIVE' ? 'Chưa đủ cơ sở kết luận' : 'Chưa đạt tiêu chuẩn kỹ thuật'),
-        checkedBy: 'usr-qc-01',
-        checkedByName: 'Lê Hoàng Nam (Kỹ sư Kiểm định Độc lập)',
+        checkedBy: currentProfile.id,
+        checkedByName: currentProfile.name,
       });
 
       setSubmitting(false);
@@ -101,7 +123,7 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans">
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans">
       <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200">
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
@@ -109,17 +131,17 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
             <div className="w-1.5 h-6 bg-purple-600 rounded-full" />
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-slate-900 text-base">Kiểm Định Chất Lượng (QC Inspector)</h3>
+                <h3 className="font-bold text-slate-900 text-base">Biên Bản Nghiệm Thu Chất Lượng (QC)</h3>
                 <span className="font-mono text-xs px-2 py-0.5 bg-purple-50 text-purple-700 font-bold rounded">
                   {workOrder.id}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Checklist: <span className="font-semibold text-slate-700">{checklistVersion?.id}</span> •
-                Phiên bản #{checklistVersion?.version_no}
+                Checklist: <strong>{checklistVersion?.name || checklistVersion?.id || 'Tiêu chuẩn kiểm định'}</strong> (Phiên bản #{checklistVersion?.version_no || 1})
               </p>
             </div>
           </div>
+
           <button
             type="button"
             onClick={onClose}
@@ -129,110 +151,136 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
           </button>
         </div>
 
-        {/* Success Alert Banner */}
-        {resultSuccess && (
-          <div className="m-5 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
-            <IconCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-            <span>{resultSuccess}</span>
-          </div>
-        )}
-
-        {/* Error Alert Banner */}
-        {errorMessage && (
-          <div className="m-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2">
-            <IconAlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
-            <span>{errorMessage}</span>
-          </div>
-        )}
-
-        {/* Existing Inspection Badge */}
-        {existingQcResult && !resultSuccess && (
-          <div className="m-5 p-4 rounded-xl bg-purple-50 border border-purple-200 flex items-start gap-3 text-xs">
-            <IconInfoCircle className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {/* Identity & Guard Warnings */}
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="font-bold text-purple-900">
-                Phiếu này đã có kết quả kiểm định: {existingQcResult.outcome}
-              </p>
-              <p className="text-purple-700 mt-0.5">
-                Người duyệt: {existingQcResult.checked_by_name} lúc{' '}
-                {new Date(existingQcResult.checked_at).toLocaleTimeString('vi-VN')}
-              </p>
-              {existingQcResult.note && (
-                <p className="text-purple-800 italic mt-1">"{existingQcResult.note}"</p>
-              )}
+              <span className="text-slate-500">Người thực hiện thi công:</span>{' '}
+              <strong className="text-slate-800">{workOrder.executor_name || workOrder.executor_id || 'Kỹ thuật'}</strong>
+            </div>
+            <div>
+              <span className="text-slate-500">Người kiểm tra hiện tại:</span>{' '}
+              <strong className="text-purple-700">{currentProfile.name}</strong> ({currentProfile.roleTitle})
             </div>
           </div>
-        )}
 
-        {/* Checklist Criteria Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6 text-xs text-slate-700">
+          {/* GUARD WARNING: Self-QC prohibited */}
+          {isSelfExecutor && (
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2.5">
+              <IconAlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block font-bold">Vi phạm nguyên tắc độc lập kiểm định (Segregation of Duties):</strong>
+                <span>Bạn là người trực tiếp thi công phiếu này. Theo quy chế của Ban Quản Lý, người thi công <strong>không được phép tự chấm nghiệm thu QC</strong> công việc của chính mình! Vui lòng chuyển sang vai trò QC Inspector hoặc nhờ Trưởng ca nghiệm thu.</span>
+              </div>
+            </div>
+          )}
+
+          {/* GUARD WARNING: No QC Permission */}
+          {!hasQcPermission && !isSelfExecutor && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+              <IconInfoCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Vai trò <strong>{currentProfile.roleTitle}</strong> chỉ có quyền xem lại, không có thẩm quyền ký ban hành kết quả QC.</span>
+            </div>
+          )}
+
+          {/* GUARD WARNING: Already Inspected & Immutable */}
+          {isAlreadyFinalized && (
+            <div className="p-3.5 bg-purple-50 border border-purple-200 rounded-xl text-xs text-purple-900 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <IconLock className="w-4 h-4 text-purple-600 shrink-0" />
+                <span>Biên bản nghiệm thu này đã được ký ban hành bởi <strong>{existingQcResult?.checked_by_name || existingQcResult?.checked_by}</strong> và được lưu trữ bất biến.</span>
+              </div>
+              <span className="font-bold text-xs px-2 py-0.5 bg-purple-200 rounded">
+                Kết quả: {existingQcResult?.outcome}
+              </span>
+            </div>
+          )}
+
+          {errorMessage && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-800 flex items-center gap-2">
+              <IconAlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {resultSuccess && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-800 flex items-center gap-2">
+              <IconCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{resultSuccess}</span>
+            </div>
+          )}
+
+          {/* Criteria Checklist */}
           <div className="space-y-3">
-            <span className="font-extrabold uppercase tracking-wider text-slate-400 text-[11px] block">
-              Danh mục tiêu chí kiểm tra bắt buộc
-            </span>
+            <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider">
+              1. Đánh giá từng tiêu chuẩn bắt buộc:
+            </h4>
 
             <div className="space-y-2.5">
-              {checklistVersion?.criteria_json.map((criterion: VhChecklistCriterion) => {
-                const state = criteriaState[criterion.id] || { passed: true, note: '' };
+              {checklistVersion?.criteria_json.map((c: VhChecklistCriterion) => {
+                const state = criteriaState[c.id] || { passed: true, note: '' };
+                const disabled = isAlreadyFinalized || isSelfExecutor || !hasQcPermission;
+
                 return (
                   <div
-                    key={criterion.id}
-                    className={`p-3.5 rounded-xl border transition-colors ${
+                    key={c.id}
+                    className={`p-3.5 rounded-xl border transition-all ${
                       state.passed
-                        ? 'bg-slate-50/70 border-slate-200'
-                        : 'bg-rose-50/60 border-rose-200'
+                        ? 'border-slate-200 bg-white'
+                        : 'border-rose-300 bg-rose-50/40 ring-1 ring-rose-200'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
+                      <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-[10px] text-slate-400 font-bold">
-                            {criterion.code}
-                          </span>
-                          {criterion.required && (
-                            <span className="text-[10px] text-rose-500 font-semibold">*Bắt buộc</span>
+                          <span className="font-bold text-xs text-slate-900">{c.label}</span>
+                          {c.required && (
+                            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.2 rounded">
+                              Bắt buộc
+                            </span>
                           )}
                         </div>
-                        <p className="font-bold text-slate-900 text-xs leading-relaxed">
-                          {criterion.label}
-                        </p>
+                        {c.description && <p className="text-[11px] text-slate-500 mt-0.5">{c.description}</p>}
                       </div>
 
-                      {/* Pass / Fail Toggle */}
-                      <div className="flex items-center gap-1.5 shrink-0 bg-white p-1 rounded-lg border border-slate-200">
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           type="button"
-                          onClick={() => toggleCriterion(criterion.id, true)}
-                          className={`px-2.5 py-1 rounded text-[11px] font-bold transition-colors ${
+                          disabled={disabled}
+                          onClick={() => toggleCriterion(c.id, true)}
+                          className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors ${
                             state.passed
-                              ? 'bg-emerald-600 text-white'
-                              : 'text-slate-500 hover:bg-slate-100'
-                          }`}
+                              ? 'bg-emerald-600 text-white shadow-2xs'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          } ${disabled ? 'opacity-70 cursor-not-allowed' : ''}`}
                         >
-                          Đạt
+                          ✓ Đạt
                         </button>
                         <button
                           type="button"
-                          onClick={() => toggleCriterion(criterion.id, false)}
-                          className={`px-2.5 py-1 rounded text-[11px] font-bold transition-colors ${
+                          disabled={disabled}
+                          onClick={() => toggleCriterion(c.id, false)}
+                          className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors ${
                             !state.passed
-                              ? 'bg-rose-600 text-white'
-                              : 'text-slate-500 hover:bg-slate-100'
-                          }`}
+                              ? 'bg-rose-600 text-white shadow-2xs'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          } ${disabled ? 'opacity-70 cursor-not-allowed' : ''}`}
                         >
-                          Không đạt
+                          ✕ Chưa đạt
                         </button>
                       </div>
                     </div>
 
                     {!state.passed && (
-                      <div className="mt-2.5 pt-2 border-t border-rose-100">
+                      <div className="mt-2.5 pt-2 border-t border-rose-200">
                         <input
                           type="text"
-                          placeholder="Ghi rõ lý do không đạt tiêu chuẩn này..."
+                          disabled={disabled}
+                          placeholder="Ghi rõ thông số chưa đạt hoặc lý do..."
                           value={state.note}
-                          onChange={(e) => handleCriterionNote(criterion.id, e.target.value)}
-                          className="w-full p-2 bg-white border border-rose-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-rose-500 text-rose-900 font-medium placeholder-rose-300"
+                          onChange={(e) => handleCriterionNote(c.id, e.target.value)}
+                          className="w-full p-2 bg-white border border-rose-300 rounded-lg text-xs text-rose-900 focus:outline-none"
                         />
                       </div>
                     )}
@@ -242,124 +290,101 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
             </div>
           </div>
 
-          {/* Overall Decision Section */}
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-            <span className="font-bold text-slate-800 block text-xs">
-              Quyết định kết quả tổng thể:
-            </span>
+          {/* Outcome Radio Options */}
+          <div className="space-y-2">
+            <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider">
+              2. Kết luận nghiệm thu tổng thể:
+            </h4>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-              <label
-                className={`p-3 rounded-xl border flex items-center gap-2.5 cursor-pointer transition-colors ${
-                  overallOutcome === 'PASS'
-                    ? 'border-emerald-500 bg-emerald-50/60 text-emerald-900 font-bold ring-1 ring-emerald-500'
-                    : 'border-slate-200 bg-white text-slate-700'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="outcome"
-                  checked={overallOutcome === 'PASS'}
-                  onChange={() => setOverallOutcome('PASS')}
-                  className="w-4 h-4 text-emerald-600 focus:ring-emerald-500"
-                />
-                <div>
-                  <div className="text-xs font-extrabold flex items-center gap-1 text-emerald-700">
-                    <IconCheck className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>QC PASS (Đạt)</span>
-                  </div>
-                  <p className="text-[10px] text-slate-500 font-normal mt-0.5">
-                    Đạt chuẩn, hoàn tất Task.
-                  </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                {
+                  id: 'PASS',
+                  label: 'PASS (Đạt chất lượng)',
+                  desc: 'Đủ điều kiện đóng nhiệm vụ thi công',
+                  activeBorder: 'border-emerald-500 bg-emerald-50/60',
+                },
+                {
+                  id: 'FAIL',
+                  label: 'FAIL (Không đạt)',
+                  desc: 'Tự động tạo phiếu làm lại (Redo)',
+                  activeBorder: 'border-rose-500 bg-rose-50/60',
+                },
+                {
+                  id: 'INCONCLUSIVE',
+                  label: 'INCONCLUSIVE (Kiểm tra lại)',
+                  desc: 'Yêu cầu đo đạc bổ sung thêm',
+                  activeBorder: 'border-amber-500 bg-amber-50/60',
+                },
+              ].map((opt) => (
+                <div
+                  key={opt.id}
+                  onClick={() => {
+                    if (!isAlreadyFinalized && !isSelfExecutor && hasQcPermission) {
+                      setOverallOutcome(opt.id as any);
+                    }
+                  }}
+                  className={`p-3 rounded-xl border transition-all cursor-pointer ${
+                    overallOutcome === opt.id
+                      ? opt.activeBorder + ' shadow-2xs'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  } ${isAlreadyFinalized || isSelfExecutor || !hasQcPermission ? 'cursor-not-allowed opacity-80' : ''}`}
+                >
+                  <div className="font-bold text-xs text-slate-900">{opt.label}</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">{opt.desc}</div>
                 </div>
-              </label>
-
-              <label
-                className={`p-3 rounded-xl border flex items-center gap-2.5 cursor-pointer transition-colors ${
-                  overallOutcome === 'FAIL'
-                    ? 'border-rose-500 bg-rose-50/60 text-rose-900 font-bold ring-1 ring-rose-500'
-                    : 'border-slate-200 bg-white text-slate-700'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="outcome"
-                  checked={overallOutcome === 'FAIL'}
-                  onChange={() => setOverallOutcome('FAIL')}
-                  className="w-4 h-4 text-rose-600 focus:ring-rose-500"
-                />
-                <div>
-                  <div className="text-xs font-extrabold flex items-center gap-1 text-rose-700">
-                    <IconAlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-                    <span>QC FAIL (Làm lại)</span>
-                  </div>
-                  <p className="text-[10px] text-slate-500 font-normal mt-0.5">
-                    Tạo phiếu Redo kế thừa.
-                  </p>
-                </div>
-              </label>
-
-              <label
-                className={`p-3 rounded-xl border flex items-center gap-2.5 cursor-pointer transition-colors ${
-                  overallOutcome === 'INCONCLUSIVE'
-                    ? 'border-amber-500 bg-amber-50/60 text-amber-900 font-bold ring-1 ring-amber-500'
-                    : 'border-slate-200 bg-white text-slate-700'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="outcome"
-                  checked={overallOutcome === 'INCONCLUSIVE'}
-                  onChange={() => setOverallOutcome('INCONCLUSIVE')}
-                  className="w-4 h-4 text-amber-600 focus:ring-amber-500"
-                />
-                <div>
-                  <div className="text-xs font-extrabold flex items-center gap-1 text-amber-700">
-                    <IconInfoCircle className="w-3.5 h-3.5 text-amber-600" />
-                    <span>INCONCLUSIVE</span>
-                  </div>
-                  <p className="text-[10px] text-slate-500 font-normal mt-0.5">
-                    Yêu cầu bổ sung tài liệu.
-                  </p>
-                </div>
-              </label>
-            </div>
-
-            {/* Note */}
-            <div>
-              <label className="text-[11px] font-semibold text-slate-600 block mb-1">
-                Ghi chú nghiệm thu của Kỹ sư QC:
-              </label>
-              <textarea
-                rows={2}
-                value={qcNote}
-                onChange={(e) => setQcNote(e.target.value)}
-                placeholder="Nhập nhận xét tổng thể về chất lượng thi công..."
-                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
-              />
+              ))}
             </div>
           </div>
 
-          {/* Footer Submit */}
-          <div className="pt-2 flex items-center justify-end gap-2.5">
+          {/* Inspection Note */}
+          <div className="space-y-1.5">
+            <label className="font-bold text-xs text-slate-800">Ghi chú & kết luận của người nghiệm thu:</label>
+            <textarea
+              rows={2}
+              disabled={isAlreadyFinalized || isSelfExecutor || !hasQcPermission}
+              value={qcNote}
+              onChange={(e) => setQcNote(e.target.value)}
+              placeholder="VD: Đã kiểm tra áp suất nước đạt 3.8 bar, co nối siết chuẩn, không rỉ..."
+              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-purple-500"
+            />
+          </div>
+
+          {/* Footer Controls */}
+          <div className="flex items-center justify-between pt-3 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
             >
-              Hủy
+              Đóng
             </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className={`px-5 py-2 text-white rounded-xl text-xs font-bold transition-all shadow-sm ${
-                overallOutcome === 'PASS'
-                  ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20'
-                  : 'bg-rose-600 hover:bg-rose-700 shadow-rose-500/20'
-              }`}
-            >
-              {submitting ? 'Đang lưu kết quả...' : 'Xác nhận kết quả QC'}
-            </button>
+
+            {!isAlreadyFinalized && (
+              <button
+                type="submit"
+                disabled={submitting || isSelfExecutor || !hasQcPermission}
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-2xs transition-all flex items-center gap-1.5 ${
+                  overallOutcome === 'PASS'
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                    : overallOutcome === 'FAIL'
+                      ? 'bg-rose-600 hover:bg-rose-700'
+                      : 'bg-amber-600 hover:bg-amber-700'
+                } ${isSelfExecutor || !hasQcPermission ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {overallOutcome === 'FAIL' ? (
+                  <>
+                    <IconArrowBackUp className="w-4 h-4" />
+                    <span>Xác nhận FAIL & Tạo phiếu làm lại (Redo)</span>
+                  </>
+                ) : (
+                  <>
+                    <IconShieldCheck className="w-4 h-4" />
+                    <span>Ký biên bản nghiệm thu ({overallOutcome})</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </form>
       </div>

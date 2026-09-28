@@ -7,6 +7,7 @@ export { OperationsSidebar } from './layout/operations-sidebar';
 
 // Workspace Components
 export { OperationsDashboard } from './components/operations-dashboard';
+export { MyTasksWorkspace } from './components/my-tasks-workspace';
 export { TriageWorkspace } from './components/triage-workspace';
 export { IncidentsWorkspace } from './components/incidents-workspace';
 export { KanbanBoard } from './components/kanban-board';
@@ -15,6 +16,8 @@ export { EvidenceGallery } from './components/evidence-gallery';
 export { QcWorkspace } from './components/qc-workspace';
 export { ApprovalQueue } from './components/approval-queue';
 export { SanitationWorkspace } from './components/sanitation-workspace';
+export { SecurityWorkspace } from './components/security-workspace';
+export { ContractorWorkspace } from './components/contractor-workspace';
 
 // Modals & Dialogs
 export { WorkOrderDialog } from './components/work-order-dialog';

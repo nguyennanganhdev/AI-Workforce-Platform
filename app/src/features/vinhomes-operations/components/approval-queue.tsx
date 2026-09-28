@@ -43,9 +43,9 @@ export function ApprovalQueue() {
   const handleConfirmDecision = () => {
     if (!selectedApproval) return;
     if (decisionType === 'APPROVE') {
-      approveAction(selectedApproval.id, 'usr-mgr-01', 'Vũ Đức Thịnh (Trưởng BQL)', decisionReason);
+      approveAction(selectedApproval.id, decisionReason);
     } else {
-      rejectAction(selectedApproval.id, 'usr-mgr-01', 'Vũ Đức Thịnh (Trưởng BQL)', decisionReason);
+      rejectAction(selectedApproval.id, decisionReason);
     }
     setModalOpen(false);
   };

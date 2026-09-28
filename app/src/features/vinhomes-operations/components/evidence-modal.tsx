@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import {
   IconX,
   IconPhoto,
@@ -8,6 +8,11 @@ import {
   IconDeviceMobile,
   IconCalendar,
   IconColumns,
+  IconUpload,
+  IconMapPin,
+  IconShieldCheck,
+  IconCamera,
+  IconFileCheck,
 } from '@tabler/icons-react';
 import type { VhWorkOrder } from '../types/work-order';
 import type { CapturePhase } from '../types/evidence';
@@ -19,47 +24,89 @@ interface EvidenceModalProps {
 }
 
 export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
-  const { evidence, addEvidence } = useOperationsData();
+  const { evidence, addEvidence, currentProfile } = useOperationsData();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const relatedEvidence = useMemo(() => {
     return evidence.filter((e) => e.work_order_id === workOrder.id);
   }, [evidence, workOrder.id]);
 
-  const [activeTab, setActiveTab] = useState<'ALL' | 'BEFORE' | 'AFTER' | 'COMPARISON'>('COMPARISON');
+  const [activeTab, setActiveTab] = useState<'COMPARISON' | 'ALL'>('COMPARISON');
   const [newCaption, setNewCaption] = useState('');
-  const [newPhase, setNewPhase] = useState<CapturePhase>('AFTER');
+  const [newPhase, setNewPhase] = useState<CapturePhase>('BEFORE');
   const [isUploading, setIsUploading] = useState(false);
+
+  // File Upload State
+  const [selectedFileUrl, setSelectedFileUrl] = useState<string | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState<string>('');
+  const [selectedFileSize, setSelectedFileSize] = useState<number>(0);
+  const [showWatermark, setShowWatermark] = useState(true);
 
   const beforeItems = relatedEvidence.filter((e) => e.capture_phase === 'BEFORE');
   const afterItems = relatedEvidence.filter((e) => e.capture_phase === 'AFTER');
   const qcItems = relatedEvidence.filter((e) => e.capture_phase === 'QC');
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFileName(file.name);
+      setSelectedFileSize(file.size);
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setSelectedFileUrl(event.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleUseSamplePhoto = (phase: CapturePhase) => {
+    setSelectedFileName(`sample_${phase.toLowerCase()}_camera.jpg`);
+    setSelectedFileSize(1024 * 650); // ~650 KB
+    if (phase === 'BEFORE') {
+      setSelectedFileUrl('https://images.unsplash.com/photo-1584992236310-6edddc08acff?w=1000&auto=format&fit=crop&q=80');
+      setNewCaption('Hiện trạng rò rỉ nước tại van áp suất trục cấp tầng 12 trước thi công');
+    } else if (phase === 'AFTER') {
+      setSelectedFileUrl('https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=1000&auto=format&fit=crop&q=80');
+      setNewCaption('Đã thay thế gioăng cao su chịu áp và siết chặt co nối, khu vực khô ráo');
+    } else {
+      setSelectedFileUrl('https://images.unsplash.com/photo-1541888946425-d0fbb18f15f7?w=1000&auto=format&fit=crop&q=80');
+      setNewCaption('Biên bản đo kiểm định áp suất nước đạt 3.8 bar an toàn');
+    }
+  };
+
   const handleUpload = (e: React.FormEvent) => {
     e.preventDefault();
+    const finalUrl =
+      selectedFileUrl ||
+      (newPhase === 'BEFORE'
+        ? 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?w=1000&auto=format&fit=crop&q=80'
+        : 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=1000&auto=format&fit=crop&q=80');
+
     addEvidence({
       incident_id: workOrder.incident_id,
       task_id: workOrder.task_id,
       work_order_id: workOrder.id,
-      file_id: `FILE-${Date.now().toString().slice(-4)}`,
-      kind: 'IMAGE',
       capture_phase: newPhase,
-      metadata: {
-        caption: newCaption || `Ảnh nghiệm thu ${newPhase} tại hiện trường`,
-        locationNote: 'Khu vực làm việc thực tế',
-        deviceInfo: 'Camera giám sát di động',
+      file_url: finalUrl,
+      caption: newCaption || `Ảnh nghiệm thu ${newPhase === 'BEFORE' ? 'Trước' : newPhase === 'AFTER' ? 'Sau' : 'QC'} tại hiện trường`,
+      fileMetadata: {
+        fileName: selectedFileName || 'photo_capture.jpg',
+        sizeBytes: selectedFileSize || 450000,
+        gpsCoordinates: '21.0031° N, 105.7489° E (Vinhomes Smart City - S2.01)',
       },
-      file_url:
-        newPhase === 'BEFORE'
-          ? 'https://images.unsplash.com/photo-1584992236310-6edddc08acff?w=800&auto=format&fit=crop&q=80'
-          : 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=800&auto=format&fit=crop&q=80',
-      uploaded_by: workOrder.executor_id || 'usr-tech-01',
     });
+
+    // Reset Form
+    setSelectedFileUrl(null);
+    setSelectedFileName('');
+    setSelectedFileSize(0);
     setNewCaption('');
     setIsUploading(false);
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans">
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans">
       <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200">
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
@@ -71,9 +118,11 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
                 <span className="font-mono text-xs px-2 py-0.5 bg-blue-50 text-blue-700 font-bold rounded">
                   {workOrder.id}
                 </span>
+                <span className="text-xs text-slate-400">•</span>
+                <span className="text-xs text-slate-600 font-medium">Lần thi công #{workOrder.attempt_no}</span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Đối chứng hình ảnh trước và sau khi hoàn thành • {relatedEvidence.length} ảnh ghi nhận
+                Chụp ảnh Before/After có đóng dấu Watermark toạ độ, thời gian & danh tính người thao tác
               </p>
             </div>
           </div>
@@ -84,8 +133,8 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
               onClick={() => setIsUploading(!isUploading)}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
             >
-              <IconPlus className="w-4 h-4" />
-              <span>Chụp / Tải ảnh</span>
+              <IconCamera className="w-4 h-4" />
+              <span>{isUploading ? 'Đóng form chụp' : 'Chụp / Tải ảnh mới'}</span>
             </button>
             <button
               type="button"
@@ -97,36 +146,137 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
           </div>
         </div>
 
-        {/* Upload Form (Expandable) */}
+        {/* Upload Form with Real File Input & Preview */}
         {isUploading && (
-          <form onSubmit={handleUpload} className="p-4 bg-blue-50/60 border-b border-blue-100 flex flex-wrap items-center gap-3 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-blue-900">Giai đoạn:</span>
-              <select
-                value={newPhase}
-                onChange={(e) => setNewPhase(e.target.value as CapturePhase)}
-                className="bg-white border border-slate-200 rounded-lg p-1.5 text-xs font-semibold"
-              >
-                <option value="BEFORE">Trước khi làm</option>
-                <option value="AFTER">Sau khi hoàn thành</option>
-                <option value="QC">Biên bản nghiệm thu</option>
-              </select>
+          <form onSubmit={handleUpload} className="p-5 bg-blue-50/70 border-b border-blue-200 space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-xs text-blue-900 flex items-center gap-1.5">
+                <IconCamera className="w-4 h-4 text-blue-600" />
+                <span>Thao tác máy ảnh & Tải tệp thực tế</span>
+              </span>
+              <span className="text-[11px] text-slate-500 font-medium">
+                Người tải: <strong>{currentProfile.name}</strong> ({currentProfile.roleTitle})
+              </span>
             </div>
 
+            {/* Hidden HTML File Input with capture="environment" for Mobile Cameras */}
             <input
-              type="text"
-              placeholder="Nhập mô tả hình ảnh hoặc kết quả đo..."
-              value={newCaption}
-              onChange={(e) => setNewCaption(e.target.value)}
-              className="flex-1 min-w-[200px] p-2 bg-white border border-slate-200 rounded-lg text-xs"
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileChange}
+              className="hidden"
             />
 
-            <button
-              type="submit"
-              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg"
-            >
-              Xác nhận tải lên
-            </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* File Selection Controls */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-xs text-slate-700 w-24">Giai đoạn:</span>
+                  <select
+                    value={newPhase}
+                    onChange={(e) => setNewPhase(e.target.value as CapturePhase)}
+                    className="flex-1 bg-white border border-slate-300 rounded-lg p-2 text-xs font-semibold focus:outline-none"
+                  >
+                    <option value="BEFORE">1. Trước khi làm (BEFORE - Bắt buộc)</option>
+                    <option value="AFTER">2. Sau khi hoàn thành (AFTER - Bắt buộc)</option>
+                    <option value="QC">3. Nghiệm thu độc lập (QC)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="font-bold text-xs text-slate-700">Mô tả chi tiết ảnh / Kết quả đo:</span>
+                  <input
+                    type="text"
+                    required
+                    placeholder="VD: Van áp suất trục C tầng 12 đã siết chặt co nối..."
+                    value={newCaption}
+                    onChange={(e) => setNewCaption(e.target.value)}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none"
+                  />
+                </div>
+
+                {/* File picker buttons */}
+                <div className="pt-1 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-800 rounded-xl text-xs font-bold border border-slate-300 flex items-center gap-1.5 transition-colors shadow-2xs"
+                  >
+                    <IconUpload className="w-4 h-4 text-blue-600" />
+                    <span>Mở Camera / Chọn ảnh từ máy</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleUseSamplePhoto(newPhase)}
+                    className="px-3 py-2 bg-blue-100/80 hover:bg-blue-200 text-blue-800 rounded-xl text-xs font-semibold transition-colors"
+                  >
+                    ⚡ Dùng ảnh mẫu ({newPhase})
+                  </button>
+                </div>
+
+                {selectedFileName && (
+                  <div className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs flex items-center justify-between text-slate-600">
+                    <span className="truncate max-w-[200px]">Tệp: <strong>{selectedFileName}</strong></span>
+                    <span className="font-mono text-slate-400">{Math.round(selectedFileSize / 1024)} KB</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Live Preview with Realtime Watermark Overlay */}
+              <div className="space-y-2">
+                <span className="font-bold text-xs text-slate-700 block">Xem trước ảnh & Dấu Watermark:</span>
+                <div className="relative aspect-video bg-slate-900 rounded-xl overflow-hidden border border-slate-300 shadow-inner">
+                  {selectedFileUrl ? (
+                    <>
+                      <img
+                        src={selectedFileUrl}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                      />
+                      {showWatermark && (
+                        <div className="absolute inset-x-0 bottom-0 p-2.5 bg-gradient-to-t from-black/80 via-black/40 to-transparent text-white font-mono text-[9px] leading-relaxed backdrop-blur-2xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-yellow-400">VINHOMES OPERATIONS • {workOrder.id}</span>
+                            <span>{newPhase}</span>
+                          </div>
+                          <div>Toạ độ: 21.0031° N, 105.7489° E (Vinhomes Smart City)</div>
+                          <div>Thời gian: {new Date().toLocaleString('vi-VN')}</div>
+                          <div>Người chụp: {currentProfile.name} ({currentProfile.roleTitle})</div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 text-xs p-4 text-center">
+                      <IconCamera className="w-8 h-8 text-slate-500 mb-1" />
+                      <span>Chưa có ảnh được chọn. Bấm "Mở Camera" hoặc "Dùng ảnh mẫu".</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-blue-200/60">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsUploading(false);
+                  setSelectedFileUrl(null);
+                }}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-2xs flex items-center gap-1.5 transition-colors"
+              >
+                <IconCheck className="w-4 h-4" />
+                <span>Lưu & Đính kèm bằng chứng</span>
+              </button>
+            </div>
           </form>
         )}
 
@@ -142,7 +292,7 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
             }`}
           >
             <IconColumns className="w-4 h-4" />
-            <span>So sánh Trước ⟷ Sau</span>
+            <span>Đối chứng Trước ⟷ Sau ({beforeItems.length} Trước / {afterItems.length} Sau)</span>
           </button>
           <button
             type="button"
@@ -154,7 +304,7 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
             }`}
           >
             <IconPhoto className="w-4 h-4" />
-            <span>Tất cả ({relatedEvidence.length})</span>
+            <span>Tất cả bằng chứng ({relatedEvidence.length})</span>
           </button>
         </div>
 
@@ -167,14 +317,14 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
               <div className="space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-rose-100">
                   <span className="text-xs font-extrabold uppercase tracking-wider text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full">
-                    Trước khi làm
+                    Ảnh trước khi thi công (BEFORE)
                   </span>
                   <span className="text-[11px] text-slate-400 font-semibold">{beforeItems.length} ảnh</span>
                 </div>
 
                 {beforeItems.length === 0 ? (
-                  <div className="p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-xs">
-                    Chưa có hình ảnh trước thi công
+                  <div className="p-8 border-2 border-dashed border-rose-200 rounded-2xl text-center text-rose-600 text-xs bg-rose-50/30">
+                    ✕ Chưa có hình ảnh trước thi công. Bắt buộc phải có trước khi báo hoàn thành!
                   </div>
                 ) : (
                   beforeItems.map((item) => (
@@ -188,12 +338,16 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
                         <span className="absolute top-2 left-2 px-2 py-0.5 bg-rose-600/90 text-white font-bold text-[10px] rounded backdrop-blur-xs">
                           Trước khi làm
                         </span>
+                        <div className="absolute inset-x-0 bottom-0 p-2 bg-black/60 text-white font-mono text-[8px] leading-tight">
+                          <div>Toạ độ: {String(item.metadata.gpsCoordinates || '21.0031° N, 105.7489° E')}</div>
+                          <div>Người chụp: {String(item.metadata.uploadedByName || item.uploaded_by)}</div>
+                        </div>
                       </div>
                       <div className="p-3.5 space-y-1">
                         <p className="font-bold text-xs text-slate-800">{item.metadata.caption}</p>
                         <p className="text-[11px] text-slate-400 flex items-center gap-1">
                           <IconCalendar className="w-3 h-3" />
-                          {new Date(item.created_at).toLocaleTimeString('vi-VN')} • {item.metadata.locationNote}
+                          <span>{new Date(item.created_at).toLocaleTimeString('vi-VN')}</span>
                         </p>
                       </div>
                     </div>
@@ -205,14 +359,14 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
               <div className="space-y-3">
                 <div className="flex items-center justify-between pb-2 border-b border-emerald-100">
                   <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
-                    Sau khi hoàn thành
+                    Ảnh sau khi hoàn thành (AFTER)
                   </span>
                   <span className="text-[11px] text-slate-400 font-semibold">{afterItems.length} ảnh</span>
                 </div>
 
                 {afterItems.length === 0 ? (
-                  <div className="p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-xs">
-                    Chưa có hình ảnh sau hoàn thành
+                  <div className="p-8 border-2 border-dashed border-emerald-200 rounded-2xl text-center text-emerald-600 text-xs bg-emerald-50/30">
+                    ✕ Chưa có hình ảnh sau hoàn thành. Bắt buộc phải có để tiến hành nghiệm thu QC!
                   </div>
                 ) : (
                   afterItems.map((item) => (
@@ -226,12 +380,16 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
                         <span className="absolute top-2 left-2 px-2 py-0.5 bg-emerald-600/90 text-white font-bold text-[10px] rounded backdrop-blur-xs">
                           Đã hoàn thành
                         </span>
+                        <div className="absolute inset-x-0 bottom-0 p-2 bg-black/60 text-white font-mono text-[8px] leading-tight">
+                          <div>Toạ độ: {String(item.metadata.gpsCoordinates || '21.0031° N, 105.7489° E')}</div>
+                          <div>Người chụp: {String(item.metadata.uploadedByName || item.uploaded_by)}</div>
+                        </div>
                       </div>
                       <div className="p-3.5 space-y-1">
                         <p className="font-bold text-xs text-slate-800">{item.metadata.caption}</p>
                         <p className="text-[11px] text-slate-400 flex items-center gap-1">
                           <IconCalendar className="w-3 h-3" />
-                          {new Date(item.created_at).toLocaleTimeString('vi-VN')} • {item.metadata.locationNote}
+                          <span>{new Date(item.created_at).toLocaleTimeString('vi-VN')}</span>
                         </p>
                       </div>
                     </div>
@@ -251,38 +409,27 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
                       className="w-full h-full object-cover"
                     />
                     <span
-                      className={`absolute top-2 left-2 px-2 py-0.5 text-white font-bold text-[10px] rounded backdrop-blur-xs ${
+                      className={`absolute top-2 left-2 px-2 py-0.5 text-white font-bold text-[10px] rounded ${
                         item.capture_phase === 'BEFORE'
-                          ? 'bg-rose-600/90'
+                          ? 'bg-rose-600'
                           : item.capture_phase === 'AFTER'
-                            ? 'bg-emerald-600/90'
-                            : 'bg-purple-600/90'
+                            ? 'bg-emerald-600'
+                            : 'bg-purple-600'
                       }`}
                     >
-                      {item.capture_phase}
+                      {item.capture_phase === 'BEFORE' ? 'Trước khi làm' : item.capture_phase === 'AFTER' ? 'Sau khi làm' : 'QC'}
                     </span>
                   </div>
                   <div className="p-3 space-y-1">
                     <p className="font-bold text-xs text-slate-800 line-clamp-1">{item.metadata.caption}</p>
-                    <p className="text-[11px] text-slate-400">
-                      {new Date(item.created_at).toLocaleTimeString('vi-VN')}
+                    <p className="text-[10px] text-slate-400">
+                      Người chụp: {String(item.metadata.uploadedByName || item.uploaded_by)}
                     </p>
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </div>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-slate-100 flex items-center justify-end bg-slate-50/50">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm"
-          >
-            Đóng kho ảnh
-          </button>
         </div>
       </div>
     </div>

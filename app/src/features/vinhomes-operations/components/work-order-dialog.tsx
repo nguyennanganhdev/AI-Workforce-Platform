@@ -18,17 +18,23 @@ interface WorkOrderDialogProps {
 }
 
 export function WorkOrderDialog({ workOrder, onClose }: WorkOrderDialogProps) {
-  const { updateWorkOrderStatus, tasks, incidents } = useOperationsData();
+  const { transitionWorkOrderStatus, tasks, incidents } = useOperationsData();
 
   const task = tasks.find((t) => t.id === workOrder.task_id);
   const incident = incidents.find((i) => i.id === workOrder.incident_id);
 
   const [note, setNote] = useState((workOrder.result?.note as string) || '');
   const [currentStatus, setCurrentStatus] = useState(workOrder.status);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleUpdate = (status: VhWorkOrder['status']) => {
-    updateWorkOrderStatus(workOrder.id, status, note);
-    setCurrentStatus(status);
+    try {
+      setErrorMsg(null);
+      transitionWorkOrderStatus(workOrder.id, status, { note });
+      setCurrentStatus(status);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Lỗi kiểm soát trạng thái');
+    }
   };
 
   return (
@@ -146,6 +152,17 @@ export function WorkOrderDialog({ workOrder, onClose }: WorkOrderDialogProps) {
             />
           </div>
 
+          {/* Error Message if Guard Fails */}
+          {errorMsg && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-xs text-rose-800">
+              <span className="font-bold text-rose-600 text-sm">⚠️</span>
+              <div>
+                <p className="font-bold">Kiểm soát quy trình thất bại:</p>
+                <p>{errorMsg}</p>
+              </div>
+            </div>
+          )}
+
           {/* Status Quick Actions */}
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
             <span className="font-bold text-slate-800 block text-xs">Chuyển trạng thái phiếu:</span>
@@ -163,6 +180,17 @@ export function WorkOrderDialog({ workOrder, onClose }: WorkOrderDialogProps) {
               </button>
               <button
                 type="button"
+                onClick={() => handleUpdate('BLOCKED')}
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                  currentStatus === 'BLOCKED'
+                    ? 'bg-orange-600 text-white shadow-2xs'
+                    : 'bg-white border border-slate-200 text-orange-700 hover:bg-orange-50'
+                }`}
+              >
+                Bị chặn (Tạm dừng)
+              </button>
+              <button
+                type="button"
                 onClick={() => handleUpdate('COMPLETED')}
                 className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
                   currentStatus === 'COMPLETED'
@@ -170,18 +198,7 @@ export function WorkOrderDialog({ workOrder, onClose }: WorkOrderDialogProps) {
                     : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                Đã hoàn thành
-              </button>
-              <button
-                type="button"
-                onClick={() => handleUpdate('FAILED')}
-                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                  currentStatus === 'FAILED'
-                    ? 'bg-rose-600 text-white shadow-2xs'
-                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                Không đạt (Yêu cầu làm lại)
+                Đã hoàn thành (Chờ QC)
               </button>
             </div>
           </div>

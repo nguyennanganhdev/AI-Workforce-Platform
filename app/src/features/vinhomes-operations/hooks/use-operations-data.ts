@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import type {
   VhIncident,
   VhTask,
@@ -12,7 +12,14 @@ import type {
   OperationsPersona,
   IncidentStage,
   IncidentSeverity,
+  SecurityCheckpoint,
+  SecurityIncidentReport,
+  SecurityShiftHandover,
+  CleaningPlan,
+  MenuId,
+  CapturePhase,
 } from '../types';
+import { PERSONA_PROFILES } from '../types/persona';
 import {
   MOCK_INCIDENTS,
   MOCK_TASKS,
@@ -22,9 +29,12 @@ import {
   MOCK_APPROVALS,
   MOCK_CASES,
   MOCK_ISSUE_CANDIDATES,
+  MOCK_SECURITY_CHECKPOINTS,
+  MOCK_SECURITY_INCIDENTS,
+  MOCK_SECURITY_HANDOVERS,
 } from '../mock';
 
-const STORAGE_KEY_PREFIX = 'vhm_operations_data_v2';
+const STORAGE_KEY_PREFIX = 'vhm_operations_data_v3';
 
 export function useOperationsData() {
   // 1. Cases & Issue Candidates (Intake / Triage)
@@ -96,7 +106,7 @@ export function useOperationsData() {
     }
   });
 
-  // 7. Approvals & Execution Grants
+  // 7. Action Approvals & Grants
   const [approvals, setApprovals] = useState<VhActionApproval[]>(() => {
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_approvals`);
@@ -115,7 +125,35 @@ export function useOperationsData() {
     }
   });
 
-  // Current active persona: 'STAFF_TECHNICAL' | 'STAFF_SANITATION' | 'MANAGER'
+  // 8. Security Operations
+  const [securityCheckpoints, setSecurityCheckpoints] = useState<SecurityCheckpoint[]>(() => {
+    try {
+      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_sec_cp`);
+      return stored ? JSON.parse(stored) : MOCK_SECURITY_CHECKPOINTS;
+    } catch {
+      return MOCK_SECURITY_CHECKPOINTS;
+    }
+  });
+
+  const [securityIncidents, setSecurityIncidents] = useState<SecurityIncidentReport[]>(() => {
+    try {
+      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_sec_inc`);
+      return stored ? JSON.parse(stored) : MOCK_SECURITY_INCIDENTS;
+    } catch {
+      return MOCK_SECURITY_INCIDENTS;
+    }
+  });
+
+  const [securityHandovers, setSecurityHandovers] = useState<SecurityShiftHandover[]>(() => {
+    try {
+      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_sec_handovers`);
+      return stored ? JSON.parse(stored) : MOCK_SECURITY_HANDOVERS;
+    } catch {
+      return MOCK_SECURITY_HANDOVERS;
+    }
+  });
+
+  // 9. Current active persona (7 roles)
   const [currentPersona, setCurrentPersona] = useState<OperationsPersona>(() => {
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_persona`);
@@ -124,6 +162,44 @@ export function useOperationsData() {
       return 'STAFF_TECHNICAL';
     }
   });
+
+  const currentProfile = useMemo(() => {
+    return PERSONA_PROFILES[currentPersona] || PERSONA_PROFILES.STAFF_TECHNICAL;
+  }, [currentPersona]);
+
+  // Menu permission check
+  const canAccessMenu = useCallback(
+    (menuId: MenuId): boolean => {
+      return currentProfile.allowedMenuIds.includes(menuId);
+    },
+    [currentProfile],
+  );
+
+  // Filter "My Work Orders" according to active persona
+  const myWorkOrders = useMemo(() => {
+    return workOrders.filter((wo) => {
+      // 1. Matched by executor_id
+      if (wo.executor_id === currentProfile.id) return true;
+
+      // 2. Role-based fallback matching
+      if (currentPersona === 'STAFF_TECHNICAL' && (wo.checklist_version_id?.includes('MEP') || wo.executor_id === 'usr-tech-01')) {
+        return true;
+      }
+      if (currentPersona === 'STAFF_SANITATION_A5' && (wo.checklist_version_id?.includes('SAN') || wo.executor_id === 'usr-cleaner-01')) {
+        return true;
+      }
+      if (currentPersona === 'CONTRACTOR' && (wo.executor_type === 'CONTRACTOR' || wo.executor_id === 'usr-contractor-01')) {
+        return true;
+      }
+      if (currentPersona === 'STAFF_SECURITY' && (wo.checklist_version_id?.includes('SEC') || wo.executor_id === 'usr-sec-01')) {
+        return true;
+      }
+      if (currentPersona === 'SUPERVISOR' || currentPersona === 'MANAGER') {
+        return true; // Supervisors and managers oversee all
+      }
+      return false;
+    });
+  }, [workOrders, currentProfile, currentPersona]);
 
   // Persist state
   useEffect(() => {
@@ -137,37 +213,52 @@ export function useOperationsData() {
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_qc_results`, JSON.stringify(qcResults));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_approvals`, JSON.stringify(approvals));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_grants`, JSON.stringify(executionGrants));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_sec_cp`, JSON.stringify(securityCheckpoints));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_sec_inc`, JSON.stringify(securityIncidents));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_sec_handovers`, JSON.stringify(securityHandovers));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_persona`, currentPersona);
     } catch (e) {
       console.warn('Failed to sync operations state to localStorage', e);
     }
-  }, [cases, issueCandidates, incidents, tasks, workOrders, evidence, qcResults, approvals, executionGrants, currentPersona]);
+  }, [
+    cases,
+    issueCandidates,
+    incidents,
+    tasks,
+    workOrders,
+    evidence,
+    qcResults,
+    approvals,
+    executionGrants,
+    securityCheckpoints,
+    securityIncidents,
+    securityHandovers,
+    currentPersona,
+  ]);
 
   // ==========================================
-  // 1. INTAKE & TRIAGE ACTIONS
+  // INTAKE & TRIAGE
   // ==========================================
   const materializeCandidate = useCallback((candidateId: string) => {
     const candidate = issueCandidates.find((c) => c.id === candidateId);
     if (!candidate) return null;
 
-    const incidentId = `INC-2026-${Math.floor(100 + Math.random() * 900)}`;
+    const newIncidentId = `INC-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
     const now = new Date().toISOString();
 
     const newIncident: VhIncident = {
-      id: incidentId,
+      id: newIncidentId,
       tenant_id: 'tenant-vhm-sc',
-      project_id: 'vh-smart-city',
-      tower_id: candidate.location_json.towerCode ? `tower-${candidate.location_json.towerCode.toLowerCase()}` : null,
-      category: candidate.category,
-      title: candidate.normalized_summary,
+      project_id: 'proj-smart-city',
+      tower_id: candidate.location_json.towerCode || 'S2.01',
+      category: candidate.category || 'TECHNICAL',
+      title: candidate.normalized_summary || 'Sự cố hiện trường cần xử lý',
       location_json: candidate.location_json,
-      severity: candidate.severity,
+      severity: candidate.severity || 'P3',
       status: 'OPEN',
-      stage: 'TRIAGE',
-      owner_user_id: null,
-      sla_due_at: candidate.severity === 'P1'
-        ? new Date(Date.now() + 45 * 60 * 1000).toISOString()
-        : new Date(Date.now() + 120 * 60 * 1000).toISOString(),
+      stage: 'PLANNING',
+      owner_user_id: currentProfile.id,
+      sla_due_at: new Date(Date.now() + 4 * 3600 * 1000).toISOString(),
       resolved_at: null,
       closed_at: null,
       version: 1,
@@ -180,52 +271,68 @@ export function useOperationsData() {
     setIssueCandidates((prev) =>
       prev.map((c) =>
         c.id === candidateId
-          ? { ...c, status: 'MATERIALIZED', materialized_incident_id: incidentId, updated_at: now }
+          ? { ...c, status: 'MATERIALIZED' as const, materialized_incident_id: newIncidentId, updated_at: now }
           : c,
       ),
     );
 
     return newIncident;
-  }, [issueCandidates]);
+  }, [issueCandidates, currentProfile]);
 
   const splitIssueCandidate = useCallback(
-    (candidateId: string, partA: Partial<VhIssueCandidate>, partB: Partial<VhIssueCandidate>) => {
-      const parent = issueCandidates.find((c) => c.id === candidateId);
-      if (!parent) return;
+    (candidateId: string, partA: { domain: string; summary: string }, partB: { domain: string; summary: string }) => {
+      const original = issueCandidates.find((c) => c.id === candidateId);
+      if (!original) return null;
 
       const now = new Date().toISOString();
-      const childA: VhIssueCandidate = {
-        ...parent,
-        ...partA,
-        id: `${parent.id}-A`,
+      const idA = `CAN-SPLIT-${Date.now().toString().slice(-4)}-1`;
+      const idB = `CAN-SPLIT-${Date.now().toString().slice(-4)}-2`;
+
+      const candidateA: VhIssueCandidate = {
+        ...original,
+        id: idA,
+        domain: partA.domain,
+        normalized_summary: partA.summary,
+        status: 'READY',
+        confidence: 0.95,
         created_at: now,
         updated_at: now,
       };
 
-      const childB: VhIssueCandidate = {
-        ...parent,
-        ...partB,
-        id: `${parent.id}-B`,
+      const candidateB: VhIssueCandidate = {
+        ...original,
+        id: idB,
+        domain: partB.domain,
+        normalized_summary: partB.summary,
+        status: 'READY',
+        confidence: 0.95,
         created_at: now,
         updated_at: now,
       };
 
       setIssueCandidates((prev) => [
-        childA,
-        childB,
-        ...prev.map((c) => (c.id === candidateId ? { ...c, status: 'DISCARDED' as const } : c)),
+        candidateA,
+        candidateB,
+        ...prev.map((c) => (c.id === candidateId ? { ...c, status: 'DISCARDED' as const, updated_at: now } : c)),
       ]);
+
+      return { candidateA, candidateB };
     },
     [issueCandidates],
   );
 
   const mergeIssueCandidates = useCallback(
-    (sourceId: string, targetId: string) => {
+    (sourceCandidateId: string, targetCandidateId: string) => {
       const now = new Date().toISOString();
       setIssueCandidates((prev) =>
         prev.map((c) => {
-          if (c.id === sourceId) {
-            return { ...c, status: 'MERGED', merged_into_id: targetId, updated_at: now };
+          if (c.id === sourceCandidateId) {
+            return {
+              ...c,
+              status: 'MERGED' as const,
+              merged_into_id: targetCandidateId,
+              updated_at: now,
+            };
           }
           return c;
         }),
@@ -235,75 +342,87 @@ export function useOperationsData() {
   );
 
   // ==========================================
-  // 2. INCIDENT LIFECYCLE ACTIONS
+  // INCIDENT MANAGEMENT
   // ==========================================
   const assignIncidentOwner = useCallback((incidentId: string, ownerUserId: string) => {
     setIncidents((prev) =>
-      prev.map((inc) =>
-        inc.id === incidentId
-          ? { ...inc, owner_user_id: ownerUserId, stage: inc.stage === 'INTAKE' ? 'TRIAGE' : inc.stage, updated_at: new Date().toISOString() }
-          : inc,
+      prev.map((i) =>
+        i.id === incidentId
+          ? {
+              ...i,
+              owner_user_id: ownerUserId,
+              stage: i.stage === 'INTAKE' ? 'TRIAGE' : i.stage,
+              updated_at: new Date().toISOString(),
+            }
+          : i,
       ),
     );
   }, []);
 
   const transitionIncidentStage = useCallback((incidentId: string, nextStage: IncidentStage) => {
     setIncidents((prev) =>
-      prev.map((inc) =>
-        inc.id === incidentId
-          ? { ...inc, stage: nextStage, updated_at: new Date().toISOString() }
-          : inc,
-      ),
+      prev.map((i) => (i.id === incidentId ? { ...i, stage: nextStage, updated_at: new Date().toISOString() } : i)),
     );
   }, []);
 
-  // Resolve Guard: Only allow resolve when all tasks are DONE and work orders are completed!
   const resolveIncident = useCallback(
     (incidentId: string) => {
       const incidentTasks = tasks.filter((t) => t.incident_id === incidentId);
-      const incidentWos = workOrders.filter((w) => w.incident_id === incidentId);
+      const pendingTasks = incidentTasks.filter((t) => t.status !== 'DONE');
 
-      const hasUnfinishedTasks = incidentTasks.some((t) => t.status !== 'DONE' && t.status !== 'CANCELLED');
-      const hasUnfinishedWos = incidentWos.some((w) => w.status !== 'COMPLETED' && w.status !== 'CANCELLED');
-
-      if (hasUnfinishedTasks || hasUnfinishedWos) {
-        throw new Error(
-          'Không thể hoàn tất Sự cố: Vẫn còn nhiệm vụ chưa hoàn thành (DONE) hoặc phiếu công việc chưa nghiệm thu!',
-        );
+      if (pendingTasks.length > 0) {
+        throw new Error(`Không thể đóng sự cố: Còn ${pendingTasks.length} nhiệm vụ chưa hoàn thành (DONE).`);
       }
 
-      const now = new Date().toISOString();
+      const pendingWos = workOrders.filter((w) => w.incident_id === incidentId && w.status !== 'COMPLETED');
+      if (pendingWos.length > 0) {
+        throw new Error(`Không thể đóng sự cố: Còn ${pendingWos.length} phiếu thi công chưa hoàn tất.`);
+      }
+
       setIncidents((prev) =>
-        prev.map((inc) =>
-          inc.id === incidentId
-            ? { ...inc, status: 'RESOLVED', stage: 'RESIDENT_CONFIRMATION', resolved_at: now, updated_at: now }
-            : inc,
+        prev.map((i) =>
+          i.id === incidentId
+            ? {
+                ...i,
+                status: 'RESOLVED',
+                stage: 'RESIDENT_CONFIRMATION',
+                resolved_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              }
+            : i,
         ),
       );
     },
     [tasks, workOrders],
   );
 
-  // Resident Confirmation: Accept closes incident; Reject reopens to PLANNING!
-  const residentConfirmIncident = useCallback(
-    (incidentId: string, confirmed: boolean, _feedback?: string) => {
-      const now = new Date().toISOString();
-      setIncidents((prev) =>
-        prev.map((inc) => {
-          if (inc.id !== incidentId) return inc;
-          if (confirmed) {
-            return { ...inc, status: 'CLOSED', closed_at: now, updated_at: now };
-          }
-          // If resident rejects: REOPEN to PLANNING
-          return { ...inc, status: 'OPEN', stage: 'PLANNING', resolved_at: null, updated_at: now };
-        }),
-      );
-    },
-    [],
-  );
+  const residentConfirmIncident = useCallback((incidentId: string, confirmed: boolean) => {
+    const now = new Date().toISOString();
+    setIncidents((prev) =>
+      prev.map((i) => {
+        if (i.id !== incidentId) return i;
+        if (confirmed) {
+          return {
+            ...i,
+            status: 'CLOSED',
+            stage: 'RESIDENT_CONFIRMATION',
+            closed_at: now,
+            updated_at: now,
+          };
+        } else {
+          return {
+            ...i,
+            status: 'OPEN',
+            stage: 'EXECUTION',
+            updated_at: now,
+          };
+        }
+      }),
+    );
+  }, []);
 
   // ==========================================
-  // 3. TASK LIFECYCLE & DEPENDENCY
+  // TASK MANAGEMENT
   // ==========================================
   const updateTaskStatus = useCallback((taskId: string, nextStatus: VhTask['status']) => {
     setTasks((prev) =>
@@ -311,116 +430,131 @@ export function useOperationsData() {
     );
   }, []);
 
-  const createDomainTask = useCallback((newTask: Omit<VhTask, 'id' | 'version' | 'created_at' | 'updated_at'>) => {
-    const now = new Date().toISOString();
-    const task: VhTask = {
-      ...newTask,
-      id: `TSK-2026-${Math.floor(200 + Math.random() * 800)}`,
-      version: 1,
-      created_at: now,
-      updated_at: now,
-    };
-    setTasks((prev) => [task, ...prev]);
-    return task;
-  }, []);
-
-  // ==========================================
-  // 4. ACTION REQUEST, APPROVAL & EXECUTION GRANT
-  // ==========================================
-  const approveAction = useCallback(
-    (approvalId: string, reviewerId: string, reviewerName: string, reason?: string) => {
+  const createDomainTask = useCallback(
+    (params: {
+      incident_id: string;
+      title: string;
+      domain_type: VhTask['domain_type'];
+      domain_data: CleaningPlan | Record<string, unknown> | null;
+      assignee_id?: string;
+      assignee_name?: string;
+    }) => {
       const now = new Date().toISOString();
-      let grantedAction: VhActionApproval | null = null;
+      const newTask: VhTask = {
+        id: `TSK-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+        incident_id: params.incident_id,
+        title: params.title,
+        domain_type: params.domain_type,
+        domain_data: params.domain_data,
+        domain_schema_version: 1,
+        assignee_type: 'STAFF',
+        assignee_id: params.assignee_id || currentProfile.id,
+        assignee_name: params.assignee_name || currentProfile.name,
+        status: 'OPEN',
+        priority: 'MEDIUM',
+        due_at: new Date(Date.now() + 6 * 3600 * 1000).toISOString(),
+        version: 1,
+        created_at: now,
+        updated_at: now,
+      };
 
-      setApprovals((prev) =>
-        prev.map((app) => {
-          if (app.id !== approvalId) return app;
+      setTasks((prev) => [newTask, ...prev]);
+      return newTask;
+    },
+    [currentProfile],
+  );
 
-          // Check expiry
-          if (new Date(app.expires_at).getTime() < Date.now()) {
-            return { ...app, status: 'EXPIRED' as const, updated_at: now };
-          }
+  // ==========================================
+  // WORK ORDER STATE MACHINE & EXECUTION
+  // ==========================================
+  const transitionWorkOrderStatus = useCallback(
+    (
+      workOrderId: string,
+      targetStatus: VhWorkOrder['status'],
+      options?: {
+        note?: string;
+        reason?: string;
+        blockedReason?: string;
+        materialsUsed?: Array<{ part_name: string; quantity: number; unit: string }>;
+        measurements?: Record<string, string | number>;
+      },
+    ) => {
+      const targetWo = workOrders.find((w) => w.id === workOrderId);
+      if (!targetWo) throw new Error('Không tìm thấy phiếu công việc!');
 
-          grantedAction = app;
-          return {
-            ...app,
-            status: 'APPROVED' as const,
-            reviewer_id: reviewerId,
-            reviewer_name: reviewerName,
-            decided_at: now,
-            reason: reason || 'Ban Quản Lý đã phê duyệt đề xuất.',
-            version: app.version + 1,
-          };
-        }),
-      );
-
-      // Emit Execution Grant
-      if (grantedAction) {
-        const target = grantedAction as VhActionApproval;
-        const grant: VhExecutionGrant = {
-          id: `GRANT-${Date.now().toString().slice(-4)}`,
-          action_request_id: target.action_request_id,
-          approval_id: target.id,
-          granted_to: target.requested_by_id,
-          allowed_action_type: target.action_request?.action_type || 'PURCHASE_MATERIAL',
-          payload_hash: target.action_payload_hash,
-          status: 'ACTIVE',
-          consumed_by_work_order_id: null,
-          granted_at: now,
-          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        };
-        setExecutionGrants((prev) => [grant, ...prev]);
+      // Check RBAC: Only assigned worker, contractor, supervisor, or manager
+      const isAssignee = targetWo.executor_id === currentProfile.id;
+      const isSupervisorOrManager = currentPersona === 'SUPERVISOR' || currentPersona === 'MANAGER';
+      if (!isAssignee && !isSupervisorOrManager) {
+        throw new Error(
+          `Bạn không có quyền chuyển trạng thái phiếu ${workOrderId}! Chỉ người được giao việc (${targetWo.executor_name || targetWo.executor_id}) hoặc Giám sát/BQL mới có quyền thao tác.`,
+        );
       }
-    },
-    [],
-  );
 
-  const rejectAction = useCallback(
-    (approvalId: string, reviewerId: string, reviewerName: string, reason: string) => {
+      // Check State Machine Transition rules
+      // Valid transitions:
+      // OPEN -> ASSIGNED
+      // ASSIGNED -> IN_PROGRESS
+      // IN_PROGRESS -> BLOCKED
+      // BLOCKED -> IN_PROGRESS
+      // IN_PROGRESS -> COMPLETED
+      if (targetStatus === 'COMPLETED') {
+        const woEvidence = evidence.filter((e) => e.work_order_id === targetWo.id);
+        const hasBefore = woEvidence.some((e) => e.capture_phase === 'BEFORE');
+        const hasAfter = woEvidence.some((e) => e.capture_phase === 'AFTER');
+
+        if (!hasBefore || !hasAfter) {
+          throw new Error(
+            'Chưa đủ điều kiện hoàn thành: Bắt buộc phải có tối thiểu 1 ảnh Trước (BEFORE) và 1 ảnh Sau (AFTER) khi thi công trước khi báo hoàn thành!',
+          );
+        }
+      }
+
+      if (targetStatus === 'BLOCKED' && !options?.blockedReason && !options?.reason) {
+        throw new Error('Vui lòng nêu rõ lý do bị chặn / tạm dừng để Tổ trưởng và BQL nắm thông tin hỗ trợ!');
+      }
+
       const now = new Date().toISOString();
-      setApprovals((prev) =>
-        prev.map((app) => {
-          if (app.id !== approvalId) return app;
-          return {
-            ...app,
-            status: 'REJECTED' as const,
-            reviewer_id: reviewerId,
-            reviewer_name: reviewerName,
-            decided_at: now,
-            reason: reason || 'Từ chối phê duyệt.',
-            version: app.version + 1,
-          };
-        }),
-      );
-    },
-    [],
-  );
 
-  // ==========================================
-  // 5. WORK ORDER EXECUTION & REDO
-  // ==========================================
-  const updateWorkOrderStatus = useCallback(
-    (workOrderId: string, nextStatus: VhWorkOrder['status'], note?: string) => {
       setWorkOrders((prev) =>
         prev.map((wo) => {
           if (wo.id !== workOrderId) return wo;
-          const now = new Date().toISOString();
           return {
             ...wo,
-            status: nextStatus,
+            status: targetStatus,
             execution_started_at:
-              nextStatus === 'IN_PROGRESS' && !wo.execution_started_at ? now : wo.execution_started_at,
-            execution_completed_at: nextStatus === 'COMPLETED' ? now : wo.execution_completed_at,
-            result: note ? { ...wo.result, note } : wo.result,
+              targetStatus === 'IN_PROGRESS' && !wo.execution_started_at ? now : wo.execution_started_at,
+            execution_completed_at: targetStatus === 'COMPLETED' ? now : wo.execution_completed_at,
+            blocked_reason: targetStatus === 'BLOCKED' ? (options?.blockedReason || options?.reason || null) : null,
+            materials_used: options?.materialsUsed || wo.materials_used,
+            result: options?.note || options?.measurements
+              ? { ...wo.result, note: options.note, measurements: options.measurements }
+              : wo.result,
             updated_at: now,
           };
         }),
       );
+
+      // Synchronize parent Task status
+      if (targetWo.task_id) {
+        if (targetStatus === 'IN_PROGRESS') {
+          setTasks((prev) =>
+            prev.map((t) => (t.id === targetWo.task_id && t.status === 'OPEN' ? { ...t, status: 'IN_PROGRESS' as const } : t)),
+          );
+        }
+      }
     },
-    [],
+    [workOrders, evidence, currentProfile, currentPersona],
   );
 
-  // Create WorkOrder from an actual Task and Incident
+  // Backward compatible updateWorkOrderStatus
+  const updateWorkOrderStatus = useCallback(
+    (workOrderId: string, nextStatus: VhWorkOrder['status'], note?: string) => {
+      transitionWorkOrderStatus(workOrderId, nextStatus, { note });
+    },
+    [transitionWorkOrderStatus],
+  );
+
   const createWorkOrder = useCallback(
     (params: {
       incident_id: string;
@@ -436,7 +570,6 @@ export function useOperationsData() {
       const now = new Date().toISOString();
       const newWoId = `WO-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
 
-      // If tied to execution grant, consume the grant!
       if (params.execution_grant_id) {
         setExecutionGrants((prev) =>
           prev.map((g) =>
@@ -470,7 +603,6 @@ export function useOperationsData() {
 
       setWorkOrders((prev) => [wo, ...prev]);
 
-      // Automatically update task to IN_PROGRESS if open
       setTasks((prev) =>
         prev.map((t) => (t.id === params.task_id && t.status === 'OPEN' ? { ...t, status: 'IN_PROGRESS' as const } : t)),
       );
@@ -481,7 +613,50 @@ export function useOperationsData() {
   );
 
   // ==========================================
-  // 6. STRICT QC WORKFLOW (WITH ALL GUARDS)
+  // CONTRACTOR ACTIONS
+  // ==========================================
+  const respondToContractorJob = useCallback(
+    (workOrderId: string, action: 'ACCEPT' | 'REJECT', reason?: string, assignedStaff?: string) => {
+      const now = new Date().toISOString();
+      setWorkOrders((prev) =>
+        prev.map((w) => {
+          if (w.id !== workOrderId) return w;
+          if (action === 'ACCEPT') {
+            return {
+              ...w,
+              contractor_status: 'ACCEPTED',
+              contractor_assigned_worker: assignedStaff || w.contractor_assigned_worker,
+              status: 'IN_PROGRESS',
+              execution_started_at: w.execution_started_at || now,
+              updated_at: now,
+            };
+          } else {
+            return {
+              ...w,
+              contractor_status: 'REJECTED',
+              contractor_reject_reason: reason || 'Nhà thầu từ chối tiếp nhận vì quá tải ca',
+              status: 'BLOCKED',
+              blocked_reason: reason || 'Nhà thầu từ chối tiếp nhận việc',
+              updated_at: now,
+            };
+          }
+        }),
+      );
+    },
+    [],
+  );
+
+  const recordContractorMaterials = useCallback(
+    (workOrderId: string, materials: Array<{ part_name: string; quantity: number; unit: string }>) => {
+      setWorkOrders((prev) =>
+        prev.map((w) => (w.id === workOrderId ? { ...w, materials_used: materials, updated_at: new Date().toISOString() } : w)),
+      );
+    },
+    [],
+  );
+
+  // ==========================================
+  // STRICT QC WORKFLOW (WITH ALL GUARDS)
   // ==========================================
   const submitQcInspection = useCallback(
     (params: {
@@ -489,7 +664,7 @@ export function useOperationsData() {
       outcome: 'PASS' | 'FAIL' | 'INCONCLUSIVE';
       criteria: Array<{ criterion_id: string; label: string; passed: boolean; note?: string }>;
       note: string;
-      checkedBy: string;
+      checkedBy?: string;
       checkedByName?: string;
     }) => {
       const targetWo = workOrders.find((w) => w.id === params.workOrderId);
@@ -497,10 +672,10 @@ export function useOperationsData() {
         throw new Error('Không tìm thấy phiếu công việc để nghiệm thu!');
       }
 
-      // Guard 1: Must be COMPLETED (Cannot QC open or in-progress works!)
+      // Guard 1: Must be in COMPLETED status
       if (targetWo.status !== 'COMPLETED') {
         throw new Error(
-          `Không thể nghiệm thu QC: Phiếu đang ở trạng thái "${targetWo.status}". Kỹ thuật viên phải hoàn thành (COMPLETED) trước khi QC!`,
+          `Không thể nghiệm thu QC: Phiếu đang ở trạng thái "${targetWo.status}". Kỹ thuật viên phải hoàn thành thi công (COMPLETED) trước khi QC!`,
         );
       }
 
@@ -516,55 +691,58 @@ export function useOperationsData() {
       }
 
       // Guard 3: Segregation of duties - Executor cannot QC their own work!
-      if (targetWo.executor_id && params.checkedBy === targetWo.executor_id) {
+      const actualCheckerId = params.checkedBy || currentProfile.id;
+      if (targetWo.executor_id && actualCheckerId === targetWo.executor_id) {
         throw new Error(
-          'Vi phạm nguyên tắc độc lập kiểm định: Kỹ thuật viên thực hiện không được tự nghiệm thu QC công việc của chính mình!',
+          `Vi phạm nguyên tắc độc lập kiểm định (Segregation of Duties): Bạn (${targetWo.executor_name || actualCheckerId}) là người trực tiếp thi công phiếu ${targetWo.id}, không được phép tự chấm nghiệm thu QC cho chính mình! Vui lòng nhờ QC Inspector hoặc Trưởng ca nghiệm thu.`,
         );
       }
 
-      const failedCriteria = params.criteria
-        .filter((c) => !c.passed)
-        .map((c) => `${c.label}${c.note ? ` (${c.note})` : ''}`);
+      // Guard 4: Must have QC permission
+      if (!currentProfile.canQC && currentPersona !== 'MANAGER') {
+        throw new Error(
+          `Tài khoản vai trò "${currentProfile.roleTitle}" không có quyền ký ban hành biên bản nghiệm thu QC! Vui lòng chuyển sang vai trò QC Inspector hoặc Quản lý BQL.`,
+        );
+      }
 
-      const redoRequired = params.outcome === 'FAIL';
       const now = new Date().toISOString();
+      const failedCriteria = params.criteria.filter((c) => !c.passed).map((c) => c.label);
 
       const newQc: VhQcResult = {
         id: `QC-${Date.now().toString().slice(-4)}`,
-        work_order_id: params.workOrderId,
+        work_order_id: targetWo.id,
+        checklist_version_id: targetWo.checklist_version_id || 'CKL-VER-MEP-01',
         outcome: params.outcome,
         criteria: params.criteria,
         failed_criteria: failedCriteria,
-        redo_required: redoRequired,
+        redo_required: params.outcome === 'FAIL',
         note: params.note,
-        checked_by: params.checkedBy,
-        checked_by_name: params.checkedByName || 'Kỹ sư QC Độc lập',
+        checked_by: actualCheckerId,
+        checked_by_name: params.checkedByName || currentProfile.name,
         checked_at: now,
       };
 
       setQcResults((prev) => [newQc, ...prev]);
 
       if (params.outcome === 'PASS') {
-        // Mark Task as DONE if all other WOs of this task are completed
+        // PASS -> Task is complete!
         setTasks((prev) =>
           prev.map((t) => (t.id === targetWo.task_id ? { ...t, status: 'DONE' as const, updated_at: now } : t)),
         );
+        return { qc: newQc };
       } else if (params.outcome === 'FAIL') {
-        // Mark current attempt as FAILED
-        updateWorkOrderStatus(params.workOrderId, 'FAILED', `QC FAIL: ${params.note}`);
-
-        // Automatically spawn Redo WorkOrder per ERD Section 9
+        // FAIL -> Auto-generate REDO WorkOrder!
         const redoWoId = `WO-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+
         const redoWo: VhWorkOrder = {
           id: redoWoId,
           incident_id: targetWo.incident_id,
           task_id: targetWo.task_id,
-          action_request_id: targetWo.action_request_id,
+          action_request_id: null,
           executor_type: targetWo.executor_type,
           executor_id: targetWo.executor_id,
           executor_name: targetWo.executor_name,
           executor_phone: targetWo.executor_phone,
-          executor_avatar: targetWo.executor_avatar,
           status: 'ASSIGNED',
           attempt_no: (targetWo.attempt_no || 1) + 1,
           redo_of_work_order_id: targetWo.id,
@@ -586,29 +764,249 @@ export function useOperationsData() {
 
         return { qc: newQc, redoWorkOrder: redoWo };
       } else if (params.outcome === 'INCONCLUSIVE') {
-        // Inconclusive keeps WO open for additional evidence
-        updateWorkOrderStatus(params.workOrderId, 'IN_PROGRESS', `QC INCONCLUSIVE: Cần bổ sung tài liệu kiểm định - ${params.note}`);
+        // Inconclusive keeps WO in-progress for additional evidence
+        transitionWorkOrderStatus(params.workOrderId, 'IN_PROGRESS', {
+          note: `QC INCONCLUSIVE: Cần bổ sung tài liệu kiểm định - ${params.note}`,
+        });
       }
 
       return { qc: newQc };
     },
-    [workOrders, evidence, updateWorkOrderStatus],
+    [workOrders, evidence, currentProfile, currentPersona, transitionWorkOrderStatus],
   );
 
   // ==========================================
-  // 7. EVIDENCE MANAGEMENT
+  // EVIDENCE MANAGEMENT (WITH ACTOR IDENTITY)
   // ==========================================
   const addEvidence = useCallback(
-    (newEvidence: Omit<VhEvidenceRef, 'id' | 'created_at'>) => {
-      const evidenceRecord: VhEvidenceRef = {
-        ...newEvidence,
-        id: `EVD-${Date.now().toString().slice(-4)}`,
-        created_at: new Date().toISOString(),
+    (newEvidence: {
+      incident_id: string;
+      work_order_id?: string | null;
+      task_id?: string | null;
+      capture_phase: CapturePhase;
+      file_url: string;
+      caption?: string;
+      file_id?: string;
+      fileMetadata?: {
+        sizeBytes?: number;
+        fileName?: string;
+        gpsCoordinates?: string;
       };
+    }) => {
+      const evidenceRecord: VhEvidenceRef = {
+        id: `EVD-${Date.now().toString().slice(-4)}`,
+        incident_id: newEvidence.incident_id,
+        work_order_id: newEvidence.work_order_id || null,
+        task_id: newEvidence.task_id || null,
+        file_id: newEvidence.file_id || `FILE-${Date.now().toString().slice(-4)}`,
+        kind: 'IMAGE',
+        capture_phase: newEvidence.capture_phase,
+        file_url: newEvidence.file_url,
+        uploaded_by: currentProfile.id,
+        created_at: new Date().toISOString(),
+        metadata: {
+          caption: newEvidence.caption || 'Hình ảnh hiện trường',
+          uploadedByName: currentProfile.name,
+          uploadedByRole: currentProfile.roleTitle,
+          gpsCoordinates: newEvidence.fileMetadata?.gpsCoordinates || '21.0031° N, 105.7489° E (Vinhomes Smart City)',
+          fileSizeKb: newEvidence.fileMetadata?.sizeBytes ? Math.round(newEvidence.fileMetadata.sizeBytes / 1024) : 480,
+          fileName: newEvidence.fileMetadata?.fileName || 'evidence_capture.jpg',
+          timestamp: new Date().toISOString(),
+        },
+      };
+
       setEvidence((prev) => [evidenceRecord, ...prev]);
       return evidenceRecord;
     },
+    [currentProfile],
+  );
+
+  // ==========================================
+  // SECURITY OPERATIONS ACTIONS
+  // ==========================================
+  const toggleSecurityCheckpoint = useCallback(
+    (checkpointId: string, notes?: string, photoUrl?: string) => {
+      const now = new Date().toISOString();
+      setSecurityCheckpoints((prev) =>
+        prev.map((cp) => {
+          if (cp.id !== checkpointId) return cp;
+          return {
+            ...cp,
+            status: 'CHECKED',
+            checked_at: now,
+            guard_id: currentProfile.id,
+            guard_name: currentProfile.name,
+            notes: notes || cp.notes,
+            photo_url: photoUrl || cp.photo_url,
+          };
+        }),
+      );
+    },
+    [currentProfile],
+  );
+
+  const reportSecurityIncident = useCallback(
+    (reportData: Omit<SecurityIncidentReport, 'id' | 'reported_at'>) => {
+      const now = new Date().toISOString();
+      const newReport: SecurityIncidentReport = {
+        ...reportData,
+        id: `SEC-INC-${Date.now().toString().slice(-4)}`,
+        reported_at: now,
+        guard_id: currentProfile.id,
+        guard_name: currentProfile.name,
+      };
+
+      setSecurityIncidents((prev) => [newReport, ...prev]);
+      return newReport;
+    },
+    [currentProfile],
+  );
+
+  const submitSecurityHandover = useCallback(
+    (handoverData: Omit<SecurityShiftHandover, 'id' | 'handover_at'>) => {
+      const now = new Date().toISOString();
+      const newHandover: SecurityShiftHandover = {
+        ...handoverData,
+        id: `SH-${Date.now().toString().slice(-4)}`,
+        handover_at: now,
+      };
+
+      setSecurityHandovers((prev) => [newHandover, ...prev]);
+      return newHandover;
+    },
     [],
+  );
+
+  // ==========================================
+  // A5 SANITATION ACTIONS
+  // ==========================================
+  const toggleCleaningAction = useCallback(
+    (taskId: string, actionIndex: number, completed: boolean, note?: string) => {
+      setTasks((prev) =>
+        prev.map((t) => {
+          if (t.id !== taskId || !t.domain_data) return t;
+          const plan = t.domain_data as CleaningPlan;
+          if (!plan.actions || !plan.actions[actionIndex]) return t;
+
+          const updatedActions = [...plan.actions];
+          updatedActions[actionIndex] = {
+            ...updatedActions[actionIndex],
+            completed,
+            completed_at: completed ? new Date().toISOString() : undefined,
+            issue_reported: note || updatedActions[actionIndex].issue_reported,
+          };
+
+          return {
+            ...t,
+            domain_data: {
+              ...plan,
+              actions: updatedActions,
+            },
+            updated_at: new Date().toISOString(),
+          };
+        }),
+      );
+    },
+    [],
+  );
+
+  const confirmSiteArrival = useCallback((taskId: string) => {
+    const now = new Date().toISOString();
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id !== taskId || !t.domain_data) return t;
+        const plan = t.domain_data as CleaningPlan;
+        return {
+          ...t,
+          domain_data: {
+            ...plan,
+            arrived_at_site: now,
+          },
+          updated_at: now,
+        };
+      }),
+    );
+  }, []);
+
+  const toggleWarningSigns = useCallback((taskId: string, placed: boolean) => {
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id !== taskId || !t.domain_data) return t;
+        const plan = t.domain_data as CleaningPlan;
+        return {
+          ...t,
+          domain_data: {
+            ...plan,
+            warning_signs_placed: placed,
+          },
+          updated_at: new Date().toISOString(),
+        };
+      }),
+    );
+  }, []);
+
+  // ==========================================
+  // APPROVAL WORKFLOW
+  // ==========================================
+  const approveAction = useCallback(
+    (approvalId: string, notes?: string) => {
+      const now = new Date().toISOString();
+      const targetApproval = approvals.find((a) => a.id === approvalId);
+      if (!targetApproval) return;
+
+      const grantId = `GRNT-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+
+      const newGrant: VhExecutionGrant = {
+        id: grantId,
+        action_request_id: targetApproval.action_request_id,
+        approval_id: targetApproval.id,
+        granted_to: currentProfile.id,
+        allowed_action_type: (targetApproval.action_request?.action_type || 'PURCHASE_MATERIAL') as any,
+        granted_at: now,
+        expires_at: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+        payload_hash: targetApproval.action_payload_hash || 'hash-mock',
+        status: 'ACTIVE',
+        consumed_by_work_order_id: null,
+      };
+
+      setExecutionGrants((prev) => [newGrant, ...prev]);
+
+      setApprovals((prev) =>
+        prev.map((a) =>
+          a.id === approvalId
+            ? {
+                ...a,
+                status: 'APPROVED' as const,
+                decided_by: currentProfile.id,
+                decided_at: now,
+                decision_notes: notes || 'Đồng ý phê duyệt phương án thi công.',
+                execution_grant_id: grantId,
+              }
+            : a,
+        ),
+      );
+    },
+    [approvals, currentProfile],
+  );
+
+  const rejectAction = useCallback(
+    (approvalId: string, reason: string) => {
+      const now = new Date().toISOString();
+      setApprovals((prev) =>
+        prev.map((a) =>
+          a.id === approvalId
+            ? {
+                ...a,
+                status: 'REJECTED' as const,
+                decided_by: currentProfile.id,
+                decided_at: now,
+                decision_notes: reason || 'Từ chối phê duyệt.',
+              }
+            : a,
+        ),
+      );
+    },
+    [currentProfile],
   );
 
   // Reset to default mock
@@ -622,6 +1020,9 @@ export function useOperationsData() {
     setQcResults(MOCK_QC_RESULTS);
     setApprovals(MOCK_APPROVALS);
     setExecutionGrants([]);
+    setSecurityCheckpoints(MOCK_SECURITY_CHECKPOINTS);
+    setSecurityIncidents(MOCK_SECURITY_INCIDENTS);
+    setSecurityHandovers(MOCK_SECURITY_HANDOVERS);
     localStorage.clear();
   }, []);
 
@@ -631,12 +1032,18 @@ export function useOperationsData() {
     incidents,
     tasks,
     workOrders,
+    myWorkOrders,
     evidence,
     qcResults,
     approvals,
     executionGrants,
+    securityCheckpoints,
+    securityIncidents,
+    securityHandovers,
     currentPersona,
+    currentProfile,
     setCurrentPersona,
+    canAccessMenu,
     materializeCandidate,
     splitIssueCandidate,
     mergeIssueCandidates,
@@ -646,12 +1053,21 @@ export function useOperationsData() {
     residentConfirmIncident,
     updateTaskStatus,
     createDomainTask,
+    transitionWorkOrderStatus,
     updateWorkOrderStatus,
     createWorkOrder,
     submitQcInspection,
     approveAction,
     rejectAction,
     addEvidence,
+    respondToContractorJob,
+    recordContractorMaterials,
+    toggleSecurityCheckpoint,
+    reportSecurityIncident,
+    submitSecurityHandover,
+    toggleCleaningAction,
+    confirmSiteArrival,
+    toggleWarningSigns,
     resetToDefaultMock,
   };
 }

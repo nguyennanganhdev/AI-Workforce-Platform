@@ -39,7 +39,16 @@ const DOMAIN_LABELS: Record<string, string> = {
 };
 
 export function WorkOrderTable() {
-  const { workOrders, tasks, incidents, updateWorkOrderStatus, createWorkOrder } = useOperationsData();
+  const {
+    workOrders,
+    tasks,
+    incidents,
+    transitionWorkOrderStatus,
+    updateWorkOrderStatus,
+    createWorkOrder,
+    currentProfile,
+    currentPersona,
+  } = useOperationsData();
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -528,28 +537,63 @@ export function WorkOrderTable() {
                             <span>Ảnh Trước / Sau thi công</span>
                           </button>
 
-                          {/* 4. QC Inspection */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedWoForQc(wo);
-                              setOpenActionId(null);
-                            }}
-                            className="w-full px-3 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-50 flex items-center gap-2.5 transition-colors"
-                          >
-                            <IconShieldCheck className="w-4 h-4 text-purple-600" />
-                            <span>Nghiệm thu chất lượng</span>
-                          </button>
+                          {/* 4. QC Inspection — Guarded against self-QC & role check */}
+                          {(() => {
+                            const isExecutor = currentProfile.id === wo.executor_id;
+                            const isCompleted = wo.status === 'COMPLETED';
+
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (isExecutor) {
+                                    alert(
+                                      `🚫 Vi phạm nguyên tắc kiểm soát độc lập (Segregation of Duties):\nBạn (${wo.executor_name}) là người trực tiếp thi công phiếu ${wo.id}, KHÔNG ĐƯỢC tự nghiệm thu QC cho chính mình!\nVui lòng chuyển giao phiếu cho chuyên viên QC Inspector độc lập hoặc Trưởng ca.`
+                                    );
+                                    return;
+                                  }
+                                  if (!isCompleted) {
+                                    alert(
+                                      `⚠️ Phiếu thi công ${wo.id} đang ở trạng thái "${wo.status}".\nChỉ được nghiệm thu QC khi công việc đã đạt trạng thái COMPLETED.`
+                                    );
+                                    return;
+                                  }
+                                  setSelectedWoForQc(wo);
+                                  setOpenActionId(null);
+                                }}
+                                className={`w-full px-3 py-2 text-xs font-semibold flex items-center justify-between transition-colors ${
+                                  isExecutor
+                                    ? 'text-slate-400 hover:bg-slate-50 cursor-not-allowed opacity-70'
+                                    : 'text-purple-700 hover:bg-purple-50'
+                                }`}
+                                title={isExecutor ? 'Cấm tự nghiệm thu công việc của chính mình' : 'Nghiệm thu chất lượng'}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <IconShieldCheck className={`w-4 h-4 ${isExecutor ? 'text-slate-400' : 'text-purple-600'}`} />
+                                  <span>Nghiệm thu chất lượng</span>
+                                </div>
+                                {isExecutor && (
+                                  <span className="text-[10px] bg-red-100 text-red-700 font-bold px-1.5 py-0.5 rounded">
+                                    Cấm tự QC
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })()}
 
                           <div className="my-1 border-t border-slate-100" />
 
-                          {/* Quick Status Toggles */}
+                          {/* Quick Status Toggles with Strict Guard Validation */}
                           {wo.status !== 'IN_PROGRESS' && wo.status !== 'COMPLETED' && (
                             <button
                               type="button"
                               onClick={() => {
-                                updateWorkOrderStatus(wo.id, 'IN_PROGRESS');
-                                setOpenActionId(null);
+                                try {
+                                  transitionWorkOrderStatus(wo.id, 'IN_PROGRESS');
+                                  setOpenActionId(null);
+                                } catch (err: any) {
+                                  alert(`⚠️ Lỗi chuyển trạng thái:\n${err.message}`);
+                                }
                               }}
                               className="w-full px-3 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50 flex items-center gap-2.5"
                             >
@@ -561,13 +605,17 @@ export function WorkOrderTable() {
                             <button
                               type="button"
                               onClick={() => {
-                                updateWorkOrderStatus(wo.id, 'COMPLETED');
-                                setOpenActionId(null);
+                                try {
+                                  transitionWorkOrderStatus(wo.id, 'COMPLETED');
+                                  setOpenActionId(null);
+                                } catch (err: any) {
+                                  alert(`⚠️ Lỗi kiểm soát quy trình:\n${err.message}`);
+                                }
                               }}
                               className="w-full px-3 py-2 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 flex items-center gap-2.5"
                             >
                               <IconCheck className="w-4 h-4" />
-                              <span>Đánh dấu hoàn tất</span>
+                              <span>Đánh dấu hoàn tất (Chờ QC)</span>
                             </button>
                           )}
                         </div>
@@ -681,6 +729,58 @@ interface CreateWorkOrderModalProps {
   }) => void;
 }
 
+interface AssignableWorker {
+  id: string;
+  name: string;
+  phone: string;
+  type: 'STAFF' | 'CONTRACTOR';
+  roleTitle: string;
+  defaultChecklist: string;
+}
+
+const ASSIGNABLE_WORKERS: AssignableWorker[] = [
+  {
+    id: 'usr-tech-01',
+    name: 'Nguyễn Văn Hùng',
+    phone: '0912 345 678',
+    type: 'STAFF',
+    roleTitle: 'Kỹ thuật viên Kỹ nghệ MEP & PCCC',
+    defaultChecklist: 'CKL-VER-MEP-01',
+  },
+  {
+    id: 'usr-cleaner-01',
+    name: 'Lê Thị Bích',
+    phone: '0977 123 456',
+    type: 'STAFF',
+    roleTitle: 'Nhân viên Vệ sinh Môi trường & Cảnh quan A5',
+    defaultChecklist: 'CKL-VER-A5-01',
+  },
+  {
+    id: 'usr-sec-01',
+    name: 'Phạm Văn Đạt',
+    phone: '0966 888 777',
+    type: 'STAFF',
+    roleTitle: 'Nhân viên An ninh & Tuần tra Hiện trường',
+    defaultChecklist: 'CKL-VER-SEC-01',
+  },
+  {
+    id: 'usr-contractor-01',
+    name: 'Hoàng Long (Nhà thầu Otis)',
+    phone: '0933 555 444',
+    type: 'CONTRACTOR',
+    roleTitle: 'Đại diện Kỹ thuật Nhà thầu Thang máy Otis',
+    defaultChecklist: 'CKL-VER-ELEV-01',
+  },
+  {
+    id: 'usr-contractor-02',
+    name: 'Công ty Cây xanh GreenX',
+    phone: '0909 112 233',
+    type: 'CONTRACTOR',
+    roleTitle: 'Đội thi công Cảnh quan & Cây xanh',
+    defaultChecklist: 'CKL-VER-A5-01',
+  },
+];
+
 function CreateWorkOrderModal({ incidents, tasks, onClose, onCreate }: CreateWorkOrderModalProps) {
   const { executionGrants } = useOperationsData();
   const openIncidents = incidents.filter((i) => i.status === 'OPEN' || i.status === 'NEW');
@@ -689,11 +789,25 @@ function CreateWorkOrderModal({ incidents, tasks, onClose, onCreate }: CreateWor
   const availableTasks = tasks.filter((t) => t.incident_id === selectedIncidentId && t.status !== 'DONE');
   const [selectedTaskId, setSelectedTaskId] = useState<string>(availableTasks[0]?.id || '');
   const [selectedGrantId, setSelectedGrantId] = useState<string>('');
+  
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string>('usr-tech-01');
   const [executorName, setExecutorName] = useState('Nguyễn Văn Hùng');
+  const [executorPhone, setExecutorPhone] = useState('0912 345 678');
   const [executorType, setExecutorType] = useState<'STAFF' | 'CONTRACTOR' | 'ROBOT'>('STAFF');
   const [checklistVersion, setChecklistVersion] = useState('CKL-VER-MEP-01');
 
   const activeGrants = executionGrants.filter((g) => g.status === 'ACTIVE');
+
+  const handleWorkerChange = (workerId: string) => {
+    setSelectedWorkerId(workerId);
+    const worker = ASSIGNABLE_WORKERS.find((w) => w.id === workerId);
+    if (worker) {
+      setExecutorName(worker.name);
+      setExecutorPhone(worker.phone);
+      setExecutorType(worker.type);
+      setChecklistVersion(worker.defaultChecklist);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -704,9 +818,9 @@ function CreateWorkOrderModal({ incidents, tasks, onClose, onCreate }: CreateWor
       task_id: selectedTaskId,
       execution_grant_id: selectedGrantId || null,
       executor_type: executorType,
-      executor_id: executorType === 'STAFF' ? 'usr-tech-01' : 'usr-contractor-01',
+      executor_id: selectedWorkerId || (executorType === 'STAFF' ? 'usr-tech-01' : 'usr-contractor-01'),
       executor_name: executorName,
-      executor_phone: '0912 345 678',
+      executor_phone: executorPhone,
       checklist_version_id: checklistVersion,
     });
   };
@@ -796,28 +910,45 @@ function CreateWorkOrderModal({ incidents, tasks, onClose, onCreate }: CreateWor
             </select>
           </div>
 
-          {/* 4. Executor & Checklist */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* 4. Executor Assignment */}
+          <div className="space-y-2">
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Người thi công</label>
+              <label className="font-bold text-slate-700 block mb-1">Chỉ định nhân sự thực hiện *</label>
               <select
-                value={executorType}
-                onChange={(e) => setExecutorType(e.target.value as any)}
-                className="w-full p-2.5 border border-slate-200 rounded-xl bg-white focus:border-blue-500 focus:outline-none"
+                value={selectedWorkerId}
+                onChange={(e) => handleWorkerChange(e.target.value)}
+                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none font-medium text-slate-800"
               >
-                <option value="STAFF">Kỹ thuật viên nội bộ</option>
-                <option value="CONTRACTOR">Nhà thầu phụ (Đối tác)</option>
-                <option value="ROBOT">Robot tự hành</option>
+                {ASSIGNABLE_WORKERS.map((worker) => (
+                  <option key={worker.id} value={worker.id}>
+                    {worker.name} — {worker.roleTitle} ({worker.type === 'STAFF' ? 'Nội bộ' : 'Nhà thầu'})
+                  </option>
+                ))}
               </select>
             </div>
-            <div>
-              <label className="font-bold text-slate-700 block mb-1">Họ tên nhân viên / Đối tác</label>
-              <input
-                value={executorName}
-                onChange={(e) => setExecutorName(e.target.value)}
-                required
-                className="w-full p-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none"
-              />
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Loại người thi công</label>
+                <select
+                  value={executorType}
+                  onChange={(e) => setExecutorType(e.target.value as any)}
+                  className="w-full p-2.5 border border-slate-200 rounded-xl bg-white focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="STAFF">Kỹ thuật viên nội bộ</option>
+                  <option value="CONTRACTOR">Nhà thầu phụ (Đối tác)</option>
+                  <option value="ROBOT">Robot tự hành</option>
+                </select>
+              </div>
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Số điện thoại liên hệ</label>
+                <input
+                  value={executorPhone}
+                  onChange={(e) => setExecutorPhone(e.target.value)}
+                  required
+                  className="w-full p-2.5 border border-slate-200 rounded-xl focus:border-blue-500 focus:outline-none font-medium"
+                />
+              </div>
             </div>
           </div>
 
@@ -828,9 +959,10 @@ function CreateWorkOrderModal({ incidents, tasks, onClose, onCreate }: CreateWor
               onChange={(e) => setChecklistVersion(e.target.value)}
               className="w-full p-2.5 border border-slate-200 rounded-xl bg-white focus:border-blue-500 focus:outline-none"
             >
-              <option value="CKL-VER-MEP-01">Quy chuẩn kỹ thuật cơ điện MEP</option>
-              <option value="CKL-VER-A5-01">Tiêu chuẩn vệ sinh khu vực A5 & Khử mùi</option>
-              <option value="CKL-VER-ELEV-01">Kiểm định an toàn thang máy</option>
+              <option value="CKL-VER-MEP-01">Quy chuẩn kỹ thuật cơ điện MEP & PCCC</option>
+              <option value="CKL-VER-A5-01">Tiêu chuẩn vệ sinh khu vực A5 & Cảnh quan</option>
+              <option value="CKL-VER-SEC-01">Quy chuẩn tuần tra an ninh & Bảo vệ hiện trường</option>
+              <option value="CKL-VER-ELEV-01">Kiểm định an toàn thang máy Otis</option>
             </select>
           </div>
 
