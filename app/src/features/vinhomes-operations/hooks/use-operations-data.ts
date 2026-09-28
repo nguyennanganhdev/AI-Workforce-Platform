@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, createContext, useContext, createElement, type ReactNode } from 'react';
 import {
   type VhIncident,
   type VhTask,
@@ -37,7 +37,7 @@ import {
 
 const STORAGE_KEY_PREFIX = 'vhm_operations_data_v3';
 
-export function useOperationsData() {
+export function useOperationsDataInternal() {
   // 1. Cases & Issue Candidates (Intake / Triage)
   const [cases, setCases] = useState<VhCase[]>(() => {
     try {
@@ -178,11 +178,24 @@ export function useOperationsData() {
 
   // Filter "My Work Orders" strictly according to authenticated assignment
   const myWorkOrders = useMemo(() => {
+    // 1. Manager & Supervisor see all team work orders
+    if (currentPersona === 'SUPERVISOR' || currentPersona === 'MANAGER') {
+      return workOrders;
+    }
+
+    // 2. QC Inspector sees completed tasks awaiting QC inspection + any direct tasks
+    if (currentPersona === 'QC_INSPECTOR') {
+      return workOrders.filter(
+        (wo) => wo.status === 'COMPLETED' || wo.executor_id === currentProfile.id
+      );
+    }
+
+    // 3. Field workers and contractors
     return workOrders.filter((wo) => {
-      // 1. Strict personal assignment by executor_id
+      // Strict personal assignment by executor_id
       if (wo.executor_id === currentProfile.id) return true;
 
-      // 2. Contractor assignment by organization
+      // Contractor assignment by organization
       if (
         currentPersona === 'CONTRACTOR' &&
         wo.executor_type === 'CONTRACTOR' &&
@@ -1293,4 +1306,21 @@ export function useOperationsData() {
     saveCleaningRootCause,
     resetToDefaultMock,
   };
+}
+
+export type OperationsDataContextType = ReturnType<typeof useOperationsDataInternal>;
+
+const OperationsContext = createContext<OperationsDataContextType | null>(null);
+
+export function OperationsProvider({ children }: { children: ReactNode }) {
+  const data = useOperationsDataInternal();
+  return createElement(OperationsContext.Provider, { value: data }, children);
+}
+
+export function useOperationsData(): OperationsDataContextType {
+  const context = useContext(OperationsContext);
+  if (!context) {
+    throw new Error('useOperationsData must be used within an OperationsProvider');
+  }
+  return context;
 }

@@ -67,6 +67,12 @@ export function MyTasksWorkspace() {
     return () => window.removeEventListener('click', handleOutsideClick);
   }, []);
 
+  // Reset pagination & selection when persona/profile changes
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedIds([]);
+  }, [currentProfile.id]);
+
   // Grouped counts for stats & tabs
   const assignedCount = myWorkOrders.filter((w) => w.status === 'ASSIGNED' && !w.redo_of_work_order_id).length;
   const inProgressCount = myWorkOrders.filter((w) => w.status === 'IN_PROGRESS').length;

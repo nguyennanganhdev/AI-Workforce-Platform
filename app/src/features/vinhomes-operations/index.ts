@@ -25,8 +25,8 @@ export { WorkOrderDialog } from './components/work-order-dialog';
 export { EvidenceModal } from './components/evidence-modal';
 export { QcInspectorModal } from './components/qc-inspector-modal';
 
-// Hooks
-export { useOperationsData } from './hooks/use-operations-data';
+// Hooks & Context
+export { useOperationsData, OperationsProvider } from './hooks/use-operations-data';
 export { useApprovalQueue } from './hooks/use-approval-queue';
 export { useIncidentDetail } from './hooks/use-incident-detail';
 export { useQcWorkflow } from './hooks/use-qc-workflow';

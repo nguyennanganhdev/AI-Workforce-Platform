@@ -137,7 +137,7 @@ export const PERSONA_PROFILES: Record<OperationsPersona, UserProfile> = {
     assignedProject: 'Vinhomes Smart City',
     assignedTower: 'Toàn bộ dự án',
     avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&auto=format&fit=crop&q=80',
-    allowedMenuIds: ['dashboard', 'qc', 'work-orders', 'evidence'],
+    allowedMenuIds: ['dashboard', 'my-tasks', 'qc', 'work-orders', 'evidence'],
     canQC: true, // Được quyền chấm checklist và ban hành biên bản QC
     canApproveBudget: false,
     canAssignWork: false,
