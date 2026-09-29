@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   IconSearch,
   IconFilter,
@@ -77,9 +77,55 @@ export function WorkOrderTable() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 6;
 
+  const isManagementView = currentProfile.canAssignWork;
+  const isQcReferenceView = currentPersona === 'QC_INSPECTOR';
+
+  // The work-order register has a different scope for each role:
+  // - Supervisor/Manager manage the whole operation.
+  // - QC reviews completed execution records.
+  // - Field staff only see records assigned to themselves.
+  // - Contractors see records belonging to their organization.
+  const visibleWorkOrders = useMemo(() => {
+    if (isManagementView) return workOrders;
+
+    if (isQcReferenceView) {
+      return workOrders.filter((wo) => wo.status === 'COMPLETED');
+    }
+
+    if (currentPersona === 'CONTRACTOR') {
+      return workOrders.filter(
+        (wo) =>
+          wo.executor_id === currentProfile.id ||
+          (wo.executor_type === 'CONTRACTOR' &&
+            Boolean(currentProfile.contractor_organization_id) &&
+            wo.contractor_organization_id === currentProfile.contractor_organization_id),
+      );
+    }
+
+    return workOrders.filter((wo) => wo.executor_id === currentProfile.id);
+  }, [workOrders, isManagementView, isQcReferenceView, currentPersona, currentProfile]);
+
+  const pageTitle = isManagementView
+    ? 'Quản lý phiếu thi công hiện trường'
+    : isQcReferenceView
+      ? 'Hồ sơ phiếu chờ nghiệm thu'
+      : 'Hồ sơ công việc của tôi';
+
+  const pageDescription = isManagementView
+    ? 'Điều phối, phân công và theo dõi toàn bộ phiếu thi công của các đội hiện trường.'
+    : isQcReferenceView
+      ? 'Tra cứu hồ sơ thi công đã hoàn thành trước khi thực hiện nghiệm thu độc lập.'
+      : 'Tra cứu hồ sơ chính thức, checklist, bằng chứng và kết quả QC của các công việc được giao cho bạn.';
+
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedIds([]);
+    setOpenActionId(null);
+  }, [currentPersona]);
+
   // Enrich work order with task and incident metadata
   const enrichedOrders = useMemo(() => {
-    return workOrders.map((wo) => {
+    return visibleWorkOrders.map((wo) => {
       const task = tasks.find((t) => t.id === wo.task_id);
       const incident = incidents.find((i) => i.id === wo.incident_id);
       return {
@@ -93,7 +139,7 @@ export function WorkOrderTable() {
         slaDueAt: incident?.sla_due_at,
       };
     });
-  }, [workOrders, tasks, incidents]);
+  }, [visibleWorkOrders, tasks, incidents]);
 
   // Filter & Search
   const filteredOrders = useMemo(() => {
@@ -164,12 +210,15 @@ export function WorkOrderTable() {
         {/* Left: Blue Vertical Line + Title */}
         <div className="flex items-center gap-3">
           <div className="w-1.5 h-6 bg-blue-600 rounded-full shrink-0" />
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            Quản Lý Phiếu Thi Công Hiện Trường
-          </h1>
-          <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">
-            {filteredOrders.length} phiếu
-          </span>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-slate-900 tracking-tight">{pageTitle}</h1>
+              <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">
+                {filteredOrders.length} phiếu
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">{pageDescription}</p>
+          </div>
         </div>
 
         {/* Right Toolbar: Search, Filter, Add, Export */}
@@ -268,24 +317,28 @@ export function WorkOrderTable() {
           </div>
 
           {/* Primary Action Button — BistroPulse Royal Blue "+ Add Restaurant" */}
-          <button
-            type="button"
-            onClick={() => setIsCreatingNew(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-blue-500/20 active:scale-95"
-          >
-            <IconPlus className="w-4 h-4" />
-            <span>+ Giao việc mới</span>
-          </button>
+          {isManagementView && (
+            <button
+              type="button"
+              onClick={() => setIsCreatingNew(true)}
+              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-blue-500/20 active:scale-95"
+            >
+              <IconPlus className="w-4 h-4" />
+              <span>+ Giao việc mới</span>
+            </button>
+          )}
 
           {/* Export Dropdown Button */}
-          <button
-            type="button"
-            onClick={() => alert('Xuất danh sách phiếu thi công ra file CSV/Excel')}
-            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition-colors shadow-2xs"
-          >
-            <IconDownload className="w-4 h-4 text-slate-500" />
-            <span>Xuất file ⌄</span>
-          </button>
+          {isManagementView && (
+            <button
+              type="button"
+              onClick={() => alert('Xuất danh sách phiếu thi công ra file CSV/Excel')}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition-colors shadow-2xs"
+            >
+              <IconDownload className="w-4 h-4 text-slate-500" />
+              <span>Xuất file ⌄</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -297,15 +350,17 @@ export function WorkOrderTable() {
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50 text-slate-500 font-bold tracking-tight">
                 {/* Checkbox Header */}
-                <th className="py-3.5 pl-4 pr-2 w-10">
-                  <input
-                    type="checkbox"
-                    checked={isAllSelected}
-                    onChange={(e) => handleSelectAll(e.target.checked)}
-                    aria-label="Chọn tất cả phiếu thi công"
-                    className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
-                  />
-                </th>
+                {isManagementView && (
+                  <th className="py-3.5 pl-4 pr-2 w-10">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      aria-label="Chọn tất cả phiếu thi công"
+                      className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                    />
+                  </th>
+                )}
 
                 {/* Name / Task Title with Accessible Sort Button */}
                 <th className="py-3.5 px-3 min-w-[220px]">
@@ -365,14 +420,16 @@ export function WorkOrderTable() {
                     }`}
                   >
                     {/* Row Checkbox */}
-                    <td className="py-3.5 pl-4 pr-2">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={(e) => handleSelectRow(wo.id, e.target.checked)}
-                        className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
-                      />
-                    </td>
+                    {isManagementView && (
+                      <td className="py-3.5 pl-4 pr-2">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => handleSelectRow(wo.id, e.target.checked)}
+                          className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                        />
+                      </td>
+                    )}
 
                     {/* Name & ID */}
                     <td className="py-3.5 px-3">
@@ -518,17 +575,19 @@ export function WorkOrderTable() {
                           </button>
 
                           {/* 2. Edit / Update Progress */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedWoForDetail(wo);
-                              setOpenActionId(null);
-                            }}
-                            className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
-                          >
-                            <IconEdit className="w-4 h-4 text-slate-400" />
-                            <span>Cập nhật tiến độ</span>
-                          </button>
+                          {isManagementView && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedWoForDetail(wo);
+                                setOpenActionId(null);
+                              }}
+                              className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
+                            >
+                              <IconEdit className="w-4 h-4 text-slate-400" />
+                              <span>Cập nhật tiến độ</span>
+                            </button>
+                          )}
 
                           {/* 3. Evidence Gallery */}
                           <button
@@ -540,11 +599,11 @@ export function WorkOrderTable() {
                             className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
                           >
                             <IconPhoto className="w-4 h-4 text-blue-500" />
-                            <span>Ảnh Trước / Sau thi công</span>
+                            <span>{isManagementView || isQcReferenceView ? 'Quản lý bằng chứng' : 'Xem ảnh Trước / Sau'}</span>
                           </button>
 
                           {/* 4. QC Inspection — Guarded against self-QC & role check */}
-                          {(() => {
+                          {currentProfile.canQC && (() => {
                             const isExecutor = currentProfile.id === wo.executor_id;
                             const isCompleted = wo.status === 'COMPLETED';
 
@@ -590,7 +649,7 @@ export function WorkOrderTable() {
                           <div className="my-1 border-t border-slate-100" />
 
                           {/* Quick Status Toggles with Strict Guard Validation */}
-                          {wo.status !== 'IN_PROGRESS' && wo.status !== 'COMPLETED' && (
+                          {isManagementView && wo.status !== 'IN_PROGRESS' && wo.status !== 'COMPLETED' && (
                             <button
                               type="button"
                               onClick={() => {
@@ -607,7 +666,7 @@ export function WorkOrderTable() {
                               <span>Bắt đầu làm việc</span>
                             </button>
                           )}
-                          {wo.status === 'IN_PROGRESS' && (
+                          {isManagementView && wo.status === 'IN_PROGRESS' && (
                             <button
                               type="button"
                               onClick={() => {
@@ -630,6 +689,18 @@ export function WorkOrderTable() {
                   </tr>
                 );
               })}
+              {pagedOrders.length === 0 && (
+                <tr>
+                  <td colSpan={isManagementView ? 8 : 7} className="px-6 py-14 text-center">
+                    <p className="font-bold text-slate-700">Không có hồ sơ phù hợp</p>
+                    <p className="text-slate-400 mt-1">
+                      {isQcReferenceView
+                        ? 'Hiện chưa có phiếu hoàn thành nào sẵn sàng để tra cứu nghiệm thu.'
+                        : 'Bạn chưa có phiếu thi công nào trong phạm vi bộ lọc hiện tại.'}
+                    </p>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -684,6 +755,7 @@ export function WorkOrderTable() {
       {selectedWoForDetail && (
         <WorkOrderDialog
           workOrder={selectedWoForDetail}
+          canEdit={isManagementView}
           onClose={() => setSelectedWoForDetail(null)}
         />
       )}
@@ -691,6 +763,7 @@ export function WorkOrderTable() {
       {selectedWoForEvidence && (
         <EvidenceModal
           workOrder={selectedWoForEvidence}
+          readOnly={!isManagementView && !isQcReferenceView}
           onClose={() => setSelectedWoForEvidence(null)}
         />
       )}
@@ -703,7 +776,7 @@ export function WorkOrderTable() {
       )}
 
       {/* Create New WorkOrder Dialog - Canonical ERD Flow */}
-      {isCreatingNew && (
+      {isManagementView && isCreatingNew && (
         <CreateWorkOrderModal
           incidents={incidents}
           tasks={tasks}
@@ -1018,4 +1091,3 @@ function CreateWorkOrderModal({ incidents, tasks, onClose, onCreate }: CreateWor
     </div>
   );
 }
-

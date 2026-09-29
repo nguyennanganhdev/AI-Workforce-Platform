@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { Link } from '@tanstack/react-router';
 import {
   IconBriefcase,
   IconClock,
@@ -20,6 +21,7 @@ import {
   IconChevronRight,
   IconCamera,
   IconRefresh,
+  IconTrash,
 } from '@tabler/icons-react';
 import { useOperationsData } from '../hooks/use-operations-data';
 import type { VhWorkOrder } from '../types/work-order';
@@ -34,8 +36,11 @@ export function MyTasksWorkspace() {
     incidents,
     evidence,
     currentProfile,
+    currentPersona,
     transitionWorkOrderStatus,
   } = useOperationsData();
+
+  const usesDedicatedSanitationWorkspace = currentPersona === 'STAFF_SANITATION_A5';
 
   const [activeTab, setActiveTab] = useState<FilterTab>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
@@ -538,7 +543,7 @@ export function MyTasksWorkspace() {
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5 relative">
                           {/* Quick inline button */}
-                          {wo.status === 'ASSIGNED' && (
+                          {!usesDedicatedSanitationWorkspace && wo.status === 'ASSIGNED' && (
                             <button
                               type="button"
                               onClick={() => handleStartWork(wo.id)}
@@ -550,7 +555,7 @@ export function MyTasksWorkspace() {
                             </button>
                           )}
 
-                          {wo.status === 'IN_PROGRESS' && (
+                          {!usesDedicatedSanitationWorkspace && wo.status === 'IN_PROGRESS' && (
                             <button
                               type="button"
                               onClick={() => handleCompleteWork(wo.id)}
@@ -562,7 +567,7 @@ export function MyTasksWorkspace() {
                             </button>
                           )}
 
-                          {wo.status === 'BLOCKED' && (
+                          {!usesDedicatedSanitationWorkspace && wo.status === 'BLOCKED' && (
                             <button
                               type="button"
                               onClick={() => handleResumeWork(wo.id)}
@@ -578,6 +583,16 @@ export function MyTasksWorkspace() {
                             <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                               ✓ Đã nộp QC
                             </span>
+                          )}
+
+                          {usesDedicatedSanitationWorkspace && wo.status !== 'COMPLETED' && (
+                            <Link
+                              to="/operations/sanitation"
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors shadow-2xs"
+                            >
+                              <IconTrash className="w-3 h-3" />
+                              <span>Mở quy trình A5</span>
+                            </Link>
                           )}
 
                           {/* 3-Dots Action Popover Menu (Matching Ảnh 2) */}
@@ -612,6 +627,7 @@ export function MyTasksWorkspace() {
                                   <span>Xem chi tiết</span>
                                 </button>
 
+                                {!usesDedicatedSanitationWorkspace && (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -623,10 +639,22 @@ export function MyTasksWorkspace() {
                                   <IconPhoto className="w-3.5 h-3.5 text-blue-600" />
                                   <span>Chụp / Tải ảnh</span>
                                 </button>
+                                )}
+
+                                {usesDedicatedSanitationWorkspace && wo.status !== 'COMPLETED' && (
+                                  <Link
+                                    to="/operations/sanitation"
+                                    onClick={() => setOpenActionId(null)}
+                                    className="w-full px-3 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 font-bold"
+                                  >
+                                    <IconTrash className="w-3.5 h-3.5" />
+                                    <span>Mở quy trình thực hiện A5</span>
+                                  </Link>
+                                )}
 
                                 <div className="my-1 border-t border-slate-100" />
 
-                                {wo.status === 'ASSIGNED' && (
+                                {!usesDedicatedSanitationWorkspace && wo.status === 'ASSIGNED' && (
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -640,7 +668,7 @@ export function MyTasksWorkspace() {
                                   </button>
                                 )}
 
-                                {wo.status === 'IN_PROGRESS' && (
+                                {!usesDedicatedSanitationWorkspace && wo.status === 'IN_PROGRESS' && (
                                   <>
                                     <button
                                       type="button"
@@ -669,7 +697,7 @@ export function MyTasksWorkspace() {
                                   </>
                                 )}
 
-                                {wo.status === 'BLOCKED' && (
+                                {!usesDedicatedSanitationWorkspace && wo.status === 'BLOCKED' && (
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -806,6 +834,7 @@ export function MyTasksWorkspace() {
       {selectedWoForEvidence && (
         <EvidenceModal
           workOrder={selectedWoForEvidence}
+          readOnly={usesDedicatedSanitationWorkspace}
           onClose={() => setSelectedWoForEvidence(null)}
         />
       )}
@@ -814,6 +843,7 @@ export function MyTasksWorkspace() {
       {selectedWoForDetail && (
         <WorkOrderDialog
           workOrder={selectedWoForDetail}
+          canEdit={!usesDedicatedSanitationWorkspace}
           onClose={() => setSelectedWoForDetail(null)}
         />
       )}

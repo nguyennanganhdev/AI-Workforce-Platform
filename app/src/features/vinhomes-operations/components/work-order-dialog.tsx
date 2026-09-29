@@ -15,9 +15,10 @@ import { useOperationsData } from '../hooks/use-operations-data';
 interface WorkOrderDialogProps {
   workOrder: VhWorkOrder;
   onClose: () => void;
+  canEdit?: boolean;
 }
 
-export function WorkOrderDialog({ workOrder, onClose }: WorkOrderDialogProps) {
+export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrderDialogProps) {
   const { transitionWorkOrderStatus, tasks, incidents } = useOperationsData();
 
   const task = tasks.find((t) => t.id === workOrder.task_id);
@@ -53,6 +54,11 @@ export function WorkOrderDialog({ workOrder, onClose }: WorkOrderDialogProps) {
                 {workOrder.redo_of_work_order_id && (
                   <span className="text-[10px] px-2 py-0.5 bg-rose-100 text-rose-700 font-bold rounded flex items-center gap-1">
                     <IconArrowBackUp className="w-3 h-3" /> Làm lại của {workOrder.redo_of_work_order_id}
+                  </span>
+                )}
+                {!canEdit && (
+                  <span className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-600 font-bold rounded">
+                    Chỉ xem
                   </span>
                 )}
               </div>
@@ -154,9 +160,14 @@ export function WorkOrderDialog({ workOrder, onClose }: WorkOrderDialogProps) {
             <textarea
               rows={3}
               value={note}
-              onChange={(e) => setNote(e.target.value)}
+              onChange={(e) => canEdit && setNote(e.target.value)}
+              readOnly={!canEdit}
               placeholder="Nhập ghi chú kỹ thuật, thông số đo đạc, hoặc nguyên nhân phát sinh..."
-              className="w-full p-3 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              className={`w-full p-3 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none ${
+                canEdit
+                  ? 'focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500'
+                  : 'bg-slate-50 cursor-default'
+              }`}
             />
           </div>
 
@@ -172,9 +183,10 @@ export function WorkOrderDialog({ workOrder, onClose }: WorkOrderDialogProps) {
           )}
 
           {/* Status Quick Actions */}
-          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-            <span className="font-bold text-slate-800 block text-xs">Chuyển trạng thái phiếu:</span>
-            <div className="flex flex-wrap items-center gap-2">
+          {canEdit && (
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+              <span className="font-bold text-slate-800 block text-xs">Chuyển trạng thái phiếu:</span>
+              <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => handleUpdate('IN_PROGRESS')}
@@ -208,8 +220,9 @@ export function WorkOrderDialog({ workOrder, onClose }: WorkOrderDialogProps) {
               >
                 Đã hoàn thành (Chờ QC)
               </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -221,16 +234,18 @@ export function WorkOrderDialog({ workOrder, onClose }: WorkOrderDialogProps) {
           >
             Đóng
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              handleUpdate(currentStatus);
-              onClose();
-            }}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm"
-          >
-            Lưu thay đổi
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                handleUpdate(currentStatus);
+                onClose();
+              }}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm"
+            >
+              Lưu thay đổi
+            </button>
+          )}
         </div>
       </div>
     </div>

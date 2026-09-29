@@ -9,19 +9,24 @@ import {
   IconRefresh,
 } from '@tabler/icons-react';
 import { useOperationsData } from '../hooks/use-operations-data';
-import { PERSONA_PROFILES } from '../types/persona';
+import { PERSONA_PROFILES, type OperationsPersona } from '../types/persona';
 
 interface BreadcrumbConfig {
   section: string;
   page: string;
 }
 
-function getBreadcrumb(pathname: string): BreadcrumbConfig {
+function getBreadcrumb(pathname: string, persona: OperationsPersona): BreadcrumbConfig {
   if (pathname.includes('/triage')) {
     return { section: 'Vận hành đô thị', page: 'Tiếp nhận phản ánh' };
   }
   if (pathname.includes('/work-orders')) {
-    return { section: 'Vận hành đô thị', page: 'Phiếu thi công' };
+    const page = persona === 'SUPERVISOR' || persona === 'MANAGER'
+      ? 'Quản lý phiếu thi công'
+      : persona === 'QC_INSPECTOR'
+        ? 'Hồ sơ chờ nghiệm thu'
+        : 'Hồ sơ công việc';
+    return { section: 'Vận hành đô thị', page };
   }
   if (pathname.includes('/kanban')) {
     return { section: 'Vận hành đô thị', page: 'Phân công nhiệm vụ' };
@@ -48,16 +53,18 @@ function getBreadcrumb(pathname: string): BreadcrumbConfig {
     return { section: 'Đối tác', page: 'Cổng nhà thầu kỹ thuật' };
   }
   if (pathname.includes('/sanitation')) {
-    return { section: 'Hiện trường', page: 'Vệ sinh môi trường A5' };
+    return {
+      section: 'Hiện trường',
+      page: persona === 'STAFF_SANITATION_A5' ? 'Thực hiện vệ sinh A5' : 'Giám sát vệ sinh A5',
+    };
   }
   return { section: 'Vận hành đô thị', page: 'Tổng quan' };
 }
 
 export function OperationsHeader() {
   const location = useLocation();
-  const breadcrumb = getBreadcrumb(location.pathname);
-
   const { currentPersona, incidents, approvals, resetToDefaultMock } = useOperationsData();
+  const breadcrumb = getBreadcrumb(location.pathname, currentPersona);
   const profile = PERSONA_PROFILES[currentPersona as keyof typeof PERSONA_PROFILES];
 
   const p1Incidents = incidents.filter((i) => i.severity === 'P1' && i.status === 'OPEN');
