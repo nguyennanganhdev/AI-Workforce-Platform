@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { OperationsTable } from './operations-table';
 import {
   IconTool,
   IconCheck,
@@ -29,6 +30,7 @@ export function ContractorWorkspace() {
   } = useOperationsData();
 
   const [selectedWoForEvidence, setSelectedWoForEvidence] = useState<VhWorkOrder | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState('');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Reject dialog
@@ -121,15 +123,15 @@ export function ContractorWorkspace() {
   };
 
   return (
-    <div className="space-y-6 font-sans">
+    <div className="operations-worker-view operations-plain-list operations-work-orders space-y-5">
       {/* Title Header with Blue Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-1.5 h-6 bg-blue-600 rounded-full shrink-0" />
+
           <div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
               <IconTool className="w-5 h-5 text-blue-600" />
-              <span>Cổng Thông Tin Nhà Thầu & Đối Tác Kỹ Thuật</span>
+              <span>Công việc nhà thầu</span>
             </h1>
             <p className="text-xs text-slate-500 font-medium">
               Tiếp nhận phiếu công việc, cử nhân sự thi công, ghi nhận vật tư và nộp hồ sơ nghiệm thu
@@ -138,7 +140,7 @@ export function ContractorWorkspace() {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="px-3.5 py-1 bg-amber-50 text-amber-800 font-bold text-xs rounded-full border border-amber-200">
+          <span className="text-sm text-slate-500">
             {currentProfile.name} • {currentProfile.department}
           </span>
         </div>
@@ -156,33 +158,25 @@ export function ContractorWorkspace() {
         </div>
       )}
 
-      {/* Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-        <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-2xs">
-          <div className="text-xs font-semibold text-slate-500">Chờ tiếp nhận</div>
-          <div className="text-2xl font-bold text-amber-600 mt-1">{pendingAcceptanceOrders.length}</div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Yêu cầu xác nhận trong 30 phút</div>
-        </div>
-
-        <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-2xs">
-          <div className="text-xs font-semibold text-blue-600">Đang thi công hiện trường</div>
-          <div className="text-2xl font-bold text-blue-700 mt-1">{inProgressOrders.length}</div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Nhân sự nhà thầu đang có mặt</div>
-        </div>
-
-        <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-2xs">
-          <div className="text-xs font-semibold text-emerald-600">Đã xong / Chờ BQL nghiệm thu</div>
-          <div className="text-2xl font-bold text-emerald-700 mt-1">{completedOrders.length}</div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Biên bản nghiệm thu QC</div>
-        </div>
+      <p className="text-sm text-slate-500">{pendingAcceptanceOrders.length} chờ tiếp nhận · {inProgressOrders.length} đang thi công · {completedOrders.length} chờ nghiệm thu</p>
+      <div className="operations-plain-list" hidden={Boolean(selectedOrderId)}>
+        <OperationsTable title="Công việc nhà thầu" columns={['Mã phiếu', 'Nội dung', 'Người thực hiện', 'Trạng thái']}
+          rows={contractorOrders.map((order) => {
+            const title = incidents.find((incident) => incident.id === order.incident_id)?.title || 'Công việc nhà thầu';
+            return {id: order.id, search: `${order.id} ${title} ${order.executor_name || ''}`, cells: [
+              order.id, title, order.executor_name || 'Chưa phân công',
+              order.contractor_status === 'PENDING_ACCEPTANCE' ? 'Chờ tiếp nhận' : order.contractor_status === 'REJECTED' ? 'Đã từ chối' :
+              ({OPEN: 'Mới tạo', ASSIGNED: 'Đã giao', IN_PROGRESS: 'Đang thi công', BLOCKED: 'Tạm dừng', COMPLETED: 'Chờ nghiệm thu', FAILED: 'Không đạt', CANCELLED: 'Đã hủy'})[order.status],
+            ]};
+          })} onSelect={setSelectedOrderId} />
       </div>
-
+      {selectedOrderId && <button type="button" className="operations-back" onClick={() => setSelectedOrderId('')}>Quay lại danh sách</button>}
       {/* Main List */}
       <div className="space-y-4">
-        <h3 className="font-bold text-sm text-slate-900">Danh sách phiếu công việc giao cho nhà thầu ({contractorOrders.length})</h3>
+        {selectedOrderId && <h2>Chi tiết công việc nhà thầu</h2>}
 
         <div className="space-y-3.5">
-          {contractorOrders.map((wo) => {
+          {contractorOrders.filter((order) => order.id === selectedOrderId).map((wo) => {
             const inc = incidents.find((i) => i.id === wo.incident_id);
             const woEvidence = evidence.filter((e) => e.work_order_id === wo.id);
             const beforeCount = woEvidence.filter((e) => e.capture_phase === 'BEFORE').length;
@@ -220,13 +214,13 @@ export function ContractorWorkspace() {
                       }`}
                     >
                       {wo.contractor_status === 'PENDING_ACCEPTANCE'
-                        ? '⏳ Chờ nhà thầu nhận việc'
+                        ? 'Chờ tiếp nhận'
                         : wo.contractor_status === 'ACCEPTED' && wo.status === 'ASSIGNED'
                           ? '📋 Đã nhận việc • Chờ bắt đầu thi công'
                           : wo.status === 'COMPLETED'
-                            ? '✓ Đã hoàn thành (Chờ QC)'
+                            ? 'Chờ nghiệm thu'
                             : wo.contractor_status === 'REJECTED'
-                              ? '✕ Nhà thầu từ chối'
+                              ? 'Đã từ chối'
                               : '⚡ Đang thi công'}
                     </span>
                   </div>
@@ -249,7 +243,7 @@ export function ContractorWorkspace() {
                   </div>
 
                   <div>
-                    <span className="text-slate-400 block text-[11px]">Checklist kỹ thuật:</span>
+                    <span className="text-slate-400 block text-[11px]">Tiêu chí kỹ thuật:</span>
                     <span className="font-mono text-slate-700">{wo.checklist_version_id || 'CKL-VER-ELEV-01'}</span>
                   </div>
                 </div>
@@ -277,20 +271,20 @@ export function ContractorWorkspace() {
                 {/* Evidence count & Action Row */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs">
                   <div className="flex items-center gap-3">
-                    <span className="text-slate-500">Ảnh Before/After:</span>
+                    <span className="text-slate-500">Ảnh trước và sau xử lý:</span>
                     <span
                       className={`text-[11px] font-bold px-2 py-0.5 rounded ${
                         beforeCount > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
                       }`}
                     >
-                      {beforeCount > 0 ? `✓ Ảnh Trước (${beforeCount})` : '✕ Thiếu ảnh Trước'}
+                      {beforeCount > 0 ? `Ảnh trước xử lý (${beforeCount})` : 'Chưa có ảnh trước xử lý'}
                     </span>
                     <span
                       className={`text-[11px] font-bold px-2 py-0.5 rounded ${
                         afterCount > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
                       }`}
                     >
-                      {afterCount > 0 ? `✓ Ảnh Sau (${afterCount})` : '✕ Thiếu ảnh Sau'}
+                      {afterCount > 0 ? `Ảnh sau xử lý (${afterCount})` : 'Chưa có ảnh sau xử lý'}
                     </span>
                     <button
                       type="button"

@@ -216,7 +216,7 @@ export function EvidenceModal({ workOrder, onClose, readOnly = false, initialPha
     const gpsString = `${gpsData.lat}° N, ${gpsData.lng}° E (Sai số ±${gpsData.accuracy}m)`;
     const timeString = new Date().toLocaleString('vi-VN');
 
-    setBurnStatus('Đang đóng dấu Watermark trực tiếp vào điểm ảnh...');
+    setBurnStatus('Đang ghi thông tin xác thực lên ảnh...');
     try {
       const finalBurnedUrl = showWatermark
         ? await burnWatermarkOntoImage(rawUrl, {
@@ -273,7 +273,7 @@ export function EvidenceModal({ workOrder, onClose, readOnly = false, initialPha
             <div className="w-1.5 h-6 bg-blue-600 rounded-full" />
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-slate-900 text-base">Kho Bằng Chứng Hiện Trường</h3>
+                <h3 id="evidence-modal-title" className="font-bold text-slate-900 text-base">Ảnh hiện trường</h3>
                 <span className="font-mono text-xs px-2 py-0.5 bg-blue-50 text-blue-700 font-bold rounded">
                   {workOrder.id}
                 </span>
@@ -282,8 +282,8 @@ export function EvidenceModal({ workOrder, onClose, readOnly = false, initialPha
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
                 {readOnly
-                  ? 'Hồ sơ ảnh Before/After và ảnh nghiệm thu gắn với lần thi công này.'
-                  : 'Chụp ảnh Before/After có đóng dấu Watermark toạ độ, thời gian & danh tính người thao tác'}
+                  ? 'Ảnh trước, sau xử lý và ảnh nghiệm thu của lần thi công này.'
+                  : 'Chụp ảnh trước và sau xử lý, ghi rõ vị trí, thời gian và người thực hiện.'}
               </p>
             </div>
           </div>
@@ -296,15 +296,15 @@ export function EvidenceModal({ workOrder, onClose, readOnly = false, initialPha
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
               >
                 <IconCamera className="w-4 h-4" />
-                <span>{isUploading ? 'Đóng form chụp' : 'Chụp / Tải ảnh mới'}</span>
+                <span>{isUploading ? 'Ẩn phần thêm ảnh' : 'Chụp / Tải ảnh mới'}</span>
               </button>
             )}
             <button
               type="button"
               onClick={onClose}
-              className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors"
+              className="operations-back shrink-0" aria-label="Đóng ảnh hiện trường"
             >
-              <IconX className="w-5 h-5" />
+              Đóng
             </button>
           </div>
         </div>
@@ -348,7 +348,7 @@ export function EvidenceModal({ workOrder, onClose, readOnly = false, initialPha
                     <option value="BEFORE">1. Trước khi làm (BEFORE - Bắt buộc)</option>
                     <option value="AFTER">2. Sau khi hoàn thành (AFTER - Bắt buộc)</option>
                     <option value="QC" disabled={!currentProfile.canQC}>
-                      3. Nghiệm thu độc lập (QC {!currentProfile.canQC ? '• Chỉ dành cho QC' : ''})
+                      3. Nghiệm thu độc lập ({!currentProfile.canQC ? '• Dành cho người nghiệm thu' : ''})
                     </option>
                   </select>
                 </div>
@@ -415,7 +415,7 @@ export function EvidenceModal({ workOrder, onClose, readOnly = false, initialPha
 
               {/* Live Preview with Realtime Watermark Overlay */}
               <div className="space-y-2">
-                <span className="font-bold text-xs text-slate-700 block">Xem trước ảnh & Dấu Watermark:</span>
+                <span className="font-bold text-xs text-slate-700 block">Xem trước ảnh và thông tin xác thực:</span>
                 <div className="relative aspect-video bg-slate-900 rounded-xl overflow-hidden border border-slate-300 shadow-inner">
                   {selectedFileUrl ? (
                     <>
@@ -560,7 +560,7 @@ export function EvidenceModal({ workOrder, onClose, readOnly = false, initialPha
 
                 {afterItems.length === 0 ? (
                   <div className="p-8 border-2 border-dashed border-emerald-200 rounded-2xl text-center text-emerald-600 text-xs bg-emerald-50/30">
-                    ✕ Chưa có hình ảnh sau hoàn thành. Bắt buộc phải có để tiến hành nghiệm thu QC!
+                    ✕ Chưa có hình ảnh sau hoàn thành. Bắt buộc phải có để tiến hành nghiệm thu!
                   </div>
                 ) : (
                   afterItems.map((item) => (

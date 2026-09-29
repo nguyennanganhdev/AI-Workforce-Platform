@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { OperationsTable } from './operations-table';
 import {
   IconShield,
   IconCheck,
@@ -20,6 +21,8 @@ import { useOperationsData } from '../hooks/use-operations-data';
 import type { SecurityIncidentReport } from '../types/security';
 
 export function SecurityWorkspace() {
+  const [selectedCheckpoint, setSelectedCheckpoint] = useState('');
+  const [selectedReport, setSelectedReport] = useState('');
   const {
     securityCheckpoints,
     securityIncidents,
@@ -74,7 +77,7 @@ export function SecurityWorkspace() {
     toggleSecurityCheckpoint(cpId, cpNote || 'Tình trạng an ninh bình thường, không có dấu hiệu bất thường.');
     setCheckingCpId(null);
     setCpNote('');
-    setSuccessMsg('Đã check-in thành công tại điểm tuần tra!');
+    setSuccessMsg('Đã xác nhận có mặt thành công tại điểm tuần tra!');
     setTimeout(() => setSuccessMsg(null), 3000);
   };
 
@@ -145,15 +148,15 @@ export function SecurityWorkspace() {
   };
 
   return (
-    <div className="space-y-6 font-sans">
+    <div className="operations-worker-view operations-plain-list operations-work-orders space-y-5">
       {/* Title Header with Blue Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-1.5 h-6 bg-blue-600 rounded-full shrink-0" />
+
           <div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
               <IconShield className="w-5 h-5 text-blue-600" />
-              <span>Nghiệp Vụ An Ninh & Trật Tự Hiện Trường</span>
+              <span>An ninh hiện trường</span>
             </h1>
             <p className="text-xs text-slate-500 font-medium">
               Tuần tra theo tuyến, lập biên bản sự việc, kiểm soát ra vào và bàn giao ca trực an ninh
@@ -207,10 +210,10 @@ export function SecurityWorkspace() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="font-bold text-sm text-slate-900">Danh mục điểm kiểm soát theo tuyến</h3>
-              <p className="text-xs text-slate-500">Nhân viên tuần tra bấm Check-in khi có mặt tại từng vị trí</p>
+              <p className="text-xs text-slate-500">Nhân viên tuần tra xác nhận kiểm tra khi có mặt tại từng vị trí</p>
             </div>
             <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-              Đã check {checkedCheckpointsCount}/{securityCheckpoints.length} điểm
+              Đã kiểm tra {checkedCheckpointsCount}/{securityCheckpoints.length} điểm
             </span>
           </div>
 
@@ -246,7 +249,7 @@ export function SecurityWorkspace() {
                 <p className="text-xs text-slate-600">
                   {allCheckpointsChecked
                     ? '✓ Đã hoàn thành 100% trạm kiểm soát! Sẵn sàng báo hoàn tất ca tuần tra.'
-                    : `Tiến độ tuyến tuần tra: Đã check-in ${checkedCheckpointsCount}/${securityCheckpoints.length} trạm bắt buộc.`}
+                    : `Tiến độ tuyến tuần tra: Đã xác nhận có mặt ${checkedCheckpointsCount}/${securityCheckpoints.length} trạm bắt buộc.`}
                 </p>
               </div>
 
@@ -271,14 +274,21 @@ export function SecurityWorkspace() {
                       : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                   }`}
                 >
-                  {allCheckpointsChecked ? '✓ Hoàn thành phiếu tuần tra (COMPLETED)' : 'Cần check-in đủ trạm để hoàn thành'}
+                  {allCheckpointsChecked ? '✓ Hoàn thành phiếu tuần tra ' : 'Cần xác nhận có mặt đủ trạm để hoàn thành'}
                 </button>
               )}
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            {securityCheckpoints.map((cp) => (
+          <div className="operations-plain-list" hidden={Boolean(selectedCheckpoint)}>
+            <OperationsTable title="Điểm tuần tra" columns={['Thứ tự', 'Điểm kiểm tra', 'Vị trí', 'Trạng thái', 'Người kiểm tra']}
+              rows={securityCheckpoints.map((point) => ({id: point.id, search: `${point.id} ${point.name} ${point.location}`, cells: [
+                point.order, point.name, point.location, point.status === 'CHECKED' ? 'Đã kiểm tra' : 'Chờ kiểm tra', point.guard_name || 'Chưa có',
+              ]}))} onSelect={setSelectedCheckpoint} />
+          </div>
+          {selectedCheckpoint && <button type="button" className="operations-back" onClick={() => setSelectedCheckpoint('')}>Quay lại danh sách điểm tuần tra</button>}
+          <div className="space-y-4">
+            {securityCheckpoints.filter((point) => point.id === selectedCheckpoint).map((cp) => (
               <div
                 key={cp.id}
                 className={`bg-white rounded-2xl border p-4 shadow-2xs space-y-3 transition-all ${
@@ -316,7 +326,7 @@ export function SecurityWorkspace() {
                   <span className="text-slate-400">
                     {cp.checked_at
                       ? `${new Date(cp.checked_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} • ${cp.guard_name}`
-                      : 'Chưa có lượt check'}
+                      : 'Chưa kiểm tra'}
                   </span>
                   {cp.status !== 'CHECKED' && (
                     <button
@@ -324,7 +334,7 @@ export function SecurityWorkspace() {
                       onClick={() => setCheckingCpId(cp.id)}
                       className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors shadow-2xs"
                     >
-                      Check-in ngay
+                      Xác nhận kiểm tra
                     </button>
                   )}
                 </div>
@@ -352,8 +362,15 @@ export function SecurityWorkspace() {
             </button>
           </div>
 
+          <div className="operations-plain-list" hidden={Boolean(selectedReport)}>
+            <OperationsTable title="Biên bản sự việc" columns={['Mã biên bản', 'Nội dung', 'Vị trí', 'Trạng thái']}
+              rows={securityIncidents.map((report) => ({id: report.id, search: `${report.id} ${report.title} ${report.location}`, cells: [
+                report.id, report.title, report.location, report.status === 'RESOLVED' ? 'Đã xử lý' : 'Đang xử lý',
+              ]}))} onSelect={setSelectedReport} />
+          </div>
+          {selectedReport && <button type="button" className="operations-back" onClick={() => setSelectedReport('')}>Quay lại danh sách biên bản</button>}
           <div className="space-y-3">
-            {securityIncidents.map((inc) => (
+            {securityIncidents.filter((report) => report.id === selectedReport).map((inc) => (
               <div
                 key={inc.id}
                 className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs space-y-3 hover:border-slate-300 transition-colors"
@@ -530,7 +547,7 @@ export function SecurityWorkspace() {
           <div className="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-3 text-rose-900">
             <div className="flex items-center gap-2">
               <IconAlertTriangle className="w-5 h-5 text-rose-600" />
-              <h3 className="font-bold text-sm">Đường dây nóng Phản ứng Khẩn cấp (Hotline Hiện Trường)</h3>
+              <h3 className="font-bold text-sm">Đường dây nóng Phản ứng Khẩn cấp (Liên hệ khẩn cấp)</h3>
             </div>
             <p className="text-xs text-rose-800 leading-relaxed">
               Khi xảy ra tình huống khẩn cấp vượt tầm kiểm soát (Cháy nổ, Cấp cứu y tế, Đột nhập nguy hiểm), nhân viên an ninh bấm kết nối trực tiếp đến các đơn vị hỗ trợ:

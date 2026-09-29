@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { OperationsTable } from './operations-table';
 import {
   IconCheck,
   IconBuilding,
@@ -26,6 +27,7 @@ const COLUMNS: TaskColumnDef[] = [
 
 export function KanbanBoard() {
   const { tasks, workOrders, incidents, updateTaskStatus } = useOperationsData();
+  const [view, setView] = useState<'LIST' | 'BOARD'>('LIST');
   const [selectedDomain, setSelectedDomain] = useState<string>('ALL');
   const [selectedIncidentFilter, setSelectedIncidentFilter] = useState<string>('ALL');
 
@@ -43,7 +45,7 @@ export function KanbanBoard() {
           <div className="w-1.5 h-6 bg-blue-600 rounded-full shrink-0" />
           <div>
             <h1 className="text-lg font-bold text-slate-900 tracking-tight">
-              Bảng Phân Công Nhiệm Vụ Hiện Trường
+              Phân công công việc
             </h1>
             <p className="text-xs text-slate-500">
               Điều phối tiến độ công việc giữa các đội ngũ kỹ thuật và giám sát
@@ -92,8 +94,21 @@ export function KanbanBoard() {
         </div>
       </div>
 
+      <div className="flex gap-5 border-b border-slate-200">
+        <button type="button" aria-pressed={view === 'LIST'} className={`pb-3 text-sm ${view === 'LIST' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500'}`} onClick={() => setView('LIST')}>Danh sách công việc</button>
+        <button type="button" aria-pressed={view === 'BOARD'} className={`pb-3 text-sm ${view === 'BOARD' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500'}`} onClick={() => setView('BOARD')}>Theo tiến độ</button>
+      </div>
+      <div hidden={view !== 'LIST'}>
+        <OperationsTable title="Phân công công việc" columns={['Mã công việc', 'Nội dung', 'Sự cố', 'Người phụ trách', 'Trạng thái']}
+          actionLabel="Xem tiến độ"
+          rows={filteredTasks.map((task) => ({id: task.id, search: `${task.id} ${task.title} ${task.assignee_name || ''}`, cells: [
+            task.id, task.title, task.incident_id, task.assignee_name || 'Chưa phân công',
+            COLUMNS.find((column) => column.id === task.status)?.label || 'Chưa xác định',
+          ]}))}
+          onSelect={(id) => { setSelectedIncidentFilter(tasks.find((task) => task.id === id)?.incident_id || 'ALL'); setView('BOARD'); }} />
+      </div>
       {/* 4-Column Board */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5 items-start">
+      <div className={view === 'BOARD' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5 items-start" : "hidden"}>
         {COLUMNS.map((col) => {
           const colTasks = filteredTasks.filter((t) => t.status === col.id);
 
@@ -218,7 +233,7 @@ export function KanbanBoard() {
                               onClick={() => updateTaskStatus(task.id, 'DONE')}
                               className="px-2 py-0.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded text-[11px] font-bold transition-colors"
                             >
-                              Xong ✓
+                              Hoàn thành
                             </button>
                           </>
                         )}
@@ -228,7 +243,7 @@ export function KanbanBoard() {
                             onClick={() => updateTaskStatus(task.id, 'IN_PROGRESS')}
                             className="px-2 py-0.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded text-[11px] font-bold transition-colors"
                           >
-                            Tiếp tục làm ➔
+                            Tiếp tục làm
                           </button>
                         )}
                         {task.status === 'DONE' && (

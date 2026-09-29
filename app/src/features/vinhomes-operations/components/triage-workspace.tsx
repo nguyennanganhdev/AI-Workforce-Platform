@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { OperationsTable } from './operations-table';
 import {
   IconInbox,
   IconSparkles,
@@ -28,7 +29,7 @@ export function TriageWorkspace() {
     mergeIssueCandidates,
   } = useOperationsData();
 
-  const [selectedCaseId, setSelectedCaseId] = useState<string>(cases[0]?.id || '');
+  const [selectedCaseId, setSelectedCaseId] = useState<string>('');
 
   // Split Modal State
   const [splitCandidate, setSplitCandidate] = useState<VhIssueCandidate | null>(null);
@@ -42,7 +43,7 @@ export function TriageWorkspace() {
   // Notification State
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
-  const selectedCase = cases.find((c) => c.id === selectedCaseId) || cases[0];
+  const selectedCase = cases.find((c) => c.id === selectedCaseId);
   const caseRequests = MOCK_RESIDENT_REQUESTS.filter((r: VhResidentRequest) => r.case_id === selectedCase?.id);
   const caseCandidates = issueCandidates.filter((ic) => ic.case_id === selectedCase?.id);
 
@@ -88,7 +89,7 @@ export function TriageWorkspace() {
           <div className="w-1.5 h-6 bg-blue-600 rounded-full shrink-0" />
           <div>
             <h1 className="text-lg font-bold text-slate-900 tracking-tight">
-              Tiếp Nhận & Phân Loại Yêu Cầu Cư Dân
+              Tiếp nhận phản ánh
             </h1>
             <p className="text-xs text-slate-500">
               Xem xét ý kiến cư dân gửi đến, xác nhận đề xuất xử lý từ AI và chuyển giao cho các bộ phận
@@ -119,64 +120,17 @@ export function TriageWorkspace() {
         </div>
       )}
 
-      {/* Main Two-Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Left Column: Cases List (4 Cols) */}
-        <div className="lg:col-span-4 space-y-2.5">
-          <div className="flex items-center justify-between pb-1">
-            <span className="text-xs font-bold text-slate-700">Ý kiến cư dân gửi đến</span>
-            <span className="text-[11px] text-slate-400">Chọn để xem</span>
-          </div>
-
-          <div className="space-y-2">
-            {cases.map((c) => {
-              const isSelected = selectedCase?.id === c.id;
-              return (
-                <div
-                  key={c.id}
-                  onClick={() => setSelectedCaseId(c.id)}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer space-y-2 ${
-                    isSelected
-                      ? 'bg-blue-50/70 border-blue-500 shadow-2xs ring-1 ring-blue-500/20'
-                      : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-2xs'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs font-bold text-blue-600">{c.id}</span>
-                    <span
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                        c.status === 'TICKETED'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : c.status === 'READY'
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-amber-100 text-amber-700'
-                      }`}
-                    >
-                      {c.status === 'TICKETED' ? 'Đã tạo sự cố' : c.status === 'READY' ? 'Sẵn sàng xử lý' : 'Đang làm rõ'}
-                    </span>
-                  </div>
-
-                  <p className="font-bold text-xs text-slate-900 line-clamp-2 leading-snug">
-                    {c.summary}
-                  </p>
-
-                  <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                    <span className="flex items-center gap-1 font-medium">
-                      <IconUser className="w-3 h-3 text-slate-400" />
-                      {c.resident_name} • {c.apartment_id}
-                    </span>
-                    <span className="text-[10px] text-slate-400">
-                      {new Date(c.opened_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Right Column: Case Details & AI Suggestions (8 Cols) */}
-        <div className="lg:col-span-8 space-y-4">
+      <div hidden={Boolean(selectedCaseId)}>
+        <OperationsTable title="Phản ánh của cư dân" columns={['Mã phản ánh', 'Nội dung', 'Cư dân', 'Căn hộ', 'Trạng thái', 'Ngày tiếp nhận']}
+          rows={cases.map((item) => ({ id: item.id, search: `${item.id} ${item.summary} ${item.resident_name} ${item.apartment_id || ''}`, cells: [
+            item.id, item.summary, item.resident_name, item.apartment_id || 'Chưa xác định',
+            ({OPEN: 'Mới tiếp nhận', CLARIFYING: 'Đang làm rõ', READY: 'Sẵn sàng xử lý', TICKETED: 'Đã tạo sự cố', CLOSED: 'Đã đóng', CANCELLED: 'Đã hủy'})[item.status],
+            new Date(item.opened_at).toLocaleDateString('vi-VN'),
+          ]}))} onSelect={setSelectedCaseId} />
+      </div>
+      <div hidden={!selectedCaseId} className="space-y-4">
+        <button type="button" className="operations-back" onClick={() => setSelectedCaseId('')}>Quay lại danh sách</button>
+        <div className="space-y-4">
           {selectedCase ? (
             <>
               {/* Resident Info Card */}
@@ -214,37 +168,6 @@ export function TriageWorkspace() {
                   ))}
                 </div>
 
-                {/* Agent CSKH Clarification Dialogue */}
-                <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-200/80 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-emerald-900 flex items-center gap-1.5">
-                      <IconHeadset className="w-3.5 h-3.5 text-emerald-600" />
-                      Quy trình Agent CSKH Xác Nhận & Làm Rõ Thông Tin Căn Hộ
-                    </span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
-                      ✓ Đã làm rõ số phòng: {selectedCase.apartment_id}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 text-xs text-slate-700 bg-white p-3 rounded-lg border border-emerald-100">
-                    <p className="flex items-start gap-2">
-                      <span className="font-bold text-slate-900 shrink-0">Cư dân:</span>
-                      <span className="italic">"Nước rò rỉ chảy lênh láng ra hành lang tầng 12, nhờ Ban Quản Lý cử người lên kiểm tra gấp!"</span>
-                    </p>
-                    <p className="flex items-start gap-2 text-emerald-900">
-                      <span className="font-bold shrink-0">Agent CSKH:</span>
-                      <span>"Chào chị {selectedCase.resident_name}, CSKH Vinhomes đã nhận thông tin. Để cử đúng kỹ thuật viên kiểm tra hộp gen và đường ống, chị cho em xin chính xác số căn hộ và vị trí rò rỉ ạ?"</span>
-                    </p>
-                    <p className="flex items-start gap-2">
-                      <span className="font-bold text-slate-900 shrink-0">Cư dân:</span>
-                      <span className="italic">"Căn của tôi là <strong>{selectedCase.apartment_id}</strong>, nước tràn từ hộp gen kỹ thuật ngay trước cửa nhà."</span>
-                    </p>
-                    <p className="flex items-start gap-2 text-emerald-900">
-                      <span className="font-bold shrink-0">Agent CSKH:</span>
-                      <span>"Dạ em đã cập nhật vị trí: Căn {selectedCase.apartment_id}. Hệ thống đã phân tích case, tạo Ticket và chuyển sang Agent Điều Phối (Supervisor) để mở Session điều phối KTV!"</span>
-                    </p>
-                  </div>
-                </div>
               </div>
 
               {/* AI Suggestions Card */}
@@ -252,7 +175,7 @@ export function TriageWorkspace() {
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
                     <IconSparkles className="w-4 h-4 text-purple-600" />
-                    Phương án đề xuất từ AI
+                    Phương án xử lý đề xuất
                   </h3>
                   <span className="text-[11px] text-slate-400">
                     AI tự động nhận diện vị trí và bộ phận phụ trách

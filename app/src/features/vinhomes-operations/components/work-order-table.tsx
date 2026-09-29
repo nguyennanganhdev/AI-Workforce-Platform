@@ -204,20 +204,20 @@ export function WorkOrderTable() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="operations-plain-list operations-work-orders space-y-5">
       {/* Title & Action Toolbar — Chuẩn 100% Template BistroPulse */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         {/* Left: Blue Vertical Line + Title */}
         <div className="flex items-center gap-3">
-          <div className="w-1.5 h-6 bg-blue-600 rounded-full shrink-0" />
+
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold text-slate-900 tracking-tight">{pageTitle}</h1>
-              <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full">
+              <span className="text-sm font-normal text-slate-500">
                 {filteredOrders.length} phiếu
               </span>
             </div>
-            <p className="text-xs text-slate-500 mt-1">{pageDescription}</p>
+
           </div>
         </div>
 
@@ -225,13 +225,13 @@ export function WorkOrderTable() {
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Search Bar */}
           <div className="relative">
-            <IconSearch className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+
             <input
               type="text"
               placeholder="Tìm theo mã phiếu, tên việc, nhân sự..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 w-48 sm:w-60 shadow-2xs font-medium"
+              className="pl-3 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 w-48 sm:w-60 shadow-2xs font-medium"
             />
           </div>
 
@@ -246,7 +246,7 @@ export function WorkOrderTable() {
                   : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
             >
-              <IconFilter className="w-4 h-4 text-slate-500" />
+
               <span>Bộ lọc</span>
             </button>
 
@@ -323,8 +323,8 @@ export function WorkOrderTable() {
               onClick={() => setIsCreatingNew(true)}
               className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-blue-500/20 active:scale-95"
             >
-              <IconPlus className="w-4 h-4" />
-              <span>+ Giao việc mới</span>
+
+              <span>Giao việc mới</span>
             </button>
           )}
 
@@ -335,15 +335,15 @@ export function WorkOrderTable() {
               onClick={() => alert('Xuất danh sách phiếu thi công ra file CSV/Excel')}
               className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition-colors shadow-2xs"
             >
-              <IconDownload className="w-4 h-4 text-slate-500" />
-              <span>Xuất file ⌄</span>
+
+              <span>Xuất danh sách</span>
             </button>
           )}
         </div>
       </div>
 
       {/* Main Table Card — BistroPulse Rounded White Container */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+      <div className="bg-white overflow-visible">
         <div className="overflow-x-auto min-h-[380px]">
           <table className="w-full text-left text-xs text-slate-600 font-sans">
             {/* Table Header */}
@@ -385,7 +385,7 @@ export function WorkOrderTable() {
                 <th className="py-3.5 px-3 min-w-[160px]">Người thực hiện</th>
 
                 {/* SLA / Priority */}
-                <th className="py-3.5 px-3 min-w-[110px]">SLA / Hạn</th>
+                <th className="py-3.5 px-3 min-w-[110px]">Hạn xử lý</th>
 
                 {/* Status with Accessible Sort Button */}
                 <th className="py-3.5 px-3 min-w-[120px]">
@@ -431,123 +431,21 @@ export function WorkOrderTable() {
                       </td>
                     )}
 
-                    {/* Name & ID */}
-                    <td className="py-3.5 px-3">
-                      <div className="flex items-center gap-2">
-                        {isRedo && (
-                          <span
-                            title={`Làm lại của phiếu ${wo.redo_of_work_order_id}`}
-                            className="p-1 rounded bg-rose-100 text-rose-700 shrink-0"
-                          >
-                            <IconArrowBackUp className="w-3.5 h-3.5" />
-                          </span>
-                        )}
-                        <div>
-                          <p className="font-bold text-slate-900 hover:text-blue-600 cursor-pointer">
-                            {wo.taskTitle}
-                          </p>
-                          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-mono mt-0.5">
-                            <span className="font-semibold text-blue-600">{wo.id}</span>
-                            <span>•</span>
-                            <span>Lần {wo.attempt_no}</span>
-                            {isRedo && (
-                              <span className="text-rose-600 font-semibold">
-                                (Làm lại của {wo.redo_of_work_order_id})
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                    <td>
+                      <button type="button" className="text-left font-normal text-slate-700 hover:text-blue-600" onClick={() => setSelectedWoForDetail(wo)}>{wo.taskTitle}</button>
+                      <p className="mt-1 text-xs text-slate-400">{wo.id}{isRedo ? ' · Làm lại' : ''}</p>
                     </td>
-
-                    {/* Location */}
-                    <td className="py-3.5 px-3">
-                      <p className="font-bold text-slate-800">{wo.towerCode}</p>
-                      <p className="text-[11px] text-slate-400 truncate max-w-[130px]">
-                        {wo.areaDesc}
-                      </p>
-                    </td>
-
-                    {/* Domain */}
-                    <td className="py-3.5 px-3">
-                      <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700">
-                        {DOMAIN_LABELS[wo.domainType] || wo.domainType}
-                      </span>
-                    </td>
-
-                    {/* Assignee / Representative — BistroPulse Avatar Style */}
-                    <td className="py-3.5 px-3">
-                      {wo.executor_name ? (
-                        <div className="flex items-center gap-2.5">
-                          {wo.executor_avatar ? (
-                            <img
-                              src={wo.executor_avatar}
-                              alt={wo.executor_name}
-                              className="w-7 h-7 rounded-full object-cover border border-slate-200 shrink-0"
-                            />
-                          ) : (
-                            <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center text-[10px]">
-                              {wo.executor_name.charAt(0)}
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <p className="font-semibold text-slate-800 truncate">{wo.executor_name}</p>
-                            <p className="text-[10px] text-slate-400">{wo.executor_phone || 'Hiện trường'}</p>
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 italic">Chưa chỉ định</span>
-                      )}
-                    </td>
-
-                    {/* SLA / Priority */}
-                    <td className="py-3.5 px-3">
-                      <div className="flex items-center gap-1 font-medium">
-                        {wo.priority === 'URGENT' ? (
-                          <span className="text-rose-600 font-bold flex items-center gap-0.5">
-                            ★ P1 (45p)
-                          </span>
-                        ) : wo.priority === 'HIGH' ? (
-                          <span className="text-amber-600 font-semibold flex items-center gap-0.5">
-                            ★ P2 (2h)
-                          </span>
-                        ) : (
-                          <span className="text-slate-500">P3 (24h)</span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Status — BistroPulse Clean Soft Badges */}
-                    <td className="py-3.5 px-3">
-                      {wo.status === 'COMPLETED' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-600">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                          Hoàn thành
-                        </span>
-                      ) : wo.status === 'IN_PROGRESS' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-600">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                          Đang làm
-                        </span>
-                      ) : wo.status === 'ASSIGNED' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-600">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                          Đã giao
-                        </span>
-                      ) : wo.status === 'FAILED' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-600">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                          Cần làm lại
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
-                          Mới tạo
-                        </span>
-                      )}
+                    <td className="whitespace-nowrap">Tòa {wo.towerCode}</td>
+                    <td>{DOMAIN_LABELS[wo.domainType] || wo.domainType}</td>
+                    <td>{wo.executor_name || 'Chưa phân công'}</td>
+                    <td className="whitespace-nowrap">{wo.priority === 'URGENT' ? '45 phút' : wo.priority === 'HIGH' ? '2 giờ' : '24 giờ'}</td>
+                    <td className={wo.status === 'COMPLETED' ? 'text-emerald-700' : wo.status === 'FAILED' ? 'text-red-700' : 'text-slate-600'}>
+                      {({OPEN: 'Mới tạo', ASSIGNED: 'Đã giao', IN_PROGRESS: 'Đang thực hiện', BLOCKED: 'Tạm dừng', COMPLETED: 'Hoàn thành', FAILED: 'Cần làm lại', CANCELLED: 'Đã hủy'})[wo.status]}
                     </td>
 
                     {/* Action 3-dots with BistroPulse Popover Menu */}
-                    <td className="py-3.5 pr-4 pl-2 text-right relative">
+                    <td className="py-3.5 pr-4 pl-2 text-right relative whitespace-nowrap">
+                      <button type="button" className="operations-text-action mr-3" onClick={() => setSelectedWoForDetail(wo)} aria-label={`Xem chi tiết phiếu ${wo.id}`}>Xem chi tiết</button>
                       <button
                         type="button"
                         onClick={() => setOpenActionId(isActionOpen ? null : wo.id)}
@@ -555,7 +453,7 @@ export function WorkOrderTable() {
                         title="Tùy chọn thao tác"
                         aria-label={`Tùy chọn thao tác cho phiếu ${wo.id}`}
                       >
-                        <IconDotsVertical className="w-4 h-4" />
+                        Thao tác
                       </button>
 
                       {/* BistroPulse 3-dots Context Menu Popover */}
@@ -613,7 +511,7 @@ export function WorkOrderTable() {
                                 onClick={() => {
                                   if (isExecutor) {
                                     alert(
-                                      `🚫 Vi phạm nguyên tắc kiểm soát độc lập (Segregation of Duties):\nBạn (${wo.executor_name}) là người trực tiếp thi công phiếu ${wo.id}, KHÔNG ĐƯỢC tự nghiệm thu QC cho chính mình!\nVui lòng chuyển giao phiếu cho chuyên viên QC Inspector độc lập hoặc Trưởng ca.`
+                                      `🚫 Vi phạm nguyên tắc kiểm soát độc lập (Segregation of Duties):\nBạn (${wo.executor_name}) là người trực tiếp thi công phiếu ${wo.id}, KHÔNG ĐƯỢC tự nghiệm thu QC cho chính mình!\nVui lòng chuyển giao phiếu cho chuyên viên nghiệm thu chất lượng độc lập hoặc Trưởng ca.`
                                     );
                                     return;
                                   }
@@ -680,7 +578,7 @@ export function WorkOrderTable() {
                               className="w-full px-3 py-2 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 flex items-center gap-2.5"
                             >
                               <IconCheck className="w-4 h-4" />
-                              <span>Đánh dấu hoàn tất (Chờ QC)</span>
+                              <span>Đánh dấu hoàn tất (Chờ nghiệm thu)</span>
                             </button>
                           )}
                         </div>
@@ -882,7 +780,7 @@ function CreateWorkOrderModal({ incidents, tasks, onClose, onCreate }: CreateWor
   const availableTasks = tasks.filter((t) => t.incident_id === selectedIncidentId && t.status !== 'DONE');
   const [selectedTaskId, setSelectedTaskId] = useState<string>(availableTasks[0]?.id || '');
   const [selectedGrantId, setSelectedGrantId] = useState<string>('');
-  
+
   const [selectedWorkerId, setSelectedWorkerId] = useState<string>('usr-tech-01');
   const [executorName, setExecutorName] = useState('Nguyễn Văn Hùng');
   const [executorPhone, setExecutorPhone] = useState('0912 345 678');

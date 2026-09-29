@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { OperationsTable } from './operations-table';
 import {
   IconCheck,
   IconX,
@@ -27,6 +28,8 @@ export function ApprovalQueue() {
   const [selectedApproval, setSelectedApproval] = useState<VhActionApproval | null>(null);
   const [decisionReason, setDecisionReason] = useState('');
   const [decisionType, setDecisionType] = useState<'APPROVE' | 'REJECT'>('APPROVE');
+  const [historyId, setHistoryId] = useState('');
+  const [detailId, setDetailId] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
 
   const handleOpenDecisionModal = (approval: VhActionApproval, type: 'APPROVE' | 'REJECT') => {
@@ -48,6 +51,7 @@ export function ApprovalQueue() {
       rejectAction(selectedApproval.id, decisionReason);
     }
     setModalOpen(false);
+    setDetailId('');
   };
 
   return (
@@ -58,7 +62,7 @@ export function ApprovalQueue() {
           <div className="w-1.5 h-6 bg-blue-600 rounded-full shrink-0" />
           <div>
             <h1 className="text-lg font-bold text-slate-900 tracking-tight">
-              Phê Duyệt Chi Phí & Vật Tư Kỹ Thuật
+              Phê duyệt chi phí
             </h1>
             <p className="text-xs text-slate-500">
               Ban Quản Lý xem xét và phê duyệt các đề xuất mua sắm, sửa chữa vượt hạn mức cho phép
@@ -82,7 +86,7 @@ export function ApprovalQueue() {
       <div className="flex items-center gap-2 border-b border-slate-200">
         <button
           type="button"
-          onClick={() => setActiveTab('PENDING')}
+          onClick={() => { setActiveTab('PENDING'); setDetailId(''); }}
           className={`pb-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
             activeTab === 'PENDING'
               ? 'border-blue-600 text-blue-600'
@@ -126,15 +130,23 @@ export function ApprovalQueue() {
         </button>
       </div>
 
+      <div hidden={activeTab !== 'PENDING' || Boolean(detailId)}>
+        <OperationsTable title="Đề xuất chờ phê duyệt" columns={['Mã đề xuất', 'Nội dung', 'Kinh phí dự kiến', 'Hạn phê duyệt']}
+          rows={pendingApprovals.map((item) => ({id: item.id, search: `${item.id} ${item.action_request?.action_type === 'PURCHASE_MATERIAL' ? 'Mua sắm vật tư' : 'Giải ngân'}`, cells: [
+            item.id, item.action_request?.action_type === 'PURCHASE_MATERIAL' ? 'Mua sắm vật tư' : 'Phê duyệt giải ngân',
+            `${(item.estimated_cost_vnd || 0).toLocaleString('vi-VN')} đồng`, new Date(item.expires_at).toLocaleString('vi-VN'),
+          ]}))} onSelect={setDetailId} />
+      </div>
+      {activeTab === 'PENDING' && detailId && <button type="button" className="operations-back" onClick={() => setDetailId('')}>Quay lại danh sách</button>}
       {/* Content */}
-      {activeTab === 'PENDING' && (
+      {activeTab === 'PENDING' && detailId && (
         <div className="space-y-3.5">
           {pendingApprovals.length === 0 ? (
             <div className="p-12 bg-white rounded-2xl border border-slate-200 text-center text-slate-400 text-xs">
               Hiện tại không có đề xuất nào đang chờ phê duyệt.
             </div>
           ) : (
-            pendingApprovals.map((app: VhActionApproval) => {
+            pendingApprovals.filter((item) => item.id === detailId).map((app: VhActionApproval) => {
               const isExpired = new Date(app.expires_at).getTime() < Date.now();
 
               return (
@@ -296,10 +308,19 @@ export function ApprovalQueue() {
         </div>
       )}
 
+      <div hidden={activeTab !== 'HISTORY' || Boolean(historyId)}>
+        <OperationsTable title="Lịch sử phê duyệt" columns={['Mã đề xuất', 'Nội dung', 'Kết quả', 'Người duyệt', 'Ngày quyết định']}
+          rows={decidedApprovals.map((item) => ({id: item.id, search: `${item.id} ${String(item.action_request?.payload?.item || '')} ${item.reviewer_name || ''}`, cells: [
+            item.id, String(item.action_request?.payload?.item || 'Đề xuất'),
+            item.status === 'APPROVED' ? 'Đã phê duyệt' : item.status === 'EXPIRED' ? 'Hết hạn' : 'Đã từ chối',
+            item.reviewer_name || 'Hệ thống', item.decided_at ? new Date(item.decided_at).toLocaleString('vi-VN') : 'Chưa có',
+          ]}))} onSelect={setHistoryId} />
+      </div>
+      {activeTab === 'HISTORY' && historyId && <button type="button" className="operations-back" onClick={() => setHistoryId('')}>Quay lại lịch sử phê duyệt</button>}
       {/* History Tab */}
       {activeTab === 'HISTORY' && (
         <div className="space-y-2.5">
-          {decidedApprovals.map((app: VhActionApproval) => (
+          {decidedApprovals.filter((item) => item.id === historyId).map((app: VhActionApproval) => (
             <div
               key={app.id}
               className="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs text-xs space-y-1.5"
@@ -319,7 +340,7 @@ export function ApprovalQueue() {
                       : 'bg-rose-100 text-rose-800'
                   }`}
                 >
-                  {app.status === 'APPROVED' ? 'Đã duyệt' : 'Từ chối'}
+                  {app.status === 'APPROVED' ? 'Đã duyệt' : app.status === 'EXPIRED' ? 'Hết hạn' : 'Từ chối'}
                 </span>
               </div>
 

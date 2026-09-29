@@ -80,16 +80,16 @@ export function CompletedTasksWorkspace() {
   };
 
   return (
-    <div className="space-y-4 font-sans">
+    <div className="operations-worker-view operations-plain-list operations-work-orders space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-1.5 h-6 bg-emerald-600 rounded-full shrink-0" />
+
           <div className="min-w-0">
             <h1 className="text-xl font-bold text-slate-900 tracking-tight text-balance">
               Công việc đã hoàn thành
             </h1>
             <p className="text-xs text-slate-500 text-pretty">
-              Lịch sử hồ sơ đã nộp của {currentProfile.name}, gồm ảnh hiện trường và kết quả nghiệm thu QC.
+              Lịch sử hồ sơ đã nộp của {currentProfile.name}, gồm ảnh hiện trường và kết quả nghiệm thu.
             </p>
           </div>
         </div>
@@ -99,30 +99,13 @@ export function CompletedTasksWorkspace() {
         </span>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+      <div className="bg-white overflow-hidden">
         <div className="p-3 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {([
-              ['ALL', 'Tất cả'],
-              ['WAITING_QC', 'Chờ QC'],
-              ['PASS', 'Đã nghiệm thu'],
-              ['FAIL', 'Không đạt'],
-            ] as const).map(([filter, label]) => (
-              <button
-                key={filter}
-                type="button"
-                onClick={() => setActiveFilter(filter)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors focus-visible:ring-2 focus-visible:ring-blue-500 ${
-                  activeFilter === filter
-                    ? 'bg-blue-600 text-white shadow-2xs'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                {label} <span className="ml-1 tabular-nums">{counts[filter]}</span>
-              </button>
-            ))}
-          </div>
-
+          <label className="flex flex-col gap-1 text-xs text-slate-500">Kết quả nghiệm thu
+            <select value={activeFilter} onChange={(event) => setActiveFilter(event.target.value as HistoryFilter)} className="rounded border border-slate-200 bg-white px-3 py-2 text-sm">
+              <option value="ALL">Tất cả kết quả</option><option value="WAITING_QC">Chờ nghiệm thu</option><option value="PASS">Đạt yêu cầu</option><option value="FAIL">Không đạt yêu cầu</option>
+            </select>
+          </label>
           <label className="relative block w-full lg:w-72">
             <span className="sr-only">Tìm công việc đã hoàn thành</span>
             <IconSearch className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
@@ -155,7 +138,7 @@ export function CompletedTasksWorkspace() {
                 <th className="px-4 py-3 min-w-[150px]">Vị trí</th>
                 <th className="px-4 py-3 min-w-[155px]">Hoàn thành lúc</th>
                 <th className="px-4 py-3 min-w-[135px]">Bằng chứng</th>
-                <th className="px-4 py-3 min-w-[130px]">Kết quả QC</th>
+                <th className="px-4 py-3 min-w-[130px]">Kết quả nghiệm thu</th>
                 <th className="px-5 py-3 text-right min-w-[175px]">Thao tác</th>
               </tr>
             </thead>
@@ -188,7 +171,7 @@ export function CompletedTasksWorkspace() {
                       className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 rounded-lg text-[11px] font-bold focus-visible:ring-2 focus-visible:ring-emerald-500"
                     >
                       <IconPhoto className="w-3.5 h-3.5" aria-hidden="true" />
-                      {beforeCount} trước • {afterCount} sau
+                      Trước xử lý: {beforeCount} ảnh · Sau xử lý: {afterCount} ảnh
                     </button>
                   </td>
                   <td className="px-4 py-4">
@@ -208,7 +191,7 @@ export function CompletedTasksWorkspace() {
                         ? 'Đạt'
                         : qcResult?.outcome === 'FAIL'
                           ? 'Không đạt'
-                          : 'Chờ QC'}
+                          : 'Chờ nghiệm thu'}
                     </span>
                   </td>
                   <td className="px-5 py-4 text-right">

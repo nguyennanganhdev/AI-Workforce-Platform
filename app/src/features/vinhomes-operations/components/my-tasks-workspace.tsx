@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   IconBriefcase,
   IconClock,
-  IconBuilding,
   IconPlayerPlay,
   IconPlayerPause,
   IconCheck,
@@ -18,7 +17,6 @@ import {
   IconArrowsSort,
   IconChevronLeft,
   IconChevronRight,
-  IconCamera,
   IconRefresh,
   IconTrash,
   IconSparkles,
@@ -35,6 +33,7 @@ type FilterTab = 'ALL' | 'ASSIGNED' | 'IN_PROGRESS' | 'BLOCKED' | 'REDO' | 'COMP
 export function MyTasksWorkspace() {
   const {
     myWorkOrders,
+    tasks,
     incidents,
     evidence,
     coordinationSessions,
@@ -80,6 +79,13 @@ export function MyTasksWorkspace() {
   useEffect(() => {
     setCurrentPage(1);
     setSelectedIds([]);
+    setSelectedSanitationTaskId(null);
+    setSelectedWoForDetail(null);
+    setSelectedWoForEvidence(null);
+    setOpenActionId(null);
+    setBlockingWoId(null);
+    setActiveTab('ALL');
+    setSearchTerm('');
   }, [currentProfile.id]);
 
   // Grouped counts for stats & tabs
@@ -114,12 +120,12 @@ export function MyTasksWorkspace() {
     return tabFilteredOrders.filter((wo) => {
       const inc = incidents.find((i) => i.id === wo.incident_id);
       const matchesId = wo.id.toLowerCase().includes(term);
-      const matchesTitle = inc?.title?.toLowerCase().includes(term) ?? false;
+      const matchesTitle = `${tasks.find((task) => task.id === wo.task_id)?.title || ''} ${inc?.title || ''}`.toLowerCase().includes(term);
       const matchesTower = inc?.location_json?.towerCode?.toLowerCase().includes(term) ?? false;
       const matchesChecklist = wo.checklist_version_id?.toLowerCase().includes(term) ?? false;
       return matchesId || matchesTitle || matchesTower || matchesChecklist;
     });
-  }, [tabFilteredOrders, searchTerm, incidents]);
+  }, [tabFilteredOrders, searchTerm, incidents, tasks]);
 
   // Sorting
   const sortedOrders = useMemo(() => {
@@ -230,29 +236,10 @@ export function MyTasksWorkspace() {
   }
 
   return (
-    <div className="space-y-4 font-sans">
-      {/* Title Header with Blue Bar & User Identity */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
-        <div className="flex items-center gap-2.5">
-          <div className="w-1.5 h-6 bg-blue-600 rounded-full shrink-0" />
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <IconBriefcase className="w-5 h-5 text-blue-600" />
-              <span>Việc Của Tôi</span>
-            </h1>
-            <p className="text-xs text-slate-500 font-medium">
-              Không gian thao tác dành riêng cho <strong>{currentProfile.name}</strong> • {currentProfile.roleTitle}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="px-3 py-1 bg-blue-50 text-blue-700 font-bold text-xs rounded-full border border-blue-200">
-            {myWorkOrders.length} Nhiệm vụ được phân công
-          </span>
-        </div>
+    <div className="operations-worker-view operations-plain-list operations-work-orders space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1>Công việc của tôi</h1><span className="text-sm text-slate-500">{currentProfile.name} · {myWorkOrders.length} công việc</span>
       </div>
-
       {/* Notifications */}
       {successMessage && (
         <div
@@ -296,110 +283,19 @@ export function MyTasksWorkspace() {
         </div>
       )}
 
-      {/* Redesigned Compact Stats & Status Filter Toolbar (Replacing redundant 5 large cards & separate tab bar) */}
-      <div className="bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-2">
-        {/* Interactive Segmented Pill Tabs with live counts & color status dots */}
-        <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
-          {[
-            { id: 'ALL', label: 'Tất cả', count: myWorkOrders.length, dot: 'bg-slate-400' },
-            { id: 'ASSIGNED', label: 'Mới giao', count: assignedCount, dot: 'bg-slate-400' },
-            { id: 'IN_PROGRESS', label: 'Đang làm', count: inProgressCount, dot: 'bg-blue-500' },
-            { id: 'BLOCKED', label: 'Bị chặn', count: blockedCount, dot: 'bg-amber-500' },
-            { id: 'REDO', label: 'Cần làm lại', count: redoCount, dot: 'bg-rose-500' },
-            { id: 'COMPLETED', label: 'Chờ QC', count: completedCount, dot: 'bg-emerald-500' },
-          ].map((tab) => {
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => {
-                  setActiveTab(tab.id as FilterTab);
-                  setCurrentPage(1);
-                }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${isActive
-                    ? 'bg-blue-600 text-white shadow-2xs font-bold'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                  }`}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-white' : tab.dot}`} />
-                <span>{tab.label}</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[11px] font-bold ${isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
-                    }`}
-                >
-                  {tab.count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Quick Search inside the toolbar */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="relative w-full md:w-64">
-            <IconSearch className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
-              placeholder="Tìm mã WO, lỗi, tòa nhà..."
-              className="w-full pl-8 pr-7 py-1.5 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
-            />
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={() => setSearchTerm('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer p-0.5"
-                title="Xóa tìm kiếm"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-slate-100 pb-4">
+        <label className="flex flex-col gap-1 text-xs text-slate-500">Trạng thái
+          <select aria-label="Trạng thái công việc" value={activeTab} onChange={(event) => { setActiveTab(event.target.value as FilterTab); setCurrentPage(1); }} className="border border-slate-200 bg-white rounded px-3 py-2 text-sm">
+            <option value="ALL">Tất cả công việc</option><option value="ASSIGNED">Mới giao</option>
+            <option value="IN_PROGRESS">Đang thực hiện</option><option value="BLOCKED">Tạm dừng</option>
+            <option value="REDO">Cần làm lại</option><option value="COMPLETED">Chờ nghiệm thu</option>
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-slate-500">Tìm kiếm
+          <input value={searchTerm} onChange={(event) => { setSearchTerm(event.target.value); setCurrentPage(1); }} placeholder="Tìm mã phiếu, công việc, tòa nhà" className="border border-slate-200 rounded px-3 py-2 text-sm w-72 max-w-full" />
+        </label>
       </div>
-
-      {/* Main Table Card (BistroPulse Style - matching Ảnh 2) */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-        {/* Table Top Header matching Ảnh 2 */}
-        <div className="px-5 py-3.5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white">
-          <div className="flex items-center gap-2.5">
-            <div className="w-1.5 h-5 bg-blue-600 rounded-full" />
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-                Danh sách công việc
-              </h2>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                {sortedOrders.length} nhiệm vụ
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            {selectedIds.length > 0 && (
-              <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
-                Đã chọn {selectedIds.length}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setSearchTerm('');
-                setActiveTab('ALL');
-              }}
-              className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
-              title="Xóa bộ lọc"
-            >
-              <IconFilter className="w-3.5 h-3.5 text-slate-500" />
-              <span>Lọc</span>
-            </button>
-          </div>
-        </div>
-
+      <div>
         {/* Table Container */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -470,132 +366,15 @@ export function MyTasksWorkspace() {
                         />
                       </td>
 
-                      {/* Title */}
-                      <td className="py-3.5 px-4">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => openWorkOrderDetail(wo)}
-                              className="font-bold text-slate-900 hover:text-blue-600 text-left line-clamp-1 block cursor-pointer transition-colors max-w-xs sm:max-w-md text-[13px]"
-                              title="Bấm để xem chi tiết phiếu thi công"
-                            >
-                              {inc?.title || `Công việc hiện trường #${wo.id}`}
-                            </button>
-                            {wo.redo_of_work_order_id && (
-                              <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 font-bold text-[10px] rounded flex items-center gap-0.5 shrink-0">
-                                <IconRotateClockwise className="w-2.5 h-2.5" />
-                                <span>Làm lại</span>
-                              </span>
-                            )}
-                          </div>
-                          {/* Multi-Agent Coordination Session Badge */}
-                          {(() => {
-                            const session = coordinationSessions.find(
-                              (s) => s.work_order_id === wo.id || s.incident_id === wo.incident_id,
-                            );
-                            if (!session) return null;
-                            return (
-                              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                                <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-[10px] rounded flex items-center gap-1">
-                                  <IconSparkles className="w-2.5 h-2.5 text-indigo-600" />
-                                  <span>{session.id}</span>
-                                </span>
-                                {session.quotation ? (
-                                  <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px] rounded flex items-center gap-1">
-                                    <IconCheck className="w-2.5 h-2.5" />
-                                    <span>Giá: {session.quotation.total_amount.toLocaleString('vi-VN')}đ</span>
-                                  </span>
-                                ) : (
-                                  <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 font-bold text-[10px] rounded">
-                                    Chờ báo giá vật tư
-                                  </span>
-                                )}
-                                {session.resident_ticket_status === 'DONE' && (
-                                  <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 font-bold text-[10px] rounded">
-                                    Cư dân: DONE (Đóng chat)
-                                  </span>
-                                )}
-                                {session.status === 'CLOSED' && (
-                                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 font-bold text-[10px] rounded">
-                                    BQL đã đóng
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })()}
-                          {wo.status === 'BLOCKED' && wo.blocked_reason && (
-                            <p className="text-[10px] text-amber-700 italic flex items-center gap-1">
-                              <IconInfoCircle className="w-3 h-3 text-amber-600 shrink-0" />
-                              <span className="line-clamp-1">{wo.blocked_reason}</span>
-                            </p>
-                          )}
-                        </div>
+                      <td>
+                        <button type="button" className="text-left text-slate-700 hover:text-blue-600" onClick={() => openWorkOrderDetail(wo)}>{tasks.find((task) => task.id === wo.task_id)?.title || inc?.title || 'Công việc hiện trường'}</button>
+                        <p className="mt-1 text-xs text-slate-400">{wo.id}{wo.redo_of_work_order_id ? ' · Làm lại' : ''}</p>
                       </td>
-
-                      {/* Location */}
-                      <td className="py-3.5 px-4 text-slate-700 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5 font-medium">
-                          <IconBuilding className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span>
-                            Tòa <strong>{inc?.location_json.towerCode || 'S2.01'}</strong>
-                          </span>
-                          <span className="text-slate-300">•</span>
-                          <span>Tầng {inc?.location_json.floor || '12'}</span>
-                        </div>
-                      </td>
-
-                      {/* Evidence (Before/After) */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedWoForEvidence(wo)}
-                            className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${hasRequiredPhotos
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
-                                : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
-                              }`}
-                            title="Bấm để chụp / tải ảnh hiện trường"
-                          >
-                            <IconCamera className="w-3.5 h-3.5" />
-                            <span>
-                              {hasRequiredPhotos
-                                ? `✓ Đủ (${beforeCount}T • ${afterCount}S)`
-                                : `✕ Thiếu (${beforeCount}T • ${afterCount}S)`}
-                            </span>
-                          </button>
-                        </div>
-                      </td>
-
-                      {/* Status */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${wo.status === 'COMPLETED'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : wo.status === 'IN_PROGRESS'
-                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                : wo.status === 'BLOCKED'
-                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                  : 'bg-slate-100 text-slate-700'
-                            }`}
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${wo.status === 'COMPLETED'
-                                ? 'bg-emerald-500'
-                                : wo.status === 'IN_PROGRESS'
-                                  ? 'bg-blue-500'
-                                  : wo.status === 'BLOCKED'
-                                    ? 'bg-amber-500'
-                                    : 'bg-slate-400'
-                              }`}
-                          />
-                          {wo.status === 'COMPLETED' && 'Chờ QC'}
-                          {wo.status === 'IN_PROGRESS' && 'Đang làm'}
-                          {wo.status === 'BLOCKED' && 'Bị chặn'}
-                          {wo.status === 'ASSIGNED' && 'Mới giao'}
-                        </span>
-                      </td>
-
+                      <td className="whitespace-nowrap">Tòa {inc?.location_json.towerCode || '—'} · Tầng {inc?.location_json.floor ?? '—'}</td>
+                      <td><button type="button" className="text-left text-slate-600 hover:text-blue-600" onClick={() => setSelectedWoForEvidence(wo)}>
+                        Trước xử lý: {beforeCount} ảnh<br />Sau xử lý: {afterCount} ảnh
+                      </button></td>
+                      <td className="whitespace-nowrap">{({OPEN: 'Mới tạo', ASSIGNED: 'Mới giao', IN_PROGRESS: 'Đang thực hiện', BLOCKED: 'Tạm dừng', COMPLETED: 'Chờ nghiệm thu', FAILED: 'Cần làm lại', CANCELLED: 'Đã hủy'})[wo.status]}</td>
                       {/* Actions */}
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5 relative">
@@ -638,34 +417,11 @@ export function MyTasksWorkspace() {
 
                           {wo.status === 'COMPLETED' && (
                             <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                              ✓ Đã nộp QC
+                              Đã gửi nghiệm thu
                             </span>
                           )}
 
-                          {usesDedicatedSanitationWorkspace && wo.status !== 'COMPLETED' && (
-                            <button
-                              type="button"
-                              onClick={() => setSelectedSanitationTaskId(wo.task_id)}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors shadow-2xs"
-                            >
-                              <IconTrash className="w-3 h-3" />
-                              <span>Mở quy trình A5</span>
-                            </button>
-                          )}
-
-                          {/* Quick button to open multi-agent quotation dialog */}
-                          {!usesDedicatedSanitationWorkspace && (
-                            <button
-                              type="button"
-                              onClick={() => openWorkOrderDetail(wo)}
-                              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
-                              title="Báo giá vật tư & Điều phối AI"
-                            >
-                              <IconReceipt2 className="w-3 h-3 text-indigo-600" />
-                              <span>Báo giá</span>
-                            </button>
-                          )}
-
+                          <button type="button" className="operations-text-action" onClick={() => openWorkOrderDetail(wo)}>Xem chi tiết</button>
                           {/* 3-Dots Action Popover Menu (Matching Ảnh 2) */}
                           <div className="relative">
                             <button
@@ -678,7 +434,7 @@ export function MyTasksWorkspace() {
                               aria-label="Thao tác"
                               aria-expanded={openActionId === wo.id}
                             >
-                              <IconDotsVertical className="w-4 h-4" />
+                              Thao tác
                             </button>
 
                             {openActionId === wo.id && (
@@ -802,8 +558,8 @@ export function MyTasksWorkspace() {
           <div className="font-medium">
             <span className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg font-bold text-[11px]">
               {sortedOrders.length === 0
-                ? '0 of 0'
-                : `${currentPage} of ${totalPages}`}
+                ? 'Không có kết quả'
+                : `Trang ${currentPage} trên ${totalPages}`}
             </span>
             <span className="ml-2 text-slate-400 hidden sm:inline">
               ({sortedOrders.length} công việc)

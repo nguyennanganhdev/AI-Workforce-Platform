@@ -273,18 +273,18 @@ export function OperationsDashboard() {
         {/* Right 1 Col: AI Dispatcher & Smart City Live Status */}
         <div className="space-y-4">
           {/* Card: AI Recommendation */}
-          <div className="bg-gradient-to-br from-slate-900 to-blue-950 text-white p-5 rounded-2xl shadow-sm relative overflow-hidden">
+          <div className="bg-white border border-slate-200 text-slate-800 p-5 rounded-lg">
             <div className="flex items-center gap-2 mb-2 text-blue-400 font-semibold text-xs">
               <IconSparkles className="w-4 h-4 text-amber-300" />
-              <span>Khuyến nghị từ AI Agent</span>
+              <span>Đề xuất xử lý</span>
             </div>
-            <h3 className="font-bold text-sm text-white mb-2 leading-snug">
+            <h3 className="font-semibold text-sm text-slate-900 mb-2 leading-snug">
               Phát hiện nguy cơ rò rỉ nước ngấm xuống thang máy S2.01
             </h3>
-            <p className="text-xs text-slate-300 leading-relaxed mb-4">
+            <p className="text-xs text-slate-600 leading-relaxed mb-4">
               AI đề xuất khóa van trục C (Đã thực hiện) và kích hoạt gói vật tư thay van DN50 (12.5tr) đang chờ BQL duyệt.
             </p>
-            <div className="flex items-center justify-between pt-3 border-t border-white/10">
+            <div className="flex items-center justify-between pt-3 border-t border-slate-200">
               <span className="text-[11px] text-slate-400">Độ tin cậy: 98.4%</span>
               <Link
                 to="/operations/approvals"

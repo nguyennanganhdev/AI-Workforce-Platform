@@ -100,7 +100,7 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
         laborCost,
         warrantyMonths,
       });
-      setQuoteSuccessMsg('Đã gửi báo giá cho Agent Kỹ Thuật lưu hồ sơ & Agent Báo Cáo xuất hóa đơn!');
+      setQuoteSuccessMsg('Đã gửi báo giá để lưu hồ sơ và lập hóa đơn.');
       setTimeout(() => setQuoteSuccessMsg(null), 4000);
     } catch (err: any) {
       setErrorMsg(err.message || 'Lỗi gửi báo giá');
@@ -118,15 +118,15 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans">
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
+    <div role="dialog" aria-modal="true" aria-labelledby="work-order-title" onKeyDown={(event) => { if (event.key === 'Escape') onClose(); }} className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans">
+      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
           <div className="flex items-center gap-2.5">
             <div className="w-1.5 h-6 bg-blue-600 rounded-full" />
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-slate-900 text-base">Chi Tiết Phiếu Thi Công</h3>
+                <h3 id="work-order-title" className="font-bold text-slate-900 text-base">Chi tiết phiếu thi công</h3>
                 <span className="font-mono text-xs px-2 py-0.5 bg-blue-50 text-blue-700 font-bold rounded">
                   {workOrder.id}
                 </span>
@@ -150,9 +150,9 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors"
+            className="operations-back shrink-0" aria-label="Đóng chi tiết phiếu"
           >
-            <IconX className="w-5 h-5" />
+            Đóng
           </button>
         </div>
 
@@ -209,7 +209,7 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
                 </span>
               </div>
               <div className="p-3 bg-white border border-slate-200 rounded-xl">
-                <span className="text-[11px] text-slate-400 block font-medium">Tiêu chuẩn Checklist</span>
+                <span className="text-[11px] text-slate-400 block font-medium">Tiêu chuẩn kiểm tra</span>
                 <span className="font-mono font-bold text-blue-700 mt-0.5 block text-xs truncate">
                   {workOrder.checklist_version_id || 'CKL-VER-MEP-01'}
                 </span>
@@ -233,7 +233,8 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
 
           {/* Multi-Agent Coordination & Material Quotation */}
           {session && (
-            <div className="p-4 rounded-xl bg-gradient-to-br from-blue-50/60 via-indigo-50/30 to-purple-50/40 border border-blue-200/80 space-y-4">
+            <details className="p-4 rounded-lg bg-white border border-slate-200 space-y-4">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-800">Điều phối và báo giá vật tư</summary>
               <div className="flex items-center justify-between pb-2 border-b border-blue-200/50">
                 <div className="flex items-center gap-2">
                   <span className="p-1.5 bg-blue-600 text-white rounded-lg">
@@ -241,13 +242,13 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
                   </span>
                   <div>
                     <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                      Điều Phối Đa Tác Nhân (Multi-Agent Dispatch)
+                      Điều phối và báo giá
                       <span className="font-mono text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-bold">
                         {session.id}
                       </span>
                     </h4>
                     <p className="text-[11px] text-slate-500">
-                      Quy trình: KTV khảo sát ➔ Báo giá Agent KT ➔ Agent Báo cáo xuất hóa đơn ➔ Agent CSKH gửi cư dân duyệt ➔ Thi công & Nghiệm thu
+                      Khảo sát, lập báo giá, gửi cư dân phê duyệt, thi công và nghiệm thu.
                     </p>
                   </div>
                 </div>
@@ -265,9 +266,9 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
                     }`}
                   >
                     {session.status === 'CLOSED'
-                      ? 'Đã đóng Session'
+                      ? 'Đã đóng phiên điều phối'
                       : session.resident_ticket_status === 'DONE'
-                        ? 'Cư dân xác nhận DONE'
+                        ? 'Cư dân đã xác nhận hoàn thành'
                         : session.quotation?.resident_approved
                           ? 'Cư dân đã duyệt giá'
                           : 'Chờ báo giá vật tư'}
@@ -300,12 +301,12 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
                 </div>
 
                 <div className="p-2.5 bg-white/90 rounded-lg border border-slate-200 space-y-0.5">
-                  <span className="text-[10px] text-slate-400 font-semibold block">Ticket phía Cư Dân</span>
+                  <span className="text-[10px] text-slate-400 font-semibold block">Yêu cầu của cư dân</span>
                   <span className="font-bold text-slate-800 text-xs flex items-center gap-1">
                     {session.resident_ticket_status === 'DONE' ? (
                       <>
                         <IconCheck className="w-3.5 h-3.5 text-emerald-600" />
-                        DONE (Đã đóng chat cư dân)
+                        Đã hoàn thành trao đổi với cư dân
                       </>
                     ) : (
                       'Đang xử lý tại chỗ'
@@ -322,7 +323,7 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
                         {session.bql_approved_by || 'BQL'} đã duyệt đóng
                       </>
                     ) : (
-                      'Chờ BQL duyệt đóng session'
+                      'Chờ ban quản lý duyệt đóng phiên'
                     )}
                   </span>
                 </div>
@@ -333,7 +334,7 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
                 <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                   <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
                     <IconTool className="w-4 h-4 text-blue-600" />
-                    Bảng Kê Chi Phí Vật Tư & Nhân Công (Gửi Agent Kỹ Thuật)
+                    Chi phí vật tư và nhân công
                   </span>
                   {canEdit && (
                     <button
@@ -352,7 +353,7 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
                       <tr>
                         <th className="p-2.5 pl-3">Tên vật tư thay thế</th>
                         <th className="p-2.5 w-20 text-center">Số lượng</th>
-                        <th className="p-2.5 w-16 text-center">ĐVT</th>
+                        <th className="p-2.5 w-16 text-center">Đơn vị</th>
                         <th className="p-2.5 w-28 text-right">Đơn giá (đ)</th>
                         <th className="p-2.5 w-28 text-right">Thành tiền (đ)</th>
                         {canEdit && <th className="p-2.5 w-10 text-center"></th>}
@@ -487,7 +488,7 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
                 {canEdit && (
                   <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
                     <span className="text-[11px] text-slate-500">
-                      * Nhấn gửi để Agent Kỹ Thuật lưu và Agent Báo Cáo lập hóa đơn chuyển Cư dân duyệt
+                      Gửi báo giá để lưu hồ sơ và chuyển cư dân phê duyệt.
                     </span>
                     <button
                       type="button"
@@ -495,12 +496,12 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
                       className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors"
                     >
                       <IconSend className="w-3.5 h-3.5" />
-                      <span>Gửi báo giá cho Agent Kỹ Thuật</span>
+                      <span>Gửi báo giá</span>
                     </button>
                   </div>
                 )}
               </div>
-            </div>
+            </details>
           )}
 
           {/* Progress Notes */}
@@ -569,7 +570,7 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
                     : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                Đã hoàn thành (Chờ QC)
+                Đã hoàn thành (Chờ nghiệm thu)
               </button>
               </div>
             </div>

@@ -113,12 +113,12 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
       setSubmitting(false);
       if (res?.redoWorkOrder) {
         setResultSuccess(
-          `Đã ghi nhận QC FAIL. Tự động kích hoạt phiếu làm lại (Redo): ${res.redoWorkOrder.id} (Lần ${res.redoWorkOrder.attempt_no})!`,
+          `Đã ghi nhận nghiệm thu không đạt. Tự động kích hoạt phiếu làm lại: ${res.redoWorkOrder.id} (Lần ${res.redoWorkOrder.attempt_no})!`,
         );
       } else if (overallOutcome === 'INCONCLUSIVE') {
         setResultSuccess('Đã ghi nhận kết quả INCONCLUSIVE: Yêu cầu bổ sung kiểm định!');
       } else {
-        setResultSuccess('Đã ghi nhận nghiệm thu QC PASS thành công!');
+        setResultSuccess('Đã ghi nhận nghiệm thu đạt yêu cầu thành công!');
       }
 
       setTimeout(() => {
@@ -144,13 +144,13 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
             <div className="w-1.5 h-6 bg-purple-600 rounded-full" />
             <div>
               <div className="flex items-center gap-2">
-                <h3 id="qc-modal-title" className="font-bold text-slate-900 text-base">Biên Bản Nghiệm Thu Chất Lượng (QC)</h3>
+                <h3 id="qc-modal-title" className="font-bold text-slate-900 text-base">Biên bản nghiệm thu</h3>
                 <span className="font-mono text-xs px-2 py-0.5 bg-purple-50 text-purple-700 font-bold rounded">
                   {workOrder.id}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Checklist: <strong>{checklistVersion?.name || checklistVersion?.id || 'Tiêu chuẩn kiểm định'}</strong> (Phiên bản #{checklistVersion?.version_no || 1})
+                Tiêu chí kiểm tra: <strong>{checklistVersion?.name || checklistVersion?.id || 'Tiêu chuẩn kiểm định'}</strong> (Phiên bản #{checklistVersion?.version_no || 1})
               </p>
             </div>
           </div>
@@ -159,9 +159,9 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
             type="button"
             onClick={onClose}
             aria-label="Đóng cửa sổ nghiệm thu"
-            className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors"
+            className="operations-back shrink-0"
           >
-            <IconX className="w-5 h-5" />
+            Đóng
           </button>
         </div>
 
@@ -185,7 +185,7 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
               <IconAlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
               <div>
                 <strong className="block font-bold">Vi phạm nguyên tắc độc lập kiểm định (Segregation of Duties):</strong>
-                <span>Bạn là người trực tiếp thi công phiếu này. Theo quy chế của Ban Quản Lý, người thi công <strong>không được phép tự chấm nghiệm thu QC</strong> công việc của chính mình! Vui lòng chuyển sang vai trò QC Inspector hoặc nhờ Trưởng ca nghiệm thu.</span>
+                <span>Bạn là người trực tiếp thi công phiếu này. Theo quy chế của Ban Quản Lý, người thi công <strong>không được phép tự nghiệm thu</strong> công việc của chính mình! Vui lòng chuyển hồ sơ cho nhân viên nghiệm thu độc lập.</span>
               </div>
             </div>
           )}
@@ -314,19 +314,19 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
               {[
                 {
                   id: 'PASS',
-                  label: 'PASS (Đạt chất lượng)',
+                  label: 'Đạt chất lượng',
                   desc: 'Đủ điều kiện đóng nhiệm vụ thi công',
                   activeBorder: 'border-emerald-500 bg-emerald-50/60',
                 },
                 {
                   id: 'FAIL',
-                  label: 'FAIL (Không đạt)',
-                  desc: 'Tự động tạo phiếu làm lại (Redo)',
+                  label: 'Không đạt yêu cầu',
+                  desc: 'Tự động tạo phiếu làm lại',
                   activeBorder: 'border-rose-500 bg-rose-50/60',
                 },
                 {
                   id: 'INCONCLUSIVE',
-                  label: 'INCONCLUSIVE (Kiểm tra lại)',
+                  label: 'Cần kiểm tra thêm',
                   desc: 'Yêu cầu đo đạc bổ sung thêm',
                   activeBorder: 'border-amber-500 bg-amber-50/60',
                 },
@@ -389,7 +389,7 @@ export function QcInspectorModal({ workOrder, onClose }: QcInspectorModalProps) 
                 {overallOutcome === 'FAIL' ? (
                   <>
                     <IconArrowBackUp className="w-4 h-4" />
-                    <span>Xác nhận FAIL & Tạo phiếu làm lại (Redo)</span>
+                    <span>Xác nhận không đạt và tạo phiếu làm lại</span>
                   </>
                 ) : (
                   <>

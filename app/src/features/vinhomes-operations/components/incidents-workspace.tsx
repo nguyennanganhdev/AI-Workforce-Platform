@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { IncidentList } from './incident-list';
 import {
   IconAlertTriangle,
   IconBuilding,
@@ -68,7 +69,7 @@ export function IncidentsWorkspace() {
     currentPersona,
   } = useOperationsData();
 
-  const [selectedIncidentId, setSelectedIncidentId] = useState<string>(incidents[0]?.id || '');
+  const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'COORDINATION' | 'TASKS' | 'MESSAGES' | 'TIMELINE' | 'RELATIONS'>('COORDINATION');
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -79,7 +80,7 @@ export function IncidentsWorkspace() {
   const [bqlNoteInput, setBqlNoteInput] = useState('');
   const [showBqlModal, setShowBqlModal] = useState(false);
 
-  const selectedIncident = incidents.find((i) => i.id === selectedIncidentId) || incidents[0];
+  const selectedIncident = incidents.find((i) => i.id === selectedIncidentId);
 
   const relatedTasks = selectedIncident
     ? tasks.filter((t) => t.incident_id === selectedIncident.id)
@@ -145,7 +146,7 @@ export function IncidentsWorkspace() {
           <div className="w-1.5 h-6 bg-blue-600 rounded-full shrink-0" />
           <div>
             <h1 className="text-lg font-bold text-slate-900 tracking-tight">
-              Quản Lý & Theo Dõi Sự Cố
+              {selectedIncident ? 'Chi tiết sự cố' : 'Quản lý sự cố'}
             </h1>
             <p className="text-xs text-slate-500">
               Theo dõi tiến độ từ lúc tiếp nhận, phân công sửa chữa đến khi cư dân nghiệm thu hài lòng
@@ -184,81 +185,25 @@ export function IncidentsWorkspace() {
         </div>
       )}
 
-      {/* Two Column Layout: List & Detail Pane */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Left Column: Incidents List (4 cols) */}
-        <div className="lg:col-span-4 space-y-2.5">
-          <div className="flex items-center justify-between pb-1">
-            <span className="text-xs font-bold text-slate-700">Danh sách sự cố</span>
-            <span className="text-[11px] text-slate-400">Chọn sự cố để xem</span>
-          </div>
-
-          <div className="space-y-2 max-h-[720px] overflow-y-auto pr-1">
-            {incidents.map((inc) => {
-              const isSelected = selectedIncident?.id === inc.id;
-              return (
-                <div
-                  key={inc.id}
-                  onClick={() => {
-                    setSelectedIncidentId(inc.id);
-                    setResolveError(null);
-                  }}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer space-y-2 ${
-                    isSelected
-                      ? 'bg-blue-50/70 border-blue-500 shadow-2xs ring-1 ring-blue-500/20'
-                      : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-2xs'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-xs font-bold text-blue-600">{inc.id}</span>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          inc.severity === 'P1'
-                            ? 'bg-rose-100 text-rose-700'
-                            : inc.severity === 'P2'
-                              ? 'bg-amber-100 text-amber-700'
-                              : 'bg-blue-100 text-blue-700'
-                        }`}
-                      >
-                        {inc.severity === 'P1' ? 'Khẩn cấp (P1)' : inc.severity === 'P2' ? 'Mức cao (P2)' : 'Bình thường'}
-                      </span>
-                    </div>
-
-                    <span
-                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                        inc.status === 'CLOSED'
-                          ? 'bg-slate-100 text-slate-600'
-                          : inc.status === 'RESOLVED'
-                            ? 'bg-purple-100 text-purple-700'
-                            : 'bg-emerald-100 text-emerald-700'
-                      }`}
-                    >
-                      {inc.status === 'CLOSED' ? 'Đã đóng' : inc.status === 'RESOLVED' ? 'Chờ cư dân duyệt' : 'Đang xử lý'}
-                    </span>
-                  </div>
-
-                  <p className="font-bold text-xs text-slate-900 line-clamp-2 leading-snug">
-                    {inc.title}
-                  </p>
-
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1.5 border-t border-slate-100">
-                    <span className="flex items-center gap-1 font-medium">
-                      <IconBuilding className="w-3.5 h-3.5 text-slate-400" />
-                      Tòa {inc.location_json.towerCode}
-                    </span>
-                    <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
-                      {STAGE_LABELS[inc.stage as IncidentStage] || inc.stage}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Right Column: Incident Detail Pane (8 cols) */}
-        <div className="lg:col-span-8 space-y-4">
+      <div hidden={Boolean(selectedIncidentId)}>
+        <IncidentList incidents={incidents} onSelect={(id) => {
+          setSelectedIncidentId(id);
+          setActiveTab('TASKS');
+          setResolveError(null);
+          setActionSuccess(null);
+          setSessionChatInput('');
+          setNewMessageText('');
+          setBqlNoteInput('');
+          setShowBqlModal(false);
+        }} />
+      </div>
+      {selectedIncidentId && <div className="space-y-4">
+        <button type="button" className="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" onClick={() => {
+          setSelectedIncidentId('');
+          setResolveError(null);
+          setActionSuccess(null);
+        }}>Quay lại danh sách</button>
+        <div className="space-y-4">
           {selectedIncident ? (
             <>
               {/* Header & Stepper */}
@@ -420,10 +365,10 @@ export function IncidentsWorkspace() {
                     }`}
                   >
                     <IconSparkles className="w-4 h-4 text-indigo-600" />
-                    <span>Session Điều Phối Multi-Agent</span>
+                    <span>Điều phối</span>
                     {coordinationSessions.some((s) => s.incident_id === selectedIncident?.id) && (
                       <span className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded">
-                        Active
+                        Có phiên điều phối
                       </span>
                     )}
                   </button>
@@ -464,7 +409,7 @@ export function IncidentsWorkspace() {
                     }`}
                   >
                     <IconHistory className="w-4 h-4" />
-                    <span>Nhật ký tiến trình</span>
+                    <span>Lịch sử xử lý</span>
                   </button>
 
                   <button
@@ -497,9 +442,9 @@ export function IncidentsWorkspace() {
                           <IconSparkles className="w-6 h-6" />
                         </div>
                         <div>
-                          <h4 className="font-bold text-slate-800 text-sm">Chưa có Session Điều Phối Đa Tác Nhân</h4>
+                          <h4 className="font-bold text-slate-800 text-sm">Chưa có phiên điều phối</h4>
                           <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                            Sự cố này chưa được Agent Điều Phối (Supervisor) mở phiên làm việc nhóm giữa các Agent AI và Nhân viên Kỹ thuật.
+                            Sự cố này chưa có phiên phối hợp giữa các trợ lý tự động và nhân viên kỹ thuật.
                           </p>
                         </div>
                         <button
@@ -510,14 +455,14 @@ export function IncidentsWorkspace() {
                                 incidentId: selectedIncident.id,
                                 title: selectedIncident.title,
                               });
-                              setActionSuccess(`Đã khởi tạo Session Điều Phối ${newSes.id}!`);
+                              setActionSuccess(`Đã khởi tạo phiên điều phối ${newSes.id}!`);
                               setTimeout(() => setActionSuccess(null), 3000);
                             }
                           }}
                           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-2xs inline-flex items-center gap-2"
                         >
                           <IconSparkles className="w-4 h-4" />
-                          <span>Mở Session Điều Phối (Supervisor)</span>
+                          <span>Mở phiên điều phối</span>
                         </button>
                       </div>
                     );
@@ -553,7 +498,7 @@ export function IncidentsWorkspace() {
                                 }`}
                               >
                                 {currentSession.status === 'CLOSED'
-                                  ? 'Đã đóng Session'
+                                  ? 'Đã đóng phiên điều phối'
                                   : currentSession.status === 'RESIDENT_CONFIRMED'
                                     ? 'Chờ BQL duyệt đóng'
                                     : currentSession.status === 'EXECUTING'
@@ -574,13 +519,13 @@ export function IncidentsWorkspace() {
                               type="button"
                               onClick={() => {
                                 residentConfirmTicket(currentSession.id);
-                                setActionSuccess('Cư dân đã bấm Xác nhận Ticket DONE! Cuộc trò chuyện với cư dân đã đóng.');
+                                setActionSuccess('Cư dân đã xác nhận hoàn thành yêu cầu! Cuộc trò chuyện với cư dân đã đóng.');
                                 setTimeout(() => setActionSuccess(null), 3500);
                               }}
                               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors"
                             >
                               <IconCheck className="w-3.5 h-3.5" />
-                              <span>📱 [Mô phỏng] Cư dân xác nhận DONE</span>
+                              <span>[Mô phỏng] Cư dân xác nhận hoàn thành</span>
                             </button>
                           )}
 
@@ -591,7 +536,7 @@ export function IncidentsWorkspace() {
                               className="px-3 py-1.5 bg-slate-900 hover:bg-black text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors"
                             >
                               <IconShieldCheck className="w-3.5 h-3.5 text-blue-400" />
-                              <span>🏢 BQL Phê Duyệt & Đóng Session</span>
+                              <span>Ban quản lý phê duyệt và đóng phiên</span>
                             </button>
                           )}
 
@@ -607,7 +552,7 @@ export function IncidentsWorkspace() {
                       {/* 6-Step Visual Workflow */}
                       <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                          Tiến Trình Xử Lý Đa Tác Nhân (Multi-Agent Lifecycle)
+                          Tiến trình phối hợp xử lý
                         </span>
                         <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-center text-xs">
                           <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800">
@@ -618,13 +563,13 @@ export function IncidentsWorkspace() {
 
                           <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800">
                             <span className="text-[10px] font-bold block text-emerald-600">Bước 2</span>
-                            <span className="font-bold text-[11px] block mt-0.5">Supervisor tạo Session</span>
-                            <span className="text-[10px] text-emerald-600">Đã mở Session</span>
+                            <span className="font-bold text-[11px] block mt-0.5">Giám sát mở phiên</span>
+                            <span className="text-[10px] text-emerald-600">Đã mở phiên</span>
                           </div>
 
                           <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800">
                             <span className="text-[10px] font-bold block text-emerald-600">Bước 3</span>
-                            <span className="font-bold text-[11px] block mt-0.5">Gọi Agent KT & BC</span>
+                            <span className="font-bold text-[11px] block mt-0.5">Phối hợp kỹ thuật và báo cáo</span>
                             <span className="text-[10px] text-emerald-600">Đã giao KTV Hùng</span>
                           </div>
 
@@ -650,9 +595,9 @@ export function IncidentsWorkspace() {
                             }`}
                           >
                             <span className="text-[10px] font-bold block text-slate-400">Bước 5</span>
-                            <span className="font-bold text-[11px] block mt-0.5">Cư dân DONE ticket</span>
+                            <span className="font-bold text-[11px] block mt-0.5">Cư dân xác nhận hoàn thành</span>
                             <span className="text-[10px] font-semibold">
-                              {currentSession.resident_ticket_status === 'DONE' ? 'Đã đóng chat' : 'Đang xử lý'}
+                              {currentSession.resident_ticket_status === 'DONE' ? 'Đã đóng trao đổi' : 'Đang xử lý'}
                             </span>
                           </div>
 
@@ -664,7 +609,7 @@ export function IncidentsWorkspace() {
                             }`}
                           >
                             <span className="text-[10px] font-bold block text-slate-400">Bước 6</span>
-                            <span className="font-bold text-[11px] block mt-0.5">BQL đóng Session</span>
+                            <span className="font-bold text-[11px] block mt-0.5">Ban quản lý đóng phiên</span>
                             <span className="text-[10px] font-semibold">
                               {currentSession.status === 'CLOSED' ? 'Đã đóng' : 'Chờ duyệt'}
                             </span>
@@ -828,7 +773,7 @@ export function IncidentsWorkspace() {
                             type="text"
                             value={sessionChatInput}
                             onChange={(e) => setSessionChatInput(e.target.value)}
-                            placeholder={`Gửi phản hồi vào Session (với tư cách ${currentProfile.name})...`}
+                            placeholder={`Gửi phản hồi vào phiên điều phối (với tư cách ${currentProfile.name})...`}
                             className="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none"
                           />
                           <button
@@ -842,7 +787,7 @@ export function IncidentsWorkspace() {
                         </form>
                       </div>
 
-                      {/* Modal BQL Phê Duyệt Đóng Session */}
+                      {/* Modal Ban quản lý phê duyệt đóng phiên */}
                       {showBqlModal && (
                         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
                           <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
@@ -851,7 +796,7 @@ export function IncidentsWorkspace() {
                                 <span className="p-1.5 bg-slate-900 text-white rounded-lg">
                                   <IconShieldCheck className="w-4 h-4" />
                                 </span>
-                                <h4 className="font-bold text-slate-900 text-sm">BQL Phê Duyệt Đóng Session</h4>
+                                <h4 className="font-bold text-slate-900 text-sm">Ban quản lý phê duyệt đóng phiên</h4>
                               </div>
                               <button
                                 type="button"
@@ -863,7 +808,7 @@ export function IncidentsWorkspace() {
                             </div>
 
                             <p className="text-xs text-slate-600 leading-relaxed">
-                              Ban Quản Lý xác nhận: KTV đã hoàn thành thi công, ảnh nghiệm thu đã đạt chuẩn, cư dân đã bấm <strong>DONE</strong> trên ticket và cuộc trò chuyện cư dân đã đóng.
+                              Ban Quản Lý xác nhận: KTV đã hoàn thành thi công, ảnh nghiệm thu đã đạt chuẩn, cư dân đã bấm <strong>Hoàn thành</strong> trên yêu cầu và cuộc trò chuyện cư dân đã đóng.
                             </p>
 
                             <div className="space-y-1.5">
@@ -892,12 +837,12 @@ export function IncidentsWorkspace() {
                                 onClick={() => {
                                   managerApproveAndCloseSession(currentSession.id, bqlNoteInput);
                                   setShowBqlModal(false);
-                                  setActionSuccess(`Đã phê duyệt và đóng Session ${currentSession.id} thành công!`);
+                                  setActionSuccess(`Đã phê duyệt và đóng phiên điều phối ${currentSession.id} thành công!`);
                                   setTimeout(() => setActionSuccess(null), 3500);
                                 }}
                                 className="px-4 py-2 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold shadow-2xs"
                               >
-                                Xác nhận Duyệt & Đóng Session
+                                Xác nhận duyệt và đóng phiên
                               </button>
                             </div>
                           </div>
@@ -1111,11 +1056,11 @@ export function IncidentsWorkspace() {
             </>
           ) : (
             <div className="p-12 text-center text-slate-400 text-xs bg-white rounded-2xl border border-slate-200">
-              Chọn sự cố bên trái để xem chi tiết.
+              Không tìm thấy sự cố. Vui lòng quay lại danh sách.
             </div>
           )}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

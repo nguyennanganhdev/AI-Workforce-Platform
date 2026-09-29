@@ -64,7 +64,7 @@ function getBreadcrumb(pathname: string, persona: OperationsPersona): Breadcrumb
   return { section: 'Vận hành đô thị', page: 'Tổng quan' };
 }
 
-export function OperationsHeader() {
+export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolean; onToggleMenu?: () => void }) {
   const location = useLocation();
   const { currentPersona, incidents, approvals, resetToDefaultMock } = useOperationsData();
   const breadcrumb = getBreadcrumb(location.pathname, currentPersona);
@@ -83,12 +83,12 @@ export function OperationsHeader() {
   };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200/80 px-6 flex items-center justify-between shrink-0 font-sans z-20">
-      {/* Left: BistroPulse Breadcrumb with vertical Royal Blue indicator */}
+    <header className="min-h-14 bg-white border-b border-slate-200/80 px-4 py-2 gap-3 flex items-center justify-between shrink-0 font-sans z-20">
+      <button type="button" className="operations-menu-toggle rounded border border-slate-200 px-3 py-2 text-sm" aria-expanded={menuOpen} onClick={onToggleMenu}>Danh mục</button>
       <div className="flex items-center gap-2">
         <div className="w-1 h-5 bg-blue-600 rounded-full shrink-0" />
-        <nav className="flex items-center gap-1.5 text-sm">
-          <span className="text-slate-500 font-medium hover:text-slate-700 transition-colors">
+        <nav aria-label="Vị trí hiện tại" className="flex items-center gap-1.5 text-sm">
+          <span className="hidden xl:inline text-slate-500">
             {breadcrumb.section}
           </span>
           <span className="text-slate-300 font-normal">›</span>
@@ -100,7 +100,7 @@ export function OperationsHeader() {
 
       {/* Right: Quick actions, notifications, user profile — BistroPulse Style */}
       <div className="flex items-center gap-3">
-        {/* Reset Mock Data button for testing convenience */}
+        <details className="relative hidden lg:block text-xs text-slate-500"><summary className="cursor-pointer">Dữ liệu mẫu</summary><div className="absolute right-0 top-7 z-30 w-44 rounded border border-slate-200 bg-white p-2">        {/* Reset Mock Data button for testing convenience */}
         <button
           type="button"
           onClick={handleResetData}
@@ -120,40 +120,19 @@ export function OperationsHeader() {
           )}
         </button>
 
-        {/* AI Action button */}
-        <button
-          type="button"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition-colors"
-        >
-          <IconSparkles className="w-4 h-4 text-blue-600" />
-          <span>Trợ lý AI Đô thị</span>
-        </button>
-
-        {/* Chat / Messages Button */}
-        <div className="relative">
-          <button
-            type="button"
-            className="w-9 h-9 rounded-xl border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-colors relative"
-            title="Thảo luận nội bộ sự cố"
-          >
-            <IconMessageDots className="w-5 h-5 text-slate-600" />
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-              3
-            </span>
-          </button>
-        </div>
-
+</div></details>
         {/* Notification Bell — with red badge for P1 emergencies */}
         <div className="relative">
           <button
             type="button"
             onClick={() => setNotificationOpen(!notificationOpen)}
-            className="w-9 h-9 rounded-xl border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-colors relative"
+            aria-expanded={notificationOpen}
+            className="rounded border border-slate-200 px-3 py-2 flex items-center gap-2 text-sm text-slate-600 hover:bg-slate-50"
             title="Thông báo khẩn cấp"
           >
-            <IconBell className="w-5 h-5 text-slate-600" />
+            <span>Thông báo</span>
             {p1Incidents.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-bounce shadow-xs">
+              <span className="text-xs font-medium text-red-700">
                 {p1Incidents.length}
               </span>
             )}
@@ -177,7 +156,7 @@ export function OperationsHeader() {
                     <div>
                       <p className="text-xs font-bold text-slate-900 leading-snug">{inc.title}</p>
                       <p className="text-[11px] text-slate-500 mt-0.5">
-                        {inc.location_json.towerCode} • Hạn xử lý SLA: 45 phút
+                        {inc.location_json.towerCode} • Hạn xử lý: 45 phút
                       </p>
                     </div>
                   </div>
@@ -189,7 +168,7 @@ export function OperationsHeader() {
                     </div>
                     <div>
                       <p className="text-xs font-bold text-slate-900 leading-snug">
-                        Đề xuất AI chờ BQL duyệt: {(app.estimated_cost_vnd || 0).toLocaleString()} đ
+                        Đề xuất chờ phê duyệt: {(app.estimated_cost_vnd || 0).toLocaleString()} đ
                       </p>
                       <p className="text-[11px] text-slate-500 mt-0.5">Thay van DN50 khẩn cấp</p>
                     </div>
@@ -207,7 +186,7 @@ export function OperationsHeader() {
             alt={profile.name}
             className="w-9 h-9 rounded-full object-cover border border-slate-200 shadow-2xs"
           />
-          <div className="hidden md:block text-left">
+          <div className="hidden xl:block text-left">
             <p className="text-xs font-bold text-slate-800 leading-tight">{profile.name}</p>
             <p className="text-[11px] text-slate-400 font-medium">{profile.roleTitle}</p>
           </div>

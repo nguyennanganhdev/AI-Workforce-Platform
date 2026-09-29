@@ -1,220 +1,62 @@
 import { useState } from 'react';
-import {
-  IconShieldCheck,
-  IconClipboardCheck,
-  IconPhoto,
-} from '@tabler/icons-react';
 import { useOperationsData } from '../hooks/use-operations-data';
 import type { VhWorkOrder } from '../types/work-order';
 import { QcInspectorModal } from './qc-inspector-modal';
+import { OperationsTable } from './operations-table';
 
 export function QcWorkspace() {
-  const { qcResults, workOrders, evidence } = useOperationsData();
+  const { qcResults, workOrders, evidence, tasks } = useOperationsData();
   const [selectedWoForQc, setSelectedWoForQc] = useState<VhWorkOrder | null>(null);
-
-  const eligibleWos = workOrders.filter((w) => w.status === 'COMPLETED');
-  const inProgressWos = workOrders.filter((w) => w.status === 'IN_PROGRESS');
-
+  const [tab, setTab] = useState<'PENDING' | 'HISTORY'>('PENDING');
+  const [resultId, setResultId] = useState('');
+  const selectedResult = qcResults.find((result) => result.id === resultId);
+  const eligibleWos = workOrders.filter((order) => order.status === 'COMPLETED');
   return (
-    <div className="space-y-5 font-sans">
-      {/* Title Header with Blue Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-1.5 h-6 bg-blue-600 rounded-full shrink-0" />
-          <div>
-            <h1 className="text-lg font-bold text-slate-900 tracking-tight">
-              Nghiệm Thu Chất Lượng Công Việc
-            </h1>
-            <p className="text-xs text-slate-500">
-              Kiểm tra checklist tiêu chuẩn sau khi kỹ thuật viên báo cáo hoàn thành
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="px-3 py-1 bg-purple-50 text-purple-700 font-semibold text-xs rounded-full border border-purple-200">
-            {qcResults.length} Biên bản nghiệm thu
-          </span>
-        </div>
+    <div className="space-y-5">
+      <div>
+        <h1>Nghiệm thu chất lượng</h1>
+        <p className="mt-1 text-sm text-slate-500">Kiểm tra công việc đã hoàn thành và theo dõi kết quả nghiệm thu.</p>
       </div>
-
-      {/* Phiếu đã hoàn tất chờ nghiệm thu */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs space-y-3">
-        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <IconClipboardCheck className="w-4 h-4 text-purple-600" />
-            <h3 className="font-bold text-xs text-slate-900">
-              Phiếu thi công đã hoàn thành — Chờ nghiệm thu ({eligibleWos.length})
-            </h3>
-          </div>
-          <span className="text-[11px] text-slate-400">Nhấn nút để đánh giá tiêu chuẩn</span>
-        </div>
-
-        {eligibleWos.length === 0 ? (
-          <div className="p-8 text-center text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
-            Hiện tại không có phiếu nào đang chờ nghiệm thu.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {eligibleWos.map((wo) => {
-              const hasQc = qcResults.some((q) => q.work_order_id === wo.id);
-              const woEvidence = evidence.filter((e) => e.work_order_id === wo.id);
-              const hasBefore = woEvidence.some((e) => e.capture_phase === 'BEFORE');
-              const hasAfter = woEvidence.some((e) => e.capture_phase === 'AFTER');
-              const evidenceReady = hasBefore && hasAfter;
-
-              return (
-                <div
-                  key={wo.id}
-                  className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-purple-300 transition-all space-y-2.5 flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs font-bold text-blue-600">{wo.id}</span>
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-                        Đã xong thi công
-                      </span>
-                    </div>
-
-                    <p className="font-bold text-xs text-slate-900 mt-1 line-clamp-1">
-                      {wo.result?.note ? String(wo.result.note) : `Phiếu thi công ${wo.id}`}
-                    </p>
-
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Thực hiện: <strong>{wo.executor_name || 'Kỹ thuật viên'}</strong> • Lần #{wo.attempt_no}
-                    </p>
-
-                    {/* Evidence Check indicator */}
-                    <div className="mt-2 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
-                      <span className="text-slate-500 flex items-center gap-1">
-                        <IconPhoto className="w-3.5 h-3.5 text-slate-400" />
-                        Ảnh hiện trường:
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
-                          evidenceReady
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border border-amber-200'
-                        }`}
-                      >
-                        {evidenceReady ? '✓ Đủ ảnh Trước / Sau' : 'Thiếu ảnh Trước / Sau'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="pt-2 flex items-center justify-between border-t border-slate-200/60">
-                    <span className="text-[10px] text-slate-400">
-                      {wo.checklist_version_id || 'Mặc định'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedWoForQc(wo)}
-                      className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-colors shadow-2xs"
-                    >
-                      {hasQc ? 'Xem lại' : 'Nghiệm thu ngay'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+      <div className="flex gap-6 border-b border-slate-200">
+        {([{id: 'PENDING', label: 'Chờ nghiệm thu'}, {id: 'HISTORY', label: 'Lịch sử nghiệm thu'}] as const).map((item) =>
+          <button type="button" key={item.id} aria-pressed={tab === item.id} className={`pb-3 text-sm border-b-2 ${tab === item.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`} onClick={() => setTab(item.id)}>{item.label}</button>
         )}
       </div>
-
-      {inProgressWos.length > 0 && (
-        <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 space-y-1.5">
-          <div className="text-xs font-bold text-slate-700">
-            Phiếu đang thực hiện ({inProgressWos.length})
-          </div>
-          <p className="text-[11px] text-slate-500">
-            Kỹ thuật viên cần nhấn "Hoàn thành" trên phiếu thi công trước khi tiến hành nghiệm thu chất lượng.
-          </p>
-          <div className="flex flex-wrap gap-2 pt-1">
-            {inProgressWos.map((wo) => (
-              <span
-                key={wo.id}
-                className="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-600"
-              >
-                {wo.id} ({wo.executor_name || 'Đang làm'})
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Lịch sử nghiệm thu */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs space-y-3">
-        <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-          <IconShieldCheck className="w-4 h-4 text-emerald-600" />
-          <h3 className="font-bold text-xs text-slate-900">
-            Lịch sử kết quả nghiệm thu gần đây
-          </h3>
-        </div>
-
-        <div className="space-y-2.5">
-          {qcResults.map((qc) => (
-            <div
-              key={qc.id}
-              className={`p-3.5 rounded-xl border transition-colors ${
-                qc.outcome === 'PASS'
-                  ? 'border-emerald-200 bg-emerald-50/40'
-                  : qc.outcome === 'INCONCLUSIVE'
-                    ? 'border-amber-200 bg-amber-50/40'
-                    : 'border-rose-200 bg-rose-50/40'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-slate-800">{qc.id}</span>
-                  <span className="text-slate-400">•</span>
-                  <span className="text-xs text-slate-600">
-                    Phiếu thi công: <strong className="font-mono text-slate-900">{qc.work_order_id}</strong>
-                  </span>
-                </div>
-
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 ${
-                    qc.outcome === 'PASS'
-                      ? 'bg-emerald-600 text-white'
-                      : qc.outcome === 'INCONCLUSIVE'
-                        ? 'bg-amber-500 text-white'
-                        : 'bg-rose-600 text-white'
-                  }`}
-                >
-                  {qc.outcome === 'PASS' && '✓ Đạt tiêu chuẩn'}
-                  {qc.outcome === 'FAIL' && '✕ Không đạt (Làm lại)'}
-                  {qc.outcome === 'INCONCLUSIVE' && '⚠ Cần kiểm tra thêm'}
-                </span>
-              </div>
-
-              {qc.note && <p className="text-xs text-slate-700 italic mb-1.5">"{qc.note}"</p>}
-
-              {qc.failed_criteria.length > 0 && (
-                <div className="p-2 rounded-lg bg-rose-100/70 border border-rose-200 text-rose-800 text-[11px] font-medium space-y-0.5">
-                  <p className="font-bold">Tiêu chí chưa đạt:</p>
-                  <ul className="list-disc pl-4 space-y-0.5">
-                    {qc.failed_criteria.map((fc: string, idx: number) => (
-                      <li key={idx}>{fc}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <div className="pt-1.5 mt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-400">
-                <span>Người nghiệm thu: <strong className="text-slate-700">{qc.checked_by_name || qc.checked_by}</strong></span>
-                <span>{new Date(qc.checked_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+      <div hidden={tab !== 'PENDING'}>
+        <OperationsTable title="Phiếu chờ nghiệm thu" columns={['Mã phiếu', 'Công việc', 'Người thực hiện', 'Ảnh hiện trường']} actionLabel="Nghiệm thu"
+          rows={eligibleWos.map((order) => {
+            const title = tasks.find((task) => task.id === order.task_id)?.title || 'Phiếu thi công';
+            const photos = evidence.filter((photo) => photo.work_order_id === order.id);
+            const before = photos.filter((photo) => photo.capture_phase === 'BEFORE').length;
+            const after = photos.filter((photo) => photo.capture_phase === 'AFTER').length;
+            return { id: order.id, search: `${order.id} ${title} ${order.executor_name || ''}`, cells: [
+              order.id, title, order.executor_name || 'Chưa xác định',
+              <span>Trước xử lý: {before} ảnh<br />Sau xử lý: {after} ảnh</span>,
+            ] };
+          })}
+          onSelect={(id) => setSelectedWoForQc(workOrders.find((order) => order.id === id) || null)} />
       </div>
-
-      {selectedWoForQc && (
-        <QcInspectorModal
-          workOrder={selectedWoForQc}
-          onClose={() => setSelectedWoForQc(null)}
-        />
-      )}
+      <div hidden={tab !== 'HISTORY'}>
+        <div hidden={Boolean(selectedResult)}>
+        <OperationsTable title="Kết quả nghiệm thu" columns={['Mã biên bản', 'Phiếu thi công', 'Kết quả', 'Người nghiệm thu', 'Ngày kiểm tra', 'Ghi chú']}
+          rows={qcResults.map((result) => ({id: result.id, search: `${result.id} ${result.work_order_id} ${result.checked_by_name || ''}`, cells: [
+            result.id, result.work_order_id, result.outcome === 'PASS' ? 'Đạt yêu cầu' : result.outcome === 'FAIL' ? 'Không đạt yêu cầu' : 'Cần kiểm tra thêm',
+            result.checked_by_name || result.checked_by, new Date(result.checked_at).toLocaleDateString('vi-VN'), result.note || 'Không có',
+          ]}))}
+          onSelect={setResultId} />
+        </div>
+        {selectedResult && <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-5">
+          <button type="button" className="operations-back" onClick={() => setResultId('')}>Quay lại danh sách kết quả</button>
+          <h2>Biên bản {selectedResult.id}</h2>
+          <p>Phiếu thi công: {selectedResult.work_order_id}</p>
+          <p>Kết quả: {selectedResult.outcome === 'PASS' ? 'Đạt yêu cầu' : selectedResult.outcome === 'FAIL' ? 'Không đạt yêu cầu' : 'Cần kiểm tra thêm'}</p>
+          <p>Người nghiệm thu: {selectedResult.checked_by_name || selectedResult.checked_by}</p>
+          <p>Ngày kiểm tra: {new Date(selectedResult.checked_at).toLocaleString('vi-VN')}</p>
+          <p>{selectedResult.note || 'Không có ghi chú.'}</p>
+          {selectedResult.failed_criteria.length > 0 && <div><h3>Tiêu chí chưa đạt</h3><ul className="list-disc pl-5">{selectedResult.failed_criteria.map((criterion, index) => <li key={index}>{criterion}</li>)}</ul></div>}
+        </section>}
+      </div>
+      {selectedWoForQc && <QcInspectorModal workOrder={selectedWoForQc} onClose={() => setSelectedWoForQc(null)} />}
     </div>
   );
 }
