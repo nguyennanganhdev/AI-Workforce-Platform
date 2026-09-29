@@ -18,8 +18,6 @@ export type DeploymentCapabilities = {
    * so both halves read this one answer.
    */
   generativeUi: boolean;
-  transcription?: boolean;
-  voice?: boolean;
 };
 
 export const deploymentKeys = {
@@ -53,17 +51,9 @@ export function deploymentCapabilitiesQueryOptions() {
         await client("/api/capabilities", {
           fallback: "This deployment's capabilities could not be loaded.",
         })
-      ).json()) as {
-        generativeUi?: boolean;
-        transcription?: boolean;
-        voice?: boolean;
-      };
+      ).json()) as { generativeUi?: boolean };
 
-      return {
-        generativeUi: body.generativeUi === true,
-        transcription: body.transcription === true,
-        voice: body.voice === true,
-      };
+      return { generativeUi: body.generativeUi === true };
     },
   });
 }

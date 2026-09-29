@@ -17,7 +17,7 @@ export type AuthenticatedUser = {
   email: string;
   name?: string | null;
   image?: string | null;
-  role: "admin" | "user";
+  role: "admin" | "management" | "staff" | "customer";
   /** Null means this deployment does not track onboarding, which reads as nothing to finish. */
   onboarding: OnboardingStatus | null;
 };

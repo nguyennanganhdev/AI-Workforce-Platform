@@ -92,6 +92,7 @@ export function createPageFrameStore(database: Database): PageFrameStore {
       await database
         .insert(computerPageFrame)
         .values({
+          agentId: input.computerId,
           computerId: input.computerId,
           toolCallId: input.toolCallId,
           url: input.url,

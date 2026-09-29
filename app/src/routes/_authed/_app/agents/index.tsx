@@ -26,7 +26,26 @@ export const Route = createFileRoute("/_authed/_app/agents/")({
   component: AgentsScreen,
 });
 
-// Two equal columns let cards fill the available width at a consistent height.
+/*
+ * The roster wraps on the width it actually has, not on the window's.
+ *
+ * A card is a fixed 144px, so four fixed columns overlap the moment the column they sit in is
+ * narrower than the card. That is not a narrow-window case: opening the detail pane takes the width
+ * out of this column at any window size, so the cards behind an open Bot overlapped each other on a
+ * perfectly ordinary screen. `auto-fill` tracks the container instead, which is the thing that
+ * actually changed.
+ *
+ * The tracks are the card's own width, not `minmax(144px,1fr)`. A `1fr` track stretches to share
+ * the container while the card inside it stays 144px, and the difference reads as a gap: at prose
+ * width that was three 190px columns holding 144px cards, so the 15px gutter looked like 61px.
+ *
+ * Both grids are block children of their section, and they have to be. `auto-fill` needs a definite
+ * width to divide into tracks; a grid placed inside a `flex flex-row` is a flex item sized
+ * shrink-to-fit, so `auto-fill` has nothing to fill and resolves to a single column. That is what
+ * put "Your agents" in a one-card column while "Explore agents", whose grid was never wrapped,
+ * flowed correctly three across on the very same page. Do not reintroduce a flex wrapper here to
+ * position the roster.
+ */
 function AgentsScreen() {
   const { new: isCreating, agent: selectedAgentId } = Route.useSearch();
   const navigate = Route.useNavigate();
@@ -73,7 +92,8 @@ function AgentsScreen() {
             </Button>
           </div>
           {loading ? (
-            // Approximate one row of cards while the roster loads.
+            // Reserves the same 180px the settled arms below occupy, so this section holds its
+            // own height and the page beneath it does not jump when the query settles.
             <Skeleton className="mt-4 h-[180px]" />
           ) : mine?.length ? (
             // Wins over `failed`: TanStack Query keeps the last good `data` across a failed
@@ -81,11 +101,13 @@ function AgentsScreen() {
             // never clears `data`), so `isError` and a still-populated roster are an ordinary
             // combination, not a contradiction. A stale roster beats an error card claiming
             // there is nothing, which would be false here.
-            <div className="mt-4 grid grid-cols-2 gap-4">
+            <div className="mt-4 grid grid-cols-[repeat(auto-fill,144px)] gap-4">
               {mine.map((agent, index) => {
                 return (
-                  <StaggerItem className="min-w-0" index={index} key={agent.id}>
-                    <AgentCard agent={agent} />
+                  <StaggerItem index={index} key={agent.id}>
+                    <Link to="/agents" search={{ agent: agent.id }}>
+                      <AgentCard agent={agent} />
+                    </Link>
                   </StaggerItem>
                 );
               })}
@@ -123,16 +145,19 @@ function AgentsScreen() {
         <div className="mt-8 w-full max-w-2xl">
           <h2 className="font-bold text-lg">Explore agents</h2>
           {loading ? (
-            // Approximate one row of cards while the roster loads.
+            // Reserves the same 180px the settled arms below occupy, so this section holds its
+            // own height and the page beneath it does not jump when the query settles.
             <Skeleton className="mt-4 h-[180px]" />
           ) : explore?.length ? (
             // Wins over `failed` for the same reason the "Your agents" section above does: a
             // failed background refetch does not clear TanStack Query's cached `data`.
-            <div className="mt-4 grid grid-cols-2 gap-4">
+            <div className="mt-4 grid grid-cols-[repeat(auto-fill,144px)] gap-4">
               {explore.map((agent, index) => {
                 return (
-                  <StaggerItem className="min-w-0" index={index} key={agent.id}>
-                    <AgentCard agent={agent} />
+                  <StaggerItem index={index} key={agent.id}>
+                    <Link to="/agents" search={{ agent: agent.id }}>
+                      <AgentCard agent={agent} />
+                    </Link>
                   </StaggerItem>
                 );
               })}
