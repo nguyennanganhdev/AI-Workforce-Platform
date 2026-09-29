@@ -191,16 +191,6 @@ export function createAuth(
   ];
 
   return betterAuth({
-    user: {
-      additionalFields: {
-        preferences: {
-          type: "json",
-          required: false,
-          // Settings validates and patches this field for both SSO and single-user mode.
-          input: false,
-        },
-      },
-    },
     baseURL: authConfig.baseUrl,
     secret: authConfig.secret,
     trustedOrigins: authConfig.trustedOrigins,
@@ -343,7 +333,7 @@ export function createAuth(
                 message: DOMAIN_REFUSAL_MESSAGE,
               });
             }
-            if (user && (await isRevoked?.(user.email))) {
+            if (user?.email && (await isRevoked?.(user.email))) {
               await record(auditStore, {
                 eventType: "session.refused",
                 targetType: "person",

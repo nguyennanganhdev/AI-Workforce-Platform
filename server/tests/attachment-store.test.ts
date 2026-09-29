@@ -229,7 +229,7 @@ function appSignedInAs(userId: string) {
         }),
       },
     },
-    { rolesForUser: async () => ["user"] },
+    { rolesForUser: async () => ["customer"] },
     undefined,
     undefined,
     undefined,

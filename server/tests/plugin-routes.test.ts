@@ -740,7 +740,7 @@ const DIRECTORY: BrokerApp[] = [
     slug: "slack",
     name: "Slack",
     description: "Post messages and read channels.",
-    logo: "https://example.com/slack.svg",
+    logo: null,
     categories: ["communication"],
     actionCount: 63,
     connection: { kind: "consent" },
@@ -1041,7 +1041,6 @@ describe("the Composio directory", () => {
       {
         slug: "slack",
         title: "Slack",
-        logo: "https://example.com/slack.svg",
         by: ADMIN.email,
         connection: { kind: "consent" },
       },
@@ -1328,7 +1327,7 @@ function connectionsApp(
         }),
       },
     } as never,
-    { rolesForUser: async () => ["user"] },
+    { rolesForUser: async () => ["customer"] },
     // Positions 4-14 are the other stores; `store` is 15, pluginStore.
     ...UP_TO_PLUGIN_STORE,
     store,
@@ -1772,7 +1771,7 @@ function brokeredApp(
     } as never,
     // Connecting an account is not an administrator's act: an administrator adds the app once, and
     // then everybody connects their own.
-    { rolesForUser: async () => ["user"] },
+    { rolesForUser: async () => ["customer"] },
     // Positions 4-14 are the other stores; `store` is 15, pluginStore.
     ...UP_TO_PLUGIN_STORE,
     store,

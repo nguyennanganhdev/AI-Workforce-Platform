@@ -8,27 +8,6 @@ Newest first. `Unreleased` is what is on `main` and not yet tagged.
 
 ## Unreleased
 
-### Dictate messages and talk to a coworker in a live voice call
-
-Deployments can configure transcription separately from their Bots' models, with a waveform composer
-for recording, cancelling, transcribing, or sending speech. Optional OpenAI Realtime and Grok voice
-adapters add a floating call widget. The live model handles conversation directly and delegates tools
-and actions to the existing Bot in the same thread. Ending a call saves its transcript and a short
-summary; later voice calls and typed messages receive that history. Calls start silently, and muting
-affects the person's microphone. See [configuration](docs/configuration.md#live-voice-calls).
-
-Voice summaries use the configured chat provider, including Anthropic keys and Claude or ChatGPT
-plan sign-in. Retrying a failed summary refreshes its sidebar preview without replacing newer
-activity. The macOS app includes the microphone permission description and audio-input entitlement
-needed for dictation and voice calls.
-
-### Find older conversations and keep chat preferences across devices
-
-The sidebar loads older conversations as the person scrolls. Settings save the choice to emphasize
-the agent or thread name in the database, with a preview. Agent directory cards have more space,
-connected accounts use individual entries with stored app logos, and browser steps appear in a compact
-expandable group instead of filling the conversation with screenshots.
-
 ## 0.0.15
 
 ### A model provider's own sign-in can stand in for an API key

@@ -188,7 +188,7 @@ export type RoutineStore = {
    */
   advanceNextRun(id: string, from: Date, computeFrom?: Date): Promise<boolean>;
   /** Open a run row. Its status stays null until something finishes it. */
-  insertRun(routineId: string): Promise<{ runId: string }>;
+  insertRun(routineId: string, scheduledFor?: Date): Promise<{ runId: string }>;
   /**
    * The runner's read: an opened run row, joined to the routine it fires.
    *
@@ -726,13 +726,17 @@ export function createRoutineStore(database: Database): RoutineStore {
       return moved.length > 0;
     },
 
-    async insertRun(routineId) {
+    async insertRun(routineId, scheduledFor = new Date()) {
       const runId = `routine_run_${crypto.randomUUID()}`;
       // `startedAt` defaults to the database's now, and `status` stays null: null is the in-flight
       // state, which is the reason that column is nullable rather than defaulted to something.
       const [row] = await database
         .insert(routineRuns)
-        .values({ id: runId, routineId })
+        .values({ id: runId, routineId, scheduledFor })
+        .onConflictDoUpdate({
+          target: [routineRuns.routineId, routineRuns.scheduledFor],
+          set: { scheduledFor },
+        })
         .returning({ id: routineRuns.id });
       if (!row) throw new Error("inserting a routine run returned no row");
       return { runId: row.id };
@@ -856,6 +860,7 @@ export function createRoutineStore(database: Database): RoutineStore {
       await database.insert(routineRuns).values({
         id: `routine_run_${crypto.randomUUID()}`,
         routineId: id,
+        scheduledFor: new Date(),
         status: "skipped",
         finishedAt: sql`now()`,
         error: Array.from(reason).slice(0, MAX_RUN_ERROR).join(""),

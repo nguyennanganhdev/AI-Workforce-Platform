@@ -1,5 +1,5 @@
 {
-  "name": "ai-workforce-platform",
+  "name": "openbot",
   "version": "0.0.15",
   "license": "MIT",
   "private": true,
@@ -27,12 +27,7 @@
     "test:live-composio": "bun -e \"if (!process.env.COMPOSIO_API_KEY?.trim()) { console.error('COMPOSIO_API_KEY is empty or unset, so every case in this suite would skip and this command would still exit 0. Run it as COMPOSIO_API_KEY=... bun run test:live-composio.'); process.exit(1) }\" && OPENBOT_LIVE_COMPOSIO=1 bun test server/tests/composio-live.test.ts",
     "diagram": "bun scripts/architecture-diagram.ts",
     "composio:smoke": "bun scripts/composio-smoke.ts",
-    "mock:knowledge": "bun scripts/mock-knowledge-mcp.ts",
-    "typecheck:workforce": "tsc --noEmit -p tsconfig.json",
-    "check:architecture": "bun scripts/check-architecture.mjs",
-    "check:runtime": "python scripts/check-runtime.py",
-    "test:workforce": "bun test ./tests/app.test.ts ./tests/architecture.test.mjs",
-    "check": "bun run typecheck && bun run typecheck:workforce && bun run check:architecture && bun run check:runtime && bun run test:workforce"
+    "mock:knowledge": "bun scripts/mock-knowledge-mcp.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",

@@ -40,7 +40,7 @@ function appWith(
       handler: () => new Response(null, { status: 204 }),
       api: { getSession: async () => ({ user: options.as ?? MEMBER }) },
     } as never,
-    { rolesForUser: async () => ["user"] },
+    { rolesForUser: async () => ["customer"] },
     /*
      * Positions 4-12 are the other stores, 13 is auditStore, 14-24 are more stores, and `store` is
      * 25, userInstructions, the signature's last. Every parameter from 4 on is optional, so a wrong

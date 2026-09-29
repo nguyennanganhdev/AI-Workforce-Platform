@@ -198,7 +198,7 @@ export function PageRows({
      */
     <div
       className={cn(
-        "mt-4 overflow-hidden rounded-lg border border-border bg-card dark:border-transparent",
+        "mt-4 overflow-hidden rounded-lg border border-border bg-card",
         "[&_[data-slot=item]]:rounded-none",
         className,
       )}

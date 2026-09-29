@@ -6617,13 +6617,11 @@ test("enabling an app writes a brokered row, and asks for its auth config first"
     const record = await store.addBrokeredApp({
       slug: "linear",
       title: "Linear",
-      logo: "https://example.com/linear.svg",
       by: "admin@example.com",
       connection: { kind: "consent" },
     });
 
     expect(record.id).toBe("composio-linear");
-    expect(record.logo).toBe("https://example.com/linear.svg");
     expect(record.url).toBe("composio://linear");
     expect(record.provenance).toBe("composio");
     // No credential of its own, and none to come: a brokered row is reached as the person asking,

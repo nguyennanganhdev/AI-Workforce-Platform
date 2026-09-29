@@ -414,7 +414,12 @@ export async function dispatchClaimedRoutines(
        * DISPATCH failures only, and a turn that failed is final for this firing — the fatigue rule
        * owns that, not this loop.
        */
-      const { runId } = await options.routineStore.insertRun(routineId);
+      const { runId } = await options.routineStore.insertRun(
+        routineId,
+        scheduledFor && !Number.isNaN(scheduledFor.getTime())
+          ? scheduledFor
+          : now,
+      );
       /*
        * A dispatch that throws leaves the row this attempt opened with no status, AND NOTHING HERE
        * CLOSES IT — the reaper above does, once the row is older than any turn could still be

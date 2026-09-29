@@ -89,6 +89,7 @@ export function createSnapshotStore(database?: Database): SnapshotStore {
     save: async (computerId, snapshot) => {
       const elements = objectFromElements(snapshot.elements);
       const values = {
+        agentId: computerId,
         computerId,
         snapshotId: snapshot.snapshotId,
         url: snapshot.url,
