@@ -1,3 +1,5 @@
+import { deploymentScope } from "../src/db/deployment-scope";
+import { loadTenantPackage } from "../src/tenant-package";
 /**
  * One sweep: notice which routines are due, and fire whatever this pod can claim.
  *
@@ -55,7 +57,11 @@ if (!serverInternalUrl) {
   );
 }
 
-const database = createDatabase(config.databaseUrl);
+const tenantPackage = await loadTenantPackage(config.tenantPackageDirectory);
+const database = createDatabase(
+  config.databaseUrl,
+  deploymentScope(tenantPackage.tenantId),
+);
 const queue = createWorkQueue(database);
 const routineStore = createRoutineStore(database);
 

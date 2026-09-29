@@ -106,7 +106,7 @@ function addressOf(databaseUrl: string) {
  */
 export function createDatabase(
   databaseUrl: string,
-  options: { max?: number } = {},
+  options: { max?: number; tenantId?: string; workspaceId?: string } = {},
 ) {
   /*
    * Loud rather than silent when the arguments are the wrong way round.
@@ -139,6 +139,13 @@ export function createDatabase(
 
   const client = new SQL({
     ...addressOf(databaseUrl),
+    connection: {
+      ...addressOf(databaseUrl).connection,
+      ...(options.tenantId ? { "app.tenant_id": options.tenantId } : {}),
+      ...(options.workspaceId
+        ? { "app.workspace_id": options.workspaceId }
+        : {}),
+    },
     ...(options.max === undefined ? {} : { max: options.max }),
   });
 

@@ -1,3 +1,5 @@
+import { deploymentScope } from "../../server/src/db/deployment-scope";
+import { loadTenantPackage } from "../../server/src/tenant-package";
 /**
  * The local stand-in for the routines CronJob: `server/scripts/fire-routines.ts`, looped.
  *
@@ -51,7 +53,13 @@ console.info(`OpenBot worker status: ${workerStatus().status}`);
 const { workerSharedSecret, serverInternalUrl, databaseUrl, owner } =
   loadWorkerEnv();
 
-const database = createDatabase(databaseUrl);
+const tenantPackage = await loadTenantPackage(
+  process.env.TENANT_PACKAGE_DIR ?? "../examples/fintech",
+);
+const database = createDatabase(
+  databaseUrl,
+  deploymentScope(tenantPackage.tenantId),
+);
 const queue = createWorkQueue(database);
 const routineStore = createRoutineStore(database);
 

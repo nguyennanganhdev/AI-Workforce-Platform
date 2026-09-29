@@ -1,116 +1,176 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { Database } from "../db/client";
-import { userRoles, users } from "../db/schema";
+import {
+  platformAdmins,
+  tenantMemberships,
+  scopedUserRoles,
+  accessScopes,
+  users,
+} from "../db/schema";
 
-export type OpenBotRole = "admin" | "user";
-
-/**
- * Whether this address is an administrator by configuration.
- *
- * A floor, not the whole answer. Somebody named here is always an administrator and cannot be
- * demoted from the admin screen, which is what makes it the way back in when the last administrator
- * demotes themselves by accident. Everybody else's role is whatever an administrator has set.
- */
+export type OpenBotRole = "admin" | "management" | "staff" | "customer";
 export function isConfiguredAdmin(
-  email: string,
+  email: string | null,
   initialAdminEmails: readonly string[],
 ): boolean {
-  const normalizedEmail = email.trim().toLowerCase();
-
-  return initialAdminEmails.some(
-    (adminEmail) => adminEmail.trim().toLowerCase() === normalizedEmail,
+  return (
+    email !== null &&
+    initialAdminEmails.some(
+      (value) => value.trim().toLowerCase() === email.trim().toLowerCase(),
+    )
   );
 }
-
 export function roleForEmail(
   email: string,
-  initialAdminEmails: readonly string[],
+  emails: readonly string[],
 ): OpenBotRole {
-  return isConfiguredAdmin(email, initialAdminEmails) ? "admin" : "user";
+  return isConfiguredAdmin(email, emails) ? "admin" : "customer";
 }
-
-/**
- * Give somebody exactly one role.
- *
- * `user_roles` is a set with a `(user_id, role)` primary key and the guard takes `admin` if any row
- * says so, so setting a role means removing the rows that should not be there rather than only
- * inserting one. Both statements inside one transaction: between them a request arriving on another
- * process would find no role at all and be refused with a 403 that reads as a permissions bug.
- */
+export async function rolesForUser(
+  database: Database,
+  userId: string,
+): Promise<OpenBotRole[]> {
+  const [user] = await database
+    .select({ status: users.status })
+    .from(users)
+    .where(eq(users.id, userId));
+  if (!user || user.status !== "active") return [];
+  const admins = await database
+    .select()
+    .from(platformAdmins)
+    .where(eq(platformAdmins.userId, userId));
+  if (admins.length) return ["admin"];
+  const rows = await database
+    .select({ role: scopedUserRoles.roleCode })
+    .from(scopedUserRoles)
+    .innerJoin(
+      tenantMemberships,
+      eq(tenantMemberships.id, scopedUserRoles.membershipId),
+    )
+    .where(
+      and(
+        eq(tenantMemberships.userId, userId),
+        eq(tenantMemberships.status, "active"),
+        sql`${scopedUserRoles.validFrom} <= now() and (${scopedUserRoles.validTo} is null or ${scopedUserRoles.validTo}>now())`,
+        sql`${scopedUserRoles.tenantId}=nullif(current_setting('app.tenant_id',true),'')::uuid`,
+      ),
+    );
+  return [...new Set(rows.map((r) => r.role as OpenBotRole))];
+}
+/** Canonical writes only. user_roles remains read-only legacy data. */
 export async function setRole(
   database: Database,
   userId: string,
   role: OpenBotRole,
 ): Promise<OpenBotRole> {
   await database.transaction(async (tx) => {
+    // Serialize admin changes, including the last-admin guard.
+    await tx.execute(sql`select pg_advisory_xact_lock(7823941)`);
+    const [user] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (!user) throw new Error("User does not exist");
+    if (role === "admin") {
+      await tx.insert(platformAdmins).values({ userId }).onConflictDoNothing();
+      await tx
+        .update(users)
+        .set({ status: "active" })
+        .where(eq(users.id, userId));
+      return;
+    }
+    const existing = await tx.select().from(platformAdmins);
+    if (existing.length === 1 && existing[0]?.userId === userId)
+      throw new Error("Cannot remove the last platform administrator");
+    // This compatibility endpoint assigns only a customer tenant role. Management/staff
+    // require an explicit geographical scope through the scoped-role service.
+    if (role !== "customer")
+      throw new Error("Management/staff require an explicit access scope");
+    const [scope] = await tx
+      .select()
+      .from(accessScopes)
+      .where(
+        and(
+          eq(accessScopes.kind, "tenant"),
+          sql`${accessScopes.tenantId}=nullif(current_setting('app.tenant_id',true),'')::uuid`,
+        ),
+      );
+    if (!scope) throw new Error("Tenant scope has not been initialized");
+    await tx.delete(platformAdmins).where(eq(platformAdmins.userId, userId));
+    const [membership] = await tx
+      .insert(tenantMemberships)
+      .values({
+        tenantId: scope.tenantId,
+        userId,
+        status: "active",
+        joinedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [tenantMemberships.tenantId, tenantMemberships.userId],
+        set: { status: "active", endedAt: null },
+      })
+      .returning();
+    if (!membership) throw new Error("Membership could not be created");
+    // Preserve scoped staff/management grants: changing the platform-admin switch does not erase them.
+    const grants = await tx
+      .select()
+      .from(scopedUserRoles)
+      .where(
+        and(
+          eq(scopedUserRoles.membershipId, membership.id),
+          eq(scopedUserRoles.scopeId, scope.id),
+          eq(scopedUserRoles.roleCode, "customer"),
+          sql`${scopedUserRoles.validTo} is null`,
+        ),
+      );
+    if (!grants.length)
+      await tx
+        .insert(scopedUserRoles)
+        .values({
+          tenantId: scope.tenantId,
+          membershipId: membership.id,
+          scopeId: scope.id,
+          roleCode: "customer",
+          grantedBy: userId,
+          validFrom: new Date(),
+        });
     await tx
-      .delete(userRoles)
-      .where(and(eq(userRoles.userId, userId), ne(userRoles.role, role)));
-    await tx.insert(userRoles).values({ userId, role }).onConflictDoNothing();
+      .update(users)
+      .set({ status: "active" })
+      .where(eq(users.id, userId));
   });
-
   return role;
 }
-
-/**
- * The role a brand-new account starts with.
- *
- * The only moment configuration decides somebody who is not on the list: from here on that person's
- * role belongs to whoever administers the deployment.
- */
 export async function seedRole(
   database: Database,
   userId: string,
   email: string,
-  initialAdminEmails: readonly string[],
+  emails: readonly string[],
 ): Promise<OpenBotRole> {
-  return setRole(database, userId, roleForEmail(email, initialAdminEmails));
+  return setRole(database, userId, roleForEmail(email, emails));
 }
-
-/**
- * Re-apply the configured floor, on every sign-in.
- *
- * Only ever promotes, and only for an address the deployment names. Somebody added to the list
- * after they first signed in becomes an administrator at their next sign-in, which is the trap this
- * exists to close: the role used to be written once at account creation, so editing the list did
- * nothing at all and no screen could fix it.
- *
- * Everybody else is left exactly as they are, because their role is the admin screen's to decide and
- * a sign-in that overwrote it would make that screen lie the moment they came back.
- *
- * Answers whether this call is what granted the role, so the caller can put that on the audit trail.
- * Anybody who can edit the configuration can make themselves an administrator, and until this
- * returned something there was no row anywhere saying it had happened.
- */
 export async function applyConfiguredAdmin(
   database: Database,
   userId: string,
-  initialAdminEmails: readonly string[],
+  emails: readonly string[],
 ): Promise<boolean> {
-  // Nothing configured cannot promote anybody, so there is no reason to read the user back.
-  if (initialAdminEmails.length === 0) return false;
-
+  if (!emails.length) return false;
   const [user] = await database
     .select({ email: users.email })
     .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-
-  // No user means a session is being made for somebody who is not there, which is not this module's
-  // to report: Better Auth is about to fail on its own and would only be given a worse message here.
-  if (!user) return false;
-
-  if (!isConfiguredAdmin(user.email, initialAdminEmails)) return false;
-
-  const [already] = await database
-    .select({ role: userRoles.role })
-    .from(userRoles)
-    .where(and(eq(userRoles.userId, userId), eq(userRoles.role, "admin")))
-    .limit(1);
-
+    .where(eq(users.id, userId));
+  if (!user || !isConfiguredAdmin(user.email, emails)) return false;
+  const old = await database
+    .select()
+    .from(platformAdmins)
+    .where(eq(platformAdmins.userId, userId));
   await setRole(database, userId, "admin");
-
-  // Whether this sign-in is what granted it. The caller writes an audit row when it did, and a
-  // returning administrator must not produce one on every sign-in.
-  return !already;
+  return old.length === 0;
+}
+export function strongestRole(
+  roles: readonly OpenBotRole[],
+): OpenBotRole | undefined {
+  return (["admin", "management", "staff", "customer"] as const).find((r) =>
+    roles.includes(r),
+  );
 }

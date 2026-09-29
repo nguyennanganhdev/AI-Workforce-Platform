@@ -182,7 +182,7 @@ export function createSandboxedStore(
           authoredBy: input.by,
         })
         .onConflictDoUpdate({
-          target: sandboxedComponents.name,
+          target: [sandboxedComponents.tenantId, sandboxedComponents.name],
           set: {
             title: input.title,
             draftDescription: input.description,

@@ -2,7 +2,7 @@ export type AgentVisibility = "public" | "private";
 
 export type AgentActor = {
   id: string;
-  role: "admin" | "user";
+  role: "admin" | "management" | "staff" | "customer";
 };
 
 export type AgentProfile = {
