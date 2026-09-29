@@ -75,7 +75,7 @@ erDiagram
 
 Năng lực và giới hạn scope được cấp cho một AgentVersion.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -99,13 +99,13 @@ Indexes:
 - `platform_agent_capability_binding_ix_0`: (`tenant_id`, `agent_version_id`).
 - `platform_agent_capability_binding_ix_1`: (`tenant_id`, `capability_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_agent_knowledge_binding
 
 Knowledge base và retrieval policy mà AgentVersion được truy cập.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -129,13 +129,13 @@ Indexes:
 - `platform_agent_knowledge_binding_ix_0`: (`tenant_id`, `agent_version_id`).
 - `platform_agent_knowledge_binding_ix_1`: (`tenant_id`, `knowledge_base_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_agent_model_binding
 
 Model profile và constraints mà AgentVersion dùng để thực thi.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -157,13 +157,13 @@ Indexes:
 
 - `platform_agent_model_binding_ix_0`: (`tenant_id`, `model_profile_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_agent_policy_binding
 
 PolicyVersion áp dụng cho AgentVersion ở các pha trước/sau chạy tool hoặc đầu ra.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -191,13 +191,13 @@ Checks:
 
 - `platform_agent_policy_binding_phase_ck`: `"platform_agent_policy_binding"."phase" in ('PRE_RUN', 'PRE_TOOL', 'POST_TOOL', 'OUTPUT')`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_agent_skill_binding
 
 SkillVersion cụ thể và cấu hình được ghim trong AgentVersion.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -220,13 +220,13 @@ Indexes:
 - `platform_agent_skill_binding_ix_0`: (`tenant_id`, `agent_version_id`).
 - `platform_agent_skill_binding_ix_1`: (`tenant_id`, `skill_version_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_agent_tool_binding
 
 ToolVersion cụ thể được AgentVersion gọi, cùng phạm vi và chính sách approval.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -251,4 +251,4 @@ Indexes:
 - `platform_agent_tool_binding_ix_0`: (`tenant_id`, `agent_version_id`).
 - `platform_agent_tool_binding_ix_1`: (`tenant_id`, `tool_version_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

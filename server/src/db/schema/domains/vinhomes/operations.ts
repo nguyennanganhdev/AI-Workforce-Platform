@@ -223,6 +223,7 @@ export const vhTask = pgTable(
     title: text("title").notNull(),
     domainType: text("domain_type").notNull(),
     domainData: jsonb("domain_data").notNull(),
+    dependsOnJson: jsonb("depends_on_json").notNull().default({ taskIds: [] }),
     domainSchemaVersion: integer("domain_schema_version").notNull(),
     assigneeType: text("assignee_type", {
       enum: ["HUMAN", "SYSTEM", "AUTOMATION", "EXTERNAL_SERVICE"],
@@ -285,88 +286,10 @@ export const vhTask = pgTable(
     check("vh_task_ck_0", sql`domain_schema_version > 0`),
     check("vh_task_ck_1", sql`priority >= 0`),
     check("vh_task_ck_2", sql`version > 0`),
-  ],
-).enableRLS();
-
-export const vhTaskDependency = pgTable(
-  "vh_task_dependency",
-  {
-    tenantId: uuid("tenant_id").notNull(),
-    projectId: uuid("project_id").notNull(),
-    incidentId: uuid("incident_id").notNull(),
-    taskId: uuid("task_id").notNull(),
-    dependsOnTaskId: uuid("depends_on_task_id").notNull(),
-    dependencyType: text("dependency_type", {
-      enum: ["FINISH_TO_START", "FINISH_TO_FINISH"],
-    }).notNull(),
-    required: boolean("required").notNull(),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    pgPolicy("vh_task_dependency_tenant_policy", {
-      for: "all",
-      using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    primaryKey({ columns: [t.tenantId, t.taskId, t.dependsOnTaskId] }),
-    foreignKey({
-      name: "vh_task_dependency_fk_0",
-      columns: [t.tenantId],
-      foreignColumns: [platformTenant.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_task_dependency_fk_1",
-      columns: [t.tenantId, t.projectId],
-      foreignColumns: [vhProject.tenantId, vhProject.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_task_dependency_fk_2",
-      columns: [t.tenantId, t.projectId, t.incidentId],
-      foreignColumns: [
-        vhIncident.tenantId,
-        vhIncident.projectId,
-        vhIncident.id,
-      ],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_task_dependency_fk_3",
-      columns: [t.tenantId, t.projectId, t.incidentId, t.taskId],
-      foreignColumns: [
-        vhTask.tenantId,
-        vhTask.projectId,
-        vhTask.incidentId,
-        vhTask.id,
-      ],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_task_dependency_fk_4",
-      columns: [t.tenantId, t.projectId, t.incidentId, t.dependsOnTaskId],
-      foreignColumns: [
-        vhTask.tenantId,
-        vhTask.projectId,
-        vhTask.incidentId,
-        vhTask.id,
-      ],
-    }).onDelete("restrict"),
-    index("vh_task_dependency_ix_0").on(
-      t.tenantId,
-      t.projectId,
-      t.incidentId,
-      t.taskId,
+    check(
+      "vh_task_depends_on_json_ck",
+      sql`(jsonb_typeof(${t.dependsOnJson}) = 'object' AND jsonb_typeof(${t.dependsOnJson}->'taskIds') = 'array') IS TRUE`,
     ),
-    index("vh_task_dependency_ix_1").on(
-      t.tenantId,
-      t.projectId,
-      t.incidentId,
-      t.dependsOnTaskId,
-    ),
-    index("vh_task_dependency_ix_2").on(t.tenantId, t.projectId),
-    index("vh_task_dependency_ix_3").on(t.tenantId, t.projectId, t.incidentId),
-    allowedValues("vh_task_dependency_dependency_type_ck", t.dependencyType, [
-      "FINISH_TO_START",
-      "FINISH_TO_FINISH",
-    ]),
-    check("vh_task_dependency_ck_0", sql`task_id <> depends_on_task_id`),
   ],
 ).enableRLS();
 
@@ -389,6 +312,10 @@ export const vhActionRequest = pgTable(
     payload: jsonb("payload").notNull(),
     payloadHash: text("payload_hash").notNull(),
     policyVersion: text("policy_version").notNull(),
+    ruleDecision: text("rule_decision", { enum: ["ALLOW", "DENY", "REQUIRE_APPROVAL"] }),
+    ruleReasonCode: text("rule_reason_code"),
+    ruleVersion: text("rule_version"),
+    ruleEvaluatedAt: timestamp("rule_evaluated_at", { withTimezone: true }),
     expectedSubjectVersion: bigint("expected_subject_version", {
       mode: "bigint",
     }).notNull(),
@@ -485,75 +412,10 @@ export const vhActionRequest = pgTable(
       "SUCCEEDED",
       "FAILED",
     ]),
+    allowedValues("vh_action_request_rule_ck", t.ruleDecision, ["ALLOW", "DENY", "REQUIRE_APPROVAL"]),
+    check("vh_action_request_rule_complete_ck", sql`num_nonnulls(rule_decision,rule_reason_code,rule_version,rule_evaluated_at) IN (0,4)`),
     check("vh_action_request_ck_0", sql`expected_subject_version > 0`),
     check("vh_action_request_ck_1", sql`version > 0`),
-  ],
-).enableRLS();
-
-export const vhRuleEvaluation = pgTable(
-  "vh_rule_evaluation",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    tenantId: uuid("tenant_id").notNull(),
-    projectId: uuid("project_id").notNull(),
-    actionRequestId: uuid("action_request_id").notNull(),
-    actionPayloadHash: text("action_payload_hash").notNull(),
-    decision: text("decision", {
-      enum: ["ALLOW", "REQUIRE_APPROVAL", "DENY"],
-    }).notNull(),
-    reasonCode: text("reason_code").notNull(),
-    ruleVersion: text("rule_version").notNull(),
-    evaluatedAt: timestamp("evaluated_at", { withTimezone: true }).notNull(),
-    correlationId: text("correlation_id").notNull(),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    pgPolicy("vh_rule_evaluation_tenant_policy", {
-      for: "all",
-      using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    unique("vh_rule_evaluation_uq_0").on(t.tenantId, t.id),
-    unique("vh_rule_evaluation_uq_1").on(t.tenantId, t.projectId, t.id),
-    foreignKey({
-      name: "vh_rule_evaluation_fk_0",
-      columns: [t.tenantId],
-      foreignColumns: [platformTenant.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_rule_evaluation_fk_1",
-      columns: [t.tenantId, t.projectId],
-      foreignColumns: [vhProject.tenantId, vhProject.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_rule_evaluation_fk_2",
-      columns: [t.tenantId, t.projectId, t.actionRequestId],
-      foreignColumns: [
-        vhActionRequest.tenantId,
-        vhActionRequest.projectId,
-        vhActionRequest.id,
-      ],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_rule_evaluation_fk_3",
-      columns: [t.tenantId, t.actionRequestId, t.actionPayloadHash],
-      foreignColumns: [
-        vhActionRequest.tenantId,
-        vhActionRequest.id,
-        vhActionRequest.payloadHash,
-      ],
-    }).onDelete("restrict"),
-    index("vh_rule_evaluation_ix_0").on(
-      t.tenantId,
-      t.projectId,
-      t.actionRequestId,
-    ),
-    index("vh_rule_evaluation_ix_1").on(t.tenantId, t.projectId),
-    allowedValues("vh_rule_evaluation_decision_ck", t.decision, [
-      "ALLOW",
-      "REQUIRE_APPROVAL",
-      "DENY",
-    ]),
   ],
 ).enableRLS();
 
@@ -733,91 +595,6 @@ export const vhExecutionGrant = pgTable(
   ],
 ).enableRLS();
 
-export const vhChecklist = pgTable(
-  "vh_checklist",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    tenantId: uuid("tenant_id").notNull(),
-    code: text("code").notNull(),
-    name: text("name").notNull(),
-    category: text("category").notNull(),
-    status: text("status", { enum: ["ACTIVE", "RETIRED"] }).notNull(),
-    createdAt: createdAt(),
-    ...mutableColumns(),
-  },
-  (t) => [
-    pgPolicy("vh_checklist_tenant_policy", {
-      for: "all",
-      using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    unique("vh_checklist_uq_0").on(t.tenantId, t.code),
-    unique("vh_checklist_uq_1").on(t.tenantId, t.id),
-    foreignKey({
-      name: "vh_checklist_fk_0",
-      columns: [t.tenantId],
-      foreignColumns: [platformTenant.id],
-    }).onDelete("restrict"),
-    allowedValues("vh_checklist_status_ck", t.status, ["ACTIVE", "RETIRED"]),
-    check("vh_checklist_ck_0", sql`version > 0`),
-  ],
-).enableRLS();
-
-export const vhChecklistVersion = pgTable(
-  "vh_checklist_version",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    tenantId: uuid("tenant_id").notNull(),
-    checklistId: uuid("checklist_id").notNull(),
-    versionNo: integer("version_no").notNull(),
-    criteriaJson: jsonb("criteria_json").notNull(),
-    status: text("status", {
-      enum: ["DRAFT", "PUBLISHED", "RETIRED"],
-    }).notNull(),
-    publishedAt: timestamp("published_at", { withTimezone: true }),
-    createdBy: text("created_by").notNull(),
-    createdAt: createdAt(),
-    ...mutableColumns(),
-  },
-  (t) => [
-    pgPolicy("vh_checklist_version_tenant_policy", {
-      for: "all",
-      using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    unique("vh_checklist_version_uq_0").on(
-      t.tenantId,
-      t.checklistId,
-      t.versionNo,
-    ),
-    unique("vh_checklist_version_uq_1").on(t.tenantId, t.id),
-    foreignKey({
-      name: "vh_checklist_version_fk_0",
-      columns: [t.tenantId],
-      foreignColumns: [platformTenant.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_checklist_version_fk_1",
-      columns: [t.tenantId, t.checklistId],
-      foreignColumns: [vhChecklist.tenantId, vhChecklist.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_checklist_version_fk_2",
-      columns: [t.createdBy],
-      foreignColumns: [users.id],
-    }).onDelete("restrict"),
-    index("vh_checklist_version_ix_0").on(t.createdBy),
-    index("vh_checklist_version_ix_1").on(t.tenantId, t.checklistId),
-    allowedValues("vh_checklist_version_status_ck", t.status, [
-      "DRAFT",
-      "PUBLISHED",
-      "RETIRED",
-    ]),
-    check("vh_checklist_version_ck_0", sql`version_no > 0`),
-    check("vh_checklist_version_ck_1", sql`version > 0`),
-  ],
-).enableRLS();
-
 export const vhWorkOrder = pgTable(
   "vh_work_order",
   {
@@ -843,7 +620,9 @@ export const vhWorkOrder = pgTable(
     }).notNull(),
     attemptNo: integer("attempt_no").notNull(),
     redoOfWorkOrderId: uuid("redo_of_work_order_id"),
-    checklistVersionId: uuid("checklist_version_id"),
+    checklistId: text("checklist_id"),
+    checklistVersion: integer("checklist_version"),
+    checklistSnapshotJson: jsonb("checklist_snapshot_json").notNull().default({}),
     executionStartedAt: timestamp("execution_started_at", {
       withTimezone: true,
     }),
@@ -928,12 +707,6 @@ export const vhWorkOrder = pgTable(
       ],
       foreignColumns: [t.tenantId, t.projectId, t.incidentId, t.taskId, t.id],
     }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_work_order_fk_6",
-      columns: [t.tenantId, t.checklistVersionId],
-      foreignColumns: [vhChecklistVersion.tenantId, vhChecklistVersion.id],
-    }).onDelete("restrict"),
-    index("vh_work_order_ix_0").on(t.tenantId, t.checklistVersionId),
     index("vh_work_order_ix_1").on(
       t.tenantId,
       t.projectId,
@@ -970,6 +743,7 @@ export const vhWorkOrder = pgTable(
       "FAILED",
       "CANCELLED",
     ]),
+    check("vh_work_order_checklist_ck", sql`jsonb_typeof(checklist_snapshot_json)='object' AND ((checklist_id IS NULL AND checklist_version IS NULL AND checklist_snapshot_json='{}'::jsonb) OR (checklist_id IS NOT NULL AND checklist_version > 0 AND jsonb_typeof(checklist_snapshot_json->'criteria')='array')) IS TRUE`),
     check("vh_work_order_ck_0", sql`attempt_no > 0`),
     check(
       "vh_work_order_ck_1",

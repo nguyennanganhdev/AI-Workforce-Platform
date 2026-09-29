@@ -1,5 +1,8 @@
 # AI Workforce Platform
 
+> Database hợp nhất OpenBot và transcript PostgreSQL: [ERD hiện hành](docs/erd/README.md). Xem [điều kiện tích hợp ứng dụng](docs/erd/MIGRATION_RUNBOOK.md) trước khi chạy migration 0051/0052.
+
+
 Nền tảng AI dùng chung cho nhiều lĩnh vực, với **Vinhomes là domain nghiệp vụ đầu tiên**. Platform quản lý Agent, capability, evaluation, runtime và memory; từng domain quản lý dữ liệu, quy tắc và hành động nghiệp vụ của mình.
 
 README này là tài liệu bàn giao cho technical lead và các team: code nằm ở đâu, từng package phải làm gì, tích hợp OpenBot thế nào, phối hợp qua contract nào và điều kiện nào được coi là hoàn thành.
@@ -362,7 +365,7 @@ ResidentRequest → Case → IssueCandidate → ResidentReport → Incident
 | Vùng | Logical schema đích | Dữ liệu chính |
 |---|---|---|
 | `schema/platform/identity.ts` khi triển khai | `platform_identity` | Tenant, user và identity integration |
-| Platform domain/agent/capability schema | `platform_domain`, `platform_agent`, `platform_capability` | Installation, AgentVersion và catalog/binding |
+| Platform domain/agent/capability schema | `platform_domain_package`, `agents`, `platform_capability` | Installation, AgentVersion và catalog/binding |
 | Platform evaluation/runtime schema | `platform_evaluation`, `platform_runtime` | Eval/publish, session, step, run và decision |
 | Platform memory/audit schema | `platform_memory`, `platform_audit` | Revision/review/vector ref, audit/outbox/idempotency theo mapping đã chốt |
 | Vinhomes property/intake schema | `vh_property`, `vh_intake` | Property membership, Case, request/candidate/report |
@@ -665,10 +668,9 @@ PR cần mô tả vấn đề và hành vi sau thay đổi, package bị ảnh h
 
 | Tài liệu | Khi cần đọc |
 |---|---|
-| [System Design](docx/04_SYSTEM_DESIGN_STRUCTURE_ARCHITECTURE.md) | Quyết định nền tảng, cây code đích và invariants |
-| [System ERD](docx/01_SYSTEM_ERD_COMPLETE.md) | Shared identity, cross-system reference và inventory tổng thể |
-| [Vinhomes ERD](docx/02_VINHOMES_DOMAIN_ERD.md) | Business aggregate, state, action, WorkOrder/QC và A5 |
-| [Platform ERD](docx/03_PLATFORM_ERD.md) | Factory, catalog, evaluation, runtime và memory |
+| [Business analysis P0](docs/erd/02_BUSINESS_ANALYSIS_IMPLEMENTATION.md) | Vai tr?, lu?ng nghi?p v?, ph?m vi P0 v? t?ch h?p |
+| [Database specification P0](docs/erd/01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) | B?ng, r?ng bu?c, quan h? v? ??n gi?n h?a P0 |
+| [Physical ERD](docs/erd/physical/README.md) | Schema ???c sinh t? m? tri?n khai hi?n t?i |
 | [Architecture map](docs/architecture/README.md) | Dependency rules và điểm nối implementation |
 | [OpenBot integration](docs/architecture/OPENBOT_INTEGRATION.md) | Checkout nguồn, commit baseline, toolchain thực tế và mapping |
 | [Ownership](docs/architecture/OWNERSHIP.md) | Phân công và reviewer liên team |

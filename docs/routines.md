@@ -1,5 +1,8 @@
 # Routines
 
+> Hướng dẫn chức năng nền OpenBot. Schema tenant/transcript mới cần các bước tích hợp tại [database runbook](erd/MIGRATION_RUNBOOK.md) trước khi chạy với ứng dụng này.
+
+
 A routine is a standing instruction: something a Bot carries out on a schedule instead of waiting to
 be asked. "Every weekday at nine, summarize what changed in this channel overnight" is a routine, not
 a message — it fires on its own, for as long as it stays switched on, and its reply lands in a channel

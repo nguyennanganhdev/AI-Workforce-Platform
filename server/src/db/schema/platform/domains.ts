@@ -14,38 +14,13 @@ import {
 import { allowedValues, createdAt, jsonb, mutableColumns } from "../columns";
 import { platformTenant } from "./identity";
 
-export const platformDomainPackage = pgTable(
-  "platform_domain_package",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    namespace: text("namespace").notNull(),
-    name: text("name").notNull(),
-    packageVersion: text("package_version").notNull(),
-    contractVersion: text("contract_version").notNull(),
-    status: text("status", {
-      enum: ["ACTIVE", "DEPRECATED", "RETIRED"],
-    }).notNull(),
-    metadataJson: jsonb("metadata_json").notNull(),
-    createdAt: createdAt(),
-    ...mutableColumns(),
-  },
-  (t) => [
-    unique("platform_domain_package_uq_0").on(t.namespace, t.packageVersion),
-    allowedValues("platform_domain_package_status_ck", t.status, [
-      "ACTIVE",
-      "DEPRECATED",
-      "RETIRED",
-    ]),
-    check("platform_domain_package_ck_0", sql`version > 0`),
-  ],
-);
-
 export const platformDomainInstallation = pgTable(
   "platform_domain_installation",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenantId: uuid("tenant_id").notNull(),
-    domainPackageId: uuid("domain_package_id").notNull(),
+    domainNamespace: text("domain_namespace").notNull(),
+    domainVersion: text("domain_version").notNull(),
     environment: text("environment").notNull(),
     configJson: jsonb("config_json").notNull(),
     status: text("status", { enum: ["ENABLED", "DISABLED"] }).notNull(),
@@ -61,7 +36,7 @@ export const platformDomainInstallation = pgTable(
     }),
     unique("platform_domain_installation_uq_0").on(
       t.tenantId,
-      t.domainPackageId,
+      t.domainNamespace,
       t.environment,
     ),
     unique("platform_domain_installation_uq_1").on(t.tenantId, t.id),
@@ -70,12 +45,7 @@ export const platformDomainInstallation = pgTable(
       columns: [t.tenantId],
       foreignColumns: [platformTenant.id],
     }).onDelete("restrict"),
-    foreignKey({
-      name: "platform_domain_installation_fk_1",
-      columns: [t.domainPackageId],
-      foreignColumns: [platformDomainPackage.id],
-    }).onDelete("restrict"),
-    index("platform_domain_installation_ix_0").on(t.domainPackageId),
+    index("platform_domain_installation_ix_0").on(t.domainNamespace),
     allowedValues("platform_domain_installation_status_ck", t.status, [
       "ENABLED",
       "DISABLED",

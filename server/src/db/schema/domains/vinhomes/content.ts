@@ -398,6 +398,7 @@ export const vhTransitRoute = pgTable(
     status: text("status", {
       enum: ["ACTIVE", "SUSPENDED", "RETIRED"],
     }).notNull(),
+    stopsJson: jsonb("stops_json").$type<unknown[]>().notNull().default([]),
     createdAt: createdAt(),
     ...mutableColumns(),
   },
@@ -426,97 +427,9 @@ export const vhTransitRoute = pgTable(
       "SUSPENDED",
       "RETIRED",
     ]),
+    check("vh_transit_route_stops_ck", sql`jsonb_typeof(stops_json)='array'`),
     check("vh_transit_route_ck_0", sql`timetable_version > 0`),
     check("vh_transit_route_ck_1", sql`version > 0`),
-  ],
-).enableRLS();
-
-export const vhTransitStop = pgTable(
-  "vh_transit_stop",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    tenantId: uuid("tenant_id").notNull(),
-    projectId: uuid("project_id").notNull(),
-    name: text("name").notNull(),
-    latitude: numeric("latitude").notNull(),
-    longitude: numeric("longitude").notNull(),
-    createdAt: createdAt(),
-    ...mutableColumns(),
-  },
-  (t) => [
-    pgPolicy("vh_transit_stop_tenant_policy", {
-      for: "all",
-      using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    unique("vh_transit_stop_uq_0").on(t.tenantId, t.id),
-    unique("vh_transit_stop_uq_1").on(t.tenantId, t.projectId, t.id),
-    foreignKey({
-      name: "vh_transit_stop_fk_0",
-      columns: [t.tenantId],
-      foreignColumns: [platformTenant.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_transit_stop_fk_1",
-      columns: [t.tenantId, t.projectId],
-      foreignColumns: [vhProject.tenantId, vhProject.id],
-    }).onDelete("restrict"),
-    index("vh_transit_stop_ix_0").on(t.tenantId, t.projectId),
-    check("vh_transit_stop_ck_0", sql`latitude BETWEEN -90 AND 90`),
-    check("vh_transit_stop_ck_1", sql`longitude BETWEEN -180 AND 180`),
-    check("vh_transit_stop_ck_2", sql`version > 0`),
-  ],
-).enableRLS();
-
-export const vhTransitRouteStop = pgTable(
-  "vh_transit_route_stop",
-  {
-    tenantId: uuid("tenant_id").notNull(),
-    projectId: uuid("project_id").notNull(),
-    routeId: uuid("route_id").notNull(),
-    stopId: uuid("stop_id").notNull(),
-    sequenceNo: integer("sequence_no").notNull(),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    pgPolicy("vh_transit_route_stop_tenant_policy", {
-      for: "all",
-      using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    primaryKey({ columns: [t.tenantId, t.routeId, t.sequenceNo] }),
-    foreignKey({
-      name: "vh_transit_route_stop_fk_0",
-      columns: [t.tenantId],
-      foreignColumns: [platformTenant.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_transit_route_stop_fk_1",
-      columns: [t.tenantId, t.projectId],
-      foreignColumns: [vhProject.tenantId, vhProject.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_transit_route_stop_fk_2",
-      columns: [t.tenantId, t.projectId, t.routeId],
-      foreignColumns: [
-        vhTransitRoute.tenantId,
-        vhTransitRoute.projectId,
-        vhTransitRoute.id,
-      ],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_transit_route_stop_fk_3",
-      columns: [t.tenantId, t.projectId, t.stopId],
-      foreignColumns: [
-        vhTransitStop.tenantId,
-        vhTransitStop.projectId,
-        vhTransitStop.id,
-      ],
-    }).onDelete("restrict"),
-    index("vh_transit_route_stop_ix_0").on(t.tenantId, t.projectId),
-    index("vh_transit_route_stop_ix_1").on(t.tenantId, t.projectId, t.stopId),
-    index("vh_transit_route_stop_ix_2").on(t.tenantId, t.projectId, t.routeId),
-    check("vh_transit_route_stop_ck_0", sql`sequence_no > 0`),
   ],
 ).enableRLS();
 

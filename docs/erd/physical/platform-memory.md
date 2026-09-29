@@ -76,7 +76,7 @@ erDiagram
 
 Danh tính một mục memory với loại, nguồn và trạng thái.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -111,13 +111,13 @@ Checks:
 - `platform_memory_item_status_ck`: `"platform_memory_item"."status" in ('DRAFT', 'ACTIVE', 'REDACTED', 'RETIRED')`.
 - `platform_memory_item_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_memory_namespace
 
 Phạm vi semantic memory theo tenant/domain/user/agent và retention policy.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -148,13 +148,13 @@ Checks:
 - `platform_memory_namespace_status_ck`: `"platform_memory_namespace"."status" in ('ACTIVE', 'SUSPENDED', 'RETIRED')`.
 - `platform_memory_namespace_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_memory_review
 
 Lịch sử phê duyệt/từ chối/thu hồi memory revision; append-only.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -188,13 +188,13 @@ Checks:
 
 - `platform_memory_review_decision_ck`: `"platform_memory_review"."decision" in ('APPROVED', 'REJECTED', 'REVOKED')`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_memory_revision
 
 Revision nội dung memory có hash/storage reference và trạng thái redaction.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -228,13 +228,13 @@ Checks:
 - `platform_memory_revision_redaction_status_ck`: `"platform_memory_revision"."redaction_status" in ('CLEAN', 'REDACTED', 'BLOCKED')`.
 - `platform_memory_revision_ck_0`: `revision_no > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_memory_vector_ref
 
 Metadata liên kết revision đã được duyệt với điểm Qdrant và trạng thái đồng bộ/xóa.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -269,4 +269,4 @@ Checks:
 - `platform_memory_vector_ref_ck_0`: `dimension > 0`.
 - `platform_memory_vector_ref_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

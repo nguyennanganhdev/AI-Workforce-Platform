@@ -29,6 +29,9 @@ export const vhCase = pgTable(
     residentUserId: text("resident_user_id").notNull(),
     apartmentId: uuid("apartment_id"),
     openedByMembershipId: uuid("opened_by_membership_id").notNull(),
+    intakeStateJson: jsonb("intake_state_json")
+      .notNull()
+      .default({ issueCandidates: [] }),
     status: text("status", {
       enum: ["OPEN", "CLARIFYING", "READY", "TICKETED", "CLOSED", "CANCELLED"],
     }).notNull(),
@@ -117,6 +120,10 @@ export const vhCase = pgTable(
       "CANCELLED",
     ]),
     check("vh_case_ck_0", sql`version > 0`),
+    check(
+      "vh_case_intake_state_ck",
+      sql`(jsonb_typeof(${t.intakeStateJson}) = 'object' AND jsonb_typeof(${t.intakeStateJson}->'issueCandidates') = 'array') IS TRUE`,
+    ),
   ],
 ).enableRLS();
 
@@ -177,187 +184,6 @@ export const vhResidentRequest = pgTable(
   ],
 ).enableRLS();
 
-export const vhIssueCandidate = pgTable(
-  "vh_issue_candidate",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    tenantId: uuid("tenant_id").notNull(),
-    projectId: uuid("project_id").notNull(),
-    caseId: uuid("case_id").notNull(),
-    sourceRequestId: uuid("source_request_id"),
-    domain: text("domain").notNull(),
-    category: text("category").notNull(),
-    severity: text("severity", {
-      enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
-    }).notNull(),
-    normalizedSummary: text("normalized_summary").notNull(),
-    locationJson: jsonb("location_json").notNull(),
-    confidence: numeric("confidence"),
-    identifiedByType: text("identified_by_type", {
-      enum: ["HUMAN", "SYSTEM", "AGENT"],
-    }).notNull(),
-    identifiedById: text("identified_by_id").notNull(),
-    status: text("status", {
-      enum: [
-        "DETECTED",
-        "NEEDS_CLARIFICATION",
-        "READY",
-        "MERGED",
-        "DISCARDED",
-        "MATERIALIZED",
-      ],
-    }).notNull(),
-    requiredFieldsJson: jsonb("required_fields_json").notNull(),
-    missingFieldsJson: jsonb("missing_fields_json").notNull(),
-    createdAt: createdAt(),
-    ...mutableColumns(),
-  },
-  (t) => [
-    pgPolicy("vh_issue_candidate_tenant_policy", {
-      for: "all",
-      using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    unique("vh_issue_candidate_uq_0").on(t.tenantId, t.id),
-    unique("vh_issue_candidate_uq_1").on(t.tenantId, t.projectId, t.id),
-    unique("vh_issue_candidate_uq_2").on(
-      t.tenantId,
-      t.projectId,
-      t.caseId,
-      t.id,
-    ),
-    foreignKey({
-      name: "vh_issue_candidate_fk_0",
-      columns: [t.tenantId],
-      foreignColumns: [platformTenant.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_issue_candidate_fk_1",
-      columns: [t.tenantId, t.projectId],
-      foreignColumns: [vhProject.tenantId, vhProject.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_issue_candidate_fk_2",
-      columns: [t.tenantId, t.projectId, t.caseId],
-      foreignColumns: [vhCase.tenantId, vhCase.projectId, vhCase.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_issue_candidate_fk_3",
-      columns: [t.tenantId, t.projectId, t.caseId, t.sourceRequestId],
-      foreignColumns: [
-        vhResidentRequest.tenantId,
-        vhResidentRequest.projectId,
-        vhResidentRequest.caseId,
-        vhResidentRequest.id,
-      ],
-    }).onDelete("restrict"),
-    index("vh_issue_candidate_ix_0").on(
-      t.tenantId,
-      t.projectId,
-      t.caseId,
-      t.sourceRequestId,
-    ),
-    index("vh_issue_candidate_ix_1").on(t.tenantId, t.caseId, t.status),
-    index("vh_issue_candidate_ix_2").on(t.tenantId, t.projectId, t.caseId),
-    index("vh_issue_candidate_ix_3").on(t.tenantId, t.projectId),
-    allowedValues("vh_issue_candidate_severity_ck", t.severity, [
-      "LOW",
-      "MEDIUM",
-      "HIGH",
-      "CRITICAL",
-    ]),
-    allowedValues(
-      "vh_issue_candidate_identified_by_type_ck",
-      t.identifiedByType,
-      ["HUMAN", "SYSTEM", "AGENT"],
-    ),
-    allowedValues("vh_issue_candidate_status_ck", t.status, [
-      "DETECTED",
-      "NEEDS_CLARIFICATION",
-      "READY",
-      "MERGED",
-      "DISCARDED",
-      "MATERIALIZED",
-    ]),
-    check(
-      "vh_issue_candidate_ck_0",
-      sql`confidence IS NULL OR (confidence >= 0 AND confidence <= 1)`,
-    ),
-    check("vh_issue_candidate_ck_1", sql`version > 0`),
-  ],
-).enableRLS();
-
-export const vhIssueRelation = pgTable(
-  "vh_issue_relation",
-  {
-    tenantId: uuid("tenant_id").notNull(),
-    projectId: uuid("project_id").notNull(),
-    sourceIssueId: uuid("source_issue_id").notNull(),
-    targetIssueId: uuid("target_issue_id").notNull(),
-    relationType: text("relation_type", {
-      enum: ["SPLIT_FROM", "MERGED_INTO", "RELATED", "DEPENDS_ON"],
-    }).notNull(),
-    reason: text("reason").notNull(),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    pgPolicy("vh_issue_relation_tenant_policy", {
-      for: "all",
-      using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    primaryKey({
-      columns: [t.tenantId, t.sourceIssueId, t.targetIssueId, t.relationType],
-    }),
-    foreignKey({
-      name: "vh_issue_relation_fk_0",
-      columns: [t.tenantId],
-      foreignColumns: [platformTenant.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_issue_relation_fk_1",
-      columns: [t.tenantId, t.projectId],
-      foreignColumns: [vhProject.tenantId, vhProject.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_issue_relation_fk_2",
-      columns: [t.tenantId, t.projectId, t.sourceIssueId],
-      foreignColumns: [
-        vhIssueCandidate.tenantId,
-        vhIssueCandidate.projectId,
-        vhIssueCandidate.id,
-      ],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_issue_relation_fk_3",
-      columns: [t.tenantId, t.projectId, t.targetIssueId],
-      foreignColumns: [
-        vhIssueCandidate.tenantId,
-        vhIssueCandidate.projectId,
-        vhIssueCandidate.id,
-      ],
-    }).onDelete("restrict"),
-    index("vh_issue_relation_ix_0").on(
-      t.tenantId,
-      t.projectId,
-      t.targetIssueId,
-    ),
-    index("vh_issue_relation_ix_1").on(t.tenantId, t.projectId),
-    index("vh_issue_relation_ix_2").on(
-      t.tenantId,
-      t.projectId,
-      t.sourceIssueId,
-    ),
-    allowedValues("vh_issue_relation_relation_type_ck", t.relationType, [
-      "SPLIT_FROM",
-      "MERGED_INTO",
-      "RELATED",
-      "DEPENDS_ON",
-    ]),
-    check("vh_issue_relation_ck_0", sql`source_issue_id <> target_issue_id`),
-  ],
-).enableRLS();
-
 export const vhResidentReport = pgTable(
   "vh_resident_report",
   {
@@ -365,7 +191,6 @@ export const vhResidentReport = pgTable(
     tenantId: uuid("tenant_id").notNull(),
     projectId: uuid("project_id").notNull(),
     caseId: uuid("case_id").notNull(),
-    issueCandidateId: uuid("issue_candidate_id"),
     incidentId: uuid("incident_id"),
     reporterId: text("reporter_id").notNull(),
     reporterMembershipId: uuid("reporter_membership_id").notNull(),
@@ -385,7 +210,6 @@ export const vhResidentReport = pgTable(
       using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
       withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
     }),
-    unique("vh_resident_report_uq_0").on(t.tenantId, t.issueCandidateId),
     unique("vh_resident_report_uq_1").on(t.tenantId, t.id),
     unique("vh_resident_report_uq_2").on(t.tenantId, t.projectId, t.id),
     unique("vh_resident_report_uq_3").on(
@@ -410,16 +234,6 @@ export const vhResidentReport = pgTable(
       name: "vh_resident_report_fk_2",
       columns: [t.tenantId, t.projectId, t.caseId],
       foreignColumns: [vhCase.tenantId, vhCase.projectId, vhCase.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_resident_report_fk_3",
-      columns: [t.tenantId, t.projectId, t.caseId, t.issueCandidateId],
-      foreignColumns: [
-        vhIssueCandidate.tenantId,
-        vhIssueCandidate.projectId,
-        vhIssueCandidate.caseId,
-        vhIssueCandidate.id,
-      ],
     }).onDelete("restrict"),
     foreignKey({
       name: "vh_resident_report_fk_4",
@@ -474,12 +288,6 @@ export const vhResidentReport = pgTable(
       ],
     }).onDelete("restrict"),
     index("vh_resident_report_ix_0").on(t.tenantId, t.reporterId, t.createdAt),
-    index("vh_resident_report_ix_1").on(
-      t.tenantId,
-      t.projectId,
-      t.caseId,
-      t.issueCandidateId,
-    ),
     index("vh_resident_report_ix_2").on(t.tenantId, t.projectId),
     index("vh_resident_report_ix_3").on(t.tenantId, t.projectId, t.incidentId),
     index("vh_resident_report_ix_4").on(t.reporterId),

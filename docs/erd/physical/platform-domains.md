@@ -36,7 +36,7 @@ erDiagram
 
 Cài đặt một domain package vào tenant/environment với cấu hình và trạng thái bật/tắt.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -72,13 +72,13 @@ Checks:
 - `platform_domain_installation_status_ck`: `"platform_domain_installation"."status" in ('ENABLED', 'DISABLED')`.
 - `platform_domain_installation_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_domain_package
 
 Danh mục toàn cục các phiên bản package nghiệp vụ và phiên bản contract hỗ trợ.
 
-Tenant RLS: **global package catalog; grants managed by operator**.
+Tenant RLS: **global identity or deployment infrastructure; application/operator authorization required**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -104,4 +104,4 @@ Checks:
 - `platform_domain_package_status_ck`: `"platform_domain_package"."status" in ('ACTIVE', 'DEPRECATED', 'RETIRED')`.
 - `platform_domain_package_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

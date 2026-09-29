@@ -1,5 +1,8 @@
 # Coworkers
 
+> Hướng dẫn chức năng nền OpenBot. Schema tenant/transcript mới cần các bước tích hợp tại [database runbook](erd/MIGRATION_RUNBOOK.md) trước khi chạy với ứng dụng này.
+
+
 A coworker is a Bot with a durable profile and standing role. The role is sent with every run so the user does not have to restate the job in each channel.
 
 ## Data model

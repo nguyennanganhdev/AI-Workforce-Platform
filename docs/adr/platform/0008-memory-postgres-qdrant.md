@@ -2,7 +2,7 @@
 
 Status: baseline theo thiết kế nguồn; implementation theo từng phase.
 
-Nguồn: [04_SYSTEM_DESIGN_STRUCTURE_ARCHITECTURE.md](../../../docx/04_SYSTEM_DESIGN_STRUCTURE_ARCHITECTURE.md).
+Nguồn: [Business analysis P0](../../erd/02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## Quyết định
 

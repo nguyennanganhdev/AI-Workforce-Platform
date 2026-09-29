@@ -1,5 +1,8 @@
 # Configuration
 
+> Hướng dẫn chức năng nền OpenBot. Schema tenant/transcript mới cần các bước tích hợp tại [database runbook](erd/MIGRATION_RUNBOOK.md) trước khi chạy với ứng dụng này.
+
+
 OpenBot is configured with environment variables and a tenant package. The API server validates both at startup.
 
 ## Environment setup

@@ -1,34 +1,71 @@
 # ERD quan hệ toàn dự án
 
-Tất cả bảng và FK thực tế; chia sơ đồ chi tiết theo module tại [catalog](README.md). Cạnh này là FK, không phải luồng gọi API. Tham chiếu mềm domain/runtime được giải thích tại [system flow](../SYSTEM_FLOW.md).
+Tất cả bảng và FK thực tế; chia sơ đồ chi tiết theo module tại [catalog](README.md). Cạnh này là FK, không phải luồng gọi API. Tham chiếu mềm domain/runtime được giải thích tại [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
-## shell-core
+## authorization
 
-Fields and constraints: [shell-core](shell-core.md).
+Fields and constraints: [authorization](authorization.md).
+
+```mermaid
+erDiagram
+  auth_external_identity
+  platform_tenant ||--o{ auth_external_identity : "ownership"
+  users ||--o{ auth_external_identity : "local_user_id"
+  auth_permission
+  auth_role
+  platform_tenant |o--o{ auth_role : "ownership"
+  auth_role_assignment
+  platform_tenant ||--o{ auth_role_assignment : "ownership"
+  auth_role ||--o{ auth_role_assignment : "role_id"
+  platform_tenant_membership ||--o{ auth_role_assignment : "user_id"
+  auth_role_permission
+  auth_role ||--o{ auth_role_permission : "role_id"
+  auth_permission ||--o{ auth_role_permission : "permission_id"
+```
+
+## foundation-core
+
+Fields and constraints: [foundation-core](foundation-core.md).
 
 ```mermaid
 erDiagram
   accounts
   users ||--o{ accounts : "user_id"
   agents
+  platform_tenant ||--o{ agents : "ownership"
   deployment_packages |o--o{ agents : "package_id"
   attachments
+  platform_tenant ||--o{ attachments : "ownership"
   channels ||--o{ attachments : "channel_id"
   users ||--o{ attachments : "uploaded_by"
+  channels ||--o{ attachments : "channel_id"
   audit_events
+  platform_tenant ||--o{ audit_events : "ownership"
   channel_agents
+  platform_tenant ||--o{ channel_agents : "ownership"
+  channels ||--o{ channel_agents : "channel_id"
+  agents ||--o{ channel_agents : "agent_id"
   channels ||--o{ channel_agents : "channel_id"
   agents ||--o{ channel_agents : "agent_id"
   channel_memberships
+  platform_tenant ||--o{ channel_memberships : "ownership"
   channels ||--o{ channel_memberships : "channel_id"
   users ||--o{ channel_memberships : "user_id"
+  channels ||--o{ channel_memberships : "channel_id"
+  platform_tenant_membership ||--o{ channel_memberships : "user_id"
   channels
+  users |o--o{ channels : "created_by_user_id"
+  platform_tenant ||--o{ channels : "ownership"
   deployment_packages |o--o{ channels : "package_id"
   agents |o--o{ channels : "last_message_agent_id"
+  agents |o--o{ channels : "last_message_agent_id"
   credentials
+  platform_tenant ||--o{ credentials : "ownership"
   deployment_packages
   intelligence_channel_mappings
+  platform_tenant ||--o{ intelligence_channel_mappings : "ownership"
   users ||--o{ intelligence_channel_mappings : "user_id"
+  channels ||--o{ intelligence_channel_mappings : "channel_id"
   channels ||--o{ intelligence_channel_mappings : "channel_id"
   revoked_access
   sessions
@@ -43,9 +80,9 @@ erDiagram
   verifications
 ```
 
-## shell-computer
+## foundation-computer
 
-Fields and constraints: [shell-computer](shell-computer.md).
+Fields and constraints: [foundation-computer](foundation-computer.md).
 
 ```mermaid
 erDiagram
@@ -54,29 +91,37 @@ erDiagram
   computer_snapshot
 ```
 
-## shell-coworker
+## foundation-coworker
 
-Fields and constraints: [shell-coworker](shell-coworker.md).
+Fields and constraints: [foundation-coworker](foundation-coworker.md).
 
 ```mermaid
 erDiagram
   agent_preferences
+  platform_tenant ||--o{ agent_preferences : "ownership"
   users ||--o{ agent_preferences : "user_id"
   agents ||--o{ agent_preferences : "agent_id"
+  agents ||--o{ agent_preferences : "agent_id"
   agent_profiles
+  platform_tenant ||--o{ agent_profiles : "ownership"
   agents ||--o| agent_profiles : "agent_id"
   users |o--o{ agent_profiles : "owner_user_id"
+  agents ||--o| agent_profiles : "agent_id"
   routine_runs
+  platform_tenant ||--o{ routine_runs : "ownership"
+  routines ||--o{ routine_runs : "routine_id"
   routines ||--o{ routine_runs : "routine_id"
   routine_sweeps
   routines
+  platform_tenant ||--o{ routines : "ownership"
   users ||--o{ routines : "owner_user_id"
+  agents ||--o{ routines : "agent_id"
   agents ||--o{ routines : "agent_id"
 ```
 
-## shell-components
+## foundation-components
 
-Fields and constraints: [shell-components](shell-components.md).
+Fields and constraints: [foundation-components](foundation-components.md).
 
 ```mermaid
 erDiagram
@@ -88,48 +133,64 @@ erDiagram
   components
 ```
 
-## shell-plugins
+## foundation-plugins
 
-Fields and constraints: [shell-plugins](shell-plugins.md).
+Fields and constraints: [foundation-plugins](foundation-plugins.md).
 
 ```mermaid
 erDiagram
   composio_connections
+  platform_tenant ||--o{ composio_connections : "ownership"
   mcp_servers
+  platform_tenant ||--o{ mcp_servers : "ownership"
+  credentials |o--o{ mcp_servers : "credential_id"
   credentials |o--o{ mcp_servers : "credential_id"
   mcp_tools
+  platform_tenant ||--o{ mcp_tools : "ownership"
+  mcp_servers ||--o{ mcp_tools : "server_id"
   mcp_servers ||--o{ mcp_tools : "server_id"
   mcp_user_credentials
+  platform_tenant ||--o{ mcp_user_credentials : "ownership"
   mcp_servers ||--o{ mcp_user_credentials : "server_id"
   users ||--o{ mcp_user_credentials : "user_id"
   credentials ||--o{ mcp_user_credentials : "credential_id"
+  mcp_servers ||--o{ mcp_user_credentials : "server_id"
+  credentials ||--o{ mcp_user_credentials : "credential_id"
   plugin_grants
+  platform_tenant ||--o{ plugin_grants : "ownership"
+  agents ||--o{ plugin_grants : "agent_id"
   agents ||--o{ plugin_grants : "agent_id"
   sandboxed_components
+  platform_tenant ||--o{ sandboxed_components : "ownership"
   skill_tools
+  platform_tenant ||--o{ skill_tools : "ownership"
+  skills ||--o{ skill_tools : "skill_id"
   skills ||--o{ skill_tools : "skill_id"
   skills
+  platform_tenant ||--o{ skills : "ownership"
   users |o--o{ skills : "owner_user_id"
 ```
 
-## shell-work
+## foundation-work
 
-Fields and constraints: [shell-work](shell-work.md).
+Fields and constraints: [foundation-work](foundation-work.md).
 
 ```mermaid
 erDiagram
   work_items
 ```
 
-## shell-voice
+## foundation-voice
 
-Fields and constraints: [shell-voice](shell-voice.md).
+Fields and constraints: [foundation-voice](foundation-voice.md).
 
 ```mermaid
 erDiagram
   voice_sessions
+  platform_tenant ||--o{ voice_sessions : "ownership"
   channels ||--o{ voice_sessions : "channel_id"
   users ||--o{ voice_sessions : "user_id"
+  channels ||--o{ voice_sessions : "channel_id"
 ```
 
 ## platform-identity
@@ -138,12 +199,6 @@ Fields and constraints: [platform-identity](platform-identity.md).
 
 ```mermaid
 erDiagram
-  platform_membership_role
-  platform_tenant ||--o{ platform_membership_role : "ownership"
-  platform_tenant_membership ||--o{ platform_membership_role : "membership_id"
-  platform_role ||--o{ platform_membership_role : "role_id"
-  platform_role
-  platform_tenant ||--o{ platform_role : "ownership"
   platform_tenant
   platform_tenant_membership
   platform_tenant ||--o{ platform_tenant_membership : "ownership"
@@ -168,18 +223,16 @@ Fields and constraints: [platform-agents](platform-agents.md).
 
 ```mermaid
 erDiagram
-  platform_agent
-  platform_tenant ||--o{ platform_agent : "ownership"
   platform_agent_change_request
   platform_tenant ||--o{ platform_agent_change_request : "ownership"
-  platform_agent ||--o{ platform_agent_change_request : "agent_id"
+  agents ||--o{ platform_agent_change_request : "agent_id"
   users ||--o{ platform_agent_change_request : "requested_by"
   platform_agent_spec
   platform_tenant ||--o{ platform_agent_spec : "ownership"
   platform_agent_version ||--o| platform_agent_spec : "agent_version_id"
   platform_agent_version
   platform_tenant ||--o{ platform_agent_version : "ownership"
-  platform_agent ||--o{ platform_agent_version : "agent_id"
+  agents ||--o{ platform_agent_version : "agent_id"
   users ||--o{ platform_agent_version : "created_by"
 ```
 
@@ -192,21 +245,16 @@ erDiagram
   platform_capability
   platform_tenant ||--o{ platform_capability : "ownership"
   users ||--o{ platform_capability : "owner_id"
-  platform_mcp_server
-  platform_tenant ||--o{ platform_mcp_server : "ownership"
-  users ||--o{ platform_mcp_server : "owner_id"
   platform_mcp_server_version
   platform_tenant ||--o{ platform_mcp_server_version : "ownership"
-  platform_mcp_server ||--o{ platform_mcp_server_version : "mcp_server_id"
+  mcp_servers ||--o{ platform_mcp_server_version : "mcp_server_id"
   platform_model_profile
   platform_tenant ||--o{ platform_model_profile : "ownership"
-  platform_skill
-  platform_tenant ||--o{ platform_skill : "ownership"
-  users ||--o{ platform_skill : "owner_id"
   platform_skill_version
   platform_tenant ||--o{ platform_skill_version : "ownership"
-  platform_skill ||--o{ platform_skill_version : "skill_id"
+  skills ||--o{ platform_skill_version : "skill_id"
   platform_tool
+  mcp_servers |o--o{ platform_tool : "mcp_server_id"
   platform_tenant ||--o{ platform_tool : "ownership"
   platform_tool_version
   platform_tenant ||--o{ platform_tool_version : "ownership"
@@ -315,7 +363,7 @@ erDiagram
   platform_publish_gate ||--o{ platform_publish_gate_result : "publish_gate_id"
   platform_regression_baseline
   platform_tenant ||--o{ platform_regression_baseline : "ownership"
-  platform_agent ||--o{ platform_regression_baseline : "agent_id"
+  agents ||--o{ platform_regression_baseline : "agent_id"
   platform_agent_version ||--o{ platform_regression_baseline : "agent_id + baseline_agent_version_id"
   platform_eval_suite ||--o{ platform_regression_baseline : "eval_suite_id"
   users ||--o{ platform_regression_baseline : "accepted_by"
@@ -350,7 +398,7 @@ erDiagram
   platform_tenant ||--o{ platform_agent_run : "ownership"
   platform_workflow_session ||--o{ platform_agent_run : "workflow_session_id"
   platform_run_step ||--o{ platform_agent_run : "workflow_session_id + run_step_id"
-  platform_agent ||--o{ platform_agent_run : "agent_id"
+  agents ||--o{ platform_agent_run : "agent_id"
   platform_agent_version ||--o{ platform_agent_run : "agent_id + agent_version_id"
   platform_execution_grant_ref
   platform_tenant ||--o{ platform_execution_grant_ref : "ownership"
@@ -466,16 +514,6 @@ erDiagram
   vh_resident_report ||--o{ vh_feedback : "report_id"
   users ||--o{ vh_feedback : "author_user_id"
   vh_resident_report ||--o| vh_feedback : "author_user_id + report_id"
-  vh_issue_candidate
-  platform_tenant ||--o{ vh_issue_candidate : "ownership"
-  vh_project ||--o{ vh_issue_candidate : "ownership"
-  vh_case ||--o{ vh_issue_candidate : "case_id"
-  vh_resident_request |o--o{ vh_issue_candidate : "case_id + source_request_id"
-  vh_issue_relation
-  platform_tenant ||--o{ vh_issue_relation : "ownership"
-  vh_project ||--o{ vh_issue_relation : "ownership"
-  vh_issue_candidate ||--o{ vh_issue_relation : "source_issue_id"
-  vh_issue_candidate ||--o{ vh_issue_relation : "target_issue_id"
   vh_resident_confirmation
   platform_tenant ||--o{ vh_resident_confirmation : "ownership"
   vh_project ||--o{ vh_resident_confirmation : "ownership"
@@ -487,7 +525,6 @@ erDiagram
   platform_tenant ||--o{ vh_resident_report : "ownership"
   vh_project ||--o{ vh_resident_report : "ownership"
   vh_case ||--o{ vh_resident_report : "case_id"
-  vh_issue_candidate |o--o{ vh_resident_report : "case_id + issue_candidate_id"
   vh_incident |o--o{ vh_resident_report : "incident_id"
   users ||--o{ vh_resident_report : "reporter_id"
   vh_property_membership ||--o{ vh_resident_report : "reporter_membership_id"
@@ -552,12 +589,6 @@ erDiagram
   platform_tenant ||--o{ vh_task : "ownership"
   vh_project ||--o{ vh_task : "ownership"
   vh_incident ||--o{ vh_task : "incident_id"
-  vh_task_dependency
-  platform_tenant ||--o{ vh_task_dependency : "ownership"
-  vh_project ||--o{ vh_task_dependency : "ownership"
-  vh_incident ||--o{ vh_task_dependency : "incident_id"
-  vh_task ||--o{ vh_task_dependency : "incident_id + task_id"
-  vh_task ||--o{ vh_task_dependency : "incident_id + depends_on_task_id"
   vh_work_order
   platform_tenant ||--o{ vh_work_order : "ownership"
   vh_project ||--o{ vh_work_order : "ownership"
@@ -789,12 +820,9 @@ erDiagram
   vh_project ||--o{ vh_invoice_line : "ownership"
   vh_invoice ||--o{ vh_invoice_line : "invoice_id"
   vh_fee_schedule |o--o{ vh_invoice_line : "fee_schedule_id"
-  vh_loyalty_account
-  platform_tenant ||--o{ vh_loyalty_account : "ownership"
-  users ||--o{ vh_loyalty_account : "user_id"
-  vh_loyalty_entry
-  platform_tenant ||--o{ vh_loyalty_entry : "ownership"
-  vh_loyalty_account ||--o{ vh_loyalty_entry : "account_id"
+  vh_loyalty_balance
+  platform_tenant ||--o{ vh_loyalty_balance : "ownership"
+  users ||--o{ vh_loyalty_balance : "user_id"
   vh_payment_allocation
   platform_tenant ||--o{ vh_payment_allocation : "ownership"
   vh_project ||--o{ vh_payment_allocation : "ownership"
@@ -873,18 +901,17 @@ Fields and constraints: [platform-conversations](platform-conversations.md).
 
 ```mermaid
 erDiagram
-  platform_conversation
-  platform_tenant ||--o{ platform_conversation : "ownership"
-  users ||--o{ platform_conversation : "owner_user_id"
-  platform_conversation_message
-  platform_tenant ||--o{ platform_conversation_message : "ownership"
-  platform_conversation ||--o{ platform_conversation_message : "conversation_id"
-  users |o--o{ platform_conversation_message : "author_user_id"
-  platform_agent_version |o--o{ platform_conversation_message : "agent_version_id"
-  platform_conversation_message |o--o{ platform_conversation_message : "conversation_id + reply_to_message_id"
-  platform_conversation_subject
-  platform_tenant ||--o{ platform_conversation_subject : "ownership"
-  platform_conversation ||--o{ platform_conversation_subject : "conversation_id"
+  channel_messages
+  agents |o--o{ channel_messages : "author_agent_id"
+  platform_agent_version |o--o{ channel_messages : "author_agent_id + agent_version_id"
+  platform_tenant ||--o{ channel_messages : "ownership"
+  channels ||--o{ channel_messages : "channel_id"
+  users |o--o{ channel_messages : "author_user_id"
+  platform_agent_version |o--o{ channel_messages : "agent_version_id"
+  channel_messages |o--o{ channel_messages : "channel_id + reply_to_message_id"
+  channel_subjects
+  platform_tenant ||--o{ channel_subjects : "ownership"
+  channels ||--o{ channel_subjects : "channel_id"
 ```
 
 ## platform-collaboration
@@ -895,7 +922,7 @@ Fields and constraints: [platform-collaboration](platform-collaboration.md).
 erDiagram
   platform_handoff
   platform_tenant ||--o{ platform_handoff : "ownership"
-  platform_conversation |o--o{ platform_handoff : "source_conversation_id"
+  channels |o--o{ platform_handoff : "source_channel_id"
   platform_workflow_session |o--o{ platform_handoff : "source_workflow_session_id"
   platform_agent_version ||--o{ platform_handoff : "target_agent_version_id"
   platform_workflow_session |o--o{ platform_handoff : "target_workflow_session_id"

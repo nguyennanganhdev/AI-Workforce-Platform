@@ -1,5 +1,8 @@
 # ADR 0012: Persist coordination separately from field operations
 
+> Lịch sử: quyết định registry/conversation song song đã được [ADR 0013](0013-unified-openbot-database.md) thay thế. Các ràng buộc nghiệp vụ còn phù hợp vẫn giữ.
+
+
 Status: accepted for database implementation; application integration pending.
 
 ## Context
@@ -23,4 +26,4 @@ Maintain one Drizzle ledger. 0048 creates 25 tables; 0049 adds temporal/cross-ro
 - Lease fencing checks checkpoints; every external command additionally requires service-side lease checks and idempotency.
 - Matching staff availability, executing state machines, verifying callbacks, generating public summaries and delivering notifications remain application responsibilities.
 - SLA supports elapsed minutes only. Business calendars, comprehensive inventory/procurement, refunds and full HR require separate requirements.
-- [System flow](../../erd/SYSTEM_FLOW.md), [completeness review](../../erd/COMPLETENESS_REVIEW.md) and [table catalog](../../erd/physical/TABLE_CATALOG.md) are the implementation handoff.
+- [System flow](../../erd/02_BUSINESS_ANALYSIS_IMPLEMENTATION.md), [completeness review](../../erd/01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [table catalog](../../erd/physical/TABLE_CATALOG.md) are the implementation handoff.

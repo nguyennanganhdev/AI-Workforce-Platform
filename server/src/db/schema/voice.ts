@@ -1,3 +1,8 @@
+import {
+  foreignKey as tenantForeignKey,
+  unique as tenantUnique,
+} from "drizzle-orm/pg-core";
+import { tenantId, tenantPolicy } from "./tenant-scope";
 import { sql } from "drizzle-orm";
 import {
   check,
@@ -15,6 +20,7 @@ import { jsonb } from "./json";
 export const voiceSessions = pgTable(
   "voice_sessions",
   {
+    tenantId: tenantId(),
     id: text("id").primaryKey(),
     channelId: text("channel_id")
       .notNull()
@@ -36,6 +42,13 @@ export const voiceSessions = pgTable(
       .default("failed"),
   },
   (table) => [
+    tenantPolicy("voice_sessions_tenant_policy", table.tenantId),
+    tenantUnique("voice_sessions_tenant_pk").on(table.tenantId, table.id),
+    tenantForeignKey({
+      name: "voice_sessions_scope_fk_0",
+      columns: [table.tenantId, table.channelId],
+      foreignColumns: [channels.tenantId, channels.id],
+    }).onDelete("restrict"),
     index("voice_sessions_channel_started_idx").on(
       table.channelId,
       table.startedAt,
@@ -47,4 +60,4 @@ export const voiceSessions = pgTable(
       sql`(${table.summaryStatus} = 'ready' AND ${table.summary} IS NOT NULL) OR (${table.summaryStatus} = 'failed' AND ${table.summary} IS NULL)`,
     ),
   ],
-);
+).enableRLS();

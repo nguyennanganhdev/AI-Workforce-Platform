@@ -1,4 +1,4 @@
-/** Persistence for coordination and field operations. See docs/erd/SYSTEM_FLOW.md. */
+/** Persistence for coordination and field operations. See docs/erd/02_BUSINESS_ANALYSIS_IMPLEMENTATION.md. */
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -16,11 +16,10 @@ import {
 } from "drizzle-orm/pg-core";
 import { allowedValues, createdAt, jsonb, mutableColumns } from "../columns";
 import { platformAgentVersion } from "./agents";
-import { platformConversation } from "./conversations";
+import { channels } from "../core";
 import { platformTenant } from "./identity";
 import {
   platformAgentRun,
-  platformRunStep,
   platformWorkflowSession,
 } from "./runtime";
 
@@ -401,7 +400,7 @@ export const platformSessionWait = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     tenantId: uuid("tenant_id").notNull(),
     workflowSessionId: uuid("workflow_session_id").notNull(),
-    runStepId: uuid("run_step_id"),
+    stepKey: text("step_key"),
     participantId: uuid("participant_id"),
     waitKey: text("wait_key").notNull(),
     waitType: text("wait_type", {
@@ -444,15 +443,6 @@ export const platformSessionWait = pgTable(
       ],
     }).onDelete("restrict"),
     foreignKey({
-      name: "platform_session_wait_fk_2",
-      columns: [t.tenantId, t.workflowSessionId, t.runStepId],
-      foreignColumns: [
-        platformRunStep.tenantId,
-        platformRunStep.workflowSessionId,
-        platformRunStep.id,
-      ],
-    }).onDelete("restrict"),
-    foreignKey({
       name: "platform_session_wait_fk_3",
       columns: [t.tenantId, t.workflowSessionId, t.participantId],
       foreignColumns: [
@@ -475,7 +465,7 @@ export const platformSessionWait = pgTable(
     index("platform_session_wait_ix_3").on(
       t.tenantId,
       t.workflowSessionId,
-      t.runStepId,
+      t.stepKey,
     ),
     allowedValues("platform_session_wait_wait_type_ck", t.waitType, [
       "AGENT",
@@ -502,7 +492,7 @@ export const platformHandoff = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenantId: uuid("tenant_id").notNull(),
-    sourceConversationId: uuid("source_conversation_id"),
+    sourceChannelId: text("source_channel_id"),
     sourceWorkflowSessionId: uuid("source_workflow_session_id"),
     targetAgentVersionId: uuid("target_agent_version_id").notNull(),
     targetWorkflowSessionId: uuid("target_workflow_session_id"),
@@ -552,8 +542,8 @@ export const platformHandoff = pgTable(
     }).onDelete("restrict"),
     foreignKey({
       name: "platform_handoff_fk_1",
-      columns: [t.tenantId, t.sourceConversationId],
-      foreignColumns: [platformConversation.tenantId, platformConversation.id],
+      columns: [t.tenantId, t.sourceChannelId],
+      foreignColumns: [channels.tenantId, channels.id],
     }).onDelete("restrict"),
     foreignKey({
       name: "platform_handoff_fk_2",
@@ -576,7 +566,7 @@ export const platformHandoff = pgTable(
         platformWorkflowSession.id,
       ],
     }).onDelete("restrict"),
-    index("platform_handoff_ix_1").on(t.tenantId, t.sourceConversationId),
+    index("platform_handoff_ix_1").on(t.tenantId, t.sourceChannelId),
     index("platform_handoff_ready_ix").on(
       t.tenantId,
       t.status,
@@ -595,7 +585,7 @@ export const platformHandoff = pgTable(
     ]),
     check(
       "platform_handoff_ck_0",
-      sql`num_nonnulls(source_conversation_id, source_workflow_session_id) = 1`,
+      sql`num_nonnulls(source_channel_id, source_workflow_session_id) = 1`,
     ),
     check("platform_handoff_ck_1", sql`attempt_count >= 0`),
     check("platform_handoff_ck_2", sql`expires_at > created_at`),

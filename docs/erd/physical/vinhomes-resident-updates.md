@@ -64,7 +64,7 @@ erDiagram
 
 Mỗi lần gửi thông báo qua một channel/provider, có idempotency và receipt giao nhận để theo dõi retry.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -120,13 +120,13 @@ Checks:
 - `vh_notification_delivery_ck_1`: `status<>'DELIVERED' OR (delivered_at IS NOT NULL AND provider_message_ref IS NOT NULL)`.
 - `vh_notification_delivery_ck_2`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_report_update
 
 Bản tiến độ đã biên soạn riêng cho đúng reporter, ghim event/incident version; lễ tân đọc bản này thay vì đọc toàn group chat.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -188,4 +188,4 @@ Checks:
 - `vh_report_update_ck_0`: `sequence_no > 0`.
 - `vh_report_update_ck_1`: `incident_version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

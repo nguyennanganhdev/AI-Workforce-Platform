@@ -71,7 +71,7 @@ erDiagram
 
 Sự kiện nghiệp vụ append-only, lưu actor và subject version để tạo timeline/outbox/projection.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -119,13 +119,13 @@ Checks:
 - `vh_business_event_ck_0`: `schema_version > 0`.
 - `vh_business_event_ck_1`: `subject_version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_message
 
 Trao đổi nghiệp vụ gắn incident/report, phân biệt nội bộ và cư dân được xem; không phải command.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -166,13 +166,13 @@ Checks:
 - `vh_message_author_type_ck`: `"vh_message"."author_type" in ('HUMAN', 'SYSTEM', 'AGENT')`.
 - `vh_message_visibility_ck`: `"vh_message"."visibility" in ('INTERNAL', 'RESIDENT_VISIBLE')`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_notification
 
 Thông báo đã lọc cho một recipient, có dedupe key và read state; không phải toàn bộ timeline nội bộ.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -220,4 +220,4 @@ Checks:
 - `vh_notification_delivery_status_ck`: `"vh_notification"."delivery_status" in ('QUEUED', 'DELIVERED', 'FAILED')`.
 - `vh_notification_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

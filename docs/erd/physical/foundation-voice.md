@@ -1,10 +1,11 @@
-# shell-voice
+# foundation-voice
 
 Generated from Drizzle. External entities in the diagram are foreign-key targets owned by another module.
 
 ```mermaid
 erDiagram
   voice_sessions {
+    uuid tenant_id FK
     text id PK
     text channel_id FK
     text user_id FK
@@ -16,18 +17,21 @@ erDiagram
     text summary
     text summary_status
   }
+  platform_tenant ||--o{ voice_sessions : "ownership"
   channels ||--o{ voice_sessions : "channel_id"
   users ||--o{ voice_sessions : "user_id"
+  channels ||--o{ voice_sessions : "channel_id"
 ```
 
 ## voice_sessions
 
-Metadata phiên thoại của người dùng/agent trong shell.
+Metadata phiên thoại của người dùng/agent trong ứng dụng.
 
-Tenant RLS: **existing shell table; application authorization, no workforce tenant policy**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
+| `tenant_id` | `uuid` | yes | `nullif(current_setting('app.tenant_id', true), '')::uuid` | — |
 | `id` | `text` | yes | `—` | — |
 | `channel_id` | `text` | yes | `—` | — |
 | `user_id` | `text` | yes | `—` | — |
@@ -41,10 +45,16 @@ Tenant RLS: **existing shell table; application authorization, no workforce tena
 
 Primary key: `id`.
 
+Unique keys:
+
+- `voice_sessions_tenant_pk`: (`tenant_id`, `id`).
+
 Foreign keys:
 
+- (`tenant_id`) → `platform_tenant` (`id`); ON DELETE `restrict`.
 - (`channel_id`) → `channels` (`id`); ON DELETE `cascade`.
 - (`user_id`) → `users` (`id`); ON DELETE `cascade`.
+- (`tenant_id`, `channel_id`) → `channels` (`tenant_id`, `id`); ON DELETE `restrict`.
 
 Indexes:
 
@@ -55,4 +65,4 @@ Checks:
 - `voice_sessions_duration_check`: `"voice_sessions"."duration_seconds" >= 0`.
 - `voice_sessions_summary_check`: `("voice_sessions"."summary_status" = 'ready' AND "voice_sessions"."summary" IS NOT NULL) OR ("voice_sessions"."summary_status" = 'failed' AND "voice_sessions"."summary" IS NULL)`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

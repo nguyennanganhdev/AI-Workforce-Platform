@@ -1,3 +1,10 @@
+import {
+  foreignKey as tenantForeignKey,
+  unique as tenantUnique,
+} from "drizzle-orm/pg-core";
+import { tenantId, tenantPolicy } from "./tenant-scope";
+import { platformTenantMembership } from "./platform/identity";
+import { bigint, unique, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -268,22 +275,44 @@ export const deploymentPackages = pgTable("deployment_packages", {
     .defaultNow(),
 });
 
-export const agents = pgTable("agents", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  type: agentType("type").notNull(),
-  configuration: jsonb("configuration").notNull(),
-  packageId: uuid("package_id").references(() => deploymentPackages.id, {
-    onDelete: "set null",
-  }),
-  override: jsonb("override"),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
+export const agents = pgTable(
+  "agents",
+  {
+    description: text("description"),
+    domainNamespace: text("domain_namespace"),
+    status: text("status").notNull().default("ACTIVE"),
+    revision: bigint("revision", { mode: "bigint" }).notNull().default(sql`1`),
+    tenantId: tenantId(),
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    type: agentType("type").notNull(),
+    configuration: jsonb("configuration").notNull(),
+    packageId: uuid("package_id").references(() => deploymentPackages.id, {
+      onDelete: "set null",
+    }),
+    override: jsonb("override"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    tenantPolicy("agents_tenant_policy", table.tenantId),
+    unique("agents_tenant_id_key").on(table.tenantId, table.id),
+    check("agents_status_ck", sql`status IN ('ACTIVE','SUSPENDED','RETIRED')`),
+    check("agents_revision_ck", sql`revision > 0`),
+  ],
+).enableRLS();
 
 export const channels = pgTable(
   "channels",
   {
+    channelKind: text("channel_kind").notNull().default("RESIDENT"),
+    locale: text("locale").notNull().default("vi-VN"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    status: text("status").notNull().default("ACTIVE"),
+    revision: bigint("revision", { mode: "bigint" }).notNull().default(sql`1`),
+    tenantId: tenantId(),
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     description: text("description").notNull(),
@@ -338,6 +367,19 @@ export const channels = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
+    tenantForeignKey({
+      name: "channels_scope_fk_0",
+      columns: [table.tenantId, table.lastMessageAgentId],
+      foreignColumns: [agents.tenantId, agents.id],
+    }).onDelete("restrict"),
+    tenantPolicy("channels_tenant_policy", table.tenantId),
+    unique("channels_tenant_id_key").on(table.tenantId, table.id),
+    check("channels_status_ck", sql`status IN ('ACTIVE','CLOSED','ARCHIVED')`),
+    check("channels_revision_ck", sql`revision > 0`),
+    check(
+      "channels_kind_ck",
+      sql`channel_kind IN ('RESIDENT','STAFF','INTERNAL')`,
+    ),
     /**
      * The order the channel list is drawn in.
      *
@@ -365,11 +407,12 @@ export const channels = pgTable(
       .on(table.id)
       .where(sql`${table.summary} is null and ${table.deletedAt} is null`),
   ],
-);
+).enableRLS();
 
 export const channelMemberships = pgTable(
   "channel_memberships",
   {
+    tenantId: tenantId(),
     channelId: text("channel_id")
       .notNull()
       .references(() => channels.id, { onDelete: "cascade" }),
@@ -388,12 +431,29 @@ export const channelMemberships = pgTable(
     lastReadAt: timestamp("last_read_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (table) => [primaryKey({ columns: [table.channelId, table.userId] })],
-);
+  (table) => [
+    primaryKey({ columns: [table.channelId, table.userId] }),
+    tenantPolicy("channel_memberships_tenant_policy", table.tenantId),
+    tenantForeignKey({
+      name: "channel_memberships_channel_scope_fk",
+      columns: [table.tenantId, table.channelId],
+      foreignColumns: [channels.tenantId, channels.id],
+    }).onDelete("restrict"),
+    tenantForeignKey({
+      name: "channel_memberships_member_scope_fk",
+      columns: [table.tenantId, table.userId],
+      foreignColumns: [
+        platformTenantMembership.tenantId,
+        platformTenantMembership.userId,
+      ],
+    }).onDelete("restrict"),
+  ],
+).enableRLS();
 
 export const channelAgents = pgTable(
   "channel_agents",
   {
+    tenantId: tenantId(),
     channelId: text("channel_id")
       .notNull()
       .references(() => channels.id, { onDelete: "cascade" }),
@@ -402,12 +462,26 @@ export const channelAgents = pgTable(
       .references(() => agents.id, { onDelete: "cascade" }),
     createdAt: createdAt(),
   },
-  (table) => [primaryKey({ columns: [table.channelId, table.agentId] })],
-);
+  (table) => [
+    primaryKey({ columns: [table.channelId, table.agentId] }),
+    tenantPolicy("channel_agents_tenant_policy", table.tenantId),
+    tenantForeignKey({
+      name: "channel_agents_channel_scope_fk",
+      columns: [table.tenantId, table.channelId],
+      foreignColumns: [channels.tenantId, channels.id],
+    }).onDelete("restrict"),
+    tenantForeignKey({
+      name: "channel_agents_agent_scope_fk",
+      columns: [table.tenantId, table.agentId],
+      foreignColumns: [agents.tenantId, agents.id],
+    }).onDelete("restrict"),
+  ],
+).enableRLS();
 
 export const credentials = pgTable(
   "credentials",
   {
+    tenantId: tenantId(),
     id: uuid("id").primaryKey().defaultRandom(),
     kind: credentialKind("kind").notNull(),
     provider: text("provider").notNull(),
@@ -419,6 +493,8 @@ export const credentials = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
+    tenantPolicy("credentials_tenant_policy", table.tenantId),
+    unique("credentials_tenant_id_key").on(table.tenantId, table.id),
     // At most one live credential per (kind, provider, key_id). Revoked rows are
     // excluded so history is preserved, and two replicas racing to rotate the
     // same secret cannot both insert a live row.
@@ -426,11 +502,12 @@ export const credentials = pgTable(
       .on(table.kind, table.provider, table.keyId)
       .where(sql`${table.revokedAt} IS NULL`),
   ],
-);
+).enableRLS();
 
 export const auditEvents = pgTable(
   "audit_events",
   {
+    tenantId: tenantId(),
     id: uuid("id").primaryKey().defaultRandom(),
     /**
      * Who did it, as an id rather than a reference. No foreign key: the trail is append-only, so any
@@ -462,6 +539,8 @@ export const auditEvents = pgTable(
    * tie to be broken by a sort.
    */
   (table) => [
+    tenantPolicy("audit_events_tenant_policy", table.tenantId),
+    tenantUnique("audit_events_tenant_pk").on(table.tenantId, table.id),
     index("audit_events_created_at_idx").on(table.createdAt),
     index("audit_events_type_time_idx").on(
       table.eventType,
@@ -485,11 +564,12 @@ export const auditEvents = pgTable(
       table.id.desc(),
     ),
   ],
-);
+).enableRLS();
 
 export const intelligenceChannelMappings = pgTable(
   "intelligence_channel_mappings",
   {
+    tenantId: tenantId(),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -501,10 +581,21 @@ export const intelligenceChannelMappings = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
+    tenantPolicy("intelligence_channel_mappings_tenant_policy", table.tenantId),
+    tenantUnique("intelligence_channel_mappings_tenant_pk").on(
+      table.tenantId,
+      table.userId,
+      table.channelId,
+    ),
+    tenantForeignKey({
+      name: "intelligence_channel_mappings_scope_fk_0",
+      columns: [table.tenantId, table.channelId],
+      foreignColumns: [channels.tenantId, channels.id],
+    }).onDelete("restrict"),
     primaryKey({ columns: [table.userId, table.channelId] }),
     uniqueIndex("intelligence_channel_mappings_thread_idx").on(table.threadId),
   ],
-);
+).enableRLS();
 
 /**
  * A file somebody attached to a message in a channel.
@@ -518,6 +609,7 @@ export const intelligenceChannelMappings = pgTable(
 export const attachments = pgTable(
   "attachments",
   {
+    tenantId: tenantId(),
     id: uuid("id").primaryKey().defaultRandom(),
     channelId: text("channel_id")
       .notNull()
@@ -572,6 +664,13 @@ export const attachments = pgTable(
     uploadGroup: text("upload_group"),
   },
   (table) => [
+    tenantPolicy("attachments_tenant_policy", table.tenantId),
+    tenantUnique("attachments_tenant_pk").on(table.tenantId, table.id),
+    tenantForeignKey({
+      name: "attachments_scope_fk_0",
+      columns: [table.tenantId, table.channelId],
+      foreignColumns: [channels.tenantId, channels.id],
+    }).onDelete("restrict"),
     // Postgres does not index foreign key columns on its own. Deleting a
     // channel cascades here, and without this index that cascade is a
     // sequential scan of the one table in this deployment that holds blobs.
@@ -598,4 +697,4 @@ export const attachments = pgTable(
       .on(table.createdAt)
       .where(sql`${table.attachedAt} is null`),
   ],
-);
+).enableRLS();

@@ -127,11 +127,9 @@ const columnIn = (snapshot: Snapshot, table: string, column: string) =>
  */
 const declared = (tail: string): { type: string; notNull: boolean } => ({
   type: tail
+    // DEFAULT may be a nested expression containing spaces/commas, not one token.
+    .split(/\bDEFAULT\b/i)[0]!
     .replace(/\bNOT NULL\b/gi, " ")
-    .replace(
-      /\bDEFAULT\s+(?:'(?:[^']|'')*'(?:\s*::\s*[\w.]+(?:\[\])?)*|[^\s;]+)/gi,
-      " ",
-    )
     .trim()
     .replace(/\s+/g, " "),
   notNull: /\bNOT NULL\b/i.test(tail),
@@ -142,6 +140,14 @@ test("column declarations exclude the cast on a quoted JSON default", () => {
     type: "jsonb",
     notNull: true,
   });
+});
+
+test("column declarations support nested transaction tenant defaults", () => {
+  expect(
+    declared(
+      " uuid DEFAULT nullif(current_setting('app.tenant_id', true), '')::uuid NOT NULL",
+    ),
+  ).toEqual({ type: "uuid", notNull: true });
 });
 
 const everyIndexName = (snapshot: Snapshot) =>
@@ -189,6 +195,12 @@ const disagreements = (sql: string, before: Snapshot, after: Snapshot) => {
     sql,
     /DROP INDEX (?:IF EXISTS )?"([^"]+)"/gi,
   ).map(([index]) => index!);
+  const lastIndexActions = new Map(
+    quoted(
+      sql,
+      /\b(CREATE(?: UNIQUE)?|DROP) INDEX (?:IF (?:NOT )?EXISTS )?"([^"]+)"/gi,
+    ).map(([action, name]) => [name!, action!.toUpperCase()]),
+  );
 
   const was = tableNames(before);
   const is = tableNames(after);
@@ -287,7 +299,7 @@ const disagreements = (sql: string, before: Snapshot, after: Snapshot) => {
         `the migration creates index "${index}", the snapshot lacks it`,
       );
   for (const index of indexesDropped)
-    if (indexes.has(index))
+    if (indexes.has(index) && lastIndexActions.get(index) === "DROP")
       problems.push(
         `the migration drops index "${index}", the snapshot still has it`,
       );

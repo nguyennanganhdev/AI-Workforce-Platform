@@ -5,8 +5,8 @@
 | Thành phần | Nhiệm vụ | Người review cần kiểm tra |
 |---|---|---|
 | `_journal.json` | Danh sách migration theo thứ tự: `idx`, format `version`, timestamp `when`, tên file `tag`, `breakpoints` | Một entry cho mỗi SQL; thứ tự và timestamp tăng, không đặt thời gian tương lai |
-| `0000_snapshot.json` … `0050_snapshot.json` | Toàn bộ cấu trúc mà Drizzle biết tại từng mốc; dùng để tính thay đổi khi generate migration tiếp | `id/prevId` nối đúng lịch sử; bảng/cột/khóa/index tương ứng schema và SQL |
-| `README.md` | Hướng dẫn này | Không được runner thực thi |
+| `0000_snapshot.json` … `0052_snapshot.json` | Toàn bộ cấu trúc mà Drizzle biết tại từng mốc; dùng để tính thay đổi khi generate migration tiếp | `id/prevId` nối đúng lịch sử; bảng/cột/khóa/index tương ứng schema và SQL |
+| `../README.md` | Hướng dẫn này đặt ngoài meta | Generator đọc file trong meta như JSON |
 
 Snapshot chứa `dialect`, phiên bản format, `id`, `prevId`, `tables`, enums và các metadata khác mà Drizzle hỗ trợ. Mỗi bảng có columns, indexes, foreign keys, composite primary keys, unique/check constraints, policies và cờ RLS. `version: "7"` là phiên bản **định dạng snapshot**, không phải PostgreSQL 7 hay version nghiệp vụ.
 
@@ -38,8 +38,10 @@ Runner đọc journal và SQL; không chạy snapshot JSON vào database. Drizzl
 | 0048 | 25 bảng conversation, coordination, field, progress, SLA | 190 | Thêm bảng/cột và quan hệ mới |
 | 0049 | Integrity cho coordination/field và FORCE RLS mới | 190 | Cấu trúc được Drizzle biểu diễn gần như 0048 |
 | 0050 | Tám index phục vụ retry, lease và SLA deadline | 190 | Bổ sung index |
+| 0051 | Hợp nhất registry, transcript PostgreSQL, tenant nền | 186 | Schema mới |
+| 0052 | Ownership/message/outbox/tool guards và FORCE RLS | 186 | Như 0051 |
 
-**Phải đọc SQL 0047 và 0049.** Drizzle không snapshot trigger, exclusion constraint và FORCE RLS. Chỉ đọc JSON sẽ bỏ sót luật chống lịch trùng, lịch sử bất biến, kiểm tra checkpoint và provenance của tiến độ.
+**Phải đọc SQL 0047, 0049 và 0052.** Drizzle không snapshot trigger, exclusion constraint và FORCE RLS. Chỉ đọc JSON sẽ bỏ sót luật chống lịch trùng, lịch sử bất biến, kiểm tra checkpoint và provenance của tiến độ.
 
 ## Quy tắc làm việc chung
 
@@ -52,4 +54,4 @@ Runner đọc journal và SQL; không chạy snapshot JSON vào database. Drizzl
 
 GitHub được cấu hình thu gọn snapshot và catalog tự sinh bằng `.gitattributes`; vẫn có thể mở từng file để review. `_journal.json`, SQL, schema và tài liệu viết tay luôn là phần cần xem trực tiếp.
 
-Xem [review guide](../../../docs/erd/REVIEW_GUIDE.md) cho thứ tự đọc và [runbook](../../../docs/erd/MIGRATION_RUNBOOK.md) cho lệnh migration/test.
+Xem [review guide](../../docs/erd/P0_REDESIGN_TRACKER.md) cho thứ tự đọc và [runbook](../../docs/erd/MIGRATION_RUNBOOK.md) cho lệnh migration/test.

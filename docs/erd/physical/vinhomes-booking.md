@@ -71,7 +71,7 @@ erDiagram
 
 Đặt/giữ chỗ tiện ích cho membership/căn hộ với snapshot giá và vòng đời hủy/hết hạn/hoàn thành.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -127,13 +127,13 @@ Checks:
 - `vh_booking_ck_3`: `currency ~ '^[A-Z]{3}$'`.
 - `vh_booking_ck_4`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_facility
 
 Tiện ích có capacity, biểu phí và booking policy của dự án.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -181,13 +181,13 @@ Checks:
 - `vh_facility_ck_2`: `currency ~ '^[A-Z]{3}$'`.
 - `vh_facility_ck_3`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_time_slot
 
 Khung giờ của tiện ích; không chồng thời gian cùng facility và có capacity riêng.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -229,4 +229,4 @@ Checks:
 - `vh_time_slot_ck_1`: `capacity > 0`.
 - `vh_time_slot_ck_2`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

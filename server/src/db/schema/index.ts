@@ -1,5 +1,6 @@
 /** One import path for every table, with schema files grouped by owner. */
 
+export * from "./authorization";
 export * from "./components";
 export * from "./computer";
 export * from "./core";
@@ -25,7 +26,6 @@ export * from "./domains/vinhomes/sla";
 export * from "./domains/vinhomes/workforce";
 export * from "./platform/agents";
 export * from "./platform/audit";
-export * from "./platform/bindings";
 export * from "./platform/capabilities";
 export * from "./platform/collaboration";
 export * from "./platform/conversations";
@@ -34,9 +34,7 @@ export * from "./platform/domains";
 export * from "./platform/evaluation";
 export * from "./platform/event-delivery";
 export * from "./platform/identity";
-export * from "./platform/knowledge";
 export * from "./platform/memory";
-export * from "./platform/policies";
 export * from "./platform/runtime";
 export * from "./plugins";
 export * from "./voice";

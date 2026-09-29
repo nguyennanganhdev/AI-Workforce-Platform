@@ -20,23 +20,10 @@ erDiagram
   }
   platform_tenant ||--o{ platform_capability : "ownership"
   users ||--o{ platform_capability : "owner_id"
-  platform_mcp_server {
-    uuid id PK
-    uuid tenant_id FK
-    text name
-    text endpoint_ref
-    text owner_id FK
-    text status
-    timestamp_with_time_zone created_at
-    bigint version
-    timestamp_with_time_zone updated_at
-  }
-  platform_tenant ||--o{ platform_mcp_server : "ownership"
-  users ||--o{ platform_mcp_server : "owner_id"
   platform_mcp_server_version {
     uuid id PK
     uuid tenant_id FK
-    uuid mcp_server_id FK
+    text mcp_server_id FK
     integer version_no
     text schema_hash
     text fingerprint
@@ -46,7 +33,7 @@ erDiagram
     timestamp_with_time_zone updated_at
   }
   platform_tenant ||--o{ platform_mcp_server_version : "ownership"
-  platform_mcp_server ||--o{ platform_mcp_server_version : "mcp_server_id"
+  mcp_servers ||--o{ platform_mcp_server_version : "mcp_server_id"
   platform_model_profile {
     uuid id PK
     uuid tenant_id FK
@@ -60,33 +47,25 @@ erDiagram
     timestamp_with_time_zone updated_at
   }
   platform_tenant ||--o{ platform_model_profile : "ownership"
-  platform_skill {
-    uuid id PK
-    uuid tenant_id FK
-    text name
-    text owner_id FK
-    text status
-    timestamp_with_time_zone created_at
-    bigint version
-    timestamp_with_time_zone updated_at
-  }
-  platform_tenant ||--o{ platform_skill : "ownership"
-  users ||--o{ platform_skill : "owner_id"
   platform_skill_version {
     uuid id PK
     uuid tenant_id FK
-    uuid skill_id FK
+    text skill_id FK
     integer version_no
     text content_ref
     text checksum
     timestamp_with_time_zone created_at
   }
   platform_tenant ||--o{ platform_skill_version : "ownership"
-  platform_skill ||--o{ platform_skill_version : "skill_id"
+  skills ||--o{ platform_skill_version : "skill_id"
   platform_tool {
     uuid id PK
     uuid tenant_id FK
     text code
+    text provider_type
+    text mcp_server_id FK
+    text mcp_tool_name
+    text handler_key
     text name
     text effect_type
     text risk_level
@@ -94,6 +73,7 @@ erDiagram
     bigint version
     timestamp_with_time_zone updated_at
   }
+  mcp_servers |o--o{ platform_tool : "mcp_server_id"
   platform_tenant ||--o{ platform_tool : "ownership"
   platform_tool_version {
     uuid id PK
@@ -118,7 +98,7 @@ erDiagram
 
 Danh mục năng lực được quản trị trong tenant, kèm loại và mức rủi ro.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -157,59 +137,19 @@ Checks:
 - `platform_capability_status_ck`: `"platform_capability"."status" in ('ACTIVE', 'SUSPENDED', 'RETIRED')`.
 - `platform_capability_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
-
-## platform_mcp_server
-
-Danh tính MCP endpoint được quản trị bởi tenant, tách khỏi phiên bản schema tool.
-
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
-
-| Column | PostgreSQL type | Required | Default | Declared values |
-|---|---|---|---|---|
-| `id` | `uuid` | yes | `gen_random_uuid()` | — |
-| `tenant_id` | `uuid` | yes | `—` | — |
-| `name` | `text` | yes | `—` | — |
-| `endpoint_ref` | `text` | yes | `—` | — |
-| `owner_id` | `text` | yes | `—` | — |
-| `status` | `text` | yes | `—` | `ACTIVE`, `SUSPENDED`, `RETIRED` |
-| `created_at` | `timestamp with time zone` | yes | `now()` | — |
-| `version` | `bigint` | yes | `1` | — |
-| `updated_at` | `timestamp with time zone` | yes | `now()` | — |
-
-Primary key: `id`.
-
-Unique keys:
-
-- `platform_mcp_server_uq_0`: (`tenant_id`, `id`).
-
-Foreign keys:
-
-- (`tenant_id`) → `platform_tenant` (`id`); ON DELETE `restrict`.
-- (`owner_id`) → `users` (`id`); ON DELETE `restrict`.
-
-Indexes:
-
-- `platform_mcp_server_ix_0`: (`owner_id`).
-
-Checks:
-
-- `platform_mcp_server_status_ck`: `"platform_mcp_server"."status" in ('ACTIVE', 'SUSPENDED', 'RETIRED')`.
-- `platform_mcp_server_ck_0`: `version > 0`.
-
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_mcp_server_version
 
 Snapshot schema/fingerprint của MCP server và trạng thái kiểm duyệt bảo mật.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
 | `id` | `uuid` | yes | `gen_random_uuid()` | — |
 | `tenant_id` | `uuid` | yes | `—` | — |
-| `mcp_server_id` | `uuid` | yes | `—` | — |
+| `mcp_server_id` | `text` | yes | `—` | — |
 | `version_no` | `integer` | yes | `—` | — |
 | `schema_hash` | `text` | yes | `—` | — |
 | `fingerprint` | `text` | yes | `—` | — |
@@ -228,7 +168,7 @@ Unique keys:
 Foreign keys:
 
 - (`tenant_id`) → `platform_tenant` (`id`); ON DELETE `restrict`.
-- (`tenant_id`, `mcp_server_id`) → `platform_mcp_server` (`tenant_id`, `id`); ON DELETE `restrict`.
+- (`tenant_id`, `mcp_server_id`) → `mcp_servers` (`tenant_id`, `id`); ON DELETE `restrict`.
 
 Indexes:
 
@@ -240,13 +180,13 @@ Checks:
 - `platform_mcp_server_version_ck_0`: `version_no > 0`.
 - `platform_mcp_server_version_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_model_profile
 
 Cấu hình model/provider được phép dùng, không chứa API key.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -277,58 +217,19 @@ Checks:
 - `platform_model_profile_status_ck`: `"platform_model_profile"."status" in ('ACTIVE', 'SUSPENDED', 'RETIRED')`.
 - `platform_model_profile_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
-
-## platform_skill
-
-Danh tính skill được quản lý bởi tenant/chủ sở hữu.
-
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
-
-| Column | PostgreSQL type | Required | Default | Declared values |
-|---|---|---|---|---|
-| `id` | `uuid` | yes | `gen_random_uuid()` | — |
-| `tenant_id` | `uuid` | yes | `—` | — |
-| `name` | `text` | yes | `—` | — |
-| `owner_id` | `text` | yes | `—` | — |
-| `status` | `text` | yes | `—` | `ACTIVE`, `SUSPENDED`, `RETIRED` |
-| `created_at` | `timestamp with time zone` | yes | `now()` | — |
-| `version` | `bigint` | yes | `1` | — |
-| `updated_at` | `timestamp with time zone` | yes | `now()` | — |
-
-Primary key: `id`.
-
-Unique keys:
-
-- `platform_skill_uq_0`: (`tenant_id`, `id`).
-
-Foreign keys:
-
-- (`tenant_id`) → `platform_tenant` (`id`); ON DELETE `restrict`.
-- (`owner_id`) → `users` (`id`); ON DELETE `restrict`.
-
-Indexes:
-
-- `platform_skill_ix_0`: (`owner_id`).
-
-Checks:
-
-- `platform_skill_status_ck`: `"platform_skill"."status" in ('ACTIVE', 'SUSPENDED', 'RETIRED')`.
-- `platform_skill_ck_0`: `version > 0`.
-
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_skill_version
 
 Nội dung skill bất biến qua content reference và checksum.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
 | `id` | `uuid` | yes | `gen_random_uuid()` | — |
 | `tenant_id` | `uuid` | yes | `—` | — |
-| `skill_id` | `uuid` | yes | `—` | — |
+| `skill_id` | `text` | yes | `—` | — |
 | `version_no` | `integer` | yes | `—` | — |
 | `content_ref` | `text` | yes | `—` | — |
 | `checksum` | `text` | yes | `—` | — |
@@ -344,7 +245,7 @@ Unique keys:
 Foreign keys:
 
 - (`tenant_id`) → `platform_tenant` (`id`); ON DELETE `restrict`.
-- (`tenant_id`, `skill_id`) → `platform_skill` (`tenant_id`, `id`); ON DELETE `restrict`.
+- (`tenant_id`, `skill_id`) → `skills` (`tenant_id`, `id`); ON DELETE `restrict`.
 
 Indexes:
 
@@ -354,19 +255,23 @@ Checks:
 
 - `platform_skill_version_ck_0`: `version_no > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_tool
 
-Danh tính tool, loại hiệu ứng READ/WRITE/external và mức rủi ro.
+Định danh thao tác được quản trị: MCP gắn server+tên tool; DOMAIN/BUILTIN gắn handler. Một danh tính cho mỗi đích thực thi.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
 | `id` | `uuid` | yes | `gen_random_uuid()` | — |
 | `tenant_id` | `uuid` | yes | `—` | — |
 | `code` | `text` | yes | `—` | — |
+| `provider_type` | `text` | yes | `—` | `MCP`, `DOMAIN`, `BUILTIN` |
+| `mcp_server_id` | `text` | no | `—` | — |
+| `mcp_tool_name` | `text` | no | `—` | — |
+| `handler_key` | `text` | no | `—` | — |
 | `name` | `text` | yes | `—` | — |
 | `effect_type` | `text` | yes | `—` | `READ`, `WRITE`, `EXTERNAL_SIDE_EFFECT` |
 | `risk_level` | `text` | yes | `—` | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
@@ -378,26 +283,30 @@ Primary key: `id`.
 
 Unique keys:
 
+- `platform_tool_mcp_identity_key`: (`tenant_id`, `mcp_server_id`, `mcp_tool_name`).
+- `platform_tool_handler_key`: (`tenant_id`, `provider_type`, `handler_key`).
 - `platform_tool_uq_0`: (`tenant_id`, `code`).
 - `platform_tool_uq_1`: (`tenant_id`, `id`).
 
 Foreign keys:
 
+- (`tenant_id`, `mcp_server_id`) → `mcp_servers` (`tenant_id`, `id`); ON DELETE `restrict`.
 - (`tenant_id`) → `platform_tenant` (`id`); ON DELETE `restrict`.
 
 Checks:
 
+- `platform_tool_provider_ck`: `(provider_type = 'MCP' AND mcp_server_id IS NOT NULL AND mcp_tool_name IS NOT NULL AND handler_key IS NULL) OR (provider_type IN ('DOMAIN','BUILTIN') AND mcp_server_id IS NULL AND mcp_tool_name IS NULL AND handler_key IS NOT NULL)`.
 - `platform_tool_effect_type_ck`: `"platform_tool"."effect_type" in ('READ', 'WRITE', 'EXTERNAL_SIDE_EFFECT')`.
 - `platform_tool_risk_level_ck`: `"platform_tool"."risk_level" in ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')`.
 - `platform_tool_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_tool_version
 
 Phiên bản tool với input/output schema và fingerprint để agent ghim chính xác.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -438,4 +347,4 @@ Checks:
 - `platform_tool_version_ck_0`: `version_no > 0`.
 - `platform_tool_version_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

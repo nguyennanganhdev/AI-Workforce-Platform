@@ -1,14 +1,9 @@
-# OpenBot là product shell
+# OpenBot là nền mã nguồn của sản phẩm
 
-Status: baseline theo thiết kế nguồn; implementation theo từng phase.
+Status: updated by [ADR 0013](0013-unified-openbot-database.md).
 
-Nguồn: [04_SYSTEM_DESIGN_STRUCTURE_ARCHITECTURE.md](../../../docx/04_SYSTEM_DESIGN_STRUCTURE_ARCHITECTURE.md).
+OpenBot đã được nhập vào repo. Sản phẩm sửa và phát triển trực tiếp từ nền này, dùng một registry agent/channel/tool/skill và một hệ thống identity. Các module Platform/Vinhomes là ranh giới trong cùng sản phẩm.
 
-## Quyết định
+Nghiệp vụ Vinhomes có service và bảng riêng theo trách nhiệm. Runtime framework qua adapter, không sở hữu Incident/Task. Không duy trì hai platform rồi đồng bộ registry.
 
-Dùng OpenBot UI và Hono server conventions; không để shell sở hữu business state.
-
-## Hệ quả cho code
-
-Repo chưa có upstream; nhập fork trước khi chọn thêm UI/deploy framework.
-
+[Database hiện hành](../../erd/01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) và [điều kiện tích hợp](../../erd/MIGRATION_RUNBOOK.md) thay thế các giả định trong tài liệu nhập nguồn ban đầu.

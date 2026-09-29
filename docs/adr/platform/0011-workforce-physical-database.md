@@ -1,5 +1,8 @@
 # Physical database và identity dùng chung
 
+> Lịch sử: quyết định registry/conversation song song đã được [ADR 0013](0013-unified-openbot-database.md) thay thế. Các ràng buộc nghiệp vụ còn phù hợp vẫn giữ.
+
+
 Status: accepted for the database implementation.
 
 Giữ `public.users.id` text làm identity chung; thêm tenant UUID và 127 bảng có prefix

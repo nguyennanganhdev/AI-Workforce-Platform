@@ -1,4 +1,4 @@
-# shell-work
+# foundation-work
 
 Generated from Drizzle. External entities in the diagram are foreign-key targets owned by another module.
 
@@ -21,9 +21,9 @@ erDiagram
 
 ## work_items
 
-Hàng công việc bền vững của worker shell; không phải business Task hay workflow RunStep.
+Hàng công việc bền vững của worker chung; không phải business Task hay workflow RunStep.
 
-Tenant RLS: **existing shell table; application authorization, no workforce tenant policy**.
+Tenant RLS: **global identity or deployment infrastructure; application/operator authorization required**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -45,4 +45,4 @@ Indexes:
 
 - `work_items_claimable_idx`: (`kind`, `run_at`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

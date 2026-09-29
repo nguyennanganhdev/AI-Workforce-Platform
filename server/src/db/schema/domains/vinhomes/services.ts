@@ -19,7 +19,6 @@ import {
 import { allowedValues, createdAt, jsonb, mutableColumns } from "../../columns";
 import { platformTenant, users } from "../../platform/identity";
 import { vhMapPlace } from "./content";
-import { vhChecklistVersion } from "./operations";
 import { vhApartment, vhProject, vhPropertyMembership } from "./property";
 
 export const vhHandover = pgTable(
@@ -32,7 +31,7 @@ export const vhHandover = pgTable(
     residentMembershipId: uuid("resident_membership_id").notNull(),
     scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
-    checklistVersionId: uuid("checklist_version_id"),
+    checklistSnapshotJson: jsonb("checklist_snapshot_json").notNull().default({}),
     status: text("status", {
       enum: ["SCHEDULED", "CONFIRMED", "COMPLETED", "CANCELLED"],
     }).notNull(),
@@ -77,11 +76,6 @@ export const vhHandover = pgTable(
       ],
     }).onDelete("restrict"),
     foreignKey({
-      name: "vh_handover_fk_4",
-      columns: [t.tenantId, t.checklistVersionId],
-      foreignColumns: [vhChecklistVersion.tenantId, vhChecklistVersion.id],
-    }).onDelete("restrict"),
-    foreignKey({
       name: "vh_handover_fk_5",
       columns: [t.tenantId, t.projectId, t.apartmentId, t.residentMembershipId],
       foreignColumns: [
@@ -91,7 +85,6 @@ export const vhHandover = pgTable(
         vhPropertyMembership.id,
       ],
     }).onDelete("restrict"),
-    index("vh_handover_ix_0").on(t.tenantId, t.checklistVersionId),
     index("vh_handover_ix_1").on(t.tenantId, t.projectId, t.apartmentId),
     index("vh_handover_ix_2").on(
       t.tenantId,

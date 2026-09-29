@@ -1,3 +1,4 @@
+import { agents } from "../core";
 /** Physical model for platform/runtime. See docs/erd/README.md. */
 import { sql } from "drizzle-orm";
 import {
@@ -16,8 +17,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { allowedValues, createdAt, jsonb, mutableColumns } from "../columns";
-import { platformAgent, platformAgentVersion } from "./agents";
-import { platformToolVersion } from "./capabilities";
+import { platformAgentVersion } from "./agents";
+import { platformCapability } from "./capabilities";
 import { platformTenant } from "./identity";
 
 export const platformWorkflowSession = pgTable(
@@ -43,7 +44,8 @@ export const platformWorkflowSession = pgTable(
         "CANCELLED",
       ],
     }).notNull(),
-    planSnapshot: jsonb("plan_snapshot").notNull(),
+    planJson: jsonb("plan_json").notNull(),
+    contextSnapshotJson: jsonb("context_snapshot_json").notNull().default({}),
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     traceId: text("trace_id").notNull(),
@@ -80,6 +82,7 @@ export const platformWorkflowSession = pgTable(
       "FAILED",
       "CANCELLED",
     ]),
+    check("platform_workflow_session_plan_ck", sql`(jsonb_typeof(plan_json)='object' AND jsonb_typeof(plan_json->'steps')='array') IS TRUE AND jsonb_typeof(context_snapshot_json)='object'`),
     check("platform_workflow_session_ck_0", sql`version > 0`),
     allowedValues("platform_workflow_session_environment_ck", t.environment, [
       "DEVELOPMENT",
@@ -89,158 +92,24 @@ export const platformWorkflowSession = pgTable(
   ],
 ).enableRLS();
 
-export const platformRunStep = pgTable(
-  "platform_run_step",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    tenantId: uuid("tenant_id").notNull(),
-    workflowSessionId: uuid("workflow_session_id").notNull(),
-    stepKey: text("step_key").notNull(),
-    stepType: text("step_type").notNull(),
-    status: text("status", {
-      enum: [
-        "PENDING",
-        "READY",
-        "RUNNING",
-        "WAITING",
-        "COMPLETED",
-        "FAILED",
-        "CANCELLED",
-      ],
-    }).notNull(),
-    inputJson: jsonb("input_json").notNull(),
-    outputJson: jsonb("output_json").notNull(),
-    attemptNo: integer("attempt_no").notNull(),
-    startedAt: timestamp("started_at", { withTimezone: true }),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-    createdAt: createdAt(),
-    ...mutableColumns(),
-  },
-  (t) => [
-    pgPolicy("platform_run_step_tenant_policy", {
-      for: "all",
-      using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    unique("platform_run_step_uq_0").on(
-      t.tenantId,
-      t.workflowSessionId,
-      t.stepKey,
-      t.attemptNo,
-    ),
-    unique("platform_run_step_uq_1").on(t.tenantId, t.id),
-    unique("platform_run_step_uq_2").on(t.tenantId, t.workflowSessionId, t.id),
-    foreignKey({
-      name: "platform_run_step_fk_0",
-      columns: [t.tenantId],
-      foreignColumns: [platformTenant.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "platform_run_step_fk_1",
-      columns: [t.tenantId, t.workflowSessionId],
-      foreignColumns: [
-        platformWorkflowSession.tenantId,
-        platformWorkflowSession.id,
-      ],
-    }).onDelete("restrict"),
-    index("platform_run_step_ix_0").on(t.tenantId, t.workflowSessionId),
-    allowedValues("platform_run_step_status_ck", t.status, [
-      "PENDING",
-      "READY",
-      "RUNNING",
-      "WAITING",
-      "COMPLETED",
-      "FAILED",
-      "CANCELLED",
-    ]),
-    check("platform_run_step_ck_0", sql`attempt_no > 0`),
-    check("platform_run_step_ck_1", sql`version > 0`),
-  ],
-).enableRLS();
-
-export const platformRunStepDependency = pgTable(
-  "platform_run_step_dependency",
-  {
-    tenantId: uuid("tenant_id").notNull(),
-    workflowSessionId: uuid("workflow_session_id").notNull(),
-    runStepId: uuid("run_step_id").notNull(),
-    dependsOnRunStepId: uuid("depends_on_run_step_id").notNull(),
-    required: boolean("required").notNull(),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    pgPolicy("platform_run_step_dependency_tenant_policy", {
-      for: "all",
-      using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    primaryKey({ columns: [t.tenantId, t.runStepId, t.dependsOnRunStepId] }),
-    foreignKey({
-      name: "platform_run_step_dependency_fk_0",
-      columns: [t.tenantId],
-      foreignColumns: [platformTenant.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "platform_run_step_dependency_fk_1",
-      columns: [t.tenantId, t.workflowSessionId],
-      foreignColumns: [
-        platformWorkflowSession.tenantId,
-        platformWorkflowSession.id,
-      ],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "platform_run_step_dependency_fk_2",
-      columns: [t.tenantId, t.workflowSessionId, t.runStepId],
-      foreignColumns: [
-        platformRunStep.tenantId,
-        platformRunStep.workflowSessionId,
-        platformRunStep.id,
-      ],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "platform_run_step_dependency_fk_3",
-      columns: [t.tenantId, t.workflowSessionId, t.dependsOnRunStepId],
-      foreignColumns: [
-        platformRunStep.tenantId,
-        platformRunStep.workflowSessionId,
-        platformRunStep.id,
-      ],
-    }).onDelete("restrict"),
-    index("platform_run_step_dependency_ix_0").on(
-      t.tenantId,
-      t.workflowSessionId,
-      t.dependsOnRunStepId,
-    ),
-    index("platform_run_step_dependency_ix_1").on(
-      t.tenantId,
-      t.workflowSessionId,
-    ),
-    index("platform_run_step_dependency_ix_2").on(
-      t.tenantId,
-      t.workflowSessionId,
-      t.runStepId,
-    ),
-    check(
-      "platform_run_step_dependency_ck_0",
-      sql`run_step_id <> depends_on_run_step_id`,
-    ),
-  ],
-).enableRLS();
-
 export const platformAgentRun = pgTable(
   "platform_agent_run",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenantId: uuid("tenant_id").notNull(),
     workflowSessionId: uuid("workflow_session_id").notNull(),
-    runStepId: uuid("run_step_id").notNull(),
-    agentId: uuid("agent_id").notNull(),
+    stepKey: text("step_key").notNull(),
+    role: text("role").notNull().default("SPECIALIST"),
+    attemptNo: integer("attempt_no").notNull().default(1),
+    errorType: text("error_type"),
+    errorJson: jsonb("error_json"),
+    agentId: text("agent_id").notNull(),
     agentVersionId: uuid("agent_version_id").notNull(),
     status: text("status", {
       enum: ["PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"],
     }).notNull(),
-    inputSnapshot: jsonb("input_snapshot").notNull(),
-    outputSnapshot: jsonb("output_snapshot").notNull(),
+    inputJson: jsonb("input_json").notNull(),
+    outputJson: jsonb("output_json").notNull(),
     traceId: text("trace_id").notNull(),
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -269,18 +138,9 @@ export const platformAgentRun = pgTable(
       ],
     }).onDelete("restrict"),
     foreignKey({
-      name: "platform_agent_run_fk_2",
-      columns: [t.tenantId, t.workflowSessionId, t.runStepId],
-      foreignColumns: [
-        platformRunStep.tenantId,
-        platformRunStep.workflowSessionId,
-        platformRunStep.id,
-      ],
-    }).onDelete("restrict"),
-    foreignKey({
       name: "platform_agent_run_fk_3",
       columns: [t.tenantId, t.agentId],
-      foreignColumns: [platformAgent.tenantId, platformAgent.id],
+      foreignColumns: [agents.tenantId, agents.id],
     }).onDelete("restrict"),
     foreignKey({
       name: "platform_agent_run_fk_4",
@@ -300,7 +160,7 @@ export const platformAgentRun = pgTable(
     index("platform_agent_run_ix_2").on(
       t.tenantId,
       t.workflowSessionId,
-      t.runStepId,
+      t.stepKey,
     ),
     index("platform_agent_run_ix_3").on(t.tenantId, t.agentId),
     allowedValues("platform_agent_run_status_ck", t.status, [
@@ -310,6 +170,8 @@ export const platformAgentRun = pgTable(
       "FAILED",
       "CANCELLED",
     ]),
+    unique("platform_agent_run_attempt_uq").on(t.tenantId, t.workflowSessionId, t.stepKey, t.agentId, t.attemptNo),
+    check("platform_agent_run_attempt_ck", sql`attempt_no > 0`),
     check("platform_agent_run_ck_0", sql`version > 0`),
   ],
 ).enableRLS();
@@ -320,7 +182,7 @@ export const platformToolCall = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     tenantId: uuid("tenant_id").notNull(),
     agentRunId: uuid("agent_run_id").notNull(),
-    toolVersionId: uuid("tool_version_id").notNull(),
+    capabilityId: uuid("capability_id").notNull(),
     requestJson: jsonb("request_json").notNull(),
     responseJson: jsonb("response_json").notNull(),
     decision: text("decision", {
@@ -353,11 +215,11 @@ export const platformToolCall = pgTable(
     }).onDelete("restrict"),
     foreignKey({
       name: "platform_tool_call_fk_2",
-      columns: [t.tenantId, t.toolVersionId],
-      foreignColumns: [platformToolVersion.tenantId, platformToolVersion.id],
+      columns: [t.tenantId, t.capabilityId],
+      foreignColumns: [platformCapability.tenantId, platformCapability.id],
     }).onDelete("restrict"),
     index("platform_tool_call_ix_0").on(t.tenantId, t.agentRunId),
-    index("platform_tool_call_ix_1").on(t.tenantId, t.toolVersionId),
+    index("platform_tool_call_ix_1").on(t.tenantId, t.capabilityId),
     allowedValues("platform_tool_call_decision_ck", t.decision, [
       "ALLOW",
       "DENY",

@@ -358,79 +358,43 @@ export const vhPaymentAllocation = pgTable(
   ],
 ).enableRLS();
 
-export const vhLoyaltyAccount = pgTable(
-  "vh_loyalty_account",
+export const vhLoyaltyBalance = pgTable(
+  "vh_loyalty_balance",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenantId: uuid("tenant_id").notNull(),
     userId: text("user_id").notNull(),
-    provider: text("provider").notNull(),
-    externalAccountRef: text("external_account_ref"),
-    status: text("status", {
-      enum: ["ACTIVE", "SUSPENDED", "CLOSED"],
-    }).notNull(),
+    program: text("program").notNull(),
+    balance: bigint("balance", { mode: "bigint" }).notNull().default(sql`0`),
+    tier: text("tier").notNull(),
+    providerRef: text("provider_ref"),
     createdAt: createdAt(),
     ...mutableColumns(),
   },
   (t) => [
-    pgPolicy("vh_loyalty_account_tenant_policy", {
+    pgPolicy("vh_loyalty_balance_tenant_policy", {
       for: "all",
       using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
       withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
     }),
-    unique("vh_loyalty_account_uq_0").on(t.tenantId, t.userId, t.provider),
-    unique("vh_loyalty_account_uq_1").on(t.tenantId, t.id),
+    unique("vh_loyalty_balance_user_program_uq").on(
+      t.tenantId,
+      t.userId,
+      t.program,
+    ),
+    unique("vh_loyalty_balance_tenant_id_uq").on(t.tenantId, t.id),
     foreignKey({
-      name: "vh_loyalty_account_fk_0",
+      name: "vh_loyalty_balance_tenant_fk",
       columns: [t.tenantId],
       foreignColumns: [platformTenant.id],
     }).onDelete("restrict"),
     foreignKey({
-      name: "vh_loyalty_account_fk_1",
+      name: "vh_loyalty_balance_user_fk",
       columns: [t.userId],
       foreignColumns: [users.id],
     }).onDelete("restrict"),
-    index("vh_loyalty_account_ix_0").on(t.userId),
-    allowedValues("vh_loyalty_account_status_ck", t.status, [
-      "ACTIVE",
-      "SUSPENDED",
-      "CLOSED",
-    ]),
-    check("vh_loyalty_account_ck_0", sql`version > 0`),
-  ],
-).enableRLS();
-
-export const vhLoyaltyEntry = pgTable(
-  "vh_loyalty_entry",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    tenantId: uuid("tenant_id").notNull(),
-    accountId: uuid("account_id").notNull(),
-    pointsDelta: bigint("points_delta", { mode: "bigint" }).notNull(),
-    reason: text("reason").notNull(),
-    providerEventId: text("provider_event_id").notNull(),
-    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    pgPolicy("vh_loyalty_entry_tenant_policy", {
-      for: "all",
-      using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    unique("vh_loyalty_entry_uq_0").on(t.tenantId, t.providerEventId),
-    unique("vh_loyalty_entry_uq_1").on(t.tenantId, t.id),
-    foreignKey({
-      name: "vh_loyalty_entry_fk_0",
-      columns: [t.tenantId],
-      foreignColumns: [platformTenant.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "vh_loyalty_entry_fk_1",
-      columns: [t.tenantId, t.accountId],
-      foreignColumns: [vhLoyaltyAccount.tenantId, vhLoyaltyAccount.id],
-    }).onDelete("restrict"),
-    index("vh_loyalty_entry_ix_0").on(t.tenantId, t.accountId),
-    check("vh_loyalty_entry_ck_0", sql`points_delta <> 0`),
+    index("vh_loyalty_balance_user_ix").on(t.userId),
+    check("vh_loyalty_balance_nonnegative_ck", sql`${t.balance} >= 0`),
+    check("vh_loyalty_balance_version_ck", sql`${t.version} > 0`),
   ],
 ).enableRLS();

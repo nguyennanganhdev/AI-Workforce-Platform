@@ -62,31 +62,20 @@ erDiagram
   vh_project ||--o{ vh_invoice_line : "ownership"
   vh_invoice ||--o{ vh_invoice_line : "invoice_id"
   vh_fee_schedule |o--o{ vh_invoice_line : "fee_schedule_id"
-  vh_loyalty_account {
+  vh_loyalty_balance {
     uuid id PK
     uuid tenant_id FK
     text user_id FK
-    text provider
-    text external_account_ref
-    text status
+    text program
+    bigint balance
+    text tier
+    text provider_ref
     timestamp_with_time_zone created_at
     bigint version
     timestamp_with_time_zone updated_at
   }
-  platform_tenant ||--o{ vh_loyalty_account : "ownership"
-  users ||--o{ vh_loyalty_account : "user_id"
-  vh_loyalty_entry {
-    uuid id PK
-    uuid tenant_id FK
-    uuid account_id FK
-    bigint points_delta
-    text reason
-    text provider_event_id
-    timestamp_with_time_zone occurred_at
-    timestamp_with_time_zone created_at
-  }
-  platform_tenant ||--o{ vh_loyalty_entry : "ownership"
-  vh_loyalty_account ||--o{ vh_loyalty_entry : "account_id"
+  platform_tenant ||--o{ vh_loyalty_balance : "ownership"
+  users ||--o{ vh_loyalty_balance : "user_id"
   vh_payment_allocation {
     uuid tenant_id PK, FK
     uuid project_id FK
@@ -126,7 +115,7 @@ erDiagram
 
 Phiên bản biểu phí và hiệu lực áp dụng; nội dung bản đã publish được giữ bất biến.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -172,13 +161,13 @@ Checks:
 - `vh_fee_schedule_ck_3`: `currency ~ '^[A-Z]{3}$'`.
 - `vh_fee_schedule_ck_4`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_invoice
 
 Hóa đơn của căn hộ/người nhận với kỳ, hạn, tiền tệ và tổng tiền đối chiếu các dòng/phân bổ.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -228,13 +217,13 @@ Checks:
 - `vh_invoice_ck_2`: `currency ~ '^[A-Z]{3}$'`.
 - `vh_invoice_ck_3`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_invoice_line
 
 Dòng hóa đơn có quantity/đơn giá/tổng làm tròn; không sửa sau khi hóa đơn issue.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -279,22 +268,23 @@ Checks:
 - `vh_invoice_line_ck_3`: `total_minor = round(quantity * unit_price_minor)`.
 - `vh_invoice_line_ck_4`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
-## vh_loyalty_account
+## vh_loyalty_balance
 
-Tài khoản tích điểm của user theo nhà cung cấp.
+S? d? v? h?ng ?i?m theo ch??ng tr?nh c? d?n; snapshot t? nh? cung c?p, kh?ng ph?i s? c?i thanh to?n.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
 | `id` | `uuid` | yes | `gen_random_uuid()` | — |
 | `tenant_id` | `uuid` | yes | `—` | — |
 | `user_id` | `text` | yes | `—` | — |
-| `provider` | `text` | yes | `—` | — |
-| `external_account_ref` | `text` | no | `—` | — |
-| `status` | `text` | yes | `—` | `ACTIVE`, `SUSPENDED`, `CLOSED` |
+| `program` | `text` | yes | `—` | — |
+| `balance` | `bigint` | yes | `0` | — |
+| `tier` | `text` | yes | `—` | — |
+| `provider_ref` | `text` | no | `—` | — |
 | `created_at` | `timestamp with time zone` | yes | `now()` | — |
 | `version` | `bigint` | yes | `1` | — |
 | `updated_at` | `timestamp with time zone` | yes | `now()` | — |
@@ -303,8 +293,8 @@ Primary key: `id`.
 
 Unique keys:
 
-- `vh_loyalty_account_uq_0`: (`tenant_id`, `user_id`, `provider`).
-- `vh_loyalty_account_uq_1`: (`tenant_id`, `id`).
+- `vh_loyalty_balance_user_program_uq`: (`tenant_id`, `user_id`, `program`).
+- `vh_loyalty_balance_tenant_id_uq`: (`tenant_id`, `id`).
 
 Foreign keys:
 
@@ -313,59 +303,20 @@ Foreign keys:
 
 Indexes:
 
-- `vh_loyalty_account_ix_0`: (`user_id`).
+- `vh_loyalty_balance_user_ix`: (`user_id`).
 
 Checks:
 
-- `vh_loyalty_account_status_ck`: `"vh_loyalty_account"."status" in ('ACTIVE', 'SUSPENDED', 'CLOSED')`.
-- `vh_loyalty_account_ck_0`: `version > 0`.
+- `vh_loyalty_balance_nonnegative_ck`: `"vh_loyalty_balance"."balance" >= 0`.
+- `vh_loyalty_balance_version_ck`: `"vh_loyalty_balance"."version" > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
-
-## vh_loyalty_entry
-
-Bút toán cộng/trừ điểm append-only; số dư là tổng ledger, không do client nhập.
-
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
-
-| Column | PostgreSQL type | Required | Default | Declared values |
-|---|---|---|---|---|
-| `id` | `uuid` | yes | `gen_random_uuid()` | — |
-| `tenant_id` | `uuid` | yes | `—` | — |
-| `account_id` | `uuid` | yes | `—` | — |
-| `points_delta` | `bigint` | yes | `—` | — |
-| `reason` | `text` | yes | `—` | — |
-| `provider_event_id` | `text` | yes | `—` | — |
-| `occurred_at` | `timestamp with time zone` | yes | `—` | — |
-| `created_at` | `timestamp with time zone` | yes | `now()` | — |
-
-Primary key: `id`.
-
-Unique keys:
-
-- `vh_loyalty_entry_uq_0`: (`tenant_id`, `provider_event_id`).
-- `vh_loyalty_entry_uq_1`: (`tenant_id`, `id`).
-
-Foreign keys:
-
-- (`tenant_id`) → `platform_tenant` (`id`); ON DELETE `restrict`.
-- (`tenant_id`, `account_id`) → `vh_loyalty_account` (`tenant_id`, `id`); ON DELETE `restrict`.
-
-Indexes:
-
-- `vh_loyalty_entry_ix_0`: (`tenant_id`, `account_id`).
-
-Checks:
-
-- `vh_loyalty_entry_ck_0`: `points_delta <> 0`.
-
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_payment_allocation
 
 Sổ phân bổ thanh toán thành công vào hóa đơn, bất biến và không cho vượt dư nợ/giá trị payment.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -395,13 +346,13 @@ Checks:
 
 - `vh_payment_allocation_ck_0`: `amount_minor > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_payment_attempt
 
 Một lần thử thanh toán có idempotency/provider ref; SIMULATED không được quyết toán hóa đơn.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -452,4 +403,4 @@ Checks:
 - `vh_payment_attempt_ck_2`: `currency ~ '^[A-Z]{3}$'`.
 - `vh_payment_attempt_ck_3`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

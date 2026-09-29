@@ -78,7 +78,7 @@ erDiagram
 
 Hồ sơ chuyển cấp khi vi phạm SLA/an toàn/yêu cầu thủ công, người tiếp nhận và kết quả xử lý.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -138,13 +138,13 @@ Checks:
 - `vh_escalation_ck_2`: `status<>'RESOLVED' OR (resolved_at IS NOT NULL AND resolution_note IS NOT NULL)`.
 - `vh_escalation_ck_3`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_incident_sla
 
 Snapshot áp dụng SLA cho một incident, deadline và thời điểm phản hồi/giải quyết thực tế.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -194,13 +194,13 @@ Checks:
 - `vh_incident_sla_ck_3`: `resolved_at IS NULL OR resolved_at >= started_at`.
 - `vh_incident_sla_ck_4`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_sla_policy
 
 Phiên bản SLA theo dự án/category/severity với thời hạn phản hồi/giải quyết tính theo thời gian liên tục.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -250,4 +250,4 @@ Checks:
 - `vh_sla_policy_ck_4`: `effective_until IS NULL OR effective_until > effective_from`.
 - `vh_sla_policy_ck_5`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

@@ -31,7 +31,7 @@ export function dependencyViolation(from, to) {
     return 'Domain must use contracts/injected ports instead of another module implementation';
   }
   const schemaUtility = inAny('server/src/db/schema/columns.ts', 'server/src/db/schema/json.ts');
-  const identityBridge = from === 'server/src/db/schema/platform/identity.ts' && to === 'server/src/db/schema/core.ts';
+  const identityBridge = ['server/src/db/schema/core.ts', 'server/src/db/schema/plugins.ts', 'server/src/db/schema/tenant.ts'].includes(to);
   if (inside(from, 'server/src/db/schema/platform') && !schemaUtility && !identityBridge && !inAny('server/src/db/schema/platform', 'shared/platform')) {
     return 'Platform schema must not depend on domain schemas';
   }

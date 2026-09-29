@@ -1,4 +1,11 @@
 import {
+  foreignKey as tenantForeignKey,
+  unique as tenantUnique,
+} from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { tenantId, tenantPolicy } from "./tenant-scope";
+import { bigint, unique, check } from "drizzle-orm/pg-core";
+import {
   boolean,
   index,
   integer,
@@ -40,88 +47,108 @@ const updatedAt = () =>
  * from two servers can never collide, and a rule written against `mcp.server == "atlassian"` keeps
  * meaning the same thing after somebody renames the display title.
  */
-export const mcpServers = pgTable("mcp_servers", {
-  id: text("id").primaryKey(),
-  title: text("title").notNull(),
-  logo: text("logo"),
-  /** The vendor this server is maintained by, which is what the first-party rule is checked against. */
-  vendor: text("vendor").notNull(),
-  url: text("url").notNull(),
-  /**
-   * `first-party` for a curated entry, `custom` for one an administrator added by URL, `composio`
-   * for an app enabled through the broker.
-   *
-   * Recorded because the three are not the same risk. A curated entry has reviewed source provenance
-   * and a pinned host. A custom one is a URL somebody typed, and every surface that lists it says so.
-   * Storing which it is means the Plugins page, the audit trail and anybody reading the database
-   * later all agree about how a server got here, rather than inferring it from whether the host
-   * happens to still be in this build's catalogue.
-   *
-   * AND `composio` IS NOT MERELY A THIRD LABEL — it decides how the row is REACHED. `accessFor`
-   * reads this column to answer that a call is brokered, which is what makes it run in the account
-   * of the person asking rather than on the deployment's own credential, and `toolkitOf` then reads
-   * which app out of {@link mcpServers.url}. So this column and that one are ONE FACT IN TWO PLACES,
-   * and the invariant every writer keeps is that they are written together: a `composio://` url
-   * carries `provenance = composio`, and a row saying `composio` carries a url naming an app. Half
-   * of the pair is not a mislabelled row, it is a row dialled one way and governed another — see
-   * `requireNotBrokered` in `plugins/store.ts` for which writes are refused to keep the pair whole,
-   * and `addBrokeredApp` for the one that converts.
-   */
-  provenance: text("provenance").notNull().default("first-party"),
-  /**
-   * The vault row holding this server's credential, or null for a server that needs none.
-   *
-   * A pointer rather than the secret: the vault owns encryption, rotation and revocation, and a
-   * second copy of a token here would be a second thing to remember to revoke.
-   *
-   * A REAL foreign key, where this was `text` against a `uuid` primary key with none. That is not a
-   * typing nicety. The database was willing to hold a pointer to a credential row that did not
-   * exist, and it did: a test deleted the credential an administrator had registered and left this
-   * column addressing nothing, so the connector reported "no OAuth client registered yet" while the
-   * row still looked configured. Nothing caught it because nothing was checking.
-   *
-   * `restrict`, not `cascade` or `set null`. A credential this server points at should not be
-   * removable out from under it — the two legitimate ways to change it are replacing it, which
-   * repoints this column first, and removing the server, which takes the row with it. Anything else
-   * is a mistake, and should be refused rather than silently tidied into a working-looking state.
-   */
-  credentialId: uuid("credential_id").references(() => credentials.id, {
-    onDelete: "restrict",
-  }),
-  /**
-   * How this app connects, as it was resolved when somebody enabled it.
-   *
-   * Recorded rather than re-derived, because the catalogue is somebody else's and a vendor that
-   * starts publishing a new scheme for an app must not move live connections onto a different
-   * flow underneath them.
-   *
-   * THE VENDOR'S OWN SCHEME LITERAL, NOT A {@link BrokerConnection} KIND — `OAUTH2`, `DCR_OAUTH`,
-   * `API_KEY`, `BASIC`, `BEARER_TOKEN`, `BASIC_WITH_JWT`, `NO_AUTH`. Those two vocabularies name one
-   * fact, and this column is where a reader comes to find out which of them is written down, so it
-   * says: somebody looking here for `consent` or `fields` is reading the other one. Migration 0038
-   * backfilled every row whose provenance is `composio` to `OAUTH2`, because managed OAuth was the
-   * only config this deployment ever created and `addBrokeredApp` writes the row only after that
-   * config stands. A null is therefore not an older brokered row this deployment WROTE.
-   *
-   * WHICH IS NOT THE SAME AS A NULL BEING UNREACHABLE ON A BROKERED READ, and the difference has
-   * cost a verdict already. Every reader finds an app's row by {@link mcpServers.url}, which carries
-   * no unique index — two rows may name one app, and the one that answers is not always the one an
-   * enable wrote a scheme onto. Add a row inserted by hand, a row restored from elsewhere, or an app
-   * whose `BrokerConnection` was `unsupported`, and a brokered read really does meet a null here. So
-   * a reader must have three answers and not two: a key, a consent, and a column it cannot act on.
-   * `schemeKind` in `plugins/broker.ts` is that reading, and `confirmBrokeredConnection` is what
-   * happened without it — a null read as consent, and `verified: true` written on every page load
-   * over evidence nobody had.
-   */
-  authScheme: text("auth_scheme"),
-  /** What the deployment last heard back from it. `null` until the first successful listing. */
-  toolsRefreshedAt: timestamp("tools_refreshed_at", { withTimezone: true }),
-  /** The last failure, kept so the Plugins page can say why a server has no tools. */
-  lastError: text("last_error"),
-  addedBy: text("added_by"),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
+export const mcpServers = pgTable(
+  "mcp_servers",
+  {
+    status: text("status").notNull().default("ACTIVE"),
+    revision: bigint("revision", { mode: "bigint" }).notNull().default(sql`1`),
+    tenantId: tenantId(),
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    logo: text("logo"),
+    /** The vendor this server is maintained by, which is what the first-party rule is checked against. */
+    vendor: text("vendor").notNull(),
+    url: text("url").notNull(),
+    /**
+     * `first-party` for a curated entry, `custom` for one an administrator added by URL, `composio`
+     * for an app enabled through the broker.
+     *
+     * Recorded because the three are not the same risk. A curated entry has reviewed source provenance
+     * and a pinned host. A custom one is a URL somebody typed, and every surface that lists it says so.
+     * Storing which it is means the Plugins page, the audit trail and anybody reading the database
+     * later all agree about how a server got here, rather than inferring it from whether the host
+     * happens to still be in this build's catalogue.
+     *
+     * AND `composio` IS NOT MERELY A THIRD LABEL — it decides how the row is REACHED. `accessFor`
+     * reads this column to answer that a call is brokered, which is what makes it run in the account
+     * of the person asking rather than on the deployment's own credential, and `toolkitOf` then reads
+     * which app out of {@link mcpServers.url}. So this column and that one are ONE FACT IN TWO PLACES,
+     * and the invariant every writer keeps is that they are written together: a `composio://` url
+     * carries `provenance = composio`, and a row saying `composio` carries a url naming an app. Half
+     * of the pair is not a mislabelled row, it is a row dialled one way and governed another — see
+     * `requireNotBrokered` in `plugins/store.ts` for which writes are refused to keep the pair whole,
+     * and `addBrokeredApp` for the one that converts.
+     */
+    provenance: text("provenance").notNull().default("first-party"),
+    /**
+     * The vault row holding this server's credential, or null for a server that needs none.
+     *
+     * A pointer rather than the secret: the vault owns encryption, rotation and revocation, and a
+     * second copy of a token here would be a second thing to remember to revoke.
+     *
+     * A REAL foreign key, where this was `text` against a `uuid` primary key with none. That is not a
+     * typing nicety. The database was willing to hold a pointer to a credential row that did not
+     * exist, and it did: a test deleted the credential an administrator had registered and left this
+     * column addressing nothing, so the connector reported "no OAuth client registered yet" while the
+     * row still looked configured. Nothing caught it because nothing was checking.
+     *
+     * `restrict`, not `cascade` or `set null`. A credential this server points at should not be
+     * removable out from under it — the two legitimate ways to change it are replacing it, which
+     * repoints this column first, and removing the server, which takes the row with it. Anything else
+     * is a mistake, and should be refused rather than silently tidied into a working-looking state.
+     */
+    credentialId: uuid("credential_id").references(() => credentials.id, {
+      onDelete: "restrict",
+    }),
+    /**
+     * How this app connects, as it was resolved when somebody enabled it.
+     *
+     * Recorded rather than re-derived, because the catalogue is somebody else's and a vendor that
+     * starts publishing a new scheme for an app must not move live connections onto a different
+     * flow underneath them.
+     *
+     * THE VENDOR'S OWN SCHEME LITERAL, NOT A {@link BrokerConnection} KIND — `OAUTH2`, `DCR_OAUTH`,
+     * `API_KEY`, `BASIC`, `BEARER_TOKEN`, `BASIC_WITH_JWT`, `NO_AUTH`. Those two vocabularies name one
+     * fact, and this column is where a reader comes to find out which of them is written down, so it
+     * says: somebody looking here for `consent` or `fields` is reading the other one. Migration 0038
+     * backfilled every row whose provenance is `composio` to `OAUTH2`, because managed OAuth was the
+     * only config this deployment ever created and `addBrokeredApp` writes the row only after that
+     * config stands. A null is therefore not an older brokered row this deployment WROTE.
+     *
+     * WHICH IS NOT THE SAME AS A NULL BEING UNREACHABLE ON A BROKERED READ, and the difference has
+     * cost a verdict already. Every reader finds an app's row by {@link mcpServers.url}, which carries
+     * no unique index — two rows may name one app, and the one that answers is not always the one an
+     * enable wrote a scheme onto. Add a row inserted by hand, a row restored from elsewhere, or an app
+     * whose `BrokerConnection` was `unsupported`, and a brokered read really does meet a null here. So
+     * a reader must have three answers and not two: a key, a consent, and a column it cannot act on.
+     * `schemeKind` in `plugins/broker.ts` is that reading, and `confirmBrokeredConnection` is what
+     * happened without it — a null read as consent, and `verified: true` written on every page load
+     * over evidence nobody had.
+     */
+    authScheme: text("auth_scheme"),
+    /** What the deployment last heard back from it. `null` until the first successful listing. */
+    toolsRefreshedAt: timestamp("tools_refreshed_at", { withTimezone: true }),
+    /** The last failure, kept so the Plugins page can say why a server has no tools. */
+    lastError: text("last_error"),
+    addedBy: text("added_by"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    tenantForeignKey({
+      name: "mcp_servers_scope_fk_0",
+      columns: [table.tenantId, table.credentialId],
+      foreignColumns: [credentials.tenantId, credentials.id],
+    }).onDelete("restrict"),
+    tenantPolicy("mcp_servers_tenant_policy", table.tenantId),
+    unique("mcp_servers_tenant_id_key").on(table.tenantId, table.id),
+    check(
+      "mcp_servers_status_ck",
+      sql`status IN ('ACTIVE','SUSPENDED','RETIRED')`,
+    ),
+    check("mcp_servers_revision_ck", sql`revision > 0`),
+  ],
+).enableRLS();
 
 /**
  * A tool one server says it offers, as of the last listing.
@@ -136,6 +163,7 @@ export const mcpServers = pgTable("mcp_servers", {
 export const mcpTools = pgTable(
   "mcp_tools",
   {
+    tenantId: tenantId(),
     serverId: text("server_id")
       .notNull()
       .references(() => mcpServers.id, { onDelete: "cascade" }),
@@ -192,8 +220,21 @@ export const mcpTools = pgTable(
     version: text("version"),
     createdAt: createdAt(),
   },
-  (table) => [primaryKey({ columns: [table.serverId, table.name] })],
-);
+  (table) => [
+    tenantPolicy("mcp_tools_tenant_policy", table.tenantId),
+    tenantUnique("mcp_tools_tenant_pk").on(
+      table.tenantId,
+      table.serverId,
+      table.name,
+    ),
+    tenantForeignKey({
+      name: "mcp_tools_scope_fk_0",
+      columns: [table.tenantId, table.serverId],
+      foreignColumns: [mcpServers.tenantId, mcpServers.id],
+    }).onDelete("restrict"),
+    primaryKey({ columns: [table.serverId, table.name] }),
+  ],
+).enableRLS();
 
 /**
  * One person's Composio connection to one app.
@@ -220,6 +261,7 @@ export const mcpTools = pgTable(
 export const composioConnections = pgTable(
   "composio_connections",
   {
+    tenantId: tenantId(),
     /** The Composio app slug, lower case, as their directory spells it: `gmail`, `slack`. */
     toolkit: text("toolkit").notNull(),
     /**
@@ -362,11 +404,17 @@ export const composioConnections = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
+    tenantPolicy("composio_connections_tenant_policy", table.tenantId),
+    tenantUnique("composio_connections_tenant_pk").on(
+      table.tenantId,
+      table.toolkit,
+      table.userId,
+    ),
     primaryKey({ columns: [table.toolkit, table.userId] }),
     // "What has this person connected" is the settings page's only query, and offboarding's.
     index("composio_connections_user_idx").on(table.userId),
   ],
-);
+).enableRLS();
 
 /**
  * One person's grant on one MCP server: the row that makes a Bot answer as the asker.
@@ -390,6 +438,7 @@ export const composioConnections = pgTable(
 export const mcpUserCredentials = pgTable(
   "mcp_user_credentials",
   {
+    tenantId: tenantId(),
     serverId: text("server_id")
       .notNull()
       .references(() => mcpServers.id, { onDelete: "cascade" }),
@@ -430,10 +479,26 @@ export const mcpUserCredentials = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
+    tenantPolicy("mcp_user_credentials_tenant_policy", table.tenantId),
+    tenantUnique("mcp_user_credentials_tenant_pk").on(
+      table.tenantId,
+      table.serverId,
+      table.userId,
+    ),
+    tenantForeignKey({
+      name: "mcp_user_credentials_scope_fk_0",
+      columns: [table.tenantId, table.serverId],
+      foreignColumns: [mcpServers.tenantId, mcpServers.id],
+    }).onDelete("restrict"),
+    tenantForeignKey({
+      name: "mcp_user_credentials_scope_fk_1",
+      columns: [table.tenantId, table.credentialId],
+      foreignColumns: [credentials.tenantId, credentials.id],
+    }).onDelete("restrict"),
     primaryKey({ columns: [table.serverId, table.userId] }),
     index("mcp_user_credentials_user_idx").on(table.userId),
   ],
-);
+).enableRLS();
 
 /**
  * A packaged skill: a named instruction a person invokes with `/` and a Bot follows.
@@ -447,6 +512,9 @@ export const mcpUserCredentials = pgTable(
 export const skills = pgTable(
   "skills",
   {
+    status: text("status").notNull().default("ACTIVE"),
+    revision: bigint("revision", { mode: "bigint" }).notNull().default(sql`1`),
+    tenantId: tenantId(),
     id: text("id").primaryKey(),
     /**
      * Whose skill this is. Null means the deployment's: written by an administrator, or shipped,
@@ -478,10 +546,14 @@ export const skills = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
-    uniqueIndex("skills_slug_key").on(table.slug),
+    tenantPolicy("skills_tenant_policy", table.tenantId),
+    unique("skills_tenant_id_key").on(table.tenantId, table.id),
+    check("skills_status_ck", sql`status IN ('ACTIVE','SUSPENDED','RETIRED')`),
+    check("skills_revision_ck", sql`revision > 0`),
+    uniqueIndex("skills_slug_key").on(table.tenantId, table.slug),
     index("skills_owner_idx").on(table.ownerUserId),
   ],
-);
+).enableRLS();
 
 /**
  * The tools a skill says it needs. A row is a declaration, and a declaration is not a grant.
@@ -508,6 +580,7 @@ export const skills = pgTable(
 export const skillTools = pgTable(
   "skill_tools",
   {
+    tenantId: tenantId(),
     skillId: text("skill_id")
       .notNull()
       .references(() => skills.id, { onDelete: "cascade" }),
@@ -517,11 +590,22 @@ export const skillTools = pgTable(
     createdAt: createdAt(),
   },
   (table) => [
+    tenantPolicy("skill_tools_tenant_policy", table.tenantId),
+    tenantUnique("skill_tools_tenant_pk").on(
+      table.tenantId,
+      table.skillId,
+      table.ref,
+    ),
+    tenantForeignKey({
+      name: "skill_tools_scope_fk_0",
+      columns: [table.tenantId, table.skillId],
+      foreignColumns: [skills.tenantId, skills.id],
+    }).onDelete("restrict"),
     primaryKey({ columns: [table.skillId, table.ref] }),
     // Answering "which skills want this tool" without scanning, for the withdrawal question in #106.
     index("skill_tools_ref_idx").on(table.ref),
   ],
-);
+).enableRLS();
 
 /**
  * One Bot's hold on one plugin, whether that plugin is an MCP tool or a skill. A row is the grant.
@@ -539,6 +623,7 @@ export const skillTools = pgTable(
 export const pluginGrants = pgTable(
   "plugin_grants",
   {
+    tenantId: tenantId(),
     kind: text("kind").notNull(),
     ref: text("ref").notNull(),
     agentId: text("agent_id")
@@ -549,10 +634,22 @@ export const pluginGrants = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
+    tenantPolicy("plugin_grants_tenant_policy", table.tenantId),
+    tenantUnique("plugin_grants_tenant_pk").on(
+      table.tenantId,
+      table.kind,
+      table.ref,
+      table.agentId,
+    ),
+    tenantForeignKey({
+      name: "plugin_grants_scope_fk_0",
+      columns: [table.tenantId, table.agentId],
+      foreignColumns: [agents.tenantId, agents.id],
+    }).onDelete("restrict"),
     primaryKey({ columns: [table.kind, table.ref, table.agentId] }),
     index("plugin_grants_agent_idx").on(table.agentId),
   ],
-);
+).enableRLS();
 
 /**
  * A component authored in the browser rather than compiled into the build.
@@ -567,49 +664,60 @@ export const pluginGrants = pgTable(
  * The two share the grant surface and the publish gate, because an operator deciding what a Bot may
  * answer with should not have to know which of the two they are looking at.
  */
-export const sandboxedComponents = pgTable("sandboxed_components", {
-  /** The tool name the model calls. Namespaced on save so it can never collide with a compiled one. */
-  name: text("name").primaryKey(),
-  title: text("title").notNull(),
+export const sandboxedComponents = pgTable(
+  "sandboxed_components",
+  {
+    tenantId: tenantId(),
+    /** The tool name the model calls. Namespaced on save so it can never collide with a compiled one. */
+    name: text("name").primaryKey(),
+    title: text("title").notNull(),
 
-  /**
-   * The draft, which is what the playground edits, and the published copy, which is the only version
-   * that ever renders or reaches a model.
-   *
-   * Separate columns rather than one live body. Publishing without a rebuild is the whole point of
-   * this table, and it is also what makes an editor one keystroke away from changing what every Bot
-   * draws in production. A draft absorbs that: it is edited freely, previewed against sample
-   * arguments, and changes nothing until somebody publishes it. Same reason the catalogue splits a compiled
-   * component's description, and the same fail-closed property: null published means no model is
-   * ever offered this component, so a half-written draft cannot be called.
-   */
-  draftDescription: text("draft_description").notNull().default(""),
-  draftHtml: text("draft_html").notNull().default(""),
-  draftCss: text("draft_css").notNull().default(""),
-  /**
-   * Functions the body may call, as source. Runs inside `@jetbrains/websandbox`, so it reaches
-   * neither the page, the session nor the network except through what the host hands it.
-   */
-  draftJsFunctions: text("draft_js_functions").notNull().default(""),
-  /**
-   * The arguments this component takes, as JSON Schema. This is what the model fills in, so it is
-   * the difference between a component a model can use and one it will call wrongly forever.
-   */
-  draftArgumentSchema: jsonb("draft_argument_schema").notNull().default({}),
+    /**
+     * The draft, which is what the playground edits, and the published copy, which is the only version
+     * that ever renders or reaches a model.
+     *
+     * Separate columns rather than one live body. Publishing without a rebuild is the whole point of
+     * this table, and it is also what makes an editor one keystroke away from changing what every Bot
+     * draws in production. A draft absorbs that: it is edited freely, previewed against sample
+     * arguments, and changes nothing until somebody publishes it. Same reason the catalogue splits a compiled
+     * component's description, and the same fail-closed property: null published means no model is
+     * ever offered this component, so a half-written draft cannot be called.
+     */
+    draftDescription: text("draft_description").notNull().default(""),
+    draftHtml: text("draft_html").notNull().default(""),
+    draftCss: text("draft_css").notNull().default(""),
+    /**
+     * Functions the body may call, as source. Runs inside `@jetbrains/websandbox`, so it reaches
+     * neither the page, the session nor the network except through what the host hands it.
+     */
+    draftJsFunctions: text("draft_js_functions").notNull().default(""),
+    /**
+     * The arguments this component takes, as JSON Schema. This is what the model fills in, so it is
+     * the difference between a component a model can use and one it will call wrongly forever.
+     */
+    draftArgumentSchema: jsonb("draft_argument_schema").notNull().default({}),
 
-  publishedDescription: text("published_description"),
-  publishedHtml: text("published_html"),
-  publishedCss: text("published_css"),
-  publishedJsFunctions: text("published_js_functions"),
-  publishedArgumentSchema: jsonb("published_argument_schema"),
+    publishedDescription: text("published_description"),
+    publishedHtml: text("published_html"),
+    publishedCss: text("published_css"),
+    publishedJsFunctions: text("published_js_functions"),
+    publishedArgumentSchema: jsonb("published_argument_schema"),
 
-  /** Sample arguments the playground previews against, kept so the next editor sees what it draws. */
-  sampleArguments: jsonb("sample_arguments").notNull().default({}),
-  /** Bumped on every publish, so a reader can tell which version of a component drew something. */
-  revision: integer("revision").notNull().default(0),
-  published: boolean("published").notNull().default(false),
-  publishedAt: timestamp("published_at", { withTimezone: true }),
-  authoredBy: text("authored_by"),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
+    /** Sample arguments the playground previews against, kept so the next editor sees what it draws. */
+    sampleArguments: jsonb("sample_arguments").notNull().default({}),
+    /** Bumped on every publish, so a reader can tell which version of a component drew something. */
+    revision: integer("revision").notNull().default(0),
+    published: boolean("published").notNull().default(false),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    authoredBy: text("authored_by"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    tenantPolicy("sandboxed_components_tenant_policy", table.tenantId),
+    tenantUnique("sandboxed_components_tenant_pk").on(
+      table.tenantId,
+      table.name,
+    ),
+  ],
+).enableRLS();

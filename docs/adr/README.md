@@ -20,3 +20,5 @@ Draft contract cụ thể vẫn cần review producer/consumer trước triển 
 - [WorkOrder, redo và QC](domains/vinhomes/0004-workorder-redo-qc.md)
 - [A5 dùng versioned CleaningPlan JSON](domains/vinhomes/0005-a5-cleaning-plan-json.md)
 
+
+- [Unified OpenBot database and PostgreSQL transcript](platform/0013-unified-openbot-database.md)

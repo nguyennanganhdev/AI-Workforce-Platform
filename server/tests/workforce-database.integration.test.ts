@@ -179,6 +179,41 @@ async function slot(
 }
 
 describe("workforce PostgreSQL invariants", () => {
+  test("P0 case keeps issue candidates as JSON without losing report-to-incident linkage", () =>
+    isolated(async (tx, f) => {
+      const c = await insert(tx, "vh_case", {
+        ...f.scope,
+        resident_user_id: f.user,
+        apartment_id: f.apartment.id,
+        opened_by_membership_id: f.member.id,
+        status: "CLARIFYING",
+        summary: "Rò nước và sàn ướt",
+        opened_at: new Date(),
+        intake_state_json: {
+          issueCandidates: [
+            { category: "TECHNICAL", summary: "Rò nước", status: "READY" },
+            { category: "CLEANING", summary: "Sàn ướt", status: "NEEDS_CLARIFICATION" },
+          ],
+        },
+      });
+      expect(c.intake_state_json.issueCandidates).toHaveLength(2);
+      await rejectSavepoint(tx, (s) =>
+        s`update vh_case set intake_state_json='{"issueCandidates":{}}'::jsonb where id=${c.id}`,
+      );
+      const report = await insert(tx, "vh_resident_report", {
+        ...f.scope,
+        case_id: c.id,
+        incident_id: f.incident.id,
+        reporter_id: f.user,
+        reporter_membership_id: f.member.id,
+        apartment_id: f.apartment.id,
+        category: "TECHNICAL",
+        description: "Rò nước",
+        location_json: {},
+        status: "LINKED",
+      });
+      expect(report.incident_id).toBe(f.incident.id);
+    }));
   test("rejects cross-tenant, cross-project and cross-incident references", () =>
     isolated(async (tx, f) => {
       const other = await fixture(tx);
@@ -322,21 +357,15 @@ describe("workforce PostgreSQL invariants", () => {
         priority: 1,
         required: true,
       });
-      const edge = {
-        ...f.scope,
-        incident_id: f.incident.id,
-        task_id: f.task.id,
-        depends_on_task_id: second.id,
-        dependency_type: "FINISH_TO_START",
-        required: true,
-      };
-      await insert(tx, "vh_task_dependency", edge);
+      await tx`update vh_task set depends_on_json=${tx.json({ taskIds: [second.id] })} where id=${f.task.id}`;
       await rejectSavepoint(tx, (s) =>
-        insert(s, "vh_task_dependency", {
-          ...edge,
-          task_id: second.id,
-          depends_on_task_id: f.task.id,
-        }),
+        s`update vh_task set depends_on_json=${s.json({ taskIds: [f.task.id] })} where id=${second.id}`,
+      );
+      await rejectSavepoint(tx, (s) =>
+        s`update vh_task set depends_on_json=${s.json({ taskIds: [f.task.id] })} where id=${f.task.id}`,
+      );
+      await rejectSavepoint(tx, (s) =>
+        s`update vh_task set depends_on_json=${s.json({ taskIds: [second.id, second.id] })} where id=${f.task.id}`,
       );
     }));
 
@@ -558,229 +587,56 @@ describe("workforce PostgreSQL invariants", () => {
       );
     }));
 
-  test("agent specification freezes at evaluation and cannot publish without evidence", () =>
+  test("AgentSpec JSON freezes before evaluation and rejects incomplete publication", () =>
     isolated(async (tx, f) => {
-      const agent = await insert(tx, "platform_agent", {
-        tenant_id: f.tenant.id,
-        name: "Cleaner",
-        slug: randomUUID(),
-        owner_type: "USER",
-        owner_id: f.user,
-        status: "ACTIVE",
-      });
-      const version = await insert(tx, "platform_agent_version", {
-        tenant_id: f.tenant.id,
-        agent_id: agent.id,
-        version_no: 1,
-        status: "DRAFT",
-        spec_hash: "v1",
-        created_by: f.user,
-      });
-      const spec = await insert(tx, "platform_agent_spec", {
-        tenant_id: f.tenant.id,
-        agent_version_id: version.id,
-        schema_version: 1,
-        goal: "Assist",
-        instructions: "Propose only",
-        input_schema: {},
-        output_schema: {},
-        runtime_profile: "agentscope",
-        risk_level: "LOW",
-        spec_json: {},
-      });
-      await tx`update platform_agent_version set status='READY_FOR_EVAL' where id=${version.id}`;
-      await rejectSavepoint(
-        tx,
-        (s) =>
-          s`update platform_agent_spec set instructions='Different' where id=${spec.id}`,
-      );
-      await rejectSavepoint(
-        tx,
-        (s) => s`delete from platform_agent_spec where id=${spec.id}`,
-      );
-      await rejectSavepoint(
-        tx,
-        (s) =>
-          s`update platform_agent_version set status='DRAFT' where id=${version.id}`,
-      );
-      for (const status of [
-        "EVALUATING",
-        "READY_FOR_REVIEW",
-        "READY_FOR_PUBLISH",
-      ])
-        await tx`update platform_agent_version set status=${status} where id=${version.id}`;
-      await rejectSavepoint(
-        tx,
-        (s) =>
-          s`update platform_agent_version set status='PUBLISHED' where id=${version.id}`,
-      );
-      await rejectSavepoint(tx, (s) =>
-        insert(s, "platform_agent_deployment", {
-          tenant_id: f.tenant.id,
-          agent_version_id: version.id,
-          environment: "PRODUCTION",
-          scope_type: "TENANT",
-          scope_ref: f.tenant.id,
-          status: "ACTIVE",
-          deployed_at: new Date(),
-        }),
-      );
+      const agent = await insert(tx, "agents", { id: randomUUID(), type: "built_in", configuration: {}, tenant_id: f.tenant.id, name: "Test" });
+      const revision = await insert(tx, "platform_agent_version", { tenant_id: f.tenant.id, agent_id: agent.id, version_no: 1, status: "DRAFT", spec_hash: "ignored", created_by: f.user });
+      await rejectSavepoint(tx, s => s`update platform_agent_version set status='READY_FOR_EVAL' where id=${revision.id}`);
+      await tx`update platform_agent_version set spec_json=${tx.json({schemaVersion:1,instructions:"Propose only",capabilities:[]})} where id=${revision.id}`;
+      await tx`update platform_agent_version set status='READY_FOR_EVAL' where id=${revision.id}`;
+      await rejectSavepoint(tx, s => s`update platform_agent_version set spec_json='{}' where id=${revision.id}`);
+      await rejectSavepoint(tx, s => s`delete from platform_agent_version where id=${revision.id}`);
+      await rejectSavepoint(tx, s => s`update platform_agent_version set status='DRAFT' where id=${revision.id}`);
+      for (const status of ["EVALUATING","READY_FOR_REVIEW","READY_FOR_PUBLISH"])
+        await tx`update platform_agent_version set status=${status} where id=${revision.id}`;
+      await rejectSavepoint(tx, s => s`update platform_agent_version set status='PUBLISHED' where id=${revision.id}`);
+      await rejectSavepoint(tx, s => insert(s,"platform_agent_deployment", { tenant_id:f.tenant.id, agent_version_id:revision.id, environment:"PRODUCTION",scope_type:"TENANT",scope_ref:f.tenant.id,status:"ACTIVE",deployed_at:new Date() }));
     }));
 
-  test("a fully reviewed revision publishes and executes, while evaluation cases stay frozen", () =>
-    isolated(async (tx, f) => {
-      const reviewer = randomUUID();
-      await insert(tx, "users", {
-        id: reviewer,
-        email: `${reviewer}@workforce.test`,
-      });
-      const agent = await insert(tx, "platform_agent", {
-        tenant_id: f.tenant.id,
-        name: "Test",
-        slug: randomUUID(),
-        owner_type: "USER",
-        owner_id: f.user,
-        status: "ACTIVE",
-      });
-      const revision = await insert(tx, "platform_agent_version", {
-        tenant_id: f.tenant.id,
-        agent_id: agent.id,
-        version_no: 1,
-        status: "DRAFT",
-        spec_hash: "hash",
-        created_by: f.user,
-      });
-      await insert(tx, "platform_agent_spec", {
-        tenant_id: f.tenant.id,
-        agent_version_id: revision.id,
-        schema_version: 1,
-        goal: "Test",
-        instructions: "Read only",
-        input_schema: {},
-        output_schema: {},
-        runtime_profile: "test",
-        risk_level: "LOW",
-        spec_json: {},
-      });
-      const session = await insert(tx, "platform_workflow_session", {
-        tenant_id: f.tenant.id,
-        domain_namespace: "vinhomes",
-        subject_type: "INCIDENT",
-        subject_ref: f.incident.id,
-        runtime_provider: "test",
-        environment: "PRODUCTION",
-        status: "PENDING",
-        plan_snapshot: {},
-        trace_id: randomUUID(),
-      });
-      const step = await insert(tx, "platform_run_step", {
-        tenant_id: f.tenant.id,
-        workflow_session_id: session.id,
-        step_key: "analyze",
-        step_type: "AGENT",
-        status: "PENDING",
-        input_json: {},
-        output_json: {},
-        attempt_no: 1,
-      });
-      const runValues = {
-        tenant_id: f.tenant.id,
-        workflow_session_id: session.id,
-        run_step_id: step.id,
-        agent_id: agent.id,
-        agent_version_id: revision.id,
-        status: "RUNNING",
-        input_snapshot: {},
-        output_snapshot: {},
-        trace_id: randomUUID(),
-      };
-      await rejectSavepoint(tx, (s) =>
-        insert(s, "platform_agent_run", runValues),
-      );
-      const suite = await insert(tx, "platform_eval_suite", {
-        tenant_id: f.tenant.id,
-        name: "Safety",
-        version_no: 1,
-        type: "REGRESSION",
-        owner_id: reviewer,
-        status: "ACTIVE",
-      });
-      const evalCase = await insert(tx, "platform_eval_case", {
-        tenant_id: f.tenant.id,
-        eval_suite_id: suite.id,
-        case_code: "C1",
-        input_json: {},
-        expected_json: {},
-        severity: "HIGH",
-        tags: [],
-      });
-      for (const status of ["READY_FOR_EVAL", "EVALUATING"])
-        await tx`update platform_agent_version set status=${status} where id=${revision.id}`;
-      await insert(tx, "platform_eval_run", {
-        tenant_id: f.tenant.id,
-        agent_version_id: revision.id,
-        eval_suite_id: suite.id,
-        status: "PASSED",
-        environment_snapshot: {},
-        model_snapshot: {},
-        started_at: new Date(),
-        completed_at: new Date(),
-      });
-      await rejectSavepoint(
-        tx,
-        (s) =>
-          s`update platform_eval_case set expected_json='{}' where id=${evalCase.id}`,
-      );
-      const gate = await insert(tx, "platform_publish_gate", {
-        tenant_id: f.tenant.id,
-        agent_version_id: revision.id,
-        status: "PASSED",
-        completed_at: new Date(),
-      });
-      for (const gateType of ["CONTRACT", "QUALITY", "SAFETY", "REGRESSION"])
-        await insert(tx, "platform_publish_gate_result", {
-          tenant_id: f.tenant.id,
-          publish_gate_id: gate.id,
-          gate_type: gateType,
-          status: "PASS",
-          evidence_ref: "object:test",
-          details_json: {},
-        });
-      for (const approvalType of [
-        "DOMAIN",
-        "EVALUATION",
-        "SECURITY",
-        "PLATFORM",
-      ])
-        await insert(tx, "platform_publish_approval", {
-          tenant_id: f.tenant.id,
-          publish_gate_id: gate.id,
-          approval_type: approvalType,
-          reviewer_id: reviewer,
-          status: "APPROVED",
-          decided_at: new Date(),
-        });
-      for (const status of [
-        "READY_FOR_REVIEW",
-        "READY_FOR_PUBLISH",
-        "PUBLISHED",
-      ])
-        await tx`update platform_agent_version set status=${status} where id=${revision.id}`;
-      await insert(tx, "platform_agent_deployment", {
-        tenant_id: f.tenant.id,
-        agent_version_id: revision.id,
-        environment: "PRODUCTION",
-        scope_type: "TENANT",
-        scope_ref: f.tenant.id,
-        status: "ACTIVE",
-        deployed_at: new Date(),
-      });
-      const run = await insert(tx, "platform_agent_run", runValues);
-      expect(run.agent_version_id).toBe(revision.id);
+  test("JSON evaluation and independent approvals publish a revision and remain immutable", () =>
+    isolated(async (tx,f) => {
+      const reviewer=randomUUID();
+      await insert(tx,"users",{id:reviewer,email:`${reviewer}@workforce.test`});
+      const agent=await insert(tx,"agents",{id:randomUUID(),tenant_id:f.tenant.id,type:"built_in",name:"Test",configuration:{}});
+      const revision=await insert(tx,"platform_agent_version",{tenant_id:f.tenant.id,agent_id:agent.id,version_no:1,status:"DRAFT",spec_hash:"ignored",created_by:f.user,spec_json:{schemaVersion:1,instructions:"Read only",capabilities:[]}});
+      const session=await insert(tx,"platform_workflow_session",{tenant_id:f.tenant.id,domain_namespace:"vinhomes",subject_type:"INCIDENT",subject_ref:f.incident.id,runtime_provider:"test",environment:"PRODUCTION",status:"PENDING",plan_json:{steps:[{key:"analyze",dependsOn:[]}]},trace_id:randomUUID()});
+      const runValues={tenant_id:f.tenant.id,workflow_session_id:session.id,step_key:"analyze",agent_id:agent.id,agent_version_id:revision.id,status:"RUNNING",input_json:{},output_json:{},trace_id:randomUUID()};
+      await rejectSavepoint(tx,s=>insert(s,"platform_agent_run",runValues));
+      for(const status of ["READY_FOR_EVAL","EVALUATING"]) await tx`update platform_agent_version set status=${status} where id=${revision.id}`;
+      const values={tenant_id:f.tenant.id,agent_version_id:revision.id,status:"PASSED",result:"PASS",tests_json:[{code:"C1",input:{},expected:{}}],results_json:["CONTRACT","QUALITY","SAFETY","REGRESSION"].map(type=>({type,status:"PASS",evidenceRef:"object:test"})),evidence_json:[{ref:"object:test"}],evaluated_by:reviewer,environment_snapshot:{},model_snapshot:{},started_at:new Date(),completed_at:new Date()};
+      await rejectSavepoint(tx,s=>insert(s,"platform_eval_run",{...values,result:null}));
+      await rejectSavepoint(tx,s=>insert(s,"platform_eval_run",{...values,evidence_json:[]}));
+      const evaluation=await insert(tx,"platform_eval_run",values);
+      await rejectSavepoint(tx,s=>s`update platform_eval_run set results_json='[]' where id=${evaluation.id}`);
+      await tx`update platform_agent_version set status='READY_FOR_REVIEW' where id=${revision.id}`;
+      const approval={tenant_id:f.tenant.id,agent_version_id:revision.id,approval_type:"DOMAIN",reviewer_id:reviewer,status:"APPROVED",decided_at:new Date()};
+      await rejectSavepoint(tx,s=>insert(s,"platform_publish_approval",{...approval,reviewer_id:f.user}));
+      for(const approval_type of ["DOMAIN","EVALUATION","SECURITY","PLATFORM"]) await insert(tx,"platform_publish_approval",{...approval,approval_type});
+      for(const status of ["READY_FOR_PUBLISH","PUBLISHED"]) await tx`update platform_agent_version set status=${status} where id=${revision.id}`;
+      await insert(tx,"platform_agent_deployment",{tenant_id:f.tenant.id,agent_version_id:revision.id,environment:"PRODUCTION",scope_type:"TENANT",scope_ref:f.tenant.id,status:"ACTIVE",deployed_at:new Date()});
+      expect((await insert(tx,"platform_agent_run",runValues)).agent_version_id).toBe(revision.id);
+      await rejectSavepoint(tx,s=>s`update platform_workflow_session set plan_json='{"steps":[]}' where id=${session.id}`);
       await tx`update platform_agent_version set status='SUSPENDED' where id=${revision.id}`;
-      await rejectSavepoint(tx, (s) =>
-        insert(s, "platform_agent_run", runValues),
-      );
+      await rejectSavepoint(tx,s=>insert(s,"platform_agent_run",{...runValues,attempt_no:2}));
+    }));
+
+  test("workflow JSON rejects missing, duplicate, cyclic and dangling plan steps", () =>
+    isolated(async(tx,f)=>{
+      const value={tenant_id:f.tenant.id,domain_namespace:"vinhomes",subject_type:"INCIDENT",subject_ref:f.incident.id,runtime_provider:"test",environment:"DEVELOPMENT",status:"PENDING",trace_id:randomUUID()};
+      for(const plan_json of [{},{steps:[{key:"a",dependsOn:["b"]}]},{steps:[{key:"a",dependsOn:[]},{key:"a",dependsOn:[]}]},{steps:[{key:"a",dependsOn:["b"]},{key:"b",dependsOn:["a"]}]}])
+        await rejectSavepoint(tx,s=>insert(s,"platform_workflow_session",{...value,plan_json}));
+      await insert(tx,"platform_workflow_session",{...value,plan_json:{steps:[{key:"a",dependsOn:[]},{key:"b",dependsOn:["a"]}]}});
+      await rejectSavepoint(tx,s=>s`update vh_task set depends_on_json='{}' where id=${f.task.id}`);
     }));
 
   test("confirmation is scoped to the reporter and current resolution round", () =>

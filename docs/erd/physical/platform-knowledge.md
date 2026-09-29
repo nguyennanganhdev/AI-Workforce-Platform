@@ -55,7 +55,7 @@ erDiagram
 
 Kho tri thức có chủ sở hữu, phân loại bảo mật và trạng thái truy cập.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -90,13 +90,13 @@ Checks:
 - `platform_knowledge_base_status_ck`: `"platform_knowledge_base"."status" in ('ACTIVE', 'SUSPENDED', 'RETIRED')`.
 - `platform_knowledge_base_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_knowledge_revision
 
 Bản nội dung tài liệu có hash, storage reference và quyết định phê duyệt.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -138,13 +138,13 @@ Checks:
 - `platform_knowledge_revision_ck_1`: `status <> 'APPROVED' OR (approved_by IS NOT NULL AND approved_at IS NOT NULL)`.
 - `platform_knowledge_revision_ck_2`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_knowledge_source
 
 Nguồn tài liệu/URI thuộc một knowledge base, chưa phải một bản revision cụ thể.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -180,4 +180,4 @@ Checks:
 
 - `platform_knowledge_source_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

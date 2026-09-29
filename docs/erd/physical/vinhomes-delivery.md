@@ -48,7 +48,7 @@ erDiagram
 
 Kết quả command theo tenant/user/loại/key, ghim payload hash; retry trả kết quả đã commit.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -86,13 +86,13 @@ Checks:
 - `vh_command_receipt_completed_ck`: `status <> 'COMPLETED' OR (completed_at IS NOT NULL AND response_json IS NOT NULL)`.
 - `vh_command_receipt_version_ck`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_outbox
 
 Hàng gửi business event tới đích, có retry/lease/delivery state và unique event/destination.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -136,4 +136,4 @@ Checks:
 - `vh_outbox_ck_0`: `attempt_count >= 0`.
 - `vh_outbox_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

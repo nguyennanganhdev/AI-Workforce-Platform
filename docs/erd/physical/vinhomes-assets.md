@@ -46,7 +46,7 @@ erDiagram
 
 Thiết bị/tài sản cần bảo trì trong dự án/tòa/căn hộ, model/serial/bảo hành và metadata.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -96,13 +96,13 @@ Checks:
 - `vh_asset_ck_0`: `apartment_id IS NULL OR tower_id IS NOT NULL`.
 - `vh_asset_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_incident_asset
 
 Liên kết sự cố với tài sản ảnh hưởng/nghi ngờ/nguyên nhân, tránh nhét asset IDs tự do trong mô tả.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -132,4 +132,4 @@ Checks:
 
 - `vh_incident_asset_relationship_ck`: `"vh_incident_asset"."relationship" in ('AFFECTED', 'SUSPECTED', 'CAUSAL')`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

@@ -2,7 +2,7 @@
 
 Status: baseline theo thiết kế nguồn; implementation theo từng phase.
 
-Nguồn: [02_VINHOMES_DOMAIN_ERD.md](../../../../docx/02_VINHOMES_DOMAIN_ERD.md).
+Nguồn: [Database P0](../../../erd/01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md).
 
 ## Quyết định
 

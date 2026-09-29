@@ -97,7 +97,7 @@ erDiagram
 
 Lịch hẹn thực hiện work order và xác nhận với cư dân nếu cần, lưu lịch sử đổi lịch bằng bản ghi mới.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -157,13 +157,13 @@ Checks:
 - `vh_work_appointment_ck_1`: `status NOT IN ('CONFIRMED','COMPLETED') OR (confirmed_by_user_id IS NOT NULL AND confirmed_at IS NOT NULL)`.
 - `vh_work_appointment_ck_2`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_work_assignment
 
 Lịch sử giao/nhận/từ chối/thu hồi/hoàn tất work order cho đội hoặc nhân viên; mỗi work order tối đa một assignment đang hiệu lực.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -226,13 +226,13 @@ Checks:
 - `vh_work_assignment_ck_2`: `status NOT IN ('REJECTED','RELEASED','COMPLETED') OR ended_at IS NOT NULL`.
 - `vh_work_assignment_ck_3`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_work_progress
 
 Cập nhật hiện trường bất biến của kỹ thuật, giai đoạn/ETA có người xác nhận và business event nguồn; là nguồn tiến độ thực tế.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -294,4 +294,4 @@ Checks:
 - `vh_work_progress_ck_0`: `percent_complete IS NULL OR percent_complete BETWEEN 0 AND 100`.
 - `vh_work_progress_ck_1`: `expected_completion_at IS NULL OR (estimated_by_user_id IS NOT NULL AND estimate_reason IS NOT NULL)`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

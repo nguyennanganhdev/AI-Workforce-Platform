@@ -2,6 +2,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { getTableName, is, SQL } from "drizzle-orm";
 import { getTableConfig, PgDialect, PgTable } from "drizzle-orm/pg-core";
+import * as authorization from "../src/db/schema/authorization";
 import * as components from "../src/db/schema/components";
 import * as computer from "../src/db/schema/computer";
 import * as core from "../src/db/schema/core";
@@ -26,7 +27,6 @@ import * as sla from "../src/db/schema/domains/vinhomes/sla";
 import * as workforce from "../src/db/schema/domains/vinhomes/workforce";
 import * as agents from "../src/db/schema/platform/agents";
 import * as audit from "../src/db/schema/platform/audit";
-import * as bindings from "../src/db/schema/platform/bindings";
 import * as capabilities from "../src/db/schema/platform/capabilities";
 import * as collaboration from "../src/db/schema/platform/collaboration";
 import * as conversations from "../src/db/schema/platform/conversations";
@@ -35,9 +35,7 @@ import * as domains from "../src/db/schema/platform/domains";
 import * as evaluation from "../src/db/schema/platform/evaluation";
 import * as eventDelivery from "../src/db/schema/platform/event-delivery";
 import * as identity from "../src/db/schema/platform/identity";
-import * as knowledge from "../src/db/schema/platform/knowledge";
 import * as memory from "../src/db/schema/platform/memory";
-import * as policies from "../src/db/schema/platform/policies";
 import * as runtime from "../src/db/schema/platform/runtime";
 import * as plugins from "../src/db/schema/plugins";
 import * as voice from "../src/db/schema/voice";
@@ -45,20 +43,18 @@ import * as work from "../src/db/schema/work";
 import purposes from "./table-purposes.json";
 
 const groups: Record<string, Record<string, unknown>> = {
-  "shell-core": core,
-  "shell-computer": computer,
-  "shell-coworker": coworker,
-  "shell-components": components,
-  "shell-plugins": plugins,
-  "shell-work": work,
-  "shell-voice": voice,
+  authorization: authorization,
+  "foundation-core": core,
+  "foundation-computer": computer,
+  "foundation-coworker": coworker,
+  "foundation-components": components,
+  "foundation-plugins": plugins,
+  "foundation-work": work,
+  "foundation-voice": voice,
   "platform-identity": identity,
   "platform-domains": domains,
   "platform-agents": agents,
   "platform-capabilities": capabilities,
-  "platform-bindings": bindings,
-  "platform-knowledge": knowledge,
-  "platform-policies": policies,
   "platform-evaluation": evaluation,
   "platform-deployments": deployments,
   "platform-runtime": runtime,
@@ -92,15 +88,13 @@ const catalog = [
   "",
   "Sinh từ schema và `server/scripts/table-purposes.json`. Nhấn tên bảng để xem mọi trường, kiểu dữ liệu, khóa và ràng buộc.",
   "",
-  "[Luồng toàn hệ thống](../SYSTEM_FLOW.md) · [ERD quan hệ toàn dự án](PROJECT_RELATIONSHIPS.md)",
+  "[Luồng toàn hệ thống](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md) · [ERD quan hệ toàn dự án](PROJECT_RELATIONSHIPS.md)",
   "",
-  "| Bảng | Nhiệm vụ |",
-  "|---|---|",
 ];
 const relationships = [
   "# ERD quan hệ toàn dự án",
   "",
-  "Tất cả bảng và FK thực tế; chia sơ đồ chi tiết theo module tại [catalog](README.md). Cạnh này là FK, không phải luồng gọi API. Tham chiếu mềm domain/runtime được giải thích tại [system flow](../SYSTEM_FLOW.md).",
+  "Tất cả bảng và FK thực tế; chia sơ đồ chi tiết theo module tại [catalog](README.md). Cạnh này là FK, không phải luồng gọi API. Tham chiếu mềm domain/runtime được giải thích tại [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).",
   "",
 ];
 const seen = new Set<string>();
@@ -137,7 +131,7 @@ const index = [
   "",
   "Generated from Drizzle; update with `bun run db:erd`. Do not edit generated pages.",
   "",
-  "Logical intent and application responsibilities: [database design](../DATABASE_DESIGN.md).",
+  "Logical intent and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md).",
   "",
   "| Module | Tables |",
   "|---|---:|",
@@ -152,6 +146,12 @@ for (const [group, exports] of Object.entries(groups)) {
     )
     .sort((a, b) => getTableName(a).localeCompare(getTableName(b)));
   count += tables.length;
+  catalog.push(
+    `## ${group}`,
+    "",
+    "| Bảng | Nhiệm vụ | Liên kết tới |",
+    "|---|---|---|",
+  );
   relationships.push(
     `## ${group}`,
     "",
@@ -177,7 +177,7 @@ for (const [group, exports] of Object.entries(groups)) {
     if (!purposeByName[config.name])
       throw new Error(`Missing purpose: ${config.name}`);
     catalog.push(
-      `| [${config.name}](${group}.md#${config.name}) | ${purposeByName[config.name]} |`,
+      `| [${config.name}](${group}.md#${config.name}) | ${purposeByName[config.name]} | ${[...new Set(config.foreignKeys.map((fk) => getTableName(fk.reference().foreignTable)))].map((name) => `\`${name}\``).join(", ") || "—"} |`,
     );
     relationships.push(`  ${config.name}`);
     lines.push(`  ${config.name} {`);
@@ -230,7 +230,7 @@ for (const [group, exports] of Object.entries(groups)) {
       "",
       purposeByName[c.name] ?? "",
       "",
-      `Tenant RLS: **${c.enableRLS ? "enabled + forced by integrity migrations 0047/0049" : c.name === "platform_domain_package" ? "global package catalog; grants managed by operator" : "existing shell table; application authorization, no workforce tenant policy"}**.`,
+      `Tenant RLS: **${c.enableRLS ? "enabled + forced by integrity migrations 0047/0049/0052" : "global identity or deployment infrastructure; application/operator authorization required"}**.`,
       "",
       "| Column | PostgreSQL type | Required | Default | Declared values |",
       "|---|---|---|---|---|",
@@ -279,18 +279,19 @@ for (const [group, exports] of Object.entries(groups)) {
       lines.push("");
     }
     lines.push(
-      "Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).",
+      "Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).",
       "",
     );
   }
   await emit(`${group}.md`, lines);
+  catalog.push("");
   relationships.push("```", "");
 }
 index.push(
   "",
-  `Total: **${count} tables** including the existing OpenBot shell and shared users identity.`,
+  `Total: **${count} tables** in one product developed from OpenBot, including Vinhomes.`,
   "",
-  "[Nhiệm vụ từng bảng](TABLE_CATALOG.md) · [ERD toàn dự án](PROJECT_RELATIONSHIPS.md) · [Luồng nghiệp vụ](../SYSTEM_FLOW.md)",
+  "[Nhiệm vụ từng bảng](TABLE_CATALOG.md) · [ERD toàn dự án](PROJECT_RELATIONSHIPS.md) · [Luồng nghiệp vụ](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md)",
 );
 const unused = Object.keys(purposeByName).filter((name) => !seen.has(name));
 if (unused.length)

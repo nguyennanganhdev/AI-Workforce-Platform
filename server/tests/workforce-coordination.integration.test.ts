@@ -152,12 +152,12 @@ async function action(c: Connection, f: Awaited<ReturnType<typeof fixture>>) {
 }
 
 async function runtime(c: Connection, f: Awaited<ReturnType<typeof fixture>>) {
-  const agent = await insert(c, "platform_agent", {
+  const agent = await insert(c, "agents", {
+    id: randomUUID(),
+    type: "built_in",
+    configuration: {},
     tenant_id: f.tenant.id,
     name: "Coordinator",
-    slug: randomUUID(),
-    owner_type: "SYSTEM",
-    owner_id: "test",
     status: "ACTIVE",
   });
   const revision = await insert(c, "platform_agent_version", {
@@ -176,7 +176,7 @@ async function runtime(c: Connection, f: Awaited<ReturnType<typeof fixture>>) {
     runtime_provider: "test",
     environment: "DEVELOPMENT",
     status: "RUNNING",
-    plan_snapshot: {},
+    plan_json: { steps: [] },
     trace_id: randomUUID(),
   });
   const participant = await insert(c, "platform_session_participant", {
@@ -265,7 +265,7 @@ describe("coordination and field persistence", () => {
         runtime_provider: "test",
         environment: "PRODUCTION",
         status: "PENDING",
-        plan_snapshot: {},
+        plan_json: { steps: [] },
         trace_id: randomUUID(),
       });
       await rejectSavepoint(tx, (s) =>
@@ -332,16 +332,23 @@ describe("coordination and field persistence", () => {
 
   test("separates resident conversation ownership, order and immutable history", () =>
     isolated(async (tx, f) => {
-      const conv = await insert(tx, "platform_conversation", {
+      const conv = await insert(tx, "channels", {
+        id: randomUUID(),
+        name: "Resident",
+        description: "Test",
         tenant_id: f.tenant.id,
-        owner_user_id: f.user,
-        channel: "WEB",
+        created_by_user_id: f.user,
         locale: "vi",
-        status: "OPEN",
+        status: "ACTIVE",
+      });
+      await insert(tx, "channel_memberships", {
+        tenant_id: f.tenant.id,
+        channel_id: conv.id,
+        user_id: f.user,
       });
       const value = {
         tenant_id: f.tenant.id,
-        conversation_id: conv.id,
+        channel_id: conv.id,
         sequence_no: 1,
         role: "USER",
         author_user_id: f.user,
@@ -351,24 +358,24 @@ describe("coordination and field persistence", () => {
         idempotency_key: "message-1",
       };
       await rejectSavepoint(tx, (s) =>
-        insert(s, "platform_conversation_message", {
+        insert(s, "channel_messages", {
           ...value,
           author_user_id: "different-user",
         }),
       );
       await rejectSavepoint(tx, (s) =>
-        insert(s, "platform_conversation_message", {
+        insert(s, "channel_messages", {
           ...value,
           sequence_no: 2,
         }),
       );
-      const message = await insert(tx, "platform_conversation_message", value);
+      const message = await insert(tx, "channel_messages", value);
       await rejectSavepoint(
         tx,
         (s) =>
-          s`update platform_conversation_message set body='changed' where id=${message.id}`,
+          s`update channel_messages set body='changed' where id=${message.id}`,
       );
-      await insert(tx, "platform_conversation_message", {
+      await insert(tx, "channel_messages", {
         ...value,
         sequence_no: 2,
         idempotency_key: "message-2",
@@ -484,16 +491,23 @@ describe("coordination and field persistence", () => {
   test("handoff is durable, deduplicated and acknowledged only by its target session", () =>
     isolated(async (tx, f) => {
       const r = await runtime(tx, f);
-      const conv = await insert(tx, "platform_conversation", {
+      const conv = await insert(tx, "channels", {
+        id: randomUUID(),
+        name: "Resident",
+        description: "Test",
         tenant_id: f.tenant.id,
-        owner_user_id: f.user,
-        channel: "WEB",
+        created_by_user_id: f.user,
         locale: "vi",
-        status: "OPEN",
+        status: "ACTIVE",
+      });
+      await insert(tx, "channel_memberships", {
+        tenant_id: f.tenant.id,
+        channel_id: conv.id,
+        user_id: f.user,
       });
       const value = {
         tenant_id: f.tenant.id,
-        source_conversation_id: conv.id,
+        source_channel_id: conv.id,
         target_agent_version_id: r.revision.id,
         domain_namespace: "vinhomes",
         subject_type: "INCIDENT",

@@ -4,25 +4,10 @@ Generated from Drizzle. External entities in the diagram are foreign-key targets
 
 ```mermaid
 erDiagram
-  platform_agent {
-    uuid id PK
-    uuid tenant_id FK
-    text name
-    text slug
-    text description
-    text owner_type
-    text owner_id
-    text domain_namespace
-    text status
-    timestamp_with_time_zone created_at
-    bigint version
-    timestamp_with_time_zone updated_at
-  }
-  platform_tenant ||--o{ platform_agent : "ownership"
   platform_agent_change_request {
     uuid id PK
     uuid tenant_id FK
-    uuid agent_id FK
+    text agent_id FK
     text requested_by FK
     text request_type
     text description
@@ -32,7 +17,7 @@ erDiagram
     timestamp_with_time_zone updated_at
   }
   platform_tenant ||--o{ platform_agent_change_request : "ownership"
-  platform_agent ||--o{ platform_agent_change_request : "agent_id"
+  agents ||--o{ platform_agent_change_request : "agent_id"
   users ||--o{ platform_agent_change_request : "requested_by"
   platform_agent_spec {
     uuid id PK
@@ -55,7 +40,7 @@ erDiagram
   platform_agent_version {
     uuid id PK
     uuid tenant_id FK
-    uuid agent_id FK
+    text agent_id FK
     integer version_no
     text status
     text spec_hash
@@ -68,61 +53,21 @@ erDiagram
     timestamp_with_time_zone updated_at
   }
   platform_tenant ||--o{ platform_agent_version : "ownership"
-  platform_agent ||--o{ platform_agent_version : "agent_id"
+  agents ||--o{ platform_agent_version : "agent_id"
   users ||--o{ platform_agent_version : "created_by"
 ```
-
-## platform_agent
-
-Danh tính lâu dài của một agent quản trị, như lễ tân, điều phối hoặc chuyên gia kỹ thuật.
-
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
-
-| Column | PostgreSQL type | Required | Default | Declared values |
-|---|---|---|---|---|
-| `id` | `uuid` | yes | `gen_random_uuid()` | — |
-| `tenant_id` | `uuid` | yes | `—` | — |
-| `name` | `text` | yes | `—` | — |
-| `slug` | `text` | yes | `—` | — |
-| `description` | `text` | no | `—` | — |
-| `owner_type` | `text` | yes | `—` | `USER`, `TEAM`, `SYSTEM` |
-| `owner_id` | `text` | yes | `—` | — |
-| `domain_namespace` | `text` | no | `—` | — |
-| `status` | `text` | yes | `—` | `ACTIVE`, `SUSPENDED`, `RETIRED` |
-| `created_at` | `timestamp with time zone` | yes | `now()` | — |
-| `version` | `bigint` | yes | `1` | — |
-| `updated_at` | `timestamp with time zone` | yes | `now()` | — |
-
-Primary key: `id`.
-
-Unique keys:
-
-- `platform_agent_uq_0`: (`tenant_id`, `slug`).
-- `platform_agent_uq_1`: (`tenant_id`, `id`).
-
-Foreign keys:
-
-- (`tenant_id`) → `platform_tenant` (`id`); ON DELETE `restrict`.
-
-Checks:
-
-- `platform_agent_owner_type_ck`: `"platform_agent"."owner_type" in ('USER', 'TEAM', 'SYSTEM')`.
-- `platform_agent_status_ck`: `"platform_agent"."status" in ('ACTIVE', 'SUSPENDED', 'RETIRED')`.
-- `platform_agent_ck_0`: `version > 0`.
-
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
 
 ## platform_agent_change_request
 
 Yêu cầu thay đổi agent để theo dõi đề nghị, người yêu cầu và kết quả xử lý.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
 | `id` | `uuid` | yes | `gen_random_uuid()` | — |
 | `tenant_id` | `uuid` | yes | `—` | — |
-| `agent_id` | `uuid` | yes | `—` | — |
+| `agent_id` | `text` | yes | `—` | — |
 | `requested_by` | `text` | yes | `—` | — |
 | `request_type` | `text` | yes | `—` | — |
 | `description` | `text` | yes | `—` | — |
@@ -140,7 +85,7 @@ Unique keys:
 Foreign keys:
 
 - (`tenant_id`) → `platform_tenant` (`id`); ON DELETE `restrict`.
-- (`tenant_id`, `agent_id`) → `platform_agent` (`tenant_id`, `id`); ON DELETE `restrict`.
+- (`tenant_id`, `agent_id`) → `agents` (`tenant_id`, `id`); ON DELETE `restrict`.
 - (`requested_by`) → `users` (`id`); ON DELETE `restrict`.
 
 Indexes:
@@ -153,13 +98,13 @@ Checks:
 - `platform_agent_change_request_status_ck`: `"platform_agent_change_request"."status" in ('OPEN', 'ACCEPTED', 'REJECTED', 'IMPLEMENTED')`.
 - `platform_agent_change_request_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_agent_spec
 
 Mục tiêu, hướng dẫn, input/output schema và cấu hình hành vi của đúng một AgentVersion.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -196,19 +141,19 @@ Checks:
 - `platform_agent_spec_ck_0`: `schema_version > 0`.
 - `platform_agent_spec_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_agent_version
 
 Một phiên bản agent có spec hash và lifecycle đánh giá/publish/suspend/retire.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
 | `id` | `uuid` | yes | `gen_random_uuid()` | — |
 | `tenant_id` | `uuid` | yes | `—` | — |
-| `agent_id` | `uuid` | yes | `—` | — |
+| `agent_id` | `text` | yes | `—` | — |
 | `version_no` | `integer` | yes | `—` | — |
 | `status` | `text` | yes | `—` | `DRAFT`, `NEEDS_INPUT`, `READY_FOR_EVAL`, `EVALUATING`, `READY_FOR_REVIEW`, `READY_FOR_PUBLISH`, `PUBLISHED`, `SUSPENDED`, `RETIRED` |
 | `spec_hash` | `text` | yes | `—` | — |
@@ -231,7 +176,7 @@ Unique keys:
 Foreign keys:
 
 - (`tenant_id`) → `platform_tenant` (`id`); ON DELETE `restrict`.
-- (`tenant_id`, `agent_id`) → `platform_agent` (`tenant_id`, `id`); ON DELETE `restrict`.
+- (`tenant_id`, `agent_id`) → `agents` (`tenant_id`, `id`); ON DELETE `restrict`.
 - (`created_by`) → `users` (`id`); ON DELETE `restrict`.
 
 Indexes:
@@ -245,4 +190,4 @@ Checks:
 - `platform_agent_version_ck_0`: `version_no > 0`.
 - `platform_agent_version_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

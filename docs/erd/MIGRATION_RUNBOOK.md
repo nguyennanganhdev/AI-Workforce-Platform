@@ -1,103 +1,66 @@
-# Migration và vận hành
+# Chạy migration và điều kiện tích hợp
 
-## Artifact
+## Phạm vi
 
-- `0046_workforce_database.sql`: 127 bảng, PK/FK/unique/index/CHECK và RLS policies.
-- `0047_workforce_integrity.sql`: btree_gist, exclusion constraints, triggers, FORCE RLS.
-- `0048_coordination_and_field_operations.sql`: 25 bảng conversation/collaboration/workforce/dispatch/projection/SLA.
-- `0049_coordination_integrity.sql`: ràng buộc liên hàng/thời gian, checkpoint/handoff và FORCE RLS mới.
-- `0050_coordination_queue_indexes.sql`: index cho hàng đợi, lease và deadline.
-- Snapshot 0046–0050 và `_journal.json`: cùng ledger trong `server/drizzle/`.
+0051/0052 dành cho trường hợp đã xác nhận: local chưa có dữ liệu nghiệp vụ cần giữ. Không sửa 0000–0050; không migrate database thật trong tác vụ thiết kế này.
 
-File `.sql` là lệnh runner thực thi. `meta/*_snapshot.json` là ảnh chụp cấu trúc để
-Drizzle so sánh khi sinh migration tiếp theo, không chạy trực tiếp vào PostgreSQL.
-Snapshot 0049 gần giống 0048 vì trigger/exclusion/FORCE RLS không được snapshot;
-0050 khác ở tám index phục vụ hàng đợi/deadline. Đây không phải ba database khác nhau.
+0051 từ chối nếu bảng business/runtime hoặc nền bị ảnh hưởng có dữ liệu. Auth user có thể còn và được giữ ID. Nếu gặp từ chối, xuất dữ liệu và thiết kế mapping riêng; không bỏ guard, không tự TRUNCATE, không gán tenant đầu tiên.
 
-Drizzle không snapshot trigger/exclusion/FORCE RLS. Giữ migration 0047/0049 khi sinh migration
-mới; thay đổi guard nâng cao bằng SQL migration riêng. Không dùng `drizzle-kit push`
-để bỏ qua ledger. Không chỉnh migration đã áp dụng thật ở một môi trường.
+## Thứ tự triển khai
 
-## Database thử nghiệm
+1. Review SQL, schema và [đối chiếu](P0_REDESIGN_TRACKER.md).
+2. Tạo PostgreSQL/pgvector riêng cho test; tuyệt đối không lấy DATABASE_URL ứng dụng làm test fallback.
+3. Chạy ledger vào database test.
+4. Chạy schema/integration/architecture/typecheck và ERD check.
+5. Hoàn tất tích hợp ứng dụng bên dưới trước khi áp dụng vào môi trường phục vụ người dùng.
 
-Migration cũ 0000 yêu cầu extension `vector` dù workforce không lưu embedding. Dùng
-PostgreSQL có pgvector để khởi tạo database rỗng. 0047 yêu cầu btree_gist. Migration
-role có quyền extension/DDL; runtime role không có các quyền đó.
+PowerShell tại repo root (URL ví dụ, chỉ dành cho test):
 
 ```powershell
-docker run --detach --name workforce-db-test --publish 127.0.0.1:55439:5432 --env POSTGRES_PASSWORD=workforce_test --env POSTGRES_DB=workforce_test pgvector/pgvector:pg16
-$env:DATABASE_URL='postgres://postgres:workforce_test@127.0.0.1:55439/workforce_test'
-bun server/scripts/migrate.ts
-$env:TEST_DATABASE_URL=$env:DATABASE_URL
-bun test server/tests/workforce-schema.test.ts server/tests/workforce-database.integration.test.ts server/tests/workforce-coordination.integration.test.ts server/tests/workforce-migration.integration.test.ts server/tests/schema.test.ts server/tests/migration-journal.test.ts tests/architecture.test.mjs --timeout 30000
+$env:TEST_DATABASE_URL = 'postgres://postgres:test_password@127.0.0.1:55439/workforce_test'
+$env:DATABASE_URL = $env:TEST_DATABASE_URL
+bun run --cwd server db:migrate
+bun test ./server/tests/workforce-schema.test.ts ./server/tests/workforce-database.integration.test.ts ./server/tests/workforce-coordination.integration.test.ts ./server/tests/workforce-migration.integration.test.ts ./server/tests/unified-database.integration.test.ts --timeout 30000
+bun run --cwd server typecheck
+bun run typecheck:workforce
+bun run check:architecture
+bun run --cwd server db:erd:check
 ```
 
-Các giá trị trên chỉ dành cho container test. Integration test cần CREATE ROLE để
-thử RLS với role không sở hữu bảng; migration-upgrade test cần CREATEDB và tự xóa
-database ngẫu nhiên mà nó tạo. Test thường rollback; concurrency test để lại
-fixture tenant ngẫu nhiên. Luôn dùng database riêng, không chạy vào database nghiệp vụ.
+Kiểm tra endpoint trước khi chạy. Migration cần quyền DDL và nhìn thấy toàn bộ dữ liệu để preflight kiểm tra được; tài khoản API không dùng quyền đó.
 
-## Nâng cấp môi trường hiện có
+## Trạng thái runtime trước khi triển khai
 
-1. Backup theo quy trình vận hành, kiểm tra ledger hiện tại và quyền cài extensions (đã kiểm thử nâng cấp từ 0045).
-2. Chạy `bun server/scripts/migrate.ts` với DATABASE_URL của môi trường đích.
-3. Runner áp dụng migration còn thiếu theo thứ tự. Chạy lần hai không tạo lại bảng.
-4. Bootstrap tenant/membership bằng dữ liệu quản trị đã xác minh; không tự map toàn bộ
-   user vào một tenant mặc định hoặc tạo tài khoản demo trong môi trường thật.
-5. Cấp runtime role tối thiểu và tích hợp transaction-local tenant context trước khi dùng bảng.
+| Việc bắt buộc | Vì sao |
+|---|---|
+| Provision tenant và tenant membership | Global login không tự tạo đơn vị nghiệp vụ |
+| Bọc reader/writer bằng transaction tenant đã xác thực | Bảng nền mới fail closed nếu thiếu app.tenant_id |
+| Rà package sync, scheduler, audit, callbacks, credential resolver | Các đường nền hiện chưa đồng loạt truyền tenant |
+| Sửa loader theo deployment → AgentVersion → bindings | agents.configuration không được lách bản đã kiểm duyệt |
+| Reader/writer chat dùng channel_messages | UI hiện có chưa tự đổi nguồn transcript khi migrate |
+| Worker outbox và Intelligence adapter | Cần retry/replay/receipt; không tuyên bố đã đồng bộ từ schema |
+| Domain API kiểm tra người đọc/cư dân | RLS tenant không thay ACL cùng tenant |
+| AgentScope service/adapters | agent-runtime hiện là contract/scaffold |
+| Regression app/server/worker toàn bộ | Test database không chứng minh upstream application đã tương thích |
 
-Migration không drop/sửa cấu trúc bảng OpenBot. Sau khi có workforce data, xóa users
-có lịch sử bị FK RESTRICT theo thiết kế. Rollback ứng dụng có thể giữ bảng mới chưa dùng;
-khi đã có nghiệp vụ, ưu tiên forward fix, không drop history để rollback.
+Đây là thay đổi database có yêu cầu phối hợp triển khai ứng dụng, không phải migration tương thích ngược có thể bật riêng trên bản app cũ.
 
-Đợt triển khai này chỉ chạy migration trong container/database thử nghiệm riêng.
-Database phát triển/sản xuất của repo chưa được migrate bởi tác vụ này.
+## Context và database role
 
-## Runtime role và RLS
-
-Runtime cần NOSUPERUSER NOBYPASSRLS, không sở hữu bảng, không có TRUNCATE/DDL.
-Grant theo module/service, không blanket grant toàn public schema đang có credentials/auth.
-Global domain package chỉ cho runtime SELECT. Policy không tự cấp GRANT.
-
-Mỗi transaction theo tenant đặt context do backend đã xác thực:
+Runtime role NOSUPERUSER NOBYPASSRLS, không sở hữu bảng, không TRUNCATE/DDL. Grant theo service; không cấp SELECT toàn schema cho cư dân. Worker queue có quyền vận hành riêng.
 
 ```sql
 BEGIN;
--- Bind $1 to the tenant authorized by the server.
+-- $1 lấy từ authenticated membership, không tin tenant_id từ request.
 SELECT set_config('app.tenant_id', $1, true);
--- Scoped statements, including expectedVersion on aggregate updates.
+-- Truy vấn có quyền nghiệp vụ; UPDATE với expectedVersion/revision.
 COMMIT;
 ```
 
-`true` là transaction-local, tránh rò tenant context qua connection pool. Identity
-discovery trước chọn tenant dùng resolver chỉ đọc membership theo authenticated user;
-không mở BYPASSRLS cho toàn resident API. Worker xử lý từng tenant với context riêng
-hoặc role quản trị riêng được giới hạn quyền.
+Không SET tenant cấp connection rồi trả connection vào pool; dùng transaction-local context.
 
-## Transaction command
+## Metadata và khả năng khôi phục
 
-1. Xác thực user/tenant; BEGIN + SET LOCAL context.
-2. Kiểm tra tenant/property membership ACTIVE, in-date; khóa aggregate/slot cần thiết.
-3. Dùng domain receipt key `(tenant, actor_user, command_type, idempotency_key)`.
-   Key cùng hash trả response cũ; khác hash trả conflict.
-4. Mutation dùng expectedVersion; xác minh rule/approval/grant trong service.
-5. Ghi BusinessEvent + Outbox + completed receipt trong cùng transaction.
-6. COMMIT rồi mới trả success. External I/O đi qua worker với stable event/key.
+meta chỉ có journal/snapshot JSON; hướng dẫn đặt tại [server/drizzle/README](../../server/drizzle/README.md). Giữ mọi snapshot lịch sử. FORCE RLS, trigger và exclusion nằm trong SQL thủ công.
 
-Quy ước khóa: incident/session/slot/event/invoice trước child/payment. Batch khóa ID
-theo thứ tự tăng dần. Retry toàn transaction khi deadlock/serialization failure bằng
-idempotency key, không retry riêng SQL sau một external side effect.
-
-## Kiểm tra khi thay đổi schema
-
-```powershell
-bun run --filter server typecheck
-bun run typecheck:workforce
-bun run check:architecture
-bun run --filter server db:erd:check
-bun test server/tests/schema.test.ts server/tests/migration-journal.test.ts server/tests/workforce-schema.test.ts tests/architecture.test.mjs --timeout 30000
-```
-
-Thêm schema file vào config/barrel/exporter; generate từ thư mục server; review SQL và
-snapshot; chạy integration tests trên PostgreSQL; sinh lại `db:erd`. Commit schema,
-migration, snapshot và catalog cùng nhau. Metadata test không thay integration test.
+Migration mới từ chối dữ liệu không rỗng và chạy trong transaction của migrator. Không có down migration tự xóa schema. Với local disposable có thể tạo database mới riêng; với dữ liệu thực phải có backup/restore và mapping được kiểm chứng.

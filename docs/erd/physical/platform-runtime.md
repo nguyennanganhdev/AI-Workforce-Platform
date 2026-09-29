@@ -31,7 +31,7 @@ erDiagram
     uuid tenant_id FK
     uuid workflow_session_id FK
     uuid run_step_id FK
-    uuid agent_id FK
+    text agent_id FK
     uuid agent_version_id FK
     text status
     jsonb input_snapshot
@@ -46,7 +46,7 @@ erDiagram
   platform_tenant ||--o{ platform_agent_run : "ownership"
   platform_workflow_session ||--o{ platform_agent_run : "workflow_session_id"
   platform_run_step ||--o{ platform_agent_run : "workflow_session_id + run_step_id"
-  platform_agent ||--o{ platform_agent_run : "agent_id"
+  agents ||--o{ platform_agent_run : "agent_id"
   platform_agent_version ||--o{ platform_agent_run : "agent_id + agent_version_id"
   platform_execution_grant_ref {
     uuid id PK
@@ -160,7 +160,7 @@ erDiagram
 
 Đề xuất hành động từ runtime gửi tới domain; không tự cấp quyền thực thi nghiệp vụ.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -206,13 +206,13 @@ Checks:
 - `platform_action_proposal_status_ck`: `"platform_action_proposal"."status" in ('PROPOSED', 'ACCEPTED', 'REJECTED')`.
 - `platform_action_proposal_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_agent_run
 
 Một lần gọi AgentVersion trong step/session, lưu input/output snapshot và trace.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -220,7 +220,7 @@ Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
 | `tenant_id` | `uuid` | yes | `—` | — |
 | `workflow_session_id` | `uuid` | yes | `—` | — |
 | `run_step_id` | `uuid` | yes | `—` | — |
-| `agent_id` | `uuid` | yes | `—` | — |
+| `agent_id` | `text` | yes | `—` | — |
 | `agent_version_id` | `uuid` | yes | `—` | — |
 | `status` | `text` | yes | `—` | `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED` |
 | `input_snapshot` | `jsonb` | yes | `—` | — |
@@ -244,7 +244,7 @@ Foreign keys:
 - (`tenant_id`) → `platform_tenant` (`id`); ON DELETE `restrict`.
 - (`tenant_id`, `workflow_session_id`) → `platform_workflow_session` (`tenant_id`, `id`); ON DELETE `restrict`.
 - (`tenant_id`, `workflow_session_id`, `run_step_id`) → `platform_run_step` (`tenant_id`, `workflow_session_id`, `id`); ON DELETE `restrict`.
-- (`tenant_id`, `agent_id`) → `platform_agent` (`tenant_id`, `id`); ON DELETE `restrict`.
+- (`tenant_id`, `agent_id`) → `agents` (`tenant_id`, `id`); ON DELETE `restrict`.
 - (`tenant_id`, `agent_id`, `agent_version_id`) → `platform_agent_version` (`tenant_id`, `agent_id`, `id`); ON DELETE `restrict`.
 
 Indexes:
@@ -259,13 +259,13 @@ Checks:
 - `platform_agent_run_status_ck`: `"platform_agent_run"."status" in ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED')`.
 - `platform_agent_run_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_execution_grant_ref
 
 Soft reference tới grant của domain, với payload hash và hạn hiệu lực; không chứa secret thực thi.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -303,13 +303,13 @@ Checks:
 - `platform_execution_grant_ref_status_ck`: `"platform_execution_grant_ref"."status" in ('ACTIVE', 'CONSUMED', 'REVOKED', 'EXPIRED')`.
 - `platform_execution_grant_ref_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_run_step
 
 Bước thực thi trong workflow, kèm input/output, lần thử và trạng thái.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -351,13 +351,13 @@ Checks:
 - `platform_run_step_ck_0`: `attempt_no > 0`.
 - `platform_run_step_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_run_step_dependency
 
 Quan hệ tiền nhiệm giữa các bước trong cùng session; graph không được có chu trình.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -387,13 +387,13 @@ Checks:
 
 - `platform_run_step_dependency_ck_0`: `run_step_id <> depends_on_run_step_id`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_runtime_artifact
 
 Artifact có cấu trúc hoặc external storage reference do agent run tạo ra.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -420,13 +420,13 @@ Indexes:
 
 - `platform_runtime_artifact_ix_0`: (`tenant_id`, `agent_run_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_runtime_decision
 
 Quyết định vận hành được công bố trong workflow và run đã tạo quyết định đó.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -456,13 +456,13 @@ Indexes:
 - `platform_runtime_decision_ix_0`: (`tenant_id`, `workflow_session_id`, `created_by_run_id`).
 - `platform_runtime_decision_ix_1`: (`tenant_id`, `workflow_session_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_tool_call
 
 Lần gọi ToolVersion của agent run, kết quả policy, request/response và trạng thái.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -503,13 +503,13 @@ Checks:
 - `platform_tool_call_status_ck`: `"platform_tool_call"."status" in ('PENDING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'DENIED')`.
 - `platform_tool_call_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_workflow_session
 
 Một đợt phối hợp xử lý subject nghiệp vụ qua soft reference, tách khỏi conversation và vòng đời ticket.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -551,4 +551,4 @@ Checks:
 - `platform_workflow_session_ck_0`: `version > 0`.
 - `platform_workflow_session_environment_ck`: `"platform_workflow_session"."environment" in ('DEVELOPMENT', 'STAGING', 'PRODUCTION')`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

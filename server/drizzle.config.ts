@@ -18,7 +18,9 @@ export default defineConfig({
    * the schema file.
    */
   schema: [
+    "./src/db/schema/authorization.ts",
     "./src/db/schema/core.ts",
+    "./src/db/schema/tenant.ts",
     "./src/db/schema/computer.ts",
     "./src/db/schema/coworker.ts",
     "./src/db/schema/components.ts",
@@ -39,15 +41,12 @@ export default defineConfig({
     "./src/db/schema/domains/vinhomes/services.ts",
     "./src/db/schema/platform/agents.ts",
     "./src/db/schema/platform/audit.ts",
-    "./src/db/schema/platform/bindings.ts",
     "./src/db/schema/platform/capabilities.ts",
     "./src/db/schema/platform/deployments.ts",
     "./src/db/schema/platform/domains.ts",
     "./src/db/schema/platform/evaluation.ts",
     "./src/db/schema/platform/identity.ts",
-    "./src/db/schema/platform/knowledge.ts",
     "./src/db/schema/platform/memory.ts",
-    "./src/db/schema/platform/policies.ts",
     "./src/db/schema/platform/runtime.ts",
     "./src/db/schema/domains/vinhomes/assets.ts",
     "./src/db/schema/domains/vinhomes/dispatch.ts",

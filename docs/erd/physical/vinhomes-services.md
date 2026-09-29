@@ -228,7 +228,7 @@ erDiagram
 
 Đăng ký/cấp/thu hồi thẻ ra vào, lưu provider token reference thay raw access secret.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -268,13 +268,13 @@ Checks:
 - `vh_access_card_status_ck`: `"vh_access_card"."status" in ('REQUESTED', 'ACTIVE', 'SUSPENDED', 'REVOKED')`.
 - `vh_access_card_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_camera_request
 
 Yêu cầu xem camera theo vị trí/khoảng thời gian/mục đích, có reviewer và hạn truy cập.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -325,13 +325,13 @@ Checks:
 - `vh_camera_request_ck_0`: `to_at > from_at`.
 - `vh_camera_request_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_charging_session
 
 Phiên sạc xe có thiết bị/connector, năng lượng, phí và provider reference; trạng thái cần receipt thực tế.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -386,13 +386,13 @@ Checks:
 - `vh_charging_session_ck_3`: `currency ~ '^[A-Z]{3}$'`.
 - `vh_charging_session_ck_4`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_construction_permit
 
 Giấy phép thi công theo service request, nhà thầu, ngày và giờ được phép.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -434,13 +434,13 @@ Checks:
 - `vh_construction_permit_ck_0`: `end_date >= start_date`.
 - `vh_construction_permit_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_face_enrollment
 
 Đồng ý và trạng thái đăng ký nhận diện, chỉ lưu provider reference và dấu yêu cầu/xác nhận xóa.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -482,13 +482,13 @@ Checks:
 - `vh_face_enrollment_status_ck`: `"vh_face_enrollment"."status" in ('PENDING', 'ACTIVE', 'REJECTED', 'REVOKED')`.
 - `vh_face_enrollment_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_handover
 
 Lịch bàn giao căn hộ cho membership cư dân, checklist và kết quả hoàn thành.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -534,13 +534,13 @@ Checks:
 - `vh_handover_status_ck`: `"vh_handover"."status" in ('SCHEDULED', 'CONFIRMED', 'COMPLETED', 'CANCELLED')`.
 - `vh_handover_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_intercom_event
 
 Receipt sự kiện intercom từ provider, append-only và dedupe provider event.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -576,13 +576,13 @@ Indexes:
 - `vh_intercom_event_ix_1`: (`tenant_id`, `project_id`, `apartment_id`).
 - `vh_intercom_event_ix_2`: (`tenant_id`, `project_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_parking_permit
 
 Quyền đỗ xe theo căn hộ/membership và biển số; unique biển số active trong dự án.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -628,13 +628,13 @@ Checks:
 - `vh_parking_permit_ck_0`: `valid_until IS NULL OR valid_until > valid_from`.
 - `vh_parking_permit_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_pet_profile
 
 Đăng ký vật nuôi thuộc căn hộ/membership, thông tin tiêm phòng và trạng thái xét duyệt.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -678,13 +678,13 @@ Checks:
 - `vh_pet_profile_status_ck`: `"vh_pet_profile"."status" in ('PENDING', 'REGISTERED', 'REJECTED', 'ARCHIVED')`.
 - `vh_pet_profile_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_service_request
 
 Đăng ký dịch vụ cư dân có loại và payload có schema version; không tạo ticket giả cho mọi dịch vụ.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -733,13 +733,13 @@ Checks:
 - `vh_service_request_ck_1`: `requested_end_at IS NULL OR requested_end_at > requested_start_at`.
 - `vh_service_request_ck_2`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_visitor_pass
 
 Giấy phép khách thăm có khoảng hiệu lực gắn với service request đã xét duyệt.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -783,4 +783,4 @@ Checks:
 - `vh_visitor_pass_ck_0`: `valid_until > valid_from`.
 - `vh_visitor_pass_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

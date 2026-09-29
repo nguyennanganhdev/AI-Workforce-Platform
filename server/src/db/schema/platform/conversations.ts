@@ -1,4 +1,5 @@
-/** Persistence for coordination and field operations. See docs/erd/SYSTEM_FLOW.md. */
+import { agents, channels } from "../core";
+/** Persistence for coordination and field operations. See docs/erd/02_BUSINESS_ANALYSIS_IMPLEMENTATION.md. */
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -17,70 +18,11 @@ import { allowedValues, createdAt, jsonb, mutableColumns } from "../columns";
 import { platformAgentVersion } from "./agents";
 import { platformTenant, users } from "./identity";
 
-export const platformConversation = pgTable(
-  "platform_conversation",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    tenantId: uuid("tenant_id").notNull(),
-    ownerUserId: text("owner_user_id").notNull(),
-    channel: text("channel", {
-      enum: ["WEB", "MOBILE", "EMAIL", "VOICE", "EXTERNAL"],
-    }).notNull(),
-    externalProvider: text("external_provider"),
-    externalThreadRef: text("external_thread_ref"),
-    locale: text("locale").notNull(),
-    status: text("status", { enum: ["OPEN", "CLOSED", "ARCHIVED"] }).notNull(),
-    createdAt: createdAt(),
-    ...mutableColumns(),
-  },
-  (t) => [
-    pgPolicy("platform_conversation_tenant_policy", {
-      for: "all",
-      using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    unique("platform_conversation_uq_0").on(
-      t.tenantId,
-      t.externalProvider,
-      t.externalThreadRef,
-    ),
-    unique("platform_conversation_uq_1").on(t.tenantId, t.id),
-    foreignKey({
-      name: "platform_conversation_fk_0",
-      columns: [t.tenantId],
-      foreignColumns: [platformTenant.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "platform_conversation_fk_1",
-      columns: [t.ownerUserId],
-      foreignColumns: [users.id],
-    }).onDelete("restrict"),
-    index("platform_conversation_ix_0").on(t.ownerUserId),
-    allowedValues("platform_conversation_channel_ck", t.channel, [
-      "WEB",
-      "MOBILE",
-      "EMAIL",
-      "VOICE",
-      "EXTERNAL",
-    ]),
-    allowedValues("platform_conversation_status_ck", t.status, [
-      "OPEN",
-      "CLOSED",
-      "ARCHIVED",
-    ]),
-    check(
-      "platform_conversation_ck_0",
-      sql`(external_provider IS NULL) = (external_thread_ref IS NULL)`,
-    ),
-    check("platform_conversation_ck_1", sql`version > 0`),
-  ],
-).enableRLS();
-
-export const platformConversationSubject = pgTable(
-  "platform_conversation_subject",
+export const channelSubjects = pgTable(
+  "channel_subjects",
   {
     tenantId: uuid("tenant_id").notNull(),
-    conversationId: uuid("conversation_id").notNull(),
+    channelId: text("channel_id").notNull(),
     domainNamespace: text("domain_namespace").notNull(),
     subjectType: text("subject_type").notNull(),
     subjectRef: text("subject_ref").notNull(),
@@ -90,52 +32,54 @@ export const platformConversationSubject = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
-    pgPolicy("platform_conversation_subject_tenant_policy", {
+    pgPolicy("channel_subjects_tenant_policy", {
       for: "all",
       using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
       withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
     }),
     primaryKey({
-      name: "platform_conversation_subject_pk",
+      name: "channel_subjects_pk",
       columns: [
         t.tenantId,
-        t.conversationId,
+        t.channelId,
         t.domainNamespace,
         t.subjectType,
         t.subjectRef,
       ],
     }),
     foreignKey({
-      name: "platform_conversation_subject_fk_0",
+      name: "channel_subjects_fk_0",
       columns: [t.tenantId],
       foreignColumns: [platformTenant.id],
     }).onDelete("restrict"),
     foreignKey({
-      name: "platform_conversation_subject_fk_1",
-      columns: [t.tenantId, t.conversationId],
-      foreignColumns: [platformConversation.tenantId, platformConversation.id],
+      name: "channel_subjects_fk_1",
+      columns: [t.tenantId, t.channelId],
+      foreignColumns: [channels.tenantId, channels.id],
     }).onDelete("restrict"),
-    index("platform_conversation_subject_ix_1").on(
-      t.tenantId,
-      t.conversationId,
-    ),
-    allowedValues(
-      "platform_conversation_subject_relationship_ck",
-      t.relationship,
-      ["INTAKE", "TRACKING", "FOLLOW_UP"],
-    ),
+    index("channel_subjects_ix_1").on(t.tenantId, t.channelId),
+    allowedValues("channel_subjects_relationship_ck", t.relationship, [
+      "INTAKE",
+      "TRACKING",
+      "FOLLOW_UP",
+    ]),
   ],
 ).enableRLS();
 
-export const platformConversationMessage = pgTable(
-  "platform_conversation_message",
+export const channelMessages = pgTable(
+  "channel_messages",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tenantId: uuid("tenant_id").notNull(),
-    conversationId: uuid("conversation_id").notNull(),
+    channelId: text("channel_id").notNull(),
     sequenceNo: bigint("sequence_no", { mode: "bigint" }).notNull(),
     role: text("role", { enum: ["USER", "ASSISTANT", "SYSTEM"] }).notNull(),
     authorUserId: text("author_user_id"),
+    authorAgentId: text("author_agent_id"),
+    contentParts: jsonb("content_parts")
+      .$type<unknown[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     agentVersionId: uuid("agent_version_id"),
     body: text("body").notNull(),
     contentSchemaVersion: integer("content_schema_version").notNull(),
@@ -147,79 +91,80 @@ export const platformConversationMessage = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
-    pgPolicy("platform_conversation_message_tenant_policy", {
+    pgPolicy("channel_messages_tenant_policy", {
       for: "all",
       using: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
       withCheck: sql`${t.tenantId} = nullif(current_setting('app.tenant_id', true), '')::uuid`,
     }),
-    unique("platform_conversation_message_uq_0").on(
-      t.tenantId,
-      t.conversationId,
-      t.sequenceNo,
+    foreignKey({
+      name: "channel_messages_agent_fk",
+      columns: [t.tenantId, t.authorAgentId],
+      foreignColumns: [agents.tenantId, agents.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "channel_messages_agent_version_fk",
+      columns: [t.tenantId, t.authorAgentId, t.agentVersionId],
+      foreignColumns: [
+        platformAgentVersion.tenantId,
+        platformAgentVersion.agentId,
+        platformAgentVersion.id,
+      ],
+    }).onDelete("restrict"),
+    check(
+      "channel_messages_parts_ck",
+      sql`jsonb_typeof(content_parts) = 'array'`,
     ),
-    unique("platform_conversation_message_uq_1").on(
+    unique("channel_messages_uq_0").on(t.tenantId, t.channelId, t.sequenceNo),
+    unique("channel_messages_uq_1").on(
       t.tenantId,
-      t.conversationId,
+      t.channelId,
       t.idempotencyKey,
     ),
-    unique("platform_conversation_message_uq_2").on(t.tenantId, t.id),
-    unique("platform_conversation_message_uq_3").on(
-      t.tenantId,
-      t.conversationId,
-      t.id,
-    ),
+    unique("channel_messages_uq_2").on(t.tenantId, t.id),
+    unique("channel_messages_uq_3").on(t.tenantId, t.channelId, t.id),
     foreignKey({
-      name: "platform_conversation_message_fk_0",
+      name: "channel_messages_fk_0",
       columns: [t.tenantId],
       foreignColumns: [platformTenant.id],
     }).onDelete("restrict"),
     foreignKey({
-      name: "platform_conversation_message_fk_1",
-      columns: [t.tenantId, t.conversationId],
-      foreignColumns: [platformConversation.tenantId, platformConversation.id],
+      name: "channel_messages_fk_1",
+      columns: [t.tenantId, t.channelId],
+      foreignColumns: [channels.tenantId, channels.id],
     }).onDelete("restrict"),
     foreignKey({
-      name: "platform_conversation_message_fk_2",
+      name: "channel_messages_fk_2",
       columns: [t.authorUserId],
       foreignColumns: [users.id],
     }).onDelete("restrict"),
     foreignKey({
-      name: "platform_conversation_message_fk_3",
+      name: "channel_messages_fk_3",
       columns: [t.tenantId, t.agentVersionId],
       foreignColumns: [platformAgentVersion.tenantId, platformAgentVersion.id],
     }).onDelete("restrict"),
     foreignKey({
-      name: "platform_conversation_message_fk_4",
-      columns: [t.tenantId, t.conversationId, t.replyToMessageId],
-      foreignColumns: [t.tenantId, t.conversationId, t.id],
+      name: "channel_messages_fk_4",
+      columns: [t.tenantId, t.channelId, t.replyToMessageId],
+      foreignColumns: [t.tenantId, t.channelId, t.id],
     }).onDelete("restrict"),
-    index("platform_conversation_message_ix_0").on(t.authorUserId),
-    index("platform_conversation_message_ix_2").on(
+    index("channel_messages_ix_0").on(t.authorUserId),
+    index("channel_messages_ix_2").on(t.tenantId, t.agentVersionId),
+    index("channel_messages_ix_3").on(t.tenantId, t.channelId),
+    index("channel_messages_ix_4").on(
       t.tenantId,
-      t.agentVersionId,
-    ),
-    index("platform_conversation_message_ix_3").on(
-      t.tenantId,
-      t.conversationId,
-    ),
-    index("platform_conversation_message_ix_4").on(
-      t.tenantId,
-      t.conversationId,
+      t.channelId,
       t.replyToMessageId,
     ),
-    allowedValues("platform_conversation_message_role_ck", t.role, [
+    allowedValues("channel_messages_role_ck", t.role, [
       "USER",
       "ASSISTANT",
       "SYSTEM",
     ]),
-    check("platform_conversation_message_ck_0", sql`sequence_no > 0`),
+    check("channel_messages_ck_0", sql`sequence_no > 0`),
+    check("channel_messages_ck_1", sql`content_schema_version > 0`),
     check(
-      "platform_conversation_message_ck_1",
-      sql`content_schema_version > 0`,
-    ),
-    check(
-      "platform_conversation_message_ck_2",
-      sql`(role='USER' AND author_user_id IS NOT NULL AND agent_version_id IS NULL) OR (role='ASSISTANT' AND agent_version_id IS NOT NULL AND author_user_id IS NULL) OR (role='SYSTEM' AND agent_version_id IS NULL AND author_user_id IS NULL)`,
+      "channel_messages_ck_2",
+      sql`(role='USER' AND author_user_id IS NOT NULL AND author_agent_id IS NULL AND agent_version_id IS NULL) OR (role='ASSISTANT' AND author_agent_id IS NOT NULL AND author_user_id IS NULL) OR (role='SYSTEM' AND author_user_id IS NULL AND author_agent_id IS NULL AND agent_version_id IS NULL)`,
     ),
   ],
 ).enableRLS();

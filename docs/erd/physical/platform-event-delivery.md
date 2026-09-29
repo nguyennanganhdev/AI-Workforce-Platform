@@ -32,7 +32,7 @@ erDiagram
 
 Inbox dedupe từng event/consumer, lưu trạng thái xử lý, lease/retry và hash chống nhận cùng ID khác nội dung.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -79,4 +79,4 @@ Checks:
 - `platform_event_receipt_ck_2`: `status<>'PROCESSED' OR processed_at IS NOT NULL`.
 - `platform_event_receipt_ck_3`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

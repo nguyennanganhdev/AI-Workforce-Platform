@@ -31,7 +31,9 @@ test('schema utilities and the identity bridge do not open a backdoor to shell r
   assert.equal(dependencyViolation(platform, 'server/src/db/schema/columns.ts'), null);
   assert.equal(dependencyViolation(domain, 'server/src/db/schema/columns.ts'), null);
   assert.equal(dependencyViolation('server/src/db/schema/platform/identity.ts', 'server/src/db/schema/core.ts'), null);
-  assert.ok(dependencyViolation(platform, 'server/src/db/schema/core.ts'));
+  assert.equal(dependencyViolation(platform, 'server/src/db/schema/core.ts'), null);
+  assert.equal(dependencyViolation(platform, 'server/src/db/schema/plugins.ts'), null);
+  assert.ok(dependencyViolation(platform, 'server/src/agents/runtime-agents.ts'));
   assert.ok(dependencyViolation(domain, 'server/src/db/schema/core.ts'));
   assert.ok(dependencyViolation(domain, 'server/src/db/client.ts'));
 });

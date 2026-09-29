@@ -1,6 +1,6 @@
 # Bản đồ kiến trúc triển khai
 
-Thiết kế gốc: [04 — System Design](../../docx/04_SYSTEM_DESIGN_STRUCTURE_ARCHITECTURE.md).
+Thiết kế gốc: [04 — System Design](../erd/02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 Các quyết định platform/domain giữ nguyên; nền OpenBot đã nhập; module custom tiếp tục được triển khai theo use case.
 
 ## Ranh giới hệ thống

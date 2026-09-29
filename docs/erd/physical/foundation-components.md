@@ -1,4 +1,4 @@
-# shell-components
+# foundation-components
 
 Generated from Drizzle. External entities in the diagram are foreign-key targets owned by another module.
 
@@ -37,9 +37,9 @@ erDiagram
 
 ## component_exclusions
 
-Cấu hình loại trừ component theo scope của shell.
+Cấu hình loại trừ component theo scope của nền sản phẩm.
 
-Tenant RLS: **existing shell table; application authorization, no workforce tenant policy**.
+Tenant RLS: **global identity or deployment infrastructure; application/operator authorization required**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -56,13 +56,13 @@ Foreign keys:
 - (`component_name`) → `components` (`name`); ON DELETE `cascade`.
 - (`agent_id`) → `agents` (`id`); ON DELETE `cascade`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## component_functions
 
 Các function được khai báo cho component để phục vụ gọi và kiểm soát chức năng.
 
-Tenant RLS: **existing shell table; application authorization, no workforce tenant policy**.
+Tenant RLS: **global identity or deployment infrastructure; application/operator authorization required**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -78,13 +78,13 @@ Foreign keys:
 
 - (`component_name`) → `components` (`name`); ON DELETE `cascade`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## components
 
 Metadata component được quản lý bởi shell/plugin infrastructure.
 
-Tenant RLS: **existing shell table; application authorization, no workforce tenant policy**.
+Tenant RLS: **global identity or deployment infrastructure; application/operator authorization required**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -101,4 +101,4 @@ Tenant RLS: **existing shell table; application authorization, no workforce tena
 
 Primary key: `name`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

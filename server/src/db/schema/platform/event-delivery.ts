@@ -1,4 +1,4 @@
-/** Persistence for coordination and field operations. See docs/erd/SYSTEM_FLOW.md. */
+/** Persistence for coordination and field operations. See docs/erd/02_BUSINESS_ANALYSIS_IMPLEMENTATION.md. */
 import { sql } from "drizzle-orm";
 import {
   bigint,

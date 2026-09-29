@@ -7,7 +7,7 @@ erDiagram
   platform_handoff {
     uuid id PK
     uuid tenant_id FK
-    uuid source_conversation_id FK
+    text source_channel_id FK
     uuid source_workflow_session_id FK
     uuid target_agent_version_id FK
     uuid target_workflow_session_id FK
@@ -33,7 +33,7 @@ erDiagram
     timestamp_with_time_zone updated_at
   }
   platform_tenant ||--o{ platform_handoff : "ownership"
-  platform_conversation |o--o{ platform_handoff : "source_conversation_id"
+  channels |o--o{ platform_handoff : "source_channel_id"
   platform_workflow_session |o--o{ platform_handoff : "source_workflow_session_id"
   platform_agent_version ||--o{ platform_handoff : "target_agent_version_id"
   platform_workflow_session |o--o{ platform_handoff : "target_workflow_session_id"
@@ -148,13 +148,13 @@ erDiagram
 
 Bàn giao bền vững từ conversation/session tới agent đích và session nhận, có idempotency/hash/ack/retry/expiry.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
 | `id` | `uuid` | yes | `gen_random_uuid()` | — |
 | `tenant_id` | `uuid` | yes | `—` | — |
-| `source_conversation_id` | `uuid` | no | `—` | — |
+| `source_channel_id` | `text` | no | `—` | — |
 | `source_workflow_session_id` | `uuid` | no | `—` | — |
 | `target_agent_version_id` | `uuid` | yes | `—` | — |
 | `target_workflow_session_id` | `uuid` | no | `—` | — |
@@ -189,14 +189,14 @@ Unique keys:
 Foreign keys:
 
 - (`tenant_id`) → `platform_tenant` (`id`); ON DELETE `restrict`.
-- (`tenant_id`, `source_conversation_id`) → `platform_conversation` (`tenant_id`, `id`); ON DELETE `restrict`.
+- (`tenant_id`, `source_channel_id`) → `channels` (`tenant_id`, `id`); ON DELETE `restrict`.
 - (`tenant_id`, `source_workflow_session_id`) → `platform_workflow_session` (`tenant_id`, `id`); ON DELETE `restrict`.
 - (`tenant_id`, `target_agent_version_id`) → `platform_agent_version` (`tenant_id`, `id`); ON DELETE `restrict`.
 - (`tenant_id`, `target_workflow_session_id`) → `platform_workflow_session` (`tenant_id`, `id`); ON DELETE `restrict`.
 
 Indexes:
 
-- `platform_handoff_ix_1`: (`tenant_id`, `source_conversation_id`).
+- `platform_handoff_ix_1`: (`tenant_id`, `source_channel_id`).
 - `platform_handoff_ready_ix`: (`tenant_id`, `status`, `next_attempt_at`).
 - `platform_handoff_ix_2`: (`tenant_id`, `source_workflow_session_id`).
 - `platform_handoff_ix_3`: (`tenant_id`, `target_agent_version_id`).
@@ -205,20 +205,20 @@ Indexes:
 Checks:
 
 - `platform_handoff_status_ck`: `"platform_handoff"."status" in ('OFFERED', 'ACCEPTED', 'COMPLETED', 'FAILED', 'EXPIRED', 'CANCELLED')`.
-- `platform_handoff_ck_0`: `num_nonnulls(source_conversation_id, source_workflow_session_id) = 1`.
+- `platform_handoff_ck_0`: `num_nonnulls(source_channel_id, source_workflow_session_id) = 1`.
 - `platform_handoff_ck_1`: `attempt_count >= 0`.
 - `platform_handoff_ck_2`: `expires_at > created_at`.
 - `platform_handoff_ck_3`: `status NOT IN ('ACCEPTED','COMPLETED') OR (target_workflow_session_id IS NOT NULL AND accepted_at IS NOT NULL)`.
 - `platform_handoff_ck_4`: `status<>'COMPLETED' OR completed_at IS NOT NULL`.
 - `platform_handoff_ck_5`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_runtime_checkpoint
 
 Mốc khôi phục bất biến của session gồm provider/version/schema/hash/object reference, cursor tin nhắn và fencing token.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -261,13 +261,13 @@ Checks:
 - `platform_runtime_checkpoint_ck_2`: `last_message_sequence >= 0`.
 - `platform_runtime_checkpoint_ck_3`: `fencing_token >= 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_runtime_message
 
 Trao đổi tác nghiệp nội bộ giữa các participant có thứ tự/reply/run provenance; không phải dữ liệu cư dân được xem hoặc chain-of-thought.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -320,13 +320,13 @@ Checks:
 - `platform_runtime_message_ck_1`: `schema_version > 0`.
 - `platform_runtime_message_ck_2`: `(kind='SYSTEM' AND sender_participant_id IS NULL AND agent_run_id IS NULL) OR (kind<>'SYSTEM' AND sender_participant_id IS NOT NULL)`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_session_control
 
 Thông tin điều khiển session: mục đích, phiên cha, coordinator, initiation key, lease/fencing, budget số lượt/tool và deadline.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -382,13 +382,13 @@ Checks:
 - `platform_session_control_ck_4`: `parent_workflow_session_id IS NULL OR parent_workflow_session_id <> workflow_session_id`.
 - `platform_session_control_ck_5`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_session_participant
 
 Roster group chat trong một workflow, ghim AgentVersion, vai trò điều phối/chuyên gia/reviewer và snapshot quyền.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -432,13 +432,13 @@ Checks:
 - `platform_session_participant_ck_0`: `left_at IS NULL OR (joined_at IS NOT NULL AND left_at >= joined_at)`.
 - `platform_session_participant_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_session_wait
 
 Điểm chờ agent/con người/domain event/timer, có deadline và receipt đánh thức; tránh coi chờ là lỗi runtime.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -487,4 +487,4 @@ Checks:
 - `platform_session_wait_ck_0`: `status<>'SATISFIED' OR satisfied_at IS NOT NULL`.
 - `platform_session_wait_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

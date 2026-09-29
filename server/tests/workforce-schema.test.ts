@@ -12,7 +12,7 @@ const tables = Object.values(schema).filter(
 describe("workforce physical model", () => {
   test("covers the complete documented domain inventory", async () => {
     const source = await readFile(
-      new URL("../../docx/02_VINHOMES_DOMAIN_ERD.md", import.meta.url),
+      new URL("../../docs/erd/01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md", import.meta.url),
       "utf8",
     );
     const names = new Set(tables.map(getTableName));
@@ -20,7 +20,7 @@ describe("workforce physical model", () => {
       [...source.matchAll(/`(vh_[a-z_]+)`/g)].map((m) => m[1]),
     );
     expect([...documented].filter((name) => !names.has(name))).toEqual([]);
-    expect(tables).toHaveLength(152);
+    expect(tables).toHaveLength(107);
   });
 
   test("every domain relationship is tenant scoped and never references runtime", () => {
@@ -80,7 +80,7 @@ describe("workforce physical model", () => {
 
   test("the migration generator sees every exported table", async () => {
     const snapshot = await Bun.file(
-      new URL("../drizzle/meta/0050_snapshot.json", import.meta.url),
+      new URL("../drizzle/meta/0058_snapshot.json", import.meta.url),
     ).json();
     for (const table of tables)
       expect(snapshot.tables[`public.${getTableName(table)}`]).toBeDefined();
@@ -95,7 +95,7 @@ describe("workforce physical model", () => {
       .map(getTableName)
       .sort();
     expect(Object.keys(purposes).sort()).toEqual(allNames);
-    expect(allNames).toHaveLength(190);
+    expect(allNames).toHaveLength(152);
     for (const purpose of Object.values(purposes))
       expect(String(purpose).length).toBeGreaterThan(20);
   });

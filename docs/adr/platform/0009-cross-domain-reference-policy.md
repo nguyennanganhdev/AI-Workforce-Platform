@@ -2,7 +2,7 @@
 
 Status: baseline theo thiết kế nguồn; implementation theo từng phase.
 
-Nguồn: [01_SYSTEM_ERD_COMPLETE.md](../../../docx/01_SYSTEM_ERD_COMPLETE.md).
+Nguồn: [Database P0](../../erd/01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md).
 
 ## Quyết định
 

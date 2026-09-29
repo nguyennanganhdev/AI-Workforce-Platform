@@ -107,7 +107,7 @@ erDiagram
 
 Bằng chứng file gắn vào incident/task/work order và giai đoạn BEFORE/AFTER/QC.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -158,13 +158,13 @@ Checks:
 - `vh_evidence_ref_visibility_ck`: `"vh_evidence_ref"."visibility" in ('INTERNAL', 'RESIDENT_VISIBLE')`.
 - `vh_evidence_ref_ck_0`: `work_order_id IS NULL OR task_id IS NOT NULL`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_qc_result
 
 Quyết định kiểm tra chất lượng bất biến cho một work order, gồm tiêu chí không đạt và yêu cầu redo.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -213,13 +213,13 @@ Checks:
 - `vh_qc_result_outcome_ck`: `"vh_qc_result"."outcome" in ('PASS', 'FAIL', 'INCONCLUSIVE')`.
 - `vh_qc_result_ck_0`: `NOT redo_required OR outcome = 'FAIL'`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_qc_result_evidence
 
 Liên kết quyết định QC với bằng chứng hỗ trợ.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -247,13 +247,13 @@ Indexes:
 - `vh_qc_result_evidence_ix_2`: (`tenant_id`, `project_id`).
 - `vh_qc_result_evidence_ix_3`: (`tenant_id`, `project_id`, `incident_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_root_cause_evidence
 
 Bằng chứng hỗ trợ nhận định nguyên nhân gốc.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -278,13 +278,13 @@ Indexes:
 - `vh_root_cause_evidence_ix_1`: (`tenant_id`, `project_id`).
 - `vh_root_cause_evidence_ix_2`: (`tenant_id`, `project_id`, `root_cause_finding_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_root_cause_finding
 
 Nhận định nguyên nhân gốc của sự cố, có trạng thái xác nhận và chủ thể tạo.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -326,13 +326,13 @@ Checks:
 - `vh_root_cause_finding_created_by_type_ck`: `"vh_root_cause_finding"."created_by_type" in ('HUMAN', 'SYSTEM', 'AGENT')`.
 - `vh_root_cause_finding_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_root_cause_incident
 
 Những incident liên quan tới một nhận định nguyên nhân gốc.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -358,4 +358,4 @@ Indexes:
 - `vh_root_cause_incident_ix_1`: (`tenant_id`, `project_id`).
 - `vh_root_cause_incident_ix_2`: (`tenant_id`, `project_id`, `root_cause_finding_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

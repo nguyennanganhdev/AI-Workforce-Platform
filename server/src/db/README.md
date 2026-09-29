@@ -1,25 +1,19 @@
 # Database ownership
 
-Owner hạ tầng: **Data/DevOps**. Owner schema: **Platform / Vinhomes**.
-PostgreSQL là source of truth. Schema workforce đã bổ sung 152 bảng bên cạnh 38 bảng
-OpenBot. Identity dùng lại users.id text; prefix vật lý platform_* / vh_* trong public.
-Thiết kế logic bên dưới được ánh xạ theo module, không chuyển bảng shell sang schema mới.
+Một sản phẩm phát triển từ OpenBot; 186 bảng, cùng public schema và ledger. Nền identity/channel/agent dùng chung; platform_* mở rộng quản trị/runtime; vh_* giữ nghiệp vụ Vinhomes.
 
-| Thư mục | File sẽ thêm theo feature | Logical schemas |
-|---|---|---|
-| `schema/platform` | identity, domains, agents, capabilities, evaluation, runtime, memory, audit | `platform_identity`, `platform_domain`, `platform_agent`, `platform_capability`, `platform_evaluation`, `platform_runtime`, `platform_memory`, `platform_audit` |
-| `schema/domains/vinhomes` | property, intake, operations, evidence, services | `vh_property`, `vh_intake`, `vh_operations`, `vh_content`, `vh_services` |
+| Nơi sửa | Trách nhiệm |
+|---|---|
+| schema/core.ts, coworker.ts, plugins.ts | User/auth, agent/channel, credential/tool/skill nền |
+| schema/tenant.ts, tenant-scope.ts, platform/identity.ts | Tenant root và policy, membership/role |
+| schema/platform | Version, evaluation, deployment, workflow, transcript, knowledge/memory |
+| schema/domains/vinhomes | Property, intake, operations, hiện trường và dịch vụ |
+| schema/columns.ts, json.ts | Kiểu/cột chung, JSONB tương thích driver |
 
-Các module thực tế chi tiết hơn bảng tổng quan; xem [ERD và catalog](../../../docs/erd/README.md).
-Common columns/JSONB nằm ở schema/columns.ts. Schema mới phải thêm vào drizzle.config.ts,
-barrel export và exporter ERD. Chạy `bun run --filter server db:erd` sau khi đổi schema.
-Domain schema chỉ được FK tới tenant/user identity ở platform. Không FK tới agent/runtime tables.
-Cross-tenant FK/RLS, version, immutable history, booking/payment và governance có
-PostgreSQL integration tests trong server/tests/workforce-database.integration.test.ts.
+Tenant root không import core; identity membership dùng users từ core. FK callback cho phép core tham chiếu membership mà không tạo registry mới. Domain chỉ FK sang shared identity, không FK sang runtime.
 
-Upstream đang dùng `server/drizzle/` và Drizzle migration runner. Các thư mục
-`migrations/platform` và `migrations/domains/vinhomes` hiện chỉ là khung ownership, chưa được runner đọc.
-Runner duy nhất là server/scripts/migrate.ts: 0046 tạo bảng/policies; 0047 cài
-trigger/exclusion/FORCE RLS; 0048/0049 bổ sung coordination/field; 0050 thêm queue indexes.
-Không chạy hai runner độc lập ghi schema chung.
-Xem [runbook](../../../docs/erd/MIGRATION_RUNBOOK.md) cho migration, runtime role và tenant context.
+Nguồn đọc chính: [business map](../../../docs/erd/02_BUSINESS_ANALYSIS_IMPLEMENTATION.md), [catalog](../../../docs/erd/physical/TABLE_CATALOG.md), [thiết kế](../../../docs/erd/01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md).
+
+Schema mới phải có trong drizzle.config.ts, barrel và exporter. `bun run --cwd server db:erd` sinh tài liệu. meta chỉ có JSON; hướng dẫn đặt ở [drizzle/README](../../drizzle/README.md).
+
+Một ledger duy nhất; CLI dev và server/scripts/migrate.ts dùng cùng ledger. Không dùng thư mục migrations/platform hoặc migrations/domains làm runner thứ hai. SQL 0051 hợp nhất schema; 0052 bổ sung integrity. **Tenant context và chat/runtime integration chưa hoàn tất**, xem [runbook](../../../docs/erd/MIGRATION_RUNBOOK.md) trước khi migrate ứng dụng.

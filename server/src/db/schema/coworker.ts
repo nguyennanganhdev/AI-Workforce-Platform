@@ -1,3 +1,8 @@
+import {
+  foreignKey as tenantForeignKey,
+  unique as tenantUnique,
+} from "drizzle-orm/pg-core";
+import { tenantId, tenantPolicy } from "./tenant-scope";
 /**
  * Coworker tables: bots, skills, routines, bot-to-bot handoff.
  *
@@ -28,6 +33,7 @@ export const agentVisibility = pgEnum("agent_visibility", [
 export const agentProfiles = pgTable(
   "agent_profiles",
   {
+    tenantId: tenantId(),
     agentId: text("agent_id")
       .primaryKey()
       .references(() => agents.id, { onDelete: "cascade" }),
@@ -57,16 +63,24 @@ export const agentProfiles = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
+    tenantPolicy("agent_profiles_tenant_policy", table.tenantId),
+    tenantUnique("agent_profiles_tenant_pk").on(table.tenantId, table.agentId),
+    tenantForeignKey({
+      name: "agent_profiles_scope_fk_0",
+      columns: [table.tenantId, table.agentId],
+      foreignColumns: [agents.tenantId, agents.id],
+    }).onDelete("restrict"),
     index("agent_profiles_visibility_deleted_idx").on(
       table.visibility,
       table.deletedAt,
     ),
   ],
-);
+).enableRLS();
 
 export const agentPreferences = pgTable(
   "agent_preferences",
   {
+    tenantId: tenantId(),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -75,8 +89,21 @@ export const agentPreferences = pgTable(
       .references(() => agents.id, { onDelete: "cascade" }),
     hiddenAt: timestamp("hidden_at", { withTimezone: true }),
   },
-  (table) => [primaryKey({ columns: [table.userId, table.agentId] })],
-);
+  (table) => [
+    tenantPolicy("agent_preferences_tenant_policy", table.tenantId),
+    tenantUnique("agent_preferences_tenant_pk").on(
+      table.tenantId,
+      table.userId,
+      table.agentId,
+    ),
+    tenantForeignKey({
+      name: "agent_preferences_scope_fk_0",
+      columns: [table.tenantId, table.agentId],
+      foreignColumns: [agents.tenantId, agents.id],
+    }).onDelete("restrict"),
+    primaryKey({ columns: [table.userId, table.agentId] }),
+  ],
+).enableRLS();
 
 export const routineRunStatus = pgEnum("routine_run_status", [
   "succeeded",
@@ -93,6 +120,7 @@ export const routineRunStatus = pgEnum("routine_run_status", [
 export const routines = pgTable(
   "routines",
   {
+    tenantId: tenantId(),
     id: text("id").primaryKey(),
     ownerUserId: text("owner_user_id")
       .notNull()
@@ -124,11 +152,18 @@ export const routines = pgTable(
     updatedAt: updatedAt(),
   },
   (table) => [
+    tenantPolicy("routines_tenant_policy", table.tenantId),
+    tenantUnique("routines_tenant_pk").on(table.tenantId, table.id),
+    tenantForeignKey({
+      name: "routines_scope_fk_0",
+      columns: [table.tenantId, table.agentId],
+      foreignColumns: [agents.tenantId, agents.id],
+    }).onDelete("restrict"),
     index("routines_due_idx").on(table.enabled, table.nextRunAt),
     /** Owner-scoped reads and writes: listFor, countEnabled, and the users cascade all hit this. */
     index("routines_by_owner_idx").on(table.ownerUserId, table.enabled),
   ],
-);
+).enableRLS();
 
 export const routineSweeps = pgTable("routine_sweeps", {
   id: text("id").primaryKey(),
@@ -140,6 +175,7 @@ export const routineSweeps = pgTable("routine_sweeps", {
 export const routineRuns = pgTable(
   "routine_runs",
   {
+    tenantId: tenantId(),
     id: text("id").primaryKey(),
     routineId: text("routine_id")
       .notNull()
@@ -154,6 +190,13 @@ export const routineRuns = pgTable(
     error: text("error"),
   },
   (table) => [
+    tenantPolicy("routine_runs_tenant_policy", table.tenantId),
+    tenantUnique("routine_runs_tenant_pk").on(table.tenantId, table.id),
+    tenantForeignKey({
+      name: "routine_runs_scope_fk_0",
+      columns: [table.tenantId, table.routineId],
+      foreignColumns: [routines.tenantId, routines.id],
+    }).onDelete("restrict"),
     index("routine_runs_by_routine_idx").on(table.routineId, table.startedAt),
   ],
-);
+).enableRLS();

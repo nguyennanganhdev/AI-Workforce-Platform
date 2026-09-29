@@ -66,7 +66,7 @@ erDiagram
 
 Liên kết bằng chứng riêng tư với hồ sơ xin membership.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -91,13 +91,13 @@ Indexes:
 - `vh_membership_application_file_ix_1`: (`tenant_id`, `project_id`).
 - `vh_membership_application_file_ix_2`: (`tenant_id`, `file_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_pet_document
 
 Tài liệu chứng minh cho hồ sơ vật nuôi, tham chiếu file object.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -122,13 +122,13 @@ Indexes:
 - `vh_pet_document_ix_1`: (`tenant_id`, `project_id`).
 - `vh_pet_document_ix_2`: (`tenant_id`, `project_id`, `pet_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_report_attachment
 
 Liên kết file với phản ánh chính thức, dùng lại file object thay vì sao chép binary.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -153,13 +153,13 @@ Indexes:
 - `vh_report_attachment_ix_1`: (`tenant_id`, `project_id`).
 - `vh_report_attachment_ix_2`: (`tenant_id`, `file_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_request_attachment
 
 Giữ file của request ngay khi chưa có incident, không làm mất bằng chứng trong intake.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -185,13 +185,13 @@ Indexes:
 - `vh_request_attachment_ix_1`: (`tenant_id`, `project_id`).
 - `vh_request_attachment_ix_2`: (`tenant_id`, `file_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_service_request_file
 
 Các hồ sơ/file kèm đăng ký dịch vụ hoặc thi công.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -216,4 +216,4 @@ Indexes:
 - `vh_service_request_file_ix_1`: (`tenant_id`, `project_id`).
 - `vh_service_request_file_ix_2`: (`tenant_id`, `file_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

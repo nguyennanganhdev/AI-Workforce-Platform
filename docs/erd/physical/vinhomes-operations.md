@@ -170,6 +170,7 @@ erDiagram
     text title
     text domain_type
     jsonb domain_data
+    jsonb depends_on_json
     integer domain_schema_version
     text assignee_type
     text assignee_id
@@ -184,21 +185,6 @@ erDiagram
   platform_tenant ||--o{ vh_task : "ownership"
   vh_project ||--o{ vh_task : "ownership"
   vh_incident ||--o{ vh_task : "incident_id"
-  vh_task_dependency {
-    uuid tenant_id PK, FK
-    uuid project_id FK
-    uuid incident_id FK
-    uuid task_id PK, FK
-    uuid depends_on_task_id PK, FK
-    text dependency_type
-    boolean required
-    timestamp_with_time_zone created_at
-  }
-  platform_tenant ||--o{ vh_task_dependency : "ownership"
-  vh_project ||--o{ vh_task_dependency : "ownership"
-  vh_incident ||--o{ vh_task_dependency : "incident_id"
-  vh_task ||--o{ vh_task_dependency : "incident_id + task_id"
-  vh_task ||--o{ vh_task_dependency : "incident_id + depends_on_task_id"
   vh_work_order {
     uuid id PK
     uuid tenant_id FK
@@ -232,7 +218,7 @@ erDiagram
 
 Quyết định phê duyệt có thời hạn, ghim đúng payload hash và policy version.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -281,13 +267,13 @@ Checks:
 - `vh_action_approval_ck_0`: `status NOT IN ('APPROVED','REJECTED') OR (reviewer_id IS NOT NULL AND decided_at IS NOT NULL)`.
 - `vh_action_approval_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_action_request
 
 Yêu cầu hành động nghiệp vụ được domain tiếp nhận, ghim payload/hash/policy và expected version.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -346,13 +332,13 @@ Checks:
 - `vh_action_request_ck_0`: `expected_subject_version > 0`.
 - `vh_action_request_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_checklist
 
 Danh tính bộ tiêu chí nghiệm thu/công việc theo tenant và category.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -382,13 +368,13 @@ Checks:
 - `vh_checklist_status_ck`: `"vh_checklist"."status" in ('ACTIVE', 'RETIRED')`.
 - `vh_checklist_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_checklist_version
 
 Phiên bản tiêu chí được work order ghim; bản đã publish không sửa nội dung.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -428,13 +414,13 @@ Checks:
 - `vh_checklist_version_ck_0`: `version_no > 0`.
 - `vh_checklist_version_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_execution_grant
 
 Quyền thực thi do domain phát hành, lưu token hash, hạn và trạng thái tiêu thụ/thu hồi.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -479,13 +465,13 @@ Checks:
 - `vh_execution_grant_ck_0`: `status <> 'CONSUMED' OR consumed_at IS NOT NULL`.
 - `vh_execution_grant_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_incident
 
 Sự cố vận hành chuẩn; UI có thể gọi Ticket. Trạng thái sự cố là nguồn thật, không lấy từ agent run.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -543,13 +529,13 @@ Checks:
 - `vh_incident_ck_1`: `status <> 'CLOSED' OR (closed_at IS NOT NULL AND closed_by_user_id IS NOT NULL AND closure_reason IS NOT NULL)`.
 - `vh_incident_ck_2`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_incident_relation
 
 Liên kết các sự cố trùng/lặp/nguyên nhân/chặn/liên quan để hỗ trợ triage và recurrence.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -584,13 +570,13 @@ Checks:
 - `vh_incident_relation_relation_type_ck`: `"vh_incident_relation"."relation_type" in ('RELATED', 'DUPLICATE', 'CAUSED_BY', 'BLOCKS', 'RECURRING_WITH')`.
 - `vh_incident_relation_ck_0`: `source_incident_id <> target_incident_id`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_rule_evaluation
 
 Kết quả ALLOW/REQUIRE_APPROVAL/DENY bất biến đối với đúng action payload.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -629,13 +615,13 @@ Checks:
 
 - `vh_rule_evaluation_decision_ck`: `"vh_rule_evaluation"."decision" in ('ALLOW', 'REQUIRE_APPROVAL', 'DENY')`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_task
 
-Công việc nghiệp vụ cần thực hiện cho incident, có assignee, ưu tiên, deadline và domain plan có version.
+C?ng vi?c thu?c Incident, ti?n ?? v? ph? thu?c P0 l?u ? depends_on_json; kh?ng d?ng b?ng Task c?a runtime.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -646,6 +632,7 @@ Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
 | `title` | `text` | yes | `—` | — |
 | `domain_type` | `text` | yes | `—` | — |
 | `domain_data` | `jsonb` | yes | `—` | — |
+| `depends_on_json` | `jsonb` | yes | `{"taskIds":[]}` | — |
 | `domain_schema_version` | `integer` | yes | `—` | — |
 | `assignee_type` | `text` | yes | `—` | `HUMAN`, `SYSTEM`, `AUTOMATION`, `EXTERNAL_SERVICE` |
 | `assignee_id` | `text` | no | `—` | — |
@@ -684,55 +671,15 @@ Checks:
 - `vh_task_ck_0`: `domain_schema_version > 0`.
 - `vh_task_ck_1`: `priority >= 0`.
 - `vh_task_ck_2`: `version > 0`.
+- `vh_task_depends_on_json_ck`: `jsonb_typeof("vh_task"."depends_on_json") = 'object' AND jsonb_typeof("vh_task"."depends_on_json"->'taskIds') = 'array'`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
-
-## vh_task_dependency
-
-Phụ thuộc giữa các công việc cùng incident; không cho self-link hoặc chu trình.
-
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
-
-| Column | PostgreSQL type | Required | Default | Declared values |
-|---|---|---|---|---|
-| `tenant_id` | `uuid` | yes | `—` | — |
-| `project_id` | `uuid` | yes | `—` | — |
-| `incident_id` | `uuid` | yes | `—` | — |
-| `task_id` | `uuid` | yes | `—` | — |
-| `depends_on_task_id` | `uuid` | yes | `—` | — |
-| `dependency_type` | `text` | yes | `—` | `FINISH_TO_START`, `FINISH_TO_FINISH` |
-| `required` | `boolean` | yes | `—` | — |
-| `created_at` | `timestamp with time zone` | yes | `now()` | — |
-
-Primary key: `tenant_id`, `task_id`, `depends_on_task_id`.
-
-Foreign keys:
-
-- (`tenant_id`) → `platform_tenant` (`id`); ON DELETE `restrict`.
-- (`tenant_id`, `project_id`) → `vh_project` (`tenant_id`, `id`); ON DELETE `restrict`.
-- (`tenant_id`, `project_id`, `incident_id`) → `vh_incident` (`tenant_id`, `project_id`, `id`); ON DELETE `restrict`.
-- (`tenant_id`, `project_id`, `incident_id`, `task_id`) → `vh_task` (`tenant_id`, `project_id`, `incident_id`, `id`); ON DELETE `restrict`.
-- (`tenant_id`, `project_id`, `incident_id`, `depends_on_task_id`) → `vh_task` (`tenant_id`, `project_id`, `incident_id`, `id`); ON DELETE `restrict`.
-
-Indexes:
-
-- `vh_task_dependency_ix_0`: (`tenant_id`, `project_id`, `incident_id`, `task_id`).
-- `vh_task_dependency_ix_1`: (`tenant_id`, `project_id`, `incident_id`, `depends_on_task_id`).
-- `vh_task_dependency_ix_2`: (`tenant_id`, `project_id`).
-- `vh_task_dependency_ix_3`: (`tenant_id`, `project_id`, `incident_id`).
-
-Checks:
-
-- `vh_task_dependency_dependency_type_ck`: `"vh_task_dependency"."dependency_type" in ('FINISH_TO_START', 'FINISH_TO_FINISH')`.
-- `vh_task_dependency_ck_0`: `task_id <> depends_on_task_id`.
-
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_work_order
 
 Một lần thực hiện task được ActionRequest cho phép; redo tạo attempt mới thay vì reset lần cũ.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -793,4 +740,4 @@ Checks:
 - `vh_work_order_ck_2`: `execution_completed_at IS NULL OR execution_completed_at >= execution_started_at`.
 - `vh_work_order_ck_3`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

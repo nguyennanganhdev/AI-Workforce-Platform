@@ -1,4 +1,4 @@
-# shell-computer
+# foundation-computer
 
 Generated from Drizzle. External entities in the diagram are foreign-key targets owned by another module.
 
@@ -34,7 +34,7 @@ erDiagram
 
 Chính sách thao tác computer/shell theo mô hình upstream; không phải quy tắc phê duyệt ActionRequest Vinhomes.
 
-Tenant RLS: **existing shell table; application authorization, no workforce tenant policy**.
+Tenant RLS: **global identity or deployment infrastructure; application/operator authorization required**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -47,13 +47,13 @@ Tenant RLS: **existing shell table; application authorization, no workforce tena
 
 Primary key: `id`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## computer_page_frame
 
 Metadata frame/trang chụp trong phiên computer; quản lý retention riêng.
 
-Tenant RLS: **existing shell table; application authorization, no workforce tenant policy**.
+Tenant RLS: **global identity or deployment infrastructure; application/operator authorization required**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -70,13 +70,13 @@ Indexes:
 
 - `computer_page_frame_captured_idx`: (`captured_at`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## computer_snapshot
 
 Snapshot phiên computer phục vụ khôi phục hoặc điều tra tương tác desktop/browser.
 
-Tenant RLS: **existing shell table; application authorization, no workforce tenant policy**.
+Tenant RLS: **global identity or deployment infrastructure; application/operator authorization required**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -89,4 +89,4 @@ Tenant RLS: **existing shell table; application authorization, no workforce tena
 
 Primary key: `computer_id`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

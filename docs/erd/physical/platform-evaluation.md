@@ -120,7 +120,7 @@ erDiagram
   platform_regression_baseline {
     uuid id PK
     uuid tenant_id FK
-    uuid agent_id FK
+    text agent_id FK
     uuid baseline_agent_version_id FK
     uuid eval_suite_id FK
     text accepted_by FK
@@ -131,7 +131,7 @@ erDiagram
     timestamp_with_time_zone updated_at
   }
   platform_tenant ||--o{ platform_regression_baseline : "ownership"
-  platform_agent ||--o{ platform_regression_baseline : "agent_id"
+  agents ||--o{ platform_regression_baseline : "agent_id"
   platform_agent_version ||--o{ platform_regression_baseline : "agent_id + baseline_agent_version_id"
   platform_eval_suite ||--o{ platform_regression_baseline : "eval_suite_id"
   users ||--o{ platform_regression_baseline : "accepted_by"
@@ -142,7 +142,7 @@ erDiagram
 
 Kết quả bất biến của một tiêu chí kiểm tra trên eval case/run.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -180,13 +180,13 @@ Checks:
 
 - `platform_eval_assertion_status_ck`: `"platform_eval_assertion"."status" in ('PASS', 'FAIL', 'ERROR', 'SKIPPED')`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_eval_case
 
 Một tình huống đánh giá gồm input, expected output, severity và tags.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -223,13 +223,13 @@ Checks:
 - `platform_eval_case_severity_ck`: `"platform_eval_case"."severity" in ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')`.
 - `platform_eval_case_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_eval_evidence
 
 Tham chiếu bằng chứng/artifact/trace hỗ trợ một kết quả đánh giá.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -259,13 +259,13 @@ Indexes:
 - `platform_eval_evidence_ix_0`: (`tenant_id`, `eval_run_id`).
 - `platform_eval_evidence_ix_1`: (`tenant_id`, `eval_run_id`, `eval_assertion_id`).
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_eval_run
 
 Lần đánh giá AgentVersion bằng suite được ghim, lưu môi trường/model và kết quả.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -305,13 +305,13 @@ Checks:
 - `platform_eval_run_ck_0`: `completed_at IS NULL OR completed_at >= started_at`.
 - `platform_eval_run_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_eval_suite
 
 Bộ kiểm thử đánh giá có version, loại và owner; các case đóng băng khi suite đã được chạy.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -348,13 +348,13 @@ Checks:
 - `platform_eval_suite_ck_0`: `version_no > 0`.
 - `platform_eval_suite_ck_1`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_publish_approval
 
 Quyết định reviewer theo vai trò DOMAIN/EVALUATION/SECURITY/PLATFORM, độc lập với tác giả.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -391,13 +391,13 @@ Checks:
 - `platform_publish_approval_approval_type_ck`: `"platform_publish_approval"."approval_type" in ('DOMAIN', 'EVALUATION', 'SECURITY', 'PLATFORM')`.
 - `platform_publish_approval_status_ck`: `"platform_publish_approval"."status" in ('APPROVED', 'REJECTED')`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_publish_gate
 
 Một đợt xét điều kiện publish AgentVersion, tập hợp kết quả gate và approvals.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -430,13 +430,13 @@ Checks:
 - `platform_publish_gate_status_ck`: `"platform_publish_gate"."status" in ('PENDING', 'PASSED', 'FAILED')`.
 - `platform_publish_gate_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_publish_gate_result
 
 Kết quả CONTRACT/QUALITY/SAFETY/REGRESSION của một đợt xét publish.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -470,19 +470,19 @@ Checks:
 - `platform_publish_gate_result_gate_type_ck`: `"platform_publish_gate_result"."gate_type" in ('CONTRACT', 'QUALITY', 'SAFETY', 'REGRESSION')`.
 - `platform_publish_gate_result_status_ck`: `"platform_publish_gate_result"."status" in ('PASS', 'FAIL')`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## platform_regression_baseline
 
 Phiên bản agent được chấp thuận làm mốc so sánh regression cho suite.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
 | `id` | `uuid` | yes | `gen_random_uuid()` | — |
 | `tenant_id` | `uuid` | yes | `—` | — |
-| `agent_id` | `uuid` | yes | `—` | — |
+| `agent_id` | `text` | yes | `—` | — |
 | `baseline_agent_version_id` | `uuid` | yes | `—` | — |
 | `eval_suite_id` | `uuid` | yes | `—` | — |
 | `accepted_by` | `text` | yes | `—` | — |
@@ -501,7 +501,7 @@ Unique keys:
 Foreign keys:
 
 - (`tenant_id`) → `platform_tenant` (`id`); ON DELETE `restrict`.
-- (`tenant_id`, `agent_id`) → `platform_agent` (`tenant_id`, `id`); ON DELETE `restrict`.
+- (`tenant_id`, `agent_id`) → `agents` (`tenant_id`, `id`); ON DELETE `restrict`.
 - (`tenant_id`, `agent_id`, `baseline_agent_version_id`) → `platform_agent_version` (`tenant_id`, `agent_id`, `id`); ON DELETE `restrict`.
 - (`tenant_id`, `eval_suite_id`) → `platform_eval_suite` (`tenant_id`, `id`); ON DELETE `restrict`.
 - (`accepted_by`) → `users` (`id`); ON DELETE `restrict`.
@@ -519,4 +519,4 @@ Checks:
 - `platform_regression_baseline_status_ck`: `"platform_regression_baseline"."status" in ('ACTIVE', 'RETIRED')`.
 - `platform_regression_baseline_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).

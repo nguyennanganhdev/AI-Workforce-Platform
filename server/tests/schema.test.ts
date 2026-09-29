@@ -102,6 +102,7 @@ describe("OpenBot database schema", () => {
         notNull: column.notNull,
       })),
     ).toEqual([
+      { name: "tenant_id", notNull: true },
       { name: "server_id", notNull: true },
       { name: "user_id", notNull: true },
       { name: "credential_id", notNull: true },
@@ -230,6 +231,22 @@ describe("OpenBot database schema", () => {
 
     const profileConfig = getTableConfig(agentProfiles);
     const preferenceConfig = getTableConfig(agentPreferences);
+    for (const config of [profileConfig, preferenceConfig]) {
+      expect(config.enableRLS).toBe(true);
+      expect(
+        config.foreignKeys
+          .filter((key) =>
+            key.reference().columns.some((c) => c.name === "tenant_id"),
+          )
+          .map((key) => ({
+            columns: key.reference().columns.map((c) => c.name),
+            target: getTableName(key.reference().foreignTable),
+          })),
+      ).toEqual([
+        { columns: ["tenant_id"], target: "platform_tenant" },
+        { columns: ["tenant_id", "agent_id"], target: "agents" },
+      ]);
+    }
 
     expect(
       profileConfig.columns.map((column) => ({
@@ -239,6 +256,7 @@ describe("OpenBot database schema", () => {
         primary: column.primary,
       })),
     ).toEqual([
+      { name: "tenant_id", notNull: true, hasDefault: true, primary: false },
       { name: "agent_id", notNull: true, hasDefault: false, primary: true },
       {
         name: "owner_user_id",
@@ -313,6 +331,13 @@ describe("OpenBot database schema", () => {
       })),
     ).toEqual([
       {
+        name: "tenant_id",
+        sqlType: "uuid",
+        notNull: true,
+        hasDefault: true,
+        primary: false,
+      },
+      {
         name: "user_id",
         sqlType: "text",
         notNull: true,
@@ -336,8 +361,11 @@ describe("OpenBot database schema", () => {
     ]);
 
     expect(
-      [...profileConfig.foreignKeys, ...preferenceConfig.foreignKeys].map(
-        (foreignKey) => {
+      [...profileConfig.foreignKeys, ...preferenceConfig.foreignKeys]
+        .filter(
+          (key) => !key.reference().columns.some((c) => c.name === "tenant_id"),
+        )
+        .map((foreignKey) => {
           const reference = foreignKey.reference();
           return {
             sourceColumns: reference.columns.map((column) => column.name),
@@ -348,8 +376,7 @@ describe("OpenBot database schema", () => {
             onDelete: foreignKey.onDelete,
             onUpdate: foreignKey.onUpdate,
           };
-        },
-      ),
+        }),
     ).toEqual([
       {
         sourceColumns: ["agent_id"],

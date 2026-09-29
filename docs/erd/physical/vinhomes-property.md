@@ -94,7 +94,7 @@ erDiagram
 
 Căn hộ thuộc đúng tòa/dự án, với mã, tầng và trạng thái sử dụng.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -134,13 +134,13 @@ Checks:
 - `vh_apartment_status_ck`: `"vh_apartment"."status" in ('ACTIVE', 'VACANT', 'RETIRED')`.
 - `vh_apartment_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_membership_application
 
 Hồ sơ xin quyền cư dân, căn hộ yêu cầu và quyết định xét duyệt; hồ sơ không tự cấp quyền.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -186,13 +186,13 @@ Checks:
 - `vh_membership_application_status_ck`: `"vh_membership_application"."status" in ('PENDING', 'APPROVED', 'REJECTED', 'WITHDRAWN')`.
 - `vh_membership_application_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_project
 
 Dự án/khu đô thị thuộc tenant, gốc phạm vi nghiệp vụ Vinhomes.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -221,13 +221,13 @@ Checks:
 - `vh_project_status_ck`: `"vh_project"."status" in ('ACTIVE', 'SUSPENDED', 'RETIRED')`.
 - `vh_project_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_property_membership
 
 Quyền cư dân/nhân viên/quản lý/nhà thầu theo project/tower/apartment và khoảng hiệu lực.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -287,13 +287,13 @@ Checks:
 - `vh_property_membership_ck_3`: `status <> 'REVOKED' OR revoked_at IS NOT NULL`.
 - `vh_property_membership_ck_4`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
 
 ## vh_tower
 
 Tòa nhà thuộc một dự án, có code unique trong dự án.
 
-Tenant RLS: **enabled + forced by integrity migrations 0047/0049**.
+Tenant RLS: **enabled + forced by integrity migrations 0047/0049/0052**.
 
 | Column | PostgreSQL type | Required | Default | Declared values |
 |---|---|---|---|---|
@@ -329,4 +329,4 @@ Checks:
 - `vh_tower_status_ck`: `"vh_tower"."status" in ('ACTIVE', 'RETIRED')`.
 - `vh_tower_ck_0`: `version > 0`.
 
-Additional cross-row/temporal rules: [integrity matrix](../DATABASE_DESIGN.md#integrity-matrix) and [coordination review](../COMPLETENESS_REVIEW.md).
+Cross-row rules and application responsibilities: [database design](../01_DATABASE_ERD_IMPLEMENTATION_COMPLETE.md) and [system flow](../02_BUSINESS_ANALYSIS_IMPLEMENTATION.md).
