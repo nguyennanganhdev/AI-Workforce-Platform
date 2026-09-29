@@ -43,6 +43,9 @@ function getBreadcrumb(pathname: string, persona: OperationsPersona): Breadcrumb
   if (pathname.includes('/incidents')) {
     return { section: 'Vận hành đô thị', page: 'Quản lý sự cố' };
   }
+  if (pathname.includes('/completed-tasks')) {
+    return { section: 'Hiện trường', page: 'Công việc đã hoàn thành' };
+  }
   if (pathname.includes('/my-tasks')) {
     return { section: 'Hiện trường', page: 'Việc của tôi' };
   }

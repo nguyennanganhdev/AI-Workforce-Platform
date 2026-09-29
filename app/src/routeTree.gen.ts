@@ -31,6 +31,7 @@ import { Route as AuthedAdminPlaygroundRouteImport } from './routes/_authed/admi
 import { Route as AuthedAdminSkillsRouteImport } from './routes/_authed/admin/skills'
 import { Route as AuthedOperationsIndexRouteImport } from './routes/_authed/operations/index'
 import { Route as AuthedOperationsApprovalsRouteImport } from './routes/_authed/operations/approvals'
+import { Route as AuthedOperationsCompletedTasksRouteImport } from './routes/_authed/operations/completed-tasks'
 import { Route as AuthedOperationsContractorRouteImport } from './routes/_authed/operations/contractor'
 import { Route as AuthedOperationsEvidenceRouteImport } from './routes/_authed/operations/evidence'
 import { Route as AuthedOperationsIncidentsRouteImport } from './routes/_authed/operations/incidents'
@@ -165,6 +166,12 @@ const AuthedOperationsApprovalsRoute =
   AuthedOperationsApprovalsRouteImport.update({
     id: '/approvals',
     path: '/approvals',
+    getParentRoute: () => AuthedOperationsRouteRoute,
+  } as any)
+const AuthedOperationsCompletedTasksRoute =
+  AuthedOperationsCompletedTasksRouteImport.update({
+    id: '/completed-tasks',
+    path: '/completed-tasks',
     getParentRoute: () => AuthedOperationsRouteRoute,
   } as any)
 const AuthedOperationsContractorRoute =
@@ -328,6 +335,7 @@ export interface FileRoutesByFullPath {
   '/admin/playground': typeof AuthedAdminPlaygroundRoute
   '/admin/skills': typeof AuthedAdminSkillsRoute
   '/operations/approvals': typeof AuthedOperationsApprovalsRoute
+  '/operations/completed-tasks': typeof AuthedOperationsCompletedTasksRoute
   '/operations/contractor': typeof AuthedOperationsContractorRoute
   '/operations/evidence': typeof AuthedOperationsEvidenceRoute
   '/operations/incidents': typeof AuthedOperationsIncidentsRoute
@@ -372,6 +380,7 @@ export interface FileRoutesByTo {
   '/admin/playground': typeof AuthedAdminPlaygroundRoute
   '/admin/skills': typeof AuthedAdminSkillsRoute
   '/operations/approvals': typeof AuthedOperationsApprovalsRoute
+  '/operations/completed-tasks': typeof AuthedOperationsCompletedTasksRoute
   '/operations/contractor': typeof AuthedOperationsContractorRoute
   '/operations/evidence': typeof AuthedOperationsEvidenceRoute
   '/operations/incidents': typeof AuthedOperationsIncidentsRoute
@@ -421,6 +430,7 @@ export interface FileRoutesById {
   '/_authed/admin/playground': typeof AuthedAdminPlaygroundRoute
   '/_authed/admin/skills': typeof AuthedAdminSkillsRoute
   '/_authed/operations/approvals': typeof AuthedOperationsApprovalsRoute
+  '/_authed/operations/completed-tasks': typeof AuthedOperationsCompletedTasksRoute
   '/_authed/operations/contractor': typeof AuthedOperationsContractorRoute
   '/_authed/operations/evidence': typeof AuthedOperationsEvidenceRoute
   '/_authed/operations/incidents': typeof AuthedOperationsIncidentsRoute
@@ -471,6 +481,7 @@ export interface FileRouteTypes {
     | '/admin/playground'
     | '/admin/skills'
     | '/operations/approvals'
+    | '/operations/completed-tasks'
     | '/operations/contractor'
     | '/operations/evidence'
     | '/operations/incidents'
@@ -515,6 +526,7 @@ export interface FileRouteTypes {
     | '/admin/playground'
     | '/admin/skills'
     | '/operations/approvals'
+    | '/operations/completed-tasks'
     | '/operations/contractor'
     | '/operations/evidence'
     | '/operations/incidents'
@@ -563,6 +575,7 @@ export interface FileRouteTypes {
     | '/_authed/admin/playground'
     | '/_authed/admin/skills'
     | '/_authed/operations/approvals'
+    | '/_authed/operations/completed-tasks'
     | '/_authed/operations/contractor'
     | '/_authed/operations/evidence'
     | '/_authed/operations/incidents'
@@ -752,6 +765,13 @@ declare module '@tanstack/react-router' {
       path: '/approvals'
       fullPath: '/operations/approvals'
       preLoaderRoute: typeof AuthedOperationsApprovalsRouteImport
+      parentRoute: typeof AuthedOperationsRouteRoute
+    }
+    '/_authed/operations/completed-tasks': {
+      id: '/_authed/operations/completed-tasks'
+      path: '/completed-tasks'
+      fullPath: '/operations/completed-tasks'
+      preLoaderRoute: typeof AuthedOperationsCompletedTasksRouteImport
       parentRoute: typeof AuthedOperationsRouteRoute
     }
     '/_authed/operations/contractor': {
@@ -975,6 +995,7 @@ const AuthedAdminRouteRouteWithChildren =
 
 interface AuthedOperationsRouteRouteChildren {
   AuthedOperationsApprovalsRoute: typeof AuthedOperationsApprovalsRoute
+  AuthedOperationsCompletedTasksRoute: typeof AuthedOperationsCompletedTasksRoute
   AuthedOperationsContractorRoute: typeof AuthedOperationsContractorRoute
   AuthedOperationsEvidenceRoute: typeof AuthedOperationsEvidenceRoute
   AuthedOperationsIncidentsRoute: typeof AuthedOperationsIncidentsRoute
@@ -990,6 +1011,7 @@ interface AuthedOperationsRouteRouteChildren {
 
 const AuthedOperationsRouteRouteChildren: AuthedOperationsRouteRouteChildren = {
   AuthedOperationsApprovalsRoute: AuthedOperationsApprovalsRoute,
+  AuthedOperationsCompletedTasksRoute: AuthedOperationsCompletedTasksRoute,
   AuthedOperationsContractorRoute: AuthedOperationsContractorRoute,
   AuthedOperationsEvidenceRoute: AuthedOperationsEvidenceRoute,
   AuthedOperationsIncidentsRoute: AuthedOperationsIncidentsRoute,

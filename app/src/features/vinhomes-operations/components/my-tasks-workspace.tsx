@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Link } from '@tanstack/react-router';
 import {
   IconBriefcase,
   IconClock,
@@ -27,6 +26,7 @@ import { useOperationsData } from '../hooks/use-operations-data';
 import type { VhWorkOrder } from '../types/work-order';
 import { EvidenceModal } from './evidence-modal';
 import { WorkOrderDialog } from './work-order-dialog';
+import { SanitationWorkspace } from './sanitation-workspace';
 
 type FilterTab = 'ALL' | 'ASSIGNED' | 'IN_PROGRESS' | 'BLOCKED' | 'REDO' | 'COMPLETED';
 
@@ -52,6 +52,7 @@ export function MyTasksWorkspace() {
   // Modals & Popovers
   const [selectedWoForEvidence, setSelectedWoForEvidence] = useState<VhWorkOrder | null>(null);
   const [selectedWoForDetail, setSelectedWoForDetail] = useState<VhWorkOrder | null>(null);
+  const [selectedSanitationTaskId, setSelectedSanitationTaskId] = useState<string | null>(null);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -200,6 +201,25 @@ export function MyTasksWorkspace() {
       setErrorMessage(err.message || 'Chưa đủ điều kiện hoàn thành');
     }
   };
+
+  const openWorkOrderDetail = (workOrder: VhWorkOrder) => {
+    if (usesDedicatedSanitationWorkspace) {
+      setSelectedSanitationTaskId(workOrder.task_id);
+      setOpenActionId(null);
+      return;
+    }
+    setSelectedWoForDetail(workOrder);
+  };
+
+  if (usesDedicatedSanitationWorkspace && selectedSanitationTaskId) {
+    return (
+      <SanitationWorkspace
+        embedded
+        initialTaskId={selectedSanitationTaskId}
+        onBack={() => setSelectedSanitationTaskId(null)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4 font-sans">
@@ -451,7 +471,7 @@ export function MyTasksWorkspace() {
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => setSelectedWoForDetail(wo)}
+                              onClick={() => openWorkOrderDetail(wo)}
                               className="font-bold text-slate-900 hover:text-blue-600 text-left line-clamp-1 block cursor-pointer transition-colors max-w-xs sm:max-w-md text-[13px]"
                               title="Bấm để xem chi tiết phiếu thi công"
                             >
@@ -586,13 +606,14 @@ export function MyTasksWorkspace() {
                           )}
 
                           {usesDedicatedSanitationWorkspace && wo.status !== 'COMPLETED' && (
-                            <Link
-                              to="/operations/sanitation"
+                            <button
+                              type="button"
+                              onClick={() => setSelectedSanitationTaskId(wo.task_id)}
                               className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors shadow-2xs"
                             >
                               <IconTrash className="w-3 h-3" />
                               <span>Mở quy trình A5</span>
-                            </Link>
+                            </button>
                           )}
 
                           {/* 3-Dots Action Popover Menu (Matching Ảnh 2) */}
@@ -619,7 +640,7 @@ export function MyTasksWorkspace() {
                                   type="button"
                                   onClick={() => {
                                     setOpenActionId(null);
-                                    setSelectedWoForDetail(wo);
+                                    openWorkOrderDetail(wo);
                                   }}
                                   className="w-full px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer font-medium"
                                 >
@@ -642,14 +663,17 @@ export function MyTasksWorkspace() {
                                 )}
 
                                 {usesDedicatedSanitationWorkspace && wo.status !== 'COMPLETED' && (
-                                  <Link
-                                    to="/operations/sanitation"
-                                    onClick={() => setOpenActionId(null)}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenActionId(null);
+                                      setSelectedSanitationTaskId(wo.task_id);
+                                    }}
                                     className="w-full px-3 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 font-bold"
                                   >
                                     <IconTrash className="w-3.5 h-3.5" />
                                     <span>Mở quy trình thực hiện A5</span>
-                                  </Link>
+                                  </button>
                                 )}
 
                                 <div className="my-1 border-t border-slate-100" />

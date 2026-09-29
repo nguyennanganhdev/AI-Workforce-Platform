@@ -7,15 +7,47 @@ import { OperationsProvider } from '../hooks/use-operations-data';
 export function OperationsLayout() {
   useEffect(() => {
     const originalTitle = document.title;
+    const originalLanguage = document.documentElement.lang;
+    const originalTranslate = document.documentElement.getAttribute('translate');
+    const alreadyNotranslate = document.documentElement.classList.contains('notranslate');
+    const existingGoogleMeta = document.head.querySelector<HTMLMetaElement>('meta[name="google"]');
+    const googleMeta = existingGoogleMeta || document.createElement('meta');
+
     document.title = 'Vinhomes Operations Platform';
+    document.documentElement.lang = 'vi';
+    document.documentElement.setAttribute('translate', 'no');
+    document.documentElement.classList.add('notranslate');
+
+    if (!existingGoogleMeta) {
+      googleMeta.name = 'google';
+      googleMeta.content = 'notranslate';
+      document.head.appendChild(googleMeta);
+    }
+
     return () => {
       document.title = originalTitle;
+      document.documentElement.lang = originalLanguage;
+      if (originalTranslate === null) {
+        document.documentElement.removeAttribute('translate');
+      } else {
+        document.documentElement.setAttribute('translate', originalTranslate);
+      }
+      if (!alreadyNotranslate) {
+        document.documentElement.classList.remove('notranslate');
+      }
+      if (!existingGoogleMeta) {
+        googleMeta.remove();
+      }
     };
   }, []);
 
   return (
     <OperationsProvider>
-      <div className="flex h-screen w-screen overflow-hidden bg-slate-50 font-sans">
+      <div
+        lang="vi"
+        translate="no"
+        className="operations-app notranslate flex h-screen w-screen overflow-hidden bg-slate-50 font-sans"
+      >
         {/* BistroPulse Left Sidebar */}
         <OperationsSidebar />
 

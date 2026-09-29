@@ -9,6 +9,7 @@ export { OperationsRouteGuard } from './layout/operations-route-guard';
 // Workspace Components
 export { OperationsDashboard } from './components/operations-dashboard';
 export { MyTasksWorkspace } from './components/my-tasks-workspace';
+export { CompletedTasksWorkspace } from './components/completed-tasks-workspace';
 export { TriageWorkspace } from './components/triage-workspace';
 export { IncidentsWorkspace } from './components/incidents-workspace';
 export { KanbanBoard } from './components/kanban-board';

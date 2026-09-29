@@ -17,6 +17,7 @@ import {
   IconShield,
   IconTool,
   IconUser,
+  IconHistory,
 } from '@tabler/icons-react';
 import { useOperationsData } from '../hooks/use-operations-data';
 import { PERSONA_PROFILES, type OperationsPersona, type MenuId } from '../types/persona';
@@ -77,6 +78,13 @@ export function OperationsSidebar() {
       icon: IconBriefcase,
       badgeCount: myPendingTasksCount > 0 ? myPendingTasksCount : undefined,
       badgeColor: 'bg-blue-600 text-white',
+      section: 'OPERATIONS',
+    },
+    {
+      id: 'completed-tasks',
+      label: 'Công việc đã hoàn thành',
+      to: '/operations/completed-tasks',
+      icon: IconHistory,
       section: 'OPERATIONS',
     },
     {

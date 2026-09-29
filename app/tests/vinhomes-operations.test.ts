@@ -139,7 +139,10 @@ describe('Vinhomes Operations RBAC & Persona Capability Matrix', () => {
 
     const clean = PERSONA_PROFILES['STAFF_SANITATION_A5'];
     expect(clean.allowedMenuIds).toContain('my-tasks');
-    expect(clean.allowedMenuIds).toContain('sanitation');
+    expect(clean.allowedMenuIds).toContain('completed-tasks');
+    // The A5 execution flow is opened from a concrete item in "My tasks";
+    // the standalone sanitation route is reserved for Supervisor/Manager oversight.
+    expect(clean.allowedMenuIds).not.toContain('sanitation');
     expect(clean.allowedMenuIds).not.toContain('qc');
     expect(clean.allowedMenuIds).not.toContain('approvals');
   });
