@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   IconTrash,
   IconCheck,
@@ -11,22 +11,39 @@ import {
   IconDeviceMobile,
   IconAlertCircle,
   IconSend,
+  IconSearch,
+  IconArrowLeft,
+  IconChevronRight,
 } from '@tabler/icons-react';
 import { useOperationsData } from '../hooks/use-operations-data';
 import type { CleaningPlan, CleaningActionItem } from '../types/cleaning-plan';
 import { EvidenceModal } from './evidence-modal';
 
-export function SanitationWorkspace() {
+interface SanitationWorkspaceProps {
+  initialTaskId?: string;
+  embedded?: boolean;
+  onBack?: () => void;
+}
+
+export function SanitationWorkspace({
+  initialTaskId = '',
+  embedded = false,
+  onBack,
+}: SanitationWorkspaceProps = {}) {
   const {
     tasks,
     workOrders,
+    evidence,
     currentProfile,
     currentPersona,
     toggleCleaningAction,
     confirmSiteArrival,
     toggleWarningSigns,
     saveCleaningRootCause,
+    transitionWorkOrderStatus,
   } = useOperationsData();
+
+  const isExecutionMode = currentPersona === 'STAFF_SANITATION_A5';
 
   // Filter tasks: STAFF_SANITATION_A5 only sees their assigned tasks or tasks with work orders assigned to them
   const sanitationTasks = tasks.filter((t) => {
@@ -39,9 +56,9 @@ export function SanitationWorkspace() {
     return true; // Supervisors and Managers oversee all sanitation tasks
   });
 
-  const [selectedTaskId, setSelectedTaskId] = useState<string>(
-    sanitationTasks[0]?.id || tasks.find((t) => t.domain_type === 'SANITATION')?.id || '',
-  );
+  const [selectedTaskId, setSelectedTaskId] = useState<string>(initialTaskId);
+  const [listSearch, setListSearch] = useState('');
+  const [listStatus, setListStatus] = useState<'ALL' | 'ASSIGNED' | 'IN_PROGRESS' | 'BLOCKED' | 'COMPLETED'>('ALL');
 
   const [issueModalActionIdx, setIssueModalActionIdx] = useState<number | null>(null);
   const [issueType, setIssueType] = useState('MISSING_CHEMICALS');
@@ -54,18 +71,85 @@ export function SanitationWorkspace() {
     'Khung giờ 18h-20h lượng rác sinh hoạt dồn ứ gấp 3 lần bình thường, thùng 240L bị quá tải.',
   );
   const [rootCauseSaved, setRootCauseSaved] = useState(false);
+  const [workflowMessage, setWorkflowMessage] = useState<{ type: 'SUCCESS' | 'ERROR'; text: string } | null>(null);
 
-  const selectedTask = sanitationTasks.find((t) => t.id === selectedTaskId) || sanitationTasks[0];
+  useEffect(() => {
+    setSelectedTaskId(initialTaskId);
+    setWorkflowMessage(null);
+  }, [initialTaskId]);
+
+  const selectedTask = sanitationTasks.find((t) => t.id === selectedTaskId);
   const plan = selectedTask?.domain_data as CleaningPlan | null;
   const taskWorkOrders = selectedTask ? workOrders.filter((w) => w.task_id === selectedTask.id) : [];
   const activeWorkOrder = selectedTask
     ? [...taskWorkOrders]
         .sort((a, b) => (b.attempt_no || 1) - (a.attempt_no || 1))
-        .find((w) => w.status === 'IN_PROGRESS' || w.status === 'ASSIGNED') || taskWorkOrders[0]
+        .find((w) => w.status === 'IN_PROGRESS' || w.status === 'ASSIGNED' || w.status === 'BLOCKED') || taskWorkOrders[0]
     : null;
+  const isWorkInProgress = activeWorkOrder?.status === 'IN_PROGRESS';
+  const allStepsCompleted = Boolean(plan?.actions?.length) && plan!.actions.every((action) => action.completed);
+
+  const sanitationRows = sanitationTasks.map((task) => {
+    const taskOrders = workOrders
+      .filter((workOrder) => workOrder.task_id === task.id)
+      .sort((a, b) => (b.attempt_no || 1) - (a.attempt_no || 1));
+    const workOrder = taskOrders.find((item) => ['ASSIGNED', 'IN_PROGRESS', 'BLOCKED'].includes(item.status)) || taskOrders[0];
+    const taskEvidence = workOrder ? evidence.filter((item) => item.work_order_id === workOrder.id) : [];
+    const taskPlan = task.domain_data as CleaningPlan;
+    return {
+      task,
+      workOrder,
+      plan: taskPlan,
+      beforeCount: taskEvidence.filter((item) => item.capture_phase === 'BEFORE').length,
+      afterCount: taskEvidence.filter((item) => item.capture_phase === 'AFTER').length,
+    };
+  });
+
+  const filteredSanitationRows = sanitationRows.filter((row) => {
+    const query = listSearch.trim().toLowerCase();
+    const matchesSearch = !query ||
+      row.task.title.toLowerCase().includes(query) ||
+      row.task.id.toLowerCase().includes(query) ||
+      (row.workOrder?.id || '').toLowerCase().includes(query) ||
+      (row.plan?.area?.towerCode || '').toLowerCase().includes(query);
+    const matchesStatus = listStatus === 'ALL' || row.workOrder?.status === listStatus;
+    return matchesSearch && matchesStatus;
+  });
+
+  const statusCounts = {
+    ALL: sanitationRows.length,
+    ASSIGNED: sanitationRows.filter((row) => row.workOrder?.status === 'ASSIGNED').length,
+    IN_PROGRESS: sanitationRows.filter((row) => row.workOrder?.status === 'IN_PROGRESS').length,
+    BLOCKED: sanitationRows.filter((row) => row.workOrder?.status === 'BLOCKED').length,
+    COMPLETED: sanitationRows.filter((row) => row.workOrder?.status === 'COMPLETED').length,
+  };
+
+  const runWorkOrderTransition = (targetStatus: 'IN_PROGRESS' | 'COMPLETED') => {
+    if (!activeWorkOrder) {
+      setWorkflowMessage({ type: 'ERROR', text: 'Kế hoạch này chưa có phiếu công việc để thực hiện.' });
+      return;
+    }
+    try {
+      transitionWorkOrderStatus(activeWorkOrder.id, targetStatus, {
+        note:
+          targetStatus === 'IN_PROGRESS'
+            ? 'Nhân viên vệ sinh A5 bắt đầu thực hiện kế hoạch tại hiện trường.'
+            : 'Đã hoàn thành checklist vệ sinh A5 và gửi hồ sơ chờ nghiệm thu.',
+      });
+      setWorkflowMessage({
+        type: 'SUCCESS',
+        text: targetStatus === 'IN_PROGRESS'
+          ? 'Đã bắt đầu phiếu công việc. Bạn có thể xác nhận có mặt và thực hiện checklist.'
+          : 'Đã báo hoàn thành công việc và chuyển hồ sơ sang chờ QC.',
+      });
+    } catch (error: any) {
+      setWorkflowMessage({ type: 'ERROR', text: error.message || 'Không thể cập nhật phiếu công việc.' });
+    }
+  };
 
   const handleToggleStep = (idx: number, currentCompleted: boolean) => {
     if (!selectedTask) return;
+    if (!isExecutionMode || !isWorkInProgress) return;
     if (!plan?.arrived_at_site) {
       alert('Vui lòng bấm nút "Xác nhận có mặt tại điểm làm việc" trước khi thực hiện các bước vệ sinh!');
       return;
@@ -75,22 +159,39 @@ export function SanitationWorkspace() {
 
   const handleReportIssue = (e: React.FormEvent) => {
     e.preventDefault();
-    if (issueModalActionIdx === null || !selectedTask) return;
-    toggleCleaningAction(
-      selectedTask.id,
-      issueModalActionIdx,
-      false,
-      `[SỰ CỐ PHÁT SINH]: ${issueType === 'MISSING_CHEMICALS' ? 'Thiếu hóa chất tẩy rửa' : issueType === 'LOCKED_AREA' ? 'Khu vực bị khóa' : 'Phát hiện rác nguy hại'} - ${issueNote}`,
-    );
-    setIssueModalActionIdx(null);
-    setIssueNote('');
+    if (issueModalActionIdx === null || !selectedTask || !activeWorkOrder) return;
+    const issueDescription = `[SỰ CỐ PHÁT SINH]: ${
+      issueType === 'MISSING_CHEMICALS'
+        ? 'Thiếu hóa chất tẩy rửa'
+        : issueType === 'LOCKED_AREA'
+          ? 'Khu vực bị khóa'
+          : issueType === 'HAZARDOUS_WASTE'
+            ? 'Phát hiện rác nguy hại'
+            : 'Vấn đề khác'
+    } - ${issueNote}`;
+    try {
+      toggleCleaningAction(selectedTask.id, issueModalActionIdx, false, issueDescription);
+      transitionWorkOrderStatus(activeWorkOrder.id, 'BLOCKED', { blockedReason: issueDescription });
+      setIssueModalActionIdx(null);
+      setIssueNote('');
+      setWorkflowMessage({
+        type: 'SUCCESS',
+        text: 'Đã báo vấn đề và tạm dừng phiếu công việc để Giám sát/BQL hỗ trợ.',
+      });
+    } catch (error: any) {
+      setWorkflowMessage({ type: 'ERROR', text: error.message || 'Không thể gửi báo cáo sự cố.' });
+    }
   };
 
   const handleSaveRootCause = () => {
     if (!selectedTask) return;
-    saveCleaningRootCause(selectedTask.id, `${rootCause}: ${rootCauseNote}`, wasteWeight);
-    setRootCauseSaved(true);
-    setTimeout(() => setRootCauseSaved(false), 3000);
+    try {
+      saveCleaningRootCause(selectedTask.id, `${rootCause}: ${rootCauseNote}`, wasteWeight);
+      setRootCauseSaved(true);
+      setTimeout(() => setRootCauseSaved(false), 3000);
+    } catch (error: any) {
+      setWorkflowMessage({ type: 'ERROR', text: error.message || 'Không thể lưu báo cáo thực địa.' });
+    }
   };
 
   const getActionName = (type: string) => {
@@ -118,10 +219,18 @@ export function SanitationWorkspace() {
           <div className="w-1.5 h-6 bg-emerald-600 rounded-full shrink-0" />
           <div>
             <h1 className="text-lg font-bold text-slate-900 tracking-tight">
-              Thao Tác Vệ Sinh Môi Trường A5 & Cảnh Quan
+              {embedded
+                ? 'Chi tiết công việc vệ sinh A5'
+                : isExecutionMode
+                  ? 'Thực hiện vệ sinh môi trường A5 & cảnh quan'
+                  : 'Giám sát vệ sinh A5 & cảnh quan'}
             </h1>
             <p className="text-xs text-slate-500">
-              Màn hình thao tác trực tiếp của nhân viên vệ sinh A5: Tick từng bước, chụp ảnh và báo sự cố
+              {embedded
+                ? 'Thực hiện checklist, cập nhật bằng chứng và báo cáo kết quả cho công việc đã chọn.'
+                : isExecutionMode
+                ? 'Thực hiện trọn quy trình: bắt đầu việc, xác nhận hiện trường, checklist, ảnh bằng chứng và báo hoàn thành.'
+                : 'Theo dõi tiến độ, an toàn, bằng chứng và kết quả thực hiện của đội vệ sinh; các thao tác hiện trường được khóa.'}
             </p>
           </div>
         </div>
@@ -129,67 +238,188 @@ export function SanitationWorkspace() {
         <div className="flex items-center gap-2">
           <span className="px-3.5 py-1 bg-emerald-50 text-emerald-800 font-bold text-xs rounded-full border border-emerald-200 flex items-center gap-1.5">
             <IconTrash className="w-3.5 h-3.5 text-emerald-600" />
-            Nhân viên: {currentProfile.name}
+            {isExecutionMode ? `Nhân viên: ${currentProfile.name}` : 'Chế độ giám sát • Chỉ xem'}
           </span>
         </div>
       </div>
 
-      {/* Main Two-Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Left Column: Tasks List (4 cols) */}
-        <div className="lg:col-span-4 space-y-2.5">
-          <div className="flex items-center justify-between pb-1">
-            <span className="text-xs font-bold text-slate-700">Kế hoạch phụ trách ({sanitationTasks.length})</span>
-            <span className="text-[11px] text-slate-400">Chọn để thao tác</span>
+      {workflowMessage && (
+        <div
+          className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-between ${
+            workflowMessage.type === 'SUCCESS'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}
+        >
+          <span>{workflowMessage.text}</span>
+          <button type="button" onClick={() => setWorkflowMessage(null)} className="px-2">×</button>
+        </div>
+      )}
+
+      {!selectedTask ? (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="p-3 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {([
+                  ['ALL', 'Tất cả'],
+                  ['ASSIGNED', 'Mới giao'],
+                  ['IN_PROGRESS', 'Đang làm'],
+                  ['BLOCKED', 'Bị chặn'],
+                  ['COMPLETED', 'Chờ QC'],
+                ] as const).map(([status, label]) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setListStatus(status)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                      listStatus === status
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{label}</span>
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                      listStatus === status ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {statusCounts[status]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative w-full lg:w-72">
+                <IconSearch className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  value={listSearch}
+                  onChange={(event) => setListSearch(event.target.value)}
+                  placeholder="Tìm mã nhiệm vụ, phiếu, tòa nhà..."
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500 focus:bg-white"
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-2">
-            {sanitationTasks.map((t) => {
-              const isSelected = selectedTask?.id === t.id;
-              const tPlan = t.domain_data as CleaningPlan | null;
-              const completedCount = tPlan?.actions?.filter((a) => a.completed).length || 0;
-              const totalActions = tPlan?.actions?.length || 0;
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-5 bg-blue-600 rounded-full" />
+                <h2 className="font-bold text-sm text-slate-900">Danh sách công việc vệ sinh A5</h2>
+                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[11px] font-bold">
+                  {filteredSanitationRows.length} nhiệm vụ
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400">Bấm vào công việc để xem chi tiết</span>
+            </div>
 
-              return (
-                <div
-                  key={t.id}
-                  onClick={() => setSelectedTaskId(t.id)}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer space-y-2 ${
-                    isSelected
-                      ? 'bg-emerald-50/80 border-emerald-500 shadow-2xs ring-1 ring-emerald-500/20'
-                      : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-2xs'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs font-bold text-emerald-700">{t.id}</span>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        t.status === 'DONE' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
-                      }`}
-                    >
-                      {t.status === 'DONE' ? 'Đã hoàn thành' : 'Đang xử lý'}
-                    </span>
-                  </div>
-
-                  <p className="font-bold text-xs text-slate-900 leading-snug">{t.title}</p>
-
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1.5 border-t border-slate-100">
-                    <span className="flex items-center gap-1">
-                      <IconBuilding className="w-3.5 h-3.5 text-slate-400" />
-                      Tòa {tPlan?.area.towerCode || 'S2.01'} • Tầng {tPlan?.area.floor || 'G'}
-                    </span>
-                    <span className="font-bold text-emerald-700">
-                      Tiến độ: {completedCount}/{totalActions} bước
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50/80 border-b border-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-5 py-3 min-w-[300px]">Tên công việc</th>
+                    <th className="px-4 py-3 min-w-[150px]">Vị trí / Tòa</th>
+                    <th className="px-4 py-3 min-w-[145px]">Bằng chứng</th>
+                    <th className="px-4 py-3 min-w-[120px]">Trạng thái</th>
+                    <th className="px-5 py-3 text-right min-w-[130px]">Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredSanitationRows.map(({ task, workOrder, plan: rowPlan, beforeCount, afterCount }) => {
+                    const status = workOrder?.status || 'ASSIGNED';
+                    const hasEvidence = beforeCount > 0 && afterCount > 0;
+                    return (
+                      <tr
+                        key={task.id}
+                        onClick={() => setSelectedTaskId(task.id)}
+                        className="hover:bg-slate-50/80 cursor-pointer transition-colors group"
+                      >
+                        <td className="px-5 py-4">
+                          <p className="font-bold text-slate-900 group-hover:text-blue-700">{task.title}</p>
+                          <p className="mt-1 text-[11px] font-mono text-slate-400">
+                            {task.id}{workOrder ? ` • ${workOrder.id}` : ' • Chưa có phiếu'}
+                          </p>
+                        </td>
+                        <td className="px-4 py-4 text-slate-600">
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <IconBuilding className="w-3.5 h-3.5 text-slate-400" />
+                            Tòa {rowPlan?.area?.towerCode || '—'} • Tầng {rowPlan?.area?.floor || '—'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                            hasEvidence
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}>
+                            <IconPhoto className="w-3.5 h-3.5" />
+                            {hasEvidence ? 'Đủ' : 'Thiếu'} ({beforeCount}T • {afterCount}S)
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                            status === 'COMPLETED'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : status === 'IN_PROGRESS'
+                                ? 'bg-blue-100 text-blue-700'
+                                : status === 'BLOCKED'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            {status === 'COMPLETED'
+                              ? 'Chờ QC'
+                              : status === 'IN_PROGRESS'
+                                ? 'Đang làm'
+                                : status === 'BLOCKED'
+                                  ? 'Bị chặn'
+                                  : 'Mới giao'}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedTaskId(task.id);
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold"
+                          >
+                            <span>Mở chi tiết</span>
+                            <IconChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredSanitationRows.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-14 text-center text-slate-400">
+                        Không có công việc phù hợp với bộ lọc hiện tại.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
+      ) : (
+        <div className="space-y-4">
+          <button
+            type="button"
+            onClick={() => {
+              if (onBack) {
+                onBack();
+              } else {
+                setSelectedTaskId('');
+              }
+              setWorkflowMessage(null);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold shadow-2xs"
+          >
+            <IconArrowLeft className="w-4 h-4" />
+            {embedded ? 'Quay lại Việc của tôi' : 'Quay lại danh sách công việc'}
+          </button>
 
-        {/* Right Column: Interactive Step-by-Step Execution Pane (8 cols) */}
-        <div className="lg:col-span-8 space-y-4">
           {selectedTask && plan ? (
             <>
               {/* Site Arrival & Safety Controls */}
@@ -206,19 +436,56 @@ export function SanitationWorkspace() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {!plan.arrived_at_site ? (
+                    {activeWorkOrder && (
+                      <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                        activeWorkOrder.status === 'IN_PROGRESS'
+                          ? 'bg-blue-100 text-blue-700'
+                          : activeWorkOrder.status === 'COMPLETED'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : activeWorkOrder.status === 'BLOCKED'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        Phiếu {activeWorkOrder.id} • {activeWorkOrder.status}
+                      </span>
+                    )}
+                    {isExecutionMode && activeWorkOrder?.status === 'ASSIGNED' && (
                       <button
                         type="button"
-                        onClick={() => confirmSiteArrival(selectedTask.id)}
+                        onClick={() => runWorkOrderTransition('IN_PROGRESS')}
+                        className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors"
+                      >
+                        Bắt đầu công việc
+                      </button>
+                    )}
+                    {isExecutionMode && activeWorkOrder?.status === 'BLOCKED' && (
+                      <button
+                        type="button"
+                        onClick={() => runWorkOrderTransition('IN_PROGRESS')}
+                        className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors"
+                      >
+                        Tiếp tục công việc
+                      </button>
+                    )}
+                    {isExecutionMode && isWorkInProgress && !plan.arrived_at_site ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          try {
+                            confirmSiteArrival(selectedTask.id);
+                          } catch (error: any) {
+                            setWorkflowMessage({ type: 'ERROR', text: error.message });
+                          }
+                        }}
                         className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors"
                       >
                         📍 Xác nhận có mặt tại điểm làm việc
                       </button>
-                    ) : (
+                    ) : plan.arrived_at_site ? (
                       <span className="text-xs font-bold text-blue-700 bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-200">
                         ✓ Đã có mặt lúc {new Date(plan.arrived_at_site).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
@@ -228,17 +495,32 @@ export function SanitationWorkspace() {
                     <IconAlertTriangle className="w-4 h-4 text-amber-600" />
                     <span>Quy chuẩn an toàn: Đặt biển cảnh báo "Sàn ướt / Đang làm vệ sinh"</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => toggleWarningSigns(selectedTask.id, !plan.warning_signs_placed)}
-                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors ${
-                      plan.warning_signs_placed
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-white border border-amber-300 text-amber-800'
-                    }`}
-                  >
-                    {plan.warning_signs_placed ? '✓ Đã đặt biển an toàn' : 'Chưa đặt biển'}
-                  </button>
+                  {isExecutionMode ? (
+                    <button
+                      type="button"
+                      disabled={!isWorkInProgress || !plan.arrived_at_site}
+                      onClick={() => {
+                        try {
+                          toggleWarningSigns(selectedTask.id, !plan.warning_signs_placed);
+                        } catch (error: any) {
+                          setWorkflowMessage({ type: 'ERROR', text: error.message });
+                        }
+                      }}
+                      className={`px-3 py-1 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                        plan.warning_signs_placed
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-white border border-amber-300 text-amber-800'
+                      }`}
+                    >
+                      {plan.warning_signs_placed ? '✓ Đã đặt biển an toàn' : 'Xác nhận đã đặt biển'}
+                    </button>
+                  ) : (
+                    <span className={`px-3 py-1 text-xs font-bold rounded-lg ${
+                      plan.warning_signs_placed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {plan.warning_signs_placed ? '✓ Đã đặt biển an toàn' : 'Chưa đặt biển'}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -248,7 +530,9 @@ export function SanitationWorkspace() {
                   <h3 className="font-bold text-xs text-slate-900 uppercase tracking-wider">
                     Các bước công việc cần thực hiện trực tiếp:
                   </h3>
-                  <span className="text-[11px] text-slate-500">Tick chọn để xác nhận thời điểm hoàn thành</span>
+                  <span className="text-[11px] text-slate-500">
+                    {isExecutionMode ? 'Tick chọn để xác nhận thời điểm hoàn thành' : 'Dữ liệu do nhân viên thực địa cập nhật'}
+                  </span>
                 </div>
 
                 <div className="space-y-3">
@@ -269,8 +553,9 @@ export function SanitationWorkspace() {
                             <input
                               type="checkbox"
                               checked={Boolean(act.completed)}
+                              disabled={!isExecutionMode || !isWorkInProgress || !plan.arrived_at_site}
                               onChange={() => handleToggleStep(idx, Boolean(act.completed))}
-                              className="w-5 h-5 rounded text-emerald-600 mt-0.5 cursor-pointer"
+                              className="w-5 h-5 rounded text-emerald-600 mt-0.5 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
                             />
                             <div>
                               <div className="font-bold text-xs text-slate-900">
@@ -288,7 +573,7 @@ export function SanitationWorkspace() {
                           </div>
 
                           <div className="flex items-center gap-1.5 shrink-0">
-                            {activeWorkOrder && (
+                            {activeWorkOrder && isExecutionMode && isWorkInProgress && (
                               <button
                                 type="button"
                                 onClick={() => setSelectedWoForPhoto(activeWorkOrder)}
@@ -299,14 +584,16 @@ export function SanitationWorkspace() {
                               </button>
                             )}
 
-                            <button
-                              type="button"
-                              onClick={() => setIssueModalActionIdx(idx)}
-                              className="px-2.5 py-1 bg-white hover:bg-rose-50 text-rose-700 rounded-lg text-[11px] font-bold border border-slate-200 flex items-center gap-1 shadow-2xs"
-                            >
-                              <IconAlertCircle className="w-3.5 h-3.5 text-rose-600" />
-                              <span>Báo sự cố</span>
-                            </button>
+                            {isExecutionMode && isWorkInProgress && (
+                              <button
+                                type="button"
+                                onClick={() => setIssueModalActionIdx(idx)}
+                                className="px-2.5 py-1 bg-white hover:bg-rose-50 text-rose-700 rounded-lg text-[11px] font-bold border border-slate-200 flex items-center gap-1 shadow-2xs"
+                              >
+                                <IconAlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                                <span>Báo sự cố</span>
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -344,7 +631,8 @@ export function SanitationWorkspace() {
                       min="0"
                       value={wasteWeight}
                       onChange={(e) => setWasteWeight(Number(e.target.value))}
-                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                      disabled={!isExecutionMode || !isWorkInProgress}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-70"
                     />
                   </div>
 
@@ -354,7 +642,8 @@ export function SanitationWorkspace() {
                       id="root-cause-select"
                       value={rootCause}
                       onChange={(e) => setRootCause(e.target.value)}
-                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                      disabled={!isExecutionMode || !isWorkInProgress}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-70"
                     >
                       <option value="RESIDENT_PEAK_OVERFLOW">Quá tải rác sinh hoạt giờ cao điểm (18h-20h)</option>
                       <option value="UNPACKED_BULK_CARDBOARD">Thùng carton cồng kềnh chưa gấp gọn gây kẹt miệng họng rác</option>
@@ -371,10 +660,12 @@ export function SanitationWorkspace() {
                     rows={2}
                     value={rootCauseNote}
                     onChange={(e) => setRootCauseNote(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                    readOnly={!isExecutionMode || !isWorkInProgress}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 read-only:opacity-70"
                   />
                 </div>
 
+                {isExecutionMode && isWorkInProgress && (
                 <div className="pt-1 flex justify-end">
                   <button
                     type="button"
@@ -384,15 +675,35 @@ export function SanitationWorkspace() {
                     Lưu phân tích nguyên nhân
                   </button>
                 </div>
+                )}
               </div>
+
+              {isExecutionMode && isWorkInProgress && (
+                <div className="bg-white rounded-2xl border border-emerald-200 p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900">Hoàn tất và gửi nghiệm thu</h3>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Cần hoàn thành toàn bộ checklist, đặt biển an toàn và có đủ ảnh Before/After.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!allStepsCompleted || !plan.warning_signs_placed || !plan.arrived_at_site}
+                    onClick={() => runWorkOrderTransition('COMPLETED')}
+                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-2xs"
+                  >
+                    Báo hoàn thành • Chờ QC
+                  </button>
+                </div>
+              )}
             </>
           ) : (
             <div className="p-12 text-center text-slate-400 text-xs bg-white rounded-2xl border border-slate-200">
-              Chọn kế hoạch vệ sinh bên trái để thao tác.
+              Công việc này chưa có kế hoạch vệ sinh A5 hợp lệ.
             </div>
           )}
         </div>
-      </div>
+      )}
 
       {/* Modal Report Issue */}
       {issueModalActionIdx !== null && (
@@ -452,6 +763,7 @@ export function SanitationWorkspace() {
       {selectedWoForPhoto && (
         <EvidenceModal
           workOrder={selectedWoForPhoto}
+          readOnly={!isExecutionMode}
           onClose={() => setSelectedWoForPhoto(null)}
         />
       )}

@@ -17,6 +17,7 @@ import {
   IconShield,
   IconTool,
   IconUser,
+  IconHistory,
 } from '@tabler/icons-react';
 import { useOperationsData } from '../hooks/use-operations-data';
 import { PERSONA_PROFILES, type OperationsPersona, type MenuId } from '../types/persona';
@@ -80,6 +81,13 @@ export function OperationsSidebar() {
       section: 'OPERATIONS',
     },
     {
+      id: 'completed-tasks',
+      label: 'Công việc đã hoàn thành',
+      to: '/operations/completed-tasks',
+      icon: IconHistory,
+      section: 'OPERATIONS',
+    },
+    {
       id: 'triage',
       label: 'Tiếp nhận phản ánh',
       to: '/operations/triage',
@@ -104,14 +112,20 @@ export function OperationsSidebar() {
     },
     {
       id: 'work-orders',
-      label: 'Phiếu thi công',
+      label: currentProfile.canAssignWork
+        ? 'Quản lý phiếu thi công'
+        : currentPersona === 'QC_INSPECTOR'
+          ? 'Hồ sơ chờ nghiệm thu'
+          : 'Hồ sơ công việc',
       to: '/operations/work-orders',
       icon: IconChecklist,
       section: 'OPERATIONS',
     },
     {
       id: 'sanitation',
-      label: 'Vệ sinh A5 & Cảnh quan',
+      label: currentPersona === 'STAFF_SANITATION_A5'
+        ? 'Thực hiện vệ sinh A5'
+        : 'Giám sát vệ sinh A5',
       to: '/operations/sanitation',
       icon: IconTrash,
       section: 'OPERATIONS',

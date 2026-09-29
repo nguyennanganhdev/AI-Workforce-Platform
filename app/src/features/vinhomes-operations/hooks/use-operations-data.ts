@@ -1332,8 +1332,19 @@ export function useOperationsDataInternal() {
   // ==========================================
   const toggleCleaningAction = useCallback(
     (taskId: string, actionIndex: number, completed: boolean, note?: string) => {
-      if (currentPersona !== 'STAFF_SANITATION_A5' && currentPersona !== 'SUPERVISOR' && currentPersona !== 'MANAGER') {
-        throw new Error('Chỉ nhân viên vệ sinh A5 trực tiếp mới có quyền tick hoàn thành các bước vệ sinh!');
+      if (currentPersona !== 'STAFF_SANITATION_A5') {
+        throw new Error('Chỉ nhân viên vệ sinh A5 được giao việc mới có quyền cập nhật checklist thực thi!');
+      }
+      const ownsTask = tasks.some((t) => t.id === taskId && t.assignee_id === currentProfile.id) ||
+        workOrders.some((w) => w.task_id === taskId && w.executor_id === currentProfile.id);
+      if (!ownsTask) {
+        throw new Error('Nhiệm vụ vệ sinh này không được giao cho tài khoản của bạn!');
+      }
+      const hasInProgressWorkOrder = workOrders.some(
+        (w) => w.task_id === taskId && w.executor_id === currentProfile.id && w.status === 'IN_PROGRESS',
+      );
+      if (!hasInProgressWorkOrder) {
+        throw new Error('Cần bắt đầu phiếu công việc trước khi cập nhật checklist vệ sinh!');
       }
 
       setTasks((prev) =>
@@ -1361,12 +1372,18 @@ export function useOperationsDataInternal() {
         }),
       );
     },
-    [currentPersona],
+    [currentPersona, currentProfile, tasks, workOrders],
   );
 
   const confirmSiteArrival = useCallback((taskId: string) => {
-    if (currentPersona !== 'STAFF_SANITATION_A5' && currentPersona !== 'SUPERVISOR' && currentPersona !== 'MANAGER') {
-      throw new Error('Chỉ nhân viên vệ sinh A5 mới có quyền xác nhận có mặt hiện trường!');
+    if (currentPersona !== 'STAFF_SANITATION_A5') {
+      throw new Error('Chỉ nhân viên vệ sinh A5 được giao việc mới có quyền xác nhận có mặt hiện trường!');
+    }
+    const hasInProgressWorkOrder = workOrders.some(
+      (w) => w.task_id === taskId && w.executor_id === currentProfile.id && w.status === 'IN_PROGRESS',
+    );
+    if (!hasInProgressWorkOrder) {
+      throw new Error('Cần bắt đầu phiếu công việc trước khi xác nhận có mặt hiện trường!');
     }
 
     const now = new Date().toISOString();
@@ -1384,11 +1401,17 @@ export function useOperationsDataInternal() {
         };
       }),
     );
-  }, [currentPersona]);
+  }, [currentPersona, currentProfile, workOrders]);
 
   const toggleWarningSigns = useCallback((taskId: string, placed: boolean) => {
-    if (currentPersona !== 'STAFF_SANITATION_A5' && currentPersona !== 'SUPERVISOR' && currentPersona !== 'MANAGER') {
-      throw new Error('Chỉ nhân viên vệ sinh A5 mới có quyền đặt biển cảnh báo!');
+    if (currentPersona !== 'STAFF_SANITATION_A5') {
+      throw new Error('Chỉ nhân viên vệ sinh A5 được giao việc mới có quyền xác nhận biển cảnh báo!');
+    }
+    const hasInProgressWorkOrder = workOrders.some(
+      (w) => w.task_id === taskId && w.executor_id === currentProfile.id && w.status === 'IN_PROGRESS',
+    );
+    if (!hasInProgressWorkOrder) {
+      throw new Error('Cần bắt đầu phiếu công việc trước khi cập nhật trạng thái an toàn!');
     }
 
     setTasks((prev) =>
@@ -1405,9 +1428,18 @@ export function useOperationsDataInternal() {
         };
       }),
     );
-  }, [currentPersona]);
+  }, [currentPersona, currentProfile, workOrders]);
 
   const saveCleaningRootCause = useCallback((taskId: string, rootCause: string, wasteKg?: number) => {
+    if (currentPersona !== 'STAFF_SANITATION_A5') {
+      throw new Error('Chỉ nhân viên vệ sinh A5 được giao việc mới có quyền cập nhật báo cáo thực địa!');
+    }
+    const hasInProgressWorkOrder = workOrders.some(
+      (w) => w.task_id === taskId && w.executor_id === currentProfile.id && w.status === 'IN_PROGRESS',
+    );
+    if (!hasInProgressWorkOrder) {
+      throw new Error('Cần bắt đầu phiếu công việc trước khi lưu báo cáo thực địa!');
+    }
     setTasks((prev) =>
       prev.map((t) => {
         if (t.id !== taskId) return t;
@@ -1424,7 +1456,7 @@ export function useOperationsDataInternal() {
         };
       }),
     );
-  }, []);
+  }, [currentPersona, currentProfile, workOrders]);
 
   // ==========================================
   // APPROVAL WORKFLOW

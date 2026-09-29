@@ -15,6 +15,7 @@ export type OperationsPersona =
 export type MenuId =
   | 'dashboard'
   | 'my-tasks'
+  | 'completed-tasks'
   | 'triage'
   | 'incidents'
   | 'kanban'
@@ -72,7 +73,7 @@ export const PERSONA_PROFILES: Record<OperationsPersona, UserProfile> = {
     assignedProject: 'Vinhomes Smart City',
     assignedTower: 'Phân khu Grand Sapphire',
     avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&auto=format&fit=crop&q=80',
-    allowedMenuIds: ['my-tasks', 'sanitation', 'evidence'],
+    allowedMenuIds: ['my-tasks', 'completed-tasks', 'evidence'],
     canQC: false,
     canApproveBudget: false,
     canAssignWork: false,

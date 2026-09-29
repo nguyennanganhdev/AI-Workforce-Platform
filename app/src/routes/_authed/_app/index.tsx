@@ -43,25 +43,6 @@ function RouteComponent() {
     <>
       <SidebarToggleBar />
       <div className="flex-1 flex flex-col items-center justify-center w-full p-4 mt-8">
-        {/* Quick Launch Banner for Vinhomes Operations & BQL Workspace */}
-        <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/80 rounded-2xl max-w-2xl w-full flex items-center justify-between shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-base shadow-sm">
-              🏢
-            </div>
-            <div>
-              <p className="font-bold text-sm text-slate-900">Giao diện Vận hành & BQL Vinhomes (Nền tảng 2)</p>
-              <p className="text-xs text-slate-500">Chuẩn mẫu thiết kế BistroPulse Admin Dashboard</p>
-            </div>
-          </div>
-          <Link
-            to="/operations/work-orders"
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-sm transition-transform active:scale-95"
-          >
-            Mở Workspace ➔
-          </Link>
-        </div>
-
         <div className="flex flex-col items-center">
           <h2 className="text-sm uppercase text-muted-foreground font-medium tracking-tight text-center">
             {appConfig.brand.productName}

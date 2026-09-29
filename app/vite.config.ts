@@ -66,7 +66,11 @@ function announceServerPort(port: number): Plugin {
  * app rather than the dev server gets no `/api` proxy unless it is repeated here. A desktop install
  * serves the build, and without this every call it makes returns the app's own HTML.
  */
-const appPort = listenPort(process.env.APP_PORT, 3010);
+const cliPortIndex = process.argv.indexOf("--port");
+const cliPort = cliPortIndex !== -1 && process.argv[cliPortIndex + 1] ? process.argv[cliPortIndex + 1] : undefined;
+const resolvedAppPort = process.env.APP_PORT || cliPort;
+
+const appPort = listenPort(resolvedAppPort, 3010);
 if (!appPort.ok) {
   throw new Error(appPort.reason.replace(/^PORT /, "APP_PORT "));
 }
@@ -81,7 +85,7 @@ const serving = {
   // to, which is ::1 under Node and 127.0.0.1 under bun, and the other address is then refused.
   // Whoever is told the URL has no way to know which they were given.
   // Empty APP_PORT=/SERVER_PORT= is unset (compose / leftover .env), not NaN — same trap as Bot PORT.
-  host: "::",
+  host: process.platform === "win32" ? "0.0.0.0" : "::",
   port: appPort.port,
   strictPort: true,
   proxy: {

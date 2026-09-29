@@ -21,6 +21,7 @@ import { useOperationsData } from '../hooks/use-operations-data';
 interface EvidenceModalProps {
   workOrder: VhWorkOrder;
   onClose: () => void;
+  readOnly?: boolean;
 }
 
 const burnWatermarkOntoImage = (
@@ -104,7 +105,7 @@ const burnWatermarkOntoImage = (
   });
 };
 
-export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
+export function EvidenceModal({ workOrder, onClose, readOnly = false }: EvidenceModalProps) {
   const { evidence, addEvidence, currentProfile } = useOperationsData();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -275,20 +276,24 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
                 <span className="text-xs text-slate-600 font-medium">Lần thi công #{workOrder.attempt_no}</span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Chụp ảnh Before/After có đóng dấu Watermark toạ độ, thời gian & danh tính người thao tác
+                {readOnly
+                  ? 'Hồ sơ ảnh Before/After và ảnh nghiệm thu gắn với lần thi công này.'
+                  : 'Chụp ảnh Before/After có đóng dấu Watermark toạ độ, thời gian & danh tính người thao tác'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsUploading(!isUploading)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
-            >
-              <IconCamera className="w-4 h-4" />
-              <span>{isUploading ? 'Đóng form chụp' : 'Chụp / Tải ảnh mới'}</span>
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => setIsUploading(!isUploading)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+              >
+                <IconCamera className="w-4 h-4" />
+                <span>{isUploading ? 'Đóng form chụp' : 'Chụp / Tải ảnh mới'}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -300,7 +305,7 @@ export function EvidenceModal({ workOrder, onClose }: EvidenceModalProps) {
         </div>
 
         {/* Upload Form with Real File Input & Preview */}
-        {isUploading && (
+        {!readOnly && isUploading && (
           <form onSubmit={handleUpload} className="p-5 bg-blue-50/70 border-b border-blue-200 space-y-4">
             <div className="flex items-center justify-between">
               <span className="font-bold text-xs text-blue-900 flex items-center gap-1.5">

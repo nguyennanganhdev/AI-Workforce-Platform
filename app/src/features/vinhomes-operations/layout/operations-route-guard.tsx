@@ -14,6 +14,7 @@ interface OperationsRouteGuardProps {
 const MENU_LABELS: Record<MenuId, string> = {
   dashboard: 'Tổng quan vận hành',
   'my-tasks': 'Việc của tôi',
+  'completed-tasks': 'Công việc đã hoàn thành',
   triage: 'Tiếp nhận phản ánh',
   incidents: 'Quản lý sự cố',
   kanban: 'Bảng phân bổ việc',
