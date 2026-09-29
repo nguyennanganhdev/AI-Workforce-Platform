@@ -11,6 +11,8 @@ import {
 } from "@tabler/icons-react";
 import { LeafMark } from "../components/Illustrations";
 import { Assistant, Composer } from "../features/assistant/Assistant";
+import { AuthPage } from "../features/auth/AuthPage";
+import type { AuthMode } from "../features/auth/auth-service";
 import { RequestDetail, Requests } from "../features/requests/Requests";
 import {
   Amenities,
@@ -31,7 +33,7 @@ import {
 import type { Photo, ResidentState } from "../services/types";
 
 type Route = {
-  page: "assistant" | UtilityPage | "detail";
+  page: "assistant" | UtilityPage | "detail" | AuthMode;
   id?: string;
   conversation?: boolean;
 };
@@ -44,9 +46,19 @@ const titles: Record<Route["page"], string> = {
   building: "Thông tin tòa nhà",
   amenities: "Tiện ích khu dân cư",
   detail: "Chi tiết yêu cầu",
+  login: "Đăng nhập tài khoản",
+  register: "Tạo tài khoản cư dân",
+  "forgot-password": "Quên mật khẩu",
 };
 function readRoute(): Route {
   const path = location.hash.slice(1).split("/").filter(Boolean);
+  if (
+    path[0] === "login" ||
+    path[0] === "register" ||
+    path[0] === "forgot-password"
+  ) {
+    return { page: path[0] };
+  }
   if (path[0] === "chat") return { page: "assistant", conversation: true };
   if (path[0] === "requests" && path[1]) return { page: "detail", id: path[1] };
   if (
@@ -155,6 +167,13 @@ export function App() {
     openConversation();
     if (!stateRef.current.draft) send("Báo sự cố");
   };
+  if (
+    route.page === "login" ||
+    route.page === "register" ||
+    route.page === "forgot-password"
+  ) {
+    return <AuthPage key={route.page} mode={route.page} />;
+  }
   const activeTab = route.page === "assistant" ? "assistant" : "utilities";
   const pending = state.requests.filter(
     (r) => r.status === "confirmation",

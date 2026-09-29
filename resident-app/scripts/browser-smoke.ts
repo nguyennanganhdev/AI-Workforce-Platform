@@ -157,18 +157,39 @@ try {
     "Draft review not shown",
   );
   await screenshot("draft-390");
-  const savedConversation = await evaluate(`localStorage.getItem('nha.resident.demo.v1')`);
-  await evaluate(`document.querySelector('[aria-label="Thoát cuộc trò chuyện, về trang Trợ lý"]').click()`);
+  const savedConversation = await evaluate(
+    `localStorage.getItem('nha.resident.demo.v1')`,
+  );
+  await evaluate(
+    `document.querySelector('[aria-label="Thoát cuộc trò chuyện, về trang Trợ lý"]').click()`,
+  );
   await settle();
-  await assert(`location.hash === '#/' && !!document.querySelector('.greeting') && !document.querySelector('.draft-card')`, 'Exit did not return home');
-  await assert(`localStorage.getItem('nha.resident.demo.v1') === ${JSON.stringify(savedConversation)}`, 'Exit changed conversation or request data');
+  await assert(
+    `location.hash === '#/' && !!document.querySelector('.greeting') && !document.querySelector('.draft-card')`,
+    "Exit did not return home",
+  );
+  await assert(
+    `localStorage.getItem('nha.resident.demo.v1') === ${JSON.stringify(savedConversation)}`,
+    "Exit changed conversation or request data",
+  );
   await evaluate(`document.querySelector('.resume-conversation').click()`);
   await settle();
-  await assert(`location.hash === '#/chat' && !!document.querySelector('.draft-card')`, 'Resume lost draft');
-  await evaluate(`history.back()`); await settle();
-  await assert(`!!document.querySelector('.greeting')`, 'Browser Back did not exit chat');
-  await evaluate(`history.forward()`); await settle();
-  await assert(`!!document.querySelector('.draft-card')`, 'Browser Forward did not restore chat');
+  await assert(
+    `location.hash === '#/chat' && !!document.querySelector('.draft-card')`,
+    "Resume lost draft",
+  );
+  await evaluate(`history.back()`);
+  await settle();
+  await assert(
+    `!!document.querySelector('.greeting')`,
+    "Browser Back did not exit chat",
+  );
+  await evaluate(`history.forward()`);
+  await settle();
+  await assert(
+    `!!document.querySelector('.draft-card')`,
+    "Browser Forward did not restore chat",
+  );
   await clickText("Gửi phản ánh");
   await assert(
     `JSON.parse(localStorage.getItem('nha.resident.demo.v1')).requests.length === 2`,
@@ -246,9 +267,140 @@ try {
   })()`,
     "Phone photo resizing or invalid photo handling failed",
   );
+  // Auth remains an isolated UI; unavailable BE must never look like a login success.
+  const storedBeforeAuth = await evaluate(
+    `JSON.stringify({local: {...localStorage}, session: {...sessionStorage}})`,
+  );
+  for (const [width, height] of [
+    [320, 640],
+    [390, 844],
+    [430, 932],
+    [768, 1024],
+    [1440, 1000],
+  ]) {
+    await command("Emulation.setDeviceMetricsOverride", {
+      width,
+      height,
+      deviceScaleFactor: 1,
+      mobile: width < 761,
+    });
+    for (const mode of ["login", "register", "forgot-password"]) {
+      await evaluate(`location.hash='/${mode}'`);
+      await settle();
+      await assert(
+        `!!document.querySelector('.resident-auth') && !document.querySelector('.mobile-nav')`,
+        "Auth layout leaked resident navigation",
+      );
+      await assert(
+        "document.documentElement.scrollWidth <= innerWidth",
+        `Auth overflow ${mode} ${width}`,
+      );
+      if (width === 390 || width === 1440)
+        await screenshot(`auth-${mode}-${width}`);
+    }
+  }
+  await command("Emulation.setDeviceMetricsOverride", {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  const fillAuth = async (field: string, value: string) => {
+    await evaluate(
+      `(() => { const el=document.querySelector('[name="${field}"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,${JSON.stringify(value)}); el.dispatchEvent(new Event('input',{bubbles:true})); })()`,
+    );
+    await settle();
+  };
+  await evaluate(`location.hash='/login'`);
+  await settle();
+  await clickText("Đăng nhập");
+  await assert(
+    `document.querySelectorAll('.resident-auth-field-error').length===2 && document.activeElement.name==='phone'`,
+    "Login validation/focus failed",
+  );
+  await fillAuth("phone", "0900000000");
+  await fillAuth("password", "example-password");
+  await evaluate(
+    `document.querySelector('[aria-label="Hiện mật khẩu"]').click()`,
+  );
+  await settle();
+  await assert(
+    `document.querySelector('[name="password"]').type==='text'`,
+    "Password visibility toggle failed",
+  );
+  await clickText("Đăng nhập");
+  await assert(
+    `location.hash==='#/login' && document.querySelector('[role="alert"]').textContent.includes('chưa được kết nối')`,
+    "Unconfigured login reported success",
+  );
+  await evaluate(`document.querySelector('a[href="#/register"]').click()`);
+  await settle();
+  await fillAuth("fullName", "Cư dân thử nghiệm");
+  await fillAuth("phone", "0900000000");
+  await fillAuth("password", "example-password");
+  await fillAuth("confirmPassword", "different-password");
+  await clickText("Đăng ký");
+  await assert(
+    `document.querySelector('#resident-auth-confirmPassword-error').textContent.includes('chưa khớp')`,
+    "Password mismatch not validated",
+  );
+  await fillAuth("confirmPassword", "example-password");
+  await clickText("Đăng ký");
+  await assert(
+    `document.querySelector('[role="alert"]').textContent.includes('tài khoản chưa được tạo')`,
+    "Registration pretended to create an account",
+  );
+  await evaluate(`document.querySelector('a[href="#/login"]').click()`);
+  await settle();
+  await assert(
+    `document.querySelector('[name="password"]').value===''`,
+    "Password survived auth route change",
+  );
+  await evaluate(
+    `document.querySelector('a[href="#/forgot-password"]').click()`,
+  );
+  await settle();
+  await fillAuth("phone", "0900000000");
+  await clickText("Tiếp tục");
+  await assert(
+    `document.querySelector('[role="alert"]').textContent.includes('Chưa có mã xác minh')`,
+    "Reset pretended to send a code",
+  );
+  await assert(
+    `JSON.stringify({local: {...localStorage}, session: {...sessionStorage}}) === ${JSON.stringify(storedBeforeAuth)}`,
+    "Auth persisted credentials or changed resident data",
+  );
+  await evaluate(`location.hash='/register'`);
+  await settle();
+  await evaluate(`location.reload()`);
+  await Bun.sleep(700);
+  await assert(
+    `!!document.querySelector('.resident-auth--register')`,
+    "Direct auth route/reload failed",
+  );
+  await command("Emulation.setDeviceMetricsOverride", {
+    width: 390,
+    height: 410,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await evaluate(
+    `document.querySelector('.resident-auth-submit').scrollIntoView({block:'center'})`,
+  );
+  await settle();
+  await assert(
+    `document.querySelector('.resident-auth-submit').getBoundingClientRect().bottom <= innerHeight`,
+    "Auth submit unreachable with keyboard-sized viewport",
+  );
+  await evaluate(`location.hash='/profile'`);
+  await settle();
+  await assert(
+    `!!document.querySelector('a[href="#/login"]') && !!document.querySelector('a[href="#/register"]')`,
+    "Profile is missing auth entry links",
+  );
   if (errors.length) throw new Error(errors.join("\n"));
   console.log(
-    "PASS: 5 viewport sizes; two-tab navigation; photo upload -> report -> confirmation -> list -> reload; request completion; utility pages; reduced keyboard viewport; phone photo resizing and invalid photo handling; no runtime exceptions.",
+    "PASS: resident journey and auth at 5 viewport sizes; photo upload/resize; chat exit/resume; login/register/reset validation and route navigation; no credential persistence or fake auth success; keyboard-sized viewport; no runtime exceptions.",
   );
 } finally {
   socket.close();

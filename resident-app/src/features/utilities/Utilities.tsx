@@ -190,6 +190,24 @@ export function Profile({ onReset }: { onReset: () => void }) {
         <span className="small muted">Cư dân · Hồ sơ minh họa</span>
       </section>
       <section className="white-card">
+        <h3>Tài khoản cư dân</h3>
+        <p>
+          Đăng nhập để kết nối với ngôi nhà của bạn, hoặc tạo tài khoản nếu đây
+          là lần đầu bạn ghé thăm.
+        </p>
+        <div className="button-row">
+          <a className="primary-button" href="#/login">
+            Đăng nhập
+          </a>
+          <a className="secondary-button" href="#/register">
+            Đăng ký
+          </a>
+        </div>
+        <p className="small muted">
+          Giao diện mẫu · Dịch vụ tài khoản chưa được kết nối.
+        </p>
+      </section>
+      <section className="white-card">
         <h3>Căn hộ của bạn</h3>
         <div className="apartment-card">
           <span className="icon-tile coral">
