@@ -3,7 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 
-const roots = ['server', 'shared', 'app', 'domain-tools'];
+const roots = ['server', 'shared', 'app', 'resident-app', 'domain-tools'];
 const normalize = (value) => value.replaceAll('\\', '/');
 const inside = (file, directory) => file === directory || file.startsWith(`${directory}/`);
 const databasePackages = /^(pg|postgres|postgresql|drizzle-orm|prisma|@prisma\/client|@qdrant\/[^/]+)(\/|$)/;
@@ -40,6 +40,9 @@ export function dependencyViolation(from, to) {
   if (inside(from, 'app') && !inAny('app', 'shared')) {
     return 'UI must call APIs instead of importing backend implementations';
   }
+  if (inside(from, 'resident-app') && !inAny('resident-app', 'shared')) {
+    return 'Resident UI must stay independent of staff UI and call backend APIs';
+  }
   if (inside(from, 'app/src/features/platform') && inAny('app/src/features/domains', 'shared/domains')) {
     return 'Platform UI must remain domain independent';
   }
@@ -60,7 +63,7 @@ export function dependencyViolation(from, to) {
 
 export function externalViolation(from, specifier) {
   if (inside(from, 'shared/platform') || inside(from, 'shared/domains')) return 'Shared contracts cannot import external runtime/framework packages';
-  if ((inside(from, 'domain-tools') || inside(from, 'app')) && databasePackages.test(specifier)) {
+  if ((inside(from, 'domain-tools') || inside(from, 'app') || inside(from, 'resident-app')) && databasePackages.test(specifier)) {
     return 'UI/MCP must not access PostgreSQL or Qdrant directly';
   }
   if (/agentscope/i.test(specifier)) return 'AgentScope belongs behind the Python RuntimeAdapter';

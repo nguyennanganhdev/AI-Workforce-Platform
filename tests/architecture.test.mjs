@@ -39,6 +39,16 @@ test('domain isolation covers UI and backend modules', () => {
   assert.ok(dependencyViolation('app/src/features/domains/vinhomes/resident/page.ts', 'app/src/features/domains/vinpearl/guest/page.ts'));
 });
 
+test('resident and staff apps cannot import each other or bypass backend APIs', () => {
+  const from = 'resident-app/src/services/resident-service.ts';
+  assert.ok(dependencyViolation(from, 'app/src/features/vinhomes-operations/hooks/use-operations-data.ts'));
+  assert.ok(dependencyViolation('app/src/main.tsx', 'resident-app/src/app/App.tsx'));
+  assert.ok(dependencyViolation(from, 'server/src/db/client.ts'));
+  assert.ok(externalViolation(from, 'drizzle-orm'));
+  assert.equal(dependencyViolation(from, 'shared/domains/vinhomes/events.ts'), null);
+  assert.equal(dependencyViolation(from, 'resident-app/src/services/types.ts'), null);
+});
+
 test('scanner checks re-exports, dynamic imports, require and type imports', () => {
   assert.deepEqual(importSpecifiers(`
     import type { A } from './a.js';

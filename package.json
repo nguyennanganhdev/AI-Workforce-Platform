@@ -7,9 +7,13 @@
   "workspaces": [
     "app",
     "server",
-    "worker"
+    "worker",
+    "resident-app"
   ],
   "scripts": {
+    "dev:resident": "bun run --cwd resident-app dev",
+    "build:resident": "bun run --cwd resident-app build",
+    "test:resident": "bun run --cwd resident-app test",
     "build": "bun run generate:app-config && bun run --filter '*' build",
     "dev": "bun run generate:app-config && bun run --filter app --filter server --parallel dev",
     "generate:app-config": "bun --env-file=.env scripts/generate-app-config.ts",

@@ -28,10 +28,10 @@ function packagesStartedBy(script: string, workspaces: string[]): string[] {
 }
 
 describe("OpenBot workspace", () => {
-  test("defines the app, server, and worker packages", () => {
+  test("defines staff and resident apps alongside server and worker packages", () => {
     const manifest = rootManifest();
 
-    expect(manifest.workspaces).toEqual(["app", "server", "worker"]);
+    expect(manifest.workspaces).toEqual(["app", "server", "worker", "resident-app"]);
 
     for (const packageName of manifest.workspaces) {
       expect(existsSync(join(repositoryRoot, packageName))).toBe(true);
