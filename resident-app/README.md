@@ -29,7 +29,7 @@ Script đặt lại key dữ liệu demo trong profile kiểm thử; không ch�
 ## Phạm vi hiện tại
 
 - Giao diện [đăng nhập, đăng ký và quên mật khẩu](src/features/auth/README.md) riêng cho cư dân:
-  `/#/login`, `/#/register`, `/#/forgot-password`. Validation có sẵn, auth backend chưa kết nối.
+  `//login`, `//register`, `//forgot-password`. Validation có sẵn, auth backend chưa kết nối.
 - Chat theo kịch bản: hỏi thông tin, lập phản ánh, hỏi vị trí, ảnh, xác nhận trước khi gửi.
 - Danh sách, tìm kiếm, lọc và chi tiết yêu cầu; timeline, xác nhận hoàn tất hoặc yêu cầu xử lý lại.
 - Thông báo phát sinh từ cùng nguồn dữ liệu yêu cầu.

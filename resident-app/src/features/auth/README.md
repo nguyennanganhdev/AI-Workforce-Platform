@@ -6,13 +6,15 @@ không có rule global cho button/input/body.
 
 ## Route và hành vi
 
-- `#/login`: điện thoại + mật khẩu, hiện/ẩn mật khẩu, liên kết quên mật khẩu/đăng ký.
-- `#/register`: họ tên, điện thoại, mật khẩu, nhập lại mật khẩu.
-- `#/forgot-password`: nhập điện thoại để đề nghị khôi phục.
+- `/login`: điện thoại + mật khẩu, hiện/ẩn mật khẩu, liên kết quên mật khẩu/đăng ký.
+- `/register`: họ tên, điện thoại, mật khẩu, nhập lại mật khẩu.
+- `/forgot-password`: nhập điện thoại để đề nghị khôi phục.
 - `#/profile`: có đường dẫn vào đăng nhập/đăng ký.
 - Auth có layout riêng, không render sidebar hoặc bottom navigation của trợ lý.
 - Link “Khám phá bản trải nghiệm” quay về `#/`; đây không phải thao tác đăng nhập.
-- Chuyển trang unmount form qua route key, bỏ dữ liệu nhạy cảm đang nhập.
+- Các trang được chọn tại `src/main.tsx`, bên ngoài `App` cư dân; chuyển trang bằng URL riêng và bỏ dữ liệu form đang nhập.
+- URL cũ `#/login`, `#/register`, `#/forgot-password` chuyển sang URL mới tương ứng.
+- Khi deploy, cấu hình hosting trả `index.html` cho `/login`, `/register`, `/forgot-password` để mở trực tiếp hoặc tải lại trang hoạt động (Vite đã hỗ trợ khi phát triển).
 
 ## Trạng thái tích hợp
 

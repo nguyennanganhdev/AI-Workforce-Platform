@@ -120,7 +120,7 @@ export function AuthPage({
       else await service.requestPasswordReset(phone);
       if (!mounted.current) return;
       setFailed(false);
-      if (mode === "login") location.hash = "/";
+      if (mode === "login") location.assign("/#/");
       else {
         setValues((previous) => ({
           ...previous,
@@ -155,7 +155,7 @@ export function AuthPage({
         className="resident-auth-story"
         aria-label="Nhà, không gian dành cho cư dân"
       >
-        <a href="#/" className="resident-auth-wordmark">
+        <a href="/#/" className="resident-auth-wordmark">
           <span>
             <IconHome size={25} stroke={1.8} />
           </span>
@@ -188,7 +188,7 @@ export function AuthPage({
         <header className="resident-auth-hero">
           <div className="resident-auth-topbar">
             <a
-              href={mode === "login" ? "#/" : "#/login"}
+              href={mode === "login" ? "/#/" : "/login"}
               className="resident-auth-back"
               aria-label={
                 mode === "login" ? "Về trang Trợ lý" : "Quay lại đăng nhập"
@@ -274,7 +274,7 @@ export function AuthPage({
             )}
             {mode === "login" && (
               <div className="resident-auth-forgot">
-                <a href="#/forgot-password">Quên mật khẩu?</a>
+                <a href="/forgot-password">Quên mật khẩu?</a>
               </div>
             )}
             {notice && (
@@ -304,14 +304,14 @@ export function AuthPage({
           <p className="resident-auth-switch">
             {mode === "login" ? (
               <>
-                Bạn chưa có tài khoản cư dân? <a href="#/register">Đăng ký</a>
+                Bạn chưa có tài khoản cư dân? <a href="/register">Đăng ký</a>
               </>
             ) : mode === "register" ? (
               <>
-                Bạn đã có tài khoản? <a href="#/login">Đăng nhập</a>
+                Bạn đã có tài khoản? <a href="/login">Đăng nhập</a>
               </>
             ) : (
-              <a href="#/login">Quay lại đăng nhập</a>
+              <a href="/login">Quay lại đăng nhập</a>
             )}
           </p>
           {mode === "register" && (
@@ -321,7 +321,7 @@ export function AuthPage({
             </p>
           )}
           <div className="resident-auth-demo">
-            <a href="#/">
+            <a href="/#/">
               Khám phá bản trải nghiệm <IconArrowUpRight size={16} />
             </a>
             <p>Giao diện mẫu · Chưa kết nối dịch vụ tài khoản</p>

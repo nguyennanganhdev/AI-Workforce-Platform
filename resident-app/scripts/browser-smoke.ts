@@ -65,7 +65,7 @@ async function evaluate(expression: string) {
     throw new Error(JSON.stringify(result.exceptionDetails));
   return result.result.value;
 }
-const settle = () => Bun.sleep(180);
+const settle = () => Bun.sleep(700);
 async function screenshot(name: string) {
   await settle();
   const result = await command("Page.captureScreenshot", { format: "png" });
@@ -95,9 +95,11 @@ async function assert(condition: string, message: string) {
 try {
   await command("Runtime.enable");
   await command("Page.enable");
+  await command("Page.navigate", { url: "http://127.0.0.1:3011/#/" });
+  await settle();
   // Only this app's demo key is removed, in the isolated testing profile.
   await evaluate(
-    `localStorage.removeItem('nha.resident.demo.v1'); location.hash='/'; location.reload();`,
+    `localStorage.removeItem('nha.resident.demo.v1'); location.reload();`,
   );
   await Bun.sleep(700);
   for (const [width, height] of [
@@ -285,7 +287,7 @@ try {
       mobile: width < 761,
     });
     for (const mode of ["login", "register", "forgot-password"]) {
-      await evaluate(`location.hash='/${mode}'`);
+      await evaluate(`location.assign('/${mode}')`);
       await settle();
       await assert(
         `!!document.querySelector('.resident-auth') && !document.querySelector('.mobile-nav')`,
@@ -311,7 +313,7 @@ try {
     );
     await settle();
   };
-  await evaluate(`location.hash='/login'`);
+  await evaluate(`location.assign('/login')`);
   await settle();
   await clickText("Đăng nhập");
   await assert(
@@ -330,10 +332,10 @@ try {
   );
   await clickText("Đăng nhập");
   await assert(
-    `location.hash==='#/login' && document.querySelector('[role="alert"]').textContent.includes('chưa được kết nối')`,
+    `location.pathname==='/login' && document.querySelector('[role="alert"]').textContent.includes('chưa được kết nối')`,
     "Unconfigured login reported success",
   );
-  await evaluate(`document.querySelector('a[href="#/register"]').click()`);
+  await evaluate(`document.querySelector('a[href="/register"]').click()`);
   await settle();
   await fillAuth("fullName", "Cư dân thử nghiệm");
   await fillAuth("phone", "0900000000");
@@ -350,14 +352,14 @@ try {
     `document.querySelector('[role="alert"]').textContent.includes('tài khoản chưa được tạo')`,
     "Registration pretended to create an account",
   );
-  await evaluate(`document.querySelector('a[href="#/login"]').click()`);
+  await evaluate(`document.querySelector('a[href="/login"]').click()`);
   await settle();
   await assert(
     `document.querySelector('[name="password"]').value===''`,
     "Password survived auth route change",
   );
   await evaluate(
-    `document.querySelector('a[href="#/forgot-password"]').click()`,
+    `document.querySelector('a[href="/forgot-password"]').click()`,
   );
   await settle();
   await fillAuth("phone", "0900000000");
@@ -370,7 +372,7 @@ try {
     `JSON.stringify({local: {...localStorage}, session: {...sessionStorage}}) === ${JSON.stringify(storedBeforeAuth)}`,
     "Auth persisted credentials or changed resident data",
   );
-  await evaluate(`location.hash='/register'`);
+  await evaluate(`location.assign('/register')`);
   await settle();
   await evaluate(`location.reload()`);
   await Bun.sleep(700);
@@ -392,10 +394,10 @@ try {
     `document.querySelector('.resident-auth-submit').getBoundingClientRect().bottom <= innerHeight`,
     "Auth submit unreachable with keyboard-sized viewport",
   );
-  await evaluate(`location.hash='/profile'`);
+  await evaluate(`location.assign('/#/profile')`);
   await settle();
   await assert(
-    `!!document.querySelector('a[href="#/login"]') && !!document.querySelector('a[href="#/register"]')`,
+    `!!document.querySelector('a[href="/login"]') && !!document.querySelector('a[href="/register"]')`,
     "Profile is missing auth entry links",
   );
   if (errors.length) throw new Error(errors.join("\n"));

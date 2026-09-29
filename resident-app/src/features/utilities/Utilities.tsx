@@ -196,10 +196,10 @@ export function Profile({ onReset }: { onReset: () => void }) {
           là lần đầu bạn ghé thăm.
         </p>
         <div className="button-row">
-          <a className="primary-button" href="#/login">
+          <a className="primary-button" href="/login">
             Đăng nhập
           </a>
-          <a className="secondary-button" href="#/register">
+          <a className="secondary-button" href="/register">
             Đăng ký
           </a>
         </div>
