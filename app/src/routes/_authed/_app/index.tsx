@@ -168,7 +168,7 @@ function RouteComponent() {
                 {explore.map((agent) => (
                   <CarouselItem className="basis-auto pl-4" key={agent.id}>
                     <Link search={{ agent: agent.id }} to="/channel/new">
-                      <AgentCard agent={agent} appearance="artwork" />
+                      <AgentCard agent={agent} />
                     </Link>
                   </CarouselItem>
                 ))}

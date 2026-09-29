@@ -49,7 +49,6 @@ export type WithdrawnGrant = {
 export type PluginServer = {
   id: string;
   title: string;
-  logo?: string | null;
   vendor: string;
   url: string;
   summary: string;

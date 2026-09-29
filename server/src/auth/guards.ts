@@ -1,7 +1,6 @@
-import { eq } from "drizzle-orm";
 import type { Context, MiddlewareHandler } from "hono";
 import type { Database } from "../db/client";
-import { userRoles } from "../db/schema";
+import { rolesForUser, strongestRole } from "./roles";
 import type { OpenBotRole } from "./roles";
 
 export type AuthenticatedActor = {
@@ -41,14 +40,7 @@ export type AppVariables = {
 
 export function createRoleRepository(database: Database): RoleRepository {
   return {
-    rolesForUser: async (userId) => {
-      const records = await database
-        .select({ role: userRoles.role })
-        .from(userRoles)
-        .where(eq(userRoles.userId, userId));
-
-      return records.map((record) => record.role);
-    },
+    rolesForUser: (userId) => rolesForUser(database, userId),
   };
 }
 
@@ -66,14 +58,9 @@ export function createRequireUser(
       return context.json({ error: "Authentication required." }, 401);
     }
 
-    const roles = session.user.role
-      ? [session.user.role]
-      : await roleRepository.rolesForUser(session.user.id);
-    const role = roles.includes("admin")
-      ? "admin"
-      : roles.includes("user")
-        ? "user"
-        : undefined;
+    // Canonical DB grants also enforce suspended accounts. Provider claims cannot bypass revocation.
+    const roles = await roleRepository.rolesForUser(session.user.id);
+    const role = strongestRole(roles);
 
     if (!role) {
       return context.json({ error: "Authorization required." }, 403);

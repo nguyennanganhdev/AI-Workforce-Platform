@@ -12,7 +12,7 @@ export function setPersonRoleMutationOptions(queryClient: QueryClient) {
   return mutationOptions({
     mutationFn: (variables: {
       userId: string;
-      role: "admin" | "user";
+      role: "admin" | "management" | "staff" | "customer";
     }): Promise<Person> =>
       client(`/api/admin/people/${variables.userId}/role`, "person", {
         method: "POST",
