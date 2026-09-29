@@ -30,7 +30,11 @@ import {
 } from "../services/resident-service";
 import type { Photo, ResidentState } from "../services/types";
 
-type Route = { page: "assistant" | UtilityPage | "detail"; id?: string };
+type Route = {
+  page: "assistant" | UtilityPage | "detail";
+  id?: string;
+  conversation?: boolean;
+};
 const titles: Record<Route["page"], string> = {
   assistant: "Trợ lý cư dân",
   utilities: "Tiện ích",
@@ -43,6 +47,7 @@ const titles: Record<Route["page"], string> = {
 };
 function readRoute(): Route {
   const path = location.hash.slice(1).split("/").filter(Boolean);
+  if (path[0] === "chat") return { page: "assistant", conversation: true };
   if (path[0] === "requests" && path[1]) return { page: "detail", id: path[1] };
   if (
     path[0] &&
@@ -92,7 +97,7 @@ export function App() {
     scroll.current?.scrollTo({ top: 0 });
     if (previousPage.current !== route.page) title.current?.focus();
     previousPage.current = route.page;
-  }, [route.page, route.id]);
+  }, [route.page, route.id, route.conversation]);
   useEffect(() => {
     const viewport = window.visualViewport;
     const update = () =>
@@ -137,11 +142,17 @@ export function App() {
       return false;
     }
   }
-  const send = (text: string, photos: Photo[] = []) =>
-    commit((previous) => reply(previous, text, photos));
+  const openConversation = () => {
+    location.hash = "/chat";
+  };
+  const send = (text: string, photos: Photo[] = []) => {
+    const saved = commit((previous) => reply(previous, text, photos));
+    if (saved) openConversation();
+    return saved;
+  };
   const openRequest = (id: string) => navigate("detail", id);
   const report = () => {
-    navigate("assistant");
+    openConversation();
     if (!stateRef.current.draft) send("Báo sự cố");
   };
   const activeTab = route.page === "assistant" ? "assistant" : "utilities";
@@ -244,6 +255,21 @@ export function App() {
             </button>
           </div>
         </header>
+        {route.page === "assistant" && route.conversation && (
+          <div className="conversation-toolbar">
+            <button
+              className="icon-button"
+              aria-label="Thoát cuộc trò chuyện, về trang Trợ lý"
+              onClick={() => navigate("assistant")}
+            >
+              <IconArrowLeft size={21} />
+            </button>
+            <div>
+              <strong>Cuộc trò chuyện</strong>
+              <span>Lịch sử và bản nháp được giữ lại</span>
+            </div>
+          </div>
+        )}
         {route.page !== "assistant" && (
           <div className="page-toolbar">
             {route.page !== "utilities" && (
@@ -282,6 +308,8 @@ export function App() {
           {route.page === "assistant" && (
             <Assistant
               state={state}
+              conversation={!!route.conversation}
+              onResume={openConversation}
               onSend={send}
               onOpen={openRequest}
               onRequests={() => navigate("requests")}

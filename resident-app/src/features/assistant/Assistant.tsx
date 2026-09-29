@@ -23,6 +23,8 @@ import { RequestCard } from "../requests/Requests";
 
 type AssistantProps = {
   state: ResidentState;
+  conversation: boolean;
+  onResume: () => void;
   onSend: (text: string, photos?: Photo[]) => boolean;
   onOpen: (id: string) => void;
   onRequests: () => void;
@@ -33,6 +35,8 @@ type AssistantProps = {
 
 export function Assistant({
   state,
+  conversation,
+  onResume,
   onSend,
   onOpen,
   onRequests,
@@ -43,7 +47,7 @@ export function Assistant({
   const end = useRef<HTMLDivElement>(null);
   const prevMessages = useRef(state.messages.length);
   useEffect(() => {
-    if (prevMessages.current !== state.messages.length) {
+    if (conversation && prevMessages.current !== state.messages.length) {
       end.current?.scrollIntoView({
         behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
           ? "instant"
@@ -52,11 +56,11 @@ export function Assistant({
       });
       prevMessages.current = state.messages.length;
     }
-  }, [state.messages.length]);
+  }, [state.messages.length, conversation]);
   const current =
     state.requests.find((r) => r.status === "confirmation") ??
     state.requests.find((r) => r.status !== "completed");
-  const started = state.messages.length > 0;
+  const started = conversation;
   return (
     <div className={`assistant-content ${started ? "started" : ""}`}>
       {!started && (
@@ -72,6 +76,20 @@ export function Assistant({
             </h1>
             <p>Mình ở đây để cuộc sống ở nhà dễ dàng hơn.</p>
           </div>
+          {state.messages.length > 0 && (
+            <button className="resume-conversation" onClick={onResume}>
+              <IconSparkles size={20} />
+              <span>
+                <strong>Tiếp tục cuộc trò chuyện</strong>
+                <small>
+                  {state.draft
+                    ? "Bạn có một phản ánh đang soạn"
+                    : "Xem lại lịch sử trao đổi của bạn"}
+                </small>
+              </span>
+              <IconChevronRight size={18} />
+            </button>
+          )}
           <section className="hero-card">
             <div className="hero-copy">
               <span className="hero-tag">
@@ -225,17 +243,19 @@ export function Assistant({
           </div>
         </>
       )}
-      {state.draft?.step === "description" && state.draft.description && (
-        <div className="edit-draft-note">
-          <strong>Sửa nội dung phản ánh</strong>
-          <p>Nội dung hiện tại: {state.draft.description}</p>
-          <p>
-            Nhập mô tả mới vào ô tin nhắn bên dưới. Ảnh đã đính kèm sẽ được giữ
-            lại.
-          </p>
-        </div>
-      )}
-      {state.draft?.step === "location" && (
+      {started &&
+        state.draft?.step === "description" &&
+        state.draft.description && (
+          <div className="edit-draft-note">
+            <strong>Sửa nội dung phản ánh</strong>
+            <p>Nội dung hiện tại: {state.draft.description}</p>
+            <p>
+              Nhập mô tả mới vào ô tin nhắn bên dưới. Ảnh đã đính kèm sẽ được
+              giữ lại.
+            </p>
+          </div>
+        )}
+      {started && state.draft?.step === "location" && (
         <div className="suggestion-row">
           <button onClick={() => onSend(`Căn hộ ${resident.apartment}`)}>
             <IconMapPin size={16} />
@@ -243,7 +263,7 @@ export function Assistant({
           </button>
         </div>
       )}
-      {state.draft?.step === "review" && (
+      {started && state.draft?.step === "review" && (
         <DraftCard
           draft={state.draft}
           onSubmit={onSubmit}
@@ -251,7 +271,7 @@ export function Assistant({
           onCancel={onCancelDraft}
         />
       )}
-      {state.draft && state.draft.step !== "review" && (
+      {started && state.draft && state.draft.step !== "review" && (
         <button className="text-button cancel-draft" onClick={onCancelDraft}>
           Hủy phản ánh đang soạn
         </button>

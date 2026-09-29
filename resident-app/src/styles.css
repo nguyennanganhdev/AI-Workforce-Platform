@@ -17,6 +17,51 @@
   --border: #eceef1;
   --brand-gradient: linear-gradient(115deg, #ff9a7a 0%, #ff7777 100%);
 }
+.conversation-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+  background: white;
+}
+.conversation-toolbar strong {
+  display: block;
+  font-size: 13px;
+}
+.conversation-toolbar span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.resume-conversation {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  margin-bottom: 18px;
+  border: 1px solid #dce3f7;
+  border-radius: 14px;
+  background: white;
+  color: #4169f5;
+  text-align: left;
+}
+.resume-conversation > span {
+  flex: 1;
+}
+.resume-conversation strong {
+  display: block;
+  font-size: 12px;
+}
+.resume-conversation small {
+  display: block;
+  font-size: 11px;
+  margin-top: 5px;
+  color: var(--muted);
+}
 * {
   box-sizing: border-box;
 }

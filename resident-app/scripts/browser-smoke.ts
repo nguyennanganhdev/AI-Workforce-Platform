@@ -157,6 +157,18 @@ try {
     "Draft review not shown",
   );
   await screenshot("draft-390");
+  const savedConversation = await evaluate(`localStorage.getItem('nha.resident.demo.v1')`);
+  await evaluate(`document.querySelector('[aria-label="Thoát cuộc trò chuyện, về trang Trợ lý"]').click()`);
+  await settle();
+  await assert(`location.hash === '#/' && !!document.querySelector('.greeting') && !document.querySelector('.draft-card')`, 'Exit did not return home');
+  await assert(`localStorage.getItem('nha.resident.demo.v1') === ${JSON.stringify(savedConversation)}`, 'Exit changed conversation or request data');
+  await evaluate(`document.querySelector('.resume-conversation').click()`);
+  await settle();
+  await assert(`location.hash === '#/chat' && !!document.querySelector('.draft-card')`, 'Resume lost draft');
+  await evaluate(`history.back()`); await settle();
+  await assert(`!!document.querySelector('.greeting')`, 'Browser Back did not exit chat');
+  await evaluate(`history.forward()`); await settle();
+  await assert(`!!document.querySelector('.draft-card')`, 'Browser Forward did not restore chat');
   await clickText("Gửi phản ánh");
   await assert(
     `JSON.parse(localStorage.getItem('nha.resident.demo.v1')).requests.length === 2`,
