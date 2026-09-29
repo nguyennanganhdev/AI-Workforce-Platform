@@ -1,5 +1,7 @@
 # Kế hoạch hoàn thiện AI Platform Builder — giao việc cho 5 team và AI coding
 
+**Đính chính phạm vi Team Hoàng:** phụ trách Reception agent **và năng lực Report agent để BQL tự tạo trên platform**, gồm template cấu hình, prompt, tool báo cáo, định nghĩa chỉ số và nội dung/artifact báo cáo. Chiến xây UI/API builder và cổng dữ liệu có phân quyền; Đông thực thi Report agent trong runtime AgentScope; Team 5 vận hành. Phần phân công dưới đây đã cập nhật theo phạm vi này.
+
 Ngày rà soát: 29/09/2026. Nhánh nguồn: `develop`, commit nền `df8b4aa`. Đây là kế hoạch triển khai, không phải xác nhận các chức năng dưới đây đã hoàn thành.
 
 ## 1. Cách dùng tài liệu này
@@ -81,7 +83,7 @@ RLS hiện chủ yếu theo tenant. Backend phải kiểm tra scope, assignment,
 
 ### 4.3. Có bảng cho nghiệp vụ rộng hơn MVP
 
-Không coi mọi bảng có sẵn là yêu cầu sản phẩm. Payment/refund chưa được người dùng yêu cầu và không thuộc backlog bắt buộc; không tự triển khai hoặc drop bảng. Ghi nhận chi phí sửa thực tế để học giá không cần invoice/payment/refund. Report/service interruption cần đối chiếu nghiệp vụ trước triển khai.
+Không coi mọi bảng có sẵn là yêu cầu sản phẩm. Payment/refund chưa được người dùng yêu cầu và không thuộc backlog bắt buộc; không tự triển khai hoặc drop bảng. Ghi nhận chi phí sửa thực tế để học giá không cần invoice/payment/refund. Report agent đã được xác nhận thuộc Team Hoàng và MVP; service interruption cần đối chiếu nghiệp vụ trước triển khai.
 
 ### 4.4. Học kinh nghiệm từ ticket — phạm vi đã xác nhận
 
@@ -99,18 +101,18 @@ Tên Team 5 tạm thời là **Platform/QA/DevOps**; người phụ trách thự
 
 | Team | Được sửa trực tiếp | Không sửa trực tiếp / bàn giao cho owner |
 |---|---|---|
-| **Hoàng — Reception** | **MỚI** `agent-reception/**`; `agent-langgraph/**` khi cần trích xuất/reuse; **MỚI** `docs/teams/hoang/**` | Không sửa `server/src/db/**`, backend ticket/routing, UI, `shared/contracts/**` hoặc entrypoint server; gửi contract/integration request |
-| **Chiến — Backend + Frontend** | `server/src/**` **trừ ngoại lệ Quang bên dưới**; `server/tests/**` trừ hai folder Quang; `server/package.json`, `server/tsconfig.json`, `server/drizzle.config.ts`; `server/drizzle/**`; `server/scripts/**`; `scripts/generate-db-schema.py`, `scripts/generate-app-config.ts`; `app/**`; **MỚI** `shared/contracts/**`, `examples/vinhomes/**`, `docs/teams/chien/**`, `worker/src/jobs/business/**` | Không sửa runtime agent, worker entrypoint/deployment, root lockfile, thư mục Quang; đăng ký module/job qua yêu cầu tích hợp |
+| **Hoàng — Reception + Report agent** | `agent-reception/**`; **MỚI** `agent-report/**`, `server/src/reporting/**`, `server/tests/reporting/**`, `worker/src/jobs/reporting/**`; `agent-langgraph/**` khi cần reuse; `docs/teams/hoang/**` | Không sửa DB/migration, backend ticket/routing, UI, `shared/contracts/**`, server/worker entrypoint; gửi yêu cầu owner tích hợp |
+| **Chiến — Backend + Frontend** | `server/src/**` và `server/tests/**` **trừ các folder reporting của Hoàng và knowledge/technical-tools của Quang**; `server/package.json`, `server/tsconfig.json`, `server/drizzle.config.ts`; `server/drizzle/**`; `server/scripts/**`; `scripts/generate-db-schema.py`, `scripts/generate-app-config.ts`; `app/**`; `shared/contracts/**`, `examples/vinhomes/**`, `docs/teams/chien/**`, `worker/src/jobs/business/**` | Không sửa runtime agent, worker entrypoint/deployment, root lockfile, thư mục Hoàng/Quang; đăng ký module/job qua yêu cầu tích hợp |
 | **Đông — Coordination** | **MỚI** `agent-coordination/**`, `docs/teams/dong/**` | Không sửa `supervisor/**` (Docker); không sửa DB, API, tool implementation hoặc UI; technical agent runtime nằm ở team này |
 | **Quang — Technical tools + RAG** | **MỚI** `server/src/knowledge/**`, `server/src/technical-tools/**`, `server/tests/knowledge/**`, `server/tests/technical-tools/**`, `worker/src/jobs/knowledge/**`, `docs/teams/quang/**` | Không sửa schema/migration, server entrypoint/auth/storage, package server hoặc root lockfile; dependency mới gửi Chiến/Team 5 |
-| **Team 5 — Platform/QA/DevOps** | `.github/**`, `docker/**`, `charts/**`, `spire/**`, `supervisor/**`, `tests/**`; `worker/**` trừ hai thư mục jobs trên; root `Dockerfile*`, `docker-compose*.yml`, `.env.example`, `.gitignore`, `.gitattributes`, `package.json`, `bun.lock`, `bunfig.toml`, `tsconfig.base.json`, formatter config; `scripts/**` trừ các file Chiến; **MỚI** `docs/teams/platform/**`, `docs/integration/**` | Không thay business rule/model prompt hoặc sửa migration để CI qua; không đổi hợp đồng API một mình |
+| **Team 5 — Platform/QA/DevOps** | `.github/**`, `docker/**`, `charts/**`, `spire/**`, `supervisor/**`, `tests/**`; `worker/**` trừ `jobs/business/**`, `jobs/knowledge/**`, `jobs/reporting/**`; root `Dockerfile*`, `docker-compose*.yml`, `.env.example`, `.gitignore`, `.gitattributes`, `package.json`, `bun.lock`, `bunfig.toml`, `tsconfig.base.json`, formatter config; `scripts/**` trừ các file Chiến; `docs/teams/platform/**`, `docs/integration/**` | Không thay business rule/model prompt hoặc sửa migration để CI qua; không đổi hợp đồng API một mình |
 
 Quy tắc bao phủ phần còn lại:
 
 - `shared/**` ngoài `shared/contracts/**`, adapter `agent-*` ngoài vùng Hoàng/Đông, `desktop/**`, `agent-computer/**`, `assets/**`, `examples/**` ngoài Vinhomes và tài liệu chung: Team 5 bảo trì, mặc định giữ nguyên. Team chuyên môn gửi yêu cầu nếu cần đổi.
 - `docs/KE_HOACH_HOAN_THIEN_5_TEAM.md`: Team 5 quản lý phiên bản kế hoạch, thay phân công phải có các owner liên quan thống nhất.
 - `server/src/db/**`, catalog và generator: **Chiến là owner duy nhất**, kể cả bảng RAG, memory hay runtime. Quang/Đông/Hoàng sở hữu yêu cầu sử dụng chứ không tự sinh migration.
-- `server/src/app.ts`, `server/src/index.ts`: chỉ Chiến nối module. `worker/src/index.ts`: chỉ Team 5 nối job; business job Chiến và ingestion job Quang xuất handler/factory nhận dependency, không tự chạy loop lúc import.
+- `server/src/app.ts`, `server/src/index.ts`: chỉ Chiến nối module. `worker/src/index.ts`: chỉ Team 5 nối job; business job Chiến, ingestion job Quang và reporting job Hoàng xuất handler/factory nhận dependency, không tự chạy loop lúc import.
 - Root `bun.lock`: Team 5 tổng hợp dependency từ workspace manifests và kiểm chứng `bun install --frozen-lockfile`; mỗi runtime riêng sở hữu manifest/lockfile nằm trong folder của mình. Không regenerate tất cả lockfile để sửa một dependency.
 - Generated file (`app/src/routeTree.gen.ts` nếu được router tạo, `app/src/lib/generated/**`, `tables.ts`, `generated-invariants.sql`) phải sinh bằng công cụ owner, không sửa tay làm lệch nguồn. Kiểm tra đúng tên script/file hiện tại trước khi chạy.
 - `.env`, secret, dữ liệu local và `.codex-artifacts/**`: không phải vùng bàn giao code của bất kỳ team nào.
@@ -121,6 +123,15 @@ Folder mới dự kiến:
 agent-reception/                 # Hoàng; LangGraph TypeScript service
   src/{graph,tools,adapters,persistence}/
   tests/
+agent-report/                    # Hoàng; template/config/prompt/tool manifest, không tạo runtime thứ hai
+  templates/
+  schemas/
+  prompts/
+  examples/
+  tests/
+server/src/reporting/            # Hoàng; application service/metrics/tools/rendering qua ports
+server/tests/reporting/          # Hoàng; unit/contract tests của reporting
+worker/src/jobs/reporting/       # Hoàng; handler export báo cáo, Team 5 đăng ký worker
 agent-coordination/              # Đông; Python service dùng AgentScope đã pin
   src/{supervisor,agents,groupchat,adapters,persistence}/
   tests/
@@ -146,6 +157,8 @@ Quy ước: H = Hoàng, C = Chiến, D = Đông, Q = Quang, P = Team 5. P0 là n
 
 ### 6.1. Team Hoàng
 
+Team Hoàng sở hữu hai năng lực: Reception cố định và Report agent do BQL tự tạo từ template. Không biến Report agent thành một node Reception hoặc một agent cố định dùng chung mọi BQL. Phân công ba thành viên tại `docs/teams/hoang/PHAN_CONG_3_THANH_VIEN.md`.
+
 | Task | Mức | Công việc và đầu ra | Dependency | Nghiệm thu |
 |---|---|---|---|---|
 | H01 | P0 | Reception service tại `agent-reception/`; tái sử dụng mẫu LangGraph/AG-UI, cấu hình model, healthcheck, structured state và client backend | C01, P01 | Contract tests không cần model thật; người dùng không cấu hình lại system Reception thành agent tùy ý |
@@ -155,6 +168,9 @@ Quy ước: H = Hoàng, C = Chiến, D = Đông, Q = Quang, P = Team 5. P0 là n
 | H05 | P1 | Theo dõi ticket và thông báo tiến độ có recipient correlation; không giữ HTTP request chờ công việc nhiều giờ | C08, D04 | Hai ticket đồng thời không trả nhầm người; event lặp không lặp message |
 | H06 | P1/P2 | Bộ eval tiếng Việt: thiếu thông tin, mô tả mơ hồ, dấu hiệu khẩn, ảnh không rõ, prompt injection; tối ưu hỏi và chi phí | P04, C05 | Có dataset/expected outcome theo policy, báo lỗi định lượng; không dùng model confidence như xác suất chuẩn |
 | H07 | P1 | Reception self-help/giá: tra quy trình và estimate, hỏi đồng ý, hướng dẫn đúng version, ghi outcome, chuyển onsite | C13, Q07, Q08, H03, H04 | Khách từ chối được gọi kỹ thuật ngay; không hướng dẫn tự sửa khi không đủ điều kiện; thiếu dữ liệu giá phải hỏi thêm hoặc từ chối ước lượng |
+| H08 | P0/P1 | Report agent template: config schema, bộ câu hỏi tạo agent, prompt, metric/output catalog, ví dụ preview và version | C01, C09 contract, D02 contract | BQL tạo agent riêng từ template mà không viết code; chỉ cấu hình phạm vi/tool được cấp; bản publish bất biến |
+| H09 | P1 | Report tools/application service: validate kỳ/scope, lập yêu cầu, lấy dataset snapshot qua authorized ports, tính chỉ số xác định, source lineage và kết quả | C14, H08, C04/C05/C08 dữ liệu | Không SQL tùy ý/LLM tính KPI; đúng timezone/denominator/as_of; không rò dữ liệu hoặc tổng hợp ngoài scope |
+| H10 | P1 | Nội dung báo cáo, render DOCX, job/export artifacts, preview, provenance và test chất lượng report; adapter đăng ký tool cho AgentScope | H09, C07, C09, C14, D08, P03 | Tạo agent → publish → gọi report → nhận file đúng quyền; số khớp nguồn, retry không nhân đôi, báo thiếu dữ liệu; DOCX render kiểm tra trước bàn giao |
 
 Hoàng không chịu trách nhiệm tự xác định đội kỹ thuật cuối cùng hay ghi priority chính thức. Reception vẫn gửi cảnh báo theo emergency policy khi thiếu ảnh; không chờ upload hoàn tất mới báo sự cố đủ dấu hiệu khẩn.
 
@@ -174,11 +190,23 @@ Chia nội bộ thành C-BE (backend/database), C-FE (frontend), C-INT (tích h�
 | C08 | P1 | Dispatcher, staff shift/skill/capacity, offer/accept/ETA/timeout/reassign, SLA/escalation, notification/outbox consumers | C04, C05, P03 | Ưu tiên ảnh hưởng phân công thực tế; hai worker không double-assign; chống starvation; retry có DLQ và audit |
 | C09 | P1 | Agent builder: CRUD draft, model/tool/knowledge grants, schema validation, preview, publish immutable release, rollback | C02, C03, D02, Q01 | BQL chỉ sửa agent của mình; publish pin tool/agent/group version; agent đang chạy không tự đổi theo draft |
 | C10 | P1 | UI customer: Reception/ticket/trạng thái/ảnh; management: builder/groupchat/queue/review; staff: nhận việc/ETA/evidence; admin: domain/scope/policy | C03–C09 theo màn hình | Có loading/error/empty/permission states; UI dùng API thực; thao tác trái quyền bị backend từ chối |
-| C11 | P2, cần xác nhận phạm vi | Report có provenance, service interruption và phạm vi thông báo; feedback/ticket review. Không bao gồm payment/refund | C04, C07, C08 | Report không tổng hợp chéo quyền; thông báo đúng đối tượng; không tự triển khai chỉ vì schema có bảng |
+| C11 | P2, cần xác nhận phạm vi | Service interruption và phạm vi thông báo; feedback/ticket review. Report chuyển sang H08–H10/C14, không gồm payment/refund | C04, C07, C08 | Thông báo đúng đối tượng; không tự triển khai chỉ vì schema có bảng |
 | C12 | P1/P2 | Rà soát legacy writers, chuyển attachment/runtime mapping cần thiết; truy vấn tenant-aware; hardening invariant/migration | C06, C07, P04 | Không có hai nguồn trạng thái chính thức; dữ liệu cũ có kế hoạch chuyển đổi; API không còn dùng legacy role để cấp quyền |
 | C13 | P0/P1 | Schema học kinh nghiệm, migration tăng dần; API/UI ghi procedure và actual cost, review/publish/revoke; eligibility/attempt/handoff, price reference và estimate audit | C01, C03, C04, C05, C06, C07, C08 | Có nguồn work order/tác giả/version; phân quyền duyệt; đồng bộ outcome/event/dispatch; tiền tính đúng, không phụ thuộc payment/refund; test tenant/concurrency |
 
+C14 thuộc Team Chiến, là dependency backend riêng của Report agent:
+
+| Task | Mức | Công việc và đầu ra | Dependency | Nghiệm thu |
+|---|---|---|---|---|
+| C14 | P0/P1 | UI/API tích hợp template Report vào builder C09; reporting data ports/repositories có scope; persistence request/source/artifact, contract, migration nếu thiếu; mount module Hoàng | C01, C03, C07; H08 contract | BQL preview/publish agent riêng; query scope do server resolve; source snapshot đọc nhất quán; download kiểm tra lại quyền; không bắt Hoàng sửa DB/UI |
+
 ### 6.3. Team Đông
+
+**D08 thuộc Team Đông**, bên cạnh D01–D07:
+
+| Task | Mức | Công việc và đầu ra | Dependency | Nghiệm thu |
+|---|---|---|---|---|
+| D08 | P1 | Nạp Report template/release do Hoàng cung cấp, bind tools có grant và thực thi AgentScope trong groupchat BQL | H08, D02, C06, C14 | Mỗi BQL có agent/run/context riêng; supervisor điều phối đúng instance; retry/cancel/timeout không công bố báo cáo trái quyền |
 
 | Task | Mức | Công việc và đầu ra | Dependency | Nghiệm thu |
 |---|---|---|---|---|
@@ -223,7 +251,8 @@ Schema hiện dùng embedding vector dimension cố định và có trigger ki�
 
 - Chiến là owner vật lý của **toàn bộ 148 bảng hiện tại và mọi bảng mở rộng**. Chỉ service backend được giao quyền mới thực hiện mutation nghiệp vụ. Runtime agent gửi command qua API.
 - Bảng auth/scope/domain/workspace/agent config: Chiến; backend cấp quyền đọc cấu hình đã publish cho runtime.
-- `tickets`, assessment/decision/review, SLA, dispatch, work order/assignment/approval, actual cost/price estimate/report: service nghiệp vụ Chiến. Hoàng/Đông/Quang gửi command, không tự ghi projection.
+- `tickets`, assessment/decision/review, SLA, dispatch, work order/assignment/approval, actual cost/price estimate: service nghiệp vụ Chiến. Hoàng/Đông/Quang gửi command, không tự ghi projection.
+- Reporting application/tools/metrics/rendering thuộc Hoàng; persistence `report_requests`/`report_sources`, authorized dataset queries, DB schema và quyền thuộc Chiến C14. Application gọi ports được inject; không tự SQL hoặc bỏ qua quyền. Repository implementation C14 đặt ngoài `server/src/reporting/**`, ví dụ `server/src/business/report-data/**`.
 - `agent_teams`, `team_members`, tasks/mailbox, `agent_runs`, context, execution principals và runtime/memory bindings: API runtime của Chiến là cổng ghi; Đông/Hoàng sở hữu adapter và đề xuất lifecycle. Cần quyền đọc/ghi theo đúng operation, không một generic CRUD endpoint mở toàn bộ.
 - Knowledge/embedding/retrieval/memory candidate-publication: Quang triển khai repository trong module knowledge, luôn chạy với authorized context và quyền từ Chiến. Quyền publish memory và quyền sửa ACL vẫn do backend kiểm tra.
 - Storage/evidence metadata: Chiến; Quang truy cập tài liệu qua authorized storage adapter. Team 5 vận hành bucket/lifecycle, không sửa trạng thái DB bằng script thủ công.
@@ -242,8 +271,8 @@ Không ước lượng ngày khi chưa biết số người/năng lực. Mỗi m
 | M0 — Chuẩn hóa nền | C01/C02/C03/C06 thiết kế; H01; D01; Q01; P01/P02 | Contract v1 + fixture, ownership mapping, schema nâng cấp và các service healthcheck; hai runtime có persistence plan |
 | M1 — Một luồng xuyên hệ thống | C04/C07, H02/H03, D02/D03, Q02 bản tối thiểu, P03 | Cư dân gửi yêu cầu → đúng BQL/group → tool backend → cập nhật trạng thái → trả đúng cư dân; ảnh lên MinIO thật |
 | M2 — Ưu tiên và bền vững | C05/C08, H04/H05, D04/D05, Q03/Q04, P04 | Triage/SLA/dispatch chạy thật; restart/retry/isolation test qua; không còn mock trong đường chạy nghiệm thu |
-| M3 — Platform builder, UI và học kinh nghiệm | C09/C10/C12/C13, D02/D07, H06/H07, Q05/Q06/Q07/Q08, P04/P05/P07 | Hai BQL có group riêng; kỹ thuật ghi quy trình/chi phí → publish → Reception hướng dẫn hoặc chuyển người, trả khoảng giá có căn cứ; UAT Vinhomes |
-| M4 — Hoàn thiện và mở rộng domain | C11 khi được xác nhận, D06, Q05/Q06, H06, P05/P06 | Domain thứ hai bằng cấu hình/adapter; report/interruption theo phạm vi được duyệt; release có runbook; không gồm payment/refund mặc định |
+| M3 — Builder, Reception, Report và học kinh nghiệm | C09/C10/C12/C13/C14, D02/D07/D08, H06–H10, Q05/Q06/Q07/Q08, P04/P05/P07 | Hai BQL có group riêng và tự tạo Report agent; report đúng scope/nguồn; self-help/giá có căn cứ; UAT Vinhomes |
+| M4 — Hoàn thiện và mở rộng domain | C11 khi được xác nhận, D06, Q05/Q06, H06, P05/P06 | Domain thứ hai bằng cấu hình/adapter; interruption theo phạm vi được duyệt; release có runbook; Report MVP đã ở M3; không gồm payment/refund mặc định |
 
 **MVP nghiệm thu = M0 đến M3**, bao gồm học quy trình tự sửa và giá tham khảo. C13 chốt contract/schema từ M0, xây ghi nhận dữ liệu ở M1–M2; Q07/Q08/H07/D07/P07 tích hợp và nghiệm thu ở M3. M4 không phải yêu cầu xây mọi bảng đã có. Không triển khai RL training cho hai luồng này.
 
@@ -296,6 +325,7 @@ Mutation có `idempotency_key`; lưu hash payload và kết quả. Cùng key kh�
 | `/internal/knowledge/*` | Quang module, Chiến mount | Agent tools, UI API qua gateway | Query/ingestion/status với ACL, citation và retrieval log |
 | Reception run endpoint | Hoàng | Gateway Chiến | AG-UI adapter + context đã xác minh, interrupt và stream lỗi có cấu trúc |
 | Coordination run endpoint | Đông | Gateway/worker | Nhận destination/group release đã pin, ticket context tối thiểu, nhận lại resume event |
+| Report template/catalog và report operations | Hoàng module, Chiến mount/UI/persistence | Builder, Report agent runtime Đông | Config/version, authorized snapshot, metrics, sources, trạng thái/artifact; không SQL tùy ý |
 
 Đường dẫn cụ thể có thể đổi ở C01 trước khi freeze. Không đổi âm thầm sau khi team khác dùng; thay breaking phải tăng version và cung cấp contract migration.
 
@@ -315,7 +345,23 @@ Quang cung cấp tools `find_self_help_procedure`, `estimate_repair_price`; Hoà
 
 Events bổ sung: procedure submitted/published/revoked, self-help declined/succeeded/failed/stopped, actual cost verified/corrected/withdrawn, price reference published/invalidated. Mutation có idempotency; Quang viết ingestion/aggregation, Team 5 host; Chiến giữ nguyên tử dữ liệu nghiệp vụ + outbox. Việc cấp tool không cho phép agent tự duyệt nội dung.
 
-### 9.5. Tool và RAG
+### 9.5. Report agent — hợp đồng và luồng tạo agent
+
+1. BQL chọn template Report hoặc mô tả nhu cầu; UI builder của Chiến dùng config schema và câu hỏi H08 của Hoàng để thu thập tên agent, loại báo cáo, bộ chỉ số, kỳ/timezone, phạm vi hợp lệ, định dạng và cách trình bày.
+2. Backend xác minh owner workspace, metric/tool allowlist và quyền dữ liệu; preview trên dữ liệu trong scope. Publish qua agent_versions/releases hiện có, pin template/config/tool/metric versions. Không dùng prompt của BQL làm quyền truy cập.
+3. Đông nạp cấu hình trong AgentScope như subagent do BQL tạo. Hoàng cung cấp nội dung chuyên biệt và tool báo cáo; không viết thêm scheduler/groupchat runtime tại `agent-report/`.
+4. Report tool của Hoàng gọi authorized data/persistence ports của Chiến; ghi request, snapshot nguồn, as_of, metric_version. Backend chịu trách nhiệm consistent snapshot/watermark; không hứa as_of là time travel nếu không có lịch sử dữ liệu.
+5. Metrics do code tính; LLM chỉ diễn giải, không bịa số hoặc biến thiếu dữ liệu thành 0. Job Hoàng tạo DOCX qua storage service Chiến; Team 5 host worker. Trả file qua permission-checked API, không public bucket URL.
+
+MVP báo cáo: lượng ticket theo trạng thái/loại/kỳ, SLA, phân công và kết quả xử lý. Từng metric phải định nghĩa thời điểm tính, mẫu số, reopen/cancel, timezone và kỳ `[from,to)`. Có thể thêm actual cost/self-help khi C13 sẵn sàng; không coi đó là báo cáo doanh thu/payment. Báo cáo lịch định kỳ, email tự động và dashboard tùy biến ngoài MVP cho tới khi được xác nhận.
+
+Tái sử dụng `report_requests`, `report_sources`, agent versions/releases và file metadata. Gap phải C14 rà soát: pin agent/template/config version, idempotency/cancel/retry, schema filters, quyền nguồn và source_message_id hiện NOT NULL cho báo cáo chạy không từ chat. MVP dùng nguồn message thật, không sinh message ID giả. Hoàng đề xuất; chỉ Chiến sửa catalog/schema/migration.
+
+Ports tối thiểu: create request, fetch authorized dataset snapshot, persist sources/result, get status/cancel, authorize artifact. H09 chốt request/result schema với C14; tools có version và idempotency. API persistence chỉ cho phép lifecycle hợp lệ; không cấp generic SQL hoặc generic CRUD mọi bảng.
+
+Nghiệm thu: hai BQL tạo hai Report agent từ cùng template với cấu hình riêng; số liệu khác theo quyền, file truy được nguồn; grant bị thu hồi giữa run/export chặn truy cập; dữ liệu rỗng khác lỗi truy vấn; prompt injection không mở rộng scope; retry không phát hành nhiều artifact chính thức.
+
+### 9.6. Tool và RAG
 
 - Tool descriptor: `name`, `version`, schema input/output, required permission/grants, side-effect class, timeout, retry policy và idempotency requirement. Không tự khởi tạo tool chỉ vì model nêu tên.
 - Tool trả dữ liệu/operation ID có provenance. Technical agent và supervisor không báo “đã gọi nhân viên” nếu backend chỉ trả danh sách gợi ý.
@@ -364,6 +410,7 @@ Cả hai luồng phải chạy đồng thời khi restart một runtime, gửi c
 | Storage | Sai tenant prefix, forged complete request, hash/size/version mismatch, object chưa scan, presigned expiry, orphan cleanup | Chiến + Team 5 |
 | RAG | ACL trước truy xuất, revoked docs/cached result, injection, citation tới version đúng, embedding mismatch, reindex/delete | Quang |
 | Agent builder | Draft/published pinning, unauthorized tool grants, group version mismatch, update giữa run, sandbox test trước publish | Chiến + Đông |
+| Report builder và báo cáo | Hai BQL tạo agent riêng; scope/metric allowlist; kỳ/timezone/reopen; số liệu và nguồn khớp; snapshot/hash; missing khác zero; revoke giữa run/download; DOCX render; retry/cancel | Hoàng + Chiến + Đông + Team 5 |
 | Reliability | Outbox atomicity, inbox dedup, event out-of-order, retry sau timeout, lease fencing, model/storage outage | Team 5 + owner service |
 | Học kinh nghiệm/self-help/giá | Quy trình chưa duyệt, không đủ điều kiện tự sửa, khách từ chối/thất bại, revoke giữa phiên, giá thiếu/cũ/trùng/revision, không lộ mẫu riêng, khoảng giá khớp tool | Quang + Chiến + Hoàng + Đông + Team 5 |
 
