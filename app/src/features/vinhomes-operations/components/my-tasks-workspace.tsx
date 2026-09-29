@@ -21,6 +21,8 @@ import {
   IconCamera,
   IconRefresh,
   IconTrash,
+  IconSparkles,
+  IconReceipt2,
 } from '@tabler/icons-react';
 import { useOperationsData } from '../hooks/use-operations-data';
 import type { VhWorkOrder } from '../types/work-order';
@@ -35,6 +37,7 @@ export function MyTasksWorkspace() {
     myWorkOrders,
     incidents,
     evidence,
+    coordinationSessions,
     currentProfile,
     currentPersona,
     transitionWorkOrderStatus,
@@ -190,6 +193,11 @@ export function MyTasksWorkspace() {
   };
 
   const handleCompleteWork = (woId: string) => {
+    const targetWo = myWorkOrders.find((w) => w.id === woId);
+    if (usesDedicatedSanitationWorkspace && targetWo) {
+      setSelectedSanitationTaskId(targetWo.task_id);
+      return;
+    }
     try {
       setErrorMessage(null);
       transitionWorkOrderStatus(woId, 'COMPLETED', {
@@ -309,18 +317,16 @@ export function MyTasksWorkspace() {
                   setActiveTab(tab.id as FilterTab);
                   setCurrentPage(1);
                 }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-                  isActive
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${isActive
                     ? 'bg-blue-600 text-white shadow-2xs font-bold'
                     : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-white' : tab.dot}`} />
                 <span>{tab.label}</span>
                 <span
-                  className={`px-1.5 py-0.2 rounded-full text-[11px] font-bold ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
-                  }`}
+                  className={`px-1.5 py-0.2 rounded-full text-[11px] font-bold ${isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+                    }`}
                 >
                   {tab.count}
                 </span>
@@ -450,9 +456,8 @@ export function MyTasksWorkspace() {
                   return (
                     <tr
                       key={wo.id}
-                      className={`hover:bg-slate-50/80 transition-colors group ${
-                        isSelected ? 'bg-blue-50/30' : ''
-                      } ${wo.redo_of_work_order_id ? 'bg-rose-50/15' : ''}`}
+                      className={`hover:bg-slate-50/80 transition-colors group ${isSelected ? 'bg-blue-50/30' : ''
+                        } ${wo.redo_of_work_order_id ? 'bg-rose-50/15' : ''}`}
                     >
                       {/* Checkbox */}
                       <td className="py-3.5 px-4 text-center">
@@ -484,6 +489,41 @@ export function MyTasksWorkspace() {
                               </span>
                             )}
                           </div>
+                          {/* Multi-Agent Coordination Session Badge */}
+                          {(() => {
+                            const session = coordinationSessions.find(
+                              (s) => s.work_order_id === wo.id || s.incident_id === wo.incident_id,
+                            );
+                            if (!session) return null;
+                            return (
+                              <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                                <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-[10px] rounded flex items-center gap-1">
+                                  <IconSparkles className="w-2.5 h-2.5 text-indigo-600" />
+                                  <span>{session.id}</span>
+                                </span>
+                                {session.quotation ? (
+                                  <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px] rounded flex items-center gap-1">
+                                    <IconCheck className="w-2.5 h-2.5" />
+                                    <span>Giá: {session.quotation.total_amount.toLocaleString('vi-VN')}đ</span>
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 font-bold text-[10px] rounded">
+                                    Chờ báo giá vật tư
+                                  </span>
+                                )}
+                                {session.resident_ticket_status === 'DONE' && (
+                                  <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 border border-purple-200 font-bold text-[10px] rounded">
+                                    Cư dân: DONE (Đóng chat)
+                                  </span>
+                                )}
+                                {session.status === 'CLOSED' && (
+                                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 border border-slate-200 font-bold text-[10px] rounded">
+                                    BQL đã đóng
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                           {wo.status === 'BLOCKED' && wo.blocked_reason && (
                             <p className="text-[10px] text-amber-700 italic flex items-center gap-1">
                               <IconInfoCircle className="w-3 h-3 text-amber-600 shrink-0" />
@@ -511,11 +551,10 @@ export function MyTasksWorkspace() {
                           <button
                             type="button"
                             onClick={() => setSelectedWoForEvidence(wo)}
-                            className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                              hasRequiredPhotos
+                            className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${hasRequiredPhotos
                                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
                                 : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
-                            }`}
+                              }`}
                             title="Bấm để chụp / tải ảnh hiện trường"
                           >
                             <IconCamera className="w-3.5 h-3.5" />
@@ -531,26 +570,24 @@ export function MyTasksWorkspace() {
                       {/* Status */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                            wo.status === 'COMPLETED'
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${wo.status === 'COMPLETED'
                               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                               : wo.status === 'IN_PROGRESS'
                                 ? 'bg-blue-50 text-blue-700 border border-blue-200'
                                 : wo.status === 'BLOCKED'
                                   ? 'bg-amber-50 text-amber-700 border border-amber-200'
                                   : 'bg-slate-100 text-slate-700'
-                          }`}
+                            }`}
                         >
                           <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              wo.status === 'COMPLETED'
+                            className={`w-1.5 h-1.5 rounded-full ${wo.status === 'COMPLETED'
                                 ? 'bg-emerald-500'
                                 : wo.status === 'IN_PROGRESS'
                                   ? 'bg-blue-500'
                                   : wo.status === 'BLOCKED'
                                     ? 'bg-amber-500'
                                     : 'bg-slate-400'
-                            }`}
+                              }`}
                           />
                           {wo.status === 'COMPLETED' && 'Chờ QC'}
                           {wo.status === 'IN_PROGRESS' && 'Đang làm'}
@@ -616,6 +653,19 @@ export function MyTasksWorkspace() {
                             </button>
                           )}
 
+                          {/* Quick button to open multi-agent quotation dialog */}
+                          {!usesDedicatedSanitationWorkspace && (
+                            <button
+                              type="button"
+                              onClick={() => openWorkOrderDetail(wo)}
+                              className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Báo giá vật tư & Điều phối AI"
+                            >
+                              <IconReceipt2 className="w-3 h-3 text-indigo-600" />
+                              <span>Báo giá</span>
+                            </button>
+                          )}
+
                           {/* 3-Dots Action Popover Menu (Matching Ảnh 2) */}
                           <div className="relative">
                             <button
@@ -649,17 +699,17 @@ export function MyTasksWorkspace() {
                                 </button>
 
                                 {!usesDedicatedSanitationWorkspace && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setOpenActionId(null);
-                                    setSelectedWoForEvidence(wo);
-                                  }}
-                                  className="w-full px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer font-medium"
-                                >
-                                  <IconPhoto className="w-3.5 h-3.5 text-blue-600" />
-                                  <span>Chụp / Tải ảnh</span>
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenActionId(null);
+                                      setSelectedWoForEvidence(wo);
+                                    }}
+                                    className="w-full px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer font-medium"
+                                  >
+                                    <IconPhoto className="w-3.5 h-3.5 text-blue-600" />
+                                    <span>Chụp / Tải ảnh</span>
+                                  </button>
                                 )}
 
                                 {usesDedicatedSanitationWorkspace && wo.status !== 'COMPLETED' && (
@@ -776,11 +826,10 @@ export function MyTasksWorkspace() {
                 key={pageNum}
                 type="button"
                 onClick={() => setCurrentPage(pageNum)}
-                className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                  currentPage === pageNum
+                className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${currentPage === pageNum
                     ? 'bg-blue-600 text-white shadow-2xs'
                     : 'text-slate-600 hover:bg-slate-100'
-                }`}
+                  }`}
               >
                 {pageNum}
               </button>

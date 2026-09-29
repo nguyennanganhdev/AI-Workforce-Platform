@@ -1,10 +1,5 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { EvidenceGallery, OperationsRouteGuard } from '@/features/vinhomes-operations';
+import { createFileRoute, Navigate } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/_authed/operations/evidence')({
-  component: () => (
-    <OperationsRouteGuard menuId="evidence">
-      <EvidenceGallery />
-    </OperationsRouteGuard>
-  ),
+  component: () => <Navigate to="/operations/my-tasks" replace />,
 });

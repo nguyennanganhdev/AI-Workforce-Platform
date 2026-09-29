@@ -128,11 +128,11 @@ describe('Vinhomes Operations RBAC & Persona Capability Matrix', () => {
     expect(contractor.role).toBe('CONTRACTOR');
   });
 
-  test('Menu routing RBAC: Field workers do not have access to QC, Approvals, or Triage', () => {
+  test('Menu routing RBAC: Field workers do not have access to QC, Approvals, or Triage, and evidence gallery is removed for all', () => {
     const tech = PERSONA_PROFILES['STAFF_TECHNICAL'];
     expect(tech.allowedMenuIds).toContain('my-tasks');
     expect(tech.allowedMenuIds).toContain('work-orders');
-    expect(tech.allowedMenuIds).toContain('evidence');
+    expect(tech.allowedMenuIds).not.toContain('evidence');
     expect(tech.allowedMenuIds).not.toContain('qc');
     expect(tech.allowedMenuIds).not.toContain('approvals');
     expect(tech.allowedMenuIds).not.toContain('triage');
@@ -145,6 +145,11 @@ describe('Vinhomes Operations RBAC & Persona Capability Matrix', () => {
     expect(clean.allowedMenuIds).not.toContain('sanitation');
     expect(clean.allowedMenuIds).not.toContain('qc');
     expect(clean.allowedMenuIds).not.toContain('approvals');
+
+    // Evidence gallery menu is completely removed for all personas
+    for (const profile of Object.values(PERSONA_PROFILES)) {
+      expect(profile.allowedMenuIds).not.toContain('evidence');
+    }
   });
 });
 

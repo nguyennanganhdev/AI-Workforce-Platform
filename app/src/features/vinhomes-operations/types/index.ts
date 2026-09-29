@@ -13,3 +13,4 @@ export * from './message';
 export * from './persona';
 export * from './intake';
 export * from './security';
+export * from './session';

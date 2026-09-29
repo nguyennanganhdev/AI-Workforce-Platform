@@ -20,6 +20,12 @@ import {
   type CleaningPlan,
   type MenuId,
   type CapturePhase,
+  type VhCoordinationSession,
+  type VhSessionMessage,
+  type MaterialItem,
+  type QuotationInvoice,
+  type SessionStatus,
+  type SessionActionType,
   ALLOWED_WORK_ORDER_TRANSITIONS,
 } from '../types';
 import { PERSONA_PROFILES } from '../types/persona';
@@ -36,6 +42,8 @@ import {
   MOCK_SECURITY_CHECKPOINTS,
   MOCK_SECURITY_INCIDENTS,
   MOCK_SECURITY_HANDOVERS,
+  MOCK_COORDINATION_SESSIONS,
+  MOCK_SESSION_MESSAGES,
 } from '../mock';
 import { MOCK_ACTION_REQUESTS } from '../mock/action-requests';
 
@@ -186,7 +194,26 @@ export function useOperationsDataInternal() {
     }
   });
 
-  // 9. Current active persona (7 roles)
+  // 9. Multi-Agent Coordination Sessions & Group Chat
+  const [coordinationSessions, setCoordinationSessions] = useState<VhCoordinationSession[]>(() => {
+    try {
+      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_sessions`);
+      return stored ? JSON.parse(stored) : MOCK_COORDINATION_SESSIONS;
+    } catch {
+      return MOCK_COORDINATION_SESSIONS;
+    }
+  });
+
+  const [sessionMessages, setSessionMessages] = useState<VhSessionMessage[]>(() => {
+    try {
+      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_session_msgs`);
+      return stored ? JSON.parse(stored) : MOCK_SESSION_MESSAGES;
+    } catch {
+      return MOCK_SESSION_MESSAGES;
+    }
+  });
+
+  // 10. Current active persona (7 roles)
   const [currentPersona, setCurrentPersona] = useState<OperationsPersona>(() => {
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_persona`);
@@ -283,6 +310,8 @@ export function useOperationsDataInternal() {
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_sec_cp`, JSON.stringify(securityCheckpoints));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_sec_inc`, JSON.stringify(securityIncidents));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_sec_handovers`, JSON.stringify(securityHandovers));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_sessions`, JSON.stringify(coordinationSessions));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_session_msgs`, JSON.stringify(sessionMessages));
       localStorage.setItem(`${STORAGE_KEY_PREFIX}_persona`, currentPersona);
     } catch (e) {
       console.warn('Failed to sync operations state to localStorage', e);
@@ -301,6 +330,8 @@ export function useOperationsDataInternal() {
     securityCheckpoints,
     securityIncidents,
     securityHandovers,
+    coordinationSessions,
+    sessionMessages,
     currentPersona,
   ]);
 
@@ -343,6 +374,36 @@ export function useOperationsDataInternal() {
           : c,
       ),
     );
+
+    // Auto-create Coordination Session for the ticket
+    const newSessionId = `SES-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+    const newSession: VhCoordinationSession = {
+      id: newSessionId,
+      incident_id: newIncidentId,
+      case_id: candidate.case_id,
+      title: `Điều phối đa tác nhân: ${candidate.normalized_summary}`,
+      status: 'DISPATCHING',
+      resident_ticket_status: 'OPEN',
+      resident_conversation_status: 'ACTIVE',
+      active_agents: ['AGENT_CSKH', 'AGENT_DISPATCHER', 'AGENT_TECHNICAL', 'AGENT_BILLING'],
+      resident_name: candidate.location_json?.apartmentCode ? `Căn hộ ${candidate.location_json.apartmentCode}` : 'Cư dân',
+      resident_apartment: candidate.location_json?.apartmentCode || 'Tòa ' + (candidate.location_json?.towerCode || 'S2.01'),
+      quotation: null,
+      created_at: now,
+      updated_at: now,
+    };
+    setCoordinationSessions((prev) => [newSession, ...prev]);
+
+    const initMsg: VhSessionMessage = {
+      id: `SMSG-${Date.now()}-mat`,
+      session_id: newSessionId,
+      sender_type: 'AGENT_DISPATCHER',
+      sender_name: 'Agent Điều Phối (Supervisor)',
+      content: `Tiếp nhận Ticket từ Agent CSKH cho sự cố "${candidate.normalized_summary}". Đã mở Session ${newSessionId}. Triệu tập Agent Kỹ Thuật và Agent Báo Cáo.`,
+      action_type: 'CREATE_SESSION',
+      created_at: now,
+    };
+    setSessionMessages((prev) => [initMsg, ...prev]);
 
     return newIncident;
   }, [issueCandidates, currentProfile]);
@@ -708,15 +769,29 @@ export function useOperationsDataInternal() {
         }),
       );
 
-      // Synchronize parent Task status
+      // Synchronize parent Task status & auto-record site arrival for sanitation tasks
       if (targetWo.task_id) {
         if (targetStatus === 'IN_PROGRESS') {
           setTasks((prev) =>
-            prev.map((t) =>
-              t.id === targetWo.task_id && t.status !== 'IN_PROGRESS'
-                ? { ...t, status: 'IN_PROGRESS' as const, updated_at: now }
-                : t,
-            ),
+            prev.map((t) => {
+              if (t.id !== targetWo.task_id) return t;
+              let updatedDomainData = t.domain_data;
+              if (t.domain_type === 'SANITATION' || t.domain_type === 'LANDSCAPE') {
+                const plan = (updatedDomainData as any)?.cleaning_plan || updatedDomainData;
+                if (plan && !plan.arrived_at_site) {
+                  updatedDomainData = {
+                    ...plan,
+                    arrived_at_site: now,
+                  };
+                }
+              }
+              return {
+                ...t,
+                status: 'IN_PROGRESS' as const,
+                domain_data: updatedDomainData,
+                updated_at: now,
+              };
+            }),
           );
         }
       }
@@ -1591,6 +1666,292 @@ export function useOperationsDataInternal() {
     [approvals, currentProfile, executionGrants],
   );
 
+  // ==========================================
+  // MULTI-AGENT COORDINATION SESSIONS & LIFECYCLE
+  // ==========================================
+  const createCoordinationSession = useCallback(
+    (params: { incidentId: string; caseId?: string; title: string }) => {
+      const now = new Date().toISOString();
+      const newSessionId = `SES-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+
+      const incident = incidents.find((i) => i.id === params.incidentId);
+      const wo = workOrders.find((w) => w.incident_id === params.incidentId);
+
+      const newSession: VhCoordinationSession = {
+        id: newSessionId,
+        incident_id: params.incidentId,
+        case_id: params.caseId,
+        work_order_id: wo?.id,
+        title: params.title,
+        status: 'DISPATCHING',
+        resident_ticket_status: 'OPEN',
+        resident_conversation_status: 'ACTIVE',
+        active_agents: ['AGENT_CSKH', 'AGENT_DISPATCHER', 'AGENT_TECHNICAL', 'AGENT_BILLING'],
+        human_worker_id: wo?.executor_id || 'usr-tech-01',
+        human_worker_name: wo?.executor_name || 'Nguyễn Văn Hùng',
+        resident_name: incident?.location_json?.apartmentCode || 'Cư dân',
+        resident_apartment: incident?.location_json?.apartmentCode || 'Tòa ' + (incident?.location_json?.towerCode || 'S2.01'),
+        quotation: null,
+        created_at: now,
+        updated_at: now,
+      };
+
+      const initMessages: VhSessionMessage[] = [
+        {
+          id: `SMSG-${Date.now()}-1`,
+          session_id: newSessionId,
+          sender_type: 'AGENT_DISPATCHER',
+          sender_name: 'Agent Điều Phối (Supervisor)',
+          content: `Đã mở Session điều phối ${newSessionId} cho sự cố "${params.title}". Triệu tập Agent Kỹ Thuật và Agent Báo Cáo vào xử lý.`,
+          action_type: 'CREATE_SESSION',
+          created_at: now,
+        },
+        {
+          id: `SMSG-${Date.now()}-2`,
+          session_id: newSessionId,
+          sender_type: 'AGENT_TECHNICAL',
+          sender_name: 'Agent Kỹ Thuật',
+          content: `Đã tiếp nhận yêu cầu kỹ thuật. Đang điều phối kỹ thuật viên hiện trường qua Ticket.`,
+          action_type: 'DISPATCH_WORKER',
+          created_at: new Date(Date.now() + 1000).toISOString(),
+        },
+      ];
+
+      setCoordinationSessions((prev) => [newSession, ...prev]);
+      setSessionMessages((prev) => [...initMessages, ...prev]);
+      return newSession;
+    },
+    [incidents, workOrders],
+  );
+
+  const submitMaterialQuotation = useCallback(
+    (params: {
+      sessionId: string;
+      workOrderId: string;
+      items: MaterialItem[];
+      laborCost: number;
+      warrantyMonths: number;
+      note?: string;
+    }) => {
+      const now = new Date().toISOString();
+      const totalAmount = params.items.reduce((sum, item) => sum + item.amount, 0) + params.laborCost;
+      const invoiceCode = `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+      const quotation: QuotationInvoice = {
+        id: `QUO-${Date.now().toString().slice(-4)}`,
+        session_id: params.sessionId,
+        work_order_id: params.workOrderId,
+        items: params.items,
+        labor_cost: params.laborCost,
+        total_amount: totalAmount,
+        warranty_months: params.warrantyMonths,
+        invoice_code: invoiceCode,
+        created_by_agent: 'Agent Báo Cáo & Kế Toán (Billing Agent)',
+        resident_approved: true,
+        approved_at: new Date(Date.now() + 60000).toISOString(),
+      };
+
+      // 1. Update Work Order with materials used
+      setWorkOrders((prev) =>
+        prev.map((wo) => {
+          if (wo.id !== params.workOrderId) return wo;
+          const mappedMaterials = params.items.map((it) => ({
+            part_name: it.part_name,
+            quantity: it.quantity,
+            unit: it.unit,
+          }));
+          return {
+            ...wo,
+            materials_used: mappedMaterials,
+            updated_at: now,
+          };
+        }),
+      );
+
+      // 2. Update Session
+      setCoordinationSessions((prev) =>
+        prev.map((s) => {
+          if (s.id !== params.sessionId) return s;
+          return {
+            ...s,
+            status: 'EXECUTING',
+            quotation,
+            updated_at: now,
+          };
+        }),
+      );
+
+      // 3. Add dynamic multi-agent interaction messages
+      const itemsSummary = params.items
+        .map((it) => `${it.part_name} (${it.quantity} ${it.unit} x ${it.unit_price.toLocaleString('vi-VN')}đ)`)
+        .join(', ');
+
+      const newMessages: VhSessionMessage[] = [
+        {
+          id: `SMSG-${Date.now()}-q1`,
+          session_id: params.sessionId,
+          sender_type: 'HUMAN_WORKER',
+          sender_name: currentProfile.name || 'Kỹ thuật viên',
+          content: `Đã khảo sát hiện trường và lập bảng chi phí vật tư: ${itemsSummary}. Tiền công: ${params.laborCost.toLocaleString('vi-VN')}đ. Tổng dự toán: ${totalAmount.toLocaleString('vi-VN')}đ. Gửi Agent Kỹ Thuật lưu hồ sơ.`,
+          action_type: 'SUBMIT_QUOTE',
+          created_at: now,
+        },
+        {
+          id: `SMSG-${Date.now()}-q2`,
+          session_id: params.sessionId,
+          sender_type: 'AGENT_TECHNICAL',
+          sender_name: 'Agent Kỹ Thuật',
+          content: `Đã lưu định mức vật tư kỹ thuật cho phiếu ${params.workOrderId}. Yêu cầu Agent Báo Cáo & Kế Toán lập hóa đơn báo giá chính thức.`,
+          action_type: 'SUBMIT_QUOTE',
+          created_at: new Date(Date.now() + 1000).toISOString(),
+        },
+        {
+          id: `SMSG-${Date.now()}-q3`,
+          session_id: params.sessionId,
+          sender_type: 'AGENT_BILLING',
+          sender_name: 'Agent Báo Cáo & Kế Toán',
+          content: `Đã xuất hóa đơn báo giá tạm tính #${invoiceCode} (Tổng: ${totalAmount.toLocaleString('vi-VN')}đ, bảo hành ${params.warrantyMonths} tháng). Chuyển Agent Điều Phối.`,
+          action_type: 'CREATE_INVOICE',
+          created_at: new Date(Date.now() + 2000).toISOString(),
+        },
+        {
+          id: `SMSG-${Date.now()}-q4`,
+          session_id: params.sessionId,
+          sender_type: 'AGENT_DISPATCHER',
+          sender_name: 'Agent Điều Phối (Supervisor)',
+          content: `Đã ping bảng báo giá #${invoiceCode} và tiến độ xử lý sang Agent CSKH để gửi cho cư dân duyệt.`,
+          action_type: 'PING_RESIDENT_PRICE',
+          created_at: new Date(Date.now() + 3000).toISOString(),
+        },
+        {
+          id: `SMSG-${Date.now()}-q5`,
+          session_id: params.sessionId,
+          sender_type: 'AGENT_CSKH',
+          sender_name: 'Agent CSKH Đô Thị',
+          content: `Cư dân đã xem chi tiết hóa đơn #${invoiceCode} và bấm [ĐỒNG Ý BÁO GIÁ]. Kính báo KTV tiến hành thi công thay thế.`,
+          action_type: 'RESIDENT_APPROVE_PRICE',
+          created_at: new Date(Date.now() + 4000).toISOString(),
+        },
+      ];
+
+      setSessionMessages((prev) => [...prev, ...newMessages]);
+      return quotation;
+    },
+    [currentProfile],
+  );
+
+  const residentConfirmTicket = useCallback((sessionId: string) => {
+    const now = new Date().toISOString();
+    setCoordinationSessions((prev) =>
+      prev.map((s) => {
+        if (s.id !== sessionId) return s;
+        return {
+          ...s,
+          status: 'RESIDENT_CONFIRMED',
+          resident_ticket_status: 'DONE',
+          resident_conversation_status: 'CLOSED',
+          updated_at: now,
+        };
+      }),
+    );
+
+    const confirmMessages: VhSessionMessage[] = [
+      {
+        id: `SMSG-${Date.now()}-rc1`,
+        session_id: sessionId,
+        sender_type: 'AGENT_CSKH',
+        sender_name: 'Agent CSKH Đô Thị',
+        content: `Cư dân đã kiểm tra hiện trường sau thi công và bấm [XÁC NHẬN HOÀN THÀNH - TICKET DONE]! Cuộc trò chuyện trên app của cư dân cho ticket này đã được đóng an toàn.`,
+        action_type: 'RESIDENT_CONFIRM_DONE',
+        created_at: now,
+      },
+      {
+        id: `SMSG-${Date.now()}-rc2`,
+        session_id: sessionId,
+        sender_type: 'AGENT_DISPATCHER',
+        sender_name: 'Agent Điều Phối (Supervisor)',
+        content: `Ticket trên cư dân đã DONE. Kính chuyển Ban Quản Lý (BQL) xem xét hồ sơ tổng thể và phê duyệt để đóng Session điều phối.`,
+        action_type: 'RESIDENT_CONFIRM_DONE',
+        created_at: new Date(Date.now() + 1000).toISOString(),
+      },
+    ];
+
+    setSessionMessages((prev) => [...prev, ...confirmMessages]);
+  }, []);
+
+  const managerApproveAndCloseSession = useCallback((sessionId: string, bqlNote?: string) => {
+    const now = new Date().toISOString();
+    const session = coordinationSessions.find((s) => s.id === sessionId);
+    if (!session) throw new Error('Không tìm thấy session điều phối!');
+
+    setCoordinationSessions((prev) =>
+      prev.map((s) => {
+        if (s.id !== sessionId) return s;
+        return {
+          ...s,
+          status: 'CLOSED',
+          bql_approved_by: currentProfile.name,
+          bql_approved_at: now,
+          bql_note: bqlNote || 'Ban Quản Lý đã phê duyệt đóng hồ sơ sau khi cư dân xác nhận nghiệm thu.',
+          updated_at: now,
+        };
+      }),
+    );
+
+    // Also close linked Incident
+    if (session.incident_id) {
+      setIncidents((prev) =>
+        prev.map((inc) =>
+          inc.id === session.incident_id
+            ? {
+                ...inc,
+                status: 'CLOSED',
+                stage: 'RESIDENT_CONFIRMATION',
+                closed_at: now,
+                updated_at: now,
+              }
+            : inc,
+        ),
+      );
+    }
+
+    const closeMessages: VhSessionMessage[] = [
+      {
+        id: `SMSG-${Date.now()}-bql1`,
+        session_id: sessionId,
+        sender_type: 'HUMAN_MANAGER',
+        sender_name: `${currentProfile.name} (Ban Quản Lý)`,
+        content: `Ban Quản Lý đã kiểm tra toàn bộ tiến độ, báo giá vật tư và xác nhận của cư dân. Phê duyệt đóng Session điều phối #${sessionId}. ${bqlNote ? `Ghi chú: ${bqlNote}` : ''}`,
+        action_type: 'BQL_APPROVE_CLOSE',
+        created_at: now,
+      },
+      {
+        id: `SMSG-${Date.now()}-bql2`,
+        session_id: sessionId,
+        sender_type: 'AGENT_DISPATCHER',
+        sender_name: 'Agent Điều Phối (Supervisor)',
+        content: `Session #${sessionId} đã được BQL đóng thành công. Lưu trữ toàn bộ dữ liệu vào lịch sử vận hành đô thị.`,
+        action_type: 'BQL_APPROVE_CLOSE',
+        created_at: new Date(Date.now() + 1000).toISOString(),
+      },
+    ];
+
+    setSessionMessages((prev) => [...prev, ...closeMessages]);
+  }, [coordinationSessions, currentProfile]);
+
+  const sendSessionMessage = useCallback((sessionId: string, content: string) => {
+    const now = new Date().toISOString();
+    const newMsg: VhSessionMessage = {
+      id: `SMSG-${Date.now()}`,
+      session_id: sessionId,
+      sender_type: currentPersona === 'MANAGER' ? 'HUMAN_MANAGER' : 'HUMAN_WORKER',
+      sender_name: currentProfile.name,
+      content,
+      created_at: now,
+    };
+    setSessionMessages((prev) => [...prev, newMsg]);
+  }, [currentPersona, currentProfile]);
+
   // Reset to default mock
   const resetToDefaultMock = useCallback(() => {
     setCases(MOCK_CASES);
@@ -1607,6 +1968,8 @@ export function useOperationsDataInternal() {
     setSecurityCheckpoints(MOCK_SECURITY_CHECKPOINTS);
     setSecurityIncidents(MOCK_SECURITY_INCIDENTS);
     setSecurityHandovers(MOCK_SECURITY_HANDOVERS);
+    setCoordinationSessions(MOCK_COORDINATION_SESSIONS);
+    setSessionMessages(MOCK_SESSION_MESSAGES);
     localStorage.clear();
   }, []);
 
@@ -1657,6 +2020,13 @@ export function useOperationsDataInternal() {
     confirmSiteArrival,
     toggleWarningSigns,
     saveCleaningRootCause,
+    coordinationSessions,
+    sessionMessages,
+    createCoordinationSession,
+    submitMaterialQuotation,
+    residentConfirmTicket,
+    managerApproveAndCloseSession,
+    sendSessionMessage,
     resetToDefaultMock,
   };
 }

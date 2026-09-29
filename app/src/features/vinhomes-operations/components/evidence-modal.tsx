@@ -22,6 +22,7 @@ interface EvidenceModalProps {
   workOrder: VhWorkOrder;
   onClose: () => void;
   readOnly?: boolean;
+  initialPhase?: CapturePhase;
 }
 
 const burnWatermarkOntoImage = (
@@ -105,7 +106,7 @@ const burnWatermarkOntoImage = (
   });
 };
 
-export function EvidenceModal({ workOrder, onClose, readOnly = false }: EvidenceModalProps) {
+export function EvidenceModal({ workOrder, onClose, readOnly = false, initialPhase }: EvidenceModalProps) {
   const { evidence, addEvidence, currentProfile } = useOperationsData();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -113,9 +114,13 @@ export function EvidenceModal({ workOrder, onClose, readOnly = false }: Evidence
     return evidence.filter((e) => e.work_order_id === workOrder.id);
   }, [evidence, workOrder.id]);
 
+  const hasBefore = relatedEvidence.some((e) => e.capture_phase === 'BEFORE');
+
   const [activeTab, setActiveTab] = useState<'COMPARISON' | 'ALL'>('COMPARISON');
   const [newCaption, setNewCaption] = useState('');
-  const [newPhase, setNewPhase] = useState<CapturePhase>('BEFORE');
+  const [newPhase, setNewPhase] = useState<CapturePhase>(
+    initialPhase || (hasBefore ? 'AFTER' : 'BEFORE'),
+  );
   const [isUploading, setIsUploading] = useState(false);
 
   // File Upload State
@@ -215,13 +220,13 @@ export function EvidenceModal({ workOrder, onClose, readOnly = false }: Evidence
     try {
       const finalBurnedUrl = showWatermark
         ? await burnWatermarkOntoImage(rawUrl, {
-            woId: workOrder.id,
-            phase: newPhase,
-            actor: currentProfile.name,
-            role: currentProfile.roleTitle,
-            gps: gpsString,
-            time: timeString,
-          })
+          woId: workOrder.id,
+          phase: newPhase,
+          actor: currentProfile.name,
+          role: currentProfile.roleTitle,
+          gps: gpsString,
+          time: timeString,
+        })
         : rawUrl;
 
       addEvidence({
@@ -476,11 +481,10 @@ export function EvidenceModal({ workOrder, onClose, readOnly = false }: Evidence
           <button
             type="button"
             onClick={() => setActiveTab('COMPARISON')}
-            className={`pb-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
-              activeTab === 'COMPARISON'
+            className={`pb-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${activeTab === 'COMPARISON'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
+              }`}
           >
             <IconColumns className="w-4 h-4" />
             <span>Đối chứng Trước ⟷ Sau ({beforeItems.length} Trước / {afterItems.length} Sau)</span>
@@ -488,11 +492,10 @@ export function EvidenceModal({ workOrder, onClose, readOnly = false }: Evidence
           <button
             type="button"
             onClick={() => setActiveTab('ALL')}
-            className={`pb-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
-              activeTab === 'ALL'
+            className={`pb-3 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${activeTab === 'ALL'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
+              }`}
           >
             <IconPhoto className="w-4 h-4" />
             <span>Tất cả bằng chứng ({relatedEvidence.length})</span>
@@ -600,13 +603,12 @@ export function EvidenceModal({ workOrder, onClose, readOnly = false }: Evidence
                       className="w-full h-full object-cover"
                     />
                     <span
-                      className={`absolute top-2 left-2 px-2 py-0.5 text-white font-bold text-[10px] rounded ${
-                        item.capture_phase === 'BEFORE'
+                      className={`absolute top-2 left-2 px-2 py-0.5 text-white font-bold text-[10px] rounded ${item.capture_phase === 'BEFORE'
                           ? 'bg-rose-600'
                           : item.capture_phase === 'AFTER'
                             ? 'bg-emerald-600'
                             : 'bg-purple-600'
-                      }`}
+                        }`}
                     >
                       {item.capture_phase === 'BEFORE' ? 'Trước khi làm' : item.capture_phase === 'AFTER' ? 'Sau khi làm' : 'QC'}
                     </span>

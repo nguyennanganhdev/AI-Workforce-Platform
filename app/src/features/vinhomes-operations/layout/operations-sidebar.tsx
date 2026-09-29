@@ -145,13 +145,6 @@ export function OperationsSidebar() {
       section: 'OPERATIONS',
     },
     {
-      id: 'evidence',
-      label: 'Kho ảnh hiện trường',
-      to: '/operations/evidence',
-      icon: IconPhoto,
-      section: 'OPERATIONS',
-    },
-    {
       id: 'qc',
       label: 'Nghiệm thu chất lượng',
       to: '/operations/qc',

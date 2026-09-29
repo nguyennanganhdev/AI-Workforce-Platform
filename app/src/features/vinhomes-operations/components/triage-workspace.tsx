@@ -13,6 +13,7 @@ import {
   IconClock,
   IconArrowRight,
   IconX,
+  IconHeadset,
 } from '@tabler/icons-react';
 import { useOperationsData } from '../hooks/use-operations-data';
 import type { VhIssueCandidate, VhResidentRequest } from '../types/intake';
@@ -211,6 +212,38 @@ export function TriageWorkspace() {
                       "{req.sanitized_content}"
                     </div>
                   ))}
+                </div>
+
+                {/* Agent CSKH Clarification Dialogue */}
+                <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-200/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-emerald-900 flex items-center gap-1.5">
+                      <IconHeadset className="w-3.5 h-3.5 text-emerald-600" />
+                      Quy trình Agent CSKH Xác Nhận & Làm Rõ Thông Tin Căn Hộ
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full">
+                      ✓ Đã làm rõ số phòng: {selectedCase.apartment_id}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-xs text-slate-700 bg-white p-3 rounded-lg border border-emerald-100">
+                    <p className="flex items-start gap-2">
+                      <span className="font-bold text-slate-900 shrink-0">Cư dân:</span>
+                      <span className="italic">"Nước rò rỉ chảy lênh láng ra hành lang tầng 12, nhờ Ban Quản Lý cử người lên kiểm tra gấp!"</span>
+                    </p>
+                    <p className="flex items-start gap-2 text-emerald-900">
+                      <span className="font-bold shrink-0">Agent CSKH:</span>
+                      <span>"Chào chị {selectedCase.resident_name}, CSKH Vinhomes đã nhận thông tin. Để cử đúng kỹ thuật viên kiểm tra hộp gen và đường ống, chị cho em xin chính xác số căn hộ và vị trí rò rỉ ạ?"</span>
+                    </p>
+                    <p className="flex items-start gap-2">
+                      <span className="font-bold text-slate-900 shrink-0">Cư dân:</span>
+                      <span className="italic">"Căn của tôi là <strong>{selectedCase.apartment_id}</strong>, nước tràn từ hộp gen kỹ thuật ngay trước cửa nhà."</span>
+                    </p>
+                    <p className="flex items-start gap-2 text-emerald-900">
+                      <span className="font-bold shrink-0">Agent CSKH:</span>
+                      <span>"Dạ em đã cập nhật vị trí: Căn {selectedCase.apartment_id}. Hệ thống đã phân tích case, tạo Ticket và chuyển sang Agent Điều Phối (Supervisor) để mở Session điều phối KTV!"</span>
+                    </p>
+                  </div>
                 </div>
               </div>
 
