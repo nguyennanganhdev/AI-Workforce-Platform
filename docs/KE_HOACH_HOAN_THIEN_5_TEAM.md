@@ -81,7 +81,17 @@ RLS hiện chủ yếu theo tenant. Backend phải kiểm tra scope, assignment,
 
 ### 4.3. Có bảng cho nghiệp vụ rộng hơn MVP
 
-Payment, refund, report, service interruption, memory publication và evaluation cần có người chịu trách nhiệm, nhưng không nên kéo tất cả vào mốc demo đầu tiên. Mục 8 chia rõ MVP và phần hoàn thiện tiếp theo. Không tạo endpoint CRUD cho mọi bảng nếu không có use case và quyền tương ứng.
+Không coi mọi bảng có sẵn là yêu cầu sản phẩm. Payment/refund chưa được người dùng yêu cầu và không thuộc backlog bắt buộc; không tự triển khai hoặc drop bảng. Ghi nhận chi phí sửa thực tế để học giá không cần invoice/payment/refund. Report/service interruption cần đối chiếu nghiệp vụ trước triển khai.
+
+### 4.4. Học kinh nghiệm từ ticket — phạm vi đã xác nhận
+
+Đọc cùng [thiết kế học kinh nghiệm, self-help và giá](THIET_KE_HOC_KINH_NGHIEM_SELF_HELP_GIA.md). Phạm vi này dùng long-term knowledge memory/RAG và thống kê giá có xác nhận, không cần RL training hoặc tự thay trọng số model.
+
+- Nhân viên kỹ thuật viết quy trình từ work order đã xử lý; hệ thống tự lưu candidate và nguồn. Nội dung cho cư dân cần người có thẩm quyền xác nhận điều kiện áp dụng trước publish. Tự lưu không đồng nghĩa tự phát hành nội dung chưa kiểm chứng.
+- Reception tìm quy trình phù hợp và đề nghị khách tự thực hiện. Khách từ chối, không đủ điều kiện, thất bại hoặc phát sinh dấu hiệu cần chuyên môn thì chuyển onsite. Không bắt khách thử sửa mới được gọi nhân viên; không tự pause SLA.
+- Giá lấy từ actual cost đã xác nhận, so sánh đúng phạm vi sửa/địa bàn/thời gian/tiền tệ. Tool thống kê trả khoảng tham khảo; Reception diễn đạt đúng số và điều kiện, không bịa giá khi thiếu mẫu.
+- Quang phụ trách pipeline học và truy xuất; Chiến phụ trách schema/API/quyền/UI; Hoàng tích hợp Reception; Đông phối hợp kỹ thuật viên; Team 5 vận hành và kiểm thử.
+- Đề xuất sửa `memory_candidates` và thêm 6 bảng: `repair_procedure_versions`, `ticket_self_help_attempts`, `repair_cost_observations`, `repair_price_reference_versions`, `repair_price_reference_samples`, `repair_price_estimates`. C13 triển khai sau khi chốt thiết kế; schema 148 bảng hiện tại chưa đổi.
 
 ## 5. Phân quyền thư mục — quy tắc bắt buộc
 
@@ -123,7 +133,7 @@ server/src/notifications/        # Chiến; notification service/outbox producer
 server/src/knowledge/            # Quang; RAG/ingestion/ACL-aware retrieval
 server/src/technical-tools/      # Quang; tool adapters qua service ports của backend
 worker/src/jobs/business/        # Chiến; SLA/dispatch/notification job handlers
-worker/src/jobs/knowledge/       # Quang; ingestion job handlers
+worker/src/jobs/knowledge/       # Quang; ingestion và tổng hợp giá job handlers
 tests/platform-e2e/              # Team 5; kiểm thử xuyên dịch vụ
 docs/teams/{hoang,chien,dong,quang,platform}/
 ```
@@ -144,6 +154,7 @@ Quy ước: H = Hoàng, C = Chiến, D = Đông, Q = Quang, P = Team 5. P0 là n
 | H04 | P1 | Durable checkpointer, binding resolver, interrupt/resume, ownership và concurrency guard, restart recovery | C06, P02 | Restart vẫn resume đúng; user B không mở được thread A; duplicate resume chỉ xử lý một lần |
 | H05 | P1 | Theo dõi ticket và thông báo tiến độ có recipient correlation; không giữ HTTP request chờ công việc nhiều giờ | C08, D04 | Hai ticket đồng thời không trả nhầm người; event lặp không lặp message |
 | H06 | P1/P2 | Bộ eval tiếng Việt: thiếu thông tin, mô tả mơ hồ, dấu hiệu khẩn, ảnh không rõ, prompt injection; tối ưu hỏi và chi phí | P04, C05 | Có dataset/expected outcome theo policy, báo lỗi định lượng; không dùng model confidence như xác suất chuẩn |
+| H07 | P1 | Reception self-help/giá: tra quy trình và estimate, hỏi đồng ý, hướng dẫn đúng version, ghi outcome, chuyển onsite | C13, Q07, Q08, H03, H04 | Khách từ chối được gọi kỹ thuật ngay; không hướng dẫn tự sửa khi không đủ điều kiện; thiếu dữ liệu giá phải hỏi thêm hoặc từ chối ước lượng |
 
 Hoàng không chịu trách nhiệm tự xác định đội kỹ thuật cuối cùng hay ghi priority chính thức. Reception vẫn gửi cảnh báo theo emergency policy khi thiếu ảnh; không chờ upload hoàn tất mới báo sự cố đủ dấu hiệu khẩn.
 
@@ -163,8 +174,9 @@ Chia nội bộ thành C-BE (backend/database), C-FE (frontend), C-INT (tích h�
 | C08 | P1 | Dispatcher, staff shift/skill/capacity, offer/accept/ETA/timeout/reassign, SLA/escalation, notification/outbox consumers | C04, C05, P03 | Ưu tiên ảnh hưởng phân công thực tế; hai worker không double-assign; chống starvation; retry có DLQ và audit |
 | C09 | P1 | Agent builder: CRUD draft, model/tool/knowledge grants, schema validation, preview, publish immutable release, rollback | C02, C03, D02, Q01 | BQL chỉ sửa agent của mình; publish pin tool/agent/group version; agent đang chạy không tự đổi theo draft |
 | C10 | P1 | UI customer: Reception/ticket/trạng thái/ảnh; management: builder/groupchat/queue/review; staff: nhận việc/ETA/evidence; admin: domain/scope/policy | C03–C09 theo màn hình | Có loading/error/empty/permission states; UI dùng API thực; thao tác trái quyền bị backend từ chối |
-| C11 | P2 | Invoice/payment/refund/allocations/webhook; report có provenance; service interruption và phạm vi thông báo; feedback/ticket review | C04, C07, C08 | Idempotent webhook, đối soát số tiền, audit; report không tổng hợp chéo quyền; không tuyên bố thanh toán thành công từ lời agent |
+| C11 | P2, cần xác nhận phạm vi | Report có provenance, service interruption và phạm vi thông báo; feedback/ticket review. Không bao gồm payment/refund | C04, C07, C08 | Report không tổng hợp chéo quyền; thông báo đúng đối tượng; không tự triển khai chỉ vì schema có bảng |
 | C12 | P1/P2 | Rà soát legacy writers, chuyển attachment/runtime mapping cần thiết; truy vấn tenant-aware; hardening invariant/migration | C06, C07, P04 | Không có hai nguồn trạng thái chính thức; dữ liệu cũ có kế hoạch chuyển đổi; API không còn dùng legacy role để cấp quyền |
+| C13 | P0/P1 | Schema học kinh nghiệm, migration tăng dần; API/UI ghi procedure và actual cost, review/publish/revoke; eligibility/attempt/handoff, price reference và estimate audit | C01, C03, C04, C05, C06, C07, C08 | Có nguồn work order/tác giả/version; phân quyền duyệt; đồng bộ outcome/event/dispatch; tiền tính đúng, không phụ thuộc payment/refund; test tenant/concurrency |
 
 ### 6.3. Team Đông
 
@@ -176,6 +188,7 @@ Chia nội bộ thành C-BE (backend/database), C-FE (frontend), C-INT (tích h�
 | D04 | P1 | Durable run, checkpoint/state adapter, shared team context, interrupt/approval/resume, timeout/cancel/retry, fencing và outbox callback | C06, C08, P03 | Restart không gọi lại tác vụ ngoại vi đã hoàn thành; duplicate callback không double-complete; isolate theo ticket/generation |
 | D05 | P1 | Human handoff và completion: yêu cầu review/evidence/approval, tổng hợp trả Reception, reopen theo generation mới | D03, D04, C07 | Không đóng việc chỉ dựa lời model; không resume generation cũ vào ticket đã reopen |
 | D06 | P2 | Nhiều loại subagent/domain, kiểm soát chi phí và giới hạn vòng lặp, evaluation trace; update agent chỉ ảnh hưởng run mới | P04, C09 | Chặn loop, có budget/time limit; rollback version không làm mất audit |
+| D07 | P1 | Supervisor yêu cầu nhân viên ghi và xác nhận procedure/chi phí sau xử lý, submit qua tool backend; trace nguồn và review workflow | C13, D03, D05, Q01 | Agent không giả nhân viên, tự duyệt quy trình hoặc đoán actual cost; retry không nhân đôi contribution |
 
 Đông sở hữu **technical agent runtime**, còn Quang sở hữu các tool technical agent gọi. Memory chung chỉ chung trong scope team/phiên được cấp, không phải một global list dùng cho mọi groupchat.
 
@@ -189,6 +202,8 @@ Chia nội bộ thành C-BE (backend/database), C-FE (frontend), C-INT (tích h�
 | Q04 | P1 | Retrieval theo tenant/domain/workspace/document ACL trước khi chọn kết quả; citations đến version/chunk; retrieval audit | C03, C06, Q03 | Tài liệu không đủ quyền không đi vào prompt; không chỉ lọc sau top-k; câu trả lời không đủ nguồn phải thể hiện thiếu dữ liệu |
 | Q05 | P1/P2 | Memory candidate/publication theo policy, sensitivity/retention và quyền; không tự biến mọi chat thành tri thức dùng chung | C06, Q04, D04/H04 | Memory cá nhân không xuất hiện trong group khác; thu hồi quyền có hiệu lực với cache; publish có provenance |
 | Q06 | P1/P2 | Dataset/eval RAG, tiếng Việt, adversarial docs, latency/cost; tối ưu chỉ sau baseline | P04, Q04 | Báo recall@k/citation correctness/leakage; đổi embedding phải xử lý dimension/model version và reindex |
+| Q07 | P1 | Procedure learning: chuẩn hóa và khử PII candidate, publish/ingestion theo review, retrieval có eligibility metadata, revoke/cache và provenance | C13, Q03, Q04, Q05 | Chưa duyệt không dùng cho cư dân; pin version; không chọn chỉ theo vector similarity; namespace đúng scope |
+| Q08 | P1 | Tổng hợp giá: chọn mẫu độc lập, nhóm tương đồng, policy thuật toán có version, publish reference và tool estimate có cấu trúc | C13, Q01 | Chỉ verified actual cost; truy vết mẫu; mẫu thiếu/cũ/rút bị từ chối; không lộ chi phí riêng; không dùng LLM tính tiền |
 
 Schema hiện dùng embedding vector dimension cố định và có trigger kiểm tra model. Q03/Q06 phải đối chiếu dimension thực trước khi chọn model; đổi model/dimension là yêu cầu schema cho Chiến, không tự bỏ constraint.
 
@@ -202,12 +217,13 @@ Schema hiện dùng embedding vector dimension cố định và có trigger ki�
 | P04 | P1 | E2E/contract/security/load/evaluation harness; fixtures 2 BQL + 2 khách + 2 domain; dashboard trace/latency/cost/SLA | C01, các service P1 | Mục 12 đạt; có log bằng chứng và test negative cross-tenant/user; không gửi PII/secret nguyên văn vào telemetry |
 | P05 | P1/P2 | Alert/on-call, backup retention, deployment canary/rollback, data migration rehearsal, runbook sự cố | P02–P04 | Có người xử lý alert, thử mất worker/storage/model, rollback app phù hợp version DB; không tự chạy down migration mất dữ liệu |
 | P06 | P2 | Feedback/eval governance cùng team agent; load/quota/cost theo tenant; đóng gói demo domain thứ hai | H06, D06, Q06, C11 | Có báo cáo chất lượng theo version; quy trình duyệt release; chưa tự huấn luyện online từ feedback người dùng |
+| P07 | P1 | E2E học kinh nghiệm và giá; vận hành ingestion/aggregate jobs, invalidation, theo dõi self-help outcome và estimated-vs-actual | C13, H07, D07, Q07, Q08, P04 | Kiểm chứng publish → retrieve → hướng dẫn/handoff; giá có nguồn; restart/retry/revoke an toàn; không đánh đồng giảm dispatch với thành công |
 
 ## 7. Quy tắc database, migration và quyền ghi
 
 - Chiến là owner vật lý của **toàn bộ 148 bảng hiện tại và mọi bảng mở rộng**. Chỉ service backend được giao quyền mới thực hiện mutation nghiệp vụ. Runtime agent gửi command qua API.
 - Bảng auth/scope/domain/workspace/agent config: Chiến; backend cấp quyền đọc cấu hình đã publish cho runtime.
-- `tickets`, assessment/decision/review, SLA, dispatch, work order/assignment/approval, finance/report: service nghiệp vụ Chiến. Hoàng/Đông/Quang gửi command, không tự ghi projection.
+- `tickets`, assessment/decision/review, SLA, dispatch, work order/assignment/approval, actual cost/price estimate/report: service nghiệp vụ Chiến. Hoàng/Đông/Quang gửi command, không tự ghi projection.
 - `agent_teams`, `team_members`, tasks/mailbox, `agent_runs`, context, execution principals và runtime/memory bindings: API runtime của Chiến là cổng ghi; Đông/Hoàng sở hữu adapter và đề xuất lifecycle. Cần quyền đọc/ghi theo đúng operation, không một generic CRUD endpoint mở toàn bộ.
 - Knowledge/embedding/retrieval/memory candidate-publication: Quang triển khai repository trong module knowledge, luôn chạy với authorized context và quyền từ Chiến. Quyền publish memory và quyền sửa ACL vẫn do backend kiểm tra.
 - Storage/evidence metadata: Chiến; Quang truy cập tài liệu qua authorized storage adapter. Team 5 vận hành bucket/lifecycle, không sửa trạng thái DB bằng script thủ công.
@@ -226,10 +242,10 @@ Không ước lượng ngày khi chưa biết số người/năng lực. Mỗi m
 | M0 — Chuẩn hóa nền | C01/C02/C03/C06 thiết kế; H01; D01; Q01; P01/P02 | Contract v1 + fixture, ownership mapping, schema nâng cấp và các service healthcheck; hai runtime có persistence plan |
 | M1 — Một luồng xuyên hệ thống | C04/C07, H02/H03, D02/D03, Q02 bản tối thiểu, P03 | Cư dân gửi yêu cầu → đúng BQL/group → tool backend → cập nhật trạng thái → trả đúng cư dân; ảnh lên MinIO thật |
 | M2 — Ưu tiên và bền vững | C05/C08, H04/H05, D04/D05, Q03/Q04, P04 | Triage/SLA/dispatch chạy thật; restart/retry/isolation test qua; không còn mock trong đường chạy nghiệm thu |
-| M3 — Platform builder và UI | C09/C10/C12, D02 hoàn thiện, H06, Q05/Q06, P04/P05 | Hai BQL tự tạo subagent và publish groupchat riêng; policy/approval/field evidence dùng được; UAT Vinhomes |
-| M4 — Hoàn thiện và mở rộng domain | C11, D06, Q05/Q06, H06, P05/P06 | Finance/report/interruption có kiểm soát; domain thứ hai hoạt động bằng cấu hình/adapter; release có runbook |
+| M3 — Platform builder, UI và học kinh nghiệm | C09/C10/C12/C13, D02/D07, H06/H07, Q05/Q06/Q07/Q08, P04/P05/P07 | Hai BQL có group riêng; kỹ thuật ghi quy trình/chi phí → publish → Reception hướng dẫn hoặc chuyển người, trả khoảng giá có căn cứ; UAT Vinhomes |
+| M4 — Hoàn thiện và mở rộng domain | C11 khi được xác nhận, D06, Q05/Q06, H06, P05/P06 | Domain thứ hai bằng cấu hình/adapter; report/interruption theo phạm vi được duyệt; release có runbook; không gồm payment/refund mặc định |
 
-**MVP nghiệm thu = M0 đến M3.** M4 cần để hoàn thiện toàn bộ phạm vi bảng nghiệp vụ, nhưng không được chặn demo intake/routing/triage đầu tiên bằng việc làm payment trước. RL training không thuộc MVP; trước hết cần dữ liệu đánh giá, feedback, provenance và cơ chế duyệt thay đổi policy/model.
+**MVP nghiệm thu = M0 đến M3**, bao gồm học quy trình tự sửa và giá tham khảo. C13 chốt contract/schema từ M0, xây ghi nhận dữ liệu ở M1–M2; Q07/Q08/H07/D07/P07 tích hợp và nghiệm thu ở M3. M4 không phải yêu cầu xây mọi bảng đã có. Không triển khai RL training cho hai luồng này.
 
 ## 9. Hợp đồng tích hợp v1 — thiết kế để các team bắt đầu thống nhất
 
@@ -291,7 +307,15 @@ Envelope: `event_id`, `event_type`, `schema_version`, `tenant_id`, `aggregate_id
 
 Producer ghi business change + `event_outbox` trong cùng transaction. Consumer dedup bằng inbox/idempotency; xử lý out-of-order theo aggregate version và có DLQ. Không hứa exactly-once qua mạng; cần at-least-once + idempotent effects. Không bắt buộc thêm Kafka/Redis khi work queue/outbox hiện có đáp ứng được.
 
-### 9.4. Tool và RAG
+### 9.4. Hợp đồng học kinh nghiệm và giá (C13)
+
+C13 hiện thực operations: submit/review/publish/revoke procedure; kiểm tra self-help eligibility; offer/accept/decline/finish attempt; submit/verify/correct actual cost; build/publish/invalidate price reference; request price estimate. Không expose raw observation cho khách.
+
+Quang cung cấp tools `find_self_help_procedure`, `estimate_repair_price`; Hoàng gọi backend operations cho lifecycle attempt. Tên là đề xuất phải đăng ký ở Q01. Eligibility trả allowed/reason/missing_facts/procedure_version; estimate trả status/range/currency/assumptions/inclusions/exclusions/reference_version/expiry. Context và quyền theo mục 9.1.
+
+Events bổ sung: procedure submitted/published/revoked, self-help declined/succeeded/failed/stopped, actual cost verified/corrected/withdrawn, price reference published/invalidated. Mutation có idempotency; Quang viết ingestion/aggregation, Team 5 host; Chiến giữ nguyên tử dữ liệu nghiệp vụ + outbox. Việc cấp tool không cho phép agent tự duyệt nội dung.
+
+### 9.5. Tool và RAG
 
 - Tool descriptor: `name`, `version`, schema input/output, required permission/grants, side-effect class, timeout, retry policy và idempotency requirement. Không tự khởi tạo tool chỉ vì model nêu tên.
 - Tool trả dữ liệu/operation ID có provenance. Technical agent và supervisor không báo “đã gọi nhân viên” nếu backend chỉ trả danh sách gợi ý.
@@ -341,7 +365,7 @@ Cả hai luồng phải chạy đồng thời khi restart một runtime, gửi c
 | RAG | ACL trước truy xuất, revoked docs/cached result, injection, citation tới version đúng, embedding mismatch, reindex/delete | Quang |
 | Agent builder | Draft/published pinning, unauthorized tool grants, group version mismatch, update giữa run, sandbox test trước publish | Chiến + Đông |
 | Reliability | Outbox atomicity, inbox dedup, event out-of-order, retry sau timeout, lease fencing, model/storage outage | Team 5 + owner service |
-| Finance/report P2 | Webhook replay/signature, refund/allocations race, report sources và scope, tổng hợp số tiền | Chiến |
+| Học kinh nghiệm/self-help/giá | Quy trình chưa duyệt, không đủ điều kiện tự sửa, khách từ chối/thất bại, revoke giữa phiên, giá thiếu/cũ/trùng/revision, không lộ mẫu riêng, khoảng giá khớp tool | Quang + Chiến + Hoàng + Đông + Team 5 |
 
 Lệnh nền hiện có, chạy từ root với Bun đã cài và cấu hình đúng:
 
@@ -364,6 +388,7 @@ Ngưỡng vận hành cần chốt ở M0: số tenant/user/agent đồng thời
 ```text
 Bạn làm việc trong project AI Platform Builder, nhánh develop.
 Đọc docs/KE_HOACH_HOAN_THIEN_5_TEAM.md trước khi sửa code.
+Nếu task học kinh nghiệm/giá, đọc thêm docs/THIET_KE_HOC_KINH_NGHIEM_SELF_HELP_GIA.md.
 Team của tôi: <Hoàng | Chiến | Đông | Quang | Platform>.
 Task được giao: <H01/C04/D02/Q03/P02...>.
 Phần được giao trong task nếu có: <mô tả>.
