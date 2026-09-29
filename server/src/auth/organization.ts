@@ -45,13 +45,13 @@ function actor(value: unknown): AuthenticatedActor | null {
     user.id === "dev-local-user" ||
     typeof user.email !== "string" ||
     !user.email ||
-    (user.role !== "admin" && user.role !== "user")
+    !["admin", "management", "staff", "customer"].includes(user.role as string)
   )
     return null;
   return {
     id: user.id,
     email: user.email,
-    role: user.role,
+    role: user.role as AuthenticatedActor["role"],
     name: "name" in user && typeof user.name === "string" ? user.name : null,
     image:
       "image" in user && typeof user.image === "string" ? user.image : null,

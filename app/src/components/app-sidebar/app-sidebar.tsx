@@ -21,7 +21,7 @@ import {
 } from "@tanstack/react-router";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type * as React from "react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,14 +54,9 @@ import { useChannelEvents } from "@/lib/channels/use-channel-events";
 import { appConfig } from "@/lib/generated/application-config";
 import { EASE_OUT, ENTRANCE_SECONDS } from "@/lib/motion";
 import { relativeTime } from "@/lib/relative-time";
-import {
-  type MessageListEmphasis,
-  useMessageListEmphasis,
-} from "@/lib/settings/message-list";
 import { Button } from "../ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { Channel } from "./channel";
-import { ChannelPagination } from "./channel-pagination";
 
 const appLinkOptions = { to: "/" } satisfies LinkOptions;
 const adminLinkOptions = { to: "/admin" } satisfies LinkOptions;
@@ -169,11 +164,9 @@ export function isUnread(
 function ChannelRow({
   channel,
   animateOrder,
-  emphasis,
 }: {
   channel: ChannelSummary;
   animateOrder: boolean;
-  emphasis: MessageListEmphasis;
 }) {
   const shouldReduceMotion = useReducedMotion();
   // Whether this row is unread, as a boolean, for the same reason `Channel` computes `isOpen`
@@ -195,7 +188,6 @@ function ChannelRow({
       transition={{ duration: ENTRANCE_SECONDS, ease: EASE_OUT }}
     >
       <Channel
-        emphasis={emphasis}
         channelId={channel.id}
         participantIds={channel.agentIds}
         name={channel.name}
@@ -215,7 +207,6 @@ function ChannelRow({
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const emphasis = useMessageListEmphasis();
   const { data: currentUser } = useQuery(currentUserQueryOptions());
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -224,7 +215,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // One socket for the app, opened where the roster is kept live.
   useChannelEvents();
   const [search, setSearch] = useState("");
-  const scrollRoot = useRef<HTMLDivElement>(null);
   const searching = search.trim().length > 0;
   const visibleChannels = pinnedFirst(matchingChannels(channels.data, search));
   /*
@@ -272,7 +262,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent ref={scrollRoot} className="scroll-fade-b">
+      <SidebarContent className="scroll-fade-b">
         <SidebarMenu>
           <SidebarGroup className="gap-px">
             <SidebarMenuItem>
@@ -299,15 +289,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <div className="py-4">
                 <Empty className="border border-dashed min-h-[40dvh]">
                   <EmptyHeader>
-                    <EmptyTitle>
-                      {channels.hasNextPage
-                        ? "No loaded channels match your search"
-                        : "No channels match your search"}
-                    </EmptyTitle>
+                    <EmptyTitle>No channels match your search</EmptyTitle>
                     <EmptyDescription className="text-pretty">
-                      {channels.hasNextPage
-                        ? "Load older conversations to search more of your history."
-                        : `Nothing here is named “${search.trim()}”, and nobody has said it recently either.`}
+                      Nothing here is named “{search.trim()}”, and nobody has
+                      said it recently either.
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
@@ -329,18 +314,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <AnimatePresence initial={false}>
               {visibleChannels.map((channel) => (
                 <ChannelRow
-                  emphasis={emphasis}
                   key={channel.id}
                   animateOrder={animateOrder}
                   channel={channel}
                 />
               ))}
             </AnimatePresence>
-            <ChannelPagination
-              query={channels}
-              scrollRoot={scrollRoot}
-              searching={searching}
-            />
           </SidebarGroup>
         </SidebarMenu>
       </SidebarContent>

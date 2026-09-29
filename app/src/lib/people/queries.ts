@@ -12,7 +12,7 @@ export type Person = {
   email: string;
   name: string | null;
   image: string | null;
-  role: "admin" | "user";
+  role: "admin" | "management" | "staff" | "customer";
   /** The providers they have arrived through. More than one is normal mid-migration. */
   providers: string[];
   lastSignedInAt: string | null;

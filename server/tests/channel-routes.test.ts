@@ -677,7 +677,7 @@ describe("channel route composition", () => {
         handler: () => new Response(null, { status: 204 }),
         api: { getSession: async () => session },
       },
-      { rolesForUser: async () => ["user"] },
+      { rolesForUser: async () => ["customer"] },
       // Positions 4-10, ending at agentProfileStore. `store` is position 11, channelStore. One
       // shorter than either side of the merge that produced this: see agent-routes.test.ts for why
       // a wrong count here fails silently rather than as a type error.

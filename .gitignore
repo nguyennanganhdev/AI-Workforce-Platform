@@ -64,3 +64,5 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .markdown-collab/
+# Local schema verification output and downloaded development tooling.
+.codex-artifacts/

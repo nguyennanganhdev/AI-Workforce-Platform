@@ -6,8 +6,10 @@
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit",
-    "db:generate": "bun --env-file=../.env drizzle-kit generate --config=drizzle.config.ts",
-    "db:migrate": "bun --env-file=../.env drizzle-kit migrate --config=drizzle.config.ts",
+    "db:generate": "bun --env-file=../.env scripts/generate-migration.ts",
+    "db:migrate": "bun --env-file=../.env scripts/migrate.ts",
+    "db:check": "bun scripts/check-schema-generation.ts",
+    "db:verify": "bun scripts/check-schema-generation.ts && node scripts/verify-baseline.mjs",
     "dev": "bun --env-file=../.env --watch src/index.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -35,6 +37,8 @@
   },
   "devDependencies": {
     "@copilotkit/aimock": "1.39.0",
+    "@electric-sql/pglite": "^0.5.8",
+    "@electric-sql/pglite-pgvector": "^0.0.9",
     "drizzle-kit": "^0.31.10"
   }
 }

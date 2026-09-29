@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { parse } from "yaml";
 import { DEPLOYMENT_ROUTES } from "./computer/deployment-routes";
 import type { Database } from "./db/client";
+import { initializeDeploymentScope } from "./db/deployment-scope";
 import {
   agentProfiles,
   agents as agentTable,
@@ -754,7 +755,14 @@ export async function synchronizeTenantPackage(
   database: Database,
   tenantPackage: LoadedTenantPackage,
 ) {
+  const scope = await initializeDeploymentScope(
+    database,
+    tenantPackage.tenantId,
+  );
   return database.transaction(async (transaction) => {
+    await transaction.execute(
+      sql`select set_config('app.tenant_id', ${scope.tenantId}, true), set_config('app.workspace_id', ${scope.workspaceId}, true)`,
+    );
     /*
      * A Bot already holding one of those names, from a package that declared it before this was
      * refused. Validation covers the file, and nothing here removes a canonical agent when a package
@@ -777,7 +785,8 @@ export async function synchronizeTenantPackage(
     const [deploymentPackage] = await transaction
       .insert(deploymentPackages)
       .values({
-        tenantId: tenantPackage.tenantId,
+        tenantId: scope.tenantId,
+        externalTenantKey: tenantPackage.tenantId,
         sourcePath: tenantPackage.sourcePath,
         checksum: tenantPackage.checksum,
       })
@@ -986,7 +995,7 @@ export async function synchronizeTenantPackage(
           installedBy: null,
         })
         .onConflictDoUpdate({
-          target: skillTable.slug,
+          target: skillTable.id,
           /*
            * Only ever a package skill. The `/` namespace is shared and first to take a name keeps
            * it, so a person who wrote their own skill under this slug keeps theirs and the package
@@ -1054,7 +1063,12 @@ export async function synchronizeTenantPackage(
             })),
           )
           .onConflictDoUpdate({
-            target: [pluginGrants.kind, pluginGrants.ref, pluginGrants.agentId],
+            target: [
+              pluginGrants.tenantId,
+              pluginGrants.kind,
+              pluginGrants.ref,
+              pluginGrants.agentId,
+            ],
             // An administrator who granted this by hand keeps the credit; the package only ever
             // adds what was missing, and the delete above already took back what it owned.
             set: { updatedAt: new Date() },
@@ -1078,7 +1092,7 @@ export function createPackageStatusReader(
         .limit(1);
       return tenantPackage
         ? {
-            tenantId: tenantPackage.tenantId,
+            tenantId: tenantPackage.externalTenantKey,
             sourcePath: tenantPackage.sourcePath,
             checksum: tenantPackage.checksum,
             loadedAt: tenantPackage.loadedAt.toISOString(),

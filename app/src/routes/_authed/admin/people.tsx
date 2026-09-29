@@ -171,7 +171,7 @@ function PeoplePage() {
                         onCheckedChange={(checked) =>
                           setRole.mutate({
                             userId: person.id,
-                            role: checked ? "admin" : "user",
+                            role: checked ? "admin" : "customer",
                           })
                         }
                       />
