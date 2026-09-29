@@ -3,10 +3,18 @@
 Ứng dụng cư dân độc lập với `app/` (nhân viên). React/Vite, ưu tiên điện thoại,
 hai tab Trợ lý và Tiện ích. Không import mã từ app nhân viên hoặc backend.
 
+## Bàn giao cho đội backend
+
+Bắt đầu tại **[docs/README.md](docs/README.md)**. Bộ tài liệu gồm nghiệp vụ,
+mapping ERD, API đề xuất có ví dụ payload, OpenAPI cho flow cốt lõi và checklist
+tích hợp/nghiệm thu. Đây là thiết kế đề xuất để FE/BE thống nhất; không phải API
+đã triển khai. Router Vinhomes hiện vẫn là scaffold.
+
 ## Chạy
 
 Tại repo root: `bun install --frozen-lockfile`, sau đó `bun run dev:resident`.
-Mở http://localhost:3011. App nhân viên tiếp tục dùng cổng 3010.
+Mở http://localhost:3011. App nhân viên dùng `bun run dev:operations` ở cổng 3020;
+OpenBot dùng `bun run dev:openbot` ở cổng 3010.
 
 - `bun run build:resident`: typecheck và build vào `resident-app/dist`.
 - `bun run test:resident`: kiểm tra luồng dữ liệu cư dân.
