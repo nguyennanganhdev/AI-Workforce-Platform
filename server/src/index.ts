@@ -1319,6 +1319,7 @@ const app = createApp(
   process.env.OPENBOT_MODEL_OAUTH_FILE?.trim()
     ? createProviderOAuthProxy(process.env.OPENBOT_MODEL_OAUTH_FILE.trim())
     : undefined,
+  { database, tenantId: deploymentScope(tenantPackage.tenantId).tenantId },
 );
 
 /**

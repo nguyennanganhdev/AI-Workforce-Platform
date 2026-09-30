@@ -81,6 +81,7 @@ import {
   InstructionsTooLongError,
   type UserInstructionsStore,
 } from "./user-instructions";
+import { createVinhomesRoutes } from "./vinhomes/routes";
 
 /**
  * How much of a multipart body is boundary, headers and other fields rather than file.
@@ -321,6 +322,7 @@ export function createApp(
   composio?: { broker: ComposioBroker },
   /** Native model OAuth stays server-side; callers hold only a separate local bearer. */
   modelProviderProxy?: ModelProviderProxy,
+  vinHomesDatabase?: { database: Database; tenantId: string },
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
   mountDesktopConnectionFailure(app, desktopHostToken);
@@ -469,6 +471,13 @@ export function createApp(
     : auth && roleRepository
       ? createRequireUser(auth, roleRepository)
       : authenticationUnavailable;
+
+  if (vinHomesDatabase) {
+    app.route(
+      "/api/vinhomes",
+      createVinhomesRoutes(vinHomesDatabase.database, vinHomesDatabase.tenantId, requireUser),
+    );
+  }
 
   app.get("/api/me", requireUser, async (context) =>
     context.json({
