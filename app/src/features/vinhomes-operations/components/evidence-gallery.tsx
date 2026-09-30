@@ -32,7 +32,7 @@ export function EvidenceGallery() {
         </div>
 
         {/* Phase Filter Tabs */}
-        <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
+        <div className="ops-scroll-tabs flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs max-w-full">
           {[
             { id: 'ALL', label: 'Tất cả ảnh' },
             { id: 'BEFORE', label: 'Trước khi làm' },
@@ -43,7 +43,7 @@ export function EvidenceGallery() {
               key={tab.id}
               type="button"
               onClick={() => setFilterPhase(tab.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${
                 filterPhase === tab.id
                   ? 'bg-blue-600 text-white shadow-2xs'
                   : 'text-slate-600 hover:bg-slate-100'

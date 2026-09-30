@@ -130,14 +130,102 @@ export function CompletedTasksWorkspace() {
           </label>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Mobile Card View (< 768px): KHÔNG CẦN VUỐT NGANG */}
+        <div className="md:hidden divide-y divide-slate-100 bg-white">
+          {filteredRows.map(({ workOrder, task, incident, qcResult, beforeCount, afterCount }) => {
+            const qcBadge = (
+              <span
+                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                  qcResult?.outcome === 'PASS'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : qcResult?.outcome === 'FAIL'
+                      ? 'bg-rose-100 text-rose-700'
+                      : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                {qcResult?.outcome === 'PASS' ? (
+                  <IconCheck className="w-3 h-3" aria-hidden="true" />
+                ) : (
+                  <IconShieldCheck className="w-3 h-3" aria-hidden="true" />
+                )}
+                {qcResult?.outcome === 'PASS'
+                  ? 'Đạt'
+                  : qcResult?.outcome === 'FAIL'
+                    ? 'Không đạt'
+                    : 'Chờ nghiệm thu'}
+              </span>
+            );
+
+            return (
+              <div key={workOrder.id} className="p-3.5 space-y-2.5 bg-white">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedWorkOrder(workOrder)}
+                      className="font-bold text-xs text-slate-900 hover:text-blue-700 text-left line-clamp-2"
+                    >
+                      {task?.title || 'Công việc vệ sinh A5'}
+                    </button>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px] text-slate-400">
+                      <span className="font-mono font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                        {workOrder.id}
+                      </span>
+                      <span>•</span>
+                      <span>Lần {workOrder.attempt_no}</span>
+                      <span>•</span>
+                      <span>Tòa {incident?.location_json.towerCode || '—'} · Tầng {incident?.location_json.floor || '—'}</span>
+                    </div>
+                  </div>
+                  <div className="shrink-0">{qcBadge}</div>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-500 bg-slate-50/70 rounded-lg px-2.5 py-1.5">
+                  <div>
+                    <span className="text-slate-400">Hoàn thành: </span>
+                    <span className="font-medium text-slate-700">{formatCompletedAt(workOrder)}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEvidenceWorkOrder(workOrder)}
+                    className="inline-flex items-center gap-1 text-emerald-700 font-bold hover:underline"
+                  >
+                    <IconPhoto className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>{beforeCount} trước · {afterCount} sau</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-end pt-1 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedWorkOrder(workOrder)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold"
+                  >
+                    <IconEye className="w-3.5 h-3.5" aria-hidden="true" />
+                    Xem hồ sơ
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {filteredRows.length === 0 && (
+            <div className="px-6 py-14 text-center">
+              <IconHistory className="w-8 h-8 text-slate-300 mx-auto" aria-hidden="true" />
+              <p className="font-bold text-slate-700 mt-2 text-xs">Chưa có hồ sơ phù hợp</p>
+              <p className="text-slate-400 mt-1 text-[11px]">Thử thay đổi bộ lọc hoặc nội dung tìm kiếm.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Desktop Table View (>= 768px) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50/80 border-b border-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-5 py-3 min-w-[300px]">Công việc</th>
-                <th className="px-4 py-3 min-w-[150px]">Vị trí</th>
-                <th className="px-4 py-3 min-w-[155px]">Hoàn thành lúc</th>
-                <th className="px-4 py-3 min-w-[135px]">Bằng chứng</th>
+                <th className="px-4 py-3 min-w-[150px] ops-hide-mobile">Vị trí</th>
+                <th className="px-4 py-3 min-w-[155px] ops-hide-mobile">Hoàn thành lúc</th>
+                <th className="px-4 py-3 min-w-[135px] ops-hide-mobile">Bằng chứng</th>
                 <th className="px-4 py-3 min-w-[130px]">Kết quả nghiệm thu</th>
                 <th className="px-5 py-3 text-right min-w-[175px]">Thao tác</th>
               </tr>
@@ -157,14 +245,14 @@ export function CompletedTasksWorkspace() {
                       {workOrder.id} • Lần {workOrder.attempt_no}
                     </p>
                   </td>
-                  <td className="px-4 py-4 text-slate-600">
+                  <td className="px-4 py-4 text-slate-600 ops-hide-mobile">
                     <span className="flex items-center gap-1.5 font-medium">
                       <IconBuilding className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
                       Tòa {incident?.location_json.towerCode || '—'} • Tầng {incident?.location_json.floor || '—'}
                     </span>
                   </td>
-                  <td className="px-4 py-4 text-slate-600 tabular-nums">{formatCompletedAt(workOrder)}</td>
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-4 text-slate-600 tabular-nums ops-hide-mobile">{formatCompletedAt(workOrder)}</td>
+                  <td className="px-4 py-4 ops-hide-mobile">
                     <button
                       type="button"
                       onClick={() => setEvidenceWorkOrder(workOrder)}

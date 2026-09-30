@@ -118,10 +118,10 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
   };
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="work-order-title" onKeyDown={(event) => { if (event.key === 'Escape') onClose(); }} className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 font-sans">
-      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
+    <div role="dialog" aria-modal="true" aria-labelledby="work-order-title" onKeyDown={(event) => { if (event.key === 'Escape') onClose(); }} className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 font-sans">
+      <div className="bg-white rounded-2xl sm:max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
         {/* Header */}
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
+        <div className="p-3 sm:p-5 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
           <div className="flex items-center gap-2.5">
             <div className="w-1.5 h-6 bg-blue-600 rounded-full" />
             <div>

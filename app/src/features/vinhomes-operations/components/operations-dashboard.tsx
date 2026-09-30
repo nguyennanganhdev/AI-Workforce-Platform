@@ -74,7 +74,7 @@ export function OperationsDashboard() {
       {/* 4 Primary KPI & SLA Cards — BistroPulse Clean Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Sự cố P1 Khẩn */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-rose-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform" />
           <div className="flex items-center justify-between mb-3 relative z-10">
             <span className="text-xs font-semibold uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">
@@ -103,7 +103,7 @@ export function OperationsDashboard() {
         </div>
 
         {/* Card 2: Việc đang thực hiện */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform" />
           <div className="flex items-center justify-between mb-3 relative z-10">
             <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
@@ -130,7 +130,7 @@ export function OperationsDashboard() {
         </div>
 
         {/* Card 3: Kiểm định QC */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform" />
           <div className="flex items-center justify-between mb-3 relative z-10">
             <span className="text-xs font-semibold uppercase tracking-wider text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
@@ -161,7 +161,7 @@ export function OperationsDashboard() {
         </div>
 
         {/* Card 4: Phê duyệt BQL */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform" />
           <div className="flex items-center justify-between mb-3 relative z-10">
             <span className="text-xs font-semibold uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
@@ -193,7 +193,7 @@ export function OperationsDashboard() {
       {/* Two Column Layout: Active Incidents Table & AI Recommendations */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Active Critical Incidents — BistroPulse Table Card */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-5 shadow-xs">
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2.5">
               <div className="w-1 h-4 bg-blue-600 rounded-full" />
@@ -210,14 +210,52 @@ export function OperationsDashboard() {
             </Link>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Mobile View (< 640px): KHÔNG CẦN VUỐT NGANG */}
+          <div className="sm:hidden divide-y divide-slate-100">
+            {incidents.slice(0, 4).map((inc) => (
+              <div key={inc.id} className="py-3 px-1 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold text-xs text-slate-900 leading-snug line-clamp-2">{inc.title}</div>
+                    <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                      {inc.id} • {CATEGORY_LABELS[inc.category] || inc.category}
+                    </div>
+                  </div>
+                  <span
+                    className={`shrink-0 px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                      inc.severity === 'P1'
+                        ? 'bg-rose-100 text-rose-700'
+                        : inc.severity === 'P2'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-blue-100 text-blue-700'
+                    }`}
+                  >
+                    {inc.severity}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-500">
+                  <span>Tòa {inc.location_json.towerCode}</span>
+                  {inc.sla_due_at ? (
+                    <span className="text-rose-600 font-bold flex items-center gap-1">
+                      <IconClock className="w-3 h-3" /> 45 phút
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">Không có hạn</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table View (>= 640px) */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-100 text-slate-400 font-semibold uppercase tracking-wider">
                   <th className="pb-3 pl-2">Mã & Sự cố</th>
-                  <th className="pb-3">Vị trí</th>
+                  <th className="pb-3 ops-hide-mobile">Vị trí</th>
                   <th className="pb-3">Mức độ</th>
-                  <th className="pb-3">Giai đoạn</th>
+                  <th className="pb-3 ops-hide-mobile">Giai đoạn</th>
                   <th className="pb-3 text-right pr-2">Hạn chót SLA</th>
                 </tr>
               </thead>
@@ -230,7 +268,7 @@ export function OperationsDashboard() {
                         {inc.id} • {CATEGORY_LABELS[inc.category] || inc.category}
                       </div>
                     </td>
-                    <td className="py-3 text-slate-600">
+                    <td className="py-3 text-slate-600 ops-hide-mobile">
                       <div className="font-medium text-slate-800">{inc.location_json.towerCode}</div>
                       <div className="text-[11px] text-slate-500 truncate max-w-[140px]">
                         {inc.location_json.areaCode || inc.location_json.description}
@@ -249,7 +287,7 @@ export function OperationsDashboard() {
                         {inc.severity}
                       </span>
                     </td>
-                    <td className="py-3">
+                    <td className="py-3 ops-hide-mobile">
                       <span className="px-2 py-0.5 rounded font-medium text-[11px] bg-slate-100 text-slate-700">
                         {STAGE_LABELS[inc.stage] || inc.stage}
                       </span>
@@ -273,7 +311,7 @@ export function OperationsDashboard() {
         {/* Right 1 Col: AI Dispatcher & Smart City Live Status */}
         <div className="space-y-4">
           {/* Card: AI Recommendation */}
-          <div className="bg-white border border-slate-200 text-slate-800 p-5 rounded-lg">
+          <div className="bg-white border border-slate-200 text-slate-800 p-4 sm:p-5 rounded-lg">
             <div className="flex items-center gap-2 mb-2 text-blue-400 font-semibold text-xs">
               <IconSparkles className="w-4 h-4 text-amber-300" />
               <span>Đề xuất xử lý</span>
@@ -296,7 +334,7 @@ export function OperationsDashboard() {
           </div>
 
           {/* Card: Building Scope Summary */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs">
             <div className="flex items-center gap-2 mb-3">
               <IconBuildingSkyscraper className="w-4 h-4 text-blue-600" />
               <h4 className="font-bold text-xs text-slate-900">Phân khu đang theo dõi</h4>

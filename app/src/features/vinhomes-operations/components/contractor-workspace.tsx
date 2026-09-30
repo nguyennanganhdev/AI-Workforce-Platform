@@ -185,7 +185,7 @@ export function ContractorWorkspace() {
             return (
               <div
                 key={wo.id}
-                className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs space-y-3.5 hover:border-slate-300 transition-colors"
+                className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-5 shadow-2xs space-y-3.5 hover:border-slate-300 transition-colors"
               >
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
@@ -269,8 +269,8 @@ export function ContractorWorkspace() {
                 )}
 
                 {/* Evidence count & Action Row */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     <span className="text-slate-500">Ảnh trước và sau xử lý:</span>
                     <span
                       className={`text-[11px] font-bold px-2 py-0.5 rounded ${
@@ -295,7 +295,7 @@ export function ContractorWorkspace() {
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
                     {wo.contractor_status === 'PENDING_ACCEPTANCE' && (
                       <>
                         <button
@@ -370,7 +370,7 @@ export function ContractorWorkspace() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="accept-wo-title"
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4"
         >
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl">
             <h3 id="accept-wo-title" className="font-bold text-sm text-slate-900">Tiếp nhận phiếu công việc {acceptWoId}</h3>
@@ -411,7 +411,7 @@ export function ContractorWorkspace() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="reject-wo-title"
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4"
         >
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl">
             <h3 id="reject-wo-title" className="font-bold text-sm text-slate-900">Từ chối tiếp nhận công việc {rejectWoId}</h3>
@@ -454,7 +454,7 @@ export function ContractorWorkspace() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="material-wo-title"
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4"
         >
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl">
             <h3 id="material-wo-title" className="font-bold text-sm text-slate-900">Ghi nhận vật tư & linh kiện thay thế</h3>

@@ -134,7 +134,7 @@ export function TriageWorkspace() {
           {selectedCase ? (
             <>
               {/* Resident Info Card */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs space-y-3">
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-5 shadow-2xs space-y-3">
                 <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
@@ -190,7 +190,7 @@ export function TriageWorkspace() {
                     return (
                       <div
                         key={candidate.id}
-                        className={`p-4 rounded-2xl border transition-all space-y-3 ${
+                        className={`p-3 sm:p-4 rounded-2xl border transition-all space-y-3 ${
                           isMaterialized
                             ? 'bg-emerald-50/40 border-emerald-200'
                             : isMerged
@@ -253,8 +253,8 @@ export function TriageWorkspace() {
 
                         {/* Actions */}
                         {!isMaterialized && !isMerged && (
-                          <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
+                          <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                            <div className="flex flex-wrap items-center gap-2">
                               <button
                                 type="button"
                                 onClick={() => handleOpenSplit(candidate)}
@@ -315,8 +315,8 @@ export function TriageWorkspace() {
 
       {/* Split Modal */}
       {splitCandidate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 max-w-lg w-full shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-2 sm:p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 max-w-lg w-full shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <IconCut className="w-5 h-5 text-blue-600" />
@@ -381,8 +381,8 @@ export function TriageWorkspace() {
 
       {/* Merge Modal */}
       {mergeSource && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 max-w-md w-full shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-2 sm:p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 max-w-md w-full shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <IconGitMerge className="w-5 h-5 text-purple-600" />

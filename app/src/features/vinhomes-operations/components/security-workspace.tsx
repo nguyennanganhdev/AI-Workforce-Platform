@@ -184,7 +184,7 @@ export function SecurityWorkspace() {
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs overflow-x-auto">
+      <div className="ops-scroll-tabs flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
         {[
           { id: 'PATROL', label: `Tuyến tuần tra (${securityCheckpoints.length})` },
           { id: 'INCIDENTS', label: `Biên bản sự việc (${securityIncidents.length})` },
@@ -207,7 +207,7 @@ export function SecurityWorkspace() {
       {/* Tab 1: Patrol Checkpoints */}
       {activeTab === 'PATROL' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <h3 className="font-bold text-sm text-slate-900">Danh mục điểm kiểm soát theo tuyến</h3>
               <p className="text-xs text-slate-500">Nhân viên tuần tra xác nhận kiểm tra khi có mặt tại từng vị trí</p>
@@ -347,7 +347,7 @@ export function SecurityWorkspace() {
       {/* Tab 2: Incident Reports */}
       {activeTab === 'INCIDENTS' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div>
               <h3 className="font-bold text-sm text-slate-900">Biên bản sự việc & Vi phạm hiện trường</h3>
               <p className="text-xs text-slate-500">Lưu trữ thông tin người, phương tiện và biện pháp xử lý</p>
@@ -373,7 +373,7 @@ export function SecurityWorkspace() {
             {securityIncidents.filter((report) => report.id === selectedReport).map((inc) => (
               <div
                 key={inc.id}
-                className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs space-y-3 hover:border-slate-300 transition-colors"
+                className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-5 shadow-2xs space-y-3 hover:border-slate-300 transition-colors"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
                   <div className="flex items-center gap-2">
@@ -467,7 +467,7 @@ export function SecurityWorkspace() {
       {/* Tab 3: Shift Handover */}
       {activeTab === 'HANDOVER' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs space-y-4">
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-5 shadow-2xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
               <div>
                 <h3 className="font-bold text-sm text-slate-900">Biên bản bàn giao ca trực an ninh</h3>
@@ -544,7 +544,7 @@ export function SecurityWorkspace() {
       {/* Tab 4: Emergency SOS */}
       {activeTab === 'EMERGENCY' && (
         <div className="space-y-4">
-          <div className="p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-3 text-rose-900">
+          <div className="p-3.5 sm:p-5 bg-rose-50 border border-rose-200 rounded-2xl space-y-3 text-rose-900">
             <div className="flex items-center gap-2">
               <IconAlertTriangle className="w-5 h-5 text-rose-600" />
               <h3 className="font-bold text-sm">Đường dây nóng Phản ứng Khẩn cấp (Liên hệ khẩn cấp)</h3>
@@ -624,7 +624,7 @@ export function SecurityWorkspace() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="checkin-title"
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4"
         >
           <div className="bg-white rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl">
             <h3 id="checkin-title" className="font-bold text-sm text-slate-900">Xác nhận có mặt tại điểm tuần tra {checkingCpId}</h3>
@@ -661,7 +661,7 @@ export function SecurityWorkspace() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="sec-incident-title"
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4"
         >
           <form
             onSubmit={handleCreateIncident}
@@ -806,7 +806,7 @@ export function SecurityWorkspace() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="handover-modal-title"
-          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4"
         >
           <form
             onSubmit={handleCreateHandover}
@@ -926,7 +926,7 @@ export function SecurityWorkspace() {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 font-sans"
+          className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 font-sans"
         >
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl border border-rose-200">
             <div className="w-16 h-16 rounded-full bg-rose-100 text-rose-600 mx-auto flex items-center justify-center animate-pulse">

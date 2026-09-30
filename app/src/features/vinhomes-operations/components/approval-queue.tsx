@@ -83,11 +83,11 @@ export function ApprovalQueue() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200">
+      <div className="ops-scroll-tabs flex items-center gap-2 border-b border-slate-200">
         <button
           type="button"
           onClick={() => { setActiveTab('PENDING'); setDetailId(''); }}
-          className={`pb-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
+          className={`pb-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'PENDING'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -104,7 +104,7 @@ export function ApprovalQueue() {
         <button
           type="button"
           onClick={() => setActiveTab('GRANTS')}
-          className={`pb-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
+          className={`pb-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'GRANTS'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -120,7 +120,7 @@ export function ApprovalQueue() {
         <button
           type="button"
           onClick={() => setActiveTab('HISTORY')}
-          className={`pb-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
+          className={`pb-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'HISTORY'
               ? 'border-blue-600 text-blue-600'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -152,7 +152,7 @@ export function ApprovalQueue() {
               return (
                 <div
                   key={app.id}
-                  className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs space-y-3.5 hover:border-blue-300 transition-colors"
+                  className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-5 shadow-2xs space-y-3.5 hover:border-blue-300 transition-colors"
                 >
                   {/* Top Row: Type & Urgency */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -359,8 +359,8 @@ export function ApprovalQueue() {
 
       {/* Decision Modal */}
       {modalOpen && selectedApproval && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-2xl border border-slate-200 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="font-bold text-slate-900 text-base">
                 {decisionType === 'APPROVE' ? 'Xác Nhận Phê Duyệt Chi Phí' : 'Xác Nhận Từ Chối'}

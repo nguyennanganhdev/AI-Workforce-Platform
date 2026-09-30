@@ -67,6 +67,13 @@ export function WorkOrderTable() {
   // Active Action Menu Popover
   const [openActionId, setOpenActionId] = useState<string | null>(null);
 
+  // Close action popover when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = () => setOpenActionId(null);
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, []);
+
   // Dialog states
   const [selectedWoForDetail, setSelectedWoForDetail] = useState<VhWorkOrder | null>(null);
   const [selectedWoForEvidence, setSelectedWoForEvidence] = useState<VhWorkOrder | null>(null);
@@ -203,6 +210,159 @@ export function WorkOrderTable() {
     }
   };
 
+  // 3-dots action menu popover
+  const renderActionMenu = (wo: (typeof pagedOrders)[0], placement: 'desk' | 'mob') => {
+    const menuKey = `${placement}-${wo.id}`;
+    const isActionOpen = openActionId === menuKey;
+
+    return (
+      <div className="relative inline-block text-left">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpenActionId(isActionOpen ? null : menuKey);
+          }}
+          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+          title="Tùy chọn thao tác"
+          aria-label={`Tùy chọn thao tác cho phiếu ${wo.id}`}
+        >
+          <IconDotsVertical className="w-4 h-4" />
+        </button>
+
+        {isActionOpen && (
+          <div
+            className={`absolute ${placement === 'mob' ? 'right-0 bottom-full mb-1' : 'right-0 top-10'} w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-left font-sans`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 1. View Details */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedWoForDetail(wo);
+                setOpenActionId(null);
+              }}
+              className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+            >
+              <IconEye className="w-4 h-4 text-slate-400" />
+              <span>Xem chi tiết phiếu</span>
+            </button>
+
+            {/* 2. Edit / Update Progress */}
+            {isManagementView && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedWoForDetail(wo);
+                  setOpenActionId(null);
+                }}
+                className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+              >
+                <IconEdit className="w-4 h-4 text-slate-400" />
+                <span>Cập nhật tiến độ</span>
+              </button>
+            )}
+
+            {/* 3. Evidence Gallery */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedWoForEvidence(wo);
+                setOpenActionId(null);
+              }}
+              className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+            >
+              <IconPhoto className="w-4 h-4 text-blue-500" />
+              <span>{isManagementView || isQcReferenceView ? 'Quản lý bằng chứng' : 'Xem ảnh Trước / Sau'}</span>
+            </button>
+
+            {/* 4. QC Inspection — Guarded against self-QC & role check */}
+            {currentProfile.canQC && (() => {
+              const isExecutor = currentProfile.id === wo.executor_id;
+              const isCompleted = wo.status === 'COMPLETED';
+
+              return (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isExecutor) {
+                      alert(
+                        `🚫 Vi phạm nguyên tắc kiểm soát độc lập (Segregation of Duties):\nBạn (${wo.executor_name}) là người trực tiếp thi công phiếu ${wo.id}, KHÔNG ĐƯỢC tự nghiệm thu QC cho chính mình!\nVui lòng chuyển giao phiếu cho chuyên viên nghiệm thu chất lượng độc lập hoặc Trưởng ca.`
+                      );
+                      return;
+                    }
+                    if (!isCompleted) {
+                      alert(
+                        `⚠️ Phiếu thi công ${wo.id} đang ở trạng thái "${wo.status}".\nChỉ được nghiệm thu QC khi công việc đã đạt trạng thái COMPLETED.`
+                      );
+                      return;
+                    }
+                    setSelectedWoForQc(wo);
+                    setOpenActionId(null);
+                  }}
+                  className={`w-full px-3 py-2 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
+                    isExecutor
+                      ? 'text-slate-400 hover:bg-slate-50 cursor-not-allowed opacity-70'
+                      : 'text-purple-700 hover:bg-purple-50'
+                  }`}
+                  title={isExecutor ? 'Cấm tự nghiệm thu công việc của chính mình' : 'Nghiệm thu chất lượng'}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <IconShieldCheck className={`w-4 h-4 ${isExecutor ? 'text-slate-400' : 'text-purple-600'}`} />
+                    <span>Nghiệm thu chất lượng</span>
+                  </div>
+                  {isExecutor && (
+                    <span className="text-[10px] bg-red-100 text-red-700 font-bold px-1.5 py-0.5 rounded">
+                      Cấm tự QC
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
+
+            <div className="my-1 border-t border-slate-100" />
+
+            {/* Quick Status Toggles with Strict Guard Validation */}
+            {isManagementView && wo.status !== 'IN_PROGRESS' && wo.status !== 'COMPLETED' && (
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    transitionWorkOrderStatus(wo.id, 'IN_PROGRESS');
+                    setOpenActionId(null);
+                  } catch (err: any) {
+                    alert(`⚠️ Lỗi chuyển trạng thái:\n${err.message}`);
+                  }
+                }}
+                className="w-full px-3 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50 flex items-center gap-2.5 cursor-pointer"
+              >
+                <IconCheck className="w-4 h-4" />
+                <span>Bắt đầu làm việc</span>
+              </button>
+            )}
+            {isManagementView && wo.status === 'IN_PROGRESS' && (
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    transitionWorkOrderStatus(wo.id, 'COMPLETED');
+                    setOpenActionId(null);
+                  } catch (err: any) {
+                    alert(`⚠️ Lỗi kiểm soát quy trình:\n${err.message}`);
+                  }
+                }}
+                className="w-full px-3 py-2 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 flex items-center gap-2.5 cursor-pointer"
+              >
+                <IconCheck className="w-4 h-4" />
+                <span>Đánh dấu hoàn tất (Chờ nghiệm thu)</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="operations-plain-list operations-work-orders space-y-5">
       {/* Title & Action Toolbar — Chuẩn 100% Template BistroPulse */}
@@ -231,7 +391,7 @@ export function WorkOrderTable() {
               placeholder="Tìm theo mã phiếu, tên việc, nhân sự..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-3 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 w-48 sm:w-60 shadow-2xs font-medium"
+              className="pl-3 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 w-full sm:w-48 md:w-60 shadow-2xs font-medium"
             />
           </div>
 
@@ -344,7 +504,114 @@ export function WorkOrderTable() {
 
       {/* Main Table Card — BistroPulse Rounded White Container */}
       <div className="bg-white overflow-visible">
-        <div className="overflow-x-auto min-h-[380px]">
+        {/* Mobile Card View (< 768px): KHÔNG CẦN VUỐT NGANG */}
+        <div className="md:hidden divide-y divide-slate-100 bg-white">
+          {pagedOrders.map((wo) => {
+            const isSelected = selectedIds.includes(wo.id);
+            const isRedo = !!wo.redo_of_work_order_id;
+            const statusLabel =
+              ({
+                OPEN: 'Mới tạo',
+                ASSIGNED: 'Đã giao',
+                IN_PROGRESS: 'Đang thực hiện',
+                BLOCKED: 'Tạm dừng',
+                COMPLETED: 'Hoàn thành',
+                FAILED: 'Cần làm lại',
+                CANCELLED: 'Đã hủy',
+              })[wo.status] || wo.status;
+            const statusBadgeClass =
+              wo.status === 'COMPLETED'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : wo.status === 'BLOCKED'
+                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                  : wo.status === 'IN_PROGRESS'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : wo.status === 'FAILED'
+                      ? 'bg-rose-50 text-rose-700 border-rose-200'
+                      : 'bg-slate-50 text-slate-700 border-slate-200';
+
+            return (
+              <div
+                key={wo.id}
+                className={`p-3.5 space-y-2.5 transition-colors bg-white ${
+                  isRedo ? 'border-l-4 border-rose-500' : ''
+                }`}
+              >
+                {/* Header row: Title, Status badge (bỏ nút tích và mã phiếu trên mobile) */}
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedWoForDetail(wo)}
+                      className="text-left font-bold text-xs text-slate-800 hover:text-blue-600 leading-snug line-clamp-2 cursor-pointer"
+                    >
+                      {wo.taskTitle}
+                    </button>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px] text-slate-400">
+                      {isRedo && (
+                        <>
+                          <span className="text-rose-600 font-bold bg-rose-50 px-1 py-0.5 rounded">
+                            Làm lại
+                          </span>
+                          <span>•</span>
+                        </>
+                      )}
+                      <span>Tòa {wo.towerCode}</span>
+                      <span>•</span>
+                      <span>{DOMAIN_LABELS[wo.domainType] || wo.domainType}</span>
+                    </div>
+                  </div>
+                  <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusBadgeClass}`}>
+                    {statusLabel}
+                  </span>
+                </div>
+
+                {/* Sub details: Assignee & SLA */}
+                <div className="flex items-center justify-between text-[11px] text-slate-500 bg-slate-50/70 rounded-lg px-2.5 py-1.5">
+                  <div className="truncate mr-2">
+                    <span className="text-slate-400">Người thực hiện: </span>
+                    <span className="font-medium text-slate-700">{wo.executor_name || 'Chưa phân công'}</span>
+                  </div>
+                  <div className="shrink-0">
+                    <span className="text-slate-400">Hạn: </span>
+                    <span className="font-medium text-slate-700">
+                      {wo.priority === 'URGENT' ? '45 phút' : wo.priority === 'HIGH' ? '2 giờ' : '24 giờ'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Footer action row */}
+                <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedWoForDetail(wo)}
+                    className="text-[11px] text-blue-600 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <IconEye className="w-3.5 h-3.5" />
+                    <span>Xem chi tiết</span>
+                  </button>
+
+                  <div className="flex items-center gap-1.5">
+                    {renderActionMenu(wo, 'mob')}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {pagedOrders.length === 0 && (
+            <div className="py-12 px-4 text-center text-slate-400">
+              <p className="font-bold text-slate-700 text-xs">Không có hồ sơ phù hợp</p>
+              <p className="text-[11px] text-slate-400 mt-1">
+                {isQcReferenceView
+                  ? 'Hiện chưa có phiếu hoàn thành nào sẵn sàng để tra cứu nghiệm thu.'
+                  : 'Bạn chưa có phiếu thi công nào trong phạm vi bộ lọc hiện tại.'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Desktop Table View (>= 768px) */}
+        <div className="hidden md:block overflow-x-auto min-h-[380px]">
           <table className="w-full text-left text-xs text-slate-600 font-sans">
             {/* Table Header */}
             <thead>
@@ -379,13 +646,13 @@ export function WorkOrderTable() {
                 <th className="py-3.5 px-3 min-w-[130px]">Vị trí / Tòa</th>
 
                 {/* Domain / Department */}
-                <th className="py-3.5 px-3 min-w-[110px]">Bộ phận</th>
+                <th className="py-3.5 px-3 min-w-[110px] ops-hide-mobile">Bộ phận</th>
 
                 {/* Assignee / Representative */}
-                <th className="py-3.5 px-3 min-w-[160px]">Người thực hiện</th>
+                <th className="py-3.5 px-3 min-w-[160px] ops-hide-mobile">Người thực hiện</th>
 
                 {/* SLA / Priority */}
-                <th className="py-3.5 px-3 min-w-[110px]">Hạn xử lý</th>
+                <th className="py-3.5 px-3 min-w-[110px] ops-hide-mobile">Hạn xử lý</th>
 
                 {/* Status with Accessible Sort Button */}
                 <th className="py-3.5 px-3 min-w-[120px]">
@@ -409,7 +676,6 @@ export function WorkOrderTable() {
             <tbody className="divide-y divide-slate-100">
               {pagedOrders.map((wo) => {
                 const isSelected = selectedIds.includes(wo.id);
-                const isActionOpen = openActionId === wo.id;
                 const isRedo = !!wo.redo_of_work_order_id;
 
                 return (
@@ -436,153 +702,17 @@ export function WorkOrderTable() {
                       <p className="mt-1 text-xs text-slate-400">{wo.id}{isRedo ? ' · Làm lại' : ''}</p>
                     </td>
                     <td className="whitespace-nowrap">Tòa {wo.towerCode}</td>
-                    <td>{DOMAIN_LABELS[wo.domainType] || wo.domainType}</td>
-                    <td>{wo.executor_name || 'Chưa phân công'}</td>
-                    <td className="whitespace-nowrap">{wo.priority === 'URGENT' ? '45 phút' : wo.priority === 'HIGH' ? '2 giờ' : '24 giờ'}</td>
+                    <td className="ops-hide-mobile">{DOMAIN_LABELS[wo.domainType] || wo.domainType}</td>
+                    <td className="ops-hide-mobile">{wo.executor_name || 'Chưa phân công'}</td>
+                    <td className="whitespace-nowrap ops-hide-mobile">{wo.priority === 'URGENT' ? '45 phút' : wo.priority === 'HIGH' ? '2 giờ' : '24 giờ'}</td>
                     <td className={wo.status === 'COMPLETED' ? 'text-emerald-700' : wo.status === 'FAILED' ? 'text-red-700' : 'text-slate-600'}>
                       {({OPEN: 'Mới tạo', ASSIGNED: 'Đã giao', IN_PROGRESS: 'Đang thực hiện', BLOCKED: 'Tạm dừng', COMPLETED: 'Hoàn thành', FAILED: 'Cần làm lại', CANCELLED: 'Đã hủy'})[wo.status]}
                     </td>
 
                     {/* Action 3-dots with BistroPulse Popover Menu */}
                     <td className="py-3.5 pr-4 pl-2 text-right relative whitespace-nowrap">
-                      <button type="button" className="operations-text-action mr-3" onClick={() => setSelectedWoForDetail(wo)} aria-label={`Xem chi tiết phiếu ${wo.id}`}>Xem chi tiết</button>
-                      <button
-                        type="button"
-                        onClick={() => setOpenActionId(isActionOpen ? null : wo.id)}
-                        className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                        title="Tùy chọn thao tác"
-                        aria-label={`Tùy chọn thao tác cho phiếu ${wo.id}`}
-                      >
-                        Thao tác
-                      </button>
-
-                      {/* BistroPulse 3-dots Context Menu Popover */}
-                      {isActionOpen && (
-                        <div className="absolute right-6 top-10 w-52 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-40 text-left font-sans">
-                          {/* 1. View Details */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedWoForDetail(wo);
-                              setOpenActionId(null);
-                            }}
-                            className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
-                          >
-                            <IconEye className="w-4 h-4 text-slate-400" />
-                            <span>Xem chi tiết phiếu</span>
-                          </button>
-
-                          {/* 2. Edit / Update Progress */}
-                          {isManagementView && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedWoForDetail(wo);
-                                setOpenActionId(null);
-                              }}
-                              className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
-                            >
-                              <IconEdit className="w-4 h-4 text-slate-400" />
-                              <span>Cập nhật tiến độ</span>
-                            </button>
-                          )}
-
-                          {/* 3. Evidence Gallery */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedWoForEvidence(wo);
-                              setOpenActionId(null);
-                            }}
-                            className="w-full px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
-                          >
-                            <IconPhoto className="w-4 h-4 text-blue-500" />
-                            <span>{isManagementView || isQcReferenceView ? 'Quản lý bằng chứng' : 'Xem ảnh Trước / Sau'}</span>
-                          </button>
-
-                          {/* 4. QC Inspection — Guarded against self-QC & role check */}
-                          {currentProfile.canQC && (() => {
-                            const isExecutor = currentProfile.id === wo.executor_id;
-                            const isCompleted = wo.status === 'COMPLETED';
-
-                            return (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (isExecutor) {
-                                    alert(
-                                      `🚫 Vi phạm nguyên tắc kiểm soát độc lập (Segregation of Duties):\nBạn (${wo.executor_name}) là người trực tiếp thi công phiếu ${wo.id}, KHÔNG ĐƯỢC tự nghiệm thu QC cho chính mình!\nVui lòng chuyển giao phiếu cho chuyên viên nghiệm thu chất lượng độc lập hoặc Trưởng ca.`
-                                    );
-                                    return;
-                                  }
-                                  if (!isCompleted) {
-                                    alert(
-                                      `⚠️ Phiếu thi công ${wo.id} đang ở trạng thái "${wo.status}".\nChỉ được nghiệm thu QC khi công việc đã đạt trạng thái COMPLETED.`
-                                    );
-                                    return;
-                                  }
-                                  setSelectedWoForQc(wo);
-                                  setOpenActionId(null);
-                                }}
-                                className={`w-full px-3 py-2 text-xs font-semibold flex items-center justify-between transition-colors ${
-                                  isExecutor
-                                    ? 'text-slate-400 hover:bg-slate-50 cursor-not-allowed opacity-70'
-                                    : 'text-purple-700 hover:bg-purple-50'
-                                }`}
-                                title={isExecutor ? 'Cấm tự nghiệm thu công việc của chính mình' : 'Nghiệm thu chất lượng'}
-                              >
-                                <div className="flex items-center gap-2.5">
-                                  <IconShieldCheck className={`w-4 h-4 ${isExecutor ? 'text-slate-400' : 'text-purple-600'}`} />
-                                  <span>Nghiệm thu chất lượng</span>
-                                </div>
-                                {isExecutor && (
-                                  <span className="text-[10px] bg-red-100 text-red-700 font-bold px-1.5 py-0.5 rounded">
-                                    Cấm tự QC
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })()}
-
-                          <div className="my-1 border-t border-slate-100" />
-
-                          {/* Quick Status Toggles with Strict Guard Validation */}
-                          {isManagementView && wo.status !== 'IN_PROGRESS' && wo.status !== 'COMPLETED' && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                try {
-                                  transitionWorkOrderStatus(wo.id, 'IN_PROGRESS');
-                                  setOpenActionId(null);
-                                } catch (err: any) {
-                                  alert(`⚠️ Lỗi chuyển trạng thái:\n${err.message}`);
-                                }
-                              }}
-                              className="w-full px-3 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50 flex items-center gap-2.5"
-                            >
-                              <IconCheck className="w-4 h-4" />
-                              <span>Bắt đầu làm việc</span>
-                            </button>
-                          )}
-                          {isManagementView && wo.status === 'IN_PROGRESS' && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                try {
-                                  transitionWorkOrderStatus(wo.id, 'COMPLETED');
-                                  setOpenActionId(null);
-                                } catch (err: any) {
-                                  alert(`⚠️ Lỗi kiểm soát quy trình:\n${err.message}`);
-                                }
-                              }}
-                              className="w-full px-3 py-2 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 flex items-center gap-2.5"
-                            >
-                              <IconCheck className="w-4 h-4" />
-                              <span>Đánh dấu hoàn tất (Chờ nghiệm thu)</span>
-                            </button>
-                          )}
-                        </div>
-                      )}
+                      <button type="button" className="operations-text-action mr-3 hidden sm:inline" onClick={() => setSelectedWoForDetail(wo)} aria-label={`Xem chi tiết phiếu ${wo.id}`}>Xem chi tiết</button>
+                      {renderActionMenu(wo, 'desk')}
                     </td>
                   </tr>
                 );

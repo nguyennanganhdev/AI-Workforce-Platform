@@ -17,9 +17,9 @@ export function QcWorkspace() {
         <h1>Nghiệm thu chất lượng</h1>
         <p className="mt-1 text-sm text-slate-500">Kiểm tra công việc đã hoàn thành và theo dõi kết quả nghiệm thu.</p>
       </div>
-      <div className="flex gap-6 border-b border-slate-200">
+      <div className="ops-scroll-tabs flex gap-4 sm:gap-6 border-b border-slate-200">
         {([{id: 'PENDING', label: 'Chờ nghiệm thu'}, {id: 'HISTORY', label: 'Lịch sử nghiệm thu'}] as const).map((item) =>
-          <button type="button" key={item.id} aria-pressed={tab === item.id} className={`pb-3 text-sm border-b-2 ${tab === item.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`} onClick={() => setTab(item.id)}>{item.label}</button>
+          <button type="button" key={item.id} aria-pressed={tab === item.id} className={`pb-3 text-sm border-b-2 whitespace-nowrap shrink-0 ${tab === item.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`} onClick={() => setTab(item.id)}>{item.label}</button>
         )}
       </div>
       <div hidden={tab !== 'PENDING'}>

@@ -54,9 +54,9 @@ export function KanbanBoard() {
         </div>
 
         {/* Filter Toolbar */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2">
           {/* Domain Filter */}
-          <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200/80 shadow-2xs">
+          <div className="ops-scroll-tabs flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200/80 shadow-2xs max-w-full">
             {[
               { id: 'ALL', label: 'Tất cả bộ phận' },
               { id: 'MEP', label: 'Điện Nước' },
@@ -67,7 +67,7 @@ export function KanbanBoard() {
                 key={d.id}
                 type="button"
                 onClick={() => setSelectedDomain(d.id)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-colors ${
                   selectedDomain === d.id
                     ? 'bg-blue-600 text-white shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
@@ -82,7 +82,7 @@ export function KanbanBoard() {
           <select
             value={selectedIncidentFilter}
             onChange={(e) => setSelectedIncidentFilter(e.target.value)}
-            className="text-xs font-semibold bg-white border border-slate-200/80 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-blue-500 shadow-2xs"
+            className="text-xs font-semibold bg-white border border-slate-200/80 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-blue-500 shadow-2xs w-full sm:w-auto truncate"
           >
             <option value="ALL">Tất cả sự cố ({incidents.length})</option>
             {incidents.map((inc) => (
@@ -115,7 +115,7 @@ export function KanbanBoard() {
           return (
             <div
               key={col.id}
-              className="bg-slate-100/70 rounded-2xl p-3 border border-slate-200/80 flex flex-col min-h-[560px]"
+              className="bg-slate-100/70 rounded-2xl p-3 border border-slate-200/80 flex flex-col min-h-[160px] sm:min-h-[560px]"
             >
               {/* Column Header */}
               <div className="flex items-center justify-between mb-2.5 px-1">
