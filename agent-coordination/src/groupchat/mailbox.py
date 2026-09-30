@@ -1,4 +1,4 @@
-"""Persistent pending delivery in the room aggregate; sending never runs agents."""
+"""Lưu thư chờ giao trong trạng thái phòng; gửi thư không kích hoạt agent."""
 
 from .models import MailItem, Message, Snapshot
 from .task_board import can_read

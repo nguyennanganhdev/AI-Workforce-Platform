@@ -1,4 +1,4 @@
-"""Single-turn room orchestration; never selects speakers or retries invocations."""
+"""Điều phối từng lượt trong phòng; không tự chọn người nói hoặc thử gọi lại."""
 
 from __future__ import annotations
 
@@ -144,8 +144,8 @@ class RoomService:
         except RoomError as exc:
             return error_result(request_id, exc.code, str(exc))
         except asyncio.CancelledError:
-            raise  # committed dispatch remains fenced; DEV-4 recovery must reconcile
-        except Exception:  # noqa: BLE001 - sanitize dependency errors; uncertain dispatch stays fenced
+            raise  # committed dispatch vẫn giữ fence; recovery phải reconcile
+        except Exception:  # noqa: BLE001 - sanitize dependency error; uncertain dispatch giữ fence
             return error_result(
                 request_id,
                 "DEPENDENCY_UNAVAILABLE",
@@ -156,7 +156,7 @@ class RoomService:
         ctx, p = command.context, command.payload
         result: Success | Failure
         await self.resolver.authorize(ctx, p.operation, None)
-        # Tracing IDs are excluded; authority/binding changes are semantic.
+        # Bỏ tracing ID; thay đổi authority/binding làm thay đổi semantics.
         semantic = {
             "payload": p.model_dump(mode="json"),
             "context": ctx.model_dump(mode="json"),
@@ -164,7 +164,7 @@ class RoomService:
         digest = hashlib.sha256(
             json.dumps(semantic, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
-        # Bound internal key length even when the caller uses the full 256-char key.
+        # Giới hạn độ dài khóa nội bộ ngay cả khi phía gọi dùng đủ 256 ký tự.
         key_hash = hashlib.sha256(command.idempotency_key.encode()).hexdigest()
         key = f"{p.operation}:{key_hash}"
         async with self.state.transaction(ctx) as state:
@@ -316,7 +316,7 @@ class RoomService:
                     invocation = self._invocation(room, active)
                     await self.invocation.prepare(invocation)
                     if isinstance(p, MentionAgent):
-                        # Preserve the question for room readers; it was already sent as instruction.
+                        # Giữ câu hỏi cho người đọc phòng; câu hỏi đã được gửi làm chỉ dẫn.
                         messaging.append(
                             room,
                             MessageInput(
@@ -331,7 +331,7 @@ class RoomService:
                         active.mailbox_message_ids.append(
                             room.transcript[-1].message_id
                         )
-                    # Durable dispatch boundary; only Supervisor turns consume its budget.
+                    # Persist dispatch boundary; chỉ Supervisor turn tiêu hao budget.
                     state.fence += 1
                     if isinstance(p, RunTurn):
                         room.turns_used += 1
@@ -393,7 +393,7 @@ class RoomService:
             if not isinstance(p, (RunTurn, MentionAgent, CancelTurn)):
                 return result
             timeout = room.policy.timeout_seconds
-        # Framework/network I/O MUST be outside storage transaction.
+        # Framework/network I/O PHẢI nằm ngoài storage transaction.
         if isinstance(p, CancelTurn):
             confirmed = await self._cancel(invocation)
             await self.complete(
@@ -419,13 +419,13 @@ class RoomService:
                     await self.complete(invocation, "outcome_unknown")
                 except TerminalInvocationError:
                     await self.complete(invocation, "failure")
-                except Exception:  # noqa: BLE001 - sanitize dependency errors; uncertain dispatch stays fenced
+                except Exception:  # noqa: BLE001 - sanitize dependency error; uncertain dispatch giữ fence
                     await self.complete(invocation, "outcome_unknown")
                 else:
                     await self.complete(invocation, "success", output)
             else:
                 confirmed = await self._cancel(invocation)
-                # Detach from caller without interpreting local cancellation as remote proof.
+                # Detach khỏi caller; local cancellation không phải remote proof.
                 task.cancel()
                 task.add_done_callback(self._consume_task)
                 await self.complete(
@@ -449,7 +449,7 @@ class RoomService:
         try:
             async with asyncio.timeout(5):
                 return await self.invocation.cancel(invocation)
-        except Exception:  # noqa: BLE001 - sanitize dependency errors; uncertain dispatch stays fenced
+        except Exception:  # noqa: BLE001 - sanitize dependency error; uncertain dispatch giữ fence
             return False
 
     async def complete(
@@ -458,10 +458,10 @@ class RoomService:
         status: TurnStatus,
         output: AgentOutput | None = None,
     ) -> bool:
-        """Trusted adapter/DEV-4 callback only; context + operation + fence checked.
+        """Chỉ nhận trusted adapter/storage callback; kiểm tra context, operation và fence.
 
-        outcome_unknown retains slot. A later verified terminal callback can release
-        it once; retired generation, stale fence and double completion are rejected.
+        outcome_unknown giữ slot. Verified terminal callback có thể release đúng một lần;
+        retired generation, stale fence và double completion đều bị từ chối.
         """
         try:
             await self.resolver.authorize(invocation.context, "complete_turn", None)
@@ -586,7 +586,7 @@ class RoomService:
         except RoomError as exc:
             return error_result(query.request_id, exc.code)
 
-        except Exception:  # noqa: BLE001 - public boundary must not expose dependency secrets
+        except Exception:  # noqa: BLE001 - public boundary không expose dependency secret
             return error_result(
                 query.request_id,
                 "DEPENDENCY_UNAVAILABLE",

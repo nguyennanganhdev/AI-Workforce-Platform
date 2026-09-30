@@ -1,4 +1,4 @@
-"""Current task state only; assignment decisions belong to the Supervisor."""
+"""Lưu trạng thái tác vụ hiện tại; Supervisor quyết định việc phân công."""
 
 from .models import ContextItem, RoomError, Snapshot, TaskItem
 from .participants import member

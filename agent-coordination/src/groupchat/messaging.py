@@ -11,7 +11,9 @@ def validate_message(room: Snapshot, message: MessageInput) -> None:
         task = room.tasks.get(message.task_id)
         if task is None:
             raise RoomError("NOT_FOUND", "Message task is not in this room")
-        if message.recipient_agent_version_id and not can_read(task, message.recipient_agent_version_id):
+        if message.recipient_agent_version_id and not can_read(
+            task, message.recipient_agent_version_id
+        ):
             raise RoomError("FORBIDDEN")
     if message.in_reply_to_message_id and not any(
         m.message_id == message.in_reply_to_message_id for m in room.transcript

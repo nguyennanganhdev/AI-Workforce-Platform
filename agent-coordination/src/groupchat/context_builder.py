@@ -1,4 +1,4 @@
-"""Bounded, audience- and task-filtered inputs; no whole-room history."""
+"""Giới hạn đầu vào và lọc theo quyền đọc, tác vụ; không lấy toàn bộ lịch sử phòng."""
 
 from copy import deepcopy
 from dataclasses import dataclass
@@ -51,7 +51,7 @@ def build(
         if reply is None or not relevant(reply):
             raise RoomError("FORBIDDEN", "Reply context is outside agent scope")
         selected[reply_id] = reply
-    # Board is shared by ACL; result refs only accompany relevant work.
+    # Chia sẻ bảng theo ACL; chỉ kèm tham chiếu kết quả của công việc liên quan.
     tasks = []
     for task in room.tasks.values():
         if can_read(task, agent_id):

@@ -1,9 +1,9 @@
-"""Versioned module contracts. Context fields alone never establish authority."""
+"""Hợp đồng dữ liệu có phiên bản. Các trường ngữ cảnh không tự xác lập quyền."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -19,6 +19,7 @@ class Model(BaseModel):
 class Context(Model):
     tenant_id: Id
     principal_id: Id
+    initiated_by_user_id: Optional[Id] = None  # noqa: UP045 - Giữ cú pháp của schema.
     domain_id: Id
     workspace_id: Id
     ticket_id: Id
@@ -27,7 +28,7 @@ class Context(Model):
     run_id: Id
 
     def scope(self) -> tuple[str, str, int]:
-        """Unique application room key, independent of mutable routing metadata."""
+        """Khóa phòng duy nhất, độc lập với siêu dữ liệu định tuyến có thể thay đổi."""
         return (self.tenant_id, self.ticket_id, self.ticket_generation)
 
     def same_room_scope(self, other: Context) -> bool:
@@ -95,7 +96,7 @@ class TaskItem(Model):
     assignee_agent_version_id: Id
     status: Literal["pending", "in_progress", "blocked", "completed"] = "pending"
     result_refs: list[Id] = Field(default_factory=list)
-    # Empty audience means all admitted members. Supervisor supplies this ACL.
+    # Danh sách người đọc rỗng cho phép mọi thành viên đã tham gia; Supervisor cấp ACL này.
     reader_agent_version_ids: list[Id] = Field(default_factory=list)
 
 
@@ -204,6 +205,7 @@ Payload = Annotated[
 
 class Command(Model):
     contract_version: Literal["1"] = "1"
+    type: Optional[str] = None  # noqa: UP045 - Giữ cú pháp của schema.
     request_id: Id
     trace_id: Id
     idempotency_key: Id
@@ -283,7 +285,7 @@ class ActiveOperation(Model):
 
 
 class Snapshot(Model):
-    """Internal DEV-4 aggregate; never expose bindings/framework refs to clients."""
+    """Internal aggregate; không expose binding/framework reference cho client."""
 
     room_id: Id
     scope: Context
@@ -333,4 +335,4 @@ class RoomError(Exception):
 
 
 class TerminalInvocationError(Exception):
-    """Invocation port confirms terminal failure, with no outstanding work."""
+    """Invocation port xác nhận terminal failure và không còn outstanding work."""

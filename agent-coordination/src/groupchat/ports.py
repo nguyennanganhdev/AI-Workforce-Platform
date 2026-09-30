@@ -1,4 +1,4 @@
-"""Ports require real authorization and atomic persistence in production."""
+"""Các port yêu cầu authorization thật và atomic persistence trong production."""
 
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
@@ -21,13 +21,13 @@ class ParticipantResolver(Protocol):
     async def authorize(
         self, context: Context, operation: str, room: Snapshot | None
     ) -> None:
-        """Verify credential/delegation, current generation, scope and history ACL.
+        """Kiểm tra credential/delegation, current generation, scope và history ACL.
 
-        Called before replay/read and again before accepting completion. A plain
-        JSON Context is not a credential. Implementation must use gateway evidence.
-        put_task is Supervisor-only; put_context accepts trusted backend data only.
-        mention_agent checks user delegation, distinct from Supervisor run_turn.
-        Public room queries/results require room-wide read permission.
+        Gọi trước replay/read và trước khi chấp nhận completion. JSON Context không
+        phải credential; implementation phải dùng evidence từ gateway.
+        put_task chỉ dành cho Supervisor; put_context chỉ nhận trusted backend data.
+        mention_agent kiểm tra user delegation, tách biệt với Supervisor run_turn.
+        Public room query/result yêu cầu room-wide read permission.
         """
         ...
 
@@ -38,14 +38,14 @@ class ParticipantResolver(Protocol):
         spec: ParticipantSpec,
         room: Snapshot | None,
     ) -> Participant:
-        """Validate exact evaluated, admin-approved, published version and scope.
+        """Validate đúng evaluated, admin-approved, published version và scope.
 
-        Never substitute latest for the requested pin. Backend attests eligibility
-        for this exact version; missing evidence must fail closed.
-        Validate mapping, join AND history ACL before admission.
+        Không substitute latest cho requested pin. Backend phải attest eligibility
+        cho đúng version; thiếu evidence thì fail closed.
+        Validate mapping, join và history ACL trước admission.
 
-        Provision member-specific binding, isolating memory/workspace per generation.
-        Any audience/binding rotation must be atomic in the backend, before return.
+        Provision member-specific binding, isolate memory/workspace theo generation.
+        Audience/binding rotation phải atomic ở backend trước khi return.
         """
         ...
 
@@ -56,11 +56,11 @@ class ParticipantResolver(Protocol):
         participant: Participant,
         operation_id: str,
     ) -> str:
-        """Authorize pinned member binding; return backend child run ID (not parent).
+        """Authorize pinned member binding; trả về backend child run ID.
 
-        Applies to both authorized user mentions and Supervisor turns. Do not
-        require Supervisor role for an already authorized mention. Recheck the
-        exact pin and current participation permissions; never upgrade the pin.
+        Áp dụng cho authorized user mention và Supervisor turn. Không yêu cầu
+        Supervisor role cho mention đã được authorize. Recheck exact pin và current
+        participation permission; không upgrade pin.
         """
         ...
 
@@ -81,28 +81,28 @@ class Invocation:
 
 class AgentInvocationPort(Protocol):
     async def prepare(self, invocation: Invocation) -> None:
-        """Preflight only: mapping/config checks; MUST NOT invoke model/tools."""
+        """Chỉ preflight mapping/config; KHÔNG invoke model/tool."""
         ...
 
     async def invoke(self, invocation: Invocation) -> AgentOutput: ...
 
     async def cancel(self, invocation: Invocation) -> bool:
-        """True ONLY when terminal/cancel confirmed, including remote tools.
+        """Chỉ trả True khi terminal/cancel đã confirm, gồm cả remote tools.
 
-        Also suppress any not-yet-dispatched attempt of this stable operation ID;
-        cancel may race ahead of invoke. A durable tombstone/remote fence is needed.
+        Đồng thời suppress attempt chưa dispatch của stable operation ID này;
+        cancel có thể race trước invoke. Cần durable tombstone hoặc remote fence.
         """
         ...
 
 
 class RoomStatePort(Protocol):
     def transaction(self, context: Context) -> AbstractAsyncContextManager[ScopeState]:
-        """Serializable, rollback-on-error transaction for the full scope/generation.
+        """Serializable, rollback-on-error transaction cho toàn scope/generation.
 
-        Atomically persist unique room mapping, operations, transcript, dispatch
-        boundary and monotonic fence. Lock across replicas; no I/O dispatch under
-        transaction. Fence never reused, including lease takeover. Recovery of a
-        committed dispatch boundary MUST pause outcome_unknown; never auto-retry.
-        DEV-4 owns leases, durable completion/outbox and framework state reference.
+        Atomically persist unique room mapping, operation, transcript, dispatch
+        boundary và monotonic fence. Lock across replicas; không dispatch I/O trong
+        transaction. Không reuse fence, kể cả lease takeover. Recovery của committed
+        dispatch boundary phải pause ở outcome_unknown; không auto-retry.
+        Storage layer quản lý lease, durable completion/outbox và framework state reference.
         """
         ...
