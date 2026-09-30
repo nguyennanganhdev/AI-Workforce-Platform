@@ -17,6 +17,7 @@ import {
   type FieldStage,
   type CleaningPauseReason,
   type PauseReason,
+  type ResidentChannel,
   type SecurityOutcome,
 } from '../types/field-flow';
 import { emptyFieldFlow, getCleaningBlockers, getFieldFlow, getSecurityBlockers, getWorkBlockers, stageToWorkOrderStatus } from '../lib/field-flow';
@@ -35,6 +36,26 @@ const nowIso = () => new Date().toISOString();
 
 type Patch = Partial<FieldFlow> | ((flow: FieldFlow) => Partial<FieldFlow>);
 
+/**
+ * Options for a step the resident takes. From the resident app the owner check does not apply, and
+ * `expectedVersion` is the WO version the resident was looking at: if staff changed the job since
+ * (or the other channel already answered), the action is refused instead of applied to newer content.
+ */
+export interface ResidentActOptions {
+  fromResidentApp?: boolean;
+  expectedVersion?: number;
+}
+
+interface LoadOptions {
+  skipOwnerCheck?: boolean;
+  expectedVersion?: number;
+}
+
+const residentLoad = (opts?: ResidentActOptions): LoadOptions => ({
+  skipOwnerCheck: opts?.fromResidentApp,
+  expectedVersion: opts?.expectedVersion,
+});
+
 export function useFieldFlowActions({ workOrders, setWorkOrders, evidence, incidents, tasks, currentProfile, currentPersona }: Deps) {
   const categoryOf = useCallback(
     (wo: VhWorkOrder) => incidents.find((i) => i.id === wo.incident_id)?.category,
@@ -43,9 +64,12 @@ export function useFieldFlowActions({ workOrders, setWorkOrders, evidence, incid
   const taskOf = useCallback((wo: VhWorkOrder) => tasks.find((t) => t.id === wo.task_id), [tasks]);
 
   const load = useCallback(
-    (woId: string, allowed: FieldStage[] | null, opts?: { skipOwnerCheck?: boolean }) => {
+    (woId: string, allowed: FieldStage[] | null, opts?: LoadOptions) => {
       const wo = workOrders.find((w) => w.id === woId);
       if (!wo) throw new Error(`Không tìm thấy phiếu công việc ${woId}!`);
+      if (opts?.expectedVersion !== undefined && opts.expectedVersion !== wo.version) {
+        throw new Error('Nội dung công việc vừa được cập nhật. Vui lòng xem lại trước khi xác nhận.');
+      }
       // R1: only the assignee (or supervisor/manager) may act on the job
       const isOwner = wo.executor_id === currentProfile.id;
       const isLead = currentPersona === 'SUPERVISOR' || currentPersona === 'MANAGER';
@@ -198,21 +222,29 @@ export function useFieldFlowActions({ workOrders, setWorkOrders, evidence, incid
     commit(woId, { quote: { lines, labor_cost: laborCost, warranty_months: quote.warranty_months } });
   }, [load, commit]);
 
-  const handToResidentForAgreement = useCallback((woId: string) => {
+  /** DEVICE = đưa máy cho cư dân xem; APP = gửi danh mục sang app cư dân. */
+  const handToResidentForAgreement = useCallback((woId: string, channel: ResidentChannel = 'DEVICE') => {
     const { flow } = load(woId, ['QUOTE_DRAFT']);
     if (flow.quote.lines.length === 0 && flow.quote.labor_cost <= 0) {
       throw new Error('Danh mục đang trống: thêm vật tư hoặc tiền công trước khi đưa cư dân xem.');
     }
-    commit(woId, { stage: 'AWAITING_RESIDENT_AGREEMENT' });
+    commit(woId, { stage: 'AWAITING_RESIDENT_AGREEMENT', resident_channel: channel });
   }, [load, commit]);
 
-  const residentAgree = useCallback((woId: string) => {
-    const { flow } = load(woId, ['AWAITING_RESIDENT_AGREEMENT']);
+  /** Đổi kênh khi đang chờ cư dân (VD: đã gửi app nhưng cư dân đứng cạnh, đưa máy luôn). */
+  const setResidentChannel = useCallback((woId: string, channel: ResidentChannel) => {
+    load(woId, ['AWAITING_RESIDENT_AGREEMENT', 'AWAITING_RESIDENT_SIGNATURE']);
+    commit(woId, { resident_channel: channel });
+  }, [load, commit]);
+
+  const residentAgree = useCallback((woId: string, opts?: ResidentActOptions) => {
+    const { flow } = load(woId, ['AWAITING_RESIDENT_AGREEMENT'], residentLoad(opts));
     const now = nowIso();
     commit(
       woId,
       {
         stage: 'IN_PROGRESS',
+        resident_channel: null,
         started_at: now,
         agreement: {
           quote_snapshot: flow.quote.lines,
@@ -225,14 +257,14 @@ export function useFieldFlowActions({ workOrders, setWorkOrders, evidence, incid
     );
   }, [load, commit]);
 
-  const residentRequestChanges = useCallback((woId: string) => {
-    load(woId, ['AWAITING_RESIDENT_AGREEMENT']);
-    commit(woId, { stage: 'QUOTE_DRAFT' });
+  const residentRequestChanges = useCallback((woId: string, opts?: ResidentActOptions) => {
+    load(woId, ['AWAITING_RESIDENT_AGREEMENT'], residentLoad(opts));
+    commit(woId, { stage: 'QUOTE_DRAFT', resident_channel: null });
   }, [load, commit]);
 
-  const residentCancel = useCallback((woId: string) => {
-    load(woId, ['AWAITING_RESIDENT_AGREEMENT']);
-    commit(woId, { stage: 'CANCELLED_BY_RESIDENT', completed_at: nowIso() });
+  const residentCancel = useCallback((woId: string, opts?: ResidentActOptions) => {
+    load(woId, ['AWAITING_RESIDENT_AGREEMENT'], residentLoad(opts));
+    commit(woId, { stage: 'CANCELLED_BY_RESIDENT', resident_channel: null, completed_at: nowIso() });
   }, [load, commit]);
 
   // ---------- Bước 6–7: Sửa, tạm dừng ----------
@@ -258,25 +290,26 @@ export function useFieldFlowActions({ workOrders, setWorkOrders, evidence, incid
   }, [load, commit]);
 
   // ---------- Bước 8: Cư dân ký ----------
-  const requestSignature = useCallback((woId: string) => {
+  const requestSignature = useCallback((woId: string, channel: ResidentChannel = 'DEVICE') => {
     const { wo, flow } = load(woId, ['IN_PROGRESS']);
     // R4 + R5
     const blockers = getWorkBlockers(flow, evidence.filter((e) => e.work_order_id === wo.id));
     if (blockers.length > 0) throw new Error(`Chưa đủ điều kiện: ${blockers.join('; ')}.`);
-    commit(woId, { stage: 'AWAITING_RESIDENT_SIGNATURE' });
+    commit(woId, { stage: 'AWAITING_RESIDENT_SIGNATURE', resident_channel: channel });
   }, [load, commit, evidence]);
 
   const backToWork = useCallback((woId: string) => {
     load(woId, ['AWAITING_RESIDENT_SIGNATURE']);
-    commit(woId, { stage: 'IN_PROGRESS' });
+    commit(woId, { stage: 'IN_PROGRESS', resident_channel: null });
   }, [load, commit]);
 
-  const residentSign = useCallback((woId: string, signatureDataUrl: string) => {
-    const { flow } = load(woId, ['AWAITING_RESIDENT_SIGNATURE']);
+  const residentSign = useCallback((woId: string, signatureDataUrl: string, opts?: ResidentActOptions) => {
+    const { flow } = load(woId, ['AWAITING_RESIDENT_SIGNATURE'], residentLoad(opts));
     // R6
     if (!signatureDataUrl.startsWith('data:image/')) throw new Error('Chữ ký không hợp lệ, vui lòng ký lại.');
     commit(woId, {
       stage: 'REPORT_READY',
+      resident_channel: null,
       signature: {
         quote_snapshot: flow.quote.lines,
         labor_cost: flow.quote.labor_cost,
@@ -287,10 +320,10 @@ export function useFieldFlowActions({ workOrders, setWorkOrders, evidence, incid
     });
   }, [load, commit]);
 
-  const residentDispute = useCallback((woId: string, note: string) => {
-    load(woId, ['AWAITING_RESIDENT_SIGNATURE']);
+  const residentDispute = useCallback((woId: string, note: string, opts?: ResidentActOptions) => {
+    load(woId, ['AWAITING_RESIDENT_SIGNATURE'], residentLoad(opts));
     if (!note.trim()) throw new Error('Vui lòng ghi lại ý kiến của cư dân để BQL xử lý.');
-    commit(woId, { stage: 'DISPUTED', dispute_note: note.trim() }, { blocked_reason: note.trim() });
+    commit(woId, { stage: 'DISPUTED', resident_channel: null, dispute_note: note.trim() }, { blocked_reason: note.trim() });
   }, [load, commit]);
 
   // ---------- Bước 9: Gửi báo cáo ----------
@@ -310,14 +343,15 @@ export function useFieldFlowActions({ workOrders, setWorkOrders, evidence, incid
     );
   }, [load, commit]);
 
-  // ---------- Bước 10: Hoàn thành (giả lập phía cư dân / hệ thống) ----------
-  const simulateResidentConfirm = useCallback((woId: string) => {
-    load(woId, ['AWAITING_COMPLETION'], { skipOwnerCheck: true });
+  // ---------- Bước 10: Hoàn thành (app cư dân, hoặc giả lập trên máy nhân viên) ----------
+  const residentConfirmCompletion = useCallback((woId: string, opts?: ResidentActOptions) => {
+    load(woId, ['AWAITING_COMPLETION'], { skipOwnerCheck: true, expectedVersion: opts?.expectedVersion });
     commit(woId, { stage: 'COMPLETED_BY_RESIDENT', completion_type: 'RESIDENT_CONFIRMED', completed_at: nowIso() });
   }, [load, commit]);
 
-  const simulateResidentIssue = useCallback((woId: string, note: string) => {
-    const { wo, flow } = load(woId, ['AWAITING_COMPLETION'], { skipOwnerCheck: true });
+  const residentReportIssue = useCallback((woId: string, note: string, opts?: ResidentActOptions) => {
+    const { wo, flow } = load(woId, ['AWAITING_COMPLETION'], { skipOwnerCheck: true, expectedVersion: opts?.expectedVersion });
+    if (!note.trim()) throw new Error('Vui lòng mô tả điều chưa được xử lý.');
     // R8: issues are only accepted inside the 72h window
     if (flow.auto_complete_at && Date.now() >= new Date(flow.auto_complete_at).getTime()) {
       throw new Error('Đã quá 72 giờ: phản ánh này sẽ được tạo thành ticket bảo hành mới.');
@@ -343,6 +377,9 @@ export function useFieldFlowActions({ workOrders, setWorkOrders, evidence, incid
     setWorkOrders((prev) => [redo, ...prev]);
     return redo;
   }, [load, commit, setWorkOrders, categoryOf, taskOf]);
+
+  const simulateResidentConfirm = useCallback((woId: string) => residentConfirmCompletion(woId), [residentConfirmCompletion]);
+  const simulateResidentIssue = useCallback((woId: string, note: string) => residentReportIssue(woId, note), [residentReportIssue]);
 
   // R9: idempotent auto-complete sweep (mock of the backend cron)
   const runAutoComplete = useCallback(() => {
@@ -391,6 +428,7 @@ export function useFieldFlowActions({ workOrders, setWorkOrders, evidence, incid
     startNoCharge,
     saveQuote,
     handToResidentForAgreement,
+    setResidentChannel,
     residentAgree,
     residentRequestChanges,
     residentCancel,
@@ -402,6 +440,8 @@ export function useFieldFlowActions({ workOrders, setWorkOrders, evidence, incid
     residentSign,
     residentDispute,
     submitReport,
+    residentConfirmCompletion,
+    residentReportIssue,
     simulateResidentConfirm,
     simulateResidentIssue,
     simulateFastForward72h,

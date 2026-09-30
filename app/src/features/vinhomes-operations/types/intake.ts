@@ -58,6 +58,10 @@ export interface VhIssueCandidate {
   missing_fields_json: string[];
   merged_into_id?: string | null;
   materialized_incident_id?: string | null;
+  /** Kênh gửi phản ánh; APP = app cư dân, được AI tự giao việc ngay khi BQL xác nhận. */
+  source_channel?: VhResidentRequest['channel'];
+  /** Ảnh cư dân gửi kèm (data URL, bản trải nghiệm). Không phải evidence TRƯỚC/SAU của phiếu thi công. */
+  resident_photo_urls?: string[];
   created_at: string;
   updated_at: string;
 }

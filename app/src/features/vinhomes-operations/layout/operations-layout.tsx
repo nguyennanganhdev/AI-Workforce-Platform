@@ -4,8 +4,9 @@ import { Outlet } from '@tanstack/react-router';
 import { OperationsSidebar } from './operations-sidebar';
 import { OperationsHeader } from './operations-header';
 import { OperationsProvider } from '../hooks/use-operations-data';
+import type { OperationsPersona } from '../types/persona';
 
-export function OperationsLayout() {
+export function OperationsLayout({ persona, onSignOut }: { persona?: OperationsPersona; onSignOut?: () => void } = {}) {
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => {
     const originalTitle = document.title;
@@ -44,7 +45,7 @@ export function OperationsLayout() {
   }, []);
 
   return (
-    <OperationsProvider>
+    <OperationsProvider persona={persona}>
       <div
         lang="vi"
         translate="no"
@@ -59,7 +60,7 @@ export function OperationsLayout() {
           />
         )}
 
-        <OperationsSidebar open={menuOpen} onNavigate={() => setMenuOpen(false)} />
+        <OperationsSidebar open={menuOpen} onNavigate={() => setMenuOpen(false)} onSignOut={onSignOut} />
 
         {/* Main Container */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
