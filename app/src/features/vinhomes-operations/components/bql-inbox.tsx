@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
-import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useOperationsData } from '../hooks/use-operations-data';
@@ -59,6 +59,7 @@ export function useBqlInboxItems(): InboxItem[] {
 function CandidateActions({ candidate, others, run }: { candidate: VhIssueCandidate; others: VhIssueCandidate[]; run: (fn: () => void, ok: string) => void }) {
   const { materializeCandidate, mergeIssueCandidates } = useOperationsData();
   const [target, setTarget] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
   const mergeItems = Object.fromEntries(others.map((o) => [o.id, o.normalized_summary]));
   return (
     <div className="flex flex-col gap-3">
@@ -72,8 +73,8 @@ function CandidateActions({ candidate, others, run }: { candidate: VhIssueCandid
         </Button>
         {others.length > 0 && (
           <div className="flex gap-2">
-            <Select items={mergeItems} value={target} onValueChange={(v) => setTarget(v as string | null)}>
-              <SelectTrigger aria-label="Gộp vào phản ánh" className="min-w-0 flex-1 data-[size=default]:h-10 sm:w-72">
+            <Select items={mergeItems} value={target} onValueChange={(v) => { setTarget(v as string | null); setTried(false); }}>
+              <SelectTrigger aria-label="Gộp vào phản ánh" aria-invalid={tried && !target} className="min-w-0 flex-1 data-[size=default]:h-10 sm:w-72">
                 <SelectValue placeholder="Gộp vào phản ánh trùng…" />
               </SelectTrigger>
               <SelectContent>
@@ -82,12 +83,17 @@ function CandidateActions({ candidate, others, run }: { candidate: VhIssueCandid
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <Button variant="outline" size="lg" disabled={!target} onClick={() => target && run(() => mergeIssueCandidates(candidate.id, target), 'Đã gộp phản ánh trùng.')}>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => (target ? run(() => mergeIssueCandidates(candidate.id, target), 'Đã gộp phản ánh trùng.') : setTried(true))}
+            >
               Gộp
             </Button>
           </div>
         )}
       </div>
+      {tried && !target && <FieldError>Chọn phản ánh trùng cần gộp vào.</FieldError>}
     </div>
   );
 }
@@ -97,7 +103,9 @@ function ContractorActions({ incident, handoff: h, run }: { incident: VhIncident
   const [name, setName] = useState(h.warranty?.under_warranty ? h.warranty.contractor_name || '' : '');
   const [eta, setEta] = useState('');
   const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
   const idp = `ct-${incident.id}`;
+  const missing = [!name.trim() && 'tên nhà thầu', !eta && 'ngày hẹn'].filter(Boolean);
 
   return (
     <div className="flex flex-col gap-3">
@@ -115,19 +123,23 @@ function ContractorActions({ incident, handoff: h, run }: { incident: VhIncident
         <FieldGroup className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-end">
           <Field>
             <FieldLabel htmlFor={`${idp}-name`}>Nhà thầu đã liên hệ</FieldLabel>
-            <Input id={`${idp}-name`} value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên nhà thầu" className="h-10" />
+            <Input id={`${idp}-name`} aria-invalid={tried && !name.trim()} value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên nhà thầu" className="h-10" />
           </Field>
           <Field>
             <FieldLabel htmlFor={`${idp}-eta`}>Ngày hẹn dự kiến</FieldLabel>
-            <Input id={`${idp}-eta`} type="date" value={eta} onChange={(e) => setEta(e.target.value)} className="h-10" />
+            <Input id={`${idp}-eta`} aria-invalid={tried && !eta} type="date" value={eta} onChange={(e) => setEta(e.target.value)} className="h-10" />
           </Field>
           <Button
             size="lg"
-            disabled={!name.trim() || !eta}
-            onClick={() => run(() => markContractorContacted(incident.id, name, eta), 'Đã ghi nhận. AI sẽ báo cư dân đã có đơn vị xử lý.')}
+            onClick={() =>
+              missing.length
+                ? setTried(true)
+                : run(() => markContractorContacted(incident.id, name, eta), 'Đã ghi nhận. AI sẽ báo cư dân đã có đơn vị xử lý.')
+            }
           >
             Đã liên hệ nhà thầu
           </Button>
+          {tried && missing.length > 0 && <FieldError className="sm:col-span-3">Vui lòng nhập {missing.join(' và ')}.</FieldError>}
         </FieldGroup>
       ) : (
         <div className="flex flex-col gap-3">
@@ -152,6 +164,7 @@ function ContractorActions({ incident, handoff: h, run }: { incident: VhIncident
 function EscalationActions({ item, run }: { item: Extract<InboxItem, { kind: 'DISPUTED' | 'UNCOOPERATIVE' }>; run: (fn: () => void, ok: string) => void }) {
   const { closeWithBqlResolution } = useOperationsData();
   const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
   const f = item.wo.field_flow;
   if (!f) return null;
   const id = `esc-${item.key}`;
@@ -165,11 +178,15 @@ function EscalationActions({ item, run }: { item: Extract<InboxItem, { kind: 'DI
       <FieldGroup className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
         <Field>
           <FieldLabel htmlFor={id}>BQL đã xử lý thế nào? (bắt buộc)</FieldLabel>
-          <Input id={id} value={note} onChange={(e) => setNote(e.target.value)} className="h-10" />
+          <Input id={id} aria-invalid={tried && !note.trim()} value={note} onChange={(e) => setNote(e.target.value)} className="h-10" />
         </Field>
-        <Button size="lg" disabled={!note.trim()} onClick={() => run(() => closeWithBqlResolution(item.incident.id, note), 'Đã xử lý và đóng sự cố.')}>
+        <Button
+          size="lg"
+          onClick={() => (note.trim() ? run(() => closeWithBqlResolution(item.incident.id, note), 'Đã xử lý và đóng sự cố.') : setTried(true))}
+        >
           Đã xử lý, đóng sự cố
         </Button>
+        {tried && !note.trim() && <FieldError className="sm:col-span-2">Vui lòng ghi lại cách BQL đã xử lý.</FieldError>}
       </FieldGroup>
     </div>
   );
@@ -220,7 +237,17 @@ export function BqlInbox({ onOpenIncident }: { onOpenIncident: (id: string) => v
                       <SeverityBadge severity={item.severity} />
                       <span className="ml-auto text-xs tabular-nums text-muted-foreground">{new Date(item.at).toLocaleString('vi-VN')}</span>
                     </div>
-                    <CardTitle className="text-base font-semibold leading-snug">{title}</CardTitle>
+                    <CardTitle className="text-base font-semibold leading-snug">
+                      {incident ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenIncident(incident.id)}
+                          className="text-left underline-offset-2 hover:text-primary hover:underline focus-visible:text-primary focus-visible:underline focus-visible:outline-none"
+                        >
+                          {title}
+                        </button>
+                      ) : title}
+                    </CardTitle>
                     <CardDescription>
                       Tòa {loc.towerCode || '-'}{loc.floor != null ? ` · Tầng ${loc.floor}` : ''}{loc.areaCode ? ` · ${loc.areaCode}` : ''}
                     </CardDescription>

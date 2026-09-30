@@ -36,7 +36,6 @@ import {
   ReasonSheet,
   Section,
   SeverityBadge,
-  StepProgress,
   autoCompleteText,
   slaText,
   useNow,
@@ -437,17 +436,14 @@ export function TechnicianJobDetail({ woId, onBack }: { woId: string; onBack: ()
       <BackLink onBack={onBack} />
 
       {/* Job header */}
-      <Card className="gap-4">
+      <Card>
         <CardHeader className="flex flex-col gap-1 px-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6 md:px-6">
           <div className="flex min-w-0 flex-col gap-1">
             <PanelTitle>{title}</PanelTitle>
-            <p className="pl-3.5 text-sm text-muted-foreground"><span className="tabular-nums">{wo.id}</span> · {address}</p>
+            <p className="pl-3.5 text-sm text-muted-foreground">{address}</p>
           </div>
           <p className="shrink-0 pl-3.5 text-sm text-slate-700 sm:pl-0">{step.label}</p>
         </CardHeader>
-        {step.stepIndex <= 3 && (
-          <CardContent className="px-4 md:px-6"><StepProgress current={step.stepIndex} kind={flow.kind} /></CardContent>
-        )}
       </Card>
 
       {error && <Banner kind="error" onClose={() => setError(null)}>{error}</Banner>}

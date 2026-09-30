@@ -22,7 +22,7 @@ function getBreadcrumb(pathname: string, persona: OperationsPersona): Breadcrumb
     return { section: 'Vận hành đô thị', page };
   }
   if (pathname.includes('/kanban')) {
-    return { section: 'Vận hành đô thị', page: 'Phân công nhiệm vụ' };
+    return { section: 'Vận hành đô thị', page: 'Phân công công việc' };
   }
   if (pathname.includes('/evidence')) {
     return { section: 'Vận hành đô thị', page: 'Hình ảnh bằng chứng' };
