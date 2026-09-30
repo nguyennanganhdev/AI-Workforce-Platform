@@ -1,0 +1,421 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Error": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "Error",
+      "type": "object"
+    },
+    "Failure": {
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "status": {
+          "const": "error",
+          "default": "error",
+          "title": "Status",
+          "type": "string"
+        },
+        "error": {
+          "$ref": "#/$defs/Error"
+        }
+      },
+      "required": [
+        "request_id",
+        "error"
+      ],
+      "title": "Failure",
+      "type": "object"
+    },
+    "FollowUp": {
+      "additionalProperties": false,
+      "properties": {
+        "recipient_agent_version_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Recipient Agent Version Id",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "recipient_agent_version_id",
+        "content"
+      ],
+      "title": "FollowUp",
+      "type": "object"
+    },
+    "Message": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "delivery": {
+          "default": "broadcast",
+          "enum": [
+            "broadcast",
+            "direct"
+          ],
+          "title": "Delivery",
+          "type": "string"
+        },
+        "recipient_agent_version_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recipient Agent Version Id"
+        },
+        "in_reply_to_message_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "In Reply To Message Id"
+        },
+        "message_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Message Id",
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 1,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "sender": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Sender",
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "title": "Timestamp",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content",
+        "message_id",
+        "sequence",
+        "sender",
+        "timestamp"
+      ],
+      "title": "Message",
+      "type": "object"
+    },
+    "ParticipantSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_version_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Agent Version Id",
+          "type": "string"
+        },
+        "role": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_version_id",
+        "role"
+      ],
+      "title": "ParticipantSpec",
+      "type": "object"
+    },
+    "RoomData": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "room_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Room Id",
+          "type": "string"
+        },
+        "ticket_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "ticket_generation": {
+          "title": "Ticket Generation",
+          "type": "integer"
+        },
+        "room_version": {
+          "title": "Room Version",
+          "type": "integer"
+        },
+        "room_state": {
+          "enum": [
+            "idle",
+            "running",
+            "paused",
+            "closed"
+          ],
+          "title": "Room State",
+          "type": "string"
+        },
+        "pause_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pause Reason"
+        },
+        "operation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operation Id"
+        },
+        "turn_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Id"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
+        "source_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Run Id"
+        },
+        "speaker_agent_version_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Speaker Agent Version Id"
+        },
+        "turn_status": {
+          "anyOf": [
+            {
+              "enum": [
+                "success",
+                "failure",
+                "timeout",
+                "cancel",
+                "outcome_unknown"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Turn Status"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/Message"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "follow_up_requests": {
+          "items": {
+            "$ref": "#/$defs/FollowUp"
+          },
+          "title": "Follow Up Requests",
+          "type": "array"
+        },
+        "turns_used": {
+          "title": "Turns Used",
+          "type": "integer"
+        },
+        "turns_remaining": {
+          "title": "Turns Remaining",
+          "type": "integer"
+        },
+        "consecutive_turns": {
+          "title": "Consecutive Turns",
+          "type": "integer"
+        },
+        "needs_dispatcher_decision": {
+          "default": true,
+          "title": "Needs Dispatcher Decision",
+          "type": "boolean"
+        },
+        "participants": {
+          "items": {
+            "$ref": "#/$defs/ParticipantSpec"
+          },
+          "title": "Participants",
+          "type": "array"
+        },
+        "transcript_cursor": {
+          "title": "Transcript Cursor",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "room_id",
+        "ticket_id",
+        "ticket_generation",
+        "room_version",
+        "room_state",
+        "turns_used",
+        "turns_remaining",
+        "consecutive_turns",
+        "transcript_cursor"
+      ],
+      "title": "RoomData",
+      "type": "object"
+    },
+    "Success": {
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "completed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/RoomData"
+        }
+      },
+      "required": [
+        "request_id",
+        "status",
+        "data"
+      ],
+      "title": "Success",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "accepted": "#/$defs/Success",
+      "completed": "#/$defs/Success",
+      "error": "#/$defs/Failure"
+    },
+    "propertyName": "status"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Success"
+    },
+    {
+      "$ref": "#/$defs/Failure"
+    }
+  ]
+}
