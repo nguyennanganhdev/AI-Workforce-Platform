@@ -10,7 +10,10 @@
       "!desktop/src-tauri/gen",
       "!**/target",
       "!server/drizzle",
-      "!docs/**"
+      "!docs/**",
+      "!docs",
+      "!**/*.md",
+      "!server/src/db/design/**"
     ]
   },
   "formatter": {

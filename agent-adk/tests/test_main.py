@@ -37,7 +37,17 @@ def provider():
             pass
 
         def do_POST(self):
-            body = json.loads(self.rfile.read(int(self.headers["content-length"])))
+            content_len = int(self.headers.get("content-length", 0))
+            if content_len == 0:
+                self.send_response(200)
+                self.end_headers()
+                return
+            raw = self.rfile.read(content_len)
+            if not raw:
+                self.send_response(200)
+                self.end_headers()
+                return
+            body = json.loads(raw)
             seen.append((self.path, self.headers.get("authorization"), body))
             names = [tool["function"]["name"] for tool in body.get("tools", [])]
             results = [message for message in body["messages"] if message["role"] == "tool"]
