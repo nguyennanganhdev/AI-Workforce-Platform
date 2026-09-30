@@ -88,3 +88,68 @@ async def test_execute_with_retry_backoff():
 
     assert res == {"status": "recovered"}
     assert attempts == 3
+
+
+@pytest.mark.asyncio
+async def test_retry_exceeds_max_retries_raises_exception():
+    policy = RetryPolicy(max_retries=2, initial_delay=0.01, backoff_factor=1.0)
+    attempts = 0
+
+    async def always_failing_action():
+        nonlocal attempts
+        attempts += 1
+        raise TimeoutError("Persistent timeout error")
+
+    with pytest.raises(TimeoutError) as exc_info:
+        await execute_with_retry(
+            func=always_failing_action,
+            retry_policy=policy
+        )
+
+    assert "Persistent timeout error" in str(exc_info.value)
+    assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_sync_function_execution_with_retry():
+    call_count = 0
+
+    def sync_action(param: str):
+        nonlocal call_count
+        call_count += 1
+        return f"result_{param}"
+
+    res = await execute_with_retry(
+        func=sync_action,
+        param="hello"
+    )
+
+    assert res == {"result": "result_hello"}
+    assert call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_idempotent_requests():
+    handler = IdempotencyHandler(InMemoryStorage())
+    key = "concurrent_key_001"
+    counter = 0
+
+    async def increment_counter():
+        nonlocal counter
+        counter += 1
+        await asyncio.sleep(0.01)
+        return {"counter": counter}
+
+    # Execute first time
+    res1 = await execute_with_retry(increment_counter, idempotency_key=key, idempotency_handler=handler)
+    assert res1 == {"counter": 1}
+
+    # Parallel requests with same key should all get cached result
+    results = await asyncio.gather(*[
+        execute_with_retry(increment_counter, idempotency_key=key, idempotency_handler=handler)
+        for _ in range(5)
+    ])
+
+    for r in results:
+        assert r == {"counter": 1}
+    assert counter == 1  # Function was only executed ONCE
