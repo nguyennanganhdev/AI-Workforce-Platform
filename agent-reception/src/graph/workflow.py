@@ -11,10 +11,17 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
-from ..prompts.workflow import RESIDENT_TURN_PROMPT
+from ..prompts.workflow import ASSESS_REQUEST_PROMPT, RESIDENT_TURN_PROMPT
+from .assessment import (
+    ASSESSMENT_SCHEMA,
+    decide_request,
+    parse_assessment,
+    parse_procedure,
+    parse_request_policy,
+)
 from .budget import with_budget
 from .decision import GraphFault, compact_json, json_value
-from .intake import run_intake
+from .intake import valid_knowledge
 from .state import PYTHON_CONTRACT_VERSION, GraphState
 from .workflow_contracts import WORKFLOW_VERSION, GraphDependencies, WorkflowOptions
 from .workflow_validation import (
@@ -37,7 +44,10 @@ from .workflow_validation import (
 
 WORKFLOW_NODES = (
     "receive_message",
+    "assess_request",
     "answer_or_escalate",
+    "retrieve_self_help",
+    "emergency_handoff",
     "create_ticket_draft",
     "load_resident_context",
     "collect_incident_details",
@@ -99,7 +109,16 @@ class ReceptionWorkflowGraph:
     @staticmethod
     def _handler(method):
         async def handler(state: GraphState, config: RunnableConfig):
-            return {"data": await method(deepcopy(state["data"]), config)}
+            data = await method(deepcopy(state["data"]), config)
+            # Scoped, bounded dialogue includes questions/answers, not raw tool outputs.
+            history = data.get("conversation_history", [])
+            if data.get("reply") and (
+                not history or history[-1].get("text") != data["reply"]
+            ):
+                data["conversation_history"] = (
+                    history + [{"role": "assistant", "text": data["reply"]}]
+                )[-24:]
+            return {"data": data}
 
         return handler
 
@@ -227,48 +246,265 @@ class ReceptionWorkflowGraph:
         return parse_turn(response.content, data["message"]["id"])
 
     async def _receive_message(self, data, config):
+        history = data.get("conversation_history", [])
+        if not any(item.get("message_id") == data["message"]["id"] for item in history):
+            history = (
+                history
+                + [
+                    {
+                        "role": "resident",
+                        "message_id": data["message"]["id"],
+                        "text": data["message"]["text"],
+                    }
+                ]
+            )[-24:]
+        return self._next(
+            {
+                **data,
+                "conversation_history": history,
+                "decision": None,
+                "safety_reply": None,
+                "safety_citations": [],
+            },
+            "assess_request",
+        )
+
+    @staticmethod
+    def _existing_node(data):
         node = (
-            "answer_or_escalate"
-            if not data.get("active_ticket_id")
-            else "load_resident_context"
+            "load_resident_context"
             if not data.get("verified_profile")
             else "collect_incident_details"
             if not data.get("ack")
             else "active_ticket_dialogue"
         )
-        return self._next(data, node)
+        return node
+
+    async def _assess_request(self, data, config):
+        if self.options.request_policy is None:
+            return self._review(data, "REQUEST_POLICY_UNAVAILABLE")
+        request = {
+            "message": data["message"],
+            "history": data.get("conversation_history", []),
+            "context": self._context(config),
+            "active_ticket_id": data.get("active_ticket_id"),
+            "ticket": data.get("ticket"),
+            "self_help": data.get("self_help"),
+        }
+        try:
+            # Authoritative emergency detection must not wait on an LLM or retrieval.
+            policy = parse_request_policy(
+                await self._budget(
+                    config,
+                    lambda signal: self.options.request_policy.evaluate_request(
+                        {**request, "assessment": None, "signal": signal}
+                    ),
+                )
+            )
+            if policy["emergency"]:
+                proposal = {
+                    "intent": "ticket_follow_up"
+                    if data.get("active_ticket_id")
+                    else "incident",
+                    "proposed_action": "emergency_handoff",
+                    "explicit_staff_request": False,
+                    "self_help_declined": False,
+                    "self_help_failed": False,
+                    "emergency_signals": [],
+                    "missing_information": [],
+                    "reason": "Policy xác nhận cần chuyển khẩn cấp.",
+                }
+            else:
+                response = await self._budget(
+                    config,
+                    lambda _: self.dependencies.model.ainvoke(
+                        [
+                            SystemMessage(content=ASSESS_REQUEST_PROMPT),
+                            HumanMessage(
+                                content=compact_json(
+                                    {
+                                        "output_schema": ASSESSMENT_SCHEMA,
+                                        "message": data["message"],
+                                        "history": data.get("conversation_history", []),
+                                        "active_ticket_id": data.get(
+                                            "active_ticket_id"
+                                        ),
+                                        "active_incident": data.get("incident"),
+                                        "pending_interaction": data.get(
+                                            "pending_interaction"
+                                        ),
+                                        "self_help": data.get("self_help"),
+                                    }
+                                )
+                            ),
+                        ]
+                    ),
+                )
+                proposal = parse_assessment(response.content)
+                policy = parse_request_policy(
+                    await self._budget(
+                        config,
+                        lambda signal: self.options.request_policy.evaluate_request(
+                            {**request, "assessment": proposal, "signal": signal}
+                        ),
+                    )
+                )
+        except Exception as error:  # noqa: BLE001 - sanitize injected policy/model errors.
+            return self._review(
+                data,
+                error.code
+                if isinstance(error, GraphFault)
+                else "REQUEST_ASSESSMENT_UNAVAILABLE",
+            )
+        decision = decide_request(proposal, policy, data.get("active_ticket_id"))
+        if (
+            data.get("self_help")
+            and not data.get("active_ticket_id")
+            and not policy["emergency"]
+            and (policy["staff_required"] or policy["self_help_allowed"])
+            and (
+                proposal["intent"] != "information"
+                or proposal["self_help_declined"]
+                or proposal["self_help_failed"]
+                or proposal["explicit_staff_request"]
+            )
+        ):
+            # Backend records explicit consent/decline/result; LLM flags cannot do so.
+            decision["next_action"] = "retrieve_self_help"
+        updated = {
+            **data,
+            "decision": decision,
+            "request_policy": policy,
+            "intake": {
+                "emergency": policy["emergency"],
+                "policyVersion": policy["policy_version"],
+            },
+            "safety_reply": None,
+        }
+        action = decision["next_action"]
+        if action == "emergency_handoff":
+            return self._next(
+                {**updated, "handoff_reason": "emergency"}, "emergency_handoff"
+            )
+        if action == "retrieve_knowledge":
+            return self._next(updated, "answer_or_escalate")
+        if data.get("active_ticket_id"):
+            return self._next(updated, self._existing_node(updated))
+        if action == "start_ticket":
+            return self._next(
+                {
+                    **updated,
+                    "phase": "ticket_draft",
+                    "handoff_reason": policy["handoff_reason"],
+                },
+                "create_ticket_draft",
+            )
+        if action == "retrieve_self_help":
+            return self._next(updated, "retrieve_self_help")
+        return self._ask(
+            updated,
+            decision["missing_information"]
+            or [
+                "Bạn muốn hỏi thông tin hay cần hỗ trợ xử lý? Bạn mô tả thêm biểu hiện và vị trí nhé."
+            ],
+        )
 
     async def _answer_or_escalate(self, data, config):
         try:
-            intake = await self._budget(
+            knowledge = await self._budget(
                 config,
-                lambda signal: run_intake(
-                    self.options.intake,
+                lambda signal: self.options.intake.search_knowledge(
                     {
                         "message": data["message"],
+                        "history": data.get("conversation_history", []),
+                        "decision": data["decision"],
                         "context": self._context(config),
                         "signal": signal,
                     },
                 ),
             )
         except Exception:  # noqa: BLE001 - sanitize arbitrary injected port/model errors.
-            return self._review(data, "INTAKE_DEPENDENCY_UNAVAILABLE")
-        updated = {**data, "intake": intake, "reply": intake["reply"]}
-        if intake["kind"] == "answer":
-            return self._next(updated, END)
-        if intake["kind"] == "clarify":
-            return self._ask(updated, [intake["reply"]])
-        if intake["kind"] == "review":
-            return self._review(updated, "INTAKE_DEPENDENCY_UNAVAILABLE")
-        return self._next(
+            return self._review(data, "KNOWLEDGE_UNAVAILABLE")
+        if not valid_knowledge(knowledge):
+            return self._review(data, "INVALID_KNOWLEDGE")
+        if knowledge["kind"] == "sufficient":
+            return self._next(
+                {
+                    **data,
+                    "phase": "knowledge_chat",
+                    "intake": {
+                        **data["intake"],
+                        "kind": "answer",
+                        "citations": knowledge["citations"],
+                        "retrievalRunId": knowledge["retrievalRunId"],
+                    },
+                    "reply": knowledge["answer"],
+                },
+                END,
+            )
+        return self._ask(
+            data,
+            [
+                "Chưa có đủ nguồn phù hợp để trả lời. Bạn bổ sung phạm vi hoặc nội dung cần xác minh nhé."
+            ],
+        )
+
+    async def _retrieve_self_help(self, data, config):
+        if data.get("active_ticket_id"):
+            return self._next(data, self._existing_node(data))
+        if not data["request_policy"]["self_help_allowed"] and not data.get(
+            "self_help"
+        ):
+            return self._review(data, "SELF_HELP_NOT_ALLOWED")
+        return self._plan(
+            data,
+            "process_self_help",
             {
-                **updated,
-                "phase": "ticket_draft",
-                "handoff_reason": "emergency"
-                if intake["emergency"]
-                else intake.get("handoffReason", "needs_staff"),
+                "channel_id": data["channel_id"],
+                "reception_session_id": data["reception_session_id"],
+                "source_message": data["message"],
+                "policy_version": data["request_policy"]["policy_version"],
+                "assessment": data["decision"],
+                "attempt": data.get("self_help"),
             },
-            "create_ticket_draft",
+            END,
+        )
+
+    async def _emergency_handoff(self, data, config):
+        policy = data["request_policy"]
+        if not policy["emergency"]:
+            return self._review(data, "EMERGENCY_POLICY_REQUIRED")
+        guidance = policy.get("safety_guidance")
+        reply = (
+            guidance["answer"]
+            if guidance
+            else "Yêu cầu cần được xử lý khẩn; đang chờ hệ thống xác nhận tiếp nhận."
+        )
+        value = {
+            "channel_id": data["channel_id"],
+            "reception_session_id": data["reception_session_id"],
+            "source_message": data["message"],
+            "policy_version": policy["policy_version"],
+        }
+        if data.get("active_ticket_id"):
+            value.update(self._ticket_input(data))
+        # Durable alert before profile/photo/LLM extraction; no fabricated destination.
+        return self._plan(
+            {
+                **data,
+                "reply": reply,
+                "safety_reply": guidance["answer"] if guidance else None,
+                "safety_citations": guidance["citations"] if guidance else [],
+                "self_help": None,
+                "pending_interaction": None,
+            },
+            "escalate_emergency",
+            value,
+            "collect_incident_details"
+            if data.get("active_ticket_id") and data.get("verified_profile")
+            else "load_resident_context"
+            if data.get("active_ticket_id")
+            else "create_ticket_draft",
         )
 
     async def _create_ticket_draft(self, data, config):
@@ -306,7 +542,7 @@ class ReceptionWorkflowGraph:
             return self._next(
                 {
                     **data,
-                    "reply": "Cuộc hội thoại đang xử lý ticket hiện tại. Vui lòng hoàn tất ticket hoặc mở cuộc hội thoại mới cho sự cố khác.",
+                    "reply": "Cuộc hội thoại gắn với ticket hiện tại. Vui lòng mở cuộc hội thoại mới cho sự cố khác.",
                 },
                 END,
             )
@@ -430,7 +666,7 @@ class ReceptionWorkflowGraph:
                 {
                     **data,
                     "turn": turn,
-                    "reply": "Ticket hiện tại vẫn được giữ. Vui lòng mở cuộc hội thoại mới cho sự cố khác hoặc hoàn tất ticket này.",
+                    "reply": "Ticket hiện tại vẫn được giữ. Vui lòng mở cuộc hội thoại mới cho sự cố khác.",
                 },
                 END,
             )
@@ -590,6 +826,122 @@ class ReceptionWorkflowGraph:
             + [pending["idempotencyKey"]],
         }
         operation = pending["operation"]
+        if operation == "escalate_emergency":
+            if (
+                v.get("persisted") is not True
+                or v.get("enqueued") is not True
+                or v.get("policy_version") != data["request_policy"]["policy_version"]
+            ):
+                raise GraphFault("EMERGENCY_ACK_REQUIRED")
+            ack = {
+                "operation_id": text(v.get("operation_id")),
+                "policy_version": v["policy_version"],
+            }
+            if data.get("active_ticket_id"):
+                updated["ticket"] = parse_ticket(v.get("ticket"), data["ticket"])
+                # Official assessment and routing must be refreshed on the same ticket.
+                updated.update(ack=None, route=None, triage=None, wait_registered=False)
+            return {**updated, "emergency_ack": ack, "reply": data["reply"]}
+        if operation == "process_self_help":
+            status = choice(
+                v.get("status"),
+                (
+                    "offered",
+                    "accepted",
+                    "succeeded",
+                    "declined",
+                    "failed",
+                    "stopped",
+                    "unavailable",
+                    "revoked",
+                    "expired",
+                ),
+            )
+            if v.get("policy_version") != data["request_policy"]["policy_version"]:
+                raise GraphFault("SELF_HELP_POLICY_MISMATCH")
+            if status in ("unavailable", "revoked", "expired"):
+                return self._ask(
+                    {**updated, "self_help": None},
+                    [
+                        "Chưa có quy trình tự xử lý phù hợp còn hiệu lực. Bạn muốn bộ phận phụ trách xác minh hay hỗ trợ trực tiếp?"
+                    ],
+                )
+            attempt_id = text(v.get("attempt_id"))
+            if data.get("self_help") and attempt_id != data["self_help"]["attempt_id"]:
+                raise GraphFault("SELF_HELP_ATTEMPT_MISMATCH")
+            if status in ("declined", "failed", "stopped"):
+                if (
+                    v.get("recorded") is not True
+                    or v.get("source_message_id") != data["message"]["id"]
+                ):
+                    raise GraphFault("SELF_HELP_OUTCOME_UNVERIFIED")
+                return {
+                    **updated,
+                    "self_help": None,
+                    "phase": "ticket_draft",
+                    "handoff_reason": "self_help_declined"
+                    if status == "declined"
+                    else "self_help_failed",
+                    "next": "create_ticket_draft",
+                    "reply": "Đã ghi nhận yêu cầu chuyển sang hỗ trợ của nhân viên.",
+                }
+            if status == "succeeded":
+                if (
+                    v.get("recorded") is not True
+                    or v.get("source_message_id") != data["message"]["id"]
+                ):
+                    raise GraphFault("SELF_HELP_OUTCOME_UNVERIFIED")
+                return {
+                    **updated,
+                    "self_help": None,
+                    "reply": "Đã ghi nhận kết quả tự xử lý bạn báo lại. Nếu vấn đề tái diễn, bạn có thể yêu cầu hỗ trợ.",
+                }
+            procedure = record(v.get("procedure"))
+            if (
+                not data["request_policy"]["self_help_allowed"]
+                or data["request_policy"]["staff_required"]
+                or data["request_policy"]["missing_information"]
+                or data["decision"]["missing_information"]
+                or procedure.get("approved") is not True
+                or procedure.get("eligible") is not True
+                or procedure.get("policy_version")
+                != data["request_policy"]["policy_version"]
+            ):
+                raise GraphFault("SELF_HELP_APPROVAL_REQUIRED")
+            procedure = parse_procedure(procedure, self.now())
+            old = data.get("self_help")
+            if old and old["procedure_version"] != procedure["version"]:
+                raise GraphFault("SELF_HELP_VERSION_MISMATCH")
+            attempt = {
+                "attempt_id": attempt_id,
+                "procedure_version": procedure["version"],
+                "status": status,
+            }
+            if status == "offered":
+                return self._ask(
+                    {**updated, "self_help": attempt},
+                    [
+                        "Có quy trình tự xử lý đã được duyệt phù hợp. Bạn có muốn tự thực hiện theo hướng dẫn không?"
+                    ],
+                )
+            if (
+                v.get("consent_recorded") is not True
+                or v.get("consent_source_message_id") != data["message"]["id"]
+            ):
+                raise GraphFault("SELF_HELP_CONSENT_REQUIRED")
+            reply = "\n".join(
+                f"{i + 1}. {step}" for i, step in enumerate(procedure["steps"])
+            )
+            reply += "\nDừng thực hiện khi: " + "; ".join(procedure["stop_conditions"])
+            reply += "\nBạn cho biết kết quả hoặc nếu muốn nhân viên hỗ trợ nhé."
+            return self._ask(
+                {
+                    **updated,
+                    "self_help": attempt,
+                    "self_help_citations": procedure["citations"],
+                },
+                [reply],
+            )
         if operation == "create_ticket_draft":
             ticket = parse_ticket(raw)
             if (
@@ -908,6 +1260,10 @@ class ReceptionWorkflowGraph:
     @staticmethod
     def _result(data, waits, blank=False):
         state = deepcopy(data)
+        if state.get("safety_reply") and state["safety_reply"] not in state.get(
+            "reply", ""
+        ):
+            state["reply"] = state["safety_reply"] + "\n" + state.get("reply", "")
         if blank:
             state["reply"] = ""
         if not waits:

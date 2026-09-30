@@ -1,5 +1,7 @@
 # PD02 — Request knowledge và policy ports
 
+> Cập nhật assess_request: topology business graph `pd-workflow-python-2`, RequestPolicyPort bắt buộc khi chạy; hai capability self-help/emergency chưa bind backend. Xem [thiết kế và contract mới](ASSESS_REQUEST_POLICY_SELF_HELP.md).
+
 Người ghi: Phan Dũng, Team Hoàng. Ngày: 30/09/2026.
 Owner đích: Dương Dũng DD02 (wrapper); Quang Q01/Q04 (retrieval);
 Chiến C01/C05/C06 (policy/auth); Phan Hoàng PH02/PH05 (composition).
@@ -60,7 +62,7 @@ cho business workflow. Generic option optional chỉ phục vụ harness PD01; p
 PD02 bắt buộc port thật, không coi omitted là đã bật knowledge/policy.
 
 Schema envelope vẫn 1 nhưng marker Python riêng `pd01-python-1` hoặc
-`pd-workflow-python-1`. Không đọc/migrate checkpoint TS cũ tự động. PH03 review
+`pd-workflow-python-2`. Không đọc/migrate checkpoint TS cũ tự động. PH03 review
 namespace/topology/persistence; PH05 nối Python composition hoặc bridge với TS.
 Xem [PYTHON_RUNTIME_INTEGRATION](PYTHON_RUNTIME_INTEGRATION.md).
 

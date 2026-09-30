@@ -41,6 +41,7 @@
     "scenario": "emergency",
     "expected_phase": "waiting_supervisor",
     "expected_calls": [
+      "escalate_emergency",
       "create_ticket_draft",
       "get_verified_resident_context",
       "update_ticket_incident",

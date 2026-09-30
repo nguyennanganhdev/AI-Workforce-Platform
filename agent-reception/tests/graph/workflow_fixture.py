@@ -121,7 +121,7 @@ class Intake:
         return deepcopy(self.knowledge)
 
 
-def harness(model=None, override=None, **options):
+def harness(model=None, override=None, assess_model=None, **options):
     saver, calls, saved_plans, reconciliations = InMemorySaver(), [], [], []
     mutable = {
         "ticket": {
@@ -210,6 +210,37 @@ def harness(model=None, override=None, **options):
                 "completion_confirmed": mutable["confirmed"],
                 "scope_changed": False,
             }
+        if op == "escalate_emergency":
+            return {
+                "persisted": True,
+                "enqueued": True,
+                "operation_id": "emergency-synthetic",
+                "policy_version": call["input"]["policy_version"],
+                **({"ticket": bump()} if "ticket_id" in call["input"] else {}),
+            }
+        if op == "process_self_help":
+            return {
+                "status": "offered",
+                "attempt_id": "attempt-synthetic",
+                "policy_version": call["input"]["policy_version"],
+                "procedure": {
+                    "approved": True,
+                    "eligible": True,
+                    "policy_version": call["input"]["policy_version"],
+                    "version": "procedure-synthetic-1",
+                    "expires_at": "2026-10-01T00:00:00Z",
+                    "steps": ["Bước thử nghiệm đã duyệt."],
+                    "stop_conditions": ["Dừng nếu có dấu hiệu nguy hiểm."],
+                    "retrievalRunId": "self-help-retrieval-synthetic",
+                    "citations": [
+                        {
+                            "documentId": "procedure-synthetic",
+                            "version": "1",
+                            "chunkId": "step-synthetic",
+                        }
+                    ],
+                },
+            }
         raise AssertionError(op)
 
     class Tools:
@@ -252,9 +283,57 @@ def harness(model=None, override=None, **options):
         reconciliations.append(call)
         return {"kind": "success", "value": output(call)}
 
+    intake = options.get("intake", Intake())
+
+    class Policy:
+        async def evaluate_request(self, request):
+            policy = await intake.evaluate_policy(request)
+            return {
+                "policy_version": policy["policyVersion"],
+                "emergency": policy["kind"] == "emergency",
+                "staff_required": policy["kind"] == "needs_staff",
+                "self_help_allowed": False,
+                "missing_information": [policy["question"]]
+                if policy["kind"] == "clarify"
+                else [],
+                "handoff_reason": "emergency"
+                if policy["kind"] == "emergency"
+                else policy.get("handoffReason", "needs_staff"),
+            }
+
+    assessment_model = ScriptedModel(
+        assess_model
+        or [
+            json.dumps(
+                {
+                    "intent": "information"
+                    if intake.policy.get("kind") == "knowledge_chat"
+                    else "incident",
+                    "proposed_action": "retrieve_knowledge"
+                    if intake.policy.get("kind") == "knowledge_chat"
+                    else "start_ticket",
+                    "explicit_staff_request": False,
+                    "self_help_declined": False,
+                    "self_help_failed": False,
+                    "emergency_signals": [],
+                    "missing_information": [],
+                    "reason": "synthetic classification",
+                }
+            )
+        ]
+    )
+    extraction_model = ScriptedModel(model or [INFORMATION])
+
+    class WorkflowModel:
+        async def ainvoke(self, messages):
+            if "NODE assess_request" in messages[0].content:
+                return await assessment_model.ainvoke(messages)
+            return await extraction_model.ainvoke(messages)
+
     opts = WorkflowOptions(
         **{
-            "intake": Intake(),
+            "intake": intake,
+            "request_policy": Policy(),
             "resolve_session": resolve_session,
             "now": lambda: "2026-09-30T00:00:00.000Z",
             "reconcile": reconcile,
@@ -262,7 +341,7 @@ def harness(model=None, override=None, **options):
         }
     )
     dependencies = GraphDependencies(
-        model=ScriptedModel(model or [INFORMATION]), tools=Tools(), checkpointer=saver
+        model=WorkflowModel(), tools=Tools(), checkpointer=saver
     )
     factory = create_reception_workflow_factory(opts)
     return SimpleNamespace(
@@ -275,6 +354,8 @@ def harness(model=None, override=None, **options):
         saved_plans=saved_plans,
         reconciliations=reconciliations,
         mutable=mutable,
+        assessment_model=assessment_model,
+        extraction_model=extraction_model,
     )
 
 

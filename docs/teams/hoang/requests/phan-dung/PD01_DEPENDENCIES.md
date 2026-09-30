@@ -69,7 +69,7 @@ checkpoint_ns = ""
 ```
 
 Generic marker `runtime_version="pd01-python-1"`, business marker
-`workflow_version="pd-workflow-python-1"`. Python từ chối TS checkpoint cũ;
+`workflow_version="pd-workflow-python-2"`. Python từ chối TS checkpoint cũ;
 PH03 phải chốt namespace mới hoặc migration rõ ràng, không tự reset session.
 Hai khóa đều do backend resolve; không lấy từ browser/model. Test cùng thread ID
 nhưng namespace khác đã tách dữ liệu. PH03 cần review/freeze ánh xạ này trước khi

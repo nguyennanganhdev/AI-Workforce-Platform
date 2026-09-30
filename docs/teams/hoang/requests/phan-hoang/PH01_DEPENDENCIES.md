@@ -1,5 +1,7 @@
 # PH01 — Request review và dependency C01/C06/P01
 
+> Cập nhật assess_request: topology business graph `pd-workflow-python-2`, RequestPolicyPort bắt buộc khi chạy; hai capability self-help/emergency chưa bind backend. Xem [thiết kế và contract mới](../phan-dung/ASSESS_REQUEST_POLICY_SELF_HELP.md).
+
 Owner yêu cầu: Phan Hoàng. Ngày: 30/09/2026.
 Trạng thái: bản yêu cầu trong repo, **chưa có xác nhận/gửi ngoài repo**.
 Request được cập nhật Markdown theo yêu cầu người dùng để phản ánh graph PD Python;
@@ -38,7 +40,7 @@ Người review: Phan Dũng, Dương Dũng. Nguồn:
   test có thể tiếp tục độc lập, không coi mock là backend integration.
 
 PH03 chốt Python checkpoint namespace/migration/retention: generic marker
-`pd01-python-1`, business marker `pd-workflow-python-1`, schema envelope 1.
+`pd01-python-1`, business marker `pd-workflow-python-2`, schema envelope 1.
 Python từ chối checkpoint TS/topology khác, không reset hoặc migrate tự động.
 Thread codec là compact JSON tuple `[namespace, threadId]`, root checkpoint_ns rỗng.
 PH/Team 5 chốt process/service bridge hoặc Python composition để platform TS gọi

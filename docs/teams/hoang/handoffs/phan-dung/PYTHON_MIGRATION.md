@@ -1,5 +1,8 @@
 # Phan Dũng — Bàn giao chuyển Python
 
+> Lượt chuyển Python ban đầu dưới đây là lịch sử. Topology hiện tại sau assess_request
+> là pd-workflow-python-2; xem [ASSESS_REQUEST](ASSESS_REQUEST.md) cho thay đổi và test mới.
+
 Ngày 30/09/2026; nhánh `dev_TeamHoang_PhanDung` đã được người dùng cho phép.
 Đã chuyển toàn bộ 22 file TypeScript do PD viết sang Python trong phạm vi giao.
 Đã xóa các bản TS đó sau khi test Python pass. Giữ nguyên owner runtime/contracts,

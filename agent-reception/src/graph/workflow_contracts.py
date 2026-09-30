@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Literal, NotRequired, Protocol, TypedDict
 
-WORKFLOW_VERSION = "pd-workflow-python-1"
+WORKFLOW_VERSION = "pd-workflow-python-2"
 
 
 class VerifiedContext(TypedDict):
@@ -93,6 +93,12 @@ class IntakePort(Protocol):
     async def search_knowledge(self, request: dict) -> dict: ...
 
 
+class RequestPolicyPort(Protocol):
+    """Authorized policy preflight and recheck with validated LLM proposal."""
+
+    async def evaluate_request(self, request: dict) -> dict: ...
+
+
 @dataclass(frozen=True)
 class GraphDependencies:
     model: AsyncModel
@@ -110,6 +116,7 @@ class WorkflowOptions:
     now: Callable[[], str] | None = None
     timeout_ms: int = 10000
     max_question_attempts: int = 4
+    request_policy: RequestPolicyPort | None = None
 
 
 OPERATIONS = (
@@ -125,6 +132,8 @@ OPERATIONS = (
     "respond_supervisor_interaction",
     "request_ticket_cancellation",
     "get_ticket_status",
+    "process_self_help",
+    "escalate_emergency",
 )
 
 HandoffReason = Literal[
@@ -143,6 +152,8 @@ WorkflowOperation = Literal[
     "respond_supervisor_interaction",
     "request_ticket_cancellation",
     "get_ticket_status",
+    "process_self_help",
+    "escalate_emergency",
 ]
 
 
@@ -268,6 +279,51 @@ class CancellationInput(TicketInput):
     source_message_id: str
 
 
+class RequestAssessment(TypedDict):
+    intent: Literal["information", "incident", "service_request", "ticket_follow_up"]
+    proposed_action: str
+    explicit_staff_request: bool
+    self_help_declined: bool
+    self_help_failed: bool
+    emergency_signals: list[str]
+    missing_information: list[str]
+    reason: str
+
+
+class ReceptionDecision(RequestAssessment):
+    next_action: str  # Selected by deterministic code after policy/state guards.
+    policy_version: str
+
+
+class RequestPolicy(TypedDict):
+    policy_version: str
+    emergency: bool
+    staff_required: bool
+    self_help_allowed: bool
+    missing_information: list[str]
+    handoff_reason: HandoffReason
+    safety_guidance: NotRequired[dict[str, Any]]
+
+
+class SelfHelpInput(TypedDict):
+    channel_id: str
+    reception_session_id: str
+    source_message: ResidentMessage
+    policy_version: str
+    assessment: ReceptionDecision
+    attempt: dict[str, Any] | None
+
+
+class EmergencyInput(TypedDict):
+    channel_id: str
+    reception_session_id: str
+    source_message: ResidentMessage
+    policy_version: str
+    ticket_id: NotRequired[str]
+    ticket_generation: NotRequired[int]
+    ticket_version: NotRequired[str]
+
+
 class PendingOperation(TypedDict):
     operation: WorkflowOperation
     input: dict[str, Any]
@@ -319,6 +375,10 @@ class WorkflowState(TypedDict):
     completed_operations: list[str]
     last_error: NotRequired[str | None]
     reply: str
+    decision: NotRequired[ReceptionDecision | None]
+    request_policy: NotRequired[RequestPolicy]
+    conversation_history: NotRequired[list[dict[str, Any]]]
+    self_help: NotRequired[dict[str, Any] | None]
 
 
 # Semantic operation inputs, not a backend registration or HTTP route catalog.
@@ -338,6 +398,8 @@ OPERATION_INPUTS = dict(
             InteractionInput,
             CancellationInput,
             TicketInput,
+            SelfHelpInput,
+            EmergencyInput,
         ),
     )
 )

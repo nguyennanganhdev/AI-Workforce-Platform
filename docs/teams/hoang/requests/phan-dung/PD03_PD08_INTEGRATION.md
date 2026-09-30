@@ -1,5 +1,7 @@
 # PD03–PD08 — Consumer contracts và yêu cầu tích hợp
 
+> Cập nhật assess_request: topology business graph `pd-workflow-python-2`, RequestPolicyPort bắt buộc khi chạy; hai capability self-help/emergency chưa bind backend. Xem [thiết kế và contract mới](ASSESS_REQUEST_POLICY_SELF_HELP.md).
+
 Owner ghi: Phan Dũng, Team Hoàng. Ngày 30/09/2026.
 Owner đích: Dương Dũng DD02–DD08, Phan Hoàng PH02–PH08; Chiến C01/C03–C09/C14,
 Quang Q01/Q04, Đông D02/D04/D08 và Team 5 qua đầu mối Hoàng.
@@ -18,7 +20,7 @@ không sửa contracts/package/entrypoint của Phan Hoàng hay module/backend o
 ## Reception factory và session
 
 `agent-reception/src/graph/workflow.py` export `create_reception_workflow_factory(options)`;
-`workflow_contracts.py` là **proposal consumer pd-workflow-python-1**, không catalog đã freeze.
+`workflow_contracts.py` là **proposal consumer pd-workflow-python-2**, không catalog đã freeze.
 Yêu cầu composition Python mới: [PYTHON_RUNTIME_INTEGRATION](PYTHON_RUNTIME_INTEGRATION.md).
 Composer inject `GraphDependencies(model, tools, checkpointer)` với `AsyncModel`/`ToolPort` Python,
 intake policy/knowledge, `resolve_session(context,signal)`, optional `reconcile`.
@@ -27,7 +29,7 @@ PH02/backend authorize trước run/read/resume/recover, resolve channel/session
 Workflow yêu cầu session ổn định, owner/context đúng và active_ticket_id khớp ticket.
 
 Giữ generic PD01 tại `factory.py` với marker `pd01-python-1`; graph mới giữ schema envelope 1 nhưng bổ sung
-`workflow_version: "pd-workflow-python-1"`. Không chạy trên checkpoint PD01 cũ rồi migrate
+`workflow_version: "pd-workflow-python-2"`. Không chạy trên checkpoint PD01 cũ rồi migrate
 âm thầm; PH03 chốt namespace/topology migration trước tích hợp. Không default InMemorySaver.
 Root thread codec vẫn JSON tuple `[namespace,threadId]`, root checkpoint_ns rỗng.
 
