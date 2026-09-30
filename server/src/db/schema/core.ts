@@ -1,0 +1,23 @@
+// Compatibility import path; canonical schema is tables.ts.
+export {
+  users,
+  sessions,
+  accounts,
+  verifications,
+  userRoles,
+  userInstructions,
+  ssoProviders,
+  revokedAccess,
+  deploymentPackages,
+  agents,
+  channels,
+  channelMemberships,
+  channelAgents,
+  credentials,
+  auditEvents,
+  intelligenceChannelMappings,
+  attachments,
+  role,
+  agentType,
+  credentialKind,
+} from "./tables";

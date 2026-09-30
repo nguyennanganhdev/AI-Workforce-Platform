@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Context": {
+      "additionalProperties": false,
+      "properties": {
+        "tenant_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "principal_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Principal Id",
+          "type": "string"
+        },
+        "domain_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Domain Id",
+          "type": "string"
+        },
+        "workspace_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Workspace Id",
+          "type": "string"
+        },
+        "ticket_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "ticket_generation": {
+          "minimum": 0,
+          "title": "Ticket Generation",
+          "type": "integer"
+        },
+        "binding_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "run_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "principal_id",
+        "domain_id",
+        "workspace_id",
+        "ticket_id",
+        "ticket_generation",
+        "binding_id",
+        "run_id"
+      ],
+      "title": "Context",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "request_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Request Id",
+      "type": "string"
+    },
+    "context": {
+      "$ref": "#/$defs/Context"
+    },
+    "room_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Room Id",
+      "type": "string"
+    },
+    "operation": {
+      "default": "get_room",
+      "enum": [
+        "get_room",
+        "list_messages"
+      ],
+      "title": "Operation",
+      "type": "string"
+    },
+    "after_sequence": {
+      "default": 0,
+      "minimum": 0,
+      "title": "After Sequence",
+      "type": "integer"
+    },
+    "limit": {
+      "default": 100,
+      "exclusiveMinimum": 0,
+      "maximum": 500,
+      "title": "Limit",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "request_id",
+    "context",
+    "room_id"
+  ],
+  "title": "Query",
+  "type": "object"
+}
