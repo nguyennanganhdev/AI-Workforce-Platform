@@ -2,22 +2,26 @@ import {
   type AuditSink,
   type Clock,
   type ContextResolver,
+  createInMemoryAssetReadPort,
+  createInMemorySopProfilePort,
   createTechnicalToolCaller,
   type HostOptions,
-  type InterruptionReadPort,
   type ResponseEnvelope,
   responseEnvelopeSchema,
   type ToolAuditEntry,
   type ToolCaller,
+  type ToolDependencies,
 } from "../../../src/technical-tools";
 import {
   AGENT_VERSION,
   BUILDING,
   CALLER,
   NOW,
+  ROLE_OF,
   SOURCE_RUN_ID,
   TENANT,
   TRACE_ID,
+  WORKSPACE,
 } from "../fixtures/world";
 
 export const fixedClock: Clock = { now: () => NOW };
@@ -28,23 +32,50 @@ export const fixedClock: Clock = { now: () => NOW };
  * It answers what the real one will: the tenant, run and grant behind a caller the agent callback
  * route has already verified. Technical Agent A2 is granted buildings A1 and A2 and nothing else.
  */
+export const CAPABILITIES = [
+  "interruption:read",
+  "sop:read",
+  "asset:read",
+] as const;
+
 export const fixtureContextResolver: ContextResolver = async (caller) => {
   const identity = {
     tenant_id: TENANT.vinhomes,
+    workspace_id: WORKSPACE.vinhomes,
     principal_id: `principal:${caller.actorId}`,
+    user_id: caller.actorId,
+    // The business role the run acts under, which is what `document_acl` grants are written for.
+    ...(ROLE_OF[caller.actorId] ? { role_code: ROLE_OF[caller.actorId] } : {}),
     source_run_id: SOURCE_RUN_ID,
     trace_id: TRACE_ID,
     agent_version: AGENT_VERSION,
     allowed_building_ids: [BUILDING.a1, BUILDING.a2],
   };
   if (caller.botId === CALLER.technicalAgent.botId) {
-    return { ...identity, capabilities: ["interruption:read"] };
+    return { ...identity, capabilities: [...CAPABILITIES] };
   }
   if (caller.botId === CALLER.ungrantedAgent.botId) {
     return { ...identity, capabilities: [] };
   }
   return null;
 };
+
+/**
+ * A port a test did not supply.
+ *
+ * It throws rather than answering nothing, so a test that reaches for data it never set up fails
+ * saying so, instead of passing on an empty result that looks like a real answer.
+ */
+function unconfigured(name: string): never {
+  return {
+    listCovering: () => {
+      throw new Error(`This test did not configure the ${name} port.`);
+    },
+    listForBuilding: () => {
+      throw new Error(`This test did not configure the ${name} port.`);
+    },
+  } as never;
+}
 
 export function recordingAudit() {
   const entries: ToolAuditEntry[] = [];
@@ -63,7 +94,7 @@ export function recordingAudit() {
  * so a test exercises the same path a Bot's tool call takes after the route has verified it.
  */
 export function technicalToolHarness(
-  interruptions: InterruptionReadPort,
+  ports: Partial<ToolDependencies>,
   overrides: {
     contextResolver?: ContextResolver;
     audit?: AuditSink;
@@ -73,8 +104,11 @@ export function technicalToolHarness(
   const audit = recordingAudit();
   const caller = createTechnicalToolCaller(
     {
-      interruptions,
-      clock: fixedClock,
+      interruptions: ports.interruptions ?? unconfigured("interruptions"),
+      sop: ports.sop ?? unconfigured("sop"),
+      sopProfiles: ports.sopProfiles ?? createInMemorySopProfilePort(),
+      assets: ports.assets ?? createInMemoryAssetReadPort(),
+      clock: ports.clock ?? fixedClock,
       contextResolver: overrides.contextResolver ?? fixtureContextResolver,
       audit: overrides.audit ?? audit.sink,
     },

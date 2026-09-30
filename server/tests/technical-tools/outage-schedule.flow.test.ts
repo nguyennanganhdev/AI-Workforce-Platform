@@ -79,7 +79,7 @@ describe.each([3, 2, 1] as const)("level %d incidents", (level) => {
   test.each(
     cases.map((levelCase) => [levelCase.id, levelCase.report, levelCase]),
   )("%s: %s", async (_id, _report, levelCase) => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
 
     for (const call of levelCase.calls) {
       const { envelope, isError } = await harness.call(
@@ -141,7 +141,7 @@ describe("the cases cover what they claim to", () => {
 
 describe("what an answer carries", () => {
   test("an outage past its announced end is still reported, with that end unchanged", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const { envelope } = await harness.call(
       refFor(OUTAGE),
       outageArgs(BUILDING.a1),
@@ -164,7 +164,7 @@ describe("what an answer carries", () => {
   });
 
   test("a finished outage says when it ended", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const { envelope } = await harness.call(
       refFor(OUTAGE),
       outageArgs(BUILDING.a1, "water", "2026-09-29T15:00:00Z"),
@@ -181,7 +181,7 @@ describe("what an answer carries", () => {
   });
 
   test("a schedule covering two buildings is one entry with both scopes", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const { envelope } = await harness.call(refFor(SCHEDULE), {
       building_id: BUILDING.a1,
       utility_type: "power",
@@ -203,7 +203,7 @@ describe("what an answer carries", () => {
   });
 
   test("names the record and revision each result came from", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const { envelope } = await harness.call(
       refFor(OUTAGE),
       outageArgs(BUILDING.a1),
@@ -219,7 +219,7 @@ describe("what an answer carries", () => {
   });
 
   test("an empty answer still says which system it asked", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const { envelope } = await harness.call(
       refFor(OUTAGE),
       outageArgs(BUILDING.a1, "power", "2026-09-30T07:00:00Z"),
@@ -232,7 +232,7 @@ describe("what an answer carries", () => {
   });
 
   test("is stamped with the server's time and the run's trace id", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const { envelope } = await harness.call(
       refFor(OUTAGE),
       outageArgs(BUILDING.a1),
@@ -250,7 +250,7 @@ describe("what an answer carries", () => {
  */
 describe("a building the caller may not ask about", () => {
   async function refusal(buildingId: string) {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const answer = await harness.call(refFor(OUTAGE), outageArgs(buildingId));
     return { ...answer, auditEntries: harness.auditEntries };
   }
@@ -287,7 +287,7 @@ describe("a building the caller may not ask about", () => {
   });
 
   test("the schedule tool refuses the same building the same way", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const { envelope } = await harness.call(refFor(SCHEDULE), {
       building_id: BUILDING.b1,
       utility_type: "water",
@@ -301,7 +301,7 @@ describe("a building the caller may not ask about", () => {
 
 describe("a caller without the right to call", () => {
   test("N4: a Bot never granted interruption:read is refused, for a building it may see", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const { envelope } = await harness.call(
       refFor(OUTAGE),
       outageArgs(BUILDING.a1),
@@ -318,7 +318,7 @@ describe("a caller without the right to call", () => {
    * the refusal either: a malformed call gets the same answer as a well-formed one.
    */
   test("the capability is checked before the input is", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const { envelope } = await harness.call(
       refFor(OUTAGE),
       { nonsense: true },
@@ -329,7 +329,7 @@ describe("a caller without the right to call", () => {
   });
 
   test("a Bot the deployment has no identity for is refused and still recorded", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const { envelope } = await harness.call(
       refFor(OUTAGE),
       outageArgs(BUILDING.a1),
@@ -347,13 +347,16 @@ describe("a caller without the right to call", () => {
   });
 
   test("a resolver that answers with something malformed grants nothing", async () => {
-    const harness = technicalToolHarness(interruptions, {
-      contextResolver: async () =>
-        ({
-          tenant_id: "not-a-uuid",
-          capabilities: ["interruption:read"],
-        }) as never,
-    });
+    const harness = technicalToolHarness(
+      { interruptions },
+      {
+        contextResolver: async () =>
+          ({
+            tenant_id: "not-a-uuid",
+            capabilities: ["interruption:read"],
+          }) as never,
+      },
+    );
     const { envelope } = await harness.call(
       refFor(OUTAGE),
       outageArgs(BUILDING.a1),
@@ -365,7 +368,7 @@ describe("a caller without the right to call", () => {
 
 describe("input the tools will not act on", () => {
   test("N5: a schedule range that runs backwards names the field at fault", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const { envelope, isError } = await harness.call(refFor(SCHEDULE), {
       building_id: BUILDING.a1,
       utility_type: "power",
@@ -402,7 +405,7 @@ describe("input the tools will not act on", () => {
       "tenant_id",
     ],
   ])("%s", async (_label, change, field) => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const { envelope } = await harness.call(refFor(OUTAGE), {
       ...outageArgs(BUILDING.a1),
       ...change,
@@ -419,7 +422,7 @@ describe("input the tools will not act on", () => {
    * shape; it must not be able to reach that tenant's outage under any spelling of the call.
    */
   test("no argument reaches another tenant's outage", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const { text } = await harness.call(refFor(OUTAGE), {
       ...outageArgs(BUILDING.x1, "power"),
       tenant_id: TENANT.other,
@@ -442,7 +445,7 @@ describe("when the data source fails mid-incident", () => {
         throw new Error(`connect ECONNREFUSED ${SECRET}`);
       },
     };
-    const harness = technicalToolHarness(failing);
+    const harness = technicalToolHarness({ interruptions: failing });
     const { envelope, isError, text } = await harness.call(
       refFor(OUTAGE),
       outageArgs(BUILDING.a1, "power"),
@@ -474,9 +477,12 @@ describe("when the data source fails mid-incident", () => {
     const hanging: InterruptionReadPort = {
       listCovering: () => new Promise(() => {}),
     };
-    const harness = technicalToolHarness(hanging, {
-      options: { timeoutMs: 50 },
-    });
+    const harness = technicalToolHarness(
+      { interruptions: hanging },
+      {
+        options: { timeoutMs: 50 },
+      },
+    );
     const started = performance.now();
     const { envelope } = await harness.call(
       refFor(OUTAGE),
@@ -494,13 +500,16 @@ describe("when the data source fails mid-incident", () => {
    * while the trail could not be written would be the one call nobody can later account for.
    */
   test("a call that cannot be recorded returns no data", async () => {
-    const harness = technicalToolHarness(interruptions, {
-      audit: {
-        record: async () => {
-          throw new Error("audit store unavailable");
+    const harness = technicalToolHarness(
+      { interruptions },
+      {
+        audit: {
+          record: async () => {
+            throw new Error("audit store unavailable");
+          },
         },
       },
-    });
+    );
     const { envelope, text } = await harness.call(
       refFor(OUTAGE),
       outageArgs(BUILDING.a1),
@@ -514,7 +523,7 @@ describe("when the data source fails mid-incident", () => {
 
 describe("the door the server opens to these tools", () => {
   test("a name that is not a technical tool is left for the plugin store", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
 
     expect(
       await harness.caller({
@@ -531,14 +540,14 @@ describe("the door the server opens to these tools", () => {
     ["the name a model is offered", "technical__get_active_outage"],
     ["the ref the route derives from it", "technical/get_active_outage"],
   ])("answers to %s", async (_label, name) => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     const { envelope } = await harness.call(name, outageArgs(BUILDING.a1));
 
     expect(envelope.status).toBe("OK");
   });
 
   test("records what started the run, as the audit trail does for every other tool", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     await harness.call(refFor(OUTAGE), outageArgs(BUILDING.a1), {
       ...CALLER.technicalAgent,
       initiator: { kind: "routine", id: "routine-nightly-check" },
@@ -551,7 +560,7 @@ describe("the door the server opens to these tools", () => {
   });
 
   test("records how many records came back, never the records", async () => {
-    const harness = technicalToolHarness(interruptions);
+    const harness = technicalToolHarness({ interruptions });
     await harness.call(refFor(OUTAGE), outageArgs(BUILDING.a1));
 
     expect(harness.auditEntries[0]).toMatchObject({

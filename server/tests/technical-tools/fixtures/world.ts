@@ -5,7 +5,7 @@
  * Ids are fixed and shaped like UUID v4, so a failing assertion names a row a person can find in
  * this file, and so the same ids satisfy both the database's `uuid` columns and the tools' schemas.
  */
-const id = (group: string, n: number) =>
+export const id = (group: string, n: number) =>
   `${group}-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
 /** "Now" for every test, so a case about an overdue outage does not depend on the machine's clock. */
@@ -18,7 +18,25 @@ export const TENANT = {
 
 export const USER = {
   manager: "fixture-manager-vinhomes",
+  technician: "fixture-technician-vinhomes",
   otherManager: "fixture-manager-other",
+} as const;
+
+/** `execution_principals`, which a file's owner must be. One per tenant. */
+export const PRINCIPAL = {
+  vinhomes: id("71000000", 1),
+  other: id("71000000", 2),
+} as const;
+
+/** Where a document's canonical file is kept, per tenant. */
+export const STORAGE_LOCATION = {
+  vinhomes: id("72000000", 1),
+  other: id("72000000", 2),
+} as const;
+
+export const WORKSPACE = {
+  vinhomes: id("73000000", 1),
+  other: id("73000000", 2),
 } as const;
 
 export const DOMAIN = {
@@ -50,6 +68,7 @@ export const BUILDING = {
 } as const;
 
 export const SCOPE = {
+  tenantWide: id("30000000", 8),
   siteOceanPark: id("30000000", 1),
   zoneS1: id("30000000", 2),
   zoneS2: id("30000000", 3),
@@ -82,7 +101,7 @@ export const WORK_ORDER = {
 export const approvalId = (n: number) => id("52000000", n);
 export const interruptionId = (n: number) => id("60000000", n);
 
-/** The rows a tenant needs before it can hold a single interruption. */
+/** The rows a tenant needs before it can hold an interruption or a document. */
 export const TENANTS = [
   {
     tenantId: TENANT.vinhomes,
@@ -97,6 +116,10 @@ export const TENANTS = [
     channelId: CHANNEL.vinhomes,
     ticketId: TICKET.vinhomes,
     workOrderId: WORK_ORDER.vinhomes,
+    principalId: PRINCIPAL.vinhomes,
+    workspaceId: WORKSPACE.vinhomes,
+    storageLocationId: STORAGE_LOCATION.vinhomes,
+    storagePrefix: "t/vinhomes/",
   },
   {
     tenantId: TENANT.other,
@@ -111,6 +134,10 @@ export const TENANTS = [
     channelId: CHANNEL.other,
     ticketId: TICKET.other,
     workOrderId: WORK_ORDER.other,
+    principalId: PRINCIPAL.other,
+    workspaceId: WORKSPACE.other,
+    storageLocationId: STORAGE_LOCATION.other,
+    storagePrefix: "t/other/",
   },
 ] as const;
 
@@ -162,6 +189,11 @@ export const BUILDINGS = [
 
 export const SCOPES = [
   {
+    id: SCOPE.tenantWide,
+    tenantId: TENANT.vinhomes,
+    kind: "tenant",
+  },
+  {
     id: SCOPE.siteOceanPark,
     tenantId: TENANT.vinhomes,
     kind: "site",
@@ -210,13 +242,21 @@ export const SCOPES = [
  * what they are allowed is what the fixture resolver in `support/harness.ts` answers.
  */
 export const CALLER = {
-  /** Technical Agent A2 working for the management of zone S1: granted A1 and A2. */
-  technicalAgent: { botId: "technical-agent-a2", actorId: USER.manager },
-  /** A Bot of the same tenant that was never granted the interruption capability. */
-  ungrantedAgent: { botId: "cleaning-agent", actorId: USER.manager },
+  /** Technical Agent A2 acting for a technician: granted A1 and A2, role `staff`. */
+  technicalAgent: { botId: "technical-agent-a2", actorId: USER.technician },
+  /** The same agent acting for the building manager, whose role reads more documents. */
+  managementAgent: { botId: "technical-agent-a2", actorId: USER.manager },
+  /** A Bot of the same tenant that was granted none of these capabilities. */
+  ungrantedAgent: { botId: "cleaning-agent", actorId: USER.technician },
   /** A Bot this deployment has no binding for. */
   unknownAgent: { botId: "nobody", actorId: "nobody" },
 } as const;
+
+/** Which business role each caller acts under, for `document_acl`. */
+export const ROLE_OF: Record<string, "management" | "staff"> = {
+  [USER.technician]: "staff",
+  [USER.manager]: "management",
+};
 
 export const AGENT_VERSION = "technical-agent-a2@1.0.0-fixture";
 export const SOURCE_RUN_ID = id("70000000", 1);

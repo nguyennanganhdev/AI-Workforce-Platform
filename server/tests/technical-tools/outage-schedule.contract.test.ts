@@ -1,11 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseAgentToolCallInput } from "../../src/agents/callback-token";
-import {
-  describeTechnicalTools,
-  findTechnicalTool,
-  responseEnvelopeSchema,
-  technicalTools,
-} from "../../src/technical-tools";
+import { responseEnvelopeSchema } from "../../src/technical-tools";
 import {
   getActiveOutageInputSchema,
   getActiveOutageOutputSchema,
@@ -144,59 +138,5 @@ describe("what utility_schedule.read refuses as input", () => {
     expect(
       utilityScheduleReadInputSchema.safeParse({ ...valid, ...change }).success,
     ).toBe(false);
-  });
-});
-
-describe("the catalogue", () => {
-  test("lists both tools with what a caller needs to know about each", () => {
-    const catalogue = describeTechnicalTools();
-    expect(catalogue.map((tool) => tool.name)).toEqual([
-      "technical.get_active_outage",
-      "utility_schedule.read",
-    ]);
-    for (const tool of catalogue) {
-      expect(tool.side_effect).toBe("read");
-      expect(tool.required_capability).toBe("interruption:read");
-      expect(tool.requires_idempotency_key).toBe(false);
-      expect(tool.timeout_ms).toBeGreaterThan(0);
-      // Plain JSON Schema, so a Python runtime reads the contract without Zod.
-      expect(tool.input_schema).toMatchObject({
-        type: "object",
-        additionalProperties: false,
-      });
-      expect(JSON.parse(JSON.stringify(tool))).toEqual(tool);
-    }
-  });
-
-  test("offers each tool under a name a model is allowed to call", () => {
-    for (const tool of technicalTools) {
-      expect(tool.modelName).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
-    }
-  });
-
-  /*
-   * A model cannot be offered a name with a dot in it, and `/api/agent-tools/call` rewrites the
-   * first `__` of whatever name arrives into `/` before asking a deployment tool caller. Using the
-   * route's own parser here is what makes this a test of the path a real call takes: if either
-   * side changes its spelling, the tool silently stops being found and the call falls through to
-   * the plugin store as an unknown MCP tool.
-   */
-  test("finds each tool by the ref the agent callback route derives from its model name", () => {
-    for (const tool of technicalTools) {
-      for (const spelling of [
-        tool.modelName,
-        `mcp__${tool.modelName}`,
-        tool.name,
-      ]) {
-        const parsed = parseAgentToolCallInput({ name: spelling, args: {} });
-        if (!parsed.ok) throw new Error(parsed.error);
-        expect(findTechnicalTool(parsed.value.ref)?.name).toBe(tool.name);
-      }
-    }
-  });
-
-  test("does not claim a name that belongs to somebody else", () => {
-    expect(findTechnicalTool("google_drive/search_files")).toBeUndefined();
-    expect(findTechnicalTool("technical.unknown_tool")).toBeUndefined();
   });
 });

@@ -1,12 +1,25 @@
+import { createHash } from "node:crypto";
+import { eq } from "drizzle-orm";
 import {
   accessScopes,
   buildings,
   channels,
+  documentAcl,
+  documentScopes,
+  documentVersions,
   domains,
+  executionPrincipals,
+  fileObjects,
+  files,
   interruptionScopes,
+  knowledgeBases,
+  knowledgeCategories,
+  knowledgeDocuments,
   serviceCategories,
   serviceInterruptions,
   sites,
+  storageLocations,
+  tenantMemberships,
   tenants,
   tickets,
   users,
@@ -16,13 +29,16 @@ import {
 } from "../../../src/db/schema";
 import type { TechnicalToolsDatabase } from "../../../src/technical-tools";
 import { INTERRUPTIONS } from "../fixtures/interruptions";
+import { KNOWLEDGE_BASES, KNOWLEDGE_CATEGORIES, SOPS } from "../fixtures/sop";
 import {
   approvalId,
   BUILDINGS,
+  id,
   SCOPE,
   SCOPES,
   TENANT,
   TENANTS,
+  USER,
   ZONES,
 } from "../fixtures/world";
 
@@ -50,6 +66,32 @@ export async function seedWorld(database: TechnicalToolsDatabase) {
       email: tenant.managerEmail,
       name: "Quản lý kỹ thuật",
     });
+    await database.insert(tenantMemberships).values({
+      tenantId: tenant.tenantId,
+      userId: tenant.managerId,
+      status: "active",
+    });
+    // A file's owner must be an execution principal, and a document version must have a file.
+    await database.insert(executionPrincipals).values({
+      id: tenant.principalId,
+      tenantId: tenant.tenantId,
+      kind: "user",
+      userId: tenant.managerId,
+      status: "active",
+      authzVersion: 0,
+    });
+    await database.insert(storageLocations).values({
+      id: tenant.storageLocationId,
+      tenantId: tenant.tenantId,
+      provider: "minio",
+      endpointRef: "minio",
+      bucketName: "documents",
+      tenantPrefix: tenant.storagePrefix,
+      credentialSecretRef: "vault/fixture",
+      encryptionMode: "sse_s3",
+      purpose: "documents",
+      status: "active",
+    });
     await database.insert(domains).values({
       id: tenant.domainId,
       tenantId: tenant.tenantId,
@@ -73,6 +115,18 @@ export async function seedWorld(database: TechnicalToolsDatabase) {
       name: "Kỹ thuật",
     });
   }
+
+  // The technician the technical agent acts for. No tenant of their own; a membership is enough.
+  await database.insert(users).values({
+    id: USER.technician,
+    email: "kythuat.a1@vinhomes.fixture.test",
+    name: "Kỹ thuật viên",
+  });
+  await database.insert(tenantMemberships).values({
+    tenantId: TENANT.vinhomes,
+    userId: USER.technician,
+    status: "active",
+  });
 
   for (const zone of ZONES) {
     await database
@@ -166,4 +220,124 @@ export async function seedWorld(database: TechnicalToolsDatabase) {
       });
     }
   }
+
+  await seedDocuments(database);
+}
+
+/**
+ * The knowledge documents, with the whole chain a version needs.
+ *
+ * `document_versions.file_id` is NOT NULL and `app_validate_file` will not let a file be `ready`
+ * without an original object that has been scanned and verified, so each version costs a file, an
+ * object and an update. That chain is the schema's, not the fixture's: it is how the deployment
+ * keeps guidance from pointing at bytes nobody checked.
+ *
+ * The document is inserted first with no active version, because the file names the document it
+ * belongs to and the version names the file. The pointer is set at the end.
+ */
+async function seedDocuments(database: TechnicalToolsDatabase) {
+  for (const base of KNOWLEDGE_BASES) {
+    const tenant = TENANTS.find(
+      (candidate) => candidate.tenantId === base.tenantId,
+    );
+    if (!tenant) throw new Error(`${base.code} names no seeded tenant.`);
+    await database
+      .insert(knowledgeBases)
+      .values({ ...base, domainId: tenant.domainId });
+  }
+  for (const category of KNOWLEDGE_CATEGORIES) {
+    await database.insert(knowledgeCategories).values(category);
+  }
+
+  for (const [index, sop] of SOPS.entries()) {
+    const tenant = TENANTS.find(
+      (candidate) => candidate.tenantId === sop.tenantId,
+    );
+    if (!tenant) throw new Error(`${sop.key} names no seeded tenant.`);
+
+    await database.insert(knowledgeDocuments).values({
+      id: sop.documentId,
+      tenantId: sop.tenantId,
+      knowledgeBaseId: sop.knowledgeBaseId,
+      categoryId: sop.categoryId,
+      code: sop.code,
+      title: sop.title,
+      status: sop.status,
+      language: sop.language,
+    });
+    await database.insert(documentScopes).values({
+      tenantId: sop.tenantId,
+      documentId: sop.documentId,
+      scopeId: sop.scopeId,
+      appliesToDescendants: sop.appliesToDescendants,
+    });
+    for (const entry of sop.acl) {
+      await database.insert(documentAcl).values({
+        tenantId: sop.tenantId,
+        documentId: sop.documentId,
+        principalKind: entry.principalKind,
+        ...(entry.roleCode ? { roleCode: entry.roleCode } : {}),
+        ...(entry.userId ? { userId: entry.userId } : {}),
+        ...(entry.workspaceId ? { workspaceId: entry.workspaceId } : {}),
+        effect: entry.effect,
+      });
+    }
+    if (!sop.version) continue;
+
+    const fileId = id("83000000", index + 1);
+    const objectId = id("84000000", index + 1);
+    await database.insert(files).values({
+      id: fileId,
+      tenantId: sop.tenantId,
+      ownerPrincipalId: tenant.principalId,
+      scopeKind: "document",
+      documentId: sop.documentId,
+      status: "staged",
+      originalName: `${sop.code}-v${sop.version.versionNo}.md`,
+      uploadedBy: tenant.managerId,
+    });
+    await database.insert(fileObjects).values({
+      id: objectId,
+      tenantId: sop.tenantId,
+      fileId,
+      locationId: tenant.storageLocationId,
+      objectKey: `${tenant.storagePrefix}${sop.code}-v${sop.version.versionNo}.md`,
+      versionId: `v${sop.version.versionNo}`,
+      variant: "original",
+      mimeType: "text/markdown",
+      sizeBytes: 2048,
+      sha256: sha256Of(sop.code, sop.version.versionNo),
+      scanStatus: "clean",
+      verifiedAt: sop.version.effectiveFrom,
+      encryptionMode: "sse_s3",
+      status: "ready",
+    });
+    await database
+      .update(files)
+      .set({ acceptedObjectId: objectId, status: "ready" })
+      .where(eq(files.id, fileId));
+
+    const versionId = id("85000000", index + 1);
+    await database.insert(documentVersions).values({
+      id: versionId,
+      tenantId: sop.tenantId,
+      documentId: sop.documentId,
+      versionNo: sop.version.versionNo,
+      fileId,
+      contentHash: sha256Of(sop.code, sop.version.versionNo),
+      effectiveFrom: sop.version.effectiveFrom,
+      effectiveTo: sop.version.effectiveTo,
+      submittedBy: tenant.managerId,
+      extractionConfig: {},
+    });
+    await database
+      .update(knowledgeDocuments)
+      .set({ activeVersionId: versionId })
+      .where(eq(knowledgeDocuments.id, sop.documentId));
+  }
+}
+
+/** A stable stand-in for a real content hash; `file_objects.sha256` must be 64 hex characters. */
+function sha256Of(code: string, versionNo: number): string {
+  return createHash("sha256").update(`${code}:v${versionNo}`).digest("hex");
 }

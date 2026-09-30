@@ -24,6 +24,8 @@ const RUNTIME_ROLE = "technical_tools_runtime";
 const runtimeGrants = (role: string) => `
   GRANT USAGE ON SCHEMA public TO ${role};
   GRANT SELECT ON buildings, access_scopes, service_interruptions, interruption_scopes TO ${role};
+  GRANT SELECT ON knowledge_bases, knowledge_documents, document_versions, document_scopes,
+    document_acl TO ${role};
 `;
 
 export type TestDatabase = {
