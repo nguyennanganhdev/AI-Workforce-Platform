@@ -73,11 +73,13 @@ function paths(value: unknown, prefix = ""): string[] {
   );
 }
 
-const before = new Set(
-  paths(
-    parse(await run(["git", "show", `${since}:charts/openbot/values.yaml`])),
-  ),
-);
+let beforeText = "";
+try {
+  beforeText = await run(["git", "show", `${since}:charts/openbot/values.yaml`]);
+} catch {
+  beforeText = "";
+}
+const before = new Set(paths(beforeText ? parse(beforeText) : {}));
 const now = paths(parse(await Bun.file("charts/openbot/values.yaml").text()));
 /*
  * A key whose parent is also new is covered by nulling the parent, and nulling both is the same
