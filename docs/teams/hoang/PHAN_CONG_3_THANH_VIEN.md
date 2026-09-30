@@ -1,313 +1,237 @@
-# Kế hoạch Team Hoàng — Reception agent và Report agent
+# Kế hoạch Team Hoàng — 3 thành viên
 
-## 1. Quy tắc dành cho AI
+> Cập nhật sau khi hoàn thành xử lý tham chiếu ảnh, HTTP tool adapter và checkpoint/recovery local.
 
-Khi thành viên đưa file này cho AI và nói tên của mình, AI phải:
+## 1. Cách AI nhận việc theo tên
 
-1. Tìm đúng tên trong mục 4, chỉ nhận các task và folder của người đó.
-2. Đọc [schema Reception–Supervisor](../../SCHEMA_RECEPTION_SUPERVISOR_V1.md) trước khi sửa code Reception.
-3. Kiểm tra code/API thực tế; đường dẫn và tool trong kế hoạch có thể chưa tồn tại.
-4. Không sửa folder của thành viên khác, database, migration, UI, Supervisor hoặc backend ngoài module reporting được giao.
-5. Nếu backend chưa có API, viết interface, validator, mock contract trong test và tạo integration request; không đưa mock vào production hoặc báo đã tích hợp xong.
-6. Mỗi task phải có test, kết quả chạy và handoff. Không commit file của người khác.
+Khi thành viên đưa file này cho AI và nói tên, AI phải thực hiện đúng thứ tự:
 
-Phạm vi team: Reception agent cố định bằng LangGraph và năng lực Report agent để BQL tạo agent riêng trên platform. File này tập trung làm rõ Reception; công việc Report vẫn được giữ ở mục 8.
+1. Đối chiếu tên chính xác: `Phan Dũng`, `Dương Dũng` hoặc `Phan Hoàng`.
+2. Chỉ đọc hàng đợi task và folder của người đó trong mục 5.
+3. Kiểm tra code và `git status` trước khi chọn việc; không làm lại task `DONE`.
+4. Nếu người dùng không nêu task ID, chọn task `READY` đầu tiên chưa đạt tiêu chí nghiệm thu.
+5. Nếu task `BLOCKED`, chỉ hoàn thành interface, validator, fixture và contract test độc lập; không giả lập dependency trong production rồi báo hoàn thành.
+6. Không sửa folder của người khác. Khi cần đổi contract do người khác sở hữu, tạo integration request trong `docs/teams/hoang/requests/<slug>/`.
+7. Chạy test phù hợp và ghi handoff trong `docs/teams/hoang/handoffs/<slug>/`.
 
-## 2. Luồng nghiệp vụ Reception bắt buộc
+AI phải mở đầu kết quả làm việc bằng bốn dòng:
 
 ```text
-Nhận tin nhắn cư dân
-        ↓
-Tra cứu kiến thức và trả lời ngay nếu giải quyết được
-        ↓
-Cần nhân viên chuyên môn?
-   ├─ Không → tiếp tục hội thoại, chưa tạo ticket
-   └─ Có
-        ↓
-Tạo ticket draft đúng một lần và lưu active_ticket_id
-        ↓
-Lấy hồ sơ cư dân đã xác minh:
-tên, số điện thoại, căn hộ, tòa, domain
-        ↓
-Hỏi làm rõ sự cố, thu mô tả và ảnh
-        ↓
-Cập nhật ticket + assessment/triage qua backend
-        ↓
-Backend resolve đúng BQL/workspace bằng building_id + domain_id
-        ↓
-Gửi schema ticket đã đủ cho Supervisor của workspace đó
-        ↓
-Nhận ACK đã lưu/enqueue → đăng ký wait → interrupt()
-        ↓
-Event Supervisor/backend đến → resume đúng session → trả lời cư dân
-        ↓
-Mọi tin nhắn tiếp theo tiếp tục active_ticket_id, không tạo ticket mới
+Thành viên: <tên>
+Task: <task ID>
+Folder được phép sửa: <danh sách>
+Dependency đang dùng: <đã có | còn thiếu>
 ```
 
-### 2.1. Các nguyên tắc không được vi phạm
+## 2. Phạm vi Team Hoàng
 
-- Reception trả lời kiến thức phổ thông hoặc RAG trước. Chỉ bắt đầu ticket khi cần nhân viên, có dấu hiệu khẩn, khách từ chối/tự xử lý thất bại hoặc policy yêu cầu.
-- `create_ticket_draft` chỉ chạy khi `active_ticket_id` chưa có. Retry dùng cùng `idempotency_key`.
-- Hồ sơ cư dân được backend lấy từ user đã đăng nhập. Model không tự điền tên, số điện thoại, căn hộ, tòa hoặc domain từ lời nói nếu chưa xác minh.
-- Định tuyến dùng `building_id` và `domain_id` đã xác minh. `building_name` và `domain_name` chỉ hiển thị; Reception không tự chọn tài khoản BQL/workspace.
-- Backend trả `destination_id`, `workspace_id`, `team_id`, route revision và binding cần thiết. Reception không nhận tên tài khoản BQL từ model làm quyền.
-- Schema gửi Supervisor phải khớp [SCHEMA_RECEPTION_SUPERVISOR_V1.md](../../SCHEMA_RECEPTION_SUPERVISOR_V1.md), gồm mã ticket, tên/số điện thoại cư dân, căn hộ, tòa, nội dung, triage, facts và ảnh.
-- Chỉ gọi `interrupt()` sau khi backend xác nhận handoff đã được lưu và event đã enqueue. Không giữ HTTP request chờ Supervisor.
-- Khi resume, kiểm tra `ticket_id`, `ticket_generation`, `correlation_id`, workspace/team và event ID. Event trùng không được trả lời hoặc chạy side effect lần hai.
-- Sau khi có `active_ticket_id`, mọi lượt chat trong channel/session đó chỉ bổ sung, hỏi trạng thái, trả lời Supervisor hoặc yêu cầu hủy ticket này. Không gọi `create_ticket_draft` lần nữa.
-- Nếu cư dân nêu sự cố mới trong cùng hộp chat, Reception thông báo đang xử lý ticket hiện tại và yêu cầu hoàn tất/đóng ticket hoặc mở cuộc hội thoại mới theo policy. Không gộp hai sự cố vào một ticket.
-- Supervisor báo `completed` chưa tự đóng ticket. Backend xác nhận work order/evidence/trạng thái rồi Reception mới nói ticket đã hoàn tất.
+Team Hoàng chịu trách nhiệm:
 
-## 3. State và tool contract của Reception
+- Reception Agent cố định bằng LangGraph/Python.
+- Tool client để Reception gọi API nghiệp vụ qua backend.
+- Runtime, checkpoint, interrupt/resume và tích hợp Reception.
+- Template, tool, nội dung và xuất file của Report Agent để BQL tạo agent báo cáo.
 
-### 3.1. State LangGraph tối thiểu
+Team Hoàng không sở hữu database/migration, frontend, API nghiệp vụ chính, routing BQL, Supervisor/AgentScope groupchat, RAG ingestion hoặc hạ tầng triển khai toàn hệ thống.
 
-```typescript
-type ReceptionState = {
-  channel_id: string;
-  customer_user_id: string;
-  reception_session_id: string;
-  reception_binding_id: string;
+Luồng Reception bắt buộc:
 
-  phase:
-    | "knowledge_chat"
-    | "ticket_draft"
-    | "collecting_profile"
-    | "collecting_incident"
-    | "routing"
-    | "handoff"
-    | "waiting_supervisor"
-    | "ticket_discussion"
-    | "terminal";
-
-  active_ticket_id?: string;
-  ticket_code?: string;
-  ticket_generation?: number;
-  ticket_version?: string;
-  correlation_id?: string;
-
-  verified_profile?: {
-    resident_id: string;
-    resident_name: string;
-    phone_number: string;
-    unit_id: string;
-    unit_number: string;
-    building_id: string;
-    building_code: string;
-    building_name: string;
-    domain_id: string;
-    domain_name: string;
-    location_scope_id: string;
-  };
-
-  incident?: {
-    title?: string;
-    description?: string;
-    category_id?: string;
-    facts: Fact[];
-    file_ids: string[];
-  };
-
-  route?: {
-    destination_id: string;
-    workspace_id: string;
-    team_id: string;
-    route_revision: number;
-    coordination_binding_id: string;
-  };
-
-  pending_interaction_id?: string;
-  last_processed_event_id?: string;
-};
+```text
+Tin nhắn → assess_request + policy
+         ├─ câu hỏi kiến thức → retrieval → trả lời có nguồn
+         ├─ cần làm rõ → chờ cư dân
+         ├─ self-help được phép → quy trình đã duyệt
+         └─ cần nhân viên/khẩn cấp
+                → tạo một ticket draft
+                → lấy hồ sơ cư dân đã xác minh
+                → thu mô tả + file_ids
+                → triage chính thức
+                → backend resolve destination/workspace
+                → handoff schema đã kiểm tra
+                → đăng ký wait → interrupt()
+                → event Supervisor → resume đúng ticket/session
 ```
 
-State chỉ giữ reference/snapshot cần thiết. Database/backend vẫn là nguồn chính thức cho quyền, ticket version, route và trạng thái.
+Một hộp chat chỉ có một `active_ticket_id`. Ảnh lưu ở S3/MinIO do backend quản lý; Reception chỉ giữ `file_id` và `source_message_id`.
 
-### 3.2. Tool Reception cần dùng
+## 3. Baseline đã hoàn thành — không làm lại
 
-| Tool đề xuất | Input chính | Output chính | Owner triển khai API |
+### 3.1. Phan Dũng — `DONE`
+
+- Workflow Python đã có node phân loại, knowledge/self-help, tạo ticket, hồ sơ, incident, triage, routing, handoff và active-ticket dialogue.
+- LLM chỉ đề xuất hành động; policy và code quyết định nhánh thực thi.
+- Graph giữ `pending_file_refs` qua nhiều lượt hỏi hồ sơ, chống trùng và không ghi đè ảnh cũ bằng lượt mới.
+- Hỗ trợ tin nhắn chỉ có ảnh, ảnh trước khi chọn căn hộ và ảnh bổ sung sau handoff.
+- Graph yêu cầu backend xác nhận ảnh đã được liên kết trước khi xóa pending reference.
+
+File nền:
+
+- `agent-reception/src/graph/workflow.py`
+- `agent-reception/src/graph/workflow_validation.py`
+- `agent-reception/src/graph/workflow_contracts.py`
+- `agent-reception/src/prompts/workflow.py`
+- `agent-reception/tests/graph/test_image_references.py`
+
+### 3.2. Dương Dũng — `DONE`
+
+- Đã có `BackendToolPort` dùng HTTP, endpoint cấu hình được.
+- Request mutation giữ nguyên `idempotency_key` khi retry.
+- Đã kiểm tra `file_ids`, loại trùng và yêu cầu `linked_file_ids` từ backend.
+- Timeout/mất response trả kết quả `unknown`; không tự tạo key mới.
+- Đã có contract test bằng HTTP backend giả lập.
+
+File nền:
+
+- `agent-reception/src/tools/backend.py`
+- `agent-reception/tests/tools/test_backend.py`
+
+### 3.3. Phan Hoàng — `DONE` trong phạm vi local/contract
+
+- Đã có SQLite checkpointer bền vững cho local/test.
+- Restart runtime có thể đọc lại state, `active_ticket_id` và file references.
+- Đã có validator snapshot phục hồi từ backend khi checkpoint chưa tồn tại.
+- Đã có `BackendSessionResolver` với endpoint cấu hình được.
+
+File nền:
+
+- `agent-reception/src/persistence/sqlite.py`
+- `agent-reception/src/persistence/recovery.py`
+- `agent-reception/src/adapters/backend/session.py`
+- `agent-reception/tests/persistence/test_sqlite.py`
+- `agent-reception/tests/adapters/backend/test_session.py`
+
+Baseline hiện có **158 Python tests đạt**. Điều này chưa chứng minh endpoint thật, auth thật, PostgreSQL nhiều replica hoặc Supervisor thật đã tích hợp.
+
+## 4. Quyền sở hữu folder
+
+| Thành viên | Được sửa | Không được sửa trực tiếp |
+|---|---|---|
+| **Phan Dũng** | `agent-reception/src/graph/**`, `src/prompts/**`, `tests/graph/**`, `tests/evals/**`; `agent-report/templates/**`, `schemas/**`, `prompts/**`, `examples/**`; `server/src/reporting/narrative/**`, `layouts/**` | HTTP/backend adapter, persistence, transport, DB, Supervisor |
+| **Dương Dũng** | `agent-reception/src/tools/**`, `tests/tools/**`; `server/src/reporting/tools/**`, `metrics/**`, `application/**` và test tương ứng | Graph, prompt, session resolver, persistence, DB/migration |
+| **Phan Hoàng** | `agent-reception/src/persistence/**`, `src/adapters/backend/session.py`, `src/adapters/transport/**`, `src/adapters/events/**`, `src/adapters/model/**`, `src/observability/**`, `src/index.*`, `src/config.*`, `tests/persistence/**`, `tests/runtime/**`, `tests/integration/**`, `tests/adapters/backend/test_session.py`, package config/README; phần Report runtime ở mục 5.3 | Logic graph, tool nghiệp vụ, DB/migration, UI, AgentScope Supervisor |
+
+Quy tắc file dùng chung:
+
+- `agent-reception/src/graph/workflow_contracts.py`: Phan Dũng sở hữu. Dương Dũng và Phan Hoàng gửi request nếu cần đổi.
+- `agent-reception/requirements.txt`, package config và test bootstrap chung: Phan Hoàng sở hữu.
+- `docs/SCHEMA_RECEPTION_SUPERVISOR_V1.md`: contract liên team; chỉ sửa sau khi Hoàng, Đông và Chiến chốt thay đổi.
+- `agent-reception/src/adapters/backend/session.py`: Phan Hoàng sở hữu; Dương Dũng không sửa file này.
+
+## 5. Hàng đợi công việc mới
+
+### 5.1. Phan Dũng — graph, prompt và nội dung Report
+
+Slug: `phan-dung`.
+
+| Task | Trạng thái | Công việc | Nghiệm thu |
 |---|---|---|---|
-| `search_reception_knowledge` | Câu hỏi + context đã xác minh | Câu trả lời có nguồn hoặc `insufficient` | Quang/Chiến; Dương Dũng viết wrapper |
-| `create_ticket_draft` | `channel_id`, lý do, idempotency key | ticket ID/code/generation/version | Chiến |
-| `get_verified_resident_context` | Ticket ID; user lấy từ auth | Tên, điện thoại, unit/building/domain IDs và tên | Chiến |
-| `update_ticket_incident` | Ticket/version, mô tả, facts, file IDs | Version mới, thiếu trường nào | Chiến |
-| `submit_ticket_assessment` | Ticket/version, facts/provenance | Triage decision/status chính thức | Chiến |
-| `resolve_management_destination` | Ticket ID/version; backend đọc building/domain | Destination, workspace, team, route revision/binding hoặc unresolved | Chiến |
-| `handoff_ticket` | Ticket/version, destination và schema v1 | ACK, correlation ID, operation ID | Chiến; Đông nhận ở runtime |
-| `append_ticket_information` | Active ticket/version, message/facts/files | Version mới và delivery status | Chiến |
-| `respond_supervisor_interaction` | Ticket, interaction ID/revision, answers | Accepted/conflict/expired | Chiến |
-| `request_ticket_cancellation` | Active ticket/version, lý do | Accepted/rejected/review | Chiến |
-| `get_ticket_status` | Active ticket ID | Trạng thái và interaction đang chờ | Chiến |
+| **PD09** | `READY` | Sửa lifecycle khi ticket đang chờ Supervisor nhưng Reception vừa trả lời knowledge hoặc từ chối sự cố mới | Event Supervisor đến sau lượt trả lời vẫn resume được; không còn `INTERRUPT_MISMATCH`; không tạo ticket thứ hai |
+| **PD10** | `DONE_BASELINE` | State ảnh: ảnh chờ, ảnh đã link, ảnh của sự cố mới và ảnh trong câu trả lời interaction | Đã có logic và test; không chọn lại trừ khi test hồi quy thất bại |
+| **PD11** | `BLOCKED_CONTRACT` | Hỗ trợ envelope mới của Team Đông: `ticket.submitted`, `resident.message/question/update`, approval và completion | Chỉ code sau khi shared contract được chốt; đúng request/version/interaction; không hiểu câu “đồng ý” mơ hồ là approval |
+| **PD12** | `READY` | Mở rộng eval tiếng Việt cho knowledge, giá tham khảo, self-help, emergency, active ticket và prompt injection | Dataset không có PII thật; assert node, tool calls và state cuối |
+| **PD13** | `READY` | Hoàn thiện template/config/prompt Report Agent cho ba báo cáo: nhân viên, doanh thu sửa chữa, tần suất sự cố | Metric chỉ lấy từ tool; thiếu dữ liệu khác 0; hiển thị kỳ, timezone, scope, nguồn và phiên bản metric |
+| **PD14** | `READY` | Narrative/layout cho báo cáo complete/partial/empty/error | Không bịa KPI; số liệu và nhận xét truy được nguồn; fixture render ổn định |
 
-Dương Dũng chỉ viết client/tool wrapper của Reception; không tự tạo API/backend. Tool mutation phải có timeout, typed errors, idempotency và optimistic version.
+AI của Phan Dũng không viết HTTP client hoặc persistence. Khi cần tool mới, mô tả input/output/error cho Dương Dũng qua request.
 
-### 3.3. Guard chống tạo ticket thứ hai
+### 5.2. Dương Dũng — tool và backend client
 
-Node quyết định phải dùng logic xác định, không chỉ prompt:
+Slug: `duong-dung`.
 
-```typescript
-if (state.active_ticket_id) {
-  return routeMessageToActiveTicket(state.active_ticket_id);
-}
-
-if (!decision.requires_specialist) {
-  return answerFromKnowledge();
-}
-
-return createTicketDraftOnce();
-```
-
-Backend cũng phải có idempotency/unique guard theo operation. Guard trong graph không đủ khi retry hoặc nhiều replica.
-
-## 4. Phân công ba thành viên
-
-| Thành viên | Vai trò | Task Reception | Task Report |
+| Task | Trạng thái | Công việc | Nghiệm thu |
 |---|---|---|---|
-| **Phan Dũng** | Graph, hội thoại, prompt và eval | PD01–PD06 | PD07–PD08 |
-| **Dương Dũng** | Tools, backend client, schema validation | DD01–DD06 | DD07–DD08 |
-| **Phan Hoàng** | Runtime, checkpoint, interrupt/resume và tích hợp | PH01–PH06 | PH07–PH08 |
+| **DD09** | `READY` | Tách schema/validator input-output cho toàn bộ Reception operations khỏi HTTP transport chung | Mỗi operation từ chối field sai; enum/version/file confirmation được kiểm tra runtime |
+| **DD10** | `READY` | Hoàn thiện failure/contract tests cho 400/401/403/404/409/410/422/429/5xx/timeout/duplicate | Phân biệt `not_applied` và `unknown`; mutation retry cùng key; không log token/PII |
+| **DD11** | `BLOCKED_API` | Ánh xạ endpoint thật cho create/update/triage/route/handoff/status/cancel/self-help/emergency | Chỉ hoàn thành khi có OpenAPI/JSON Schema của Chiến; contract test producer-consumer đạt |
+| **DD12** | `READY` | Thiết kế tool Report: filter options, employee performance, feedback details, repair revenue, incident frequency, supporting records, export và export status | Input có kỳ/timezone/scope; output có as-of, metric version, missing-data và source references |
+| **DD13** | `READY` | Viết Report tool wrapper và fake backend contract tests | Không raw SQL; không nhận scope do model tự khai; retry/idempotency đúng side effect class |
+| **DD14** | `BLOCKED_API` | Nối Report tools với backend dữ liệu thật của Chiến | Hai BQL không đọc chéo; doanh thu phân biệt charged/collected; frequency đếm ticket, không đếm message |
 
-### 4.1. Phan Dũng — graph và hội thoại
+Ba định nghĩa Report bắt buộc:
 
-Được sửa:
+- Đánh giá nhân viên: số việc, hoàn thành, đúng hạn, thời gian xử lý, rework, điểm trung bình và số lượt đánh giá.
+- Doanh thu sửa chữa: tiền tính phí, thực thu, còn phải thu; phân biệt ngày hoàn thành và ngày thanh toán.
+- Tần suất sự cố: nhóm điện/nước/... theo taxonomy chuẩn; tách `incident` khỏi `service_request`.
 
-- `agent-reception/src/graph/**`
-- `agent-reception/src/prompts/**`
-- `agent-reception/tests/graph/**`
-- `agent-reception/tests/evals/**`
-- Report: `agent-report/templates/**`, `schemas/**`, `prompts/**`, `examples/**`; `server/src/reporting/narrative/**`, `layouts/**` và test tương ứng.
+AI của Dương Dũng không tự tạo API backend hoặc đọc PostgreSQL trực tiếp.
 
-| Task | Công việc | Điều kiện hoàn thành |
-|---|---|---|
-| PD01 | Định nghĩa `ReceptionState`, phase và graph factory | Graph chạy bằng fake ports, state serializable/versioned |
-| PD02 | Node nhận tin → gọi knowledge → trả lời ngay hoặc quyết định cần chuyên môn | Không tạo ticket khi knowledge đủ; không dùng prompt thay policy khẩn cấp |
-| PD03 | Node tạo ticket draft một lần, lấy hồ sơ, hỏi thiếu thông tin/ảnh và fill incident | Có guard `active_ticket_id`; không bịa hồ sơ; câu hỏi không lặp |
-| PD04 | Node routing/handoff và đóng gói schema v1 | Không tự chọn workspace; chỉ handoff khi profile/incident/triage đủ |
-| PD05 | Node `interrupt()`/resume và hội thoại quanh active ticket | ACK trước interrupt; resume đúng event; tin sau không tạo ticket mới |
-| PD06 | Eval: kiến thức đủ, thiếu hồ sơ, nhiều căn hộ, ảnh thiếu, emergency, sự cố mới cùng chat, cancel, event trùng/stale | Dataset tiếng Việt, expected state/tool calls, không dùng PII thật |
-| PD07 | Template/config/prompt Report agent để BQL tự tạo | Không SQL/tool tùy ý; pin template/metric version |
-| PD08 | Narrative/layout Report, empty/partial/error states | Không bịa KPI; nội dung trỏ nguồn do tool cung cấp |
+### 5.3. Phan Hoàng — runtime, persistence và tích hợp
 
-Phan Dũng không viết HTTP client, persistence hoặc backend. Graph gọi interface tool của Dương Dũng qua contract Phan Hoàng chốt.
+Slug: `phan-hoang`.
 
-### 4.2. Dương Dũng — tools và backend client
+Folder Report được sửa thêm:
 
-Được sửa:
+- `agent-report/manifest.json`, `agent-report/README.md`
+- `server/src/reporting/contracts/**`, `rendering/**`, `adapters/**`, `index.*`
+- `worker/src/jobs/reporting/**` và test tương ứng
 
-- `agent-reception/src/tools/**`
-- `agent-reception/src/adapters/backend/**`
-- `agent-reception/tests/tools/**`
-- `agent-reception/tests/adapters/backend/**`
-- Report: `server/src/reporting/tools/**`, `metrics/**`, `application/**` và test tương ứng.
+| Task | Trạng thái | Công việc | Nghiệm thu |
+|---|---|---|---|
+| **PH09** | `READY` | Tạo Python runtime composition: config, model port, graph, tool port, resolver và checkpointer | Có entrypoint Python; config fail-fast; không dùng model TypeScript trực tiếp trong Python; test bằng injected ports |
+| **PH10** | `READY_PARTIAL` | Viết transport run/read/resume/stream với authenticated context interface | Không tin tenant/user/thread từ body; contract test request/resume; auth thật chờ Chiến |
+| **PH11** | `BLOCKED_DB` | Thay SQLite local bằng PostgreSQL checkpointer cho production; lease/fencing nhiều replica | Cần `TEST_DATABASE_URL`; restart và concurrent worker test đạt; không dùng SQLite production |
+| **PH12** | `READY_PARTIAL` | Event consumer + wait registry + buffered event + dedup | Có fake event-store integration test; event trước wait không mất; bus/outbox thật chờ Team 5/Chiến |
+| **PH13** | `BLOCKED_API` | Nối graph + tools + backend + Supervisor thật | Chạy E2E knowledge → ticket → handoff → interrupt → resume; không production mock |
+| **PH14** | `READY` | Observability và isolation | Trace có request/correlation/ticket ID đã lọc; hai tenant/thread không lẫn; không log ảnh URL/token/điện thoại đầy đủ |
+| **PH15** | `READY_PARTIAL` | Report manifest, renderer/export adapter và job contract | Preview chạy bằng fixture; file có source metadata; storage/job thật chờ Chiến/Team 5 |
 
-| Task | Công việc | Điều kiện hoàn thành |
-|---|---|---|
-| DD01 | HTTP client, auth context, validator, typed error, timeout/correlation | Không log secret/PII thừa; validate response; phân biệt retryable |
-| DD02 | Wrappers knowledge, create draft và verified resident context | User lấy từ auth; retry cùng key; response sai schema bị từ chối |
-| DD03 | Wrappers update incident, upload/file reference và assessment | Facts có provenance; version conflict trả typed result |
-| DD04 | Wrappers resolve destination và handoff schema v1 | Input không nhận workspace từ model; validate ACK/correlation/route |
-| DD05 | Wrappers append info, response interaction, cancel và status | Luôn dùng active ticket; stale route/generation không retry mù |
-| DD06 | Contract/failure tests: 401/403/404/409/410/422/429/timeout/duplicate | Timeout không tạo key/ticket mới; duplicate trả cùng operation |
-| DD07 | Report metric catalog/tools và authorized data port client | KPI tính bằng code; query allowlist; đúng kỳ/timezone |
-| DD08 | Report application pipeline, source lineage/idempotency | Retry không tạo artifact chính thức trùng; cross-scope bị từ chối |
+Phan Hoàng là đầu mối gửi contract cho Team Chiến và Team Đông, nhưng không sửa code của hai team thay họ.
 
-Dương Dũng không đọc PostgreSQL trực tiếp và không viết routing algorithm của backend. Nếu API chưa có, tạo request tại `docs/teams/hoang/requests/duong-dung/` với input/output/error/test cần thiết.
+## 6. Dependency liên team
 
-### 4.3. Phan Hoàng — runtime và tích hợp
+| Dependency | Owner ngoài Team Hoàng | Team Hoàng làm được trước | Điều kiện tích hợp thật |
+|---|---|---|---|
+| API ticket/profile/triage/routing/file | Chiến | Interface, validator, fake contract test | OpenAPI/JSON Schema + auth + endpoint test |
+| Schema điều phối và approval/completion | Đông + Chiến | Adapter interface và fixture | Contract version được chốt trong shared contracts |
+| RAG/self-help/giá | Quang + Chiến | Port và hành vi fallback | Tool được đăng ký, có ACL/citation/version |
+| PostgreSQL checkpoint/lease | Team 5 | Factory/config/migration-free adapter | DB test riêng và thông số pool/retention |
+| Event bus/outbox/inbox | Chiến + Team 5 | Consumer interface, dedup/buffer tests | Event catalog và transport thật |
+| S3/MinIO | Chiến + Team 5 | Chỉ truyền `file_ids` và kiểm confirmation | Upload/complete/authorize API thật |
 
-Được sửa:
+Không đánh dấu task tích hợp là `DONE` chỉ vì fake test đạt.
 
-- `agent-reception/src/index.ts`, `config.ts`, `contracts/**`, `persistence/**`, `observability/**`
-- `agent-reception/src/adapters/transport/**`, `events/**`, `model/**`
-- `agent-reception/tests/runtime/**`, `persistence/**`, `integration/**`, `support/**`
-- Cấu hình package trong `agent-reception/`; `agent-langgraph/**` khi thật sự cần reuse.
-- Report: `agent-report/manifest.json`, `README.md`; `server/src/reporting/contracts/**`, `rendering/**`, `adapters/**`, `index.ts`; `worker/src/jobs/reporting/**` và test tương ứng.
+## 7. Thứ tự triển khai
 
-| Task | Công việc | Điều kiện hoàn thành |
-|---|---|---|
-| PH01 | Khởi tạo package, config/model factory, interface graph/tool/checkpointer, healthcheck/test harness | Có scripts chạy/test/typecheck; không secret trong repo |
-| PH02 | Transport AG-UI/HTTP, authenticated binding và channel/session resolver | Không tin user/thread/tenant từ browser; một session có active ticket rõ ràng |
-| PH03 | Persistent checkpointer, lease/fencing, idempotent operations | Restart không mất active ticket; nhiều replica không chạy tool đúp |
-| PH04 | Event consumer, wait registry và `interrupt()`/resume | Event đến trước wait không mất; dedup event; resume đúng ticket/session |
-| PH05 | Nối graph Phan Dũng + tools Dương Dũng + backend; integration toàn luồng | Knowledge → draft → profile → incident → route → handoff → wait → resume chạy thật |
-| PH06 | Test isolation/recovery/telemetry và bàn giao Team 5 | Hai user/ticket không lẫn; revoke/reroute/reopen được chặn; trace lọc PII |
-| PH07 | Report manifest và tích hợp builder Chiến/runtime Đông | BQL tạo Report agent riêng, pin release/template/tool grants |
-| PH08 | DOCX renderer, storage adapter, export job và integration | File đúng nguồn/quyền; retry/cancel không publish trùng |
+1. **Đường găng Reception độc lập:** PD09, DD09–DD10, PH09–PH10 và PH12.
+2. **Chốt contract:** SCHEMA Reception–Supervisor mới, OpenAPI backend và event catalog.
+3. **Tích hợp thật:** DD11, PH11 và PH13.
+4. **Report Agent:** PD13–PD14, DD12–DD14, PH15.
+5. **Hardening:** PD12, PH14 và E2E liên team.
 
-Phan Hoàng là đầu mối contract với Chiến và Đông, không được sửa DB/migration/UI/AgentScope thay owner.
+Ba người không được cùng sửa một file trong cùng thời điểm. Thay đổi contract đi theo thứ tự: owner contract → consumer update → integration test.
 
-## 5. Folder không thuộc Team Hoàng
+## 8. Test bắt buộc trước handoff
 
-- `server/src/db/**`, `server/drizzle/**`, `app/**`, `shared/contracts/**`: Team Chiến.
-- `server/src/knowledge/**`, `server/src/technical-tools/**`: Team Quang.
-- `agent-coordination/**`: Team Đông.
-- `supervisor/**`, worker entrypoint, Docker, CI, charts, root lockfile: Team 5.
-- Team Hoàng chỉ sửa `server/src/reporting/**` và `worker/src/jobs/reporting/**` đúng owner ở mục 4.
+- Python: `python -B -m pytest -q -p no:cacheprovider agent-reception/tests`
+- Graph: knowledge đủ không tạo ticket; ticket tạo đúng một lần; ảnh không mất qua nhiều lượt; event sai scope bị từ chối.
+- Tools: cùng idempotency key khi retry; file link confirmation; lỗi `unknown` không chạy mutation mới.
+- Persistence: đóng/mở runtime vẫn đọc đúng state; backend recovery không ghép file/ticket sai user.
+- Integration thật chỉ được ghi đạt khi dùng endpoint, database và Supervisor thật.
+- Nếu Bun chưa có trong `PATH`, báo chưa chạy TypeScript tests; không ghi là đã đạt.
 
-## 6. Thứ tự thực hiện
-
-### Mốc R0 — Chốt contract
-
-- PH01/PH02 chốt interface nội bộ và binding.
-- DD01 chốt tool request/response với Chiến.
-- PD01 viết state/graph bằng fake ports.
-- Chốt [SCHEMA_RECEPTION_SUPERVISOR_V1.md](../../SCHEMA_RECEPTION_SUPERVISOR_V1.md) với Đông/Chiến.
-
-### Mốc R1 — Trả lời kiến thức và tạo draft
-
-- PD02/PD03 + DD02/DD03 + PH03.
-- Demo: câu hỏi giải quyết được không có ticket; câu cần kỹ thuật tạo đúng một draft và lấy đúng hồ sơ.
-
-### Mốc R2 — Routing và handoff
-
-- PD04 + DD04 + PH05.
-- Demo: đủ dữ liệu mới resolve; backend chọn đúng workspace; Supervisor nhận đúng schema; retry không tạo team/handoff trùng.
-
-### Mốc R3 — Interrupt và các lượt tiếp theo
-
-- PD05 + DD05 + PH04/PH05.
-- Demo: Supervisor hỏi thêm → Reception resume → khách trả lời; bổ sung ảnh/hủy; tất cả dùng cùng ticket. Sự cố mới cùng chat không tạo ticket thứ hai.
-
-### Mốc R4 — Hardening
-
-- PD06 + DD06 + PH06; Team 5 chạy E2E với backend/Supervisor thật.
-- Chỉ đóng task khi không còn production mock trong đường nghiệm thu.
-
-Report PD07–PD08, DD07–DD08 và PH07–PH08 chạy song song theo C09/C14/D08; không được làm chậm đường găng Reception.
-
-## 7. Test bắt buộc
-
-1. Knowledge đủ → trả lời, không gọi create ticket.
-2. Cần chuyên môn → create draft đúng một lần dù retry.
-3. Profile lấy theo user đăng nhập; không cho chọn căn hộ người khác.
-4. Thiếu ảnh/mô tả → hỏi tiếp; chưa route/handoff.
-5. Building/domain đổi hợp lệ → backend resolve lại; graph không tự giữ workspace cũ.
-6. Route unresolved → hỏi/review; không chọn workspace mặc định.
-7. Handoff ACK bị mất → retry cùng key, không gửi hai lần.
-8. Restart khi đang chờ → phục hồi `active_ticket_id` và wait.
-9. Event Supervisor trùng/stale/sai ticket → không resume hoặc trả lời lặp.
-10. Tin nhắn tiếp theo, bổ sung ảnh và cancel → cùng active ticket.
-11. Cư dân báo sự cố mới cùng hộp chat → không tạo ticket mới; hướng dẫn mở luồng mới theo policy.
-12. Supervisor completed nhưng backend chưa xác nhận → không nói ticket đã đóng.
-
-## 8. Prompt giao cho AI
+## 9. Mẫu prompt thành viên gửi cho AI
 
 ```text
 Tôi là <Phan Dũng | Dương Dũng | Phan Hoàng>, Team Hoàng.
+
 Đọc đầy đủ:
 - docs/teams/hoang/PHAN_CONG_3_THANH_VIEN.md
 - docs/SCHEMA_RECEPTION_SUPERVISOR_V1.md
 - docs/KE_HOACH_HOAN_THIEN_5_TEAM.md
 
-Tự chọn task chưa hoàn thành đầu tiên thuộc đúng tên tôi và có dependency sẵn sàng.
-Chỉ sửa folder được giao ở mục 4. Không sửa file owner khác, DB, migration,
-UI, Supervisor, worker entrypoint hoặc root lockfile.
-Kiểm tra code/API thật trước khi triển khai; tên tool trong kế hoạch là đề xuất.
-Nếu dependency backend chưa có, viết interface + contract tests và tạo request trong
-docs/teams/hoang/requests/<slug-của-tôi>/; không đưa mock vào production.
-Thực hiện task đến tiêu chí hoàn thành, chạy test phù hợp và ghi handoff tại
-docs/teams/hoang/handoffs/<slug-của-tôi>/.
-Báo rõ file sửa, test đã chạy, dependency còn thiếu và phần chưa tích hợp thật.
+Nếu tôi không nêu task ID, hãy kiểm tra code rồi chọn task READY đầu tiên chưa hoàn thành
+trong đúng mục mang tên tôi. Không làm lại baseline DONE.
+
+Trước khi sửa, hãy báo tên, task ID, folder được phép sửa và dependency.
+Chỉ sửa folder của tôi. Nếu cần đổi contract/file của người khác, tạo integration request
+trong docs/teams/hoang/requests/<slug>/ và tiếp tục phần độc lập.
+
+Không đưa fake backend/model/checkpointer vào production path. Thực hiện đến tiêu chí
+nghiệm thu, chạy test, ghi handoff và báo rõ phần đã kiểm chứng, phần còn chờ team khác.
 ```
 
-Slug: Phan Dũng = `phan-dung`; Dương Dũng = `duong-dung`; Phan Hoàng = `phan-hoang`.
+Slug:
+
+- Phan Dũng: `phan-dung`
+- Dương Dũng: `duong-dung`
+- Phan Hoàng: `phan-hoang`

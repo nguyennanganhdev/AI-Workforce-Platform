@@ -122,7 +122,8 @@ class Intake:
 
 
 def harness(model=None, override=None, assess_model=None, **options):
-    saver, calls, saved_plans, reconciliations = InMemorySaver(), [], [], []
+    saver = options.pop("checkpointer", None) or InMemorySaver()
+    calls, saved_plans, reconciliations = [], [], []
     mutable = {
         "ticket": {
             "ticket_id": "ticket-synthetic",
@@ -198,9 +199,18 @@ def harness(model=None, override=None, assess_model=None, **options):
         if op == "get_supervisor_event":
             return deepcopy(mutable["event"])
         if op == "append_ticket_information":
-            return {"ticket": bump(), "delivered": True, "scope_changed": False}
+            return {
+                "ticket": bump(),
+                "delivered": True,
+                "scope_changed": False,
+                "linked_file_ids": call["input"].get("file_ids", []),
+            }
         if op == "respond_supervisor_interaction":
-            return {"ticket": bump(), "status": "accepted"}
+            return {
+                "ticket": bump(),
+                "status": "accepted",
+                "linked_file_ids": call["input"].get("file_ids", []),
+            }
         if op == "request_ticket_cancellation":
             return {"ticket": bump(), "status": "accepted"}
         if op == "get_ticket_status":

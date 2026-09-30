@@ -39,6 +39,24 @@ def strings(value, limit=256) -> list[str]:
     return [text(item) for item in value]
 
 
+def parse_file_refs(value, limit=256) -> list[dict]:
+    if not isinstance(value, list) or len(value) > limit:
+        raise GraphFault("INVALID_FILE_REFERENCES")
+    result = []
+    seen = set()
+    for item in value:
+        v = record(item)
+        ref = {
+            "file_id": text(v.get("file_id")),
+            "source_message_id": text(v.get("source_message_id")),
+        }
+        identity = (ref["file_id"], ref["source_message_id"])
+        if identity not in seen:
+            seen.add(identity)
+            result.append(ref)
+    return result
+
+
 def choice(value, choices):
     if not isinstance(value, str) or value not in choices:
         raise GraphFault("INVALID_WORKFLOW_OUTPUT")
@@ -275,7 +293,7 @@ def build_handoff(state, sent_at) -> dict:
     }
 
 
-def parse_turn(content, message_id) -> dict:
+def parse_turn(content, message_ids) -> dict:
     if not isinstance(content, str) or len(content) > 32768:
         raise GraphFault("INVALID_RESIDENT_TURN")
     try:
@@ -285,8 +303,12 @@ def parse_turn(content, message_id) -> dict:
     if set(v) - {"intent", "title", "description", "facts", "answers"}:
         raise GraphFault("INVALID_RESIDENT_TURN")
     parsed_facts = parse_facts(v.get("facts", []))
+    allowed_message_ids = (
+        {message_ids} if isinstance(message_ids, str) else set(strings(message_ids, 32))
+    )
     if any(
-        fact["source"] == "staff_verified" or fact["source_message_id"] != message_id
+        fact["source"] == "staff_verified"
+        or fact["source_message_id"] not in allowed_message_ids
         for fact in parsed_facts
     ):
         raise GraphFault("MODEL_CANNOT_VERIFY_FACTS")

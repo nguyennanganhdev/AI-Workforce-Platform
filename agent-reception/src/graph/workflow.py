@@ -12,6 +12,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
 from ..prompts.workflow import ASSESS_REQUEST_PROMPT, RESIDENT_TURN_PROMPT
+from ..persistence.recovery import parse_recovered_session
 from .assessment import (
     ASSESSMENT_SCHEMA,
     decide_request,
@@ -31,6 +32,7 @@ from .workflow_validation import (
     integer,
     parse_ack,
     parse_incident,
+    parse_file_refs,
     parse_profile,
     parse_route,
     parse_supervisor_event,
@@ -138,6 +140,29 @@ class ReceptionWorkflowGraph:
         return {**data, "next": node}
 
     @staticmethod
+    def _consume_pending_files(data, file_ids):
+        consumed = set(file_ids)
+        return {
+            **data,
+            "pending_file_refs": [
+                ref
+                for ref in data.get("pending_file_refs", [])
+                if ref["file_id"] not in consumed
+            ],
+            "linked_file_ids": list(
+                dict.fromkeys(data.get("linked_file_ids", []) + list(file_ids))
+            ),
+        }
+
+    @staticmethod
+    def _pending_file_ids(data):
+        return list(
+            dict.fromkeys(
+                ref["file_id"] for ref in data.get("pending_file_refs", [])
+            )
+        )
+
+    @staticmethod
     def _ticket_input(data):
         ticket = data.get("ticket")
         if not ticket or data.get("active_ticket_id") != ticket["ticket_id"]:
@@ -226,6 +251,7 @@ class ReceptionWorkflowGraph:
         }
 
     async def _extract(self, data, config):
+        pending_messages = data.get("pending_incident_messages", [])
         response = await self._budget(
             config,
             lambda signal: self.dependencies.model.ainvoke(
@@ -235,6 +261,10 @@ class ReceptionWorkflowGraph:
                         content=compact_json(
                             {
                                 "message": data["message"],
+                                "conversation_history": data.get(
+                                    "conversation_history", []
+                                ),
+                                "pending_incident_messages": pending_messages,
                                 "active_incident": data.get("incident"),
                                 "pending_interaction": data.get("pending_interaction"),
                             }
@@ -243,7 +273,11 @@ class ReceptionWorkflowGraph:
                 ]
             ),
         )
-        return parse_turn(response.content, data["message"]["id"])
+        return parse_turn(
+            response.content,
+            [message["id"] for message in pending_messages]
+            or [data["message"]["id"]],
+        )
 
     async def _receive_message(self, data, config):
         history = data.get("conversation_history", [])
@@ -258,10 +292,25 @@ class ReceptionWorkflowGraph:
                     }
                 ]
             )[-24:]
+        pending_refs = parse_file_refs(data.get("pending_file_refs", []))
+        linked = set(data.get("linked_file_ids", []))
+        known_refs = {(ref["file_id"], ref["source_message_id"]) for ref in pending_refs}
+        for file_id in data["message"].get("fileIds", []):
+            identity = (file_id, data["message"]["id"])
+            if file_id not in linked and identity not in known_refs:
+                pending_refs.append(
+                    {"file_id": file_id, "source_message_id": data["message"]["id"]}
+                )
+                known_refs.add(identity)
+        pending_messages = data.get("pending_incident_messages", [])
+        if not any(item["id"] == data["message"]["id"] for item in pending_messages):
+            pending_messages = (pending_messages + [data["message"]])[-24:]
         return self._next(
             {
                 **data,
                 "conversation_history": history,
+                "pending_file_refs": pending_refs,
+                "pending_incident_messages": pending_messages,
                 "decision": None,
                 "safety_reply": None,
                 "safety_citations": [],
@@ -272,11 +321,11 @@ class ReceptionWorkflowGraph:
     @staticmethod
     def _existing_node(data):
         node = (
-            "load_resident_context"
+            "active_ticket_dialogue"
+            if data.get("ack")
+            else "load_resident_context"
             if not data.get("verified_profile")
             else "collect_incident_details"
-            if not data.get("ack")
-            else "active_ticket_dialogue"
         )
         return node
 
@@ -439,6 +488,8 @@ class ReceptionWorkflowGraph:
                         "retrievalRunId": knowledge["retrievalRunId"],
                     },
                     "reply": knowledge["answer"],
+                    "pending_file_refs": [],
+                    "pending_incident_messages": [],
                 },
                 END,
             )
@@ -543,6 +594,8 @@ class ReceptionWorkflowGraph:
                 {
                     **data,
                     "reply": "Cuộc hội thoại gắn với ticket hiện tại. Vui lòng mở cuộc hội thoại mới cho sự cố khác.",
+                    "pending_file_refs": [],
+                    "pending_incident_messages": [],
                 },
                 END,
             )
@@ -554,6 +607,7 @@ class ReceptionWorkflowGraph:
             "facts": [],
             "file_ids": [],
         }
+        pending_file_ids = self._pending_file_ids(data)
         incident = {
             "title": prior["title"] or turn.get("title", ""),
             "description": "\n".join(
@@ -561,7 +615,7 @@ class ReceptionWorkflowGraph:
             ),
             "facts": prior["facts"] + turn["facts"],
             "file_ids": list(
-                dict.fromkeys(prior["file_ids"] + data["message"].get("fileIds", []))
+                dict.fromkeys(prior["file_ids"] + pending_file_ids)
             ),
         }
         return self._plan(
@@ -667,6 +721,8 @@ class ReceptionWorkflowGraph:
                     **data,
                     "turn": turn,
                     "reply": "Ticket hiện tại vẫn được giữ. Vui lòng mở cuộc hội thoại mới cho sự cố khác.",
+                    "pending_file_refs": [],
+                    "pending_incident_messages": [],
                 },
                 END,
             )
@@ -709,6 +765,7 @@ class ReceptionWorkflowGraph:
                     "interaction_revision": info["revision"],
                     "source_message_id": data["message"]["id"],
                     "answers": turn["answers"],
+                    "file_ids": self._pending_file_ids(data),
                 },
                 after,
             )
@@ -720,7 +777,7 @@ class ReceptionWorkflowGraph:
                 "source_message_id": data["message"]["id"],
                 "message": data["message"]["text"],
                 "facts": turn["facts"],
-                "file_ids": data["message"].get("fileIds", []),
+                "file_ids": self._pending_file_ids(data),
             },
             after,
         )
@@ -966,12 +1023,18 @@ class ReceptionWorkflowGraph:
                 updated.update(route=None, ack=None, triage=None, wait_registered=False)
             return {**updated, "verified_profile": profile}
         if operation == "update_ticket_incident":
+            linked_file_ids = list(pending["input"]["incident"]["file_ids"])
+            returned_incident = parse_incident(v.get("incident"))
+            if not set(linked_file_ids).issubset(returned_incident["file_ids"]):
+                raise GraphFault("FILE_LINK_CONFIRMATION_MISSING")
             updated.update(
                 ticket=parse_ticket(v.get("ticket"), data.get("ticket")),
-                incident=parse_incident(v.get("incident")),
+                incident=returned_incident,
                 route=None,
                 triage=None,
             )
+            updated = self._consume_pending_files(updated, linked_file_ids)
+            updated["pending_incident_messages"] = []
             missing = [
                 field
                 for field in strings(v.get("missing_fields"))
@@ -1040,6 +1103,14 @@ class ReceptionWorkflowGraph:
             )
             if changed:
                 return self._clear_scope(updated, ticket)
+            requested_files = pending["input"].get("file_ids", [])
+            confirmed_files = strings(v.get("linked_file_ids", []))
+            if not set(requested_files).issubset(confirmed_files):
+                raise GraphFault("FILE_LINK_CONFIRMATION_MISSING")
+            updated = self._consume_pending_files(
+                updated, requested_files
+            )
+            updated["pending_incident_messages"] = []
             return {
                 **updated,
                 "ticket": ticket,
@@ -1054,6 +1125,14 @@ class ReceptionWorkflowGraph:
                 != "accepted"
             ):
                 return self._review(updated, "INTERACTION_CONFLICT_OR_EXPIRED")
+            requested_files = pending["input"].get("file_ids", [])
+            confirmed_files = strings(v.get("linked_file_ids", []))
+            if not set(requested_files).issubset(confirmed_files):
+                raise GraphFault("FILE_LINK_CONFIRMATION_MISSING")
+            updated = self._consume_pending_files(
+                updated, requested_files
+            )
+            updated["pending_incident_messages"] = []
             return {
                 **updated,
                 "pending_interaction": None,
@@ -1393,13 +1472,11 @@ class ReceptionWorkflowGraph:
                     if old != key:
                         raise GraphFault("OPERATION_PAYLOAD_CONFLICT")
                     return self._result(data, [], True)
-                session = await with_budget(
+                session = parse_recovered_session(await with_budget(
                     self.options.timeout_ms,
                     signal,
                     lambda child: self.options.resolve_session(context, child),
-                )
-                text(session.get("channel_id"))
-                text(session.get("reception_session_id"))
+                ))
                 if data and any(
                     session[field] != data[field]
                     for field in ("channel_id", "reception_session_id")
@@ -1430,6 +1507,19 @@ class ReceptionWorkflowGraph:
                         "processed_event_ids": [],
                         "last_event_version": -1,
                         "completed_operations": [],
+                        "pending_file_refs": session["pending_file_refs"],
+                        "linked_file_ids": session["linked_file_ids"],
+                        "pending_incident_messages": [],
+                        **(
+                            {
+                                "ticket": session["ticket"],
+                                "active_ticket_id": session["active_ticket_id"],
+                            }
+                            if session["ticket"]
+                            else {}
+                        ),
+                        **({"route": session["route"]} if session["route"] else {}),
+                        **({"ack": session["ack"]} if session["ack"] else {}),
                     }
                 data = {
                     **data,
@@ -1473,8 +1563,12 @@ class ReceptionWorkflowGraph:
     def _resident_key(operation_id, message):
         text(operation_id)
         text(message.get("id"))
-        text(message.get("text"))
-        strings(message.get("fileIds", []))
+        message_text = message.get("text")
+        file_ids = strings(message.get("fileIds", []))
+        if not isinstance(message_text, str) or len(message_text) > 16384:
+            raise GraphFault("INVALID_RESIDENT_MESSAGE")
+        if not message_text.strip() and not file_ids:
+            raise GraphFault("INVALID_RESIDENT_MESSAGE")
         # Canonical ordering avoids dictionary insertion-order affecting replay identity.
         import json
 

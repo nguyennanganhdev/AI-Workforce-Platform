@@ -272,6 +272,7 @@ class InteractionInput(TicketInput):
     interaction_revision: int
     source_message_id: str
     answers: dict[str, str]
+    file_ids: list[str]
 
 
 class CancellationInput(TicketInput):
@@ -379,6 +380,9 @@ class WorkflowState(TypedDict):
     request_policy: NotRequired[RequestPolicy]
     conversation_history: NotRequired[list[dict[str, Any]]]
     self_help: NotRequired[dict[str, Any] | None]
+    pending_file_refs: NotRequired[list[dict[str, str]]]
+    linked_file_ids: NotRequired[list[str]]
+    pending_incident_messages: NotRequired[list[ResidentMessage]]
 
 
 # Semantic operation inputs, not a backend registration or HTTP route catalog.

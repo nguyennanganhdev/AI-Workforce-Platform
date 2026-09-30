@@ -37,6 +37,22 @@ bun run test
 bun run typecheck
 ```
 
+Phần workflow nghiệp vụ viết bằng Python. Cài dependency cố định rồi chạy test:
+
+```sh
+python -m pip install -r requirements.txt
+python -m pytest tests
+```
+
+`src/tools/backend.py` gọi các endpoint nội bộ có thể cấu hình để thực thi/reconcile
+operation. Backend phải xác nhận `linked_file_ids` cho thao tác bổ sung ảnh. URL thật,
+service credential và API của Team Chiến không được hard-code trong graph.
+
+`src/persistence/sqlite.py` cung cấp checkpointer SQLite bền vững cho local/test.
+Production nhiều replica cần thay bằng checkpointer PostgreSQL tương thích. Khi một
+thread chưa có checkpoint, `resolve_session` lấy snapshot ticket/file đã xác minh từ
+backend theo contract trong `src/persistence/recovery.py`.
+
 `GET /health` trả HTTP 200 và `{"status":"ok"}`, với `Cache-Control: no-store`.
 Đây là liveness của bootstrap, chưa phải readiness của graph/backend/model.
 Mọi route/method khác trả 404. Không có run endpoint hoặc mock nghiệp vụ production.
