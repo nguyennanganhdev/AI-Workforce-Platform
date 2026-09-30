@@ -9,7 +9,7 @@ from copy import deepcopy
 
 from pydantic import ValidationError
 
-from . import messaging
+from . import context_builder, mailbox, messaging, task_board
 from .models import (
     ActiveOperation,
     AddParticipant,
@@ -20,10 +20,13 @@ from .models import (
     Command,
     Error,
     Failure,
+    MentionAgent,
     MessageInput,
     OpenRoom,
     OperationRecord,
     ParticipantSpec,
+    PutContext,
+    PutTask,
     Query,
     RoomData,
     RoomError,
@@ -80,9 +83,13 @@ class RoomService:
             pause_reason=room.pause_reason,
             operation_id=active.operation_id if active else None,
             turn_id=payload.turn_id if isinstance(payload, RunTurn) else None,
-            task_id=payload.task_id if isinstance(payload, RunTurn) else None,
+            task_id=payload.task_id
+            if isinstance(payload, (RunTurn, MentionAgent))
+            else None,
             source_run_id=active.source_run_id if active else None,
-            speaker_agent_version_id=room.last_speaker,
+            speaker_agent_version_id=active.participant.agent_version_id
+            if active
+            else room.last_speaker,
             turn_status=status,
             messages=deepcopy(room.transcript),
             follow_up_requests=output.follow_up_requests if output else [],
@@ -94,13 +101,20 @@ class RoomService:
                 for p in room.participants
             ],
             transcript_cursor=room.transcript_cursor,
+            tasks=deepcopy(list(room.tasks.values())),
             needs_dispatcher_decision=room.room_state != "running",
         )
 
     @staticmethod
     def _invocation(room: Snapshot, active: ActiveOperation) -> Invocation:
         payload = active.command.payload
-        assert isinstance(payload, RunTurn)
+        assert isinstance(payload, (RunTurn, MentionAgent))
+        context = context_builder.build(
+            room,
+            active.participant.agent_version_id,
+            payload.task_id,
+            payload.in_reply_to_message_id,
+        )
         return Invocation(
             active.operation_id,
             active.fence,
@@ -108,8 +122,10 @@ class RoomService:
             room.room_id,
             active.participant,
             active.source_run_id,
-            tuple(deepcopy(room.transcript)),
+            context.messages,
             payload.instruction,
+            context.tasks,
+            context.ticket,
         )
 
     async def execute(self, raw: Command | dict) -> Success | Failure:
@@ -196,6 +212,8 @@ class RoomService:
                         )
                         validate_resolved(spec, resolved, room)
                         room.participants.append(resolved)
+                    for item in p.ticket_context:
+                        task_board.put_context(room, item)
                     messaging.append(room, p.initial_message, ctx.principal_id)
                     state.snapshot = room
                 result = Success(
@@ -232,20 +250,40 @@ class RoomService:
                     raise RoomError(
                         "ROOM_BUSY" if room.room_state == "running" else "ROOM_PAUSED"
                     )
-                if isinstance(p, RunTurn):
-                    if room.room_state == "paused":
+                if isinstance(p, (RunTurn, MentionAgent)):
+                    if room.room_state == "paused" and isinstance(p, RunTurn):
                         raise RoomError(
                             "TURN_LIMIT"
                             if room.pause_reason == "max_turns"
                             else "ROOM_PAUSED"
                         )
-                    participant = member(room, p.speaker_agent_version_id)
-                    if p.turn_id in room.used_turn_ids:
+                    if isinstance(p, MentionAgent):
+                        if p.task_id and p.task_id not in room.tasks:
+                            raise RoomError(
+                                "NOT_FOUND", "Mention task is not in this room"
+                            )
+                        participant = next(
+                            (
+                                x
+                                for x in room.participants
+                                if x.platform_agent_id == p.mentioned_agent_id
+                            ),
+                            None,
+                        )
+                        if participant is None:
+                            raise RoomError("NOT_MEMBER")
+                    else:
+                        participant = member(room, p.speaker_agent_version_id)
+                    if isinstance(p, RunTurn) and p.turn_id in room.used_turn_ids:
                         raise RoomError("IDEMPOTENCY_CONFLICT", "turn_id already used")
-                    if room.turns_used >= room.policy.max_turns:
+                    if (
+                        isinstance(p, RunTurn)
+                        and room.turns_used >= room.policy.max_turns
+                    ):
                         raise RoomError("TURN_LIMIT")
                     if (
-                        room.last_speaker == participant.agent_version_id
+                        isinstance(p, RunTurn)
+                        and room.last_speaker == participant.agent_version_id
                         and room.consecutive_turns >= room.policy.max_consecutive_turns
                     ):
                         raise RoomError("CONSECUTIVE_LIMIT")
@@ -268,18 +306,42 @@ class RoomService:
                         participant=participant,
                         source_run_id=run_id,
                     )
+                    selected = context_builder.build(
+                        room,
+                        participant.agent_version_id,
+                        p.task_id,
+                        p.in_reply_to_message_id,
+                    )
+                    active.mailbox_message_ids = list(selected.mailbox_message_ids)
                     invocation = self._invocation(room, active)
                     await self.invocation.prepare(invocation)
-                    # Durable dispatch boundary: uncertain delivery now consumes one turn.
+                    if isinstance(p, MentionAgent):
+                        # Preserve the question for room readers; it was already sent as instruction.
+                        messaging.append(
+                            room,
+                            MessageInput(
+                                content=p.instruction,
+                                delivery="direct",
+                                recipient_agent_version_id=participant.agent_version_id,
+                                in_reply_to_message_id=p.in_reply_to_message_id,
+                                task_id=p.task_id if p.task_id in room.tasks else None,
+                            ),
+                            ctx.principal_id,
+                        )
+                        active.mailbox_message_ids.append(
+                            room.transcript[-1].message_id
+                        )
+                    # Durable dispatch boundary; only Supervisor turns consume its budget.
                     state.fence += 1
-                    room.turns_used += 1
-                    room.consecutive_turns = (
-                        room.consecutive_turns + 1
-                        if room.last_speaker == participant.agent_version_id
-                        else 1
-                    )
-                    room.last_speaker = participant.agent_version_id
-                    room.used_turn_ids.append(p.turn_id)
+                    if isinstance(p, RunTurn):
+                        room.turns_used += 1
+                        room.consecutive_turns = (
+                            room.consecutive_turns + 1
+                            if room.last_speaker == participant.agent_version_id
+                            else 1
+                        )
+                        room.last_speaker = participant.agent_version_id
+                        room.used_turn_ids.append(p.turn_id)
                     room.active_operation = active
                     room.room_state, room.pause_reason = "running", None
                     room.room_version += 1
@@ -291,6 +353,10 @@ class RoomService:
                 else:
                     if isinstance(p, AppendMessage):
                         messaging.append(room, p.message, ctx.principal_id)
+                    elif isinstance(p, PutTask):
+                        task_board.put(room, p.task)
+                    elif isinstance(p, PutContext):
+                        task_board.put_context(room, p.item)
                     elif isinstance(p, AddParticipant):
                         resolved = await self.resolver.resolve(
                             ctx, room.groupchat_version_id, p.participant, room
@@ -324,7 +390,7 @@ class RoomService:
                         data=self.data(room),
                     )
             state.operations[key] = OperationRecord(semantic_hash=digest, result=result)
-            if not isinstance(p, (RunTurn, CancelTurn)):
+            if not isinstance(p, (RunTurn, MentionAgent, CancelTurn)):
                 return result
             timeout = room.policy.timeout_seconds
         # Framework/network I/O MUST be outside storage transaction.
@@ -422,20 +488,50 @@ class RoomService:
                     try:
                         for follow in output.follow_up_requests:
                             member(room, follow.recipient_agent_version_id)
+                            payload = active.command.payload
+                            assert isinstance(payload, (RunTurn, MentionAgent))
+                            messaging.validate_message(
+                                room,
+                                MessageInput(
+                                    content=follow.content,
+                                    delivery="direct",
+                                    recipient_agent_version_id=follow.recipient_agent_version_id,
+                                    task_id=payload.task_id
+                                    if payload.task_id in room.tasks
+                                    else None,
+                                ),
+                            )
                     except RoomError:
                         status, output = "failure", None
                 if status == "success":
                     assert output is not None
                     p = active.command.payload
-                    assert isinstance(p, RunTurn)
+                    assert isinstance(p, (RunTurn, MentionAgent))
                     messaging.append(
                         room,
                         MessageInput(
                             content=output.content,
                             in_reply_to_message_id=p.in_reply_to_message_id,
+                            task_id=p.task_id if p.task_id in room.tasks else None,
                         ),
                         active.participant.agent_version_id,
                     )
+                    mailbox.acknowledge(
+                        room,
+                        active.participant.agent_version_id,
+                        active.mailbox_message_ids,
+                    )
+                    for follow in output.follow_up_requests:
+                        messaging.append(
+                            room,
+                            MessageInput(
+                                content=follow.content,
+                                delivery="direct",
+                                recipient_agent_version_id=follow.recipient_agent_version_id,
+                                task_id=p.task_id if p.task_id in room.tasks else None,
+                            ),
+                            active.participant.agent_version_id,
+                        )
                 if status == "outcome_unknown":
                     room.room_state, room.pause_reason = "paused", "outcome_unknown"
                 else:

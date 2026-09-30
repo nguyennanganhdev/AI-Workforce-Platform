@@ -4,6 +4,7 @@ A trusted upstream provider lends an existing, isolated Agent. No registry,
 agent factory, service scheduler or production in-memory state is invented here.
 """
 
+import json
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from importlib.metadata import version
@@ -83,13 +84,39 @@ class AgentScopeAdapter:
     async def invoke(self, invocation: Invocation) -> AgentOutput:
         async with self.provider.session(invocation) as session:
             await self._validate(session, invocation)
+            # Replace model-visible history each time: a cursor would retain stale
+            # task ACLs and omit older pending mail selected by Context Builder.
+            session.agent.state.context = []
             messages = [
                 UserMsg(
                     name="room-context", content=[TextBlock(text=m.model_dump_json())]
                 )
                 for m in invocation.transcript
-                if m.sequence > session.transcript_cursor
             ]
+            messages.append(
+                UserMsg(
+                    name="room-data",
+                    content=[
+                        TextBlock(
+                            text=json.dumps(
+                                {
+                                    "ticket_id": invocation.context.ticket_id,
+                                    "ticket_generation": invocation.context.ticket_generation,
+                                    "ticket_context": [
+                                        item.model_dump(mode="json")
+                                        for item in invocation.ticket_context
+                                    ],
+                                    "task_board": [
+                                        task.model_dump(mode="json")
+                                        for task in invocation.tasks
+                                    ],
+                                },
+                                ensure_ascii=False,
+                            )
+                        )
+                    ],
+                )
+            )
             messages.append(
                 UserMsg(
                     name="room-context",

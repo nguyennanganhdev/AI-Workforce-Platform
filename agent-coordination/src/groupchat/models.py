@@ -63,6 +63,7 @@ class MessageInput(Model):
     delivery: Literal["broadcast", "direct"] = "broadcast"
     recipient_agent_version_id: Id | None = None
     in_reply_to_message_id: Id | None = None
+    task_id: Id | None = None
 
     @model_validator(mode="after")
     def addressing(self) -> MessageInput:
@@ -88,6 +89,28 @@ class AgentOutput(Model):
     follow_up_requests: list[FollowUp] = Field(default_factory=list)
 
 
+class TaskItem(Model):
+    task_id: Id
+    description: Text
+    assignee_agent_version_id: Id
+    status: Literal["pending", "in_progress", "blocked", "completed"] = "pending"
+    result_refs: list[Id] = Field(default_factory=list)
+    # Empty audience means all admitted members. Supervisor supplies this ACL.
+    reader_agent_version_ids: list[Id] = Field(default_factory=list)
+
+
+class ContextItem(Model):
+    item_id: Id
+    content: Text
+    task_id: Id | None = None
+    reader_agent_version_ids: Annotated[list[Id], Field(min_length=1)]
+
+
+class MailItem(Model):
+    message: Message
+    pending_agent_version_ids: list[Id]
+
+
 class OpenRoom(Model):
     version: Literal[2] = 2
     operation: Literal["open_room"] = "open_room"
@@ -96,6 +119,7 @@ class OpenRoom(Model):
     participants: Annotated[list[ParticipantSpec], Field(min_length=1)]
     turn_policy: TurnPolicy = Field(default_factory=TurnPolicy)
     initial_message: MessageInput
+    ticket_context: list[ContextItem] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def unique_members(self) -> OpenRoom:
@@ -126,6 +150,24 @@ class RunTurn(RoomCommand):
     in_reply_to_message_id: Id | None = None
 
 
+class MentionAgent(RoomCommand):
+    operation: Literal["mention_agent"] = "mention_agent"
+    mentioned_agent_id: Id
+    instruction: Text
+    task_id: Id | None = None
+    in_reply_to_message_id: Id | None = None
+
+
+class PutTask(RoomCommand):
+    operation: Literal["put_task"] = "put_task"
+    task: TaskItem
+
+
+class PutContext(RoomCommand):
+    operation: Literal["put_context"] = "put_context"
+    item: ContextItem
+
+
 class AddParticipant(RoomCommand):
     operation: Literal["add_participant"] = "add_participant"
     participant: ParticipantSpec
@@ -149,6 +191,9 @@ Payload = Annotated[
     OpenRoom
     | AppendMessage
     | RunTurn
+    | MentionAgent
+    | PutTask
+    | PutContext
     | AddParticipant
     | UpdateTurnPolicy
     | CloseRoom
@@ -201,6 +246,7 @@ class RoomData(Model):
     needs_dispatcher_decision: bool = True
     participants: list[ParticipantSpec] = Field(default_factory=list)
     transcript_cursor: int
+    tasks: list[TaskItem] = Field(default_factory=list)
 
 
 class Error(Model):
@@ -232,6 +278,7 @@ class ActiveOperation(Model):
     command: Command
     participant: Participant
     source_run_id: Id
+    mailbox_message_ids: list[Id] = Field(default_factory=list)
     dispatch_started: bool = True
 
 
@@ -255,6 +302,9 @@ class Snapshot(Model):
     framework_state_reference: str | None = None
     audit_events: list[dict] = Field(default_factory=list)
     used_turn_ids: list[str] = Field(default_factory=list)
+    tasks: dict[str, TaskItem] = Field(default_factory=dict)
+    ticket_context: dict[str, ContextItem] = Field(default_factory=dict)
+    mailbox: list[MailItem] = Field(default_factory=list)
 
 
 class OperationRecord(Model):

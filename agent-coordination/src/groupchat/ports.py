@@ -7,11 +7,13 @@ from typing import Protocol
 from .models import (
     AgentOutput,
     Context,
+    ContextItem,
     Message,
     Participant,
     ParticipantSpec,
     ScopeState,
     Snapshot,
+    TaskItem,
 )
 
 
@@ -23,6 +25,9 @@ class ParticipantResolver(Protocol):
 
         Called before replay/read and again before accepting completion. A plain
         JSON Context is not a credential. Implementation must use gateway evidence.
+        put_task is Supervisor-only; put_context accepts trusted backend data only.
+        mention_agent checks user delegation, distinct from Supervisor run_turn.
+        Public room queries/results require room-wide read permission.
         """
         ...
 
@@ -33,7 +38,11 @@ class ParticipantResolver(Protocol):
         spec: ParticipantSpec,
         room: Snapshot | None,
     ) -> Participant:
-        """Validate published pin, mapping, join AND entire history before admission.
+        """Validate exact evaluated, admin-approved, published version and scope.
+
+        Never substitute latest for the requested pin. Backend attests eligibility
+        for this exact version; missing evidence must fail closed.
+        Validate mapping, join AND history ACL before admission.
 
         Provision member-specific binding, isolating memory/workspace per generation.
         Any audience/binding rotation must be atomic in the backend, before return.
@@ -47,7 +56,12 @@ class ParticipantResolver(Protocol):
         participant: Participant,
         operation_id: str,
     ) -> str:
-        """Authorize pinned member binding; return backend child run ID (not parent)."""
+        """Authorize pinned member binding; return backend child run ID (not parent).
+
+        Applies to both authorized user mentions and Supervisor turns. Do not
+        require Supervisor role for an already authorized mention. Recheck the
+        exact pin and current participation permissions; never upgrade the pin.
+        """
         ...
 
 
@@ -61,6 +75,8 @@ class Invocation:
     source_run_id: str
     transcript: tuple[Message, ...]
     instruction: str
+    tasks: tuple[TaskItem, ...] = ()
+    ticket_context: tuple[ContextItem, ...] = ()
 
 
 class AgentInvocationPort(Protocol):
