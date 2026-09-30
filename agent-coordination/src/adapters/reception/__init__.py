@@ -1,0 +1,3 @@
+"""
+Reception adapter package.
+"""
