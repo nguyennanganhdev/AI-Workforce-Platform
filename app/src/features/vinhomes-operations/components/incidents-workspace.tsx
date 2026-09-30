@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { IncidentList } from './incident-list';
 import {
   IconAlertTriangle,
@@ -31,6 +31,7 @@ import type { VhSessionMessage } from '../types/session';
 import { MOCK_MESSAGES } from '../mock/messages';
 import { MOCK_BUSINESS_EVENTS } from '../mock/business-events';
 import { MOCK_INCIDENT_RELATIONS } from '../mock/incidents';
+import type { VhMessage } from '../types/message';
 
 const STAGE_LABELS: Record<IncidentStage, string> = {
   INTAKE: '1. Tiếp nhận',
@@ -49,6 +50,51 @@ const STAGES: IncidentStage[] = [
   'QC',
   'RESIDENT_CONFIRMATION',
 ];
+
+const CHAT_ACTOR_META: Record<
+  VhMessage['author_type'],
+  { label: string; avatarClass: string; bubbleClass: string }
+> = {
+  RESIDENT: {
+    label: 'Cư dân',
+    avatarClass: 'bg-amber-100 text-amber-700',
+    bubbleClass: 'border-amber-200 bg-amber-50/70',
+  },
+  STAFF: {
+    label: 'Nhân viên vận hành',
+    avatarClass: 'bg-blue-100 text-blue-700',
+    bubbleClass: 'border-slate-200 bg-white',
+  },
+  MANAGER: {
+    label: 'Ban quản lý',
+    avatarClass: 'bg-slate-800 text-white',
+    bubbleClass: 'border-slate-300 bg-slate-50',
+  },
+  AGENT: {
+    label: 'Agent nghiệp vụ',
+    avatarClass: 'bg-indigo-100 text-indigo-700',
+    bubbleClass: 'border-indigo-200 bg-indigo-50/70',
+  },
+  SYSTEM: {
+    label: 'Hệ thống',
+    avatarClass: 'bg-emerald-100 text-emerald-700',
+    bubbleClass: 'border-emerald-200 bg-emerald-50/70',
+  },
+};
+
+function getChatActorCode(message: VhMessage) {
+  if (message.author_id.includes('customer-care') || message.author_id.includes('hotline')) return 'A1';
+  if (message.author_id.includes('dispatcher')) return 'A0';
+  if (message.author_id.includes('technical')) return 'A2';
+  if (message.author_type === 'SYSTEM') return 'SYS';
+  return message.author_name
+    .split(' ')
+    .filter(Boolean)
+    .slice(-2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+}
 
 export function IncidentsWorkspace() {
   const {
@@ -79,6 +125,7 @@ export function IncidentsWorkspace() {
   const [sessionChatInput, setSessionChatInput] = useState('');
   const [bqlNoteInput, setBqlNoteInput] = useState('');
   const [showBqlModal, setShowBqlModal] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const selectedIncident = incidents.find((i) => i.id === selectedIncidentId);
 
@@ -95,6 +142,12 @@ export function IncidentsWorkspace() {
   const incidentRelations = MOCK_INCIDENT_RELATIONS.filter(
     (r) => r.source_incident_id === selectedIncident?.id || r.target_incident_id === selectedIncident?.id,
   );
+
+  useEffect(() => {
+    if (activeTab === 'MESSAGES') {
+      chatEndRef.current?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [activeTab, incidentMessages.length]);
 
   const handleResolve = () => {
     if (!selectedIncident) return;
@@ -127,10 +180,10 @@ export function IncidentsWorkspace() {
       id: `MSG-${Date.now().toString().slice(-4)}`,
       incident_id: selectedIncident.id,
       body: newMessageText.trim(),
-      author_type: 'STAFF' as const,
-      author_id: 'usr-tech-01',
-      author_name: 'Nguyễn Văn Hùng (Kỹ sư Trưởng)',
-      author_avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+      author_type: currentPersona === 'MANAGER' ? 'MANAGER' as const : 'STAFF' as const,
+      author_id: currentProfile.id,
+      author_name: `${currentProfile.name} (${currentProfile.roleTitle})`,
+      author_avatar: currentProfile.avatarUrl,
       created_at: new Date().toISOString(),
     };
 
@@ -943,35 +996,108 @@ export function IncidentsWorkspace() {
 
                 {/* Tab 2: Internal Messages */}
                 {activeTab === 'MESSAGES' && (
-                  <div className="space-y-3">
-                    <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
-                      {incidentMessages.map((msg) => (
-                        <div key={msg.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-slate-800">{msg.author_name}</span>
-                            <span className="text-[10px] text-slate-400">
-                              {new Date(msg.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                            </span>
+                  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                    <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-600 text-white">
+                            <IconMessageDots className="h-4 w-4" />
+                          </span>
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-900">Phòng trao đổi xử lý sự cố</h3>
+                            <p className="text-[11px] text-slate-500">Trao đổi nội bộ giữa agent, điều phối và nhân viên hiện trường</p>
                           </div>
-                          <p className="text-slate-700 leading-relaxed">{msg.body}</p>
                         </div>
-                      ))}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
+                        <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-slate-600">A1 · CSKH</span>
+                        <IconArrowRight className="h-3 w-3 text-slate-300" />
+                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-indigo-700">A0 · Điều phối</span>
+                        <IconArrowRight className="h-3 w-3 text-slate-300" />
+                        <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700">A2 · Kỹ thuật</span>
+                        <IconArrowRight className="h-3 w-3 text-slate-300" />
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700">Nhân viên</span>
+                      </div>
+                    </div>
+
+                    <div className="max-h-[470px] space-y-4 overflow-y-auto bg-slate-50/30 px-3 py-4 sm:px-5">
+                      <div className="flex items-center gap-3 text-[10px] font-medium text-slate-400">
+                        <span className="h-px flex-1 bg-slate-200" />
+                        <span>{selectedIncident?.id} · Luồng xử lý nội bộ</span>
+                        <span className="h-px flex-1 bg-slate-200" />
+                      </div>
+
+                      {incidentMessages.map((msg) => {
+                        const isCurrentUser = msg.author_id === currentProfile.id;
+                        const meta = CHAT_ACTOR_META[msg.author_type];
+                        const actorCode = getChatActorCode(msg);
+
+                        return (
+                          <div key={msg.id} className={`flex items-start gap-2.5 ${isCurrentUser ? 'flex-row-reverse' : ''}`}>
+                            {msg.author_avatar ? (
+                              <img
+                                src={msg.author_avatar}
+                                alt=""
+                                className="h-9 w-9 shrink-0 rounded-xl border border-white object-cover shadow-sm"
+                              />
+                            ) : (
+                              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[11px] font-extrabold ${meta.avatarClass}`}>
+                                {actorCode}
+                              </span>
+                            )}
+
+                            <div className={`min-w-0 max-w-[88%] sm:max-w-[76%] ${isCurrentUser ? 'text-right' : ''}`}>
+                              <div className={`mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 ${isCurrentUser ? 'justify-end' : ''}`}>
+                                <span className="text-xs font-bold text-slate-900">{msg.author_name}</span>
+                                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${meta.avatarClass}`}>
+                                  {actorCode} · {meta.label}
+                                </span>
+                                <time className="text-[10px] text-slate-400">
+                                  {new Date(msg.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                                </time>
+                              </div>
+                              <div className={`rounded-2xl border px-3.5 py-2.5 text-left text-xs leading-relaxed text-slate-700 shadow-xs ${
+                                isCurrentUser
+                                  ? 'rounded-tr-sm border-blue-600 bg-blue-600 text-white'
+                                  : `rounded-tl-sm ${meta.bubbleClass}`
+                              }`}>
+                                {msg.body}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div ref={chatEndRef} />
                     </div>
 
                     {/* Send Message Form */}
-                    <form onSubmit={handleSendMessage} className="flex items-center gap-2 pt-2 border-t border-slate-100">
-                      <input
-                        value={newMessageText}
-                        onChange={(e) => setNewMessageText(e.target.value)}
-                        placeholder="Nhập ghi chú hoặc trao đổi nội bộ..."
-                        className="flex-1 p-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
-                      />
+                    <form onSubmit={handleSendMessage} className="flex items-end gap-2 border-t border-slate-200 bg-white p-3 sm:p-4">
+                      <span className="hidden h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-50 sm:flex">
+                        {currentProfile.avatarUrl ? (
+                          <img src={currentProfile.avatarUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <IconUser className="h-4 w-4 text-blue-600" />
+                        )}
+                      </span>
+                      <div className="flex-1">
+                        <label htmlFor="incident-internal-message" className="mb-1 block text-[10px] font-semibold text-slate-500">
+                          Gửi với tư cách {currentProfile.name}
+                        </label>
+                        <input
+                          id="incident-internal-message"
+                          value={newMessageText}
+                          onChange={(e) => setNewMessageText(e.target.value)}
+                          placeholder="Nhập nội dung trao đổi hoặc @ tên người cần phối hợp..."
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/10"
+                        />
+                      </div>
                       <button
                         type="submit"
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 transition-colors shadow-2xs shrink-0"
+                        disabled={!newMessageText.trim()}
+                        className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-4 text-xs font-bold text-white shadow-2xs transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        <IconSend className="w-3.5 h-3.5" />
-                        <span>Gửi</span>
+                        <IconSend className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">Gửi</span>
                       </button>
                     </form>
                   </div>
