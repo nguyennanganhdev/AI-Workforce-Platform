@@ -129,6 +129,20 @@
           "default": null,
           "title": "In Reply To Message Id"
         },
+        "task_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
         "message_id": {
           "maxLength": 256,
           "minLength": 1,
@@ -356,6 +370,13 @@
         "transcript_cursor": {
           "title": "Transcript Cursor",
           "type": "integer"
+        },
+        "tasks": {
+          "items": {
+            "$ref": "#/$defs/TaskItem"
+          },
+          "title": "Tasks",
+          "type": "array"
         }
       },
       "required": [
@@ -399,6 +420,65 @@
         "data"
       ],
       "title": "Success",
+      "type": "object"
+    },
+    "TaskItem": {
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Id",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "assignee_agent_version_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Assignee Agent Version Id",
+          "type": "string"
+        },
+        "status": {
+          "default": "pending",
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "completed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "result_refs": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Result Refs",
+          "type": "array"
+        },
+        "reader_agent_version_ids": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Reader Agent Version Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "task_id",
+        "description",
+        "assignee_agent_version_id"
+      ],
+      "title": "TaskItem",
       "type": "object"
     }
   },

@@ -1,4 +1,4 @@
-"""Explicit v1 migration requiring externally authorized context and mapping."""
+"""Chuyển đổi v1 tường minh, yêu cầu ngữ cảnh đã được cấp quyền và ánh xạ từ bên ngoài."""
 
 from collections.abc import Awaitable, Callable
 

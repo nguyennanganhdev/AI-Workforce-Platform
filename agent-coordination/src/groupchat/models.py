@@ -1,9 +1,9 @@
-"""Versioned module contracts. Context fields alone never establish authority."""
+"""Hợp đồng dữ liệu có phiên bản. Các trường ngữ cảnh không tự xác lập quyền."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -19,6 +19,7 @@ class Model(BaseModel):
 class Context(Model):
     tenant_id: Id
     principal_id: Id
+    initiated_by_user_id: Optional[Id] = None  # noqa: UP045 - Giữ cú pháp của schema.
     domain_id: Id
     workspace_id: Id
     ticket_id: Id
@@ -27,7 +28,7 @@ class Context(Model):
     run_id: Id
 
     def scope(self) -> tuple[str, str, int]:
-        """Unique application room key, independent of mutable routing metadata."""
+        """Khóa phòng duy nhất, độc lập với siêu dữ liệu định tuyến có thể thay đổi."""
         return (self.tenant_id, self.ticket_id, self.ticket_generation)
 
     def same_room_scope(self, other: Context) -> bool:
@@ -63,6 +64,7 @@ class MessageInput(Model):
     delivery: Literal["broadcast", "direct"] = "broadcast"
     recipient_agent_version_id: Id | None = None
     in_reply_to_message_id: Id | None = None
+    task_id: Id | None = None
 
     @model_validator(mode="after")
     def addressing(self) -> MessageInput:
@@ -88,6 +90,28 @@ class AgentOutput(Model):
     follow_up_requests: list[FollowUp] = Field(default_factory=list)
 
 
+class TaskItem(Model):
+    task_id: Id
+    description: Text
+    assignee_agent_version_id: Id
+    status: Literal["pending", "in_progress", "blocked", "completed"] = "pending"
+    result_refs: list[Id] = Field(default_factory=list)
+    # Danh sách người đọc rỗng cho phép mọi thành viên đã tham gia; Supervisor cấp ACL này.
+    reader_agent_version_ids: list[Id] = Field(default_factory=list)
+
+
+class ContextItem(Model):
+    item_id: Id
+    content: Text
+    task_id: Id | None = None
+    reader_agent_version_ids: Annotated[list[Id], Field(min_length=1)]
+
+
+class MailItem(Model):
+    message: Message
+    pending_agent_version_ids: list[Id]
+
+
 class OpenRoom(Model):
     version: Literal[2] = 2
     operation: Literal["open_room"] = "open_room"
@@ -96,6 +120,7 @@ class OpenRoom(Model):
     participants: Annotated[list[ParticipantSpec], Field(min_length=1)]
     turn_policy: TurnPolicy = Field(default_factory=TurnPolicy)
     initial_message: MessageInput
+    ticket_context: list[ContextItem] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def unique_members(self) -> OpenRoom:
@@ -126,6 +151,24 @@ class RunTurn(RoomCommand):
     in_reply_to_message_id: Id | None = None
 
 
+class MentionAgent(RoomCommand):
+    operation: Literal["mention_agent"] = "mention_agent"
+    mentioned_agent_id: Id
+    instruction: Text
+    task_id: Id | None = None
+    in_reply_to_message_id: Id | None = None
+
+
+class PutTask(RoomCommand):
+    operation: Literal["put_task"] = "put_task"
+    task: TaskItem
+
+
+class PutContext(RoomCommand):
+    operation: Literal["put_context"] = "put_context"
+    item: ContextItem
+
+
 class AddParticipant(RoomCommand):
     operation: Literal["add_participant"] = "add_participant"
     participant: ParticipantSpec
@@ -149,6 +192,9 @@ Payload = Annotated[
     OpenRoom
     | AppendMessage
     | RunTurn
+    | MentionAgent
+    | PutTask
+    | PutContext
     | AddParticipant
     | UpdateTurnPolicy
     | CloseRoom
@@ -159,6 +205,7 @@ Payload = Annotated[
 
 class Command(Model):
     contract_version: Literal["1"] = "1"
+    type: Optional[str] = None  # noqa: UP045 - Giữ cú pháp của schema.
     request_id: Id
     trace_id: Id
     idempotency_key: Id
@@ -201,6 +248,7 @@ class RoomData(Model):
     needs_dispatcher_decision: bool = True
     participants: list[ParticipantSpec] = Field(default_factory=list)
     transcript_cursor: int
+    tasks: list[TaskItem] = Field(default_factory=list)
 
 
 class Error(Model):
@@ -232,11 +280,12 @@ class ActiveOperation(Model):
     command: Command
     participant: Participant
     source_run_id: Id
+    mailbox_message_ids: list[Id] = Field(default_factory=list)
     dispatch_started: bool = True
 
 
 class Snapshot(Model):
-    """Internal DEV-4 aggregate; never expose bindings/framework refs to clients."""
+    """Internal aggregate; không expose binding/framework reference cho client."""
 
     room_id: Id
     scope: Context
@@ -255,6 +304,9 @@ class Snapshot(Model):
     framework_state_reference: str | None = None
     audit_events: list[dict] = Field(default_factory=list)
     used_turn_ids: list[str] = Field(default_factory=list)
+    tasks: dict[str, TaskItem] = Field(default_factory=dict)
+    ticket_context: dict[str, ContextItem] = Field(default_factory=dict)
+    mailbox: list[MailItem] = Field(default_factory=list)
 
 
 class OperationRecord(Model):
@@ -283,4 +335,4 @@ class RoomError(Exception):
 
 
 class TerminalInvocationError(Exception):
-    """Invocation port confirms terminal failure, with no outstanding work."""
+    """Invocation port xác nhận terminal failure và không còn outstanding work."""

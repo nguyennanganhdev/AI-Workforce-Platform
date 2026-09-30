@@ -1,12 +1,14 @@
-"""AgentScope 2.0.9 primitive adapter; NOT Agent Team Service.
+"""AgentScope primitive adapter.
 
 A trusted upstream provider lends an existing, isolated Agent. No registry,
 agent factory, service scheduler or production in-memory state is invented here.
 """
 
+from __future__ import annotations
+
+import json
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from importlib.metadata import version
 from typing import Protocol
 
 from agentscope.agent import Agent
@@ -27,29 +29,27 @@ class AgentSessionProvider(Protocol):
     def session(
         self, invocation: Invocation
     ) -> AbstractAsyncContextManager[AgentSession]:
-        """Lend pinned existing Agent with exclusive, fenced scope binding.
+        """Cấp pinned Agent với exclusive, fenced scope binding.
 
-        No cross-room Agent/state/toolkit/workspace/cache sharing; no scheduling
-        middleware, incoming event bus, background jobs or hidden SDK retries.
-        Persist AgentState.model_dump(mode='json') + cursor under DEV-4 lease;
-        restore using AgentState.model_validate. Never expose private state.
-        Hold a lease for full reply; preflight must not send model/tool requests.
-        Provider is trusted integration code, not supplied by client commands.
+        Không share Agent/state/toolkit/workspace/cache giữa các room; không có
+        scheduling middleware, incoming event bus, background job hoặc SDK retry ngầm.
+        Persist AgentState.model_dump(mode='json') và cursor dưới storage lease;
+        restore bằng AgentState.model_validate. Không expose private state.
+        Giữ lease trong toàn bộ reply; preflight không được gửi model/tool request.
+        Provider là trusted integration code, không do client command cung cấp.
         """
         ...
 
     async def cancel(self, invocation: Invocation) -> bool:
-        """Confirm terminal AND suppress future dispatch of this operation ID.
+        """Xác nhận terminal state và chặn future dispatch của operation ID này.
 
-        HTTP disconnect/task.cancel alone is not confirmation.
+        HTTP disconnect hoặc task.cancel riêng lẻ chưa phải là confirmation.
         """
         ...
 
 
 class AgentScopeAdapter:
     def __init__(self, provider: AgentSessionProvider):
-        if version("agentscope") != "2.0.9":
-            raise RuntimeError("AgentScope adapter requires exactly 2.0.9")
         self.provider = provider
 
     async def _validate(self, session: AgentSession, invocation: Invocation) -> None:
@@ -59,7 +59,7 @@ class AgentScopeAdapter:
             or session.framework_reference != p.framework_reference
         ):
             raise RoomError("MAPPING_MISSING")
-        # Narrow no-tools integration until backend tool-grant adapter is supplied.
+        # Chỉ hỗ trợ no-tools profile cho đến khi có backend tool-grant adapter.
         if any(
             g.tools or g.mcps or g.skills_or_loaders for g in agent.toolkit.tool_groups
         ):
@@ -83,13 +83,39 @@ class AgentScopeAdapter:
     async def invoke(self, invocation: Invocation) -> AgentOutput:
         async with self.provider.session(invocation) as session:
             await self._validate(session, invocation)
+            # Thay model-visible history ở mỗi lượt: cursor sẽ giữ stale task ACL
+            # và bỏ sót pending mail cũ do Context Builder chọn.
+            session.agent.state.context = []
             messages = [
                 UserMsg(
                     name="room-context", content=[TextBlock(text=m.model_dump_json())]
                 )
                 for m in invocation.transcript
-                if m.sequence > session.transcript_cursor
             ]
+            messages.append(
+                UserMsg(
+                    name="room-data",
+                    content=[
+                        TextBlock(
+                            text=json.dumps(
+                                {
+                                    "ticket_id": invocation.context.ticket_id,
+                                    "ticket_generation": invocation.context.ticket_generation,
+                                    "ticket_context": [
+                                        item.model_dump(mode="json")
+                                        for item in invocation.ticket_context
+                                    ],
+                                    "task_board": [
+                                        task.model_dump(mode="json")
+                                        for task in invocation.tasks
+                                    ],
+                                },
+                                ensure_ascii=False,
+                            )
+                        )
+                    ],
+                )
+            )
             messages.append(
                 UserMsg(
                     name="room-context",
@@ -97,12 +123,12 @@ class AgentScopeAdapter:
                 )
             )
             reply = await session.agent.reply(messages)
-            # Only final text/validated structured content; no thinking/tool blocks.
+            # Chỉ lấy final text hoặc validated structured content; bỏ thinking/tool blocks.
             if reply.structured_output is not None:
                 output = AgentOutput.model_validate(reply.structured_output)
             else:
                 text = reply.get_text_content() or ""
-                # Published agent may return JSON; no repair/retry on invalid output.
+                # Published agent có thể trả JSON; không repair/retry invalid output.
                 output = (
                     AgentOutput.model_validate_json(text)
                     if text.lstrip().startswith("{")
