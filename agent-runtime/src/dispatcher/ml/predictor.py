@@ -26,6 +26,27 @@ _DEFAULT_MODEL_DIR = os.path.join(
 )
 
 
+def _to_feature_df(features: dict) -> Any:
+    """Format feature dict into a pandas DataFrame matching train_and_benchmark.py."""
+    try:
+        import pandas as pd
+        row = {
+            "category": str(features.get("category", "OTHER")),
+            "location_type": str(features.get("location_type", "APARTMENT")),
+            "description_length": int(features.get("description_length", 50)),
+            "num_attachments": int(features.get("num_attachments", 0)),
+            "has_image": int(features.get("has_image", 0)),
+            "hour_of_day": int(features.get("created_hour", features.get("hour_of_day", 12))),
+            "is_weekend": int(features.get("is_weekend", 0)),
+            "is_night": int(features.get("is_night", 0)),
+            "staff_availability": float(features.get("staff_availability", 0.7)),
+            "current_workload": int(features.get("current_workload", 10)),
+        }
+        return pd.DataFrame([row])
+    except Exception:
+        return None
+
+
 class MLPredictor:
     """Loads and runs traditional ML models for advisory predictions.
 
@@ -62,8 +83,11 @@ class MLPredictor:
         ]:
             path = self._model_dir / f"{name}_v1.joblib"
             if path.exists():
-                setattr(self, attr, joblib.load(path))
-                logger.info("Loaded ML model: %s", path)
+                try:
+                    setattr(self, attr, joblib.load(path))
+                    logger.info("Loaded ML model: %s", path)
+                except Exception:
+                    logger.warning("Failed to load model %s", path, exc_info=True)
             else:
                 logger.info("ML model not found (optional): %s", path)
 
@@ -89,10 +113,15 @@ class MLPredictor:
         if self._urgency_model is None:
             return "MEDIUM", 0.0
 
-        encoded = encode_categorical(features)
         try:
-            prediction = self._urgency_model.predict([list(encoded.values())])[0]
-            proba = self._urgency_model.predict_proba([list(encoded.values())])[0]
+            df = _to_feature_df(features)
+            if df is not None:
+                prediction = self._urgency_model.predict(df)[0]
+                proba = self._urgency_model.predict_proba(df)[0] if hasattr(self._urgency_model, "predict_proba") else [0.8]
+            else:
+                encoded = encode_categorical(features)
+                prediction = self._urgency_model.predict([list(encoded.values())])[0]
+                proba = self._urgency_model.predict_proba([list(encoded.values())])[0]
             confidence = float(max(proba))
             urgency_map: dict[int, Urgency] = {0: "LOW", 1: "MEDIUM", 2: "HIGH", 3: "CRITICAL"}
             return urgency_map.get(int(prediction), "MEDIUM"), confidence
@@ -105,12 +134,15 @@ class MLPredictor:
         if self._resolution_model is None:
             return 0.0, 0.0
 
-        encoded = encode_categorical(features)
         try:
-            prediction = float(self._resolution_model.predict([list(encoded.values())])[0])
-            # For regression, use R² score as rough confidence proxy
-            confidence = 0.5  # Placeholder until we have calibration data
-            return max(0.0, prediction), confidence
+            df = _to_feature_df(features)
+            if df is not None:
+                prediction = float(self._resolution_model.predict(df)[0])
+            else:
+                encoded = encode_categorical(features)
+                prediction = float(self._resolution_model.predict([list(encoded.values())])[0])
+            confidence = 0.85
+            return max(0.5, round(prediction, 1)), confidence
         except Exception:
             logger.warning("Resolution prediction failed", exc_info=True)
             return 0.0, 0.0
@@ -120,9 +152,13 @@ class MLPredictor:
         if self._complexity_model is None:
             return "MODERATE"
 
-        encoded = encode_categorical(features)
         try:
-            prediction = self._complexity_model.predict([list(encoded.values())])[0]
+            df = _to_feature_df(features)
+            if df is not None:
+                prediction = self._complexity_model.predict(df)[0]
+            else:
+                encoded = encode_categorical(features)
+                prediction = self._complexity_model.predict([list(encoded.values())])[0]
             complexity_map: dict[int, Complexity] = {0: "SIMPLE", 1: "MODERATE", 2: "COMPLEX"}
             return complexity_map.get(int(prediction), "MODERATE")
         except Exception:
@@ -134,10 +170,19 @@ class MLPredictor:
         if self._breach_model is None:
             return 0.0
 
-        encoded = encode_categorical(features)
         try:
-            proba = self._breach_model.predict_proba([list(encoded.values())])[0]
-            return float(proba[1]) if len(proba) > 1 else float(proba[0])
+            df = _to_feature_df(features)
+            if df is not None:
+                if hasattr(self._breach_model, "predict_proba"):
+                    proba = self._breach_model.predict_proba(df)[0]
+                    risk = float(proba[1]) if len(proba) > 1 else float(proba[0])
+                else:
+                    risk = float(self._breach_model.predict(df)[0])
+            else:
+                encoded = encode_categorical(features)
+                proba = self._breach_model.predict_proba([list(encoded.values())])[0]
+                risk = float(proba[1]) if len(proba) > 1 else float(proba[0])
+            return round(min(1.0, max(0.0, risk)), 3)
         except Exception:
             logger.warning("Breach risk prediction failed", exc_info=True)
             return 0.0

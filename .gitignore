@@ -50,6 +50,7 @@ venv/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+catboost_info/
 
 # Local schema verification output and downloaded development tooling.
 .codex-artifacts/

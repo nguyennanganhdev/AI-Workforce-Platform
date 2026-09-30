@@ -121,6 +121,8 @@ class TurnPolicy(TypedDict):
 
     purpose: SessionPurpose
     max_turns: int
+    max_consecutive_turns: int  # GroupChat enforces per-speaker burst limit
+    timeout_seconds: float      # Per-turn timeout derived from SLA urgency
     max_tool_calls: int
     speaker_order: list[str]   # agent_version_ids in order
     strategy: TurnStrategy
@@ -154,6 +156,23 @@ class DecisionReasoning(TypedDict):
     warnings: list[str]
 
 
+class GroupChatContext(TypedDict):
+    """Context fields required by agent-coordination GroupChat.
+
+    Assembled from TicketReport + DispatcherDecision at the integration
+    boundary so that GroupChat never needs to reach back into DEV-3.
+    """
+
+    tenant_id: str
+    principal_id: str
+    domain_id: str
+    workspace_id: str
+    ticket_id: str
+    ticket_generation: int
+    binding_id: str
+    run_id: str
+
+
 class DispatcherDecision(TypedDict):
     """What DEV-1 returns to DEV-2 (Agent Team Service)."""
 
@@ -171,6 +190,7 @@ class DispatcherDecision(TypedDict):
     requires_approval: bool
     approval_reason: str | None
     reasoning: DecisionReasoning
+    groupchat_context: GroupChatContext | None  # Populated at integration boundary
 
 
 # ---------------------------------------------------------------------------

@@ -167,7 +167,7 @@ class TicketClassifier:
             evidence: List of evidence strings for the decision reasoning.
         """
         classification, evidence = await self._llm_classify(report)
-        signals = self._ml_predict(report) if self._ml else None
+        signals = self._ml_predict(report, classification) if self._ml else None
         return classification, signals, evidence
 
     # -----------------------------------------------------------------------
@@ -274,7 +274,9 @@ class TicketClassifier:
     # ML predictions (advisory only)
     # -----------------------------------------------------------------------
 
-    def _ml_predict(self, report: ReportContext) -> PredictionSignals | None:
+    def _ml_predict(
+        self, report: ReportContext, classification: TicketClassification | None = None,
+    ) -> PredictionSignals | None:
         """Run ML predictions as advisory signals.
 
         These are NEVER used as SLA decisions.  They enrich the
@@ -287,7 +289,7 @@ class TicketClassifier:
             return None
 
         try:
-            features = _extract_features(report)
+            features = _extract_features(report, classification)
             urgency, urg_conf = self._ml.predict_urgency(features)
             hours, hours_conf = self._ml.predict_resolution_hours(features)
             complexity = self._ml.predict_complexity(features)
@@ -307,18 +309,32 @@ class TicketClassifier:
             return None
 
 
-def _extract_features(report: ReportContext) -> dict:
+def _extract_features(
+    report: ReportContext, classification: TicketClassification | None = None,
+) -> dict:
     """Extract features from the report for ML models.
 
     Only features that are safe at prediction time (no post-outcome leakage).
     See the analysis for the full feature safety classification.
     """
+    text = report.get("text", "")
+    attachments = report.get("attachments", [])
+    facts = report.get("facts", [])
+    facts_str = " ".join(facts) if isinstance(facts, list) else str(facts)
+    is_night = 1 if ("đêm" in text.lower() or "đêm" in facts_str.lower() or "23:" in facts_str or "22:" in facts_str) else 0
+
     return {
-        "description_length": len(report["text"]),
-        "has_image": any(
-            a["media_type"].startswith("image/") for a in report["attachments"]
-        ),
-        "num_attachments": len(report["attachments"]),
-        "has_facts": bool(report["facts"]),
-        "text": report["text"],
+        "description_length": len(text),
+        "category": classification["category"] if classification else "OTHER",
+        "location_type": "APARTMENT",
+        "has_image": int(any(
+            a.get("media_type", "").startswith("image/") for a in attachments
+        )),
+        "num_attachments": len(attachments),
+        "has_facts": bool(facts),
+        "is_night": is_night,
+        "is_weekend": 0,
+        "staff_availability": 0.5 if is_night else 0.8,
+        "current_workload": 15,
+        "text": text,
     }

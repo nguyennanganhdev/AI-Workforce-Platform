@@ -92,11 +92,14 @@ def resolve_sla(
 
 
 def _bind(policy: SlaPolicyRef, severity: Severity, started_at: str) -> SlaBind:
+    policy_id = policy.get("policy_id", policy.get("sla_policy_id", "sla-default"))
+    resp_mins = policy.get("response_minutes", policy.get("first_response_time_minutes", 15))
+    resol_mins = policy.get("resolution_minutes", policy.get("resolution_time_minutes", 120))
     return SlaBind(
-        policy_id=policy["policy_id"],
+        policy_id=policy_id,
         severity=severity,
-        response_minutes=policy["response_minutes"],
-        resolution_minutes=policy["resolution_minutes"],
+        response_minutes=resp_mins,
+        resolution_minutes=resol_mins,
         started_at=started_at,
     )
 
@@ -231,7 +234,7 @@ def build_selected_agents(
         a for a in eligible
         if a["role"] == "SPECIALIST"
         and a["agent_version_id"] not in used_ids
-        and _capability_matches_category(a["capabilities"], category)
+        and _capability_matches_category(a.get("capabilities", a.get("category_affinity", [])), category)
     ]
     if not specialists:
         # Fallback: any specialist
@@ -272,10 +275,11 @@ def build_selected_agents(
 
 
 def _select(agent: EligibleAgentRef, reason: str) -> SelectedAgent:
+    caps = agent.get("capabilities", agent.get("category_affinity", []))
     return SelectedAgent(
         agent_version_id=agent["agent_version_id"],
         role=agent["role"],
-        capability_scope={"capabilities": agent["capabilities"]},
+        capability_scope={"capabilities": caps},
         selection_reason=reason,
     )
 

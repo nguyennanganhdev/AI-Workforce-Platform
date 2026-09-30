@@ -48,6 +48,18 @@ _TOOL_CALL_LIMITS: dict[Complexity, int] = {
     "COMPLEX": 50,
 }
 
+_CONSECUTIVE_LIMITS: dict[Complexity, int] = {
+    "SIMPLE": 1,
+    "MODERATE": 2,
+    "COMPLEX": 3,
+}
+
+_TIMEOUT_SECONDS: dict[Complexity, float] = {
+    "SIMPLE": 30.0,
+    "MODERATE": 60.0,
+    "COMPLEX": 120.0,
+}
+
 
 # ---------------------------------------------------------------------------
 # Strategy selection
@@ -120,6 +132,8 @@ class TurnPolicyEngine:
         return TurnPolicy(
             purpose=purpose,
             max_turns=_TURN_LIMITS.get(complexity, 12),
+            max_consecutive_turns=_CONSECUTIVE_LIMITS.get(complexity, 2),
+            timeout_seconds=_TIMEOUT_SECONDS.get(complexity, 60.0),
             max_tool_calls=_TOOL_CALL_LIMITS.get(complexity, 25),
             speaker_order=speaker_order,
             strategy=strategy,
