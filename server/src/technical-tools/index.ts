@@ -11,6 +11,8 @@ export {
 } from "./adapters/db/interruption-read";
 export { createDbSopReadPort } from "./adapters/db/sop-read";
 export { createInMemoryAssetReadPort } from "./adapters/poc/asset-read";
+export { createInMemoryMaintenanceReadPort } from "./adapters/poc/maintenance-read";
+export { createInMemorySensorReadPort } from "./adapters/poc/sensor-read";
 export { createInMemorySopProfilePort } from "./adapters/poc/sop-profiles";
 export {
   canonicalToolName,
@@ -25,6 +27,12 @@ export {
   type ToolStatus,
 } from "./contracts/envelope";
 export type { Asset } from "./domain/asset";
+export type { MaintenanceEvent } from "./domain/maintenance";
+export type {
+  ReadingQuality,
+  Sensor,
+  SensorReading,
+} from "./domain/sensor";
 export type {
   AcceptanceCriterion,
   DocumentAclEntry,
@@ -46,14 +54,24 @@ export type {
   InterruptionReadPort,
 } from "./ports/interruption-read";
 export type {
+  MaintenanceQuery,
+  MaintenanceReadPort,
+} from "./ports/maintenance-read";
+export type { SensorQuery, SensorReadPort } from "./ports/sensor-read";
+export type {
   SopProfilePort,
   SopQuery,
   SopReadPort,
 } from "./ports/sop-read";
-export type { ToolDependencies } from "./tool";
+export { defineTool, type ToolDependencies } from "./tool";
 export {
   ISSUE_CODES,
   type IssueCode,
   type IssueLevel,
   issueCode,
 } from "./reference/issue-codes";
+export {
+  METRICS,
+  type MetricDefinition,
+  unitAccepted,
+} from "./reference/metrics";

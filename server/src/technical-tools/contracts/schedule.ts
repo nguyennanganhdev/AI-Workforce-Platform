@@ -3,25 +3,14 @@ import {
   OFFICIAL_INTERRUPTION_STATUSES,
   UTILITIES,
 } from "../domain/interruption";
+import { timeRangeSchema } from "./time-range";
 
 /** `utility_schedule.read` (tools.md §3.6). */
-export const utilityScheduleReadInputSchema = z
-  .strictObject({
-    building_id: z.uuid(),
-    utility_type: z.enum(UTILITIES),
-    time_range: z.strictObject({
-      from: z.iso.datetime({ offset: true }),
-      to: z.iso.datetime({ offset: true }),
-    }),
-  })
-  .refine(
-    (input) =>
-      Date.parse(input.time_range.from) < Date.parse(input.time_range.to),
-    {
-      path: ["time_range"],
-      message: "time_range.from must be earlier than time_range.to.",
-    },
-  );
+export const utilityScheduleReadInputSchema = z.strictObject({
+  building_id: z.uuid(),
+  utility_type: z.enum(UTILITIES),
+  time_range: timeRangeSchema,
+});
 
 export type UtilityScheduleReadInput = z.infer<
   typeof utilityScheduleReadInputSchema

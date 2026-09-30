@@ -4,6 +4,8 @@ import type { Provenance, ToolError, ToolStatus } from "./contracts/envelope";
 import type { AssetReadPort } from "./ports/asset-read";
 import type { Clock } from "./ports/clock";
 import type { InterruptionReadPort } from "./ports/interruption-read";
+import type { MaintenanceReadPort } from "./ports/maintenance-read";
+import type { SensorReadPort } from "./ports/sensor-read";
 import type { SopProfilePort, SopReadPort } from "./ports/sop-read";
 
 /** What a tool reaches its data through. One field per port, added as tools need them. */
@@ -12,6 +14,8 @@ export type ToolDependencies = {
   sop: SopReadPort;
   sopProfiles: SopProfilePort;
   assets: AssetReadPort;
+  sensors: SensorReadPort;
+  maintenance: MaintenanceReadPort;
   clock: Clock;
 };
 

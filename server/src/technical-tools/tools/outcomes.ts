@@ -97,6 +97,26 @@ export function needsInput<TData>(
   };
 }
 
+/**
+ * The data is real but too old to reason from.
+ *
+ * It travels with the answer, as tools.md §3.3 asks: an agent can still show a technician what the
+ * sensor last said. What it may not do is conclude from it, and `retryable` is false because asking
+ * again a second later would return the same old reading.
+ */
+export function staleData<TData>(
+  data: TData,
+  message: string,
+  provenance: Provenance[],
+): ToolOutcome<TData> {
+  return {
+    status: "STALE_DATA",
+    data,
+    errors: [{ code: "STALE_DATA", message, retryable: false }],
+    provenance,
+  };
+}
+
 /** A tool refusing for a reason of its own, in the host's words. */
 export function forbidden<TData>(): ToolOutcome<TData> {
   return {

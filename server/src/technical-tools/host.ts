@@ -217,7 +217,12 @@ export function createTechnicalToolHost(
       );
     }
 
-    if (outcome.status === "OK") {
+    /*
+     * Whatever data an answer carries is checked, not only a successful one's. NEEDS_INPUT hands
+     * back candidates and STALE_DATA hands back the old readings, and an agent reads those as
+     * carefully as an OK: a malformed candidate list is as misleading as a malformed result.
+     */
+    if (outcome.data !== null && outcome.data !== undefined) {
       const checked = tool.outputSchema.safeParse(outcome.data);
       if (!checked.success) {
         return await fail("The tool's result did not match its output schema.");

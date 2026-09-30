@@ -2,15 +2,19 @@ import { z } from "zod";
 import type { TechnicalTool } from "./tool";
 import { assetReadTool } from "./tools/asset-read";
 import { getActiveOutageTool } from "./tools/get-active-outage";
+import { maintenanceHistoryReadTool } from "./tools/maintenance-history-read";
+import { sensorReadTool } from "./tools/sensor-read";
 import { sopKbRetrieveTool } from "./tools/sop-kb-retrieve";
 import { utilityScheduleReadTool } from "./tools/utility-schedule-read";
 
-/** Every technical tool this deployment implements. Four of the fourteen in tools.md so far. */
+/** Every technical tool this deployment implements. Six of the fourteen in tools.md so far. */
 export const technicalTools: readonly TechnicalTool[] = [
   getActiveOutageTool,
   utilityScheduleReadTool,
   sopKbRetrieveTool,
   assetReadTool,
+  sensorReadTool,
+  maintenanceHistoryReadTool,
 ];
 
 /**

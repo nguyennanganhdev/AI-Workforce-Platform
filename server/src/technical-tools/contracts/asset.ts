@@ -3,9 +3,10 @@ import { z } from "zod";
 /**
  * `asset.read` (tools.md §3.2).
  *
- * `building_id` is required and one of `asset_id` or `location` must be given: a call naming
- * neither would ask for every asset in the building, which is a listing rather than a lookup and
- * is how a tool ends up picking one on the agent's behalf.
+ * `building_id` is required and exactly one of `asset_id` or `location`, as the specification's
+ * `oneOf` says. A call naming neither would ask for every asset in the building, which is a listing
+ * rather than a lookup and is how a tool ends up picking one on the agent's behalf. A call naming
+ * both would leave it unclear which one decides when they disagree.
  */
 export const assetReadInputSchema = z
   .strictObject({
@@ -14,9 +15,9 @@ export const assetReadInputSchema = z
     location: z.string().min(2).max(500).optional(),
     asset_type: z.string().max(100).optional(),
   })
-  .refine((input) => Boolean(input.asset_id) || Boolean(input.location), {
+  .refine((input) => Boolean(input.asset_id) !== Boolean(input.location), {
     path: ["asset_id"],
-    message: "Either asset_id or location is required.",
+    message: "Give exactly one of asset_id or location.",
   });
 
 export type AssetReadInput = z.infer<typeof assetReadInputSchema>;
