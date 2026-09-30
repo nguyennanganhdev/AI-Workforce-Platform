@@ -1,0 +1,350 @@
+"""Synthetic ports confined to tests; exercises the real Python LangGraph."""
+
+import asyncio
+import inspect
+import json
+import sys
+from copy import deepcopy
+from functools import wraps
+from pathlib import Path
+from types import SimpleNamespace
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from langchain_core.messages import AIMessage
+from langgraph.checkpoint.memory import InMemorySaver
+from src.graph import (
+    GraphDependencies,
+    WorkflowOptions,
+    create_reception_workflow_factory,
+)
+from src.graph.decision import compact_json
+
+REQUEST = {
+    "operationId": "resident-operation-1",
+    "message": {
+        "id": "message-1",
+        "text": "Vòi nước tại bếp bị rò.",
+        "fileIds": ["file-synthetic-1"],
+    },
+    "context": {
+        "principalId": "principal-synthetic",
+        "tenantId": "tenant-synthetic",
+        "initiatedBy": "resident-synthetic",
+        "bindingId": "binding-synthetic",
+        "checkpoint": {"namespace": "workflow-test", "threadId": "thread-synthetic"},
+        "runId": "run-synthetic",
+        "requestId": "request-synthetic",
+        "permissions": ["test:only"],
+    },
+}
+PROFILE = {
+    "resident_id": "resident-record-synthetic",
+    "resident_name": "Cư dân mẫu",
+    "phone_number": "synthetic-phone",
+    "unit_id": "unit-synthetic",
+    "unit_number": "Căn hộ mẫu",
+    "building_id": "building-synthetic",
+    "building_code": "TEST",
+    "building_name": "Tòa mẫu",
+    "domain_id": "domain-synthetic",
+    "domain_name": "Domain mẫu",
+    "location_scope_id": "scope-synthetic",
+}
+INFORMATION = json.dumps(
+    {
+        "intent": "information",
+        "title": "Rò nước",
+        "description": "Vòi nước tại bếp bị rò.",
+        "facts": [
+            {
+                "key": "location",
+                "value": "bếp",
+                "source": "customer_report",
+                "source_message_id": "message-1",
+            }
+        ],
+        "answers": {},
+    }
+)
+
+
+def async_test(fn):
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        return asyncio.run(fn(*args, **kwargs))
+
+    return wrapped
+
+
+class ScriptedModel:
+    def __init__(self, responses):
+        self.responses, self.calls = list(responses), []
+
+    async def ainvoke(self, messages):
+        self.calls.append(messages)
+        value = self.responses[min(len(self.calls) - 1, len(self.responses) - 1)]
+        if isinstance(value, Exception):
+            raise value
+        return AIMessage(content=value)
+
+
+def turn(intent, **extra):
+    return json.dumps({"intent": intent, "facts": [], "answers": {}, **extra})
+
+
+class Intake:
+    def __init__(self, policy=None, knowledge=None):
+        self.policy = (
+            policy
+            if policy is not None
+            else {
+                "kind": "needs_staff",
+                "reason": "test-policy-rule",
+                "policyVersion": "policy-test-1",
+            }
+        )
+        self.knowledge = (
+            knowledge if knowledge is not None else {"kind": "insufficient"}
+        )
+        self.calls = []
+
+    async def evaluate_policy(self, request):
+        self.calls.append("policy")
+        if isinstance(self.policy, Exception):
+            raise self.policy
+        return deepcopy(self.policy)
+
+    async def search_knowledge(self, request):
+        self.calls.append("knowledge")
+        if isinstance(self.knowledge, Exception):
+            raise self.knowledge
+        return deepcopy(self.knowledge)
+
+
+def harness(model=None, override=None, **options):
+    saver, calls, saved_plans, reconciliations = InMemorySaver(), [], [], []
+    mutable = {
+        "ticket": {
+            "ticket_id": "ticket-synthetic",
+            "ticket_code": "TK-TEST",
+            "ticket_generation": 0,
+            "ticket_version": "1",
+            "aggregate_version": 1,
+            "created_at": "2026-09-30T00:00:00.000Z",
+        },
+        "event": None,
+        "status": "in_progress",
+        "confirmed": False,
+    }
+
+    def bump():
+        ticket = mutable["ticket"]
+        ticket = {
+            **ticket,
+            "aggregate_version": ticket["aggregate_version"] + 1,
+            "ticket_version": str(ticket["aggregate_version"] + 1),
+        }
+        mutable["ticket"] = ticket
+        return deepcopy(ticket)
+
+    def output(call):
+        op, ticket = call["operation"], deepcopy(mutable["ticket"])
+        if op == "create_ticket_draft":
+            return ticket
+        if op == "get_verified_resident_context":
+            return {"kind": "verified", "profile": deepcopy(PROFILE)}
+        if op == "update_ticket_incident":
+            return {
+                "ticket": bump(),
+                "incident": call["input"]["incident"],
+                "missing_fields": [],
+            }
+        if op == "submit_ticket_assessment":
+            return {
+                "ticket": bump(),
+                "triage": {
+                    "status": "applied",
+                    "policy_version": "policy-test-1",
+                    "triage_decision_id": "triage-synthetic",
+                    "request_kind": "incident",
+                    "priority": "normal",
+                    "severity": "minor",
+                    "is_emergency": False,
+                },
+            }
+        if op == "resolve_management_destination":
+            return {
+                "kind": "resolved",
+                "route": {
+                    "destination_id": "destination-synthetic",
+                    "workspace_id": "workspace-synthetic",
+                    "team_id": "team-synthetic",
+                    "route_revision": 1,
+                    "coordination_binding_id": "coordination-synthetic",
+                    "building_id": PROFILE["building_id"],
+                    "domain_id": PROFILE["domain_id"],
+                    "ticket_version": ticket["ticket_version"],
+                },
+            }
+        if op == "handoff_ticket":
+            return {
+                "persisted": True,
+                "enqueued": True,
+                "correlation_id": call["input"]["message"]["correlation_id"],
+                "operation_id": "handoff-operation-synthetic",
+            }
+        if op == "register_supervisor_wait":
+            return {"registered": True}
+        if op == "get_supervisor_event":
+            return deepcopy(mutable["event"])
+        if op == "append_ticket_information":
+            return {"ticket": bump(), "delivered": True, "scope_changed": False}
+        if op == "respond_supervisor_interaction":
+            return {"ticket": bump(), "status": "accepted"}
+        if op == "request_ticket_cancellation":
+            return {"ticket": bump(), "status": "accepted"}
+        if op == "get_ticket_status":
+            return {
+                "ticket": ticket,
+                "status": mutable["status"],
+                "completion_confirmed": mutable["confirmed"],
+                "scope_changed": False,
+            }
+        raise AssertionError(op)
+
+    class Tools:
+        async def invoke(self, call):
+            calls.append(call)
+            if call["operation"] != "get_supervisor_event":
+                context = call["context"]["checkpoint"]
+                saved = await saver.aget_tuple(
+                    {
+                        "configurable": {
+                            "thread_id": compact_json(
+                                [context["namespace"], context["threadId"]]
+                            ),
+                            "checkpoint_ns": "",
+                        }
+                    }
+                )
+                assert (
+                    saved.checkpoint["channel_values"]["data"]["pending"][
+                        "idempotencyKey"
+                    ]
+                    == call["idempotencyKey"]
+                )
+                saved_plans.append(call["idempotencyKey"])
+            result = output(call)
+            changed = override(call, result) if override else None
+            if inspect.isawaitable(changed):
+                changed = await changed
+            return (
+                changed if changed is not None else {"kind": "success", "value": result}
+            )
+
+    async def resolve_session(context, signal):
+        return {
+            "channel_id": "channel-synthetic",
+            "reception_session_id": "session-synthetic",
+        }
+
+    async def reconcile(call):
+        reconciliations.append(call)
+        return {"kind": "success", "value": output(call)}
+
+    opts = WorkflowOptions(
+        **{
+            "intake": Intake(),
+            "resolve_session": resolve_session,
+            "now": lambda: "2026-09-30T00:00:00.000Z",
+            "reconcile": reconcile,
+            **options,
+        }
+    )
+    dependencies = GraphDependencies(
+        model=ScriptedModel(model or [INFORMATION]), tools=Tools(), checkpointer=saver
+    )
+    factory = create_reception_workflow_factory(opts)
+    return SimpleNamespace(
+        graph=factory.create(dependencies),
+        factory=factory,
+        options=opts,
+        dependencies=dependencies,
+        saver=saver,
+        calls=calls,
+        saved_plans=saved_plans,
+        reconciliations=reconciliations,
+        mutable=mutable,
+    )
+
+
+def waiting(result):
+    assert result["status"] == "interrupted", result
+    return result
+
+
+def resident_resume(result, message=None):
+    result = waiting(result)
+    message = message or {"id": "message-2", "text": "Tôi bổ sung thông tin."}
+    return {
+        "context": deepcopy(REQUEST["context"]),
+        "operationId": "operation:" + message["id"],
+        "interruptId": result["interrupts"][0]["id"],
+        "source": {"kind": "resident", "message": message},
+    }
+
+
+def event_fixture(result, status="in_progress", event_id="event-synthetic-1"):
+    state = waiting(result)["state"]
+    ticket = state["ticket"]
+    version = max(ticket["aggregate_version"], state["last_event_version"]) + 1
+    event = {
+        "event_id": event_id,
+        "binding_id": state["reception_binding_id"],
+        "aggregate_version": version,
+        "payload": {
+            "schema_version": "1.0",
+            "message_id": "message:" + event_id,
+            "correlation_id": state.get("ack", {}).get(
+                "correlation_id", "pending-correlation"
+            ),
+            "sent_at": "2026-09-30T01:00:00.000Z",
+            "tenant_id": state["owner"]["tenantId"],
+            "workspace_id": state.get("route", {}).get(
+                "workspace_id", "pending-workspace"
+            ),
+            "team_id": state.get("route", {}).get("team_id", "pending-team"),
+            "ticket_id": ticket["ticket_id"],
+            "ticket_code": ticket["ticket_code"],
+            "ticket_generation": ticket["ticket_generation"],
+            "ticket_version": str(version),
+            "supervisor_run_id": "supervisor-run-synthetic",
+            "status": status,
+            "customer_message": "Bộ phận xử lý đang xem xét ticket.",
+        },
+    }
+    resume = {
+        "context": deepcopy(REQUEST["context"]),
+        "operationId": "event-operation:" + event_id,
+        "interruptId": result["interrupts"][0]["id"],
+        "source": {
+            "kind": "backend",
+            "event": {
+                "eventId": event_id,
+                "aggregateVersion": version,
+                "ticketId": ticket["ticket_id"],
+                "generation": ticket["ticket_generation"],
+                "bindingId": state["reception_binding_id"],
+                "interruptId": result["interrupts"][0]["id"],
+            },
+        },
+    }
+    return event, resume
+
+
+def set_event(h, event):
+    h.mutable["event"] = event
+    h.mutable["ticket"].update(
+        ticket_version=event["payload"]["ticket_version"],
+        aggregate_version=event["aggregate_version"],
+    )

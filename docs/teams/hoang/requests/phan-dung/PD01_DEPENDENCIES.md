@@ -7,7 +7,8 @@ Owner nhận: Phan Hoàng PH01–PH04, Dương Dũng DD01/DD02; Chiến C01/C06 
 ## Hiện trạng thực
 
 - Đã đọc `agent-reception/src/contracts/index.ts`: `0.1.0-draft.1`, state schema `1`.
-  Consumer PD01 sử dụng nguyên interface này; không sửa hoặc freeze file chung.
+  File này vẫn thuộc PH và giữ nguyên. Consumer PD01 hiện là Python proposal
+  `0.1.0-python.draft.1`, không import/conform trực tiếp interface TypeScript.
 - PH01 đã có manifest/lockfile, model factory và port checkpointer. Graph PD01 mới
   nằm ở `agent-reception/src/graph/`; chưa được nối vào entrypoint production.
 - `shared/contracts/` hiện chỉ có `.gitkeep`; không có OpenAPI/JSON Schema C01 để
@@ -16,33 +17,37 @@ Owner nhận: Phan Hoàng PH01–PH04, Dương Dũng DD01/DD02; Chiến C01/C06 
 
 ## Chữ ký cần owner triển khai/review
 
-Factory export từ `agent-reception/src/graph/index.ts`:
+Factory export từ `agent-reception/src/graph/__init__.py`:
 
-```ts
-createReceptionGraphFactory<Operations extends ReceptionToolOperations>(
-  options: ReceptionFactoryOptions<Operations>,
-): ReceptionGraphFactory<ReceptionBusinessState, Operations>
+```python
+from src.graph import GraphDependencies, ReceptionFactoryOptions, ToolBinding, create_reception_graph_factory
+
+factory = create_reception_graph_factory(ReceptionFactoryOptions(bindings=bindings))
+graph = factory.create(GraphDependencies(model=model, tools=tools, checkpointer=checkpointer))
 ```
 
-PH04 inject `model`, `tools`, `checkpointer` theo draft PH01, không dùng fixture hay
-`MemorySaver` làm fallback production. Options `bindings` là allowlist theo đúng
-operation catalog DD01, không phải API/DTO backend mới. Mỗi binding cần:
+PH inject LangChain Python model `ainvoke(messages)`, tool port `async invoke(request)`
+và async-compatible LangGraph Python checkpointer thật; không default InMemorySaver.
+Runtime TS cần bridge hoặc Python composition riêng do owner triển khai; xem
+[PYTHON_RUNTIME_INTEGRATION](PYTHON_RUNTIME_INTEGRATION.md).
+Options bindings là allowlist catalog DD01. Binding Python hiện có các trường:
 
-```ts
-ToolBinding<Input, Output> = {
-  description: string;
-  inputSchema: JsonValue; // schema từ contract/version DD01/C01
-  parseInput(value: unknown): Input;
-  parseOutput(value: unknown): Output;
-  confirmedFacts?(output: Output): readonly Fact[];
-  ticket?(output: Output): { id: string; generation: number; aggregateVersion: number } | null;
-  reconcile?(request: ReceptionToolRequest<string, Input>): Promise<ReceptionToolResult<Output>>;
-}
+```python
+ToolBinding(
+    description=description,
+    input_schema=input_schema,
+    parse_input=parse_input,
+    parse_output=parse_output,
+    confirmed_facts=confirmed_facts,  # optional
+    ticket=ticket,                    # optional
+    reconcile=reconcile,             # optional async callback
+)
 ```
 
-`confirmedFacts` chỉ trích trường backend đã xác minh, không đưa assessment/suy luận
-của model thành xác nhận. `parseInput`/`parseOutput` cần validation theo contract thật;
-không chỉ cast TypeScript. Schema catalog phục vụ model; runtime vẫn phải validate.
+`confirmed_facts` chỉ project backend fields đã xác minh. `parse_input`/`parse_output`
+phải validate bằng schema/backend contract thật, không dựa chỉ vào Python type hints.
+Ticket projector của generic PD01 dùng JSON `{id,generation,aggregateVersion}`;
+business workflow dùng Ticket shape khác tại `workflow_contracts.py`.
 Identity lấy từ context PH02 xác minh, không lấy từ input model.
 
 `reconcile` phải kiểm tra kết quả thao tác đã nhận/mất response bằng authorized
@@ -54,21 +59,25 @@ auth/error semantics cần DD01/C01 chốt, PD01 không tự đặt endpoint.
 
 ## Quy ước checkpoint cần Phan Hoàng review
 
-LangGraph **1.4.10** đặt lại `checkpoint_ns` về chuỗi rỗng với graph gốc
-(`node_modules/@langchain/langgraph/dist/pregel/loop.js`). PD01 hiện ánh xạ:
+Python graph đã kiểm tra với LangGraph 1.2.11; config root dùng:
 
-```ts
-thread_id = JSON.stringify([context.checkpoint.namespace, context.checkpoint.threadId]);
-checkpoint_ns = "";
+```python
+from src.graph.decision import compact_json
+
+thread_id = compact_json([context["checkpoint"]["namespace"], context["checkpoint"]["threadId"]])
+checkpoint_ns = ""
 ```
 
+Generic marker `runtime_version="pd01-python-1"`, business marker
+`workflow_version="pd-workflow-python-1"`. Python từ chối TS checkpoint cũ;
+PH03 phải chốt namespace mới hoặc migration rõ ràng, không tự reset session.
 Hai khóa đều do backend resolve; không lấy từ browser/model. Test cùng thread ID
 nhưng namespace khác đã tách dữ liệu. PH03 cần review/freeze ánh xạ này trước khi
 có checkpoint production; không đổi codec âm thầm sau khi lưu dữ liệu.
 
 Key tool hiện là JSON tuple `[bindingId, rootOperationId, toolSequence]`, không dùng
 run ID và không cho model tự đặt. Graph checkpoint plan trước node side effect,
-chạy `durability: "sync"`. DD01/C01 cần xác nhận format/độ dài key hoặc đề xuất codec
+chạy `durability="sync"`. DD01/C01 cần xác nhận format/độ dài key hoặc đề xuất codec
 chung được owner phê duyệt. Trong resume, root operation ID được giữ nguyên.
 Chưa có dedup start-operation từ PH02/PH03: không gọi lại cả `run` và `stream` cho
 một operation, không replay start đã hoàn tất để kỳ vọng dedup tự động.
@@ -91,11 +100,11 @@ một operation, không replay start đã hoàn tất để kỳ vọng dedup t�
 - Handoff PD01 là trạng thái chờ người review, không tự gọi dispatch/đóng ticket/
   pause SLA. DD02/PD02/PD03/PH04 nối operations nghiệp vụ thật.
 
-Fixture `verify_unit` và các ID `*-synthetic` trong
-`agent-reception/tests/graph/factory.test.ts` **chỉ dành cho test**. Expected tests:
+Operation `draft` và các ID synthetic trong
+`agent-reception/tests/graph/test_factory.py` **chỉ dành cho test**. Expected tests:
 accepted/unknown không thành completion; reconciliation giữ key; schema lỗi không
-thành confirmed; forbidden → handoff; consumer graph factory dùng đúng draft PH01.
-Không đăng ký `verify_unit` làm operation production từ fixture này.
+thành confirmed; forbidden → handoff; consumer Python factory dùng dependencies inject và wire shape đã chốt với PH.
+Không đăng ký fixture `draft` làm operation production từ fixture này.
 
 ## Phần độc lập đã tiếp tục
 
