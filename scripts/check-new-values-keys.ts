@@ -77,7 +77,8 @@ let beforeText = "";
 try {
   beforeText = await run(["git", "show", `${since}:charts/openbot/values.yaml`]);
 } catch {
-  beforeText = "";
+  console.log(`Baseline charts/openbot/values.yaml not found in ${since}. Skipping absent-key check.`);
+  process.exit(0);
 }
 const before = new Set(paths(beforeText ? parse(beforeText) : {}));
 const now = paths(parse(await Bun.file("charts/openbot/values.yaml").text()));

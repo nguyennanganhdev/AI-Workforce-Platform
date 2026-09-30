@@ -1,10 +1,8 @@
 """AgentScope primitive adapter.
 
-A trusted upstream provider lends an existing, isolated Agent. No registry,
-agent factory, service scheduler or production in-memory state is invented here.
+Trusted upstream provider cấp một Agent có sẵn và được isolate. Module không tự tạo
+registry, agent factory, service scheduler hoặc production in-memory state.
 """
-
-from __future__ import annotations
 
 import json
 from contextlib import AbstractAsyncContextManager

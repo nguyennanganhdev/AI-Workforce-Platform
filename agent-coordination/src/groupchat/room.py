@@ -585,6 +585,7 @@ class RoomService:
                 )
         except RoomError as exc:
             return error_result(query.request_id, exc.code)
+
         except Exception:  # noqa: BLE001 - public boundary không expose dependency secret
             return error_result(
                 query.request_id,
