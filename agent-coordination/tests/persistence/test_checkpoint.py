@@ -17,6 +17,7 @@ from persistence.checkpoint import (
     InMemoryStorage,
     RedisStorageAdapter,
 )
+from groupchat.models import ScopeState, Snapshot, Context, TurnPolicy
 
 
 @pytest.mark.asyncio
@@ -102,3 +103,40 @@ async def test_redis_storage_fallback():
 
     deleted = await adapter.delete("test_key")
     assert deleted is True
+
+
+@pytest.mark.asyncio
+async def test_scope_state_synchronization_dev2():
+    # Verify synchronization with DEV-2 (Tiến Anh) ScopeState & Snapshot models
+    manager = CheckpointManager(InMemoryStorage())
+
+    ctx = Context(
+        tenant_id="tenant-1",
+        principal_id="principal-1",
+        domain_id="domain-1",
+        workspace_id="workspace-1",
+        ticket_id="TK-DEV2-001",
+        ticket_generation=1,
+        binding_id="binding-1",
+        run_id="run-1",
+    )
+
+    snapshot = Snapshot(
+        room_id="ROOM-DEV2-888",
+        scope=ctx,
+        groupchat_version_id="gchat-v1",
+        participants=[],
+        policy=TurnPolicy(),
+        room_state="running",
+    )
+
+    scope_state = ScopeState(snapshot=snapshot, fence=10)
+
+    saved = await manager.save_scope_state(scope_state, key="ROOM-DEV2-888")
+    assert saved is True
+
+    loaded = await manager.load_scope_state("ROOM-DEV2-888")
+    assert loaded is not None
+    assert loaded.snapshot.room_id == "ROOM-DEV2-888"
+    assert loaded.snapshot.scope.ticket_id == "TK-DEV2-001"
+    assert loaded.fence == 10

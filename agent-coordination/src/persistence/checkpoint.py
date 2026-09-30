@@ -1,6 +1,7 @@
 """
 Session Checkpointing Module for Agent Coordination (DEV-4).
 Defines session state dataclasses and storage backend adapters (Redis / InMemory).
+Integrated with DEV-2 (Tiến Anh) GroupChat ScopeState models.
 """
 
 from dataclasses import dataclass, field, asdict
@@ -125,7 +126,8 @@ class RedisStorageAdapter:
         full_key = self._make_key(key)
         if self.redis_client is not None:
             try:
-                if asyncio.iscoroutinefunction(getattr(self.redis_client, "set", None)):
+                import inspect
+                if inspect.iscoroutinefunction(getattr(self.redis_client, "set", None)):
                     if ttl:
                         await self.redis_client.set(full_key, value, ex=ttl)
                     else:
@@ -145,7 +147,8 @@ class RedisStorageAdapter:
         full_key = self._make_key(key)
         if self.redis_client is not None:
             try:
-                if asyncio.iscoroutinefunction(getattr(self.redis_client, "get", None)):
+                import inspect
+                if inspect.iscoroutinefunction(getattr(self.redis_client, "get", None)):
                     val = await self.redis_client.get(full_key)
                 else:
                     val = self.redis_client.get(full_key)
@@ -163,7 +166,8 @@ class RedisStorageAdapter:
         full_key = self._make_key(key)
         if self.redis_client is not None:
             try:
-                if asyncio.iscoroutinefunction(getattr(self.redis_client, "delete", None)):
+                import inspect
+                if inspect.iscoroutinefunction(getattr(self.redis_client, "delete", None)):
                     await self.redis_client.delete(full_key)
                 else:
                     self.redis_client.delete(full_key)
@@ -177,7 +181,8 @@ class RedisStorageAdapter:
         full_key = self._make_key(key)
         if self.redis_client is not None:
             try:
-                if asyncio.iscoroutinefunction(getattr(self.redis_client, "exists", None)):
+                import inspect
+                if inspect.iscoroutinefunction(getattr(self.redis_client, "exists", None)):
                     res = await self.redis_client.exists(full_key)
                 else:
                     res = self.redis_client.exists(full_key)
@@ -224,6 +229,40 @@ class CheckpointManager:
         except Exception as e:
             logger.error(f"Failed to deserialize checkpoint for {identifier}: {e}")
             return None
+
+    async def save_scope_state(self, scope_state: Any, key: Optional[str] = None, ttl: Optional[int] = None) -> bool:
+        """Save DEV-2 (Tiến Anh) ScopeState or Snapshot model directly to persistence."""
+        if hasattr(scope_state, "model_dump_json"):
+            serialized = scope_state.model_dump_json()
+        elif hasattr(scope_state, "json"):
+            serialized = scope_state.json()
+        else:
+            serialized = json.dumps(scope_state, ensure_ascii=False)
+
+        storage_key = key
+        if not storage_key:
+            if hasattr(scope_state, "snapshot") and scope_state.snapshot and hasattr(scope_state.snapshot, "room_id"):
+                storage_key = scope_state.snapshot.room_id
+            elif hasattr(scope_state, "room_id"):
+                storage_key = getattr(scope_state, "room_id")
+            else:
+                storage_key = f"scope_{time.time()}"
+
+        full_key = self._get_checkpoint_key(storage_key)
+        return await self.storage.save(full_key, serialized, ttl=ttl)
+
+    async def load_scope_state(self, key: str) -> Optional[Any]:
+        """Load DEV-2 (Tiến Anh) ScopeState model directly from persistence."""
+        full_key = self._get_checkpoint_key(key)
+        json_str = await self.storage.load(full_key)
+        if not json_str:
+            return None
+        try:
+            from groupchat.models import ScopeState
+            return ScopeState.model_validate_json(json_str)
+        except Exception as e:
+            logger.warning(f"Failed to parse ScopeState model for {key}: {e}")
+            return json.loads(json_str)
 
     async def delete_checkpoint(self, identifier: str) -> bool:
         """Delete checkpoint for identifier."""
