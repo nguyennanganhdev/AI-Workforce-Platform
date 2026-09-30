@@ -1,0 +1,580 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "AddParticipant": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "room_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Room Id",
+          "type": "string"
+        },
+        "expected_room_version": {
+          "minimum": 1,
+          "title": "Expected Room Version",
+          "type": "integer"
+        },
+        "operation": {
+          "const": "add_participant",
+          "default": "add_participant",
+          "title": "Operation",
+          "type": "string"
+        },
+        "participant": {
+          "$ref": "#/$defs/ParticipantSpec"
+        }
+      },
+      "required": [
+        "room_id",
+        "expected_room_version",
+        "participant"
+      ],
+      "title": "AddParticipant",
+      "type": "object"
+    },
+    "AppendMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "room_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Room Id",
+          "type": "string"
+        },
+        "expected_room_version": {
+          "minimum": 1,
+          "title": "Expected Room Version",
+          "type": "integer"
+        },
+        "operation": {
+          "const": "append_message",
+          "default": "append_message",
+          "title": "Operation",
+          "type": "string"
+        },
+        "message": {
+          "$ref": "#/$defs/MessageInput"
+        }
+      },
+      "required": [
+        "room_id",
+        "expected_room_version",
+        "message"
+      ],
+      "title": "AppendMessage",
+      "type": "object"
+    },
+    "CancelTurn": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "room_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Room Id",
+          "type": "string"
+        },
+        "expected_room_version": {
+          "minimum": 1,
+          "title": "Expected Room Version",
+          "type": "integer"
+        },
+        "operation": {
+          "const": "cancel_turn",
+          "default": "cancel_turn",
+          "title": "Operation",
+          "type": "string"
+        },
+        "target_operation_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Target Operation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "expected_room_version",
+        "target_operation_id"
+      ],
+      "title": "CancelTurn",
+      "type": "object"
+    },
+    "CloseRoom": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "room_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Room Id",
+          "type": "string"
+        },
+        "expected_room_version": {
+          "minimum": 1,
+          "title": "Expected Room Version",
+          "type": "integer"
+        },
+        "operation": {
+          "const": "close_room",
+          "default": "close_room",
+          "title": "Operation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "room_id",
+        "expected_room_version"
+      ],
+      "title": "CloseRoom",
+      "type": "object"
+    },
+    "Context": {
+      "additionalProperties": false,
+      "properties": {
+        "tenant_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "principal_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Principal Id",
+          "type": "string"
+        },
+        "domain_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Domain Id",
+          "type": "string"
+        },
+        "workspace_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Workspace Id",
+          "type": "string"
+        },
+        "ticket_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "ticket_generation": {
+          "minimum": 0,
+          "title": "Ticket Generation",
+          "type": "integer"
+        },
+        "binding_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "run_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "principal_id",
+        "domain_id",
+        "workspace_id",
+        "ticket_id",
+        "ticket_generation",
+        "binding_id",
+        "run_id"
+      ],
+      "title": "Context",
+      "type": "object"
+    },
+    "MessageInput": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "delivery": {
+          "default": "broadcast",
+          "enum": [
+            "broadcast",
+            "direct"
+          ],
+          "title": "Delivery",
+          "type": "string"
+        },
+        "recipient_agent_version_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recipient Agent Version Id"
+        },
+        "in_reply_to_message_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "In Reply To Message Id"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "MessageInput",
+      "type": "object"
+    },
+    "OpenRoom": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "operation": {
+          "const": "open_room",
+          "default": "open_room",
+          "title": "Operation",
+          "type": "string"
+        },
+        "room_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Room Id"
+        },
+        "groupchat_version_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Groupchat Version Id",
+          "type": "string"
+        },
+        "participants": {
+          "items": {
+            "$ref": "#/$defs/ParticipantSpec"
+          },
+          "minItems": 1,
+          "title": "Participants",
+          "type": "array"
+        },
+        "turn_policy": {
+          "$ref": "#/$defs/TurnPolicy"
+        },
+        "initial_message": {
+          "$ref": "#/$defs/MessageInput"
+        }
+      },
+      "required": [
+        "groupchat_version_id",
+        "participants",
+        "initial_message"
+      ],
+      "title": "OpenRoom",
+      "type": "object"
+    },
+    "ParticipantSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_version_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Agent Version Id",
+          "type": "string"
+        },
+        "role": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_version_id",
+        "role"
+      ],
+      "title": "ParticipantSpec",
+      "type": "object"
+    },
+    "RunTurn": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "room_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Room Id",
+          "type": "string"
+        },
+        "expected_room_version": {
+          "minimum": 1,
+          "title": "Expected Room Version",
+          "type": "integer"
+        },
+        "operation": {
+          "const": "run_turn",
+          "default": "run_turn",
+          "title": "Operation",
+          "type": "string"
+        },
+        "turn_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "task_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Id",
+          "type": "string"
+        },
+        "correlation_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "speaker_agent_version_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Speaker Agent Version Id",
+          "type": "string"
+        },
+        "instruction": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Instruction",
+          "type": "string"
+        },
+        "in_reply_to_message_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "In Reply To Message Id"
+        }
+      },
+      "required": [
+        "room_id",
+        "expected_room_version",
+        "turn_id",
+        "task_id",
+        "correlation_id",
+        "speaker_agent_version_id",
+        "instruction"
+      ],
+      "title": "RunTurn",
+      "type": "object"
+    },
+    "TurnPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "max_turns": {
+          "default": 12,
+          "exclusiveMinimum": 0,
+          "maximum": 10000,
+          "title": "Max Turns",
+          "type": "integer"
+        },
+        "max_consecutive_turns": {
+          "default": 2,
+          "exclusiveMinimum": 0,
+          "maximum": 10000,
+          "title": "Max Consecutive Turns",
+          "type": "integer"
+        },
+        "timeout_seconds": {
+          "default": 60,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "title": "TurnPolicy",
+      "type": "object"
+    },
+    "UpdateTurnPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "room_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Room Id",
+          "type": "string"
+        },
+        "expected_room_version": {
+          "minimum": 1,
+          "title": "Expected Room Version",
+          "type": "integer"
+        },
+        "operation": {
+          "const": "update_turn_policy",
+          "default": "update_turn_policy",
+          "title": "Operation",
+          "type": "string"
+        },
+        "turn_policy": {
+          "$ref": "#/$defs/TurnPolicy"
+        }
+      },
+      "required": [
+        "room_id",
+        "expected_room_version",
+        "turn_policy"
+      ],
+      "title": "UpdateTurnPolicy",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "request_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Request Id",
+      "type": "string"
+    },
+    "trace_id": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Trace Id",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "context": {
+      "$ref": "#/$defs/Context"
+    },
+    "payload": {
+      "discriminator": {
+        "mapping": {
+          "add_participant": "#/$defs/AddParticipant",
+          "append_message": "#/$defs/AppendMessage",
+          "cancel_turn": "#/$defs/CancelTurn",
+          "close_room": "#/$defs/CloseRoom",
+          "open_room": "#/$defs/OpenRoom",
+          "run_turn": "#/$defs/RunTurn",
+          "update_turn_policy": "#/$defs/UpdateTurnPolicy"
+        },
+        "propertyName": "operation"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/OpenRoom"
+        },
+        {
+          "$ref": "#/$defs/AppendMessage"
+        },
+        {
+          "$ref": "#/$defs/RunTurn"
+        },
+        {
+          "$ref": "#/$defs/AddParticipant"
+        },
+        {
+          "$ref": "#/$defs/UpdateTurnPolicy"
+        },
+        {
+          "$ref": "#/$defs/CloseRoom"
+        },
+        {
+          "$ref": "#/$defs/CancelTurn"
+        }
+      ],
+      "title": "Payload"
+    }
+  },
+  "required": [
+    "request_id",
+    "trace_id",
+    "idempotency_key",
+    "context",
+    "payload"
+  ],
+  "title": "Command",
+  "type": "object"
+}
