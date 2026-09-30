@@ -3,6 +3,8 @@ import {
   type Clock,
   type ContextResolver,
   createInMemoryAssetReadPort,
+  createInMemoryMaintenanceReadPort,
+  createInMemorySensorReadPort,
   createInMemorySopProfilePort,
   createTechnicalToolCaller,
   type HostOptions,
@@ -36,6 +38,8 @@ export const CAPABILITIES = [
   "interruption:read",
   "sop:read",
   "asset:read",
+  "sensor:read",
+  "maintenance:read",
 ] as const;
 
 export const fixtureContextResolver: ContextResolver = async (caller) => {
@@ -108,6 +112,8 @@ export function technicalToolHarness(
       sop: ports.sop ?? unconfigured("sop"),
       sopProfiles: ports.sopProfiles ?? createInMemorySopProfilePort(),
       assets: ports.assets ?? createInMemoryAssetReadPort(),
+      sensors: ports.sensors ?? createInMemorySensorReadPort(),
+      maintenance: ports.maintenance ?? createInMemoryMaintenanceReadPort(),
       clock: ports.clock ?? fixedClock,
       contextResolver: overrides.contextResolver ?? fixtureContextResolver,
       audit: overrides.audit ?? audit.sink,

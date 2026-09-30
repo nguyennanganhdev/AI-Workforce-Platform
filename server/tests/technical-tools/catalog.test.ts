@@ -18,12 +18,14 @@ import {
 const CATALOGUE = describeTechnicalTools();
 
 describe("what the catalogue says about every tool", () => {
-  test("names the four built so far, in the order tools.md introduces them", () => {
+  test("names the six built so far: every lookup tool in tools.md", () => {
     expect(CATALOGUE.map((tool) => tool.name)).toEqual([
       "technical.get_active_outage",
       "utility_schedule.read",
       "sop_kb.retrieve",
       "asset.read",
+      "sensor.read",
+      "maintenance_history.read",
     ]);
   });
 
@@ -77,6 +79,12 @@ describe("what the catalogue says about every tool", () => {
     expect(asset?.description).toContain("NEEDS_INPUT");
     const sop = CATALOGUE.find((tool) => tool.name === "sop_kb.retrieve");
     expect(sop?.description).toContain("NOT_FOUND");
+    const sensor = CATALOGUE.find((tool) => tool.name === "sensor.read");
+    expect(sensor?.description).toContain("never conclude");
+    const history = CATALOGUE.find(
+      (tool) => tool.name === "maintenance_history.read",
+    );
+    expect(history?.description).toContain("not a diagnosis");
   });
 });
 

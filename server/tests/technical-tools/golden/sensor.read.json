@@ -1,0 +1,41 @@
+{
+  "request": {
+    "building_id": "11111111-1111-4111-8111-111111111111",
+    "asset_id": "AC-A1-1205-01",
+    "metric": "condensate_level",
+    "time_range": {
+      "from": "2026-09-30T08:00:00Z",
+      "to": "2026-09-30T09:00:00Z"
+    },
+    "max_age_seconds": 900
+  },
+  "response": {
+    "status": "OK",
+    "trace_id": "tr-a2-003",
+    "server_time": "2026-09-30T09:02:00Z",
+    "data": {
+      "freshness": "fresh",
+      "readings": [
+        {
+          "sensor_id": "SNS-009",
+          "asset_id": "AC-A1-1205-01",
+          "metric": "condensate_level",
+          "value": 12.4,
+          "unit": "mm",
+          "observed_at": "2026-09-30T08:58:00Z",
+          "quality": "good"
+        }
+      ]
+    },
+    "errors": [],
+    "missing_fields": [],
+    "provenance": [
+      {
+        "source_system": "bms_adapter",
+        "source_record_id": "SNS-009",
+        "source_version": null,
+        "retrieved_at": "2026-09-30T09:02:00Z"
+      }
+    ]
+  }
+}

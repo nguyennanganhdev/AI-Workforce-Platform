@@ -124,6 +124,22 @@ describe("what asset.read accepts", () => {
     expect(result.error?.issues[0]?.path).toEqual(["asset_id"]);
   });
 
+  /*
+   * tools.md §3.2 writes `oneOf`, which is exactly one. Given both, it is unclear which decides when
+   * they name different equipment. Until this round the schema accepted both; this is the fix.
+   */
+  test("refuses a call that names both an id and a location", () => {
+    const result = assetReadInputSchema.safeParse({
+      building_id: BUILDING.a1,
+      asset_id: "AC-A1-1205-01",
+      location: "A1-1205/phòng khách",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toBe(
+      "Give exactly one of asset_id or location.",
+    );
+  });
+
   test.each([
     ["an empty asset id", { asset_id: "" }],
     ["a location of one character", { location: "A" }],
