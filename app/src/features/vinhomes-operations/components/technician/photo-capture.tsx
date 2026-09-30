@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { IconCamera, IconPhoto } from '@tabler/icons-react';
+import { IconCamera } from '@tabler/icons-react';
+import { Button } from '@/components/ui/button';
 import type { VhEvidenceRef } from '../../types/evidence';
 
 type Phase = 'BEFORE' | 'AFTER' | 'OTHER';
@@ -68,41 +69,37 @@ export function PhotoCapture({
   };
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-slate-700">
-          Ảnh {label} <span className="text-slate-400 font-normal">({photos.length})</span>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium text-foreground">
+          Ảnh {label} <span className="font-normal tabular-nums text-muted-foreground">({photos.length})</span>
         </p>
         {!disabled && (
-          <button
-            type="button"
+          <Button
+            variant="link"
+            size="sm"
+            className="h-9 px-0 text-muted-foreground"
             onClick={() => onAdd(SAMPLE_PHOTOS[phase], `sample_${phase.toLowerCase()}.jpg`, 60_000)}
-            className="text-xs text-slate-400 hover:text-blue-600 inline-flex items-center gap-1"
           >
-            <IconPhoto className="w-3.5 h-3.5" /> Ảnh mẫu (demo)
-          </button>
+            Dùng ảnh mẫu (demo)
+          </Button>
         )}
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1">
         {photos.map((p) => (
-          <img
-            key={p.id}
-            src={p.file_url}
-            alt={`Ảnh ${label}`}
-            className="w-24 h-24 shrink-0 rounded-lg object-cover border border-slate-200"
-          />
+          <img key={p.id} src={p.file_url} alt={`Ảnh ${label}`} className="size-24 shrink-0 rounded-md border object-cover" />
         ))}
-        <button
-          type="button"
+        <Button
+          variant="outline"
           disabled={disabled || busy}
           onClick={() => inputRef.current?.click()}
-          className="w-24 h-24 shrink-0 rounded-lg border-2 border-dashed border-blue-300 bg-blue-50/50 text-blue-700 flex flex-col items-center justify-center gap-1 text-xs font-semibold disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+          className="size-24 shrink-0 flex-col gap-1 border-dashed text-[13px] font-normal"
         >
-          <IconCamera className="w-7 h-7" />
+          <IconCamera className="size-6" />
           {busy ? 'Đang xử lý…' : 'Chụp ảnh'}
-        </button>
+        </Button>
       </div>
-      {disabled && disabledHint && <p className="text-xs text-slate-500">{disabledHint}</p>}
+      {disabled && disabledHint && <p className="text-xs text-muted-foreground">{disabledHint}</p>}
       <input
         ref={inputRef}
         type="file"

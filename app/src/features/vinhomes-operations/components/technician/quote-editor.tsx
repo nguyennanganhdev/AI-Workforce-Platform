@@ -1,7 +1,14 @@
 import { useMemo, useState } from 'react';
 import { IconMinus, IconPlus, IconSearch, IconTrash } from '@tabler/icons-react';
+import { Button } from '@/components/ui/button';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MATERIAL_CATALOG, formatVnd } from '../../lib/field-flow';
 import { quoteTotal, type FieldQuote, type QuoteLine } from '../../types/field-flow';
+
+const WARRANTY_ITEMS: Record<string, string> = { '0': 'Không bảo hành', '1': '1 tháng', '3': '3 tháng', '6': '6 tháng', '12': '12 tháng' };
 
 let lineSeq = 0;
 const newLineId = () => `ql-${Date.now().toString(36)}-${(lineSeq++).toString(36)}`;
@@ -70,45 +77,49 @@ export function QuoteEditor({
   const total = quoteTotal(quote.lines, quote.labor_cost);
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
       {/* Lines */}
       {quote.lines.length === 0 ? (
-        <p className="text-sm text-slate-500">Chưa có vật tư nào. Bấm “Thêm vật tư” để chọn.</p>
+        <p className="text-sm text-muted-foreground">Chưa có vật tư nào. Bấm “Thêm vật tư” để chọn.</p>
       ) : (
-        <ul className="divide-y divide-slate-100 border border-slate-200 rounded-lg">
+        <ul className="divide-y rounded-md border">
           {quote.lines.map((l) => (
-            <li key={l.id} className="p-3 space-y-2">
+            <li key={l.id} className="flex flex-col gap-2 p-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-base font-medium text-slate-800">
+                  <p className="text-base md:text-base font-medium text-foreground">
                     {l.name}
-                    {l.is_additional && <span className="ml-2 text-xs font-semibold text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded">Phát sinh</span>}
+                    {l.is_additional && <span className="ml-2 text-[13px] font-normal text-muted-foreground">(phát sinh)</span>}
                   </p>
-                  <p className="text-sm text-slate-500">{formatVnd(l.unit_price)} / {l.unit}</p>
+                  <p className="text-sm text-muted-foreground">{formatVnd(l.unit_price)} / {l.unit}</p>
                 </div>
-                <p className="text-base font-semibold text-slate-800 shrink-0">{formatVnd(l.amount)}</p>
+                <p className="shrink-0 text-base md:text-base font-semibold tabular-nums text-foreground">{formatVnd(l.amount)}</p>
               </div>
               {isFrozen(l) ? (
-                <p className="text-xs text-slate-400">Đã được cư dân đồng ý · {l.quantity} {l.unit}</p>
+                <p className="text-[13px] text-muted-foreground">Cư dân đã đồng ý · {l.quantity} {l.unit}</p>
               ) : (
                 <div className="flex items-center gap-2">
-                  <button type="button" aria-label="Giảm" onClick={() => setQty(l.id, l.quantity - 1)} className="w-11 h-11 rounded-lg border border-slate-300 flex items-center justify-center">
-                    {l.quantity === 1 ? <IconTrash className="w-5 h-5 text-rose-500" /> : <IconMinus className="w-5 h-5" />}
-                  </button>
-                  <span className="w-12 text-center text-base font-semibold">{l.quantity}</span>
-                  <button type="button" aria-label="Tăng" onClick={() => setQty(l.id, l.quantity + 1)} className="w-11 h-11 rounded-lg border border-slate-300 flex items-center justify-center">
-                    <IconPlus className="w-5 h-5" />
-                  </button>
-                  <span className="text-sm text-slate-500">{l.unit}</span>
+                  <Button variant="outline" size="icon-lg" className="size-11" aria-label={l.quantity === 1 ? 'Xóa vật tư' : 'Giảm'} onClick={() => setQty(l.id, l.quantity - 1)}>
+                    {l.quantity === 1 ? <IconTrash /> : <IconMinus />}
+                  </Button>
+                  <span className="w-12 text-center text-base md:text-base font-semibold tabular-nums">{l.quantity}</span>
+                  <Button variant="outline" size="icon-lg" className="size-11" aria-label="Tăng" onClick={() => setQty(l.id, l.quantity + 1)}>
+                    <IconPlus />
+                  </Button>
+                  <span className="text-sm text-muted-foreground">{l.unit}</span>
                 </div>
               )}
               {l.is_additional && !isFrozen(l) && (
-                <input
-                  value={l.additional_reason || ''}
-                  onChange={(e) => setReason(l.id, e.target.value)}
-                  placeholder="Lý do phát sinh (bắt buộc)"
-                  className={`w-full min-h-11 rounded-lg border px-3 text-base ${l.additional_reason?.trim() ? 'border-slate-300' : 'border-orange-300 bg-orange-50/40'}`}
-                />
+                <Field data-invalid={!l.additional_reason?.trim() ? true : undefined}>
+                  <FieldLabel htmlFor={`reason-${l.id}`}>Lý do phát sinh (bắt buộc)</FieldLabel>
+                  <Input
+                    id={`reason-${l.id}`}
+                    value={l.additional_reason || ''}
+                    onChange={(e) => setReason(l.id, e.target.value)}
+                    aria-invalid={!l.additional_reason?.trim()}
+                    className="h-11 text-base md:text-base"
+                  />
+                </Field>
               )}
             </li>
           ))}
@@ -117,81 +128,97 @@ export function QuoteEditor({
 
       {/* Picker */}
       {pickerOpen ? (
-        <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-3 space-y-3">
-          <div className="relative">
-            <IconSearch className="w-5 h-5 absolute left-3 top-3 text-slate-400" />
-            <input
+        <div className="flex flex-col gap-3 rounded-md border bg-muted/40 p-3">
+          <InputGroup className="h-11 bg-card">
+            <InputGroupAddon>
+              <IconSearch />
+            </InputGroupAddon>
+            <InputGroupInput
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Tìm vật tư (van, ống, aptomat…)"
-              className="w-full min-h-11 rounded-lg border border-slate-300 bg-white pl-10 pr-3 text-base"
+              aria-label="Tìm vật tư"
+              className="text-base md:text-base"
             />
-          </div>
-          <ul className="max-h-64 overflow-y-auto divide-y divide-slate-100 bg-white rounded-lg border border-slate-200">
+          </InputGroup>
+          <ul className="max-h-64 divide-y overflow-y-auto rounded-md border bg-card">
             {results.map((m) => (
               <li key={m.code}>
                 <button
                   type="button"
                   onClick={() => addLine({ material_code: m.code, name: m.name, quantity: 1, unit: m.unit, unit_price: m.unit_price })}
-                  className="w-full min-h-12 px-3 py-2 flex items-center justify-between gap-2 text-left hover:bg-blue-50"
+                  className="flex min-h-12 w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-muted/50"
                 >
-                  <span className="text-base text-slate-800">{m.name}</span>
-                  <span className="text-sm text-slate-500 shrink-0">{formatVnd(m.unit_price)}/{m.unit}</span>
+                  <span className="text-base md:text-base text-foreground">{m.name}</span>
+                  <span className="shrink-0 text-sm tabular-nums text-muted-foreground">{formatVnd(m.unit_price)}/{m.unit}</span>
                 </button>
               </li>
             ))}
-            {results.length === 0 && <li className="p-3 text-sm text-slate-500">Không có trong danh mục. Nhập tay bên dưới.</li>}
+            {results.length === 0 && <li className="p-3 text-sm text-muted-foreground">Không có trong danh mục. Nhập tay bên dưới.</li>}
           </ul>
-          <div className="grid grid-cols-[1fr_7rem_4rem] gap-2">
-            <input value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="Vật tư khác" className="min-h-11 rounded-lg border border-slate-300 px-3 text-base min-w-0" />
-            <input value={customPrice} onChange={(e) => setCustomPrice(e.target.value)} inputMode="numeric" placeholder="Đơn giá" className="min-h-11 rounded-lg border border-slate-300 px-3 text-base min-w-0" />
-            <input value={customUnit} onChange={(e) => setCustomUnit(e.target.value)} placeholder="ĐVT" className="min-h-11 rounded-lg border border-slate-300 px-2 text-base min-w-0" />
-          </div>
+          <FieldGroup className="grid grid-cols-[1fr_7rem_4.5rem] gap-2">
+            <Field>
+              <FieldLabel htmlFor="custom-name">Vật tư khác</FieldLabel>
+              <Input id="custom-name" value={customName} onChange={(e) => setCustomName(e.target.value)} className="h-11 bg-card text-base md:text-base" />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="custom-price">Đơn giá</FieldLabel>
+              <Input id="custom-price" value={customPrice} onChange={(e) => setCustomPrice(e.target.value)} inputMode="numeric" className="h-11 bg-card text-base md:text-base" />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="custom-unit">ĐVT</FieldLabel>
+              <Input id="custom-unit" value={customUnit} onChange={(e) => setCustomUnit(e.target.value)} className="h-11 bg-card text-base md:text-base" />
+            </Field>
+          </FieldGroup>
           <div className="flex gap-2">
-            <button type="button" onClick={addCustom} className="flex-1 min-h-11 rounded-lg border border-slate-300 bg-white text-base font-medium">Thêm vật tư nhập tay</button>
-            <button type="button" onClick={() => setPickerOpen(false)} className="min-h-11 px-4 rounded-lg text-base text-blue-700 font-medium">Xong</button>
+            <Button variant="outline" size="lg" className="h-11 flex-1 bg-card text-base md:text-base" onClick={addCustom}>Thêm vật tư nhập tay</Button>
+            <Button size="lg" className="h-11 px-5 text-base md:text-base" onClick={() => setPickerOpen(false)}>Xong</Button>
           </div>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => setPickerOpen(true)}
-          className="w-full min-h-12 rounded-lg border-2 border-dashed border-blue-300 text-blue-700 text-base font-semibold inline-flex items-center justify-center gap-2"
-        >
-          <IconPlus className="w-5 h-5" /> {mode === 'additional' ? 'Thêm vật tư phát sinh' : 'Thêm vật tư'}
-        </button>
+        <Button variant="outline" size="lg" className="h-12 w-full border-dashed text-base md:text-base" onClick={() => setPickerOpen(true)}>
+          <IconPlus data-icon="inline-start" /> {mode === 'additional' ? 'Thêm vật tư phát sinh' : 'Thêm vật tư'}
+        </Button>
       )}
 
       {/* Labor, warranty, total */}
       {mode === 'draft' && (
-        <div className="grid grid-cols-2 gap-3">
-          <label className="space-y-1">
-            <span className="text-sm text-slate-600">Tiền công (đ)</span>
-            <input
+        <FieldGroup className="grid grid-cols-2 gap-3">
+          <Field>
+            <FieldLabel htmlFor="labor-cost">Tiền công (đ)</FieldLabel>
+            <Input
+              id="labor-cost"
               value={quote.labor_cost ? quote.labor_cost.toLocaleString('vi-VN') : ''}
               onChange={(e) => update(quote.lines, { labor_cost: Number(e.target.value.replace(/\D/g, '')) || 0 })}
               inputMode="numeric"
               placeholder="0"
-              className="w-full min-h-11 rounded-lg border border-slate-300 px-3 text-base"
+              className="h-11 text-base md:text-base"
             />
-          </label>
-          <label className="space-y-1">
-            <span className="text-sm text-slate-600">Bảo hành</span>
-            <select
-              value={quote.warranty_months}
-              onChange={(e) => update(quote.lines, { warranty_months: Number(e.target.value) })}
-              className="w-full min-h-11 rounded-lg border border-slate-300 px-3 text-base bg-white"
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="warranty">Bảo hành</FieldLabel>
+            <Select
+              items={WARRANTY_ITEMS}
+              value={String(quote.warranty_months)}
+              onValueChange={(v) => update(quote.lines, { warranty_months: Number(v) })}
             >
-              {[0, 1, 3, 6, 12].map((m) => (
-                <option key={m} value={m}>{m === 0 ? 'Không bảo hành' : `${m} tháng`}</option>
-              ))}
-            </select>
-          </label>
-        </div>
+              <SelectTrigger id="warranty" className="w-full text-base md:text-base data-[size=default]:h-11">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {Object.entries(WARRANTY_ITEMS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+        </FieldGroup>
       )}
-      <div className="flex items-center justify-between rounded-lg bg-slate-900 text-white px-4 py-3">
-        <span className="text-base">Tổng cộng{quote.labor_cost > 0 ? ' (gồm công)' : ''}</span>
-        <span className="text-xl font-bold">{formatVnd(total)}</span>
+      <div className="flex items-center justify-between border-t pt-3">
+        <span className="text-base md:text-base text-slate-700">Tổng cộng{quote.labor_cost > 0 ? ' (gồm công)' : ''}</span>
+        <span className="text-xl font-semibold tabular-nums text-foreground">{formatVnd(total)}</span>
       </div>
     </div>
   );

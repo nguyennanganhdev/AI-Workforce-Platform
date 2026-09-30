@@ -23,7 +23,7 @@ export function QcWorkspace() {
         )}
       </div>
       <div hidden={tab !== 'PENDING'}>
-        <OperationsTable title="Phiếu chờ nghiệm thu" columns={['Mã phiếu', 'Công việc', 'Người thực hiện', 'Ảnh hiện trường']} actionLabel="Nghiệm thu"
+        <OperationsTable title="Phiếu chờ nghiệm thu" titleColumn={1} columns={['Mã phiếu', 'Công việc', 'Người thực hiện', 'Ảnh hiện trường']} actionLabel="Nghiệm thu"
           rows={eligibleWos.map((order) => {
             const title = tasks.find((task) => task.id === order.task_id)?.title || 'Phiếu thi công';
             const photos = evidence.filter((photo) => photo.work_order_id === order.id);

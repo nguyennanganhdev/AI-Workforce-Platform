@@ -112,7 +112,7 @@ export const SignaturePad = forwardRef<SignaturePadHandle, { onChange?: (hasInk:
         type="button"
         onClick={clear}
         disabled={!hasInk}
-        className="min-h-11 px-4 rounded-lg border border-slate-300 text-slate-600 inline-flex items-center gap-2 text-base disabled:opacity-40"
+        className="min-h-11 px-4 rounded-lg border border-slate-300 text-slate-600 inline-flex items-center gap-2 text-base md:text-base disabled:opacity-40"
       >
         <IconEraser className="w-5 h-5" /> Ký lại
       </button>

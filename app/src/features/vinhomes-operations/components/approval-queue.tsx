@@ -131,7 +131,7 @@ export function ApprovalQueue() {
       </div>
 
       <div hidden={activeTab !== 'PENDING' || Boolean(detailId)}>
-        <OperationsTable title="Đề xuất chờ phê duyệt" columns={['Mã đề xuất', 'Nội dung', 'Kinh phí dự kiến', 'Hạn phê duyệt']}
+        <OperationsTable title="Đề xuất chờ phê duyệt" titleColumn={1} columns={['Mã đề xuất', 'Nội dung', 'Kinh phí dự kiến', 'Hạn phê duyệt']}
           rows={pendingApprovals.map((item) => ({id: item.id, search: `${item.id} ${item.action_request?.action_type === 'PURCHASE_MATERIAL' ? 'Mua sắm vật tư' : 'Giải ngân'}`, cells: [
             item.id, item.action_request?.action_type === 'PURCHASE_MATERIAL' ? 'Mua sắm vật tư' : 'Phê duyệt giải ngân',
             `${(item.estimated_cost_vnd || 0).toLocaleString('vi-VN')} đồng`, new Date(item.expires_at).toLocaleString('vi-VN'),
@@ -309,7 +309,7 @@ export function ApprovalQueue() {
       )}
 
       <div hidden={activeTab !== 'HISTORY' || Boolean(historyId)}>
-        <OperationsTable title="Lịch sử phê duyệt" columns={['Mã đề xuất', 'Nội dung', 'Kết quả', 'Người duyệt', 'Ngày quyết định']}
+        <OperationsTable title="Lịch sử phê duyệt" titleColumn={1} columns={['Mã đề xuất', 'Nội dung', 'Kết quả', 'Người duyệt', 'Ngày quyết định']}
           rows={decidedApprovals.map((item) => ({id: item.id, search: `${item.id} ${String(item.action_request?.payload?.item || '')} ${item.reviewer_name || ''}`, cells: [
             item.id, String(item.action_request?.payload?.item || 'Đề xuất'),
             item.status === 'APPROVED' ? 'Đã phê duyệt' : item.status === 'EXPIRED' ? 'Hết hạn' : 'Đã từ chối',

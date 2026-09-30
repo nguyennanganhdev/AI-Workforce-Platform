@@ -160,7 +160,7 @@ export function ContractorWorkspace() {
 
       <p className="text-sm text-slate-500">{pendingAcceptanceOrders.length} chờ tiếp nhận · {inProgressOrders.length} đang thi công · {completedOrders.length} chờ nghiệm thu</p>
       <div className="operations-plain-list" hidden={Boolean(selectedOrderId)}>
-        <OperationsTable title="Công việc nhà thầu" columns={['Mã phiếu', 'Nội dung', 'Người thực hiện', 'Trạng thái']}
+        <OperationsTable title="Công việc nhà thầu" titleColumn={1} columns={['Mã phiếu', 'Nội dung', 'Người thực hiện', 'Trạng thái']}
           rows={contractorOrders.map((order) => {
             const title = incidents.find((incident) => incident.id === order.incident_id)?.title || 'Công việc nhà thầu';
             return {id: order.id, search: `${order.id} ${title} ${order.executor_name || ''}`, cells: [

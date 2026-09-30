@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { OperationsTable } from './operations-table';
+import { PanelTitle, Segmented } from './ops-ui';
 import {
-  IconShield,
-  IconCheck,
   IconClock,
   IconMapPin,
   IconAlertTriangle,
@@ -149,60 +148,34 @@ export function SecurityWorkspace() {
 
   return (
     <div className="operations-worker-view operations-plain-list operations-work-orders space-y-5">
-      {/* Title Header with Blue Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <IconShield className="w-5 h-5 text-blue-600" />
-              <span>An ninh hiện trường</span>
-            </h1>
-            <p className="text-xs text-slate-500 font-medium">
-              Tuần tra theo tuyến, lập biên bản sự việc, kiểm soát ra vào và bàn giao ca trực an ninh
-            </p>
-          </div>
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
+        <div className="min-w-0 space-y-1">
+          <PanelTitle>An ninh hiện trường</PanelTitle>
+          <p className="pl-[14px] text-sm text-slate-500">Tuần tra theo tuyến, biên bản sự việc và bàn giao ca trực</p>
         </div>
-
-        <div className="flex items-center gap-2">
-          <span className="px-3 py-1 bg-blue-50 text-blue-700 font-semibold text-xs rounded-full border border-blue-200">
-            Trực ca: {currentProfile.name} ({currentProfile.roleTitle})
-          </span>
-        </div>
+        <p className="pl-[14px] sm:pl-0 text-sm text-slate-500 shrink-0">Trực ca: {currentProfile.name}</p>
       </div>
 
       {successMsg && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-800 flex items-center justify-between shadow-2xs">
-          <div className="flex items-center gap-2">
-            <IconCheck className="w-4 h-4 text-emerald-600" />
-            <span>{successMsg}</span>
-          </div>
-          <button type="button" onClick={() => setSuccessMsg(null)} className="text-emerald-500 text-xs">
+        <div role="status" data-kind="success" className="ops-callout flex items-start justify-between gap-3">
+          <span>{successMsg}</span>
+          <button type="button" onClick={() => setSuccessMsg(null)} aria-label="Đóng" className="text-slate-500 hover:text-slate-900">
             ✕
           </button>
         </div>
       )}
 
-      {/* Navigation Tabs */}
-      <div className="ops-scroll-tabs flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
-        {[
-          { id: 'PATROL', label: `Tuyến tuần tra (${securityCheckpoints.length})` },
-          { id: 'INCIDENTS', label: `Biên bản sự việc (${securityIncidents.length})` },
-          { id: 'HANDOVER', label: `Bàn giao ca trực` },
-          { id: 'EMERGENCY', label: `Hỗ trợ khẩn cấp (SOS)` },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id as any)}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 ${
-              activeTab === tab.id ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <Segmented
+        label="Chức năng an ninh"
+        value={activeTab}
+        onChange={setActiveTab}
+        options={[
+          { id: 'PATROL', label: 'Tuyến tuần tra', count: securityCheckpoints.length },
+          { id: 'INCIDENTS', label: 'Biên bản sự việc', count: securityIncidents.length },
+          { id: 'HANDOVER', label: 'Bàn giao ca trực' },
+          { id: 'EMERGENCY', label: 'Hỗ trợ khẩn cấp' },
+        ]}
+      />
 
       {/* Tab 1: Patrol Checkpoints */}
       {activeTab === 'PATROL' && (
@@ -212,44 +185,24 @@ export function SecurityWorkspace() {
               <h3 className="font-bold text-sm text-slate-900">Danh mục điểm kiểm soát theo tuyến</h3>
               <p className="text-xs text-slate-500">Nhân viên tuần tra xác nhận kiểm tra khi có mặt tại từng vị trí</p>
             </div>
-            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+            <span className="text-sm text-slate-600 tabular-nums">
               Đã kiểm tra {checkedCheckpointsCount}/{securityCheckpoints.length} điểm
             </span>
           </div>
 
           {/* Active Security Work Order Direct Status & Action */}
           {securityWo && (
-            <div
-              className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs ${
-                securityWo.status === 'COMPLETED'
-                  ? 'bg-emerald-50/70 border-emerald-200'
-                  : allCheckpointsChecked
-                    ? 'bg-blue-50/80 border-blue-200'
-                    : 'bg-slate-50 border-slate-200'
-              }`}
-            >
+            <div className="p-4 rounded-lg border border-slate-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
-                    {securityWo.id}
-                  </span>
-                  <span className="text-xs font-bold text-slate-900">
-                    Phiếu tuần tra hiện trường (TSK-2026-111)
-                  </span>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      securityWo.status === 'COMPLETED'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-blue-100 text-blue-800'
-                    }`}
-                  >
-                    {securityWo.status === 'COMPLETED' ? '✓ ĐÃ HOÀN THÀNH' : 'ĐANG THỰC HIỆN'}
-                  </span>
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <span className="text-sm font-medium text-slate-900">Phiếu tuần tra hiện trường</span>
+                  <span className="text-sm text-slate-500 tabular-nums whitespace-nowrap">{securityWo.id}</span>
+                  <span className="text-sm text-slate-600 whitespace-nowrap">· {securityWo.status === 'COMPLETED' ? 'Đã hoàn thành' : 'Đang thực hiện'}</span>
                 </div>
                 <p className="text-xs text-slate-600">
                   {allCheckpointsChecked
-                    ? '✓ Đã hoàn thành 100% trạm kiểm soát! Sẵn sàng báo hoàn tất ca tuần tra.'
-                    : `Tiến độ tuyến tuần tra: Đã xác nhận có mặt ${checkedCheckpointsCount}/${securityCheckpoints.length} trạm bắt buộc.`}
+                    ? 'Đã kiểm tra đủ các trạm. Có thể báo hoàn tất ca tuần tra.'
+                    : `Đã xác nhận có mặt ${checkedCheckpointsCount}/${securityCheckpoints.length} trạm bắt buộc.`}
                 </p>
               </div>
 
@@ -268,20 +221,16 @@ export function SecurityWorkspace() {
                       alert(err.message);
                     }
                   }}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-2xs ${
-                    allCheckpointsChecked
-                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
-                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  }`}
+                  className="min-h-10 px-4 rounded-md text-sm bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap disabled:bg-slate-200 disabled:text-slate-500 disabled:opacity-100!"
                 >
-                  {allCheckpointsChecked ? '✓ Hoàn thành phiếu tuần tra ' : 'Cần xác nhận có mặt đủ trạm để hoàn thành'}
+                  Hoàn thành phiếu tuần tra
                 </button>
               )}
             </div>
           )}
 
           <div className="operations-plain-list" hidden={Boolean(selectedCheckpoint)}>
-            <OperationsTable title="Điểm tuần tra" columns={['Thứ tự', 'Điểm kiểm tra', 'Vị trí', 'Trạng thái', 'Người kiểm tra']}
+            <OperationsTable title="Điểm tuần tra" titleColumn={1} columns={['Thứ tự', 'Điểm kiểm tra', 'Vị trí', 'Trạng thái', 'Người kiểm tra']}
               rows={securityCheckpoints.map((point) => ({id: point.id, search: `${point.id} ${point.name} ${point.location}`, cells: [
                 point.order, point.name, point.location, point.status === 'CHECKED' ? 'Đã kiểm tra' : 'Chờ kiểm tra', point.guard_name || 'Chưa có',
               ]}))} onSelect={setSelectedCheckpoint} />
@@ -363,7 +312,7 @@ export function SecurityWorkspace() {
           </div>
 
           <div className="operations-plain-list" hidden={Boolean(selectedReport)}>
-            <OperationsTable title="Biên bản sự việc" columns={['Mã biên bản', 'Nội dung', 'Vị trí', 'Trạng thái']}
+            <OperationsTable title="Biên bản sự việc" titleColumn={1} columns={['Mã biên bản', 'Nội dung', 'Vị trí', 'Trạng thái']}
               rows={securityIncidents.map((report) => ({id: report.id, search: `${report.id} ${report.title} ${report.location}`, cells: [
                 report.id, report.title, report.location, report.status === 'RESOLVED' ? 'Đã xử lý' : 'Đang xử lý',
               ]}))} onSelect={setSelectedReport} />

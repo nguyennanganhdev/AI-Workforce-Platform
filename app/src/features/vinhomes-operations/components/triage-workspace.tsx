@@ -121,7 +121,7 @@ export function TriageWorkspace() {
       )}
 
       <div hidden={Boolean(selectedCaseId)}>
-        <OperationsTable title="Phản ánh của cư dân" columns={['Mã phản ánh', 'Nội dung', 'Cư dân', 'Căn hộ', 'Trạng thái', 'Ngày tiếp nhận']}
+        <OperationsTable title="Phản ánh của cư dân" titleColumn={1} columns={['Mã phản ánh', 'Nội dung', 'Cư dân', 'Căn hộ', 'Trạng thái', 'Ngày tiếp nhận']}
           rows={cases.map((item) => ({ id: item.id, search: `${item.id} ${item.summary} ${item.resident_name} ${item.apartment_id || ''}`, cells: [
             item.id, item.summary, item.resident_name, item.apartment_id || 'Chưa xác định',
             ({OPEN: 'Mới tiếp nhận', CLARIFYING: 'Đang làm rõ', READY: 'Sẵn sàng xử lý', TICKETED: 'Đã tạo sự cố', CLOSED: 'Đã đóng', CANCELLED: 'Đã hủy'})[item.status],

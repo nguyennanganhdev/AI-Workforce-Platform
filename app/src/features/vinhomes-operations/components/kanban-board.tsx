@@ -99,7 +99,7 @@ export function KanbanBoard() {
         <button type="button" aria-pressed={view === 'BOARD'} className={`pb-3 text-sm ${view === 'BOARD' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500'}`} onClick={() => setView('BOARD')}>Theo tiến độ</button>
       </div>
       <div hidden={view !== 'LIST'}>
-        <OperationsTable title="Phân công công việc" columns={['Mã công việc', 'Nội dung', 'Sự cố', 'Người phụ trách', 'Trạng thái']}
+        <OperationsTable title="Phân công công việc" titleColumn={1} columns={['Mã công việc', 'Nội dung', 'Sự cố', 'Người phụ trách', 'Trạng thái']}
           actionLabel="Xem tiến độ"
           rows={filteredTasks.map((task) => ({id: task.id, search: `${task.id} ${task.title} ${task.assignee_name || ''}`, cells: [
             task.id, task.title, task.incident_id, task.assignee_name || 'Chưa phân công',

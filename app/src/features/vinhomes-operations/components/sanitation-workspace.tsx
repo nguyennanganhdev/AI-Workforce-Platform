@@ -287,7 +287,7 @@ export function SanitationWorkspace({
 
       {!selectedTask ? (
         <div className="operations-plain-list">
-          <OperationsTable title="Danh sách công việc" columns={['Mã công việc', 'Nội dung', 'Vị trí', 'Ảnh trước xử lý', 'Ảnh sau xử lý', 'Trạng thái']}
+          <OperationsTable title="Danh sách công việc" titleColumn={1} columns={['Mã công việc', 'Nội dung', 'Vị trí', 'Ảnh trước xử lý', 'Ảnh sau xử lý', 'Trạng thái']}
             filters={<label className="flex flex-col gap-1 text-xs text-slate-600">Trạng thái
               <select className="rounded border border-slate-200 bg-white px-3 py-2 text-sm" value={listStatus} onChange={(event) => setListStatus(event.target.value as typeof listStatus)}>
                 <option value="ALL">Tất cả trạng thái</option>

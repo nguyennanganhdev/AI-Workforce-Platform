@@ -48,7 +48,7 @@ export function OperationsLayout() {
       <div
         lang="vi"
         translate="no"
-        className="operations-app notranslate flex h-screen w-screen overflow-hidden bg-slate-50 font-sans"
+        className="operations-app notranslate flex h-[100dvh] w-full overflow-hidden font-sans"
       >
         {/* Sidebar Backdrop (mobile overlay) */}
         {menuOpen && (
@@ -59,16 +59,14 @@ export function OperationsLayout() {
           />
         )}
 
-        {/* BistroPulse Left Sidebar */}
         <OperationsSidebar open={menuOpen} onNavigate={() => setMenuOpen(false)} />
 
         {/* Main Container */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* BistroPulse Top Header */}
           <OperationsHeader menuOpen={menuOpen} onToggleMenu={() => setMenuOpen(!menuOpen)} />
 
           {/* Dynamic Page Content */}
-          <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-5 md:p-6 lg:p-8 bg-slate-50/80">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-6 xl:p-8">
             <div className="operations-content w-full min-w-0 max-w-full">
               <Outlet />
             </div>

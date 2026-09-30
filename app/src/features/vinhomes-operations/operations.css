@@ -1,125 +1,140 @@
-/* A restrained visual language, scoped to the operations area only. */
-.operations-app { color: #334155; background: #f5f6f8; font-size: 14px; }
+/*
+ * Operations area visual language, scoped to .operations-app.
+ * shadcn semantic tokens are re-pointed here (blue accent, 6px controls / ~8px cards),
+ * so components under components/ui theme themselves without touching the rest of the app.
+ * No decorative icons and no coloured text: status is carried by wording.
+ */
+.operations-app {
+  --primary: oklch(0.546 0.245 262.881);
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.623 0.214 259.815);
+  --radius: 0.4rem;
+  --background: oklch(1 0 0);
+  --ops-page: oklch(0.975 0.002 264);
+  --border: oklch(0.925 0.004 264);
+  --input: oklch(0.9 0.006 264);
+  --muted-foreground: oklch(0.52 0.02 264);
+  color: #475569;
+  background: var(--ops-page);
+  font-size: 14px;
+}
 .operations-content { width: 100%; max-width: 1600px; margin: 0 auto; }
-.operations-app main { background: #f5f6f8; }
-.operations-app main h1 { font-size: 22px; line-height: 1.4; font-weight: 600; letter-spacing: 0; }
-.operations-app main h2, .operations-app main h3 { font-weight: 600; letter-spacing: 0; text-transform: none; }
+.operations-app main { background: var(--ops-page); }
+
+/* ── Legacy normalisation for screens not yet moved to shadcn. Never touches [data-slot]. ── */
+.operations-app main h1:not([data-slot]) { font-size: 20px; line-height: 1.4; font-weight: 600; letter-spacing: 0; color: #0f172a; }
+.operations-app main :is(h2,h3):not([data-slot]) { font-weight: 600; letter-spacing: 0; text-transform: none; }
 .operations-app main :is(h1,h2,h3) > svg { display: none; }
-.operations-app main [class*="shadow-"] { box-shadow: none; }
-.operations-app main :is(.rounded-2xl,.rounded-3xl) { border-radius: 8px; }
-.operations-app main .rounded-xl { border-radius: 6px; }
+.operations-app main [class*="shadow-"]:not([data-slot]) { box-shadow: none; }
+.operations-app main :is(.rounded-2xl,.rounded-3xl):not([data-slot]) { border-radius: 8px; }
+.operations-app main .rounded-xl:not([data-slot]) { border-radius: 6px; }
 .operations-app main .font-extrabold { font-weight: 600; }
 .operations-app main :is(.text-\[9px\],.text-\[10px\],.text-\[11px\]) { font-size: 12px; line-height: 1.5; }
-.operations-app main .text-xs { font-size: 13px; line-height: 1.5; }
-.operations-app main table { width: 100%; text-align: left; border-collapse: collapse; font-size: 13px; }
-.operations-app main th { padding: 13px 16px; background: #f8fafc; color: #64748b; font-weight: 500; text-transform: none; letter-spacing: 0; white-space: nowrap; }
-.operations-app main td { padding: 14px 16px; border-bottom: 1px solid #eef1f5; }
-.operations-app main tbody tr:hover { background: #f8fafc; }
-.operations-app :is(button,a,input,select,textarea):focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
-.operations-app button { cursor: pointer; }
-.operations-app button:disabled { cursor: not-allowed; opacity: .45; }
-.operations-app main :is(input:not([type=checkbox]):not([type=radio]),select,textarea) { border-radius: 5px; }
-.operations-app main :is(.bg-purple-600,.bg-indigo-600) { background-color: #2563eb; }
+.operations-app main .text-xs:not([data-slot]) { font-size: 13px; line-height: 1.5; }
+.operations-app main :is(.animate-pulse,.animate-bounce) { animation: none; }
+.operations-app main :is(.bg-purple-600,.bg-indigo-600) { background-color: var(--primary); }
 .operations-app main :is(.bg-purple-50,.bg-indigo-50,.bg-purple-100,.bg-indigo-100) { background-color: #f1f5f9; }
 .operations-app main :is(.text-purple-600,.text-indigo-600,.text-purple-700,.text-indigo-700) { color: #334155; }
-.operations-app main :is(.animate-pulse,.animate-bounce) { animation: none; }
-.operations-table { background: white; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
-.operations-table table { min-width: 720px; }
-.operations-table td:first-child { white-space: nowrap; }
-.operations-table-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; flex-wrap: wrap; }
-.operations-table-toolbar + div { border-top: 1px solid #e2e8f0; }
-.operations-table-toolbar :is(input,button), .operations-back { border: 1px solid #dce2e9; border-radius: 5px; padding: 8px 12px; background: white; font-size: 13px; }
-.operations-table-toolbar input { width: min(300px,100%); }
-.operations-text-action { color: #2563eb; font-size: 13px; white-space: nowrap; }
-.operations-text-action:hover { text-decoration: underline; }
-.operations-sidebar { width: 248px; background: white; border-right: 1px solid #e2e8f0; flex-shrink: 0; display: flex; flex-direction: column; }
-.operations-sidebar nav a { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 11px 12px; font-size: 13px; border-radius: 4px; color: #475569; }
-.operations-sidebar nav a:hover { background: #f8fafc; }
-.operations-sidebar nav a[aria-current=page] { color: #2563eb; background: #eff6ff; font-weight: 600; }
-.operations-sidebar nav a span:last-child:not(:first-child) { color: #64748b; font-size: 12px; }
-.operations-menu-toggle { display: none; }
-.operations-app .operations-plain-list { background: white; border: 1px solid #e5e7eb; border-radius: 6px; }
-.operations-app .operations-work-orders { padding: 24px; min-height: 70vh; }
-.operations-app .operations-plain-list .operations-table { border: 0; }
-.operations-app .operations-plain-list :is(td,td p,td button,th,th button) { font-weight: 400; }
-.operations-app .operations-plain-list td { padding-top: 17px; padding-bottom: 17px; }
-.operations-app .operations-plain-list th { background: white; border-bottom: 1px solid #e5e7eb; color: #64748b; }
-.operations-app .operations-plain-list h1 { font-size: 20px; font-weight: 500; }
-.operations-app .operations-plain-list .operations-table-toolbar { padding: 20px; }
-.operations-app .operations-plain-list .operations-table-toolbar h2 { font-size: 16px; font-weight: 500; margin-right: auto; }
-.operations-app .operations-plain-list .operations-table-toolbar input { min-width: 240px; }
-.operations-app .operations-plain-list :is(.rounded-xl,.rounded-full) { border-radius: 4px; }
-.operations-app .operations-worker-view h1 { font-size: 20px; font-weight: 500; }
-.operations-app .operations-worker-view :is(h2,h3,h4) { font-weight: 500; }
-.operations-app .operations-worker-view table :is(td,td p,td span,td button) { font-weight: 400; }
-.operations-app .operations-worker-view table td :is(button,span)[class*="bg-"] { background: transparent; color: #475569; border-color: transparent; box-shadow: none; }
-.operations-app .operations-worker-view table td button:hover { color: #2563eb; text-decoration: underline; }
-.operations-app .operations-worker-view table :is(td button,td span) > svg { display: none; }
-.operations-app .operations-worker-view table td :is(.font-bold,.font-semibold) { font-weight: 400; }
-.operations-app .operations-worker-view table td .rounded-full { padding-left: 0; }
-.operations-app .operations-worker-view > div > span[class*="rounded-full"] { background: transparent; border: 0; color: #64748b; font-weight: 400; }
-.operations-app .operations-worker-view :is(.bg-emerald-50,.bg-emerald-50\/70,.bg-blue-50\/80,.bg-slate-50\/60) { background: #f8fafc; }
-.operations-app .operations-worker-view :is(.border-emerald-200,.border-blue-200) { border-color: #e2e8f0; }
-.operations-app .operations-worker-view :is(.bg-emerald-600,.bg-indigo-600) { background: #2563eb; }
-.operations-app .operations-worker-view :is(button,summary) { font-weight: 400; }
-.operations-app .operations-worker-view table td button.operations-text-action { color: #2563eb; }
-.operations-app .operations-worker-view span.rounded-full { background: transparent; border: 0; border-radius: 0; color: #64748b; font-weight: 400; padding-left: 0; }
-.operations-app .operations-worker-view > .operations-plain-list { border: 0; }
-.operations-app .operations-worker-view button:has(> span) > svg { display: none; }
-/* ── Mobile-first responsive overhaul ─────────────────────────── */
 
-/* Utility: hide scrollbar for horizontal-scroll tab bars */
+/* ── Tables (reference: plain header row, one hairline between rows) ── */
+.operations-app main table { width: 100%; text-align: left; border-collapse: collapse; font-size: 14px; }
+.operations-app main th { padding: 12px 16px; background: var(--card); color: var(--muted-foreground); font-size: 13px; font-weight: 500; text-transform: none; letter-spacing: 0; white-space: nowrap; border-bottom: 1px solid var(--border); }
+.operations-app main td { padding: 14px 16px; border-bottom: 1px solid color-mix(in oklch, var(--border) 60%, transparent); vertical-align: middle; color: #334155; }
+.operations-app main tbody tr:last-child td { border-bottom: 0; }
+.operations-app main tbody tr:hover { background: color-mix(in oklch, var(--muted) 60%, transparent); }
+
+/* ── Controls (legacy markup only) ── */
+.operations-app :is(button,a,input,select,textarea):not([data-slot]):focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.operations-app button { cursor: pointer; }
+.operations-app button:not([data-slot]):disabled { cursor: not-allowed; opacity: .45; }
+.operations-app main :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not([data-slot]) { border-radius: 6px; }
+.operations-text-action { color: var(--primary); font-size: 14px; white-space: nowrap; }
+.operations-text-action:hover { text-decoration: underline; text-underline-offset: 3px; }
+.operations-back { border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; background: var(--card); font-size: 13px; }
+
+/* ── Data list: table on wide screens, stacked rows on phones ── */
+.ops-list-rows { display: none; }
+.ops-list-rows > li { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.ops-list-rows > li:last-child { border-bottom: 0; }
+.ops-title { color: #0f172a; font-size: 14px; line-height: 1.45; }
+.ops-subtle { color: var(--muted-foreground); font-size: 13px; line-height: 1.45; }
+
+/* ── Key/value facts (job detail aside) ── */
+.ops-facts { display: grid; grid-template-columns: minmax(96px, auto) 1fr; gap: 10px 16px; font-size: 14px; }
+.ops-facts dt { color: var(--muted-foreground); }
+.ops-facts dd { margin: 0; color: #0f172a; min-width: 0; overflow-wrap: anywhere; }
+
+/* ── Legacy list wrappers (supervisor / QC / security screens) ── */
+.operations-app .operations-plain-list { background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+.operations-app .operations-work-orders { padding: 24px; min-height: 70vh; }
+.operations-app .operations-plain-list > [data-slot=card] { box-shadow: none; --tw-ring-shadow: 0 0 #0000; }
+.operations-app .operations-plain-list :is(td,td p,td button,th,th button) { font-weight: 400; }
+.operations-app .operations-plain-list h1:not([data-slot]) { font-size: 20px; font-weight: 600; }
+.operations-app .operations-plain-list :is(.rounded-xl,.rounded-full):not([data-slot]) { border-radius: 4px; }
+.operations-app .operations-worker-view h1:not([data-slot]) { font-size: 20px; font-weight: 600; }
+.operations-app .operations-worker-view :is(h2,h3,h4):not([data-slot]) { font-weight: 500; }
+.operations-app .operations-worker-view table :is(td,td p,td span,td button) { font-weight: 400; }
+.operations-app .operations-worker-view table td :is(button,span)[class*="bg-"]:not([data-slot]) { background: transparent; color: #475569; border-color: transparent; box-shadow: none; }
+.operations-app .operations-worker-view table td button:not([data-slot]):hover { color: var(--primary); text-decoration: underline; }
+.operations-app .operations-worker-view table :is(td button,td span):not([data-slot]) > svg { display: none; }
+.operations-app .operations-worker-view table td :is(.font-bold,.font-semibold) { font-weight: 400; }
+.operations-app .operations-worker-view table td .rounded-full:not([data-slot]) { padding-left: 0; }
+.operations-app .operations-worker-view > div > span[class*="rounded-full"] { background: transparent; border: 0; color: var(--muted-foreground); font-weight: 400; }
+.operations-app .operations-worker-view :is(.bg-emerald-50,.bg-emerald-50\/70,.bg-emerald-50\/20,.bg-blue-50\/80,.bg-slate-50\/60,.bg-amber-50,.bg-rose-50) { background: #f8fafc; }
+.operations-app .operations-worker-view :is(.border-emerald-200,.border-blue-200,.border-amber-200,.border-rose-200) { border-color: var(--border); }
+.operations-app .operations-worker-view :is(.text-emerald-600,.text-emerald-700,.text-emerald-800,.text-amber-700,.text-amber-800,.text-rose-600,.text-rose-700,.text-rose-800,.text-blue-700,.text-blue-800,.text-orange-700) { color: #0f172a; }
+.operations-app .operations-worker-view :is(.bg-emerald-600,.bg-indigo-600) { background: var(--primary); }
+.operations-app .operations-worker-view :is(.bg-emerald-100,.bg-blue-100,.bg-amber-100,.bg-rose-100) { background: #f1f5f9; }
+.operations-app .operations-worker-view :is(button,summary):not([data-slot]) { font-weight: 400; }
+.operations-app .operations-worker-view table td button.operations-text-action { color: var(--primary); }
+.operations-app .operations-worker-view span.rounded-full:not([data-slot]) { background: transparent; border: 0; border-radius: 0; color: var(--muted-foreground); font-weight: 400; padding-left: 0; }
+.operations-app .operations-worker-view > .operations-plain-list { border: 0; }
+.operations-app .operations-worker-view button:not([data-slot]):has(> span) > svg { display: none; }
+
+/* ── Shell ── */
+.operations-sidebar { width: 248px; background: var(--card); border-right: 1px solid var(--border); flex-shrink: 0; display: flex; flex-direction: column; }
+.operations-sidebar nav a { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 40px; padding: 8px 12px; font-size: 14px; border-radius: 6px; color: #475569; }
+.operations-sidebar nav a:hover { background: var(--muted); color: #0f172a; }
+.operations-sidebar nav a[aria-current=page] { color: var(--primary); background: color-mix(in oklch, var(--primary) 8%, white); font-weight: 500; }
+.operations-sidebar nav a span:last-child:not(:first-child) { color: var(--muted-foreground); font-size: 12px; font-variant-numeric: tabular-nums; }
+.operations-menu-toggle { display: none; }
+.operations-sidebar-backdrop { display: none; }
+
+/* Hide scrollbar for horizontal-scroll filter bars */
 .ops-scroll-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .ops-scroll-tabs::-webkit-scrollbar { display: none; }
-
-/* Utility: hide columns on mobile, show on sm+ */
 .ops-hide-mobile { display: none; }
 
-/* ── Tablet & small desktop (≤ 900px) ──────────────────────── */
+/* ── Tablet (≤ 900px): sidebar becomes a drawer ── */
 @media (max-width: 900px) {
-  .operations-menu-toggle { display: block; }
-  .operations-app > .flex-1 > header { height: 56px; min-height: 56px; }
-  .operations-menu-toggle { white-space: nowrap; }
-  .operations-sidebar { display: none; position: fixed; inset: 56px auto 0 0; z-index: 40; overflow-y: auto; box-shadow: 4px 0 15px #0f172a15; }
+  .operations-menu-toggle { display: inline-flex; }
+  .operations-sidebar { display: none; position: fixed; inset: 56px auto 0 0; z-index: 40; overflow-y: auto; box-shadow: 4px 0 16px rgb(15 23 42 / .08); }
   .operations-sidebar[data-open=true] { display: flex; }
-  .operations-sidebar-backdrop { display: block; position: fixed; inset: 0; top: 56px; z-index: 39; background: rgba(15, 23, 42, 0.4); }
-  .operations-app main { padding: 16px; }
-  .operations-app > .flex-1 { min-width: 0; }
+  .operations-sidebar-backdrop { display: block; position: fixed; inset: 56px 0 0 0; z-index: 39; background: rgb(15 23 42 / .35); }
   .operations-app .operations-work-orders { padding: 16px; }
-  .operations-table table { min-width: 100%; width: 100%; }
-  .operations-table-toolbar { padding: 12px 16px; }
-  .operations-app .operations-plain-list .operations-table-toolbar { padding: 12px 16px; }
-  .operations-app .operations-plain-list .operations-table-toolbar input { min-width: 180px; }
 }
 
-/* ── Phone (≤ 640px) ───────────────────────────────────────── */
+/* ── Below md: tables collapse into stacked rows ── */
+@media (max-width: 767px) {
+  .ops-list-table { display: none; }
+  .ops-list-rows { display: block; border-top: 1px solid var(--border); }
+}
+
+/* ── Phone (≤ 640px) ── */
 @media (max-width: 640px) {
-  .operations-app main h1 { font-size: 18px; }
-  .operations-app main th { padding: 10px 12px; font-size: 11px; }
+  .operations-app main h1:not([data-slot]) { font-size: 18px; }
+  .operations-app main th { padding: 10px 12px; }
   .operations-app main td { padding: 10px 12px; }
   .operations-app .operations-work-orders { padding: 12px; min-height: auto; }
-  .operations-table table { min-width: 100%; width: 100%; }
-  .operations-table-toolbar { padding: 10px 12px; gap: 10px; }
-  .operations-table-toolbar input { width: 100% !important; min-width: 0 !important; }
-  .operations-app .operations-plain-list .operations-table-toolbar input { min-width: 0; width: 100%; }
-  .ops-hide-mobile { display: none !important; }
   .ops-notification-dropdown { width: calc(100vw - 2rem) !important; max-width: 360px; right: -0.5rem !important; }
-  /* Touch-friendly: ensure min touch target */
-  .operations-app button { min-height: 36px; }
-  .operations-text-action { font-size: 12px; }
 }
 
-/* ── Small phone (≤ 400px) ─────────────────────────────────── */
-@media (max-width: 400px) {
-  .operations-app main { padding: 10px; }
-  .operations-app main h1 { font-size: 16px; }
-  .operations-table table { min-width: 100%; width: 100%; }
-}
-
-/* ── Tablet+ show hidden columns ───────────────────────────── */
 @media (min-width: 641px) {
   .ops-hide-mobile { display: table-cell; }
   .ops-hide-mobile-flex { display: flex; }
   .ops-hide-mobile-inline { display: inline; }
-  .operations-sidebar-backdrop { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .operations-app *, .operations-app *::after { transition: none !important; }
 }

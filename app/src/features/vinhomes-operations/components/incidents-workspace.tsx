@@ -1,31 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 import { IncidentList } from './incident-list';
+import { PanelTitle } from './ops-ui';
+import { Banner } from './technician/ui';
 import { BqlInbox, useBqlInboxItems } from './bql-inbox';
-import {
-  IconAlertTriangle,
-  IconBuilding,
-  IconClock,
-  IconCheck,
-  IconMessageDots,
-  IconListCheck,
-  IconChevronRight,
-  IconUser,
-  IconShieldCheck,
-  IconHistory,
-  IconSend,
-  IconRotateClockwise,
-  IconAlertCircle,
-  IconLink,
-  IconSparkles,
-  IconReceipt2,
-  IconTool,
-  IconHeadset,
-  IconUsersGroup,
-  IconChecklist,
-  IconArrowRight,
-  IconCircleCheck,
-  IconX,
-} from '@tabler/icons-react';
+import { IconSend, IconX, IconChevronLeft } from '@tabler/icons-react';
 import { useOperationsData } from '../hooks/use-operations-data';
 import type { IncidentStage } from '../types/incident';
 import type { VhSessionMessage } from '../types/session';
@@ -50,6 +35,26 @@ const STAGE_LABELS: Record<IncidentStage, string> = {
   RESIDENT_CONFIRMATION: '6. Cư dân xác nhận',
 };
 
+const CATEGORY_LABELS: Record<string, string> = {
+  MEP_PLUMBING: 'Kỹ thuật cấp thoát nước',
+  SANITATION_A5: 'Vệ sinh môi trường A5',
+  ELEVATOR: 'Hệ thống thang máy',
+  ELECTRICAL: 'Kỹ thuật điện chiếu sáng',
+  CIVIL: 'Xây dựng hoàn thiện',
+};
+
+const NO_OWNER = 'NONE';
+const OWNER_ITEMS: Record<string, string> = {
+  [NO_OWNER]: 'Chưa chỉ định',
+  'usr-tech-01': 'Nguyễn Văn Hùng (Kỹ sư MEP)',
+  'usr-cleaner-01': 'Lê Thị Bích (Nhân viên vệ sinh A5)',
+  'usr-sec-01': 'Phạm Văn Đạt (Đội an ninh)',
+  'usr-sup-01': 'Trần Thị Mai (Giám sát vận hành)',
+  'usr-mgr-01': 'Vũ Đức Thịnh (Trưởng BQL)',
+};
+
+type DetailTab = 'COORDINATION' | 'TASKS' | 'MESSAGES' | 'TIMELINE' | 'RELATIONS';
+
 const STAGES: IncidentStage[] = [
   'INTAKE',
   'TRIAGE',
@@ -65,28 +70,28 @@ const CHAT_ACTOR_META: Record<
 > = {
   RESIDENT: {
     label: 'Cư dân',
-    avatarClass: 'bg-amber-100 text-amber-700',
-    bubbleClass: 'border-amber-200 bg-amber-50/70',
+    avatarClass: 'bg-muted/60 text-slate-700',
+    bubbleClass: 'border-border bg-muted/60',
   },
   STAFF: {
     label: 'Nhân viên vận hành',
-    avatarClass: 'bg-blue-100 text-blue-700',
+    avatarClass: 'bg-muted/60 text-foreground',
     bubbleClass: 'border-slate-200 bg-white',
   },
   MANAGER: {
     label: 'Ban quản lý',
-    avatarClass: 'bg-slate-800 text-white',
+    avatarClass: 'bg-slate-100 text-white',
     bubbleClass: 'border-slate-300 bg-slate-50',
   },
   AGENT: {
     label: 'Agent nghiệp vụ',
-    avatarClass: 'bg-indigo-100 text-indigo-700',
-    bubbleClass: 'border-indigo-200 bg-indigo-50/70',
+    avatarClass: 'bg-muted/60 text-slate-700',
+    bubbleClass: 'border-border bg-muted/60',
   },
   SYSTEM: {
     label: 'Hệ thống',
-    avatarClass: 'bg-emerald-100 text-emerald-700',
-    bubbleClass: 'border-emerald-200 bg-emerald-50/70',
+    avatarClass: 'bg-muted/60 text-slate-700',
+    bubbleClass: 'border-border bg-muted/60',
   },
 };
 
@@ -124,7 +129,7 @@ export function IncidentsWorkspace() {
   } = useOperationsData();
 
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'COORDINATION' | 'TASKS' | 'MESSAGES' | 'TIMELINE' | 'RELATIONS'>('COORDINATION');
+  const [activeTab, setActiveTab] = useState<DetailTab>('COORDINATION');
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
@@ -217,307 +222,156 @@ export function IncidentsWorkspace() {
   };
 
   return (
-    <div className="space-y-5 font-sans">
-      {/* Title Header with Blue Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-1.5 h-6 bg-blue-600 rounded-full shrink-0" />
-          <div>
-            <h1 className="text-lg font-bold text-slate-900 tracking-tight">
-              {selectedIncident ? 'Chi tiết sự cố' : 'Phản ánh & Sự cố'}
-            </h1>
-            <p className="text-xs text-slate-500">
-              AI tiếp nhận và giao việc. BQL chỉ cần xử lý các mục AI chuyển lên.
-            </p>
-          </div>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
+        <div className="flex min-w-0 flex-col gap-1">
+          <PanelTitle>{selectedIncident ? 'Chi tiết sự cố' : 'Phản ánh & Sự cố'}</PanelTitle>
+          <p className="pl-3.5 text-sm text-muted-foreground">AI tiếp nhận và giao việc. BQL chỉ cần xử lý các mục AI chuyển lên.</p>
         </div>
-
-        <div className="flex items-center gap-2">
-          <span className="px-3 py-1 bg-blue-50 text-blue-700 font-semibold text-xs rounded-full border border-blue-200">
-            {incidents.length} Sự cố ghi nhận
-          </span>
-        </div>
+        <p className="shrink-0 pl-3.5 text-sm text-muted-foreground tabular-nums sm:pl-0">{incidents.length} sự cố ghi nhận</p>
       </div>
 
-      {actionSuccess && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-800 flex items-center justify-between shadow-2xs">
-          <div className="flex items-center gap-2">
-            <IconCheck className="w-4 h-4 text-emerald-600" />
-            <span>{actionSuccess}</span>
-          </div>
-          <button type="button" onClick={() => setActionSuccess(null)} className="text-emerald-500 text-xs">
-            ✕
-          </button>
-        </div>
-      )}
+      {actionSuccess && <Banner kind="success" onClose={() => setActionSuccess(null)}>{actionSuccess}</Banner>}
+      {resolveError && <Banner kind="error" onClose={() => setResolveError(null)}>{resolveError}</Banner>}
 
-      {resolveError && (
-        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-800 flex items-center justify-between shadow-2xs">
-          <div className="flex items-center gap-2">
-            <IconAlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>{resolveError}</span>
-          </div>
-          <button type="button" onClick={() => setResolveError(null)} className="text-rose-500 text-xs">
-            ✕
-          </button>
-        </div>
+      {!selectedIncidentId && (
+        <Tabs value={listTab} onValueChange={(v) => setListTab(v as ListTab)} className="gap-4">
+          <TabsList variant="line" aria-label="Nhóm sự cố" className="ops-scroll-tabs h-auto w-full justify-start border-b pb-1">
+            {LIST_TABS.map((t) => {
+              const count = t.id === 'INBOX' ? inboxItems.length : t.id === 'OPEN' ? openIncidents.length : closedIncidents.length;
+              return (
+                <TabsTrigger key={t.id} value={t.id} className="h-9 flex-none px-3 data-active:text-primary after:bg-primary">
+                  {t.label}
+                  <span className="text-xs font-normal tabular-nums text-muted-foreground">{count}</span>
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+          <TabsContent value="INBOX"><BqlInbox onOpenIncident={openIncident} /></TabsContent>
+          <TabsContent value="OPEN"><IncidentList incidents={openIncidents} onSelect={openIncident} /></TabsContent>
+          <TabsContent value="CLOSED"><IncidentList incidents={closedIncidents} onSelect={openIncident} /></TabsContent>
+        </Tabs>
       )}
-
-      <div hidden={Boolean(selectedIncidentId)} className="space-y-4">
-        <div role="tablist" aria-label="Nhóm sự cố" className="flex flex-wrap gap-2 border-b border-slate-200">
-          {LIST_TABS.map((t) => {
-            const count = t.id === 'INBOX' ? inboxItems.length : t.id === 'OPEN' ? openIncidents.length : closedIncidents.length;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={listTab === t.id}
-                onClick={() => setListTab(t.id)}
-                className={`-mb-px px-3 py-2.5 text-sm font-semibold border-b-2 ${listTab === t.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
-              >
-                {t.label}
-                <span className={`ml-1.5 inline-flex min-w-5 h-5 px-1.5 items-center justify-center rounded-full text-xs ${t.id === 'INBOX' && count > 0 ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {listTab === 'INBOX' ? (
-          <BqlInbox onOpenIncident={openIncident} />
-        ) : (
-          <IncidentList key={listTab} incidents={listTab === 'OPEN' ? openIncidents : closedIncidents} onSelect={openIncident} />
-        )}
-      </div>
-      {selectedIncidentId && <div className="space-y-4">
-        <button type="button" className="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" onClick={() => {
-          setSelectedIncidentId('');
-          setResolveError(null);
-          setActionSuccess(null);
-        }}>Quay lại danh sách</button>
-        <div className="space-y-4">
+      {selectedIncidentId && <div className="flex flex-col gap-4">
+        <Button
+          variant="ghost"
+          className="-ml-2 self-start text-muted-foreground"
+          onClick={() => {
+            setSelectedIncidentId('');
+            setResolveError(null);
+            setActionSuccess(null);
+          }}
+        >
+          <IconChevronLeft data-icon="inline-start" /> Quay lại danh sách
+        </Button>
+        <div className="flex flex-col gap-4">
           {selectedIncident ? (
             <>
               {/* Header & Stepper */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-5 shadow-2xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
-                        {selectedIncident.id}
-                      </span>
-                      <span className="text-xs text-slate-400">•</span>
-                      <span className="text-xs font-semibold text-slate-700">
-                        {selectedIncident.category === 'MEP_PLUMBING'
-                          ? 'Kỹ thuật Cấp Thoát Nước'
-                          : selectedIncident.category === 'SANITATION_A5'
-                            ? 'Vệ sinh Môi trường A5'
-                            : selectedIncident.category === 'ELEVATOR'
-                              ? 'Hệ thống Thang máy'
-                              : selectedIncident.category === 'ELECTRICAL'
-                                ? 'Kỹ thuật Điện chiếu sáng'
-                                : selectedIncident.category === 'CIVIL'
-                                  ? 'Xây dựng hoàn thiện'
-                                  : selectedIncident.category}
-                      </span>
-                    </div>
-                    <h2 className="text-base font-bold text-slate-900 mt-1 leading-snug">
-                      {selectedIncident.title}
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Vị trí: Tòa <strong>{selectedIncident.location_json.towerCode}</strong> • Tầng {selectedIncident.location_json.floor || '—'} • {selectedIncident.location_json.areaCode || selectedIncident.location_json.description}
-                    </p>
-                  </div>
-
-                  {/* Owner & Stage Controls */}
-                  <div className="flex flex-col items-end gap-2 shrink-0">
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <span className="text-slate-500 text-[11px] font-medium">Chủ trì:</span>
-                      <select
-                        value={selectedIncident.owner_user_id || ''}
-                        onChange={(e) => assignIncidentOwner(selectedIncident.id, e.target.value)}
-                        className="p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none"
+              <Card className="gap-4">
+                <CardHeader className="gap-1 px-4 md:px-6">
+                  <CardDescription className="tabular-nums">
+                    {selectedIncident.id} · {CATEGORY_LABELS[selectedIncident.category] || selectedIncident.category}
+                  </CardDescription>
+                  <CardTitle className="text-base font-semibold leading-snug md:text-lg">{selectedIncident.title}</CardTitle>
+                  <CardDescription>
+                    Tòa {selectedIncident.location_json.towerCode} · Tầng {selectedIncident.location_json.floor || '-'} · {selectedIncident.location_json.areaCode || selectedIncident.location_json.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4 px-4 md:px-6">
+                  <FieldGroup className="grid gap-3 sm:grid-cols-2 lg:max-w-2xl">
+                    <Field>
+                      <FieldLabel htmlFor="incident-owner">Chủ trì</FieldLabel>
+                      <Select
+                        items={OWNER_ITEMS}
+                        value={selectedIncident.owner_user_id || NO_OWNER}
+                        onValueChange={(v) => assignIncidentOwner(selectedIncident.id, v === NO_OWNER ? '' : String(v))}
                       >
-                        <option value="">-- Chưa chỉ định --</option>
-                        <option value="usr-tech-01">Nguyễn Văn Hùng (Kỹ sư MEP)</option>
-                        <option value="usr-cleaner-01">Lê Thị Bích (Nhân viên Vệ sinh A5)</option>
-                        <option value="usr-sec-01">Phạm Văn Đạt (Đội An ninh)</option>
-                        <option value="usr-sup-01">Trần Thị Mai (Giám sát Vận hành)</option>
-                        <option value="usr-mgr-01">Vũ Đức Thịnh (Trưởng BQL)</option>
-                      </select>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <span className="text-slate-500 text-[11px] font-medium">Chuyển bước:</span>
-                      <select
+                        <SelectTrigger id="incident-owner" className="w-full data-[size=default]:h-10"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {Object.entries(OWNER_ITEMS).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="incident-stage">Chuyển bước</FieldLabel>
+                      <Select
+                        items={STAGE_LABELS}
                         value={selectedIncident.stage}
-                        onChange={(e) => transitionIncidentStage(selectedIncident.id, e.target.value as IncidentStage)}
-                        className="p-1.5 bg-blue-50 text-blue-700 font-bold border border-blue-200 rounded-lg text-xs focus:outline-none"
+                        onValueChange={(v) => v && transitionIncidentStage(selectedIncident.id, v as IncidentStage)}
                       >
-                        {STAGES.map((s) => (
-                          <option key={s} value={s}>
-                            {STAGE_LABELS[s]}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
+                        <SelectTrigger id="incident-stage" className="w-full data-[size=default]:h-10"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {STAGES.map((st) => <SelectItem key={st} value={st}>{STAGE_LABELS[st]}</SelectItem>)}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  </FieldGroup>
 
-                {/* Stepper */}
-                <div className="ops-scroll-tabs pb-1">
-                  <div className="flex items-center gap-1 text-[11px] font-semibold min-w-[580px]">
-                    {STAGES.map((s, idx) => {
+                  {/* Stepper */}
+                  <ol className="ops-scroll-tabs flex gap-1.5 pb-1" aria-label="Tiến trình sự cố">
+                    {STAGES.map((st, idx) => {
                       const currentIdx = STAGES.indexOf(selectedIncident.stage);
-                      const isPast = idx < currentIdx;
-                      const isCurrent = idx === currentIdx;
-
                       return (
-                        <div key={s} className="flex items-center gap-1 flex-1">
-                          <div
-                            className={`flex-1 py-1.5 px-2 rounded-lg text-center transition-all truncate text-[10px] font-bold ${
-                              isCurrent
-                                ? 'bg-blue-600 text-white shadow-2xs'
-                                : isPast
-                                  ? 'bg-blue-50 text-blue-700 border border-blue-100'
-                                  : 'bg-slate-100 text-slate-400'
-                            }`}
-                          >
-                            {STAGE_LABELS[s]}
-                          </div>
-                          {idx < STAGES.length - 1 && (
-                            <IconChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
-                          )}
-                        </div>
+                        <li key={st} className="flex min-w-24 flex-1 flex-col gap-1.5" aria-current={idx === currentIdx ? 'step' : undefined}>
+                          <div className={cn('h-1 rounded-full', idx <= currentIdx ? 'bg-primary' : 'bg-muted')} />
+                          <span className={cn('truncate text-xs', idx === currentIdx ? 'font-medium text-foreground' : idx < currentIdx ? 'text-slate-600' : 'text-muted-foreground')}>
+                            {STAGE_LABELS[st]}
+                          </span>
+                        </li>
                       );
                     })}
+                  </ol>
+
+                  {/* Action Bar */}
+                  <div className="flex flex-col gap-3 rounded-lg border bg-muted/40 p-3 lg:flex-row lg:items-center lg:justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      Trạng thái: <span className="font-medium text-foreground">{selectedIncident.status === 'CLOSED' ? 'Đã hoàn tất, đóng lại' : selectedIncident.status === 'RESOLVED' ? 'Xong việc kỹ thuật, chờ cư dân xác nhận' : 'Đang xử lý'}</span>
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedIncident.status === 'OPEN' && (
+                        <Button size="lg" onClick={handleResolve}>Báo cáo hoàn thành sự cố</Button>
+                      )}
+                      {selectedIncident.stage === 'RESIDENT_CONFIRMATION' && (
+                        <>
+                          <Button size="lg" onClick={() => handleResidentConfirmation(true)}>Cư dân hài lòng, đóng sự cố</Button>
+                          <Button size="lg" variant="outline" onClick={() => handleResidentConfirmation(false)}>Cư dân chưa hài lòng, làm lại</Button>
+                        </>
+                      )}
+                      {selectedIncident.status === 'CLOSED' && <Badge variant="secondary">Sự cố đã được đóng</Badge>}
+                    </div>
                   </div>
-                </div>
-
-                {/* Action Bar */}
-                <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-xs text-slate-600">
-                    Trạng thái hiện tại: <strong className="text-slate-900">{selectedIncident.status === 'CLOSED' ? 'Đã hoàn tất đóng lại' : selectedIncident.status === 'RESOLVED' ? 'Đã xong việc kỹ thuật, chờ cư dân xác nhận' : 'Đang trong quá trình xử lý'}</strong>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {selectedIncident.status === 'OPEN' && (
-                      <button
-                        type="button"
-                        onClick={handleResolve}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
-                      >
-                        <IconShieldCheck className="w-4 h-4" />
-                        <span>Báo cáo hoàn thành sự cố</span>
-                      </button>
-                    )}
-
-                    {selectedIncident.stage === 'RESIDENT_CONFIRMATION' && (
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleResidentConfirmation(true)}
-                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs"
-                        >
-                          <IconCheck className="w-3.5 h-3.5" />
-                          <span>Cư dân hài lòng (Đóng sự cố)</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleResidentConfirmation(false)}
-                          className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs"
-                        >
-                          <IconRotateClockwise className="w-3.5 h-3.5" />
-                          <span>Cư dân chưa hài lòng (Làm lại)</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {selectedIncident.status === 'CLOSED' && (
-                      <span className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1">
-                        <IconCheck className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Sự cố đã được đóng</span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
 
               {/* Multi-Tab Detail Section */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-5 shadow-2xs space-y-4">
-                {/* Tabs Header */}
-                <div className="ops-scroll-tabs flex items-center gap-2 border-b border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('COORDINATION')}
-                    className={`pb-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
-                      activeTab === 'COORDINATION'
-                        ? 'border-indigo-600 text-indigo-600'
-                        : 'border-transparent text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <IconSparkles className="w-4 h-4 text-indigo-600" />
-                    <span>Điều phối</span>
-                    {coordinationSessions.some((s) => s.incident_id === selectedIncident?.id) && (
-                      <span className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded">
-                        Có phiên điều phối
-                      </span>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('TASKS')}
-                    className={`pb-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors shrink-0 ${
-                      activeTab === 'TASKS'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <IconListCheck className="w-4 h-4" />
-                    <span>Công việc & Phiếu thi công ({relatedTasks.length})</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('MESSAGES')}
-                    className={`pb-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
-                      activeTab === 'MESSAGES'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <IconMessageDots className="w-4 h-4" />
-                    <span>Trao đổi nội bộ ({incidentMessages.length})</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('TIMELINE')}
-                    className={`pb-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
-                      activeTab === 'TIMELINE'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <IconHistory className="w-4 h-4" />
-                    <span>Lịch sử xử lý</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('RELATIONS')}
-                    className={`pb-2.5 text-xs font-bold border-b-2 flex items-center gap-1.5 transition-colors ${
-                      activeTab === 'RELATIONS'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <IconLink className="w-4 h-4" />
-                    <span>Sự cố liên quan ({incidentRelations.length})</span>
-                  </button>
-                </div>
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-5 shadow-2xs flex flex-col gap-4">
+                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as DetailTab)}>
+                  <TabsList variant="line" aria-label="Thông tin sự cố" className="ops-scroll-tabs h-auto w-full justify-start border-b pb-1">
+                    <TabsTrigger value="COORDINATION" className="h-9 flex-none px-3 data-active:text-primary after:bg-primary">
+                      Điều phối
+                      {coordinationSessions.some((cs) => cs.incident_id === selectedIncident?.id) && (
+                        <span className="text-xs font-normal text-muted-foreground">(có phiên)</span>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger value="TASKS" className="h-9 flex-none px-3 data-active:text-primary after:bg-primary">
+                      Công việc & phiếu thi công <span className="text-xs font-normal tabular-nums text-muted-foreground">{relatedTasks.length}</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="MESSAGES" className="h-9 flex-none px-3 data-active:text-primary after:bg-primary">
+                      Trao đổi nội bộ <span className="text-xs font-normal tabular-nums text-muted-foreground">{incidentMessages.length}</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="TIMELINE" className="h-9 flex-none px-3 data-active:text-primary after:bg-primary">
+                      Lịch sử xử lý
+                    </TabsTrigger>
+                    <TabsTrigger value="RELATIONS" className="h-9 flex-none px-3 data-active:text-primary after:bg-primary">
+                      Sự cố liên quan <span className="text-xs font-normal tabular-nums text-muted-foreground">{incidentRelations.length}</span>
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
 
                 {/* Tab 0: Multi-Agent Coordination Session */}
                 {activeTab === 'COORDINATION' && (() => {
@@ -530,10 +384,7 @@ export function IncidentsWorkspace() {
 
                   if (!currentSession) {
                     return (
-                      <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
-                        <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
-                          <IconSparkles className="w-6 h-6" />
-                        </div>
+                      <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col gap-3">
                         <div>
                           <h4 className="font-bold text-slate-800 text-sm">Chưa có phiên điều phối</h4>
                           <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
@@ -552,9 +403,9 @@ export function IncidentsWorkspace() {
                               setTimeout(() => setActionSuccess(null), 3000);
                             }
                           }}
-                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-2xs inline-flex items-center gap-2"
+                          className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-bold shadow-2xs inline-flex items-center gap-2"
                         >
-                          <IconSparkles className="w-4 h-4" />
+                          
                           <span>Mở phiên điều phối</span>
                         </button>
                       </div>
@@ -564,16 +415,13 @@ export function IncidentsWorkspace() {
                   const quotation = currentSession.quotation;
 
                   return (
-                    <div className="space-y-5">
+                    <div className="flex flex-col gap-5">
                       {/* Session Info Bar */}
-                      <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-50/80 via-blue-50/40 to-slate-50 border border-indigo-200/70 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div className="p-4 rounded-xl border border-border flex flex-col md:flex-row md:items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                            <IconUsersGroup className="w-5 h-5" />
-                          </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-xs text-indigo-700 bg-white px-2 py-0.5 rounded border border-indigo-200">
+                              <span className="font-mono font-bold text-xs text-slate-700 bg-white px-2 py-0.5 rounded border border-border">
                                 {currentSession.id}
                               </span>
                               <span className="text-xs font-bold text-slate-800">
@@ -584,10 +432,10 @@ export function IncidentsWorkspace() {
                                   currentSession.status === 'CLOSED'
                                     ? 'bg-slate-200 text-slate-700'
                                     : currentSession.status === 'RESIDENT_CONFIRMED'
-                                      ? 'bg-purple-100 text-purple-700'
+                                      ? 'bg-muted/60 text-slate-700'
                                       : currentSession.status === 'EXECUTING'
-                                        ? 'bg-blue-100 text-blue-700'
-                                        : 'bg-emerald-100 text-emerald-700'
+                                        ? 'bg-muted/60 text-foreground'
+                                        : 'bg-muted/60 text-slate-700'
                                 }`}
                               >
                                 {currentSession.status === 'CLOSED'
@@ -615,9 +463,9 @@ export function IncidentsWorkspace() {
                                 setActionSuccess('Cư dân đã xác nhận hoàn thành yêu cầu! Cuộc trò chuyện với cư dân đã đóng.');
                                 setTimeout(() => setActionSuccess(null), 3500);
                               }}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors"
+                              className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors"
                             >
-                              <IconCheck className="w-3.5 h-3.5" />
+                              
                               <span>[Mô phỏng] Cư dân xác nhận hoàn thành</span>
                             </button>
                           )}
@@ -626,16 +474,16 @@ export function IncidentsWorkspace() {
                             <button
                               type="button"
                               onClick={() => setShowBqlModal(true)}
-                              className="px-3 py-1.5 bg-slate-900 hover:bg-black text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors"
+                              className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors"
                             >
-                              <IconShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                              
                               <span>Ban quản lý phê duyệt và đóng phiên</span>
                             </button>
                           )}
 
                           {currentSession.status === 'CLOSED' && (
                             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-white/80 px-3 py-1.5 rounded-lg border border-slate-200">
-                              <IconCheck className="w-4 h-4 text-emerald-600" />
+                              
                               <span>Đã lưu trữ hồ sơ ({currentSession.bql_approved_by})</span>
                             </div>
                           )}
@@ -644,33 +492,33 @@ export function IncidentsWorkspace() {
 
                       {/* 6-Step Visual Workflow */}
                       <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
+                        <span className="text-[10px] font-bold text-slate-400 block mb-2">
                           Tiến trình phối hợp xử lý
                         </span>
                         <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-center text-xs">
-                          <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800">
-                            <span className="text-[10px] font-bold block text-emerald-600">Bước 1</span>
+                          <div className="p-2 rounded-lg bg-muted/60 border border-border text-slate-700">
+                            <span className="text-[10px] font-bold block text-slate-700">Bước 1</span>
                             <span className="font-bold text-[11px] block mt-0.5">CSKH xác nhận</span>
-                            <span className="text-[10px] text-emerald-600">Đã chốt P.1206</span>
+                            <span className="text-[10px] text-slate-700">Đã chốt P.1206</span>
                           </div>
 
-                          <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800">
-                            <span className="text-[10px] font-bold block text-emerald-600">Bước 2</span>
+                          <div className="p-2 rounded-lg bg-muted/60 border border-border text-slate-700">
+                            <span className="text-[10px] font-bold block text-slate-700">Bước 2</span>
                             <span className="font-bold text-[11px] block mt-0.5">Giám sát mở phiên</span>
-                            <span className="text-[10px] text-emerald-600">Đã mở phiên</span>
+                            <span className="text-[10px] text-slate-700">Đã mở phiên</span>
                           </div>
 
-                          <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800">
-                            <span className="text-[10px] font-bold block text-emerald-600">Bước 3</span>
+                          <div className="p-2 rounded-lg bg-muted/60 border border-border text-slate-700">
+                            <span className="text-[10px] font-bold block text-slate-700">Bước 3</span>
                             <span className="font-bold text-[11px] block mt-0.5">Phối hợp kỹ thuật và báo cáo</span>
-                            <span className="text-[10px] text-emerald-600">Đã giao KTV Hùng</span>
+                            <span className="text-[10px] text-slate-700">Đã giao KTV Hùng</span>
                           </div>
 
                           <div
                             className={`p-2 rounded-lg border ${
                               quotation?.resident_approved
-                                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                                : 'bg-amber-50 border-amber-200 text-amber-800'
+                                ? 'bg-muted/60 border-border text-slate-700'
+                                : 'bg-muted/60 border-border text-slate-700'
                             }`}
                           >
                             <span className="text-[10px] font-bold block text-slate-400">Bước 4</span>
@@ -683,7 +531,7 @@ export function IncidentsWorkspace() {
                           <div
                             className={`p-2 rounded-lg border ${
                               currentSession.resident_ticket_status === 'DONE'
-                                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                                ? 'bg-muted/60 border-border text-slate-700'
                                 : 'bg-slate-100 border-slate-200 text-slate-600'
                             }`}
                           >
@@ -697,7 +545,7 @@ export function IncidentsWorkspace() {
                           <div
                             className={`p-2 rounded-lg border ${
                               currentSession.status === 'CLOSED'
-                                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                                ? 'bg-muted/60 border-border text-slate-700'
                                 : 'bg-slate-100 border-slate-200 text-slate-600'
                             }`}
                           >
@@ -712,12 +560,9 @@ export function IncidentsWorkspace() {
 
                       {/* Embedded Quotation Invoice Widget if available */}
                       {quotation && (
-                        <div className="p-4 bg-white rounded-xl border border-blue-200 shadow-2xs space-y-3">
+                        <div className="p-4 bg-white rounded-xl border border-border shadow-2xs flex flex-col gap-3">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <span className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
-                                <IconReceipt2 className="w-4 h-4" />
-                              </span>
                               <div>
                                 <span className="font-bold text-slate-900 text-xs">
                                   Hóa Đơn Báo Giá Vật Tư (#{quotation.invoice_code})
@@ -727,8 +572,8 @@ export function IncidentsWorkspace() {
                                 </span>
                               </div>
                             </div>
-                            <span className="text-xs font-bold px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full flex items-center gap-1">
-                              <IconCheck className="w-3.5 h-3.5" /> Cư dân đã xem và đồng ý báo giá
+                            <span className="text-xs font-bold px-2.5 py-1 bg-muted/60 text-slate-700 rounded-full flex items-center gap-1">
+                              Cư dân đã xem và đồng ý báo giá
                             </span>
                           </div>
 
@@ -761,11 +606,11 @@ export function IncidentsWorkspace() {
                                     {quotation.labor_cost.toLocaleString('vi-VN')} đ
                                   </td>
                                 </tr>
-                                <tr className="bg-blue-50/60 font-bold text-blue-900">
+                                <tr className="bg-muted/60 font-bold text-foreground">
                                   <td colSpan={4} className="p-2 text-right">
                                     TỔNG CHI PHÍ HÓA ĐƠN:
                                   </td>
-                                  <td className="p-2 text-right text-sm text-blue-700">
+                                  <td className="p-2 text-right text-sm text-foreground">
                                     {quotation.total_amount.toLocaleString('vi-VN')} đ
                                   </td>
                                 </tr>
@@ -776,10 +621,10 @@ export function IncidentsWorkspace() {
                       )}
 
                       {/* Groupchat Multi-Agent Messages Stream */}
-                      <div className="space-y-3">
+                      <div className="flex flex-col gap-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
-                            <IconMessageDots className="w-4 h-4 text-indigo-600" />
+                          <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5">
+                            
                             Hội Thoại Group Chat Điều Phối Đa Tác Nhân ({sessionMsgs.length} tin nhắn)
                           </span>
                           <span className="text-[10px] text-slate-400">
@@ -787,7 +632,7 @@ export function IncidentsWorkspace() {
                           </span>
                         </div>
 
-                        <div className="space-y-2.5 max-h-[460px] overflow-y-auto p-3.5 bg-slate-50/60 rounded-xl border border-slate-200">
+                        <div className="flex flex-col gap-2.5 max-h-[460px] overflow-y-auto p-3.5 bg-slate-50/60 rounded-xl border border-slate-200">
                           {sessionMsgs.map((msg) => {
                             const isAgent = msg.sender_type.startsWith('AGENT');
                             const isCSKH = msg.sender_type === 'AGENT_CSKH';
@@ -797,22 +642,22 @@ export function IncidentsWorkspace() {
                             const isManager = msg.sender_type === 'HUMAN_MANAGER';
 
                             const badgeColor = isCSKH
-                              ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                              ? 'bg-muted/60 text-slate-700 border-border'
                               : isDispatcher
-                                ? 'bg-purple-100 text-purple-800 border-purple-200'
+                                ? 'bg-muted/60 text-slate-700 border-border'
                                 : isTech
-                                  ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                  ? 'bg-muted/60 text-foreground border-border'
                                   : isBilling
-                                    ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                    ? 'bg-muted/60 text-slate-700 border-border'
                                     : isManager
-                                      ? 'bg-slate-800 text-white border-slate-700'
-                                      : 'bg-orange-100 text-orange-800 border-orange-200';
+                                      ? 'bg-slate-100 text-white border-slate-700'
+                                      : 'bg-muted/60 text-slate-700 border-border';
 
                             return (
                               <div
                                 key={msg.id}
-                                className={`p-3 rounded-xl border text-xs space-y-1.5 transition-all ${
-                                  isAgent ? 'bg-white border-slate-200/90 shadow-2xs' : 'bg-white border-orange-200/80 shadow-2xs'
+                                className={`flex flex-col gap-1.5 p-3 rounded-xl border text-xs transition-all ${
+                                  isAgent ? 'bg-white border-slate-200/90 shadow-2xs' : 'bg-white border-border shadow-2xs'
                                 }`}
                               >
                                 <div className="flex items-center justify-between">
@@ -820,12 +665,12 @@ export function IncidentsWorkspace() {
                                     <span
                                       className={`text-[10px] font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${badgeColor}`}
                                     >
-                                      {isCSKH && <IconHeadset className="w-3 h-3" />}
-                                      {isDispatcher && <IconSparkles className="w-3 h-3" />}
-                                      {isTech && <IconTool className="w-3 h-3" />}
-                                      {isBilling && <IconReceipt2 className="w-3 h-3" />}
-                                      {isManager && <IconBuilding className="w-3 h-3" />}
-                                      {!isAgent && !isManager && <IconUser className="w-3 h-3" />}
+                                      
+                                      
+                                      
+                                      
+                                      
+                                      
                                       {msg.sender_name}
                                     </span>
 
@@ -867,12 +712,12 @@ export function IncidentsWorkspace() {
                             value={sessionChatInput}
                             onChange={(e) => setSessionChatInput(e.target.value)}
                             placeholder={`Gửi phản hồi vào phiên điều phối (với tư cách ${currentProfile.name})...`}
-                            className="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none"
+                            className="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-ring/40 focus:border-primary focus:outline-none"
                           />
                           <button
                             type="submit"
                             disabled={!sessionChatInput.trim()}
-                            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors shrink-0"
+                            className="px-4 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors shrink-0"
                           >
                             <IconSend className="w-3.5 h-3.5" />
                             <span>Gửi</span>
@@ -883,12 +728,9 @@ export function IncidentsWorkspace() {
                       {/* Modal Ban quản lý phê duyệt đóng phiên */}
                       {showBqlModal && (
                         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50">
-                          <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-slate-200">
+                          <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 flex flex-col gap-4 shadow-2xl border border-slate-200">
                             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                               <div className="flex items-center gap-2">
-                                <span className="p-1.5 bg-slate-900 text-white rounded-lg">
-                                  <IconShieldCheck className="w-4 h-4" />
-                                </span>
                                 <h4 className="font-bold text-slate-900 text-sm">Ban quản lý phê duyệt đóng phiên</h4>
                               </div>
                               <button
@@ -904,7 +746,7 @@ export function IncidentsWorkspace() {
                               Ban Quản Lý xác nhận: KTV đã hoàn thành thi công, ảnh nghiệm thu đã đạt chuẩn, cư dân đã bấm <strong>Hoàn thành</strong> trên yêu cầu và cuộc trò chuyện cư dân đã đóng.
                             </p>
 
-                            <div className="space-y-1.5">
+                            <div className="flex flex-col gap-1.5">
                               <label className="text-xs font-bold text-slate-700 block">
                                 Ghi chú phê duyệt của Ban Quản Lý:
                               </label>
@@ -913,7 +755,7 @@ export function IncidentsWorkspace() {
                                 value={bqlNoteInput}
                                 onChange={(e) => setBqlNoteInput(e.target.value)}
                                 placeholder="VD: Đã nghiệm thu hiện trường đạt tiêu chuẩn. Chi phí vật tư đúng định mức..."
-                                className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-ring/40"
                               />
                             </div>
 
@@ -938,7 +780,7 @@ export function IncidentsWorkspace() {
                                     setResolveError(err instanceof Error ? err.message : 'Chưa đủ điều kiện đóng hồ sơ.');
                                   }
                                 }}
-                                className="px-4 py-2 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold shadow-2xs"
+                                className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-bold shadow-2xs"
                               >
                                 Xác nhận duyệt và đóng phiên
                               </button>
@@ -952,10 +794,10 @@ export function IncidentsWorkspace() {
 
                 {/* Tab 1: Tasks & WorkOrders */}
                 {activeTab === 'TASKS' && (
-                  <div className="space-y-4">
+                  <div className="flex flex-col gap-4">
                     {/* Tasks */}
-                    <div className="space-y-2">
-                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                    <div className="flex flex-col gap-2">
+                      <span className="text-[11px] font-bold text-slate-500">
                         Các nhiệm vụ cần làm
                       </span>
                       {relatedTasks.map((t) => (
@@ -965,7 +807,7 @@ export function IncidentsWorkspace() {
                         >
                           <div>
                             <div className="flex items-center gap-1.5 font-mono">
-                              <span className="font-bold text-blue-600">{t.id}</span>
+                              <span className="font-bold text-foreground">{t.id}</span>
                               <span className="text-slate-400">•</span>
                               <span className="text-[10px] font-sans font-semibold text-slate-500">
                                 {t.domain_type === 'MEP'
@@ -985,10 +827,10 @@ export function IncidentsWorkspace() {
                           <span
                             className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                               t.status === 'DONE'
-                                ? 'bg-emerald-100 text-emerald-800'
+                                ? 'bg-muted/60 text-slate-700'
                                 : t.status === 'BLOCKED'
-                                  ? 'bg-rose-100 text-rose-800'
-                                  : 'bg-blue-100 text-blue-800'
+                                  ? 'bg-muted/60 text-slate-700'
+                                  : 'bg-muted/60 text-foreground'
                             }`}
                           >
                             {t.status === 'DONE' ? 'Hoàn thành' : t.status === 'BLOCKED' ? 'Tạm dừng' : 'Đang làm'}
@@ -998,8 +840,8 @@ export function IncidentsWorkspace() {
                     </div>
 
                     {/* Work Orders */}
-                    <div className="space-y-2 pt-2 border-t border-slate-100">
-                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                    <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
+                      <span className="text-[11px] font-bold text-slate-500">
                         Lịch sử các lần thi công thực tế
                       </span>
                       {relatedWorkOrders.map((w) => (
@@ -1009,26 +851,26 @@ export function IncidentsWorkspace() {
                         >
                           <div>
                             <div className="flex items-center gap-1.5 font-mono">
-                              <span className="font-bold text-blue-600">{w.id}</span>
+                              <span className="font-bold text-foreground">{w.id}</span>
                               <span className="text-slate-400">•</span>
                               <span className="font-sans font-medium text-slate-600">Lần thi công #{w.attempt_no}</span>
                               {w.redo_of_work_order_id && (
-                                <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded font-sans">
+                                <span className="text-[10px] font-bold text-slate-700 bg-muted/60 px-1.5 py-0.2 rounded font-sans">
                                   Làm lại của {w.redo_of_work_order_id}
                                 </span>
                               )}
                             </div>
                             <p className="text-[11px] text-slate-500 mt-0.5">
-                              Người làm: {w.executor_name || 'Kỹ thuật'} ({w.executor_phone || '—'})
+                              Người làm: {w.executor_name || 'Kỹ thuật'} ({w.executor_phone || '-'})
                             </p>
                           </div>
                           <span
                             className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                               w.status === 'COMPLETED'
-                                ? 'bg-emerald-100 text-emerald-700'
+                                ? 'bg-muted/60 text-slate-700'
                                 : w.status === 'IN_PROGRESS'
-                                  ? 'bg-amber-100 text-amber-700'
-                                  : 'bg-rose-100 text-rose-700'
+                                  ? 'bg-muted/60 text-slate-700'
+                                  : 'bg-muted/60 text-slate-700'
                             }`}
                           >
                             {w.status === 'COMPLETED' ? 'Đã hoàn thành' : w.status === 'IN_PROGRESS' ? 'Đang thực hiện' : 'Thất bại'}
@@ -1045,9 +887,6 @@ export function IncidentsWorkspace() {
                     <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-600 text-white">
-                            <IconMessageDots className="h-4 w-4" />
-                          </span>
                           <div>
                             <h3 className="text-sm font-bold text-slate-900">Phòng trao đổi xử lý sự cố</h3>
                             <p className="text-[11px] text-slate-500">Trao đổi nội bộ giữa agent, điều phối và nhân viên hiện trường</p>
@@ -1056,16 +895,16 @@ export function IncidentsWorkspace() {
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
                         <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-slate-600">A1 · CSKH</span>
-                        <IconArrowRight className="h-3 w-3 text-slate-300" />
-                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-1 text-indigo-700">A0 · Điều phối</span>
-                        <IconArrowRight className="h-3 w-3 text-slate-300" />
-                        <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700">A2 · Kỹ thuật</span>
-                        <IconArrowRight className="h-3 w-3 text-slate-300" />
-                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700">Nhân viên</span>
+                        
+                        <span className="rounded-full border border-border bg-muted/60 px-2 py-1 text-slate-700">A0 · Điều phối</span>
+                        
+                        <span className="rounded-full border border-border bg-muted/60 px-2 py-1 text-foreground">A2 · Kỹ thuật</span>
+                        
+                        <span className="rounded-full border border-border bg-muted/60 px-2 py-1 text-slate-700">Nhân viên</span>
                       </div>
                     </div>
 
-                    <div className="max-h-[470px] space-y-4 overflow-y-auto bg-slate-50/30 px-3 py-4 sm:px-5">
+                    <div className="max-h-[470px] flex flex-col gap-4 overflow-y-auto bg-slate-50/30 px-3 py-4 sm:px-5">
                       <div className="flex items-center gap-3 text-[10px] font-medium text-slate-400">
                         <span className="h-px flex-1 bg-slate-200" />
                         <span>{selectedIncident?.id} · Luồng xử lý nội bộ</span>
@@ -1094,7 +933,7 @@ export function IncidentsWorkspace() {
                             <div className={`min-w-0 max-w-[88%] sm:max-w-[76%] ${isCurrentUser ? 'text-right' : ''}`}>
                               <div className={`mb-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 ${isCurrentUser ? 'justify-end' : ''}`}>
                                 <span className="text-xs font-bold text-slate-900">{msg.author_name}</span>
-                                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${meta.avatarClass}`}>
+                                <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${meta.avatarClass}`}>
                                   {actorCode} · {meta.label}
                                 </span>
                                 <time className="text-[10px] text-slate-400">
@@ -1103,7 +942,7 @@ export function IncidentsWorkspace() {
                               </div>
                               <div className={`rounded-2xl border px-3.5 py-2.5 text-left text-xs leading-relaxed text-slate-700 shadow-xs ${
                                 isCurrentUser
-                                  ? 'rounded-tr-sm border-blue-600 bg-blue-600 text-white'
+                                  ? 'rounded-tr-sm border-primary bg-primary text-primary-foreground'
                                   : `rounded-tl-sm ${meta.bubbleClass}`
                               }`}>
                                 {msg.body}
@@ -1117,12 +956,8 @@ export function IncidentsWorkspace() {
 
                     {/* Send Message Form */}
                     <form onSubmit={handleSendMessage} className="flex items-end gap-2 border-t border-slate-200 bg-white p-3 sm:p-4">
-                      <span className="hidden h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-50 sm:flex">
-                        {currentProfile.avatarUrl ? (
-                          <img src={currentProfile.avatarUrl} alt="" className="h-full w-full object-cover" />
-                        ) : (
-                          <IconUser className="h-4 w-4 text-blue-600" />
-                        )}
+                      <span className="hidden h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted/60 sm:flex">
+                        {currentProfile.avatarUrl && <img src={currentProfile.avatarUrl} alt="" className="size-full object-cover" />}
                       </span>
                       <div className="flex-1">
                         <label htmlFor="incident-internal-message" className="mb-1 block text-[10px] font-semibold text-slate-500">
@@ -1133,13 +968,13 @@ export function IncidentsWorkspace() {
                           value={newMessageText}
                           onChange={(e) => setNewMessageText(e.target.value)}
                           placeholder="Nhập nội dung trao đổi hoặc @ tên người cần phối hợp..."
-                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/10"
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-ring/40"
                         />
                       </div>
                       <button
                         type="submit"
                         disabled={!newMessageText.trim()}
-                        className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-4 text-xs font-bold text-white shadow-2xs transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-primary px-4 text-xs font-bold text-white shadow-2xs transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <IconSend className="h-3.5 w-3.5" />
                         <span className="hidden sm:inline">Gửi</span>
@@ -1150,7 +985,7 @@ export function IncidentsWorkspace() {
 
                 {/* Tab 3: Timeline */}
                 {activeTab === 'TIMELINE' && (
-                  <div className="space-y-2.5">
+                  <div className="flex flex-col gap-2.5">
                     {incidentEvents.length === 0 ? (
                       <div className="p-8 text-center text-slate-400 text-xs">
                         Chưa có ghi nhận nhật ký nào.
@@ -1158,7 +993,7 @@ export function IncidentsWorkspace() {
                     ) : (
                       incidentEvents.map((evt) => (
                         <div key={evt.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-start gap-2.5">
-                          <div className="w-2 h-2 rounded-full bg-blue-600 mt-1 shrink-0" />
+                          <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-slate-300" />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between">
                               <span className="font-bold text-slate-800">
@@ -1177,7 +1012,7 @@ export function IncidentsWorkspace() {
                                             : evt.event_type === 'QC_INSPECTED'
                                               ? 'Nghiệm thu đạt chuẩn'
                                               : evt.event_type === 'QC_FAILED_REDO_TRIGGERED'
-                                                ? 'Nghiệm thu chưa đạt — Tạo phiếu làm lại'
+                                                ? 'Nghiệm thu chưa đạt - Tạo phiếu làm lại'
                                                 : evt.event_type === 'ACTION_APPROVAL_REQUIRED'
                                                   ? 'Đề xuất phê duyệt chi phí'
                                                   : evt.event_type === 'ACTION_APPROVED'
@@ -1202,7 +1037,7 @@ export function IncidentsWorkspace() {
 
                 {/* Tab 4: Relations */}
                 {activeTab === 'RELATIONS' && (
-                  <div className="space-y-2">
+                  <div className="flex flex-col gap-2">
                     {incidentRelations.length === 0 ? (
                       <div className="p-8 text-center text-slate-400 text-xs">
                         Sự cố này độc lập, không có liên quan đến sự cố nào khác.
@@ -1211,11 +1046,11 @@ export function IncidentsWorkspace() {
                       incidentRelations.map((rel, idx) => (
                         <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <IconLink className="w-4 h-4 text-blue-600" />
+                            
                             <span className="font-bold text-slate-800">
                               {rel.relation_type === 'CAUSED_BY' ? 'Gây ra bởi' : 'Có liên quan đến'}
                             </span>
-                            <span className="font-semibold text-blue-600">{rel.target_incident_id}</span>
+                            <span className="font-semibold text-foreground">{rel.target_incident_id}</span>
                           </div>
                           <span className="text-[11px] text-slate-500">{rel.reason}</span>
                         </div>

@@ -1,5 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { IconAlertTriangle, IconCheck, IconClock, IconLock, IconX } from '@tabler/icons-react';
+import { IconX } from '@tabler/icons-react';
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Textarea } from '@/components/ui/textarea';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { cn } from '@/lib/utils';
 import { STEP_LABELS, formatDuration, type StageTone } from '../../lib/field-flow';
 import type { FlowKind } from '../../types/field-flow';
 
@@ -13,73 +20,64 @@ export function useNow(intervalMs = 30_000) {
   return now;
 }
 
-const TONE_CLASSES: Record<StageTone, string> = {
-  red: 'bg-rose-50 text-rose-700 border-rose-200',
-  amber: 'bg-amber-50 text-amber-800 border-amber-200',
-  blue: 'bg-blue-50 text-blue-700 border-blue-200',
-  green: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  slate: 'bg-slate-100 text-slate-600 border-slate-200',
-  violet: 'bg-violet-50 text-violet-700 border-violet-200',
-};
-
-export function StatusPill({ tone, children }: { tone: StageTone; children: ReactNode }) {
-  return (
-    <span className={`inline-flex items-center shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border ${TONE_CLASSES[tone]}`}>
-      {children}
-    </span>
-  );
+/**
+ * Status is plain text: the wording already says what state the job is in.
+ * `tone` is kept on the API so callers do not change, but it no longer colours anything.
+ */
+export function StatusPill({ children }: { tone?: StageTone; children: ReactNode }) {
+  return <span className="shrink-0 text-sm text-slate-700">{children}</span>;
 }
 
-const SEVERITY_META: Record<string, { label: string; cls: string }> = {
-  P1: { label: 'Khẩn cấp', cls: 'bg-rose-600 text-white' },
-  P2: { label: 'Cao', cls: 'bg-orange-500 text-white' },
-  P3: { label: 'Bình thường', cls: 'bg-slate-200 text-slate-700' },
-  P4: { label: 'Thấp', cls: 'bg-slate-100 text-slate-500' },
+const SEVERITY_LABELS: Record<string, string> = {
+  P1: 'Khẩn cấp',
+  P2: 'Cao',
+  P3: 'Bình thường',
+  P4: 'Thấp',
 };
 
+export function severityLabel(severity?: string) {
+  return SEVERITY_LABELS[severity || 'P3'] || SEVERITY_LABELS.P3;
+}
+
+/** Urgency is carried by weight, not colour. */
 export function SeverityBadge({ severity }: { severity?: string }) {
-  const meta = SEVERITY_META[severity || 'P3'] || SEVERITY_META.P3;
-  return <span className={`text-xs font-bold px-2 py-0.5 rounded ${meta.cls}`}>{meta.label}</span>;
+  const urgent = severity === 'P1' || severity === 'P2';
+  return <span className={cn('text-sm', urgent ? 'font-semibold text-foreground' : 'text-slate-600')}>{severityLabel(severity)}</span>;
+}
+
+export function slaText(dueAt: string | null | undefined, now: number) {
+  if (!dueAt) return null;
+  const ms = new Date(dueAt).getTime() - now;
+  return { text: ms <= 0 ? `Quá hạn ${formatDuration(-ms)}` : `Còn ${formatDuration(ms)}`, pressing: ms < 30 * 60 * 1000 };
 }
 
 export function SlaCountdown({ dueAt, now }: { dueAt?: string | null; now: number }) {
-  if (!dueAt) return null;
-  const ms = new Date(dueAt).getTime() - now;
-  const overdue = ms <= 0;
-  const urgent = !overdue && ms < 30 * 60 * 1000;
-  return (
-    <span className={`inline-flex items-center gap-1 text-sm font-medium ${overdue || urgent ? 'text-rose-600' : 'text-slate-500'}`}>
-      <IconClock className="w-4 h-4" />
-      {overdue ? `Quá hạn ${formatDuration(-ms)}` : `Còn ${formatDuration(ms)}`}
-    </span>
-  );
+  const sla = slaText(dueAt, now);
+  if (!sla) return null;
+  return <span className={cn('text-sm tabular-nums', sla.pressing ? 'font-semibold text-foreground' : 'text-slate-600')}>{sla.text}</span>;
+}
+
+export function autoCompleteText(autoCompleteAt: string | null | undefined, now: number) {
+  if (!autoCompleteAt) return null;
+  const ms = new Date(autoCompleteAt).getTime() - now;
+  return ms > 0 ? `Tự hoàn thành sau ${formatDuration(ms)}` : 'Đang tự động hoàn thành…';
 }
 
 export function AutoCompleteCountdown({ autoCompleteAt, now }: { autoCompleteAt?: string | null; now: number }) {
-  if (!autoCompleteAt) return null;
-  const ms = new Date(autoCompleteAt).getTime() - now;
-  return (
-    <span className="inline-flex items-center gap-1 text-sm text-violet-700">
-      <IconClock className="w-4 h-4" />
-      {ms > 0 ? `Tự động hoàn thành sau ${formatDuration(ms)}` : 'Đang tự động hoàn thành…'}
-    </span>
-  );
+  const text = autoCompleteText(autoCompleteAt, now);
+  return text ? <span className="text-sm tabular-nums text-slate-600">{text}</span> : null;
 }
 
 export function StepProgress({ current, kind = 'REPAIR' }: { current: number; kind?: FlowKind }) {
   return (
-    <ol className="flex items-center gap-1" aria-label="Tiến trình công việc">
+    <ol className="flex items-start gap-1.5" aria-label="Tiến trình công việc">
       {STEP_LABELS[kind].map((label, i) => {
         const done = i < current;
         const active = i === current;
         return (
-          <li key={label} className="flex-1 flex flex-col items-center gap-1.5 min-w-0">
-            <div className="w-full flex items-center">
-              <div className={`h-1.5 flex-1 rounded-full ${done || active ? 'bg-blue-600' : 'bg-slate-200'}`} />
-            </div>
-            <span className={`text-xs truncate max-w-full ${active ? 'text-blue-700 font-semibold' : done ? 'text-slate-600' : 'text-slate-400'}`}>
-              {done ? '✓ ' : ''}{label}
-            </span>
+          <li key={label} className="flex min-w-0 flex-1 flex-col gap-1.5" aria-current={active ? 'step' : undefined}>
+            <div className={cn('h-1 rounded-full', done || active ? 'bg-primary' : 'bg-muted')} />
+            <span className={cn('truncate text-xs', active ? 'font-medium text-foreground' : done ? 'text-slate-600' : 'text-muted-foreground')}>{label}</span>
           </li>
         );
       })}
@@ -87,29 +85,25 @@ export function StepProgress({ current, kind = 'REPAIR' }: { current: number; ki
   );
 }
 
-/** Sticky footer holding the one primary action (and at most one secondary). */
+/**
+ * Sticky action bar that sits flush with the content column: no negative margins, so its left
+ * and right edges always line up with the cards above, whatever width the content column has.
+ */
 export function BottomActionBar({ children, hint }: { children: ReactNode; hint?: ReactNode }) {
   return (
     <div
-      className="sticky bottom-0 z-20 -mx-3 sm:-mx-5 md:-mx-6 lg:-mx-8 mt-4 border-t border-slate-200 bg-white/95 backdrop-blur px-3 sm:px-5 pt-3"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+      className="sticky bottom-0 z-20 mt-2 flex flex-col gap-2 rounded-lg border bg-card/95 p-3 shadow-[0_-4px_16px_rgb(15_23_42/0.06)] backdrop-blur lg:flex-row lg:items-center lg:justify-between lg:gap-6 lg:px-4"
+      style={{ marginBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
-      <div className="max-w-2xl mx-auto space-y-2">
-        {hint}
-        <div className="flex gap-2">{children}</div>
-      </div>
+      {hint && <div className="min-w-0 lg:flex-1">{hint}</div>}
+      <div className="flex gap-2 lg:ml-auto lg:shrink-0">{children}</div>
     </div>
   );
 }
 
 type BtnVariant = 'primary' | 'secondary' | 'danger' | 'success';
-const BTN_CLASSES: Record<BtnVariant, string> = {
-  primary: 'bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-300',
-  success: 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-slate-300',
-  danger: 'bg-white text-rose-600 border border-rose-200 hover:bg-rose-50',
-  secondary: 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50',
-};
 
+/** One accent. `success`/`danger` stay as aliases so the flow code reads naturally. */
 export function ActionButton({
   variant = 'primary',
   grow = true,
@@ -124,14 +118,15 @@ export function ActionButton({
   children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant={variant === 'primary' || variant === 'success' ? 'default' : 'outline'}
+      size="lg"
       disabled={disabled}
       onClick={onClick}
-      className={`${grow ? 'flex-1' : 'shrink-0'} min-h-12 px-4 rounded-xl text-base font-semibold inline-flex items-center justify-center gap-2 transition-colors disabled:cursor-not-allowed ${BTN_CLASSES[variant]}`}
+      className={cn('h-11 px-4 text-[15px]', grow ? 'flex-1 lg:min-w-40 lg:flex-none' : 'shrink-0')}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -139,44 +134,41 @@ export function ActionButton({
 export function ChecklistGate({ blockers }: { blockers: string[] }) {
   if (blockers.length === 0) return null;
   return (
-    <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-      <p className="text-sm font-semibold text-amber-800 flex items-center gap-1.5">
-        <IconLock className="w-4 h-4" /> Còn thiếu trước khi tiếp tục:
-      </p>
-      <ul className="mt-1 space-y-0.5">
-        {blockers.map((b) => (
-          <li key={b} className="text-sm text-amber-800">• {b}</li>
-        ))}
-      </ul>
-    </div>
+    <Alert className="bg-muted/40">
+      <AlertTitle>Còn thiếu trước khi tiếp tục</AlertTitle>
+      <AlertDescription>
+        <ul className="list-disc pl-5">
+          {blockers.map((b) => <li key={b}>{b}</li>)}
+        </ul>
+      </AlertDescription>
+    </Alert>
   );
 }
 
 export function Section({ title, right, children }: { title: string; right?: ReactNode; children: ReactNode }) {
   return (
-    <section className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-slate-800">{title}</h2>
-        {right}
-      </div>
-      {children}
-    </section>
+    <Card>
+      <CardHeader className="px-4 md:px-5">
+        <CardTitle className="text-[15px] font-semibold">{title}</CardTitle>
+        {right && <CardAction className="text-sm text-muted-foreground">{right}</CardAction>}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3 px-4 md:px-5">{children}</CardContent>
+    </Card>
   );
 }
 
 export function Banner({ kind, children, onClose }: { kind: 'error' | 'success'; children: ReactNode; onClose?: () => void }) {
-  const cls = kind === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800';
-  const Icon = kind === 'error' ? IconAlertTriangle : IconCheck;
   return (
-    <div role={kind === 'error' ? 'alert' : 'status'} className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm ${cls}`}>
-      <Icon className="w-5 h-5 shrink-0" />
-      <div className="flex-1">{children}</div>
+    <Alert variant={kind === 'error' ? 'destructive' : 'default'} role={kind === 'error' ? 'alert' : 'status'}>
+      <AlertDescription className="text-foreground">{children}</AlertDescription>
       {onClose && (
-        <button type="button" onClick={onClose} aria-label="Đóng" className="p-1 -m-1">
-          <IconX className="w-4 h-4" />
-        </button>
+        <AlertAction>
+          <Button variant="ghost" size="icon-sm" aria-label="Đóng" onClick={onClose}>
+            <IconX />
+          </Button>
+        </AlertAction>
       )}
-    </div>
+    </Alert>
   );
 }
 
@@ -204,39 +196,41 @@ export function ReasonSheet<T extends string>({
   const canConfirm = (reasons === null || reason !== null) && (!needsNote || note.trim().length > 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <button type="button" aria-label="Đóng" className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-4 space-y-4"
+        className="relative flex w-full flex-col gap-4 rounded-t-xl bg-card p-4 sm:max-w-md sm:rounded-xl sm:p-5"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
       >
-        <h3 className="text-lg font-semibold text-slate-800">{title}</h3>
+        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
         {reasons && (
-          <div className="flex flex-wrap gap-2">
+          <ToggleGroup
+            aria-label="Lý do"
+            variant="outline"
+            spacing={2}
+            value={reason ? [reason] : []}
+            onValueChange={(next) => setReason((next[0] as T | undefined) ?? null)}
+            className="flex-wrap"
+          >
             {(Object.keys(reasons) as T[]).map((key) => (
-              <button
+              <ToggleGroupItem
                 key={key}
-                type="button"
-                onClick={() => setReason(key)}
-                className={`min-h-11 px-4 rounded-full border text-sm font-medium ${
-                  reason === key ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300 text-slate-700'
-                }`}
+                value={key}
+                size="lg"
+                className="h-11 px-4 font-normal data-pressed:border-primary data-pressed:bg-primary data-pressed:text-primary-foreground"
               >
                 {reasons[key]}
-              </button>
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
         )}
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          rows={3}
-          placeholder={needsNote ? 'Ghi chú (bắt buộc)' : 'Ghi chú thêm (không bắt buộc)'}
-          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base"
-        />
+        <Field>
+          <FieldLabel htmlFor="reason-note">{needsNote ? 'Ghi chú (bắt buộc)' : 'Ghi chú thêm (không bắt buộc)'}</FieldLabel>
+          <Textarea id="reason-note" value={note} onChange={(e) => setNote(e.target.value)} rows={3} className="text-base md:text-base" />
+        </Field>
         <div className="flex gap-2">
           <ActionButton variant="secondary" onClick={onClose}>Hủy</ActionButton>
           <ActionButton disabled={!canConfirm} onClick={() => onConfirm(reason, note)}>{confirmLabel}</ActionButton>

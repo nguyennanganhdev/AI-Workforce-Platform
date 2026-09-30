@@ -7,7 +7,6 @@ interface NavItemDef {
   label: string;
   to: string;
   badgeCount?: number;
-  badgeColor?: string;
   section: 'OPERATIONS' | 'MANAGEMENT';
 }
 
@@ -50,7 +49,6 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
       label: 'Việc của tôi',
       to: '/operations/my-tasks',
       badgeCount: myPendingTasksCount > 0 ? myPendingTasksCount : undefined,
-      badgeColor: 'bg-blue-600 text-white',
       section: 'OPERATIONS',
     },
     {
@@ -70,7 +68,6 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
       label: 'Phản ánh & Sự cố',
       to: '/operations/incidents',
       badgeCount: p1IncidentsCount > 0 ? p1IncidentsCount : undefined,
-      badgeColor: 'bg-rose-600 text-white',
       section: 'OPERATIONS',
     },
     {
@@ -114,7 +111,6 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
       label: 'Nghiệm thu chất lượng',
       to: '/operations/qc',
       badgeCount: pendingQcCount > 0 ? pendingQcCount : undefined,
-      badgeColor: 'bg-purple-600 text-white',
       section: 'MANAGEMENT',
     },
     {
@@ -122,7 +118,6 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
       label: 'Phê duyệt chi phí',
       to: '/operations/approvals',
       badgeCount: pendingApprovalsCount > 0 ? pendingApprovalsCount : undefined,
-      badgeColor: 'bg-emerald-600 text-white',
       section: 'MANAGEMENT',
     },
   ];
@@ -134,20 +129,20 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
 
   return (
     <aside className="operations-sidebar" data-open={open} aria-label="Điều hướng vận hành">
-      <Link to="/operations" onClick={onNavigate} className="border-b border-slate-200 p-5">
-        <span className="block text-sm font-semibold text-slate-900">Vinhomes</span>
-        <span className="mt-1 block text-xs text-slate-500">Quản lý vận hành</span>
+      <Link to="/operations" onClick={onNavigate} className="hidden min-[901px]:flex h-16 flex-col justify-center border-b border-slate-200 px-5">
+        <span className="block text-[15px] font-semibold text-slate-900 leading-tight">Vinhomes</span>
+        <span className="block text-xs text-slate-500">Quản lý vận hành</span>
       </Link>
       <div className="border-b border-slate-200 p-4">
         <label htmlFor="operations-persona" className="mb-2 block text-xs text-slate-500">Vai trò làm việc</label>
-        <select id="operations-persona" value={currentPersona} onChange={(event) => setCurrentPersona(event.target.value as OperationsPersona)} className="w-full rounded border border-slate-200 bg-white px-2 py-2 text-sm">
+        <select id="operations-persona" value={currentPersona} onChange={(event) => setCurrentPersona(event.target.value as OperationsPersona)} className="w-full h-10 rounded-md border border-slate-200 bg-white px-2.5 text-sm text-slate-800">
           {personas.map((persona) => <option key={persona.id} value={persona.id}>{persona.label}</option>)}
         </select>
       </div>
       <nav aria-label="Chức năng vận hành" className="flex-1 space-y-5 overflow-y-auto p-3">
         {[{title: 'Công việc', items: operationItems}, {title: 'Quản lý', items: managementItems}].map((section) => section.items.length > 0 && (
           <div key={section.title}>
-            <p className="px-3 pb-2 text-xs text-slate-400">{section.title}</p>
+            <p className="px-3 pb-1.5 text-xs text-slate-500">{section.title}</p>
             {section.items.map((item) => {
               const active = item.to === '/operations' ? currentPath === '/operations' || currentPath === '/operations/' : currentPath.startsWith(item.to);
               return <Link key={item.id} to={item.to} activeOptions={{ exact: item.to === '/operations' }} onClick={onNavigate} aria-current={active ? 'page' : undefined}>
@@ -159,7 +154,7 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
         ))}
       </nav>
       <div className="border-t border-slate-200 p-4">
-        <p className="text-sm font-medium">{currentProfile.name}</p>
+        <p className="text-sm font-medium text-slate-900">{currentProfile.name}</p>
         <p className="mt-1 text-xs text-slate-500">{currentProfile.department}</p>
       </div>
     </aside>

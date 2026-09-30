@@ -1,359 +1,195 @@
 import { Link } from '@tanstack/react-router';
-import {
-  IconAlertTriangle,
-  IconClipboardCheck,
-  IconShieldCheck,
-  IconGavel,
-  IconClock,
-  IconArrowUpRight,
-  IconCheck,
-  IconTrendingUp,
-  IconBuildingSkyscraper,
-  IconSparkles,
-} from '@tabler/icons-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import { useOperationsData } from '../hooks/use-operations-data';
+import { PanelTitle } from './ops-ui';
+import { severityLabel, slaText, useNow } from './technician/ui';
 
 const STAGE_LABELS: Record<string, string> = {
   INTAKE: 'Tiếp nhận',
   TRIAGE: 'Phân loại',
   DIAGNOSING: 'Khảo sát',
   ACTION_PLANNING: 'Lên phương án',
+  PLANNING: 'Lên phương án',
   EXECUTION: 'Đang sửa chữa',
+  QC: 'Nghiệm thu',
   QC_INSPECTION: 'Nghiệm thu',
   RESIDENT_CONFIRMATION: 'Cư dân duyệt',
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
-  MEP_PLUMBING: 'Kỹ thuật Cấp Thoát Nước',
-  SANITATION_A5: 'Vệ sinh Môi trường A5',
-  ELEVATOR: 'Hệ thống Thang máy',
-  ELECTRICAL: 'Kỹ thuật Điện chiếu sáng',
+  MEP_PLUMBING: 'Kỹ thuật cấp thoát nước',
+  SANITATION_A5: 'Vệ sinh môi trường A5',
+  ELEVATOR: 'Hệ thống thang máy',
+  ELECTRICAL: 'Kỹ thuật điện chiếu sáng',
   CIVIL: 'Xây dựng hoàn thiện',
   SECURITY: 'An ninh trật tự',
 };
 
+type Kpi = { label: string; value: number; unit?: string; note: string; to: string; action: string; pressing?: boolean };
+
+function KpiCard({ kpi }: { kpi: Kpi }) {
+  return (
+    <Card className="gap-3">
+      <CardHeader className="gap-1.5 px-4 md:px-5">
+        <CardDescription>{kpi.label}</CardDescription>
+        <CardTitle className="flex items-baseline gap-2">
+          <span className="text-3xl font-semibold tabular-nums text-foreground">{kpi.value}</span>
+          {kpi.unit && <span className={cn('text-sm font-normal text-muted-foreground', kpi.pressing && 'font-medium text-foreground')}>{kpi.unit}</span>}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-4 text-sm text-muted-foreground md:px-5">{kpi.note}</CardContent>
+      <CardFooter className="mt-auto bg-transparent px-4 py-2.5 md:px-5">
+        <Button variant="link" className="h-auto px-0" render={<Link to={kpi.to} />}>
+          {kpi.action}
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+
 export function OperationsDashboard() {
-  const { incidents, workOrders, qcResults, approvals, currentPersona, currentProfile } = useOperationsData();
+  const { incidents, workOrders, qcResults, approvals, currentProfile } = useOperationsData();
+  const now = useNow();
 
   const p1Incidents = incidents.filter((i) => i.severity === 'P1' && i.status !== 'CLOSED');
   const inProgressWo = workOrders.filter((w) => w.status === 'IN_PROGRESS');
-  const completedWo = workOrders.filter((w) => w.status === 'COMPLETED');
   const pendingApprovals = approvals.filter((a) => a.status === 'PENDING');
   const failedQc = qcResults.filter((q) => q.outcome === 'FAIL');
+  const passRate = qcResults.length ? Math.round(((qcResults.length - failedQc.length) / qcResults.length) * 100) : 0;
+  const totalPendingCost = pendingApprovals.reduce((acc, curr) => acc + (curr.estimated_cost_vnd || 0), 0);
+  const watched = incidents.filter((i) => i.status !== 'CLOSED').slice(0, 6);
 
-  const totalPendingCost = pendingApprovals.reduce(
-    (acc, curr) => acc + (curr.estimated_cost_vnd || 0),
-    0,
-  );
+  const kpis: Kpi[] = [
+    { label: 'Khẩn cấp P1', value: p1Incidents.length, unit: 'đang mở', note: 'Sự cố nước áp lực S2.01 và PCCC', to: '/operations/incidents', action: 'Xử lý ngay', pressing: p1Incidents.length > 0 },
+    { label: 'Đang thực hiện', value: inProgressWo.length, unit: `/ ${workOrders.length} phiếu`, note: '4 nhân viên và 1 nhà thầu tại hiện trường', to: '/operations/kanban', action: 'Bảng phân công việc' },
+    { label: 'Nghiệm thu chất lượng', value: qcResults.length, unit: `${passRate}% đạt chuẩn`, note: failedQc.length > 0 ? `${failedQc.length} phiếu cần làm lại` : 'Tất cả đều đạt chuẩn', to: '/operations/qc', action: 'Chi tiết nghiệm thu' },
+    { label: 'Chờ BQL duyệt', value: pendingApprovals.length, unit: `${(totalPendingCost / 1_000_000).toFixed(1)} tr đ`, note: 'Đề xuất mua van DN50 khẩn cấp', to: '/operations/approvals', action: 'Vào hàng đợi duyệt' },
+  ];
+
+  const deadline = (dueAt: string | null) => slaText(dueAt, now) || { text: '-', pressing: false };
 
   return (
-    <div className="space-y-6">
-      {/* Title Header with BistroPulse Blue Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-1.5 h-6 bg-blue-600 rounded-full shrink-0" />
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              Trung Tâm Điều Hành & Giám Sát Đô Thị
-            </h1>
-            <p className="text-xs text-slate-500 font-medium">
-              Vinhomes Smart City • Giám sát SLA thời gian thực & Điều phối nhân lực hiện trường
-            </p>
-          </div>
+    <div className="flex flex-col gap-4 md:gap-6">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
+        <div className="flex min-w-0 flex-col gap-1">
+          <PanelTitle>Trung tâm điều hành và giám sát đô thị</PanelTitle>
+          <p className="pl-3.5 text-sm text-muted-foreground">Vinhomes Smart City · Giám sát SLA và điều phối nhân lực hiện trường</p>
         </div>
-
-        {/* Quick Filter / Persona banner */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500 font-medium">Không gian làm việc:</span>
-          <span className="px-3 py-1 bg-blue-50 text-blue-700 font-bold text-xs rounded-full border border-blue-200/60 shadow-2xs">
-            {currentProfile?.roleTitle || 'Ban Quản Lý (BQL) Đô Thị'}
-          </span>
-        </div>
+        <p className="shrink-0 pl-3.5 text-sm text-muted-foreground sm:pl-0">
+          Không gian làm việc: <span className="text-foreground">{currentProfile?.roleTitle || 'Ban Quản Lý Đô Thị'}</span>
+        </p>
       </div>
 
-      {/* 4 Primary KPI & SLA Cards — BistroPulse Clean Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Sự cố P1 Khẩn */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-rose-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform" />
-          <div className="flex items-center justify-between mb-3 relative z-10">
-            <span className="text-xs font-semibold uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">
-              Khẩn cấp P1
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
-              <IconAlertTriangle className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="relative z-10">
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-extrabold text-slate-900">{p1Incidents.length}</span>
-              <span className="text-xs text-rose-600 font-bold flex items-center">
-                <IconClock className="w-3.5 h-3.5 mr-0.5" /> SLA: 45p
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">Sự cố nước áp lực S2.01 & PCCC</p>
-          </div>
-          <Link
-            to="/operations/work-orders"
-            className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-rose-600 hover:text-rose-700"
-          >
-            <span>Xử lý ngay</span>
-            <IconArrowUpRight className="w-4 h-4" />
-          </Link>
-        </div>
-
-        {/* Card 2: Việc đang thực hiện */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform" />
-          <div className="flex items-center justify-between mb-3 relative z-10">
-            <span className="text-xs font-semibold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-              Đang thực hiện
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
-              <IconClipboardCheck className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="relative z-10">
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-extrabold text-slate-900">{inProgressWo.length}</span>
-              <span className="text-xs text-slate-500 font-medium">/ {workOrders.length} phiếu</span>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">4 nhân viên & 1 nhà thầu tại hiện trường</p>
-          </div>
-          <Link
-            to="/operations/kanban"
-            className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-blue-600 hover:text-blue-700"
-          >
-            <span>Bảng phân công việc</span>
-            <IconArrowUpRight className="w-4 h-4" />
-          </Link>
-        </div>
-
-        {/* Card 3: Kiểm định QC */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-purple-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform" />
-          <div className="flex items-center justify-between mb-3 relative z-10">
-            <span className="text-xs font-semibold uppercase tracking-wider text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">
-              Nghiệm thu chất lượng
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center">
-              <IconShieldCheck className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="relative z-10">
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-extrabold text-slate-900">{qcResults.length}</span>
-              <span className="text-xs text-emerald-600 font-bold flex items-center">
-                <IconCheck className="w-3.5 h-3.5 mr-0.5" /> 75% Đạt chuẩn
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              {failedQc.length > 0 ? `1 phiếu làm lại đã hoàn thành` : `Tất cả đều đạt chuẩn`}
-            </p>
-          </div>
-          <Link
-            to="/operations/qc"
-            className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-purple-600 hover:text-purple-700"
-          >
-            <span>Chi tiết nghiệm thu</span>
-            <IconArrowUpRight className="w-4 h-4" />
-          </Link>
-        </div>
-
-        {/* Card 4: Phê duyệt BQL */}
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-full -mr-8 -mt-8 group-hover:scale-110 transition-transform" />
-          <div className="flex items-center justify-between mb-3 relative z-10">
-            <span className="text-xs font-semibold uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
-              Chờ BQL duyệt
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
-              <IconGavel className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="relative z-10">
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-extrabold text-slate-900">{pendingApprovals.length}</span>
-              <span className="text-xs text-amber-700 font-bold">
-                {(totalPendingCost / 1000000).toFixed(1)} tr đ
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">Đề xuất mua van DN50 khẩn cấp</p>
-          </div>
-          <Link
-            to="/operations/approvals"
-            className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-amber-700 hover:text-amber-800"
-          >
-            <span>Vào hàng đợi duyệt</span>
-            <IconArrowUpRight className="w-4 h-4" />
-          </Link>
-        </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {kpis.map((k) => <KpiCard key={k.label} kpi={k} />)}
       </div>
 
-      {/* Two Column Layout: Active Incidents Table & AI Recommendations */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Cols: Active Critical Incidents — BistroPulse Table Card */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-5 shadow-xs">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2.5">
-              <div className="w-1 h-4 bg-blue-600 rounded-full" />
-              <h2 className="font-bold text-slate-900 text-sm">
-                Sự Cố Hiện Trường Cần Giám Sát
-              </h2>
-            </div>
-            <Link
-              to="/operations/work-orders"
-              className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1"
-            >
-              <span>Xem tất cả phiếu</span>
-              <IconArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
+      <div className="grid grid-cols-1 gap-4 md:gap-6 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+        <Card className="gap-0 pb-0">
+          <CardHeader className="items-center px-4 pb-3 md:px-6">
+            <PanelTitle as="h2">Sự cố hiện trường cần giám sát</PanelTitle>
+            <Button variant="link" className="col-start-2 row-start-1 h-auto justify-self-end px-0" render={<Link to="/operations/incidents" />}>
+              Xem tất cả
+            </Button>
+          </CardHeader>
+
+          <div className="ops-list-table px-2 md:px-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Sự cố</TableHead>
+                  <TableHead>Vị trí</TableHead>
+                  <TableHead>Mức độ</TableHead>
+                  <TableHead className="hidden 2xl:table-cell">Giai đoạn</TableHead>
+                  <TableHead className="text-right">Thời hạn</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {watched.map((inc) => {
+                  const d = deadline(inc.sla_due_at);
+                  const urgent = inc.severity === 'P1' || inc.severity === 'P2';
+                  return (
+                    <TableRow key={inc.id}>
+                      <TableCell className="min-w-64 whitespace-normal">
+                        <Link to="/operations/incidents" className="ops-title hover:text-primary hover:underline underline-offset-2">{inc.title}</Link>
+                        <p className="ops-subtle tabular-nums">{inc.id} · {CATEGORY_LABELS[inc.category] || inc.category}</p>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <p>Tòa {inc.location_json.towerCode}</p>
+                        <p className="ops-subtle max-w-40 truncate">{inc.location_json.areaCode || inc.location_json.description}</p>
+                      </TableCell>
+                      <TableCell className={cn('whitespace-nowrap', urgent && 'font-semibold text-foreground')}>{severityLabel(inc.severity)}</TableCell>
+                      <TableCell className="hidden whitespace-nowrap 2xl:table-cell">{STAGE_LABELS[inc.stage] || inc.stage}</TableCell>
+                      <TableCell className={cn('whitespace-nowrap text-right tabular-nums', d.pressing && 'font-semibold text-foreground')}>{d.text}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
 
-          {/* Mobile View (< 640px): KHÔNG CẦN VUỐT NGANG */}
-          <div className="sm:hidden divide-y divide-slate-100">
-            {incidents.slice(0, 4).map((inc) => (
-              <div key={inc.id} className="py-3 px-1 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="font-bold text-xs text-slate-900 leading-snug line-clamp-2">{inc.title}</div>
-                    <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                      {inc.id} • {CATEGORY_LABELS[inc.category] || inc.category}
-                    </div>
+          <ul className="ops-list-rows">
+            {watched.map((inc) => {
+              const d = deadline(inc.sla_due_at);
+              const urgent = inc.severity === 'P1' || inc.severity === 'P2';
+              return (
+                <li key={inc.id} className="flex flex-col gap-1.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <Link to="/operations/incidents" className="ops-title font-medium hover:text-primary hover:underline underline-offset-2">{inc.title}</Link>
+                    <span className="shrink-0 text-[13px] text-slate-600">{STAGE_LABELS[inc.stage] || inc.stage}</span>
                   </div>
-                  <span
-                    className={`shrink-0 px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                      inc.severity === 'P1'
-                        ? 'bg-rose-100 text-rose-700'
-                        : inc.severity === 'P2'
-                          ? 'bg-amber-100 text-amber-700'
-                          : 'bg-blue-100 text-blue-700'
-                    }`}
-                  >
-                    {inc.severity}
-                  </span>
+                  <p className="ops-subtle"><span className="tabular-nums">{inc.id}</span> · Tòa {inc.location_json.towerCode}</p>
+                  <p className="text-[13px] text-slate-600">
+                    <span className={cn(urgent && 'font-semibold text-foreground')}>{severityLabel(inc.severity)}</span>
+                    {' · '}
+                    <span className={cn(d.pressing && 'font-semibold text-foreground')}>{d.text}</span>
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="h-2" />
+        </Card>
+
+        <div className="flex flex-col gap-4">
+          <Card>
+            <CardHeader className="gap-1 px-4 md:px-5">
+              <CardDescription>Đề xuất xử lý</CardDescription>
+              <CardTitle className="text-[15px] font-semibold leading-snug">Phát hiện nguy cơ rò rỉ nước ngấm xuống thang máy S2.01</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 text-sm leading-relaxed text-muted-foreground md:px-5">
+              AI đề xuất khóa van trục C (đã thực hiện) và kích hoạt gói vật tư thay van DN50 (12,5 tr đ) đang chờ BQL duyệt.
+            </CardContent>
+            <CardFooter className="justify-between gap-3 bg-transparent px-4 pt-3 md:px-5">
+              <span className="text-xs text-muted-foreground">Độ tin cậy: 98,4%</span>
+              <Button render={<Link to="/operations/approvals" />}>Duyệt đề xuất</Button>
+            </CardFooter>
+          </Card>
+
+          <Card>
+            <CardHeader className="px-4 md:px-5">
+              <CardTitle className="text-[15px] font-semibold">Phân khu đang theo dõi</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col px-4 text-sm md:px-5">
+              {[
+                { tower: 'Tòa S2.01', note: '1 sự cố P1', pressing: true },
+                { tower: 'Tòa S1.05', note: '1 vệ sinh A5' },
+                { tower: 'Tòa S2.03', note: 'Nghiệm thu thang máy' },
+              ].map((z, i) => (
+                <div key={z.tower}>
+                  {i > 0 && <Separator />}
+                  <div className="flex items-center justify-between gap-3 py-2.5">
+                    <span className="text-foreground">{z.tower}</span>
+                    <span className={cn('text-muted-foreground', z.pressing && 'font-medium text-foreground')}>{z.note}</span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between text-[11px] text-slate-500">
-                  <span>Tòa {inc.location_json.towerCode}</span>
-                  {inc.sla_due_at ? (
-                    <span className="text-rose-600 font-bold flex items-center gap-1">
-                      <IconClock className="w-3 h-3" /> 45 phút
-                    </span>
-                  ) : (
-                    <span className="text-slate-400">Không có hạn</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Desktop Table View (>= 640px) */}
-          <div className="hidden sm:block overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-100 text-slate-400 font-semibold uppercase tracking-wider">
-                  <th className="pb-3 pl-2">Mã & Sự cố</th>
-                  <th className="pb-3 ops-hide-mobile">Vị trí</th>
-                  <th className="pb-3">Mức độ</th>
-                  <th className="pb-3 ops-hide-mobile">Giai đoạn</th>
-                  <th className="pb-3 text-right pr-2">Hạn chót SLA</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {incidents.slice(0, 4).map((inc) => (
-                  <tr key={inc.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-3 pl-2">
-                      <div className="font-bold text-slate-900">{inc.title}</div>
-                      <div className="text-[11px] text-slate-400 font-mono">
-                        {inc.id} • {CATEGORY_LABELS[inc.category] || inc.category}
-                      </div>
-                    </td>
-                    <td className="py-3 text-slate-600 ops-hide-mobile">
-                      <div className="font-medium text-slate-800">{inc.location_json.towerCode}</div>
-                      <div className="text-[11px] text-slate-500 truncate max-w-[140px]">
-                        {inc.location_json.areaCode || inc.location_json.description}
-                      </div>
-                    </td>
-                    <td className="py-3">
-                      <span
-                        className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                          inc.severity === 'P1'
-                            ? 'bg-rose-100 text-rose-700'
-                            : inc.severity === 'P2'
-                              ? 'bg-amber-100 text-amber-700'
-                              : 'bg-blue-100 text-blue-700'
-                        }`}
-                      >
-                        {inc.severity}
-                      </span>
-                    </td>
-                    <td className="py-3 ops-hide-mobile">
-                      <span className="px-2 py-0.5 rounded font-medium text-[11px] bg-slate-100 text-slate-700">
-                        {STAGE_LABELS[inc.stage] || inc.stage}
-                      </span>
-                    </td>
-                    <td className="py-3 text-right pr-2 font-mono text-slate-600 font-semibold">
-                      {inc.sla_due_at ? (
-                        <span className="text-rose-600 font-bold flex items-center justify-end gap-1">
-                          <IconClock className="w-3.5 h-3.5" /> 45 phút
-                        </span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Right 1 Col: AI Dispatcher & Smart City Live Status */}
-        <div className="space-y-4">
-          {/* Card: AI Recommendation */}
-          <div className="bg-white border border-slate-200 text-slate-800 p-4 sm:p-5 rounded-lg">
-            <div className="flex items-center gap-2 mb-2 text-blue-400 font-semibold text-xs">
-              <IconSparkles className="w-4 h-4 text-amber-300" />
-              <span>Đề xuất xử lý</span>
-            </div>
-            <h3 className="font-semibold text-sm text-slate-900 mb-2 leading-snug">
-              Phát hiện nguy cơ rò rỉ nước ngấm xuống thang máy S2.01
-            </h3>
-            <p className="text-xs text-slate-600 leading-relaxed mb-4">
-              AI đề xuất khóa van trục C (Đã thực hiện) và kích hoạt gói vật tư thay van DN50 (12.5tr) đang chờ BQL duyệt.
-            </p>
-            <div className="flex items-center justify-between pt-3 border-t border-slate-200">
-              <span className="text-[11px] text-slate-400">Độ tin cậy: 98.4%</span>
-              <Link
-                to="/operations/approvals"
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-colors"
-              >
-                Duyệt đề xuất
-              </Link>
-            </div>
-          </div>
-
-          {/* Card: Building Scope Summary */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-xs">
-            <div className="flex items-center gap-2 mb-3">
-              <IconBuildingSkyscraper className="w-4 h-4 text-blue-600" />
-              <h4 className="font-bold text-xs text-slate-900">Phân khu đang theo dõi</h4>
-            </div>
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50">
-                <span className="font-semibold text-slate-800">Tòa S2.01</span>
-                <span className="text-rose-600 font-bold">1 sự cố P1</span>
-              </div>
-              <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50">
-                <span className="font-semibold text-slate-800">Tòa S1.05</span>
-                <span className="text-amber-600 font-bold">1 vệ sinh A5</span>
-              </div>
-              <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50">
-                <span className="font-semibold text-slate-800">Tòa S2.03</span>
-                <span className="text-purple-600 font-bold">QC Thang máy</span>
-              </div>
-            </div>
-          </div>
+              ))}
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

@@ -1,13 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from '@tanstack/react-router';
-import {
-  IconBell,
-  IconMessageDots,
-  IconSparkles,
-  IconAlertTriangle,
-  IconCheck,
-  IconRefresh,
-} from '@tabler/icons-react';
+import { IconBell, IconMenu2, IconX } from '@tabler/icons-react';
 import { useOperationsData } from '../hooks/use-operations-data';
 import { PERSONA_PROFILES, type OperationsPersona } from '../types/persona';
 
@@ -72,124 +65,117 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
 
   const p1Incidents = incidents.filter((i) => i.severity === 'P1' && i.status === 'OPEN');
   const pendingApprovals = approvals.filter((a) => a.status === 'PENDING');
+  const notificationCount = p1Incidents.length + pendingApprovals.length;
 
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
+  const notificationRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!notificationOpen) return;
+    const onPointer = (e: PointerEvent) => {
+      if (!notificationRef.current?.contains(e.target as Node)) setNotificationOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setNotificationOpen(false);
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [notificationOpen]);
+
+  useEffect(() => {
+    if (!resetSuccess) return;
+    const t = window.setTimeout(() => setResetSuccess(false), 2000);
+    return () => window.clearTimeout(t);
+  }, [resetSuccess]);
 
   const handleResetData = () => {
     resetToDefaultMock();
     setResetSuccess(true);
-    setTimeout(() => setResetSuccess(false), 2000);
   };
 
   return (
-    <header className="min-h-14 bg-white border-b border-slate-200/80 px-2 sm:px-4 py-2 gap-2 sm:gap-3 flex items-center justify-between shrink-0 font-sans z-20">
-      <button type="button" className="operations-menu-toggle rounded border border-slate-200 px-2.5 py-1.5 text-sm" aria-expanded={menuOpen} onClick={onToggleMenu}>Danh mục</button>
-      <div className="flex items-center gap-2 min-w-0 flex-1">
-        <div className="w-1 h-5 bg-blue-600 rounded-full shrink-0" />
-        <nav aria-label="Vị trí hiện tại" className="flex items-center gap-1.5 text-sm min-w-0">
-          <span className="hidden xl:inline text-slate-500 shrink-0">
-            {breadcrumb.section}
-          </span>
-          <span className="hidden xl:inline text-slate-300 font-normal shrink-0">›</span>
-          <span className="text-slate-900 font-semibold tracking-tight truncate">
-            {breadcrumb.page}
-          </span>
-        </nav>
-      </div>
+    <header className="h-14 min-[901px]:h-16 bg-white border-b border-slate-200 px-3 md:px-6 flex items-center gap-3 shrink-0 z-20">
+      <button
+        type="button"
+        className="operations-menu-toggle items-center justify-center -ml-1 w-10 h-10 rounded-md text-slate-700 hover:bg-slate-100"
+        aria-expanded={menuOpen}
+        aria-label={menuOpen ? 'Đóng danh mục' : 'Mở danh mục'}
+        onClick={onToggleMenu}
+      >
+        {menuOpen ? <IconX className="w-5 h-5" stroke={1.75} /> : <IconMenu2 className="w-5 h-5" stroke={1.75} />}
+      </button>
 
-      {/* Right: Quick actions, notifications, user profile */}
-      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-        <details className="relative hidden lg:block text-xs text-slate-500"><summary className="cursor-pointer">Dữ liệu mẫu</summary><div className="absolute right-0 top-7 z-30 w-44 rounded border border-slate-200 bg-white p-2">        {/* Reset Mock Data button for testing convenience */}
-        <button
-          type="button"
-          onClick={handleResetData}
-          title="Khôi phục dữ liệu mẫu ban đầu"
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-medium text-slate-600 transition-colors"
-        >
-          {resetSuccess ? (
-            <>
-              <IconCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="text-emerald-600 font-semibold">Đã đặt lại</span>
-            </>
-          ) : (
-            <>
-              <IconRefresh className="w-3.5 h-3.5 text-slate-500" />
-              <span>Đặt lại dữ liệu</span>
-            </>
-          )}
-        </button>
+      <nav aria-label="Vị trí hiện tại" className="flex items-center gap-2 min-w-0 flex-1 text-sm">
+        <span aria-hidden="true" className="w-1 h-5 rounded-sm bg-blue-600 shrink-0" />
+        <span className="hidden md:inline text-slate-500 shrink-0">{breadcrumb.section}</span>
+        <span aria-hidden="true" className="hidden md:inline text-slate-300 shrink-0">›</span>
+        <span className="text-slate-900 font-medium truncate" aria-current="page">{breadcrumb.page}</span>
+      </nav>
 
-</div></details>
-        {/* Notification Bell — with red badge for P1 emergencies */}
-        <div className="relative">
+      <div className="flex items-center gap-1 md:gap-3 shrink-0">
+        <details className="relative hidden lg:block">
+          <summary className="cursor-pointer list-none text-[13px] text-slate-500 hover:text-slate-900">Dữ liệu mẫu</summary>
+          <div className="absolute right-0 top-8 z-30 w-48 rounded-md border border-slate-200 bg-white p-2 shadow-[0_8px_24px_rgb(15_23_42/0.08)]">
+            <button
+              type="button"
+              onClick={handleResetData}
+              className="w-full min-h-9 px-3 rounded-md text-left text-[13px] text-slate-700 hover:bg-slate-50"
+            >
+              {resetSuccess ? 'Đã đặt lại dữ liệu' : 'Đặt lại dữ liệu mẫu'}
+            </button>
+          </div>
+        </details>
+
+        <div className="relative" ref={notificationRef}>
           <button
             type="button"
-            onClick={() => setNotificationOpen(!notificationOpen)}
+            onClick={() => setNotificationOpen((v) => !v)}
             aria-expanded={notificationOpen}
-            className="rounded border border-slate-200 px-2 sm:px-3 py-1.5 sm:py-2 flex items-center gap-1.5 text-sm text-slate-600 hover:bg-slate-50"
-            title="Thông báo khẩn cấp"
+            aria-haspopup="true"
+            aria-label={`Thông báo${notificationCount ? `, ${notificationCount} mục mới` : ''}`}
+            className="relative w-10 h-10 rounded-md flex items-center justify-center text-slate-600 hover:bg-slate-100 hover:text-slate-900"
           >
-            <IconBell className="w-4 h-4 shrink-0" />
-            <span className="hidden sm:inline">Thông báo</span>
-            {p1Incidents.length > 0 && (
-              <span className="text-xs font-medium text-red-700">
-                {p1Incidents.length}
+            <IconBell className="w-5 h-5" stroke={1.75} />
+            {notificationCount > 0 && (
+              <span className="absolute top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-blue-600 text-white text-[10px] leading-4 text-center tabular-nums">
+                {notificationCount}
               </span>
             )}
           </button>
 
-          {/* Notifications Dropdown */}
           {notificationOpen && (
-            <div className="ops-notification-dropdown absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 py-3 z-50">
-              <div className="px-4 pb-2 border-b border-slate-100 flex items-center justify-between">
-                <span className="font-bold text-xs text-slate-900">Thông báo vận hành</span>
-                <span className="text-[11px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">
-                  {p1Incidents.length} Khẩn cấp
-                </span>
-              </div>
-              <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto">
-                {p1Incidents.map((inc) => (
-                  <div key={inc.id} className="p-3 hover:bg-slate-50 transition-colors flex gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                      <IconAlertTriangle className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-900 leading-snug truncate">{inc.title}</p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        {inc.location_json.towerCode} • Hạn xử lý: 45 phút
-                      </p>
-                    </div>
-                  </div>
-                ))}
-                {pendingApprovals.map((app) => (
-                  <div key={app.id} className="p-3 hover:bg-slate-50 transition-colors flex gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
-                      <IconSparkles className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-900 leading-snug truncate">
-                        Đề xuất chờ phê duyệt: {(app.estimated_cost_vnd || 0).toLocaleString()} đ
-                      </p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">Thay van DN50 khẩn cấp</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div className="ops-notification-dropdown absolute right-0 mt-2 w-80 bg-white rounded-lg border border-slate-200 shadow-[0_12px_32px_rgb(15_23_42/0.10)] z-50">
+              <p className="px-4 py-3 border-b border-slate-100 text-sm font-medium text-slate-900">Thông báo</p>
+              {notificationCount === 0 ? (
+                <p className="px-4 py-8 text-center text-sm text-slate-500">Không có thông báo mới.</p>
+              ) : (
+                <ul className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+                  {p1Incidents.map((inc) => (
+                    <li key={inc.id} className="px-4 py-3">
+                      <p className="text-sm text-slate-900 leading-snug">{inc.title}</p>
+                      <p className="mt-0.5 text-[13px] text-slate-500">Khẩn cấp · Tòa {inc.location_json.towerCode || '-'}</p>
+                    </li>
+                  ))}
+                  {pendingApprovals.map((app) => (
+                    <li key={app.id} className="px-4 py-3">
+                      <p className="text-sm text-slate-900 leading-snug">Đề xuất chờ phê duyệt</p>
+                      <p className="mt-0.5 text-[13px] text-slate-500 tabular-nums">{(app.estimated_cost_vnd || 0).toLocaleString('vi-VN')} đ</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
         </div>
 
-        {/* User Profile Avatar with Name & Role */}
-        <div className="flex items-center gap-2 sm:gap-2.5 pl-1.5 sm:pl-2 border-l border-slate-200">
-          <img
-            src={profile.avatarUrl}
-            alt={profile.name}
-            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover border border-slate-200 shadow-2xs"
-          />
-          <div className="hidden md:block text-left">
-            <p className="text-xs font-bold text-slate-800 leading-tight">{profile.name}</p>
-            <p className="text-[11px] text-slate-400 font-medium">{profile.roleTitle}</p>
+        <div className="flex items-center gap-2.5 pl-2 md:pl-3 md:border-l border-slate-200">
+          <img src={profile.avatarUrl} alt="" className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover border border-slate-200" />
+          <div className="hidden md:block text-left max-w-[220px]">
+            <p className="text-[13px] font-medium text-slate-900 leading-tight truncate">{profile.name}</p>
+            <p className="text-xs text-slate-500 truncate">{profile.roleTitle}</p>
           </div>
         </div>
       </div>

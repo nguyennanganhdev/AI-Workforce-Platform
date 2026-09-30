@@ -12,8 +12,8 @@ function LineTable({ lines }: { lines: QuoteLine[] }) {
         <li key={l.id} className="py-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-lg text-slate-900">{l.name}</p>
-            <p className="text-base text-slate-500">{l.quantity} {l.unit} × {formatVnd(l.unit_price)}</p>
-            {l.is_additional && l.additional_reason && <p className="text-base text-orange-700">Lý do: {l.additional_reason}</p>}
+            <p className="text-base md:text-base text-slate-500">{l.quantity} {l.unit} × {formatVnd(l.unit_price)}</p>
+            {l.is_additional && l.additional_reason && <p className="text-base md:text-base text-orange-700">Lý do: {l.additional_reason}</p>}
           </div>
           <p className="text-lg font-semibold text-slate-900 shrink-0">{formatVnd(l.amount)}</p>
         </li>
@@ -55,7 +55,7 @@ function HoldToExit({ onExit }: { onExit: () => void }) {
       onPointerUp={stop}
       onPointerLeave={stop}
       onPointerCancel={stop}
-      className="relative overflow-hidden w-full min-h-14 rounded-xl border border-slate-300 bg-white text-slate-700 text-base font-semibold select-none touch-none"
+      className="relative overflow-hidden w-full min-h-14 rounded-xl border border-slate-300 bg-white text-slate-700 text-base md:text-base font-semibold select-none touch-none"
     >
       <span className="absolute inset-y-0 left-0 bg-blue-100" style={{ width: `${progress * 100}%` }} />
       <span className="relative inline-flex items-center gap-2">
@@ -134,7 +134,7 @@ export function ResidentHandover({
         ) : (
           <>
             <header className="space-y-1">
-              <p className="text-base text-blue-700 font-semibold">
+              <p className="text-base md:text-base text-blue-700 font-semibold">
                 {mode === 'agree' ? 'Kính mời quý cư dân xem danh mục sửa chữa' : 'Kính mời quý cư dân xác nhận kết quả sửa chữa'}
               </p>
               <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
@@ -149,7 +149,7 @@ export function ResidentHandover({
                 {[{ label: 'Trước khi sửa', photos: beforePhotos }, { label: 'Sau khi sửa', photos: afterPhotos }].map((g) => (
                   <figure key={g.label} className="space-y-1">
                     {g.photos[0] && <img src={g.photos[g.photos.length - 1].file_url} alt={g.label} className="w-full aspect-square object-cover rounded-xl border border-slate-200" />}
-                    <figcaption className="text-base text-slate-600 text-center">{g.label}</figcaption>
+                    <figcaption className="text-base md:text-base text-slate-600 text-center">{g.label}</figcaption>
                   </figure>
                 ))}
               </section>

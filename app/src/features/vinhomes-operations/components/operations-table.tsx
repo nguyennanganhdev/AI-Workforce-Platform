@@ -1,4 +1,7 @@
 import { useState, type ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { EmptyState, Pagination, Panel, SearchField, normalizeSearch, paginate } from './ops-ui';
 
 export interface OperationsRow {
   id: string;
@@ -7,115 +10,89 @@ export interface OperationsRow {
 }
 
 /** Shared list controls; callers supply only records already allowed by their role. */
-export function OperationsTable({ title, columns, rows, onSelect, actionLabel = 'Xem chi tiết', filters }: {
+export function OperationsTable({ title, columns, rows, onSelect, actionLabel = 'Xem chi tiết', filters, titleColumn = 0 }: {
   title: string; columns: string[]; rows: OperationsRow[];
   onSelect: (id: string) => void; actionLabel?: string;
   filters?: ReactNode;
+  /** Column whose cell opens the row (and heads the phone card). */
+  titleColumn?: number;
 }) {
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
-  const normalize = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase();
-  const filtered = rows.filter((row) => normalize(row.search).includes(normalize(query.trim())));
-  const pages = Math.max(1, Math.ceil(filtered.length / 10));
-  const currentPage = Math.min(page, pages);
-  return (
-    <section className="operations-table" aria-label={title}>
-      <div className="operations-table-toolbar">
-        <h2>{title} <span className="text-slate-500 font-normal">({rows.length})</span></h2>
-        {filters}
-        <label className="flex flex-col gap-1 text-xs text-slate-600 w-full sm:w-auto">Tìm kiếm
-          <input value={query} placeholder="Nhập mã, tên hoặc nội dung" onChange={(event) => { setQuery(event.target.value); setPage(1); }} />
-        </label>
-      </div>
-      {/* Mobile Card View (< 768px): KHÔNG CẦN VUỐT NGANG */}
-      <div className="md:hidden divide-y divide-slate-100 bg-white">
-        {filtered.slice((currentPage - 1) * 10, currentPage * 10).map((row) => (
-          <div key={row.id} className="p-3.5 space-y-2 bg-white">
-            <div className="space-y-1.5">
-              {row.cells.map((cell, index) => {
-                const colName = columns[index] || `Cột ${index + 1}`;
-                if (index === 0) {
-                  return (
-                    <div key={colName} className="font-bold text-xs text-slate-800">
-                      {cell}
-                    </div>
-                  );
-                }
-                return (
-                  <div key={colName} className="flex items-start justify-between gap-2 text-xs">
-                    <span className="text-slate-400 font-medium shrink-0">{colName}:</span>
-                    <span className="text-slate-700 text-right">{cell}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="flex items-center justify-end pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold"
-                aria-label={`${actionLabel} ${row.id}`}
-                onClick={() => onSelect(row.id)}
-              >
-                {actionLabel}
-              </button>
-            </div>
-          </div>
-        ))}
-        {!filtered.length && (
-          <div className="text-center py-12 text-slate-500 text-xs">
-            Không có dữ liệu phù hợp.
-          </div>
-        )}
-      </div>
+  const q = normalizeSearch(query.trim());
+  const filtered = q ? rows.filter((row) => normalizeSearch(row.search).includes(q)) : rows;
+  const { pages, current, slice } = paginate(filtered, page);
 
-      {/* Desktop Table View (>= 768px) */}
-      <div className="hidden md:block overflow-x-auto">
-        <table>
-          <thead>
-            <tr>
-              {columns.map((column) => (
-                <th scope="col" key={column}>
-                  {column}
-                </th>
-              ))}
-              <th scope="col">Thao tác</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.slice((currentPage - 1) * 10, currentPage * 10).map((row) => (
-              <tr key={row.id}>
-                {row.cells.map((cell, index) => (
-                  <td key={columns[index]}>{cell}</td>
+  const action = (row: OperationsRow) => (
+    <Button variant="link" className="h-auto px-0" aria-label={`${actionLabel} ${row.id}`} onClick={() => onSelect(row.id)}>
+      {actionLabel}
+    </Button>
+  );
+
+  const titleLink = (row: OperationsRow) => (
+    <button type="button" onClick={() => onSelect(row.id)} className="text-left text-foreground hover:text-primary hover:underline underline-offset-2">
+      {row.cells[titleColumn]}
+    </button>
+  );
+
+  return (
+    <Panel
+      title={title}
+      titleAs="h2"
+      meta={`${rows.length} mục`}
+      toolbar={
+        <>
+          <div className="min-w-0">{filters}</div>
+          <SearchField value={query} placeholder="Tìm theo mã, tên hoặc nội dung" onChange={(v) => { setQuery(v); setPage(1); }} />
+        </>
+      }
+      footer={<Pagination page={current} pages={pages} total={filtered.length} unit="kết quả" onChange={setPage} />}
+    >
+      {slice.length === 0 ? (
+        <EmptyState title={q ? 'Không tìm thấy kết quả phù hợp' : 'Chưa có dữ liệu'} hint={q ? 'Thử từ khóa khác hoặc xóa ô tìm kiếm.' : undefined} />
+      ) : (
+        <>
+          {/* Tablet & desktop */}
+          <div className="ops-list-table px-2 md:px-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {columns.map((column) => <TableHead key={column}>{column}</TableHead>)}
+                  <TableHead className="text-right">Thao tác</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {slice.map((row) => (
+                  <TableRow key={row.id}>
+                    {row.cells.map((cell, index) => (
+                      <TableCell key={columns[index] || index} className="whitespace-normal">{index === titleColumn ? titleLink(row) : cell}</TableCell>
+                    ))}
+                    <TableCell className="text-right">{action(row)}</TableCell>
+                  </TableRow>
                 ))}
-                <td>
-                  <button
-                    type="button"
-                    className="operations-text-action"
-                    aria-label={`${actionLabel} ${row.id}`}
-                    onClick={() => onSelect(row.id)}
-                  >
-                    {actionLabel}
-                  </button>
-                </td>
-              </tr>
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Phone: stacked rows, the title column heads each card */}
+          <ul className="ops-list-rows">
+            {slice.map((row) => (
+              <li key={row.id} className="flex flex-col gap-2">
+                <div className="ops-title font-medium">{titleLink(row)}</div>
+                <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[13px]">
+                  {row.cells.map((cell, i) => i === titleColumn ? null : (
+                    <div key={columns[i] || i} className="contents">
+                      <dt className="text-muted-foreground">{columns[i]}</dt>
+                      <dd className="min-w-0 text-right text-slate-700">{cell}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <div className="flex justify-end">{action(row)}</div>
+              </li>
             ))}
-            {!filtered.length && (
-              <tr>
-                <td colSpan={columns.length + 1} className="text-center py-12">
-                  Không có dữ liệu phù hợp.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      <div className="operations-table-toolbar flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-        <span role="status" className="text-xs text-slate-500">{filtered.length} kết quả · Trang {currentPage}/{pages}</span>
-        <div className="flex gap-2 justify-between sm:justify-end">
-          <button type="button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Trang trước</button>
-          <button type="button" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)}>Trang sau</button>
-        </div>
-      </div>
-    </section>
+          </ul>
+        </>
+      )}
+    </Panel>
   );
 }
