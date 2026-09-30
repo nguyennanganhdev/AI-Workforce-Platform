@@ -51,5 +51,18 @@ venv/
 .ruff_cache/
 .mypy_cache/
 
+# Workforce scaffold
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.markdown-collab/
 # Local schema verification output and downloaded development tooling.
 .codex-artifacts/
