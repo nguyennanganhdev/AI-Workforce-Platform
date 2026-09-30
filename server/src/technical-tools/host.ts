@@ -14,6 +14,7 @@ import type {
 import type { AuditSink } from "./ports/audit-sink";
 import type { ContextResolver, ToolCaller } from "./ports/context-resolver";
 import type { TechnicalTool, ToolDependencies, ToolOutcome } from "./tool";
+import { FORBIDDEN_MESSAGE } from "./tools/outcomes";
 
 export type HostDependencies = ToolDependencies & {
   contextResolver: ContextResolver;
@@ -24,17 +25,6 @@ export type HostOptions = {
   /** Replaces every tool's own timeout. For tests that need a call to give up quickly. */
   timeoutMs?: number;
 };
-
-/**
- * One sentence for every refusal, whatever caused it.
- *
- * A building outside the grant, a building in another tenant and a building that does not exist
- * must be indistinguishable to the caller, or the refusal itself answers the question of which
- * buildings exist. The reason is written to the audit entry, where the people who need it can read
- * it.
- */
-const FORBIDDEN_MESSAGE =
-  "This call is not permitted for the current identity and scope.";
 
 class ToolTimeout extends Error {}
 

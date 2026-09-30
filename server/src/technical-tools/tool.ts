@@ -1,12 +1,17 @@
 import type { z } from "zod";
 import type { ToolContext } from "./contracts/context";
 import type { Provenance, ToolError, ToolStatus } from "./contracts/envelope";
+import type { AssetReadPort } from "./ports/asset-read";
 import type { Clock } from "./ports/clock";
 import type { InterruptionReadPort } from "./ports/interruption-read";
+import type { SopProfilePort, SopReadPort } from "./ports/sop-read";
 
 /** What a tool reaches its data through. One field per port, added as tools need them. */
 export type ToolDependencies = {
   interruptions: InterruptionReadPort;
+  sop: SopReadPort;
+  sopProfiles: SopProfilePort;
+  assets: AssetReadPort;
   clock: Clock;
 };
 

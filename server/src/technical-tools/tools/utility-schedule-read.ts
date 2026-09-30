@@ -4,10 +4,7 @@ import {
 } from "../contracts/schedule";
 import { defineTool } from "../tool";
 import { selectSchedulesWithin } from "./interruption-rules";
-import {
-  buildingNotFound,
-  interruptionProvenance,
-} from "./interruption-shared";
+import { APPLICATION_DB, buildingNotFound, provenanceOf } from "./outcomes";
 
 /**
  * `utility_schedule.read` (tools.md §3.6).
@@ -53,7 +50,14 @@ export const utilityScheduleReadTool = defineTool({
           scope_ids: record.scopeIds,
         })),
       },
-      provenance: interruptionProvenance(schedules, clock.now().toISOString()),
+      provenance: provenanceOf(
+        schedules.map((record) => ({
+          id: record.id,
+          version: record.updatedAt.toISOString(),
+        })),
+        clock.now().toISOString(),
+        APPLICATION_DB,
+      ),
       resultCount: schedules.length,
     };
   },

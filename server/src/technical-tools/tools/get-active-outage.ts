@@ -4,10 +4,7 @@ import {
 } from "../contracts/outage";
 import { defineTool } from "../tool";
 import { selectOutagesAt, startedAt } from "./interruption-rules";
-import {
-  buildingNotFound,
-  interruptionProvenance,
-} from "./interruption-shared";
+import { APPLICATION_DB, buildingNotFound, provenanceOf } from "./outcomes";
 
 /**
  * `technical.get_active_outage` (tools.md §3.5).
@@ -55,7 +52,14 @@ export const getActiveOutageTool = defineTool({
           published_eta: record.plannedEnd.toISOString(),
         })),
       },
-      provenance: interruptionProvenance(outages, clock.now().toISOString()),
+      provenance: provenanceOf(
+        outages.map((record) => ({
+          id: record.id,
+          version: record.updatedAt.toISOString(),
+        })),
+        clock.now().toISOString(),
+        APPLICATION_DB,
+      ),
       resultCount: outages.length,
     };
   },

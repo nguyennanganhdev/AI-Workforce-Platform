@@ -11,6 +11,17 @@ export const runtimeContextSchema = z.strictObject({
   tenant_id: z.uuid(),
   workspace_id: z.uuid().optional(),
   principal_id: z.string().min(1),
+  /**
+   * The application user this run acts for, where there is one, and the caller's business role in
+   * scope. Both are what `document_acl` names principals by, so a document granted to a role or to
+   * one person can be evaluated without the tool guessing.
+   *
+   * Optional because a scheduled run has a service principal and no user behind it, and because a
+   * service principal is not a fifth user role. Absent means no role or user grant can match,
+   * which refuses rather than opens.
+   */
+  user_id: z.string().min(1).optional(),
+  role_code: z.enum(["admin", "management", "staff", "customer"]).optional(),
   source_run_id: z.uuid(),
   trace_id: z.string().min(1).max(128),
   agent_version: z.string().min(1).max(128),
