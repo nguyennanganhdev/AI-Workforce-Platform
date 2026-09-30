@@ -19,6 +19,7 @@ import { createAgentProfileStore } from "./agents/profile-store";
 import type { AgentActor } from "./agents/profile-types";
 import { createRuntimeAgentLoader } from "./agents/runtime-agents";
 import { createApp } from "./app";
+import { createTicketReader } from "./business/tickets";
 import {
   type AuditInitiator,
   createAuditReader,
@@ -1319,6 +1320,7 @@ const app = createApp(
   process.env.OPENBOT_MODEL_OAUTH_FILE?.trim()
     ? createProviderOAuthProxy(process.env.OPENBOT_MODEL_OAUTH_FILE.trim())
     : undefined,
+  createTicketReader(database, deploymentScope(tenantPackage.tenantId).tenantId),
 );
 
 /**

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { IncidentList } from './incident-list';
+import { LiveTicketInbox } from './live-ticket-inbox';
 import { PanelTitle } from './ops-ui';
 import { Banner } from './technician/ui';
 import { BqlInbox, useBqlInboxItems } from './bql-inbox';
@@ -19,11 +20,12 @@ import { MOCK_BUSINESS_EVENTS } from '../mock/business-events';
 import { MOCK_INCIDENT_RELATIONS } from '../mock/incidents';
 import type { VhMessage } from '../types/message';
 
-type ListTab = 'INBOX' | 'OPEN' | 'CLOSED';
+type ListTab = 'TICKETS' | 'INBOX' | 'OPEN' | 'CLOSED';
 const LIST_TABS: Array<{ id: ListTab; label: string }> = [
-  { id: 'INBOX', label: 'Cần BQL xử lý' },
-  { id: 'OPEN', label: 'Đang xử lý' },
-  { id: 'CLOSED', label: 'Đã đóng' },
+  { id: 'TICKETS', label: 'Yêu cầu hệ thống' },
+  { id: 'INBOX', label: 'Cần BQL xử lý (minh họa)' },
+  { id: 'OPEN', label: 'Đang xử lý (minh họa)' },
+  { id: 'CLOSED', label: 'Đã đóng (minh họa)' },
 ];
 
 const STAGE_LABELS: Record<IncidentStage, string> = {
@@ -143,7 +145,7 @@ export function IncidentsWorkspace() {
   const selectedIncident = incidents.find((i) => i.id === selectedIncidentId);
 
   // Gộp "Tiếp nhận phản ánh" + "Quản lý sự cố": hộp việc BQL + danh sách theo trạng thái
-  const [listTab, setListTab] = useState<ListTab>('INBOX');
+  const [listTab, setListTab] = useState<ListTab>('TICKETS');
   const inboxItems = useBqlInboxItems();
   const openIncidents = incidents.filter((i) => i.status !== 'CLOSED');
   const closedIncidents = incidents.filter((i) => i.status === 'CLOSED');
@@ -228,25 +230,26 @@ export function IncidentsWorkspace() {
           <PanelTitle>{selectedIncident ? 'Chi tiết sự cố' : 'Phản ánh & Sự cố'}</PanelTitle>
           <p className="pl-3.5 text-sm text-muted-foreground">AI tiếp nhận và giao việc. BQL chỉ cần xử lý các mục AI chuyển lên.</p>
         </div>
-        <p className="shrink-0 pl-3.5 text-sm text-muted-foreground tabular-nums sm:pl-0">{incidents.length} sự cố ghi nhận</p>
+        <p className="shrink-0 pl-3.5 text-sm text-muted-foreground tabular-nums sm:pl-0">{incidents.length} sự cố minh họa</p>
       </div>
 
       {actionSuccess && <Banner kind="success" onClose={() => setActionSuccess(null)}>{actionSuccess}</Banner>}
       {resolveError && <Banner kind="error" onClose={() => setResolveError(null)}>{resolveError}</Banner>}
 
       {!selectedIncidentId && (
-        <Tabs value={listTab} onValueChange={(v) => setListTab(v as ListTab)} className="gap-4">
+        <Tabs value={listTab === 'TICKETS' && currentPersona !== 'MANAGER' ? 'INBOX' : listTab} onValueChange={(v) => setListTab(v as ListTab)} className="gap-4">
           <TabsList variant="line" aria-label="Nhóm sự cố" className="ops-scroll-tabs h-auto w-full justify-start border-b pb-1">
-            {LIST_TABS.map((t) => {
-              const count = t.id === 'INBOX' ? inboxItems.length : t.id === 'OPEN' ? openIncidents.length : closedIncidents.length;
+            {LIST_TABS.filter((t) => t.id !== 'TICKETS' || currentPersona === 'MANAGER').map((t) => {
+              const count = t.id === 'TICKETS' ? null : t.id === 'INBOX' ? inboxItems.length : t.id === 'OPEN' ? openIncidents.length : closedIncidents.length;
               return (
                 <TabsTrigger key={t.id} value={t.id} className="h-9 flex-none px-3 data-active:text-primary after:bg-primary">
                   {t.label}
-                  <span className="text-xs font-normal tabular-nums text-muted-foreground">{count}</span>
+                  {count !== null && <span className="text-xs font-normal tabular-nums text-muted-foreground">{count}</span>}
                 </TabsTrigger>
               );
             })}
           </TabsList>
+          <TabsContent value="TICKETS"><LiveTicketInbox /></TabsContent>
           <TabsContent value="INBOX"><BqlInbox onOpenIncident={openIncident} /></TabsContent>
           <TabsContent value="OPEN"><IncidentList incidents={openIncidents} onSelect={openIncident} /></TabsContent>
           <TabsContent value="CLOSED"><IncidentList incidents={closedIncidents} onSelect={openIncident} /></TabsContent>

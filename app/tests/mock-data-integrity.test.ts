@@ -230,11 +230,11 @@ describe('Vinhomes Operations Data Integrity Audit Suite', () => {
     expect(contractorWo?.checklist_version_id).toBe('CKL-VER-ELEV-01');
   });
 
-  test('14. Invariant: QC Inspector pending inspection demo readiness', () => {
-    // Must have at least one COMPLETED work order with BEFORE and AFTER evidence, but NO QC result yet
+  test('14. Invariant: legacy QC pending inspection demo readiness', () => {
+    // New field-flow orders await resident confirmation and do not enter legacy QC.
     const qcWoIds = new Set(MOCK_QC_RESULTS.map((q) => q.work_order_id));
     const pendingQcWos = MOCK_WORK_ORDERS.filter(
-      (w) => w.status === 'COMPLETED' && !qcWoIds.has(w.id),
+      (w) => w.status === 'COMPLETED' && !w.field_flow && !qcWoIds.has(w.id),
     );
     expect(pendingQcWos.length).toBeGreaterThanOrEqual(1);
 

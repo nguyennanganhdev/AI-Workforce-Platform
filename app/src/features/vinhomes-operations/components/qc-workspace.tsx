@@ -10,7 +10,11 @@ export function QcWorkspace() {
   const [tab, setTab] = useState<'PENDING' | 'HISTORY'>('PENDING');
   const [resultId, setResultId] = useState('');
   const selectedResult = qcResults.find((result) => result.id === resultId);
-  const eligibleWos = workOrders.filter((order) => order.status === 'COMPLETED');
+  const eligibleWos = workOrders.filter((order) =>
+    order.status === 'COMPLETED' &&
+    !order.field_flow &&
+    !qcResults.some((result) => result.work_order_id === order.id && result.outcome !== 'INCONCLUSIVE'),
+  );
   return (
     <div className="space-y-5">
       <div>

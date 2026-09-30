@@ -65,27 +65,28 @@ describe('Vinhomes Operations State Machine (ALLOWED_WORK_ORDER_TRANSITIONS)', (
 });
 
 describe('Vinhomes Operations RBAC & Persona Capability Matrix', () => {
-  test('Strict Segregation of Duties: Manager does NOT have canQC permission', () => {
+  test('Manager can QC legacy work orders and approve budgets', () => {
     const manager = PERSONA_PROFILES['MANAGER'];
-    expect(manager.canQC).toBe(false);
+    expect(manager.canQC).toBe(true);
     expect(manager.canApproveBudget).toBe(true);
     expect(manager.canAssignWork).toBe(true);
   });
 
-  test('QC_INSPECTOR is the ONLY persona with canQC permission', () => {
+  test('Only QC_INSPECTOR and MANAGER profiles have canQC permission', () => {
     const qcInspector = PERSONA_PROFILES['QC_INSPECTOR'];
     expect(qcInspector.canQC).toBe(true);
     expect(qcInspector.canApproveBudget).toBe(false);
     expect(qcInspector.canAssignWork).toBe(false);
 
-    // Verify all other 6 personas CANNOT sign QC
+    expect(PERSONA_PROFILES['MANAGER'].canQC).toBe(true);
+
+    // Legacy QC inspector remains for existing records; field staff cannot sign QC.
     const nonQcPersonas: OperationsPersona[] = [
       'STAFF_TECHNICAL',
       'STAFF_SANITATION_A5',
       'STAFF_SECURITY',
       'CONTRACTOR',
       'SUPERVISOR',
-      'MANAGER',
     ];
 
     for (const p of nonQcPersonas) {
@@ -131,7 +132,7 @@ describe('Vinhomes Operations RBAC & Persona Capability Matrix', () => {
   test('Menu routing RBAC: Field workers do not have access to QC, Approvals, or Triage, and evidence gallery is removed for all', () => {
     const tech = PERSONA_PROFILES['STAFF_TECHNICAL'];
     expect(tech.allowedMenuIds).toContain('my-tasks');
-    expect(tech.allowedMenuIds).toContain('work-orders');
+    expect(tech.allowedMenuIds).not.toContain('work-orders');
     expect(tech.allowedMenuIds).not.toContain('evidence');
     expect(tech.allowedMenuIds).not.toContain('qc');
     expect(tech.allowedMenuIds).not.toContain('approvals');
@@ -139,7 +140,7 @@ describe('Vinhomes Operations RBAC & Persona Capability Matrix', () => {
 
     const clean = PERSONA_PROFILES['STAFF_SANITATION_A5'];
     expect(clean.allowedMenuIds).toContain('my-tasks');
-    expect(clean.allowedMenuIds).toContain('completed-tasks');
+    expect(clean.allowedMenuIds).not.toContain('completed-tasks');
     // The A5 execution flow is opened from a concrete item in "My tasks";
     // the standalone sanitation route is reserved for Supervisor/Manager oversight.
     expect(clean.allowedMenuIds).not.toContain('sanitation');

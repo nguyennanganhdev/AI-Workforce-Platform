@@ -50,6 +50,8 @@ import type { PolicyStore } from "./computer/policy-store";
 import { createComputerRoutes } from "./computer/routes";
 import { configuredAuthProviders, type DeploymentConfig } from "./config";
 import type { CredentialAdminService, CredentialInput } from "./credentials";
+import { createTicketRoutes } from "./business/ticket-routes";
+import type { TicketReader } from "./business/tickets";
 import type { Database } from "./db/client";
 import { withoutStatement } from "./db/query-failure";
 import { mountDesktopConnectionFailure } from "./desktop-connection-failure";
@@ -321,6 +323,7 @@ export function createApp(
   composio?: { broker: ComposioBroker },
   /** Native model OAuth stays server-side; callers hold only a separate local bearer. */
   modelProviderProxy?: ModelProviderProxy,
+  ticketReader?: TicketReader,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
   mountDesktopConnectionFailure(app, desktopHostToken);
@@ -469,6 +472,10 @@ export function createApp(
     : auth && roleRepository
       ? createRequireUser(auth, roleRepository)
       : authenticationUnavailable;
+
+  if (ticketReader) {
+    app.route("/api/vinhomes", createTicketRoutes(ticketReader, requireUser));
+  }
 
   app.get("/api/me", requireUser, async (context) =>
     context.json({

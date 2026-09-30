@@ -1023,6 +1023,10 @@ export function useOperationsDataInternal() {
         throw new Error('Không tìm thấy phiếu công việc để nghiệm thu!');
       }
 
+      if (targetWo.field_flow) {
+        throw new Error('Phiếu hiện trường mới được cư dân xác nhận theo luồng riêng, không nghiệm thu QC cũ.');
+      }
+
       // Guard 1: Must be in COMPLETED status
       if (targetWo.status !== 'COMPLETED') {
         throw new Error(
