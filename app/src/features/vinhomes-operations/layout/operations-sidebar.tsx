@@ -10,14 +10,13 @@ interface NavItemDef {
   section: 'OPERATIONS' | 'MANAGEMENT';
 }
 
-export function OperationsSidebar({ open = false, onNavigate, onSignOut }: { open?: boolean; onNavigate?: () => void; onSignOut?: () => void }) {
+export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean; onNavigate?: () => void }) {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
   const {
     currentPersona,
     setCurrentPersona,
-    personaLocked,
     currentProfile,
     canAccessMenu,
     myWorkOrders,
@@ -135,19 +134,10 @@ export function OperationsSidebar({ open = false, onNavigate, onSignOut }: { ope
         <span className="block text-xs text-slate-500">Quản lý vận hành</span>
       </Link>
       <div className="border-b border-slate-200 p-4">
-        {personaLocked ? (
-          <>
-            <p className="mb-1 text-xs text-slate-500">Vai trò làm việc</p>
-            <p className="text-sm font-medium text-slate-900">{personas.find((p) => p.id === currentPersona)?.label ?? currentProfile.roleTitle}</p>
-          </>
-        ) : (
-          <>
-            <label htmlFor="operations-persona" className="mb-2 block text-xs text-slate-500">Vai trò làm việc</label>
-            <select id="operations-persona" value={currentPersona} onChange={(event) => setCurrentPersona(event.target.value as OperationsPersona)} className="w-full h-10 rounded-md border border-slate-200 bg-white px-2.5 text-sm text-slate-800">
-              {personas.map((persona) => <option key={persona.id} value={persona.id}>{persona.label}</option>)}
-            </select>
-          </>
-        )}
+        <label htmlFor="operations-persona" className="mb-2 block text-xs text-slate-500">Vai trò làm việc</label>
+        <select id="operations-persona" value={currentPersona} onChange={(event) => setCurrentPersona(event.target.value as OperationsPersona)} className="w-full h-10 rounded-md border border-slate-200 bg-white px-2.5 text-sm text-slate-800">
+          {personas.map((persona) => <option key={persona.id} value={persona.id}>{persona.label}</option>)}
+        </select>
       </div>
       <nav aria-label="Chức năng vận hành" className="flex-1 space-y-5 overflow-y-auto p-3">
         {[{title: 'Công việc', items: operationItems}, {title: 'Quản lý', items: managementItems}].map((section) => section.items.length > 0 && (
@@ -163,16 +153,9 @@ export function OperationsSidebar({ open = false, onNavigate, onSignOut }: { ope
           </div>
         ))}
       </nav>
-      <div className="flex items-start gap-2 border-t border-slate-200 p-4">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-slate-900">{currentProfile.name}</p>
-          <p className="mt-1 text-xs text-slate-500">{currentProfile.department}</p>
-        </div>
-        {onSignOut && (
-          <button type="button" onClick={onSignOut} className="shrink-0 rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900">
-            Đăng xuất
-          </button>
-        )}
+      <div className="border-t border-slate-200 p-4">
+        <p className="text-sm font-medium text-slate-900">{currentProfile.name}</p>
+        <p className="mt-1 text-xs text-slate-500">{currentProfile.department}</p>
       </div>
     </aside>
   );

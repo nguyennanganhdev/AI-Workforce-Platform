@@ -113,14 +113,7 @@ export interface FieldFlow {
   dispute_note: string | null;
   rework_note: string | null;
   report_final_note: string;
-  /**
-   * Kênh đang chờ cư dân phản hồi ở bước đồng ý danh mục / ký xác nhận:
-   * DEVICE = đưa máy nhân viên, APP = gửi sang app cư dân. Cả hai kênh đều được thao tác, kênh nào trước thắng.
-   */
-  resident_channel?: ResidentChannel | null;
 }
-
-export type ResidentChannel = 'DEVICE' | 'APP';
 
 export const DECLINE_REASON_LABELS: Record<DeclineReason, string> = {
   BUSY: 'Đang bận việc khác',

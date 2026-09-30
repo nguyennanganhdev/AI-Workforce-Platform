@@ -27,11 +27,9 @@ export const Route = createFileRoute("/_authed")({
 
 function AuthedComponent() {
   const matches = useMatches();
-  const isOperations = matches.some(
-    (match) => match.pathname.startsWith("/operations") || match.pathname.startsWith("/resident"),
-  );
+  const isOperations = matches.some((match) => match.pathname.startsWith("/operations"));
 
-  // Operations Platform and the resident app run independently without CopilotKit providers or OpenBot hotkeys
+  // Operations Platform runs independently without CopilotKit providers or OpenBot hotkeys
   if (isOperations) {
     return <Outlet />;
   }

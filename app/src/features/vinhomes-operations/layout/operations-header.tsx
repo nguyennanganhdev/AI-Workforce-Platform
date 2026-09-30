@@ -22,7 +22,7 @@ function getBreadcrumb(pathname: string, persona: OperationsPersona): Breadcrumb
     return { section: 'Vận hành đô thị', page };
   }
   if (pathname.includes('/kanban')) {
-    return { section: 'Vận hành đô thị', page: 'Phân công công việc' };
+    return { section: 'Vận hành đô thị', page: 'Phân công nhiệm vụ' };
   }
   if (pathname.includes('/evidence')) {
     return { section: 'Vận hành đô thị', page: 'Hình ảnh bằng chứng' };
@@ -126,14 +126,6 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
             >
               {resetSuccess ? 'Đã đặt lại dữ liệu' : 'Đặt lại dữ liệu mẫu'}
             </button>
-            <a
-              href="/resident"
-              target="_blank"
-              rel="noreferrer"
-              className="flex w-full min-h-9 items-center px-3 rounded-md text-left text-[13px] text-slate-700 hover:bg-slate-50"
-            >
-              Mở app cư dân (tab mới)
-            </a>
           </div>
         </details>
 

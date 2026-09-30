@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef, createContext, useContext, createElement, type ReactNode } from 'react';
+import { useState, useCallback, useEffect, useMemo, createContext, useContext, createElement, type ReactNode } from 'react';
 import {
   type VhIncident,
   type VhTask,
@@ -49,8 +49,6 @@ import { MOCK_ACTION_REQUESTS } from '../mock/action-requests';
 import { useFieldFlowActions } from './use-field-flow-actions';
 import { getIncidentClosureBlocker } from '../lib/incident-closure';
 import { useBqlInboxActions } from './use-bql-inbox-actions';
-import { buildDispatch, buildResidentCase, type ResidentCaseInput } from '../lib/resident-intake';
-import type { DomainType } from '../types/task';
 
 const STORAGE_KEY_PREFIX = 'vhm_operations_data_v9';
 
@@ -64,8 +62,7 @@ export const DOMAIN_CHECKLIST_MAP: Record<string, string> = {
   GENERAL: 'CKL-VER-MEP-01',
 };
 
-/** `fixedPersona`: the role of the signed-in staff account; it replaces the demo role switcher. */
-export function useOperationsDataInternal(fixedPersona?: OperationsPersona) {
+export function useOperationsDataInternal() {
   // 1. Cases & Issue Candidates (Intake / Triage)
   const [cases, setCases] = useState<VhCase[]>(() => {
     try {
@@ -221,7 +218,6 @@ export function useOperationsDataInternal(fixedPersona?: OperationsPersona) {
 
   // 10. Current active persona (7 roles)
   const [currentPersona, setCurrentPersona] = useState<OperationsPersona>(() => {
-    if (fixedPersona) return fixedPersona;
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_persona`);
       // Nhà thầu không dùng app nhân viên (sự cố cần nhà thầu do BQL tự liên hệ)
@@ -287,26 +283,15 @@ export function useOperationsDataInternal(fixedPersona?: OperationsPersona) {
     return myWorkOrders;
   }, [workOrders, currentPersona, myWorkOrders]);
 
-  /*
-   * Persist each slice only when it changed. The resident app and the staff app run in separate tabs
-   * on the same store, so rewriting every key on any change would put this tab's stale copy over a
-   * newer write from the other tab.
-   */
-  const lastWritten = useRef<Record<string, string>>({});
+  // Persist state safely to localStorage without storage quota overflow
   useEffect(() => {
-    const write = (suffix: string, value: unknown) => {
-      const serialized = typeof value === 'string' ? value : JSON.stringify(value);
-      if (lastWritten.current[suffix] === serialized) return;
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}_${suffix}`, serialized);
-      lastWritten.current[suffix] = serialized;
-    };
     try {
-      write('cases', cases);
-      write('candidates', issueCandidates);
-      write('incidents', incidents);
-      write('tasks', tasks);
-      write('task_deps', taskDependencies);
-      write('work_orders', workOrders);
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_cases`, JSON.stringify(cases));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_candidates`, JSON.stringify(issueCandidates));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_incidents`, JSON.stringify(incidents));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_tasks`, JSON.stringify(tasks));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_task_deps`, JSON.stringify(taskDependencies));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_work_orders`, JSON.stringify(workOrders));
 
       // Sanitize evidence URLs to avoid exceeding 5MB browser quota
       const sanitizedEvidence = evidence.map((e) => {
@@ -323,18 +308,18 @@ export function useOperationsDataInternal(fixedPersona?: OperationsPersona) {
         }
         return e;
       });
-      write('evidence', sanitizedEvidence);
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_evidence`, JSON.stringify(sanitizedEvidence));
 
-      write('qc_results', qcResults);
-      write('action_requests', actionRequests);
-      write('approvals', approvals);
-      write('grants', executionGrants);
-      write('sec_cp', securityCheckpoints);
-      write('sec_inc', securityIncidents);
-      write('sec_handovers', securityHandovers);
-      write('sessions', coordinationSessions);
-      write('session_msgs', sessionMessages);
-      write('persona', currentPersona);
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_qc_results`, JSON.stringify(qcResults));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_action_requests`, JSON.stringify(actionRequests));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_approvals`, JSON.stringify(approvals));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_grants`, JSON.stringify(executionGrants));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_sec_cp`, JSON.stringify(securityCheckpoints));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_sec_inc`, JSON.stringify(securityIncidents));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_sec_handovers`, JSON.stringify(securityHandovers));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_sessions`, JSON.stringify(coordinationSessions));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_session_msgs`, JSON.stringify(sessionMessages));
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}_persona`, currentPersona);
     } catch (e) {
       console.warn('Failed to sync operations state to localStorage', e);
     }
@@ -343,7 +328,6 @@ export function useOperationsDataInternal(fixedPersona?: OperationsPersona) {
     issueCandidates,
     incidents,
     tasks,
-    taskDependencies,
     workOrders,
     evidence,
     qcResults,
@@ -357,43 +341,6 @@ export function useOperationsDataInternal(fixedPersona?: OperationsPersona) {
     sessionMessages,
     currentPersona,
   ]);
-
-  // Pick up writes from other tabs (resident app ↔ staff app). Persona stays per tab.
-  useEffect(() => {
-    const setters: Record<string, (value: never) => void> = {
-      cases: setCases,
-      candidates: setIssueCandidates,
-      incidents: setIncidents,
-      tasks: setTasks,
-      task_deps: setTaskDependencies,
-      work_orders: setWorkOrders,
-      evidence: setEvidence,
-      qc_results: setQcResults,
-      action_requests: setActionRequests,
-      approvals: setApprovals,
-      grants: setExecutionGrants,
-      sec_cp: setSecurityCheckpoints,
-      sec_inc: setSecurityIncidents,
-      sec_handovers: setSecurityHandovers,
-      sessions: setCoordinationSessions,
-      session_msgs: setSessionMessages,
-    };
-    const onStorage = (event: StorageEvent) => {
-      if (!event.key?.startsWith(`${STORAGE_KEY_PREFIX}_`) || event.newValue === null) return;
-      const suffix = event.key.slice(STORAGE_KEY_PREFIX.length + 1);
-      const set = setters[suffix];
-      if (!set) return;
-      try {
-        const value = JSON.parse(event.newValue);
-        lastWritten.current[suffix] = event.newValue;
-        set(value as never);
-      } catch {
-        // A half-written or foreign value: keep the current state.
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
 
   // ==========================================
   // INTAKE & TRIAGE
@@ -424,19 +371,6 @@ export function useOperationsDataInternal(fixedPersona?: OperationsPersona) {
       created_at: now,
       updated_at: now,
     };
-
-    // Phản ánh từ app cư dân: AI (Supervisor) giao việc ngay cho nhân viên theo lĩnh vực.
-    const dispatch = candidate.source_channel === 'APP' ? buildDispatch(newIncident, candidate.domain as DomainType) : null;
-    if (dispatch) {
-      newIncident.stage = 'EXECUTION';
-      setTasks((prev) => [dispatch.task, ...prev]);
-      setWorkOrders((prev) => [dispatch.workOrder, ...prev]);
-    }
-    if (candidate.source_channel === 'APP') {
-      setCases((prev) =>
-        prev.map((c) => (c.id === candidate.case_id ? { ...c, status: 'TICKETED' as const, version: c.version + 1 } : c)),
-      );
-    }
 
     setIncidents((prev) => [newIncident, ...prev]);
 
@@ -480,14 +414,6 @@ export function useOperationsDataInternal(fixedPersona?: OperationsPersona) {
 
     return newIncident;
   }, [issueCandidates, currentProfile]);
-
-  /** App cư dân gửi phản ánh → Case + IssueCandidate chờ BQL xác nhận (hộp "Cần BQL xử lý"). */
-  const createResidentCase = useCallback((input: ResidentCaseInput) => {
-    const { kase, candidate } = buildResidentCase(input);
-    setCases((prev) => [kase, ...prev]);
-    setIssueCandidates((prev) => [candidate, ...prev]);
-    return { caseId: kase.id, candidateId: candidate.id };
-  }, []);
 
   const splitIssueCandidate = useCallback(
     (candidateId: string, partA: { domain: string; summary: string }, partB: { domain: string; summary: string }) => {
@@ -2064,10 +1990,8 @@ export function useOperationsDataInternal(fixedPersona?: OperationsPersona) {
     currentPersona,
     currentProfile,
     setCurrentPersona,
-    personaLocked: fixedPersona !== undefined,
     canAccessMenu,
     materializeCandidate,
-    createResidentCase,
     splitIssueCandidate,
     mergeIssueCandidates,
     assignIncidentOwner,
@@ -2108,8 +2032,8 @@ export type OperationsDataContextType = ReturnType<typeof useOperationsDataInter
 
 const OperationsContext = createContext<OperationsDataContextType | null>(null);
 
-export function OperationsProvider({ children, persona }: { children: ReactNode; persona?: OperationsPersona }) {
-  const data = useOperationsDataInternal(persona);
+export function OperationsProvider({ children }: { children: ReactNode }) {
+  const data = useOperationsDataInternal();
   return createElement(OperationsContext.Provider, { value: data }, children);
 }
 

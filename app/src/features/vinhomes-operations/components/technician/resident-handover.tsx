@@ -67,7 +67,6 @@ function HoldToExit({ onExit }: { onExit: () => void }) {
 
 export function ResidentHandover({
   mode,
-  pending,
   flow,
   title,
   address,
@@ -81,8 +80,6 @@ export function ResidentHandover({
   onExit,
 }: {
   mode: 'agree' | 'sign';
-  /** False once the step is answered, including from the resident app in another tab. */
-  pending: boolean;
   flow: FieldFlow;
   title: string;
   address: string;
@@ -101,11 +98,6 @@ export function ResidentHandover({
   const [hasInk, setHasInk] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const padRef = useRef<SignaturePadHandle>(null);
-
-  // Cư dân đã phản hồi trên app cư dân (kênh còn lại) trong lúc màn hình này đang mở.
-  useEffect(() => {
-    if (!pending && !done) setDone('Quý cư dân đã phản hồi trên app cư dân.');
-  }, [pending, done]);
 
   const { agreed, additional } = splitQuote(flow.quote.lines);
   const agreedTotal = quoteTotal(agreed, flow.quote.labor_cost);

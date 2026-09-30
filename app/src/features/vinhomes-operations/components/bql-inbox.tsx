@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
-import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useOperationsData } from '../hooks/use-operations-data';
@@ -56,29 +56,9 @@ export function useBqlInboxItems(): InboxItem[] {
   }, [issueCandidates, incidents, workOrders]);
 }
 
-/** Nội dung cư dân gửi qua app: mô tả, vị trí và ảnh (ảnh đầu vào, không phải evidence thi công). */
-function ResidentSubmission({ candidate }: { candidate: VhIssueCandidate }) {
-  const photos = candidate.resident_photo_urls ?? [];
-  return (
-    <div className="flex flex-col gap-2">
-      {candidate.location_json.description && (
-        <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">{candidate.location_json.description}</p>
-      )}
-      {photos.length > 0 && (
-        <div className="flex gap-1.5 overflow-x-auto">
-          {photos.map((url, i) => (
-            <img key={url} src={url} alt={`Ảnh cư dân gửi ${i + 1}`} className="size-20 shrink-0 rounded-md border object-cover" />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function CandidateActions({ candidate, others, run }: { candidate: VhIssueCandidate; others: VhIssueCandidate[]; run: (fn: () => void, ok: string) => void }) {
   const { materializeCandidate, mergeIssueCandidates } = useOperationsData();
   const [target, setTarget] = useState<string | null>(null);
-  const [tried, setTried] = useState(false);
   const mergeItems = Object.fromEntries(others.map((o) => [o.id, o.normalized_summary]));
   return (
     <div className="flex flex-col gap-3">
@@ -92,8 +72,8 @@ function CandidateActions({ candidate, others, run }: { candidate: VhIssueCandid
         </Button>
         {others.length > 0 && (
           <div className="flex gap-2">
-            <Select items={mergeItems} value={target} onValueChange={(v) => { setTarget(v as string | null); setTried(false); }}>
-              <SelectTrigger aria-label="Gộp vào phản ánh" aria-invalid={tried && !target} className="min-w-0 flex-1 data-[size=default]:h-10 sm:w-72">
+            <Select items={mergeItems} value={target} onValueChange={(v) => setTarget(v as string | null)}>
+              <SelectTrigger aria-label="Gộp vào phản ánh" className="min-w-0 flex-1 data-[size=default]:h-10 sm:w-72">
                 <SelectValue placeholder="Gộp vào phản ánh trùng…" />
               </SelectTrigger>
               <SelectContent>
@@ -102,17 +82,12 @@ function CandidateActions({ candidate, others, run }: { candidate: VhIssueCandid
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={() => (target ? run(() => mergeIssueCandidates(candidate.id, target), 'Đã gộp phản ánh trùng.') : setTried(true))}
-            >
+            <Button variant="outline" size="lg" disabled={!target} onClick={() => target && run(() => mergeIssueCandidates(candidate.id, target), 'Đã gộp phản ánh trùng.')}>
               Gộp
             </Button>
           </div>
         )}
       </div>
-      {tried && !target && <FieldError>Chọn phản ánh trùng cần gộp vào.</FieldError>}
     </div>
   );
 }
@@ -122,9 +97,7 @@ function ContractorActions({ incident, handoff: h, run }: { incident: VhIncident
   const [name, setName] = useState(h.warranty?.under_warranty ? h.warranty.contractor_name || '' : '');
   const [eta, setEta] = useState('');
   const [note, setNote] = useState('');
-  const [tried, setTried] = useState(false);
   const idp = `ct-${incident.id}`;
-  const missing = [!name.trim() && 'tên nhà thầu', !eta && 'ngày hẹn'].filter(Boolean);
 
   return (
     <div className="flex flex-col gap-3">
@@ -142,23 +115,19 @@ function ContractorActions({ incident, handoff: h, run }: { incident: VhIncident
         <FieldGroup className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-end">
           <Field>
             <FieldLabel htmlFor={`${idp}-name`}>Nhà thầu đã liên hệ</FieldLabel>
-            <Input id={`${idp}-name`} aria-invalid={tried && !name.trim()} value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên nhà thầu" className="h-10" />
+            <Input id={`${idp}-name`} value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên nhà thầu" className="h-10" />
           </Field>
           <Field>
             <FieldLabel htmlFor={`${idp}-eta`}>Ngày hẹn dự kiến</FieldLabel>
-            <Input id={`${idp}-eta`} aria-invalid={tried && !eta} type="date" value={eta} onChange={(e) => setEta(e.target.value)} className="h-10" />
+            <Input id={`${idp}-eta`} type="date" value={eta} onChange={(e) => setEta(e.target.value)} className="h-10" />
           </Field>
           <Button
             size="lg"
-            onClick={() =>
-              missing.length
-                ? setTried(true)
-                : run(() => markContractorContacted(incident.id, name, eta), 'Đã ghi nhận. AI sẽ báo cư dân đã có đơn vị xử lý.')
-            }
+            disabled={!name.trim() || !eta}
+            onClick={() => run(() => markContractorContacted(incident.id, name, eta), 'Đã ghi nhận. AI sẽ báo cư dân đã có đơn vị xử lý.')}
           >
             Đã liên hệ nhà thầu
           </Button>
-          {tried && missing.length > 0 && <FieldError className="sm:col-span-3">Vui lòng nhập {missing.join(' và ')}.</FieldError>}
         </FieldGroup>
       ) : (
         <div className="flex flex-col gap-3">
@@ -183,7 +152,6 @@ function ContractorActions({ incident, handoff: h, run }: { incident: VhIncident
 function EscalationActions({ item, run }: { item: Extract<InboxItem, { kind: 'DISPUTED' | 'UNCOOPERATIVE' }>; run: (fn: () => void, ok: string) => void }) {
   const { closeWithBqlResolution } = useOperationsData();
   const [note, setNote] = useState('');
-  const [tried, setTried] = useState(false);
   const f = item.wo.field_flow;
   if (!f) return null;
   const id = `esc-${item.key}`;
@@ -197,15 +165,11 @@ function EscalationActions({ item, run }: { item: Extract<InboxItem, { kind: 'DI
       <FieldGroup className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
         <Field>
           <FieldLabel htmlFor={id}>BQL đã xử lý thế nào? (bắt buộc)</FieldLabel>
-          <Input id={id} aria-invalid={tried && !note.trim()} value={note} onChange={(e) => setNote(e.target.value)} className="h-10" />
+          <Input id={id} value={note} onChange={(e) => setNote(e.target.value)} className="h-10" />
         </Field>
-        <Button
-          size="lg"
-          onClick={() => (note.trim() ? run(() => closeWithBqlResolution(item.incident.id, note), 'Đã xử lý và đóng sự cố.') : setTried(true))}
-        >
+        <Button size="lg" disabled={!note.trim()} onClick={() => run(() => closeWithBqlResolution(item.incident.id, note), 'Đã xử lý và đóng sự cố.')}>
           Đã xử lý, đóng sự cố
         </Button>
-        {tried && !note.trim() && <FieldError className="sm:col-span-2">Vui lòng ghi lại cách BQL đã xử lý.</FieldError>}
       </FieldGroup>
     </div>
   );
@@ -253,29 +217,15 @@ export function BqlInbox({ onOpenIncident }: { onOpenIncident: (id: string) => v
                   <CardHeader className="gap-2 px-4 md:px-5">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="outline">{KIND_LABEL[item.kind]}</Badge>
-                      {item.kind === 'CANDIDATE' && item.candidate.source_channel === 'APP' && <Badge variant="secondary">Từ app cư dân</Badge>}
                       <SeverityBadge severity={item.severity} />
                       <span className="ml-auto text-xs tabular-nums text-muted-foreground">{new Date(item.at).toLocaleString('vi-VN')}</span>
                     </div>
-                    <CardTitle className="text-base font-semibold leading-snug">
-                      {incident ? (
-                        <button
-                          type="button"
-                          onClick={() => onOpenIncident(incident.id)}
-                          className="text-left underline-offset-2 hover:text-primary hover:underline focus-visible:text-primary focus-visible:underline focus-visible:outline-none"
-                        >
-                          {title}
-                        </button>
-                      ) : title}
-                    </CardTitle>
+                    <CardTitle className="text-base font-semibold leading-snug">{title}</CardTitle>
                     <CardDescription>
                       Tòa {loc.towerCode || '-'}{loc.floor != null ? ` · Tầng ${loc.floor}` : ''}{loc.areaCode ? ` · ${loc.areaCode}` : ''}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-3 px-4 md:px-5">
-                    {item.kind === 'CANDIDATE' && item.candidate.source_channel === 'APP' && (
-                      <ResidentSubmission candidate={item.candidate} />
-                    )}
                     {item.kind === 'CANDIDATE' && (
                       <CandidateActions candidate={item.candidate} others={openCandidates.filter((c) => c.id !== item.candidate.id)} run={run} />
                     )}

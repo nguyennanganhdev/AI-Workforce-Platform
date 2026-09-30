@@ -15,11 +15,7 @@ import { Route as AuthedAppRouteImport } from './routes/_authed/_app'
 import { Route as AuthedAdminRouteRouteImport } from './routes/_authed/admin/route'
 import { Route as AuthedOnboardingRouteImport } from './routes/_authed/onboarding'
 import { Route as AuthedOperationsRouteRouteImport } from './routes/_authed/operations/route'
-import { Route as AuthedResidentRouteRouteImport } from './routes/_authed/resident/route'
 import { Route as AuthedSettingsRouteRouteImport } from './routes/_authed/settings/route'
-import { Route as VinhomesIndexRouteImport } from './routes/vinhomes/index'
-import { Route as VinhomesLoginRouteImport } from './routes/vinhomes/login'
-import { Route as VinhomesRegisterRouteImport } from './routes/vinhomes/register'
 import { Route as AuthedAppIndexRouteImport } from './routes/_authed/_app/index'
 import { Route as AuthedAppBotRouteImport } from './routes/_authed/_app/bot'
 import { Route as AuthedAppRoutinesRouteImport } from './routes/_authed/_app/routines'
@@ -46,8 +42,6 @@ import { Route as AuthedOperationsSanitationRouteImport } from './routes/_authed
 import { Route as AuthedOperationsSecurityRouteImport } from './routes/_authed/operations/security'
 import { Route as AuthedOperationsTriageRouteImport } from './routes/_authed/operations/triage'
 import { Route as AuthedOperationsWorkOrdersRouteImport } from './routes/_authed/operations/work-orders'
-import { Route as AuthedResidentIndexRouteImport } from './routes/_authed/resident/index'
-import { Route as AuthedResidentTicketsRouteImport } from './routes/_authed/resident/tickets'
 import { Route as AuthedSettingsIndexRouteImport } from './routes/_authed/settings/index'
 import { Route as AuthedAppAgentsIndexRouteImport } from './routes/_authed/_app/agents/index'
 import { Route as AuthedAppChannelChannelIdRouteImport } from './routes/_authed/_app/channel/$channelId'
@@ -57,7 +51,6 @@ import { Route as AuthedAdminComponentsNameRouteImport } from './routes/_authed/
 import { Route as AuthedAdminPluginsIndexRouteImport } from './routes/_authed/admin/plugins/index'
 import { Route as AuthedAdminPluginsKeyRouteImport } from './routes/_authed/admin/plugins/$key'
 import { Route as AuthedAdminPluginsComposioRouteImport } from './routes/_authed/admin/plugins/composio'
-import { Route as AuthedResidentCConversationIdRouteImport } from './routes/_authed/resident/c.$conversationId'
 import { Route as AuthedSettingsComponentsGalleryIndexRouteImport } from './routes/_authed/settings/components-gallery/index'
 import { Route as AuthedSettingsComponentsGalleryNameRouteImport } from './routes/_authed/settings/components-gallery/$name'
 import { Route as AuthedSettingsConnectedAccountsIndexRouteImport } from './routes/_authed/settings/connected-accounts/index'
@@ -93,30 +86,10 @@ const AuthedOperationsRouteRoute = AuthedOperationsRouteRouteImport.update({
   path: '/operations',
   getParentRoute: () => AuthedRoute,
 } as any)
-const AuthedResidentRouteRoute = AuthedResidentRouteRouteImport.update({
-  id: '/resident',
-  path: '/resident',
-  getParentRoute: () => AuthedRoute,
-} as any)
 const AuthedSettingsRouteRoute = AuthedSettingsRouteRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => AuthedRoute,
-} as any)
-const VinhomesIndexRoute = VinhomesIndexRouteImport.update({
-  id: '/vinhomes/',
-  path: '/vinhomes/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const VinhomesLoginRoute = VinhomesLoginRouteImport.update({
-  id: '/vinhomes/login',
-  path: '/vinhomes/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const VinhomesRegisterRoute = VinhomesRegisterRouteImport.update({
-  id: '/vinhomes/register',
-  path: '/vinhomes/register',
-  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthedAppIndexRoute = AuthedAppIndexRouteImport.update({
   id: '/',
@@ -257,16 +230,6 @@ const AuthedOperationsWorkOrdersRoute =
     path: '/work-orders',
     getParentRoute: () => AuthedOperationsRouteRoute,
   } as any)
-const AuthedResidentIndexRoute = AuthedResidentIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AuthedResidentRouteRoute,
-} as any)
-const AuthedResidentTicketsRoute = AuthedResidentTicketsRouteImport.update({
-  id: '/tickets',
-  path: '/tickets',
-  getParentRoute: () => AuthedResidentRouteRoute,
-} as any)
 const AuthedSettingsIndexRoute = AuthedSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -316,12 +279,6 @@ const AuthedAdminPluginsComposioRoute =
     path: '/plugins/composio',
     getParentRoute: () => AuthedAdminRouteRoute,
   } as any)
-const AuthedResidentCConversationIdRoute =
-  AuthedResidentCConversationIdRouteImport.update({
-    id: '/c/$conversationId',
-    path: '/c/$conversationId',
-    getParentRoute: () => AuthedResidentRouteRoute,
-  } as any)
 const AuthedSettingsComponentsGalleryIndexRoute =
   AuthedSettingsComponentsGalleryIndexRouteImport.update({
     id: '/components-gallery/',
@@ -364,12 +321,8 @@ export interface FileRoutesByFullPath {
   '/sign': typeof SignRoute
   '/admin': typeof AuthedAdminRouteRouteWithChildren
   '/operations': typeof AuthedOperationsRouteRouteWithChildren
-  '/resident': typeof AuthedResidentRouteRouteWithChildren
   '/settings': typeof AuthedSettingsRouteRouteWithChildren
   '/onboarding': typeof AuthedOnboardingRoute
-  '/vinhomes/login': typeof VinhomesLoginRoute
-  '/vinhomes/register': typeof VinhomesRegisterRoute
-  '/vinhomes/': typeof VinhomesIndexRoute
   '/bot': typeof AuthedAppBotRoute
   '/routines': typeof AuthedAppRoutinesRoute
   '/skills': typeof AuthedAppSkillsRoute
@@ -393,17 +346,14 @@ export interface FileRoutesByFullPath {
   '/operations/security': typeof AuthedOperationsSecurityRoute
   '/operations/triage': typeof AuthedOperationsTriageRoute
   '/operations/work-orders': typeof AuthedOperationsWorkOrdersRoute
-  '/resident/tickets': typeof AuthedResidentTicketsRoute
   '/admin/': typeof AuthedAdminIndexRoute
   '/operations/': typeof AuthedOperationsIndexRoute
-  '/resident/': typeof AuthedResidentIndexRoute
   '/settings/': typeof AuthedSettingsIndexRoute
   '/channel/$channelId': typeof AuthedAppChannelChannelIdRoute
   '/channel/new': typeof AuthedAppChannelNewRoute
   '/admin/components/$name': typeof AuthedAdminComponentsNameRoute
   '/admin/plugins/$key': typeof AuthedAdminPluginsKeyRoute
   '/admin/plugins/composio': typeof AuthedAdminPluginsComposioRoute
-  '/resident/c/$conversationId': typeof AuthedResidentCConversationIdRoute
   '/settings/components-gallery/$name': typeof AuthedSettingsComponentsGalleryNameRoute
   '/settings/connected-accounts/$key': typeof AuthedSettingsConnectedAccountsKeyRoute
   '/agents/': typeof AuthedAppAgentsIndexRoute
@@ -418,9 +368,6 @@ export interface FileRoutesByTo {
   '/': typeof AuthedAppIndexRoute
   '/sign': typeof SignRoute
   '/onboarding': typeof AuthedOnboardingRoute
-  '/vinhomes/login': typeof VinhomesLoginRoute
-  '/vinhomes/register': typeof VinhomesRegisterRoute
-  '/vinhomes': typeof VinhomesIndexRoute
   '/bot': typeof AuthedAppBotRoute
   '/routines': typeof AuthedAppRoutinesRoute
   '/skills': typeof AuthedAppSkillsRoute
@@ -444,17 +391,14 @@ export interface FileRoutesByTo {
   '/operations/security': typeof AuthedOperationsSecurityRoute
   '/operations/triage': typeof AuthedOperationsTriageRoute
   '/operations/work-orders': typeof AuthedOperationsWorkOrdersRoute
-  '/resident/tickets': typeof AuthedResidentTicketsRoute
   '/admin': typeof AuthedAdminIndexRoute
   '/operations': typeof AuthedOperationsIndexRoute
-  '/resident': typeof AuthedResidentIndexRoute
   '/settings': typeof AuthedSettingsIndexRoute
   '/channel/$channelId': typeof AuthedAppChannelChannelIdRoute
   '/channel/new': typeof AuthedAppChannelNewRoute
   '/admin/components/$name': typeof AuthedAdminComponentsNameRoute
   '/admin/plugins/$key': typeof AuthedAdminPluginsKeyRoute
   '/admin/plugins/composio': typeof AuthedAdminPluginsComposioRoute
-  '/resident/c/$conversationId': typeof AuthedResidentCConversationIdRoute
   '/settings/components-gallery/$name': typeof AuthedSettingsComponentsGalleryNameRoute
   '/settings/connected-accounts/$key': typeof AuthedSettingsConnectedAccountsKeyRoute
   '/agents': typeof AuthedAppAgentsIndexRoute
@@ -471,13 +415,9 @@ export interface FileRoutesById {
   '/sign': typeof SignRoute
   '/_authed/admin': typeof AuthedAdminRouteRouteWithChildren
   '/_authed/operations': typeof AuthedOperationsRouteRouteWithChildren
-  '/_authed/resident': typeof AuthedResidentRouteRouteWithChildren
   '/_authed/settings': typeof AuthedSettingsRouteRouteWithChildren
   '/_authed/_app': typeof AuthedAppRouteWithChildren
   '/_authed/onboarding': typeof AuthedOnboardingRoute
-  '/vinhomes/login': typeof VinhomesLoginRoute
-  '/vinhomes/register': typeof VinhomesRegisterRoute
-  '/vinhomes/': typeof VinhomesIndexRoute
   '/_authed/_app/bot': typeof AuthedAppBotRoute
   '/_authed/_app/routines': typeof AuthedAppRoutinesRoute
   '/_authed/_app/skills': typeof AuthedAppSkillsRoute
@@ -501,18 +441,15 @@ export interface FileRoutesById {
   '/_authed/operations/security': typeof AuthedOperationsSecurityRoute
   '/_authed/operations/triage': typeof AuthedOperationsTriageRoute
   '/_authed/operations/work-orders': typeof AuthedOperationsWorkOrdersRoute
-  '/_authed/resident/tickets': typeof AuthedResidentTicketsRoute
   '/_authed/_app/': typeof AuthedAppIndexRoute
   '/_authed/admin/': typeof AuthedAdminIndexRoute
   '/_authed/operations/': typeof AuthedOperationsIndexRoute
-  '/_authed/resident/': typeof AuthedResidentIndexRoute
   '/_authed/settings/': typeof AuthedSettingsIndexRoute
   '/_authed/_app/channel/$channelId': typeof AuthedAppChannelChannelIdRoute
   '/_authed/_app/channel/new': typeof AuthedAppChannelNewRoute
   '/_authed/admin/components/$name': typeof AuthedAdminComponentsNameRoute
   '/_authed/admin/plugins/$key': typeof AuthedAdminPluginsKeyRoute
   '/_authed/admin/plugins/composio': typeof AuthedAdminPluginsComposioRoute
-  '/_authed/resident/c/$conversationId': typeof AuthedResidentCConversationIdRoute
   '/_authed/settings/components-gallery/$name': typeof AuthedSettingsComponentsGalleryNameRoute
   '/_authed/settings/connected-accounts/$key': typeof AuthedSettingsConnectedAccountsKeyRoute
   '/_authed/_app/agents/': typeof AuthedAppAgentsIndexRoute
@@ -530,12 +467,8 @@ export interface FileRouteTypes {
     | '/sign'
     | '/admin'
     | '/operations'
-    | '/resident'
     | '/settings'
     | '/onboarding'
-    | '/vinhomes/login'
-    | '/vinhomes/register'
-    | '/vinhomes/'
     | '/bot'
     | '/routines'
     | '/skills'
@@ -559,17 +492,14 @@ export interface FileRouteTypes {
     | '/operations/security'
     | '/operations/triage'
     | '/operations/work-orders'
-    | '/resident/tickets'
     | '/admin/'
     | '/operations/'
-    | '/resident/'
     | '/settings/'
     | '/channel/$channelId'
     | '/channel/new'
     | '/admin/components/$name'
     | '/admin/plugins/$key'
     | '/admin/plugins/composio'
-    | '/resident/c/$conversationId'
     | '/settings/components-gallery/$name'
     | '/settings/connected-accounts/$key'
     | '/agents/'
@@ -584,9 +514,6 @@ export interface FileRouteTypes {
     | '/'
     | '/sign'
     | '/onboarding'
-    | '/vinhomes/login'
-    | '/vinhomes/register'
-    | '/vinhomes'
     | '/bot'
     | '/routines'
     | '/skills'
@@ -610,17 +537,14 @@ export interface FileRouteTypes {
     | '/operations/security'
     | '/operations/triage'
     | '/operations/work-orders'
-    | '/resident/tickets'
     | '/admin'
     | '/operations'
-    | '/resident'
     | '/settings'
     | '/channel/$channelId'
     | '/channel/new'
     | '/admin/components/$name'
     | '/admin/plugins/$key'
     | '/admin/plugins/composio'
-    | '/resident/c/$conversationId'
     | '/settings/components-gallery/$name'
     | '/settings/connected-accounts/$key'
     | '/agents'
@@ -636,13 +560,9 @@ export interface FileRouteTypes {
     | '/sign'
     | '/_authed/admin'
     | '/_authed/operations'
-    | '/_authed/resident'
     | '/_authed/settings'
     | '/_authed/_app'
     | '/_authed/onboarding'
-    | '/vinhomes/login'
-    | '/vinhomes/register'
-    | '/vinhomes/'
     | '/_authed/_app/bot'
     | '/_authed/_app/routines'
     | '/_authed/_app/skills'
@@ -666,18 +586,15 @@ export interface FileRouteTypes {
     | '/_authed/operations/security'
     | '/_authed/operations/triage'
     | '/_authed/operations/work-orders'
-    | '/_authed/resident/tickets'
     | '/_authed/_app/'
     | '/_authed/admin/'
     | '/_authed/operations/'
-    | '/_authed/resident/'
     | '/_authed/settings/'
     | '/_authed/_app/channel/$channelId'
     | '/_authed/_app/channel/new'
     | '/_authed/admin/components/$name'
     | '/_authed/admin/plugins/$key'
     | '/_authed/admin/plugins/composio'
-    | '/_authed/resident/c/$conversationId'
     | '/_authed/settings/components-gallery/$name'
     | '/_authed/settings/connected-accounts/$key'
     | '/_authed/_app/agents/'
@@ -692,9 +609,6 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AuthedRoute: typeof AuthedRouteWithChildren
   SignRoute: typeof SignRoute
-  VinhomesLoginRoute: typeof VinhomesLoginRoute
-  VinhomesRegisterRoute: typeof VinhomesRegisterRoute
-  VinhomesIndexRoute: typeof VinhomesIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -741,40 +655,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedOperationsRouteRouteImport
       parentRoute: typeof AuthedRoute
     }
-    '/_authed/resident': {
-      id: '/_authed/resident'
-      path: '/resident'
-      fullPath: '/resident'
-      preLoaderRoute: typeof AuthedResidentRouteRouteImport
-      parentRoute: typeof AuthedRoute
-    }
     '/_authed/settings': {
       id: '/_authed/settings'
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof AuthedSettingsRouteRouteImport
       parentRoute: typeof AuthedRoute
-    }
-    '/vinhomes/': {
-      id: '/vinhomes/'
-      path: '/vinhomes'
-      fullPath: '/vinhomes/'
-      preLoaderRoute: typeof VinhomesIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/vinhomes/login': {
-      id: '/vinhomes/login'
-      path: '/vinhomes/login'
-      fullPath: '/vinhomes/login'
-      preLoaderRoute: typeof VinhomesLoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/vinhomes/register': {
-      id: '/vinhomes/register'
-      path: '/vinhomes/register'
-      fullPath: '/vinhomes/register'
-      preLoaderRoute: typeof VinhomesRegisterRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/_authed/_app/': {
       id: '/_authed/_app/'
@@ -958,20 +844,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedOperationsWorkOrdersRouteImport
       parentRoute: typeof AuthedOperationsRouteRoute
     }
-    '/_authed/resident/': {
-      id: '/_authed/resident/'
-      path: '/'
-      fullPath: '/resident/'
-      preLoaderRoute: typeof AuthedResidentIndexRouteImport
-      parentRoute: typeof AuthedResidentRouteRoute
-    }
-    '/_authed/resident/tickets': {
-      id: '/_authed/resident/tickets'
-      path: '/tickets'
-      fullPath: '/resident/tickets'
-      preLoaderRoute: typeof AuthedResidentTicketsRouteImport
-      parentRoute: typeof AuthedResidentRouteRoute
-    }
     '/_authed/settings/': {
       id: '/_authed/settings/'
       path: '/'
@@ -1034,13 +906,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/plugins/composio'
       preLoaderRoute: typeof AuthedAdminPluginsComposioRouteImport
       parentRoute: typeof AuthedAdminRouteRoute
-    }
-    '/_authed/resident/c/$conversationId': {
-      id: '/_authed/resident/c/$conversationId'
-      path: '/c/$conversationId'
-      fullPath: '/resident/c/$conversationId'
-      preLoaderRoute: typeof AuthedResidentCConversationIdRouteImport
-      parentRoute: typeof AuthedResidentRouteRoute
     }
     '/_authed/settings/components-gallery/': {
       id: '/_authed/settings/components-gallery/'
@@ -1165,21 +1030,6 @@ const AuthedOperationsRouteRouteWithChildren =
     AuthedOperationsRouteRouteChildren,
   )
 
-interface AuthedResidentRouteRouteChildren {
-  AuthedResidentTicketsRoute: typeof AuthedResidentTicketsRoute
-  AuthedResidentIndexRoute: typeof AuthedResidentIndexRoute
-  AuthedResidentCConversationIdRoute: typeof AuthedResidentCConversationIdRoute
-}
-
-const AuthedResidentRouteRouteChildren: AuthedResidentRouteRouteChildren = {
-  AuthedResidentTicketsRoute: AuthedResidentTicketsRoute,
-  AuthedResidentIndexRoute: AuthedResidentIndexRoute,
-  AuthedResidentCConversationIdRoute: AuthedResidentCConversationIdRoute,
-}
-
-const AuthedResidentRouteRouteWithChildren =
-  AuthedResidentRouteRoute._addFileChildren(AuthedResidentRouteRouteChildren)
-
 interface AuthedSettingsRouteRouteChildren {
   AuthedSettingsIndexRoute: typeof AuthedSettingsIndexRoute
   AuthedSettingsComponentsGalleryNameRoute: typeof AuthedSettingsComponentsGalleryNameRoute
@@ -1230,7 +1080,6 @@ const AuthedAppRouteWithChildren = AuthedAppRoute._addFileChildren(
 interface AuthedRouteChildren {
   AuthedAdminRouteRoute: typeof AuthedAdminRouteRouteWithChildren
   AuthedOperationsRouteRoute: typeof AuthedOperationsRouteRouteWithChildren
-  AuthedResidentRouteRoute: typeof AuthedResidentRouteRouteWithChildren
   AuthedSettingsRouteRoute: typeof AuthedSettingsRouteRouteWithChildren
   AuthedAppRoute: typeof AuthedAppRouteWithChildren
   AuthedOnboardingRoute: typeof AuthedOnboardingRoute
@@ -1239,7 +1088,6 @@ interface AuthedRouteChildren {
 const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedAdminRouteRoute: AuthedAdminRouteRouteWithChildren,
   AuthedOperationsRouteRoute: AuthedOperationsRouteRouteWithChildren,
-  AuthedResidentRouteRoute: AuthedResidentRouteRouteWithChildren,
   AuthedSettingsRouteRoute: AuthedSettingsRouteRouteWithChildren,
   AuthedAppRoute: AuthedAppRouteWithChildren,
   AuthedOnboardingRoute: AuthedOnboardingRoute,
@@ -1251,9 +1099,6 @@ const AuthedRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   AuthedRoute: AuthedRouteWithChildren,
   SignRoute: SignRoute,
-  VinhomesLoginRoute: VinhomesLoginRoute,
-  VinhomesRegisterRoute: VinhomesRegisterRoute,
-  VinhomesIndexRoute: VinhomesIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -36,6 +36,7 @@ import {
   ReasonSheet,
   Section,
   SeverityBadge,
+  StepProgress,
   autoCompleteText,
   slaText,
   useNow,
@@ -228,13 +229,7 @@ export function TechnicianJobDetail({ woId, onBack }: { woId: string; onBack: ()
       case 'AWAITING_RESIDENT_AGREEMENT':
         return (
           <Section title="Đang chờ cư dân đồng ý">
-            <p className="text-base md:text-base text-slate-600">
-              Danh mục {formatVnd(quoteTotal(flow.quote.lines, flow.quote.labor_cost))}{' '}
-              {flow.resident_channel === 'APP'
-                ? 'đã gửi sang app cư dân. Màn hình tự cập nhật khi cư dân bấm đồng ý.'
-                : 'đang chờ cư dân đọc và bấm đồng ý.'}
-            </p>
-            <p className="text-sm text-muted-foreground">Cư dân có thể đồng ý trên máy của bạn hoặc trên app cư dân. Bên nào xác nhận trước sẽ được ghi nhận.</p>
+            <p className="text-base md:text-base text-slate-600">Danh mục {formatVnd(quoteTotal(flow.quote.lines, flow.quote.labor_cost))} đang chờ cư dân đọc và bấm đồng ý.</p>
           </Section>
         );
       case 'IN_PROGRESS':
@@ -284,12 +279,7 @@ export function TechnicianJobDetail({ woId, onBack }: { woId: string; onBack: ()
       case 'AWAITING_RESIDENT_SIGNATURE':
         return (
           <Section title="Đang chờ cư dân ký xác nhận">
-            <p className="text-base md:text-base text-slate-600">
-              {flow.resident_channel === 'APP'
-                ? 'Đã gửi yêu cầu ký sang app cư dân. Màn hình tự cập nhật khi cư dân ký.'
-                : 'Đưa máy cho cư dân xem lại danh mục cuối và ký tên.'}
-            </p>
-            <p className="text-sm text-muted-foreground">Cư dân có thể ký trên máy của bạn hoặc trên app cư dân.</p>
+            <p className="text-base md:text-base text-slate-600">Đưa máy cho cư dân xem lại danh mục cuối và ký tên.</p>
           </Section>
         );
       case 'REPORT_READY':
@@ -362,14 +352,7 @@ export function TechnicianJobDetail({ woId, onBack }: { woId: string; onBack: ()
       case 'QUOTE_DRAFT':
         return (
           <BottomActionBar hint={<ChecklistGate blockers={step.blockers} />}>
-            <ActionButton
-              variant="secondary"
-              disabled={step.blockers.length > 0}
-              onClick={() => act(() => ops.handToResidentForAgreement(wo.id, 'APP'), 'Đã gửi danh mục sang app cư dân.')}
-            >
-              Gửi qua app
-            </ActionButton>
-            <ActionButton disabled={step.blockers.length > 0} onClick={() => act(() => ops.handToResidentForAgreement(wo.id, 'DEVICE')) && setHandover('agree')}>
+            <ActionButton disabled={step.blockers.length > 0} onClick={() => act(() => ops.handToResidentForAgreement(wo.id)) && setHandover('agree')}>
               Đưa máy cho cư dân xem
             </ActionButton>
           </BottomActionBar>
@@ -378,7 +361,7 @@ export function TechnicianJobDetail({ woId, onBack }: { woId: string; onBack: ()
         return (
           <BottomActionBar>
             <ActionButton variant="secondary" onClick={() => act(() => ops.residentRequestChanges(wo.id))}>Sửa danh mục</ActionButton>
-            <ActionButton onClick={() => act(() => ops.setResidentChannel(wo.id, 'DEVICE')) && setHandover('agree')}>Mở màn hình cư dân</ActionButton>
+            <ActionButton onClick={() => setHandover('agree')}>Mở màn hình cư dân</ActionButton>
           </BottomActionBar>
         );
       case 'IN_PROGRESS':
@@ -413,14 +396,7 @@ export function TechnicianJobDetail({ woId, onBack }: { woId: string; onBack: ()
         return (
           <BottomActionBar hint={<ChecklistGate blockers={step.blockers} />}>
             <ActionButton variant="secondary" grow={false} onClick={() => setSheet('pause')}>Tạm dừng</ActionButton>
-            <ActionButton
-              variant="secondary"
-              disabled={step.blockers.length > 0}
-              onClick={() => act(() => ops.requestSignature(wo.id, 'APP'), 'Đã gửi yêu cầu ký sang app cư dân.')}
-            >
-              Ký qua app
-            </ActionButton>
-            <ActionButton variant="success" disabled={step.blockers.length > 0} onClick={() => act(() => ops.requestSignature(wo.id, 'DEVICE')) && setHandover('sign')}>
+            <ActionButton variant="success" disabled={step.blockers.length > 0} onClick={() => act(() => ops.requestSignature(wo.id)) && setHandover('sign')}>
               Cho cư dân ký
             </ActionButton>
           </BottomActionBar>
@@ -435,7 +411,7 @@ export function TechnicianJobDetail({ woId, onBack }: { woId: string; onBack: ()
         return (
           <BottomActionBar>
             <ActionButton variant="secondary" onClick={() => act(() => ops.backToWork(wo.id))}>Quay lại sửa</ActionButton>
-            <ActionButton variant="success" onClick={() => act(() => ops.setResidentChannel(wo.id, 'DEVICE')) && setHandover('sign')}>Mở màn hình ký</ActionButton>
+            <ActionButton variant="success" onClick={() => setHandover('sign')}>Mở màn hình ký</ActionButton>
           </BottomActionBar>
         );
       case 'REPORT_READY':
@@ -461,14 +437,17 @@ export function TechnicianJobDetail({ woId, onBack }: { woId: string; onBack: ()
       <BackLink onBack={onBack} />
 
       {/* Job header */}
-      <Card>
+      <Card className="gap-4">
         <CardHeader className="flex flex-col gap-1 px-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6 md:px-6">
           <div className="flex min-w-0 flex-col gap-1">
             <PanelTitle>{title}</PanelTitle>
-            <p className="pl-3.5 text-sm text-muted-foreground">{address}</p>
+            <p className="pl-3.5 text-sm text-muted-foreground"><span className="tabular-nums">{wo.id}</span> · {address}</p>
           </div>
           <p className="shrink-0 pl-3.5 text-sm text-slate-700 sm:pl-0">{step.label}</p>
         </CardHeader>
+        {step.stepIndex <= 3 && (
+          <CardContent className="px-4 md:px-6"><StepProgress current={step.stepIndex} kind={flow.kind} /></CardContent>
+        )}
       </Card>
 
       {error && <Banner kind="error" onClose={() => setError(null)}>{error}</Banner>}
@@ -543,7 +522,7 @@ export function TechnicianJobDetail({ woId, onBack }: { woId: string; onBack: ()
 
           {step.stage === 'AWAITING_COMPLETION' && (
             <Section title="Giả lập phía cư dân (demo)">
-              <p className="text-sm text-muted-foreground">Cư dân xác nhận hoặc báo lỗi trên app cư dân (/resident). Các nút dưới đây chỉ để thử một mình.</p>
+              <p className="text-sm text-muted-foreground">Dùng để demo khi chưa có app cư dân.</p>
               <div className="flex flex-wrap gap-2">
                 <ActionButton onClick={() => act(() => ops.simulateResidentConfirm(wo.id), 'Cư dân đã xác nhận hoàn thành.')}>Cư dân xác nhận</ActionButton>
                 <ActionButton variant="secondary" onClick={() => setSheet('rework')}>Cư dân báo lỗi</ActionButton>
@@ -610,7 +589,6 @@ export function TechnicianJobDetail({ woId, onBack }: { woId: string; onBack: ()
       {handover && (
         <ResidentHandover
           mode={handover}
-          pending={step.stage === (handover === 'agree' ? 'AWAITING_RESIDENT_AGREEMENT' : 'AWAITING_RESIDENT_SIGNATURE')}
           flow={flow}
           title={title}
           address={address}
