@@ -24,7 +24,7 @@ function appWith(store?: OnboardingStore) {
       handler: () => new Response(null, { status: 204 }),
       api: { getSession: async () => ({ user: MEMBER }) },
     } as never,
-    { rolesForUser: async () => ["user"] },
+    { rolesForUser: async () => ["customer"] },
     /*
      * Positions 4-23 are the other stores; `store` is 24, onboardingStore, the signature's last.
      * Every parameter from 4 on is optional, so a wrong count is a silent type-check pass — see

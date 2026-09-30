@@ -49,7 +49,7 @@ function serve() {
     context.set("actor", {
       id: "u1",
       email: "person@openbot.test",
-      role: "user",
+      role: "customer",
     });
     await next();
   };

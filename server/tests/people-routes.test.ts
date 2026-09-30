@@ -23,7 +23,7 @@ function person(overrides: Partial<Person> = {}): Person {
     email: "member@openbot.test",
     name: "A Member",
     image: null,
-    role: "user",
+    role: "customer",
     providers: ["google"],
     lastSignedInAt: null,
     revoked: false,
@@ -34,7 +34,7 @@ function person(overrides: Partial<Person> = {}): Person {
 
 function appWith(
   people: Person[],
-  role: "admin" | "user" = "admin",
+  role: "admin" | "customer" = "admin",
 ): {
   request: (path: string, init?: RequestInit) => Promise<Response>;
   calls: string[];
@@ -136,7 +136,7 @@ describe("people routes", () => {
 
     const response = await request(
       "/api/admin/people/u1/role",
-      json({ role: "user" }),
+      json({ role: "customer" }),
     );
 
     expect(response.status).toBe(409);
@@ -165,7 +165,7 @@ describe("people routes", () => {
 
     const response = await request(
       `/api/admin/people/${ADMIN.id}/role`,
-      json({ role: "user" }),
+      json({ role: "customer" }),
     );
 
     expect(response.status).toBe(409);

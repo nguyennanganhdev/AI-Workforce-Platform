@@ -13,6 +13,7 @@
  * are interchangeable and a database migrated by either is migrated.
  */
 import { join } from "node:path";
+import { access } from "node:fs/promises";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
@@ -30,6 +31,13 @@ if (!databaseUrl) {
  * Migrations are a single ordered conversation with the database, and a pool would let two
  * statements that must be ordered land on different connections.
  */
+try {
+  await access(join(import.meta.dir, "..", "drizzle", "meta", "_journal.json"));
+} catch {
+  throw new Error(
+    "No migration baseline exists. Run bun run --cwd server db:generate and review it before migrating an empty database.",
+  );
+}
 const client = postgres(databaseUrl, { max: 1, onnotice: () => {} });
 
 try {
