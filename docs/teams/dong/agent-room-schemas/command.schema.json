@@ -216,6 +216,130 @@
       "title": "Context",
       "type": "object"
     },
+    "ContextItem": {
+      "additionalProperties": false,
+      "properties": {
+        "item_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Item Id",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
+        "reader_agent_version_ids": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Reader Agent Version Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "item_id",
+        "content",
+        "reader_agent_version_ids"
+      ],
+      "title": "ContextItem",
+      "type": "object"
+    },
+    "MentionAgent": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "room_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Room Id",
+          "type": "string"
+        },
+        "expected_room_version": {
+          "minimum": 1,
+          "title": "Expected Room Version",
+          "type": "integer"
+        },
+        "operation": {
+          "const": "mention_agent",
+          "default": "mention_agent",
+          "title": "Operation",
+          "type": "string"
+        },
+        "mentioned_agent_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Mentioned Agent Id",
+          "type": "string"
+        },
+        "instruction": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Instruction",
+          "type": "string"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
+        },
+        "in_reply_to_message_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "In Reply To Message Id"
+        }
+      },
+      "required": [
+        "room_id",
+        "expected_room_version",
+        "mentioned_agent_id",
+        "instruction"
+      ],
+      "title": "MentionAgent",
+      "type": "object"
+    },
     "MessageInput": {
       "additionalProperties": false,
       "properties": {
@@ -261,6 +385,20 @@
           ],
           "default": null,
           "title": "In Reply To Message Id"
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Task Id"
         }
       },
       "required": [
@@ -317,6 +455,13 @@
         },
         "initial_message": {
           "$ref": "#/$defs/MessageInput"
+        },
+        "ticket_context": {
+          "items": {
+            "$ref": "#/$defs/ContextItem"
+          },
+          "title": "Ticket Context",
+          "type": "array"
         }
       },
       "required": [
@@ -348,6 +493,82 @@
         "role"
       ],
       "title": "ParticipantSpec",
+      "type": "object"
+    },
+    "PutContext": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "room_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Room Id",
+          "type": "string"
+        },
+        "expected_room_version": {
+          "minimum": 1,
+          "title": "Expected Room Version",
+          "type": "integer"
+        },
+        "operation": {
+          "const": "put_context",
+          "default": "put_context",
+          "title": "Operation",
+          "type": "string"
+        },
+        "item": {
+          "$ref": "#/$defs/ContextItem"
+        }
+      },
+      "required": [
+        "room_id",
+        "expected_room_version",
+        "item"
+      ],
+      "title": "PutContext",
+      "type": "object"
+    },
+    "PutTask": {
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 2,
+          "default": 2,
+          "title": "Version",
+          "type": "integer"
+        },
+        "room_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Room Id",
+          "type": "string"
+        },
+        "expected_room_version": {
+          "minimum": 1,
+          "title": "Expected Room Version",
+          "type": "integer"
+        },
+        "operation": {
+          "const": "put_task",
+          "default": "put_task",
+          "title": "Operation",
+          "type": "string"
+        },
+        "task": {
+          "$ref": "#/$defs/TaskItem"
+        }
+      },
+      "required": [
+        "room_id",
+        "expected_room_version",
+        "task"
+      ],
+      "title": "PutTask",
       "type": "object"
     },
     "RunTurn": {
@@ -431,6 +652,65 @@
         "instruction"
       ],
       "title": "RunTurn",
+      "type": "object"
+    },
+    "TaskItem": {
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Task Id",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "assignee_agent_version_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Assignee Agent Version Id",
+          "type": "string"
+        },
+        "status": {
+          "default": "pending",
+          "enum": [
+            "pending",
+            "in_progress",
+            "blocked",
+            "completed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "result_refs": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Result Refs",
+          "type": "array"
+        },
+        "reader_agent_version_ids": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Reader Agent Version Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "task_id",
+        "description",
+        "assignee_agent_version_id"
+      ],
+      "title": "TaskItem",
       "type": "object"
     },
     "TurnPolicy": {
@@ -536,7 +816,10 @@
           "append_message": "#/$defs/AppendMessage",
           "cancel_turn": "#/$defs/CancelTurn",
           "close_room": "#/$defs/CloseRoom",
+          "mention_agent": "#/$defs/MentionAgent",
           "open_room": "#/$defs/OpenRoom",
+          "put_context": "#/$defs/PutContext",
+          "put_task": "#/$defs/PutTask",
           "run_turn": "#/$defs/RunTurn",
           "update_turn_policy": "#/$defs/UpdateTurnPolicy"
         },
@@ -551,6 +834,15 @@
         },
         {
           "$ref": "#/$defs/RunTurn"
+        },
+        {
+          "$ref": "#/$defs/MentionAgent"
+        },
+        {
+          "$ref": "#/$defs/PutTask"
+        },
+        {
+          "$ref": "#/$defs/PutContext"
         },
         {
           "$ref": "#/$defs/AddParticipant"
