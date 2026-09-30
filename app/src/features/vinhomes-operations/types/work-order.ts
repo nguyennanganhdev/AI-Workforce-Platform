@@ -1,3 +1,5 @@
+import type { FieldFlow } from './field-flow';
+
 /**
  * Canonical WorkOrder types from docx/02_VINHOMES_DOMAIN_ERD.md (Section 9: vh_work_order)
  */
@@ -46,6 +48,7 @@ export interface VhWorkOrder {
   contractor_assigned_worker?: string;
   materials_used?: Array<{ part_name: string; quantity: number; unit: string }>;
   result: Record<string, unknown> | null;
+  field_flow?: FieldFlow;
   version: number;
   created_at: string;
   updated_at: string;

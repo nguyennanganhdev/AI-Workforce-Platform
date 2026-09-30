@@ -267,6 +267,52 @@ export const MOCK_TASKS: VhTask[] = [
     created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
     updated_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
   },
+
+  // Sự cố INC-2026-020: Trời mưa làm bẩn sảnh S1.03 (cư dân báo qua app)
+  {
+    id: 'TSK-2026-120',
+    incident_id: 'INC-2026-020',
+    title: 'Lau sàn sảnh chính tòa S1.03 do trời mưa',
+    domain_type: 'SANITATION',
+    domain_data: {
+      schemaVersion: 1,
+      issueType: 'SPILL',
+      area: { siteId: 'VHM-SC-S1', locationId: 'S1.03-F1-LOBBY', towerCode: 'S1.03', floor: 1 },
+      actions: [{ type: 'MOP_FLOOR', executorType: 'HUMAN', instruction: 'Lau sạch bùn nước, đặt biển cảnh báo sàn ướt' }],
+      requiredEvidence: ['IMAGE_BEFORE', 'IMAGE_AFTER'],
+      qcCriteria: ['FLOOR_CLEAN', 'SAFETY_SIGN_PLACED'],
+      rootCauseCheckRequired: false,
+    } as CleaningPlan,
+    domain_schema_version: 1,
+    assignee_type: 'STAFF',
+    assignee_id: 'usr-cleaner-01',
+    assignee_name: 'Lê Thị Bích',
+    status: 'ASSIGNED',
+    priority: 'HIGH',
+    due_at: new Date(Date.now() + 40 * 60 * 1000).toISOString(),
+    version: 1,
+    created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+  },
+
+  // Sự cố INC-2026-021: Phản ánh tiếng ồn căn S2.02-0815
+  {
+    id: 'TSK-2026-121',
+    incident_id: 'INC-2026-021',
+    title: 'Nhắc nhở tiếng ồn căn S2.02-0815',
+    domain_type: 'SECURITY',
+    domain_data: null,
+    domain_schema_version: 1,
+    assignee_type: 'STAFF',
+    assignee_id: 'usr-sec-01',
+    assignee_name: 'Phạm Văn Đạt',
+    status: 'ASSIGNED',
+    priority: 'HIGH',
+    due_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    version: 1,
+    created_at: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
+  },
 ];
 
 export const MOCK_TASK_DEPENDENCIES: VhTaskDependency[] = [

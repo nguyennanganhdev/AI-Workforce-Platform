@@ -41,7 +41,7 @@ function getBreadcrumb(pathname: string, persona: OperationsPersona): Breadcrumb
     return { section: 'Ban Quản Lý', page: 'Phê duyệt chi phí' };
   }
   if (pathname.includes('/incidents')) {
-    return { section: 'Vận hành đô thị', page: 'Quản lý sự cố' };
+    return { section: 'Vận hành đô thị', page: 'Phản ánh & Sự cố' };
   }
   if (pathname.includes('/completed-tasks')) {
     return { section: 'Hiện trường', page: 'Công việc đã hoàn thành' };
@@ -83,23 +83,23 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
   };
 
   return (
-    <header className="min-h-14 bg-white border-b border-slate-200/80 px-4 py-2 gap-3 flex items-center justify-between shrink-0 font-sans z-20">
-      <button type="button" className="operations-menu-toggle rounded border border-slate-200 px-3 py-2 text-sm" aria-expanded={menuOpen} onClick={onToggleMenu}>Danh mục</button>
-      <div className="flex items-center gap-2">
+    <header className="min-h-14 bg-white border-b border-slate-200/80 px-2 sm:px-4 py-2 gap-2 sm:gap-3 flex items-center justify-between shrink-0 font-sans z-20">
+      <button type="button" className="operations-menu-toggle rounded border border-slate-200 px-2.5 py-1.5 text-sm" aria-expanded={menuOpen} onClick={onToggleMenu}>Danh mục</button>
+      <div className="flex items-center gap-2 min-w-0 flex-1">
         <div className="w-1 h-5 bg-blue-600 rounded-full shrink-0" />
-        <nav aria-label="Vị trí hiện tại" className="flex items-center gap-1.5 text-sm">
-          <span className="hidden xl:inline text-slate-500">
+        <nav aria-label="Vị trí hiện tại" className="flex items-center gap-1.5 text-sm min-w-0">
+          <span className="hidden xl:inline text-slate-500 shrink-0">
             {breadcrumb.section}
           </span>
-          <span className="text-slate-300 font-normal">›</span>
-          <span className="text-slate-900 font-semibold tracking-tight">
+          <span className="hidden xl:inline text-slate-300 font-normal shrink-0">›</span>
+          <span className="text-slate-900 font-semibold tracking-tight truncate">
             {breadcrumb.page}
           </span>
         </nav>
       </div>
 
-      {/* Right: Quick actions, notifications, user profile — BistroPulse Style */}
-      <div className="flex items-center gap-3">
+      {/* Right: Quick actions, notifications, user profile */}
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         <details className="relative hidden lg:block text-xs text-slate-500"><summary className="cursor-pointer">Dữ liệu mẫu</summary><div className="absolute right-0 top-7 z-30 w-44 rounded border border-slate-200 bg-white p-2">        {/* Reset Mock Data button for testing convenience */}
         <button
           type="button"
@@ -127,10 +127,11 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
             type="button"
             onClick={() => setNotificationOpen(!notificationOpen)}
             aria-expanded={notificationOpen}
-            className="rounded border border-slate-200 px-3 py-2 flex items-center gap-2 text-sm text-slate-600 hover:bg-slate-50"
+            className="rounded border border-slate-200 px-2 sm:px-3 py-1.5 sm:py-2 flex items-center gap-1.5 text-sm text-slate-600 hover:bg-slate-50"
             title="Thông báo khẩn cấp"
           >
-            <span>Thông báo</span>
+            <IconBell className="w-4 h-4 shrink-0" />
+            <span className="hidden sm:inline">Thông báo</span>
             {p1Incidents.length > 0 && (
               <span className="text-xs font-medium text-red-700">
                 {p1Incidents.length}
@@ -140,7 +141,7 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
 
           {/* Notifications Dropdown */}
           {notificationOpen && (
-            <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 py-3 z-50">
+            <div className="ops-notification-dropdown absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 py-3 z-50">
               <div className="px-4 pb-2 border-b border-slate-100 flex items-center justify-between">
                 <span className="font-bold text-xs text-slate-900">Thông báo vận hành</span>
                 <span className="text-[11px] font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">
@@ -153,8 +154,8 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
                     <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
                       <IconAlertTriangle className="w-4 h-4" />
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-900 leading-snug">{inc.title}</p>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-900 leading-snug truncate">{inc.title}</p>
                       <p className="text-[11px] text-slate-500 mt-0.5">
                         {inc.location_json.towerCode} • Hạn xử lý: 45 phút
                       </p>
@@ -166,8 +167,8 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
                     <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
                       <IconSparkles className="w-4 h-4" />
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-900 leading-snug">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-900 leading-snug truncate">
                         Đề xuất chờ phê duyệt: {(app.estimated_cost_vnd || 0).toLocaleString()} đ
                       </p>
                       <p className="text-[11px] text-slate-500 mt-0.5">Thay van DN50 khẩn cấp</p>
@@ -179,14 +180,14 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
           )}
         </div>
 
-        {/* User Profile Avatar with Name & Role — BistroPulse Style */}
-        <div className="flex items-center gap-2.5 pl-2 border-l border-slate-200">
+        {/* User Profile Avatar with Name & Role */}
+        <div className="flex items-center gap-2 sm:gap-2.5 pl-1.5 sm:pl-2 border-l border-slate-200">
           <img
             src={profile.avatarUrl}
             alt={profile.name}
-            className="w-9 h-9 rounded-full object-cover border border-slate-200 shadow-2xs"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover border border-slate-200 shadow-2xs"
           />
-          <div className="hidden xl:block text-left">
+          <div className="hidden md:block text-left">
             <p className="text-xs font-bold text-slate-800 leading-tight">{profile.name}</p>
             <p className="text-[11px] text-slate-400 font-medium">{profile.roleTitle}</p>
           </div>

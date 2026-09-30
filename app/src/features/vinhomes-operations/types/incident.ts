@@ -37,9 +37,24 @@ export interface VhIncident {
   sla_due_at: string | null;
   resolved_at: string | null;
   closed_at: string | null;
+  /** Sự cố cần nhà thầu: AI chuyển BQL, BQL tự liên hệ ngoài hệ thống (docs mục 14) */
+  contractor_handoff?: ContractorHandoff;
+  /** Ghi chú khi BQL tự xử lý và đóng một ngoại lệ (tranh chấp, hộ không hợp tác…) */
+  bql_resolution_note?: string;
   version: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface ContractorHandoff {
+  status: 'PENDING' | 'CONTACTED' | 'RESOLVED';
+  /** Gợi ý của AI từ hồ sơ thiết bị */
+  warranty: { under_warranty: boolean; contractor_name: string | null; expires_at: string | null } | null;
+  contractor_name: string | null;
+  eta: string | null;
+  contacted_at: string | null;
+  resolved_at: string | null;
+  note: string | null;
 }
 
 export interface VhIncidentRelation {

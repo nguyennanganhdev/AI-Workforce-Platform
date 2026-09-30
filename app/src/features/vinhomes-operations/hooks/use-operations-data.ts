@@ -46,8 +46,11 @@ import {
   MOCK_SESSION_MESSAGES,
 } from '../mock';
 import { MOCK_ACTION_REQUESTS } from '../mock/action-requests';
+import { useFieldFlowActions } from './use-field-flow-actions';
+import { getIncidentClosureBlocker } from '../lib/incident-closure';
+import { useBqlInboxActions } from './use-bql-inbox-actions';
 
-const STORAGE_KEY_PREFIX = 'vhm_operations_data_v5';
+const STORAGE_KEY_PREFIX = 'vhm_operations_data_v9';
 
 export const DOMAIN_CHECKLIST_MAP: Record<string, string> = {
   MEP: 'CKL-VER-MEP-01',
@@ -217,7 +220,11 @@ export function useOperationsDataInternal() {
   const [currentPersona, setCurrentPersona] = useState<OperationsPersona>(() => {
     try {
       const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_persona`);
-      return (stored as OperationsPersona) || 'STAFF_TECHNICAL';
+      // Nhà thầu không dùng app nhân viên (sự cố cần nhà thầu do BQL tự liên hệ)
+      if (!stored || stored === 'CONTRACTOR') return 'STAFF_TECHNICAL';
+      // Trưởng nhóm/Giám sát và Nghiệm thu đã gộp vào Ban quản lý
+      if (stored === 'SUPERVISOR' || stored === 'QC_INSPECTOR') return 'MANAGER';
+      return stored as OperationsPersona;
     } catch {
       return 'STAFF_TECHNICAL';
     }
@@ -496,45 +503,8 @@ export function useOperationsDataInternal() {
 
   const resolveIncident = useCallback(
     (incidentId: string) => {
-      const incidentTasks = tasks.filter((t) => t.incident_id === incidentId);
-      const pendingTasks = incidentTasks.filter((t) => t.status !== 'DONE');
-
-      if (pendingTasks.length > 0) {
-        throw new Error(`Không thể giải quyết sự cố: Còn ${pendingTasks.length} nhiệm vụ chưa hoàn thành (DONE).`);
-      }
-
-      const incidentWos = workOrders.filter((w) => w.incident_id === incidentId);
-      const pendingWos = incidentWos.filter((w) => w.status !== 'COMPLETED');
-      if (pendingWos.length > 0) {
-        throw new Error(`Không thể giải quyết sự cố: Còn ${pendingWos.length} phiếu thi công chưa hoàn tất.`);
-      }
-
-      // Check QC results: Every task's latest attempt work order must have a passing QC result
-      for (const t of incidentTasks) {
-        const taskWos = incidentWos.filter((w) => w.task_id === t.id);
-        if (taskWos.length > 0) {
-          const latestWo = [...taskWos].sort((a, b) => (b.attempt_no || 1) - (a.attempt_no || 1))[0];
-          if (latestWo.status !== 'COMPLETED') {
-            throw new Error(`Không thể giải quyết sự cố: Phiếu thi công mới nhất (${latestWo.id}) của nhiệm vụ "${t.title}" chưa hoàn tất!`);
-          }
-
-          const latestQc = qcResults.find((q) => q.work_order_id === latestWo.id);
-          if (!latestQc) {
-            throw new Error(`Không thể giải quyết sự cố: Phiếu thi công ${latestWo.id} chưa có kết quả kiểm định chất lượng (QC)!`);
-          }
-          if (latestQc.outcome !== 'PASS') {
-            throw new Error(`Không thể giải quyết sự cố: Kết quả kiểm định của phiếu ${latestWo.id} chưa đạt (kết quả: ${latestQc.outcome})!`);
-          }
-        }
-      }
-
-      // Check Pending Approvals
-      const pendingApprovals = approvals.filter(
-        (a) => a.action_request?.incident_id === incidentId && a.status === 'PENDING',
-      );
-      if (pendingApprovals.length > 0) {
-        throw new Error(`Không thể giải quyết sự cố: Còn ${pendingApprovals.length} đề xuất phê duyệt đang chờ duyệt (PENDING)!`);
-      }
+      const blocker = getIncidentClosureBlocker(incidentId, { tasks, workOrders, qcResults, approvals });
+      if (blocker) throw new Error(`Không thể giải quyết sự cố: ${blocker}`);
 
       setIncidents((prev) =>
         prev.map((i) =>
@@ -1075,14 +1045,14 @@ export function useOperationsDataInternal() {
       const actualCheckerId = params.checkedBy || currentProfile.id;
       if (targetWo.executor_id && actualCheckerId === targetWo.executor_id) {
         throw new Error(
-          `Vi phạm nguyên tắc độc lập kiểm định (Segregation of Duties): Bạn (${targetWo.executor_name || actualCheckerId}) là người trực tiếp thi công phiếu ${targetWo.id}, không được phép tự chấm nghiệm thu QC cho chính mình! Vui lòng nhờ QC Inspector độc lập nghiệm thu.`,
+          `Vi phạm nguyên tắc độc lập kiểm định (Segregation of Duties): Bạn (${targetWo.executor_name || actualCheckerId}) là người trực tiếp thi công phiếu ${targetWo.id}, không được phép tự chấm nghiệm thu QC cho chính mình! Vui lòng để Ban Quản Lý nghiệm thu.`,
         );
       }
 
       // Guard 4: Must have explicit QC capability (canQC: true) - No manager bypass
       if (!currentProfile.canQC) {
         throw new Error(
-          `Tài khoản vai trò "${currentProfile.roleTitle}" không có thẩm quyền ký ban hành biên bản nghiệm thu QC! Theo quy chuẩn kiểm định độc lập, chỉ chuyên viên QC Inspector độc lập (QC_INSPECTOR) mới có thẩm quyền này.`,
+          `Tài khoản vai trò "${currentProfile.roleTitle}" không có thẩm quyền ký ban hành biên bản nghiệm thu QC! Chỉ Ban Quản Lý mới có thẩm quyền nghiệm thu.`,
         );
       }
 
@@ -1192,7 +1162,7 @@ export function useOperationsDataInternal() {
       // Guard 1: QC Phase requires explicit QC Inspector permission
       if (newEvidence.capture_phase === 'QC' && !currentProfile.canQC) {
         throw new Error(
-          `Tài khoản vai trò "${currentProfile.roleTitle}" không có quyền tải ảnh nghiệm thu QC (capture_phase = QC)! Chỉ chuyên viên QC Inspector mới có thẩm quyền này.`,
+          `Tài khoản vai trò "${currentProfile.roleTitle}" không có quyền tải ảnh nghiệm thu QC (capture_phase = QC)! Chỉ Ban Quản Lý mới có thẩm quyền này.`,
         );
       }
 
@@ -1883,6 +1853,15 @@ export function useOperationsDataInternal() {
     const now = new Date().toISOString();
     const session = coordinationSessions.find((s) => s.id === sessionId);
     if (!session) throw new Error('Không tìm thấy session điều phối!');
+    if (!currentProfile.canApproveBudget) throw new Error('Chỉ Ban Quản Lý mới được đóng hồ sơ điều phối.');
+    if (session.status !== 'RESIDENT_CONFIRMED') {
+      throw new Error('Chỉ được đóng hồ sơ sau khi cư dân đã xác nhận hoàn thành.');
+    }
+    // Cùng điều kiện với resolveIncident: không còn đường đóng sự cố nào bỏ qua kiểm tra
+    if (session.incident_id) {
+      const blocker = getIncidentClosureBlocker(session.incident_id, { tasks, workOrders, qcResults, approvals });
+      if (blocker) throw new Error(`Chưa thể đóng sự cố: ${blocker}`);
+    }
 
     setCoordinationSessions((prev) =>
       prev.map((s) => {
@@ -1937,7 +1916,7 @@ export function useOperationsDataInternal() {
     ];
 
     setSessionMessages((prev) => [...prev, ...closeMessages]);
-  }, [coordinationSessions, currentProfile]);
+  }, [coordinationSessions, currentProfile, tasks, workOrders, qcResults, approvals]);
 
   const sendSessionMessage = useCallback((sessionId: string, content: string) => {
     const now = new Date().toISOString();
@@ -1973,7 +1952,21 @@ export function useOperationsDataInternal() {
     localStorage.clear();
   }, []);
 
+  const fieldFlowActions = useFieldFlowActions({
+    workOrders,
+    setWorkOrders,
+    evidence,
+    incidents,
+    tasks,
+    currentProfile,
+    currentPersona,
+  });
+
+  const bqlInboxActions = useBqlInboxActions({ incidents, setIncidents, currentProfile });
+
   return {
+    ...fieldFlowActions,
+    ...bqlInboxActions,
     cases,
     issueCandidates,
     incidents,

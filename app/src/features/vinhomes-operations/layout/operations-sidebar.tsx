@@ -35,10 +35,7 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
     { id: 'STAFF_TECHNICAL', label: 'Kỹ thuật viên', roleDesc: 'Thi công, đo đạc, báo hoàn thành' },
     { id: 'STAFF_SANITATION_A5', label: 'Nhân viên vệ sinh', roleDesc: 'Làm sạch, chụp Before/After, tick bước' },
     { id: 'STAFF_SECURITY', label: 'Nhân viên an ninh', roleDesc: 'Tuần tra check-in, biên bản sự việc, bàn giao ca' },
-    { id: 'CONTRACTOR', label: 'Nhà thầu', roleDesc: 'Nhận việc, phân thợ, ghi vật tư thay' },
-    { id: 'SUPERVISOR', label: 'Trưởng nhóm và giám sát', roleDesc: 'Điều phối ca, kiểm tra tiến độ, nhắc việc' },
-    { id: 'QC_INSPECTOR', label: 'Nhân viên nghiệm thu', roleDesc: 'Chấm checklist, ký biên bản PASS/FAIL' },
-    { id: 'MANAGER', label: 'Ban quản lý', roleDesc: 'Toàn cảnh đô thị, duyệt chi phí, đóng sự cố' },
+    { id: 'MANAGER', label: 'Ban quản lý', roleDesc: 'Giám sát, nghiệm thu, duyệt chi phí, liên hệ nhà thầu' },
   ];
 
   const allNavItems: NavItemDef[] = [
@@ -70,7 +67,7 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
     },
     {
       id: 'incidents',
-      label: 'Quản lý sự cố',
+      label: 'Phản ánh & Sự cố',
       to: '/operations/incidents',
       badgeCount: p1IncidentsCount > 0 ? p1IncidentsCount : undefined,
       badgeColor: 'bg-rose-600 text-white',

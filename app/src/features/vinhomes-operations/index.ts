@@ -20,6 +20,7 @@ export { ApprovalQueue } from './components/approval-queue';
 export { SanitationWorkspace } from './components/sanitation-workspace';
 export { SecurityWorkspace } from './components/security-workspace';
 export { ContractorWorkspace } from './components/contractor-workspace';
+export { TechnicianWorkspace } from './components/technician/technician-workspace';
 
 // Modals & Dialogs
 export { WorkOrderDialog } from './components/work-order-dialog';

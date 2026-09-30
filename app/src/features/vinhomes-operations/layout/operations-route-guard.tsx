@@ -16,7 +16,7 @@ const MENU_LABELS: Record<MenuId, string> = {
   'my-tasks': 'Việc của tôi',
   'completed-tasks': 'Công việc đã hoàn thành',
   triage: 'Tiếp nhận phản ánh',
-  incidents: 'Quản lý sự cố',
+  incidents: 'Phản ánh & Sự cố',
   kanban: 'Bảng phân bổ việc',
   'work-orders': 'Phiếu thi công',
   sanitation: 'Vệ sinh A5 & Cảnh quan',

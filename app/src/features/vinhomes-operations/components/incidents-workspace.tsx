@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { IncidentList } from './incident-list';
+import { BqlInbox, useBqlInboxItems } from './bql-inbox';
 import {
   IconAlertTriangle,
   IconBuilding,
@@ -32,6 +33,13 @@ import { MOCK_MESSAGES } from '../mock/messages';
 import { MOCK_BUSINESS_EVENTS } from '../mock/business-events';
 import { MOCK_INCIDENT_RELATIONS } from '../mock/incidents';
 import type { VhMessage } from '../types/message';
+
+type ListTab = 'INBOX' | 'OPEN' | 'CLOSED';
+const LIST_TABS: Array<{ id: ListTab; label: string }> = [
+  { id: 'INBOX', label: 'Cần BQL xử lý' },
+  { id: 'OPEN', label: 'Đang xử lý' },
+  { id: 'CLOSED', label: 'Đã đóng' },
+];
 
 const STAGE_LABELS: Record<IncidentStage, string> = {
   INTAKE: '1. Tiếp nhận',
@@ -129,6 +137,23 @@ export function IncidentsWorkspace() {
 
   const selectedIncident = incidents.find((i) => i.id === selectedIncidentId);
 
+  // Gộp "Tiếp nhận phản ánh" + "Quản lý sự cố": hộp việc BQL + danh sách theo trạng thái
+  const [listTab, setListTab] = useState<ListTab>('INBOX');
+  const inboxItems = useBqlInboxItems();
+  const openIncidents = incidents.filter((i) => i.status !== 'CLOSED');
+  const closedIncidents = incidents.filter((i) => i.status === 'CLOSED');
+
+  const openIncident = (id: string) => {
+    setSelectedIncidentId(id);
+    setActiveTab('TASKS');
+    setResolveError(null);
+    setActionSuccess(null);
+    setSessionChatInput('');
+    setNewMessageText('');
+    setBqlNoteInput('');
+    setShowBqlModal(false);
+  };
+
   const relatedTasks = selectedIncident
     ? tasks.filter((t) => t.incident_id === selectedIncident.id)
     : [];
@@ -199,10 +224,10 @@ export function IncidentsWorkspace() {
           <div className="w-1.5 h-6 bg-blue-600 rounded-full shrink-0" />
           <div>
             <h1 className="text-lg font-bold text-slate-900 tracking-tight">
-              {selectedIncident ? 'Chi tiết sự cố' : 'Quản lý sự cố'}
+              {selectedIncident ? 'Chi tiết sự cố' : 'Phản ánh & Sự cố'}
             </h1>
             <p className="text-xs text-slate-500">
-              Theo dõi tiến độ từ lúc tiếp nhận, phân công sửa chữa đến khi cư dân nghiệm thu hài lòng
+              AI tiếp nhận và giao việc. BQL chỉ cần xử lý các mục AI chuyển lên.
             </p>
           </div>
         </div>
@@ -238,17 +263,32 @@ export function IncidentsWorkspace() {
         </div>
       )}
 
-      <div hidden={Boolean(selectedIncidentId)}>
-        <IncidentList incidents={incidents} onSelect={(id) => {
-          setSelectedIncidentId(id);
-          setActiveTab('TASKS');
-          setResolveError(null);
-          setActionSuccess(null);
-          setSessionChatInput('');
-          setNewMessageText('');
-          setBqlNoteInput('');
-          setShowBqlModal(false);
-        }} />
+      <div hidden={Boolean(selectedIncidentId)} className="space-y-4">
+        <div role="tablist" aria-label="Nhóm sự cố" className="flex flex-wrap gap-2 border-b border-slate-200">
+          {LIST_TABS.map((t) => {
+            const count = t.id === 'INBOX' ? inboxItems.length : t.id === 'OPEN' ? openIncidents.length : closedIncidents.length;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={listTab === t.id}
+                onClick={() => setListTab(t.id)}
+                className={`-mb-px px-3 py-2.5 text-sm font-semibold border-b-2 ${listTab === t.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+              >
+                {t.label}
+                <span className={`ml-1.5 inline-flex min-w-5 h-5 px-1.5 items-center justify-center rounded-full text-xs ${t.id === 'INBOX' && count > 0 ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {listTab === 'INBOX' ? (
+          <BqlInbox onOpenIncident={openIncident} />
+        ) : (
+          <IncidentList key={listTab} incidents={listTab === 'OPEN' ? openIncidents : closedIncidents} onSelect={openIncident} />
+        )}
       </div>
       {selectedIncidentId && <div className="space-y-4">
         <button type="button" className="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" onClick={() => {
@@ -260,7 +300,7 @@ export function IncidentsWorkspace() {
           {selectedIncident ? (
             <>
               {/* Header & Stepper */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs space-y-4">
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-5 shadow-2xs space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                   <div>
                     <div className="flex items-center gap-2">
@@ -326,7 +366,7 @@ export function IncidentsWorkspace() {
                 </div>
 
                 {/* Stepper */}
-                <div className="overflow-x-auto pb-1">
+                <div className="ops-scroll-tabs pb-1">
                   <div className="flex items-center gap-1 text-[11px] font-semibold min-w-[580px]">
                     {STAGES.map((s, idx) => {
                       const currentIdx = STAGES.indexOf(selectedIncident.stage);
@@ -405,9 +445,9 @@ export function IncidentsWorkspace() {
               </div>
 
               {/* Multi-Tab Detail Section */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs space-y-4">
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-5 shadow-2xs space-y-4">
                 {/* Tabs Header */}
-                <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto">
+                <div className="ops-scroll-tabs flex items-center gap-2 border-b border-slate-200">
                   <button
                     type="button"
                     onClick={() => setActiveTab('COORDINATION')}
@@ -842,8 +882,8 @@ export function IncidentsWorkspace() {
 
                       {/* Modal Ban quản lý phê duyệt đóng phiên */}
                       {showBqlModal && (
-                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-                          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50">
+                          <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 space-y-4 shadow-2xl border border-slate-200">
                             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                               <div className="flex items-center gap-2">
                                 <span className="p-1.5 bg-slate-900 text-white rounded-lg">
@@ -888,10 +928,15 @@ export function IncidentsWorkspace() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  managerApproveAndCloseSession(currentSession.id, bqlNoteInput);
                                   setShowBqlModal(false);
-                                  setActionSuccess(`Đã phê duyệt và đóng phiên điều phối ${currentSession.id} thành công!`);
-                                  setTimeout(() => setActionSuccess(null), 3500);
+                                  try {
+                                    managerApproveAndCloseSession(currentSession.id, bqlNoteInput);
+                                    setResolveError(null);
+                                    setActionSuccess(`Đã phê duyệt và đóng phiên điều phối ${currentSession.id} thành công!`);
+                                    setTimeout(() => setActionSuccess(null), 3500);
+                                  } catch (err) {
+                                    setResolveError(err instanceof Error ? err.message : 'Chưa đủ điều kiện đóng hồ sơ.');
+                                  }
                                 }}
                                 className="px-4 py-2 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold shadow-2xs"
                               >
@@ -916,7 +961,7 @@ export function IncidentsWorkspace() {
                       {relatedTasks.map((t) => (
                         <div
                           key={t.id}
-                          className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-center justify-between"
+                          className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                         >
                           <div>
                             <div className="flex items-center gap-1.5 font-mono">
@@ -960,7 +1005,7 @@ export function IncidentsWorkspace() {
                       {relatedWorkOrders.map((w) => (
                         <div
                           key={w.id}
-                          className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-center justify-between"
+                          className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                         >
                           <div>
                             <div className="flex items-center gap-1.5 font-mono">

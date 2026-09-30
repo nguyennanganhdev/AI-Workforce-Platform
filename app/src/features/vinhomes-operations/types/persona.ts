@@ -57,7 +57,7 @@ export const PERSONA_PROFILES: Record<OperationsPersona, UserProfile> = {
     assignedProject: 'Vinhomes Smart City',
     assignedTower: 'Tòa S2.01 - S2.05',
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
-    allowedMenuIds: ['my-tasks', 'work-orders'],
+    allowedMenuIds: ['my-tasks'],
     canQC: false, // Kỹ thuật viên không được tự QC chính công việc của mình
     canApproveBudget: false,
     canAssignWork: false,
@@ -73,7 +73,7 @@ export const PERSONA_PROFILES: Record<OperationsPersona, UserProfile> = {
     assignedProject: 'Vinhomes Smart City',
     assignedTower: 'Phân khu Grand Sapphire',
     avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&auto=format&fit=crop&q=80',
-    allowedMenuIds: ['my-tasks', 'completed-tasks'],
+    allowedMenuIds: ['my-tasks'],
     canQC: false,
     canApproveBudget: false,
     canAssignWork: false,
@@ -89,7 +89,7 @@ export const PERSONA_PROFILES: Record<OperationsPersona, UserProfile> = {
     assignedProject: 'Vinhomes Smart City',
     assignedTower: 'Cổng số 2 & Tuyến vành đai S1-S3',
     avatarUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=120&auto=format&fit=crop&q=80',
-    allowedMenuIds: ['my-tasks', 'security', 'incidents'],
+    allowedMenuIds: ['my-tasks', 'security'],
     canQC: false,
     canApproveBudget: false,
     canAssignWork: false,
@@ -106,7 +106,8 @@ export const PERSONA_PROFILES: Record<OperationsPersona, UserProfile> = {
     assignedProject: 'Vinhomes Smart City',
     assignedTower: 'Cụm thang máy Tòa S2.01 - S2.03',
     avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80',
-    allowedMenuIds: ['my-tasks', 'contractor', 'work-orders'],
+    // Không còn chọn được vai trò này trong app nhân viên; giữ profile để dữ liệu phiếu nhà thầu cũ vẫn hiển thị đúng.
+    allowedMenuIds: [],
     canQC: false,
     canApproveBudget: false,
     canAssignWork: false,
@@ -148,17 +149,17 @@ export const PERSONA_PROFILES: Record<OperationsPersona, UserProfile> = {
     name: 'Vũ Đức Thịnh',
     email: 'thinh.vd@vinhomes.vn',
     role: 'MANAGER',
-    roleTitle: 'Trưởng Ban Quản Lý Đô Thị (BQL)',
+    roleTitle: 'Ban Quản Lý Đô Thị (BQL)',
     department: 'Ban Giám Đốc BQL Đô Thị',
     phone: '0903 888 999',
     assignedProject: 'Vinhomes Smart City',
     assignedTower: 'Toàn khu đô thị',
     avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
+    // Gộp Trưởng nhóm/Giám sát + Nghiệm thu (QC) + BQL thành một vai trò.
+    // BQL không nhận việc hiện trường nên không có "Việc của tôi".
     allowedMenuIds: [
       'dashboard',
-      'my-tasks',
-      'triage',
-      'incidents',
+      'incidents', // gồm cả tiếp nhận phản ánh (tab "Cần BQL xử lý")
       'kanban',
       'work-orders',
       'qc',
@@ -167,7 +168,9 @@ export const PERSONA_PROFILES: Record<OperationsPersona, UserProfile> = {
       'security',
       'contractor',
     ],
-    canQC: false, // Manager giám sát QC nhưng không thay người QC chuyên môn
+    // Nghiệm thu chính đã do cư dân xác nhận; BQL chấm QC cho phiếu cũ còn tồn.
+    // Quy tắc "người thi công không tự nghiệm thu" vẫn được kiểm tra trong submitQcInspection.
+    canQC: true,
     canApproveBudget: true,
     canAssignWork: true,
   },
