@@ -7,8 +7,7 @@ import { Field, FieldLabel } from '@/components/ui/field';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
-import { STEP_LABELS, formatDuration, type StageTone } from '../../lib/field-flow';
-import type { FlowKind } from '../../types/field-flow';
+import { formatDuration, type StageTone } from '../../lib/field-flow';
 
 /** Re-render every `intervalMs` so countdowns stay fresh. */
 export function useNow(intervalMs = 30_000) {
@@ -66,23 +65,6 @@ export function autoCompleteText(autoCompleteAt: string | null | undefined, now:
 export function AutoCompleteCountdown({ autoCompleteAt, now }: { autoCompleteAt?: string | null; now: number }) {
   const text = autoCompleteText(autoCompleteAt, now);
   return text ? <span className="text-sm tabular-nums text-slate-600">{text}</span> : null;
-}
-
-export function StepProgress({ current, kind = 'REPAIR' }: { current: number; kind?: FlowKind }) {
-  return (
-    <ol className="flex items-start gap-1.5" aria-label="Tiến trình công việc">
-      {STEP_LABELS[kind].map((label, i) => {
-        const done = i < current;
-        const active = i === current;
-        return (
-          <li key={label} className="flex min-w-0 flex-1 flex-col gap-1.5" aria-current={active ? 'step' : undefined}>
-            <div className={cn('h-1 rounded-full', done || active ? 'bg-primary' : 'bg-muted')} />
-            <span className={cn('truncate text-xs', active ? 'font-medium text-foreground' : done ? 'text-slate-600' : 'text-muted-foreground')}>{label}</span>
-          </li>
-        );
-      })}
-    </ol>
-  );
 }
 
 /**

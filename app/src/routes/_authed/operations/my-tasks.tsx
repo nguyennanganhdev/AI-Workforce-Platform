@@ -11,7 +11,9 @@ function MyTasksRoute() {
 }
 
 export const Route = createFileRoute('/_authed/operations/my-tasks')({
-  validateSearch: (search: Record<string, unknown>): { job?: string } =>
-    typeof search.job === 'string' && search.job ? { job: search.job } : {},
+  validateSearch: (search: Record<string, unknown>): { job?: string; view?: 'history' } => ({
+    ...(typeof search.job === 'string' && search.job ? { job: search.job } : {}),
+    ...(search.view === 'history' ? { view: 'history' as const } : {}),
+  }),
   component: MyTasksRoute,
 });
