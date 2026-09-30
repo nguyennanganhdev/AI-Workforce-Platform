@@ -13,7 +13,7 @@ Team Hoàng sở hữu hành vi và đầu ra báo cáo; Chiến sở hữu DB/m
 
 Phân công dựa trên module, chưa giả định ai có kinh nghiệm hơn. **Phan Hoàng là đầu mối tích hợp kỹ thuật được đề xuất trong kế hoạch này**, không phải quyền sửa thay tất cả thành viên.
 
-Hiện `agent-reception/` mới có các folder `src/graph`, `src/tools`, `src/adapters`, `src/persistence`, `tests` và `.gitkeep`; chưa có service Reception hoàn chỉnh. Đường dẫn chi tiết bên dưới là vị trí dự kiến để triển khai, không khẳng định file đã tồn tại. Chỉ tạo khi thực hiện task, không tạo skeleton hàng loạt.
+Cập nhật PH01 ngày 30/09/2026: `agent-reception/` đã có package/lockfile riêng, config/model factory, health bootstrap và test harness. Interface nội bộ ở bản đề xuất `0.1.0-draft.1`, chờ consumer review; chưa có Reception graph/backend/persistence production hoàn chỉnh. Xem [handoff PH01](handoffs/phan-hoang/PH01.md), [semantic contract](integration/PH01_CONTRACTS.md) và [kế hoạch reuse](integration/PH01_REUSE_PLAN.md). Các đường dẫn của task sau vẫn là vị trí dự kiến, chỉ tạo khi thực hiện task.
 
 ## 2. Chia việc chính
 

@@ -1,0 +1,87 @@
+# Reception Agent
+
+Nền tảng PH01 cho Reception bằng Bun/TypeScript. Package và `bun.lock` riêng,
+không thuộc root workspaces. Dependency trực tiếp được pin theo sample
+`agent-langgraph`; dependency gián tiếp được khóa trong lockfile.
+
+## Setup
+
+Cài [Bun 1.3.14](https://bun.sh/docs/installation) theo `packageManager` của repo.
+Chạy từ `agent-reception/`:
+
+```sh
+bun install --frozen-lockfile --ignore-scripts
+```
+
+Để chạy service, copy `.env.example` thành `.env`, điền key đúng provider.
+Không cần `.env`, key thật, backend hoặc database để chạy test/typecheck.
+Test dùng credential giả từ fixture; preload tắt remote tracing kể cả khi shell đã bật.
+
+| Biến | Mặc định / yêu cầu |
+|---|---|
+| `PORT` | `4202`; số nguyên thập phân trong 1–65535 |
+| `HOST` | `0.0.0.0`; local có thể đặt `127.0.0.1` |
+| `RECEPTION_MODEL_PROVIDER` | `openai`, `anthropic` hoặc `google`; mặc định `openai` |
+| `RECEPTION_MODEL` | Để trống dùng mặc định theo provider: `gpt-5.5`, `claude-sonnet-4-5`, `gemini-2.5-flash`; deployment nên đặt model đã được cấp quyền |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` | Chỉ key của provider được chọn là bắt buộc |
+
+Config được validate trước khi mở listener. PH01 kiểm tra cấu hình và tạo SDK
+client, chưa kiểm tra model/key có được provider chấp nhận bằng request thật.
+
+## Commands
+
+```sh
+bun run dev
+bun run start
+bun run test
+bun run typecheck
+```
+
+`GET /health` trả HTTP 200 và `{"status":"ok"}`, với `Cache-Control: no-store`.
+Đây là liveness của bootstrap, chưa phải readiness của graph/backend/model.
+Mọi route/method khác trả 404. Không có run endpoint hoặc mock nghiệp vụ production.
+
+`src/index.ts` export `createReceptionRuntime(config, modelFactory?)` và
+`startReceptionService(config?)`. Import không đọc env, tạo model hoặc mở listener.
+Chạy trực tiếp mới khởi động service; SIGINT/SIGTERM dừng listener.
+PH04 sử dụng model trả về để inject vào graph; test gọi `server.stop(true)` để dọn tài nguyên.
+
+## Internal contracts
+
+`src/contracts/index.ts` là **đề xuất nội bộ `0.1.0-draft.1`**, state schema v1.
+Phan Dũng/Dương Dũng và owner C06 cần review trước khi freeze/commit interface.
+TypeScript không xác thực payload runtime và tên `VerifiedReceptionContext`
+không tự chứng minh quyền; PH02 phải lấy context từ backend đã xác minh.
+
+- Context tách service principal khỏi user khởi tạo, có tenant/binding/run/request và permissions.
+- Tool port ràng buộc operation với input/output của catalog do DD01/DD02 cung cấp;
+  yêu cầu idempotency key bền vững và timeout, hỗ trợ `AbortSignal`.
+  `accepted` khác `success`; lỗi mất response có `outcome: "unknown"` để consumer
+  không kết luận mutation chưa xảy ra hoặc tự retry bằng key mới.
+- Graph factory nhận model, tool port và `BaseCheckpointSaver` đúng dependency đã pin;
+  không có default saver. Có interface read/run/stream/resume, terminal result và interrupt.
+  State nghiệp vụ/facts vẫn do PD01 thiết kế trong `src/graph/`.
+- Resume tách input cư dân và event backend. PH03 kiểm tra nguồn, binding/interrupt,
+  ticket/generation, aggregate version và dedup trước khi thực thi.
+
+Chi tiết semantic, version/migration và việc cần chốt:
+[hợp đồng PH01](../docs/teams/hoang/integration/PH01_CONTRACTS.md).
+
+## Tests và phạm vi
+
+- `tests/runtime/`: config, import không side effect, bootstrap HTTP và CLI lỗi;
+  `contracts.typecheck.ts` kiểm tra consumer bằng `tsc`, không chạy như test runtime.
+- `tests/adapters/`: factory provider và health routing không lộ request/config.
+- `tests/support/`: fixture tổng hợp, scripted model/tool và `MemorySaver` chỉ dùng trong test.
+- `tests/integration/`: spike capability LangGraph thật với fake ports: checkpoint,
+  stream, interrupt/resume và hai thread độc lập trong RAM.
+
+Test này **chưa chứng minh** restart/multi-replica, auth, dedup event hay durability;
+đó là PH02/PH03. Chưa có backend/model thật hoặc Reception business graph được nối.
+
+## Reuse và bàn giao
+
+[Kế hoạch reuse sample](../docs/teams/hoang/integration/PH01_REUSE_PLAN.md) ghi module,
+giới hạn và task tiếp nhận. [Handoff PH01](../docs/teams/hoang/handoffs/phan-hoang/PH01.md)
+ghi bằng chứng kiểm thử. [Request C01/C06/P01 và review nội bộ](../docs/teams/hoang/requests/phan-hoang/PH01_DEPENDENCIES.md)
+ghi các dependency còn mở; file request chưa đồng nghĩa đã gửi hoặc được owner chấp thuận.
