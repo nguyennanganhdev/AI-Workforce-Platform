@@ -2,8 +2,9 @@
 
 Theo `docs/teams/dong/PHAN_CONG_NOI_BO_COORDINATION.md` ngày 01/10/2026.
 Chỉ sửa `src/adapters/{backend,reception,tools}/**` và test tương ứng.
-Reception ↔ Supervisor chỉ dùng `schema_version: "2.0"`, `message_type`, `message`.
-Không nhận V1, không đổi tên envelope cũ, không tự chuyển checkpoint/quyết định cũ.
+Reception ↔ Supervisor mới dùng `schema_version: "2.0"`, `message_type`, `message`.
+Giữ đường backend V1 riêng cho bridge DEV-1 và checkpoint cũ; không tự chuyển
+envelope, checkpoint hoặc quyết định V1 sang V2.
 
 ## Interface cho DEV-1/DEV-5
 
@@ -38,10 +39,17 @@ receipt = await gateway.send(supervisor_message, verified.context)
   trả snapshot khi backend xác nhận. Backend trả snapshot đổi nội dung/phiên bản
   thay cho bản gửi vào sẽ bị từ chối.
 
-Các wrapper chỉ nhận enum V2: `receive_ticket`, `receive_message`,
-`receive_plan_response`, `receive_cancel`; output: `ask_question`, `send_plan`,
-`send_update`, `send_completion`. Wrapper input cần `authentication=...`, output
-cần `context=...`. Không có `receive_completion_response`.
+V2 dùng `verify`, `send`, `resolve`. Wrapper chọn enum V2 có hậu tố `_v2`:
+`receive_ticket_v2`, `receive_message_v2`, `receive_plan_response_v2`,
+`receive_cancel_v2`, `ask_question_v2`, `send_plan_v2`, `send_update_v2`,
+`send_completion_v2`. Input cần `authentication=...`, output cần `context=...`.
+V2 không có bước trả lời xác nhận hoàn thành trong Supervisor.
+
+Bridge V1 giữ tên `receive_ticket`, `receive_message`, `ask_question`, `send_update`,
+`send_plan`, `receive_plan_response`, `send_completion`, `receive_completion_response`.
+Chúng nhận envelope backend `contract_version: "1"` với context đầy đủ, trả
+`BackendResult` và từ chối message V2. Composition chọn đường theo giao thức và
+checkpoint; không fallback V2 sang V1.
 
 ## API kết nối backend
 
@@ -112,22 +120,25 @@ storage backend thật. Test dùng fake để kiểm đường gọi và xử l�
 
 ## Backend nghiệp vụ, tiếp tục xử lý và @agent
 
-`ApprovalClient` chỉ gửi/nhận **duyệt quản lý**. `ToolClient` giữ giao việc nhân viên,
-nhận/từ chối, ảnh trước/sau và báo hoàn thành. `EventIngress` chỉ nhận
-`approval.responded` (management), `assignment.offered/responded`, `work.completed`;
-vẫn xác minh event và enqueue qua durable inbox port của DEV-4.
+`ApprovalClient` giữ duyệt quản lý và các operation V1 duyệt cư dân/xác nhận kết
+quả mà bridge DEV-1 còn dùng. `ToolClient` giữ giao việc nhân viên, nhận/từ chối,
+ảnh trước/sau và báo hoàn thành. `EventIngress` nhận catalog backend hiện hành:
+`ticket.submitted`, `resident.message`, `approval.responded`, `assignment.offered`,
+`assignment.responded`, `work.completed`, `completion.responded`. Tất cả vẫn qua
+verifier và durable inbox port DEV-4; mention V1 chỉ định tuyến sau xác minh.
+Supervisor vẫn từ chối event Reception V1 áp dụng vào trạng thái V2.
 
-Theo quy tắc 5 mục 3 của tài liệu, envelope API/sự kiện backend và Command phòng
-hiện hành vẫn dùng mã version riêng. Đây không phải Reception schema V1 được giữ
-lại. Các loại Reception cũ và `resident_plan` V1 bị guard từ chối; không forward
-`completion.requested/responded`. `ApprovalClient.request_completion` chỉ là
-entrypoint báo `reception_protocol_not_supported` để bridge cũ của DEV-1 vẫn bind
-được; hàm không gửi request. DEV-1 có thể xóa entry này trong phạm vi của mình.
+Các route V1 cần cấu hình riêng: `reception.ticket`, `reception.message`,
+`reception.question`, `reception.update`, `approval.request`, `approval.respond`,
+`completion.request`, `completion.respond`. Giữ nguyên request/trace/idempotency,
+context và payload gốc. Thiếu route hoặc bị backend từ chối không có đường gửi UI
+trực tiếp. `resident_plan` V1 yêu cầu phụ thuộc duyệt quản lý và channel `reception`.
 
-Xác nhận kết quả, chưa hài lòng, đóng/mở ticket thuộc backend. Khi cần xử lý tiếp,
-backend bàn giao input V2 đầy đủ qua gateway; mở lại ticket đã đóng dùng generation
-mới. Gateway không migrate checkpoint V1. DEV-4/DEV-5 phải giải quyết checkpoint
-cũ có kiểm soát trước rollout V2; không expose lại giao thức V1 để chạy tiếp.
+Checkpoint V1 có thể tiếp tục qua bridge V1; khôi phục operation câu hỏi và yêu cầu
+xác nhận kết quả tránh mất đường dispatch cũ. Đây không phải migration sang V2;
+DEV-4/DEV-5 vẫn phải quyết định rollout và migration có kiểm soát. Với ticket V2,
+backend quản lý xác nhận kết quả, chưa hài lòng, đóng/mở ticket và bàn giao input
+V2 đã xác minh khi cần xử lý thêm. Không tự hiểu phản hồi V1 là quyết định V2.
 
 `gateway.resolve(message, authentication)` trả `ReceptionResolution(verified,
 room_command?)`. Sidecar `room_command` do backend cấp là Command DEV-2 hiện có,
@@ -153,13 +164,11 @@ source/snapshot/time/enum, null fact, quyền, bản cũ/sai bước, một pend
 dedup quyết định/bản tin, nhiều tenant, reply không tự nâng version, mention sidecar,
 hủy, completed/QC, backend yêu cầu xử lý tiếp, timeout/lost ACK và transport HTTP
 loopback. Test ghép dùng Supervisor và RoomService thật, fake model/backend/storage.
-Harness DEV-1 được import lại với catalog sự kiện backend mới; không sửa file owner.
-
-Bộ test V2 gốc `tests/supervisor/test_reception_v2.py` hiện chưa chạy được với
-catalog mới: fixture `tests/supervisor/conftest.py` vẫn đăng ký `ticket.submitted`,
-`resident.message`, `completion.responded`, khiến constructor trả
-`unsupported_event_mapping`. DEV-1/DEV-5 cần bỏ các mapping Reception V1 này và
-cho phản hồi cư dân đi qua gateway V2; DEV-3 không sửa fixture/config của owner khác.
+Harness DEV-1 được import với catalog gốc, không sửa catalog hoặc file owner.
+Test V1 kiểm tra mọi operation, giữ payload, tách hai phiên bản và dispatch action
+checkpoint đã serialize qua bridge DEV-1. Bộ test Supervisor kiểm tra cả V1/V2
+và khôi phục journal. Storage giả không chứng minh restart process hoặc migration
+DB thực tế.
 
 Để chạy production còn cần: paths/semantics và delegated auth từ Team Chiến;
 schema chuẩn/canonical validator, mount và Authority authorize/reconcile kênh

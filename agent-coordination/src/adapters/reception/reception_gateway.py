@@ -1,10 +1,13 @@
-"""Reception ↔ Supervisor V2 only. No V1 conversion or completion-response path."""
+"""Separate DEV-1 legacy bridge and Reception V2 ports; no wire conversion."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Mapping
 
-from adapters.backend.client import BackendClient
+from adapters.backend.approval_client import ApprovalClient
+from adapters.backend.client import BackendClient, BackendResult
 from adapters.backend.errors import AdapterError, ValidationError
+from adapters.backend.messages import snapshot
+from adapters.backend.operations import send as send_backend
 from adapters.backend.reception_client import ReceptionAuthentication, ReceptionClient
 from adapters.backend.reception_messages import ReceptionResolution, message_wire
 
@@ -19,6 +22,8 @@ class ReceptionGateway:
         self, backend: BackendClient, *, authentication: ReceptionAuthentication | None = None,
         timeout: float = 15,
     ) -> None:
+        self._backend = backend
+        self._approvals = ApprovalClient(backend)
         self._client = ReceptionClient(backend, authentication=authentication, timeout=timeout)
 
     async def resolve(self, message: Any, authentication: object) -> ReceptionResolution:
@@ -57,28 +62,65 @@ class ReceptionGateway:
             raise ValidationError()
         return await self.send(wire, context)
 
-    async def receive_ticket(self, message: Any, *, authentication: object):
+    async def receive_ticket_v2(self, message: Any, *, authentication: object):
         return await self._receive(message, authentication, {"ticket_submitted"})
 
-    async def receive_message(self, message: Any, *, authentication: object):
+    async def receive_message_v2(self, message: Any, *, authentication: object):
         return await self._receive(message, authentication, {"information_provided"})
 
-    async def receive_plan_response(self, message: Any, *, authentication: object):
+    async def receive_plan_response_v2(self, message: Any, *, authentication: object):
         return await self._receive(message, authentication,
                                    {"plan_approved", "plan_rejected", "plan_change_requested"})
 
-    async def receive_cancel(self, message: Any, *, authentication: object):
+    async def receive_cancel_v2(self, message: Any, *, authentication: object):
         return await self._receive(message, authentication, {"cancel_requested"})
 
-    async def ask_question(self, message: Any, *, context: Any):
+    async def ask_question_v2(self, message: Any, *, context: Any):
         return await self._send(message, context, {"information_requested"})
 
-    async def send_update(self, message: Any, *, context: Any):
+    async def send_update_v2(self, message: Any, *, context: Any):
         return await self._send(message, context, {"accepted", "in_progress", "failed", "cancelled"})
 
-    async def send_plan(self, message: Any, *, context: Any):
+    async def send_plan_v2(self, message: Any, *, context: Any):
         return await self._send(message, context, {"plan_approval_requested"})
 
-    async def send_completion(self, message: Any, *, context: Any):
+    async def send_completion_v2(self, message: Any, *, context: Any):
         # completed is work completion, never a request for resident confirmation.
         return await self._send(message, context, {"completed"})
+
+    # Legacy bridge methods accept only contract_version=1 backend envelopes.
+    async def receive_ticket(self, request: Mapping[str, Any]) -> BackendResult:
+        return await send_backend(self._backend, "reception.ticket", "ticket.submitted", request)
+
+    async def receive_message(self, request: Mapping[str, Any]) -> BackendResult:
+        # Keep reply_to_request_id and mentioned_agent_id unchanged. A display
+        # name cannot be used as an authorization decision by this adapter.
+        return await send_backend(self._backend, "reception.message", "resident.message", request)
+
+    async def ask_question(self, request: Mapping[str, Any]) -> BackendResult:
+        return await send_backend(self._backend, "reception.question", "resident.question", request)
+
+    async def send_update(self, request: Mapping[str, Any]) -> BackendResult:
+        # The endpoint must resolve recipient and filter content before delivery;
+        # this method does not send model output directly to a browser/channel.
+        return await send_backend(self._backend, "reception.update", "resident.update", request)
+
+    async def send_plan(self, request: Mapping[str, Any]) -> BackendResult:
+        wire = snapshot(request)
+        if (not isinstance(wire.get("payload"), dict)
+                or wire["payload"].get("stage") != "resident_plan"):
+            raise ValidationError()
+        return await self._approvals.request_plan(wire)
+
+    async def receive_plan_response(self, request: Mapping[str, Any]) -> BackendResult:
+        wire = snapshot(request)
+        if (not isinstance(wire.get("payload"), dict)
+                or wire["payload"].get("stage") != "resident_plan"):
+            raise ValidationError()
+        return await self._approvals.respond_plan(wire)
+
+    async def send_completion(self, request: Mapping[str, Any]) -> BackendResult:
+        return await self._approvals.request_completion(request)
+
+    async def receive_completion_response(self, request: Mapping[str, Any]) -> BackendResult:
+        return await self._approvals.respond_completion(request)

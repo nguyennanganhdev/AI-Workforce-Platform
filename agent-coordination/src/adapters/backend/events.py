@@ -19,7 +19,8 @@ from .messages import (
 )
 
 INBOUND_TYPES = frozenset({
-    "approval.responded", "assignment.offered", "assignment.responded", "work.completed",
+    "ticket.submitted", "resident.message", "approval.responded",
+    "assignment.offered", "assignment.responded", "work.completed", "completion.responded",
 })
 
 
@@ -114,8 +115,10 @@ class EventIngress:
         validate_context(context)
         if context["tenant_id"] != wire["tenant_id"]:
             raise AdapterError("event_not_authorized")
+        target = ("groupchat" if kind == "resident.message"
+                  and wire["payload"].get("mentioned_agent_id") else "supervisor")
         delivery = PendingDelivery(
-            wire["tenant_id"], wire["event_id"], fingerprint(wire), "supervisor", kind, context, wire
+            wire["tenant_id"], wire["event_id"], fingerprint(wire), target, kind, context, wire
         )
         try:
             queued = await asyncio.wait_for(self._inbox.enqueue_once(delivery), self._timeout)

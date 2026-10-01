@@ -100,11 +100,12 @@ class EventTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(b.context["binding_id"], "binding-2")
         self.assertEqual(b.context["initiated_by_user_id"], "resident-2")
 
-    async def test_old_reception_event_catalog_is_rejected(self):
-        for kind in ("resident.message", "ticket.submitted", "completion.responded"):
-            with self.subTest(kind=kind), self.assertRaises(ValueError):
-                EventIngress(verifier=self.verifier, inbox=self.inbox,
-                    validator=self.validator, event_types={"obsolete": kind})
+    async def test_legacy_mention_routes_only_after_event_verification(self):
+        value = event("resident.message")
+        value["payload"]["mentioned_agent_id"] = "agent-1"
+        await self.receive(value)
+        self.assertEqual(self.inbox.items[("tenant-a", "event-1")].target, "groupchat")
+        self.assertEqual(len(self.verifier.calls), 1)
 
     async def test_unknown_event_or_bad_payload_never_calls_verifier(self):
         value = event()

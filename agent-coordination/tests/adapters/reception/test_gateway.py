@@ -75,7 +75,7 @@ class ReceptionV2Tests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(field=field), self.assertRaises(AdapterError):
                 await gateway.send({**output_message(), field: "old"}, CONTEXT)
         self.assertFalse(backend.calls)
-        self.assertFalse(hasattr(gateway, "receive_completion_response"))
+        self.assertTrue(hasattr(gateway, "receive_completion_response"))
 
     async def test_required_source_snapshot_enum_and_time_are_checked(self):
         gateway, backend, _ = gateway_parts()
@@ -228,7 +228,7 @@ class ReceptionV2Tests(unittest.IsolatedAsyncioTestCase):
         verified = await gateway.verify(input_message(identity="reopened", ticket_generation=2), "verified-source")
         self.assertEqual(verified.context.ticket_generation, 2)
         self.assertEqual(verified.message.message_type, "ticket_submitted")
-        self.assertFalse(hasattr(gateway, "receive_completion_response"))
+        self.assertTrue(hasattr(gateway, "receive_completion_response"))
 
     async def test_backend_errors_and_timeout_are_sanitized_without_implicit_retry(self):
         gateway, backend, _ = gateway_parts()
@@ -259,19 +259,19 @@ class ReceptionV2Tests(unittest.IsolatedAsyncioTestCase):
 
     async def test_wrappers_select_enum_and_management_uses_separate_client(self):
         gateway, backend, _ = gateway_parts()
-        verified = await gateway.receive_ticket(input_message(), authentication="verified-source")
+        verified = await gateway.receive_ticket_v2(input_message(), authentication="verified-source")
         self.assertEqual(verified.message.message_type, "ticket_submitted")
         with self.assertRaises(AdapterError):
-            await gateway.receive_plan_response(input_message("information_provided"), authentication="verified-source")
+            await gateway.receive_plan_response_v2(input_message("information_provided"), authentication="verified-source")
         with self.assertRaises(AdapterError):
-            await gateway.send_plan(output_message("information_requested"), context=CONTEXT)
+            await gateway.send_plan_v2(output_message("information_requested"), context=CONTEXT)
         wire = request("approval.requested")
         validate_request(wire)
         await ApprovalClient(client()).request_plan(wire)
         wire["payload"]["stage"] = "resident_plan"
         with self.assertRaises(AdapterError):
             await ApprovalClient(client()).request_plan(wire)
-        with self.assertRaisesRegex(AdapterError, "reception_protocol_not_supported"):
+        with self.assertRaisesRegex(AdapterError, "validation_error"):
             await ApprovalClient(client()).request_completion({})
 
     async def test_caller_or_validator_cannot_mutate_saved_wire(self):

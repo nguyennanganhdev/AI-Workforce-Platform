@@ -1,7 +1,7 @@
 """Real DEV-3 gateway + DEV-1 Supervisor + DEV-2 room; external I/O is faked.
 
-Reuse DEV-1's test harness without editing it. Its configuration is explicitly
-V2: only management/staff backend events, Reception replies through the gateway.
+Reuse DEV-1's test harness without editing it. The original mixed event catalog
+is retained; V2 replies go through the gateway.
 """
 import importlib.util
 import sys
@@ -9,7 +9,6 @@ import unittest
 from copy import deepcopy
 from pathlib import Path
 
-from adapters.backend.events import INBOUND_TYPES
 from adapters.backend.errors import AdapterError
 from adapters.reception.reception_gateway import ReceptionGateway
 from backend.support import client
@@ -20,7 +19,6 @@ sys.path.insert(0, str(TESTS))
 spec = importlib.util.spec_from_file_location("dev3_supervisor_test_support", TESTS / "supervisor/conftest.py")
 support = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(support)
-support.KINDS = tuple(INBOUND_TYPES)
 
 
 class SupervisorV2Tests(unittest.IsolatedAsyncioTestCase):

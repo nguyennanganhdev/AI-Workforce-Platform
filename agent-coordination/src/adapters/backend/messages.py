@@ -72,8 +72,10 @@ CONTEXT_IDS = (
     "ticket_id", "binding_id", "run_id",
 )
 MESSAGE_TYPES = frozenset({
+    "ticket.submitted", "resident.message", "resident.question", "resident.update",
     "approval.requested", "approval.responded", "assignment.offered",
-    "assignment.responded", "work.completed",
+    "assignment.responded", "work.completed", "completion.requested",
+    "completion.responded",
 })
 
 
@@ -112,10 +114,24 @@ def validate_payload(message_type: str, payload: Any) -> None:
     def files(key: str) -> None:
         require(strings(p.get(key)))
 
-    if message_type.startswith("approval."):
+    if message_type == "ticket.submitted":
+        ids("report")
+        require(isinstance(p.get("facts"), dict))
+        files("attachment_ids")
+    elif message_type == "resident.message":
+        ids("text")
+        for key in ("reply_to_request_id", "mentioned_agent_id"):
+            if key in p:
+                ids(key)
+    elif message_type == "resident.question":
+        ids("question_id", "question")
+    elif message_type == "resident.update":
+        ids("summary", "status")
+        files("attachment_ids")
+    elif message_type.startswith("approval."):
         ids("approval_id")
         versioned("plan")
-        require(p.get("stage") == "management_plan")
+        require(p.get("stage") in ("management_plan", "resident_plan"))
         if message_type == "approval.responded":
             require(p.get("decision") in ("approve", "reject", "request_changes"))
         else:
@@ -125,7 +141,11 @@ def validate_payload(message_type: str, payload: Any) -> None:
             require("cost" in p)
             money(p["cost"], estimate=True)
             require(timestamp(p.get("expires_at")))
-            require(p.get("delivery_channel") == "management_ui")
+            if p["stage"] == "resident_plan":
+                ids("depends_on_approval_id")
+                require(p.get("delivery_channel") == "reception")
+            else:
+                require(p.get("delivery_channel") == "management_ui")
     elif message_type.startswith("assignment."):
         versioned("assignment")
         versioned("plan")
@@ -141,6 +161,17 @@ def validate_payload(message_type: str, payload: Any) -> None:
         files("after_file_ids")
         if "actual_cost" in p:
             money(p["actual_cost"])
+    elif message_type.startswith("completion."):
+        ids("confirmation_id")
+        versioned("result")
+        if message_type == "completion.responded":
+            require(p.get("decision") in ("confirmed", "not_satisfied"))
+        else:
+            versioned("plan")
+            ids("recipient_user_id", "summary")
+            files("evidence_file_ids")
+            require("final_cost" in p)
+            money(p["final_cost"])
     if "comment" in p:
         require(isinstance(p["comment"], str))
 
