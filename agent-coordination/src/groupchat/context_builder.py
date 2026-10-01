@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 from dataclasses import dataclass
+from typing import Optional
 
 from .models import ContextItem, Message, RoomError, Snapshot, TaskItem
 from .task_board import can_read
@@ -28,7 +29,10 @@ def visible(room: Snapshot, message: Message, agent_id: str) -> bool:
 
 
 def build(
-    room: Snapshot, agent_id: str, task_id: str | None, reply_id: str | None = None
+    room: Snapshot,
+    agent_id: str,
+    task_id: Optional[str],
+    reply_id: Optional[str] = None,
 ) -> AgentContext:
     current = room.tasks.get(task_id) if task_id else None
     if current and not can_read(current, agent_id):

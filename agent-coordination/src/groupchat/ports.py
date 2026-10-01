@@ -2,7 +2,7 @@
 
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Optional, Protocol
 
 from .models import (
     AgentOutput,
@@ -19,7 +19,7 @@ from .models import (
 
 class ParticipantResolver(Protocol):
     async def authorize(
-        self, context: Context, operation: str, room: Snapshot | None
+        self, context: Context, operation: str, room: Optional[Snapshot]
     ) -> None:
         """Kiểm tra credential/delegation, current generation, scope và history ACL.
 
@@ -36,7 +36,7 @@ class ParticipantResolver(Protocol):
         context: Context,
         groupchat_version_id: str,
         spec: ParticipantSpec,
-        room: Snapshot | None,
+        room: Optional[Snapshot],
     ) -> Participant:
         """Validate đúng evaluated, admin-approved, published version và scope.
 

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from .models import Participant, ParticipantSpec, RoomError, Snapshot
 
 
@@ -9,7 +11,7 @@ def member(room: Snapshot, version_id: str) -> Participant:
 
 
 def validate_resolved(
-    spec: ParticipantSpec, resolved: Participant, room: Snapshot | None
+    spec: ParticipantSpec, resolved: Participant, room: Optional[Snapshot]
 ) -> None:
     if resolved.agent_version_id != spec.agent_version_id or resolved.role != spec.role:
         raise RoomError("VERSION_MISMATCH")

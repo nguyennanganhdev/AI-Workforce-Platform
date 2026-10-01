@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal, Optional, Union
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -19,7 +19,7 @@ class Model(BaseModel):
 class Context(Model):
     tenant_id: Id
     principal_id: Id
-    initiated_by_user_id: Optional[Id] = None  # noqa: UP045 - Giữ cú pháp của schema.
+    initiated_by_user_id: Optional[Id] = None
     domain_id: Id
     workspace_id: Id
     ticket_id: Id
@@ -62,9 +62,9 @@ class Participant(ParticipantSpec):
 class MessageInput(Model):
     content: Text
     delivery: Literal["broadcast", "direct"] = "broadcast"
-    recipient_agent_version_id: Id | None = None
-    in_reply_to_message_id: Id | None = None
-    task_id: Id | None = None
+    recipient_agent_version_id: Optional[Id] = None
+    in_reply_to_message_id: Optional[Id] = None
+    task_id: Optional[Id] = None
 
     @model_validator(mode="after")
     def addressing(self) -> MessageInput:
@@ -103,7 +103,7 @@ class TaskItem(Model):
 class ContextItem(Model):
     item_id: Id
     content: Text
-    task_id: Id | None = None
+    task_id: Optional[Id] = None
     reader_agent_version_ids: Annotated[list[Id], Field(min_length=1)]
 
 
@@ -115,7 +115,7 @@ class MailItem(Model):
 class OpenRoom(Model):
     version: Literal[2] = 2
     operation: Literal["open_room"] = "open_room"
-    room_id: Id | None = None
+    room_id: Optional[Id] = None
     groupchat_version_id: Id
     participants: Annotated[list[ParticipantSpec], Field(min_length=1)]
     turn_policy: TurnPolicy = Field(default_factory=TurnPolicy)
@@ -148,15 +148,15 @@ class RunTurn(RoomCommand):
     correlation_id: Id
     speaker_agent_version_id: Id
     instruction: Text
-    in_reply_to_message_id: Id | None = None
+    in_reply_to_message_id: Optional[Id] = None
 
 
 class MentionAgent(RoomCommand):
     operation: Literal["mention_agent"] = "mention_agent"
     mentioned_agent_id: Id
     instruction: Text
-    task_id: Id | None = None
-    in_reply_to_message_id: Id | None = None
+    task_id: Optional[Id] = None
+    in_reply_to_message_id: Optional[Id] = None
 
 
 class PutTask(RoomCommand):
@@ -189,23 +189,25 @@ class CancelTurn(RoomCommand):
 
 
 Payload = Annotated[
-    OpenRoom
-    | AppendMessage
-    | RunTurn
-    | MentionAgent
-    | PutTask
-    | PutContext
-    | AddParticipant
-    | UpdateTurnPolicy
-    | CloseRoom
-    | CancelTurn,
+    Union[
+        OpenRoom,
+        AppendMessage,
+        RunTurn,
+        MentionAgent,
+        PutTask,
+        PutContext,
+        AddParticipant,
+        UpdateTurnPolicy,
+        CloseRoom,
+        CancelTurn,
+    ],
     Field(discriminator="operation"),
 ]
 
 
 class Command(Model):
     contract_version: Literal["1"] = "1"
-    type: Optional[str] = None  # noqa: UP045 - Giữ cú pháp của schema.
+    type: Optional[str] = None
     request_id: Id
     trace_id: Id
     idempotency_key: Id
@@ -233,13 +235,13 @@ class RoomData(Model):
     ticket_generation: int
     room_version: int
     room_state: Literal["idle", "running", "paused", "closed"]
-    pause_reason: str | None = None
-    operation_id: str | None = None
-    turn_id: str | None = None
-    task_id: str | None = None
-    source_run_id: str | None = None
-    speaker_agent_version_id: str | None = None
-    turn_status: TurnStatus | None = None
+    pause_reason: Optional[str] = None
+    operation_id: Optional[str] = None
+    turn_id: Optional[str] = None
+    task_id: Optional[str] = None
+    source_run_id: Optional[str] = None
+    speaker_agent_version_id: Optional[str] = None
+    turn_status: Optional[TurnStatus] = None
     messages: list[Message] = Field(default_factory=list)
     follow_up_requests: list[FollowUp] = Field(default_factory=list)
     turns_used: int
@@ -270,7 +272,7 @@ class Failure(Model):
     error: Error
 
 
-Result = Annotated[Success | Failure, Field(discriminator="status")]
+Result = Annotated[Union[Success, Failure], Field(discriminator="status")]
 
 
 class ActiveOperation(Model):
@@ -294,14 +296,14 @@ class Snapshot(Model):
     policy: TurnPolicy
     room_version: int = 1
     room_state: Literal["idle", "running", "paused", "closed"] = "idle"
-    pause_reason: str | None = None
+    pause_reason: Optional[str] = None
     turns_used: int = 0
     consecutive_turns: int = 0
-    last_speaker: str | None = None
-    active_operation: ActiveOperation | None = None
+    last_speaker: Optional[str] = None
+    active_operation: Optional[ActiveOperation] = None
     transcript: list[Message] = Field(default_factory=list)
     transcript_cursor: int = 0
-    framework_state_reference: str | None = None
+    framework_state_reference: Optional[str] = None
     audit_events: list[dict] = Field(default_factory=list)
     used_turn_ids: list[str] = Field(default_factory=list)
     tasks: dict[str, TaskItem] = Field(default_factory=dict)
@@ -311,11 +313,11 @@ class Snapshot(Model):
 
 class OperationRecord(Model):
     semantic_hash: str
-    result: Success | Failure
+    result: Union[Success, Failure]
 
 
 class ScopeState(Model):
-    snapshot: Snapshot | None = None
+    snapshot: Optional[Snapshot] = None
     operations: dict[str, OperationRecord] = Field(default_factory=dict)
     fence: int = 0
 
@@ -329,7 +331,7 @@ def now() -> datetime:
 
 
 class RoomError(Exception):
-    def __init__(self, code: str, message: str | None = None):
+    def __init__(self, code: str, message: Optional[str] = None):
         self.code = code
         super().__init__(message or code)
 

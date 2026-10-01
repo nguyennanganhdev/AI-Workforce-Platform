@@ -6,6 +6,7 @@ transaction boundary; model, verifier, authority and adapter calls stay outside.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Optional
 from uuid import uuid5, NAMESPACE_URL
 
 from adapters.backend.errors import AdapterError
@@ -251,7 +252,8 @@ def prepare_next(state, view, now):
 class SupervisorService:
     def __init__(self, *, store: StateStore, authority: Authority, verifier: EventVerifier,
                  event_types: dict[str, str], planner: Planner, room: RoomBridge,
-                 backend: BackendBridge, groupchat_version_id: str, turn_policy: TurnPolicy | None = None,
+                 backend: BackendBridge, groupchat_version_id: str,
+                 turn_policy: Optional[TurnPolicy] = None,
                  max_steps: int = 16, clock=None):
         require(bool(groupchat_version_id) and type(max_steps) is int and max_steps > 0, "invalid_config")
         require(all(v in INBOUND_TYPES for v in event_types.values()), "unsupported_event_mapping")
