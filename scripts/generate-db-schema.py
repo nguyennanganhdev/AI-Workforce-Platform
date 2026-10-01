@@ -11,6 +11,15 @@ OUT=ROOT/'server/src/db/schema'
 M=json.loads((OUT.parent/'design/v2.json').read_text(encoding='utf8'))
 V3=json.loads((OUT.parent/'design/v3.json').read_text(encoding='utf8'))
 M.update(V3['new']);M.update(V3['changed'])
+SECURITY=json.loads((OUT.parent/'design/v3-security.json').read_text(encoding='utf8'))
+# Preserve reviewed V2/V3 dictionaries; apply the newer approval-kind extension.
+M['work_approvals']['rules']=M['work_approvals']['rules'].replace(
+ 'kind customer_repair/management_water_shutdown/customer_completion;',
+ 'kind '+ '/'.join(SECURITY['workApprovalKinds'])+';')
+# Resident pre-intake images have a verified unit scope before a ticket exists.
+# Keep this overlay with the 0006 migration so regeneration preserves the extension.
+M['files']['rows'].insert(10, ['unit_id', 'UUID', 'NULL; FK \u2192 `units.id`', 'Verified resident apartment scope'])
+M['files']['rules']=M['files']['rules'].replace('scope_kind ticket/channel/document/report;', 'scope_kind ticket/channel/document/report/resident;')
 def camel(s):return re.sub(r'_([a-z])',lambda m:m[1].upper(),s)
 def ident(s):return s if len(s)<=63 else s[:50]+'_'+hashlib.sha256(s.encode()).hexdigest()[:12]
 names={n:camel(n) for n in M}
@@ -59,7 +68,7 @@ checks={
 'runtime_session_bindings':["(audience_kind='personal' AND customer_user_id IS NOT NULL AND team_member_id IS NULL) OR (audience_kind='team' AND customer_user_id IS NULL AND team_member_id IS NOT NULL)","generation>0"],
 'knowledge_reviews':["num_nonnulls(document_version_id,memory_candidate_id)=1"],
 'reception_waits':["status NOT IN ('open','resuming','consumed') OR interrupt_id IS NOT NULL"],
-'files':["num_nonnulls(ticket_id,channel_id,document_id,report_id)=1","(scope_kind='ticket' AND ticket_id IS NOT NULL) OR (scope_kind='channel' AND channel_id IS NOT NULL) OR (scope_kind='document' AND document_id IS NOT NULL) OR (scope_kind='report' AND report_id IS NOT NULL)","status<>'ready' OR accepted_object_id IS NOT NULL"],
+'files':["num_nonnulls(ticket_id,channel_id,document_id,report_id,unit_id)=1","(scope_kind='ticket' AND ticket_id IS NOT NULL) OR (scope_kind='channel' AND channel_id IS NOT NULL) OR (scope_kind='document' AND document_id IS NOT NULL) OR (scope_kind='report' AND report_id IS NOT NULL) OR (scope_kind='resident' AND unit_id IS NOT NULL)","status<>'ready' OR accepted_object_id IS NOT NULL"],
 'file_objects':["size_bytes>=0","sha256 ~ '^[0-9a-f]{64}$'","variant_revision>0","variant='original' OR source_object_id IS NOT NULL","status<>'ready' OR (scan_status='clean' AND verified_at IS NOT NULL)","version_id<>'' AND version_id<>'null'"],
 'file_uploads':["expected_size_bytes>0 AND expected_size_bytes<=max_size_bytes","upload_mode<>'multipart' OR multipart_upload_id IS NOT NULL"],
 'file_upload_parts':["part_number BETWEEN 1 AND 10000","size_bytes>0"],
@@ -157,6 +166,7 @@ for n,m in M.items():
  skip={p[0] for p in partial.get(n,[])}
  if n=='runtime_session_bindings':skip|={'identity_id,runtime_session_key,checkpoint_namespace'}
  if n=='skills':uq=[]
+ if n=='tickets':uq=[key for key in uq if key!='channel_id']
  for k,key in enumerate(dict.fromkeys(uq)):
   if key in skip:continue
   constraints.append(f'unique("{ident(n+"_unique_"+str(k))}").on('+','.join('t.'+camel(c) for c in key.split(','))+')')
@@ -185,7 +195,7 @@ for file,exports in groups.items():
  if file=='core.ts':exports+=['role','agentType','credentialKind']
  if file=='coworker.ts':exports+=['agentVisibility','routineRunStatus']
  (OUT/file).write_text('// Compatibility import path; canonical schema is tables.ts.\nexport { '+', '.join(exports)+' } from "./tables";\n',encoding='utf8')
-(OUT/'index.ts').write_text('/** Canonical application schema; excludes framework-managed runtime tables. */\nexport * from "./tables";\n',encoding='utf8')
+(OUT/'index.ts').write_text('/** Canonical application schema; excludes framework-managed runtime tables. */\nexport * from "./tables";\nexport * from "./security";\n',encoding='utf8')
 (OUT.parent/'design/merged.json').write_text(json.dumps(M,ensure_ascii=False,indent=2),encoding='utf8')
 extra=[]
 immutable=['ticket_events','agent_versions','context_snapshots','knowledge_chunks','ticket_assessments','ticket_assessment_evidence','ticket_triage_decisions','ticket_sla_adjustments','payment_allocations','refund_allocations','file_access_logs','work_approval_evidence','runtime_identities']

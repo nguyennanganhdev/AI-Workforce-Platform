@@ -34,10 +34,15 @@ async def _actor_id(request: Request, settings: V3Settings) -> str:
             )
     except httpx.HTTPError as exc:
         raise HTTPException(503, "Authentication server is unavailable") from exc
+    if response.status_code >= 500:
+        raise HTTPException(503, "Authentication server is unavailable")
     if response.status_code != 200:
         raise HTTPException(401, "Sign in to the platform first")
     try:
-        actor_id = response.json()["user"]["id"]
+        body = response.json()
+        if body is None:
+            raise HTTPException(401, "Sign in to the platform first")
+        actor_id = body["user"]["id"]
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(503, "Authentication server returned an invalid identity") from exc
     if not isinstance(actor_id, str) or not actor_id:
@@ -86,7 +91,7 @@ async def scoped_connection(request: Request, x_demo_actor: str | None = Header(
             yield connection, actor_id, is_admin
     except IntegrityError as exc:
         raise HTTPException(409, "V3 constraint conflict; reload the resource and retry") from exc
-    except SQLAlchemyError as exc:
+    except (SQLAlchemyError, OSError) as exc:
         raise HTTPException(503, "V3 database is unavailable or missing required tables") from exc
 
 
@@ -114,7 +119,7 @@ async def resident_connection(request: Request, x_demo_actor: str | None = Heade
             yield connection, actor_id
     except IntegrityError as exc:
         raise HTTPException(409, "V3 constraint conflict; reload the resource and retry") from exc
-    except SQLAlchemyError as exc:
+    except (SQLAlchemyError, OSError) as exc:
         raise HTTPException(503, "V3 database is unavailable or missing required tables") from exc
 
 

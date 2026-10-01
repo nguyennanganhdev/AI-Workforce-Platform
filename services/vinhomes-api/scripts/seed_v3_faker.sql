@@ -105,6 +105,15 @@ INSERT INTO channel_agents(tenant_id,channel_id,agent_id)
 VALUES ('11111111-1111-5111-a111-111111111111','management-room','demo-supervisor'),
  ('11111111-1111-5111-a111-111111111111','management-room','demo-report') ON CONFLICT DO NOTHING;
 
+-- The Reception-to-Supervisor demo handoff requires a versioned Supervisor member.
+INSERT INTO agent_versions(id,tenant_id,agent_id,version_no,runtime,framework_version,
+ instructions,config,config_hash,created_by)
+VALUES ('dddddddd-dddd-5ddd-addd-ddddddddddd1',
+ '11111111-1111-5111-a111-111111111111','demo-supervisor',1,'agentscope',
+ 'demo-record-only','Supervisor demo record-only version','{}',repeat('0',64),
+ 'local-v3-management')
+ON CONFLICT(id) DO NOTHING;
+
 UPDATE channels SET created_by='local-v3-resident' WHERE id='local-v3-reception';
 INSERT INTO channel_memberships(tenant_id,channel_id,user_id)
 VALUES ('11111111-1111-5111-a111-111111111111','local-v3-reception','local-v3-resident') ON CONFLICT DO NOTHING;

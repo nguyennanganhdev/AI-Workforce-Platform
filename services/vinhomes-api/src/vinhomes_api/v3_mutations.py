@@ -15,6 +15,22 @@ from .v3_auth import TICKET_VISIBILITY, scoped_connection
 router = APIRouter(tags=["Vinhomes V3 commands"])
 Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection)]
 
+# A failed inspection remains open until a later pass or its verified redo.
+UNRESOLVED_QC = """
+ exists (select 1 from vh_qc_results qc where qc.work_order_id=w.id
+   and qc.tenant_id=w.tenant_id and qc.outcome='fail'
+   and not exists (select 1 from vh_qc_results newer
+     where newer.work_order_id=w.id and newer.tenant_id=w.tenant_id
+       and newer.checked_at>qc.checked_at)
+   and not exists (select 1 from vh_qc_redo_orders r
+     join work_orders redo on redo.id=r.redo_work_order_id and redo.tenant_id=r.tenant_id
+     where r.qc_result_id=qc.id and r.tenant_id=qc.tenant_id
+       and redo.status='completed' and
+       (select outcome='pass' from vh_qc_results checked
+         where checked.work_order_id=redo.id and checked.tenant_id=redo.tenant_id
+         order by checked_at desc,id desc limit 1)))
+"""
+
 
 def actor_params(scope: Scope) -> dict[str, object]:
     return {"user_id": scope[1], "is_admin": scope[2]}
@@ -25,7 +41,7 @@ async def visible_ticket(scope: Scope, ticket_id: UUID, *, lock: bool = False) -
         select t.id, t.status, t.version, t.last_event_seq, t.domain_id,
                t.building_id, t.site_id, t.zone_id, t.management_unit_id,
                t.category_id, t.triage_status, t.request_kind, t.reopen_count,
-               t.current_triage_decision_id
+               t.current_triage_decision_id,t.is_emergency
         from tickets t where t.id=:ticket_id and {TICKET_VISIBILITY}
         {"for update of t" if lock else ""}
     """), {**actor_params(scope), "ticket_id": ticket_id})
@@ -76,7 +92,10 @@ async def record_event(scope: Scope, ticket: dict[str, object], event_type: str,
         update tickets set last_event_seq=:seq, version=version+1, updated_at=now()
         where id=:ticket_id
     """), {"ticket_id": ticket["id"], "seq": seq})
-    return inserted.scalar_one()
+    event_id = inserted.scalar_one()
+    from .resident_cases import append_domain_event
+    await append_domain_event(scope[0], ticket["id"], event_type, to_status)
+    return event_id
 
 
 class TicketChange(BaseModel):
@@ -175,7 +194,7 @@ async def create_ticket(body: TicketCreate, scope: Scope) -> dict[str, object]:
            "request_kind": body.request_kind})
     ticket = dict(created.mappings().one())
     await record_event(scope, {**ticket, "last_event_seq": 0}, "ticket.created",
-                       json.dumps({"source": "operations_api"}), to_status="open")
+                       json.dumps({"source": "operations_api", "requiresPlan": True}), to_status="open")
     ticket["version"] = 1
     return ticket
 
@@ -189,6 +208,37 @@ async def change_ticket_status(ticket_id: UUID, body: TicketChange, scope: Scope
         raise HTTPException(409, "Ticket version changed; reload before updating")
     if body.status not in TICKET_TRANSITIONS.get(ticket["status"], set()):
         raise HTTPException(409, "Invalid ticket status transition")
+    if body.status in {"resolved", "closed"}:
+        unapproved_plan = await scope[0].execute(text("""
+            select 1 from ticket_events e where e.ticket_id=:id
+              and e.event_type='ticket.created' and e.payload->>'requiresPlan'='true'
+              and not exists (select 1 from vh_ticket_plans p
+                where p.ticket_id=e.ticket_id and p.status='approved') limit 1
+        """), {"id": ticket_id})
+        if unapproved_plan.first() is not None:
+            raise HTTPException(409, "Approve the management and resident plan before resolving the ticket")
+        failed_qc = await scope[0].execute(text(f"""
+            select 1 from work_orders w where w.ticket_id=:id and w.required
+              and w.status not in ('cancelled','rejected') and {UNRESOLVED_QC} limit 1
+        """), {"id": ticket_id})
+        if failed_qc.first() is not None:
+            raise HTTPException(409, "Resolve failed quality inspections before closing the ticket")
+        unfinished = await scope[0].execute(text("""
+            select 1 from work_orders where ticket_id=:id and required
+              and status not in ('completed','cancelled','rejected') limit 1
+        """), {"id": ticket_id})
+        if unfinished.first() is not None:
+            raise HTTPException(409, "Finish required work before resolving the ticket")
+        if body.status == "closed":
+            unaccepted = await scope[0].execute(text("""
+                select 1 from work_orders w where w.ticket_id=:id and w.required
+                  and w.status='completed' and not exists (
+                    select 1 from work_approvals a where a.work_order_id=w.id
+                      and a.tenant_id=w.tenant_id and a.kind='customer_completion'
+                      and a.status='approved') limit 1
+            """), {"id": ticket_id})
+            if unaccepted.first() is not None:
+                raise HTTPException(409, "Resident acceptance is required before closing the ticket")
     await scope[0].execute(text("""
         update tickets set status=:status,
           resolved_at=case when :status='resolved' then now() else resolved_at end,
@@ -259,6 +309,9 @@ async def create_work_order(ticket_id: UUID, body: WorkOrderCreate, scope: Scope
         raise HTTPException(409, "Ticket version changed; reload before creating work order")
     if not await management_access(scope, ticket):
         raise HTTPException(403, "Responsible management required")
+    planned = await scope[0].execute(text("select 1 from ticket_events where ticket_id=:id and event_type='ticket.created' and payload->>'requiresPlan'='true' limit 1"), {'id':ticket_id})
+    if planned.first() is not None:
+        raise HTTPException(409, 'Create a ticket plan; resident approval creates its work orders')
     if ticket["status"] not in {"open", "triaging"}:
         raise HTTPException(409, "Ticket is not awaiting work dispatch")
     category = await scope[0].execute(text("""
@@ -319,14 +372,32 @@ async def change_work_order_status(work_order_id: UUID, body: WorkOrderTransitio
             raise HTTPException(403, "Accepted assignment or administrator required")
     ticket = await visible_ticket(scope, order["ticket_id"], lock=True)
     locked = await scope[0].execute(text("""
-        select status, version from work_orders where id=:id for update
+        select status, version,category_id from work_orders where id=:id for update
     """), {"id": work_order_id})
     current = locked.mappings().one()
     if current["version"] != body.version:
         raise HTTPException(409, "Work order version changed; reload before updating")
     if body.status not in ALLOWED_TRANSITIONS.get(current["status"], set()):
         raise HTTPException(409, "Invalid work order status transition")
+    if body.status == 'cancelled':
+        category = await scope[0].execute(text("select code from service_categories where id=:id"), {"id": current["category_id"]})
+        if category.scalar_one() == 'security':
+            raise HTTPException(409, "Guard cancellation requires a management-approved cancel request")
     if body.status == "completed":
+        plan_required = await scope[0].execute(text("""
+            select 1 from ticket_events where ticket_id=:id
+              and event_type='ticket.created' and payload->>'requiresPlan'='true' limit 1
+        """), {"id": ticket["id"]})
+        if plan_required.first() is not None:
+            before = await scope[0].execute(text("""
+                select 1 from evidence_items where work_order_id=:id
+                  and status='active' and purpose='before' limit 1
+            """), {"id": work_order_id})
+            if before.first() is None:
+                raise HTTPException(409, "Attach before-work evidence before completing work")
+        pending_permissions = await scope[0].execute(text("select 1 from vh_operational_requests where work_order_id=:id and status in ('pending','approved') limit 1"), {"id": work_order_id})
+        if pending_permissions.first() is not None:
+            raise HTTPException(409, "Finish or cancel operational permissions before completing work")
         water = await scope[0].execute(text("""
             select 1 from service_interruptions si join work_approvals wa on wa.id=si.approval_id and wa.tenant_id=si.tenant_id
             where wa.work_order_id=:id and si.status not in ('restored','cancelled') limit 1
@@ -356,7 +427,9 @@ async def change_work_order_status(work_order_id: UUID, body: WorkOrderTransitio
             from tickets where id=:ticket_id
         """), {"id": work_order_id, "ticket_id": ticket["id"], "note": body.note,
                "hash": str(uuid4())})
-        await scope[0].execute(text("update tickets set status='resolved',resolved_at=now() where id=:id"), {"id": ticket["id"]})
+        remaining = await scope[0].execute(text("select 1 from work_orders where ticket_id=:id and required and status not in ('completed','cancelled','rejected') limit 1"), {"id": ticket["id"]})
+        if remaining.first() is None:
+            await scope[0].execute(text("update tickets set status='resolved',resolved_at=now() where id=:id"), {"id": ticket["id"]})
     elif body.status == "in_progress":
         await scope[0].execute(text("update tickets set status='in_progress' where id=:id"), {"id": ticket["id"]})
     return dict(updated.mappings().one())
@@ -382,6 +455,24 @@ async def create_assignment(work_order_id: UUID, body: AssignmentCreate,
     ticket = await visible_ticket(scope, order["ticket_id"], lock=True)
     if not await management_access(scope, ticket):
         raise HTTPException(403, "Responsible management required for dispatch")
+    pending_plan = await scope[0].execute(text("select 1 from vh_ticket_plans where ticket_id=:id and status in ('management_pending','resident_pending') limit 1"), {"id": ticket['id']})
+    if pending_plan.first() is not None:
+        raise HTTPException(409, "Management and resident must approve the plan before dispatch")
+    policy = await scope[0].execute(text("select 1 from ticket_events where ticket_id=:id and event_type='ticket.created' and payload->>'requiresPlan'='true' limit 1"), {'id':ticket['id']})
+    if policy.first() is not None:
+        approved = await scope[0].execute(text("select 1 from vh_ticket_plans p,jsonb_array_elements(p.steps) step where p.ticket_id=:ticket and p.status='approved' and step->>'work_order_id'=:work limit 1"), {'ticket':ticket['id'],'work':str(work_order_id)})
+        if approved.first() is None:
+            raise HTTPException(409, 'Work order must originate from an approved management/resident plan')
+    category = await scope[0].execute(text("select code from service_categories where id=:id"), {"id": order["category_id"]})
+    if category.scalar_one() == "security":
+        authorization = await scope[0].execute(text("""
+            select 1 from work_approvals where work_order_id=:id
+              and kind='management_security_dispatch' and status='approved'
+              and request_detail->>'staff_id'=:staff
+              and (request_detail->>'work_order_version')::int=:version limit 1
+        """), {"id": work_order_id, "staff": str(body.staff_id), "version": body.work_order_version})
+        if authorization.first() is None:
+            raise HTTPException(409, "Approved guard dispatch request required")
     locked_order = await scope[0].execute(text("""
         select version, status from work_orders where id=:id for update
     """), {"id": work_order_id})
@@ -506,9 +597,14 @@ class EvidenceAttach(BaseModel):
              summary="Attach an already verified V3 file as evidence")
 async def attach_evidence(ticket_id: UUID, body: EvidenceAttach,
                           scope: Scope) -> dict[str, object]:
+    if body.purpose in {'before', 'after'} and (body.work_order_id is None or body.assignment_id is None):
+        raise HTTPException(422, "Before/after evidence requires a work order and its assignment")
+    if body.assignment_id is not None and body.work_order_id is None:
+        raise HTTPException(422, "Assignment evidence requires its work order")
     ticket = await visible_ticket(scope, ticket_id, lock=True)
     file = await scope[0].execute(text("""
-        select 1 from files where id=:file_id and ticket_id=:ticket_id and status='ready'
+        select 1 from files f where f.id=:file_id and f.status='ready'
+          and (f.ticket_id=:ticket_id or exists(select 1 from ticket_files tf where tf.file_id=f.id and tf.tenant_id=f.tenant_id and tf.ticket_id=:ticket_id))
     """), {"file_id": body.file_id, "ticket_id": ticket_id})
     if file.first() is None:
         raise HTTPException(422, "A ready file belonging to this ticket is required")
@@ -518,11 +614,15 @@ async def attach_evidence(ticket_id: UUID, body: EvidenceAttach,
         """), {"id": body.work_order_id, "ticket_id": ticket_id})
         if order.first() is None:
             raise HTTPException(422, "Work order does not belong to this ticket")
+        if not await management_access(scope,ticket):
+            executor=await scope[0].execute(text("select 1 from work_assignments a join staff_profiles sp on sp.id=a.staff_id and sp.tenant_id=a.tenant_id where a.work_order_id=:work and sp.user_id=:actor and a.status='accepted'"), {'work':body.work_order_id,'actor':scope[1]})
+            if executor.first() is None:
+                raise HTTPException(403,'Accepted executor or responsible management required for work evidence')
     if body.assignment_id is not None:
         assignment = await scope[0].execute(text("""
             select 1 from work_assignments a join work_orders w on w.id=a.work_order_id
-            where a.id=:id and w.ticket_id=:ticket_id
-        """), {"id": body.assignment_id, "ticket_id": ticket_id})
+            where a.id=:id and w.ticket_id=:ticket_id and a.work_order_id=:work_id
+        """), {"id": body.assignment_id, "ticket_id": ticket_id, 'work_id':body.work_order_id})
         if assignment.first() is None:
             raise HTTPException(422, "Assignment does not belong to this ticket")
     created = await scope[0].execute(text("""

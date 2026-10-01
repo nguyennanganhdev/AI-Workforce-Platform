@@ -28,7 +28,7 @@ EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 
 def local_only(request: Request) -> None:
     settings = request.app.state.settings
-    if not (settings.dev_user_id or settings.demo_mode) or settings.host not in {"127.0.0.1", "localhost", "::1"}:
+    if not (settings.dev_user_id or settings.demo_mode or settings.resident_local_storage) or settings.host not in {"127.0.0.1", "localhost", "::1"}:
         raise HTTPException(503, "Local file storage is available only in loopback development")
 
 
@@ -129,18 +129,23 @@ async def upload_ticket_file(
 
 
 @router.get("/files/{file_id}/content", summary="Download a local development evidence image")
-async def download_file(file_id: UUID, request: Request, scope: Scope) -> FileResponse:
+async def download_file(file_id: UUID, request: Request, scope: Scope, inline: bool = False) -> FileResponse:
     local_only(request)
     found = await scope[0].execute(text("""
-        select f.ticket_id, f.original_name, o.object_key, o.sha256
+        select f.ticket_id, f.channel_id, f.original_name, o.object_key, o.sha256, o.mime_type
         from files f join file_objects o on o.id=f.accepted_object_id and o.tenant_id=f.tenant_id
         where f.id=:id and f.status='ready' and o.status='ready'
           and o.location_id in (select id from storage_locations
                                 where provider='local_fs' and purpose='evidence')
     """), {"id": file_id})
     file = found.mappings().first()
-    if file is None or file["ticket_id"] is None:
+    if file is None:
         raise HTTPException(404, "Local evidence image not found")
+    if file['ticket_id'] is None and file['channel_id'] is not None:
+        from .v3_conversation_images import read_image
+        return await read_image(file_id,request,(scope[0],scope[1]))
+    if file['ticket_id'] is None:
+        raise HTTPException(404, 'Local evidence image not found')
     await visible_ticket(scope, file["ticket_id"])
     object_key = file["object_key"]
     if Path(object_key).is_absolute():
@@ -148,8 +153,11 @@ async def download_file(file_id: UUID, request: Request, scope: Scope) -> FileRe
     file_path = (FILE_ROOT / object_key).resolve()
     if not file_path.is_relative_to(FILE_ROOT.resolve()) or not file_path.is_file():
         raise HTTPException(404, "Local evidence image is missing")
-    return FileResponse(file_path, media_type="application/octet-stream",
-                        filename=file["original_name"], content_disposition_type="attachment")
+    if inline and file['mime_type'] not in EXT:
+        raise HTTPException(415, 'Only verified image types support inline preview')
+    return FileResponse(file_path, media_type=file['mime_type'] if inline else "application/octet-stream",
+                        filename=file["original_name"], content_disposition_type="inline" if inline else "attachment",
+                        headers={'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store'})
 
 
 @router.get("/tickets/{ticket_id}/files", summary="List files attached to a ticket")

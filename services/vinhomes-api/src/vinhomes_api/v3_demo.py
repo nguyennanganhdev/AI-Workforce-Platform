@@ -27,7 +27,7 @@ async def fixtures(request: Request, scope: Scope) -> dict[str, object]:
         "myUnits": "select u.id,u.code,u.building_id from units u join unit_residents ur on ur.unit_id=u.id and ur.tenant_id=u.tenant_id where ur.user_id=:actor",
         "staff": "select sp.id,sp.user_id,sp.employee_code,sp.management_unit_id,u.name from staff_profiles sp join users u on u.id=sp.user_id",
         "reviewers": "select distinct u.id,u.name from users u join tenant_memberships m on m.user_id=u.id join scoped_user_roles r on r.membership_id=m.id and r.tenant_id=m.tenant_id where m.status='active' and r.role_code='management' and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now())",
-        "roomAgents": "select ca.channel_id,a.id,a.name from channel_agents ca join agents a on a.id=ca.agent_id and a.tenant_id=ca.tenant_id join channel_memberships m on m.channel_id=ca.channel_id and m.tenant_id=ca.tenant_id where m.user_id=:actor",
+        "roomAgents": "select ca.channel_id,a.id,a.name from channel_agents ca join agents a on a.id=ca.agent_id and a.tenant_id=ca.tenant_id join channel_memberships m on m.channel_id=ca.channel_id and m.tenant_id=ca.tenant_id where m.user_id=:actor and a.status='active'",
         "scopes": "select id,kind,building_id from access_scopes",
     }
     for key, sql in queries.items():
