@@ -2,6 +2,7 @@ import {
   type AuditSink,
   type Clock,
   type ContextResolver,
+  createInMemoryApprovalRequestStore,
   createInMemoryAssetReadPort,
   createInMemoryExecutorResultStore,
   createInMemoryIdempotencyStore,
@@ -49,6 +50,8 @@ export const CAPABILITIES = [
   "executor_result:submit",
   "resolution:verify",
   "maintenance:append",
+  "utility_isolation:request",
+  "area_restriction:request",
 ] as const;
 
 export const fixtureContextResolver: ContextResolver = async (caller) => {
@@ -93,6 +96,21 @@ function unconfigured(name: string): never {
     findEvidence: () => {
       throw new Error(`This test did not configure the ${name} port.`);
     },
+    getTicket: () => {
+      throw new Error(`This test did not configure the ${name} port.`);
+    },
+    placement: () => {
+      throw new Error(`This test did not configure the ${name} port.`);
+    },
+    findScopes: () => {
+      throw new Error(`This test did not configure the ${name} port.`);
+    },
+    findOpen: () => {
+      throw new Error(`This test did not configure the ${name} port.`);
+    },
+    createWaterIsolation: () => {
+      throw new Error(`This test did not configure the ${name} port.`);
+    },
   } as never;
 }
 
@@ -134,6 +152,10 @@ export function technicalToolHarness(
         ports.maintenanceStore ?? createInMemoryMaintenanceStore(),
       workOrders: ports.workOrders ?? unconfigured("workOrders"),
       measurements: ports.measurements ?? createInMemoryMeasurementStore(),
+      scopes: ports.scopes ?? unconfigured("scopes"),
+      isolations: ports.isolations ?? unconfigured("isolations"),
+      approvalRequests:
+        ports.approvalRequests ?? createInMemoryApprovalRequestStore(),
       executorResults:
         ports.executorResults ?? createInMemoryExecutorResultStore(),
       clock: ports.clock ?? fixedClock,

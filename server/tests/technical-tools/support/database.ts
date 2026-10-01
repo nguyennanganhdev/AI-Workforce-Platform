@@ -17,10 +17,14 @@ import { seedWorld } from "./seed-db";
 const MIGRATIONS = resolve(import.meta.dir, "../../../drizzle");
 const BASELINE = resolve(MIGRATIONS, "0000_grey_blockbuster.sql");
 
-/** The role the tools' queries run as. It may read four tables and write none. */
+/**
+ * The role the tools' queries run as. It reads what the tools read, and may insert into the three
+ * tables a water isolation request is written to: insert, never update or delete, so a request it
+ * writes cannot be turned into an approval or an outage by anything running as it.
+ */
 const RUNTIME_ROLE = "technical_tools_runtime";
 
-/** Everything that role is given, which is also the whole of what the two tools need. */
+/** Everything that role is given, which is also the whole of what the tools need. */
 const runtimeGrants = (role: string) => `
   GRANT USAGE ON SCHEMA public TO ${role};
   GRANT SELECT ON buildings, access_scopes, service_interruptions, interruption_scopes TO ${role};
@@ -28,6 +32,8 @@ const runtimeGrants = (role: string) => `
     document_acl TO ${role};
   GRANT SELECT ON tickets, work_orders, work_assignments, staff_profiles, evidence_items, files
     TO ${role};
+  GRANT SELECT, INSERT ON work_approvals TO ${role};
+  GRANT INSERT ON service_interruptions, interruption_scopes TO ${role};
 `;
 
 export type TestDatabase = {
@@ -52,7 +58,7 @@ export type TestDatabase = {
  * superuser. Row-level security does not apply to superusers at all, FORCE or not, so tests run as
  * the owner would pass whether or not a query set its tenant.
  */
-async function openPglite(): Promise<TestDatabase> {
+async function openPglite(shared: boolean): Promise<TestDatabase> {
   const client = new PGlite({ extensions: { vector, btree_gist } });
   await client.exec(await readFile(BASELINE, "utf8"));
   const database = drizzlePglite({ client, schema });
@@ -67,8 +73,10 @@ async function openPglite(): Promise<TestDatabase> {
     database,
     rows: async <T>(statement: string) =>
       (await client.query<T>(statement)).rows,
-    // Shared by every file in the run and gone with the process; there is nothing to release.
-    close: async () => {},
+    // The shared instance is gone with the process; a file's own instance is released with it.
+    close: async () => {
+      if (!shared) await client.close();
+    },
   };
 }
 
@@ -167,14 +175,19 @@ let sharedPglite: Promise<TestDatabase> | undefined;
  * instead. The variable is read through the repository's own `testDatabaseUrl`, which refuses the
  * live `openbot` database.
  *
- * The in-process instance is shared by every file in a run: loading the baseline takes about ten
- * seconds, the tools only read, and the role they run as cannot write.
+ * The in-process instance is shared by every file that only reads: loading the baseline takes
+ * about ten seconds. A file whose tools write asks for `isolated`.
  */
-export function technicalToolsTestDatabase(): Promise<TestDatabase> {
+export function technicalToolsTestDatabase(
+  options: { isolated?: boolean } = {},
+): Promise<TestDatabase> {
   if (process.env.TEST_DATABASE_URL?.trim()) {
     return openPostgres(testDatabaseUrl());
   }
-  sharedPglite ??= openPglite();
+  // A file that writes gets a database of its own, so the counts the read tests assert on stay
+  // what the seed made them. On PostgreSQL every file already has its own.
+  if (options.isolated) return openPglite(false);
+  sharedPglite ??= openPglite(true);
   return sharedPglite;
 }
 

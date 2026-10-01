@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import {
+  createInMemoryApprovalRequestStore,
   createInMemoryAssetReadPort,
   createInMemoryExecutorResultStore,
   createInMemoryIdempotencyStore,
@@ -42,7 +43,14 @@ function hostWith(audit = recordingAudit()) {
       sensors: createInMemorySensorReadPort(),
       maintenance: createInMemoryMaintenanceReadPort(),
       maintenanceStore: createInMemoryMaintenanceStore(),
-      workOrders: { getWorkOrder: unused, findEvidence: unused },
+      scopes: { placement: unused, findScopes: unused },
+      isolations: { findOpen: unused, createWaterIsolation: unused },
+      approvalRequests: createInMemoryApprovalRequestStore(),
+      workOrders: {
+        getWorkOrder: unused,
+        getTicket: unused,
+        findEvidence: unused,
+      },
       measurements: createInMemoryMeasurementStore(),
       executorResults: createInMemoryExecutorResultStore(),
       idempotency: createInMemoryIdempotencyStore(),

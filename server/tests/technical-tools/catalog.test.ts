@@ -18,7 +18,7 @@ import {
 const CATALOGUE = describeTechnicalTools();
 
 describe("what the catalogue says about every tool", () => {
-  test("names the ten built so far: every lookup, record and verification tool in tools.md", () => {
+  test("names the twelve built so far: every lookup, record and verification tool, and two requests", () => {
     expect(CATALOGUE.map((tool) => tool.name)).toEqual([
       "technical.get_active_outage",
       "utility_schedule.read",
@@ -30,6 +30,8 @@ describe("what the catalogue says about every tool", () => {
       "technical.submit_executor_result",
       "technical.verify_resolution",
       "maintenance_history.append",
+      "utility_isolation.request",
+      "area_restriction.request",
     ]);
   });
 
@@ -44,6 +46,8 @@ describe("what the catalogue says about every tool", () => {
       "technical.record_measurement",
       "technical.submit_executor_result",
       "maintenance_history.append",
+      "utility_isolation.request",
+      "area_restriction.request",
     ]);
     for (const tool of writes) {
       expect((tool.input_schema as { required?: string[] }).required).toContain(
@@ -124,6 +128,14 @@ describe("what the catalogue says about every tool", () => {
       (tool) => tool.name === "maintenance_history.append",
     );
     expect(append?.description).toContain("verified again here");
+    for (const name of [
+      "utility_isolation.request",
+      "area_restriction.request",
+    ]) {
+      expect(
+        CATALOGUE.find((tool) => tool.name === name)?.description,
+      ).toContain("only creates a request");
+    }
   });
 });
 
