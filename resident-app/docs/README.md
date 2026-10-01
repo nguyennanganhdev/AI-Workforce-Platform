@@ -6,6 +6,8 @@ commit nền `fea244d`. Không có backend cư dân được tạo bởi bộ t�
 
 ## Đọc theo thứ tự
 
+**BE bắt đầu nối từ đây:** [06 — Hướng dẫn tích hợp backend](06-backend-integration-guide.md): adapter cần thay, payload ví dụ, endpoint đề xuất, quyền/state machine, lỗi/version/idempotency, upload/realtime/report và checklist nghiệm thu liên app. Contract cần FE/BE thống nhất trước khi triển khai.
+
 **Cập nhật UI mới nhất:** [05 — Bốn luồng FE và bàn giao tích hợp](05-workspace-fe-handoff.md). Đã có nhiều hội thoại/tin chưa đọc cư dân, quản trị tài khoản, nhóm BQL, điều phối điện/nước/an ninh và báo cáo DOCX ở chế độ mẫu. Tài liệu 05 cũng sửa các tham chiếu backend cũ không còn đúng với checkout hiện tại.
 
 Luồng tài khoản mới: [04-auth-ui.md](04-auth-ui.md) — cư dân tự đăng ký, nhân viên chỉ đăng nhập bằng tài khoản admin cấp; phân biệt UI demo với phiên thật.

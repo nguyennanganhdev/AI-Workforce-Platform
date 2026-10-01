@@ -142,6 +142,18 @@ export function actorOf(s: WorkspaceState, id: string) {
     );
   return a;
 }
+export function setAvailability(
+  state: WorkspaceState,
+  actorId: string,
+  available: boolean,
+) {
+  const s = structuredClone(state),
+    a = actorOf(s, actorId);
+  if (!["technical", "security", "sanitation"].includes(a.role))
+    throw new Error("Chỉ nhân viên hiện trường cập nhật trạng thái nhận việc.");
+  a.available = available;
+  return s;
+}
 function manager(s: WorkspaceState, id: string, scope: Scope) {
   const a = actorOf(s, id);
   if (a.role !== "manager" || a.scope !== scope)

@@ -1,6 +1,6 @@
 # Chạy frontend nhân viên / OpenBot
 
-Luồng FE mới: đăng nhập `/operations/login`, chọn tài khoản trong khu vực **trải nghiệm**. ADMIN-01 quản lý tài khoản; BQL-01 quản lý nhóm/ticket/báo cáo; KT-01 và AN-01 xử lý ticket đã được giao tại **Ticket & hiện trường**. Hướng dẫn nghiệp vụ và bàn giao backend: [Bốn luồng FE/UI](../resident-app/docs/05-workspace-fe-handoff.md).
+Luồng FE mới: đăng nhập `/operations/login`, chọn tài khoản trong khu vực **trải nghiệm**. ADMIN-01 quản lý tài khoản; BQL-01 điều phối tại **Phân công công việc**; KT-01 và AN-01 xử lý tại **Việc của tôi**. Hai màn dùng chung danh sách tham chiếu và chi tiết ticket theo vai trò; link `/operations/dispatch` cũ tự chuyển sang màn phù hợp. Hướng dẫn nghiệp vụ và bàn giao backend: [Bốn luồng FE/UI](../resident-app/docs/05-workspace-fe-handoff.md).
 
 Chạy các lệnh từ thư mục gốc repository:
 

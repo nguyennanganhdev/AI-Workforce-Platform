@@ -1,5 +1,7 @@
 # Bàn giao bốn luồng FE/UI — 01/10/2026
 
+**Dành cho BE bắt đầu tích hợp:** đọc [06 — Hướng dẫn API, dữ liệu, phân quyền và nghiệm thu liên app](06-backend-integration-guide.md). Tài liệu này mô tả hiện trạng UI; tài liệu 06 chỉ rõ phần cần nối và các khác biệt giữa mock với production.
+
 Đây là UI có dữ liệu mẫu, chưa phải hệ thống nghiệp vụ production. Hai frontend vẫn độc lập: `resident-app` không import component, CSS hoặc state của `app`. Tài liệu này cập nhật phần trạng thái UI trong các tài liệu 01–04; endpoint bên dưới là đề xuất cần thống nhất với BE.
 
 ## 1. Cư dân: nhiều hội thoại, một ticket mỗi hội thoại
@@ -25,8 +27,8 @@ Entry: `http://localhost:3020/operations/login`. Phần **Tài khoản để xem
 |---|---|---|
 | ADMIN-01 | Admin | `/operations/accounts` |
 | BQL-01 / BQL-02 | BQL S2.01 / S2.02 | `/operations/team` |
-| KT-01 | Kỹ thuật | Việc của tôi; luồng mới ở `/operations/dispatch` |
-| AN-01 | An ninh | Việc của tôi; luồng mới ở `/operations/dispatch` |
+| KT-01 | Kỹ thuật | `/operations/my-tasks` — danh sách chung và xử lý hiện trường |
+| AN-01 | An ninh | `/operations/my-tasks` — danh sách chung và xử lý hiện trường |
 | VS-01 | Vệ sinh | Màn nghiệp vụ vệ sinh hiện hữu |
 
 Admin tạo hồ sơ nhân viên/BQL/admin, duyệt hồ sơ cư dân pending, kích hoạt, khóa và xóa. Form không lưu mật khẩu. Không tự khóa/xóa chính mình, không xóa nhân viên có công việc đang mở, xóa cần nhập đúng định danh. Có nhật ký thao tác mẫu. Hồ sơ cư dân pending là seed; đăng ký resident chưa đẩy dữ liệu vào bảng admin.
@@ -39,11 +41,22 @@ Menu và direct URL giới hạn theo role trong `workspace/model.ts`. Bỏ bộ
 
 `/operations/team` chỉ hiển thị phòng cùng scope của BQL. Tạo agent mẫu sẽ tự thêm agent vào nhóm. Chọn **@Nhắc agent**, tùy chọn ticket cùng tòa nhà, rồi gửi nội dung. Context mẫu gồm room, scope, tối đa tám message ID gần nhất và ticket/stage. Không cho đính kèm ticket hoặc gọi agent ngoài phòng.
 
-Phản hồi agent được gắn nhãn mô phỏng. AgentScope, Context Builder, interrupt và thực thi agent thuộc BE; FE không giả lập các thao tác này thành công. Bảng công việc liên kết sang chi tiết ticket tại `/operations/dispatch?ticket=...`.
+Phản hồi agent được gắn nhãn mô phỏng. AgentScope, Context Builder, interrupt và thực thi agent thuộc BE; FE không giả lập các thao tác này thành công. Bảng công việc và ticket trong tin nhắn mở `/operations/kanban?ticket=...`, dùng cùng chi tiết và cùng record với nhân viên tại `/operations/my-tasks?ticket=...`.
 
 ## 4. Điều phối, hiện trường và báo cáo
 
-Các ticket `DEMO-*` dùng chung giữa nhóm BQL, dispatch và báo cáo. BQL xem trong scope; nhân viên chỉ thấy ticket được giao cho mình. Bộ chọn nhân viên kiểm tra bộ phận, phạm vi, trạng thái và công việc đang mở. Nhân viên bận đưa ticket vào hàng chờ, timeline ghi thông báo mẫu cho cư dân.
+Các ticket `DEMO-*` dùng chung giữa nhóm BQL, Phân công công việc, Việc của tôi và báo cáo. BQL xem trong scope; nhân viên chỉ thấy ticket được giao cho mình. Bộ chọn nhân viên kiểm tra bộ phận, phạm vi, trạng thái và công việc đang mở trong workflow ticket. Nhân viên bận đưa ticket vào hàng chờ, timeline ghi thông báo mẫu cho cư dân.
+
+### Gộp màn công việc
+
+- Bỏ menu “Ticket & hiện trường”. Nhân viên dùng **Việc của tôi**; BQL dùng **Phân công công việc**.
+- `WorkPage.tsx` dùng một danh sách, bộ lọc nội dung/bộ phận/tiến độ và lịch sử; BQL có thêm chế độ bảng tiến độ. Mỗi thẻ mở đúng hồ sơ gốc, không tạo bản sao.
+- `work-items.ts` là read model chung, ghép tham chiếu tới ticket mới và Task/WorkOrder hiện hữu. BQL thấy một dòng/task, chi tiết chứa các lần thi công; nhân viên thấy các phiếu được giao. Mọi dòng giới hạn theo tòa nhà. Hồ sơ ngoài phạm vi bị ẩn, không bị xóa.
+- `TicketDetail.tsx` được dùng chung giữa BQL và nhân viên; nút thao tác theo role/assignment/stage. Phiếu cũ tiếp tục mở component hiện hữu, giữ checklist, báo giá, ảnh trước/sau và bàn giao cư dân.
+- **Đang mở** và **Lịch sử** lấy từ cùng read model. Chờ cư dân xác nhận/BQL phê duyệt vẫn là việc đang mở; đóng ticket chuyển cùng record sang lịch sử.
+- `?ticket=` chọn workflow ticket, `?job=` chọn phiếu nhân viên, `?task=` chọn nhiệm vụ BQL, `?view=history` giữ lịch sử khi mở/đóng chi tiết. Link ngoài phạm vi hiển thị không tìm thấy, không tự mở một ticket khác.
+- `/operations/dispatch?ticket=...` là redirect tương thích, giữ ticket ID và chuyển theo role. `/operations/completed-tasks` chuyển về tab lịch sử của màn tương ứng.
+- Nút **Sẵn sàng nhận thêm việc** cập nhật availability của tài khoản mẫu; không tự bỏ phân công đang có.
 
 | Nhánh | Trình tự UI |
 |---|---|
@@ -61,7 +74,8 @@ Mức ưu tiên FE đã thống nhất P0–P3. Snapshot legacy `vhm_operations_
 ## Dữ liệu và điểm tích hợp
 
 - Operations mới: `app/src/features/vinhomes-operations/workspace/`, local key `vinhomes.frontend-workspace.v1`; reducer thuần ở `service.ts`, đọc/lưu và báo lỗi ở `use-workspace.ts`.
-- Các màn công việc/thi công/QC cũ vẫn dùng dataset legacy riêng. Không có đồng bộ ngầm giữa legacy, workspace mới và resident. Khi nối BE cần hợp nhất qua adapter cùng ticket ID, tránh tạo thêm hệ thống ticket song song.
+- Danh sách công việc đã hợp nhất qua `work-items.ts`, nhưng persistence mock vẫn giữ schema cũ và mới để bảo toàn checklist, báo giá, ảnh và lịch sử. Read model không sao chép ticket giữa hai store. Các thao tác ghi về reducer gốc tương ứng. Đây chưa phải migration dữ liệu production: BE cần cung cấp quan hệ ticket → task → các lần thi công và tải nhân viên chung; báo cáo/nhắc agent hiện vẫn áp dụng workflow ticket mẫu `DEMO-*`. Resident vẫn cần API để đồng bộ với Operations.
+- Mapping identity legacy chỉ dành cho ba tài khoản seed, không cấp hồ sơ cũ cho một tài khoản mới chỉ vì cùng role. Khi nối BE bỏ mapping seed và dùng user ID/assignment do server xác nhận.
 - Backend đã có đọc ticket tại [ticket-routes.ts](../../server/src/business/ticket-routes.ts), DTO tại [vinhomes-ticket.ts](../../shared/vinhomes-ticket.ts). Không được coi các đường dẫn `server/src/domains/vinhomes/` trong tài liệu cũ là file đang tồn tại ở checkout này.
 - Các API nghiệp vụ mới bên dưới **chưa được triển khai bởi thay đổi FE này**. Tên path mang tính đề xuất, không gọi thử như API thật.
 
@@ -96,6 +110,7 @@ Chạy từ repository root bằng Bun có sẵn, không cần quyền admin ho�
 
 ```powershell
 bun test resident-app/tests app/tests/operations-workspace.test.ts app/tests/operations-auth.test.ts app/tests/vinhomes-operations.test.ts app/tests/mock-data-integrity.test.ts
+bun test app/tests/operations-work-items.test.ts
 bun run --cwd resident-app typecheck
 bun run --cwd app typecheck
 bun run build:resident

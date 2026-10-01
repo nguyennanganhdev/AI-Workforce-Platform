@@ -1,19 +1,13 @@
-import { Navigate, createFileRoute } from '@tanstack/react-router';
-import { MyTasksWorkspace, TechnicianWorkspace, useOperationsData } from '@/features/vinhomes-operations';
-
-function MyTasksRoute() {
-  const { currentPersona, canAccessMenu } = useOperationsData();
-  // Ban quản lý không nhận việc hiện trường: đưa về trang Tổng quan
-  if (!canAccessMenu('my-tasks')) return <Navigate to="/operations" replace />;
-  const usesFieldFlow =
-    currentPersona === 'STAFF_TECHNICAL' || currentPersona === 'STAFF_SANITATION_A5' || currentPersona === 'STAFF_SECURITY';
-  return usesFieldFlow ? <TechnicianWorkspace /> : <MyTasksWorkspace />;
-}
-
-export const Route = createFileRoute('/_authed/operations/my-tasks')({
-  validateSearch: (search: Record<string, unknown>): { job?: string; view?: 'history' } => ({
-    ...(typeof search.job === 'string' && search.job ? { job: search.job } : {}),
-    ...(search.view === 'history' ? { view: 'history' as const } : {}),
+import { createFileRoute } from "@tanstack/react-router";
+import { WorkPage } from "@/features/vinhomes-operations/workspace/WorkPage";
+export const Route = createFileRoute("/_authed/operations/my-tasks")({
+  validateSearch: (
+    s: Record<string, unknown>,
+  ): { ticket?: string; job?: string; task?: string; view?: "history" } => ({
+    ...(typeof s.ticket === "string" ? { ticket: s.ticket } : {}),
+    ...(typeof s.job === "string" ? { job: s.job } : {}),
+    ...(typeof s.task === "string" ? { task: s.task } : {}),
+    ...(s.view === "history" ? { view: "history" as const } : {}),
   }),
-  component: MyTasksRoute,
+  component: WorkPage,
 });

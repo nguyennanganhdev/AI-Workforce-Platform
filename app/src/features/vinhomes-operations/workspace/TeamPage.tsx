@@ -50,7 +50,7 @@ export function TeamPage() {
                 </p>
                 {m.ticketId && (
                   <a
-                    href={`/operations/dispatch?ticket=${encodeURIComponent(m.ticketId)}`}
+                    href={`/operations/kanban?ticket=${encodeURIComponent(m.ticketId)}`}
                   >
                     {m.ticketId}
                   </a>
@@ -220,7 +220,7 @@ export function TeamPage() {
                   <a
                     className="ws-ticket"
                     key={c.id}
-                    href={`/operations/dispatch?ticket=${c.id}`}
+                    href={`/operations/kanban?ticket=${c.id}`}
                   >
                     <span className="ws-status">{c.severity}</span>
                     <strong>{c.title}</strong>

@@ -35,28 +35,30 @@ export function WorkspaceFrame({
           {a.role === "admin" ? "Toàn hệ thống" : `Phạm vi ${a.scope}`}
         </span>
       </header>
-      <nav className="ws-tabs" aria-label="Không gian làm việc">
-        {(a.role === "admin"
-          ? [["accounts", "Tài khoản"]]
-          : a.role === "manager"
-            ? [
-                ["team", "Nhóm điều phối"],
-                ["dispatch", "Ticket & hiện trường"],
-                ["reports", "Báo cáo"],
-              ]
-            : [["dispatch", "Ticket & hiện trường"]]
-        ).map(([path, label]) => (
-          <a
-            key={path}
-            href={`/operations/${path}`}
-            aria-current={
-              location.pathname === `/operations/${path}` ? "page" : undefined
-            }
-          >
-            {label}
-          </a>
-        ))}
-      </nav>
+      {(a.role === "manager" || a.role === "admin") && (
+        <nav className="ws-tabs" aria-label="Không gian làm việc">
+          {(a.role === "admin"
+            ? [["accounts", "Tài khoản"]]
+            : a.role === "manager"
+              ? [
+                  ["team", "Nhóm điều phối"],
+                  ["kanban", "Phân công công việc"],
+                  ["reports", "Báo cáo"],
+                ]
+              : [["my-tasks", "Việc của tôi"]]
+          ).map(([path, label]) => (
+            <a
+              key={path}
+              href={`/operations/${path}`}
+              aria-current={
+                location.pathname === `/operations/${path}` ? "page" : undefined
+              }
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
+      )}
       {error && (
         <p className="ws-notice error" role="alert">
           {error}

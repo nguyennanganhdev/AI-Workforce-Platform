@@ -3,6 +3,8 @@ import { useOperationsData } from '../hooks/use-operations-data';
 import { type MenuId } from '../types/persona';
 import { previewAccount } from '../auth/demo-access';
 import { canViewPath, roleLabels } from '../workspace/model';
+import { useWorkspace } from '../workspace/use-workspace';
+import { workItems } from '../workspace/work-items';
 
 interface NavItemDef {
   id: MenuId;
@@ -20,19 +22,21 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
     currentPersona,
     currentProfile,
     canAccessMenu,
-    myWorkOrders,
     approvals,
     incidents,
     workOrders,
+    tasks,
+    evidence,
   } = useOperationsData();
 
   const pendingApprovalsCount = approvals.filter((a) => a.status === 'PENDING').length;
   const p1IncidentsCount = incidents.filter((i) => i.severity === 'P0' && i.status === 'OPEN').length;
-  const myPendingTasksCount = myWorkOrders.filter((w) => w.status === 'ASSIGNED' || w.status === 'IN_PROGRESS').length;
+  const workspace = useWorkspace();
+  const myPendingTasksCount = workspace.account ? workItems(workspace.account, workspace.state, {tasks,incidents,workOrders,evidence}).filter(w=>w.phase!=='history').length : 0;
   const pendingQcCount = workOrders.filter((w) => w.status === 'COMPLETED').length;
 
   const account = previewAccount();
-  const workspaceItems = account?.role === 'admin' ? [['accounts', 'Quản lý tài khoản']] : account?.role === 'manager' ? [['team', 'Nhóm ban quản lý'], ['dispatch', 'Ticket & hiện trường'], ['reports', 'Báo cáo vận hành']] : [['dispatch', 'Ticket & hiện trường']];
+  const workspaceItems = account?.role === 'admin' ? [['accounts', 'Quản lý tài khoản']] : account?.role === 'manager' ? [['team', 'Nhóm ban quản lý'], ['reports', 'Báo cáo vận hành']] : [];
 
   const allNavItems: NavItemDef[] = [
     {

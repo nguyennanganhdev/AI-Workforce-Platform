@@ -64,6 +64,12 @@ async function until(expression: string) {
   );
 }
 async function go(path: string) {
+  path = path.replace(
+    "/operations/dispatch",
+    activeRole.startsWith("demo-manager")
+      ? "/operations/kanban"
+      : "/operations/my-tasks",
+  );
   await cmd("Page.navigate", { url: `http://127.0.0.1:3020${path}` });
   await until(
     `location.pathname===${JSON.stringify(path.split("?")[0])} && !!document.querySelector('.ops-workspace')`,
@@ -84,7 +90,9 @@ async function field(label: string, value: string) {
 async function assert(expression: string, message: string) {
   if (!(await js(expression))) throw new Error(message);
 }
+let activeRole = "demo-tech";
 async function role(id: string) {
+  activeRole = id;
   await cmd("Page.navigate", { url: "http://127.0.0.1:3020/operations/login" });
   await until(`!!document.querySelector('#preview-account')`);
   await js(
@@ -186,6 +194,40 @@ try {
   await field("Phân công nhân viên", "demo-tech");
   await click("Xác nhận phân công");
   await role("demo-tech");
+  await until(`!!document.querySelector('.work-list')`);
+  await assert(
+    `!document.querySelector('.operations-sidebar').innerText.includes('Ticket & hiện trường')`,
+    "Duplicate navigation still visible",
+  );
+  await assert(
+    `document.querySelectorAll('[data-work-key="ticket:DEMO-1002"]').length===1`,
+    "Assigned ticket missing or duplicated in my tasks",
+  );
+  await assert(
+    `!!document.querySelector('[data-work-key^="job:"]')`,
+    "Existing work orders disappeared from my tasks",
+  );
+  await responsive("my-tasks-unified");
+  await js(`document.querySelector('[data-work-key^="job:"]').click()`);
+  await until(
+    `new URLSearchParams(location.search).has('job') && document.querySelector('main').innerText.includes('Việc của tôi')`,
+  );
+  await assert(
+    `!document.querySelector('main').innerText.includes('Không tìm thấy')`,
+    "Existing work detail no longer opens",
+  );
+  await cmd("Page.navigate", {
+    url: "http://127.0.0.1:3020/operations/my-tasks?ticket=DEMO-1003",
+  });
+  await until(
+    `document.querySelector('main').innerText.includes('Không tìm thấy công việc')`,
+  );
+  await cmd("Page.navigate", {
+    url: "http://127.0.0.1:3020/operations/dispatch?ticket=DEMO-1002",
+  });
+  await until(
+    `location.pathname==='/operations/my-tasks' && new URLSearchParams(location.search).get('ticket')==='DEMO-1002' && document.querySelector('main').innerText.includes('Vỡ đường ống')`,
+  );
   await go("/operations/dispatch?ticket=DEMO-1002");
   await assert(
     `!document.querySelector('.ops-workspace').innerText.includes('DEMO-1003')`,
@@ -214,7 +256,39 @@ try {
   await until(
     `JSON.parse(localStorage.getItem('${key}')).cases.find(c=>c.id==='DEMO-1002').stage==='completed'`,
   );
+  await go("/operations/my-tasks");
+  await assert(
+    `!document.querySelector('[data-work-key="ticket:DEMO-1002"]')`,
+    "Completed ticket remains in active list",
+  );
+  await cmd("Page.navigate", {
+    url: "http://127.0.0.1:3020/operations/completed-tasks",
+  });
+  await until(
+    `location.pathname==='/operations/my-tasks' && location.search.includes('view=history') && !!document.querySelector('[data-work-key="ticket:DEMO-1002"]')`,
+  );
+  await js(
+    `document.querySelector('[data-work-key="ticket:DEMO-1002"]').click()`,
+  );
+  await until(
+    `new URLSearchParams(location.search).get('ticket')==='DEMO-1002'`,
+  );
+  await cmd("Runtime.evaluate", { expression: "history.back()" });
+  await until(
+    `location.search==='?view=history' && !!document.querySelector('.work-list')`,
+  );
   await role("demo-manager");
+  await go("/operations/kanban");
+  await responsive("assignment-unified");
+  await assert(
+    `!!document.querySelector('[data-work-key^="task:"]')`,
+    "Existing tasks disappeared from management",
+  );
+  await click("Xem theo tiến độ");
+  await assert(
+    `!!document.querySelector('.ws-board [data-work-key="ticket:DEMO-1003"]')`,
+    "Unified board does not include new ticket",
+  );
   await go("/operations/dispatch?ticket=DEMO-1003");
   await field("Phân công nhân viên", "demo-security");
   await click("Xác nhận phân công");
