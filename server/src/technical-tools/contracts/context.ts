@@ -33,20 +33,27 @@ export type RuntimeContext = z.infer<typeof runtimeContextSchema>;
 /**
  * What a `ContextResolver` answers with: who is calling, and what they may touch.
  *
- * `received_at` is absent because the host stamps it from its own clock. `capabilities` and
- * `allowed_building_ids` are the grant, resolved server-side from the verified caller; a
- * `building_id` in a tool's input only selects a resource and is checked against this list.
+ * `received_at` is absent because the host stamps it from its own clock. `grants` is what the
+ * caller may do and where, resolved server-side from the verified caller: each capability with
+ * the `access_scopes` it holds over, a building, a zone, a site or the whole tenant, the way the
+ * rest of the platform grants (the per-tool scoped grant of dev_TeamQuang, 17e5826). A
+ * `building_id` in a tool's input only selects a resource; whether the grant reaches it is the
+ * host's question.
  */
+export const capabilityGrantSchema = z.strictObject({
+  capability: z.string().min(1),
+  scope_ids: z.array(z.uuid()),
+});
+
+export type CapabilityGrant = z.infer<typeof capabilityGrantSchema>;
+
 export const resolvedIdentitySchema = runtimeContextSchema
   .omit({ received_at: true })
-  .extend({
-    capabilities: z.array(z.string().min(1)),
-    allowed_building_ids: z.array(z.uuid()),
-  });
+  .extend({ grants: z.array(capabilityGrantSchema) });
 
 export type ResolvedIdentity = z.infer<typeof resolvedIdentitySchema>;
 
 export type ToolContext = RuntimeContext & {
+  /** The capabilities the caller holds anywhere. Where they hold them was settled by the host. */
   capabilities: ReadonlySet<string>;
-  allowedBuildingIds: ReadonlySet<string>;
 };

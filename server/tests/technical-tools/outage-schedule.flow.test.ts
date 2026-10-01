@@ -353,7 +353,7 @@ describe("a caller without the right to call", () => {
         contextResolver: async () =>
           ({
             tenant_id: "not-a-uuid",
-            capabilities: ["interruption:read"],
+            grants: [{ capability: "interruption:read", scope_ids: [] }],
           }) as never,
       },
     );

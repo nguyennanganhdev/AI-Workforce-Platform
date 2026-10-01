@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import {
+  type BuildingAccessPort,
   type ContextResolver,
   createInMemoryApprovalRequestStore,
   createInMemoryAssetReadPort,
@@ -22,6 +23,7 @@ import { payloadHash } from "../../src/technical-tools/idempotency";
 import { BUILDING, CALLER, TENANT } from "./fixtures/world";
 import {
   fixedClock,
+  fixtureBuildingAccess,
   fixtureContextResolver,
   recordingAudit,
 } from "./support/harness";
@@ -42,6 +44,7 @@ function hostWith(
   overrides: {
     idempotency?: IdempotencyStore;
     contextResolver?: ContextResolver;
+    buildingAccess?: BuildingAccessPort;
     options?: HostOptions;
   } = {},
 ) {
@@ -58,6 +61,7 @@ function hostWith(
       scopes: { placement: unused, findScopes: unused },
       isolations: { findOpen: unused, createWaterIsolation: unused },
       approvalRequests: createInMemoryApprovalRequestStore(),
+      buildingAccess: overrides.buildingAccess ?? fixtureBuildingAccess,
       units: { findUnit: unused, residents: unused },
       vendors: createInMemoryVendorCatalog(),
       workOrders: {
@@ -491,6 +495,8 @@ describe("I-6: what a key is scoped to", () => {
     const theirs = await hostWith({
       idempotency: store,
       contextResolver: asOther,
+      // The other tenant's own estate is not in the fixtures; access is not what this test is about.
+      buildingAccess: { canAccessBuilding: async () => true },
     }).host.call(CALLER.technicalAgent, tool, args(7.7));
 
     expect(ours.status).toBe("OK");

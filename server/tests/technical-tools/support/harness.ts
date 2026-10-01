@@ -1,5 +1,6 @@
 import {
   type AuditSink,
+  type BuildingAccessPort,
   type Clock,
   type ContextResolver,
   createInMemoryApprovalRequestStore,
@@ -9,9 +10,11 @@ import {
   createInMemoryMaintenanceReadPort,
   createInMemoryMaintenanceStore,
   createInMemoryMeasurementStore,
+  createInMemoryScopeReadPort,
   createInMemorySensorReadPort,
   createInMemorySopProfilePort,
   createInMemoryVendorCatalog,
+  createScopeBuildingAccess,
   createTechnicalToolCaller,
   type HostOptions,
   type IdempotencyStore,
@@ -23,10 +26,12 @@ import {
 } from "../../../src/technical-tools";
 import {
   AGENT_VERSION,
-  BUILDING,
+  BUILDINGS,
   CALLER,
   NOW,
   ROLE_OF,
+  SCOPE,
+  SCOPES,
   SOURCE_RUN_ID,
   TENANT,
   TRACE_ID,
@@ -39,7 +44,8 @@ export const fixedClock: Clock = { now: () => NOW };
  * Stands in for the runtime gateway's resolver (task C06) until that exists.
  *
  * It answers what the real one will: the tenant, run and grant behind a caller the agent callback
- * route has already verified. Technical Agent A2 is granted buildings A1 and A2 and nothing else.
+ * route has already verified. Technical Agent A2 holds every capability over the scopes of
+ * buildings A1 and A2, and nothing else.
  */
 export const CAPABILITIES = [
   "interruption:read",
@@ -57,6 +63,9 @@ export const CAPABILITIES = [
   "vendor_dispatch:request",
 ] as const;
 
+/** The access scopes every capability is granted over: buildings A1 and A2. */
+export const GRANTED_SCOPES = [SCOPE.buildingA1, SCOPE.buildingA2] as const;
+
 export const fixtureContextResolver: ContextResolver = async (caller) => {
   const identity = {
     tenant_id: TENANT.vinhomes,
@@ -68,16 +77,42 @@ export const fixtureContextResolver: ContextResolver = async (caller) => {
     source_run_id: SOURCE_RUN_ID,
     trace_id: TRACE_ID,
     agent_version: AGENT_VERSION,
-    allowed_building_ids: [BUILDING.a1, BUILDING.a2],
   };
   if (caller.botId === CALLER.technicalAgent.botId) {
-    return { ...identity, capabilities: [...CAPABILITIES] };
+    return {
+      ...identity,
+      grants: CAPABILITIES.map((capability) => ({
+        capability,
+        scope_ids: [...GRANTED_SCOPES],
+      })),
+    };
   }
   if (caller.botId === CALLER.ungrantedAgent.botId) {
-    return { ...identity, capabilities: [] };
+    return { ...identity, grants: [] };
   }
   return null;
 };
+
+/** The sample estate's buildings and scopes, for hosts with no database behind them. */
+export const fixtureScopes = createInMemoryScopeReadPort(
+  BUILDINGS.map((building) => ({
+    tenantId: building.tenantId,
+    buildingId: building.id,
+    zoneId: building.zoneId,
+    siteId: building.siteId,
+  })),
+  SCOPES.map((scope) => ({
+    tenantId: scope.tenantId,
+    id: scope.id,
+    kind: scope.kind,
+    buildingId: "buildingId" in scope ? scope.buildingId : null,
+    zoneId: "zoneId" in scope ? scope.zoneId : null,
+    siteId: "siteId" in scope ? scope.siteId : null,
+  })),
+);
+
+/** Building access answered from the sample estate's scopes. */
+export const fixtureBuildingAccess = createScopeBuildingAccess(fixtureScopes);
 
 /**
  * A port a test did not supply.
@@ -148,6 +183,7 @@ export function technicalToolHarness(
     contextResolver?: ContextResolver;
     audit?: AuditSink;
     idempotency?: IdempotencyStore;
+    buildingAccess?: BuildingAccessPort;
     options?: HostOptions;
   } = {},
 ) {
@@ -176,6 +212,7 @@ export function technicalToolHarness(
       contextResolver: overrides.contextResolver ?? fixtureContextResolver,
       audit: overrides.audit ?? audit.sink,
       idempotency: overrides.idempotency ?? createInMemoryIdempotencyStore(),
+      buildingAccess: overrides.buildingAccess ?? fixtureBuildingAccess,
     },
     overrides.options,
   );

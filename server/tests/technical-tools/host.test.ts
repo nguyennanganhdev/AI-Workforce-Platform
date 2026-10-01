@@ -18,6 +18,7 @@ import {
 import { BUILDING, CALLER } from "./fixtures/world";
 import {
   fixedClock,
+  fixtureBuildingAccess,
   fixtureContextResolver,
   recordingAudit,
 } from "./support/harness";
@@ -47,6 +48,7 @@ function hostWith(audit = recordingAudit()) {
       scopes: { placement: unused, findScopes: unused },
       isolations: { findOpen: unused, createWaterIsolation: unused },
       approvalRequests: createInMemoryApprovalRequestStore(),
+      buildingAccess: fixtureBuildingAccess,
       units: { findUnit: unused, residents: unused },
       vendors: createInMemoryVendorCatalog(),
       workOrders: {

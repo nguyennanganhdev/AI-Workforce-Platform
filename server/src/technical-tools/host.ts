@@ -13,6 +13,7 @@ import type {
 } from "./contracts/envelope";
 import { payloadHash, WRITTEN_STATUSES } from "./idempotency";
 import type { AuditSink } from "./ports/audit-sink";
+import type { BuildingAccessPort } from "./ports/building-access";
 import type { ContextResolver, ToolCaller } from "./ports/context-resolver";
 import type { IdempotencyStore, Reservation } from "./ports/idempotency-store";
 import type { TechnicalTool, ToolDependencies, ToolOutcome } from "./tool";
@@ -23,6 +24,8 @@ export type HostDependencies = ToolDependencies & {
   audit: AuditSink;
   /** Consulted only for tools that write; a read needs no key to be safe to repeat. */
   idempotency: IdempotencyStore;
+  /** Whether the scopes granted for a capability reach the building a call names. */
+  buildingAccess: BuildingAccessPort;
 };
 
 export type HostOptions = {
@@ -67,7 +70,8 @@ export function createTechnicalToolHost(
   dependencies: HostDependencies,
   options: HostOptions = {},
 ) {
-  const { contextResolver, audit, clock, idempotency } = dependencies;
+  const { contextResolver, audit, clock, idempotency, buildingAccess } =
+    dependencies;
 
   async function call(
     caller: ToolCaller,
@@ -180,7 +184,12 @@ export function createTechnicalToolHost(
       return await fail("The caller's identity could not be resolved.");
     }
 
-    if (!identity.capabilities.includes(tool.capability)) {
+    const grantedScopes = identity.grants
+      .filter((grant) => grant.capability === tool.capability)
+      .flatMap((grant) => grant.scope_ids);
+    if (
+      !identity.grants.some((grant) => grant.capability === tool.capability)
+    ) {
       return await refuse(`The caller does not hold ${tool.capability}.`);
     }
 
@@ -197,16 +206,26 @@ export function createTechnicalToolHost(
     }
     buildingId = parsed.data.building_id;
 
-    if (!identity.allowed_building_ids.includes(buildingId)) {
+    // Granted somewhere is not granted here: the scopes held for this capability must reach it.
+    let reachable: boolean;
+    try {
+      reachable = await buildingAccess.canAccessBuilding({
+        tenantId: identity.tenant_id,
+        buildingId,
+        scopeIds: grantedScopes,
+      });
+    } catch {
+      return await fail("The caller's building access could not be checked.");
+    }
+    if (!reachable) {
       return await refuse("The building is outside the caller's grant.");
     }
 
-    const { capabilities, allowed_building_ids, ...runtime } = identity;
+    const { grants, ...runtime } = identity;
     const context: ToolContext = {
       ...runtime,
       received_at: receivedAt.toISOString(),
-      capabilities: new Set(capabilities),
-      allowedBuildingIds: new Set(allowed_building_ids),
+      capabilities: new Set(grants.map((grant) => grant.capability)),
     };
 
     const timeoutMs = options.timeoutMs ?? tool.timeoutMs;

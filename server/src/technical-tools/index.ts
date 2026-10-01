@@ -30,16 +30,29 @@ export { createInMemoryIdempotencyStore } from "./adapters/poc/idempotency-store
 export { createInMemoryMaintenanceReadPort } from "./adapters/poc/maintenance-read";
 export { createInMemoryMaintenanceStore } from "./adapters/poc/maintenance-store";
 export { createInMemoryMeasurementStore } from "./adapters/poc/measurement-store";
+export {
+  createInMemoryScopeReadPort,
+  type ScopedBuilding,
+  type TenantScope,
+} from "./adapters/poc/scope-read";
 export { createInMemorySensorReadPort } from "./adapters/poc/sensor-read";
 export { createInMemorySopProfilePort } from "./adapters/poc/sop-profiles";
 export { createInMemoryVendorCatalog } from "./adapters/poc/vendor-catalog";
+export {
+  createScopeBuildingAccess,
+  grantReaches,
+} from "./adapters/scope-building-access";
 export {
   canonicalToolName,
   describeTechnicalTools,
   findTechnicalTool,
   technicalTools,
 } from "./catalog";
-export type { ResolvedIdentity, RuntimeContext } from "./contracts/context";
+export type {
+  CapabilityGrant,
+  ResolvedIdentity,
+  RuntimeContext,
+} from "./contracts/context";
 export {
   type ResponseEnvelope,
   responseEnvelopeSchema,
@@ -108,6 +121,7 @@ export {
 } from "./host";
 export type { AssetQuery, AssetReadPort } from "./ports/asset-read";
 export type { AuditSink, ToolAuditEntry } from "./ports/audit-sink";
+export type { BuildingAccessPort } from "./ports/building-access";
 export { type Clock, systemClock } from "./ports/clock";
 export type { ContextResolver, ToolCaller } from "./ports/context-resolver";
 export type {
