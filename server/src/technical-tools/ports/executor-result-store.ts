@@ -6,4 +6,6 @@ import type { ExecutorResult } from "../domain/executor-result";
  */
 export type ExecutorResultStore = {
   append(result: ExecutorResult): Promise<void>;
+  /** One submitted result of this tenant, or `null`. */
+  findById(tenantId: string, resultId: string): Promise<ExecutorResult | null>;
 };

@@ -14,6 +14,11 @@ export function createInMemoryExecutorResultStore(): ExecutorResultStore & {
     append: async (result) => {
       results.push(result);
     },
+    findById: async (tenantId, resultId) =>
+      results.find(
+        (result) =>
+          result.tenantId === tenantId && result.resultId === resultId,
+      ) ?? null,
     all: () => [...results],
   };
 }

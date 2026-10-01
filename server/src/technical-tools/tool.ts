@@ -6,6 +6,7 @@ import type { Clock } from "./ports/clock";
 import type { ExecutorResultStore } from "./ports/executor-result-store";
 import type { InterruptionReadPort } from "./ports/interruption-read";
 import type { MaintenanceReadPort } from "./ports/maintenance-read";
+import type { MaintenanceStore } from "./ports/maintenance-store";
 import type { MeasurementStore } from "./ports/measurement-store";
 import type { SensorReadPort } from "./ports/sensor-read";
 import type { SopProfilePort, SopReadPort } from "./ports/sop-read";
@@ -19,6 +20,8 @@ export type ToolDependencies = {
   assets: AssetReadPort;
   sensors: SensorReadPort;
   maintenance: MaintenanceReadPort;
+  /** Where maintenance events are written. In the POC, the same store `maintenance` reads. */
+  maintenanceStore: MaintenanceStore;
   workOrders: WorkOrderReadPort;
   measurements: MeasurementStore;
   executorResults: ExecutorResultStore;

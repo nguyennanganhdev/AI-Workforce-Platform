@@ -15,6 +15,7 @@ export { createInMemoryAssetReadPort } from "./adapters/poc/asset-read";
 export { createInMemoryExecutorResultStore } from "./adapters/poc/executor-result-store";
 export { createInMemoryIdempotencyStore } from "./adapters/poc/idempotency-store";
 export { createInMemoryMaintenanceReadPort } from "./adapters/poc/maintenance-read";
+export { createInMemoryMaintenanceStore } from "./adapters/poc/maintenance-store";
 export { createInMemoryMeasurementStore } from "./adapters/poc/measurement-store";
 export { createInMemorySensorReadPort } from "./adapters/poc/sensor-read";
 export { createInMemorySopProfilePort } from "./adapters/poc/sop-profiles";
@@ -55,6 +56,13 @@ export type {
   SopProfile,
 } from "./domain/sop";
 export type {
+  Check,
+  CheckStatus,
+  SopBasis,
+  Verification,
+  VerificationStatus,
+} from "./domain/verification";
+export type {
   AssignmentRecord,
   EvidenceLookup,
   WorkOrderContext,
@@ -84,6 +92,10 @@ export type {
   MaintenanceQuery,
   MaintenanceReadPort,
 } from "./ports/maintenance-read";
+export type {
+  AppendOutcome,
+  MaintenanceStore,
+} from "./ports/maintenance-store";
 export type { MeasurementStore } from "./ports/measurement-store";
 export type { SensorQuery, SensorReadPort } from "./ports/sensor-read";
 export type {

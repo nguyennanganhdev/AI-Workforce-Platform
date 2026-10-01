@@ -19,4 +19,8 @@ export type MaintenanceEvent = {
   outcome: string;
   sourceRefs: readonly string[];
   supersedesEventId: string | null;
+  /** Who recorded it, when, and in which run. Absent on history imported from elsewhere. */
+  recordedBy?: string;
+  createdAt?: Date;
+  sourceRunId?: string;
 };
