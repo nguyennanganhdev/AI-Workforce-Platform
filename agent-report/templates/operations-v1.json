@@ -1,0 +1,45 @@
+{
+  "template_id": "operations-report",
+  "template_version": "1.0.0",
+  "config_schema_version": "1.0",
+  "status": "consumer_proposal",
+  "title": "Báo cáo vận hành dành cho BQL",
+  "metric_versions": {
+    "ticket_volume": "1.0.0",
+    "sla": "1.0.0",
+    "assignments": "1.0.0",
+    "outcomes": "1.0.0"
+  },
+  "capabilities": [
+    { "id": "authorized_report_snapshot", "version": "1.0.0" },
+    { "id": "report_docx_export", "version": "1.0.0" }
+  ],
+  "output_formats": ["docx"],
+  "builder_questions": [
+    { "field": "name", "question": "Bạn muốn đặt tên Report agent là gì?" },
+    {
+      "field": "metrics",
+      "question": "Bạn muốn xem lượng ticket, SLA, phân công hay kết quả xử lý?"
+    },
+    {
+      "field": "scope_ids",
+      "question": "Bạn muốn báo cáo phạm vi nào trong danh sách được backend cấp quyền?"
+    },
+    {
+      "field": "period",
+      "question": "Kỳ báo cáo từ thời điểm nào đến thời điểm nào, theo múi giờ nào?"
+    },
+    {
+      "field": "presentation",
+      "question": "Bạn muốn trình bày dạng tóm tắt hay chi tiết?"
+    }
+  ],
+  "rules": [
+    "Backend authorize workspace/scope/metrics trước preview và publish",
+    "Pin release/config/template/tool/metric versions",
+    "Kỳ [from,to), as_of là watermark do backend cung cấp",
+    "Missing khác zero; LLM không tính KPI",
+    "Không SQL hoặc tool tùy ý",
+    "Download kiểm tra lại quyền; không public storage URL"
+  ]
+}
