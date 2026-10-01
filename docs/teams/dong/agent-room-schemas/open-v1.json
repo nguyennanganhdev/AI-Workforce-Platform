@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "ticket_id": "TK-123",
+  "room_id": null,
+  "participants": [
+    {
+      "agent_version_id": "technical-v3",
+      "role": "technical"
+    },
+    {
+      "agent_version_id": "security-v2",
+      "role": "security"
+    }
+  ],
+  "turn_policy": {
+    "max_turns": 12,
+    "max_consecutive_turns": 2
+  },
+  "initial_message": {
+    "type": "MO_DAU",
+    "content": "Phân tích ticket TK-123 và đề xuất phương án xử lý."
+  }
+}

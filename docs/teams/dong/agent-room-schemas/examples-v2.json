@@ -1,0 +1,926 @@
+{
+  "open_room": {
+    "request": {
+      "contract_version": "1",
+      "request_id": "c1327daf-c3a1-49b3-8164-36da6d7ca7ae",
+      "trace_id": "9a3134b8-470d-4658-b4f6-ccb07dc6bc17",
+      "idempotency_key": "b59e2e52-2234-4126-838b-96bf58d94ba1",
+      "context": {
+        "tenant_id": "test-tenant",
+        "principal_id": "test-dispatcher",
+        "domain_id": "test-domain",
+        "workspace_id": "test-workspace",
+        "ticket_id": "b96ecd8f-acf6-4114-aa49-6e37dd5597b5",
+        "ticket_generation": 0,
+        "binding_id": "dispatcher-binding-b96ecd8f-acf6-4114-aa49-6e37dd5597b5-g0",
+        "run_id": "parent-b96ecd8f-acf6-4114-aa49-6e37dd5597b5-g0"
+      },
+      "payload": {
+        "version": 2,
+        "operation": "open_room",
+        "room_id": null,
+        "groupchat_version_id": "test-group-v1",
+        "participants": [
+          {
+            "agent_version_id": "A-v1",
+            "role": "advisor"
+          },
+          {
+            "agent_version_id": "B-v1",
+            "role": "advisor"
+          }
+        ],
+        "turn_policy": {
+          "max_turns": 12,
+          "max_consecutive_turns": 2,
+          "timeout_seconds": 0.08
+        },
+        "initial_message": {
+          "content": "Phân tích ticket mẫu; chỉ đề xuất phương án.",
+          "delivery": "broadcast",
+          "recipient_agent_version_id": null,
+          "in_reply_to_message_id": null
+        }
+      }
+    },
+    "result": {
+      "request_id": "c1327daf-c3a1-49b3-8164-36da6d7ca7ae",
+      "status": "completed",
+      "data": {
+        "version": 2,
+        "room_id": "cec2fab0-4e05-4c87-9b29-cb7f608f0a54",
+        "ticket_id": "b96ecd8f-acf6-4114-aa49-6e37dd5597b5",
+        "ticket_generation": 0,
+        "room_version": 1,
+        "room_state": "idle",
+        "pause_reason": null,
+        "operation_id": null,
+        "turn_id": null,
+        "task_id": null,
+        "source_run_id": null,
+        "speaker_agent_version_id": null,
+        "turn_status": null,
+        "messages": [
+          {
+            "content": "Phân tích ticket mẫu; chỉ đề xuất phương án.",
+            "delivery": "broadcast",
+            "recipient_agent_version_id": null,
+            "in_reply_to_message_id": null,
+            "message_id": "3040825f-5208-4b37-b318-ae578b43eb73",
+            "sequence": 1,
+            "sender": "test-dispatcher",
+            "timestamp": "2026-09-29T14:49:12.957941Z"
+          }
+        ],
+        "follow_up_requests": [],
+        "turns_used": 0,
+        "turns_remaining": 12,
+        "consecutive_turns": 0,
+        "needs_dispatcher_decision": true,
+        "participants": [
+          {
+            "agent_version_id": "A-v1",
+            "role": "advisor"
+          },
+          {
+            "agent_version_id": "B-v1",
+            "role": "advisor"
+          }
+        ],
+        "transcript_cursor": 1
+      }
+    }
+  },
+  "run_turn": {
+    "request": {
+      "contract_version": "1",
+      "request_id": "6ba54f11-95c5-48b0-8860-85e8bb426fd7",
+      "trace_id": "05e39a41-ccb8-43fa-a637-fae5872610cd",
+      "idempotency_key": "00bb6d01-3daa-4b3f-b3d3-868e4bb8e2e6",
+      "context": {
+        "tenant_id": "test-tenant",
+        "principal_id": "test-dispatcher",
+        "domain_id": "test-domain",
+        "workspace_id": "test-workspace",
+        "ticket_id": "b96ecd8f-acf6-4114-aa49-6e37dd5597b5",
+        "ticket_generation": 0,
+        "binding_id": "dispatcher-binding-b96ecd8f-acf6-4114-aa49-6e37dd5597b5-g0",
+        "run_id": "parent-b96ecd8f-acf6-4114-aa49-6e37dd5597b5-g0"
+      },
+      "payload": {
+        "version": 2,
+        "room_id": "cec2fab0-4e05-4c87-9b29-cb7f608f0a54",
+        "expected_room_version": 1,
+        "operation": "run_turn",
+        "turn_id": "08ec004b-3b7d-4eb3-b0c9-426b1e680289",
+        "task_id": "test-task",
+        "correlation_id": "test-correlation",
+        "speaker_agent_version_id": "A-v1",
+        "instruction": "Đưa đề xuất theo dữ kiện chung.",
+        "in_reply_to_message_id": null
+      }
+    },
+    "result": {
+      "request_id": "6ba54f11-95c5-48b0-8860-85e8bb426fd7",
+      "status": "completed",
+      "data": {
+        "version": 2,
+        "room_id": "cec2fab0-4e05-4c87-9b29-cb7f608f0a54",
+        "ticket_id": "b96ecd8f-acf6-4114-aa49-6e37dd5597b5",
+        "ticket_generation": 0,
+        "room_version": 3,
+        "room_state": "idle",
+        "pause_reason": null,
+        "operation_id": "364b98b3-4ed5-49b7-a06e-ef1e9695efd0",
+        "turn_id": "08ec004b-3b7d-4eb3-b0c9-426b1e680289",
+        "task_id": "test-task",
+        "source_run_id": "child-run-364b98b3-4ed5-49b7-a06e-ef1e9695efd0",
+        "speaker_agent_version_id": "A-v1",
+        "turn_status": "success",
+        "messages": [
+          {
+            "content": "Phân tích ticket mẫu; chỉ đề xuất phương án.",
+            "delivery": "broadcast",
+            "recipient_agent_version_id": null,
+            "in_reply_to_message_id": null,
+            "message_id": "3040825f-5208-4b37-b318-ae578b43eb73",
+            "sequence": 1,
+            "sender": "test-dispatcher",
+            "timestamp": "2026-09-29T14:49:12.957941Z"
+          },
+          {
+            "content": "A-v1: đã đọc 1 tin. @B chỉ là đề nghị; chờ Điều phối.",
+            "delivery": "broadcast",
+            "recipient_agent_version_id": null,
+            "in_reply_to_message_id": null,
+            "message_id": "77f3b448-a7d2-4029-9038-2d411f31ab17",
+            "sequence": 2,
+            "sender": "A-v1",
+            "timestamp": "2026-09-29T14:49:12.982581Z"
+          }
+        ],
+        "follow_up_requests": [
+          {
+            "recipient_agent_version_id": "B-v1",
+            "content": "B hãy kiểm tra thêm."
+          }
+        ],
+        "turns_used": 1,
+        "turns_remaining": 11,
+        "consecutive_turns": 1,
+        "needs_dispatcher_decision": true,
+        "participants": [
+          {
+            "agent_version_id": "A-v1",
+            "role": "advisor"
+          },
+          {
+            "agent_version_id": "B-v1",
+            "role": "advisor"
+          }
+        ],
+        "transcript_cursor": 2
+      }
+    }
+  },
+  "close_room": {
+    "request": {
+      "contract_version": "1",
+      "request_id": "0b0096d4-3193-4354-85ab-2e5ae89027c4",
+      "trace_id": "714c7aaf-3d2a-431e-9ca7-c31566d3be88",
+      "idempotency_key": "2f2a7061-ca51-4d32-904b-84d43b06f50b",
+      "context": {
+        "tenant_id": "test-tenant",
+        "principal_id": "test-dispatcher",
+        "domain_id": "test-domain",
+        "workspace_id": "test-workspace",
+        "ticket_id": "b96ecd8f-acf6-4114-aa49-6e37dd5597b5",
+        "ticket_generation": 0,
+        "binding_id": "dispatcher-binding-b96ecd8f-acf6-4114-aa49-6e37dd5597b5-g0",
+        "run_id": "parent-b96ecd8f-acf6-4114-aa49-6e37dd5597b5-g0"
+      },
+      "payload": {
+        "version": 2,
+        "room_id": "cec2fab0-4e05-4c87-9b29-cb7f608f0a54",
+        "expected_room_version": 5,
+        "operation": "close_room"
+      }
+    },
+    "result": {
+      "request_id": "0b0096d4-3193-4354-85ab-2e5ae89027c4",
+      "status": "completed",
+      "data": {
+        "version": 2,
+        "room_id": "cec2fab0-4e05-4c87-9b29-cb7f608f0a54",
+        "ticket_id": "b96ecd8f-acf6-4114-aa49-6e37dd5597b5",
+        "ticket_generation": 0,
+        "room_version": 6,
+        "room_state": "closed",
+        "pause_reason": null,
+        "operation_id": null,
+        "turn_id": null,
+        "task_id": null,
+        "source_run_id": null,
+        "speaker_agent_version_id": "B-v1",
+        "turn_status": null,
+        "messages": [
+          {
+            "content": "Phân tích ticket mẫu; chỉ đề xuất phương án.",
+            "delivery": "broadcast",
+            "recipient_agent_version_id": null,
+            "in_reply_to_message_id": null,
+            "message_id": "3040825f-5208-4b37-b318-ae578b43eb73",
+            "sequence": 1,
+            "sender": "test-dispatcher",
+            "timestamp": "2026-09-29T14:49:12.957941Z"
+          },
+          {
+            "content": "A-v1: đã đọc 1 tin. @B chỉ là đề nghị; chờ Điều phối.",
+            "delivery": "broadcast",
+            "recipient_agent_version_id": null,
+            "in_reply_to_message_id": null,
+            "message_id": "77f3b448-a7d2-4029-9038-2d411f31ab17",
+            "sequence": 2,
+            "sender": "A-v1",
+            "timestamp": "2026-09-29T14:49:12.982581Z"
+          },
+          {
+            "content": "B-v1: đã đọc 2 tin. Đề xuất để Điều phối xem xét.",
+            "delivery": "broadcast",
+            "recipient_agent_version_id": null,
+            "in_reply_to_message_id": null,
+            "message_id": "403179db-9c12-4fbd-9509-fd68053c0564",
+            "sequence": 3,
+            "sender": "B-v1",
+            "timestamp": "2026-09-29T14:49:13.013376Z"
+          }
+        ],
+        "follow_up_requests": [],
+        "turns_used": 2,
+        "turns_remaining": 10,
+        "consecutive_turns": 1,
+        "needs_dispatcher_decision": true,
+        "participants": [
+          {
+            "agent_version_id": "A-v1",
+            "role": "advisor"
+          },
+          {
+            "agent_version_id": "B-v1",
+            "role": "advisor"
+          }
+        ],
+        "transcript_cursor": 3
+      }
+    }
+  },
+  "add_participant": {
+    "request": {
+      "contract_version": "1",
+      "request_id": "30e35b6e-f36b-4b31-8dcf-55fcee444cec",
+      "trace_id": "16301d44-7b33-41cd-9966-8f5a227c3e95",
+      "idempotency_key": "4bdaec00-ef05-4fe7-8900-43ede7b5a0bd",
+      "context": {
+        "tenant_id": "test-tenant",
+        "principal_id": "test-dispatcher",
+        "domain_id": "test-domain",
+        "workspace_id": "test-workspace",
+        "ticket_id": "364df1f7-c2af-48b7-b747-682395958514",
+        "ticket_generation": 0,
+        "binding_id": "dispatcher-binding-364df1f7-c2af-48b7-b747-682395958514-g0",
+        "run_id": "parent-364df1f7-c2af-48b7-b747-682395958514-g0"
+      },
+      "payload": {
+        "version": 2,
+        "room_id": "425fe08f-4162-4c68-8caa-e09150fe6597",
+        "expected_room_version": 3,
+        "operation": "add_participant",
+        "participant": {
+          "agent_version_id": "C-v1",
+          "role": "advisor"
+        }
+      }
+    },
+    "result": {
+      "request_id": "30e35b6e-f36b-4b31-8dcf-55fcee444cec",
+      "status": "completed",
+      "data": {
+        "version": 2,
+        "room_id": "425fe08f-4162-4c68-8caa-e09150fe6597",
+        "ticket_id": "364df1f7-c2af-48b7-b747-682395958514",
+        "ticket_generation": 0,
+        "room_version": 4,
+        "room_state": "idle",
+        "pause_reason": null,
+        "operation_id": null,
+        "turn_id": null,
+        "task_id": null,
+        "source_run_id": null,
+        "speaker_agent_version_id": "A-v1",
+        "turn_status": null,
+        "messages": [
+          {
+            "content": "Phân tích ticket mẫu; chỉ đề xuất phương án.",
+            "delivery": "broadcast",
+            "recipient_agent_version_id": null,
+            "in_reply_to_message_id": null,
+            "message_id": "d9a30382-2dd6-4ed0-9f72-a236ab016a81",
+            "sequence": 1,
+            "sender": "test-dispatcher",
+            "timestamp": "2026-09-29T14:49:13.018970Z"
+          },
+          {
+            "content": "A-v1: đã đọc 1 tin. @B chỉ là đề nghị; chờ Điều phối.",
+            "delivery": "broadcast",
+            "recipient_agent_version_id": null,
+            "in_reply_to_message_id": null,
+            "message_id": "a56ca832-d8e9-4657-9a9f-868abc81fca9",
+            "sequence": 2,
+            "sender": "A-v1",
+            "timestamp": "2026-09-29T14:49:13.043101Z"
+          }
+        ],
+        "follow_up_requests": [],
+        "turns_used": 1,
+        "turns_remaining": 11,
+        "consecutive_turns": 1,
+        "needs_dispatcher_decision": true,
+        "participants": [
+          {
+            "agent_version_id": "A-v1",
+            "role": "advisor"
+          },
+          {
+            "agent_version_id": "B-v1",
+            "role": "advisor"
+          },
+          {
+            "agent_version_id": "C-v1",
+            "role": "advisor"
+          }
+        ],
+        "transcript_cursor": 2
+      }
+    }
+  },
+  "CONSECUTIVE_LIMIT": {
+    "request": {
+      "contract_version": "1",
+      "request_id": "c40589b1-a519-4e64-960a-fdfa30ddc894",
+      "trace_id": "fdebbd7b-6cda-4ab3-9c62-ad4edd0f06cb",
+      "idempotency_key": "b66beb99-7db9-426b-9d4a-5dbc336fdb26",
+      "context": {
+        "tenant_id": "test-tenant",
+        "principal_id": "test-dispatcher",
+        "domain_id": "test-domain",
+        "workspace_id": "test-workspace",
+        "ticket_id": "c998fb20-746f-46ff-acb7-5dc9ff389922",
+        "ticket_generation": 0,
+        "binding_id": "dispatcher-binding-c998fb20-746f-46ff-acb7-5dc9ff389922-g0",
+        "run_id": "parent-c998fb20-746f-46ff-acb7-5dc9ff389922-g0"
+      },
+      "payload": {
+        "version": 2,
+        "room_id": "48f65180-83e7-47f8-9bc5-d7d099663cb8",
+        "expected_room_version": 5,
+        "operation": "run_turn",
+        "turn_id": "25b92939-ee6e-4269-9d7c-65824ff4dda5",
+        "task_id": "test-task",
+        "correlation_id": "test-correlation",
+        "speaker_agent_version_id": "A-v1",
+        "instruction": "Đưa đề xuất theo dữ kiện chung.",
+        "in_reply_to_message_id": null
+      }
+    },
+    "result": {
+      "request_id": "c40589b1-a519-4e64-960a-fdfa30ddc894",
+      "status": "error",
+      "error": {
+        "code": "CONSECUTIVE_LIMIT",
+        "message": "CONSECUTIVE_LIMIT",
+        "retryable": false,
+        "details": {}
+      }
+    }
+  },
+  "TURN_LIMIT": {
+    "request": {
+      "contract_version": "1",
+      "request_id": "9b89e0b1-a857-430e-a0d3-df0a89d42e05",
+      "trace_id": "d019594d-0abe-46ba-9948-3bc982159810",
+      "idempotency_key": "89f6e677-fa24-45a4-934d-36435dd6e308",
+      "context": {
+        "tenant_id": "test-tenant",
+        "principal_id": "test-dispatcher",
+        "domain_id": "test-domain",
+        "workspace_id": "test-workspace",
+        "ticket_id": "2f0a7e90-7d70-46be-821e-733e334df70a",
+        "ticket_generation": 0,
+        "binding_id": "dispatcher-binding-2f0a7e90-7d70-46be-821e-733e334df70a-g0",
+        "run_id": "parent-2f0a7e90-7d70-46be-821e-733e334df70a-g0"
+      },
+      "payload": {
+        "version": 2,
+        "room_id": "9dd58ee4-0604-4f3f-9b2f-2e586516aea5",
+        "expected_room_version": 5,
+        "operation": "run_turn",
+        "turn_id": "bf297992-987a-46e1-baf0-2ca123130789",
+        "task_id": "test-task",
+        "correlation_id": "test-correlation",
+        "speaker_agent_version_id": "A-v1",
+        "instruction": "Đưa đề xuất theo dữ kiện chung.",
+        "in_reply_to_message_id": null
+      }
+    },
+    "result": {
+      "request_id": "9b89e0b1-a857-430e-a0d3-df0a89d42e05",
+      "status": "error",
+      "error": {
+        "code": "TURN_LIMIT",
+        "message": "TURN_LIMIT",
+        "retryable": false,
+        "details": {}
+      }
+    }
+  },
+  "update_turn_policy": {
+    "request": {
+      "contract_version": "1",
+      "request_id": "ce63ddab-7f26-409f-9c9c-24ab4942ae51",
+      "trace_id": "75f287e3-0cc1-4cc4-b43d-7c3cf8781ddc",
+      "idempotency_key": "b6263141-5bd9-4268-9dfc-4b991c8ee837",
+      "context": {
+        "tenant_id": "test-tenant",
+        "principal_id": "test-dispatcher",
+        "domain_id": "test-domain",
+        "workspace_id": "test-workspace",
+        "ticket_id": "2f0a7e90-7d70-46be-821e-733e334df70a",
+        "ticket_generation": 0,
+        "binding_id": "dispatcher-binding-2f0a7e90-7d70-46be-821e-733e334df70a-g0",
+        "run_id": "parent-2f0a7e90-7d70-46be-821e-733e334df70a-g0"
+      },
+      "payload": {
+        "version": 2,
+        "room_id": "9dd58ee4-0604-4f3f-9b2f-2e586516aea5",
+        "expected_room_version": 5,
+        "operation": "update_turn_policy",
+        "turn_policy": {
+          "max_turns": 4,
+          "max_consecutive_turns": 2,
+          "timeout_seconds": 0.08
+        }
+      }
+    },
+    "result": {
+      "request_id": "ce63ddab-7f26-409f-9c9c-24ab4942ae51",
+      "status": "completed",
+      "data": {
+        "version": 2,
+        "room_id": "9dd58ee4-0604-4f3f-9b2f-2e586516aea5",
+        "ticket_id": "2f0a7e90-7d70-46be-821e-733e334df70a",
+        "ticket_generation": 0,
+        "room_version": 6,
+        "room_state": "idle",
+        "pause_reason": null,
+        "operation_id": null,
+        "turn_id": null,
+        "task_id": null,
+        "source_run_id": null,
+        "speaker_agent_version_id": "B-v1",
+        "turn_status": null,
+        "messages": [
+          {
+            "content": "Phân tích ticket mẫu; chỉ đề xuất phương án.",
+            "delivery": "broadcast",
+            "recipient_agent_version_id": null,
+            "in_reply_to_message_id": null,
+            "message_id": "b5de8184-1f2d-418c-b0e8-efc170689cab",
+            "sequence": 1,
+            "sender": "test-dispatcher",
+            "timestamp": "2026-09-29T14:49:13.161148Z"
+          },
+          {
+            "content": "A-v1: đã đọc 1 tin. @B chỉ là đề nghị; chờ Điều phối.",
+            "delivery": "broadcast",
+            "recipient_agent_version_id": null,
+            "in_reply_to_message_id": null,
+            "message_id": "dfeaa69e-bb6c-4b97-b2ea-14e8c10b731c",
+            "sequence": 2,
+            "sender": "A-v1",
+            "timestamp": "2026-09-29T14:49:13.184180Z"
+          },
+          {
+            "content": "B-v1: đã đọc 2 tin. Đề xuất để Điều phối xem xét.",
+            "delivery": "broadcast",
+            "recipient_agent_version_id": null,
+            "in_reply_to_message_id": null,
+            "message_id": "4b66cb28-faa4-45a2-835e-ddde82bb9975",
+            "sequence": 3,
+            "sender": "B-v1",
+            "timestamp": "2026-09-29T14:49:13.209640Z"
+          }
+        ],
+        "follow_up_requests": [],
+        "turns_used": 2,
+        "turns_remaining": 2,
+        "consecutive_turns": 1,
+        "needs_dispatcher_decision": true,
+        "participants": [
+          {
+            "agent_version_id": "A-v1",
+            "role": "advisor"
+          },
+          {
+            "agent_version_id": "B-v1",
+            "role": "advisor"
+          }
+        ],
+        "transcript_cursor": 3
+      }
+    }
+  },
+  "AGENT_FAILURE": {
+    "request": {
+      "contract_version": "1",
+      "request_id": "59fdd70e-865d-44a2-9cbc-f453f46d498f",
+      "trace_id": "f28222f5-5b47-4d7a-ae65-bad7064f98cd",
+      "idempotency_key": "926b76ee-1482-4b4a-9dae-a4b6a4eb91e6",
+      "context": {
+        "tenant_id": "test-tenant",
+        "principal_id": "test-dispatcher",
+        "domain_id": "test-domain",
+        "workspace_id": "test-workspace",
+        "ticket_id": "0e4a6992-23bf-4d0a-9c4b-5c24ced9ec4a",
+        "ticket_generation": 0,
+        "binding_id": "dispatcher-binding-0e4a6992-23bf-4d0a-9c4b-5c24ced9ec4a-g0",
+        "run_id": "parent-0e4a6992-23bf-4d0a-9c4b-5c24ced9ec4a-g0"
+      },
+      "payload": {
+        "version": 2,
+        "room_id": "f1de98f0-a458-4c35-979f-b76b668e93c3",
+        "expected_room_version": 1,
+        "operation": "run_turn",
+        "turn_id": "f4f9bcd0-0428-416f-af16-b0dcb2f9926a",
+        "task_id": "test-task",
+        "correlation_id": "test-correlation",
+        "speaker_agent_version_id": "A-v1",
+        "instruction": "Đưa đề xuất theo dữ kiện chung.",
+        "in_reply_to_message_id": null
+      }
+    },
+    "result": {
+      "request_id": "59fdd70e-865d-44a2-9cbc-f453f46d498f",
+      "status": "error",
+      "error": {
+        "code": "AGENT_FAILURE",
+        "message": "AGENT_FAILURE",
+        "retryable": false,
+        "details": {
+          "turn_result": {
+            "version": 2,
+            "room_id": "f1de98f0-a458-4c35-979f-b76b668e93c3",
+            "ticket_id": "0e4a6992-23bf-4d0a-9c4b-5c24ced9ec4a",
+            "ticket_generation": 0,
+            "room_version": 3,
+            "room_state": "idle",
+            "pause_reason": null,
+            "operation_id": "2903cf03-a4b3-4ee5-9ebd-244d30c642fb",
+            "turn_id": "f4f9bcd0-0428-416f-af16-b0dcb2f9926a",
+            "task_id": "test-task",
+            "source_run_id": "child-run-2903cf03-a4b3-4ee5-9ebd-244d30c642fb",
+            "speaker_agent_version_id": "A-v1",
+            "turn_status": "failure",
+            "messages": [
+              {
+                "content": "Phân tích ticket mẫu; chỉ đề xuất phương án.",
+                "delivery": "broadcast",
+                "recipient_agent_version_id": null,
+                "in_reply_to_message_id": null,
+                "message_id": "26abb7d5-0ec3-4245-921f-6a9ed8007933",
+                "sequence": 1,
+                "sender": "test-dispatcher",
+                "timestamp": "2026-09-29T14:49:13.251711Z"
+              }
+            ],
+            "follow_up_requests": [],
+            "turns_used": 1,
+            "turns_remaining": 11,
+            "consecutive_turns": 1,
+            "needs_dispatcher_decision": true,
+            "participants": [
+              {
+                "agent_version_id": "A-v1",
+                "role": "advisor"
+              },
+              {
+                "agent_version_id": "B-v1",
+                "role": "advisor"
+              }
+            ],
+            "transcript_cursor": 1
+          }
+        }
+      }
+    }
+  },
+  "OUTCOME_UNKNOWN": {
+    "request": {
+      "contract_version": "1",
+      "request_id": "bd08fe4f-7d42-4913-b6e9-4e953ef9b27b",
+      "trace_id": "f63ccb38-db2a-479f-a0e2-cc8fb596026c",
+      "idempotency_key": "e0a0792d-a3af-44b7-b991-fe95c8e0010a",
+      "context": {
+        "tenant_id": "test-tenant",
+        "principal_id": "test-dispatcher",
+        "domain_id": "test-domain",
+        "workspace_id": "test-workspace",
+        "ticket_id": "bfc6da32-4237-487a-8976-bf8fee1b851f",
+        "ticket_generation": 0,
+        "binding_id": "dispatcher-binding-bfc6da32-4237-487a-8976-bf8fee1b851f-g0",
+        "run_id": "parent-bfc6da32-4237-487a-8976-bf8fee1b851f-g0"
+      },
+      "payload": {
+        "version": 2,
+        "room_id": "0f7f1cc3-aff8-4cfc-bd94-c9ff733c9c8f",
+        "expected_room_version": 1,
+        "operation": "run_turn",
+        "turn_id": "c95e3520-f5f1-4b9b-a6d7-0e046aadcaaf",
+        "task_id": "test-task",
+        "correlation_id": "test-correlation",
+        "speaker_agent_version_id": "A-v1",
+        "instruction": "Đưa đề xuất theo dữ kiện chung.",
+        "in_reply_to_message_id": null
+      }
+    },
+    "result": {
+      "request_id": "bd08fe4f-7d42-4913-b6e9-4e953ef9b27b",
+      "status": "error",
+      "error": {
+        "code": "OUTCOME_UNKNOWN",
+        "message": "OUTCOME_UNKNOWN",
+        "retryable": false,
+        "details": {
+          "turn_result": {
+            "version": 2,
+            "room_id": "0f7f1cc3-aff8-4cfc-bd94-c9ff733c9c8f",
+            "ticket_id": "bfc6da32-4237-487a-8976-bf8fee1b851f",
+            "ticket_generation": 0,
+            "room_version": 3,
+            "room_state": "paused",
+            "pause_reason": "outcome_unknown",
+            "operation_id": "c8a8de6c-b482-4987-a1f6-6f3f84002bc2",
+            "turn_id": "c95e3520-f5f1-4b9b-a6d7-0e046aadcaaf",
+            "task_id": "test-task",
+            "source_run_id": "child-run-c8a8de6c-b482-4987-a1f6-6f3f84002bc2",
+            "speaker_agent_version_id": "A-v1",
+            "turn_status": "outcome_unknown",
+            "messages": [
+              {
+                "content": "Phân tích ticket mẫu; chỉ đề xuất phương án.",
+                "delivery": "broadcast",
+                "recipient_agent_version_id": null,
+                "in_reply_to_message_id": null,
+                "message_id": "78f3a869-1f14-4530-87a0-a5159e0b6f25",
+                "sequence": 1,
+                "sender": "test-dispatcher",
+                "timestamp": "2026-09-29T14:49:13.304366Z"
+              }
+            ],
+            "follow_up_requests": [],
+            "turns_used": 1,
+            "turns_remaining": 11,
+            "consecutive_turns": 1,
+            "needs_dispatcher_decision": true,
+            "participants": [
+              {
+                "agent_version_id": "A-v1",
+                "role": "advisor"
+              },
+              {
+                "agent_version_id": "B-v1",
+                "role": "advisor"
+              }
+            ],
+            "transcript_cursor": 1
+          }
+        }
+      }
+    }
+  },
+  "ROOM_PAUSED": {
+    "request": {
+      "contract_version": "1",
+      "request_id": "75adb419-f968-421a-8ec9-b64dcd2c6d5a",
+      "trace_id": "83480299-2eee-4da1-a819-2f8bea38bcf9",
+      "idempotency_key": "74982a19-a26d-4468-8f38-5198a2f09480",
+      "context": {
+        "tenant_id": "test-tenant",
+        "principal_id": "test-dispatcher",
+        "domain_id": "test-domain",
+        "workspace_id": "test-workspace",
+        "ticket_id": "bfc6da32-4237-487a-8976-bf8fee1b851f",
+        "ticket_generation": 0,
+        "binding_id": "dispatcher-binding-bfc6da32-4237-487a-8976-bf8fee1b851f-g0",
+        "run_id": "parent-bfc6da32-4237-487a-8976-bf8fee1b851f-g0"
+      },
+      "payload": {
+        "version": 2,
+        "room_id": "0f7f1cc3-aff8-4cfc-bd94-c9ff733c9c8f",
+        "expected_room_version": 3,
+        "operation": "run_turn",
+        "turn_id": "ad532952-01b7-48ef-bede-b88debb9150c",
+        "task_id": "test-task",
+        "correlation_id": "test-correlation",
+        "speaker_agent_version_id": "B-v1",
+        "instruction": "Đưa đề xuất theo dữ kiện chung.",
+        "in_reply_to_message_id": null
+      }
+    },
+    "result": {
+      "request_id": "75adb419-f968-421a-8ec9-b64dcd2c6d5a",
+      "status": "error",
+      "error": {
+        "code": "ROOM_PAUSED",
+        "message": "ROOM_PAUSED",
+        "retryable": false,
+        "details": {}
+      }
+    }
+  },
+  "cancel_turn": {
+    "request": {
+      "contract_version": "1",
+      "request_id": "058201dc-5788-429e-b70d-186d9ee70aca",
+      "trace_id": "a156e9a5-a165-41e9-919e-2c7495549590",
+      "idempotency_key": "2a8d2076-c976-4ac5-8c9f-3ea9ba437b68",
+      "context": {
+        "tenant_id": "test-tenant",
+        "principal_id": "test-dispatcher",
+        "domain_id": "test-domain",
+        "workspace_id": "test-workspace",
+        "ticket_id": "bfc6da32-4237-487a-8976-bf8fee1b851f",
+        "ticket_generation": 0,
+        "binding_id": "dispatcher-binding-bfc6da32-4237-487a-8976-bf8fee1b851f-g0",
+        "run_id": "parent-bfc6da32-4237-487a-8976-bf8fee1b851f-g0"
+      },
+      "payload": {
+        "version": 2,
+        "room_id": "0f7f1cc3-aff8-4cfc-bd94-c9ff733c9c8f",
+        "expected_room_version": 3,
+        "operation": "cancel_turn",
+        "target_operation_id": "c8a8de6c-b482-4987-a1f6-6f3f84002bc2"
+      }
+    },
+    "result": {
+      "request_id": "058201dc-5788-429e-b70d-186d9ee70aca",
+      "status": "error",
+      "error": {
+        "code": "OUTCOME_UNKNOWN",
+        "message": "OUTCOME_UNKNOWN",
+        "retryable": false,
+        "details": {
+          "turn_result": {
+            "version": 2,
+            "room_id": "0f7f1cc3-aff8-4cfc-bd94-c9ff733c9c8f",
+            "ticket_id": "bfc6da32-4237-487a-8976-bf8fee1b851f",
+            "ticket_generation": 0,
+            "room_version": 4,
+            "room_state": "paused",
+            "pause_reason": "outcome_unknown",
+            "operation_id": "c8a8de6c-b482-4987-a1f6-6f3f84002bc2",
+            "turn_id": "c95e3520-f5f1-4b9b-a6d7-0e046aadcaaf",
+            "task_id": "test-task",
+            "source_run_id": "child-run-c8a8de6c-b482-4987-a1f6-6f3f84002bc2",
+            "speaker_agent_version_id": "A-v1",
+            "turn_status": "outcome_unknown",
+            "messages": [
+              {
+                "content": "Phân tích ticket mẫu; chỉ đề xuất phương án.",
+                "delivery": "broadcast",
+                "recipient_agent_version_id": null,
+                "in_reply_to_message_id": null,
+                "message_id": "78f3a869-1f14-4530-87a0-a5159e0b6f25",
+                "sequence": 1,
+                "sender": "test-dispatcher",
+                "timestamp": "2026-09-29T14:49:13.304366Z"
+              }
+            ],
+            "follow_up_requests": [],
+            "turns_used": 1,
+            "turns_remaining": 11,
+            "consecutive_turns": 1,
+            "needs_dispatcher_decision": true,
+            "participants": [
+              {
+                "agent_version_id": "A-v1",
+                "role": "advisor"
+              },
+              {
+                "agent_version_id": "B-v1",
+                "role": "advisor"
+              }
+            ],
+            "transcript_cursor": 1
+          }
+        }
+      }
+    }
+  },
+  "append_message": {
+    "request": {
+      "contract_version": "1",
+      "request_id": "1a3a913d-344d-4a21-9a3d-12e6235ab68c",
+      "trace_id": "e2b4bcc9-661c-4a49-8ee7-20dd3378cf81",
+      "idempotency_key": "9f67af8d-2a52-434b-8c22-ab84b287149c",
+      "context": {
+        "tenant_id": "test-tenant",
+        "principal_id": "test-dispatcher",
+        "domain_id": "test-domain",
+        "workspace_id": "test-workspace",
+        "ticket_id": "9cb5141d-dbd0-4d30-a537-e59c29d522b9",
+        "ticket_generation": 0,
+        "binding_id": "dispatcher-binding-9cb5141d-dbd0-4d30-a537-e59c29d522b9-g0",
+        "run_id": "parent-9cb5141d-dbd0-4d30-a537-e59c29d522b9-g0"
+      },
+      "payload": {
+        "version": 2,
+        "room_id": "5ac94b09-12f3-4021-bcc8-1ea33a2d08bd",
+        "expected_room_version": 3,
+        "operation": "append_message",
+        "message": {
+          "content": "Bổ sung ảnh mô tả (giả lập); giữ nguyên bộ đếm.",
+          "delivery": "broadcast",
+          "recipient_agent_version_id": null,
+          "in_reply_to_message_id": null
+        }
+      }
+    },
+    "result": {
+      "request_id": "1a3a913d-344d-4a21-9a3d-12e6235ab68c",
+      "status": "completed",
+      "data": {
+        "version": 2,
+        "room_id": "5ac94b09-12f3-4021-bcc8-1ea33a2d08bd",
+        "ticket_id": "9cb5141d-dbd0-4d30-a537-e59c29d522b9",
+        "ticket_generation": 0,
+        "room_version": 4,
+        "room_state": "idle",
+        "pause_reason": null,
+        "operation_id": null,
+        "turn_id": null,
+        "task_id": null,
+        "source_run_id": null,
+        "speaker_agent_version_id": "A-v1",
+        "turn_status": null,
+        "messages": [
+          {
+            "content": "Phân tích ticket mẫu; chỉ đề xuất phương án.",
+            "delivery": "broadcast",
+            "recipient_agent_version_id": null,
+            "in_reply_to_message_id": null,
+            "message_id": "1dacbaf0-8424-4b92-8c82-303787b63835",
+            "sequence": 1,
+            "sender": "test-dispatcher",
+            "timestamp": "2026-09-29T14:49:13.541126Z"
+          },
+          {
+            "content": "A-v1: đã đọc 1 tin. @B chỉ là đề nghị; chờ Điều phối.",
+            "delivery": "broadcast",
+            "recipient_agent_version_id": null,
+            "in_reply_to_message_id": null,
+            "message_id": "4f0c2ff5-5688-4056-bf9b-6442165d64b2",
+            "sequence": 2,
+            "sender": "A-v1",
+            "timestamp": "2026-09-29T14:49:13.565533Z"
+          },
+          {
+            "content": "Bổ sung ảnh mô tả (giả lập); giữ nguyên bộ đếm.",
+            "delivery": "broadcast",
+            "recipient_agent_version_id": null,
+            "in_reply_to_message_id": null,
+            "message_id": "f189b9c3-5f7a-4139-ad05-ae22bca6c7fd",
+            "sequence": 3,
+            "sender": "test-dispatcher",
+            "timestamp": "2026-09-29T14:49:13.568870Z"
+          }
+        ],
+        "follow_up_requests": [],
+        "turns_used": 1,
+        "turns_remaining": 11,
+        "consecutive_turns": 1,
+        "needs_dispatcher_decision": true,
+        "participants": [
+          {
+            "agent_version_id": "A-v1",
+            "role": "advisor"
+          },
+          {
+            "agent_version_id": "B-v1",
+            "role": "advisor"
+          }
+        ],
+        "transcript_cursor": 3
+      }
+    }
+  }
+}
