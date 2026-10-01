@@ -1,14 +1,14 @@
 """Required production ports. No in-memory/default permissive implementations."""
-from typing import Protocol
+from typing import Optional, Protocol
 from groupchat.models import Context
 from .models import Action, AuthorityView, Reconciliation, SupervisorState
 
 
 class StateStore(Protocol):
-    async def load(self, context: Context) -> SupervisorState | None: ...
+    async def load(self, context: Context) -> Optional[SupervisorState]: ...
 
-    async def commit(self, state: SupervisorState, expected_version: int | None,
-                     *, delivery_id: str | None = None) -> bool:
+    async def commit(self, state: SupervisorState, expected_version: Optional[int],
+                     *, delivery_id: Optional[str] = None) -> bool:
         """Atomic CAS + inbox ACK + full checkpoint/journal, rollback on failure.
 
         Scope key includes tenant/ticket/generation; check domain/workspace/binding

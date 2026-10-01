@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional, Union
 
 from pydantic import Field, TypeAdapter, model_validator
 from groupchat.models import Context, ContextItem, Id, Model, ParticipantSpec, RoomData, Text, TurnPolicy
@@ -31,7 +31,7 @@ class ProposedPlan(Model):
     performer_role: Text
     expected_duration: Text
     conditions: Text
-    cost: Cost | None
+    cost: Optional[Cost]
     result_refs: list[Id] = Field(default_factory=list)
     attachment_ids: list[Id] = Field(default_factory=list)
 
@@ -110,9 +110,20 @@ class PauseDecision(Model):
     reason: Text
 
 
-Decision = Annotated[OpenDecision | AddDecision | TasksDecision | RunDecision |
-                     CompleteTaskDecision | QuestionDecision | PlanDecision | SummaryDecision | PauseDecision,
-                     Field(discriminator="kind")]
+Decision = Annotated[
+    Union[
+        OpenDecision,
+        AddDecision,
+        TasksDecision,
+        RunDecision,
+        CompleteTaskDecision,
+        QuestionDecision,
+        PlanDecision,
+        SummaryDecision,
+        PauseDecision,
+    ],
+    Field(discriminator="kind"),
+]
 DECISION = TypeAdapter(Decision)
 
 Phase = Literal["planning", "waiting_information", "waiting_management",
@@ -127,7 +138,7 @@ class Approval(Model):
     plan_id: Id
     plan_version: int
     expires_at: datetime
-    decision: Literal["approve", "reject", "request_changes"] | None = None
+    decision: Optional[Literal["approve", "reject", "request_changes"]] = None
 
 
 class Question(Model):
@@ -143,8 +154,8 @@ class Action(Model):
     wire: dict
     plan_version: int
     status: Literal["pending", "sending", "accepted", "unknown", "done", "failed"] = "pending"
-    receipt: dict | None = None
-    previous_action_id: Id | None = None
+    receipt: Optional[dict] = None
+    previous_action_id: Optional[Id] = None
 
 
 class SupervisorState(Model):
@@ -154,37 +165,37 @@ class SupervisorState(Model):
     phase: Phase = "planning"
     groupchat_version_id: Id
     turn_policy: TurnPolicy
-    room: RoomData | None = None  # read cache only; refresh before decisions
+    room: Optional[RoomData] = None  # read cache only; refresh before decisions
     facts: list[dict] = Field(default_factory=list)
     plans: list[PlanVersion] = Field(default_factory=list)
     revision: int = 1
-    revision_reason: str | None = None
+    revision_reason: Optional[str] = None
     needs_clarification: bool = False
     approvals: dict[str, Approval] = Field(default_factory=dict)
-    question: Question | None = None
-    assignment: dict | None = None
-    result: dict | None = None
+    question: Optional[Question] = None
+    assignment: Optional[dict] = None
+    result: Optional[dict] = None
     result_history: list[dict] = Field(default_factory=list)
     assignment_history: list[dict] = Field(default_factory=list)
-    completion: dict | None = None
-    publication_draft: dict | None = None
+    completion: Optional[dict] = None
+    publication_draft: Optional[dict] = None
     feedback: list[dict] = Field(default_factory=list)
     tasks: dict[str, TaskMetadata] = Field(default_factory=dict)
     task_drafts: list[TaskSpec] = Field(default_factory=list)
     context_drafts: list[ContextItem] = Field(default_factory=list)
-    context_join_pending: Id | None = None
+    context_join_pending: Optional[Id] = None
     context_fingerprints: dict[str, str] = Field(default_factory=dict)
-    run_after_put: RunDecision | None = None
+    run_after_put: Optional[RunDecision] = None
     terminal_results: dict[str, RoomData] = Field(default_factory=dict)
-    action: Action | None = None
+    action: Optional[Action] = None
     journal: list[Action] = Field(default_factory=list)
     events: dict[str, str] = Field(default_factory=dict)
     aggregate_versions: dict[str, int] = Field(default_factory=dict)
-    pause_reason: str | None = None
-    resume_phase: Phase | None = None
+    pause_reason: Optional[str] = None
+    resume_phase: Optional[Phase] = None
 
     @property
-    def plan(self) -> PlanVersion | None:
+    def plan(self) -> Optional[PlanVersion]:
         return self.plans[-1] if self.plans and self.plans[-1].version == self.revision else None
 
 
@@ -202,7 +213,7 @@ class Publication(Model):
     plan_version: int
     summary: Text
     evidence_file_ids: list[Id]
-    final_cost: Cost | None
+    final_cost: Optional[Cost]
     status: Id
 
 
@@ -212,14 +223,14 @@ class AuthorityView(Model):
     state_version: int
     catalog: dict[str, CatalogEntry] = Field(default_factory=dict)
     ticket_context: list[ContextItem] = Field(default_factory=list)
-    plan_id: Id | None = None
-    management_recipient: Id | None = None
-    resident_recipient: Id | None = None
-    approval_expires_at: datetime | None = None
-    assignment_id: Id | None = None
+    plan_id: Optional[Id] = None
+    management_recipient: Optional[Id] = None
+    resident_recipient: Optional[Id] = None
+    approval_expires_at: Optional[datetime] = None
+    assignment_id: Optional[Id] = None
     assignment_version: int = 1
     execution_allowed: bool = False
-    publication: Publication | None = None
+    publication: Optional[Publication] = None
     closure_confirmed: bool = False
     # Backend decides whether a changed plan may proceed after earlier execution.
     revision_reconciled: bool = False
@@ -233,4 +244,4 @@ class AuthorityView(Model):
 
 class Reconciliation(Model):
     outcome: Literal["unknown", "not_applied", "receipt"]
-    receipt: dict | None = None
+    receipt: Optional[dict] = None

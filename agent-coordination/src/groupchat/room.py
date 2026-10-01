@@ -8,6 +8,7 @@ import json
 from copy import deepcopy
 
 from pydantic import ValidationError
+from typing import Optional, Union
 
 from . import context_builder, mailbox, messaging, task_board
 from .models import (
@@ -43,7 +44,7 @@ from .ports import AgentInvocationPort, Invocation, ParticipantResolver, RoomSta
 
 
 def error_result(
-    request_id: str, code: str, message: str | None = None, turn: RoomData | None = None
+    request_id: str, code: str, message: Optional[str] = None, turn: Optional[RoomData] = None
 ) -> Failure:
     return Failure(
         request_id=request_id,
@@ -68,9 +69,9 @@ class RoomService:
     @staticmethod
     def data(
         room: Snapshot,
-        active: ActiveOperation | None = None,
-        status: TurnStatus | None = None,
-        output: AgentOutput | None = None,
+        active: Optional[ActiveOperation] = None,
+        status: Optional[TurnStatus] = None,
+        output: Optional[AgentOutput] = None,
     ) -> RoomData:
         active = active or room.active_operation
         payload = active.command.payload if active else None
@@ -128,7 +129,7 @@ class RoomService:
             context.ticket,
         )
 
-    async def execute(self, raw: Command | dict) -> Success | Failure:
+    async def execute(self, raw: Union[Command, dict]) -> Union[Success, Failure]:
         request_id = (
             raw.request_id
             if isinstance(raw, Command)
@@ -145,16 +146,16 @@ class RoomService:
             return error_result(request_id, exc.code, str(exc))
         except asyncio.CancelledError:
             raise  # committed dispatch vẫn giữ fence; recovery phải reconcile
-        except Exception:  # noqa: BLE001 - sanitize dependency error; uncertain dispatch giữ fence
+        except Exception:
             return error_result(
                 request_id,
                 "DEPENDENCY_UNAVAILABLE",
                 "Dependency failed; inspect operation before retry",
             )
 
-    async def _execute(self, command: Command) -> Success | Failure:
+    async def _execute(self, command: Command) -> Union[Success, Failure]:
         ctx, p = command.context, command.payload
-        result: Success | Failure
+        result: Union[Success, Failure]
         await self.resolver.authorize(ctx, p.operation, None)
         # Bỏ tracing ID; thay đổi authority/binding làm thay đổi semantics.
         semantic = {
@@ -449,14 +450,14 @@ class RoomService:
         try:
             async with asyncio.timeout(5):
                 return await self.invocation.cancel(invocation)
-        except Exception:  # noqa: BLE001 - sanitize dependency error; uncertain dispatch giữ fence
+        except Exception:
             return False
 
     async def complete(
         self,
         invocation: Invocation,
         status: TurnStatus,
-        output: AgentOutput | None = None,
+        output: Optional[AgentOutput] = None,
     ) -> bool:
         """Chỉ nhận trusted adapter/storage callback; kiểm tra context, operation và fence.
 
@@ -566,7 +567,7 @@ class RoomService:
         except RoomError:
             return False
 
-    async def query(self, query: Query) -> Success | Failure:
+    async def query(self, query: Query) -> Union[Success, Failure]:
         try:
             await self.resolver.authorize(query.context, query.operation, None)
             async with self.state.transaction(query.context) as state:

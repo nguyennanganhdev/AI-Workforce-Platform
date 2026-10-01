@@ -1,6 +1,6 @@
 """Allowlisted tool/assignment operations through backend, never direct WRITE."""
 
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 from adapters.backend.client import BackendClient, BackendResult
 from adapters.backend.errors import AdapterError
@@ -10,7 +10,10 @@ from adapters.backend.operations import send
 
 class ToolClient:
     def __init__(
-        self, backend: BackendClient, *, operations: Mapping[str, tuple[str, str]] | None = None
+        self,
+        backend: BackendClient,
+        *,
+        operations: Optional[Mapping[str, tuple[str, str]]] = None,
     ) -> None:
         """operations maps a trusted tool alias to (backend operation, payload type).
 
