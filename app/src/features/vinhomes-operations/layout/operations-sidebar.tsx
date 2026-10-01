@@ -1,6 +1,8 @@
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useOperationsData } from '../hooks/use-operations-data';
-import { type OperationsPersona, type MenuId } from '../types/persona';
+import { type MenuId } from '../types/persona';
+import { previewAccount } from '../auth/demo-access';
+import { canViewPath, roleLabels } from '../workspace/model';
 
 interface NavItemDef {
   id: MenuId;
@@ -16,7 +18,6 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
 
   const {
     currentPersona,
-    setCurrentPersona,
     currentProfile,
     canAccessMenu,
     myWorkOrders,
@@ -26,16 +27,12 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
   } = useOperationsData();
 
   const pendingApprovalsCount = approvals.filter((a) => a.status === 'PENDING').length;
-  const p1IncidentsCount = incidents.filter((i) => i.severity === 'P1' && i.status === 'OPEN').length;
+  const p1IncidentsCount = incidents.filter((i) => i.severity === 'P0' && i.status === 'OPEN').length;
   const myPendingTasksCount = myWorkOrders.filter((w) => w.status === 'ASSIGNED' || w.status === 'IN_PROGRESS').length;
   const pendingQcCount = workOrders.filter((w) => w.status === 'COMPLETED').length;
 
-  const personas: Array<{ id: OperationsPersona; label: string; roleDesc: string }> = [
-    { id: 'STAFF_TECHNICAL', label: 'Kỹ thuật viên', roleDesc: 'Thi công, đo đạc, báo hoàn thành' },
-    { id: 'STAFF_SANITATION_A5', label: 'Nhân viên vệ sinh', roleDesc: 'Làm sạch, chụp Before/After, tick bước' },
-    { id: 'STAFF_SECURITY', label: 'Nhân viên an ninh', roleDesc: 'Tuần tra check-in, biên bản sự việc, bàn giao ca' },
-    { id: 'MANAGER', label: 'Ban quản lý', roleDesc: 'Giám sát, nghiệm thu, duyệt chi phí, liên hệ nhà thầu' },
-  ];
+  const account = previewAccount();
+  const workspaceItems = account?.role === 'admin' ? [['accounts', 'Quản lý tài khoản']] : account?.role === 'manager' ? [['team', 'Nhóm ban quản lý'], ['dispatch', 'Ticket & hiện trường'], ['reports', 'Báo cáo vận hành']] : [['dispatch', 'Ticket & hiện trường']];
 
   const allNavItems: NavItemDef[] = [
     {
@@ -123,7 +120,7 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
   ];
 
   // RBAC Filtering: Only render menu items allowed for current persona
-  const allowedNavItems = allNavItems.filter((item) => canAccessMenu(item.id));
+  const allowedNavItems = allNavItems.filter((item) => account && canViewPath(account.role, item.to) && canAccessMenu(item.id));
   const operationItems = allowedNavItems.filter((item) => item.section === 'OPERATIONS');
   const managementItems = allowedNavItems.filter((item) => item.section === 'MANAGEMENT');
 
@@ -134,12 +131,12 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
         <span className="block text-xs text-slate-500">Quản lý vận hành</span>
       </Link>
       <div className="border-b border-slate-200 p-4">
-        <label htmlFor="operations-persona" className="mb-2 block text-xs text-slate-500">Vai trò làm việc</label>
-        <select id="operations-persona" value={currentPersona} onChange={(event) => setCurrentPersona(event.target.value as OperationsPersona)} className="w-full h-10 rounded-md border border-slate-200 bg-white px-2.5 text-sm text-slate-800">
-          {personas.map((persona) => <option key={persona.id} value={persona.id}>{persona.label}</option>)}
-        </select>
+        <p className="mb-2 block text-xs text-slate-500">Vai trò được cấp</p>
+        <strong className="text-sm">{account ? roleLabels[account.role] : 'Chưa đăng nhập'}</strong>
+        <p className="text-xs text-slate-500 mt-1">{account?.identifier} · {account?.scope}</p>
       </div>
       <nav aria-label="Chức năng vận hành" className="flex-1 space-y-5 overflow-y-auto p-3">
+        <div><p className="px-3 pb-1.5 text-xs text-slate-500">Không gian làm việc</p>{workspaceItems.map(([path, label]) => <a key={path} href={`/operations/${path}`} onClick={onNavigate} aria-current={currentPath === `/operations/${path}` ? 'page' : undefined}>{label}</a>)}</div>
         {[{title: 'Công việc', items: operationItems}, {title: 'Quản lý', items: managementItems}].map((section) => section.items.length > 0 && (
           <div key={section.title}>
             <p className="px-3 pb-1.5 text-xs text-slate-500">{section.title}</p>
@@ -154,8 +151,8 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
         ))}
       </nav>
       <div className="border-t border-slate-200 p-4">
-        <p className="text-sm font-medium text-slate-900">{currentProfile.name}</p>
-        <p className="mt-1 text-xs text-slate-500">{currentProfile.department}</p>
+        <p className="text-sm font-medium text-slate-900">{account?.name || currentProfile.name}</p>
+        <p className="mt-1 text-xs text-slate-500">{account ? roleLabels[account.role] : currentProfile.department}</p>
       </div>
     </aside>
   );

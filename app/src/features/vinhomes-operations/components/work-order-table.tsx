@@ -142,7 +142,7 @@ export function WorkOrderTable() {
         priority: task?.priority || 'MEDIUM',
         towerCode: incident?.location_json.towerCode || 'Khu đô thị',
         areaDesc: incident?.location_json.areaCode || incident?.location_json.description || 'Khu vực chung',
-        incidentSeverity: incident?.severity || 'P3',
+        incidentSeverity: incident?.severity || 'P2',
         slaDueAt: incident?.sla_due_at,
       };
     });

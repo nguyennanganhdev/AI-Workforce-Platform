@@ -26,6 +26,11 @@ import {
   type ResidentAuthService,
 } from "./auth-service";
 import "./auth.css";
+import { startResidentPreview } from "./demo-access";
+import {
+  ResidentAccountStatus,
+  type ResidentPendingStatus,
+} from "./ResidentAccountStatus";
 
 const content = {
   login: {
@@ -48,9 +53,11 @@ const content = {
 export function AuthPage({
   mode,
   service = residentAuthService,
+  onAuthenticated,
 }: {
   mode: AuthMode;
   service?: ResidentAuthService;
+  onAuthenticated?: () => void;
 }) {
   const [values, setValues] = useState<AuthValues>({
     fullName: "",
@@ -64,6 +71,7 @@ export function AuthPage({
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState("");
   const [failed, setFailed] = useState(false);
+  const [nextStep, setNextStep] = useState<ResidentPendingStatus | null>(null);
   const mounted = useRef(true);
   const submitting = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -109,19 +117,40 @@ export function AuthPage({
     setNotice("");
     try {
       const phone = normalizePhone(values.phone);
-      if (mode === "login")
-        await service.signIn({ phone, password: values.password });
-      else if (mode === "register")
-        await service.register({
-          fullName: values.fullName.trim(),
-          phone,
-          password: values.password,
-        });
-      else await service.requestPasswordReset(phone);
+      if (mode === "login" || mode === "register") {
+        const result =
+          mode === "login"
+            ? await service.signIn({ phone, password: values.password })
+            : await service.register({
+                fullName: values.fullName.trim(),
+                phone,
+                password: values.password,
+              });
+        if (!mounted.current) return;
+        setValues((previous) => ({
+          ...previous,
+          password: "",
+          confirmPassword: "",
+        }));
+        setTouched({});
+        if (result.nextStep !== "ready") {
+          setNextStep(result.nextStep);
+          return;
+        }
+        if (onAuthenticated) {
+          onAuthenticated();
+          return;
+        }
+        setFailed(false);
+        setNotice(
+          "Phiên tài khoản cần được kết nối với ứng dụng trước khi sử dụng dữ liệu thực.",
+        );
+        return;
+      }
+      await service.requestPasswordReset(phone);
       if (!mounted.current) return;
       setFailed(false);
-      if (mode === "login") location.assign("/#/");
-      else {
+      {
         setValues((previous) => ({
           ...previous,
           password: "",
@@ -129,9 +158,7 @@ export function AuthPage({
         }));
         setTouched({});
         setNotice(
-          mode === "register"
-            ? "Đã tiếp nhận thông tin. Vui lòng làm theo hướng dẫn xác minh từ hệ thống."
-            : "Nếu thông tin phù hợp với tài khoản, hệ thống sẽ gửi hướng dẫn khôi phục.",
+          "Nếu thông tin phù hợp với tài khoản, hệ thống sẽ gửi hướng dẫn khôi phục.",
         );
       }
     } catch (error) {
@@ -149,6 +176,7 @@ export function AuthPage({
   }
 
   const fields = { values, update, blur, errorFor, disabled: pending };
+  if (nextStep) return <ResidentAccountStatus status={nextStep} />;
   return (
     <main className={`resident-auth resident-auth--${mode}`}>
       <aside
@@ -321,9 +349,21 @@ export function AuthPage({
             </p>
           )}
           <div className="resident-auth-demo">
-            <a href="/#/">
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  startResidentPreview();
+                } catch {
+                  setFailed(true);
+                  setNotice(
+                    "Trình duyệt đang chặn lưu trạng thái trải nghiệm. Vui lòng cho phép lưu trữ để tiếp tục.",
+                  );
+                }
+              }}
+            >
               Khám phá bản trải nghiệm <IconArrowUpRight size={16} />
-            </a>
+            </button>
             <p>Giao diện mẫu · Chưa kết nối dịch vụ tài khoản</p>
           </div>
         </div>

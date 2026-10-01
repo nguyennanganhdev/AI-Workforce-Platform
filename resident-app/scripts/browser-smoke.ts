@@ -99,9 +99,14 @@ try {
   await settle();
   // Only this app's demo key is removed, in the isolated testing profile.
   await evaluate(
-    `localStorage.removeItem('nha.resident.demo.v1'); location.reload();`,
+    `localStorage.removeItem('nha.resident.demo.v1'); sessionStorage.removeItem('resident.ui-preview'); location.assign('/login');`,
   );
   await Bun.sleep(700);
+  await clickText("Khám phá bản trải nghiệm");
+  await assert(
+    `sessionStorage.getItem('resident.ui-preview')==='true' && !!document.querySelector('.app-shell')`,
+    "Explicit resident preview entry failed",
+  );
   for (const [width, height] of [
     [390, 844],
     [320, 640],
@@ -268,6 +273,82 @@ try {
     return valid && rejected;
   })()`,
     "Phone photo resizing or invalid photo handling failed",
+  );
+  // Multiple conversations: drafts, ticket ownership, unread and mobile room picker.
+  await command("Emulation.setDeviceMetricsOverride", {
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
+  await clickText("Chat mới");
+  await send("Sự cố mất điện phòng khách");
+  const firstRoom = await evaluate(
+    `JSON.parse(localStorage.getItem('nha.resident.demo.v1')).activeConversationId`,
+  );
+  await evaluate(
+    `(()=>{const el=document.querySelector('.composer textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(el,'Thông tin chưa gửi');el.dispatchEvent(new Event('input',{bubbles:true}))})()`,
+  );
+  await settle();
+  await clickText("Chat mới");
+  await assert(
+    `document.querySelector('.composer textarea').value===''`,
+    "Unsent input leaked into another room",
+  );
+  await send("Giờ mở cửa bể bơi?");
+  await evaluate(`location.hash='/chat/${firstRoom}'`);
+  await settle();
+  await assert(
+    `document.querySelector('.composer textarea').value==='Thông tin chưa gửi'`,
+    "Unsent room input lost on switch",
+  );
+  await assert(
+    `JSON.parse(localStorage.getItem('nha.resident.demo.v1')).draft.step==='location'`,
+    "Room draft not restored",
+  );
+  await send("Căn hộ S2.01 1208");
+  await clickText("Gửi phản ánh");
+  const ticket = await evaluate(
+    `JSON.parse(localStorage.getItem('nha.resident.demo.v1')).requests[0].id`,
+  );
+  await send("Bổ sung: mất điện cả đèn bếp");
+  await assert(
+    `JSON.parse(localStorage.getItem('nha.resident.demo.v1')).conversations.find(c=>c.id==='${firstRoom}').requestId==='${ticket}' && JSON.parse(localStorage.getItem('nha.resident.demo.v1')).draft===null`,
+    "Follow-up created another ticket draft",
+  );
+  await clickText("Chat mới");
+  await evaluate(`location.hash='/requests/${ticket}'`);
+  await settle();
+  await clickText("Mô phỏng chờ xác nhận");
+  await assert(
+    `JSON.parse(localStorage.getItem('nha.resident.demo.v1')).conversations.find(c=>c.id==='${firstRoom}').unread===1`,
+    "Ticket event unread missing",
+  );
+  await evaluate(`location.hash='/notifications'`);
+  await settle();
+  await evaluate(`document.querySelector('button.notification-card').click()`);
+  await settle();
+  await assert(
+    `location.hash==='#/chat/${firstRoom}' && JSON.parse(localStorage.getItem('nha.resident.demo.v1')).conversations.find(c=>c.id==='${firstRoom}').unread===0`,
+    "Notification did not open and mark its room read",
+  );
+  await evaluate(
+    `document.querySelector('.resident-rooms-bar button').click()`,
+  );
+  await settle();
+  await screenshot("conversations-390");
+  await assert(
+    "document.documentElement.scrollWidth<=innerWidth",
+    "Conversation picker overflow",
+  );
+  await evaluate(
+    `document.querySelector('[aria-label="Đóng danh sách hội thoại"]').click()`,
+  );
+  await evaluate(`location.reload()`);
+  await settle();
+  await assert(
+    `JSON.parse(localStorage.getItem('nha.resident.demo.v1')).conversations.find(c=>c.id==='${firstRoom}').requestId==='${ticket}'`,
+    "Room ticket lost on reload",
   );
   // Auth remains an isolated UI; unavailable BE must never look like a login success.
   const storedBeforeAuth = await evaluate(

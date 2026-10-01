@@ -13,7 +13,7 @@ export const MOCK_MESSAGES: VhMessage[] = [
   {
     id: 'MSG-002',
     incident_id: 'INC-2026-001',
-    body: 'Đã tạo ticket INC-2026-001 và mở phiên điều phối. Phân loại P1 do có nguy cơ nước ngấm vào hố thang máy; đang gọi A2 đánh giá kỹ thuật và đề xuất phương án xử lý.',
+    body: 'Đã tạo ticket INC-2026-001 và mở phiên điều phối. Phân loại P0 do có nguy cơ nước ngấm vào hố thang máy; đang gọi A2 đánh giá kỹ thuật và đề xuất phương án xử lý.',
     author_type: 'AGENT',
     author_id: 'agent-vinhomes-dispatcher',
     author_name: 'Điều phối vận hành',

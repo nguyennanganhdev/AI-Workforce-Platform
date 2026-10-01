@@ -11,7 +11,8 @@ không có rule global cho button/input/body.
 - `/forgot-password`: nhập điện thoại để đề nghị khôi phục.
 - `#/profile`: có đường dẫn vào đăng nhập/đăng ký.
 - Auth có layout riêng, không render sidebar hoặc bottom navigation của trợ lý.
-- Link “Khám phá bản trải nghiệm” quay về `#/`; đây không phải thao tác đăng nhập.
+- Nút “Khám phá bản trải nghiệm” mở `/#/` và đánh dấu chế độ UI mẫu trong sessionStorage; đây không phải thao tác đăng nhập.
+- Mở app chưa chọn trải nghiệm đưa về `/login`; trang hồ sơ có nút thoát trải nghiệm.
 - Các trang được chọn tại `src/main.tsx`, bên ngoài `App` cư dân; chuyển trang bằng URL riêng và bỏ dữ liệu form đang nhập.
 - URL cũ `#/login`, `#/register`, `#/forgot-password` chuyển sang URL mới tương ứng.
 - Khi deploy, cấu hình hosting trả `index.html` cho `/login`, `/register`, `/forgot-password` để mở trực tiếp hoặc tải lại trang hoạt động (Vite đã hỗ trợ khi phát triển).
@@ -19,12 +20,15 @@ không có rule global cho button/input/body.
 ## Trạng thái tích hợp
 
 Đây là UI và validation, **chưa phải xác thực production**. App demo vẫn truy cập
-được ở `#/`. Không tạo tài khoản, gửi OTP, đặt cookie, lưu password/token hoặc giả
+được ở `#/` sau khi chủ động chọn trải nghiệm. Không tạo tài khoản, gửi OTP, đặt cookie, lưu password/token hoặc giả
 chấp nhận credentials. Adapter hiện tại chủ động báo “chưa kết nối” khi submit hợp lệ.
 Validation frontend chỉ hỗ trợ nhập liệu, không thay thế validation/rate limit phía server.
 
 `auth-service.ts` định nghĩa port `ResidentAuthService` để BE/FE kết nối sau này.
 `AuthPage` nhận service qua prop để test/thay adapter. Không đoán các endpoint từ mẫu UI.
+Kết quả đăng nhập/đăng ký gồm `nextStep`: `verification-required`, `membership-pending`, `ready`.
+Hai trạng thái đầu hiển thị giao diện hướng dẫn; `ready` gọi `onAuthenticated` nếu có.
+Nếu chưa có callback, không tự chuyển vào dữ liệu demo. Chi tiết tại [tài liệu auth UI](../../../docs/04-auth-ui.md).
 Callback success trong form chỉ dành cho adapter thật; trước khi bật adapter cần làm
 session bootstrap, profile thật và membership, không chuyển user thật vào dữ liệu demo.
 

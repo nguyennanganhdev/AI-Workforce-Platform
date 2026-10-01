@@ -151,7 +151,7 @@ export const MOCK_SESSION_MESSAGES: VhSessionMessage[] = [
     session_id: 'SES-2026-001',
     sender_type: 'AGENT_TECHNICAL',
     sender_name: 'Agent Kỹ Thuật',
-    content: 'Đã đánh giá case: Nguy cơ bục vỡ mối nối đường ống nước cấp nhánh tầng 12, mức độ P1. Điều phối ngay Kỹ thuật viên Nguyễn Văn Hùng qua Phiếu thi công #WO-2026-083 để khóa van và khảo sát vật tư.',
+    content: 'Đã đánh giá case: Nguy cơ bục vỡ mối nối đường ống nước cấp nhánh tầng 12, mức độ P0. Điều phối ngay Kỹ thuật viên Nguyễn Văn Hùng qua Phiếu thi công #WO-2026-083 để khóa van và khảo sát vật tư.',
     action_type: 'DISPATCH_WORKER',
     created_at: new Date(Date.now() - 73 * 60 * 1000).toISOString(),
   },

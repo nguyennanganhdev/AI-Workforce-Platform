@@ -1,9 +1,12 @@
 /** Resident-only integration port. Never import staff UI/auth implementation here. */
 export type LoginInput = { phone: string; password: string };
 export type RegisterInput = LoginInput & { fullName: string };
+export type ResidentAuthResult = {
+  nextStep: "verification-required" | "membership-pending" | "ready";
+};
 export interface ResidentAuthService {
-  signIn(input: LoginInput): Promise<void>;
-  register(input: RegisterInput): Promise<void>;
+  signIn(input: LoginInput): Promise<ResidentAuthResult>;
+  register(input: RegisterInput): Promise<ResidentAuthResult>;
   requestPasswordReset(phone: string): Promise<void>;
 }
 

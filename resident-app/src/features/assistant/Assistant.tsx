@@ -353,12 +353,19 @@ function DraftCard({
 export function Composer({
   onSend,
   draft,
+  initialInput,
+  onInputChange,
 }: {
   onSend: (text: string, photos?: Photo[]) => boolean;
   draft: Draft | null;
+  initialInput?: { text: string; photos: Photo[] };
+  onInputChange?: (value: { text: string; photos: Photo[] }) => void;
 }) {
-  const [text, setText] = useState("");
-  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [text, setText] = useState(initialInput?.text ?? "");
+  const [photos, setPhotos] = useState<Photo[]>(initialInput?.photos ?? []);
+  useEffect(() => {
+    onInputChange?.({ text, photos });
+  }, [text, photos, onInputChange]);
   const [error, setError] = useState("");
   const [reading, setReading] = useState(false);
   const input = useRef<HTMLInputElement>(null);

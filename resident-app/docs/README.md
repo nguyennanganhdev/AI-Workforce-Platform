@@ -6,6 +6,10 @@ commit nền `fea244d`. Không có backend cư dân được tạo bởi bộ t�
 
 ## Đọc theo thứ tự
 
+**Cập nhật UI mới nhất:** [05 — Bốn luồng FE và bàn giao tích hợp](05-workspace-fe-handoff.md). Đã có nhiều hội thoại/tin chưa đọc cư dân, quản trị tài khoản, nhóm BQL, điều phối điện/nước/an ninh và báo cáo DOCX ở chế độ mẫu. Tài liệu 05 cũng sửa các tham chiếu backend cũ không còn đúng với checkout hiện tại.
+
+Luồng tài khoản mới: [04-auth-ui.md](04-auth-ui.md) — cư dân tự đăng ký, nhân viên chỉ đăng nhập bằng tài khoản admin cấp; phân biệt UI demo với phiên thật.
+
 | Tài liệu | Người đọc / mục đích |
 |---|---|
 | [01 — Nghiệp vụ và dữ liệu](01-business-and-data.md) | BE lead, domain team: hiểu flow, ownership, status và mapping ERD |
@@ -42,7 +46,7 @@ Xác nhận hoàn tất hoặc yêu cầu kiểm tra lại
 | Danh sách/chi tiết | Đọc `ResidentState.requests` | API scoped, phân trang, tìm kiếm và timeline công khai |
 | Xác nhận/xử lý lại | `resolveRequest()` sửa state local | Command có kiểm tra actor, version, trạng thái và resolution revision |
 | Ảnh | Data URL, thu nhỏ, lưu localStorage | Upload thật vào private storage; file ownership và đọc có kiểm quyền |
-| Thông báo | Suy ra từ event cuối của mỗi yêu cầu | P0 vẫn suy ra; thông báo bền vững/read state/push là P1 |
+| Thông báo | Event cuối ticket và unread theo hội thoại mẫu | Event/read cursor bền vững, đồng bộ nhiều thiết bị và push |
 | Tiện ích/nội quy/danh bạ | Nội dung minh họa hoặc chưa công bố | Nội dung được BQL duyệt; không suy đoán giờ mở cửa/số điện thoại |
 | Nhân viên | Mock/localStorage riêng | Dùng cùng application services và dữ liệu với API cư dân |
 
@@ -56,7 +60,7 @@ kèm upload, phân quyền, retry, version và xử lý lỗi.
 
 **P1:** trao đổi theo yêu cầu, conversation server-side/AI, notification feed/read state,
 cập nhật realtime, nội dung tòa nhà và danh mục tiện ích có quản trị.
-P1 cần API và phần UI bổ sung; không mặc định đã có trong frontend.
+P1 cần API và tích hợp realtime. UI hội thoại/unread mẫu đã có, xem tài liệu 05.
 
 **Ngoài phạm vi hiện tại:** thanh toán, hóa đơn, đặt chỗ tiện ích, đăng ký khách,
 biểu quyết cư dân, voice input và tự động điều phối bởi AI.

@@ -12,7 +12,7 @@ export const MOCK_BUSINESS_EVENTS: VhBusinessEvent[] = [
     actor_id: 'usr-hotline-01',
     actor_name: 'Hotline Cư dân Vinhomes',
     actor_version: null,
-    data: { severity: 'P1', category: 'MEP_PLUMBING', location: 'Tòa S2.01, Tầng 12' },
+    data: { severity: 'P0', category: 'MEP_PLUMBING', location: 'Tòa S2.01, Tầng 12' },
     correlation_id: 'corr-001',
     occurred_at: new Date(Date.now() - 75 * 60 * 1000).toISOString(),
   },

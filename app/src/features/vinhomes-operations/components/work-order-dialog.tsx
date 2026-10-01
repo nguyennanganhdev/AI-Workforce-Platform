@@ -166,12 +166,12 @@ export function WorkOrderDialog({ workOrder, onClose, canEdit = true }: WorkOrde
               </span>
               <span
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  incident?.severity === 'P1'
+                  incident?.severity === 'P0'
                     ? 'bg-rose-100 text-rose-700'
                     : 'bg-amber-100 text-amber-700'
                 }`}
               >
-                Mức {incident?.severity || 'P2'}
+                Mức {incident?.severity || 'P1'}
               </span>
             </div>
             <p className="font-bold text-slate-900 text-sm">{incident?.title || 'Sự cố hiện trường'}</p>

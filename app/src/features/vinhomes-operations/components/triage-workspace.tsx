@@ -203,14 +203,14 @@ export function TriageWorkspace() {
                           <div className="flex items-center gap-2">
                             <span
                               className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                candidate.severity === 'P1'
+                                candidate.severity === 'P0'
                                   ? 'bg-rose-100 text-rose-700'
-                                  : candidate.severity === 'P2'
+                                  : candidate.severity === 'P1'
                                     ? 'bg-amber-100 text-amber-700'
                                     : 'bg-blue-100 text-blue-700'
                               }`}
                             >
-                              {candidate.severity === 'P1' ? 'Mức khẩn cấp (P1)' : candidate.severity === 'P2' ? 'Mức cao (P2)' : 'Bình thường'}
+                              {candidate.severity === 'P0' ? 'Mức khẩn cấp (P0)' : candidate.severity === 'P1' ? 'Mức cao (P1)' : 'Bình thường'}
                             </span>
                             <span className="text-xs font-semibold px-2 py-0.5 bg-slate-100 text-slate-700 rounded">
                               Bộ phận: {candidate.domain === 'MEP' ? 'Kỹ thuật Điện Nước' : candidate.domain === 'SANITATION' ? 'Vệ sinh môi trường' : candidate.domain}

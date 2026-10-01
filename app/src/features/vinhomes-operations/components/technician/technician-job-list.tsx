@@ -27,7 +27,7 @@ const GROUPS: Array<{ id: Exclude<TechnicianTab, 'HISTORY'>; label: string }> = 
   { id: 'WAITING', label: 'Chờ cư dân xác nhận' },
 ];
 
-const SEVERITY_RANK: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
+const SEVERITY_RANK: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 const SHIFT_KEY = 'vhm_technician_on_shift';
 
 export function TechnicianJobList({
@@ -95,7 +95,7 @@ export function TechnicianJobList({
         if (group !== 0) return group;
         const rework = Number(!!b.flow.rework_note) - Number(!!a.flow.rework_note);
         if (rework !== 0) return rework;
-        const sev = (SEVERITY_RANK[a.incident?.severity || 'P3'] ?? 2) - (SEVERITY_RANK[b.incident?.severity || 'P3'] ?? 2);
+        const sev = (SEVERITY_RANK[a.incident?.severity || 'P2'] ?? 2) - (SEVERITY_RANK[b.incident?.severity || 'P2'] ?? 2);
         if (sev !== 0) return sev;
         return (a.incident?.sla_due_at || '').localeCompare(b.incident?.sla_due_at || '');
       });
@@ -136,7 +136,7 @@ export function TechnicianJobList({
     return slaText(j.incident?.sla_due_at, now) || { text: '-', pressing: false };
   };
 
-  const isUrgent = (j: (typeof jobs)[number]) => j.incident?.severity === 'P1' || j.incident?.severity === 'P2';
+  const isUrgent = (j: (typeof jobs)[number]) => j.incident?.severity === 'P0' || j.incident?.severity === 'P1';
 
   const isRework = (j: (typeof jobs)[number]) => !!j.flow.rework_note && j.step.tab !== 'HISTORY';
 

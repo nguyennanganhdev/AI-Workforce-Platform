@@ -10,7 +10,7 @@ import { EmptyState, Pagination, SearchField, normalizeSearch, paginate } from '
 
 const ALL = 'ALL';
 const statuses: Record<string, string> = { NEW: 'Mới tiếp nhận', OPEN: 'Đang xử lý', RESOLVED: 'Chờ cư dân xác nhận', CLOSED: 'Đã đóng' };
-const severities: Record<string, string> = { P1: 'Khẩn cấp', P2: 'Cao', P3: 'Bình thường', P4: 'Thấp' };
+const severities: Record<string, string> = { P0: 'Khẩn cấp', P1: 'Cao', P2: 'Bình thường', P3: 'Thấp' };
 
 function FilterSelect({ label, value, items, onChange }: { label: string; value: string; items: Record<string, string>; onChange: (v: string) => void }) {
   return (
@@ -92,7 +92,7 @@ export function IncidentList({ incidents, onSelect }: { incidents: VhIncident[];
                       <p className="ops-subtle tabular-nums">{item.id}</p>
                     </TableCell>
                     <TableCell className="whitespace-nowrap">{place(item)}</TableCell>
-                    <TableCell className={cn('whitespace-nowrap', (item.severity === 'P1' || item.severity === 'P2') && 'font-semibold text-foreground')}>
+                    <TableCell className={cn('whitespace-nowrap', (item.severity === 'P0' || item.severity === 'P1') && 'font-semibold text-foreground')}>
                       {severities[item.severity]}
                     </TableCell>
                     <TableCell className="hidden whitespace-normal lg:table-cell">{ownerName(item)}</TableCell>
@@ -117,7 +117,7 @@ export function IncidentList({ incidents, onSelect }: { incidents: VhIncident[];
                 </div>
                 <p className="ops-subtle"><span className="tabular-nums">{item.id}</span> · {place(item)}</p>
                 <p className="text-[13px] text-slate-600">
-                  <span className={cn((item.severity === 'P1' || item.severity === 'P2') && 'font-semibold text-foreground')}>{severities[item.severity]}</span>
+                  <span className={cn((item.severity === 'P0' || item.severity === 'P1') && 'font-semibold text-foreground')}>{severities[item.severity]}</span>
                   {' · '}{ownerName(item)}
                 </p>
                 <div className="flex justify-end">

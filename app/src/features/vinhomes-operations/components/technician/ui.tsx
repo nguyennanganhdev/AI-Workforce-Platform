@@ -28,19 +28,19 @@ export function StatusPill({ children }: { tone?: StageTone; children: ReactNode
 }
 
 const SEVERITY_LABELS: Record<string, string> = {
-  P1: 'Khẩn cấp',
-  P2: 'Cao',
-  P3: 'Bình thường',
-  P4: 'Thấp',
+  P0: 'Khẩn cấp',
+  P1: 'Cao',
+  P2: 'Bình thường',
+  P3: 'Thấp',
 };
 
 export function severityLabel(severity?: string) {
-  return SEVERITY_LABELS[severity || 'P3'] || SEVERITY_LABELS.P3;
+  return SEVERITY_LABELS[severity || 'P2'] || SEVERITY_LABELS.P2;
 }
 
 /** Urgency is carried by weight, not colour. */
 export function SeverityBadge({ severity }: { severity?: string }) {
-  const urgent = severity === 'P1' || severity === 'P2';
+  const urgent = severity === 'P0' || severity === 'P1';
   return <span className={cn('text-sm', urgent ? 'font-semibold text-foreground' : 'text-slate-600')}>{severityLabel(severity)}</span>;
 }
 

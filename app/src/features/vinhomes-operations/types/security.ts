@@ -20,7 +20,7 @@ export interface SecurityIncidentReport {
   incident_id?: string;
   title: string;
   location: string;
-  severity: 'P1' | 'P2' | 'P3' | 'P4';
+  severity: 'P0' | 'P1' | 'P2' | 'P3';
   reported_at: string;
   guard_id: string;
   guard_name: string;

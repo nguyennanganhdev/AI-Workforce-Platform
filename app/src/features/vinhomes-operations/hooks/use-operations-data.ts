@@ -50,7 +50,8 @@ import { useFieldFlowActions } from './use-field-flow-actions';
 import { getIncidentClosureBlocker } from '../lib/incident-closure';
 import { useBqlInboxActions } from './use-bql-inbox-actions';
 
-const STORAGE_KEY_PREFIX = 'vhm_operations_data_v9';
+import { OPERATIONS_STORAGE_PREFIX as STORAGE_KEY_PREFIX, readOperationsSnapshot } from '../lib/priority-storage';
+import { previewPersona } from '../auth/demo-access';
 
 export const DOMAIN_CHECKLIST_MAP: Record<string, string> = {
   MEP: 'CKL-VER-MEP-01',
@@ -66,7 +67,7 @@ export function useOperationsDataInternal() {
   // 1. Cases & Issue Candidates (Intake / Triage)
   const [cases, setCases] = useState<VhCase[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_cases`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_cases`);
       return stored ? JSON.parse(stored) : MOCK_CASES;
     } catch {
       return MOCK_CASES;
@@ -75,7 +76,7 @@ export function useOperationsDataInternal() {
 
   const [issueCandidates, setIssueCandidates] = useState<VhIssueCandidate[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_candidates`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_candidates`);
       return stored ? JSON.parse(stored) : MOCK_ISSUE_CANDIDATES;
     } catch {
       return MOCK_ISSUE_CANDIDATES;
@@ -85,7 +86,7 @@ export function useOperationsDataInternal() {
   // 2. Incidents
   const [incidents, setIncidents] = useState<VhIncident[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_incidents`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_incidents`);
       return stored ? JSON.parse(stored) : MOCK_INCIDENTS;
     } catch {
       return MOCK_INCIDENTS;
@@ -95,7 +96,7 @@ export function useOperationsDataInternal() {
   // 3. Tasks & Dependencies
   const [tasks, setTasks] = useState<VhTask[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_tasks`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_tasks`);
       return stored ? JSON.parse(stored) : MOCK_TASKS;
     } catch {
       return MOCK_TASKS;
@@ -104,7 +105,7 @@ export function useOperationsDataInternal() {
 
   const [taskDependencies, setTaskDependencies] = useState<VhTaskDependency[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_task_deps`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_task_deps`);
       return stored ? JSON.parse(stored) : MOCK_TASK_DEPENDENCIES;
     } catch {
       return MOCK_TASK_DEPENDENCIES;
@@ -114,7 +115,7 @@ export function useOperationsDataInternal() {
   // 4. WorkOrders
   const [workOrders, setWorkOrders] = useState<VhWorkOrder[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_work_orders`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_work_orders`);
       return stored ? JSON.parse(stored) : MOCK_WORK_ORDERS;
     } catch {
       return MOCK_WORK_ORDERS;
@@ -124,7 +125,7 @@ export function useOperationsDataInternal() {
   // 5. Evidence
   const [evidence, setEvidence] = useState<VhEvidenceRef[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_evidence`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_evidence`);
       return stored ? JSON.parse(stored) : MOCK_EVIDENCE;
     } catch {
       return MOCK_EVIDENCE;
@@ -134,7 +135,7 @@ export function useOperationsDataInternal() {
   // 6. QC Results
   const [qcResults, setQcResults] = useState<VhQcResult[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_qc_results`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_qc_results`);
       return stored ? JSON.parse(stored) : MOCK_QC_RESULTS;
     } catch {
       return MOCK_QC_RESULTS;
@@ -144,7 +145,7 @@ export function useOperationsDataInternal() {
   // 7. Action Requests, Approvals & Grants
   const [actionRequests, setActionRequests] = useState<VhActionRequest[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_action_requests`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_action_requests`);
       return stored ? JSON.parse(stored) : MOCK_ACTION_REQUESTS;
     } catch {
       return MOCK_ACTION_REQUESTS;
@@ -153,7 +154,7 @@ export function useOperationsDataInternal() {
 
   const [approvals, setApprovals] = useState<VhActionApproval[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_approvals`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_approvals`);
       return stored ? JSON.parse(stored) : MOCK_APPROVALS;
     } catch {
       return MOCK_APPROVALS;
@@ -162,7 +163,7 @@ export function useOperationsDataInternal() {
 
   const [executionGrants, setExecutionGrants] = useState<VhExecutionGrant[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_grants`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_grants`);
       return stored ? JSON.parse(stored) : [];
     } catch {
       return [];
@@ -172,7 +173,7 @@ export function useOperationsDataInternal() {
   // 8. Security Operations
   const [securityCheckpoints, setSecurityCheckpoints] = useState<SecurityCheckpoint[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_sec_cp`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_sec_cp`);
       return stored ? JSON.parse(stored) : MOCK_SECURITY_CHECKPOINTS;
     } catch {
       return MOCK_SECURITY_CHECKPOINTS;
@@ -181,7 +182,7 @@ export function useOperationsDataInternal() {
 
   const [securityIncidents, setSecurityIncidents] = useState<SecurityIncidentReport[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_sec_inc`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_sec_inc`);
       return stored ? JSON.parse(stored) : MOCK_SECURITY_INCIDENTS;
     } catch {
       return MOCK_SECURITY_INCIDENTS;
@@ -190,7 +191,7 @@ export function useOperationsDataInternal() {
 
   const [securityHandovers, setSecurityHandovers] = useState<SecurityShiftHandover[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_sec_handovers`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_sec_handovers`);
       return stored ? JSON.parse(stored) : MOCK_SECURITY_HANDOVERS;
     } catch {
       return MOCK_SECURITY_HANDOVERS;
@@ -200,7 +201,7 @@ export function useOperationsDataInternal() {
   // 9. Multi-Agent Coordination Sessions & Group Chat
   const [coordinationSessions, setCoordinationSessions] = useState<VhCoordinationSession[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_sessions`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_sessions`);
       return stored ? JSON.parse(stored) : MOCK_COORDINATION_SESSIONS;
     } catch {
       return MOCK_COORDINATION_SESSIONS;
@@ -209,7 +210,7 @@ export function useOperationsDataInternal() {
 
   const [sessionMessages, setSessionMessages] = useState<VhSessionMessage[]>(() => {
     try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_session_msgs`);
+      const stored = readOperationsSnapshot(`${STORAGE_KEY_PREFIX}_session_msgs`);
       return stored ? JSON.parse(stored) : MOCK_SESSION_MESSAGES;
     } catch {
       return MOCK_SESSION_MESSAGES;
@@ -218,16 +219,7 @@ export function useOperationsDataInternal() {
 
   // 10. Current active persona (7 roles)
   const [currentPersona, setCurrentPersona] = useState<OperationsPersona>(() => {
-    try {
-      const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_persona`);
-      // Nhà thầu không dùng app nhân viên (sự cố cần nhà thầu do BQL tự liên hệ)
-      if (!stored || stored === 'CONTRACTOR') return 'STAFF_TECHNICAL';
-      // Trưởng nhóm/Giám sát và Nghiệm thu đã gộp vào Ban quản lý
-      if (stored === 'SUPERVISOR' || stored === 'QC_INSPECTOR') return 'MANAGER';
-      return stored as OperationsPersona;
-    } catch {
-      return 'STAFF_TECHNICAL';
-    }
+    return previewPersona();
   });
 
   const currentProfile = useMemo(() => {
@@ -360,7 +352,7 @@ export function useOperationsDataInternal() {
       category: candidate.category || 'TECHNICAL',
       title: candidate.normalized_summary || 'Sự cố hiện trường cần xử lý',
       location_json: candidate.location_json,
-      severity: candidate.severity || 'P3',
+      severity: candidate.severity || 'P2',
       status: 'OPEN',
       stage: 'PLANNING',
       owner_user_id: currentProfile.id,
@@ -1362,7 +1354,7 @@ export function useOperationsDataInternal() {
         assignee_id: currentProfile.id,
         assignee_name: currentProfile.name,
         status: 'OPEN',
-        priority: report.severity === 'P1' ? 'URGENT' : 'HIGH',
+        priority: report.severity === 'P0' ? 'URGENT' : 'HIGH',
         due_at: new Date(Date.now() + 2 * 3600 * 1000).toISOString(),
         version: 1,
         created_at: now,

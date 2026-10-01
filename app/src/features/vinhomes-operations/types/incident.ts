@@ -12,7 +12,7 @@ export type IncidentStage =
   | 'QC'
   | 'RESIDENT_CONFIRMATION';
 
-export type IncidentSeverity = 'P1' | 'P2' | 'P3' | 'P4';
+export type IncidentSeverity = 'P0' | 'P1' | 'P2' | 'P3';
 
 export interface LocationJson {
   towerCode?: string;

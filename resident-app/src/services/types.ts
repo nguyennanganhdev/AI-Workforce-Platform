@@ -33,6 +33,17 @@ export type ResidentState = {
   requests: ResidentRequest[];
   messages: ChatMessage[];
   draft: Draft | null;
+  conversations?: ResidentConversation[];
+  activeConversationId?: string;
+};
+export type ResidentConversation = {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  draft: Draft | null;
+  requestId?: string;
+  unread: number;
+  updatedAt: string;
 };
 export const statusLabels: Record<RequestStatus, string> = {
   received: "Đã tiếp nhận",

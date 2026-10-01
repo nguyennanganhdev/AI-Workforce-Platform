@@ -4,9 +4,17 @@ import { Outlet } from '@tanstack/react-router';
 import { OperationsSidebar } from './operations-sidebar';
 import { OperationsHeader } from './operations-header';
 import { OperationsProvider } from '../hooks/use-operations-data';
+import { exitOperationsPreview, previewAccount } from '../auth/demo-access';
 
 export function OperationsLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [, refreshAccount] = useState(0);
+  useEffect(() => {
+    const checkAccount = () => { if (!previewAccount()) exitOperationsPreview(); else refreshAccount(n => n + 1); };
+    window.addEventListener('storage', checkAccount);
+    window.addEventListener('operations-workspace-change', checkAccount);
+    return () => { window.removeEventListener('storage', checkAccount); window.removeEventListener('operations-workspace-change', checkAccount); };
+  }, []);
   useEffect(() => {
     const originalTitle = document.title;
     const originalLanguage = document.documentElement.lang;
@@ -63,6 +71,10 @@ export function OperationsLayout() {
 
         {/* Main Container */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <div className="flex items-center justify-between gap-3 bg-blue-50 px-4 py-2 text-xs text-blue-900 border-b border-blue-100" role="status">
+            <span>Bản trải nghiệm · Hồ sơ và công việc là dữ liệu mẫu</span>
+            <button type="button" onClick={exitOperationsPreview} className="shrink-0 min-h-10 px-2 font-semibold underline underline-offset-4">Thoát trải nghiệm</button>
+          </div>
           <OperationsHeader menuOpen={menuOpen} onToggleMenu={() => setMenuOpen(!menuOpen)} />
 
           {/* Dynamic Page Content */}

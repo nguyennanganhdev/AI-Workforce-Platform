@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "build": "bun --bun node_modules/vite/bin/vite.js build",
-    "dev": "bun --bun node_modules/vite/bin/vite.js",
-    "dev:openbot": "bun --bun node_modules/vite/bin/vite.js --port 3010",
-    "dev:operations": "bun --bun node_modules/vite/bin/vite.js --port 3020",
+    "dev": "bun scripts/vite.mjs",
+    "dev:openbot": "bun scripts/vite.mjs --port 3010",
+    "dev:operations": "bun scripts/vite.mjs --port 3020",
     "serve": "bun scripts/serve-or-build.ts && bun serve.ts",
     "prebuild": "bun run --cwd .. generate:app-config",
     "predev": "bun run --cwd .. generate:app-config",

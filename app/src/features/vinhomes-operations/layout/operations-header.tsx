@@ -3,6 +3,8 @@ import { useLocation } from '@tanstack/react-router';
 import { IconBell, IconMenu2, IconX } from '@tabler/icons-react';
 import { useOperationsData } from '../hooks/use-operations-data';
 import { PERSONA_PROFILES, type OperationsPersona } from '../types/persona';
+import { previewAccount } from '../auth/demo-access';
+import { roleLabels } from '../workspace/model';
 
 interface BreadcrumbConfig {
   section: string;
@@ -10,6 +12,9 @@ interface BreadcrumbConfig {
 }
 
 function getBreadcrumb(pathname: string, persona: OperationsPersona): BreadcrumbConfig {
+  const workspacePages: Record<string, string> = { accounts: 'Quản lý tài khoản', team: 'Nhóm ban quản lý', dispatch: 'Ticket & hiện trường', reports: 'Báo cáo vận hành' };
+  const page = workspacePages[pathname.split('/')[2]];
+  if (page) return { section: 'Không gian làm việc', page };
   if (pathname.includes('/triage')) {
     return { section: 'Vận hành đô thị', page: 'Tiếp nhận phản ánh' };
   }
@@ -62,8 +67,9 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
   const { currentPersona, incidents, approvals, resetToDefaultMock } = useOperationsData();
   const breadcrumb = getBreadcrumb(location.pathname, currentPersona);
   const profile = PERSONA_PROFILES[currentPersona as keyof typeof PERSONA_PROFILES];
+  const account = previewAccount();
 
-  const p1Incidents = incidents.filter((i) => i.severity === 'P1' && i.status === 'OPEN');
+  const p1Incidents = incidents.filter((i) => i.severity === 'P0' && i.status === 'OPEN');
   const pendingApprovals = approvals.filter((a) => a.status === 'PENDING');
   const notificationCount = p1Incidents.length + pendingApprovals.length;
 
@@ -174,8 +180,8 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
         <div className="flex items-center gap-2.5 pl-2 md:pl-3 md:border-l border-slate-200">
           <img src={profile.avatarUrl} alt="" className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover border border-slate-200" />
           <div className="hidden md:block text-left max-w-[220px]">
-            <p className="text-[13px] font-medium text-slate-900 leading-tight truncate">{profile.name}</p>
-            <p className="text-xs text-slate-500 truncate">{profile.roleTitle}</p>
+            <p className="text-[13px] font-medium text-slate-900 leading-tight truncate">{account?.name || profile.name}</p>
+            <p className="text-xs text-slate-500 truncate">{account ? roleLabels[account.role] : profile.roleTitle}</p>
           </div>
         </div>
       </div>

@@ -26,7 +26,7 @@ const KIND_LABEL: Record<InboxItem['kind'], string> = {
   UNCOOPERATIVE: 'Hộ không hợp tác',
 };
 
-const SEVERITY_RANK: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
+const SEVERITY_RANK: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 
 /** Items AI escalates to BQL. Everything else is handled by AI + field staff. */
 export function useBqlInboxItems(): InboxItem[] {

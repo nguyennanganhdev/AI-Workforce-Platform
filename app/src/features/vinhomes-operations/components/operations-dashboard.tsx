@@ -55,7 +55,7 @@ export function OperationsDashboard() {
   const { incidents, workOrders, qcResults, approvals, currentProfile } = useOperationsData();
   const now = useNow();
 
-  const p1Incidents = incidents.filter((i) => i.severity === 'P1' && i.status !== 'CLOSED');
+  const p1Incidents = incidents.filter((i) => i.severity === 'P0' && i.status !== 'CLOSED');
   const inProgressWo = workOrders.filter((w) => w.status === 'IN_PROGRESS');
   const pendingApprovals = approvals.filter((a) => a.status === 'PENDING');
   const failedQc = qcResults.filter((q) => q.outcome === 'FAIL');
@@ -64,7 +64,7 @@ export function OperationsDashboard() {
   const watched = incidents.filter((i) => i.status !== 'CLOSED').slice(0, 6);
 
   const kpis: Kpi[] = [
-    { label: 'Khẩn cấp P1', value: p1Incidents.length, unit: 'đang mở', note: 'Sự cố nước áp lực S2.01 và PCCC', to: '/operations/incidents', action: 'Xử lý ngay', pressing: p1Incidents.length > 0 },
+    { label: 'Khẩn cấp P0', value: p1Incidents.length, unit: 'đang mở', note: 'Sự cố nước áp lực S2.01 và PCCC', to: '/operations/incidents', action: 'Xử lý ngay', pressing: p1Incidents.length > 0 },
     { label: 'Đang thực hiện', value: inProgressWo.length, unit: `/ ${workOrders.length} phiếu`, note: '4 nhân viên và 1 nhà thầu tại hiện trường', to: '/operations/kanban', action: 'Bảng phân công việc' },
     { label: 'Nghiệm thu chất lượng', value: qcResults.length, unit: `${passRate}% đạt chuẩn`, note: failedQc.length > 0 ? `${failedQc.length} phiếu cần làm lại` : 'Tất cả đều đạt chuẩn', to: '/operations/qc', action: 'Chi tiết nghiệm thu' },
     { label: 'Chờ BQL duyệt', value: pendingApprovals.length, unit: `${(totalPendingCost / 1_000_000).toFixed(1)} tr đ`, note: 'Đề xuất mua van DN50 khẩn cấp', to: '/operations/approvals', action: 'Vào hàng đợi duyệt' },
@@ -111,7 +111,7 @@ export function OperationsDashboard() {
               <TableBody>
                 {watched.map((inc) => {
                   const d = deadline(inc.sla_due_at);
-                  const urgent = inc.severity === 'P1' || inc.severity === 'P2';
+                  const urgent = inc.severity === 'P0' || inc.severity === 'P1';
                   return (
                     <TableRow key={inc.id}>
                       <TableCell className="min-w-64 whitespace-normal">
@@ -135,7 +135,7 @@ export function OperationsDashboard() {
           <ul className="ops-list-rows">
             {watched.map((inc) => {
               const d = deadline(inc.sla_due_at);
-              const urgent = inc.severity === 'P1' || inc.severity === 'P2';
+              const urgent = inc.severity === 'P0' || inc.severity === 'P1';
               return (
                 <li key={inc.id} className="flex flex-col gap-1.5">
                   <div className="flex items-start justify-between gap-3">
@@ -176,7 +176,7 @@ export function OperationsDashboard() {
             </CardHeader>
             <CardContent className="flex flex-col px-4 text-sm md:px-5">
               {[
-                { tower: 'Tòa S2.01', note: '1 sự cố P1', pressing: true },
+                { tower: 'Tòa S2.01', note: '1 sự cố P0', pressing: true },
                 { tower: 'Tòa S1.05', note: '1 vệ sinh A5' },
                 { tower: 'Tòa S2.03', note: 'Nghiệm thu thang máy' },
               ].map((z, i) => (

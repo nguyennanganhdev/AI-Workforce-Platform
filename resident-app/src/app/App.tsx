@@ -11,6 +11,15 @@ import {
 } from "@tabler/icons-react";
 import { LeafMark } from "../components/Illustrations";
 import { Assistant, Composer } from "../features/assistant/Assistant";
+import { ConversationList } from "../features/assistant/ConversationList";
+import {
+  normalizeConversations,
+  reconcileConversations,
+  newConversation,
+  selectConversation,
+  activeRoom,
+  receiveTicketEvent,
+} from "../services/conversations";
 
 import { RequestDetail, Requests } from "../features/requests/Requests";
 import {
@@ -23,12 +32,12 @@ import {
 } from "../features/utilities/Utilities";
 import { initialState, resident } from "../mocks/seed";
 import {
-  loadState,
+  loadConversations as loadState,
   reply,
   resolveRequest,
   saveState,
   submitDraft,
-} from "../services/resident-service";
+} from "../services/conversations";
 import type { Photo, ResidentState } from "../services/types";
 
 type Route = {
@@ -48,7 +57,8 @@ const titles: Record<Route["page"], string> = {
 };
 function readRoute(): Route {
   const path = location.hash.slice(1).split("/").filter(Boolean);
-  if (path[0] === "chat") return { page: "assistant", conversation: true };
+  if (path[0] === "chat")
+    return { page: "assistant", conversation: true, id: path[1] };
   if (path[0] === "requests" && path[1]) return { page: "detail", id: path[1] };
   if (
     path[0] &&
@@ -71,7 +81,7 @@ export function App() {
       return { state: loadState(localStorage), error: "" };
     } catch (e) {
       return {
-        state: initialState(),
+        state: normalizeConversations(initialState()),
         error:
           e instanceof Error
             ? e.message
@@ -81,6 +91,9 @@ export function App() {
   });
   const [state, setState] = useState(loaded.state);
   const stateRef = useRef(state);
+  const composerInputs = useRef<
+    Record<string, { text: string; photos: Photo[] }>
+  >({});
   const [error, setError] = useState(loaded.error);
   const [route, setRoute] = useState<Route>(readRoute);
   const scroll = useRef<HTMLElement>(null);
@@ -117,6 +130,15 @@ export function App() {
     if (resetOpen) resetDialog.current?.showModal();
     else resetDialog.current?.close();
   }, [resetOpen]);
+  useEffect(() => {
+    if (
+      route.conversation &&
+      route.id &&
+      route.id !== stateRef.current.activeConversationId
+    ) {
+      commit((s) => selectConversation(s, route.id!));
+    }
+  }, [route.conversation, route.id]);
 
   function navigate(page: Route["page"], id?: string) {
     location.hash =
@@ -128,7 +150,10 @@ export function App() {
   }
   function commit(transform: (previous: ResidentState) => ResidentState) {
     try {
-      const next = transform(stateRef.current);
+      const next = reconcileConversations(
+        stateRef.current,
+        transform(stateRef.current),
+      );
       saveState(localStorage, next);
       stateRef.current = next;
       setState(next);
@@ -144,6 +169,7 @@ export function App() {
     }
   }
   const openConversation = () => {
+    commit((s) => selectConversation(s, activeRoom(s).id));
     location.hash = "/chat";
   };
   const send = (text: string, photos: Photo[] = []) => {
@@ -153,6 +179,7 @@ export function App() {
   };
   const openRequest = (id: string) => navigate("detail", id);
   const report = () => {
+    if (activeRoom(stateRef.current).requestId) commit(newConversation);
     openConversation();
     if (!stateRef.current.draft) send("Báo sự cố");
   };
@@ -160,6 +187,7 @@ export function App() {
   const pending = state.requests.filter(
     (r) => r.status === "confirmation",
   ).length;
+  const unread = (state.conversations ?? []).reduce((n, c) => n + c.unread, 0);
   const detail = state.requests.find((r) => r.id === route.id);
   const nav = (
     <>
@@ -241,11 +269,11 @@ export function App() {
             <span className="demo-chip">Bản trải nghiệm</span>
             <button
               className="icon-button notification-button"
-              aria-label={`Thông báo${pending ? `, ${pending} yêu cầu chờ xác nhận` : ""}`}
+              aria-label={`Thông báo, ${unread} tin nhắn chưa đọc, ${pending} yêu cầu chờ xác nhận`}
               onClick={() => navigate("notifications")}
             >
               <IconBell size={22} stroke={1.6} />
-              {pending > 0 && <i />}
+              {(pending > 0 || unread > 0) && <i />}
             </button>
             <button
               className="avatar header-avatar"
@@ -256,6 +284,19 @@ export function App() {
             </button>
           </div>
         </header>
+        {route.page === "assistant" && (
+          <ConversationList
+            state={state}
+            onNew={() => {
+              if (commit(newConversation))
+                location.hash = `/chat/${stateRef.current.activeConversationId}`;
+            }}
+            onSelect={(id) => {
+              if (commit((s) => selectConversation(s, id)))
+                location.hash = `/chat/${id}`;
+            }}
+          />
+        )}
         {route.page === "assistant" && route.conversation && (
           <div className="conversation-toolbar">
             <button
@@ -308,6 +349,7 @@ export function App() {
         <main className="main-scroll" ref={scroll} id="main-content">
           {route.page === "assistant" && (
             <Assistant
+              key={state.activeConversationId}
               state={state}
               conversation={!!route.conversation}
               onResume={openConversation}
@@ -345,13 +387,65 @@ export function App() {
           )}
           {route.page === "detail" &&
             (detail ? (
-              <RequestDetail
-                key={detail.id}
-                request={detail}
-                onResolve={(accepted, reason) =>
-                  commit((s) => resolveRequest(s, detail.id, accepted, reason))
-                }
-              />
+              <>
+                <RequestDetail
+                  key={detail.id}
+                  request={detail}
+                  onResolve={(accepted, reason) =>
+                    commit((s) =>
+                      resolveRequest(s, detail.id, accepted, reason),
+                    )
+                  }
+                />
+                <section className="resident-ticket-event">
+                  <strong>Sự kiện ticket · bản mô phỏng</strong>
+                  <p>
+                    Kiểm tra thẻ ticket và tin chưa đọc theo đúng hội thoại;
+                    chưa gửi thông báo thật.
+                  </p>
+                  <button
+                    disabled={detail.status === "completed"}
+                    onClick={() =>
+                      commit((s) =>
+                        receiveTicketEvent(
+                          s,
+                          detail.id,
+                          "Yêu cầu đã được chuyển đến đội nhân viên",
+                          "processing",
+                        ),
+                      )
+                    }
+                  >
+                    Mô phỏng đã điều phối
+                  </button>
+                  <button
+                    disabled={detail.status === "completed"}
+                    onClick={() =>
+                      commit((s) =>
+                        receiveTicketEvent(
+                          s,
+                          detail.id,
+                          "Nhân viên đã hoàn thành, mời bạn xác nhận",
+                          "confirmation",
+                        ),
+                      )
+                    }
+                  >
+                    Mô phỏng chờ xác nhận
+                  </button>
+                  <button
+                    onClick={() => {
+                      const room = state.conversations?.find(
+                        (c) => c.requestId === detail.id,
+                      );
+                      if (room && commit((s) => selectConversation(s, room.id)))
+                        location.hash = `/chat/${room.id}`;
+                    }}
+                  >
+                    Mở hội thoại của ticket
+                  </button>
+                </section>
+              </>
             ) : (
               <div className="empty-state">
                 <IconClipboardFallback />
@@ -366,7 +460,28 @@ export function App() {
               </div>
             ))}
           {route.page === "notifications" && (
-            <Notifications requests={state.requests} onOpen={openRequest} />
+            <>
+              {(state.conversations ?? [])
+                .filter((c) => c.unread > 0)
+                .map((c) => (
+                  <button
+                    key={c.id}
+                    className="notification-card"
+                    onClick={() => {
+                      if (commit((s) => selectConversation(s, c.id)))
+                        location.hash = `/chat/${c.id}`;
+                    }}
+                  >
+                    <span>
+                      <strong>
+                        {c.unread} tin chưa đọc · {c.title}
+                      </strong>
+                      <p>{c.messages.at(-1)?.text}</p>
+                    </span>
+                  </button>
+                ))}
+              <Notifications requests={state.requests} onOpen={openRequest} />
+            </>
           )}
           {route.page === "profile" && (
             <Profile onReset={() => setResetOpen(true)} />
@@ -375,7 +490,15 @@ export function App() {
           {route.page === "amenities" && <Amenities />}
         </main>
         {route.page === "assistant" && (
-          <Composer onSend={send} draft={state.draft} />
+          <Composer
+            key={state.activeConversationId}
+            onSend={send}
+            draft={state.draft}
+            initialInput={composerInputs.current[state.activeConversationId!]}
+            onInputChange={(value) => {
+              composerInputs.current[state.activeConversationId!] = value;
+            }}
+          />
         )}
         <nav className="mobile-nav" aria-label="Điều hướng chính">
           {nav}

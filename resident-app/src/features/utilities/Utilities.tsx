@@ -16,6 +16,7 @@ import { Neighborhood } from "../../components/Illustrations";
 import { resident } from "../../mocks/seed";
 import { dateLabel } from "../requests/Requests";
 import type { ResidentRequest } from "../../services/types";
+import { exitResidentPreview } from "../auth/demo-access";
 
 export type UtilityPage =
   | "utilities"
@@ -230,6 +231,7 @@ export function Profile({ onReset }: { onReset: () => void }) {
       <button className="secondary-button full" onClick={onReset}>
         Đặt lại dữ liệu trải nghiệm
       </button>
+      <button className="secondary-button full" onClick={exitResidentPreview}>Thoát trải nghiệm về đăng nhập</button>
       <p className="footnote">
         Thao tác này xóa hội thoại, ảnh và yêu cầu bạn đã tạo trên thiết bị.
       </p>

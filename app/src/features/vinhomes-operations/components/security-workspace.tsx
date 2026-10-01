@@ -48,7 +48,7 @@ export function SecurityWorkspace() {
   const [showIncidentModal, setShowIncidentModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newLocation, setNewLocation] = useState('Sảnh Tòa S2.01');
-  const [newSeverity, setNewSeverity] = useState<'P1' | 'P2' | 'P3' | 'P4'>('P2');
+  const [newSeverity, setNewSeverity] = useState<'P0' | 'P1' | 'P2' | 'P3'>('P1');
   const [personName, setPersonName] = useState('');
   const [personRole, setPersonRole] = useState<'DELIVERY' | 'GUEST' | 'RESIDENT' | 'SUSPECT'>('DELIVERY');
   const [licensePlate, setLicensePlate] = useState('');
@@ -336,14 +336,14 @@ export function SecurityWorkspace() {
                   <div className="flex items-center gap-2">
                     <span
                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        inc.severity === 'P1'
+                        inc.severity === 'P0'
                           ? 'bg-rose-100 text-rose-700'
-                          : inc.severity === 'P2'
+                          : inc.severity === 'P1'
                             ? 'bg-amber-100 text-amber-700'
                             : 'bg-blue-100 text-blue-700'
                       }`}
                     >
-                      {inc.severity === 'P1' ? 'Khẩn cấp P1' : inc.severity === 'P2' ? 'Mức độ P2' : 'Bình thường'}
+                      {inc.severity === 'P0' ? 'Khẩn cấp P0' : inc.severity === 'P1' ? 'Mức độ P1' : 'Bình thường'}
                     </span>
                     <span
                       className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
@@ -652,9 +652,9 @@ export function SecurityWorkspace() {
                   onChange={(e) => setNewSeverity(e.target.value as any)}
                   className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none"
                 >
-                  <option value="P1">Khẩn cấp (P1)</option>
-                  <option value="P2">Mức cao (P2)</option>
-                  <option value="P3">Bình thường (P3)</option>
+                  <option value="P0">Khẩn cấp (P0)</option>
+                  <option value="P1">Mức cao (P1)</option>
+                  <option value="P2">Bình thường (P2)</option>
                 </select>
               </div>
             </div>

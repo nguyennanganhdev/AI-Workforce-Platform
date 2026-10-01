@@ -2,9 +2,25 @@ import { createFileRoute, Outlet, redirect, useMatches } from "@tanstack/react-r
 import { currentUserQueryOptions, needsOnboarding } from "../lib/auth/queries";
 import { CopilotProvider } from "../lib/copilot/provider";
 import { AppHotkeys } from "../lib/hotkeys/app-hotkeys";
+import { isOperationsPreview } from "../features/vinhomes-operations/auth/demo-access";
+import { previewAccount } from "../features/vinhomes-operations/auth/demo-access";
+import { canViewPath, landing } from "../features/vinhomes-operations/workspace/model";
 
 export const Route = createFileRoute("/_authed")({
   beforeLoad: async ({ context, location }) => {
+    if (location.pathname === "/operations" || location.pathname.startsWith("/operations/")) {
+      // Workspaces currently contain mock data. Preview is an explicit UI choice,
+      // not a fallback administrator session when the backend is unavailable.
+      if (isOperationsPreview()) {
+        const account=previewAccount()!;
+        if(!canViewPath(account.role,location.pathname))throw redirect({href:landing(account.role)});
+        return;
+      }
+      throw redirect({ to: "/operations/login" });
+    }
+    if (typeof window !== "undefined" && window.location.port === "3020" && location.pathname === "/") {
+      throw redirect({ to: "/operations/login" });
+    }
     const user = await context.queryClient.ensureQueryData(
       currentUserQueryOptions(),
     );
