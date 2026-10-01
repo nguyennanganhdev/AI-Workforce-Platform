@@ -3,11 +3,13 @@ import type { TechnicalTool } from "./tool";
 import { assetReadTool } from "./tools/asset-read";
 import { getActiveOutageTool } from "./tools/get-active-outage";
 import { maintenanceHistoryReadTool } from "./tools/maintenance-history-read";
+import { recordMeasurementTool } from "./tools/record-measurement";
 import { sensorReadTool } from "./tools/sensor-read";
 import { sopKbRetrieveTool } from "./tools/sop-kb-retrieve";
+import { submitExecutorResultTool } from "./tools/submit-executor-result";
 import { utilityScheduleReadTool } from "./tools/utility-schedule-read";
 
-/** Every technical tool this deployment implements. Six of the fourteen in tools.md so far. */
+/** Every technical tool this deployment implements. Eight of the fourteen in tools.md so far. */
 export const technicalTools: readonly TechnicalTool[] = [
   getActiveOutageTool,
   utilityScheduleReadTool,
@@ -15,6 +17,8 @@ export const technicalTools: readonly TechnicalTool[] = [
   assetReadTool,
   sensorReadTool,
   maintenanceHistoryReadTool,
+  recordMeasurementTool,
+  submitExecutorResultTool,
 ];
 
 /**

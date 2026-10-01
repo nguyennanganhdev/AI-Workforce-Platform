@@ -23,6 +23,11 @@ export type ToolAuditEntry = {
   actor_id: string;
   initiator?: AuditInitiator;
   building_id: string | null;
+  /**
+   * The answer was the stored result of an earlier call with the same key, and nothing was written.
+   * Kept apart from an ordinary success so the trail does not show one write as two.
+   */
+  idempotent_replay?: boolean;
   result_count: number | null;
   duration_ms: number;
   occurred_at: string;

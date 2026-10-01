@@ -117,6 +117,44 @@ export function staleData<TData>(
   };
 }
 
+/**
+ * The request was well formed and the schema could not have known it was wrong: a unit the metric
+ * is not recorded in, a time the server has not reached.
+ */
+export function invalidInput<TData>(
+  message: string,
+  field: string,
+): ToolOutcome<TData> {
+  return {
+    status: "INVALID_INPUT",
+    data: null,
+    errors: [{ code: "INVALID_INPUT", message, field, retryable: false }],
+  };
+}
+
+/**
+ * The request names things whose state does not allow it: an assignment no longer active, a photo
+ * still uploading. One error per problem, so everything wrong is reported in one answer.
+ *
+ * Nothing was written. `retryable` is false because the same request will fail the same way until
+ * the state changes, and the caller should read the state again before sending it.
+ */
+export function conflict<TData>(
+  problems: readonly string[],
+  field: string,
+): ToolOutcome<TData> {
+  return {
+    status: "CONFLICT",
+    data: null,
+    errors: problems.map((message) => ({
+      code: "CONFLICT" as const,
+      message,
+      field,
+      retryable: false,
+    })),
+  };
+}
+
 /** A tool refusing for a reason of its own, in the host's words. */
 export function forbidden<TData>(): ToolOutcome<TData> {
   return {

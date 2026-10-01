@@ -1,12 +1,15 @@
-import type { z } from "zod";
+import { z } from "zod";
 import type { ToolContext } from "./contracts/context";
 import type { Provenance, ToolError, ToolStatus } from "./contracts/envelope";
 import type { AssetReadPort } from "./ports/asset-read";
 import type { Clock } from "./ports/clock";
+import type { ExecutorResultStore } from "./ports/executor-result-store";
 import type { InterruptionReadPort } from "./ports/interruption-read";
 import type { MaintenanceReadPort } from "./ports/maintenance-read";
+import type { MeasurementStore } from "./ports/measurement-store";
 import type { SensorReadPort } from "./ports/sensor-read";
 import type { SopProfilePort, SopReadPort } from "./ports/sop-read";
+import type { WorkOrderReadPort } from "./ports/work-order-read";
 
 /** What a tool reaches its data through. One field per port, added as tools need them. */
 export type ToolDependencies = {
@@ -16,6 +19,9 @@ export type ToolDependencies = {
   assets: AssetReadPort;
   sensors: SensorReadPort;
   maintenance: MaintenanceReadPort;
+  workOrders: WorkOrderReadPort;
+  measurements: MeasurementStore;
+  executorResults: ExecutorResultStore;
   clock: Clock;
 };
 
@@ -77,10 +83,24 @@ export function modelNameFor(name: string): string {
 /**
  * Every tool's input carries `building_id`, and the host checks it against the caller's grant
  * before `run` is reached, which is why the constraint is on the type rather than left to each tool.
+ *
+ * A tool that writes must also take an `idempotency_key`, and this refuses to define one that does
+ * not. Checked here, when the module loads, rather than when a call arrives: a write tool without a
+ * key would otherwise pass every test until the first retry wrote twice.
  */
 export function defineTool<TInput extends { building_id: string }, TOutput>(
   definition: ToolDefinition<TInput, TOutput>,
 ): TechnicalTool {
+  if (definition.effect !== "read") {
+    const shape = z.toJSONSchema(definition.inputSchema) as {
+      required?: string[];
+    };
+    if (!shape.required?.includes("idempotency_key")) {
+      throw new Error(
+        `${definition.name} writes, so its input must require an idempotency_key.`,
+      );
+    }
+  }
   return {
     ...definition,
     modelName: modelNameFor(definition.name),

@@ -10,8 +10,12 @@ export {
   technicalToolsDatabase,
 } from "./adapters/db/interruption-read";
 export { createDbSopReadPort } from "./adapters/db/sop-read";
+export { createDbWorkOrderReadPort } from "./adapters/db/work-order-read";
 export { createInMemoryAssetReadPort } from "./adapters/poc/asset-read";
+export { createInMemoryExecutorResultStore } from "./adapters/poc/executor-result-store";
+export { createInMemoryIdempotencyStore } from "./adapters/poc/idempotency-store";
 export { createInMemoryMaintenanceReadPort } from "./adapters/poc/maintenance-read";
+export { createInMemoryMeasurementStore } from "./adapters/poc/measurement-store";
 export { createInMemorySensorReadPort } from "./adapters/poc/sensor-read";
 export { createInMemorySopProfilePort } from "./adapters/poc/sop-profiles";
 export {
@@ -27,7 +31,18 @@ export {
   type ToolStatus,
 } from "./contracts/envelope";
 export type { Asset } from "./domain/asset";
+export type {
+  ChecklistItem,
+  ExecutorResult,
+  Part,
+  ValidationStatus,
+} from "./domain/executor-result";
 export type { MaintenanceEvent } from "./domain/maintenance";
+export type {
+  MeasuredBy,
+  Measurement,
+  MeasurementSource,
+} from "./domain/measurement";
 export type {
   ReadingQuality,
   Sensor,
@@ -39,6 +54,11 @@ export type {
   SopDocumentRecord,
   SopProfile,
 } from "./domain/sop";
+export type {
+  AssignmentRecord,
+  EvidenceLookup,
+  WorkOrderContext,
+} from "./domain/work-order";
 export { createTechnicalToolCaller } from "./entry";
 export {
   createTechnicalToolHost,
@@ -49,6 +69,13 @@ export type { AssetQuery, AssetReadPort } from "./ports/asset-read";
 export type { AuditSink, ToolAuditEntry } from "./ports/audit-sink";
 export { type Clock, systemClock } from "./ports/clock";
 export type { ContextResolver, ToolCaller } from "./ports/context-resolver";
+export type { ExecutorResultStore } from "./ports/executor-result-store";
+export type {
+  IdempotencyScope,
+  IdempotencyStore,
+  Reservation,
+  StoredOutcome,
+} from "./ports/idempotency-store";
 export type {
   InterruptionQuery,
   InterruptionReadPort,
@@ -57,13 +84,14 @@ export type {
   MaintenanceQuery,
   MaintenanceReadPort,
 } from "./ports/maintenance-read";
+export type { MeasurementStore } from "./ports/measurement-store";
 export type { SensorQuery, SensorReadPort } from "./ports/sensor-read";
 export type {
   SopProfilePort,
   SopQuery,
   SopReadPort,
 } from "./ports/sop-read";
-export { defineTool, type ToolDependencies } from "./tool";
+export type { WorkOrderReadPort } from "./ports/work-order-read";
 export {
   ISSUE_CODES,
   type IssueCode,
@@ -73,5 +101,11 @@ export {
 export {
   METRICS,
   type MetricDefinition,
+  metricDefinition,
   unitAccepted,
 } from "./reference/metrics";
+export {
+  defineTool,
+  type ToolDependencies,
+  type ToolOutcome,
+} from "./tool";
