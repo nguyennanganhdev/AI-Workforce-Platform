@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { VhIncident } from '../types/incident';
 import { useLocation } from '@tanstack/react-router';
 import { IconBell, IconMenu2, IconX } from '@tabler/icons-react';
 import { useOperationsData } from '../hooks/use-operations-data';
@@ -71,8 +72,20 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
 
   const p1Incidents = incidents.filter((i) => i.severity === 'P0' && i.status === 'OPEN');
   const pendingApprovals = approvals.filter((a) => a.status === 'PENDING');
-  const notificationCount = p1Incidents.length + pendingApprovals.length;
 
+  return <OperationsHeaderView menuOpen={menuOpen} onToggleMenu={onToggleMenu} breadcrumb={breadcrumb}
+    name={account?.name || profile.name} roleTitle={account ? roleLabels[account.role] : profile.roleTitle}
+    avatarUrl={profile.avatarUrl} p1Incidents={p1Incidents} pendingApprovals={pendingApprovals} onReset={resetToDefaultMock} />;
+}
+
+export function OperationsHeaderView({ menuOpen, onToggleMenu, breadcrumb, name, roleTitle, avatarUrl, p1Incidents, pendingApprovals, onReset }: {
+  menuOpen?: boolean; onToggleMenu?: () => void; breadcrumb: BreadcrumbConfig;
+  name: string; roleTitle: string; avatarUrl?: string;
+  p1Incidents: Pick<VhIncident, 'id' | 'title' | 'location_json'>[];
+  pendingApprovals: { id: string; estimated_cost_vnd?: number | null }[];
+  onReset?: () => void;
+}) {
+  const notificationCount = p1Incidents.length + pendingApprovals.length;
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -98,7 +111,7 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
   }, [resetSuccess]);
 
   const handleResetData = () => {
-    resetToDefaultMock();
+    onReset?.();
     setResetSuccess(true);
   };
 
@@ -122,7 +135,8 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
       </nav>
 
       <div className="flex items-center gap-1 md:gap-3 shrink-0">
-        <details className="relative hidden lg:block">
+        {!onReset && <a href="/operations/login" className="text-sm text-blue-700">Tài khoản</a>}
+        {onReset && <details className="relative hidden lg:block">
           <summary className="cursor-pointer list-none text-[13px] text-slate-500 hover:text-slate-900">Dữ liệu mẫu</summary>
           <div className="absolute right-0 top-8 z-30 w-48 rounded-md border border-slate-200 bg-white p-2 shadow-[0_8px_24px_rgb(15_23_42/0.08)]">
             <button
@@ -133,7 +147,7 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
               {resetSuccess ? 'Đã đặt lại dữ liệu' : 'Đặt lại dữ liệu mẫu'}
             </button>
           </div>
-        </details>
+        </details>}
 
         <div className="relative" ref={notificationRef}>
           <button
@@ -178,10 +192,10 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
         </div>
 
         <div className="flex items-center gap-2.5 pl-2 md:pl-3 md:border-l border-slate-200">
-          <img src={profile.avatarUrl} alt="" className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover border border-slate-200" />
+          {avatarUrl ? <img src={avatarUrl} alt="" className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover border border-slate-200" /> : <span className="flex w-9 h-9 items-center justify-center rounded-full bg-blue-50 text-blue-700" aria-hidden="true">{name.slice(0, 1)}</span>}
           <div className="hidden md:block text-left max-w-[220px]">
-            <p className="text-[13px] font-medium text-slate-900 leading-tight truncate">{account?.name || profile.name}</p>
-            <p className="text-xs text-slate-500 truncate">{account ? roleLabels[account.role] : profile.roleTitle}</p>
+            <p className="text-[13px] font-medium text-slate-900 leading-tight truncate">{name}</p>
+            <p className="text-xs text-slate-500 truncate">{roleTitle}</p>
           </div>
         </div>
       </div>

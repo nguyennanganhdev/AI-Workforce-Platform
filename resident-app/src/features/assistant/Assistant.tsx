@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type FormEvent,
+} from "react";
 import {
   IconArrowUp,
   IconArrowUpRight,
@@ -22,10 +28,15 @@ import type { Draft, Photo, ResidentState } from "../../services/types";
 import { RequestCard } from "../requests/Requests";
 
 type AssistantProps = {
+  connected?: boolean;
+  busy?: boolean;
+  residentName?: string;
+  apartment?: string;
+  draftFields?: ReactNode;
   state: ResidentState;
   conversation: boolean;
   onResume: () => void;
-  onSend: (text: string, photos?: Photo[]) => boolean;
+  onSend: (text: string, photos?: Photo[]) => boolean | Promise<boolean>;
   onOpen: (id: string) => void;
   onRequests: () => void;
   onSubmit: () => void;
@@ -34,6 +45,11 @@ type AssistantProps = {
 };
 
 export function Assistant({
+  connected = false,
+  busy = false,
+  residentName = "An",
+  apartment = resident.apartment,
+  draftFields,
   state,
   conversation,
   onResume,
@@ -68,7 +84,7 @@ export function Assistant({
           <div className="greeting">
             <span className="eyebrow">KHÔNG GIAN CƯ DÂN</span>
             <h1>
-              Chào An, hôm nay
+              Chào {residentName.split(" ").at(-1)}, hôm nay
               <br /> bạn cần hỗ trợ gì?{" "}
               <span className="greeting-sun" aria-hidden="true">
                 ✳
@@ -243,6 +259,13 @@ export function Assistant({
           </div>
         </>
       )}
+      {started && connected && state.draft && state.draft.step !== "review" && (
+        <p className="edit-draft-note" role="status">
+          {state.draft.step === "description"
+            ? "Hãy mô tả sự cố và đính kèm ảnh nếu có."
+            : "Sự cố xảy ra ở đâu? Nhập tầng, căn hộ hoặc vị trí cụ thể."}
+        </p>
+      )}
       {started &&
         state.draft?.step === "description" &&
         state.draft.description && (
@@ -257,15 +280,18 @@ export function Assistant({
         )}
       {started && state.draft?.step === "location" && (
         <div className="suggestion-row">
-          <button onClick={() => onSend(`Căn hộ ${resident.apartment}`)}>
+          <button onClick={() => onSend(`Căn hộ ${apartment}`)}>
             <IconMapPin size={16} />
-            Căn hộ của tôi · 1208
+            Căn hộ của tôi · {apartment}
           </button>
         </div>
       )}
       {started && state.draft?.step === "review" && (
         <DraftCard
           draft={state.draft}
+          connected={connected}
+          busy={busy}
+          fields={draftFields}
           onSubmit={onSubmit}
           onEdit={onEditDraft}
           onCancel={onCancelDraft}
@@ -294,11 +320,17 @@ export function Assistant({
 }
 
 function DraftCard({
+  connected,
+  busy,
+  fields,
   draft,
   onSubmit,
   onEdit,
   onCancel,
 }: {
+  connected?: boolean;
+  busy?: boolean;
+  fields?: ReactNode;
   draft: Draft;
   onSubmit: () => void;
   onEdit: () => void;
@@ -331,10 +363,17 @@ function DraftCard({
           ))}
         </div>
       )}
+      {fields}
       <p className="small muted">
-        Bản trải nghiệm · Chỉ lưu trên thiết bị này.
+        {connected
+          ? "Phản ánh sẽ được gửi tới Ban quản lý."
+          : "Bản trải nghiệm · Chỉ lưu trên thiết bị này."}
       </p>
-      <button className="primary-button full" onClick={onSubmit}>
+      <button
+        className="primary-button full"
+        disabled={busy}
+        onClick={onSubmit}
+      >
         <IconCheck size={19} />
         Gửi phản ánh
       </button>
@@ -351,12 +390,16 @@ function DraftCard({
 }
 
 export function Composer({
+  connected = false,
+  busy = false,
   onSend,
   draft,
   initialInput,
   onInputChange,
 }: {
-  onSend: (text: string, photos?: Photo[]) => boolean;
+  onSend: (text: string, photos?: Photo[]) => boolean | Promise<boolean>;
+  connected?: boolean;
+  busy?: boolean;
   draft: Draft | null;
   initialInput?: { text: string; photos: Photo[] };
   onInputChange?: (value: { text: string; photos: Photo[] }) => void;
@@ -370,10 +413,10 @@ export function Composer({
   const [reading, setReading] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
-  function send(event?: FormEvent) {
+  async function send(event?: FormEvent) {
     event?.preventDefault();
-    if (reading || (!text.trim() && !photos.length)) return;
-    if (onSend(text, photos)) {
+    if (busy || reading || (!text.trim() && !photos.length)) return;
+    if (await onSend(text, photos)) {
       setText("");
       setPhotos([]);
       setError("");
@@ -420,7 +463,7 @@ export function Composer({
           accept="image/jpeg,image/png,image/webp"
           multiple
           tabIndex={-1}
-          disabled={reading}
+          disabled={reading || busy}
           onChange={async (event) => {
             const files = Array.from(event.target.files ?? []);
             event.target.value = "";
@@ -446,7 +489,7 @@ export function Composer({
           className="attach-button"
           type="button"
           aria-label="Đính kèm ảnh (tối đa 3 ảnh, 10 MB mỗi ảnh; tự động thu nhỏ)"
-          disabled={reading}
+          disabled={reading || busy}
           onClick={() => input.current?.click()}
         >
           <IconPaperclip size={23} stroke={1.7} />
@@ -479,7 +522,7 @@ export function Composer({
           className="send-button"
           type="submit"
           aria-label="Gửi tin nhắn"
-          disabled={reading || (!text.trim() && !photos.length)}
+          disabled={busy || reading || (!text.trim() && !photos.length)}
         >
           <IconArrowUp size={21} stroke={2} />
         </button>
@@ -487,7 +530,11 @@ export function Composer({
       <p className="composer-caption">
         {reading
           ? "Đang đọc ảnh…"
-          : "Bản trải nghiệm · Chưa gửi thông tin đến Ban quản lý"}
+          : busy
+            ? "Đang gửi…"
+            : connected
+              ? "Tin nhắn được lưu vào cuộc trò chuyện của bạn"
+              : "Bản trải nghiệm · Chưa gửi thông tin đến Ban quản lý"}
       </p>
     </div>
   );

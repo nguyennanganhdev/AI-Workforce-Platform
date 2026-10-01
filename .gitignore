@@ -70,3 +70,4 @@ services/vinhomes-api/.local-postgres/
 services/vinhomes-api/.local-v3-postgres/
 services/vinhomes-api/.local-v3-files/
 services/vinhomes-api/.local-v3-faker/
+services/vinhomes-api/.local-connected/

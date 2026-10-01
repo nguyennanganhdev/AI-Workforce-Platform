@@ -30,15 +30,16 @@ const status =
     : null;
 const preview = isResidentPreview();
 
-
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     {authMode ? (
-      <AuthPage mode={authMode} onAuthenticated={() => location.assign("/")} />
+      <AuthPage key={authMode} mode={authMode} onAuthenticated={() => location.assign('/')} />
     ) : status ? (
       <ResidentAccountStatus status={status} preview />
     ) : preview ? (
       <App />
-    ) : legacyAuth ? null : <ConnectedApp />}
+    ) : legacyAuth ? null : (
+      <ConnectedApp />
+    )}
   </React.StrictMode>,
 );

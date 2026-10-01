@@ -12,6 +12,9 @@ from .v3_config import V3Settings
 
 
 async def _actor_id(request: Request, settings: V3Settings) -> str:
+    if settings.password_auth:
+        from .password_auth import authenticated_user
+        return (await authenticated_user(request))["id"]
     if settings.demo_mode:
         if request.client is None or request.client.host not in {"127.0.0.1", "::1"}:
             raise HTTPException(403, "Database demo is only available on loopback")
@@ -41,7 +44,10 @@ async def _actor_id(request: Request, settings: V3Settings) -> str:
     if response.status_code != 200:
         raise HTTPException(503, "Authentication server is unavailable")
     try:
-        actor_id = response.json()["user"]["id"]
+        session = response.json()
+        if session is None or (isinstance(session, dict) and session.get("user") is None):
+            raise HTTPException(401, "Sign in with an active platform account")
+        actor_id = session["user"]["id"]
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(503, "Authentication server returned an invalid identity") from exc
     if not isinstance(actor_id, str) or not actor_id:

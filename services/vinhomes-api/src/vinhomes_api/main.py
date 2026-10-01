@@ -28,6 +28,7 @@ from .v3_memory import router as memory_router
 from .v3_reports import router as reports_router
 from .v3_water import router as water_router
 from .v3_demo import router as demo_router
+from .password_auth import router as password_router
 
 
 def create_app(settings: V3Settings | None = None) -> FastAPI:
@@ -72,7 +73,8 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     @app.get("/health", tags=["health"])
     async def health() -> dict[str, str]:
         return {"status": "ok", "service": "vinhomes-api", "schema": "v3",
-                "dataMode": "faker-database" if settings.demo_mode else "database"}
+                "dataMode": "faker-database" if settings.demo_mode else "database",
+                "authMode": "password" if settings.password_auth else "demo" if settings.demo_mode else "development" if settings.dev_user_id else "session" if settings.auth_url else "unconfigured"}
 
     @app.get("/ready", tags=["health"])
     async def ready() -> dict[str, str]:
@@ -98,6 +100,7 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
         return {"status": "ready", "schema": "v3"}
 
     app.include_router(v3_router)
+    app.include_router(password_router)
     app.include_router(operations_router)
     app.include_router(mutations_router)
     app.include_router(specialized_router)

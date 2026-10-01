@@ -16,7 +16,24 @@ export const Route = createFileRoute("/_authed")({
         if(!canViewPath(account.role,location.pathname))throw redirect({href:landing(account.role)});
         return;
       }
-      // The connected layout bootstraps identity through the V3 API; every query is authorized server-side.
+      const response = await fetch('/api/business/operations/me', { credentials: 'include' });
+      if (response.status === 401) throw redirect({ href: '/operations/login' });
+      if (response.status === 403) throw new Error('Tài khoản chưa được cấp quyền Operations trong phạm vi này.');
+      if (!response.ok) throw new Error('Không kết nối được dịch vụ xác thực và phân quyền Operations. Kiểm tra backend trước khi đăng nhập.');
+      const identity = await response.json() as { role?: string; dataMode?: string };
+      if (identity.dataMode !== 'database' && import.meta.env.VITE_ALLOW_DEMO_BACKEND !== 'true') {
+        throw new Error('Backend đang dùng tài khoản demo. Chế độ hiện tại yêu cầu phiên đăng nhập thật.');
+      }
+      if (!identity.role || !['admin', 'management', 'staff'].includes(identity.role)) {
+        throw new Error('Tài khoản không có vai trò Operations hợp lệ.');
+      }
+      if (identity.role === 'staff') {
+        const staffPaths = ['/operations/my-tasks', '/operations/work-orders', '/operations/completed-tasks'];
+        if (!staffPaths.includes(location.pathname.replace(/\/$/, ''))) {
+          throw redirect({ href: '/operations/my-tasks' });
+        }
+      }
+      // Menu access is checked here; resource scope and mutations remain enforced by the API.
       return;
     }
     if (typeof window !== "undefined" && window.location.port === "3020" && location.pathname === "/") {

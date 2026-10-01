@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { createReport, finishReport, reportRows } from "./service";
 import { type ReportJob } from "./model";
 import { createDocx } from "./docx";
@@ -7,12 +7,6 @@ import { WorkspaceFrame } from "./WorkspaceFrame";
 
 export function ReportsPage() {
   const w = useWorkspace();
-  const [name, setName] = useState("Báo cáo vận hành"),
-    [kind, setKind] = useState<ReportJob["kind"]>("frequency");
-  const [from, setFrom] = useState(() =>
-    new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10),
-  );
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
   if (w.account?.role !== "manager")
     return (
       <p role="alert">
@@ -68,63 +62,7 @@ export function ReportsPage() {
       error={w.error}
       notice={w.notice}
     >
-      <form
-        className="ws-card"
-        onSubmit={(e) => {
-          e.preventDefault();
-          w.run(
-            (s) => createReport(s, actor, { name, kind, from, to }),
-            "Đã đưa báo cáo mẫu vào hàng chờ.",
-          );
-        }}
-      >
-        <div className="ws-grid">
-          <label>
-            Tên báo cáo
-            <input
-              required
-              maxLength={120}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-          <label>
-            Loại báo cáo
-            <select
-              value={kind}
-              onChange={(e) => setKind(e.target.value as ReportJob["kind"])}
-            >
-              <option value="frequency">Tần suất sự cố</option>
-              <option value="revenue">Doanh thu kỹ thuật</option>
-            </select>
-          </label>
-          <label>
-            Từ ngày
-            <input
-              type="date"
-              required
-              value={from}
-              max={to}
-              onChange={(e) => setFrom(e.target.value)}
-            />
-          </label>
-          <label>
-            Đến ngày
-            <input
-              type="date"
-              required
-              value={to}
-              min={from}
-              onChange={(e) => setTo(e.target.value)}
-            />
-          </label>
-        </div>
-        <p className="ws-helper">
-          Doanh thu hiện dùng số tiền mẫu trên ticket kỹ thuật đã hoàn tất; chưa
-          kết nối hóa đơn hoặc thanh toán.
-        </p>
-        <button className="ws-primary">Tạo báo cáo mẫu</button>
-      </form>
+      <ReportForm preview onSubmit={values => {w.run(s => createReport(s, actor, values), 'Đã đưa báo cáo mẫu vào hàng chờ.');}} />
       {!jobs.length && (
         <p className="ws-empty">
           Chưa có báo cáo. Tạo báo cáo đầu tiên để xem trước và tải DOCX.
@@ -234,5 +172,68 @@ export function ReportsPage() {
         );
       })}
     </WorkspaceFrame>
+  );
+}
+
+export type ReportSelection = {name: string; kind: ReportJob['kind']; from: string; to: string};
+export function ReportForm({ onSubmit, preview = false, busy = false, children }: {
+  onSubmit: (values: ReportSelection) => void | Promise<void>; preview?: boolean; busy?: boolean; children?: ReactNode;
+}) {
+  const [name, setName] = useState('Báo cáo vận hành');
+  const [kind, setKind] = useState<ReportJob['kind']>('frequency');
+  const [from, setFrom] = useState(() => new Date(Date.now() - 30 * 86400000).toISOString().slice(0,10));
+  const [to, setTo] = useState(() => new Date().toISOString().slice(0,10));
+  return (
+      <form
+        className="ws-card"
+        onSubmit={(e) => {e.preventDefault(); void onSubmit({name, kind, from, to});}}
+      >
+        <fieldset disabled={busy}><div className="ws-grid">
+          {children}
+          <label>
+            Tên báo cáo
+            <input
+              required
+              maxLength={120}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <label>
+            Loại báo cáo
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as ReportJob["kind"])}
+            >
+              <option value="frequency">Tần suất sự cố</option>
+              <option value="revenue">{preview ? "Doanh thu kỹ thuật" : "Giá trị hóa đơn đã phát hành"}</option>
+            </select>
+          </label>
+          <label>
+            Từ ngày
+            <input
+              type="date"
+              required
+              value={from}
+              max={to}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </label>
+          <label>
+            Đến ngày
+            <input
+              type="date"
+              required
+              value={to}
+              min={from}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </label>
+        </div>
+        <p className="ws-helper">
+          {preview ? 'Doanh thu hiện dùng số tiền mẫu trên ticket kỹ thuật đã hoàn tất; chưa kết nối hóa đơn hoặc thanh toán.' : 'Báo cáo tổng hợp dữ liệu đã lưu. Giá trị hóa đơn phát hành không đồng nghĩa với tiền đã thu.'}
+        </p>
+        <button className="ws-primary">{busy ? "Đang tải…" : preview ? "Tạo báo cáo mẫu" : "Xem báo cáo"}</button></fieldset>
+      </form>
   );
 }

@@ -21,6 +21,8 @@ class V3Settings:
     auth_url: str | None
     dev_user_id: str | None
     demo_mode: bool = False
+    password_auth: bool = False
+    local_file_storage: bool = False
 
     @classmethod
     def from_env(cls) -> "V3Settings":
@@ -38,6 +40,9 @@ class V3Settings:
             raise ValueError("VINHOMES_API_DEV_USER_ID requires a loopback host")
         auth_url = os.getenv("VINHOMES_API_AUTH_URL", "").strip() or None
         demo_mode = os.getenv("VINHOMES_API_DEMO_MODE", "0") == "1"
+        password_auth = os.getenv("VINHOMES_API_PASSWORD_AUTH", "0") == "1"
+        if password_auth and (demo_mode or dev_user_id or auth_url):
+            raise ValueError("Password authentication cannot be combined with demo, fixed identity or external auth")
         if demo_mode and host not in {"127.0.0.1", "localhost", "::1"}:
             raise ValueError("Demo mode requires a loopback host")
         if demo_mode:
@@ -57,4 +62,6 @@ class V3Settings:
             auth_url=auth_url,
             dev_user_id=dev_user_id,
             demo_mode=demo_mode,
+            password_auth=password_auth,
+            local_file_storage=os.getenv("VINHOMES_API_LOCAL_FILE_STORAGE", "0") == "1",
         )

@@ -1,6 +1,6 @@
 # Bàn giao backend — App cư dân
 
-> C?p nh?t 01/10/2026: ?? b? sung ???ng ch?y API/PostgreSQL cho lu?ng ticket c?t l?i. Xem [h??ng d?n k?t n?i](07-connected-runtime.md). Ph?n m? t? mock v? contract ?? xu?t b?n d??i ph?n ?nh b?n preview/handoff tr??c t?ch h?p; kh?ng ph?i tr?ng th?i runtime m?i. Phone/OTP v? c?c module P1 ch?a ho?n ch?nh.
+> Cập nhật 01/10/2026: đăng nhập và RBAC đã lưu PostgreSQL local. Xem [trạng thái kết nối thật](../../docs/TRANG_THAI_KET_NOI_THAT_2026-10-01.md); các giới hạn nghiệp vụ được ghi rõ trong báo cáo.
 
 **Trạng thái: đề xuất tích hợp v0.1, chưa phải contract đã được các team phê duyệt.**
 Tài liệu đối chiếu với code tại thời điểm viết sau khi merge nhánh nhân viên,

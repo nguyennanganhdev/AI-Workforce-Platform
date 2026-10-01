@@ -1,6 +1,7 @@
 # OpenBot docs
 
-- [B?o c?o Resident ? Operations ? PostgreSQL 01/10/2026](BAO_CAO_TRIEN_KHAI_2026-10-01.md): merge, lu?ng th?t, ki?m th? v? ph?n c?n thi?u.
+- [Kết nối thật và đăng nhập PostgreSQL](TRANG_THAI_KET_NOI_THAT_2026-10-01.md): cách đăng nhập, phân quyền, kiểm tra và phần còn thiếu.
+- [Báo cáo triển khai trước đó](BAO_CAO_TRIEN_KHAI_2026-10-01.md): lịch sử tích hợp và kiểm thử demo.
 
 Start with the root [README](../README.md), then use these references:
 

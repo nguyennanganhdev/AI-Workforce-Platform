@@ -65,15 +65,26 @@ describe("Resident auth boundary", () => {
       validateAuth("login", { ...valid, password: "x".repeat(129) }).password,
     ).toBeDefined();
   });
-  test("unconfigured adapter never reports successful login, registration or sent reset code", async () => {
-    await expect(residentAuthService.signIn(valid)).rejects.toThrow(
-      "chưa được kết nối",
-    );
-    await expect(residentAuthService.register(valid)).rejects.toThrow(
-      "tài khoản chưa được tạo",
-    );
-    await expect(
-      residentAuthService.requestPasswordReset(valid.phone),
-    ).rejects.toThrow("Chưa có mã xác minh");
+  test("real auth routes pending and unverified residents without granting access", async () => {
+    const original = globalThis.fetch;
+    const paths: string[] = [];
+    let pending = true;
+    globalThis.fetch = (async (url: RequestInfo | URL) => {
+      paths.push(String(url));
+      return Response.json(String(url).endsWith('/session') ? {membershipStatus: pending ? 'pending' : 'active'} : String(url).endsWith('/resident/me') ? {units: []} : {});
+    }) as typeof fetch;
+    try {
+      expect(await residentAuthService.signIn(valid)).toEqual({nextStep: 'membership-pending'});
+      expect(paths.includes('/api/business/resident/me')).toBe(false);
+      pending = false;
+      expect(await residentAuthService.signIn(valid)).toEqual({nextStep: 'verification-required'});
+      expect(await residentAuthService.register(valid)).toEqual({nextStep: 'membership-pending'});
+      await expect(residentAuthService.requestPasswordReset(valid.phone)).rejects.toThrow('Chưa có mã xác minh');
+    } finally {globalThis.fetch = original;}
+  });
+  test("live form validates email and the backend password minimum", () => {
+    expect(validateAuth('register', {...valid, phone: 'person@example.test'}, 'email')).toEqual({});
+    expect(validateAuth('register', {...valid, phone: 'person@example.test', password: 'shortpass'}, 'email').password).toBeDefined();
+    expect(validateAuth('login', {...valid, phone: 'invalid'}, 'email').phone).toBeDefined();
   });
 });

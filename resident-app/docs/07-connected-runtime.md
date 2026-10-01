@@ -1,5 +1,7 @@
 # Chạy Resident và Operations với backend V3
 
+> **Cập nhật:** mặc định hai frontend từ chối backend demo và tắt preview. Dùng [hướng dẫn/trạng thái kết nối thật](../../docs/TRANG_THAI_KET_NOI_THAT_2026-10-01.md) và `services/CHAY_KET_NOI_THAT.cmd`. Các lệnh bên dưới là hướng dẫn **demo local trước đây**, không phải triển khai thật đã hoàn tất.
+
 Trạng thái ngày 01/10/2026: luồng ticket cốt lõi đã nối PostgreSQL local; các giới hạn được ghi trong [báo cáo triển khai](../../docs/BAO_CAO_TRIEN_KHAI_2026-10-01.md).
 
 ## Cài và khởi động

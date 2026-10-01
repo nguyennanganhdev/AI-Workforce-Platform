@@ -30,7 +30,7 @@ import {
   Utilities,
   type UtilityPage,
 } from "../features/utilities/Utilities";
-import { initialState, resident } from "../mocks/seed";
+import { initialState, resident as demoResident } from "../mocks/seed";
 import {
   loadConversations as loadState,
   reply,
@@ -75,8 +75,23 @@ function readRoute(): Route {
   return { page: "assistant" };
 }
 
-export function App() {
+import type { ConnectedResident } from "../services/use-connected-resident";
+
+export function App({ live }: { live?: ConnectedResident }) {
+  const resident = live
+    ? {
+        name: live.profile?.user.name || "Cư dân",
+        apartment: live.profile?.units[0]?.code || "Chưa liên kết",
+        project: live.profile?.units[0]?.site_name || "Không gian cư dân",
+      }
+    : demoResident;
+  const initials = resident.name
+    .split(" ")
+    .slice(-2)
+    .map((n) => n[0])
+    .join("");
   const [loaded] = useState(() => {
+    if (live) return { state: live.state, error: "" };
     try {
       return { state: loadState(localStorage), error: "" };
     } catch (e) {
@@ -89,12 +104,15 @@ export function App() {
       };
     }
   });
-  const [state, setState] = useState(loaded.state);
+  const [previewState, setState] = useState(loaded.state);
+  const state = live?.state ?? previewState;
   const stateRef = useRef(state);
   const composerInputs = useRef<
     Record<string, { text: string; photos: Photo[] }>
   >({});
-  const [error, setError] = useState(loaded.error);
+  const [previewError, setPreviewError] = useState(loaded.error);
+  const error = live?.error ?? previewError;
+  const setError = live?.setError ?? setPreviewError;
   const [route, setRoute] = useState<Route>(readRoute);
   const scroll = useRef<HTMLElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
@@ -132,6 +150,7 @@ export function App() {
   }, [resetOpen]);
   useEffect(() => {
     if (
+      !live &&
       route.conversation &&
       route.id &&
       route.id !== stateRef.current.activeConversationId
@@ -169,16 +188,25 @@ export function App() {
     }
   }
   const openConversation = () => {
+    if (live) {
+      live.resume();
+      return;
+    }
     commit((s) => selectConversation(s, activeRoom(s).id));
     location.hash = "/chat";
   };
   const send = (text: string, photos: Photo[] = []) => {
+    if (live) return live.send(text, photos);
     const saved = commit((previous) => reply(previous, text, photos));
     if (saved) openConversation();
     return saved;
   };
   const openRequest = (id: string) => navigate("detail", id);
   const report = () => {
+    if (live) {
+      void live.send("Báo sự cố");
+      return;
+    }
     if (activeRoom(stateRef.current).requestId) commit(newConversation);
     openConversation();
     if (!stateRef.current.draft) send("Báo sự cố");
@@ -242,7 +270,7 @@ export function App() {
             className="sidebar-profile"
             onClick={() => navigate("profile")}
           >
-            <span className="avatar">MA</span>
+            <span className="avatar">{initials}</span>
             <span>
               <strong>{resident.name}</strong>
               <small>Căn hộ {resident.apartment}</small>
@@ -266,7 +294,15 @@ export function App() {
             </button>
           </div>
           <div className="header-actions">
-            <span className="demo-chip">Bản trải nghiệm</span>
+            <span className="demo-chip">
+              {live
+                ? live.profile?.dataMode === "local-database"
+                  ? "Database local"
+                  : live.profile
+                    ? "Đã kết nối"
+                    : "Đang kết nối"
+                : "Bản trải nghiệm"}
+            </span>
             <button
               className="icon-button notification-button"
               aria-label={`Thông báo, ${unread} tin nhắn chưa đọc, ${pending} yêu cầu chờ xác nhận`}
@@ -277,10 +313,10 @@ export function App() {
             </button>
             <button
               className="avatar header-avatar"
-              aria-label="Tài khoản của Minh An"
+              aria-label={`Tài khoản của ${resident.name}`}
               onClick={() => navigate("profile")}
             >
-              MA
+              {initials}
             </button>
           </div>
         </header>
@@ -288,10 +324,18 @@ export function App() {
           <ConversationList
             state={state}
             onNew={() => {
+              if (live) {
+                void live.newChat();
+                return;
+              }
               if (commit(newConversation))
                 location.hash = `/chat/${stateRef.current.activeConversationId}`;
             }}
             onSelect={(id) => {
+              if (live) {
+                live.select(id);
+                return;
+              }
               if (commit((s) => selectConversation(s, id)))
                 location.hash = `/chat/${id}`;
             }}
@@ -346,26 +390,107 @@ export function App() {
             </button>
           </div>
         )}
+        {live && !live.profile && (
+          <div className="error-banner" role="status">
+            {live.error || "Đang kết nối tài khoản…"}{" "}
+            <a href="/login">Đăng nhập</a>
+            <button onClick={() => void live.refresh()}>Thử lại</button>
+          </div>
+        )}
         <main className="main-scroll" ref={scroll} id="main-content">
           {route.page === "assistant" && (
             <Assistant
               key={state.activeConversationId}
               state={state}
+              connected={!!live}
+              busy={live?.busy}
+              residentName={resident.name}
+              apartment={resident.apartment}
+              draftFields={
+                live && state.draft?.step === "review" ? (
+                  <div className="resident-contact-fields">
+                    <label>
+                      Căn hộ
+                      <select
+                        value={live.contact.unit}
+                        onChange={(e) =>
+                          live.setContact({
+                            ...live.contact,
+                            unit: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="">Chọn căn hộ</option>
+                        {live.profile?.units.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.building_name} · {u.code}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Nhóm dịch vụ
+                      <select
+                        value={live.contact.category}
+                        onChange={(e) =>
+                          live.setContact({
+                            ...live.contact,
+                            category: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="">Chọn nhóm dịch vụ</option>
+                        {live.profile?.categories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Số điện thoại liên hệ
+                      <input
+                        type="tel"
+                        maxLength={30}
+                        value={live.contact.phone}
+                        onChange={(e) =>
+                          live.setContact({
+                            ...live.contact,
+                            phone: e.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                ) : undefined
+              }
               conversation={!!route.conversation}
               onResume={openConversation}
               onSend={send}
               onOpen={openRequest}
               onRequests={() => navigate("requests")}
               onSubmit={() => {
+                if (live) {
+                  void live.submit();
+                  return;
+                }
                 commit(submitDraft);
               }}
               onEditDraft={() => {
+                if (live) {
+                  live.editDraft();
+                  return;
+                }
                 commit((s) => ({
                   ...s,
                   draft: s.draft ? { ...s.draft, step: "description" } : null,
                 }));
               }}
               onCancelDraft={() => {
+                if (live) {
+                  live.cancelDraft();
+                  return;
+                }
                 commit((s) => ({ ...s, draft: null }));
               }}
             />
@@ -391,60 +516,104 @@ export function App() {
                 <RequestDetail
                   key={detail.id}
                   request={detail}
+                  connected={!!live}
                   onResolve={(accepted, reason) =>
-                    commit((s) =>
-                      resolveRequest(s, detail.id, accepted, reason),
-                    )
+                    live
+                      ? live.decide(detail.id, accepted, reason)
+                      : commit((s) =>
+                          resolveRequest(s, detail.id, accepted, reason),
+                        )
                   }
                 />
-                <section className="resident-ticket-event">
-                  <strong>Sự kiện ticket · bản mô phỏng</strong>
-                  <p>
-                    Kiểm tra thẻ ticket và tin chưa đọc theo đúng hội thoại;
-                    chưa gửi thông báo thật.
-                  </p>
-                  <button
-                    disabled={detail.status === "completed"}
-                    onClick={() =>
-                      commit((s) =>
-                        receiveTicketEvent(
-                          s,
-                          detail.id,
-                          "Yêu cầu đã được chuyển đến đội nhân viên",
-                          "processing",
-                        ),
-                      )
-                    }
-                  >
-                    Mô phỏng đã điều phối
-                  </button>
-                  <button
-                    disabled={detail.status === "completed"}
-                    onClick={() =>
-                      commit((s) =>
-                        receiveTicketEvent(
-                          s,
-                          detail.id,
-                          "Nhân viên đã hoàn thành, mời bạn xác nhận",
-                          "confirmation",
-                        ),
-                      )
-                    }
-                  >
-                    Mô phỏng chờ xác nhận
-                  </button>
-                  <button
-                    onClick={() => {
-                      const room = state.conversations?.find(
-                        (c) => c.requestId === detail.id,
-                      );
-                      if (room && commit((s) => selectConversation(s, room.id)))
-                        location.hash = `/chat/${room.id}`;
-                    }}
-                  >
-                    Mở hội thoại của ticket
-                  </button>
-                </section>
+                {live?.consent(detail.id) && (
+                  <section className="white-card resident-consent">
+                    <h3>Phương án sửa chữa cần bạn xác nhận</h3>
+                    <p>{live.consent(detail.id)?.request_detail.note}</p>
+                    <div className="button-row">
+                      <button
+                        className="primary-button"
+                        disabled={live.busy}
+                        onClick={() =>
+                          void live.decide(
+                            detail.id,
+                            true,
+                            "Tôi đồng ý phương án sửa chữa.",
+                            "customer_repair",
+                          )
+                        }
+                      >
+                        Đồng ý phương án
+                      </button>
+                      <button
+                        className="secondary-button"
+                        disabled={live.busy}
+                        onClick={() =>
+                          void live.decide(
+                            detail.id,
+                            false,
+                            "Tôi chưa đồng ý phương án sửa chữa.",
+                            "customer_repair",
+                          )
+                        }
+                      >
+                        Chưa đồng ý
+                      </button>
+                    </div>
+                  </section>
+                )}
+                {!live && (
+                  <section className="resident-ticket-event">
+                    <strong>Sự kiện ticket · bản mô phỏng</strong>
+                    <p>
+                      Kiểm tra thẻ ticket và tin chưa đọc theo đúng hội thoại;
+                      chưa gửi thông báo thật.
+                    </p>
+                    <button
+                      disabled={detail.status === "completed"}
+                      onClick={() =>
+                        commit((s) =>
+                          receiveTicketEvent(
+                            s,
+                            detail.id,
+                            "Yêu cầu đã được chuyển đến đội nhân viên",
+                            "processing",
+                          ),
+                        )
+                      }
+                    >
+                      Mô phỏng đã điều phối
+                    </button>
+                    <button
+                      disabled={detail.status === "completed"}
+                      onClick={() =>
+                        commit((s) =>
+                          receiveTicketEvent(
+                            s,
+                            detail.id,
+                            "Nhân viên đã hoàn thành, mời bạn xác nhận",
+                            "confirmation",
+                          ),
+                        )
+                      }
+                    >
+                      Mô phỏng chờ xác nhận
+                    </button>
+                    <button
+                      onClick={() => {
+                        const room = state.conversations?.find(
+                          (c) => c.requestId === detail.id,
+                        );
+                        if (
+                          room &&
+                          commit((s) => selectConversation(s, room.id))
+                        )
+                          location.hash = `/chat/${room.id}`;
+                      }}
+                    >
+                      Mở hội thoại của ticket
+                    </button>
+                  </section>
+                )}
               </>
             ) : (
               <div className="empty-state">
@@ -468,6 +637,10 @@ export function App() {
                     key={c.id}
                     className="notification-card"
                     onClick={() => {
+                      if (live) {
+                        live.select(c.id);
+                        return;
+                      }
                       if (commit((s) => selectConversation(s, c.id)))
                         location.hash = `/chat/${c.id}`;
                     }}
@@ -484,15 +657,23 @@ export function App() {
             </>
           )}
           {route.page === "profile" && (
-            <Profile onReset={() => setResetOpen(true)} />
+            <Profile
+              connectedProfile={live?.profile}
+              connected={!!live}
+              onReset={() => setResetOpen(true)}
+            />
           )}
-          {route.page === "building" && <Building />}
-          {route.page === "amenities" && <Amenities />}
+          {route.page === "building" && (
+            <Building connectedProfile={live?.profile} connected={!!live} />
+          )}
+          {route.page === "amenities" && <Amenities connected={!!live} />}
         </main>
         {route.page === "assistant" && (
           <Composer
             key={state.activeConversationId}
             onSend={send}
+            connected={!!live}
+            busy={live?.busy}
             draft={state.draft}
             initialInput={composerInputs.current[state.activeConversationId!]}
             onInputChange={(value) => {

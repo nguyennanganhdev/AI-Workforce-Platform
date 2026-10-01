@@ -19,7 +19,15 @@ Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, 
 
 
 async def _management_building(scope: Scope, building_id: UUID) -> None:
-    db, actor_id, _ = scope
+    db, actor_id, admin = scope
+    if admin:
+        building = await db.execute(text("""
+            select 1 from buildings where id=:id and status='active'
+              and tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
+        """), {"id": building_id})
+        if building.first() is None:
+            raise HTTPException(404, "Active building not found")
+        return
     result = await db.execute(text("""
         select 1 from buildings b
         join scoped_user_roles r on r.tenant_id=b.tenant_id and r.role_code='management'

@@ -5,6 +5,7 @@ import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { useOperationsData } from '../hooks/use-operations-data';
+import type { VhIncident } from '../types/incident';
 import { PanelTitle } from './ops-ui';
 import { severityLabel, slaText, useNow } from './technician/ui';
 
@@ -53,7 +54,6 @@ function KpiCard({ kpi }: { kpi: Kpi }) {
 
 export function OperationsDashboard() {
   const { incidents, workOrders, qcResults, approvals, currentProfile } = useOperationsData();
-  const now = useNow();
 
   const p1Incidents = incidents.filter((i) => i.severity === 'P0' && i.status !== 'CLOSED');
   const inProgressWo = workOrders.filter((w) => w.status === 'IN_PROGRESS');
@@ -70,6 +70,17 @@ export function OperationsDashboard() {
     { label: 'Chờ BQL duyệt', value: pendingApprovals.length, unit: `${(totalPendingCost / 1_000_000).toFixed(1)} tr đ`, note: 'Đề xuất mua van DN50 khẩn cấp', to: '/operations/approvals', action: 'Vào hàng đợi duyệt' },
   ];
 
+  return <OperationsDashboardView kpis={kpis} watched={watched} roleTitle={currentProfile?.roleTitle || 'Ban Quản Lý Đô Thị'} preview />;
+}
+
+export function OperationsDashboardView({ kpis, watched, roleTitle, preview = false, zones = [] }: {
+  kpis: Kpi[];
+  watched: (Pick<VhIncident, 'id' | 'title' | 'category' | 'location_json' | 'sla_due_at'> & {severity: string; stage: string})[];
+  roleTitle: string;
+  preview?: boolean;
+  zones?: { tower: string; note: string; pressing?: boolean }[];
+}) {
+  const now = useNow();
   const deadline = (dueAt: string | null) => slaText(dueAt, now) || { text: '-', pressing: false };
 
   return (
@@ -77,10 +88,10 @@ export function OperationsDashboard() {
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
         <div className="flex min-w-0 flex-col gap-1">
           <PanelTitle>Trung tâm điều hành và giám sát đô thị</PanelTitle>
-          <p className="pl-3.5 text-sm text-muted-foreground">Vinhomes Smart City · Giám sát SLA và điều phối nhân lực hiện trường</p>
+          <p className="pl-3.5 text-sm text-muted-foreground">{preview ? 'Vinhomes Smart City · Giám sát SLA và điều phối nhân lực hiện trường' : 'Giám sát công việc trong phạm vi được cấp'}</p>
         </div>
         <p className="shrink-0 pl-3.5 text-sm text-muted-foreground sm:pl-0">
-          Không gian làm việc: <span className="text-foreground">{currentProfile?.roleTitle || 'Ban Quản Lý Đô Thị'}</span>
+          Không gian làm việc: <span className="text-foreground">{roleTitle}</span>
         </p>
       </div>
 
@@ -109,6 +120,7 @@ export function OperationsDashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {!watched.length && <TableRow><TableCell colSpan={5}>Chưa có sự cố đang mở trong phạm vi của bạn.</TableCell></TableRow>}
                 {watched.map((inc) => {
                   const d = deadline(inc.sla_due_at);
                   const urgent = inc.severity === 'P0' || inc.severity === 'P1';
@@ -159,14 +171,14 @@ export function OperationsDashboard() {
           <Card>
             <CardHeader className="gap-1 px-4 md:px-5">
               <CardDescription>Đề xuất xử lý</CardDescription>
-              <CardTitle className="text-[15px] font-semibold leading-snug">Phát hiện nguy cơ rò rỉ nước ngấm xuống thang máy S2.01</CardTitle>
+              <CardTitle className="text-[15px] font-semibold leading-snug">{preview ? "Phát hiện nguy cơ rò rỉ nước ngấm xuống thang máy S2.01" : "Tiếp nhận và phân công công việc"}</CardTitle>
             </CardHeader>
             <CardContent className="px-4 text-sm leading-relaxed text-muted-foreground md:px-5">
-              AI đề xuất khóa van trục C (đã thực hiện) và kích hoạt gói vật tư thay van DN50 (12,5 tr đ) đang chờ BQL duyệt.
+              {preview ? "AI đề xuất khóa van trục C (đã thực hiện) và kích hoạt gói vật tư thay van DN50 (12,5 tr đ) đang chờ BQL duyệt." : "Mở danh sách phản ánh để xem hồ sơ, phân công nhân viên và theo dõi tiến độ xử lý."}
             </CardContent>
             <CardFooter className="justify-between gap-3 bg-transparent px-4 pt-3 md:px-5">
-              <span className="text-xs text-muted-foreground">Độ tin cậy: 98,4%</span>
-              <Button render={<Link to="/operations/approvals" />}>Duyệt đề xuất</Button>
+              {preview && <span className="text-xs text-muted-foreground">Độ tin cậy: 98,4%</span>}
+              <Button render={<Link to={preview ? "/operations/approvals" : "/operations/triage"} />}>{preview ? "Duyệt đề xuất" : "Tiếp nhận phản ánh"}</Button>
             </CardFooter>
           </Card>
 
@@ -175,11 +187,12 @@ export function OperationsDashboard() {
               <CardTitle className="text-[15px] font-semibold">Phân khu đang theo dõi</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col px-4 text-sm md:px-5">
-              {[
+              {!preview && !zones.length && <p className="text-muted-foreground">Chưa có tòa nhà trong danh mục.</p>}
+              {(preview ? [
                 { tower: 'Tòa S2.01', note: '1 sự cố P0', pressing: true },
                 { tower: 'Tòa S1.05', note: '1 vệ sinh A5' },
                 { tower: 'Tòa S2.03', note: 'Nghiệm thu thang máy' },
-              ].map((z, i) => (
+              ] : zones).map((z, i) => (
                 <div key={z.tower}>
                   {i > 0 && <Separator />}
                   <div className="flex items-center justify-between gap-3 py-2.5">

@@ -64,12 +64,26 @@ async def room_messages(room_id: str, scope: MemberScope,
                         limit: int = Query(50, ge=1, le=100)) -> dict[str, object]:
     await _room(scope, room_id)
     result = await scope[0].execute(text("""
-        select id, seq, sender_kind, sender_user_id, sender_agent_id, body, created_at
+        select id, seq, sender_kind, sender_user_id, sender_agent_id, body, created_at,
+               (select name from users where users.id=messages.sender_user_id) as sender_name
         from messages where channel_id=:room_id and visibility='room'
           and seq>:after_seq
           and tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
         order by seq limit :limit
     """), {"room_id": room_id, "after_seq": after_seq, "limit": limit})
+    return {"items": [dict(row) for row in result.mappings()]}
+
+
+@router.get("/rooms/{room_id}/agents", summary="Agents configured in my management room")
+async def room_agents(room_id: str, scope: MemberScope) -> dict[str, object]:
+    await _room(scope, room_id)
+    result = await scope[0].execute(text("""
+        select a.id,a.name from channel_agents ca join agents a
+          on a.id=ca.agent_id and a.tenant_id=ca.tenant_id
+        where ca.channel_id=:id
+          and ca.tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid
+        order by a.name,a.id
+    """), {"id": room_id})
     return {"items": [dict(row) for row in result.mappings()]}
 
 

@@ -18,16 +18,14 @@ test("staff login requires the assigned identifier and password, without a new-p
     ).toEqual({ identifier: "", password: "" });
   }
 });
-test("staff adapter cannot create accounts or report a successful login before BE integration", async () => {
-  expect("register" in staffAuthService).toBe(false);
+test("staff adapter requires backend role after password authentication", async () => {
+  const original = globalThis.fetch;
+  let allowed = false;
+  globalThis.fetch = (async (url: RequestInfo | URL) => String(url).endsWith('/login') ? Response.json({user: {id: 'person'}}) : allowed ? Response.json({role: 'staff', dataMode: 'database'}) : Response.json({detail: 'Forbidden'}, {status: 403})) as typeof fetch;
   try {
-    await staffAuthService.signIn({
-      identifier: "NV-101",
-      password: "example-password",
-    });
-    throw new Error("Unexpected successful login");
-  } catch (error) {
-    expect(error).toBeInstanceOf(StaffAuthError);
-    expect((error as StaffAuthError).code).toBe("unavailable");
-  }
+    expect('register' in staffAuthService).toBe(false);
+    await expect(staffAuthService.signIn({identifier: 'person@example.test', password: 'testpassword'})).rejects.toThrow('chưa được cấp quyền');
+    allowed = true;
+    expect(await staffAuthService.signIn({identifier: 'person@example.test', password: 'testpassword'})).toEqual({role: 'staff'});
+  } finally {globalThis.fetch = original;}
 });

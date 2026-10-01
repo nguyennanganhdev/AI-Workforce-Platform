@@ -25,10 +25,6 @@ export function WorkPage() {
     task?: string;
     view?: string;
   };
-  const [query, setQuery] = useState(""),
-    [department, setDepartment] = useState(""),
-    [phase, setPhase] = useState("all"),
-    [board, setBoard] = useState(false);
   const [attempt, setAttempt] = useState<string | null>(null);
   const account = w.account;
   if (!account) return <p role="alert">Vui lòng đăng nhập lại.</p>;
@@ -156,6 +152,21 @@ export function WorkPage() {
       </WorkspaceFrame>
     );
   }
+  return <WorkListView rows={rows} manager={manager} history={history} onHistory={history => move(history ? {view: 'history'} : {})}
+    onOpen={open} error={w.error} notice={w.notice} availability={{value: account.available, change: value => w.run(s => setAvailability(s, account.id, value), 'Đã cập nhật trạng thái nhận việc.')}} />;
+}
+
+export function WorkListView({ rows, manager, history, onHistory, onOpen, error = '', notice = '', availability, connectedAccount, title, initialBoard = false }: {
+  rows: WorkItem[]; manager: boolean; history: boolean;
+  onHistory: (history: boolean) => void; onOpen: (row: WorkItem) => void;
+  error?: string; notice?: string; title?: string; initialBoard?: boolean;
+  availability?: {value: boolean; change: (value: boolean) => void};
+  connectedAccount?: {role: string; scope: string};
+}) {
+  const [query, setQuery] = useState('');
+  const [department, setDepartment] = useState('');
+  const [phase, setPhase] = useState('all');
+  const [board, setBoard] = useState(initialBoard);
   const phases: { id: WorkPhase; label: string }[] = [
     { id: "new", label: manager ? "Chờ / đã phân công" : "Việc mới giao" },
     { id: "active", label: "Đang xử lý" },
@@ -176,7 +187,7 @@ export function WorkPage() {
       key={r.key}
       data-work-key={r.key}
       className="ws-ticket work-item"
-      onClick={() => open(r)}
+      onClick={() => onOpen(r)}
     >
       <span className="ws-status" data-status={r.severity}>
         {r.severity} · {r.department}
@@ -193,21 +204,22 @@ export function WorkPage() {
   );
   return (
     <WorkspaceFrame
-      title={manager ? "Phân công công việc" : "Việc của tôi"}
+      title={title || (manager ? "Phân công công việc" : "Việc của tôi")}
+      connectedAccount={connectedAccount}
       description={
         manager
           ? "Điều phối và theo dõi công việc trong phạm vi quản lý."
           : "Công việc được giao, tiến độ xử lý và lịch sử của bạn."
       }
-      error={w.error}
-      notice={w.notice}
+      error={error}
+      notice={notice}
     >
       <div className="ws-row work-toolbar">
         <button
           aria-pressed={!history}
           onClick={() => {
             setPhase("all");
-            move({});
+            onHistory(false);
           }}
         >
           Đang mở ({rows.filter((r) => r.phase !== "history").length})
@@ -216,7 +228,7 @@ export function WorkPage() {
           aria-pressed={history}
           onClick={() => {
             setPhase("all");
-            move({ view: "history" });
+            onHistory(true);
           }}
         >
           Lịch sử ({rows.filter((r) => r.phase === "history").length})
@@ -227,17 +239,12 @@ export function WorkPage() {
           </button>
         )}
       </div>
-      {!manager && (
+      {!manager && availability && (
         <label className="work-availability">
           <input
             type="checkbox"
-            checked={account.available}
-            onChange={(e) =>
-              w.run(
-                (s) => setAvailability(s, account.id, e.target.checked),
-                "Đã cập nhật trạng thái nhận việc.",
-              )
-            }
+            checked={availability.value}
+            onChange={(e) => availability.change(e.target.checked)}
           />{" "}
           Sẵn sàng nhận thêm việc
         </label>

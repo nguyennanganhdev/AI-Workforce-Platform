@@ -7,14 +7,18 @@ export function WorkspaceFrame({
   children,
   error,
   notice,
+  connectedAccount,
+  contentOnly = false,
 }: {
   title: string;
   description: string;
   children: ReactNode;
   error?: string;
   notice?: string;
+  connectedAccount?: { role: string; scope: string };
+  contentOnly?: boolean;
 }) {
-  const a = previewAccount();
+  const a = connectedAccount ?? previewAccount();
   if (!a)
     return (
       <div className="ops-workspace">
@@ -24,6 +28,7 @@ export function WorkspaceFrame({
         <a href="/operations/login">Về đăng nhập</a>
       </div>
     );
+  if (contentOnly) return <div className="ops-workspace">{children}</div>;
   return (
     <div className="ops-workspace">
       <header className="ws-head">
@@ -71,8 +76,9 @@ export function WorkspaceFrame({
       )}
       {children}
       <p className="ws-helper">
-        Workspace FE · Dữ liệu và hành động mô phỏng trên trình duyệt. Chưa gửi
-        lệnh, cảnh báo hay yêu cầu đến hệ thống thật.
+        {connectedAccount
+          ? "Dữ liệu được tải từ hệ thống vận hành. Thao tác được kiểm tra quyền và lưu trên máy chủ."
+          : "Workspace FE · Dữ liệu và hành động mô phỏng trên trình duyệt. Chưa gửi lệnh, cảnh báo hay yêu cầu đến hệ thống thật."}
       </p>
     </div>
   );

@@ -1,5 +1,7 @@
 # Kết nối Resident – Operations – PostgreSQL, 01/10/2026
 
+> Báo cáo bên dưới ghi nhận lượt tích hợp **database local demo** trước yêu cầu bỏ demo. Trạng thái hiện hành và các chặn triển khai thật ở [báo cáo kết nối thật](TRANG_THAI_KET_NOI_THAT_2026-10-01.md). Không dùng kết quả demo dưới đây để kết luận đã hoàn tất production.
+
 ## Nhánh và nguồn merge
 
 - Nhánh làm việc: `frontend/ft-resident`, nền frontend `2b9230d`.

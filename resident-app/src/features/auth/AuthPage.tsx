@@ -13,6 +13,7 @@ import {
   IconHome,
   IconInfoCircle,
   IconLock,
+  IconMail,
   IconPhone,
   IconUser,
 } from "@tabler/icons-react";
@@ -75,7 +76,7 @@ export function AuthPage({
   const mounted = useRef(true);
   const submitting = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
-  const errors = validateAuth(mode, values);
+  const errors = validateAuth(mode, values, service.identityMode);
   const copy = content[mode];
   useEffect(() => {
     mounted.current = true;
@@ -116,7 +117,7 @@ export function AuthPage({
     setPending(true);
     setNotice("");
     try {
-      const phone = normalizePhone(values.phone);
+      const phone = service.identityMode ? values.phone.trim() : normalizePhone(values.phone);
       if (mode === "login" || mode === "register") {
         const result =
           mode === "login"
@@ -241,12 +242,11 @@ export function AuthPage({
         <div className="resident-auth-body">
           {mode === "forgot-password" && (
             <p className="resident-auth-intro">
-              Nhập số điện thoại bạn đã dùng để đăng ký. Hướng dẫn khôi phục sẽ
-              được gửi sau khi hệ thống xác minh.
+              Hệ thống chưa hỗ trợ gửi mã khôi phục mật khẩu. Vui lòng liên hệ
+              ban quản lý để được hỗ trợ tài khoản.
             </p>
           )}
-          <div className="auth-notice"><a href="/">M? ?ng d?ng v?i phi?n platform hi?n t?i</a><br/><a href="http://localhost:3010/sign">??ng nh?p qua platform</a><p>??ng nh?p s? ?i?n tho?i c?n d?ch v? x?c minh ???c c?u h?nh b?i Ban qu?n l?.</p></div>
-          <form
+          {(mode !== "forgot-password" || !service.identityMode) && <form
             onSubmit={submit}
             noValidate
             aria-label={copy.title}
@@ -265,12 +265,12 @@ export function AuthPage({
             <AuthField
               {...fields}
               field="phone"
-              label="Số điện thoại"
-              icon={IconPhone}
-              type="tel"
-              autoComplete="tel-national"
-              maxLength={20}
-              suffix={`${normalizePhone(values.phone).replace(/\D/g, "").length}/10`}
+              label={service.identityMode ? "Email" : "Số điện thoại"}
+              icon={service.identityMode ? IconMail : IconPhone}
+              type={service.identityMode ? "email" : "tel"}
+              autoComplete={service.identityMode ? "username" : "tel-national"}
+              maxLength={service.identityMode ? 254 : 20}
+              suffix={service.identityMode ? undefined : `${normalizePhone(values.phone).replace(/\D/g, "").length}/10`}
             />
             {mode !== "forgot-password" && (
               <AuthField
@@ -288,7 +288,7 @@ export function AuthPage({
             {mode === "register" && (
               <>
                 <p className="resident-auth-password-hint">
-                  Dùng ít nhất 8 ký tự cho mật khẩu của bạn.
+                  Dùng ít nhất {service.identityMode ? 12 : 8} ký tự cho mật khẩu của bạn.
                 </p>
                 <AuthField
                   {...fields}
@@ -329,7 +329,7 @@ export function AuthPage({
                 copy.action
               )}
             </button>
-          </form>
+          </form>}
           <p className="resident-auth-switch">
             {mode === "login" ? (
               <>
@@ -349,7 +349,7 @@ export function AuthPage({
               cư dân.
             </p>
           )}
-          <div className="resident-auth-demo">
+          {import.meta.env.VITE_ENABLE_UI_PREVIEW === "true" && <div className="resident-auth-demo">
             <button
               type="button"
               onClick={() => {
@@ -365,8 +365,8 @@ export function AuthPage({
             >
               Khám phá bản trải nghiệm <IconArrowUpRight size={16} />
             </button>
-            <p>Giao diện mẫu · Chưa kết nối dịch vụ tài khoản</p>
-          </div>
+            <p>Giao diện mẫu · Không dùng dữ liệu vận hành</p>
+          </div>}
         </div>
         <footer className="resident-auth-footer">
           <IconHome size={15} />
@@ -381,7 +381,7 @@ type FieldProps = {
   field: keyof AuthValues;
   label: string;
   icon: ComponentType<{ size?: number; stroke?: number }>;
-  type?: "text" | "tel" | "password";
+  type?: "text" | "tel" | "password" | "email";
   autoComplete: string;
   maxLength: number;
   suffix?: string;
@@ -433,10 +433,10 @@ function AuthField({
               type === "password"
                 ? "Nhập mật khẩu của bạn"
                 : field === "phone"
-                  ? "Nhập số điện thoại"
+                  ? (type === "email" ? "Nhập địa chỉ email" : "Nhập số điện thoại")
                   : "Nhập họ và tên"
             }
-            inputMode={type === "tel" ? "tel" : undefined}
+            inputMode={type === "tel" ? "tel" : type === "email" ? "email" : undefined}
             autoCapitalize={type === "password" ? "none" : undefined}
             spellCheck={false}
           />

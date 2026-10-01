@@ -1,28 +1,44 @@
 import { useState } from "react";
 import { createAgent, sendRoomMessage } from "./service";
-import { stageLabels, type Agent } from "./model";
+import { stageLabels, type Agent, type Room, type WorkflowCase } from "./model";
 import { useWorkspace } from "./use-workspace";
 import { WorkspaceFrame } from "./WorkspaceFrame";
 
 export function TeamPage() {
   const w = useWorkspace();
-  const [text, setText] = useState(""),
-    [agentId, setAgentId] = useState(""),
-    [ticketId, setTicketId] = useState("");
-  const [name, setName] = useState(""),
-    [specialty, setSpecialty] = useState<Agent["specialty"]>("technical");
   if (w.account?.role !== "manager")
     return <p role="alert">Không gian này dành cho ban quản lý.</p>;
   const actor = w.account.id,
     room = w.state.rooms.find((r) => r.scope === w.account!.scope)!;
   const agents = w.state.agents.filter((a) => room.agentIds.includes(a.id));
   const tickets = w.state.cases.filter((c) => c.scope === room.scope);
+  return <TeamView room={room} agents={agents} tickets={tickets} error={w.error} notice={w.notice}
+    onSend={async (text, agentId, ticketId) => w.run(s => sendRoomMessage(s, actor, room.id, text, agentId || undefined, ticketId || undefined), 'Đã gửi tin nhắn trong bản mẫu.')}
+    onCreateAgent={(name, specialty) => w.run(s => createAgent(s, actor, name, specialty), 'Đã tạo agent mẫu và thêm vào nhóm.')} />;
+}
+
+export function TeamView({room, agents, tickets, error = '', notice = '', onSend, onCreateAgent, connectedAccount}: {
+  room: Pick<Room, 'id' | 'name' | 'messages'> & {scope: string};
+  agents: Pick<Agent, 'id' | 'name'>[];
+  tickets: (Pick<WorkflowCase, 'id' | 'title' | 'stage'> & {severity: string})[];
+  error?: string; notice?: string;
+  onSend: (text: string, agentId: string, ticketId: string) => Promise<boolean>;
+  onCreateAgent?: (name: string, specialty: Agent['specialty']) => boolean;
+  connectedAccount?: {role: string; scope: string};
+}) {
+  const [text, setText] = useState('');
+  const [agentId, setAgentId] = useState('');
+  const [ticketId, setTicketId] = useState('');
+  const [name, setName] = useState('');
+  const [specialty, setSpecialty] = useState<Agent['specialty']>('technical');
+  const [sending, setSending] = useState(false);
   return (
     <WorkspaceFrame
       title="Không gian ban quản lý"
-      description="Trao đổi cùng đội agent và theo dõi ticket trong tòa nhà của bạn."
-      error={w.error}
-      notice={w.notice}
+      description="Trao đổi trong nhóm và theo dõi công việc được cấp quyền."
+      error={error}
+      notice={notice}
+      connectedAccount={connectedAccount}
     >
       <div className="ws-team-grid">
         <section className="ws-card">
@@ -66,23 +82,12 @@ export function TeamPage() {
           </div>
           <form
             className="ws-stack"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              if (
-                w.run(
-                  (s) =>
-                    sendRoomMessage(
-                      s,
-                      actor,
-                      room.id,
-                      text,
-                      agentId || undefined,
-                      ticketId || undefined,
-                    ),
-                  "Đã gửi tin nhắn trong bản mẫu.",
-                )
-              )
-                setText("");
+              if (sending) return;
+              setSending(true);
+              try { if (await onSend(text, agentId, ticketId)) setText(''); }
+              finally { setSending(false); }
             }}
           >
             <div className="ws-row">
@@ -100,7 +105,7 @@ export function TeamPage() {
                   ))}
                 </select>
               </label>
-              <label>
+              {!connectedAccount && <label>
                 Ticket liên quan
                 <select
                   value={ticketId}
@@ -113,7 +118,7 @@ export function TeamPage() {
                     </option>
                   ))}
                 </select>
-              </label>
+              </label>}
             </div>
             <label>
               Nội dung
@@ -126,7 +131,7 @@ export function TeamPage() {
                 placeholder="Ví dụ: tổng hợp tiến độ xử lý ticket này…"
               />
             </label>
-            <button disabled={!text.trim()}>Gửi tin nhắn</button>
+            <button disabled={sending || !text.trim()}>{sending ? "Đang gửi…" : "Gửi tin nhắn"}</button>
           </form>
         </section>
         <aside className="ws-card">
@@ -142,17 +147,12 @@ export function TeamPage() {
               </button>
             ))}
           </div>
+          {onCreateAgent ? <>
           <form
             className="ws-stack"
             onSubmit={(e) => {
               e.preventDefault();
-              if (
-                w.run(
-                  (s) => createAgent(s, actor, name, specialty),
-                  "Đã tạo agent mẫu và thêm vào nhóm.",
-                )
-              )
-                setName("");
+              if (onCreateAgent?.(name, specialty)) setName('');
             }}
           >
             <h3>Tạo agent</h3>
@@ -186,6 +186,7 @@ export function TeamPage() {
             Agent trả lời mẫu để duyệt UI. Việc tạo agent thật và chọn ngữ cảnh
             do backend thực hiện.
           </p>
+          </> : <p>Chỉ những agent đã được cấu hình trong nhóm mới nhận được lời nhắc. Phản hồi phụ thuộc dịch vụ agent đang chạy.</p>}
           <a href="/operations/reports">Tạo báo cáo →</a>
         </aside>
       </div>

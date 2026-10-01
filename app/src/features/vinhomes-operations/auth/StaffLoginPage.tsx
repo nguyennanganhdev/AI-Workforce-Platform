@@ -35,7 +35,7 @@ export function StaffLoginPage({
   const [notice, setNotice] = useState("");
   const [help, setHelp] = useState(false);
   const [previewId,setPreviewId]=useState("demo-tech");
-  const [previewData]=useState(()=>{try{return {accounts:readWorkspace().accounts,error:""};}catch{return {accounts:[],error:"Không đọc được danh sách tài khoản mẫu. Kiểm tra dữ liệu workspace trên trình duyệt."};}});
+  const [previewData]=useState(()=>{if(import.meta.env.VITE_ENABLE_UI_PREVIEW !== "true") return {accounts:[],error:""};try{return {accounts:readWorkspace().accounts,error:""};}catch{return {accounts:[],error:"Không đọc được danh sách tài khoản mẫu. Kiểm tra dữ liệu workspace trên trình duyệt."};}});
   const busy = useRef(false);
   const mounted = useRef(true);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -68,11 +68,15 @@ export function StaffLoginPage({
     setPending(true);
     setNotice("");
     try {
-      await service.signIn({ identifier: identifier.trim(), password });
+      const result = await service.signIn({ identifier: identifier.trim(), password });
       if (mounted.current) {
         setPassword("");
         setSubmitted(false);
-        // The live adapter must restore the real identity before enabling the workspaces.
+        if (result) {
+          location.assign(result.role === 'staff' ? '/operations/my-tasks' : result.role === 'admin' ? '/operations/accounts' : '/operations');
+          return;
+        }
+        // Injected preview adapters do not establish a real session.
         setNotice(
           "Đã tiếp nhận đăng nhập. Luồng phiên làm việc cần được kết nối với backend trước khi truy cập dữ liệu thực.",
         );
@@ -82,7 +86,7 @@ export function StaffLoginPage({
         setNotice(
           error instanceof StaffAuthError
             ? staffAuthMessages[error.code]
-            : "Không thể kết nối. Vui lòng thử lại sau.",
+            : error instanceof Error ? error.message : "Không thể kết nối. Vui lòng thử lại sau.",
         );
     } finally {
       busy.current = false;
@@ -159,7 +163,6 @@ export function StaffLoginPage({
             </div>
           ) : (
             <>
-              <div className="p-4 text-sm"><a href="/operations">M? c?ng vi?c t? database</a><br/><a href="/sign">??ng nh?p qua platform</a></div>
           <form noValidate onSubmit={submit}>
                 <label htmlFor="staff-identifier">Tài khoản được cấp</label>
                 <div className="staff-auth-input">
@@ -170,7 +173,7 @@ export function StaffLoginPage({
                     autoComplete="username"
                     autoCapitalize="none"
                     spellCheck={false}
-                    placeholder="Mã nhân viên hoặc email được cấp"
+                    placeholder="Email hoặc số điện thoại được cấp"
                     maxLength={128}
                     value={identifier}
                     disabled={pending}
@@ -284,7 +287,7 @@ export function StaffLoginPage({
               {notice}
             </p>
           )}
-          <div className="staff-auth-preview">
+          {import.meta.env.VITE_ENABLE_UI_PREVIEW === "true" && <div className="staff-auth-preview">
             <label htmlFor="preview-account" style={{display:"block",fontSize:12,color:"#65748b",textAlign:"left"}}>Tài khoản để xem giao diện mẫu</label>
             <select id="preview-account" value={previewId} onChange={e=>setPreviewId(e.target.value)} style={{width:"100%",minHeight:44,border:"1px solid #dce3ee",borderRadius:10,padding:8,fontSize:14,marginTop:8,background:"white",color:"#202b40"}}>{previewData.accounts.filter(a=>a.status==="active"&&a.role!=="resident").map(a=><option key={a.id} value={a.id}>{a.identifier} · {roleLabels[a.role]} · {a.scope}</option>)}</select>
             {previewData.error&&<p role="alert">{previewData.error}</p>}
@@ -302,8 +305,8 @@ export function StaffLoginPage({
             >
               Xem bản trải nghiệm <IconArrowRight size={16} />
             </button>
-            <p>Dữ liệu mẫu · Chưa kết nối đăng nhập</p>
-          </div>
+            <p>Dữ liệu mẫu · Không dùng dữ liệu vận hành</p>
+          </div>}
         </div>
         <footer className="staff-auth-footer">
           <IconShieldCheck size={16} /> Hệ thống dành cho nhân sự được cấp quyền

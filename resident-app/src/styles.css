@@ -1872,3 +1872,8 @@ h3 {
     animation: none !important;
   }
 }
+/* The connected runtime uses the same resident components and design tokens. */
+.resident-contact-fields { display: grid; gap: 14px; margin: 18px 0; }
+.resident-contact-fields label { display: grid; gap: 7px; font-size: 14px; }
+.resident-contact-fields input, .resident-contact-fields select { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #dce3ec; border-radius: 10px; background: white; color: inherit; font: inherit; }
+.resident-consent { margin: 0 auto 24px; max-width: 760px; }

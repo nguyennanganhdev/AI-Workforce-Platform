@@ -16,6 +16,7 @@ import { Neighborhood } from "../../components/Illustrations";
 import { resident } from "../../mocks/seed";
 import { dateLabel } from "../requests/Requests";
 import type { ResidentRequest } from "../../services/types";
+import type { Profile as ResidentProfile } from "../../services/resident-api";
 import { exitResidentPreview } from "../auth/demo-access";
 
 export type UtilityPage =
@@ -150,7 +151,9 @@ export function Notifications({
       {requests.length ? (
         [...requests]
           .sort((a, b) =>
-            b.events.at(-1)!.at.localeCompare(a.events.at(-1)!.at),
+            (b.events.at(-1)?.at || b.createdAt).localeCompare(
+              a.events.at(-1)?.at || a.createdAt,
+            ),
           )
           .map((r) => (
             <button
@@ -164,9 +167,9 @@ export function Notifications({
                 <IconBell size={21} />
               </span>
               <span>
-                <strong>{r.events.at(-1)?.label}</strong>
+                <strong>{r.events.at(-1)?.label || "Cập nhật yêu cầu"}</strong>
                 <p>{r.title}</p>
-                <time>{dateLabel(r.events.at(-1)!.at)}</time>
+                <time>{dateLabel(r.events.at(-1)?.at || r.createdAt)}</time>
               </span>
               <IconChevronRight size={18} className="muted shrink" />
             </button>
@@ -182,7 +185,51 @@ export function Notifications({
   );
 }
 
-export function Profile({ onReset }: { onReset: () => void }) {
+export function Profile({
+  onReset,
+  connected,
+  connectedProfile,
+}: {
+  onReset: () => void;
+  connected?: boolean;
+  connectedProfile?: ResidentProfile;
+}) {
+  if (connected)
+    return (
+      <div className="page-section stack">
+        <section className="profile-card">
+          <span className="avatar large">
+            <IconUser />
+          </span>
+          <h2>{connectedProfile?.user.name || "Đang tải tài khoản…"}</h2>
+          <p>{connectedProfile?.user.email}</p>
+          <span className="small muted">Hồ sơ cư dân từ hệ thống</span>
+        </section>
+        <section className="white-card">
+          <h3>Căn hộ của bạn</h3>
+          {connectedProfile?.units.map((u) => (
+            <div className="apartment-card" key={u.id}>
+              <span className="icon-tile coral">
+                <IconHome />
+              </span>
+              <div>
+                <strong>
+                  {u.building_name} · {u.code}
+                </strong>
+                <p>{u.site_name}</p>
+              </div>
+              <span className="selection-dot" />
+            </div>
+          ))}
+          {connectedProfile && !connectedProfile.units.length && (
+            <p>Chưa có căn hộ đã xác minh. Liên hệ Ban quản lý để liên kết.</p>
+          )}
+        </section>
+        <a className="secondary-button full" href="/login">
+          Quản lý đăng nhập
+        </a>
+      </div>
+    );
   return (
     <div className="page-section stack">
       <section className="profile-card">
@@ -231,7 +278,9 @@ export function Profile({ onReset }: { onReset: () => void }) {
       <button className="secondary-button full" onClick={onReset}>
         Đặt lại dữ liệu trải nghiệm
       </button>
-      <button className="secondary-button full" onClick={exitResidentPreview}>Thoát trải nghiệm về đăng nhập</button>
+      <button className="secondary-button full" onClick={exitResidentPreview}>
+        Thoát trải nghiệm về đăng nhập
+      </button>
       <p className="footnote">
         Thao tác này xóa hội thoại, ảnh và yêu cầu bạn đã tạo trên thiết bị.
       </p>
@@ -239,17 +288,32 @@ export function Profile({ onReset }: { onReset: () => void }) {
   );
 }
 
-export function Building() {
+export function Building({
+  connected,
+  connectedProfile,
+}: {
+  connected?: boolean;
+  connectedProfile?: ResidentProfile;
+} = {}) {
   return (
     <div className="page-section stack">
       <div className="building-heading">
         <span className="icon-tile teal">
           <IconBuildingCommunity size={28} />
         </span>
-        <h2>{resident.project}</h2>
+        <h2>
+          {connected
+            ? connectedProfile?.units[0]?.site_name || "Thông tin nơi ở"
+            : resident.project}
+        </h2>
         <p>
           <IconMapPin size={16} />
-          Tòa S2.02
+          {connected
+            ? connectedProfile?.units
+                .map((u) => u.building_name)
+                .filter((v, i, all) => all.indexOf(v) === i)
+                .join(" · ")
+            : "Tòa S2.02"}
         </p>
       </div>
       <section className="white-card">
@@ -273,15 +337,29 @@ export function Building() {
         <IconInfoCircle size={21} />
         <p>
           Nếu có tình huống nguy hiểm cần hỗ trợ ngay, hãy liên hệ bảo vệ hoặc
-          đầu mối khẩn cấp chính thức của tòa nhà. Bản trải nghiệm chưa tiếp
-          nhận yêu cầu thực tế.
+          đầu mối khẩn cấp chính thức của tòa nhà.
         </p>
       </div>
     </div>
   );
 }
 
-export function Amenities() {
+export function Amenities({ connected }: { connected?: boolean } = {}) {
+  if (connected)
+    return (
+      <div className="page-section stack">
+        <section className="white-card">
+          <span className="icon-tile teal">
+            <IconTrees />
+          </span>
+          <h2>Tiện ích khu dân cư</h2>
+          <p>
+            Ban quản lý chưa công bố danh mục và lịch đặt tiện ích trên hệ
+            thống.
+          </p>
+        </section>
+      </div>
+    );
   return (
     <div className="page-section stack">
       <p className="page-description">

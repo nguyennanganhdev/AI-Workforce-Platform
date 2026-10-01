@@ -1,15 +1,14 @@
-"""Loopback development file store for V3 evidence.
-
-Production storage needs the deployment's verified object-store workflow. This
-route deliberately refuses uploads outside the local development configuration.
-"""
+"""Private local evidence storage, explicitly enabled for loopback deployments."""
 
 import hashlib
+import io
+import os
 from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from PIL import Image, UnidentifiedImageError
 from fastapi.responses import FileResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -19,7 +18,7 @@ from .v3_mutations import record_event, visible_ticket
 
 router = APIRouter(tags=["Vinhomes V3 files"])
 Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
-FILE_ROOT = Path(__file__).resolve().parents[2] / ".local-v3-files"
+FILE_ROOT = Path(os.getenv("VINHOMES_RESIDENT_FILE_ROOT", str(Path(__file__).resolve().parents[2] / ".local-v3-files"))).resolve()
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAGIC = {"image/jpeg": b"\xff\xd8\xff", "image/png": b"\x89PNG\r\n\x1a\n",
          "image/webp": b"RIFF"}
@@ -28,17 +27,28 @@ EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 
 def local_only(request: Request) -> None:
     settings = request.app.state.settings
-    if not (settings.dev_user_id or settings.demo_mode) or settings.host not in {"127.0.0.1", "localhost", "::1"}:
-        raise HTTPException(503, "Local file storage is available only in loopback development")
+    if not (settings.local_file_storage or settings.dev_user_id or settings.demo_mode) or settings.host not in {"127.0.0.1", "localhost", "::1"}:
+        raise HTTPException(503, "Private local storage must be explicitly enabled on a loopback host")
+
+
+def validate_image(data: bytes, mime_type: str) -> None:
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            if image.format != {"image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WEBP"}[mime_type]:
+                raise ValueError("Image type mismatch")
+            image.verify()
+        with Image.open(io.BytesIO(data)) as image:
+            image.load()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise HTTPException(422, "Invalid or oversized image") from exc
 
 
 @router.post("/tickets/{ticket_id}/files", status_code=201,
-             summary="Upload a local development image for ticket evidence")
+             summary="Upload an authenticated ticket evidence image")
 async def upload_ticket_file(
     ticket_id: UUID,
     request: Request,
     scope: Scope,
-    data: bytes = Body(..., media_type="application/octet-stream"),
     filename: str = Query(..., min_length=1, max_length=255),
     mime_type: Literal["image/jpeg", "image/png", "image/webp"] = Query(..., alias="mimeType"),
     purpose: Literal["issue", "before", "after", "other"] = "issue",
@@ -47,6 +57,12 @@ async def upload_ticket_file(
     if filename != Path(filename).name or any(ord(ch) < 32 for ch in filename):
         raise HTTPException(422, "filename must be a plain file name")
     ticket = await visible_ticket(scope, ticket_id, lock=True)
+    data = bytearray()
+    async for chunk in request.stream():
+        if len(data) + len(chunk) > MAX_FILE_BYTES:
+            raise HTTPException(413, "Image exceeds the 10 MB local limit")
+        data.extend(chunk)
+    validate_image(data, mime_type)
     location = await scope[0].execute(text("""
         select id, tenant_prefix from storage_locations where provider='local_fs'
           and purpose='evidence' and status='active'
@@ -128,7 +144,7 @@ async def upload_ticket_file(
             "mimeType": mime_type, "status": "ready"}
 
 
-@router.get("/files/{file_id}/content", summary="Download a local development evidence image")
+@router.get("/files/{file_id}/content", summary="Download an authorized evidence image")
 async def download_file(file_id: UUID, request: Request, scope: Scope) -> FileResponse:
     local_only(request)
     found = await scope[0].execute(text("""

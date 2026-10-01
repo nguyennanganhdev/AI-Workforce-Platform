@@ -3,6 +3,7 @@ const key = "operations.ui-preview";
 import { readWorkspace } from "../workspace/service";
 import { landing } from "../workspace/model";
 export function previewAccount() {
+  if (import.meta.env.VITE_ENABLE_UI_PREVIEW !== "true") return null;
   try { if(sessionStorage.getItem(key)!=="true")return null;return readWorkspace().accounts.find(a=>a.id===(sessionStorage.getItem("operations.preview-account")??"demo-tech")&&a.status==="active")??null; } catch { return null; }
 }
 export function previewPersona() { const role=previewAccount()?.role;return role==="manager"||role==="admin"?"MANAGER":role==="security"?"STAFF_SECURITY":role==="sanitation"?"STAFF_SANITATION_A5":"STAFF_TECHNICAL"; }

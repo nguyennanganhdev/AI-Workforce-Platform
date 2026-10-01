@@ -15,8 +15,6 @@ interface NavItemDef {
 }
 
 export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean; onNavigate?: () => void }) {
-  const routerState = useRouterState();
-  const currentPath = routerState.location.pathname;
 
   const {
     currentPersona,
@@ -128,6 +126,17 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
   const operationItems = allowedNavItems.filter((item) => item.section === 'OPERATIONS');
   const managementItems = allowedNavItems.filter((item) => item.section === 'MANAGEMENT');
 
+  return <OperationsSidebarView open={open} onNavigate={onNavigate}
+    account={{ name: account?.name || currentProfile.name, identifier: account?.identifier || '', scope: account?.scope || '', roleLabel: account ? roleLabels[account.role] : currentProfile.department }}
+    workspaceItems={workspaceItems} operationItems={operationItems} managementItems={managementItems} />;
+}
+
+export function OperationsSidebarView({ open = false, onNavigate, account, workspaceItems, operationItems, managementItems }: {
+  open?: boolean; onNavigate?: () => void;
+  account: { name: string; identifier: string; scope: string; roleLabel: string };
+  workspaceItems: string[][]; operationItems: NavItemDef[]; managementItems: NavItemDef[];
+}) {
+  const currentPath = useRouterState().location.pathname;
   return (
     <aside className="operations-sidebar" data-open={open} aria-label="Điều hướng vận hành">
       <Link to="/operations" onClick={onNavigate} className="hidden min-[901px]:flex h-16 flex-col justify-center border-b border-slate-200 px-5">
@@ -136,7 +145,7 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
       </Link>
       <div className="border-b border-slate-200 p-4">
         <p className="mb-2 block text-xs text-slate-500">Vai trò được cấp</p>
-        <strong className="text-sm">{account ? roleLabels[account.role] : 'Chưa đăng nhập'}</strong>
+        <strong className="text-sm">{account.roleLabel}</strong>
         <p className="text-xs text-slate-500 mt-1">{account?.identifier} · {account?.scope}</p>
       </div>
       <nav aria-label="Chức năng vận hành" className="flex-1 space-y-5 overflow-y-auto p-3">
@@ -155,8 +164,8 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
         ))}
       </nav>
       <div className="border-t border-slate-200 p-4">
-        <p className="text-sm font-medium text-slate-900">{account?.name || currentProfile.name}</p>
-        <p className="mt-1 text-xs text-slate-500">{account ? roleLabels[account.role] : currentProfile.department}</p>
+        <p className="text-sm font-medium text-slate-900">{account.name}</p>
+        <p className="mt-1 text-xs text-slate-500">{account.roleLabel}</p>
       </div>
     </aside>
   );

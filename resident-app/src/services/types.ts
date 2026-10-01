@@ -48,7 +48,7 @@ export type ResidentConversation = {
   updatedAt: string;
 };
 export const statusLabels: Record<RequestStatus, string> = {
-  cancelled: "?? h?y",
+  cancelled: "Đã hủy",
   received: "Đã tiếp nhận",
   processing: "Đang xử lý",
   confirmation: "Chờ bạn xác nhận",
