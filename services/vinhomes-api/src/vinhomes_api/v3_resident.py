@@ -4,7 +4,7 @@ import json
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -67,6 +67,18 @@ class ResidentApprovalDecision(BaseModel):
     note: str = Field(min_length=1, max_length=2000)
 
 
+class ResidentTicketCreate(BaseModel):
+    domain_id: UUID
+    building_id: UUID
+    unit_id: UUID
+    category_id: UUID
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(min_length=1, max_length=10000)
+    contact_name: str = Field(min_length=1, max_length=200)
+    contact_phone: str = Field(min_length=1, max_length=30)
+    request_kind: str = Field(pattern="^(incident|service_request)$")
+
+
 @router.post("/resident/chats", status_code=201, summary="Create a resident chat")
 async def create_chat(body: CreateChat, scope: ResidentScope) -> dict[str, object]:
     db, actor_id = scope
@@ -121,7 +133,7 @@ async def list_messages(channel_id: str, scope: ResidentScope,
 
 @router.post("/resident/chats/{channel_id}/messages", status_code=201,
              summary="Send a message in my chat")
-async def send_message(channel_id: str, body: SendMessage, scope: ResidentScope) -> dict[str, object]:
+async def send_message(channel_id: str, body: SendMessage, request: Request, scope: ResidentScope) -> dict[str, object]:
     db, actor_id = scope
     await _owned_chat(scope, channel_id, lock=True)
     existing = await db.execute(text("""
@@ -150,7 +162,140 @@ async def send_message(channel_id: str, body: SendMessage, scope: ResidentScope)
     """), {"channel_id": channel_id, "seq": sequence.scalar_one(),
            "actor_id": actor_id, "body": json.dumps({"text": body.text}),
            "client_message_id": body.client_message_id})
-    return dict(result.mappings().one())
+    created = dict(result.mappings().one())
+    if request.app.state.settings.demo_mode:
+        response_text = "Reception demo đã tiếp nhận. Hãy tạo ticket trong chat để chuyển BQL."
+        seq = await db.execute(text("update channels set next_message_seq=next_message_seq+1,last_message=:preview,last_message_at=now() where id=:id returning next_message_seq-1"), {"id": channel_id, "preview": response_text})
+        await db.execute(text("""
+            insert into messages(tenant_id,channel_id,seq,sender_kind,sender_agent_id,visibility,body,reply_to_id)
+            values(nullif(current_setting('app.tenant_id',true),'')::uuid,:channel_id,:seq,'agent','demo-reception','customer',cast(:body as jsonb),:reply)
+        """), {"channel_id": channel_id, "seq": seq.scalar_one(), "body": json.dumps({"text": response_text, "mode": "faker"}), "reply": created["id"]})
+    return created
+
+
+@router.post("/resident/chats/{channel_id}/tickets", status_code=201,
+             summary="Create a ticket for my verified unit in this chat")
+async def create_chat_ticket(channel_id: str, body: ResidentTicketCreate,
+                             scope: ResidentScope) -> dict[str, object]:
+    db, actor_id = scope
+    await _owned_chat(scope, channel_id, lock=True)
+    exists = await db.execute(text("""
+        select 1 from tickets where channel_id=:channel_id
+          and tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
+    """), {"channel_id": channel_id})
+    if exists.first() is not None:
+        raise HTTPException(409, "This chat already has a ticket")
+    location = await db.execute(text("""
+        select u.id, u.code as unit_code, b.id as building_id,
+               b.name as building_name, b.site_id, b.zone_id
+        from unit_residents ur
+        join units u on u.id=ur.unit_id and u.tenant_id=ur.tenant_id
+        join buildings b on b.id=u.building_id and b.tenant_id=u.tenant_id
+        join sites si on si.id=b.site_id and si.tenant_id=b.tenant_id
+        join domains d on d.id=si.domain_id and d.tenant_id=si.tenant_id
+        where ur.user_id=:actor_id and ur.unit_id=:unit_id
+          and ur.verification_status='verified'
+          and ur.valid_from<=now() and (ur.valid_to is null or ur.valid_to>now())
+          and b.id=:building_id and d.id=:domain_id
+          and u.status='active' and b.status='active'
+          and si.status='active' and d.status='active'
+          and ur.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
+        limit 1
+    """), {"actor_id": actor_id, "unit_id": body.unit_id,
+           "building_id": body.building_id, "domain_id": body.domain_id})
+    place = location.mappings().first()
+    if place is None:
+        raise HTTPException(403, "Verified residence in this building required")
+    coverage = await db.execute(text("""
+        select mc.management_unit_id, mc.id as coverage_id, mc.priority,
+               case s.kind when 'building' then 4 when 'zone' then 3
+                   when 'site' then 2 else 1 end as specificity
+        from management_coverage mc
+        join access_scopes s on s.id=mc.scope_id and s.tenant_id=mc.tenant_id
+        join management_units mu on mu.id=mc.management_unit_id and mu.tenant_id=mc.tenant_id
+        join service_categories cat on cat.id=mc.service_category_id and cat.tenant_id=mc.tenant_id
+        where mc.service_category_id=:category_id and cat.enabled and mu.status='active'
+          and mc.valid_from<=now() and (mc.valid_to is null or mc.valid_to>now())
+          and mc.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
+          and (s.kind='tenant'
+            or (s.kind='site' and s.site_id=:site_id)
+            or (s.kind='zone' and s.zone_id=cast(:zone_id as uuid))
+            or (s.kind='building' and s.building_id=:building_id))
+        order by specificity desc, mc.priority desc, mc.id
+        limit 2
+    """), {"category_id": body.category_id, "site_id": place["site_id"],
+           "zone_id": place["zone_id"], "building_id": body.building_id})
+    choices = coverage.mappings().all()
+    if not choices:
+        raise HTTPException(404, "No management coverage for this category")
+    selected = choices[0]
+    if (len(choices) > 1 and choices[1]["specificity"] == selected["specificity"]
+            and choices[1]["priority"] == selected["priority"]
+            and choices[1]["management_unit_id"] != selected["management_unit_id"]):
+        raise HTTPException(409, "Ambiguous management coverage")
+    ticket_id = uuid4()
+    ticket = await db.execute(text("""
+        insert into tickets
+          (id, tenant_id, code, requester_user_id, channel_id, unit_id,
+           domain_id, site_id, zone_id, building_id, management_unit_id,
+           coverage_id, category_id, title, description, priority, status,
+           contact_name, contact_phone, address_snapshot, request_kind)
+        values (:id, nullif(current_setting('app.tenant_id', true), '')::uuid,
+                :code, :actor_id, :channel_id, :unit_id, :domain_id,
+                :site_id, :zone_id, :building_id, :management_unit_id,
+                :coverage_id, :category_id, :title, :description,
+                'normal', 'open', :contact_name, :contact_phone,
+                cast(:address as jsonb), :request_kind)
+        returning id, code, channel_id, status, version
+    """), {"id": ticket_id, "code": f"VH-{ticket_id.hex[:12].upper()}",
+           "actor_id": actor_id, "channel_id": channel_id, "unit_id": body.unit_id,
+           "domain_id": body.domain_id, "site_id": place["site_id"],
+           "zone_id": place["zone_id"], "building_id": body.building_id,
+           "management_unit_id": selected["management_unit_id"],
+           "coverage_id": selected["coverage_id"], "category_id": body.category_id,
+           "title": body.title, "description": body.description,
+           "contact_name": body.contact_name, "contact_phone": body.contact_phone,
+           "address": json.dumps({"building": place["building_name"],
+                                  "unit": place["unit_code"]}),
+           "request_kind": body.request_kind})
+    created = dict(ticket.mappings().one())
+    event_id = await record_event((db, actor_id, False),
+                                  {**created, "last_event_seq": 0}, "ticket.created",
+                                  json.dumps({"source": "resident_chat"}), to_status="open")
+    await db.execute(text("""
+        insert into ticket_routing_history
+          (tenant_id, ticket_id, to_management_id, status, reason, requested_at)
+        values (nullif(current_setting('app.tenant_id', true), '')::uuid,
+                :ticket_id, :management_unit_id, 'requested',
+                'initial_reception_handoff', now())
+    """), {"ticket_id": ticket_id,
+           "management_unit_id": selected["management_unit_id"]})
+    await db.execute(text("""
+        insert into notification_deliveries
+          (tenant_id, user_id, ticket_event_id, channel, dedupe_key,
+           payload, status, available_at)
+        select r.tenant_id, m.user_id, :event_id, 'in_app', :dedupe_key,
+               cast(:payload as jsonb), 'pending', now()
+        from scoped_user_roles r
+        join tenant_memberships m on m.id=r.membership_id and m.tenant_id=r.tenant_id
+        join access_scopes s on s.id=r.scope_id and s.tenant_id=r.tenant_id
+        join users u on u.id=m.user_id and u.status='active'
+        where r.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
+          and r.role_code='management' and m.status='active'
+          and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now())
+          and (s.kind='tenant'
+            or (s.kind='management' and s.management_unit_id=:management_unit_id)
+            or (s.kind='site' and s.site_id=:site_id)
+            or (s.kind='zone' and s.zone_id=cast(:zone_id as uuid))
+            or (s.kind='building' and s.building_id=:building_id))
+        on conflict (tenant_id, user_id, channel, dedupe_key) do nothing
+    """), {"event_id": event_id, "dedupe_key": f"ticket:{ticket_id}:created",
+           "payload": json.dumps({"type": "ticket.created", "ticketId": str(ticket_id)}),
+           "management_unit_id": selected["management_unit_id"],
+           "site_id": place["site_id"], "zone_id": place["zone_id"],
+           "building_id": body.building_id})
+    created["version"] = 1
+    return created
 
 
 @router.get("/resident/tickets", summary="List my tickets")
@@ -183,7 +328,8 @@ async def get_my_ticket(ticket_id: UUID, scope: ResidentScope) -> dict[str, obje
         select id, seq, event_type, from_status, to_status, occurred_at
         from ticket_events
         where ticket_id=:ticket_id and tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
-          and event_type in ('ticket.created', 'ticket.status_changed',
+          and event_type in ('ticket.created', 'ticket.routing_accepted',
+                             'ticket.status_changed',
                              'work_order.status_changed', 'work_order.offered',
                              'work_assignment.responded')
         order by seq desc limit 100
@@ -197,7 +343,7 @@ async def decide_resident_approval(approval_id: UUID, body: ResidentApprovalDeci
                                    scope: ResidentScope) -> dict[str, object]:
     db, actor_id = scope
     found = await db.execute(text("""
-        select a.work_order_id, w.ticket_id from work_approvals a
+        select a.work_order_id, a.kind, w.ticket_id from work_approvals a
         join work_orders w on w.id=a.work_order_id and w.tenant_id=a.tenant_id
         join tickets t on t.id=w.ticket_id and t.tenant_id=w.tenant_id
         where a.id=:approval_id and a.requested_to_user_id=:actor_id
@@ -222,6 +368,17 @@ async def decide_resident_approval(approval_id: UUID, body: ResidentApprovalDeci
     if row["status"] != "pending" or not row["unexpired"]:
         raise HTTPException(409, "Approval is no longer pending")
     status = "approved" if body.approved else "rejected"
+    target_status = None
+    if approval["kind"] == "customer_completion":
+        if ticket["status"] != "resolved":
+            raise HTTPException(409, "Ticket must be resolved before completion confirmation")
+        target_status = "closed" if body.approved else "in_progress"
+        await db.execute(text("""
+            update tickets set status=:status, closed_at=case when :status='closed' then now() else null end,
+              resolved_at=case when :status='closed' then resolved_at else null end where id=:id
+        """), {"id": ticket["id"], "status": target_status})
+        if not body.approved:
+            await db.execute(text("update work_orders set status='in_progress',completed_at=null,version=version+1,updated_at=now() where id=:id"), {"id": approval["work_order_id"]})
     updated = await db.execute(text("""
         update work_approvals set status=:status, decided_by=:actor_id,
             decided_at=now(), decision_note=:note, updated_at=now()
@@ -230,7 +387,7 @@ async def decide_resident_approval(approval_id: UUID, body: ResidentApprovalDeci
     """), {"status": status, "actor_id": actor_id, "note": body.note,
            "approval_id": approval_id})
     event_id = await record_event((db, actor_id, False), ticket, "work_approval.decided",
-                                  json.dumps({"approvalId": str(approval_id), "status": status}))
+                                  json.dumps({"approvalId": str(approval_id), "status": status}), to_status=target_status)
     await db.execute(text("""
         update work_approvals set decided_event_id=:event_id where id=:approval_id
     """), {"event_id": event_id, "approval_id": approval_id})

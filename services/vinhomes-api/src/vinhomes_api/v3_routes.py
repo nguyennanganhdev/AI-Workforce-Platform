@@ -202,6 +202,11 @@ async def list_work_orders(
     return {"items": items, "nextOffset": offset + len(items) if len(items) == limit else None}
 
 
+@router.get("/dispatch-queue", summary="Queued work orders in my operations scope")
+async def dispatch_queue(scope: Scope, limit: int = Query(50, ge=1, le=100)) -> dict[str, object]:
+    return await list_work_orders(scope, limit, 0, None, "queued")
+
+
 @router.get("/work-orders/{work_order_id}", summary="Work order, phân công và phê duyệt")
 async def get_work_order(work_order_id: UUID, scope: Scope) -> dict[str, object]:
     connection, _, _ = scope

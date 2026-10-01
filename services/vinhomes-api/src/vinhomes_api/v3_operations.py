@@ -105,7 +105,9 @@ async def available_staff(
         join staff_specialties ss on ss.staff_id=sp.id and ss.tenant_id=sp.tenant_id
         join users u on u.id=sp.user_id and u.status='active'
         left join work_assignments wa on wa.staff_id=sp.id and wa.tenant_id=sp.tenant_id
-             and wa.status in ('offered','accepted')
+             and (wa.status='accepted' or (wa.status='offered' and wa.offer_expires_at>now()))
+             and exists (select 1 from work_orders busy where busy.id=wa.work_order_id
+               and busy.tenant_id=wa.tenant_id and busy.status not in ('completed','cancelled','rejected'))
         where sp.management_unit_id=:management_unit_id and ss.category_id=:category_id
           and sp.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
           and sp.active and ss.active and sp.availability='available'
@@ -196,6 +198,65 @@ async def ticket_timeline(ticket_id: UUID, scope: Scope) -> dict[str, object]:
     return {"items": rows(result)}
 
 
+@router.post("/tickets/{ticket_id}/routing/ack",
+             summary="Responsible management accepts a routed resident ticket")
+async def acknowledge_ticket_routing(ticket_id: UUID, scope: Scope) -> dict[str, object]:
+    db, actor_id, _ = scope
+    ticket = await visible_ticket(scope, ticket_id, lock=True)
+    grant = await db.execute(text("""
+        select 1 from scoped_user_roles r
+        join tenant_memberships m on m.id=r.membership_id and m.tenant_id=r.tenant_id
+        join access_scopes s on s.id=r.scope_id and s.tenant_id=r.tenant_id
+        where m.user_id=:actor_id and m.status='active' and r.role_code='management'
+          and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now())
+          and r.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
+          and (s.kind='tenant'
+            or (s.kind='management' and s.management_unit_id=cast(:management_unit_id as uuid))
+            or (s.kind='site' and s.site_id=cast(:site_id as uuid))
+            or (s.kind='zone' and s.zone_id=cast(:zone_id as uuid))
+            or (s.kind='building' and s.building_id=cast(:building_id as uuid)))
+        limit 1
+    """), {"actor_id": actor_id,
+           "management_unit_id": ticket["management_unit_id"],
+           "site_id": ticket["site_id"], "zone_id": ticket["zone_id"],
+           "building_id": ticket["building_id"]})
+    if grant.first() is None:
+        raise HTTPException(403, "Responsible management role required")
+    routing = await db.execute(text("""
+        select id, status from ticket_routing_history
+        where ticket_id=:ticket_id and to_management_id=cast(:management_unit_id as uuid)
+          and tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
+        order by requested_at desc limit 1 for update
+    """), {"ticket_id": ticket_id,
+           "management_unit_id": ticket["management_unit_id"]})
+    route = routing.mappings().first()
+    if route is None:
+        raise HTTPException(404, "Routing request not found")
+    if route["status"] != "requested":
+        raise HTTPException(409, "Routing request is no longer pending")
+    event_id = await record_event(scope, ticket, "ticket.routing_accepted",
+                                  json.dumps({"routingId": str(route["id"])}))
+    updated = await db.execute(text("""
+        update ticket_routing_history set status='accepted', ack_event_id=:event_id,
+            acknowledged_at=now() where id=:id
+        returning id, ticket_id, status, acknowledged_at
+    """), {"id": route["id"], "event_id": event_id})
+    await db.execute(text("""
+        insert into notification_deliveries
+          (tenant_id, user_id, ticket_event_id, channel, dedupe_key,
+           payload, status, available_at)
+        select t.tenant_id, t.requester_user_id, :event_id, 'in_app',
+               :dedupe_key, cast(:payload as jsonb), 'pending', now()
+        from tickets t where t.id=:ticket_id
+          and t.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
+        on conflict (tenant_id, user_id, channel, dedupe_key) do nothing
+    """), {"ticket_id": ticket_id, "event_id": event_id,
+           "dedupe_key": f"ticket:{ticket_id}:routing-accepted",
+           "payload": json.dumps({"type": "ticket.routing_accepted",
+                                  "ticketId": str(ticket_id)})})
+    return dict(updated.mappings().one())
+
+
 class ApprovalDecision(BaseModel):
     status: Literal["approved", "rejected"]
     note: str = Field(min_length=1, max_length=2000)
@@ -254,6 +315,12 @@ async def decide_approval(approval_id: UUID, body: ApprovalDecision, scope: Scop
         returning id, work_order_id, status, decided_by, decided_at, decision_note
     """), {"status": body.status, "note": body.note, "user_id": actor_id, "approval_id": approval_id})
     decision = dict(updated.mappings().one())
+    await db.execute(text("""
+        update service_interruptions
+        set status=:interruption_status, updated_at=now()
+        where approval_id=:approval_id and status='proposed'
+    """), {"approval_id": approval_id,
+           "interruption_status": "approved" if body.status == "approved" else "cancelled"})
     event_id = await record_event(scope, ticket, "work_approval.decided",
                                   json.dumps({"approvalId": str(approval_id), "status": body.status}))
     await db.execute(text("""

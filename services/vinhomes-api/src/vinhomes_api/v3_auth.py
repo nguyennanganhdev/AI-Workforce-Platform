@@ -3,7 +3,7 @@
 from collections.abc import AsyncIterator
 
 import httpx
-from fastapi import HTTPException, Request
+from fastapi import Header, HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -12,6 +12,16 @@ from .v3_config import V3Settings
 
 
 async def _actor_id(request: Request, settings: V3Settings) -> str:
+    if settings.demo_mode:
+        if request.client is None or request.client.host not in {"127.0.0.1", "::1"}:
+            raise HTTPException(403, "Database demo is only available on loopback")
+        actors = {"resident": "local-v3-resident", "management": "local-v3-management",
+                  "technical": "local-v3-technical", "security": "local-v3-security",
+                  "admin": "local-v3-admin"}
+        role = request.headers.get("X-Demo-Actor", "resident")
+        if role not in actors:
+            raise HTTPException(422, "Unknown seeded demo actor")
+        return actors[role]
     if settings.dev_user_id:
         return settings.dev_user_id
     if not settings.auth_url:
@@ -35,7 +45,7 @@ async def _actor_id(request: Request, settings: V3Settings) -> str:
     return actor_id
 
 
-async def scoped_connection(request: Request) -> AsyncIterator[tuple[AsyncConnection, str, bool]]:
+async def scoped_connection(request: Request, x_demo_actor: str | None = Header(default=None)) -> AsyncIterator[tuple[AsyncConnection, str, bool]]:
     settings: V3Settings = request.app.state.settings
     engine = request.app.state.engine
     if not engine or not settings.tenant_id:
@@ -80,7 +90,7 @@ async def scoped_connection(request: Request) -> AsyncIterator[tuple[AsyncConnec
         raise HTTPException(503, "V3 database is unavailable or missing required tables") from exc
 
 
-async def resident_connection(request: Request) -> AsyncIterator[tuple[AsyncConnection, str]]:
+async def resident_connection(request: Request, x_demo_actor: str | None = Header(default=None)) -> AsyncIterator[tuple[AsyncConnection, str]]:
     """Active tenant member identity for resident-owned resources."""
     settings: V3Settings = request.app.state.settings
     engine = request.app.state.engine

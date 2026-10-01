@@ -2,8 +2,11 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -19,11 +22,13 @@ from .v3_resident import router as resident_router
 from .v3_rooms import router as rooms_router
 from .v3_knowledge import router as knowledge_router
 from .v3_memory import router as memory_router
+from .v3_reports import router as reports_router
+from .v3_water import router as water_router
+from .v3_demo import router as demo_router
 
 
 def create_app(settings: V3Settings | None = None) -> FastAPI:
     settings = settings or V3Settings.from_env()
-
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = settings
@@ -51,7 +56,8 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
 
     @app.get("/health", tags=["health"])
     async def health() -> dict[str, str]:
-        return {"status": "ok", "service": "vinhomes-api", "schema": "v3"}
+        return {"status": "ok", "service": "vinhomes-api", "schema": "v3",
+                "dataMode": "faker-database" if settings.demo_mode else "database"}
 
     @app.get("/ready", tags=["health"])
     async def ready() -> dict[str, str]:
@@ -86,6 +92,16 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(rooms_router)
     app.include_router(knowledge_router)
     app.include_router(memory_router)
+    app.include_router(reports_router)
+    app.include_router(water_router)
+    app.include_router(demo_router)
+    if settings.demo_mode:
+        demo_ui = Path(__file__).parent / "demo_ui"
+        app.mount("/demo/assets", StaticFiles(directory=demo_ui), name="demo-assets")
+
+        @app.get("/demo/ui", include_in_schema=False)
+        async def demo_page() -> FileResponse:
+            return FileResponse(demo_ui / "business.html", headers={"Cache-Control": "no-store"})
     return app
 
 

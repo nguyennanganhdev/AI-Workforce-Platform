@@ -4,7 +4,7 @@ import json
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -94,7 +94,7 @@ async def mention_status(room_id: str, message_id: UUID,
 @router.post("/rooms/{room_id}/messages", status_code=201,
              summary="Post to my room, optionally requesting an agent mention")
 async def post_room_message(room_id: str, body: RoomMessage,
-                            scope: MemberScope) -> dict[str, object]:
+                            request: Request, scope: MemberScope) -> dict[str, object]:
     db, actor_id = scope
     await _room(scope, room_id, lock=True)
     previous = await db.execute(text("""
@@ -140,4 +140,12 @@ async def post_room_message(room_id: str, body: RoomMessage,
                     :message_id, :agent_id, :actor_id, 'queued')
         """), {"message_id": created["id"], "agent_id": body.mention_agent_id,
                "actor_id": actor_id})
+        if request.app.state.settings.demo_mode:
+            seq = await db.execute(text("update channels set next_message_seq=next_message_seq+1 where id=:id returning next_message_seq-1"), {"id": room_id})
+            await db.execute(text("""
+                insert into messages(tenant_id,channel_id,seq,sender_kind,sender_agent_id,visibility,body,reply_to_id)
+                values(nullif(current_setting('app.tenant_id',true),'')::uuid,:room_id,:seq,'agent',:agent,'room',cast(:body as jsonb),:reply)
+            """), {"room_id": room_id, "seq": seq.scalar_one(), "agent": body.mention_agent_id,
+                   "body": json.dumps({"text": "Agent demo đã nhận context room. Dùng API báo cáo để lấy dữ liệu trong database.", "mode": "faker"}), "reply": created["id"]})
+            await db.execute(text("update message_mentions set status='done' where message_id=:id and agent_id=:agent"), {"id": created["id"], "agent": body.mention_agent_id})
     return created

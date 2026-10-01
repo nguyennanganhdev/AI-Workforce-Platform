@@ -28,7 +28,7 @@ EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 
 def local_only(request: Request) -> None:
     settings = request.app.state.settings
-    if not settings.dev_user_id or settings.host not in {"127.0.0.1", "localhost", "::1"}:
+    if not (settings.dev_user_id or settings.demo_mode) or settings.host not in {"127.0.0.1", "localhost", "::1"}:
         raise HTTPException(503, "Local file storage is available only in loopback development")
 
 
@@ -48,18 +48,21 @@ async def upload_ticket_file(
         raise HTTPException(422, "filename must be a plain file name")
     ticket = await visible_ticket(scope, ticket_id, lock=True)
     location = await scope[0].execute(text("""
-        select id from storage_locations where provider='local_fs'
+        select id, tenant_prefix from storage_locations where provider='local_fs'
           and purpose='evidence' and status='active'
         order by created_at limit 1
     """))
-    location_id = location.scalar_one_or_none()
-    if location_id is None:
+    storage = location.mappings().first()
+    if storage is None:
         raise HTTPException(503, "Local V3 evidence storage is not configured")
+    location_id = storage["id"]
     file_id = uuid4()
     object_id = uuid4()
-    object_key = f"{file_id.hex}{EXT[mime_type]}"
-    FILE_ROOT.mkdir(parents=True, exist_ok=True)
-    file_path = FILE_ROOT / object_key
+    object_key = f"{storage['tenant_prefix']}{file_id.hex}{EXT[mime_type]}"
+    file_path = (FILE_ROOT / object_key).resolve()
+    if not file_path.is_relative_to(FILE_ROOT.resolve()) or Path(object_key).is_absolute():
+        raise HTTPException(503, "Invalid local evidence storage prefix")
+    file_path.parent.mkdir(parents=True, exist_ok=True)
     size = len(data)
     header = data[:12]
     if size > MAX_FILE_BYTES:
@@ -140,7 +143,7 @@ async def download_file(file_id: UUID, request: Request, scope: Scope) -> FileRe
         raise HTTPException(404, "Local evidence image not found")
     await visible_ticket(scope, file["ticket_id"])
     object_key = file["object_key"]
-    if object_key != Path(object_key).name:
+    if Path(object_key).is_absolute():
         raise HTTPException(503, "Invalid local evidence object key")
     file_path = (FILE_ROOT / object_key).resolve()
     if not file_path.is_relative_to(FILE_ROOT.resolve()) or not file_path.is_file():

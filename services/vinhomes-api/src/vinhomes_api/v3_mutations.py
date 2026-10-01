@@ -257,6 +257,10 @@ async def create_work_order(ticket_id: UUID, body: WorkOrderCreate, scope: Scope
     ticket = await visible_ticket(scope, ticket_id, lock=True)
     if ticket["version"] != body.ticket_version:
         raise HTTPException(409, "Ticket version changed; reload before creating work order")
+    if not await management_access(scope, ticket):
+        raise HTTPException(403, "Responsible management required")
+    if ticket["status"] not in {"open", "triaging"}:
+        raise HTTPException(409, "Ticket is not awaiting work dispatch")
     category = await scope[0].execute(text("""
         select 1 from service_categories where id=:category_id and enabled
     """), {"category_id": body.category_id})
@@ -272,7 +276,8 @@ async def create_work_order(ticket_id: UUID, body: WorkOrderCreate, scope: Scope
            "specialty_id": body.required_specialty_id, "description": body.description})
     order = dict(result.mappings().one())
     await record_event(scope, ticket, "work_order.created",
-                       json.dumps({"workOrderId": str(order["id"])}))
+                       json.dumps({"workOrderId": str(order["id"])}), to_status="assigned")
+    await scope[0].execute(text("update tickets set status='assigned' where id=:id"), {"id": ticket["id"]})
     return order
 
 
@@ -321,6 +326,18 @@ async def change_work_order_status(work_order_id: UUID, body: WorkOrderTransitio
         raise HTTPException(409, "Work order version changed; reload before updating")
     if body.status not in ALLOWED_TRANSITIONS.get(current["status"], set()):
         raise HTTPException(409, "Invalid work order status transition")
+    if body.status == "completed":
+        water = await scope[0].execute(text("""
+            select 1 from service_interruptions si join work_approvals wa on wa.id=si.approval_id and wa.tenant_id=si.tenant_id
+            where wa.work_order_id=:id and si.status not in ('restored','cancelled') limit 1
+        """), {"id": work_order_id})
+        if water.first() is not None:
+            raise HTTPException(409, "Restore water before completing work")
+        evidence = await scope[0].execute(text("""
+            select 1 from evidence_items where work_order_id=:id and status='active' and purpose in ('after','verification') limit 1
+        """), {"id": work_order_id})
+        if evidence.first() is None:
+            raise HTTPException(409, "Attach completion evidence before completing work")
     updated = await scope[0].execute(text("""
         update work_orders set status=:status, version=version+1, updated_at=now(),
           arrived_at=case when :status='arrived' then now() else arrived_at end,
@@ -331,6 +348,17 @@ async def change_work_order_status(work_order_id: UUID, body: WorkOrderTransitio
     await record_event(scope, ticket, "work_order.status_changed",
                        json.dumps({"workOrderId": str(work_order_id), "status": body.status,
                                    "note": body.note}))
+    if body.status == "completed":
+        await scope[0].execute(text("""
+            insert into work_approvals (tenant_id,work_order_id,kind,requested_to_user_id,request_detail,status,request_hash)
+            select tenant_id,:id,'customer_completion',requester_user_id,
+              jsonb_build_object('note',cast(:note as text)),'pending',:hash
+            from tickets where id=:ticket_id
+        """), {"id": work_order_id, "ticket_id": ticket["id"], "note": body.note,
+               "hash": str(uuid4())})
+        await scope[0].execute(text("update tickets set status='resolved',resolved_at=now() where id=:id"), {"id": ticket["id"]})
+    elif body.status == "in_progress":
+        await scope[0].execute(text("update tickets set status='in_progress' where id=:id"), {"id": ticket["id"]})
     return dict(updated.mappings().one())
 
 
@@ -344,8 +372,6 @@ class AssignmentCreate(BaseModel):
              summary="Offer a work order to an active staff member")
 async def create_assignment(work_order_id: UUID, body: AssignmentCreate,
                             scope: Scope) -> dict[str, object]:
-    if not scope[2]:
-        raise HTTPException(403, "Platform administrator required for dispatch")
     result = await scope[0].execute(text("""
         select w.id, w.ticket_id, w.version, w.category_id from work_orders w
         where w.id=:id
@@ -354,6 +380,8 @@ async def create_assignment(work_order_id: UUID, body: AssignmentCreate,
     if order is None:
         raise HTTPException(404, "Work order not found")
     ticket = await visible_ticket(scope, order["ticket_id"], lock=True)
+    if not await management_access(scope, ticket):
+        raise HTTPException(403, "Responsible management required for dispatch")
     locked_order = await scope[0].execute(text("""
         select version, status from work_orders where id=:id for update
     """), {"id": work_order_id})
@@ -364,6 +392,8 @@ async def create_assignment(work_order_id: UUID, body: AssignmentCreate,
         raise HTTPException(409, "Work order cannot be dispatched in its current status")
     if body.offer_expires_at.tzinfo is None:
         raise HTTPException(422, "offer_expires_at must include a timezone")
+    if body.offer_expires_at <= datetime.now(body.offer_expires_at.tzinfo):
+        raise HTTPException(422, "offer_expires_at must be in the future")
     active_offer = await scope[0].execute(text("""
         select 1 from work_assignments where work_order_id=:id
           and (status='accepted' or (status='offered' and offer_expires_at>now())) limit 1
@@ -371,12 +401,26 @@ async def create_assignment(work_order_id: UUID, body: AssignmentCreate,
     if active_offer.first() is not None:
         raise HTTPException(409, "Work order already has an active assignment")
     staff = await scope[0].execute(text("""
-        select 1 from staff_profiles sp
-        join staff_specialties ss on ss.staff_id=sp.id and ss.tenant_id=sp.tenant_id
-        where sp.id=:staff_id and sp.active and ss.category_id=:category_id and ss.active
-    """), {"staff_id": body.staff_id, "category_id": order["category_id"]})
-    if staff.first() is None:
+        select sp.max_concurrent_jobs from staff_profiles sp
+        where sp.id=:staff_id and sp.active and sp.availability='available'
+          and sp.management_unit_id=cast(:management_unit_id as uuid)
+          and exists (select 1 from staff_specialties ss where ss.staff_id=sp.id
+            and ss.tenant_id=sp.tenant_id and ss.category_id=:category_id and ss.active)
+          and exists (select 1 from staff_shifts sh where sh.staff_id=sp.id
+            and sh.tenant_id=sp.tenant_id and sh.status='available' and sh.starts_at<=now() and sh.ends_at>now())
+        for update of sp
+    """), {"staff_id": body.staff_id, "category_id": order["category_id"],
+           "management_unit_id": ticket["management_unit_id"]})
+    staff_row = staff.mappings().first()
+    if staff_row is None:
         raise HTTPException(422, "Staff member is inactive or lacks this specialty")
+    load = await scope[0].execute(text("""
+        select count(*) from work_assignments a join work_orders w on w.id=a.work_order_id and w.tenant_id=a.tenant_id
+        where a.staff_id=:staff_id and w.status not in ('completed','cancelled','rejected')
+          and (a.status='accepted' or (a.status='offered' and a.offer_expires_at>now()))
+    """), {"staff_id": body.staff_id})
+    if load.scalar_one() >= staff_row["max_concurrent_jobs"]:
+        raise HTTPException(409, "Staff is busy; work remains queued")
     created = await scope[0].execute(text("""
         insert into work_assignments
           (tenant_id, work_order_id, staff_id, assigned_by_user_id, status,

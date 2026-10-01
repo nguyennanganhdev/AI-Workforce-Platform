@@ -20,6 +20,7 @@ class V3Settings:
     tenant_id: UUID | None
     auth_url: str | None
     dev_user_id: str | None
+    demo_mode: bool = False
 
     @classmethod
     def from_env(cls) -> "V3Settings":
@@ -36,6 +37,16 @@ class V3Settings:
         if dev_user_id and host not in {"127.0.0.1", "localhost", "::1"}:
             raise ValueError("VINHOMES_API_DEV_USER_ID requires a loopback host")
         auth_url = os.getenv("VINHOMES_API_AUTH_URL", "").strip() or None
+        demo_mode = os.getenv("VINHOMES_API_DEMO_MODE", "0") == "1"
+        if demo_mode and host not in {"127.0.0.1", "localhost", "::1"}:
+            raise ValueError("Demo mode requires a loopback host")
+        if demo_mode:
+            if not os.getenv("VINHOMES_API_DATABASE_URL", "").strip():
+                raise ValueError("Database demo requires VINHOMES_API_DATABASE_URL; run setup_demo_database.ps1")
+            if str(tenant_id) != "11111111-1111-5111-a111-111111111111":
+                raise ValueError("Database demo requires the seeded local V3 tenant")
+            if auth_url or dev_user_id:
+                raise ValueError("Database demo uses seeded actors; unset AUTH_URL and DEV_USER_ID")
         if dev_user_id and auth_url:
             raise ValueError("Choose VINHOMES_API_AUTH_URL or VINHOMES_API_DEV_USER_ID")
         return cls(
@@ -45,4 +56,5 @@ class V3Settings:
             tenant_id=tenant_id,
             auth_url=auth_url,
             dev_user_id=dev_user_id,
+            demo_mode=demo_mode,
         )
