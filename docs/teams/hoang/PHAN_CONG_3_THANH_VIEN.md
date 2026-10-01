@@ -2,6 +2,8 @@
 
 > Cập nhật phân công: từ ngày 01/10/2026, **Phan Hoàng sở hữu thiết kế và tích hợp toàn bộ Reception tools**. Dương Dũng tiếp tục phụ trách Report tools. Code HTTP adapter đã có là baseline để Phan Hoàng tiếp quản, không viết lại từ đầu.
 
+> Tiếp nhận sau review PH16 (01/10/2026, commit `df5eccd`): **Phan Dũng nhận PD11 để chuyển graph sang typed facade/V2; Phan Hoàng nhận PH17 để sửa retry và hoàn thiện HTTP contract**. PH16 đã có tools/validators local nhưng chưa DONE. Chi tiết công việc và nghiệm thu ở mục 5.1.1 và 5.3.2.
+
 ## 1. Cách AI nhận việc theo tên
 
 Khi thành viên đưa file này cho AI và nói tên, AI phải thực hiện đúng thứ tự:
@@ -77,7 +79,7 @@ File nền:
 - Đã có `BackendToolPort` dùng HTTP, endpoint cấu hình được.
 - Request mutation giữ nguyên `idempotency_key` khi retry.
 - Đã kiểm tra `file_ids`, loại trùng và yêu cầu `linked_file_ids` từ backend.
-- Timeout/mất response trả kết quả `unknown`; không tự tạo key mới.
+- Ca timeout liên tiếp đã có test trả `unknown`, không tự tạo key mới. Review PH16 phát hiện chuỗi 503/`not_applied` rồi mất response trả nhầm kết quả cũ; lỗi này được giao PH17 ở mục 5.3.2.
 - Đã có contract test bằng HTTP backend giả lập.
 
 Phần baseline này do Dương Dũng đã hoàn thành ở giai đoạn trước. Từ lần cập nhật này, mọi thay đổi mới trong `agent-reception/src/tools/**` và `agent-reception/tests/tools/**` thuộc Phan Hoàng; AI của Dương Dũng không tiếp tục chọn task Reception tool.
@@ -102,7 +104,7 @@ File nền:
 - `agent-reception/tests/persistence/test_sqlite.py`
 - `agent-reception/tests/adapters/backend/test_session.py`
 
-Baseline hiện có **158 Python tests đạt**. Điều này chưa chứng minh endpoint thật, auth thật, PostgreSQL nhiều replica hoặc Supervisor thật đã tích hợp.
+Mốc baseline trước PH16 có **158 Python tests đạt**. Mốc kiểm thử code `df5eccd` sau PH16 có **332 đạt, 5 thất bại**: 4 ca AD01 thuộc PH17 và 1 ca AD02 thuộc tích hợp graph/PD11. Năm ca thất bại thuộc hai vấn đề, không phải năm lỗi độc lập. Xem [handoff PH16](handoffs/phan-hoang/PH16.md), [kịch bản và kết quả kiểm thử](handoffs/phan-hoang/PH16_ADVERSARIAL_TESTS.md) và [request chuyển consumer/API](requests/phan-hoang/PH16_TYPED_TOOLS_INTEGRATION.md). Những kết quả local này chưa chứng minh endpoint thật, auth thật, PostgreSQL nhiều replica hoặc Supervisor thật đã tích hợp.
 
 ## 4. Quyền sở hữu folder
 
@@ -128,14 +130,30 @@ Slug: `phan-dung`.
 
 | Task | Trạng thái | Công việc | Nghiệm thu |
 |---|---|---|---|
+| **PD11** | `READY` | Ưu tiên tiếp nhận PH16: chuyển graph sang 14 method có kiểu và message V2 đã chốt; approval/completion theo `message_type` | Graph gọi `ReceptionTools`; đúng input/output, context, ticket/version; giữ pending khi accepted/unknown; test graph + facade + HTTP và interrupt/resume V2 đạt; phạm vi local ở mục 5.1.1 |
 | **PD09** | `READY` | Sửa lifecycle khi ticket đang chờ Supervisor nhưng Reception vừa trả lời knowledge hoặc từ chối sự cố mới | Event Supervisor đến sau lượt trả lời vẫn resume được; không còn `INTERRUPT_MISMATCH`; không tạo ticket thứ hai |
 | **PD10** | `DONE_BASELINE` | State ảnh: ảnh chờ, ảnh đã link, ảnh của sự cố mới và ảnh trong câu trả lời interaction | Đã có logic và test; không chọn lại trừ khi test hồi quy thất bại |
-| **PD11** | `BLOCKED_CONTRACT` | Hỗ trợ envelope mới của Team Đông: `ticket.submitted`, `resident.message/question/update`, approval và completion | Chỉ code sau khi shared contract được chốt; đúng request/version/interaction; không hiểu câu “đồng ý” mơ hồ là approval |
 | **PD12** | `READY` | Mở rộng eval tiếng Việt cho knowledge, giá tham khảo, self-help, emergency, active ticket và prompt injection | Dataset không có PII thật; assert node, tool calls và state cuối |
 | **PD13** | `READY` | Hoàn thiện template/config/prompt Report Agent cho ba báo cáo: nhân viên, doanh thu sửa chữa, tần suất sự cố | Metric chỉ lấy từ tool; thiếu dữ liệu khác 0; hiển thị kỳ, timezone, scope, nguồn và phiên bản metric |
 | **PD14** | `READY` | Narrative/layout cho báo cáo complete/partial/empty/error | Không bịa KPI; số liệu và nhận xét truy được nguồn; fixture render ổn định |
 
 AI của Phan Dũng không viết HTTP client hoặc persistence. Khi cần Reception tool mới, mô tả input/output/error cho Phan Hoàng qua request.
+
+#### 5.1.1. PD11 — Phan Dũng tiếp nhận consumer PH16
+
+**Lý do chuyển từ `BLOCKED_CONTRACT` sang `READY`:** [schema message V2](../../SCHEMA_RECEPTION_SUPERVISOR_V1.md) đã chốt ngày 01/10/2026; tools và fixture local có tại `df5eccd`. PD11 làm consumer/test local theo schema này và review đề xuất `ph16.draft.1` với Phan Hoàng. OpenAPI hai endpoint và event resolver thật chưa được freeze; phần đó vẫn chờ PH18/PH13, không được coi contract local là API producer chính thức.
+
+Đầu vào: [PH16_TYPED_TOOLS_INTEGRATION](requests/phan-hoang/PH16_TYPED_TOOLS_INTEGRATION.md), `src/tools/contracts.py`, `facade.py`, `validation.py` và fixture trong `tests/tools/`. Các đường dẫn code ở mục này tính từ `agent-reception/`.
+
+1. Sửa `src/graph/workflow_contracts.py`, `workflow.py`, `workflow_validation.py` và test graph thuộc quyền Phan Dũng: protocol/node gọi method có kiểu cho đủ 14 operation, không tự ghép generic request tùy ý hoặc lấy tên operation từ LLM. Điều chỉnh prompt trong phạm vi cần cho enum V2.
+2. Chỉ truyền context đã xác thực gồm `tenantId`, `principalId`, `bindingId`, `runId`, `requestId`; giữ timeout/cancellation ở runtime budget. Không đưa `timeoutMs`, `signal`, checkpoint hoặc permissions vào strict tool envelope.
+3. Chuyển input/output theo bảng mapping trong request: handoff dùng ticket triple/correlation/reason; event dùng `message_type/message`; interaction giữ version cư dân đã thấy; không suy câu “đồng ý” mơ hồ thành approval. Không tự dựng routing, version hay các ID còn thiếu từ dữ liệu V1.
+4. Lưu input/key trước side effect; phân nhánh `success/accepted/failure` đúng kiểu. Giữ pending và file reference khi accepted/unknown hoặc lỗi decode sau HTTP; chỉ xóa file pending khi backend xác nhận. Phối hợp Phan Hoàng chốt version marker và xử lý checkpoint cũ, không tự relabel/replay V1 thành V2 hoặc reset session.
+5. Nghiệm thu bằng graph thật gọi facade/HTTP mock: đủ chuỗi tám operation đầu ở mục 5.3.1, interrupt/resume V2, pending qua phục hồi, event sai scope/version bị chặn, không mất ảnh hoặc tạo ticket thứ hai. `completed` vẫn cần kiểm trạng thái đóng ticket từ backend.
+
+**Test lỗi cần tiếp nhận (AD02):** `tests/tools/test_adversarial.py::test_existing_graph_can_reach_http_with_new_backend_port` hiện FAIL với `waiting_operation`, pending `create_ticket_draft`, HTTP calls = 0. Phan Dũng sửa consumer và thêm test trong `tests/graph/**`; Phan Hoàng cập nhật test tích hợp thuộc `tests/tools/**` hoặc `tests/integration/**` để inject `ReceptionTools(BackendToolPort(...))` theo interface đã thống nhất. Test sau chuyển đổi phải kiểm cả luồng, không chỉ số HTTP request lớn hơn 0. Không skip test hoặc nới validator để nhận lại envelope sai.
+
+PD11 bàn giao consumer cho Phan Hoàng nghiệm thu lại PH16 và wiring PH09. Lỗi retry AD01 do PH17 xử lý, không chuyển ownership HTTP adapter cho Phan Dũng.
 
 ### 5.2. Dương Dũng — Report tools
 
@@ -175,8 +193,8 @@ Folder Reception tool Phan Hoàng sở hữu:
 
 | Task | Trạng thái | Công việc | Nghiệm thu |
 |---|---|---|---|
-| **PH16** | `READY` | Thiết kế facade và contract có kiểu cho toàn bộ Reception operations trên `BackendToolPort`; tách validator input/output theo operation khỏi HTTP transport | Đủ 14 operation; graph gọi hàm có kiểu thay vì tự ghép request tùy ý; từ chối field/enum/version sai; không expose generic operation cho LLM; tool được xem là `system/internal` |
-| **PH17** | `READY` | Tiếp quản và hoàn thiện `BackendToolPort` cho hai endpoint `execute`/`reconcile`, retry, idempotency, xác nhận file và lỗi có cấu trúc | Phân biệt `not_applied`/`unknown`; mutation retry giữ nguyên body/key; 400/401/403/404/409/410/422/429/5xx/timeout/duplicate có contract test; không log token/PII |
+| **PH16** | `READY_PARTIAL` | Đã có facade/validator strict cho 14 operation tại `df5eccd`; tiếp nhận consumer PD11 để hoàn tất nghiệm thu, không làm lại phần tools đã có | Đạt local typed contract/system-internal; còn thiếu graph gọi facade và test tích hợp. Chỉ DONE khi điều kiện consumer đạt; API thật thuộc PH18 |
+| **PH17** | `READY` | Ưu tiên sửa AD01: retry mất response không dùng lại `not_applied` cũ; hoàn thiện execute/reconcile, idempotency, file confirmation và lỗi có cấu trúc | 4 ca AD01 đạt; phân biệt `not_applied`/`unknown`; giữ body/key; đủ ma trận HTTP/timeout/duplicate, không log token/PII; chi tiết mục 5.3.2 |
 | **PH18** | `BLOCKED_API` | Ánh xạ contract tool vào hai endpoint thật của Team Chiến và chạy producer-consumer test | Chỉ hoàn thành khi có OpenAPI/JSON Schema; create/update/triage/route/handoff/wait/follow-up/status/cancel/self-help/emergency chạy với backend thật |
 | **PH09** | `READY` | Tạo Python runtime composition: config, model port, graph, tool port, resolver và checkpointer | Có entrypoint Python; config fail-fast; không dùng model TypeScript trực tiếp trong Python; test bằng injected ports |
 | **PH10** | `READY_PARTIAL` | Viết transport run/read/resume/stream với authenticated context interface | Không tin tenant/user/thread từ body; contract test request/resume; auth thật chờ Chiến |
@@ -248,12 +266,23 @@ Tiêu chí bắt buộc:
 - Response backend được validate trước khi cập nhật LangGraph state; lỗi contract không được biến thành thành công giả.
 - Không viết endpoint, query database hoặc logic routing của Team Chiến trong folder Reception.
 
+#### 5.3.2. PH17 — Phan Hoàng tiếp nhận retry và HTTP contract
+
+**Task READY đầu tiên của Phan Hoàng sau đợt bàn giao PH16.** Phạm vi: `agent-reception/src/tools/backend.py`, validator nếu cần và `agent-reception/tests/tools/**`. Giữ facade/contract PH16 đã có; không sửa graph của Phan Dũng để né lỗi transport.
+
+1. **Sửa AD01 trước:** `_post` giữ `last_response` của lần 503/`not_applied` rồi decode lại sau khi lần thử cuối mất response. Phải trả `unknown` khi không biết kết quả lần cuối, không kết luận chưa áp dụng từ response cũ. Body/key không đổi giữa retry/reconcile; không tạo mutation/key mới để “thử lại”.
+2. Chạy và làm đạt đủ **4 biến thể** của `tests/tools/test_adversarial.py::test_last_attempt_response_loss_must_not_reuse_previous_not_applied`: `ReadTimeout` và `RemoteProtocolError`, mỗi loại trên `invoke` và `reconcile`. Đây là lỗi của baseline HTTP, không phải lỗi schema V2. Xem bằng chứng trong [AD01](handoffs/phan-hoang/PH16_ADVERSARIAL_TESTS.md).
+3. Hoàn thiện ma trận 400/401/403/404/409/410/422/429/5xx/timeout/duplicate theo contract; giữ nghĩa của failure có cấu trúc, accepted, response sai/thiếu, cùng key khác body, hủy task và khôi phục bằng reconcile. Các ca mới đã có một phần coverage, không cần viết lại chỉ để tăng số test. Kiểm token/PII không lọt vào lỗi/log.
+4. Giữ các regression đang đạt: retry cùng body/key, receipt handoff đúng ticket/version/correlation, xác nhận đủ file, hai tenant không lẫn response. Không biến lỗi decoder sau HTTP thành `not_applied` hoặc success giả.
+
+**Nghiệm thu PH17:** bốn ca AD01 chuyển từ FAIL sang PASS; bộ tools và các test hồi quy không phát sinh lỗi mới; báo đủ ma trận đã kiểm chứng. Nếu PD11 chưa xong, AD02 vẫn là lỗi tích hợp riêng phải báo rõ, không skip/xfail hoặc ghi toàn bộ suite xanh. Sau PD11 + PH17, Phan Hoàng cập nhật test tích hợp và chạy lại toàn bộ suite để xác nhận hai nguyên nhân của năm ca FAIL đã được xử lý. Không nghiệm thu dedup/transaction/auth của backend thật bằng fixture; PH18 vẫn chờ producer API.
+
 ## 6. Dependency liên team
 
 | Dependency | Owner ngoài Team Hoàng | Team Hoàng làm được trước | Điều kiện tích hợp thật |
 |---|---|---|---|
 | API ticket/profile/triage/routing/file | Chiến | Interface, validator, fake contract test | OpenAPI/JSON Schema + auth + endpoint test |
-| Schema điều phối và approval/completion | Đông + Chiến | Adapter interface và fixture | Contract version được chốt trong shared contracts |
+| Schema điều phối và approval/completion | Đông + Chiến | V2 message đã chốt; PD11 chuyển consumer và test local | Ánh xạ API/event resolver và kiểm chứng producer-consumer thật qua PH18/PH13 |
 | RAG/self-help/giá | Quang + Chiến | Port và hành vi fallback | Tool được đăng ký, có ACL/citation/version |
 | PostgreSQL checkpoint/lease | Team 5 | Factory/config/migration-free adapter | DB test riêng và thông số pool/retention |
 | Event bus/outbox/inbox | Chiến + Team 5 | Consumer interface, dedup/buffer tests | Event catalog và transport thật |
@@ -263,8 +292,8 @@ Không đánh dấu task tích hợp là `DONE` chỉ vì fake test đạt.
 
 ## 7. Thứ tự triển khai
 
-1. **Đường găng Reception độc lập:** PH16–PH17, PD09, PH09–PH10 và PH12.
-2. **Chốt contract:** SCHEMA Reception–Supervisor mới, OpenAPI backend và event catalog.
+1. **Tiếp nhận PH16 trước:** Phan Dũng làm PD11 (consumer/V2, AD02); Phan Hoàng làm PH17 (retry/HTTP, AD01). Sau đó nghiệm thu lại PH16, tiếp tục PD09, PH09–PH10 và PH12. Hai owner giữ đúng phạm vi file ở mục 4.
+2. **Chốt phần contract còn thiếu:** OpenAPI backend, mapping event resolver và event catalog; dùng schema message Reception–Supervisor V2 đã chốt, không tự sửa shared schema.
 3. **Tích hợp thật:** PH18, PH11 và PH13.
 4. **Report Agent:** PD13–PD14, DD12–DD14, PH15.
 5. **Hardening:** PD12, PH14 và E2E liên team.
@@ -274,6 +303,7 @@ Ba người không được cùng sửa một file trong cùng thời điểm. T
 ## 8. Test bắt buộc trước handoff
 
 - Python: `python -B -m pytest -q -p no:cacheprovider agent-reception/tests`
+- Các chuỗi sự cố PH16/PH17: `python -B -m pytest -q -p no:cacheprovider agent-reception/tests/tools/test_adversarial.py --tb=short`. Mốc `df5eccd`: 45 PASS / 5 FAIL; theo dõi riêng AD01 (PH17) và AD02 (PD11 + test tích hợp Phan Hoàng), không coi đây là kết quả đã xanh.
 - Graph: knowledge đủ không tạo ticket; ticket tạo đúng một lần; ảnh không mất qua nhiều lượt; event sai scope bị từ chối.
 - Tools do Phan Hoàng sở hữu: đủ validator theo operation; cùng idempotency key khi retry; file link confirmation; lỗi `unknown` không chạy mutation mới; reconcile không nhân đôi side effect.
 - Persistence: đóng/mở runtime vẫn đọc đúng state; backend recovery không ghép file/ticket sai user.
