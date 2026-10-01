@@ -6,6 +6,7 @@ import {
   createInMemoryExecutorResultStore,
   createInMemoryIdempotencyStore,
   createInMemoryMaintenanceReadPort,
+  createInMemoryMaintenanceStore,
   createInMemoryMeasurementStore,
   createInMemorySensorReadPort,
   createInMemorySopProfilePort,
@@ -46,6 +47,8 @@ export const CAPABILITIES = [
   "maintenance:read",
   "measurement:write",
   "executor_result:submit",
+  "resolution:verify",
+  "maintenance:append",
 ] as const;
 
 export const fixtureContextResolver: ContextResolver = async (caller) => {
@@ -127,6 +130,8 @@ export function technicalToolHarness(
       assets: ports.assets ?? createInMemoryAssetReadPort(),
       sensors: ports.sensors ?? createInMemorySensorReadPort(),
       maintenance: ports.maintenance ?? createInMemoryMaintenanceReadPort(),
+      maintenanceStore:
+        ports.maintenanceStore ?? createInMemoryMaintenanceStore(),
       workOrders: ports.workOrders ?? unconfigured("workOrders"),
       measurements: ports.measurements ?? createInMemoryMeasurementStore(),
       executorResults:

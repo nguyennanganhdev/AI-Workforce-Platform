@@ -18,7 +18,7 @@ import {
 const CATALOGUE = describeTechnicalTools();
 
 describe("what the catalogue says about every tool", () => {
-  test("names the eight built so far: every lookup tool in tools.md, then the first two writes", () => {
+  test("names the ten built so far: every lookup, record and verification tool in tools.md", () => {
     expect(CATALOGUE.map((tool) => tool.name)).toEqual([
       "technical.get_active_outage",
       "utility_schedule.read",
@@ -28,6 +28,8 @@ describe("what the catalogue says about every tool", () => {
       "maintenance_history.read",
       "technical.record_measurement",
       "technical.submit_executor_result",
+      "technical.verify_resolution",
+      "maintenance_history.append",
     ]);
   });
 
@@ -41,6 +43,7 @@ describe("what the catalogue says about every tool", () => {
     expect(writes.map((tool) => tool.name)).toEqual([
       "technical.record_measurement",
       "technical.submit_executor_result",
+      "maintenance_history.append",
     ]);
     for (const tool of writes) {
       expect((tool.input_schema as { required?: string[] }).required).toContain(
@@ -113,6 +116,14 @@ describe("what the catalogue says about every tool", () => {
       (tool) => tool.name === "technical.submit_executor_result",
     );
     expect(result?.description).toContain("never means the job is closed");
+    const verification = CATALOGUE.find(
+      (tool) => tool.name === "technical.verify_resolution",
+    );
+    expect(verification?.description).toContain("never closes");
+    const append = CATALOGUE.find(
+      (tool) => tool.name === "maintenance_history.append",
+    );
+    expect(append?.description).toContain("verified again here");
   });
 });
 
