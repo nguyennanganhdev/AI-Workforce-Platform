@@ -19,22 +19,16 @@ CONTEXT = {
 
 def payload(kind):
     examples = {
-        "ticket.submitted": {"report": "Trần bị rò nước gần ổ điện", "facts": {"vi_tri": "bếp"},
-                             "attachment_ids": ["file-1"]},
-        "resident.message": {"text": "Nước chảy liên tục", "reply_to_request_id": "question-1"},
-        "resident.question": {"question_id": "question-1", "question": "Nước chảy khi nào?"},
-        "resident.update": {"summary": "Đã nhận phản ánh", "status": "in_progress",
-                            "attachment_ids": []},
         "approval.requested": {
-            "approval_id": "approval-2", "stage": "resident_plan", "plan_id": "plan-1",
-            "plan_version": 2, "depends_on_approval_id": "approval-1",
-            "recipient_user_id": "resident-1", "delivery_channel": "reception",
+            "approval_id": "approval-2", "stage": "management_plan", "plan_id": "plan-1",
+            "plan_version": 2,
+            "recipient_user_id": "manager-1", "delivery_channel": "management_ui",
             "summary": "Thay đoạn ống", "steps": ["Kiểm tra", "Thay ống"],
             "cost": {"amount": 300000, "currency": "VND", "kind": "estimate"},
             "attachment_ids": [], "expires_at": "2026-10-01T10:00:00+07:00",
         },
         "approval.responded": {
-            "approval_id": "approval-2", "stage": "resident_plan",
+            "approval_id": "approval-2", "stage": "management_plan",
             "plan_id": "plan-1", "plan_version": 2, "decision": "approve", "comment": "",
         },
         "assignment.offered": {"assignment_id": "assignment-1", "assignment_version": 1,
@@ -45,20 +39,11 @@ def payload(kind):
                            "result_id": "result-1", "result_version": 1,
                            "before_file_ids": ["before"], "after_file_ids": ["after"],
                            "summary": "Đã sửa, chờ nghiệm thu"},
-        "completion.requested": {
-            "confirmation_id": "confirmation-1", "result_id": "result-1", "result_version": 1,
-            "plan_id": "plan-1", "plan_version": 2, "recipient_user_id": "resident-1",
-            "summary": "Đã nghiệm thu", "evidence_file_ids": ["before", "after"],
-            "final_cost": {"amount": 300000, "currency": "VND"},
-        },
-        "completion.responded": {"confirmation_id": "confirmation-1", "result_id": "result-1",
-                                 "result_version": 1, "decision": "not_satisfied",
-                                 "comment": "Vẫn rỉ nước"},
     }
     return copy.deepcopy(examples[kind])
 
 
-def request(kind="ticket.submitted", **context_changes):
+def request(kind="approval.requested", **context_changes):
     return {
         "contract_version": "1", "type": kind, "request_id": "request-1",
         "trace_id": "trace-1", "idempotency_key": "command-1",
@@ -66,7 +51,7 @@ def request(kind="ticket.submitted", **context_changes):
     }
 
 
-def event(kind="ticket.submitted", *, event_id="event-1", ticket_id="ticket-1", tenant="tenant-a"):
+def event(kind="approval.responded", *, event_id="event-1", ticket_id="ticket-1", tenant="tenant-a"):
     return {
         "event_id": event_id, "event_type": f"backend.{kind}", "schema_version": "1",
         "tenant_id": tenant, "aggregate_id": ticket_id, "aggregate_version": 3,
@@ -111,8 +96,7 @@ class Transport:
 
 
 OPERATIONS = (
-    "reception.ticket", "reception.message", "reception.question", "reception.update",
-    "approval.request", "approval.respond", "completion.request", "completion.respond",
+    "reception.verify", "reception.send", "approval.request", "approval.respond",
     "assignment.offer", "assignment.respond", "work.complete",
 )
 

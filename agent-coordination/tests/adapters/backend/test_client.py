@@ -13,9 +13,9 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
     async def test_exact_envelope_headers_and_accepted_is_only_a_receipt(self):
         transport, validator = Transport(), Validator()
         wire = request()
-        result = await client(transport, validator).call("reception.ticket", wire)
+        result = await client(transport, validator).call("approval.request", wire)
         url, headers, sent, timeout = transport.calls[0]
-        self.assertEqual(url, "https://backend.test/test/reception.ticket")
+        self.assertEqual(url, "https://backend.test/test/approval.request")
         self.assertEqual(sent, wire)
         self.assertEqual(headers["Idempotency-Key"], wire["idempotency_key"])
         self.assertEqual(headers["X-Trace-Id"], wire["trace_id"])
@@ -30,18 +30,18 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         class MutatingHeaders(Headers):
             async def headers(self):
                 wire["context"]["ticket_id"] = "other-ticket"
-                wire["payload"]["report"] = "changed"
+                wire["payload"]["summary"] = "changed"
                 return await super().headers()
 
         transport = Transport()
-        await client(transport, headers=MutatingHeaders()).call("reception.ticket", wire)
+        await client(transport, headers=MutatingHeaders()).call("approval.request", wire)
         self.assertEqual(transport.calls[0][2], original)
 
     async def test_timeout_is_unknown_and_never_retried(self):
         transport = Transport()
         transport.failure = TimeoutError("secret connection detail")
         with self.assertRaises(AdapterError) as caught:
-            await client(transport).call("reception.ticket", request())
+            await client(transport).call("approval.request", request())
         self.assertEqual(caught.exception.code, "timeout")
         self.assertTrue(caught.exception.outcome_unknown)
         self.assertEqual(len(transport.calls), 1)
@@ -53,13 +53,13 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(1)
 
         with self.assertRaisesRegex(AdapterError, "timeout"):
-            await client(SlowTransport(), timeout=0.01).call("reception.ticket", request())
+            await client(SlowTransport(), timeout=0.01).call("approval.request", request())
 
     async def test_network_failure_is_unknown_outcome(self):
         transport = Transport()
         transport.failure = OSError("secret")
         with self.assertRaises(AdapterError) as caught:
-            await client(transport).call("reception.ticket", request())
+            await client(transport).call("approval.request", request())
         self.assertEqual(caught.exception.code, "unavailable")
         self.assertTrue(caught.exception.outcome_unknown)
 
@@ -72,7 +72,7 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
                 transport = Transport()
                 transport.response = HttpResponse(status, b"secret raw backend traceback")
                 with self.assertRaises(AdapterError) as caught:
-                    await client(transport).call("reception.ticket", request())
+                    await client(transport).call("approval.request", request())
                 self.assertEqual(caught.exception.code, expected)
                 self.assertNotIn("secret", str(caught.exception))
 
@@ -85,7 +85,7 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
                 transport = Transport()
                 transport.response = HttpResponse(200, body)
                 with self.assertRaisesRegex(AdapterError, "invalid_backend_response"):
-                    await client(transport).call("reception.ticket", request())
+                    await client(transport).call("approval.request", request())
 
     async def test_business_error_even_on_http_200(self):
         transport = Transport()
@@ -94,21 +94,21 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
             "error": {"code": "stale_version", "message": "secret", "retryable": False},
         }).encode())
         with self.assertRaisesRegex(AdapterError, "^stale_version$"):
-            await client(transport).call("reception.ticket", request())
+            await client(transport).call("approval.request", request())
 
     async def test_explicit_retry_preserves_key_and_payload(self):
         transport = Transport()
         backend = client(transport)
         wire = request()
-        await backend.call("reception.ticket", wire)
-        await backend.call("reception.ticket", wire)
+        await backend.call("approval.request", wire)
+        await backend.call("approval.request", wire)
         self.assertEqual(transport.calls[0], transport.calls[1])
 
     async def test_canonical_validator_can_reject_before_network(self):
         validator, transport = Validator(), Transport()
         validator.reject = "request"
         with self.assertRaisesRegex(AdapterError, "^validation_error$"):
-            await client(transport, validator).call("reception.ticket", request())
+            await client(transport, validator).call("approval.request", request())
         self.assertEqual(transport.calls, [])
 
     async def test_unconfigured_operation_fails_before_credentials_or_network(self):
@@ -126,16 +126,16 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
 
             transport = Transport()
             with self.assertRaises(AdapterError):
-                await client(transport, headers=BadHeaders()).call("reception.ticket", request())
+                await client(transport, headers=BadHeaders()).call("approval.request", request())
             self.assertEqual(transport.calls, [])
         wire = request()
         wire["request_id"] = "id\nInjected: bad"
         with self.assertRaises(AdapterError):
-            await client().call("reception.ticket", wire)
+            await client().call("approval.request", wire)
 
     async def test_response_limit(self):
         with self.assertRaisesRegex(AdapterError, "invalid_backend_response"):
-            await client(max_response_bytes=1).call("reception.ticket", request())
+            await client(max_response_bytes=1).call("approval.request", request())
 
 
 class GuardsTests(unittest.TestCase):
@@ -147,20 +147,18 @@ class GuardsTests(unittest.TestCase):
     def test_management_request_and_unknown_cost(self):
         wire = request("approval.requested")
         wire["payload"].update(stage="management_plan", delivery_channel="management_ui", cost=None)
-        del wire["payload"]["depends_on_approval_id"]
         validate_request(wire)
         self.assertIsNone(wire["payload"]["cost"])
 
     def test_invalid_field_types_and_missing_correlations(self):
         cases = []
         for kind, field, value in [
-            ("approval.requested", "depends_on_approval_id", None),
+            ("approval.requested", "stage", "resident_plan"),
             ("approval.requested", "plan_version", True),
             ("approval.requested", "expires_at", "2026-10-01T12:00:00"),
             ("approval.responded", "decision", "yes"),
-            ("completion.responded", "result_version", 0),
-            ("completion.responded", "decision", "approve"),
-            ("resident.message", "reply_to_request_id", ""),
+            ("assignment.responded", "assignment_version", 0),
+            ("assignment.responded", "decision", "approve"),
             ("work.completed", "before_file_ids", "file-1"),
         ]:
             wire = request(kind)
