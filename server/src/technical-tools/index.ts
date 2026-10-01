@@ -9,8 +9,13 @@ export {
   type TechnicalToolsDatabase,
   technicalToolsDatabase,
 } from "./adapters/db/interruption-read";
+export {
+  createDbIsolationWriter,
+  createDbScopeReadPort,
+} from "./adapters/db/isolation-writer";
 export { createDbSopReadPort } from "./adapters/db/sop-read";
 export { createDbWorkOrderReadPort } from "./adapters/db/work-order-read";
+export { createInMemoryApprovalRequestStore } from "./adapters/poc/approval-request-store";
 export { createInMemoryAssetReadPort } from "./adapters/poc/asset-read";
 export { createInMemoryExecutorResultStore } from "./adapters/poc/executor-result-store";
 export { createInMemoryIdempotencyStore } from "./adapters/poc/idempotency-store";
@@ -31,6 +36,14 @@ export {
   responseEnvelopeSchema,
   type ToolStatus,
 } from "./contracts/envelope";
+export type {
+  ApprovalRequest,
+  ApprovalRequestKind,
+  BuildingPlacement,
+  OpenIsolation,
+  ScopeRecord,
+  WaterIsolation,
+} from "./domain/approval-request";
 export type { Asset } from "./domain/asset";
 export type {
   ChecklistItem,
@@ -97,6 +110,11 @@ export type {
   MaintenanceStore,
 } from "./ports/maintenance-store";
 export type { MeasurementStore } from "./ports/measurement-store";
+export type {
+  ApprovalRequestStore,
+  IsolationWriter,
+  ScopeReadPort,
+} from "./ports/request-ports";
 export type { SensorQuery, SensorReadPort } from "./ports/sensor-read";
 export type {
   SopProfilePort,

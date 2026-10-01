@@ -98,6 +98,24 @@ export function createDbWorkOrderReadPort(
         return { ...workOrder, buildingId: workOrder.buildingId, assignments };
       }),
 
+    getTicket: ({ tenantId, buildingId, ticketId }) =>
+      inTenant(tenantId, async (tx) => {
+        const [ticket] = await tx
+          .select({ ticketId: tickets.id, buildingId: tickets.buildingId })
+          .from(tickets)
+          .where(
+            and(
+              eq(tickets.tenantId, tenantId),
+              eq(tickets.id, ticketId),
+              eq(tickets.buildingId, buildingId),
+            ),
+          )
+          .limit(1);
+        return ticket?.buildingId
+          ? { ticketId: ticket.ticketId, buildingId: ticket.buildingId }
+          : null;
+      }),
+
     findEvidence: ({ tenantId, ids }) => {
       // An id that is not a UUID cannot name a row, and asking the database would be a type error.
       const candidates = [...new Set(ids)].filter((id) => UUID.test(id));

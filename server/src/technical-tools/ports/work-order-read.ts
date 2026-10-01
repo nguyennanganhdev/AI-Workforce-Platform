@@ -14,6 +14,15 @@ export type WorkOrderReadPort = {
   }): Promise<WorkOrderContext | null>;
 
   /**
+   * The ticket, if it is in this building of this tenant; `null` otherwise, for the same reason.
+   */
+  getTicket(query: {
+    tenantId: string;
+    buildingId: string;
+    ticketId: string;
+  }): Promise<{ ticketId: string; buildingId: string } | null>;
+
+  /**
    * What each id is: registered evidence, an upload that is not evidence yet, or nothing.
    *
    * Ids the tenant has no record of are simply absent from the answer. The caller reports them as

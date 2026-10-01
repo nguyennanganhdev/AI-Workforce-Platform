@@ -8,6 +8,11 @@ import type { InterruptionReadPort } from "./ports/interruption-read";
 import type { MaintenanceReadPort } from "./ports/maintenance-read";
 import type { MaintenanceStore } from "./ports/maintenance-store";
 import type { MeasurementStore } from "./ports/measurement-store";
+import type {
+  ApprovalRequestStore,
+  IsolationWriter,
+  ScopeReadPort,
+} from "./ports/request-ports";
 import type { SensorReadPort } from "./ports/sensor-read";
 import type { SopProfilePort, SopReadPort } from "./ports/sop-read";
 import type { WorkOrderReadPort } from "./ports/work-order-read";
@@ -25,6 +30,11 @@ export type ToolDependencies = {
   workOrders: WorkOrderReadPort;
   measurements: MeasurementStore;
   executorResults: ExecutorResultStore;
+  scopes: ScopeReadPort;
+  /** Writes water isolations to the deployment's own tables. */
+  isolations: IsolationWriter;
+  /** The shared approval adapter, for requests the database has no kind for. */
+  approvalRequests: ApprovalRequestStore;
   clock: Clock;
 };
 
