@@ -14,6 +14,18 @@ const valid: AuthValues = {
 };
 
 describe("Resident auth boundary", () => {
+  test("administrator signing in on resident form goes to administration without apartment verification", async () => {
+    const original = globalThis.fetch;
+    const paths: string[] = [];
+    globalThis.fetch = (async (url: RequestInfo | URL) => {
+      paths.push(String(url));
+      return Response.json(String(url).endsWith('/session') ? {membershipStatus: 'active', administrator: true} : {units: []});
+    }) as typeof fetch;
+    try {
+      expect(await residentAuthService.signIn(valid)).toEqual({nextStep: 'administration'});
+      expect(paths.includes('/api/business/resident/me')).toBe(false);
+    } finally { globalThis.fetch = original; }
+  });
   test("normalizes common local and country-code phone input without accepting non-phone text", () => {
     expect(normalizePhone("+84 900 000 000")).toBe("0900000000");
     expect(normalizePhone("0900-000-000")).toBe("0900000000");

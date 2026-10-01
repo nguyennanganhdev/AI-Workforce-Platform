@@ -60,3 +60,8 @@ Kết nối local hoạt động; UI và toàn bộ flow nghiệp vụ chưa ho�
 5. **Nghiệm thu giao diện bằng browser:** login/register, pending/403/401, empty/error/loading, desktop/mobile; sau đó mới nghiệm thu báo cáo với dữ liệu có đối soát và chuẩn bị HTTPS/backup/storage/AI production.
 
 Không có cơ sở để báo “connect hoàn chỉnh” trước khi hoàn thành mục 2–4 và kiểm tra giao diện ở mục 5.
+
+
+### Sửa điều hướng admin trên form cư dân
+
+Form cư dân trước đây xét căn hộ cho mọi người dùng nên admin bị hiện xác minh. Session hiện trả cờ `administrator` được truy vấn từ `platform_admins`; admin active đăng nhập qua form cư dân chuyển sang `/operations/accounts`. Local giữ nguyên hostname và chuyển port 3011 → 3020 để cookie phiên tiếp tục dùng được. Deployment khác có thể cấu hình `VITE_OPERATIONS_URL`. Quyền tài nguyên vẫn do API kiểm tra; không tạo căn hộ hay bỏ xác minh cư dân. Kiểm thử hồi quy tái hiện lỗi trước sửa và đạt sau sửa; resident build đạt.

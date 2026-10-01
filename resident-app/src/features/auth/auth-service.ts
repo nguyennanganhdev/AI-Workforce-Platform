@@ -2,7 +2,7 @@
 export type LoginInput = { phone: string; password: string };
 export type RegisterInput = LoginInput & { fullName: string };
 export type ResidentAuthResult = {
-  nextStep: "verification-required" | "membership-pending" | "ready";
+  nextStep: "verification-required" | "membership-pending" | "ready" | "administration";
 };
 export interface ResidentAuthService {
   identityMode?: "email";
@@ -26,6 +26,7 @@ export const residentAuthService: ResidentAuthService = {
   async signIn({phone, password}) {
     await authRequest("/auth/login", {identifier: phone.trim(), password});
     const session = await authRequest("/auth/session");
+    if (session.administrator === true && session.membershipStatus === "active") return {nextStep: "administration"};
     if (session.membershipStatus === "pending") return {nextStep: "membership-pending"};
     const profile = await authRequest("/resident/me");
     return {nextStep: profile.units.length ? "ready" : "verification-required"};

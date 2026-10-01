@@ -150,8 +150,9 @@ async def session(request: Request, response: Response):
     async with enabled(request).begin() as db:
         await context(db, request, user["id"])
         membership_status = (await db.execute(text("select status from tenant_memberships where user_id=:id and tenant_id=cast(:tenant as uuid)"), {"id":user["id"], "tenant":str(request.app.state.settings.tenant_id)})).scalar_one()
+        is_admin = bool((await db.execute(text("select exists(select 1 from platform_admins where user_id=:id)"), {"id":user["id"]})).scalar_one())
     response.headers["Cache-Control"] = "no-store"
-    return {"user":user, "membershipStatus":membership_status}
+    return {"user":user, "membershipStatus":membership_status, "administrator":is_admin}
 
 
 @router.post("/logout")

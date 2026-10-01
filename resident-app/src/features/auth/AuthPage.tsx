@@ -134,6 +134,15 @@ export function AuthPage({
           confirmPassword: "",
         }));
         setTouched({});
+        if (result.nextStep === "administration") {
+          const destination = new URL(import.meta.env.VITE_OPERATIONS_URL || location.origin);
+          if (!import.meta.env.VITE_OPERATIONS_URL && ["localhost", "127.0.0.1", "[::1]"].includes(destination.hostname) && destination.port === "3011") destination.port = "3020";
+          destination.pathname = "/operations/accounts";
+          destination.search = "";
+          destination.hash = "";
+          location.assign(destination.toString());
+          return;
+        }
         if (result.nextStep !== "ready") {
           setNextStep(result.nextStep);
           return;

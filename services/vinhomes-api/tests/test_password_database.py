@@ -31,6 +31,7 @@ def clients():
     user = httpx.Client(base_url="http://127.0.0.1:3011/api/business",timeout=20)
     assert admin.get("/health").json()["authMode"] == "password"
     assert admin.post("/auth/login",json={"identifier":values["Login"],"password":values["Password"]}).status_code == 200
+    assert admin.get("/auth/session").json()["administrator"] is True
     created=[]
     try:
         yield admin,user,created,owner
@@ -62,6 +63,7 @@ def test_login_registration_rbac_revocation_and_hash_storage(clients):
     assert result.status_code == 200
     uid=result.json()["user"]["id"];created.append(uid)
     assert user.get("/auth/session").json()["membershipStatus"] == "pending"
+    assert user.get("/auth/session").json()["administrator"] is False
     assert "httponly" in result.headers["set-cookie"].lower()
     assert "samesite=lax" in result.headers["set-cookie"].lower()
     assert user.get("/auth/accounts").status_code == 403
