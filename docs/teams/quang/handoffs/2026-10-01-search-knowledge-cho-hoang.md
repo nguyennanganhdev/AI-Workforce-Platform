@@ -139,6 +139,7 @@ curl -s http://127.0.0.1:8787/internal/knowledge/search \
 - Bỏ `x-dev-scope` thì nhận `409 scope_required` kèm `choices`, đúng như luồng hỏi lại cư dân.
 - CLI ghi vào `openbot` local các dòng mang mã `rag-dev-…` (domain, kho, category, scope theo thư mục, file nguồn, principal). Riêng 2 dòng phục vụ audit (một runtime binding, một agent run) được tạo khi tắt kiểm tra khóa ngoại, vì agent/runtime cha chưa tồn tại. App hiện không đọc hai bảng đó. Khi Chiến có domain/kho/scope thật, các dòng `rag-dev-…` sẽ được thay.
 - Có nhiều tenant thì thêm `--tenant <code>`. Muốn chọn user thì thêm `--user <id>`.
+- Reception trả lời sai hoặc báo `insufficientSources` mà nghi là kho thiếu dữ liệu: xem kho thực sự có những đoạn nào bằng `bun src/knowledge/cli.ts ~/Data-Vinhome --dump-chunks chunks.json` (trong `server/`). Lệnh không cần DB hay API key, chỉ ghi file rồi dừng. Mỗi tài liệu có `chunks[]`; mỗi đoạn có `text`, `headingPath` (chính là `section` trong kết quả search) và `embeddingInput` là đúng chuỗi được embed. File này đã nằm trong `.gitignore`.
 
 Điểm còn chờ:
 - Chiến chốt cách agent runtime xác thực khi gọi `/internal/*` (header nào, token nào). Khi có, mục 2 sẽ được cập nhật.

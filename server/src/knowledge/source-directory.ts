@@ -1,6 +1,11 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, posix, relative, sep } from "node:path";
-import { type IngestDeps, ingestDocument } from "./ingest";
+import {
+  type IngestDeps,
+  ingestDocument,
+  type PreparedDocument,
+  prepareDocument,
+} from "./ingest";
 import { parseFrontMatter, sha256 } from "./markdown";
 import { BUILDING_FOLDER, scopeKeyOf, sourceMetadata } from "./source-metadata";
 import type { IngestResult } from "./types";
@@ -127,6 +132,45 @@ export async function readSourceDocuments(
   }
   documents.sort((a, b) => a.code.localeCompare(b.code));
   return foldIdenticalBuildings(documents);
+}
+
+export type DocumentPreview = PreparedDocument & {
+  code: string;
+  title: string;
+  scopeKeys: string[];
+  scopePath: string;
+  metadata: Record<string, unknown>;
+};
+
+/**
+ * What `ingestDirectory` would index, document by document, without embedding or storing anything.
+ * A document with no chunks is one ingestion skips as empty.
+ */
+export async function previewDirectory(
+  root: string,
+): Promise<DocumentPreview[]> {
+  const previews: DocumentPreview[] = [];
+  for (const document of await readSourceDocuments(root)) {
+    const metadata = sourceMetadata(
+      document.code,
+      parseFrontMatter(document.raw).meta,
+      document.buildings,
+    );
+    previews.push({
+      code: document.code,
+      title: document.title,
+      scopeKeys: document.scopeKeys,
+      scopePath: metadata.duong_dan,
+      metadata,
+      ...prepareDocument({
+        raw: document.raw,
+        title: document.title,
+        scopePath: metadata.duong_dan,
+        metadata,
+      }),
+    });
+  }
+  return previews;
 }
 
 export type DirectoryIngestOptions = {
