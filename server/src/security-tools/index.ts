@@ -29,6 +29,7 @@ import {
 import { createWriteGuard } from "./common/execution-grant";
 import { parseStrictJson, StrictJsonError } from "./common/strict-json";
 import { loadFixtureScope, MockSecurityProvider } from "./providers/mock-provider";
+import { createWriteHandlers } from "./providers/mock-write";
 import { RealSecurityProvider } from "./providers/real-provider";
 import { registerSecurityTools, type SecurityToolsOptions } from "./tools";
 
@@ -147,7 +148,7 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
   const grantIssuers = env.SECURITY_MCP_GRANT_ISSUERS?.trim();
   const provider =
     providerKind === "mock"
-      ? new MockSecurityProvider({ scopes: [loadFixtureScope()] })
+      ? new MockSecurityProvider({ scopes: [loadFixtureScope()], writeHandlers: createWriteHandlers() })
       : providerKind === "core"
         ? new RealSecurityProvider(
             new CoreClient({

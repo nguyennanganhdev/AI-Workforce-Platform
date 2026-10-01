@@ -5,7 +5,7 @@
  *
  *   const control = createWriteControl();
  *   const ledger = new MockOperationLedger();
- *   new MockSecurityProvider({ scopes, now, writeHandlers: createWriteHandlers({ control, ledger, ackReceipts }) });
+ *   new MockSecurityProvider({ scopes, now, writeHandlers: createWriteHandlers({ control, ledger }) });
  *   control.setFault("dispatch_guard", "timeout_after_commit");
  *
  * Luật nghiệp vụ lấy từ dispatch/service.ts và emergency/service.ts để mock và Core cùng semantics.
@@ -16,7 +16,6 @@
  * `create_incident` ở đây là bản TẠM để chạy được luồng grant/idempotency; tool này thuộc P3, P3 thay
  * bằng handler thật. `update_incident` chưa có handler.
  */
-import type { Actor } from "../common/context";
 import { type ErrorCode, type ToolError, toolError } from "../common/errors";
 import { decideIdempotency, type IdempotencyDecision, type OperationRecord, resultOf } from "../common/idempotency";
 import { timestamp, type WriteEvidence } from "../common/responses";
@@ -120,8 +119,8 @@ export class MockOperationLedger {
   begin(invocation: VerifiedWrite): IdempotencyDecision {
     const request = {
       idempotency_key: invocation.idempotency_key,
-      payload_hash: claim(invocation, "payload_hash"),
-      proposal_id: claim(invocation, "proposal_id"),
+      payload_hash: invocation.claims.payload_hash,
+      proposal_id: invocation.claims.proposal_id,
     };
     const keyId = id(invocation.context, request.idempotency_key);
     const proposalId = id(invocation.context, request.proposal_id);
@@ -167,12 +166,6 @@ export class MockOperationLedger {
 
 const id = (scope: Scope, value: string) => `${scope.tenant_id}\u0000${scope.property_id}\u0000${value}`;
 
-function claim(invocation: VerifiedWrite, name: string): string {
-  const value = invocation.claims[name];
-  if (typeof value !== "string") throw new Error(`VerifiedWrite thiếu claim ${name}`);
-  return value;
-}
-
 // ---------------------------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------------------------
@@ -180,8 +173,6 @@ function claim(invocation: VerifiedWrite, name: string): string {
 export type WriteHandlersOptions = {
   control?: WriteControl;
   ledger?: MockOperationLedger;
-  /** Receipt ACK đã xác thực (Core `recordAckReceipt`); mock không có đường tạo receipt qua tool. */
-  ackReceipts?: readonly AckReceipt[];
 };
 
 /** Field của incident mà WRITE cần. Kiểu Incident thuộc P3; đây là cấu trúc theo common.schema.json. */
@@ -212,7 +203,6 @@ type Outcome = Commit | { rejection: NonNullable<Rejection> };
 export function createWriteHandlers(options: WriteHandlersOptions = {}): Partial<Record<WriteToolName, MockWriteHandler>> {
   const control = options.control ?? createWriteControl();
   const ledger = options.ledger ?? new MockOperationLedger();
-  const receipts = options.ackReceipts ?? [];
   /** Trạng thái guard trước khi bị reserve, để trả lại đúng khi dispatch kết thúc. */
   const reservedFrom = new Map<string, GuardStatus>();
   let sequence = 0;
@@ -421,12 +411,13 @@ export function createWriteHandlers(options: WriteHandlersOptions = {}): Partial
       if (!current || !incident) return { rejection: { code: "NOT_FOUND", reason: "Không tìm thấy escalation trong property" } };
       const mismatch = ticketMismatch(incident, invocation);
       if (mismatch) return { rejection: mismatch };
-      const receipt = receipts.find((r) => r.ack_receipt_id === input.ack_receipt_id) ?? null;
+      // Receipt nằm trong dữ liệu của scope (Core `recordAckReceipt`): receipt của property khác không dùng được.
+      const receipt = (scope.ack_receipts as unknown as AckReceipt[]).find((r) => r.ack_receipt_id === input.ack_receipt_id) ?? null;
       const rejection = checkAcknowledge({
         escalation: current,
         expectedVersion: input.expected_version as number,
         receipt,
-        grantActor: invocation.claims.actor as Actor,
+        grantActor: invocation.claims.actor,
         now,
       });
       if (rejection || !receipt) return { rejection: rejection ?? { code: "ACK_NOT_AUTHORIZED", reason: "Không có receipt" } };
@@ -458,7 +449,7 @@ function record(
   now: string,
   nextId: (prefix: string) => string,
 ): WriteEvidence {
-  const actor = invocation.claims.actor as Actor;
+  const actor = invocation.claims.actor;
   const evidence: WriteEvidence = { evidence_id: nextId("ev"), provider: "mock", provider_reference_id: nextId("ref"), committed_at: now };
   scope.evidence.push({
     evidence_id: evidence.evidence_id,
