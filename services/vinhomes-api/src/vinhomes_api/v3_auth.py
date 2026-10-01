@@ -23,6 +23,8 @@ async def _actor_id(request: Request, settings: V3Settings) -> str:
             raise HTTPException(422, "Unknown seeded demo actor")
         return actors[role]
     if settings.dev_user_id:
+        if request.client is None or request.client.host not in {"127.0.0.1", "::1"}:
+            raise HTTPException(403, "Development identity is only available on loopback")
         return settings.dev_user_id
     if not settings.auth_url:
         raise HTTPException(503, "VINHOMES_API_AUTH_URL is not configured")
@@ -34,8 +36,10 @@ async def _actor_id(request: Request, settings: V3Settings) -> str:
             )
     except httpx.HTTPError as exc:
         raise HTTPException(503, "Authentication server is unavailable") from exc
+    if response.status_code in {401, 403}:
+        raise HTTPException(response.status_code, "Sign in with an active platform account")
     if response.status_code != 200:
-        raise HTTPException(401, "Sign in to the platform first")
+        raise HTTPException(503, "Authentication server is unavailable")
     try:
         actor_id = response.json()["user"]["id"]
     except (ValueError, KeyError, TypeError) as exc:
@@ -125,7 +129,14 @@ TICKET_VISIBILITY = """
         join tenant_memberships m on m.id=r.membership_id and m.tenant_id=r.tenant_id
         join access_scopes s on s.id=r.scope_id and s.tenant_id=r.tenant_id
         where m.user_id=:user_id and m.status='active'
-          and r.role_code in ('management','staff')
+          and (r.role_code='management' or (r.role_code='staff' and exists (
+            select 1 from work_orders own_work
+            join work_assignments own_assignment on own_assignment.work_order_id=own_work.id and own_assignment.tenant_id=own_work.tenant_id
+            join staff_profiles own_staff on own_staff.id=own_assignment.staff_id and own_staff.tenant_id=own_assignment.tenant_id
+            where own_work.ticket_id=t.id and own_work.tenant_id=t.tenant_id
+              and own_staff.user_id=:user_id and own_staff.active
+              and own_assignment.status in ('offered','accepted','completed')
+        )))
           and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now())
           and r.tenant_id=t.tenant_id
           and (s.kind='tenant'

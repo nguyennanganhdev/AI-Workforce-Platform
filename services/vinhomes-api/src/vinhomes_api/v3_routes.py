@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from .v3_auth import TICKET_VISIBILITY, scoped_connection
 
 router = APIRouter(tags=["Vinhomes V3"])
-Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection)]
+Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
 
 
 def _params(scope: Scope) -> dict[str, object]:

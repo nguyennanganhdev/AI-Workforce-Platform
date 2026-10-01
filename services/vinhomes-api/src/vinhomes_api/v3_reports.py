@@ -15,7 +15,7 @@ from .v3_auth import scoped_connection
 
 
 router = APIRouter(tags=["Vinhomes V3 reports"])
-Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection)]
+Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
 
 
 async def _management_building(scope: Scope, building_id: UUID) -> None:

@@ -36,7 +36,7 @@ export function RequestCard({
         <IconTool size={21} stroke={1.7} />
       </span>
       <span className="request-copy">
-        <span className="eyebrow">{request.id}</span>
+        <span className="eyebrow">{request.code ?? request.id}</span>
         <strong>{request.title}</strong>
         <span className={`status ${request.status}`}>
           <i />
@@ -121,9 +121,11 @@ export function Requests({
 export function RequestDetail({
   request,
   onResolve,
+  connected = false,
 }: {
   request: ResidentRequest;
-  onResolve: (accepted: boolean, reason?: string) => boolean;
+  connected?: boolean;
+  onResolve: (accepted: boolean, reason?: string) => boolean | Promise<boolean>;
 }) {
   const [redo, setRedo] = useState(false);
   const [reason, setReason] = useState("");
@@ -134,7 +136,7 @@ export function RequestDetail({
           <i />
           {statusLabels[request.status]}
         </span>
-        <span className="eyebrow">{request.id}</span>
+        <span className="eyebrow">{request.code ?? request.id}</span>
         <h2>{request.title}</h2>
         <p>
           <IconMapPin size={16} />
@@ -195,9 +197,9 @@ export function RequestDetail({
           <p>Bạn kiểm tra kết quả và cho chúng mình biết nhé.</p>
           {redo ? (
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
-                if (onResolve(false, reason)) setRedo(false);
+                if (await onResolve(false, reason)) setRedo(false);
               }}
             >
               <label className="field-label" htmlFor="redo-reason">

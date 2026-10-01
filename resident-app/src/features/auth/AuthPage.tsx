@@ -245,6 +245,7 @@ export function AuthPage({
               được gửi sau khi hệ thống xác minh.
             </p>
           )}
+          <div className="auth-notice"><a href="/">M? ?ng d?ng v?i phi?n platform hi?n t?i</a><br/><a href="http://localhost:3010/sign">??ng nh?p qua platform</a><p>??ng nh?p s? ?i?n tho?i c?n d?ch v? x?c minh ???c c?u h?nh b?i Ban qu?n l?.</p></div>
           <form
             onSubmit={submit}
             noValidate

@@ -18,7 +18,7 @@ from .v3_auth import scoped_connection
 from .v3_mutations import record_event, visible_ticket
 
 router = APIRouter(tags=["Vinhomes V3 files"])
-Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection)]
+Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
 FILE_ROOT = Path(__file__).resolve().parents[2] / ".local-v3-files"
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAGIC = {"image/jpeg": b"\xff\xd8\xff", "image/png": b"\x89PNG\r\n\x1a\n",
@@ -132,8 +132,9 @@ async def upload_ticket_file(
 async def download_file(file_id: UUID, request: Request, scope: Scope) -> FileResponse:
     local_only(request)
     found = await scope[0].execute(text("""
-        select f.ticket_id, f.original_name, o.object_key, o.sha256
+        select coalesce(f.ticket_id,tf.ticket_id) as ticket_id, f.original_name, o.object_key, o.sha256
         from files f join file_objects o on o.id=f.accepted_object_id and o.tenant_id=f.tenant_id
+        left join ticket_files tf on tf.file_id=f.id and tf.tenant_id=f.tenant_id
         where f.id=:id and f.status='ready' and o.status='ready'
           and o.location_id in (select id from storage_locations
                                 where provider='local_fs' and purpose='evidence')

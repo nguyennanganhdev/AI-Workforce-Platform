@@ -4,9 +4,15 @@ import { Outlet } from '@tanstack/react-router';
 import { OperationsSidebar } from './operations-sidebar';
 import { OperationsHeader } from './operations-header';
 import { OperationsProvider } from '../hooks/use-operations-data';
-import { exitOperationsPreview, previewAccount } from '../auth/demo-access';
+import { isOperationsPreview, exitOperationsPreview, previewAccount } from '../auth/demo-access';
+
+import { ConnectedOperations } from '../connected/ConnectedOperations';
 
 export function OperationsLayout() {
+  return isOperationsPreview() ? <PreviewOperationsLayout /> : <ConnectedOperations />;
+}
+
+function PreviewOperationsLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [, refreshAccount] = useState(0);
   useEffect(() => {

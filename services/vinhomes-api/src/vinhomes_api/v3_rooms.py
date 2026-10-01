@@ -13,7 +13,7 @@ from .v3_auth import resident_connection
 
 
 router = APIRouter(tags=["Vinhomes V3 rooms"])
-MemberScope = Annotated[tuple[AsyncConnection, str], Depends(resident_connection)]
+MemberScope = Annotated[tuple[AsyncConnection, str], Depends(resident_connection, scope="function")]
 
 
 async def _room(scope: MemberScope, room_id: str, *, lock: bool = False) -> None:

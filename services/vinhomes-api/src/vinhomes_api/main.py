@@ -3,9 +3,11 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+import os
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -19,6 +21,7 @@ from .v3_specialized import router as specialized_router
 from .v3_triage import router as triage_router
 from .v3_files import router as files_router
 from .v3_resident import router as resident_router
+from .v3_resident_support import router as resident_support_router
 from .v3_rooms import router as rooms_router
 from .v3_knowledge import router as knowledge_router
 from .v3_memory import router as memory_router
@@ -53,6 +56,18 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
         ),
         lifespan=lifespan,
     )
+
+    @app.middleware("http")
+    async def protect_browser_mutations(request, call_next):
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            origin = request.headers.get("origin")
+            allowed = {v.strip().rstrip("/") for v in os.getenv("VINHOMES_API_ALLOWED_ORIGINS", "").split(",") if v.strip()}
+            if settings.demo_mode or settings.dev_user_id:
+                allowed.update({"http://127.0.0.1:3011", "http://localhost:3011", "http://127.0.0.1:3020", "http://localhost:3020"})
+            same_origin = origin and urlsplit(origin).netloc == request.headers.get("host")
+            if request.headers.get("sec-fetch-site") == "cross-site" or (origin and not same_origin and origin.rstrip("/") not in allowed):
+                return JSONResponse({"detail": "Untrusted browser origin"}, status_code=403)
+        return await call_next(request)
 
     @app.get("/health", tags=["health"])
     async def health() -> dict[str, str]:
@@ -89,6 +104,7 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(triage_router)
     app.include_router(files_router)
     app.include_router(resident_router)
+    app.include_router(resident_support_router)
     app.include_router(rooms_router)
     app.include_router(knowledge_router)
     app.include_router(memory_router)

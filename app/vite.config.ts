@@ -85,10 +85,11 @@ const serving = {
   // to, which is ::1 under Node and 127.0.0.1 under bun, and the other address is then refused.
   // Whoever is told the URL has no way to know which they were given.
   // Empty APP_PORT=/SERVER_PORT= is unset (compose / leftover .env), not NaN — same trap as Bot PORT.
-  host: process.platform === "win32" ? "0.0.0.0" : "::",
+  host: appPort.port === 3020 ? "127.0.0.1" : process.platform === "win32" ? "0.0.0.0" : "::",
   port: appPort.port,
   strictPort: true,
   proxy: {
+    "/api/business": { target: process.env.VINHOMES_API_URL || "http://127.0.0.1:8000", rewrite: (path: string) => path.replace(/^\/api\/business/, "") },
     "/api": {
       target: `http://localhost:${apiPort.port}`,
     },

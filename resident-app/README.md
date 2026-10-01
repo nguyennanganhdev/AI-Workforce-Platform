@@ -1,5 +1,7 @@
 # Nhà — Resident app
 
+> C?p nh?t 01/10/2026: ?? b? sung ???ng ch?y API/PostgreSQL cho lu?ng ticket c?t l?i. Xem [h??ng d?n k?t n?i](docs/07-connected-runtime.md). Ph?n m? t? mock v? contract ?? xu?t b?n d??i ph?n ?nh b?n preview/handoff tr??c t?ch h?p; kh?ng ph?i tr?ng th?i runtime m?i. Phone/OTP v? c?c module P1 ch?a ho?n ch?nh.
+
 Ứng dụng cư dân độc lập với `app/` (nhân viên). React/Vite, ưu tiên điện thoại,
 hai tab Trợ lý và Tiện ích. Không import mã từ app nhân viên hoặc backend.
 

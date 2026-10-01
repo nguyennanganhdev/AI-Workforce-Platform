@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from .v3_auth import resident_connection
 
 router = APIRouter(tags=["V3 database demo"])
-Scope = Annotated[tuple[AsyncConnection, str], Depends(resident_connection)]
+Scope = Annotated[tuple[AsyncConnection, str], Depends(resident_connection, scope="function")]
 
 
 @router.get("/demo/fixtures")

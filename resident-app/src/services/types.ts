@@ -2,10 +2,12 @@ export type RequestStatus =
   | "received"
   | "processing"
   | "confirmation"
-  | "completed";
+  | "completed"
+  | "cancelled";
 export type Photo = { id: string; name: string; url: string };
 export type RequestEvent = { label: string; at: string; note?: string };
 export type ResidentRequest = {
+  code?: string;
   id: string;
   title: string;
   description: string;
@@ -46,6 +48,7 @@ export type ResidentConversation = {
   updatedAt: string;
 };
 export const statusLabels: Record<RequestStatus, string> = {
+  cancelled: "?? h?y",
   received: "Đã tiếp nhận",
   processing: "Đang xử lý",
   confirmation: "Chờ bạn xác nhận",

@@ -11,7 +11,7 @@ from .v3_auth import scoped_connection
 
 
 router = APIRouter(tags=["Vinhomes V3 knowledge"])
-Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection)]
+Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
 
 
 @router.get("/knowledge/search", summary="Search published knowledge in my scope")

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from .v3_auth import TICKET_VISIBILITY, scoped_connection
 
 router = APIRouter(tags=["Vinhomes V3 commands"])
-Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection)]
+Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
 
 
 def actor_params(scope: Scope) -> dict[str, object]:
@@ -57,7 +57,7 @@ async def management_access(scope: Scope, ticket: dict[str, object]) -> bool:
 
 
 async def record_event(scope: Scope, ticket: dict[str, object], event_type: str,
-                       payload: str, *, to_status: str | None = None) -> UUID:
+                       payload: str, *, to_status: str | None = None, idempotency_key: str | None = None) -> UUID:
     seq = ticket["last_event_seq"] + 1
     event_id = uuid4()
     inserted = await scope[0].execute(text("""
@@ -69,7 +69,7 @@ async def record_event(scope: Scope, ticket: dict[str, object], event_type: str,
           :event_key, :correlation_id, cast(:payload as jsonb), now(), :from_status, :to_status)
         returning id
     """), {"ticket_id": ticket["id"], "seq": seq, "event_type": event_type,
-           "user_id": scope[1], "event_key": str(event_id),
+           "user_id": scope[1], "event_key": idempotency_key or str(event_id),
            "correlation_id": event_id, "payload": payload,
            "from_status": ticket["status"], "to_status": to_status})
     await scope[0].execute(text("""
@@ -187,6 +187,8 @@ async def change_ticket_status(ticket_id: UUID, body: TicketChange, scope: Scope
         raise HTTPException(403, "Management grant for this ticket is required")
     if ticket["version"] != body.version:
         raise HTTPException(409, "Ticket version changed; reload before updating")
+    if body.status in {"resolved", "closed"}:
+        raise HTTPException(409, "Completion requires all QC results and the resident decision")
     if body.status not in TICKET_TRANSITIONS.get(ticket["status"], set()):
         raise HTTPException(409, "Invalid ticket status transition")
     await scope[0].execute(text("""
@@ -288,6 +290,31 @@ class WorkOrderTransition(BaseModel):
     note: str = Field(min_length=1, max_length=2000)
 
 
+class RepairProposal(BaseModel):
+    version: int = Field(ge=0)
+    note: str = Field(min_length=8, max_length=2000)
+
+
+@router.post("/work-orders/{work_order_id}/repair-proposal", status_code=201)
+async def propose_repair(work_order_id: UUID, body: RepairProposal, scope: Scope):
+    from .v3_specialized import work_ticket, can_work_order
+    ticket = await work_ticket(scope, work_order_id, lock=True)
+    if not await can_work_order(scope, work_order_id, ticket):
+        raise HTTPException(403, "Accepted assignment required")
+    order = (await scope[0].execute(text("select status,version from work_orders where id=:id for update"), {"id": work_order_id})).mappings().one()
+    if order["version"] != body.version or order["status"] != "arrived":
+        raise HTTPException(409, "Proposal requires the current arrived work order")
+    approval = await scope[0].execute(text("""
+        insert into work_approvals(tenant_id,work_order_id,kind,requested_to_user_id,request_detail,status,request_hash)
+        select tenant_id,:order,'customer_repair',requester_user_id,
+          jsonb_build_object('note',cast(:note as text)),'pending',:hash from tickets where id=:ticket
+        returning id,status
+    """), {"order": work_order_id, "ticket": ticket["id"], "note": body.note, "hash": str(uuid4())})
+    await scope[0].execute(text("update work_orders set status='awaiting_approval',version=version+1,updated_at=now() where id=:id"), {"id": work_order_id})
+    await record_event(scope, ticket, "work_order.repair_proposed", json.dumps({"workOrderId": str(work_order_id)}))
+    return dict(approval.mappings().one())
+
+
 ALLOWED_TRANSITIONS = {
     "queued": {"offered", "cancelled"}, "offered": {"accepted", "rejected", "cancelled"},
     "accepted": {"en_route", "cancelled"}, "en_route": {"arrived", "cancelled"},
@@ -326,6 +353,13 @@ async def change_work_order_status(work_order_id: UUID, body: WorkOrderTransitio
         raise HTTPException(409, "Work order version changed; reload before updating")
     if body.status not in ALLOWED_TRANSITIONS.get(current["status"], set()):
         raise HTTPException(409, "Invalid work order status transition")
+    if body.status == "in_progress":
+        consent = await scope[0].execute(text("""
+            select status from work_approvals where work_order_id=:id and kind='customer_repair'
+            order by created_at desc,id desc limit 1
+        """), {"id": work_order_id})
+        if consent.scalar_one_or_none() != "approved":
+            raise HTTPException(409, "Resident must approve the repair proposal before work starts")
     if body.status == "completed":
         water = await scope[0].execute(text("""
             select 1 from service_interruptions si join work_approvals wa on wa.id=si.approval_id and wa.tenant_id=si.tenant_id
@@ -345,19 +379,15 @@ async def change_work_order_status(work_order_id: UUID, body: WorkOrderTransitio
           completed_at=case when :status='completed' then now() else completed_at end
         where id=:id returning id, status, version
     """), {"id": work_order_id, "status": body.status})
+    if body.status in {"completed", "cancelled"}:
+        await scope[0].execute(text("""
+            update work_assignments set status=:status,ended_at=now(),updated_at=now()
+            where work_order_id=:id and status in ('accepted','offered')
+        """), {"id": work_order_id, "status": body.status})
     await record_event(scope, ticket, "work_order.status_changed",
                        json.dumps({"workOrderId": str(work_order_id), "status": body.status,
                                    "note": body.note}))
-    if body.status == "completed":
-        await scope[0].execute(text("""
-            insert into work_approvals (tenant_id,work_order_id,kind,requested_to_user_id,request_detail,status,request_hash)
-            select tenant_id,:id,'customer_completion',requester_user_id,
-              jsonb_build_object('note',cast(:note as text)),'pending',:hash
-            from tickets where id=:ticket_id
-        """), {"id": work_order_id, "ticket_id": ticket["id"], "note": body.note,
-               "hash": str(uuid4())})
-        await scope[0].execute(text("update tickets set status='resolved',resolved_at=now() where id=:id"), {"id": ticket["id"]})
-    elif body.status == "in_progress":
+    if body.status == "in_progress":
         await scope[0].execute(text("update tickets set status='in_progress' where id=:id"), {"id": ticket["id"]})
     return dict(updated.mappings().one())
 

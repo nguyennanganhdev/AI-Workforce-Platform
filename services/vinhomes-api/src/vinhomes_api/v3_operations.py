@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -13,7 +13,7 @@ from .v3_auth import TICKET_VISIBILITY, scoped_connection
 from .v3_mutations import record_event, visible_ticket
 
 router = APIRouter(tags=["Vinhomes V3 operations"])
-Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection)]
+Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
 
 
 def params(scope: Scope) -> dict[str, object]:
@@ -22,6 +22,21 @@ def params(scope: Scope) -> dict[str, object]:
 
 def rows(result: object) -> list[dict[str, object]]:
     return [dict(row) for row in result.mappings().all()]
+
+
+@router.get("/operations/me")
+async def operations_me(request: Request, scope: Scope):
+    db, actor, admin = scope
+    user = (await db.execute(text("select id,name,email from users where id=:id"), {"id": actor})).mappings().one()
+    grants = await db.execute(text("""
+        select distinct r.role_code from scoped_user_roles r join tenant_memberships m
+          on m.id=r.membership_id and m.tenant_id=r.tenant_id
+        where m.user_id=:id and m.status='active' and r.valid_from<=now()
+          and (r.valid_to is null or r.valid_to>now())
+    """), {"id": actor})
+    roles = list(grants.scalars())
+    return {"user": dict(user), "role": "admin" if admin else "management" if "management" in roles else "staff",
+            "dataMode": "local-database" if request.app.state.settings.demo_mode or request.app.state.settings.dev_user_id else "database"}
 
 
 @router.get("/catalogs", summary="Domains, sites, buildings and operations catalogs")

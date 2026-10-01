@@ -159,7 +159,8 @@ export function StaffLoginPage({
             </div>
           ) : (
             <>
-              <form noValidate onSubmit={submit}>
+              <div className="p-4 text-sm"><a href="/operations">M? c?ng vi?c t? database</a><br/><a href="/sign">??ng nh?p qua platform</a></div>
+          <form noValidate onSubmit={submit}>
                 <label htmlFor="staff-identifier">Tài khoản được cấp</label>
                 <div className="staff-auth-input">
                   <IconUser size={20} />

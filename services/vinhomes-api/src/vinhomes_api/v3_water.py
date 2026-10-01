@@ -16,7 +16,7 @@ from .v3_mutations import record_event, visible_ticket
 
 
 router = APIRouter(tags=["Vinhomes V3 water interruptions"])
-Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection)]
+Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
 
 
 class WaterShutdownRequest(BaseModel):

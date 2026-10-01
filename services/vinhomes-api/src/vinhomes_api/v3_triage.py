@@ -13,7 +13,7 @@ from .v3_auth import scoped_connection
 from .v3_mutations import record_event, visible_ticket
 
 router = APIRouter(tags=["Vinhomes V3 triage"])
-Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection)]
+Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
 
 
 async def can_review(scope: Scope, required_scope_id: UUID) -> bool:

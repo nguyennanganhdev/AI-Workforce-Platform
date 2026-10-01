@@ -16,7 +16,8 @@ export const Route = createFileRoute("/_authed")({
         if(!canViewPath(account.role,location.pathname))throw redirect({href:landing(account.role)});
         return;
       }
-      throw redirect({ to: "/operations/login" });
+      // The connected layout bootstraps identity through the V3 API; every query is authorized server-side.
+      return;
     }
     if (typeof window !== "undefined" && window.location.port === "3020" && location.pathname === "/") {
       throw redirect({ to: "/operations/login" });

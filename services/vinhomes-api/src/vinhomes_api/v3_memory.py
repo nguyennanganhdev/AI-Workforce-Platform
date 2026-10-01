@@ -12,7 +12,7 @@ from .v3_auth import scoped_connection
 
 
 router = APIRouter(tags=["Vinhomes V3 memory review"])
-Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection)]
+Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
 
 
 def _require_admin(scope: Scope) -> None:

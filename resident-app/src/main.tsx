@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "@fontsource-variable/inter";
 import { App } from "./app/App";
+import { ConnectedApp } from "./app/ConnectedApp";
 import { AuthPage } from "./features/auth/AuthPage";
 import { isResidentPreview } from "./features/auth/demo-access";
 import { ResidentAccountStatus } from "./features/auth/ResidentAccountStatus";
@@ -28,16 +29,16 @@ const status =
     ? statusPreview
     : null;
 const preview = isResidentPreview();
-if (!authMode && !status && !preview && !legacyAuth) location.replace("/login");
+
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     {authMode ? (
-      <AuthPage mode={authMode} />
+      <AuthPage mode={authMode} onAuthenticated={() => location.assign("/")} />
     ) : status ? (
       <ResidentAccountStatus status={status} preview />
     ) : preview ? (
       <App />
-    ) : null}
+    ) : legacyAuth ? null : <ConnectedApp />}
   </React.StrictMode>,
 );

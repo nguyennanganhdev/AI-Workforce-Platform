@@ -1,5 +1,7 @@
 # OpenBot docs
 
+- [B?o c?o Resident ? Operations ? PostgreSQL 01/10/2026](BAO_CAO_TRIEN_KHAI_2026-10-01.md): merge, lu?ng th?t, ki?m th? v? ph?n c?n thi?u.
+
 Start with the root [README](../README.md), then use these references:
 
 - [Architecture](architecture.md): services, ports, browser governance, computers, components, plugins, knowledge, and security boundaries.

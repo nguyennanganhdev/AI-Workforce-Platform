@@ -15,7 +15,7 @@ from .v3_auth import TICKET_VISIBILITY, scoped_connection
 from .v3_mutations import management_access, record_event, visible_ticket
 
 router = APIRouter(tags=["Vinhomes V3 field operations"])
-Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection)]
+Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
 
 
 def mapped(result: object) -> list[dict[str, object]]:
@@ -91,6 +91,21 @@ async def submit_qc(work_order_id: UUID, body: QcSubmit, scope: Scope) -> dict[s
     ticket = await work_ticket(scope, work_order_id, lock=True)
     if not await management_access(scope, ticket):
         raise HTTPException(403, "Management grant is required for QC")
+    if ticket["status"] in {"closed", "cancelled"}:
+        raise HTTPException(409, "Ticket is already closed")
+    self_inspection = await scope[0].execute(text("""
+        select 1 from work_assignments a join staff_profiles sp on sp.id=a.staff_id and sp.tenant_id=a.tenant_id
+        where a.work_order_id=:id and sp.user_id=:actor and a.status in ('accepted','completed')
+    """), {"id": work_order_id, "actor": scope[1]})
+    if self_inspection.first() is not None:
+        raise HTTPException(403, "QC must be performed by an independent reviewer")
+    if ticket["status"] == "resolved":
+        await scope[0].execute(text("""
+            update work_approvals set status='cancelled',updated_at=now()
+            where kind='customer_completion' and status='pending'
+              and work_order_id in (select id from work_orders where ticket_id=:id)
+        """), {"id": ticket["id"]})
+        await scope[0].execute(text("update tickets set status='in_progress',resolved_at=null where id=:id"), {"id": ticket["id"]})
     order = await scope[0].execute(text("""
         select status from work_orders where id=:id for update
     """), {"id": work_order_id})
@@ -108,6 +123,8 @@ async def submit_qc(work_order_id: UUID, body: QcSubmit, scope: Scope) -> dict[s
     qc = dict(result.mappings().one())
     await record_event(scope, ticket, "work_order.qc_recorded",
                        json.dumps({"qcId": str(qc["id"]), "outcome": body.outcome}))
+    from .v3_completion import publish_completion
+    await publish_completion(scope, ticket["id"])
     return qc
 
 

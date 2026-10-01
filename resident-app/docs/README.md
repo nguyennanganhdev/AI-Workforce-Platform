@@ -1,5 +1,7 @@
 # Bàn giao backend — App cư dân
 
+> C?p nh?t 01/10/2026: ?? b? sung ???ng ch?y API/PostgreSQL cho lu?ng ticket c?t l?i. Xem [h??ng d?n k?t n?i](07-connected-runtime.md). Ph?n m? t? mock v? contract ?? xu?t b?n d??i ph?n ?nh b?n preview/handoff tr??c t?ch h?p; kh?ng ph?i tr?ng th?i runtime m?i. Phone/OTP v? c?c module P1 ch?a ho?n ch?nh.
+
 **Trạng thái: đề xuất tích hợp v0.1, chưa phải contract đã được các team phê duyệt.**
 Tài liệu đối chiếu với code tại thời điểm viết sau khi merge nhánh nhân viên,
 commit nền `fea244d`. Không có backend cư dân được tạo bởi bộ tài liệu này.
