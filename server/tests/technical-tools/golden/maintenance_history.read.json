@@ -1,0 +1,40 @@
+{
+  "request": {
+    "building_id": "11111111-1111-4111-8111-111111111111",
+    "asset_id": "AC-A1-1205-01",
+    "time_range": {
+      "from": "2026-01-01T00:00:00Z",
+      "to": "2026-09-30T09:00:00Z"
+    }
+  },
+  "response": {
+    "status": "OK",
+    "trace_id": "tr-a2-004",
+    "server_time": "2026-09-30T09:03:00Z",
+    "data": {
+      "events": [
+        {
+          "event_id": "ME-102",
+          "asset_id": "AC-A1-1205-01",
+          "incident_id": "31111111-1111-4111-8111-111111111111",
+          "workorder_id": "41111111-1111-4111-8111-111111111111",
+          "occurred_at": "2026-07-02T04:00:00Z",
+          "outcome": "cleaned_drain_line",
+          "source_refs": ["workorder:41111111-1111-4111-8111-111111111111"]
+        }
+      ],
+      "last_maintenance_at": "2026-07-02T04:00:00Z",
+      "repeat_count": 1
+    },
+    "errors": [],
+    "missing_fields": [],
+    "provenance": [
+      {
+        "source_system": "maintenance_adapter",
+        "source_record_id": "AC-A1-1205-01",
+        "source_version": "rev-8",
+        "retrieved_at": "2026-09-30T09:03:00Z"
+      }
+    ]
+  }
+}

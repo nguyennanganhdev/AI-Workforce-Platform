@@ -1,5 +1,7 @@
 # Báo cáo tiến độ 7 technical tools đầu
 
+> **Cập nhật 01/10/2026 (khi gộp vào nhánh `technical_tool_Dat`):** bộ khung mô tả trong file này (`createSevenTechnicalTools`, `runner.ts`, `schemas.ts`, các mock port) đã được gộp vào bộ khung 14 tool đang dùng. Các ý chính — `BuildingAccessPort`, phiên DB theo tenant, quyền cấp theo scope — đã được đưa vào code. Danh sách port hiện hành: [Q02-backend-ports.md](Q02-backend-ports.md). Nội dung gốc bên dưới giữ nguyên để tra lại; code gốc ở commit `17e5826`.
+
 **Ngày:** 30/09/2026  
 **Phạm vi:** 7 tool đầu trong `docs/teams/quang/tools.md` (mục 3.1–3.6 và 4.1).  
 **Trạng thái chung:** Đã có contract, handler và adapter để chạy kiểm thử module/POC. Chưa tích hợp end-to-end qua gateway hoặc xác nhận production.

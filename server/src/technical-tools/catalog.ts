@@ -1,85 +1,78 @@
-import { type TechnicalToolName, toolSchemas } from "./schemas";
+import { z } from "zod";
+import type { TechnicalTool } from "./tool";
+import { apartmentEntryRequestTool } from "./tools/apartment-entry-request";
+import { appendMaintenanceHistoryTool } from "./tools/append-maintenance-history";
+import { areaRestrictionRequestTool } from "./tools/area-restriction-request";
+import { assetReadTool } from "./tools/asset-read";
+import { getActiveOutageTool } from "./tools/get-active-outage";
+import { maintenanceHistoryReadTool } from "./tools/maintenance-history-read";
+import { recordMeasurementTool } from "./tools/record-measurement";
+import { sensorReadTool } from "./tools/sensor-read";
+import { sopKbRetrieveTool } from "./tools/sop-kb-retrieve";
+import { submitExecutorResultTool } from "./tools/submit-executor-result";
+import { utilityIsolationRequestTool } from "./tools/utility-isolation-request";
+import { utilityScheduleReadTool } from "./tools/utility-schedule-read";
+import { vendorDispatchRequestTool } from "./tools/vendor-dispatch-request";
+import { verifyResolutionTool } from "./tools/verify-resolution";
 
-export interface ToolDefinition {
-  name: TechnicalToolName;
-  version: "1.0";
-  capability: string;
-  effect: "read" | "append";
-  idempotency: "none" | "required";
-  /** Host policy may override this with a tighter limit. */
-  timeoutMs: number;
+/** Every technical tool this deployment implements: all fourteen in tools.md. */
+export const technicalTools: readonly TechnicalTool[] = [
+  getActiveOutageTool,
+  utilityScheduleReadTool,
+  sopKbRetrieveTool,
+  assetReadTool,
+  sensorReadTool,
+  maintenanceHistoryReadTool,
+  recordMeasurementTool,
+  submitExecutorResultTool,
+  verifyResolutionTool,
+  appendMaintenanceHistoryTool,
+  utilityIsolationRequestTool,
+  areaRestrictionRequestTool,
+  apartmentEntryRequestTool,
+  vendorDispatchRequestTool,
+];
+
+/**
+ * The name in tools.md, from whichever spelling a caller arrives with.
+ *
+ * A model tool name may not contain a dot, so a tool is offered as `technical__get_active_outage`.
+ * `/api/agent-tools/call` then rewrites the first `__` to `/` before it asks a deployment tool
+ * caller (`parseAgentToolCallInput`), so the same tool reaches this module as
+ * `technical/get_active_outage`. Both come back to the one dotted name the catalogue is keyed on.
+ */
+export function canonicalToolName(name: string): string {
+  return name
+    .trim()
+    .replace(/^mcp__/, "")
+    .replace("__", ".")
+    .replace("/", ".");
 }
 
-export const technicalToolCatalog = {
-  "sop_kb.retrieve": {
-    name: "sop_kb.retrieve",
-    version: "1.0",
-    capability: "sop:read",
-    effect: "read",
-    idempotency: "none",
-    timeoutMs: 5000,
-  },
-  "asset.read": {
-    name: "asset.read",
-    version: "1.0",
-    capability: "asset:read",
-    effect: "read",
-    idempotency: "none",
-    timeoutMs: 5000,
-  },
-  "sensor.read": {
-    name: "sensor.read",
-    version: "1.0",
-    capability: "sensor:read",
-    effect: "read",
-    idempotency: "none",
-    timeoutMs: 5000,
-  },
-  "maintenance_history.read": {
-    name: "maintenance_history.read",
-    version: "1.0",
-    capability: "maintenance:read",
-    effect: "read",
-    idempotency: "none",
-    timeoutMs: 5000,
-  },
-  "technical.get_active_outage": {
-    name: "technical.get_active_outage",
-    version: "1.0",
-    capability: "interruption:read",
-    effect: "read",
-    idempotency: "none",
-    timeoutMs: 5000,
-  },
-  "utility_schedule.read": {
-    name: "utility_schedule.read",
-    version: "1.0",
-    capability: "interruption:read",
-    effect: "read",
-    idempotency: "none",
-    timeoutMs: 5000,
-  },
-  "maintenance_history.append": {
-    name: "maintenance_history.append",
-    version: "1.0",
-    capability: "maintenance:append",
-    effect: "append",
-    idempotency: "required",
-    timeoutMs: 10000,
-  },
-} as const satisfies Record<TechnicalToolName, ToolDefinition>;
-
-/** Runtime validation is kept alongside the catalog, independent of TS callers. */
-export function parseToolInput(
-  name: TechnicalToolName,
-  input: unknown,
-): unknown {
-  return toolSchemas[name].input.parse(input);
+export function findTechnicalTool(name: string): TechnicalTool | undefined {
+  const canonical = canonicalToolName(name);
+  return technicalTools.find((tool) => tool.name === canonical);
 }
 
-export function parseToolOutput(
-  name: TechnicalToolName,
-  output: unknown,
-): unknown {
-  return toolSchemas[name].output.parse(output);
+/**
+ * The catalogue as plain data (task Q01): what each tool is called, what it takes and returns, what
+ * it may do and what a caller must hold.
+ *
+ * JSON Schema rather than the Zod objects, so the Python coordination runtime reads the same
+ * contract the TypeScript host enforces instead of a copy somebody keeps in step by hand.
+ */
+export function describeTechnicalTools() {
+  return technicalTools.map((tool) => ({
+    name: tool.name,
+    model_name: tool.modelName,
+    version: tool.version,
+    description: tool.description,
+    side_effect: tool.effect,
+    required_capability: tool.capability,
+    timeout_ms: tool.timeoutMs,
+    retry: tool.effect === "read" ? "transient_errors" : "reconcile_first",
+    requires_idempotency_key: tool.effect !== "read",
+    input_schema: z.toJSONSchema(tool.inputSchema),
+    output_schema: z.toJSONSchema(tool.outputSchema),
+  }));
 }
