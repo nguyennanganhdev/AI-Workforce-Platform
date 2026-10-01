@@ -1,0 +1,38 @@
+[
+  {
+    "location_id": "loc_01",
+    "building": "Tòa A",
+    "floor": "T1",
+    "zone": "Cổng chính"
+  },
+  {
+    "location_id": "loc_02",
+    "building": "Tòa A",
+    "floor": "T1",
+    "zone": "Sảnh"
+  },
+  {
+    "location_id": "loc_03",
+    "building": "Tòa A",
+    "floor": "B1",
+    "zone": "Hầm xe"
+  },
+  {
+    "location_id": "loc_04",
+    "building": "Tòa B",
+    "floor": "T1",
+    "zone": "Sảnh"
+  },
+  {
+    "location_id": "loc_05",
+    "building": "Tòa B",
+    "floor": "T1",
+    "zone": "Thang máy"
+  },
+  {
+    "location_id": "loc_06",
+    "building": "Khuôn viên",
+    "floor": null,
+    "zone": "Công viên nội khu"
+  }
+]
