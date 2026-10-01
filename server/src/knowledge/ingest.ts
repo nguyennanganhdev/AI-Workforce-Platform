@@ -7,6 +7,7 @@ import {
 import { searchText } from "./source-metadata";
 import {
   CHUNKER_VERSION,
+  type Chunk,
   type Embedder,
   type IngestInput,
   type IngestResult,
@@ -15,6 +16,49 @@ import {
 } from "./types";
 
 export type IngestDeps = { store: IngestStore; embedder: Embedder };
+
+export type PreparedChunk = Chunk & {
+  /** Exactly the string sent to the embedding model. */
+  embeddingInput: string;
+  /** What `search_tsv` is built from. */
+  searchText: string;
+};
+
+export type PreparedDocument = {
+  frontMatter: Record<string, unknown>;
+  sources: string[];
+  chunks: PreparedChunk[];
+};
+
+/**
+ * Everything a document becomes before anything is embedded or stored. Pure, so `cli.ts
+ * --dump-chunks` can show what ingestion would send without a database or an API key.
+ */
+export function prepareDocument(
+  input: Pick<IngestInput, "raw" | "title" | "scopePath" | "metadata">,
+): PreparedDocument {
+  const parsed = parseFrontMatter(input.raw);
+  const { chunks, sources } = chunkDocument(parsed.body);
+  const scopePath = input.scopePath ?? "";
+  return {
+    frontMatter: parsed.meta,
+    sources,
+    chunks: chunks.map((chunk) => ({
+      ...chunk,
+      embeddingInput: embeddingInput(chunk, input.title, scopePath),
+      searchText: searchText([
+        scopePath,
+        input.title,
+        // The notice number lives in front matter (`van_ban`) more often than in the passage.
+        typeof input.metadata?.van_ban === "string"
+          ? input.metadata.van_ban
+          : "",
+        chunk.headingPath,
+        chunk.text,
+      ]),
+    })),
+  };
+}
 
 function errorCode(error: unknown): string {
   const code = (error as { code?: unknown } | null)?.code;
@@ -38,8 +82,7 @@ export async function ingestDocument(
   { store, embedder }: IngestDeps,
   input: IngestInput,
 ): Promise<IngestResult> {
-  const parsed = parseFrontMatter(input.raw);
-  const { chunks, sources } = chunkDocument(parsed.body);
+  const { frontMatter, sources, chunks } = prepareDocument(input);
   if (chunks.length === 0) return { status: "skipped", reason: "empty" };
 
   const scopePath = input.scopePath ?? "";
@@ -91,7 +134,7 @@ export async function ingestDocument(
       extractionConfig: {
         parser: PARSER_VERSION,
         chunker: CHUNKER_VERSION,
-        frontMatter: parsed.meta,
+        frontMatter,
         scopePath,
         metadata: input.metadata ?? {},
         sources,
@@ -110,28 +153,17 @@ export async function ingestDocument(
   });
 
   try {
-    const inputs = chunks.map((chunk) =>
-      embeddingInput(chunk, input.title, scopePath),
+    const vectors = await embedder.embed(
+      chunks.map((chunk) => chunk.embeddingInput),
     );
-    const vectors = await embedder.embed(inputs);
     await store.saveChunks({
       tenantId: input.tenantId,
       jobId: job.id,
       versionId: version.id,
       modelId: model.id,
-      chunks: chunks.map((chunk, index) => ({
+      chunks: chunks.map(({ embeddingInput: sent, ...chunk }, index) => ({
         ...chunk,
-        searchText: searchText([
-          scopePath,
-          input.title,
-          // The notice number lives in front matter (`van_ban`) more often than in the passage.
-          typeof input.metadata?.van_ban === "string"
-            ? input.metadata.van_ban
-            : "",
-          chunk.headingPath,
-          chunk.text,
-        ]),
-        embeddingHash: sha256(inputs[index] as string),
+        embeddingHash: sha256(sent),
         embedding: vectors[index] as number[],
       })),
     });

@@ -6,6 +6,10 @@
  *   bun --env-file=../.env src/knowledge/cli.ts                 # ask what is already loaded
  *   bun --env-file=../.env src/knowledge/cli.ts <data-dir>      # load or refresh a folder, then ask
  *   bun --env-file=../.env src/knowledge/cli.ts --serve 8787    # serve POST /internal/knowledge/search
+ *   bun src/knowledge/cli.ts <data-dir> --dump-chunks chunks.json  # write the chunks, then stop
+ *
+ * `--dump-chunks` writes what ingestion would embed (each chunk's text, embedding input and search
+ * text) and exits; it needs neither the database nor an API key.
  *
  * Options: --db <name> another database on the same server; --tenant <code> when there is more
  * than one tenant; --user <id> which existing user the dev principal acts as; --skip-ingest;
@@ -42,7 +46,7 @@ import {
   retrieve,
 } from "./retrieve";
 import { type AuthorizeKnowledgeSearch, createKnowledgeRoutes } from "./routes";
-import { ingestDirectory } from "./source-directory";
+import { ingestDirectory, previewDirectory } from "./source-directory";
 import { EMBEDDING_MODEL, type SupportedEmbeddingModel } from "./types";
 
 /** Set once in `main`, after the tenant is known. */
@@ -57,6 +61,7 @@ function parseArgs(argv: string[]) {
     model: EMBEDDING_MODEL.modelName as string,
     skipIngest: false,
     serve: 0,
+    dumpChunks: "",
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] as string;
@@ -66,6 +71,7 @@ function parseArgs(argv: string[]) {
     else if (arg === "--model") args.model = argv[++i] ?? "";
     else if (arg === "--skip-ingest") args.skipIngest = true;
     else if (arg === "--serve") args.serve = Number(argv[++i]) || 8787;
+    else if (arg === "--dump-chunks") args.dumpChunks = argv[++i] ?? "";
     else if (!arg.startsWith("--")) args.dataDir = arg;
   }
   return args;
@@ -142,6 +148,21 @@ Gõ câu hỏi bất kỳ để tìm.`;
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (args.dumpChunks !== "") {
+    if (args.dataDir === "") {
+      throw new Error(
+        "--dump-chunks cần thư mục dữ liệu: cli.ts <thư-mục-dữ-liệu> --dump-chunks <file.json>",
+      );
+    }
+    const documents = await previewDirectory(args.dataDir);
+    await Bun.write(args.dumpChunks, `${JSON.stringify(documents, null, 2)}\n`);
+    const chunks = documents.reduce((sum, d) => sum + d.chunks.length, 0);
+    const empty = documents.filter((d) => d.chunks.length === 0).length;
+    console.log(
+      `Đã ghi ${args.dumpChunks}: ${documents.length} tài liệu (${empty} rỗng, sẽ bị bỏ qua), ${chunks} chunk.`,
+    );
+    return;
+  }
   const url = databaseUrl(args.db);
   const apiKey = process.env.OPENAI_API_KEY ?? "";
   const baseUrl = process.env.OPENAI_BASE_URL;
