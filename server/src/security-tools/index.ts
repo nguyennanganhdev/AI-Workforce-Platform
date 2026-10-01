@@ -28,8 +28,7 @@ import {
 } from "./common/context";
 import { createWriteGuard } from "./common/execution-grant";
 import { parseStrictJson, StrictJsonError } from "./common/strict-json";
-import { loadFixtureScope, MockSecurityProvider } from "./providers/mock-provider";
-import { createWriteHandlers } from "./providers/mock-write";
+import { createFaultsHandler, createMockEnvironment } from "./providers/mock-control";
 import { RealSecurityProvider } from "./providers/real-provider";
 import { registerSecurityTools, type SecurityToolsOptions } from "./tools";
 
@@ -132,6 +131,8 @@ function rpcError(code: number, message: string) {
  *   (tools/list ẩn WRITE, tools/call từ chối).
  * - SECURITY_MCP_ALLOWED_ORIGINS (phân tách dấu phẩy, tùy chọn)
  * - SECURITY_MCP_PROVIDER = core | mock; với core: SECURITY_CORE_API_URL, SECURITY_CORE_API_TOKEN
+ * - SECURITY_MCP_TEST_CONTROL=1 (chỉ với mock): mở `POST /faults` để test điều khiển fault, barrier,
+ *   đồng hồ giả và reset dữ liệu. Endpoint này không xác thực, chỉ dùng trong môi trường test.
  *
  * `<jwks>` là URL HTTPS, hoặc đường dẫn tới file jwks.json cục bộ (chỉ khi NODE_ENV khác production,
  * để test/dev ký token và grant bằng key local). Provider mock bị từ chối khi NODE_ENV=production.
@@ -145,25 +146,31 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
   const production = env.NODE_ENV === "production";
   const providerKind = env.SECURITY_MCP_PROVIDER?.trim() || "core";
   if (providerKind === "mock" && production) throw new Error("Không dùng provider mock ở production");
+  const testControl = env.SECURITY_MCP_TEST_CONTROL?.trim() === "1";
+  if (testControl && providerKind !== "mock") throw new Error("SECURITY_MCP_TEST_CONTROL chỉ dùng với provider mock");
   const grantIssuers = env.SECURITY_MCP_GRANT_ISSUERS?.trim();
+  const mock = providerKind === "mock" ? createMockEnvironment() : null;
   const provider =
-    providerKind === "mock"
-      ? new MockSecurityProvider({ scopes: [loadFixtureScope()], writeHandlers: createWriteHandlers() })
-      : providerKind === "core"
-        ? new RealSecurityProvider(
-            new CoreClient({
-              baseUrl: new URL(required("SECURITY_CORE_API_URL")),
-              credential: () => required("SECURITY_CORE_API_TOKEN"),
-            }),
-          )
-        : (() => {
-            throw new Error(`SECURITY_MCP_PROVIDER không hợp lệ: ${providerKind}`);
-          })();
+    mock?.provider ??
+    (providerKind === "core"
+      ? new RealSecurityProvider(
+          new CoreClient({
+            baseUrl: new URL(required("SECURITY_CORE_API_URL")),
+            credential: () => required("SECURITY_CORE_API_TOKEN"),
+          }),
+        )
+      : (() => {
+          throw new Error(`SECURITY_MCP_PROVIDER không hợp lệ: ${providerKind}`);
+        })());
   return {
     port: Number.parseInt(env.SECURITY_MCP_PORT?.trim() || "8790", 10),
     path: env.SECURITY_MCP_PATH?.trim() || "/mcp",
+    /** Handler `POST /faults` (mock-control.ts); chỉ có khi SECURITY_MCP_TEST_CONTROL=1. */
+    faults: mock && testControl ? createFaultsHandler(mock) : undefined,
     options: {
       provider,
+      // Mock: wrapper (meta.executed_at, hạn grant) và provider dùng chung đồng hồ giả.
+      now: mock?.clock.now,
       verifyAccessToken: createAccessTokenVerifier({
         issuers: issuerKeysFromEnv("SECURITY_MCP_ACCESS_ISSUERS", required("SECURITY_MCP_ACCESS_ISSUERS"), production),
         audience: required("SECURITY_MCP_ACCESS_AUDIENCE"),
@@ -205,8 +212,12 @@ export function startSecurityMcpServer(config = configFromEnv()) {
   const handle = createSecurityMcpHandler(config.options);
   return serve({
     port: config.port,
-    fetch: (request) =>
-      new URL(request.url).pathname === config.path ? handle(request) : new Response("Not found", { status: 404 }),
+    fetch: (request) => {
+      const pathname = new URL(request.url).pathname;
+      if (pathname === config.path) return handle(request);
+      if (pathname === "/faults" && config.faults) return config.faults(request);
+      return new Response("Not found", { status: 404 });
+    },
   });
 }
 

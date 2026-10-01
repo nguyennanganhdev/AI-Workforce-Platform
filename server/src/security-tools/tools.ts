@@ -29,6 +29,7 @@ import {
   isReadTool,
   isWriteTool,
   type ProviderCallOptions,
+  type ProviderFailure,
   READ_TOOL_NAMES,
   type SecurityProvider,
   type ToolInput,
@@ -204,7 +205,7 @@ async function execute(
   });
   if (!guarded.ok) return fail(guarded.error);
   const result = await withDeadline(options.provider.write(tool.name, args as ToolInput<typeof tool.name>, guarded.write, call), controller, budget, "WRITE");
-  if (!result.ok) return fail(result.error);
+  if (!result.ok) return failure(result.error, responseMeta(identity.correlation_id, { replayed: result.replayed ?? false, now: now() }));
   return writeSuccess(result.data, result.evidence, responseMeta(identity.correlation_id, { replayed: result.replayed, now: now() }));
 }
 
@@ -217,9 +218,9 @@ async function withDeadline<T>(
   controller: AbortController,
   budgetMs: number,
   mode: ToolMode,
-): Promise<T | { ok: false; error: ToolError }> {
+): Promise<T | ProviderFailure> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<{ ok: false; error: ToolError }>((resolve) => {
+  const timeout = new Promise<ProviderFailure>((resolve) => {
     timer = setTimeout(() => {
       controller.abort();
       resolve({ ok: false, error: toolError("PROVIDER_TIMEOUT", "Tool vượt quá thời gian cho phép.", { mode }) });

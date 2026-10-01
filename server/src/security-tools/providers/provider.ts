@@ -71,8 +71,11 @@ export type ProviderCallOptions = {
   deadline: number;
 };
 
-/** Rejection typed: đúng một ToolError, không raw exception/body. */
-export type ProviderFailure = { ok: false; error: ToolError };
+/**
+ * Rejection typed: đúng một ToolError, không raw exception/body. `replayed` = true khi WRITE trả lại
+ * failure terminal đã lưu của lần đầu (operation REJECTED, xem common/idempotency.ts).
+ */
+export type ProviderFailure = { ok: false; error: ToolError; replayed?: boolean };
 export type ReadResult<T> = { ok: true; data: T } | ProviderFailure;
 export type WriteResult<T> = { ok: true; data: T; evidence: WriteEvidence; replayed: boolean } | ProviderFailure;
 
