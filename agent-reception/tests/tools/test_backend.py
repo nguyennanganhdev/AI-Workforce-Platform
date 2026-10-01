@@ -2,8 +2,8 @@ import asyncio
 
 import httpx
 import pytest
-
 from src.tools.backend import BackendToolConfig, BackendToolPort, ToolContractError
+from tool_fixtures import case, request
 
 
 def run(coro):
@@ -18,17 +18,10 @@ def config(**changes):
     )
 
 
-def request(operation, value):
-    return {
-        "operation": operation,
-        "input": value,
-        "context": {"tenantId": "tenant", "bindingId": "binding"},
-        "idempotencyKey": "stable-key",
-    }
-
-
 def test_update_incident_deduplicates_files_and_retries_same_request():
     captured = []
+    value, output = case("update_ticket_incident")
+    value["incident"]["file_ids"] = ["file-1", "file-1", "file-2"]
 
     def handler(req):
         captured.append((req.headers["Idempotency-Key"], req.content))
@@ -39,10 +32,7 @@ def test_update_incident_deduplicates_files_and_retries_same_request():
             request=req,
             json={
                 "kind": "success",
-                "value": {
-                    "ticket": {},
-                    "incident": {"file_ids": ["file-1", "file-2"]},
-                },
+                "value": output,
             },
         )
 
@@ -54,7 +44,7 @@ def test_update_incident_deduplicates_files_and_retries_same_request():
         port.invoke(
             request(
                 "update_ticket_incident",
-                {"incident": {"file_ids": ["file-1", "file-1", "file-2"]}},
+                value,
             )
         )
     )
@@ -65,11 +55,14 @@ def test_update_incident_deduplicates_files_and_retries_same_request():
 
 
 def test_append_requires_backend_file_link_confirmation():
+    value, output = case("append_ticket_information")
+    output["linked_file_ids"] = []
+
     def handler(req):
         return httpx.Response(
             200,
             request=req,
-            json={"kind": "success", "value": {"linked_file_ids": []}},
+            json={"kind": "success", "value": output},
         )
 
     client = httpx.AsyncClient(
@@ -77,7 +70,7 @@ def test_append_requires_backend_file_link_confirmation():
     )
     port = BackendToolPort(config(), client)
     with pytest.raises(ToolContractError, match="FILE_LINK_CONFIRMATION_MISSING"):
-        run(port.invoke(request("append_ticket_information", {"file_ids": ["file-1"]})))
+        run(port.invoke(request("append_ticket_information", value)))
     run(client.aclose())
 
 
@@ -92,7 +85,7 @@ def test_timeout_returns_unknown_without_changing_idempotency_key():
         transport=httpx.MockTransport(handler), base_url="https://backend.test"
     )
     port = BackendToolPort(config(max_attempts=2), client)
-    result = run(port.invoke(request("append_ticket_information", {"file_ids": []})))
+    result = run(port.invoke(request("append_ticket_information")))
     run(client.aclose())
     assert result == {
         "kind": "failure",

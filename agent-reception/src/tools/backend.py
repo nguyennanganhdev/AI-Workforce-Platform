@@ -1,29 +1,25 @@
 """Validated HTTP tool port for the OpenBot backend.
 
-The endpoint paths are configurable contracts. Team Chiến can bind them without
-changing the Reception graph. Every mutation carries the graph-generated
-idempotency key; retries always reuse the same request body and key.
+The endpoint paths are configurable. Inputs/results follow the PH16 consumer
+proposal; the legacy V1 graph needs an explicit owner-reviewed migration.
+Every mutation carries the caller's stable key; retries reuse the same body.
 """
 
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 
-from ..graph.workflow_contracts import OPERATIONS
-
-
-class ToolContractError(ValueError):
-    pass
+from .validation import ToolContractError, prepare_call, validate_result
 
 
 @dataclass(frozen=True)
 class BackendToolConfig:
     base_url: str
-    service_token: str
+    service_token: str = field(repr=False)
     operation_path: str = "/internal/reception/operations/execute"
     reconcile_path: str = "/internal/reception/operations/reconcile"
     timeout_seconds: float = 10.0
@@ -38,69 +34,9 @@ class BackendToolConfig:
             raise ToolContractError("BACKEND_RETRY_CONFIG_INVALID")
 
 
-def _required_text(value: Any, code: str) -> str:
-    if not isinstance(value, str) or not value.strip() or len(value) > 16384:
-        raise ToolContractError(code)
-    return value
-
-
-def _file_ids(value: Any) -> list[str]:
-    if not isinstance(value, list) or len(value) > 256:
-        raise ToolContractError("FILE_IDS_INVALID")
-    result: list[str] = []
-    for item in value:
-        item = _required_text(item, "FILE_ID_INVALID")
-        if item not in result:
-            result.append(item)
-    return result
-
-
-def _validate_file_contract(operation: str, value: dict[str, Any]) -> list[str]:
-    if operation == "update_ticket_incident":
-        incident = value.get("incident")
-        if not isinstance(incident, dict):
-            raise ToolContractError("INCIDENT_INPUT_INVALID")
-        return _file_ids(incident.get("file_ids"))
-    if operation in ("append_ticket_information", "respond_supervisor_interaction"):
-        return _file_ids(value.get("file_ids", []))
-    return []
-
-
-def _validate_result(operation: str, expected_files: list[str], result: Any) -> dict:
-    if not isinstance(result, dict) or result.get("kind") not in (
-        "success",
-        "accepted",
-        "failure",
-    ):
-        raise ToolContractError("BACKEND_TOOL_RESULT_INVALID")
-    kind = result["kind"]
-    if kind == "success":
-        value = result.get("value")
-        if not isinstance(value, dict):
-            raise ToolContractError("BACKEND_TOOL_VALUE_INVALID")
-        if expected_files:
-            if operation == "update_ticket_incident":
-                incident = value.get("incident")
-                confirmed = (
-                    incident.get("file_ids") if isinstance(incident, dict) else None
-                )
-            else:
-                confirmed = value.get("linked_file_ids")
-            if not set(expected_files).issubset(_file_ids(confirmed)):
-                raise ToolContractError("FILE_LINK_CONFIRMATION_MISSING")
-    elif kind == "accepted":
-        _required_text(result.get("operationId"), "BACKEND_OPERATION_ID_REQUIRED")
-    else:
-        _required_text(result.get("code"), "BACKEND_ERROR_CODE_REQUIRED")
-        if not isinstance(result.get("retryable"), bool) or result.get("outcome") not in (
-            "unknown",
-            "not_applied",
-        ):
-            raise ToolContractError("BACKEND_FAILURE_INVALID")
-    return result
-
-
 class BackendToolPort:
+    """Internal transport. Graph consumers should use ReceptionTools methods."""
+
     def __init__(
         self,
         config: BackendToolConfig,
@@ -119,44 +55,18 @@ class BackendToolPort:
             await self.client.aclose()
 
     async def invoke(self, request: dict[str, Any]) -> dict[str, Any]:
-        operation = request.get("operation")
-        if operation not in OPERATIONS:
-            raise ToolContractError("TOOL_OPERATION_NOT_ALLOWED")
-        value = request.get("input")
-        context = request.get("context")
-        if not isinstance(value, dict) or not isinstance(context, dict):
-            raise ToolContractError("TOOL_REQUEST_INVALID")
-        key = _required_text(request.get("idempotencyKey"), "IDEMPOTENCY_KEY_REQUIRED")
-        expected_files = _validate_file_contract(operation, value)
-        value = dict(value)
-        if operation == "update_ticket_incident":
-            value["incident"] = {**value["incident"], "file_ids": expected_files}
-        elif operation in ("append_ticket_information", "respond_supervisor_interaction"):
-            value["file_ids"] = expected_files
-        body = {
-            "operation": operation,
-            "input": value,
-            "context": context,
-            "idempotency_key": key,
-        }
-        result = await self._post(self.config.operation_path, body, key)
-        return _validate_result(operation, expected_files, result)
+        return await self._validated_post(self.config.operation_path, request)
 
     async def reconcile(self, request: dict[str, Any]) -> dict[str, Any]:
-        operation = request.get("operation")
-        value = request.get("input")
-        if operation not in OPERATIONS or not isinstance(value, dict):
-            raise ToolContractError("RECONCILE_REQUEST_INVALID")
-        key = _required_text(request.get("idempotencyKey"), "IDEMPOTENCY_KEY_REQUIRED")
-        expected_files = _validate_file_contract(operation, value)
-        body = {
-            "operation": operation,
-            "input": value,
-            "context": request.get("context"),
-            "idempotency_key": key,
-        }
-        result = await self._post(self.config.reconcile_path, body, key)
-        return _validate_result(operation, expected_files, result)
+        return await self._validated_post(self.config.reconcile_path, request)
+
+    async def _validated_post(
+        self, path: str, request: dict[str, Any]
+    ) -> dict[str, Any]:
+        call, value, body = prepare_call(request)
+        raw = await self._post(path, body, call.idempotencyKey)
+        result = validate_result(call.operation, value, call.context, raw)
+        return result.model_dump(mode="json", exclude_unset=True)
 
     async def _post(self, path: str, body: dict, key: str) -> dict:
         headers = {

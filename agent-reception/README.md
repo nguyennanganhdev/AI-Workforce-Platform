@@ -44,6 +44,15 @@ python -m pip install -r requirements.txt
 python -m pytest tests
 ```
 
+Để cài cả công cụ kiểm thử Python với phiên bản cố định:
+
+```sh
+python -m pip install -r requirements-test.txt
+python -B -m pytest -q -p no:cacheprovider tests
+python -m ruff check src/tools tests/tools
+python -m ruff format --check src/tools tests/tools
+```
+
 `src/tools/backend.py` gọi các endpoint nội bộ có thể cấu hình để thực thi/reconcile
 operation. Backend phải xác nhận `linked_file_ids` cho thao tác bổ sung ảnh. URL thật,
 service credential và API của Team Chiến không được hard-code trong graph.
@@ -101,3 +110,76 @@ Test này **chưa chứng minh** restart/multi-replica, auth, dedup event hay du
 giới hạn và task tiếp nhận. [Handoff PH01](../docs/teams/hoang/handoffs/phan-hoang/PH01.md)
 ghi bằng chứng kiểm thử. [Request C01/C06/P01 và review nội bộ](../docs/teams/hoang/requests/phan-hoang/PH01_DEPENDENCIES.md)
 ghi các dependency còn mở; file request chưa đồng nghĩa đã gửi hoặc được owner chấp thuận.
+
+## Reception tools — PH16
+
+`src/tools/facade.py` cung cấp `ReceptionTools` với 14 method có input/output riêng.
+`src/tools/contracts.py` định nghĩa model strict; `src/tools/validation.py` giữ catalog
+và kiểm tra từng operation, độc lập với HTTP. `BackendToolPort` dùng chung các bộ
+kiểm tra này cho `execute` và `reconcile`; cấu hình đường dẫn HTTP vẫn được giữ.
+
+Đây là **consumer proposal `ph16.draft.1`**, chưa phải OpenAPI đã được Team Chiến
+freeze. Supervisor output dùng schema **2.0** đã chốt trong tài liệu liên team.
+Graph Python hiện vẫn dùng V1 và generic `invoke`, chưa chuyển sang facade. Không
+inject adapter mới vào graph cũ rồi coi là tích hợp hoàn tất. Xem
+[request chuyển consumer/API](../docs/teams/hoang/requests/phan-hoang/PH16_TYPED_TOOLS_INTEGRATION.md).
+
+| Method | Input | Giá trị khi `kind=success` |
+|---|---|---|
+| `create_ticket_draft` | `DraftInput` | `Ticket` |
+| `get_verified_resident_context` | `ProfileInput` | `ProfileOutput` |
+| `update_ticket_incident` | `IncidentInput` | `IncidentOutput` |
+| `submit_ticket_assessment` | `AssessmentInput` | `AssessmentOutput` |
+| `resolve_management_destination` | `TicketRef` | `RouteOutput` |
+| `handoff_ticket` | `HandoffInput` | `HandoffOutput` |
+| `register_supervisor_wait` | `WaitInput` | `WaitOutput` |
+| `get_supervisor_event` | `EventInput` | `SupervisorEvent` V2 |
+| `append_ticket_information` | `AppendInput` | `AppendOutput` |
+| `respond_supervisor_interaction` | `InteractionInput` | `InteractionOutput` |
+| `request_ticket_cancellation` | `CancellationInput` | `CancellationOutput` |
+| `get_ticket_status` | `TicketRef` | `StatusOutput` |
+| `process_self_help` | `SelfHelpInput` | `SelfHelpOutput` |
+| `escalate_emergency` | `EmergencyInput` | `EmergencyOutput` |
+
+Mỗi method nhận `context: VerifiedContext` và `idempotency_key` qua keyword-only
+arguments. Context phải đến từ resolver đã xác thực, không lấy từ model/browser;
+kiểm tra hình dạng context không thay thế kiểm quyền tại backend. Chỉ gửi năm
+trường context trong kế hoạch: tenant/principal/binding/run/request; không truyền
+checkpoint, permissions hoặc signal vào HTTP.
+
+Các method trả `Success[Output] | Accepted | Failure`. Consumer phải phân nhánh
+theo `kind`: `accepted` chưa có kết quả; `failure.outcome=unknown` giữ pending
+operation để reconcile bằng cùng input/context/key, không tạo mutation mới.
+`ToolContractError` sau khi đã gửi HTTP cũng không chứng minh mutation chưa xảy ra.
+
+```python
+from src.tools import ReceptionTools
+from src.tools.contracts import DraftInput, VerifiedContext
+
+# tools được runtime inject; context đã resolve; stable_key đã lưu trong pending.
+async def create_draft(
+    tools: ReceptionTools, context: VerifiedContext, channel_id: str, stable_key: str
+):
+    return await tools.create_ticket_draft(
+        DraftInput(channel_id=channel_id, handoff_reason="needs_staff"),
+        context=context,
+        idempotency_key=stable_key,
+    )
+```
+
+Catalog có `visibility="system/internal"`, `LLM_TOOLS` rỗng; không đăng ký facade,
+`invoke` hay `reconcile` qua `model.bind_tools`. Input từ chối field ngoài schema,
+coercion kiểu dữ liệu và trường quyền/định tuyến tự khai. Backend phải lấy hồ sơ,
+triage và đích quản lý đã xác minh để dựng bản tin bàn giao V2. Schema message V2
+đầy đủ giữa backend và Supervisor không bị thay bằng input operation tối giản.
+
+`file_ids` được loại trùng, không nhận URL/bytes. Success của update/append và
+interaction accepted phải có xác nhận liên kết đủ file. Handoff cần `persisted`
+và `enqueued` là boolean `true`, đúng ticket/generation/version/correlation.
+Event V2 được kiểm tenant/binding/ticket/correlation; completion cần kết quả
+`work_completed`, chưa có nghĩa ticket đã đóng. Backend vẫn chịu trách nhiệm
+phân quyền, chống stale mutation và tính hợp lệ của bước đang chờ.
+
+[Handoff PH16](../docs/teams/hoang/handoffs/phan-hoang/PH16.md) ghi kết quả kiểm thử
+và phần consumer/backend còn chờ. Fixtures chỉ nằm trong tests; không có backend
+giả hoặc model giả trong production path.
