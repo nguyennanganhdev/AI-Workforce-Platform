@@ -20,8 +20,7 @@ type ResolvedIdentity = {
   source_run_id: string;
   trace_id: string;
   agent_version: string;
-  capabilities: string[];
-  allowed_building_ids: string[];
+  grants: { capability: string; scope_ids: string[] }[];  // cập nhật 01/10/2026, xem Q02-backend-ports.md
 };
 ```
 

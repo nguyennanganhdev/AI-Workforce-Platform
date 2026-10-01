@@ -53,8 +53,10 @@ type ResolvedIdentity = {
   source_run_id: string;        // UUID, agent_runs.id
   trace_id: string;             // 1..128 ký tự
   agent_version: string;        // 1..128 ký tự
-  capabilities: string[];       // ví dụ "interruption:read"
-  allowed_building_ids: string[]; // UUID các tòa principal được phép
+  grants: {                     // cập nhật 01/10/2026, xem Q02-backend-ports.md
+    capability: string;         // ví dụ "interruption:read"
+    scope_ids: string[];        // UUID trong access_scopes: tòa, zone, site hoặc cả tenant
+  }[];
 };
 ```
 
@@ -62,8 +64,7 @@ Yêu cầu:
 
 - `botId`/`actorId` đã được route xác minh bằng token agent và run assertion; resolver suy ra tenant, run và quyền từ đó, không từ body.
 - Trả `null` khi không xác định được danh tính. Host sẽ từ chối `FORBIDDEN` và vẫn ghi audit.
-- `allowed_building_ids` là danh sách tòa tính từ `scoped_user_roles` + `access_scopes` còn hiệu lực. Tool coi `building_id` trong input chỉ là điều kiện lọc và đối chiếu với danh sách này.
-- `capabilities` lấy từ tool grant của agent release đang chạy.
+- `grants`: mỗi capability lấy từ tool grant của agent release đang chạy, kèm các `access_scopes` mà principal có quyền (tính từ `scoped_user_roles` còn hiệu lực). Host hỏi `BuildingAccessPort` xem scope của **đúng capability tool cần** có bao phủ `building_id` trong input không; quyền của capability này không cho mượn sang capability khác.
 
 Trong test, vai trò này do `server/tests/technical-tools/support/harness.ts` đóng thế. Đây là chỗ giả lập duy nhất trong đường chạy.
 

@@ -1,5 +1,7 @@
 # Bàn giao backend để tích hợp 7 technical tools đầu
 
+> **Cập nhật 01/10/2026 (khi gộp vào nhánh `technical_tool_Dat`):** bộ khung mô tả trong file này (`createSevenTechnicalTools`, `runner.ts`, `schemas.ts`, các mock port) đã được gộp vào bộ khung 14 tool đang dùng. Các ý chính — `BuildingAccessPort`, phiên DB theo tenant, quyền cấp theo scope — đã được đưa vào code. Danh sách port hiện hành: [Q02-backend-ports.md](Q02-backend-ports.md). Nội dung gốc bên dưới giữ nguyên để tra lại; code gốc ở commit `17e5826`.
+
 Module Quang export `createSevenTechnicalTools` tại `server/src/technical-tools/tools.ts`. Host cần cung cấp execution context đã xác thực, không lấy tenant, actor, role hoặc quyền từ business input của agent.
 
 ## Port cần Chiến nối
