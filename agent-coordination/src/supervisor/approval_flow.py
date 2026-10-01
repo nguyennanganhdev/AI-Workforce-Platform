@@ -1,5 +1,6 @@
 """Pure transitions. Call only after current backend verification, on a copy."""
 from datetime import datetime
+from typing import Dict
 from .models import PlanVersion, ProposedPlan, SupervisorState, require
 
 
@@ -8,6 +9,8 @@ def invalidate(state: SupervisorState, reason: str) -> None:
     state.revision_reason = reason
     state.needs_clarification = not bool(reason.strip())
     state.approvals = {}
+    state.pending_resident = state.pending_ticket_version = None
+    state.question_draft = None
     state.completion = None
     state.publication_draft = None
     state.task_drafts = []
@@ -32,11 +35,12 @@ def execution_gate(state: SupervisorState) -> bool:
     return bool(plan and all(
         (a := state.approvals.get(stage)) and a.decision == "approve"
         and a.plan_id == plan.plan_id and a.plan_version == plan.version
-        for stage in ("management_plan", "resident_plan")
+        for stage in (("management_plan", "resident_plan") if state.resident_approval_required
+                      else ("management_plan",))
     ))
 
 
-def approval_response(state: SupervisorState, p: dict, now: datetime) -> None:
+def approval_response(state: SupervisorState, p: Dict, now: datetime) -> None:
     a = state.approvals.get(p["stage"])
     require(a is not None and state.plan is not None, "unexpected_approval")
     require((a.approval_id, a.plan_id, a.plan_version) ==
@@ -59,7 +63,11 @@ def approval_response(state: SupervisorState, p: dict, now: datetime) -> None:
     # Management approval schedules resident request on the next resume.
 
 
-def apply_message(state: SupervisorState, kind: str, p: dict, now: datetime) -> None:
+def apply_message(state: SupervisorState, kind: str, p: Dict, now: datetime) -> None:
+    if state.reception is not None:
+        require(kind not in ("ticket.submitted", "resident.message", "completion.responded") and
+                not (kind == "approval.responded" and p.get("stage") == "resident_plan"),
+                "v1_reception_message_denied")
     if kind == "ticket.submitted":
         require(not state.facts, "ticket_already_started")
         state.facts.append(dict(p))

@@ -37,7 +37,7 @@ def validate_decision(decision, state: SupervisorState, view: AuthorityView) -> 
         require(state.room is not None, "room_required")
         require(state.phase in ("planning", "waiting_result_validation"), "plan_phase_denied")
         require(set(decision.plan.result_refs) <= result_references(state), "unproven_result")
-        attachments = {f for fact in state.facts for f in fact.get("attachment_ids", [])}
+        attachments = {f for fact in state.facts for f in fact.get("file_ids", fact.get("attachment_ids", []))}
         require(set(decision.plan.attachment_ids) <= attachments, "untrusted_attachment")
     elif kind == "summarize":
         require(state.phase == "waiting_result_validation" and state.result is not None, "result_required")

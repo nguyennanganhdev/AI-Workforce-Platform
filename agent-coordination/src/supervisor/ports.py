@@ -1,7 +1,8 @@
 """Required production ports. No in-memory/default permissive implementations."""
-from typing import Optional, Protocol
+from typing import Any, Dict, Optional, Protocol
+from groupchat.reception import ReceptionMessage, SupervisorMessage
 from groupchat.models import Context
-from .models import Action, AuthorityView, Reconciliation, SupervisorState
+from .models import Action, AuthorityView, Reconciliation, SupervisorState, VerifiedReception
 
 
 class StateStore(Protocol):
@@ -53,9 +54,28 @@ class Authority(Protocol):
 
 
 class ModelClient(Protocol):
-    async def generate(self, prompt: dict) -> str:
+    async def generate(self, prompt: Dict) -> str:
         """Return structured decision JSON using injected provider/configuration.
         No tools, credentials, endpoints or approval authority in model output.
         Must honor cancellation/deadline. No implicit retry/fallback.
+        """
+        ...
+
+
+class ReceptionPort(Protocol):
+    async def verify(self, message: 'ReceptionMessage', authentication: object) -> 'VerifiedReception':
+        """Backend authenticates source_message_id, tenant, current generation,
+        exact displayed ticket version and pending step, and deduplicates BOTH
+        message identity/content and the decision for that step. Return only an
+        accepted snapshot; never upgrade a stale reply to the latest version.
+        Resolve routing/run IDs explicitly; do not rename V1 envelope fields.
+        """
+        ...
+
+    async def send(self, message: 'SupervisorMessage', context: Context) -> 'Dict[str, Any]':
+        """Backend atomically validates version/rights and stores the exact pending
+        question/plan before delivery. Return message_id and accepted/completed
+        status. Retries use the unchanged wire and message_id. Authority's existing
+        authorize_action/reconcile must support channel='reception'.
         """
         ...
