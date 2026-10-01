@@ -53,3 +53,9 @@ venv/
 
 # Local schema verification output and downloaded development tooling.
 .codex-artifacts/
+
+# `cli.ts --dump-chunks` output: chunks of the resident knowledge base, regenerated from the data repo.
+server/chunks.json
+
+.codegraph/
+.copilotkit/

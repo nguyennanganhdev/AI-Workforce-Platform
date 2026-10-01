@@ -1,0 +1,33 @@
+{
+  "request": {
+    "building_id": "11111111-1111-4111-8111-111111111111",
+    "asset_id": "AC-A1-1205-01",
+    "workorder_id": "41111111-1111-4111-8111-111111111111",
+    "verified_result_id": "ER-9001",
+    "outcome": "Đã vệ sinh đường thoát nước ngưng và kiểm tra không còn rò.",
+    "source_refs": ["result:ER-9001", "evidence:EV-22"],
+    "occurred_at": "2026-09-30T08:50:00Z",
+    "idempotency_key": "mh-WO-4111-v1"
+  },
+  "response": {
+    "status": "OK",
+    "trace_id": "tr-a2-007",
+    "server_time": "2026-09-30T09:06:00Z",
+    "data": {
+      "maintenance_event_id": "ME-103",
+      "created_at": "2026-09-30T09:06:00Z",
+      "revision": 1,
+      "supersedes_event_id": null
+    },
+    "errors": [],
+    "missing_fields": [],
+    "provenance": [
+      {
+        "source_system": "maintenance_adapter",
+        "source_record_id": "ME-103",
+        "source_version": 1,
+        "retrieved_at": "2026-09-30T09:06:00Z"
+      }
+    ]
+  }
+}

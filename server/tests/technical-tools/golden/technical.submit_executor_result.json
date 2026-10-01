@@ -1,0 +1,44 @@
+{
+  "request": {
+    "building_id": "11111111-1111-4111-8111-111111111111",
+    "workorder_id": "41111111-1111-4111-8111-111111111111",
+    "assignment_id": "71111111-1111-4111-8111-111111111111",
+    "checklist": [
+      {
+        "item_code": "DRAIN_CLEAR",
+        "status": "passed",
+        "note": "Dòng thoát ổn định"
+      }
+    ],
+    "measurement_ids": ["MS-701"],
+    "parts": [],
+    "evidence_ids": ["EV-21", "EV-22"],
+    "diagnosis": "Tắc nhẹ đường nước ngưng",
+    "repair_notes": "Đã vệ sinh và thử tải",
+    "started_at": "2026-09-30T08:20:00Z",
+    "completed_at": "2026-09-30T08:55:00Z",
+    "idempotency_key": "executor-WO-4111-v1"
+  },
+  "response": {
+    "status": "OK",
+    "trace_id": "tr-a2-009",
+    "server_time": "2026-09-30T09:08:00Z",
+    "data": {
+      "result_id": "ER-9001",
+      "validation_status": "ACCEPTED",
+      "created_at": "2026-09-30T09:08:00Z",
+      "missing_evidence": [],
+      "conflicts": []
+    },
+    "errors": [],
+    "missing_fields": [],
+    "provenance": [
+      {
+        "source_system": "executor_result_adapter",
+        "source_record_id": "ER-9001",
+        "source_version": 1,
+        "retrieved_at": "2026-09-30T09:08:00Z"
+      }
+    ]
+  }
+}
