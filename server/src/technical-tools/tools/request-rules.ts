@@ -3,6 +3,7 @@ import type {
   OpenIsolation,
   ScopeRecord,
 } from "../domain/approval-request";
+import type { WorkOrderContext } from "../domain/work-order";
 import { normalizeText } from "./text";
 
 /** The kinds of area a utility can be cut across, narrowest first. */
@@ -104,4 +105,23 @@ export function restrictionUntilProblem(until: Date, now: Date): string | null {
     return "requested_until is more than 7 days away. Ask for a shorter restriction and renew it if it is still needed.";
   }
   return null;
+}
+
+/**
+ * Whether the user works on the incident: holds an accepted assignment on one of its work orders.
+ * Asking to enter a home or to bring in a contractor is for the people on the job, or management.
+ */
+export function worksOnIncident(
+  userId: string | undefined,
+  workOrders: readonly WorkOrderContext[],
+): boolean {
+  return (
+    userId !== undefined &&
+    workOrders.some((workOrder) =>
+      workOrder.assignments.some(
+        (assignment) =>
+          assignment.status === "accepted" && assignment.staffUserId === userId,
+      ),
+    )
+  );
 }

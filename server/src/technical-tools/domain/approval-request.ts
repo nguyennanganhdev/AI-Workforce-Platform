@@ -49,13 +49,15 @@ export type WaterIsolation = {
 export const APPROVAL_REQUEST_KINDS = [
   "power_isolation",
   "area_restriction",
+  "apartment_entry",
+  "vendor_dispatch",
 ] as const;
 
 export type ApprovalRequestKind = (typeof APPROVAL_REQUEST_KINDS)[number];
 
 /**
  * A request held by the shared approval adapter, for what the database has no approval kind for
- * yet: isolating power, and restricting an area.
+ * yet: isolating power, restricting an area, entering an apartment, dispatching a vendor.
  *
  * Always created `pending`. Nothing a technical tool can reach decides it; that is a person's
  * action, in a service the tools do not have.

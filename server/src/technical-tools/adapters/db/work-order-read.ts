@@ -44,7 +44,7 @@ export function createDbWorkOrderReadPort(
       { accessMode: "read only" },
     );
 
-  return {
+  const port: WorkOrderReadPort = {
     getWorkOrder: ({ tenantId, buildingId, workOrderId }) =>
       inTenant(tenantId, async (tx) => {
         // The building belongs to the ticket, so a work order is placed through the ticket it serves.
@@ -101,7 +101,13 @@ export function createDbWorkOrderReadPort(
     getTicket: ({ tenantId, buildingId, ticketId }) =>
       inTenant(tenantId, async (tx) => {
         const [ticket] = await tx
-          .select({ ticketId: tickets.id, buildingId: tickets.buildingId })
+          .select({
+            ticketId: tickets.id,
+            buildingId: tickets.buildingId,
+            unitId: tickets.unitId,
+            isEmergency: tickets.isEmergency,
+            priority: tickets.priority,
+          })
           .from(tickets)
           .where(
             and(
@@ -112,9 +118,29 @@ export function createDbWorkOrderReadPort(
           )
           .limit(1);
         return ticket?.buildingId
-          ? { ticketId: ticket.ticketId, buildingId: ticket.buildingId }
+          ? { ...ticket, buildingId: ticket.buildingId }
           : null;
       }),
+
+    listWorkOrders: async ({ tenantId, buildingId, ticketId }) => {
+      const ids = await inTenant(tenantId, (tx) =>
+        tx
+          .select({ id: workOrders.id })
+          .from(workOrders)
+          .where(
+            and(
+              eq(workOrders.tenantId, tenantId),
+              eq(workOrders.ticketId, ticketId),
+            ),
+          ),
+      );
+      const found = await Promise.all(
+        ids.map(({ id }) =>
+          port.getWorkOrder({ tenantId, buildingId, workOrderId: id }),
+        ),
+      );
+      return found.filter((workOrder) => workOrder !== null);
+    },
 
     findEvidence: ({ tenantId, ids }) => {
       // An id that is not a UUID cannot name a row, and asking the database would be a type error.
@@ -176,4 +202,5 @@ export function createDbWorkOrderReadPort(
       });
     },
   };
+  return port;
 }

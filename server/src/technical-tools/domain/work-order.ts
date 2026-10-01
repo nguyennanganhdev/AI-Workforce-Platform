@@ -42,3 +42,13 @@ export type EvidenceLookup =
       fileStatus: string;
     }
   | { kind: "file"; id: string; ticketId: string | null; fileStatus: string };
+
+/** A ticket as the request tools need it: where it is, and how urgent the record says it is. */
+export type TicketRecord = {
+  ticketId: string;
+  buildingId: string;
+  unitId: string | null;
+  /** Set by triage, never by a technical tool. */
+  isEmergency: boolean;
+  priority: string | null;
+};

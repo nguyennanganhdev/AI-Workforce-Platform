@@ -14,6 +14,7 @@ export {
   createDbScopeReadPort,
 } from "./adapters/db/isolation-writer";
 export { createDbSopReadPort } from "./adapters/db/sop-read";
+export { createDbUnitReadPort } from "./adapters/db/unit-read";
 export { createDbWorkOrderReadPort } from "./adapters/db/work-order-read";
 export { createInMemoryApprovalRequestStore } from "./adapters/poc/approval-request-store";
 export { createInMemoryAssetReadPort } from "./adapters/poc/asset-read";
@@ -24,6 +25,7 @@ export { createInMemoryMaintenanceStore } from "./adapters/poc/maintenance-store
 export { createInMemoryMeasurementStore } from "./adapters/poc/measurement-store";
 export { createInMemorySensorReadPort } from "./adapters/poc/sensor-read";
 export { createInMemorySopProfilePort } from "./adapters/poc/sop-profiles";
+export { createInMemoryVendorCatalog } from "./adapters/poc/vendor-catalog";
 export {
   canonicalToolName,
   describeTechnicalTools,
@@ -69,6 +71,16 @@ export type {
   SopProfile,
 } from "./domain/sop";
 export type {
+  ContactAttempt,
+  ResidentRecord,
+  UnitRecord,
+} from "./domain/unit";
+export type {
+  QualificationStatus,
+  Vendor,
+  VendorCandidate,
+} from "./domain/vendor";
+export type {
   Check,
   CheckStatus,
   SopBasis,
@@ -78,6 +90,7 @@ export type {
 export type {
   AssignmentRecord,
   EvidenceLookup,
+  TicketRecord,
   WorkOrderContext,
 } from "./domain/work-order";
 export { createTechnicalToolCaller } from "./entry";
@@ -90,6 +103,10 @@ export type { AssetQuery, AssetReadPort } from "./ports/asset-read";
 export type { AuditSink, ToolAuditEntry } from "./ports/audit-sink";
 export { type Clock, systemClock } from "./ports/clock";
 export type { ContextResolver, ToolCaller } from "./ports/context-resolver";
+export type {
+  UnitReadPort,
+  VendorCatalogPort,
+} from "./ports/entry-vendor-ports";
 export type { ExecutorResultStore } from "./ports/executor-result-store";
 export type {
   IdempotencyScope,

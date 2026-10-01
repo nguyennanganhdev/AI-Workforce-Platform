@@ -3,6 +3,10 @@ import type { ToolContext } from "./contracts/context";
 import type { Provenance, ToolError, ToolStatus } from "./contracts/envelope";
 import type { AssetReadPort } from "./ports/asset-read";
 import type { Clock } from "./ports/clock";
+import type {
+  UnitReadPort,
+  VendorCatalogPort,
+} from "./ports/entry-vendor-ports";
 import type { ExecutorResultStore } from "./ports/executor-result-store";
 import type { InterruptionReadPort } from "./ports/interruption-read";
 import type { MaintenanceReadPort } from "./ports/maintenance-read";
@@ -35,6 +39,8 @@ export type ToolDependencies = {
   isolations: IsolationWriter;
   /** The shared approval adapter, for requests the database has no kind for. */
   approvalRequests: ApprovalRequestStore;
+  units: UnitReadPort;
+  vendors: VendorCatalogPort;
   clock: Clock;
 };
 

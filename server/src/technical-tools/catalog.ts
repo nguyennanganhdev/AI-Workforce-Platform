@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { TechnicalTool } from "./tool";
+import { apartmentEntryRequestTool } from "./tools/apartment-entry-request";
 import { appendMaintenanceHistoryTool } from "./tools/append-maintenance-history";
 import { areaRestrictionRequestTool } from "./tools/area-restriction-request";
 import { assetReadTool } from "./tools/asset-read";
@@ -11,9 +12,10 @@ import { sopKbRetrieveTool } from "./tools/sop-kb-retrieve";
 import { submitExecutorResultTool } from "./tools/submit-executor-result";
 import { utilityIsolationRequestTool } from "./tools/utility-isolation-request";
 import { utilityScheduleReadTool } from "./tools/utility-schedule-read";
+import { vendorDispatchRequestTool } from "./tools/vendor-dispatch-request";
 import { verifyResolutionTool } from "./tools/verify-resolution";
 
-/** Every technical tool this deployment implements. Twelve of the fourteen in tools.md so far. */
+/** Every technical tool this deployment implements: all fourteen in tools.md. */
 export const technicalTools: readonly TechnicalTool[] = [
   getActiveOutageTool,
   utilityScheduleReadTool,
@@ -27,6 +29,8 @@ export const technicalTools: readonly TechnicalTool[] = [
   appendMaintenanceHistoryTool,
   utilityIsolationRequestTool,
   areaRestrictionRequestTool,
+  apartmentEntryRequestTool,
+  vendorDispatchRequestTool,
 ];
 
 /**
