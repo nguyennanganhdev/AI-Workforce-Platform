@@ -100,30 +100,27 @@ class EventTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(b.context["binding_id"], "binding-2")
         self.assertEqual(b.context["initiated_by_user_id"], "resident-2")
 
-    async def test_mention_routes_to_dev2_with_original_reply_and_id(self):
+    async def test_legacy_mention_routes_only_after_event_verification(self):
         value = event("resident.message")
-        value["payload"]["mentioned_agent_id"] = "agent-version-reference"
+        value["payload"]["mentioned_agent_id"] = "agent-1"
         await self.receive(value)
-        item = self.inbox.items[("tenant-a", "event-1")]
-        self.assertEqual(item.target, "groupchat")
-        self.assertEqual(item.event["payload"], value["payload"])
-        # DEV-2 still must check membership; the adapter does not invite anyone.
+        self.assertEqual(self.inbox.items[("tenant-a", "event-1")].target, "groupchat")
+        self.assertEqual(len(self.verifier.calls), 1)
 
     async def test_unknown_event_or_bad_payload_never_calls_verifier(self):
         value = event()
         value["event_type"] = "model.approved"
         with self.assertRaisesRegex(AdapterError, "event_not_supported"):
             await self.receive(value)
-        value = event("completion.responded")
-        value["payload"]["decision"] = "approve"
+        value = event("approval.responded")
+        value["payload"]["decision"] = "yes"
         with self.assertRaisesRegex(AdapterError, "validation_error"):
             await self.receive(value)
         self.assertEqual(self.verifier.calls, [])
 
-    async def test_rejection_and_not_satisfied_are_forwarded_without_reinterpretation(self):
+    async def test_management_decisions_are_forwarded_without_reinterpretation(self):
         for kind, decision in (("approval.responded", "reject"),
-                               ("approval.responded", "request_changes"),
-                               ("completion.responded", "not_satisfied")):
+                               ("approval.responded", "request_changes")):
             value = event(kind, event_id=decision)
             value["payload"]["decision"] = decision
             await self.receive(value)
@@ -141,7 +138,7 @@ class EventTests(unittest.IsolatedAsyncioTestCase):
                 return result
 
         ingress = EventIngress(verifier=self.verifier, inbox=LostAck(), validator=self.validator,
-                               event_types={"backend.ticket.submitted": "ticket.submitted"})
+                               event_types={"backend.approval.responded": "approval.responded"})
         with self.assertRaises(AdapterError) as caught:
             await ingress.receive(event(), authentication="test-backend-signature")
         self.assertTrue(caught.exception.outcome_unknown)
@@ -153,7 +150,7 @@ class EventTests(unittest.IsolatedAsyncioTestCase):
         # Tests port reuse only, not process restart durability of a real store.
         await self.receive(event())
         replacement = EventIngress(verifier=self.verifier, inbox=self.inbox, validator=self.validator,
-                                   event_types={"backend.ticket.submitted": "ticket.submitted"})
+                                   event_types={"backend.approval.responded": "approval.responded"})
         self.assertFalse((await replacement.receive(
             event(), authentication="test-backend-signature"
         )).queued)
@@ -164,11 +161,11 @@ class EventTests(unittest.IsolatedAsyncioTestCase):
 
         class MutatingVerifier:
             async def resolve(self, value, authentication):
-                value["payload"]["report"] = "mutated"
+                value["payload"]["comment"] = "mutated"
                 return await base_verifier.resolve(value, authentication)
 
         ingress = EventIngress(verifier=MutatingVerifier(), inbox=self.inbox, validator=self.validator,
-                               event_types={"backend.ticket.submitted": "ticket.submitted"})
+                               event_types={"backend.approval.responded": "approval.responded"})
         await ingress.receive(original, authentication="test-backend-signature")
         self.assertEqual(self.inbox.items[("tenant-a", "event-1")].event, original)
 

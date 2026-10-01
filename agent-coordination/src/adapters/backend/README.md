@@ -1,38 +1,18 @@
-# Bàn giao DEV-3 — adapter Coordination
+# Bàn giao DEV-3 — Reception schema V2
 
-Triển khai theo `docs/teams/dong/PHAN_CONG_NOI_BO_COORDINATION.md` ngày 30/09/2026.
-Chỉ chứa code dưới `adapters/backend`, `adapters/reception`, `adapters/tools` và
-test tương ứng. Python 3.11+, chỉ dùng standard library. Không đổi dependency,
-entrypoint, schema chuẩn, backend API, UI, AgentScope hoặc persistence của owner khác.
+Theo `docs/teams/dong/PHAN_CONG_NOI_BO_COORDINATION.md` ngày 01/10/2026.
+Chỉ sửa `src/adapters/{backend,reception,tools}/**` và test tương ứng.
+Reception ↔ Supervisor mới dùng `schema_version: "2.0"`, `message_type`, `message`.
+Giữ đường backend V1 riêng cho bridge DEV-1 và checkpoint cũ; không tự chuyển
+envelope, checkpoint hoặc quyết định V1 sang V2.
 
-## Phần đã triển khai
-
-- `client.py`: Core API client async, endpoint mapping tường minh, credential provider,
-  envelope/response guards, deadline, giới hạn response, lỗi có mã không lộ body/secret.
-- `http_transport.py`: HTTP JSON thật bằng urllib, từ chối redirect, không retry ngầm.
-- `approval_client.py`: xin/trả lời duyệt quản lý/cư dân; xin/trả lời xác nhận kết quả.
-- `../reception/reception_gateway.py`: ticket, hỏi đáp, mention ID, bản phương án,
-  cập nhật và xác nhận. Không suy diễn câu “đồng ý” thành approval.
-- `../tools/tool_client.py`: offer/respond assignment, work report, alias tool được
-  cấu hình sẵn. Model không được truyền endpoint hoặc tự đăng ký tool.
-- `events.py`: xác minh event qua port, resolve binding, đưa vào durable inbox một lần.
-  Event có mention đến `groupchat` (DEV-2), các event khác đến `supervisor` (DEV-1).
-  Đây là **pending delivery**, chưa phải đã thực hiện hành động hoặc đóng ticket.
-
-## Cách ghép (DEV-5)
-
-Đặt `agent-coordination/src` vào Python import path. Namespace package `adapters`
-không cần sửa `src/adapters/__init__.py` chung.
+## Interface cho DEV-1/DEV-5
 
 ```python
 from adapters.backend.client import BackendClient
 from adapters.backend.http_transport import UrllibTransport
-from adapters.backend.approval_client import ApprovalClient
-from adapters.backend.events import EventIngress
 from adapters.reception.reception_gateway import ReceptionGateway
-from adapters.tools.tool_client import ToolClient
 
-# Các dependency dưới đây do composition root cung cấp; không có default giả.
 backend = BackendClient(
     base_url=core_origin,
     routes=operation_paths,
@@ -40,146 +20,157 @@ backend = BackendClient(
     headers=service_header_provider,
     validator=canonical_validator,
 )
-reception = ReceptionGateway(backend)
-approvals = ApprovalClient(backend)
-tools = ToolClient(backend)
-ingress = EventIngress(
-    verifier=backend_event_verifier,
-    inbox=durable_room_inbox,
-    validator=canonical_validator,
-    event_types=accepted_backend_event_types,
-)
+gateway = ReceptionGateway(backend, authentication=reception_authentication_provider)
+# Inject gateway vào SupervisorService(..., reception=gateway).
+verified = await gateway.verify(reception_message, transport_authentication)
+receipt = await gateway.send(supervisor_message, verified.context)
 ```
 
-Không dùng class trong `tests/` làm dependency production. Không tạo env mới tự đọc:
-DEV-5 lấy cấu hình từ `config.py` của mình và truyền vào. HTTPS là mặc định;
-`allow_http=True` chỉ bật có chủ đích cho local hoặc mạng nội bộ đã được bảo vệ.
+- `verify` nhận `ReceptionMessage` hoặc mapping V2 đầy đủ, trả đúng
+  `supervisor.models.VerifiedReception(context, message, supervisor_run_id)`.
+- `send` nhận `SupervisorMessage` hoặc mapping V2 và `groupchat.models.Context`
+  hoặc mapping, trả `{message_id, status: accepted | completed}` cho action journal.
+  `status` ở đây là ACK API nội bộ, không phải field trong output gửi Reception.
+- Guard dùng lại model V2 của DEV-1/DEV-2, kiểm strict type và JSON hữu hạn.
+  `facts[].value = null` được giữ nguyên. Bộ canonical validator vẫn bắt buộc;
+  adapter không tạo/sửa JSON Schema của DEV-5 hoặc Team Chiến.
+- Gateway không xây ID, số điện thoại, địa chỉ hoặc mức ưu tiên từ model.
+  Backend phải đối chiếu **toàn bộ snapshot** với dữ liệu đã xác minh; gateway chỉ
+  trả snapshot khi backend xác nhận. Backend trả snapshot đổi nội dung/phiên bản
+  thay cho bản gửi vào sẽ bị từ chối.
 
-### Operation mapping đề xuất
+V2 dùng `verify`, `send`, `resolve`. Wrapper chọn enum V2 có hậu tố `_v2`:
+`receive_ticket_v2`, `receive_message_v2`, `receive_plan_response_v2`,
+`receive_cancel_v2`, `ask_question_v2`, `send_plan_v2`, `send_update_v2`,
+`send_completion_v2`. Input cần `authentication=...`, output cần `context=...`.
+V2 không có bước trả lời xác nhận hoàn thành trong Supervisor.
 
-Đây là tên operation **nội bộ adapter**, không phải API path đã tồn tại. Team Chiến
-cung cấp path và semantics tương ứng; DEV-5 điền `routes`. Tất cả hiện dùng POST JSON.
+Bridge V1 giữ tên `receive_ticket`, `receive_message`, `ask_question`, `send_update`,
+`send_plan`, `receive_plan_response`, `send_completion`, `receive_completion_response`.
+Chúng nhận envelope backend `contract_version: "1"` với context đầy đủ, trả
+`BackendResult` và từ chối message V2. Composition chọn đường theo giao thức và
+checkpoint; không fallback V2 sang V1.
 
-| Operation | Request type | Method |
+## API kết nối backend
+
+Các tên dưới đây là operation **nội bộ adapter**, chưa phải endpoint đã triển khai.
+Team Chiến cấp API path thật; DEV-5 cấu hình `routes`. Thiếu route sẽ fail closed.
+Đây là shape cần chốt cho verification/delivery API, không thêm field vào hai
+schema Reception và không xác nhận backend hiện có đã hỗ trợ shape này.
+
+| Operation | POST body | Response thành công |
 |---|---|---|
-| `reception.ticket` | `ticket.submitted` | `ReceptionGateway.receive_ticket` |
-| `reception.message` | `resident.message` | `ReceptionGateway.receive_message` |
-| `reception.question` | `resident.question` | `ReceptionGateway.ask_question` |
-| `reception.update` | `resident.update` | `ReceptionGateway.send_update` |
-| `approval.request` | `approval.requested` | `ApprovalClient.request_plan` |
-| `approval.respond` | `approval.responded` | `ApprovalClient.respond_plan` |
-| `completion.request` | `completion.requested` | `ApprovalClient.request_completion` |
-| `completion.respond` | `completion.responded` | `ApprovalClient.respond_completion` |
-| `assignment.offer` | `assignment.offered` | `ToolClient.offer_assignment` |
-| `assignment.respond` | `assignment.responded` | `ToolClient.respond_assignment` |
-| `work.complete` | `work.completed` | `ToolClient.report_work` |
+| `reception.verify` | Input V2 phẳng, giữ nguyên | `{message_id, status, data: {message, context, supervisor_run_id, room_command?}}` |
+| `reception.send` | `{message: output_V2, context: verified_routing_context}` | `{message_id, status, data: {}}` |
 
-Reception còn có `send_plan`, `receive_plan_response` chỉ cho stage `resident_plan`,
-và `send_completion`, `receive_completion_response` gọi cùng ApprovalClient.
-`assignment.offer` yêu cầu backend giao việc; Coordination không tự chọn nhân viên.
-Ingress chỉ được đăng ký với tên event **đã được backend chấp nhận**, không trỏ
-`approval.responded` chưa kiểm quyền trực tiếp vào phòng.
+Backend chuyển **chỉ `message` bên trong body delivery** tới Reception; `context`
+là sidecar phục vụ API nội bộ. Các mã định tuyến được backend resolve độc lập;
+không gán `request_id`, `trace_id`, `binding_id` cũ thành mã V2.
+`supervisor_run_id` phải do backend resolve, không tự coi là `context.run_id`.
 
-### Request/response và schema
+Header V2 gồm `Idempotency-Key = message_id`, `X-Message-Id`, `X-Correlation-Id`.
+Dedup backend luôn có tenant, không chỉ dựa vào header. Không sinh ID khi gửi lại.
+HTTP deadline, giới hạn response, chặn redirect, lỗi không lộ body và không retry
+ngầm dùng chung Core API client. Mất ACK/timeout trả `outcome_unknown=True` để
+DEV-1/DEV-4 reconcile; không coi thiếu ACK là chưa có tác dụng.
 
-Mỗi method nhận một mapping request đầy đủ theo mục 3: `contract_version="1"`,
-`type`, `request_id`, `trace_id`, `idempotency_key`, `context`, `payload`.
-Caller giữ cùng idempotency key khi gửi lại cùng thao tác. Không tự sinh key mới mỗi retry.
-Không chấp nhận `context` như bằng chứng quyền: backend phải xác minh context bằng
-service identity/delegated credential và tra quyền hiện hành. `HeaderProvider.headers()`
-phải cung cấp credential đúng caller/request nếu cần delegation; không chia sẻ mutable
-"current user" giữa các request đồng thời. Tuyệt đối không để service token toàn quyền
-biến `principal_id` tự khai thành người phê duyệt.
+`ReceptionAuthentication.headers(authentication)` là port bắt buộc cho input:
+xác minh nguồn transport và tạo header delegation/source proof backend hiểu được.
+Không lấy identity từ payload; không dùng biến mutable "current user" chung.
+Header này không được ghi đè service credential, content type hoặc các mã đối chiếu.
+Tên/định dạng proof header do Team Chiến và DEV-5 cấu hình, adapter không tự đoán.
+Không có default xác thực giả hoặc permissive.
 
-`ContractValidator.validate(kind, value)` là bắt buộc; kind gồm `request`, `response`,
-`event`. DEV-5 dùng JSON Schema chuẩn của Team Chiến, raise khi dữ liệu sai. Local guards
-trong `messages.py` chỉ kiểm field adapter sử dụng, **không thay canonical schema**.
-Không tạo file JSON Schema chuẩn hoặc sửa `src/contracts/**` trong thay đổi này.
+`ContractValidator.validate(kind, value)` cần hỗ trợ:
 
-Các lựa chọn tạm thời cần đối chiếu schema khi ghép:
+| Kind | Dữ liệu kiểm tra |
+|---|---|
+| `reception_input` | Một schema input V2 chuẩn |
+| `reception_output` | Một schema output V2 chuẩn |
+| `reception_delivery` | Wrapper routing nội bộ backend |
+| `reception_response` | ACK/error API với `message_id` |
+| `reception_verified` | Snapshot/context/run và sidecar đã xác minh |
+| `request`, `response`, `event` | Envelope API/sự kiện backend hiện hành |
 
-- `ticket.submitted.payload.report` là text, `facts` là object, attachment IDs là list.
-- Mỗi request ở đây đã có ticket/binding/run; generation >= 0, version phương án/kết quả >= 1.
-- `cost`/`final_cost` có thể là `null` để biểu thị chưa biết, không chuyển thành 0.
-- `assignment.responded` từ chối dùng `reason`; `work.completed` có thể có `actual_cost`.
-- `resident.update.status` là string do backend xác nhận; không tự định nghĩa ticket enum.
-- JSON response thành công có `{request_id, status: "accepted" | "completed", data: object}`.
-  Error có `{request_id, status: "error", error: {code, retryable, ...}}`.
-  Hai status trên là operation receipt, **không phải trạng thái ticket/approval**.
-- Event envelope theo mục 9.3 kế hoạch chung, `schema_version="1"`; event payload
-  dùng field nghiệp vụ của loại thông điệp được cấu hình, không bọc lại nguyên request.
+Error response dùng `{message_id, status: "error", error: {code, retryable}}`.
+HTTP 403/409 hoặc business error không làm gateway trả một quyết định hợp lệ.
+Backend phải lưu kết quả verification để retry trả lại cùng accepted resolution;
+dedup không được làm mất input khi Coordination chưa kịp checkpoint.
 
-Nếu schema chuẩn khác, sửa local guards/mapping trong scope DEV-3 cùng fixture, không
-nới validator để bỏ qua kiểm tra. Error API đã chuẩn hóa không trả raw error details.
+## Điều kiện backend phải thực thi nguyên tử
 
-### Gửi thông tin ra lễ tân
+1. Xác minh nguồn cư dân qua `source_message_id`, tenant, ticket, generation,
+   recipient và phiên bản **đã hiển thị**. Không nâng câu trả lời cũ lên bản mới.
+2. Chặn quyết định sai bước; `information_provided` không tự duyệt phương án.
+   Backend lưu nguyên câu hỏi/phương án và cấp ticket version mới khi thay đổi;
+   tối đa một yêu cầu cư dân đang chờ trong mỗi ticket/generation.
+3. Dedup bền vững `(tenant_id, message_id)` + fingerprint; cùng ID khác nội dung
+   báo conflict. Quyết định cùng bước gửi bằng ID mới không tạo thêm công việc.
+4. Kiểm lại quyền/version khi áp dụng output; persist yêu cầu đang chờ và outbox
+   cùng transaction trước ACK. Không gửi model output trực tiếp ra UI.
+5. `plan_approval_requested` cần quản lý duyệt đúng phiên bản; miễn cư dân duyệt
+   chỉ do backend quyết định. Giữ nguyên thời gian, chi phí và điều kiện đã lưu.
+6. `completed` cần toàn bộ việc xong và QC/quyền công bố, có `result.outcome =
+   work_completed`. `cancelled` cần backend xác nhận hủy. Đây không phải đóng ticket.
+   `failed.message` là nội dung cho cư dân; `error.message` là chi tiết kỹ thuật,
+   backend/Reception không tự đưa nguyên lỗi đó ra màn hình.
 
-DEV-3 gửi lệnh đến **backend delivery operation**; backend phải kiểm người nhận,
-nghiệm thu, quyền xem ảnh, trạng thái, nội dung và phiên bản trước khi lưu/outbox tới
-Reception/UI. Backend xác nhận management approval của đúng plan/version trước khi
-gửi resident approval. Không có đường gửi trực tiếp model output đến UI trong adapter.
-Phương án, steps, cost, điều kiện và file IDs được giữ nguyên, không có LLM rewrite.
+Adapter không tự giữ cache dedup/policy trong RAM; các điều kiện trên cần API và
+storage backend thật. Test dùng fake để kiểm đường gọi và xử lý khi backend từ chối.
 
-Đây là yêu cầu API tích hợp cần Team Chiến/Hoàng hiện thực hoặc map sang API có cùng
-semantics; adapter chưa chứng minh các endpoint/delivery outbox đó đã có. Backend cần
-đảm bảo request và dispatch/outbox cùng transaction/idempotency; timeout sau commit
-có thể trả `outcome_unknown=True`, caller tra kết quả hoặc retry đúng key theo chính sách.
+## Backend nghiệp vụ, tiếp tục xử lý và @agent
 
-## EventIngress và inbox (DEV-4/DEV-5)
+`ApprovalClient` giữ duyệt quản lý và các operation V1 duyệt cư dân/xác nhận kết
+quả mà bridge DEV-1 còn dùng. `ToolClient` giữ giao việc nhân viên, nhận/từ chối,
+ảnh trước/sau và báo hoàn thành. `EventIngress` nhận catalog backend hiện hành:
+`ticket.submitted`, `resident.message`, `approval.responded`, `assignment.offered`,
+`assignment.responded`, `work.completed`, `completion.responded`. Tất cả vẫn qua
+verifier và durable inbox port DEV-4; mention V1 chỉ định tuyến sau xác minh.
+Supervisor vẫn từ chối event Reception V1 áp dụng vào trạng thái V2.
 
-`EventVerifier.resolve(event, authentication) -> ResolvedEvent(context)` là port bắt buộc.
-Authentication là dữ liệu transport do service root cung cấp, không lấy từ event payload.
-Verifier xác thực nguồn backend, audience/expiry/replay policy, quyết định đã commit,
-sender/recipient, aggregate link, reply correlation, generation và các version hiện hành.
-Resolver không được chỉ copy context. API từ chối/hết hạn/stale phải raise `AdapterError`.
+Các route V1 cần cấu hình riêng: `reception.ticket`, `reception.message`,
+`reception.question`, `reception.update`, `approval.request`, `approval.respond`,
+`completion.request`, `completion.respond`. Giữ nguyên request/trace/idempotency,
+context và payload gốc. Thiếu route hoặc bị backend từ chối không có đường gửi UI
+trực tiếp. `resident_plan` V1 yêu cầu phụ thuộc duyệt quản lý và channel `reception`.
 
-`EventIngress.receive(event, authentication=...)` kiểm schema, gọi verifier rồi tạo
-`PendingDelivery`: tenant/event ID, fingerprint, target, message type, verified context,
-nguyên event. `aggregate_id` có thể là ticket/approval/assignment/result theo catalog;
-verifier chịu trách nhiệm liên kết nó với ticket. Event tên gì được quyết định bởi
-`event_types: {backend_event_name: documented_payload_type}`. Không có catalog mặc định giả.
+Checkpoint V1 có thể tiếp tục qua bridge V1; khôi phục operation câu hỏi và yêu cầu
+xác nhận kết quả tránh mất đường dispatch cũ. Đây không phải migration sang V2;
+DEV-4/DEV-5 vẫn phải quyết định rollout và migration có kiểm soát. Với ticket V2,
+backend quản lý xác nhận kết quả, chưa hài lòng, đóng/mở ticket và bàn giao input
+V2 đã xác minh khi cần xử lý thêm. Không tự hiểu phản hồi V1 là quyết định V2.
 
-`DurableInbox.enqueue_once(delivery) -> bool` phải:
+`gateway.resolve(message, authentication)` trả `ReceptionResolution(verified,
+room_command?)`. Sidecar `room_command` do backend cấp là Command DEV-2 hiện có,
+payload `mention_agent`, giữ nguyên request/trace/idempotency/room/version/agent ID.
+Adapter kiểm command đúng context và instruction; không parse `@tên` để cấp quyền,
+không thêm `mentioned_agent_id` vào input V2. Chỉ information input có nguồn cư dân
+hợp lệ được mang command này. `verify` báo `mention_requires_groupchat` nếu có
+sidecar, tránh bỏ mất định tuyến khi caller chỉ đưa input vào Supervisor.
+DEV-5 dùng `resolve` cho nhánh mention, đưa command vào durable worker của DEV-4
+rồi DEV-2 kiểm lại membership, context hiện hành và quyền trước khi chạy.
 
-1. Trong một transaction, lưu dedup `(tenant_id,event_id)` + fingerprint và pending item.
-2. Trả True nếu mới; False nếu lặp giống hệt; cùng ID khác content raise conflict.
-3. Có unique constraint/concurrency protection và generation/version fence tại commit.
-4. Bảo đảm ordering theo aggregate; event quá cũ bị xử lý theo policy backend.
-5. Sống qua restart. Worker gọi DEV-1/DEV-2 bằng event ID làm idempotency key,
-   kiểm lại quyền/version khi consume và ghi kết quả/ack theo cơ chế recovery DEV-4.
+## Kiểm thử và phần còn cần ghép
 
-Adapter không đánh dấu processed rồi gọi callback trực tiếp: crash giữa hai bước sẽ
-làm mất công việc. Enqueue thành công chỉ cho phép ACK ingress; nó không khẳng định
-downstream đã chạy. Không có production in-memory inbox. Test chỉ dùng fake để kiểm
-interface; restart/fencing thật cần integration với persistence/backend.
-
-## Kiểm thử
-
-Chạy từ repo root bằng PowerShell, không cần cài package hoặc model key:
+Python 3.11+, Pydantic V2 đã dùng trong DEV-1/DEV-2; test ghép dùng pytest fixture
+harness hiện có. Không sửa dependency/lockfile chung; DEV-5 quản lý các dependency.
 
 ```powershell
-$env:PYTHONPATH = (Resolve-Path agent-coordination/src).Path
-python -B -m unittest discover -s agent-coordination/tests/adapters -v
+python -B agent-coordination/tests/adapters/reception/run_tests.py
 ```
 
-Test module dùng fake backend/verifier/validator/inbox để kiểm adapter; transport có
-test HTTP loopback thật trên port tạm, không gọi API bên ngoài. Bao phủ schema guard,
-quyết định sai loại, bảo toàn nội dung/giá/ảnh/mention, từ chối backend, context mismatch,
-response correlation, timeout không retry, event lặp/concurrent/conflict, hai phòng,
-lost ACK, từ chối redirect và giới hạn response.
+Runner riêng tránh test package che source namespace. Test bao phủ V2 hai chiều,
+source/snapshot/time/enum, null fact, quyền, bản cũ/sai bước, một pending request,
+dedup quyết định/bản tin, nhiều tenant, reply không tự nâng version, mention sidecar,
+hủy, completed/QC, backend yêu cầu xử lý tiếp, timeout/lost ACK và transport HTTP
+loopback. Test ghép dùng Supervisor và RoomService thật, fake model/backend/storage.
+Harness DEV-1 được import với catalog gốc, không sửa catalog hoặc file owner.
+Test V1 kiểm tra mọi operation, giữ payload, tách hai phiên bản và dispatch action
+checkpoint đã serialize qua bridge DEV-1. Bộ test Supervisor kiểm tra cả V1/V2
+và khôi phục journal. Storage giả không chứng minh restart process hoặc migration
+DB thực tế.
 
-DEV-5 nối lệnh này vào runner/CI trong file mình sở hữu. Chưa kiểm chứng schema chuẩn,
-API staging, JSON Schema cross-language, UI/AG-UI, AgentScope hoặc phục hồi process thật.
-Không cần viết lại AG-UI trong scope DEV-3 mới; adapter framework thuộc DEV-2.
-
-## Dependency còn lại để nghiệm thu toàn luồng
-
-| Owner | Dependency |
-|---|---|
-| Team Chiến/Hoàng | Schema chuẩn, API paths, delegated auth, authorized delivery/notifications |
-| DEV-5 | Canonical validator, header provider, event verifier, cấu hình/routes, mount service, CI |
-| DEV-4 | Durable inbox/dedup/fencing và worker recovery theo port trên |
-| DEV-1 | Consumer `target=supervisor`, quyết định chờ/sửa/tiếp tục theo event đã xác minh |
-| DEV-2 | Consumer `target=groupchat`, kiểm membership/agent version rồi xử lý mention |
-
-Không có migration, env mới, thay dependency hoặc sửa file owner khác trong bàn giao DEV-3.
+Để chạy production còn cần: paths/semantics và delegated auth từ Team Chiến;
+schema chuẩn/canonical validator, mount và Authority authorize/reconcile kênh
+`reception` từ DEV-5; durable inbox/checkpoint/fencing từ DEV-4; rollout với Reception
+team Hoàng. Test chưa chứng minh API staging, UI, DB transaction hoặc restart thật.

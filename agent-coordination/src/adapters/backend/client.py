@@ -6,7 +6,7 @@ import asyncio
 import json
 import math
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol
+from typing import Any, Literal, Mapping, Protocol
 from urllib.parse import urlsplit
 
 from .errors import AdapterError, ValidationError
@@ -37,6 +37,13 @@ class BackendResult:
     status: str
     data: JSON
     # 'completed' means this API operation completed, not ticket closure.
+
+
+@dataclass(frozen=True)
+class ReceptionReceipt:
+    message_id: str
+    status: str
+    data: JSON
 
 
 ERROR_CODES = frozenset({
@@ -77,28 +84,83 @@ class BackendClient:
         self._timeout = timeout
         self._max_response = max_response_bytes
 
+    @property
+    def validator(self) -> ContractValidator:
+        return self._validator
+
     async def call(self, operation: str, request: Mapping[str, Any]) -> BackendResult:
         if operation not in self._routes:
             raise AdapterError("operation_not_configured")
         wire = snapshot(request)
         validate_request(wire)
         validate_with(self._validator, "request", wire)
+        data = await self._exchange(operation, wire, {
+            "Idempotency-Key": wire["idempotency_key"],
+            "X-Request-Id": wire["request_id"], "X-Trace-Id": wire["trace_id"],
+        })
+        data = self._receipt(data, "request_id", wire["request_id"], "response")
+        return BackendResult(data["request_id"], data["status"], data["data"])
+
+    async def call_reception(
+        self, operation: str, request: Mapping[str, Any], *,
+        direction: Literal["input", "output"],
+        authentication_headers: Mapping[str, str] | None = None,
+    ) -> ReceptionReceipt:
+        """V2 only. Output uses an internal routing sidecar, never a V1 envelope.
+
+        Input is the flat Reception message. Output is {message, context}; only
+        message is delivered to Reception. Backend atomically enforces current
+        rights, pending version, semantic decision dedup and delivery outbox.
+        """
+        from .reception_messages import validate_input, validate_output, validate_scope
+
+        if operation not in self._routes:
+            raise AdapterError("operation_not_configured")
+        wire = snapshot(request)
+        if direction == "input":
+            validate_input(wire)
+            validate_with(self._validator, "reception_input", wire)
+            if not authentication_headers:
+                raise AdapterError("reception_authentication_required")
+            message = wire
+        elif direction == "output":
+            if set(wire) != {"message", "context"}:
+                raise ValidationError()
+            message = wire["message"]
+            validate_output(message)
+            validate_scope(message, wire["context"])
+            validate_with(self._validator, "reception_output", message)
+            validate_with(self._validator, "reception_delivery", wire)
+        else:
+            raise ValidationError()
+        data = await self._exchange(operation, wire, {
+            "Idempotency-Key": message["message_id"],
+            "X-Message-Id": message["message_id"],
+            "X-Correlation-Id": message["correlation_id"],
+        }, authentication_headers=authentication_headers)
+        data = self._receipt(data, "message_id", message["message_id"], "reception_response")
+        return ReceptionReceipt(data["message_id"], data["status"], data["data"])
+
+    async def _exchange(
+        self, operation: str, wire: JSON, identity_headers: Mapping[str, str], *,
+        authentication_headers: Mapping[str, str] | None = None,
+    ) -> JSON:
         try:
-            headers = dict(await self._headers.headers())
+            headers = dict(await asyncio.wait_for(self._headers.headers(), self._timeout))
         except Exception:
             raise AdapterError("credentials_unavailable") from None
         if not headers:
             raise AdapterError("credentials_unavailable")
-        reserved = {"content-type", "accept", "idempotency-key", "x-request-id", "x-trace-id"}
-        for name, value in headers.items():
-            if (not isinstance(name, str) or not isinstance(value, str)
-                    or not name or not value or name.lower() in reserved
-                    or any(c in name + value for c in "\r\n")):
-                raise AdapterError("invalid_credentials_headers")
+        reserved = {"content-type", "accept", "idempotency-key", "x-request-id", "x-trace-id",
+                    "x-message-id", "x-correlation-id"}
+        self._check_headers(headers, reserved)
+        if authentication_headers is not None:
+            delegated = dict(authentication_headers)
+            self._check_headers(delegated, reserved | {key.lower() for key in headers})
+            headers.update(delegated)
         headers.update({
             "Content-Type": "application/json", "Accept": "application/json",
-            "Idempotency-Key": wire["idempotency_key"],
-            "X-Request-Id": wire["request_id"], "X-Trace-Id": wire["trace_id"],
+            **identity_headers,
         })
         if any("\r" in v or "\n" in v for v in headers.values()):
             raise ValidationError()
@@ -121,9 +183,24 @@ class BackendClient:
                                outcome_unknown=response.status >= 500)
         try:
             data = json.loads(response.body)
-            data = snapshot(data)
-            validate_with(self._validator, "response", data)
-            if data.get("request_id") != wire["request_id"]:
+            return snapshot(data)
+        except (ValueError, TypeError, ValidationError):
+            raise AdapterError("invalid_backend_response", outcome_unknown=True) from None
+
+    @staticmethod
+    def _check_headers(headers: Mapping[str, str], reserved: set[str]) -> None:
+        seen: set[str] = set()
+        for name, value in headers.items():
+            if (not isinstance(name, str) or not isinstance(value, str)
+                    or not name or not value or name.lower() in reserved
+                    or name.lower() in seen or any(c in name + value for c in "\r\n")):
+                raise AdapterError("invalid_credentials_headers")
+            seen.add(name.lower())
+
+    def _receipt(self, data: JSON, identity: str, expected: str, schema: str) -> JSON:
+        try:
+            validate_with(self._validator, schema, data)
+            if data.get(identity) != expected:
                 raise ValidationError()
             if data.get("status") == "error":
                 error = data.get("error")
@@ -136,4 +213,4 @@ class BackendClient:
                 raise ValidationError()
         except (ValueError, TypeError, ValidationError):
             raise AdapterError("invalid_backend_response", outcome_unknown=True) from None
-        return BackendResult(data["request_id"], data["status"], data["data"])
+        return data

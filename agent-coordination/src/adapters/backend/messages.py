@@ -1,4 +1,4 @@
-"""Adapter-local guards for the September 30 design, not the shared JSON Schema.
+"""Adapter-local guards for backend commands/events, not Reception schema V2.
 
 The composition root must also inject the canonical schema validator owned by
 DEV-5/Team Chien. These guards protect fields used to route requests. Identity,
@@ -20,7 +20,12 @@ JSON = dict[str, Any]
 
 class ContractValidator(Protocol):
     def validate(self, kind: str, value: Mapping[str, Any]) -> None:
-        """Validate request/response/event against pinned canonical schemas; raise on failure."""
+        """Validate pinned schemas; raise on failure.
+
+        Backend: request/response/event. Reception: reception_input/output,
+        reception_delivery/response/verified. Each wire direction has one schema;
+        the latter three describe backend routing/receipts, not Reception fields.
+        """
         ...
 
 
