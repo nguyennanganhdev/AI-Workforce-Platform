@@ -32,6 +32,7 @@ const runtimeGrants = (role: string) => `
     document_acl TO ${role};
   GRANT SELECT ON tickets, work_orders, work_assignments, staff_profiles, evidence_items, files
     TO ${role};
+  GRANT SELECT ON units, unit_residents TO ${role};
   GRANT SELECT, INSERT ON work_approvals TO ${role};
   GRANT INSERT ON service_interruptions, interruption_scopes TO ${role};
 `;

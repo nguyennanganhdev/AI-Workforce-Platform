@@ -11,6 +11,7 @@ import {
   createInMemoryMeasurementStore,
   createInMemorySensorReadPort,
   createInMemorySopProfilePort,
+  createInMemoryVendorCatalog,
   createTechnicalToolCaller,
   type HostOptions,
   type IdempotencyStore,
@@ -52,6 +53,8 @@ export const CAPABILITIES = [
   "maintenance:append",
   "utility_isolation:request",
   "area_restriction:request",
+  "apartment_entry:request",
+  "vendor_dispatch:request",
 ] as const;
 
 export const fixtureContextResolver: ContextResolver = async (caller) => {
@@ -97,6 +100,15 @@ function unconfigured(name: string): never {
       throw new Error(`This test did not configure the ${name} port.`);
     },
     getTicket: () => {
+      throw new Error(`This test did not configure the ${name} port.`);
+    },
+    listWorkOrders: () => {
+      throw new Error(`This test did not configure the ${name} port.`);
+    },
+    findUnit: () => {
+      throw new Error(`This test did not configure the ${name} port.`);
+    },
+    residents: () => {
       throw new Error(`This test did not configure the ${name} port.`);
     },
     placement: () => {
@@ -156,6 +168,8 @@ export function technicalToolHarness(
       isolations: ports.isolations ?? unconfigured("isolations"),
       approvalRequests:
         ports.approvalRequests ?? createInMemoryApprovalRequestStore(),
+      units: ports.units ?? unconfigured("units"),
+      vendors: ports.vendors ?? createInMemoryVendorCatalog(),
       executorResults:
         ports.executorResults ?? createInMemoryExecutorResultStore(),
       clock: ports.clock ?? fixedClock,

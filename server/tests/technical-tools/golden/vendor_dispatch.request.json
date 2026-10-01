@@ -1,0 +1,40 @@
+{
+  "request": {
+    "building_id": "11111111-1111-4111-8111-111111111111",
+    "incident_id": "31111111-1111-4111-8111-111111111111",
+    "workorder_id": "41111111-1111-4111-8111-111111111111",
+    "service": "Kiểm định vết nứt kết cấu",
+    "reason": "Cần kỹ sư kết cấu có chứng chỉ đánh giá tại hiện trường",
+    "urgency": "soon",
+    "required_specialty_code": "STRUCTURAL_ENGINEER",
+    "evidence_ids": ["EV-61"],
+    "idempotency_key": "vendor-INC-3111-v1"
+  },
+  "response": {
+    "status": "PENDING_APPROVAL",
+    "trace_id": "tr-a2-014",
+    "server_time": "2026-09-30T09:13:00Z",
+    "data": {
+      "request_id": "VD-1001",
+      "approval_status": "PENDING_APPROVAL",
+      "eligible_vendors": [
+        {
+          "vendor_id": "VEN-21",
+          "display_name": "Đơn vị kiểm định A",
+          "qualification_status": "eligible"
+        }
+      ],
+      "created_at": "2026-09-30T09:13:00Z"
+    },
+    "errors": [],
+    "missing_fields": [],
+    "provenance": [
+      {
+        "source_system": "vendor_adapter",
+        "source_record_id": "VD-1001",
+        "source_version": 1,
+        "retrieved_at": "2026-09-30T09:13:00Z"
+      }
+    ]
+  }
+}

@@ -1,3 +1,4 @@
+import { UNIT } from "./units";
 import { BUILDING, id, USER } from "./world";
 
 export const MANAGEMENT_UNIT = id("74000000", 1);
@@ -29,6 +30,10 @@ export type WorkFixture = {
   assignmentStatus: "accepted" | "released";
   acceptedAt: Date;
   endedAt: Date | null;
+  /** The apartment the incident was reported from, where there is one. */
+  unitId: string | null;
+  /** `tickets.is_emergency`, which the database only allows with priority `critical`. */
+  isEmergency: boolean;
   /** What this job is in the set to prove. */
   proves: string;
 };
@@ -63,6 +68,8 @@ export const WORK: Record<string, WorkFixture> = {
     assignmentStatus: "accepted",
     acceptedAt: new Date("2026-09-30T07:30:00Z"),
     endedAt: null,
+    unitId: UNIT.a1_1205,
+    isEmergency: false,
     proves: "the happy path: a job with a photo before and after the work",
   }),
   leak: work(2, {
@@ -73,6 +80,8 @@ export const WORK: Record<string, WorkFixture> = {
     assignmentStatus: "accepted",
     acceptedAt: new Date("2026-09-30T07:40:00Z"),
     endedAt: null,
+    unitId: UNIT.a1_1205,
+    isEmergency: false,
     proves: "a job with a photo from before the work and none from after",
   }),
   breaker: work(3, {
@@ -83,6 +92,8 @@ export const WORK: Record<string, WorkFixture> = {
     assignmentStatus: "accepted",
     acceptedAt: new Date("2026-09-30T08:00:00Z"),
     endedAt: null,
+    unitId: UNIT.a1_1205,
+    isEmergency: true,
     proves:
       "a job another technician holds, with one photo still uploading when the result is sent",
   }),
@@ -94,6 +105,8 @@ export const WORK: Record<string, WorkFixture> = {
     assignmentStatus: "released",
     acceptedAt: new Date("2026-09-20T02:00:00Z"),
     endedAt: new Date("2026-09-21T02:00:00Z"),
+    unitId: UNIT.a1_1205,
+    isEmergency: false,
     proves: "a technician released from a job may no longer record against it",
   }),
   b1: work(5, {
@@ -104,6 +117,8 @@ export const WORK: Record<string, WorkFixture> = {
     assignmentStatus: "accepted",
     acceptedAt: new Date("2026-09-30T07:00:00Z"),
     endedAt: null,
+    unitId: null,
+    isEmergency: false,
     proves: "a job in a building the agent was not asked about",
   }),
 };

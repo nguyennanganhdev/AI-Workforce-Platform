@@ -18,7 +18,7 @@ import {
 const CATALOGUE = describeTechnicalTools();
 
 describe("what the catalogue says about every tool", () => {
-  test("names the twelve built so far: every lookup, record and verification tool, and two requests", () => {
+  test("names all fourteen tools in tools.md", () => {
     expect(CATALOGUE.map((tool) => tool.name)).toEqual([
       "technical.get_active_outage",
       "utility_schedule.read",
@@ -32,6 +32,8 @@ describe("what the catalogue says about every tool", () => {
       "maintenance_history.append",
       "utility_isolation.request",
       "area_restriction.request",
+      "apartment_entry.request",
+      "vendor_dispatch.request",
     ]);
   });
 
@@ -48,6 +50,8 @@ describe("what the catalogue says about every tool", () => {
       "maintenance_history.append",
       "utility_isolation.request",
       "area_restriction.request",
+      "apartment_entry.request",
+      "vendor_dispatch.request",
     ]);
     for (const tool of writes) {
       expect((tool.input_schema as { required?: string[] }).required).toContain(
@@ -131,6 +135,8 @@ describe("what the catalogue says about every tool", () => {
     for (const name of [
       "utility_isolation.request",
       "area_restriction.request",
+      "apartment_entry.request",
+      "vendor_dispatch.request",
     ]) {
       expect(
         CATALOGUE.find((tool) => tool.name === name)?.description,

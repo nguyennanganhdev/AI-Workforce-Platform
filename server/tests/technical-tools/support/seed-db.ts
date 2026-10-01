@@ -25,6 +25,8 @@ import {
   tenantMemberships,
   tenants,
   tickets,
+  unitResidents,
+  units,
   users,
   workApprovals,
   workAssignments,
@@ -34,6 +36,7 @@ import {
 import type { TechnicalToolsDatabase } from "../../../src/technical-tools";
 import { INTERRUPTIONS } from "../fixtures/interruptions";
 import { KNOWLEDGE_BASES, KNOWLEDGE_CATEGORIES, SOPS } from "../fixtures/sop";
+import { RESIDENT_USER, RESIDENTS, UNITS } from "../fixtures/units";
 import {
   EVIDENCE,
   MANAGEMENT_UNIT,
@@ -399,6 +402,40 @@ async function seedWork(database: TechnicalToolsDatabase) {
     });
   }
 
+  // Apartments come before the tickets that are reported from them.
+  for (const unit of UNITS) {
+    await database.insert(units).values({
+      id: unit.id,
+      tenantId: unit.tenantId,
+      siteId: unit.siteId,
+      zoneId: unit.zoneId,
+      buildingId: unit.buildingId,
+      code: unit.code,
+      unitKind: "apartment",
+      floor: unit.floor,
+      status: "active",
+    });
+  }
+  for (const userId of Object.values(RESIDENT_USER)) {
+    await database.insert(users).values({
+      id: userId,
+      email: `${userId}@vinhomes.fixture.test`,
+      name: "Cư dân",
+    });
+  }
+  for (const resident of RESIDENTS) {
+    await database.insert(unitResidents).values({
+      id: resident.id,
+      tenantId,
+      unitId: resident.unitId,
+      userId: resident.userId,
+      relation: resident.relation,
+      verificationStatus: resident.verificationStatus,
+      validFrom: resident.validFrom,
+      validTo: resident.validTo,
+    });
+  }
+
   for (const job of Object.values(WORK)) {
     await database.insert(channels).values({
       id: job.channelId,
@@ -422,6 +459,9 @@ async function seedWork(database: TechnicalToolsDatabase) {
       addressSnapshot: {},
       domainId: TENANTS[0].domainId,
       requestKind: "incident",
+      unitId: job.unitId,
+      isEmergency: job.isEmergency,
+      priority: job.isEmergency ? "critical" : "normal",
     });
     await database.insert(workOrders).values({
       id: job.workOrderId,
