@@ -1,7 +1,7 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { unitResidents, units } from "../../../db/schema";
 import type { UnitReadPort } from "../../ports/entry-vendor-ports";
-import type { TechnicalToolsDatabase } from "./interruption-read";
+import { asTenantSession, type TenantSessionSource } from "./tenant-session";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -12,28 +12,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * to the agent: nothing of a resident leaves this port except through that decision.
  */
 export function createDbUnitReadPort(
-  database: TechnicalToolsDatabase,
+  source: TenantSessionSource,
 ): UnitReadPort {
-  const inTenant = <T>(
-    tenantId: string,
-    work: (
-      tx: Parameters<Parameters<typeof database.transaction>[0]>[0],
-    ) => Promise<T>,
-  ) =>
-    database.transaction(
-      async (tx) => {
-        await tx.execute(
-          sql`select set_config('app.tenant_id', ${tenantId}, true)`,
-        );
-        return work(tx);
-      },
-      { accessMode: "read only" },
-    );
-
+  const session = asTenantSession(source);
   return {
     findUnit: ({ tenantId, unitId }) => {
       if (!UUID.test(unitId)) return Promise.resolve(null);
-      return inTenant(tenantId, async (tx) => {
+      return session.read(tenantId, async (tx) => {
         const [unit] = await tx
           .select({
             unitId: units.id,
@@ -49,7 +34,7 @@ export function createDbUnitReadPort(
 
     residents: ({ tenantId, unitId }) => {
       if (!UUID.test(unitId)) return Promise.resolve([]);
-      return inTenant(tenantId, (tx) =>
+      return session.read(tenantId, (tx) =>
         tx
           .select({
             userId: unitResidents.userId,

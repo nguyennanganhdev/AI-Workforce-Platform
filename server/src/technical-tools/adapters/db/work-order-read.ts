@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   evidenceItems,
   files,
@@ -9,7 +9,7 @@ import {
 } from "../../../db/schema";
 import type { EvidenceLookup } from "../../domain/work-order";
 import type { WorkOrderReadPort } from "../../ports/work-order-read";
-import type { TechnicalToolsDatabase } from "./interruption-read";
+import { asTenantSession, type TenantSessionSource } from "./tenant-session";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -26,27 +26,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * changing a work order's state is not the technical tools' job at all.
  */
 export function createDbWorkOrderReadPort(
-  database: TechnicalToolsDatabase,
+  source: TenantSessionSource,
 ): WorkOrderReadPort {
-  const inTenant = <T>(
-    tenantId: string,
-    work: (
-      tx: Parameters<Parameters<typeof database.transaction>[0]>[0],
-    ) => Promise<T>,
-  ) =>
-    database.transaction(
-      async (tx) => {
-        await tx.execute(
-          sql`select set_config('app.tenant_id', ${tenantId}, true)`,
-        );
-        return work(tx);
-      },
-      { accessMode: "read only" },
-    );
-
+  const session = asTenantSession(source);
   const port: WorkOrderReadPort = {
     getWorkOrder: ({ tenantId, buildingId, workOrderId }) =>
-      inTenant(tenantId, async (tx) => {
+      session.read(tenantId, async (tx) => {
         // The building belongs to the ticket, so a work order is placed through the ticket it serves.
         const [workOrder] = await tx
           .select({
@@ -99,7 +84,7 @@ export function createDbWorkOrderReadPort(
       }),
 
     getTicket: ({ tenantId, buildingId, ticketId }) =>
-      inTenant(tenantId, async (tx) => {
+      session.read(tenantId, async (tx) => {
         const [ticket] = await tx
           .select({
             ticketId: tickets.id,
@@ -123,7 +108,7 @@ export function createDbWorkOrderReadPort(
       }),
 
     listWorkOrders: async ({ tenantId, buildingId, ticketId }) => {
-      const ids = await inTenant(tenantId, (tx) =>
+      const ids = await session.read(tenantId, (tx) =>
         tx
           .select({ id: workOrders.id })
           .from(workOrders)
@@ -147,7 +132,7 @@ export function createDbWorkOrderReadPort(
       const candidates = [...new Set(ids)].filter((id) => UUID.test(id));
       if (candidates.length === 0) return Promise.resolve([]);
 
-      return inTenant(tenantId, async (tx) => {
+      return session.read(tenantId, async (tx) => {
         const evidence = await tx
           .select({
             id: evidenceItems.id,

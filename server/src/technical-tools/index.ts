@@ -14,6 +14,13 @@ export {
   createDbScopeReadPort,
 } from "./adapters/db/isolation-writer";
 export { createDbSopReadPort } from "./adapters/db/sop-read";
+export {
+  asTenantSession,
+  type TenantSession,
+  type TenantSessionSource,
+  type TenantTransaction,
+  tenantSessionFrom,
+} from "./adapters/db/tenant-session";
 export { createDbUnitReadPort } from "./adapters/db/unit-read";
 export { createDbWorkOrderReadPort } from "./adapters/db/work-order-read";
 export { createInMemoryApprovalRequestStore } from "./adapters/poc/approval-request-store";

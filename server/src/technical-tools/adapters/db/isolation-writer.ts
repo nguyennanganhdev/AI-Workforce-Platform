@@ -1,4 +1,4 @@
-import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, eq, inArray, notInArray } from "drizzle-orm";
 import {
   accessScopes,
   buildings,
@@ -7,33 +7,18 @@ import {
   workApprovals,
 } from "../../../db/schema";
 import type { IsolationWriter, ScopeReadPort } from "../../ports/request-ports";
-import type { TechnicalToolsDatabase } from "./interruption-read";
+import { asTenantSession, type TenantSessionSource } from "./tenant-session";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Reads `buildings` and `access_scopes`, one read-only transaction per call with the tenant set. */
 export function createDbScopeReadPort(
-  database: TechnicalToolsDatabase,
+  source: TenantSessionSource,
 ): ScopeReadPort {
-  const inTenant = <T>(
-    tenantId: string,
-    work: (
-      tx: Parameters<Parameters<typeof database.transaction>[0]>[0],
-    ) => Promise<T>,
-  ) =>
-    database.transaction(
-      async (tx) => {
-        await tx.execute(
-          sql`select set_config('app.tenant_id', ${tenantId}, true)`,
-        );
-        return work(tx);
-      },
-      { accessMode: "read only" },
-    );
-
+  const session = asTenantSession(source);
   return {
     placement: ({ tenantId, buildingId }) =>
-      inTenant(tenantId, async (tx) => {
+      session.read(tenantId, async (tx) => {
         const [building] = await tx
           .select({
             buildingId: buildings.id,
@@ -51,7 +36,7 @@ export function createDbScopeReadPort(
     findScopes: ({ tenantId, ids }) => {
       const candidates = [...new Set(ids)].filter((id) => UUID.test(id));
       if (candidates.length === 0) return Promise.resolve([]);
-      return inTenant(tenantId, (tx) =>
+      return session.read(tenantId, (tx) =>
         tx
           .select({
             id: accessScopes.id,
@@ -86,45 +71,37 @@ export function createDbScopeReadPort(
  * in this module and not in the grant the tools run under.
  */
 export function createDbIsolationWriter(
-  database: TechnicalToolsDatabase,
+  source: TenantSessionSource,
 ): IsolationWriter {
+  const session = asTenantSession(source);
   return {
     findOpen: ({ tenantId, workOrderId, utility }) =>
-      database.transaction(
-        async (tx) => {
-          await tx.execute(
-            sql`select set_config('app.tenant_id', ${tenantId}, true)`,
+      session.read(tenantId, async (tx) => {
+        const rows = await tx
+          .select({
+            requestId: serviceInterruptions.approvalId,
+            interruptionId: serviceInterruptions.id,
+            status: serviceInterruptions.status,
+            plannedStart: serviceInterruptions.plannedStart,
+            plannedEnd: serviceInterruptions.plannedEnd,
+          })
+          .from(serviceInterruptions)
+          .where(
+            and(
+              eq(serviceInterruptions.tenantId, tenantId),
+              eq(serviceInterruptions.workOrderId, workOrderId),
+              eq(serviceInterruptions.utility, utility),
+              notInArray(serviceInterruptions.status, [
+                "cancelled",
+                "restored",
+              ]),
+            ),
           );
-          const rows = await tx
-            .select({
-              requestId: serviceInterruptions.approvalId,
-              interruptionId: serviceInterruptions.id,
-              status: serviceInterruptions.status,
-              plannedStart: serviceInterruptions.plannedStart,
-              plannedEnd: serviceInterruptions.plannedEnd,
-            })
-            .from(serviceInterruptions)
-            .where(
-              and(
-                eq(serviceInterruptions.tenantId, tenantId),
-                eq(serviceInterruptions.workOrderId, workOrderId),
-                eq(serviceInterruptions.utility, utility),
-                notInArray(serviceInterruptions.status, [
-                  "cancelled",
-                  "restored",
-                ]),
-              ),
-            );
-          return rows;
-        },
-        { accessMode: "read only" },
-      ),
+        return rows;
+      }),
 
     createWaterIsolation: (isolation) =>
-      database.transaction(async (tx) => {
-        await tx.execute(
-          sql`select set_config('app.tenant_id', ${isolation.tenantId}, true)`,
-        );
+      session.write(isolation.tenantId, async (tx) => {
         await tx.insert(workApprovals).values({
           id: isolation.approvalId,
           tenantId: isolation.tenantId,
