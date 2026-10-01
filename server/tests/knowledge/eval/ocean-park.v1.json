@@ -1,0 +1,745 @@
+{
+  "version": "ocean-park-v1",
+  "source": "github.com/leduc1707/Data-Vinhome, bản ngày 01/10/2026",
+  "notes": "contains: một trong các chuỗi này (không phân biệt hoa thường) xuất hiện trong tiêu đề hoặc nội dung đoạn thì đoạn đó đúng. scope: thư mục cư dân đang ở, như lệnh /scope của CLI.",
+  "cases": [
+    {
+      "id": "dt-01",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "số điện thoại an ninh chung cư",
+      "expect": "answer",
+      "contains": ["0858 001 080"],
+      "tags": ["lien_he", "do_thi"]
+    },
+    {
+      "id": "dt-02",
+      "scope": "04-thap-tang/ngoc-trai",
+      "query": "an ninh khu thấp tầng gọi số nào",
+      "expect": "answer",
+      "contains": ["0856 001 090"],
+      "tags": ["lien_he", "thap_tang"]
+    },
+    {
+      "id": "dt-03",
+      "scope": "01-vinhomes/sapphire",
+      "query": "số điện thoại điện lực Thăng Long",
+      "expect": "answer",
+      "contains": ["0966 888 279"],
+      "tags": ["lien_he", "do_thi"]
+    },
+    {
+      "id": "dt-04",
+      "scope": "01-vinhomes/pavilion",
+      "query": "hotline chăm sóc khách hàng Vinhomes",
+      "expect": "answer",
+      "contains": ["1900 2323 89"],
+      "tags": ["lien_he", "do_thi"]
+    },
+    {
+      "id": "dt-05",
+      "scope": "01-vinhomes/sapphire",
+      "query": "đỗ xe ở vịnh đỗ trong đô thị được bao lâu",
+      "expect": "answer",
+      "contains": ["không dừng đỗ quá 1 giờ"],
+      "tags": ["xe", "do_thi"]
+    },
+    {
+      "id": "dt-06",
+      "scope": "01-vinhomes/zenpark",
+      "query": "xe đỗ sai bị di chuyển đi đâu, nhận lại thế nào",
+      "expect": "answer",
+      "contains": ["nhà xe nổi Đại Dương"],
+      "tags": ["xe", "do_thi"]
+    },
+    {
+      "id": "dt-07",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.02",
+      "query": "xe vãng lai được gửi tối đa bao nhiêu ngày",
+      "expect": "answer",
+      "contains": ["tối đa 30 ngày"],
+      "tags": ["xe", "do_thi"]
+    },
+    {
+      "id": "dt-08",
+      "scope": "01-vinhomes/pavilion",
+      "query": "tốc độ tối đa trong khu vực gửi xe",
+      "expect": "answer",
+      "contains": ["không quá 5 km/h"],
+      "tags": ["xe", "do_thi"]
+    },
+    {
+      "id": "dt-09",
+      "scope": "01-vinhomes/sapphire",
+      "query": "có được sạc xe điện qua đêm không",
+      "expect": "answer",
+      "contains": ["Không sạc qua đêm"],
+      "tags": ["xe", "do_thi"]
+    },
+    {
+      "id": "dt-10",
+      "scope": "04-thap-tang/hai-au",
+      "query": "giờ tắm biển mặn",
+      "expect": "answer",
+      "contains": ["9 giờ đến 18 giờ"],
+      "tags": ["tien_ich", "do_thi"]
+    },
+    {
+      "id": "dt-11",
+      "scope": "04-thap-tang/san-ho",
+      "query": "có được tắm ở hồ Ngọc Trai không",
+      "expect": "answer",
+      "contains": [
+        "Không tắm ở hồ Ngọc Trai",
+        "Hồ Ngọc Trai không tắm",
+        "hồ Ngọc Trai chỉ đi dạo, không tắm"
+      ],
+      "tags": ["tien_ich", "do_thi"]
+    },
+    {
+      "id": "dt-12",
+      "scope": "04-thap-tang/sao-bien",
+      "query": "trẻ em bao nhiêu tuổi phải có người lớn đi kèm khi bơi",
+      "expect": "answer",
+      "contains": ["dưới 12 tuổi"],
+      "tags": ["tien_ich", "do_thi"]
+    },
+    {
+      "id": "dt-13",
+      "scope": "01-vinhomes/sapphire",
+      "query": "được câu cá ở đâu",
+      "expect": "answer",
+      "contains": ["chòi câu", "chòi quy định"],
+      "tags": ["tien_ich", "do_thi"]
+    },
+    {
+      "id": "dt-14",
+      "scope": "01-vinhomes/sapphire/sapphire-2/S2.01",
+      "query": "phí làm lại thẻ khi bị mất",
+      "expect": "answer",
+      "contains": ["100.000 đồng một thẻ"],
+      "tags": ["the", "do_thi"]
+    },
+    {
+      "id": "dt-15",
+      "scope": "01-vinhomes/pavilion",
+      "query": "căn hai phòng ngủ được cấp tối đa bao nhiêu thẻ cư dân",
+      "expect": "answer",
+      "contains": ["2 thẻ mỗi phòng ngủ"],
+      "tags": ["the", "do_thi"]
+    },
+    {
+      "id": "dt-16",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "có được để hàng hóa ở sảnh không",
+      "expect": "answer",
+      "contains": ["Không để thực phẩm, hàng hóa"],
+      "tags": ["noi_quy", "do_thi"]
+    },
+    {
+      "id": "dt-17",
+      "scope": "01-vinhomes/zenpark",
+      "query": "phí khôi phục dịch vụ khi vi phạm để đồ ở sảnh",
+      "expect": "answer",
+      "contains": ["462.000 đồng"],
+      "tags": ["phi", "do_thi"]
+    },
+    {
+      "id": "dt-18",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "nhãn sạc xe bị bong thì làm sao",
+      "expect": "answer",
+      "contains": ["nhận nhãn mới"],
+      "tags": ["xe", "do_thi"]
+    },
+    {
+      "id": "dt-19",
+      "scope": "01-vinhomes/pavilion",
+      "query": "đóng phí dịch vụ bằng cách nào",
+      "expect": "answer",
+      "contains": ["chuyển khoản, mã QR"],
+      "tags": ["phi", "do_thi"]
+    },
+    {
+      "id": "dt-20",
+      "scope": "01-vinhomes/sapphire",
+      "query": "số tài khoản nhận phí dịch vụ",
+      "expect": "answer",
+      "contains": ["19010000858784"],
+      "tags": ["phi", "do_thi"]
+    },
+    {
+      "id": "dt-21",
+      "scope": "01-vinhomes/sapphire",
+      "query": "xe buýt nội khu chạy từ mấy giờ",
+      "expect": "answer",
+      "contains": ["5 giờ 20 đến 21 giờ 50"],
+      "tags": ["xe", "do_thi"]
+    },
+    {
+      "id": "dt-22",
+      "scope": "04-thap-tang/sao-bien",
+      "query": "hotline VinBus",
+      "expect": "answer",
+      "contains": ["1900 866 663"],
+      "tags": ["lien_he", "do_thi"]
+    },
+    {
+      "id": "dt-23",
+      "scope": "01-vinhomes/sapphire",
+      "query": "giá thuê kayak",
+      "expect": "answer",
+      "contains": ["100.000 đồng một người"],
+      "tags": ["tien_ich", "do_thi"]
+    },
+
+    {
+      "id": "sp-01",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "Sapphire 1 có bao nhiêu tòa",
+      "expect": "answer",
+      "contains": ["11 tòa"],
+      "tags": ["thong_tin", "sapphire"]
+    },
+    {
+      "id": "sp-02",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.02",
+      "query": "phí dịch vụ Sapphire bao nhiêu một mét vuông",
+      "expect": "answer",
+      "contains": ["13.000 đồng/m²"],
+      "tags": ["phi", "sapphire"]
+    },
+    {
+      "id": "sp-03",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "phí gửi ô tô một tháng",
+      "expect": "answer",
+      "contains": ["1.250.000"],
+      "tags": ["phi", "xe", "sapphire"]
+    },
+    {
+      "id": "sp-04",
+      "scope": "01-vinhomes/sapphire",
+      "query": "giá vé hồ bơi Sapphire",
+      "expect": "answer",
+      "contains": ["30.000 đồng/người/lượt"],
+      "tags": ["phi", "tien_ich", "sapphire"]
+    },
+    {
+      "id": "sp-05",
+      "scope": "01-vinhomes/sapphire",
+      "query": "thang máy bị kẹt có người bên trong thì xử lý thế nào",
+      "expect": "answer",
+      "contains": ["Giữ liên lạc cabin"],
+      "tags": ["xu_ly", "sapphire"]
+    },
+    {
+      "id": "sp-06",
+      "scope": "01-vinhomes/sapphire",
+      "query": "ngửi thấy mùi gas phải làm gì",
+      "expect": "answer",
+      "contains": ["Không bật công tắc"],
+      "tags": ["xu_ly", "sapphire"]
+    },
+    {
+      "id": "sp-07",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "quên chìa khóa cửa nhà",
+      "expect": "answer",
+      "contains": ["Thợ khóa do cư dân trả", "Bảo vệ xác minh chủ căn"],
+      "tags": ["xu_ly", "sapphire"]
+    },
+    {
+      "id": "sp-08",
+      "scope": "01-vinhomes/sapphire",
+      "query": "căn hộ bị mất điện",
+      "expect": "answer",
+      "contains": ["Kiểm tra aptomat"],
+      "tags": ["xu_ly", "sapphire"]
+    },
+    {
+      "id": "sp-09",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "khi có cháy có được đi thang máy không",
+      "expect": "answer",
+      "contains": ["không dùng thang máy"],
+      "tags": ["pccc", "sapphire"]
+    },
+    {
+      "id": "sp-10",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "tòa S1.01 có mấy thang máy",
+      "expect": "answer",
+      "contains": ["4 thang cư dân"],
+      "tags": ["thong_tin", "toa", "sapphire"]
+    },
+    {
+      "id": "sp-11",
+      "scope": "01-vinhomes/sapphire",
+      "query": "chuyển nhà có cần đăng ký không",
+      "expect": "answer",
+      "contains": ["dùng thang hàng"],
+      "tags": ["noi_quy", "sapphire"]
+    },
+    {
+      "id": "sp-12",
+      "scope": "01-vinhomes/sapphire/sapphire-2/S2.05",
+      "query": "cư dân Sapphire 2 nộp hồ sơ ở đâu",
+      "expect": "answer",
+      "contains": ["S2.18"],
+      "tags": ["lien_he", "sapphire"]
+    },
+    {
+      "id": "sp-13",
+      "scope": "01-vinhomes/sapphire",
+      "query": "sự cố mức ưu tiên P1 gồm những gì",
+      "expect": "answer",
+      "contains": ["Cháy, khói, người kẹt thang"],
+      "tags": ["quy_trinh", "sapphire"]
+    },
+    {
+      "id": "sp-14",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "sơ đồ thoát nạn tòa mình lấy ở đâu",
+      "expect": "answer",
+      "contains": ["Cẩm nang PCCC", "Tài liệu bàn giao"],
+      "tags": ["pccc", "toa", "sapphire"]
+    },
+    {
+      "id": "sp-15",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "tòa mình có mấy tầng hầm",
+      "expect": "answer",
+      "contains": ["1 tầng hầm"],
+      "tags": ["thong_tin", "toa", "sapphire"]
+    },
+
+    {
+      "id": "pv-01",
+      "scope": "01-vinhomes/pavilion/P1",
+      "query": "Pavilion có mấy tòa",
+      "expect": "answer",
+      "contains": ["bốn tòa P1 đến P4", "Bốn tòa P1, P2, P3, P4"],
+      "tags": ["thong_tin", "pavilion"]
+    },
+    {
+      "id": "pv-02",
+      "scope": "01-vinhomes/pavilion/P2",
+      "query": "phí dịch vụ tòa P2 bao nhiêu",
+      "expect": "answer",
+      "contains": ["P2 và P4 khoảng 8.000"],
+      "tags": ["phi", "pavilion"]
+    },
+    {
+      "id": "pv-03",
+      "scope": "01-vinhomes/pavilion",
+      "query": "hồ bơi Pavilion mở cửa mấy giờ",
+      "expect": "answer",
+      "contains": ["6 giờ đến 20 giờ"],
+      "tags": ["tien_ich", "pavilion"]
+    },
+    {
+      "id": "pv-04",
+      "scope": "01-vinhomes/pavilion",
+      "query": "có được nuôi chó trong căn hộ không",
+      "expect": "answer",
+      "contains": ["được nuôi chó, mèo"],
+      "tags": ["noi_quy", "pavilion", "mau_thuan"]
+    },
+    {
+      "id": "pv-05",
+      "scope": "01-vinhomes/pavilion/P1",
+      "query": "số an ninh tòa P1",
+      "expect": "answer",
+      "contains": ["0858 001 080"],
+      "tags": ["lien_he", "toa", "pavilion"]
+    },
+    {
+      "id": "pv-06",
+      "scope": "01-vinhomes/pavilion",
+      "query": "tòa P3 có tiện ích gì đặc biệt",
+      "expect": "answer",
+      "contains": ["bể sục tầng 13"],
+      "tags": ["tien_ich", "pavilion"]
+    },
+
+    {
+      "id": "zp-01",
+      "scope": "01-vinhomes/zenpark/R1.03",
+      "query": "tòa R1.03 cao bao nhiêu tầng",
+      "expect": "answer",
+      "contains": ["Z3): 31"],
+      "tags": ["thong_tin", "toa", "zenpark", "mau_thuan"]
+    },
+    {
+      "id": "zp-02",
+      "scope": "01-vinhomes/zenpark",
+      "query": "ứng dụng cư dân Zenpark là gì",
+      "expect": "answer",
+      "contains": ["Vinhomes Resident được nêu trong tài liệu Z5"],
+      "tags": ["faq", "zenpark"]
+    },
+
+    {
+      "id": "mw-01",
+      "scope": "02-masterise/masteri-waterfront/miami/M2",
+      "query": "hotline ban quản lý",
+      "expect": "answer",
+      "contains": ["0818 910 909"],
+      "tags": ["lien_he", "masterise"]
+    },
+    {
+      "id": "mw-02",
+      "scope": "02-masterise/masteri-waterfront/hawaii/H1",
+      "query": "Masteri Waterfront có bao nhiêu tòa",
+      "expect": "answer",
+      "contains": ["6 tòa tháp"],
+      "tags": ["thong_tin", "masterise"]
+    },
+    {
+      "id": "mw-03",
+      "scope": "02-masterise/masteri-waterfront/miami/M1",
+      "query": "phí dịch vụ phân khu Miami",
+      "expect": "answer",
+      "contains": ["16.000 đồng/m²"],
+      "tags": ["phi", "masterise"]
+    },
+    {
+      "id": "mw-04",
+      "scope": "02-masterise/masteri-waterfront",
+      "query": "giờ được thi công sửa chữa căn hộ",
+      "expect": "answer",
+      "contains": ["8h00–11h30"],
+      "tags": ["noi_quy", "masterise"]
+    },
+    {
+      "id": "mw-05",
+      "scope": "02-masterise/masteri-waterfront/miami/M3",
+      "query": "ứng dụng cư dân dùng app nào",
+      "expect": "answer",
+      "contains": ["Masterise Homes"],
+      "tags": ["faq", "masterise"]
+    },
+    {
+      "id": "mw-06",
+      "scope": "02-masterise/masteri-waterfront",
+      "query": "khách đến thăm làm thủ tục ở đâu",
+      "expect": "answer",
+      "contains": ["Lễ tân sảnh tầng 1"],
+      "tags": ["noi_quy", "masterise"]
+    },
+
+    {
+      "id": "tt-01",
+      "scope": "04-thap-tang/sao-bien",
+      "query": "phí quản lý Sao Biển",
+      "expect": "answer",
+      "contains": ["14.000 đồng một mét vuông"],
+      "tags": ["phi", "thap_tang"]
+    },
+    {
+      "id": "tt-02",
+      "scope": "04-thap-tang/ngoc-trai",
+      "query": "phí quản lý Ngọc Trai bao nhiêu",
+      "expect": "answer",
+      "contains": ["16.000 đồng một mét vuông"],
+      "tags": ["phi", "thap_tang"]
+    },
+    {
+      "id": "tt-03",
+      "scope": "04-thap-tang/ngoc-trai",
+      "query": "khách vào khu Ngọc Trai có phải khai báo không",
+      "expect": "answer",
+      "contains": ["Khách vào compound phải khai báo"],
+      "tags": ["noi_quy", "thap_tang"]
+    },
+    {
+      "id": "tt-04",
+      "scope": "04-thap-tang/ngoc-trai",
+      "query": "biển hiệu shophouse được cao tối đa bao nhiêu",
+      "expect": "answer",
+      "contains": ["cao tối đa 2 mét"],
+      "tags": ["noi_quy", "thap_tang"]
+    },
+    {
+      "id": "tt-05",
+      "scope": "04-thap-tang/hai-au",
+      "query": "liền kề Hải Âu có được kinh doanh không",
+      "expect": "answer",
+      "contains": ["liền kề được phép kinh doanh"],
+      "tags": ["noi_quy", "thap_tang"]
+    },
+    {
+      "id": "tt-06",
+      "scope": "04-thap-tang/ngoc-trai",
+      "query": "giờ phải giữ yên tĩnh",
+      "expect": "answer",
+      "contains": ["22 giờ đến 6 giờ"],
+      "tags": ["noi_quy", "thap_tang"]
+    },
+
+    {
+      "id": "kd-01",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "so an ninh toa minh",
+      "expect": "answer",
+      "contains": ["0858 001 080"],
+      "tags": ["khong_dau", "lien_he"]
+    },
+    {
+      "id": "kd-02",
+      "scope": "01-vinhomes/sapphire",
+      "query": "phi gui xe o to",
+      "expect": "answer",
+      "contains": ["1.250.000"],
+      "tags": ["khong_dau", "phi"]
+    },
+    {
+      "id": "kd-03",
+      "scope": "04-thap-tang/hai-au",
+      "query": "gio tam bien",
+      "expect": "answer",
+      "contains": ["9 giờ đến 18 giờ"],
+      "tags": ["khong_dau", "tien_ich"]
+    },
+    {
+      "id": "kd-04",
+      "scope": "01-vinhomes/sapphire",
+      "query": "thang may bi ket",
+      "expect": "answer",
+      "contains": ["Giữ liên lạc cabin"],
+      "tags": ["khong_dau", "xu_ly"]
+    },
+    {
+      "id": "kd-05",
+      "scope": "01-vinhomes/pavilion",
+      "query": "cach dong phi dich vu",
+      "expect": "answer",
+      "contains": ["chuyển khoản, mã QR"],
+      "tags": ["khong_dau", "phi"]
+    },
+
+    {
+      "id": "ma-01",
+      "scope": "01-vinhomes/sapphire",
+      "query": "TB 134/2026 quy định gì",
+      "expect": "answer",
+      "contains": ["134/2026"],
+      "tags": ["ma_so"]
+    },
+    {
+      "id": "ma-02",
+      "scope": "01-vinhomes/sapphire",
+      "query": "thông báo 05/2026/TBC-VHOCP",
+      "expect": "answer",
+      "contains": ["05/2026"],
+      "tags": ["ma_so"]
+    },
+    {
+      "id": "ma-03",
+      "scope": "01-vinhomes/pavilion",
+      "query": "thông báo 54/2026 về thanh toán",
+      "expect": "answer",
+      "contains": ["54/2026"],
+      "tags": ["ma_so"]
+    },
+    {
+      "id": "ma-04",
+      "scope": "01-vinhomes/sapphire",
+      "query": "thông báo 190/2026",
+      "expect": "answer",
+      "contains": ["190/2026"],
+      "tags": ["ma_so"]
+    },
+    {
+      "id": "ma-05",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "0858 001 080 là số gì",
+      "expect": "answer",
+      "contains": ["0858 001 080"],
+      "tags": ["ma_so"]
+    },
+
+    {
+      "id": "nd-01",
+      "scope": "01-vinhomes/zenpark",
+      "query": "phí gửi xe Zenpark bao nhiêu",
+      "expect": "no_data",
+      "contains": ["Chưa thu được biểu phí"],
+      "tags": ["zenpark"]
+    },
+    {
+      "id": "nd-02",
+      "scope": "01-vinhomes/zenpark/R1.02",
+      "query": "sơ đồ thoát hiểm tòa R1.02",
+      "expect": "no_data",
+      "contains": ["Chưa có sơ đồ thoát nạn"],
+      "tags": ["zenpark", "pccc"]
+    },
+    {
+      "id": "nd-03",
+      "scope": "01-vinhomes/zenpark",
+      "query": "ở Zenpark có được nuôi thú cưng không",
+      "expect": "no_data",
+      "contains": ["Chưa thu được văn bản BQL Zenpark"],
+      "tags": ["zenpark"]
+    },
+    {
+      "id": "nd-04",
+      "scope": "01-vinhomes/zenpark",
+      "query": "kẹt thang máy ở Zenpark làm sao",
+      "expect": "no_data",
+      "contains": ["Chưa thu được văn bản BQL Zenpark"],
+      "tags": ["zenpark"]
+    },
+    {
+      "id": "nd-05",
+      "scope": "02-masterise/masteri-waterfront/miami/M2",
+      "query": "số máy lẻ lễ tân tòa M2",
+      "expect": "no_data",
+      "contains": ["Chưa thu được bảng số trực"],
+      "tags": ["masterise"]
+    },
+
+    {
+      "id": "bp-01",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "số hotline ban quản lý Masteri Waterfront",
+      "expect": "trap",
+      "tags": ["bay_pham_vi"]
+    },
+    {
+      "id": "bp-02",
+      "scope": "02-masterise/masteri-waterfront/miami/M2",
+      "query": "phí gửi xe Sapphire",
+      "expect": "trap",
+      "tags": ["bay_pham_vi"]
+    },
+    {
+      "id": "bp-03",
+      "scope": "01-vinhomes/pavilion/P1",
+      "query": "quy trình xử lý mức ưu tiên P1 thời gian phản hồi",
+      "expect": "trap",
+      "tags": ["bay_pham_vi"]
+    },
+    {
+      "id": "bp-04",
+      "scope": "01-vinhomes/sapphire/sapphire-1",
+      "query": "sơ đồ thoát hiểm tòa S1.05",
+      "expect": "trap",
+      "tags": ["bay_pham_vi"]
+    },
+    {
+      "id": "bp-05",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.02",
+      "query": "tòa S1.01 có mấy thang máy",
+      "expect": "trap",
+      "tags": ["bay_pham_vi"]
+    },
+    {
+      "id": "bp-06",
+      "scope": "02-masterise/masteri-waterfront/hawaii/H2",
+      "query": "ứng dụng Vinhomes Resident đăng ký thế nào",
+      "expect": "trap",
+      "tags": ["bay_pham_vi"]
+    },
+
+    {
+      "id": "ot-01",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "tôi tên gì",
+      "expect": "off_topic",
+      "tags": ["lac_de"]
+    },
+    {
+      "id": "ot-02",
+      "scope": "01-vinhomes/sapphire",
+      "query": "giá vé xem phim CGV Hà Nội",
+      "expect": "off_topic",
+      "tags": ["lac_de"]
+    },
+    {
+      "id": "ot-03",
+      "scope": "01-vinhomes/pavilion",
+      "query": "thời tiết Hà Nội ngày mai thế nào",
+      "expect": "off_topic",
+      "tags": ["lac_de"]
+    },
+    {
+      "id": "ot-04",
+      "scope": "01-vinhomes/zenpark",
+      "query": "công thức nấu phở bò",
+      "expect": "off_topic",
+      "tags": ["lac_de"]
+    },
+    {
+      "id": "ot-05",
+      "scope": "04-thap-tang/sao-bien",
+      "query": "tỷ giá đô la hôm nay",
+      "expect": "off_topic",
+      "tags": ["lac_de"]
+    },
+    {
+      "id": "ot-06",
+      "scope": "02-masterise/masteri-waterfront/miami/M1",
+      "query": "ai là tổng thống Mỹ",
+      "expect": "off_topic",
+      "tags": ["lac_de"]
+    },
+    {
+      "id": "ot-07",
+      "scope": "01-vinhomes/sapphire",
+      "query": "viết cho tôi một bài thơ về mùa thu",
+      "expect": "off_topic",
+      "tags": ["lac_de"]
+    },
+    {
+      "id": "ot-08",
+      "scope": "04-thap-tang/ngoc-trai",
+      "query": "kết quả bóng đá tối qua",
+      "expect": "off_topic",
+      "tags": ["lac_de"]
+    },
+    {
+      "id": "ot-09",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.02",
+      "query": "cách cài đặt Windows 11",
+      "expect": "off_topic",
+      "tags": ["lac_de"]
+    },
+    {
+      "id": "ot-10",
+      "scope": "01-vinhomes/pavilion/P2",
+      "query": "mua vé máy bay đi Đà Nẵng",
+      "expect": "off_topic",
+      "tags": ["lac_de"]
+    },
+    {
+      "id": "ot-11",
+      "scope": "01-vinhomes/sapphire",
+      "query": "học tiếng Anh ở đâu tốt",
+      "expect": "off_topic",
+      "tags": ["lac_de"]
+    },
+    {
+      "id": "ot-12",
+      "scope": "04-thap-tang/hai-au",
+      "query": "giá vàng SJC hôm nay",
+      "expect": "off_topic",
+      "tags": ["lac_de"]
+    },
+    {
+      "id": "ot-13",
+      "scope": "01-vinhomes/sapphire/sapphire-1/S1.01",
+      "query": "toi ten gi",
+      "expect": "off_topic",
+      "tags": ["lac_de", "khong_dau"]
+    },
+    {
+      "id": "ot-14",
+      "scope": "01-vinhomes/zenpark",
+      "query": "bitcoin bây giờ bao nhiêu tiền",
+      "expect": "off_topic",
+      "tags": ["lac_de"]
+    }
+  ]
+}
