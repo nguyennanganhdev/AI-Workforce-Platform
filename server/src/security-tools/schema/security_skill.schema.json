@@ -1,0 +1,1792 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Security v0.3 — security_skill.schema.json",
+  "$comment": "Validate formats explicitly. See security_mcp_schema.md for runtime-only constraints and usage.",
+  "$defs": {
+    "Coverage": {
+      "type": "object",
+      "properties": {
+        "section": {
+          "$ref": "common.schema.json#/$defs/SectionName"
+        },
+        "status": {
+          "$ref": "common.schema.json#/$defs/CoverageStatus"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "section",
+        "status",
+        "reason",
+        "next_cursor"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "MISSING",
+                  "PARTIAL"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "not": {
+                  "const": "PARTIAL"
+                }
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "next_cursor": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Gap": {
+      "type": "object",
+      "properties": {
+        "section": {
+          "$ref": "common.schema.json#/$defs/SectionName"
+        },
+        "code": {
+          "type": "string",
+          "enum": [
+            "NOT_FOUND",
+            "FETCH_FAILED",
+            "MISSING_ACTION_EVIDENCE",
+            "INCOMPLETE_PAGE",
+            "MISSING_FIELD"
+          ]
+        },
+        "resource_id": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "section",
+        "code",
+        "resource_id",
+        "detail"
+      ],
+      "additionalProperties": false
+    },
+    "CameraContextItem": {
+      "type": "object",
+      "properties": {
+        "camera": {
+          "$ref": "common.schema.json#/$defs/CameraSummary"
+        },
+        "incident_id": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "relation": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/CameraIncidentRelation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "camera",
+        "incident_id",
+        "relation"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "incident_id": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "incident_id"
+            ]
+          },
+          "then": {
+            "properties": {
+              "relation": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "relation": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "TriageData": {
+      "type": "object",
+      "properties": {
+        "incident": {
+          "$ref": "common.schema.json#/$defs/Incident"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "cameras": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/IncidentCamera"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/EvidenceItem"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "incident",
+        "summary",
+        "cameras",
+        "evidence"
+      ],
+      "additionalProperties": false
+    },
+    "ManagementData": {
+      "type": "object",
+      "properties": {
+        "incident": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/Incident"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latest_event": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/SecurityEvent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dispatches": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/DispatchSummary"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "incident",
+        "latest_event",
+        "dispatches"
+      ],
+      "additionalProperties": false
+    },
+    "GuardResponseData": {
+      "type": "object",
+      "properties": {
+        "incident": {
+          "$ref": "common.schema.json#/$defs/Incident"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/GuardSummary"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "selected_guard_id": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dispatch": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/Dispatch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "incident",
+        "candidates",
+        "selected_guard_id",
+        "dispatch"
+      ],
+      "additionalProperties": false
+    },
+    "EmergencyResponseData": {
+      "type": "object",
+      "properties": {
+        "incident": {
+          "$ref": "common.schema.json#/$defs/Incident"
+        },
+        "protocol": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/EmergencyProtocol"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contacts": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/EscalationContact"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "escalations": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/EmergencyEscalation"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "selected_contact_id": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "incident",
+        "protocol",
+        "contacts",
+        "escalations",
+        "selected_contact_id"
+      ],
+      "additionalProperties": false
+    },
+    "CameraContextData": {
+      "type": "object",
+      "properties": {
+        "cameras": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CameraContextItem"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "cameras"
+      ],
+      "additionalProperties": false
+    },
+    "AuditData": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "common.schema.json#/$defs/Id"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/EvidenceItem"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "dispatches": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/DispatchSummary"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "escalations": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/EmergencyEscalation"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "timeline": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/SecurityEvent"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "incident_id",
+        "evidence",
+        "dispatches",
+        "escalations",
+        "timeline"
+      ],
+      "additionalProperties": false
+    },
+    "IncidentReport": {
+      "type": "object",
+      "properties": {
+        "incident": {
+          "$ref": "common.schema.json#/$defs/Incident"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timeline": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/SecurityEvent"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "dispatches": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "common.schema.json#/$defs/DispatchSummary"
+              },
+              "minItems": 0,
+              "maxItems": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "escalations": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "common.schema.json#/$defs/EmergencyEscalation"
+              },
+              "minItems": 0,
+              "maxItems": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "camera_context": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "common.schema.json#/$defs/IncidentCamera"
+              },
+              "minItems": 0,
+              "maxItems": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "common.schema.json#/$defs/EvidenceItem"
+              },
+              "minItems": 0,
+              "maxItems": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "protocol": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/EmergencyProtocol"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "incident",
+        "title",
+        "summary",
+        "outcome",
+        "timeline",
+        "dispatches",
+        "escalations",
+        "camera_context",
+        "evidence",
+        "protocol"
+      ],
+      "additionalProperties": false
+    },
+    "IncidentTriageSkillInput": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "common.schema.json#/$defs/Id"
+        },
+        "include_camera": {
+          "type": "boolean"
+        },
+        "include_evidence": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "incident_id"
+      ],
+      "additionalProperties": false
+    },
+    "IncidentManagementSkillInput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "create"
+            },
+            "draft": {
+              "$ref": "common.schema.json#/$defs/CreateIncidentInput"
+            }
+          },
+          "required": [
+            "operation",
+            "draft"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "review"
+            },
+            "incident_id": {
+              "$ref": "common.schema.json#/$defs/Id"
+            }
+          },
+          "required": [
+            "operation",
+            "incident_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "update"
+            },
+            "change": {
+              "$ref": "common.schema.json#/$defs/UpdateIncidentInput"
+            }
+          },
+          "required": [
+            "operation",
+            "change"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "GuardResponseSkillInput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "dispatch"
+            },
+            "incident_id": {
+              "$ref": "common.schema.json#/$defs/Id"
+            },
+            "instruction": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          },
+          "required": [
+            "operation",
+            "incident_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "const": "cancel"
+            },
+            "dispatch_id": {
+              "$ref": "common.schema.json#/$defs/Id"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            }
+          },
+          "required": [
+            "operation",
+            "dispatch_id",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "EmergencyResponseSkillInput": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "common.schema.json#/$defs/Id"
+        }
+      },
+      "required": [
+        "incident_id"
+      ],
+      "additionalProperties": false
+    },
+    "CameraContextLookupSkillInput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "by": {
+              "const": "incident"
+            },
+            "incident_id": {
+              "$ref": "common.schema.json#/$defs/Id"
+            }
+          },
+          "required": [
+            "by",
+            "incident_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "by": {
+              "const": "location"
+            },
+            "location_id": {
+              "$ref": "common.schema.json#/$defs/Id"
+            }
+          },
+          "required": [
+            "by",
+            "location_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "by": {
+              "const": "camera"
+            },
+            "camera_id": {
+              "$ref": "common.schema.json#/$defs/Id"
+            }
+          },
+          "required": [
+            "by",
+            "camera_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "by": {
+              "const": "search"
+            },
+            "filters": {
+              "$ref": "common.schema.json#/$defs/SearchCamerasInput"
+            }
+          },
+          "required": [
+            "by",
+            "filters"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "IncidentAuditReviewSkillInput": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "common.schema.json#/$defs/Id"
+        }
+      },
+      "required": [
+        "incident_id"
+      ],
+      "additionalProperties": false
+    },
+    "SecurityIncidentReportSkillInput": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "common.schema.json#/$defs/Id"
+        },
+        "report_type": {
+          "type": "string",
+          "enum": [
+            "summary",
+            "operational",
+            "full"
+          ]
+        }
+      },
+      "required": [
+        "incident_id",
+        "report_type"
+      ],
+      "additionalProperties": false
+    },
+    "SkillOutput": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "$ref": "common.schema.json#/$defs/SkillStatus"
+        },
+        "data": {
+          "anyOf": [
+            {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/TriageData"
+                },
+                {
+                  "$ref": "#/$defs/ManagementData"
+                },
+                {
+                  "$ref": "#/$defs/GuardResponseData"
+                },
+                {
+                  "$ref": "#/$defs/EmergencyResponseData"
+                },
+                {
+                  "$ref": "#/$defs/CameraContextData"
+                },
+                {
+                  "$ref": "#/$defs/AuditData"
+                },
+                {
+                  "$ref": "#/$defs/IncidentReport"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "proposals": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/ActionProposal"
+          },
+          "minItems": 0,
+          "maxItems": 1
+        },
+        "coverage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Coverage"
+          },
+          "minItems": 0,
+          "maxItems": 9,
+          "allOf": [
+            {
+              "contains": {
+                "properties": {
+                  "section": {
+                    "const": "INCIDENT"
+                  }
+                },
+                "required": [
+                  "section"
+                ]
+              },
+              "minContains": 0,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "section": {
+                    "const": "TIMELINE"
+                  }
+                },
+                "required": [
+                  "section"
+                ]
+              },
+              "minContains": 0,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "section": {
+                    "const": "DISPATCH"
+                  }
+                },
+                "required": [
+                  "section"
+                ]
+              },
+              "minContains": 0,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "section": {
+                    "const": "ESCALATION"
+                  }
+                },
+                "required": [
+                  "section"
+                ]
+              },
+              "minContains": 0,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "section": {
+                    "const": "CAMERA"
+                  }
+                },
+                "required": [
+                  "section"
+                ]
+              },
+              "minContains": 0,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "section": {
+                    "const": "EVIDENCE"
+                  }
+                },
+                "required": [
+                  "section"
+                ]
+              },
+              "minContains": 0,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "section": {
+                    "const": "PROTOCOL"
+                  }
+                },
+                "required": [
+                  "section"
+                ]
+              },
+              "minContains": 0,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "section": {
+                    "const": "GUARD"
+                  }
+                },
+                "required": [
+                  "section"
+                ]
+              },
+              "minContains": 0,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "section": {
+                    "const": "CONTACT"
+                  }
+                },
+                "required": [
+                  "section"
+                ]
+              },
+              "minContains": 0,
+              "maxContains": 1
+            }
+          ]
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Gap"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "recommendation": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "data",
+        "proposals",
+        "coverage",
+        "gaps",
+        "recommendation"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "PROPOSED"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "proposals": {
+                "minItems": 1
+              },
+              "data": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "proposals": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "COMPLETED"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "coverage": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "INCIDENT"
+                    },
+                    "status": {
+                      "enum": [
+                        "MISSING",
+                        "PARTIAL"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "section",
+                    "status"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "coverage"
+            ]
+          },
+          "then": {
+            "properties": {
+              "gaps": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "INCIDENT"
+                    }
+                  },
+                  "required": [
+                    "section"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "coverage": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "TIMELINE"
+                    },
+                    "status": {
+                      "enum": [
+                        "MISSING",
+                        "PARTIAL"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "section",
+                    "status"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "coverage"
+            ]
+          },
+          "then": {
+            "properties": {
+              "gaps": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "TIMELINE"
+                    }
+                  },
+                  "required": [
+                    "section"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "coverage": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "DISPATCH"
+                    },
+                    "status": {
+                      "enum": [
+                        "MISSING",
+                        "PARTIAL"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "section",
+                    "status"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "coverage"
+            ]
+          },
+          "then": {
+            "properties": {
+              "gaps": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "DISPATCH"
+                    }
+                  },
+                  "required": [
+                    "section"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "coverage": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "ESCALATION"
+                    },
+                    "status": {
+                      "enum": [
+                        "MISSING",
+                        "PARTIAL"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "section",
+                    "status"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "coverage"
+            ]
+          },
+          "then": {
+            "properties": {
+              "gaps": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "ESCALATION"
+                    }
+                  },
+                  "required": [
+                    "section"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "coverage": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "CAMERA"
+                    },
+                    "status": {
+                      "enum": [
+                        "MISSING",
+                        "PARTIAL"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "section",
+                    "status"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "coverage"
+            ]
+          },
+          "then": {
+            "properties": {
+              "gaps": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "CAMERA"
+                    }
+                  },
+                  "required": [
+                    "section"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "coverage": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "EVIDENCE"
+                    },
+                    "status": {
+                      "enum": [
+                        "MISSING",
+                        "PARTIAL"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "section",
+                    "status"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "coverage"
+            ]
+          },
+          "then": {
+            "properties": {
+              "gaps": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "EVIDENCE"
+                    }
+                  },
+                  "required": [
+                    "section"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "coverage": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "PROTOCOL"
+                    },
+                    "status": {
+                      "enum": [
+                        "MISSING",
+                        "PARTIAL"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "section",
+                    "status"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "coverage"
+            ]
+          },
+          "then": {
+            "properties": {
+              "gaps": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "PROTOCOL"
+                    }
+                  },
+                  "required": [
+                    "section"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "coverage": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "GUARD"
+                    },
+                    "status": {
+                      "enum": [
+                        "MISSING",
+                        "PARTIAL"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "section",
+                    "status"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "coverage"
+            ]
+          },
+          "then": {
+            "properties": {
+              "gaps": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "GUARD"
+                    }
+                  },
+                  "required": [
+                    "section"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "coverage": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "CONTACT"
+                    },
+                    "status": {
+                      "enum": [
+                        "MISSING",
+                        "PARTIAL"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "section",
+                    "status"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "coverage"
+            ]
+          },
+          "then": {
+            "properties": {
+              "gaps": {
+                "contains": {
+                  "properties": {
+                    "section": {
+                      "const": "CONTACT"
+                    }
+                  },
+                  "required": [
+                    "section"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "IncidentTriageSkillOutput": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/SkillOutput"
+        },
+        {
+          "properties": {
+            "data": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TriageData"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "not": {
+                "const": "PROPOSED"
+              }
+            },
+            "proposals": {
+              "maxItems": 0
+            }
+          }
+        }
+      ]
+    },
+    "IncidentManagementSkillOutput": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/SkillOutput"
+        },
+        {
+          "properties": {
+            "data": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ManagementData"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "proposals": {
+              "items": {
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "create_incident",
+                      "update_incident"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "GuardResponseSkillOutput": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/SkillOutput"
+        },
+        {
+          "properties": {
+            "data": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/GuardResponseData"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "proposals": {
+              "items": {
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "dispatch_guard",
+                      "cancel_dispatch"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "EmergencyResponseSkillOutput": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/SkillOutput"
+        },
+        {
+          "properties": {
+            "data": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EmergencyResponseData"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "proposals": {
+              "items": {
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "escalate_emergency"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "CameraContextLookupSkillOutput": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/SkillOutput"
+        },
+        {
+          "properties": {
+            "data": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CameraContextData"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "not": {
+                "const": "PROPOSED"
+              }
+            },
+            "proposals": {
+              "maxItems": 0
+            }
+          }
+        }
+      ]
+    },
+    "IncidentAuditReviewSkillOutput": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/SkillOutput"
+        },
+        {
+          "properties": {
+            "data": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AuditData"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "not": {
+                "const": "PROPOSED"
+              }
+            },
+            "proposals": {
+              "maxItems": 0
+            }
+          }
+        }
+      ]
+    },
+    "SecurityIncidentReportSkillOutput": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/SkillOutput"
+        },
+        {
+          "properties": {
+            "data": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/IncidentReport"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "not": {
+                "const": "PROPOSED"
+              }
+            },
+            "proposals": {
+              "maxItems": 0
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$ref": "#/$defs/SkillOutput",
+  "x-skills": {
+    "incident_triage": {
+      "readTools": [
+        "get_incident",
+        "get_incident_cameras",
+        "get_incident_evidence"
+      ],
+      "proposalActions": [],
+      "inputSchema": {
+        "$ref": "#/$defs/IncidentTriageSkillInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/IncidentTriageSkillOutput"
+      }
+    },
+    "incident_management": {
+      "readTools": [
+        "get_incident",
+        "get_dispatch_history",
+        "get_security_event_timeline",
+        "get_incident_evidence"
+      ],
+      "proposalActions": [
+        "create_incident",
+        "update_incident"
+      ],
+      "inputSchema": {
+        "$ref": "#/$defs/IncidentManagementSkillInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/IncidentManagementSkillOutput"
+      }
+    },
+    "guard_response": {
+      "readTools": [
+        "get_incident",
+        "get_available_guards",
+        "get_dispatch",
+        "get_dispatch_history"
+      ],
+      "proposalActions": [
+        "dispatch_guard",
+        "cancel_dispatch"
+      ],
+      "inputSchema": {
+        "$ref": "#/$defs/GuardResponseSkillInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GuardResponseSkillOutput"
+      }
+    },
+    "emergency_response": {
+      "readTools": [
+        "get_incident",
+        "get_emergency_protocol",
+        "get_escalation_contacts",
+        "get_incident_escalations"
+      ],
+      "proposalActions": [
+        "escalate_emergency"
+      ],
+      "inputSchema": {
+        "$ref": "#/$defs/EmergencyResponseSkillInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/EmergencyResponseSkillOutput"
+      }
+    },
+    "camera_context_lookup": {
+      "readTools": [
+        "get_incident_cameras",
+        "get_cameras_by_location",
+        "get_camera_metadata",
+        "search_cameras"
+      ],
+      "proposalActions": [],
+      "inputSchema": {
+        "$ref": "#/$defs/CameraContextLookupSkillInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/CameraContextLookupSkillOutput"
+      }
+    },
+    "incident_audit_review": {
+      "readTools": [
+        "get_incident",
+        "get_incident_evidence",
+        "get_dispatch_history",
+        "get_incident_escalations",
+        "get_security_event_timeline"
+      ],
+      "proposalActions": [],
+      "inputSchema": {
+        "$ref": "#/$defs/IncidentAuditReviewSkillInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/IncidentAuditReviewSkillOutput"
+      }
+    },
+    "security_incident_report": {
+      "readTools": [
+        "get_incident",
+        "get_security_event_timeline",
+        "get_dispatch_history",
+        "get_incident_escalations",
+        "get_incident_evidence",
+        "get_incident_cameras",
+        "get_emergency_protocol"
+      ],
+      "proposalActions": [],
+      "inputSchema": {
+        "$ref": "#/$defs/SecurityIncidentReportSkillInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/SecurityIncidentReportSkillOutput"
+      }
+    }
+  }
+}
