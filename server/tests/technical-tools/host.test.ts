@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import {
   createInMemoryAssetReadPort,
+  createInMemoryExecutorResultStore,
+  createInMemoryIdempotencyStore,
   createInMemoryMaintenanceReadPort,
+  createInMemoryMeasurementStore,
   createInMemorySensorReadPort,
   createInMemorySopProfilePort,
   createTechnicalToolHost,
@@ -37,6 +40,10 @@ function hostWith(audit = recordingAudit()) {
       assets: createInMemoryAssetReadPort(),
       sensors: createInMemorySensorReadPort(),
       maintenance: createInMemoryMaintenanceReadPort(),
+      workOrders: { getWorkOrder: unused, findEvidence: unused },
+      measurements: createInMemoryMeasurementStore(),
+      executorResults: createInMemoryExecutorResultStore(),
+      idempotency: createInMemoryIdempotencyStore(),
       clock: fixedClock,
       contextResolver: fixtureContextResolver,
       audit: audit.sink,

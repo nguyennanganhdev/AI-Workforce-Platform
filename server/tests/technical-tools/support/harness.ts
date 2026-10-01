@@ -3,11 +3,15 @@ import {
   type Clock,
   type ContextResolver,
   createInMemoryAssetReadPort,
+  createInMemoryExecutorResultStore,
+  createInMemoryIdempotencyStore,
   createInMemoryMaintenanceReadPort,
+  createInMemoryMeasurementStore,
   createInMemorySensorReadPort,
   createInMemorySopProfilePort,
   createTechnicalToolCaller,
   type HostOptions,
+  type IdempotencyStore,
   type ResponseEnvelope,
   responseEnvelopeSchema,
   type ToolAuditEntry,
@@ -40,6 +44,8 @@ export const CAPABILITIES = [
   "asset:read",
   "sensor:read",
   "maintenance:read",
+  "measurement:write",
+  "executor_result:submit",
 ] as const;
 
 export const fixtureContextResolver: ContextResolver = async (caller) => {
@@ -78,6 +84,12 @@ function unconfigured(name: string): never {
     listForBuilding: () => {
       throw new Error(`This test did not configure the ${name} port.`);
     },
+    getWorkOrder: () => {
+      throw new Error(`This test did not configure the ${name} port.`);
+    },
+    findEvidence: () => {
+      throw new Error(`This test did not configure the ${name} port.`);
+    },
   } as never;
 }
 
@@ -102,6 +114,7 @@ export function technicalToolHarness(
   overrides: {
     contextResolver?: ContextResolver;
     audit?: AuditSink;
+    idempotency?: IdempotencyStore;
     options?: HostOptions;
   } = {},
 ) {
@@ -114,9 +127,14 @@ export function technicalToolHarness(
       assets: ports.assets ?? createInMemoryAssetReadPort(),
       sensors: ports.sensors ?? createInMemorySensorReadPort(),
       maintenance: ports.maintenance ?? createInMemoryMaintenanceReadPort(),
+      workOrders: ports.workOrders ?? unconfigured("workOrders"),
+      measurements: ports.measurements ?? createInMemoryMeasurementStore(),
+      executorResults:
+        ports.executorResults ?? createInMemoryExecutorResultStore(),
       clock: ports.clock ?? fixedClock,
       contextResolver: overrides.contextResolver ?? fixtureContextResolver,
       audit: overrides.audit ?? audit.sink,
+      idempotency: overrides.idempotency ?? createInMemoryIdempotencyStore(),
     },
     overrides.options,
   );

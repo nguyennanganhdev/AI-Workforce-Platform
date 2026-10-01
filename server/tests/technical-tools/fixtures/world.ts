@@ -19,6 +19,8 @@ export const TENANT = {
 export const USER = {
   manager: "fixture-manager-vinhomes",
   technician: "fixture-technician-vinhomes",
+  secondTechnician: "fixture-technician-2-vinhomes",
+  thirdTechnician: "fixture-technician-3-vinhomes",
   otherManager: "fixture-manager-other",
 } as const;
 
@@ -246,6 +248,11 @@ export const CALLER = {
   technicalAgent: { botId: "technical-agent-a2", actorId: USER.technician },
   /** The same agent acting for the building manager, whose role reads more documents. */
   managementAgent: { botId: "technical-agent-a2", actorId: USER.manager },
+  /** The same agent acting for the technician on the breaker job. */
+  secondTechnicianAgent: {
+    botId: "technical-agent-a2",
+    actorId: USER.secondTechnician,
+  },
   /** A Bot of the same tenant that was granted none of these capabilities. */
   ungrantedAgent: { botId: "cleaning-agent", actorId: USER.technician },
   /** A Bot this deployment has no binding for. */
@@ -255,6 +262,8 @@ export const CALLER = {
 /** Which business role each caller acts under, for `document_acl`. */
 export const ROLE_OF: Record<string, "management" | "staff"> = {
   [USER.technician]: "staff",
+  [USER.secondTechnician]: "staff",
+  [USER.thirdTechnician]: "staff",
   [USER.manager]: "management",
 };
 

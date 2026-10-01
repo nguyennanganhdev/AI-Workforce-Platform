@@ -17,12 +17,12 @@ import {
   TENANT,
   TRACE_ID,
 } from "./fixtures/world";
-import { technicalToolHarness } from "./support/harness";
 import {
   DATABASE_SETUP_TIMEOUT_MS,
   type TestDatabase,
   technicalToolsTestDatabase,
 } from "./support/database";
+import { technicalToolHarness } from "./support/harness";
 
 /**
  * The two tools end to end, the way a Bot's call reaches them: through the function

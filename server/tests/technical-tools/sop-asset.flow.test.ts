@@ -9,12 +9,12 @@ import {
 import { ASSETS } from "./fixtures/assets";
 import { SOP_PROFILES, sopByKey } from "./fixtures/sop";
 import { AGENT_VERSION, BUILDING, CALLER, NOW, TENANT } from "./fixtures/world";
-import { technicalToolHarness } from "./support/harness";
 import {
   DATABASE_SETUP_TIMEOUT_MS,
   type TestDatabase,
   technicalToolsTestDatabase,
 } from "./support/database";
+import { technicalToolHarness } from "./support/harness";
 
 /**
  * `sop_kb.retrieve` and `asset.read` end to end, the way a Bot's call reaches them: through the

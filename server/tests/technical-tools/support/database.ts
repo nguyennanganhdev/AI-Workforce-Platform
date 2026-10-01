@@ -26,6 +26,8 @@ const runtimeGrants = (role: string) => `
   GRANT SELECT ON buildings, access_scopes, service_interruptions, interruption_scopes TO ${role};
   GRANT SELECT ON knowledge_bases, knowledge_documents, document_versions, document_scopes,
     document_acl TO ${role};
+  GRANT SELECT ON tickets, work_orders, work_assignments, staff_profiles, evidence_items, files
+    TO ${role};
 `;
 
 export type TestDatabase = {

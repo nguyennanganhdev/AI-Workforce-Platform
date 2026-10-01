@@ -8,6 +8,7 @@ import {
   documentScopes,
   documentVersions,
   domains,
+  evidenceItems,
   executionPrincipals,
   fileObjects,
   files,
@@ -15,15 +16,18 @@ import {
   knowledgeBases,
   knowledgeCategories,
   knowledgeDocuments,
+  managementUnits,
   serviceCategories,
   serviceInterruptions,
   sites,
+  staffProfiles,
   storageLocations,
   tenantMemberships,
   tenants,
   tickets,
   users,
   workApprovals,
+  workAssignments,
   workOrders,
   zones,
 } from "../../../src/db/schema";
@@ -31,11 +35,21 @@ import type { TechnicalToolsDatabase } from "../../../src/technical-tools";
 import { INTERRUPTIONS } from "../fixtures/interruptions";
 import { KNOWLEDGE_BASES, KNOWLEDGE_CATEGORIES, SOPS } from "../fixtures/sop";
 import {
+  EVIDENCE,
+  MANAGEMENT_UNIT,
+  STAFF,
+  STAGED_UPLOAD,
+  WORK,
+} from "../fixtures/work-orders";
+import {
   approvalId,
   BUILDINGS,
+  CATEGORY,
   id,
+  PRINCIPAL,
   SCOPE,
   SCOPES,
+  STORAGE_LOCATION,
   TENANT,
   TENANTS,
   USER,
@@ -222,6 +236,7 @@ export async function seedWorld(database: TechnicalToolsDatabase) {
   }
 
   await seedDocuments(database);
+  await seedWork(database);
 }
 
 /**
@@ -340,4 +355,162 @@ async function seedDocuments(database: TechnicalToolsDatabase) {
 /** A stable stand-in for a real content hash; `file_objects.sha256` must be 64 hex characters. */
 function sha256Of(code: string, versionNo: number): string {
   return createHash("sha256").update(`${code}:v${versionNo}`).digest("hex");
+}
+
+/**
+ * The jobs technicians are recording against, with who holds each and the photos taken.
+ *
+ * The order is the schema's. A staff profile needs a management unit; an assignment needs a work
+ * order and a profile, and `app_assignment_capacity` counts every accepted job against the
+ * technician's limit, so the limit is set above the two the first technician holds. A photo becomes
+ * evidence only once its file is ready: `app_validate_evidence` refuses anything else, and demands a
+ * work order and an assignment for any before or after photo.
+ */
+async function seedWork(database: TechnicalToolsDatabase) {
+  const tenantId = TENANT.vinhomes;
+
+  for (const userId of [USER.secondTechnician, USER.thirdTechnician]) {
+    await database.insert(users).values({
+      id: userId,
+      email: `${userId}@vinhomes.fixture.test`,
+      name: "Kỹ thuật viên",
+    });
+    await database
+      .insert(tenantMemberships)
+      .values({ tenantId, userId, status: "active" });
+  }
+
+  await database.insert(managementUnits).values({
+    id: MANAGEMENT_UNIT,
+    tenantId,
+    code: "bql-s1",
+    name: "Ban quản lý phân khu S1",
+    status: "active",
+  });
+  for (const staff of Object.values(STAFF)) {
+    await database.insert(staffProfiles).values({
+      id: staff.id,
+      tenantId,
+      userId: staff.userId,
+      managementUnitId: MANAGEMENT_UNIT,
+      employeeCode: staff.code,
+      availability: "available",
+      maxConcurrentJobs: 5,
+    });
+  }
+
+  for (const job of Object.values(WORK)) {
+    await database.insert(channels).values({
+      id: job.channelId,
+      tenantId,
+      name: job.title,
+      description: "Kênh của phiếu sự cố (dữ liệu mẫu)",
+      kind: "reception",
+    });
+    await database.insert(tickets).values({
+      id: job.ticketId,
+      tenantId,
+      code: job.key,
+      requesterUserId: USER.manager,
+      channelId: job.channelId,
+      buildingId: job.buildingId,
+      title: job.title,
+      description: job.title,
+      status: "new",
+      contactName: "Cư dân",
+      contactPhone: "+84900000001",
+      addressSnapshot: {},
+      domainId: TENANTS[0].domainId,
+      requestKind: "incident",
+    });
+    await database.insert(workOrders).values({
+      id: job.workOrderId,
+      tenantId,
+      ticketId: job.ticketId,
+      categoryId: CATEGORY.vinhomes,
+      requiredSpecialtyId: CATEGORY.vinhomes,
+      description: job.title,
+      status: "in_progress",
+    });
+    await database.insert(workAssignments).values({
+      id: job.assignmentId,
+      tenantId,
+      workOrderId: job.workOrderId,
+      staffId: job.staffId,
+      assignedByUserId: USER.manager,
+      status: job.assignmentStatus,
+      offeredAt: job.acceptedAt,
+      acceptedAt: job.acceptedAt,
+      etaAt: job.acceptedAt,
+      ...(job.endedAt ? { endedAt: job.endedAt } : {}),
+    });
+  }
+
+  for (const photo of Object.values(EVIDENCE)) {
+    const uploader =
+      Object.values(STAFF).find((staff) => staff.id === photo.work.staffId)
+        ?.userId ?? USER.technician;
+    await database.insert(files).values({
+      id: photo.fileId,
+      tenantId,
+      ownerPrincipalId: PRINCIPAL.vinhomes,
+      scopeKind: "ticket",
+      ticketId: photo.work.ticketId,
+      status: "staged",
+      originalName: `${photo.key}.jpg`,
+      uploadedBy: uploader,
+    });
+    await database.insert(fileObjects).values({
+      id: photo.objectId,
+      tenantId,
+      fileId: photo.fileId,
+      locationId: STORAGE_LOCATION.vinhomes,
+      objectKey: `t/vinhomes/evidence/${photo.key}.jpg`,
+      versionId: "v1",
+      variant: "original",
+      mimeType: "image/jpeg",
+      sizeBytes: 102_400,
+      sha256: createHash("sha256").update(photo.key).digest("hex"),
+      scanStatus: "clean",
+      verifiedAt: photo.work.acceptedAt,
+      encryptionMode: "sse_s3",
+      status: "ready",
+    });
+    await database
+      .update(files)
+      .set({ acceptedObjectId: photo.objectId, status: "ready" })
+      .where(eq(files.id, photo.fileId));
+    await database.insert(evidenceItems).values({
+      id: photo.evidenceId,
+      tenantId,
+      ticketId: photo.work.ticketId,
+      workOrderId: photo.work.workOrderId,
+      assignmentId: photo.work.assignmentId,
+      fileId: photo.fileId,
+      purpose: photo.purpose,
+      capturedAt: photo.work.acceptedAt,
+      uploadedAt: photo.work.acceptedAt,
+      uploadedBy: uploader,
+      provenance: "camera",
+      status: "active",
+    });
+    if (photo.withdrawn) {
+      await database
+        .update(evidenceItems)
+        .set({ status: "withdrawn", withdrawnReason: "Chụp nhầm thiết bị" })
+        .where(eq(evidenceItems.id, photo.evidenceId));
+    }
+  }
+
+  // Still uploading: a file with no bytes accepted yet, and so no evidence row.
+  await database.insert(files).values({
+    id: STAGED_UPLOAD.fileId,
+    tenantId,
+    ownerPrincipalId: PRINCIPAL.vinhomes,
+    scopeKind: "ticket",
+    ticketId: STAGED_UPLOAD.work.ticketId,
+    status: "staged",
+    originalName: "cau-dao-sau-sua.jpg",
+    uploadedBy: USER.secondTechnician,
+  });
 }

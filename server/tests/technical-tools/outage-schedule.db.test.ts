@@ -220,8 +220,8 @@ describe("what the role the tools run as cannot do", () => {
       sql`update service_interruptions set status = 'active' where status = 'proposed'`,
     ],
     [
-      "read tickets, which these tools have no use for",
-      sql`select 1 from tickets`,
+      "read invoices, which these tools have no use for",
+      sql`select 1 from invoices`,
     ],
   ])("%s", async (_label, statement) => {
     const failure: { cause?: unknown } | null = await Promise.resolve(

@@ -18,7 +18,7 @@ import {
 const CATALOGUE = describeTechnicalTools();
 
 describe("what the catalogue says about every tool", () => {
-  test("names the six built so far: every lookup tool in tools.md", () => {
+  test("names the eight built so far: every lookup tool in tools.md, then the first two writes", () => {
     expect(CATALOGUE.map((tool) => tool.name)).toEqual([
       "technical.get_active_outage",
       "utility_schedule.read",
@@ -26,7 +26,27 @@ describe("what the catalogue says about every tool", () => {
       "asset.read",
       "sensor.read",
       "maintenance_history.read",
+      "technical.record_measurement",
+      "technical.submit_executor_result",
     ]);
+  });
+
+  /*
+   * An agent retries when the network drops an answer. Only a key it sends with the call lets the
+   * host tell that retry from a second measurement, so a write that does not demand one is a write
+   * that can happen twice.
+   */
+  test("every write demands the key that makes a retry safe", () => {
+    const writes = CATALOGUE.filter((tool) => tool.side_effect !== "read");
+    expect(writes.map((tool) => tool.name)).toEqual([
+      "technical.record_measurement",
+      "technical.submit_executor_result",
+    ]);
+    for (const tool of writes) {
+      expect((tool.input_schema as { required?: string[] }).required).toContain(
+        "idempotency_key",
+      );
+    }
   });
 
   test.each(CATALOGUE.map((tool) => [tool.name, tool] as const))(
@@ -85,6 +105,14 @@ describe("what the catalogue says about every tool", () => {
       (tool) => tool.name === "maintenance_history.read",
     );
     expect(history?.description).toContain("not a diagnosis");
+    const measurement = CATALOGUE.find(
+      (tool) => tool.name === "technical.record_measurement",
+    );
+    expect(measurement?.description).toContain("never estimate");
+    const result = CATALOGUE.find(
+      (tool) => tool.name === "technical.submit_executor_result",
+    );
+    expect(result?.description).toContain("never means the job is closed");
   });
 });
 
