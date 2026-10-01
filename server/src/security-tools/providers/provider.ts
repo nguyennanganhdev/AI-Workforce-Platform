@@ -8,6 +8,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { CameraPage, CameraSummary, GetCameraMetadataInput, GetCamerasByLocationInput, GetIncidentCamerasInput, IncidentCameraPage, SearchCamerasInput } from "../cameras/types";
 import type { ReadContext, WriteContext } from "../common/context";
 import { type ToolError, fail } from "../common/errors";
+import type { ActionBinding, GrantClaims } from "../common/execution-grant";
 import type { WriteEvidence } from "../common/responses";
 import type { GetAvailableGuardsInput, GetGuardStatusInput, GuardPage, GuardSummary } from "../guards/types";
 
@@ -75,15 +76,12 @@ export type ProviderFailure = { ok: false; error: ToolError };
 export type ReadResult<T> = { ok: true; data: T } | ProviderFailure;
 export type WriteResult<T> = { ok: true; data: T; evidence: WriteEvidence; replayed: boolean } | ProviderFailure;
 
-/**
- * WRITE đã qua common/execution-grant.ts. `claims`/`binding` là GrantClaims/ActionBinding đã verify
- * và so hash; khai báo kiểu chung để file này không phụ thuộc execution-grant.ts.
- */
+/** WRITE đã qua common/execution-grant.ts: claims đã verify, binding dựng lại và đã so payload_hash. */
 export type VerifiedWrite = {
   context: WriteContext;
   idempotency_key: string;
-  claims: Readonly<Record<string, unknown>>;
-  binding: Readonly<Record<string, unknown>>;
+  claims: Readonly<GrantClaims>;
+  binding: Readonly<ActionBinding>;
 };
 
 export interface SecurityProvider {

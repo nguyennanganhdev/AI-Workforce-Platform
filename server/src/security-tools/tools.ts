@@ -22,6 +22,8 @@ import { CAMERA_TOOLS } from "./cameras/tools";
 import { type RawWriteHeaders, type RequestIdentity, readContext, type WriteContext, writeContext } from "./common/context";
 import { type ToolError, type ToolMode, toolError, toToolError } from "./common/errors";
 import { failure, finalizeResponse, readSuccess, responseMeta, type ToolResponse, toCallToolResult, writeSuccess } from "./common/responses";
+import { DISPATCH_TOOLS } from "./dispatch/tools";
+import { EMERGENCY_TOOLS } from "./emergency/tools";
 import { GUARD_TOOLS } from "./guards/tools";
 import {
   isReadTool,
@@ -55,11 +57,8 @@ export type DomainToolDefinition = {
   outputIssues?: (data: unknown) => string[];
 };
 
-/**
- * Domain đã có khai báo trên nhánh này. Khi merge P3/P4 thêm vào đây:
- * P3 `...INCIDENT_TOOLS, ...AUDIT_TOOLS`; P4 `...DISPATCH_TOOLS, ...EMERGENCY_TOOLS`.
- */
-const DOMAIN_TOOLS: readonly DomainToolDefinition[] = [...GUARD_TOOLS, ...CAMERA_TOOLS];
+/** Domain đã có khai báo trên nhánh này. Khi merge P3 thêm `...INCIDENT_TOOLS, ...AUDIT_TOOLS`. */
+const DOMAIN_TOOLS: readonly DomainToolDefinition[] = [...GUARD_TOOLS, ...CAMERA_TOOLS, ...DISPATCH_TOOLS, ...EMERGENCY_TOOLS];
 
 export type RegisteredTool = ToolContract & Omit<DomainToolDefinition, keyof ToolContract>;
 

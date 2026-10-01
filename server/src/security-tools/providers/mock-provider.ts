@@ -39,6 +39,7 @@ type DispatchRow = Row & { dispatch_id: string; incident_id: string; guard_id: s
 type EscalationRow = Row & { escalation_id: string; incident_id: string; created_at: string };
 type ProtocolRow = Row & { protocol_id: string; version: number; incident_type: string; severity: string };
 type ContactRow = Row & { contact_id: string; priority: number; supported_severities: string[] };
+type AckReceiptRow = Row & { ack_receipt_id: string; escalation_id: string; contact_id: string };
 type EvidenceRow = Row & { evidence_id: string; incident_id: string; created_at: string };
 type EventRow = Row & { event_id: string; incident_id: string; created_at: string };
 
@@ -54,6 +55,8 @@ export type MockScopeData = {
   escalations: EscalationRow[];
   protocols: ProtocolRow[];
   contacts: ContactRow[];
+  /** Biên nhận xác nhận của contact; handler acknowledge_emergency đọc/ghi. */
+  ack_receipts: AckReceiptRow[];
   evidence: EvidenceRow[];
   events: EventRow[];
 };
@@ -232,29 +235,33 @@ export class MockSecurityProvider implements SecurityProvider {
 // Fixture
 // ---------------------------------------------------------------------------------------------
 
+/** Fixture dùng chung cho mock và test; không nằm trong src để không lẫn vào code production. */
+export const FIXTURE_DIR = new URL("../../../tests/security-tools/fixtures/", import.meta.url);
+
 /**
- * Dữ liệu mặc định từ các file `*.mock.json` cạnh từng domain (xem MOCK_DATA.md của bộ mock v0.3).
- * File của domain chưa có thì để mảng rỗng; P3/P4 thêm file là provider tự nạp.
+ * Dữ liệu mặc định từ `server/tests/security-tools/fixtures/<tên>.json`. File chưa có thì để mảng
+ * rỗng; domain thêm file đúng tên là provider tự nạp.
  */
 export function loadFixtureScope(tenant_id = "tenant_demo", property_id = "property_demo"): MockScopeData {
-  const load = <T>(path: string): T[] => {
-    const url = new URL(`../${path}`, import.meta.url);
+  const load = <T>(name: string): T[] => {
+    const url = new URL(`${name}.json`, FIXTURE_DIR);
     return existsSync(url) ? (JSON.parse(readFileSync(url, "utf8")) as T[]) : [];
   };
   return {
     tenant_id,
     property_id,
-    locations: load("mock-locations.json"),
-    guards: load("guards/guards.mock.json"),
-    cameras: load("cameras/cameras.mock.json"),
-    incident_cameras: load("cameras/incident-cameras.mock.json"),
-    incidents: load("incidents/incidents.mock.json"),
-    dispatches: load("dispatch/dispatches.mock.json"),
-    escalations: load("emergency/escalations.mock.json"),
-    protocols: load("emergency/protocols.mock.json"),
-    contacts: load("emergency/contacts.mock.json"),
-    evidence: load("audits/evidence.mock.json"),
-    events: load("audits/events.mock.json"),
+    locations: load("locations"),
+    guards: load("guards"),
+    cameras: load("cameras"),
+    incident_cameras: load("incident-cameras"),
+    incidents: load("incidents"),
+    dispatches: load("dispatches"),
+    escalations: load("escalations"),
+    protocols: load("protocols"),
+    contacts: load("contacts"),
+    ack_receipts: load("ack_receipts"),
+    evidence: load("evidence"),
+    events: load("events"),
   };
 }
 
@@ -271,6 +278,7 @@ export function emptyScope(tenant_id: string, property_id: string): MockScopeDat
     escalations: [],
     protocols: [],
     contacts: [],
+    ack_receipts: [],
     evidence: [],
     events: [],
   };

@@ -16,6 +16,7 @@
  *
  * Phần WRITE (execute approved command, getOperation) thuộc P1-WRITE, dùng lại `post`.
  */
+import { readBodyText } from "./common/body";
 import type { ReadContext } from "./common/context";
 import { type ErrorCode, type ToolError, toolError } from "./common/errors";
 import type { ProviderCallOptions, ReadResult, ReadToolName } from "./providers/provider";
@@ -105,9 +106,10 @@ export class CoreClient {
 
     let parsed: unknown;
     try {
-      const text = await response.text();
-      if (text.length > MAX_RESPONSE_BYTES) return { kind: "invalid_body", status: response.status };
-      parsed = JSON.parse(text);
+      const body = await readBodyText(response, MAX_RESPONSE_BYTES);
+      if (!body.ok && body.reason === "too_large") return { kind: "invalid_body", status: response.status };
+      if (!body.ok) throw new SyntaxError("Body không phải UTF-8");
+      parsed = JSON.parse(body.text);
     } catch {
       if (signal.aborted) return { kind: "timeout" };
       return response.ok ? { kind: "invalid_body", status: response.status } : errorResult(response, null);

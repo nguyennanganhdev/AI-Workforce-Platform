@@ -5,7 +5,7 @@
  * arguments, `_meta` hay header scope thô (X-Tenant-Id...). Grant và Idempotency-Key giữ nguyên
  * dạng thô để common/execution-grant.ts verify, ở đây không tự diễn giải.
  */
-import { createRemoteJWKSet, errors as joseErrors, type JWTPayload, type JWTVerifyGetKey, jwtVerify } from "jose";
+import { createRemoteJWKSet, decodeJwt, errors as joseErrors, type JWTPayload, type JWTVerifyGetKey, jwtVerify } from "jose";
 import { fail, type ToolMode } from "./errors";
 
 export type Actor = {
@@ -117,13 +117,20 @@ export function rawWriteHeaders(headers: Headers): RawWriteHeaders {
 // Access token
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Public key của một issuer: JWKS URL HTTPS cấu hình sẵn, hoặc key resolver (test dùng
+ * createLocalJWKSet). URL không bao giờ lấy từ request/token.
+ */
+export type IssuerKeys = URL | JWTVerifyGetKey;
+
 export type AccessTokenConfig = {
-  /** Issuer được tin, so khớp chính xác. */
-  issuers: readonly string[];
+  /**
+   * Allowlist issuer, mỗi issuer đi với JWKS riêng. `iss` so khớp chính xác; token ghi issuer này
+   * chỉ được verify bằng key của issuer đó, không mượn được key của issuer khác.
+   */
+  issuers: Readonly<Record<string, IssuerKeys>>;
   /** Audience của resource server này (MCP Authorization: token phải đúng audience). */
   audience: string;
-  /** JWKS của issuer: URL HTTPS cấu hình sẵn, hoặc key resolver (test dùng createLocalJWKSet). */
-  keys: URL | JWTVerifyGetKey;
   algorithms?: readonly string[];
   /** Lệch đồng hồ cho phép, giây. Mặc định 30 như grant (§4). */
   clockToleranceSec?: number;
@@ -149,12 +156,13 @@ export type AccessTokenVerifier = (authorization: string | null) => Promise<Auth
  * Một token chỉ một tenant/property; caller không tự mở rộng scope.
  */
 export function createAccessTokenVerifier(config: AccessTokenConfig): AccessTokenVerifier {
-  if (config.keys instanceof URL && config.keys.protocol !== "https:") {
-    throw new Error("JWKS URL của access token phải là HTTPS");
+  const resolvers = new Map<string, JWTVerifyGetKey>();
+  for (const [issuer, keys] of Object.entries(config.issuers)) {
+    if (keys instanceof URL && keys.protocol !== "https:") throw new Error("JWKS URL của access token phải là HTTPS");
+    resolvers.set(issuer, keys instanceof URL ? createRemoteJWKSet(keys) : keys);
   }
-  const getKey = config.keys instanceof URL ? createRemoteJWKSet(config.keys) : config.keys;
+  if (resolvers.size === 0) throw new Error("Cần ít nhất một issuer cho access token");
   const options = {
-    issuer: [...config.issuers],
     audience: config.audience,
     algorithms: [...(config.algorithms ?? ["ES256", "RS256"])],
     clockTolerance: config.clockToleranceSec ?? 30,
@@ -163,9 +171,20 @@ export function createAccessTokenVerifier(config: AccessTokenConfig): AccessToke
 
   return async (authorization) => {
     const token = bearerToken(authorization);
+    // `iss` đọc trước khi verify chỉ để chọn JWKS; jwtVerify ép đúng issuer đó và chữ ký phải khớp key
+    // của nó, nên token không thể ghi issuer A rồi ký bằng key của issuer B.
+    let issuer: string | undefined;
+    try {
+      issuer = decodeJwt(token).iss;
+    } catch {
+      throw new AuthenticationError(401, "Access token không hợp lệ.");
+    }
+    const getKey = issuer === undefined ? undefined : resolvers.get(issuer);
+    if (issuer === undefined || getKey === undefined) throw new AuthenticationError(401, "Access token không hợp lệ.");
+
     let payload: JWTPayload;
     try {
-      ({ payload } = await jwtVerify(token, getKey, options));
+      ({ payload } = await jwtVerify(token, getKey, { ...options, issuer }));
     } catch (error) {
       // Không trả chi tiết lý do (alg/kid/issuer) cho caller.
       if (error instanceof joseErrors.JOSEError) throw new AuthenticationError(401, "Access token không hợp lệ.");

@@ -1,14 +1,20 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 import { toCameraSummary } from "../../src/security-tools/cameras/boundary";
 import { CoreClient } from "../../src/security-tools/client";
+import { readBodyText } from "../../src/security-tools/common/body";
+import { DISPATCH_TOOLS } from "../../src/security-tools/dispatch/tools";
+import { EMERGENCY_TOOLS } from "../../src/security-tools/emergency/tools";
 import { type AuthenticatedCaller, callerFromClaims, createAccessTokenVerifier, type RequestIdentity, writeContext } from "../../src/security-tools/common/context";
 import { retryPolicy, toolError } from "../../src/security-tools/common/errors";
 import { failure, finalizeResponse, readSuccess, responseMeta } from "../../src/security-tools/common/responses";
 import { parseStrictJson, StrictJsonError } from "../../src/security-tools/common/strict-json";
 import { deriveGuardStatus } from "../../src/security-tools/guards/service";
 import type { RosterEntry } from "../../src/security-tools/guards/types";
-import { createSecurityMcpHandler, MCP_PROTOCOL_VERSION } from "../../src/security-tools/index";
+import { configFromEnv, createSecurityMcpHandler, MCP_PROTOCOL_VERSION } from "../../src/security-tools/index";
 import { loadFixtureScope, MockSecurityProvider } from "../../src/security-tools/providers/mock-provider";
 import { RealSecurityProvider } from "../../src/security-tools/providers/real-provider";
 import { callTool, listTools, SECURITY_TOOLS, type SecurityToolsOptions } from "../../src/security-tools/tools";
@@ -268,27 +274,90 @@ describe("Core client + real provider (READ)", () => {
   });
 });
 
+describe("đăng ký P4, cấu hình, body", () => {
+  test("9 tool P4 dùng khai báo của domain, không rơi về mô tả mặc định", () => {
+    const p4 = [...DISPATCH_TOOLS, ...EMERGENCY_TOOLS];
+    expect(p4).toHaveLength(9);
+    for (const declared of p4) {
+      const registered = SECURITY_TOOLS.find((t) => t.name === declared.name)!;
+      expect(registered.description).toBe(declared.description);
+      expect(registered.annotations).toEqual(declared.annotations);
+    }
+  });
+
+  test("configFromEnv: grant issuer với jwks.json cục bộ bật writeGuard; production từ chối file cục bộ", async () => {
+    const { publicKey } = await generateKeyPair("ES256");
+    const dir = mkdtempSync(join(tmpdir(), "security-mcp-"));
+    const jwksPath = join(dir, "jwks.json");
+    writeFileSync(jwksPath, JSON.stringify({ keys: [{ ...(await exportJWK(publicKey)), kid: "g1", alg: "ES256" }] }));
+    try {
+      const env = {
+        SECURITY_MCP_PROVIDER: "mock",
+        SECURITY_MCP_ACCESS_ISSUERS: JSON.stringify({ "https://gateway.test": jwksPath }),
+        SECURITY_MCP_ACCESS_AUDIENCE: "security-mcp",
+        SECURITY_MCP_GRANT_ISSUERS: JSON.stringify({ "https://platform.test": jwksPath }),
+      };
+      expect(configFromEnv(env).options.writeGuard).toBeFunction();
+      expect(configFromEnv({ ...env, SECURITY_MCP_GRANT_ISSUERS: undefined }).options.writeGuard).toBeUndefined();
+      expect(() => configFromEnv({ ...env, SECURITY_MCP_GRANT_ISSUERS: "https://platform.test" })).toThrow();
+      expect(() => configFromEnv({ ...env, SECURITY_MCP_PROVIDER: "core", SECURITY_CORE_API_URL: "https://core.test", SECURITY_CORE_API_TOKEN: "x", NODE_ENV: "production" })).toThrow(/production/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("readBodyText dừng đọc ngay khi vượt giới hạn", async () => {
+    let pulls = 0;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(new Uint8Array(1024));
+      },
+    });
+    expect(await readBodyText(new Response(endless), 4096)).toEqual({ ok: false, reason: "too_large" });
+    expect(pulls).toBeLessThan(10);
+    const declared = new Request("http://x", { method: "POST", body: "{}", headers: { "content-length": "999999" } });
+    expect(await readBodyText(declared, 4096)).toEqual({ ok: false, reason: "too_large" });
+  });
+
+  test("Core trả response vượt giới hạn byte → PROVIDER_INVALID_RESPONSE", async () => {
+    const huge = (async () => new Response(new ReadableStream({ pull: (c) => c.enqueue(new Uint8Array(1024 * 1024)) }))) as unknown as typeof fetch;
+    const provider = new RealSecurityProvider(new CoreClient({ baseUrl: new URL("https://core.test/"), credential: () => "svc", fetch: huge }));
+    expect((await call("get_guard_status", { guard_id: "guard_001" }, { provider })).error.code).toBe("PROVIDER_INVALID_RESPONSE");
+  });
+});
+
 describe("HTTP server (Streamable HTTP, stateless)", async () => {
   const { privateKey, publicKey } = await generateKeyPair("ES256");
   const jwk = { ...(await exportJWK(publicKey)), kid: "k1", alg: "ES256" };
+  // Issuer thứ hai có key riêng: token của nó không được verify bằng key của gateway và ngược lại.
+  const other = await generateKeyPair("ES256");
+  const otherJwk = { ...(await exportJWK(other.publicKey)), kid: "k2", alg: "ES256" };
   const verifyAccessToken = createAccessTokenVerifier({
-    issuers: ["https://gateway.test"],
+    issuers: {
+      "https://gateway.test": createLocalJWKSet({ keys: [jwk] }),
+      "https://other.test": createLocalJWKSet({ keys: [otherJwk] }),
+    },
     audience: "security-mcp",
-    keys: createLocalJWKSet({ keys: [jwk] }),
   });
-  const handler = createSecurityMcpHandler({ ...mockOptions(), verifyAccessToken });
+  const handler = createSecurityMcpHandler({
+    ...mockOptions(),
+    verifyAccessToken,
+    maxBodyBytes: 4096,
+    allowedOrigins: ["https://console.test"],
+  });
 
-  const token = (scope: string) =>
+  const token = (scope: string, signer: { issuer: string; key: CryptoKey; kid: string } = { issuer: "https://gateway.test", key: privateKey, kid: "k1" }) =>
     new SignJWT({ tenant_id: "tenant_demo", property_id: "property_demo", scope })
-      .setProtectedHeader({ alg: "ES256", kid: "k1" })
-      .setIssuer("https://gateway.test")
+      .setProtectedHeader({ alg: "ES256", kid: signer.kid })
+      .setIssuer(signer.issuer)
       .setAudience("security-mcp")
       .setSubject("bot_security")
       .setIssuedAt()
       .setExpirationTime("5m")
-      .sign(privateKey);
+      .sign(signer.key);
 
-  const post = async (body: unknown, auth?: string) =>
+  const post = async (body: unknown, auth?: string, extraHeaders: Record<string, string> = {}) =>
     handler(
       new Request("http://localhost/mcp", {
         method: "POST",
@@ -297,10 +366,40 @@ describe("HTTP server (Streamable HTTP, stateless)", async () => {
           accept: "application/json, text/event-stream",
           "mcp-protocol-version": MCP_PROTOCOL_VERSION,
           ...(auth ? { authorization: `Bearer ${auth}` } : {}),
+          ...extraHeaders,
         },
         body: typeof body === "string" ? body : JSON.stringify(body),
       }),
     );
+
+  test("JWKS theo issuer: ghi issuer A nhưng ký bằng key của issuer B → 401", async () => {
+    const list = { jsonrpc: "2.0", id: 1, method: "tools/list" };
+    expect((await post(list, await token("security:read", { issuer: "https://other.test", key: other.privateKey, kid: "k2" }))).status).toBe(200);
+    expect((await post(list, await token("security:read", { issuer: "https://gateway.test", key: other.privateKey, kid: "k2" }))).status).toBe(401);
+    expect((await post(list, await token("security:read", { issuer: "https://unknown.test", key: privateKey, kid: "k1" }))).status).toBe(401);
+  });
+
+  test("Origin ngoài allowlist → 403 trước khi xác thực; không có Origin hoặc Origin hợp lệ thì qua", async () => {
+    const list = { jsonrpc: "2.0", id: 1, method: "tools/list" };
+    const auth = await token("security:read");
+    expect((await post(list, auth, { origin: "https://evil.test" })).status).toBe(403);
+    expect((await post(list, undefined, { origin: "https://evil.test" })).status).toBe(403);
+    expect((await post(list, auth, { origin: "https://console.test" })).status).toBe(200);
+  });
+
+  test("giới hạn body tính theo byte UTF-8, không theo số ký tự", async () => {
+    const auth = await token("security:read");
+    // 1500 ký tự "ệ" = 4500 byte: dưới 4096 ký tự nhưng vượt 4096 byte.
+    const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: { pad: "ệ".repeat(1500) } } });
+    expect(body.length).toBeLessThan(4096);
+    expect((await post(body, auth)).status).toBe(413);
+    const invalidUtf8 = new Request("http://localhost/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", authorization: `Bearer ${auth}` },
+      body: new Uint8Array([0x7b, 0xff, 0x7d]),
+    });
+    expect((await handler(invalidUtf8)).status).toBe(400);
+  });
 
   test("401 khi không có token, 403 khi token không có scope Security", async () => {
     expect((await post({ jsonrpc: "2.0", id: 1, method: "tools/list" })).status).toBe(401);
