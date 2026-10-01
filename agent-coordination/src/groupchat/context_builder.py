@@ -2,18 +2,19 @@
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional, Tuple
 
-from .models import ContextItem, Message, RoomError, Snapshot, TaskItem
+from .reception import ReceptionMessage
+from .models import Context, ContextItem, Message, RoomError, Snapshot, TaskItem
 from .task_board import can_read
 
 
 @dataclass(frozen=True)
 class AgentContext:
-    messages: tuple[Message, ...]
-    tasks: tuple[TaskItem, ...]
-    ticket: tuple[ContextItem, ...]
-    mailbox_message_ids: tuple[str, ...]
+    messages: Tuple[Message, ...]
+    tasks: Tuple[TaskItem, ...]
+    ticket: Tuple[ContextItem, ...]
+    mailbox_message_ids: Tuple[str, ...]
 
 
 def visible(room: Snapshot, message: Message, agent_id: str) -> bool:
@@ -86,4 +87,30 @@ def build(
             if agent_id in item.pending_agent_version_ids
             and item.message.message_id in selected
         ),
+    )
+
+
+def reception_context(
+    message: 'ReceptionMessage', context: 'Context', ticket_version: str,
+    readers: 'List[str]',
+) -> ContextItem:
+    """Project backend-verified V2 data under its explicit reader ACL.
+
+    The caller authenticates the input and supplies the current version and ACL.
+    Text (including mentions and approval words) never grants tool permissions.
+    A stable item ID replaces older snapshots instead of accumulating stale facts.
+    """
+    if (
+        message.tenant_id != context.tenant_id
+        or message.ticket_id != context.ticket_id
+        or message.ticket_generation != context.ticket_generation
+        or message.workspace_id != context.workspace_id
+        or message.domain_id != context.domain_id
+        or message.ticket_version != ticket_version
+    ):
+        raise RoomError('STALE_RECEPTION_CONTEXT')
+    return ContextItem(
+        item_id='reception-v2-ticket',
+        content=message.model_dump_json(exclude_none=True),
+        reader_agent_version_ids=readers,
     )

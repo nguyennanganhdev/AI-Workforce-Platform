@@ -6,7 +6,7 @@ transaction boundary; model, verifier, authority and adapter calls stay outside.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 from uuid import uuid5, NAMESPACE_URL
 
 from adapters.backend.errors import AdapterError
@@ -19,7 +19,10 @@ from .backend_bridge import BackendBridge
 from .models import (Action, Approval, AuthorityView, Question, SupervisorError,
                      SupervisorState, TaskMetadata, require)
 from .planner import Planner, validate_decision
-from .ports import Authority, StateStore
+from .ports import Authority, ReceptionPort, StateStore
+from .reception_flow import emit, pending, receive
+from groupchat.reception import ReceptionMessage, ReceptionResult, SupervisorMessage
+from groupchat.context_builder import reception_context
 from .room_bridge import RoomBridge
 from .turn_policy import runnable
 
@@ -95,7 +98,10 @@ def request_approval(state, view, stage, now):
         payload["depends_on_approval_id"] = management.approval_id
     state.approvals[stage] = Approval(approval_id=approval_id, stage=stage,
                                     **plan_fields(state), expires_at=view.approval_expires_at)
-    action(state, "backend", "approval.requested", payload)
+    if state.reception is not None and stage == "resident_plan":
+        emit(state, "plan_approval_requested", pending(state, view, "plan_approval_requested"), now)
+    else:
+        action(state, "backend", "approval.requested", payload)
     state.phase = "waiting_management" if stage == "management_plan" else "waiting_resident_plan"
 
 
@@ -135,10 +141,15 @@ def prepare_decision(state, decision, view, now):
         task.status, task.result_refs = "completed", decision.result_refs
         action(state, "room", "put_task", PutTask(**room_args(state), task=task))
     elif kind in ("question", "supplement"):
+        question_id = stable_id(state, f"question:{len(state.journal)}")
+        if state.reception is not None:
+            require(state.pending_resident is None, "resident_request_pending")
+            state.question_draft = decision.question
+            return
         action(state, "backend", "resident.question", {
-            "question_id": stable_id(state, f"question:{len(state.journal)}"), "question": decision.question})
+            "question_id": question_id, "question": decision.question})
         state.question = Question(request_id=state.action.action_id,
-                                  question_id=state.action.wire["payload"]["question_id"], return_phase=state.phase)
+                                  question_id=question_id, return_phase=state.phase)
         state.phase = "waiting_information"
     elif kind == "summarize":
         state.publication_draft = dict(summary=decision.summary, evidence_file_ids=decision.evidence_file_ids,
@@ -151,6 +162,10 @@ def prepare_decision(state, decision, view, now):
             require(view.revision_reconciled, "dependency_unavailable:live_assignment_reconciliation")
         if state.phase == "waiting_result_validation":
             invalidate(state, "supplemental_scope_or_cost")
+        if state.reception is not None:
+            require(view.ticket_version is not None and view.ticket_version != state.ticket_version,
+                    "new_ticket_version_required")
+            state.ticket_version = view.ticket_version
         propose(state, decision.plan, view.plan_id)
         request_approval(state, view, "management_plan", now)
     elif kind == "pause":
@@ -159,6 +174,34 @@ def prepare_decision(state, decision, view, now):
 
 def prepare_next(state, view, now):
     """Prepare deterministic continuations. Return True when a transition occurred."""
+    if state.reception is not None and view.failure_message is not None:
+        state.pending_resident = state.pending_ticket_version = None
+        emit(state, "failed", view.failure_message, now, view.failure_result, view.failure_error)
+        return True
+    if state.question_draft is not None and state.phase != "waiting_cancellation":
+        if view.resident_request_type != "information_requested" or view.resident_request_message is None:
+            return False
+        require(view.resident_request_message == state.question_draft, "question_not_stored_by_backend")
+        canonical = pending(state, view, "information_requested")
+        emit(state, "information_requested", canonical, now)
+        state.question = Question(request_id=state.action.action_id,
+                                  question_id=state.action.action_id, return_phase=state.phase)
+        state.question_draft = None
+        state.phase = "waiting_information"
+        return True
+    if state.reception is not None and state.phase == "waiting_cancellation":
+        if view.cancellation_confirmed is None:
+            return False
+        require(view.cancellation_message is not None, "dependency_unavailable:cancellation_message")
+        if view.cancellation_confirmed:
+            state.pending_resident = state.pending_ticket_version = None
+            emit(state, "cancelled", view.cancellation_message, now)
+        else:
+            require(state.cancellation_return_phase is not None, "cancellation_state_missing")
+            state.phase = state.cancellation_return_phase
+            state.cancellation_return_phase = None
+            emit(state, "in_progress", view.cancellation_message, now)
+        return True
     if state.room:
         members = {p.agent_version_id for p in state.room.participants}
         require(not state.context_fingerprints or bool(view.ticket_context),
@@ -196,6 +239,13 @@ def prepare_next(state, view, now):
             reader_agent_version_ids=entry.task_readers)))
         return True
     if state.phase == "waiting_management" and state.approvals["management_plan"].decision == "approve":
+        if state.reception is not None:
+            require(view.resident_approval_required is not None,
+                    "dependency_unavailable:resident_approval_policy")
+            state.resident_approval_required = view.resident_approval_required
+            if not state.resident_approval_required:
+                state.phase = "execution_ready"
+                return True
         request_approval(state, view, "resident_plan", now)
         return True
     if state.phase == "execution_ready":
@@ -215,6 +265,10 @@ def prepare_next(state, view, now):
         action(state, "backend", "assignment.offered", dict(state.assignment))
         state.phase = "executing"
         return True
+    if (state.reception is not None and state.phase == "executing" and state.journal
+            and state.journal[-1].operation == "assignment.offered"):
+        emit(state, "in_progress", "Công việc đang được triển khai theo phương án đã duyệt.", now)
+        return True
     if state.phase == "waiting_result_validation" and view.publication:
         pub = view.publication
         require(state.result is not None and state.plan is not None and
@@ -231,6 +285,16 @@ def prepare_next(state, view, now):
             if evidence not in state.feedback:
                 state.feedback.append(evidence)
             return False
+        if state.reception is not None:
+            room_tasks = {task.task_id: task for task in state.room.tasks} if state.room else {}
+            require(view.all_work_completed and all(
+                task_id in room_tasks and room_tasks[task_id].status == "completed"
+                for task_id, metadata in state.tasks.items() if metadata.plan_version == state.revision
+            ), "dependency_unavailable:work_completion")
+            emit(state, "completed", pub.summary, now, ReceptionResult(
+                outcome="work_completed", summary=pub.summary,
+                work_order_ids=view.work_order_ids, evidence_ids=pub.evidence_file_ids))
+            return True
         require(view.resident_recipient is not None, "dependency_unavailable:completion_recipient")
         # Trusted projection must withhold publication if supplemental cost/scope approval is needed.
         state.completion = dict(confirmation_id=stable_id(state, f"completion:{pub.result_id}:{pub.result_version}"),
@@ -251,12 +315,14 @@ def prepare_next(state, view, now):
 
 class SupervisorService:
     def __init__(self, *, store: StateStore, authority: Authority, verifier: EventVerifier,
-                 event_types: dict[str, str], planner: Planner, room: RoomBridge,
+                 event_types: Dict[str, str], planner: Planner, room: RoomBridge,
                  backend: BackendBridge, groupchat_version_id: str,
                  turn_policy: Optional[TurnPolicy] = None,
-                 max_steps: int = 16, clock=None):
+                 max_steps: int = 16, clock=None,
+                 reception: Optional[ReceptionPort] = None):
         require(bool(groupchat_version_id) and type(max_steps) is int and max_steps > 0, "invalid_config")
         require(all(v in INBOUND_TYPES for v in event_types.values()), "unsupported_event_mapping")
+        self.reception = reception
         self.store, self.authority, self.verifier = store, authority, verifier
         self.event_types = dict(event_types)
         self.planner, self.room, self.backend = planner, room, backend
@@ -304,19 +370,44 @@ class SupervisorService:
         state.aggregate_versions[aggregate] = version
         return await self._save(state, old.version if old else None, delivery.event_id)
 
+    async def handle_reception(self, raw: Dict[str, Any], authentication: object) -> SupervisorState:
+        require(self.reception is not None, "dependency_unavailable:reception_v2")
+        message = ReceptionMessage.model_validate(raw)
+        verified = await self.reception.verify(message.model_copy(deep=True), authentication)
+        require(verified.message == message, "verified_message_mismatch")
+        old = await self.store.load(verified.context)
+        state = old.model_copy(deep=True) if old else SupervisorState(
+            context=verified.context, groupchat_version_id=self.groupchat_version_id,
+            turn_policy=self.turn_policy)
+        require(old is None or old.reception is not None, "v1_checkpoint_requires_migration")
+        receive(state, verified, self.clock())
+        return await self._save(state, old.version if old else None)
+
     async def _view(self, state):
         view = await self.authority.inspect(state.model_copy(deep=True))
         require(view.context == state.context and view.state_version == state.version, "stale_authority_view")
+        if state.reception is not None:
+            require(bool(view.reception_readers), "dependency_unavailable:reception_context_acl")
+            require(not any(item.item_id == "reception-v2-ticket" for item in view.ticket_context),
+                    "duplicate_context_item")
+            view.ticket_context.append(reception_context(
+                state.reception, state.context, state.reception.ticket_version, view.reception_readers))
         return view
 
     async def _record(self, state, receipt):
         """Persist receipt with a CAS; stale returns remain recoverable by the journal."""
         a = state.action
         require(a is not None, "action_missing")
-        require(receipt.get("request_id") == a.wire["request_id"], "receipt_mismatch")
+        identity = "message_id" if a.channel == "reception" else "request_id"
+        require(receipt.get(identity) == a.wire[identity], "receipt_mismatch")
         expected = state.version
         a.receipt = receipt
-        if a.channel == "backend":
+        if a.channel == "reception":
+            require(receipt.get("status") in ("accepted", "completed"), "invalid_receipt")
+            a.status = "done"
+            if a.operation in ("completed", "cancelled", "failed"):
+                state.phase = a.operation
+        elif a.channel == "backend":
             require(receipt.get("status") in ("accepted", "completed"), "invalid_receipt")
             a.status = "done"  # Only delivery acknowledged; approvals come through verifier.
             if a.operation == "resident.update" and state.completion:
@@ -388,6 +479,25 @@ class SupervisorService:
     def _check_action(self, state):
         a = state.action
         require(a is not None and a.plan_version == state.revision, "stale_action")
+        if a.channel == "reception":
+            message = SupervisorMessage.model_validate(a.wire)
+            require(message.message_type == a.operation and
+                    message.message_id == a.action_id and
+                    message.ticket_version == state.ticket_version and
+                    message.supervisor_run_id == state.supervisor_run_id and
+                    message.workspace_id == state.context.workspace_id and
+                    state.reception is not None and message.team_id == state.reception.team_id and
+                    message.ticket_code == state.reception.ticket_code and
+                    (message.tenant_id, message.ticket_id, message.ticket_generation) == state.context.scope(),
+                    "action_identity_mismatch")
+            if message.message_type in ("information_requested", "plan_approval_requested"):
+                require(state.pending_resident == message.message_type and
+                        state.pending_ticket_version == message.ticket_version, "resident_request_not_pending")
+            if message.message_type == "completed":
+                require(state.phase == "waiting_result_validation", "publication_not_authorized")
+            elif message.message_type == "cancelled":
+                require(state.phase == "waiting_cancellation", "cancellation_not_pending")
+            return
         require(Context.model_validate(a.wire["context"]) == state.context and
                 a.wire["idempotency_key"] == a.action_id and
                 a.wire["request_id"] == a.action_id, "action_identity_mismatch")
@@ -438,7 +548,11 @@ class SupervisorService:
         a.status = "sending"
         state = await self._save(state, state.version)
         try:
-            receipt = await (self.room.dispatch(a) if a.channel == "room" else self.backend.dispatch(a))
+            if a.channel == "reception":
+                require(self.reception is not None, "dependency_unavailable:reception_v2")
+                receipt = await self.reception.send(SupervisorMessage.model_validate(a.wire), state.context)
+            else:
+                receipt = await (self.room.dispatch(a) if a.channel == "room" else self.backend.dispatch(a))
         except Exception as exc:
             # Cancellation/BaseException leaves 'sending', also forcing reconciliation.
             old_version = state.version
@@ -477,7 +591,7 @@ class SupervisorService:
                     state.resume_phase = None
                     await self._save(state, original.version)
                     continue
-                if state.phase in ("paused", "completed"):
+                if state.phase in ("paused", "completed", "cancelled", "failed"):
                     return state
                 if state.room:
                     state.room = await self.room.read(context, state.room.room_id)
@@ -489,6 +603,8 @@ class SupervisorService:
                     action(state, "backend", "completion.requested", dict(state.completion))
                 elif prepare_next(state, view, self.clock()):
                     pass
+                elif state.question_draft is not None:
+                    return state  # Backend must store/version the proposed question.
                 elif state.phase == "waiting_result_validation" and state.publication_draft:
                     return state  # Backend must authorize the draft/QC/cost before delivery.
                 elif state.phase in ("planning", "waiting_result_validation"):
@@ -509,13 +625,13 @@ class SupervisorService:
                 current = await self.store.load(context)
                 require(current is not None and current.version == original.version, "state_conflict")
                 state = current.model_copy(deep=True)
-                if state.phase in ("paused", "completed"):
+                if state.phase in ("paused", "completed", "cancelled", "failed"):
                     raise
                 if state.action:
                     # Pending work remains recoverable; authorization failure doesn't
                     # erase its wire or permit a new key.
                     state.pause_reason = exc.code
-                elif state.phase == "waiting_result_validation" and exc.code.startswith("dependency_unavailable"):
+                elif (state.phase == "waiting_result_validation" or state.reception is not None) and exc.code.startswith("dependency_unavailable"):
                     state.pause_reason = exc.code
                 else:
                     pause(state, exc.code)
