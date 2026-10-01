@@ -53,3 +53,6 @@ venv/
 
 # Local schema verification output and downloaded development tooling.
 .codex-artifacts/
+
+.codegraph/
+.copilotkit/
