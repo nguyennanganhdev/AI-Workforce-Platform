@@ -83,6 +83,7 @@ import {
   InstructionsTooLongError,
   type UserInstructionsStore,
 } from "./user-instructions";
+import { createVinhomesRoutes } from "./vinhomes/routes";
 
 /**
  * How much of a multipart body is boundary, headers and other fields rather than file.
@@ -324,6 +325,7 @@ export function createApp(
   /** Native model OAuth stays server-side; callers hold only a separate local bearer. */
   modelProviderProxy?: ModelProviderProxy,
   ticketReader?: TicketReader,
+  vinHomesDatabase?: { database: Database; tenantId: string },
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
   mountDesktopConnectionFailure(app, desktopHostToken);
@@ -475,6 +477,12 @@ export function createApp(
 
   if (ticketReader) {
     app.route("/api/vinhomes", createTicketRoutes(ticketReader, requireUser));
+  }
+  if (vinHomesDatabase) {
+    app.route(
+      "/api/vinhomes/v3",
+      createVinhomesRoutes(vinHomesDatabase.database, vinHomesDatabase.tenantId, requireUser),
+    );
   }
 
   app.get("/api/me", requireUser, async (context) =>

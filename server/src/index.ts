@@ -1321,6 +1321,7 @@ const app = createApp(
     ? createProviderOAuthProxy(process.env.OPENBOT_MODEL_OAUTH_FILE.trim())
     : undefined,
   createTicketReader(database, deploymentScope(tenantPackage.tenantId).tenantId),
+  { database, tenantId: deploymentScope(tenantPackage.tenantId).tenantId },
 );
 
 /**
