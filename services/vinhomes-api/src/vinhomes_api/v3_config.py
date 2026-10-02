@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import re
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -26,6 +27,8 @@ class V3Settings:
     resident_allowed_origins: tuple[str, ...] = ()
     resident_signing_key: str | None = None
     resident_local_storage: bool = False
+    reception_service_token: str | None = None
+    reception_url: str | None = None
 
     @classmethod
     def from_env(cls) -> "V3Settings":
@@ -71,6 +74,15 @@ class V3Settings:
         local_storage = os.getenv('VINHOMES_API_RESIDENT_LOCAL_STORAGE', '0') == '1'
         if local_storage and host not in {'127.0.0.1', 'localhost', '::1'}:
             raise ValueError('Resident local storage requires a loopback host')
+        reception_token = os.getenv('VINHOMES_API_RECEPTION_SERVICE_TOKEN', '').strip() or None
+        if reception_token and len(reception_token) < 32:
+            raise ValueError('Reception service token requires at least 32 characters')
+        reception_url = os.getenv('VINHOMES_API_RECEPTION_URL', '').strip().rstrip('/') or None
+        if reception_url and (not reception_url.startswith(('http://', 'https://')) or not reception_token):
+            raise ValueError('Reception URL must be HTTP(S) and requires the Reception service token')
+        if reception_url and not re.fullmatch(r'(?:[0-9a-fA-F]{2}){32,}', os.getenv('RECEPTION_DELEGATION_KEY', '')):
+            # Fail at startup instead of answering every resident with the fallback reply.
+            raise ValueError('Reception URL requires RECEPTION_DELEGATION_KEY (at least 32 random bytes as hex)')
         return cls(
             host=host,
             port=port,
@@ -84,4 +96,6 @@ class V3Settings:
             resident_allowed_origins=origins,
             resident_signing_key=signing_key,
             resident_local_storage=local_storage,
+            reception_service_token=reception_token,
+            reception_url=reception_url,
         )

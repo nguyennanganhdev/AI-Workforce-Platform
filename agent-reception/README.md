@@ -71,6 +71,38 @@ Mọi route/method khác trả 404. Không có run endpoint hoặc mock nghiệp
 Chạy trực tiếp mới khởi động service; SIGINT/SIGTERM dừng listener.
 PH04 sử dụng model trả về để inject vào graph; test gọi `server.stop(true)` để dọn tài nguyên.
 
+## Runtime service (Python)
+
+`src/runtime/` ghép graph nghiệp vụ với model, backend và nơi lưu phiên thành một service chạy được:
+
+```sh
+python -m pip install -r requirements.txt
+python -m uvicorn src.runtime.service:create_app --factory --host 127.0.0.1 --port 4202
+```
+
+Biến môi trường ở `.env.example` (`RECEPTION_SERVICE_TOKEN`, `RECEPTION_BACKEND_URL`, `RECEPTION_MODEL`,
+`OPENAI_API_KEY`). Backend bật bằng `VINHOMES_API_RECEPTION_SERVICE_TOKEN`, `VINHOMES_API_RECEPTION_URL` và
+`RECEPTION_DELEGATION_KEY` (khóa ký chỉ backend giữ).
+
+- `POST /v1/turns` (Bearer service token): backend gọi sau khi tin nhắn cư dân đã commit. Service chạy một
+  lượt graph theo từng cuộc trò chuyện rồi ghi câu trả lời qua `POST /internal/reception/chats/{id}/replies`.
+  App cư dân chỉ đọc hội thoại từ backend.
+- Ủy quyền: service token chỉ chứng minh lời gọi đến từ backend. Mỗi lượt, backend mở một run gắn với phiên
+  của cuộc trò chuyện và gửi kèm token ngắn hạn (`delegation`). Runtime dùng token đó cho mọi lời gọi ngược về
+  backend và tìm tri thức; token chỉ giữ trong bộ nhớ, không ghi vào checkpoint, và hết hiệu lực khi lượt kết thúc.
+- `runtime/backend.py` là lớp chuyển đổi: hợp đồng backend là chuẩn (draft chưa phải ticket, handoff tạo ticket,
+  kết quả phẳng). Graph thấy draft dưới một `ticket_id` ổn định; từng operation được dịch sang
+  `/internal/reception/v1/execute`. Backend tự suy ra cư dân, tenant, run từ token.
+- Policy (khẩn cấp, cần nhân viên) do backend quyết định ở `/internal/reception/policy/evaluate`; model chỉ đề xuất.
+- `runtime/knowledge.py` gọi `search_knowledge` v1 khi có `RECEPTION_KNOWLEDGE_URL` và chỉ trả lời từ passage có trích dẫn.
+- `runtime/model.py` gọi chat completions kiểu OpenAI với đầu ra JSON.
+
+Chưa có trong runtime: nhận sự kiện từ Supervisor (chưa có Supervisor chạy), trả lời tương tác của Supervisor,
+self-help (backend trả 501 nên graph mời hỗ trợ trực tiếp), checkpointer PostgreSQL cho nhiều replica.
+
+Kiểm thử đầu-cuối qua HTTP thật: `tests/runtime/test_resident_chat_e2e.py` (cần backend, runtime và
+`tests/runtime/fake_llm.py`; model trong test là stub xác định, không phải LLM thật).
+
 ## Internal contracts
 
 `src/contracts/index.ts` là **đề xuất nội bộ `0.1.0-draft.1`**, state schema v1.

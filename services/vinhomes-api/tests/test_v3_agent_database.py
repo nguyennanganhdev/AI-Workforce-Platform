@@ -127,6 +127,127 @@ def test_reception_draft_handoff_and_durable_retry(database):
         assert status["agentContext"]["source"] == "business_api"
 
 
+def test_handoff_without_supervisor_creates_a_direct_flow_ticket(database):
+    """A management unit with no versioned Supervisor still receives the ticket."""
+    sql(database, "update agents set status='archived' where id='demo-supervisor'")
+    try:
+        with client(database) as c:
+            context, _ = operation(c, "get_verified_resident_context")
+            place = context["residences"][0]
+            assert place["building_code"] and place["domain_name"]
+            channel = c.post("/resident/chats", json={"title": "No supervisor"}).json()["id"]
+            message = c.post(f"/resident/chats/{channel}/messages",
+                             json={"text": "Light is broken", "client_message_id": str(uuid4())}).json()
+            draft, _ = operation(c, "create_ticket_draft", {
+                "channel_id": channel, "title": "Broken light", "description": "Hallway light does not turn on",
+                "domain_id": place["domain_id"], "building_id": place["building_id"], "unit_id": place["unit_id"],
+                "category_id": CATEGORY, "source_message_id": message["id"]})
+            target = {"channel_id": channel, "draft_id": draft["draftId"]}
+            operation(c, "submit_ticket_assessment", {**target, "assessment": {
+                "priority": "normal", "severity": "minor", "reason": "Resident report"}})
+            operation(c, "handoff_ticket", {**target, "plan_required": "no"}, expected=422)
+            handoff, _ = operation(c, "handoff_ticket", {**target, "plan_required": False})
+            assert handoff["accepted"] and handoff["team"] is None and handoff["handoff"] is None
+            ticket_id = handoff["ticket"]["id"]
+        created = sql(database, "select payload from ticket_events where ticket_id=$1 and event_type='ticket.created'", UUID(ticket_id))[0]
+        payload = created["payload"] if isinstance(created["payload"], dict) else __import__("json").loads(created["payload"])
+        assert "requiresPlan" not in payload
+        with demo_client(database, "management") as c:
+            session = c.get(f"/tickets/{ticket_id}/session").json()
+            assert session == {"session": None, "missing": "supervisor"}
+    finally:
+        sql(database, "update agents set status='active' where id='demo-supervisor'")
+
+
+def delegate(c, channel, message_id, actor="local-v3-resident"):
+    """Open a run the way the backend does once a resident message is committed."""
+    from vinhomes_api.reception_delegation import start_run
+    from vinhomes_api.v3_reception_runtime import POLICY_VERSION, _resident_transaction
+
+    async def run():
+        async with _resident_transaction(c.app, actor) as db:
+            return await start_run(db, actor, channel, message_id, POLICY_VERSION)
+
+    return c.portal.call(run)
+
+
+def resident_message(c, title, text="Xin chào"):
+    channel = c.post("/resident/chats", json={"title": title}).json()["id"]
+    message = c.post(f"/resident/chats/{channel}/messages", json={"text": text, "client_message_id": str(uuid4())}).json()
+    return channel, message["id"]
+
+
+def test_reception_policy_and_reply_are_backend_decisions(database, monkeypatch):
+    monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "ab" * 32)
+    with client(database) as c:
+        channel, message_id = resident_message(c, "Reply")
+        policy = "/internal/reception/policy/evaluate"
+        # A resident session is not a Reception delegation.
+        assert c.post(policy, json={"message_text": "Xin chào", "assessment": None}).status_code == 401
+        c.headers["Authorization"] = "Bearer " + delegate(c, channel, message_id)["token"]
+        fire = c.post(policy, json={"message_text": "Bếp nhà tôi đang cháy", "assessment": None}).json()
+        assert fire["emergency"] and fire["handoff_reason"] == "emergency"
+        # "chảy" (leaking) shares its letters with "cháy" (fire) once diacritics are dropped.
+        leak = c.post(policy, json={
+            "message_text": "Vòi nước bị chảy nhỏ giọt", "assessment": {"intent": "incident"}}).json()
+        assert not leak["emergency"] and leak["staff_required"] and leak["handoff_reason"] == "needs_staff"
+        question = c.post(policy, json={
+            "message_text": "Phí quản lý tháng này bao nhiêu?", "assessment": {"intent": "information"}}).json()
+        assert not question["staff_required"] and question["self_help_allowed"] is False
+        body = {"text": "Chào bạn.", "reply_to_id": message_id}
+        first = c.post(f"/internal/reception/chats/{channel}/replies", json=body)
+        assert first.status_code == 201, first.text
+        assert c.post(f"/internal/reception/chats/{channel}/replies", json=body).json() == first.json()
+        assert c.post(f"/internal/reception/chats/{channel}/replies",
+                      json={**body, "reply_to_id": str(uuid4())}).status_code == 422
+
+
+def test_reception_delegation_is_bound_to_one_running_turn(database, monkeypatch):
+    from vinhomes_api.reception_delegation import finish_run
+    from vinhomes_api.v3_reception_runtime import _resident_transaction
+
+    monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "cd" * 32)
+    v1 = "/internal/reception/v1/execute"
+    with client(database) as c:
+        channel, message_id = resident_message(c, "Delegation")
+        other, other_message = resident_message(c, "Another conversation")
+        delegation = delegate(c, channel, message_id)
+        bearer = {"Authorization": "Bearer " + delegation["token"]}
+        call = {"operation": "get_verified_resident_context", "input": {}, "context": {}, "idempotency_key": str(uuid4())}
+
+        done = c.post(v1, headers=bearer, json=call)
+        assert done.status_code == 200, done.text
+        # The resident comes from the run; the response carries the canonical context.
+        assert done.json()["result"]["resident"]["id"] == "local-v3-resident"
+        assert done.json()["context"] == delegation["context"]
+        run = sql(database, "select status,actor_user_id,channel_id from agent_runs where id=$1", UUID(delegation["context"]["runId"]))[0]
+        assert run == {"status": "running", "actor_user_id": "local-v3-resident", "channel_id": channel}
+
+        # Neither the caller's context nor its input can widen the binding.
+        assert c.post(v1, headers=bearer, json={**call, "context": {"runId": str(uuid4())}}).status_code == 403
+        assert c.post(v1, headers=bearer, json={**call, "operation": "create_ticket_draft", "input": {"channel_id": other},
+                                                 "idempotency_key": str(uuid4())}).status_code == 403
+        assert c.post(f"/internal/reception/chats/{other}/replies", headers=bearer,
+                      json={"text": "x", "reply_to_id": other_message}).status_code == 403
+        forged = delegation["token"][:-1] + ("0" if delegation["token"][-1] != "0" else "1")
+        assert c.post(v1, headers={"Authorization": "Bearer " + forged}, json=call).status_code == 401
+        # A second message of the same conversation reuses the binding under a new run.
+        second = c.post(f"/resident/chats/{channel}/messages", json={"text": "Còn nữa", "client_message_id": str(uuid4())}).json()
+        again = delegate(c, channel, second["id"])
+        assert again["context"]["bindingId"] == delegation["context"]["bindingId"]
+        assert again["context"]["runId"] != delegation["context"]["runId"]
+
+        async def finish():
+            async with _resident_transaction(c.app, "local-v3-resident") as db:
+                await finish_run(db, delegation["context"]["runId"], True)
+
+        c.portal.call(finish)
+        # The token dies with its run, well before it expires.
+        assert c.post(v1, headers=bearer, json={**call, "idempotency_key": str(uuid4())}).status_code == 403
+        assert c.get("/internal/reception/catalog", headers=bearer).status_code == 403
+        assert c.get("/internal/reception/catalog", headers={"Authorization": "Bearer " + again["token"]}).status_code == 200
+
+
 def test_operation_identity_rollback_and_missing_receipt(database):
     with client(database) as c:
         body = {

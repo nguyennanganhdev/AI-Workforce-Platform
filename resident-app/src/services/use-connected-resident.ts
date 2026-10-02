@@ -94,7 +94,7 @@ export function useConnectedResident() {
         ),
       ),
     );
-    const chatMessages = messages.map((m) => ({
+    const chatMessages = messages.filter((m) => m.body.text).map((m) => ({
       id: m.id,
       role:
         m.sender_kind === "user"

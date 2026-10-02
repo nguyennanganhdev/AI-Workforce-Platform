@@ -19,6 +19,7 @@ import { createAgentProfileStore } from "./agents/profile-store";
 import type { AgentActor } from "./agents/profile-types";
 import { createRuntimeAgentLoader } from "./agents/runtime-agents";
 import { createApp } from "./app";
+import { knowledgeRuntimeFromEnv } from "./knowledge/runtime";
 import { createTicketReader } from "./business/tickets";
 import {
   type AuditInitiator,
@@ -1244,6 +1245,7 @@ if (Boolean(process.env.TECHNICAL_API_DATABASE_URL) !== Boolean(process.env.TECH
 if (process.env.TECHNICAL_API_TENANT_ID && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(process.env.TECHNICAL_API_TENANT_ID)) {
   throw new Error("TECHNICAL_API_TENANT_ID must be a UUID");
 }
+const knowledgeRuntime = await knowledgeRuntimeFromEnv(process.env);
 const app = createApp(
   config,
   auth,
@@ -1336,6 +1338,7 @@ const app = createApp(
         lookupToken: async (hash: string) => agentProfileStore.agentForCallbackToken(hash),
       }
     : undefined,
+  knowledgeRuntime,
 );
 
 /**

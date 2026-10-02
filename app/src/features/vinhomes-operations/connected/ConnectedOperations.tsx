@@ -7,6 +7,7 @@ import {
 import { WorkspaceFrame } from "../workspace/WorkspaceFrame";
 import { ConnectedAccounts } from "./ConnectedAccounts";
 import "./connected.css";
+import { OnsiteConsent, QuoteForm } from "./RepairQuote";
 import { OperationsDashboardView } from "../components/operations-dashboard";
 import { LiveTeamPage } from "../workspace/LiveTeamPage";
 import type { CaseStage } from "../workspace/model";
@@ -42,6 +43,29 @@ type Detail = {
   ticket: Ticket;
   workOrders: Order[];
   events: { id: string; event_type: string; occurred_at: string }[];
+};
+type Session = {
+  session: {
+    id: string;
+    status: string;
+    state_version: number;
+    supervisor_name: string;
+  } | null;
+  missing?: string;
+  awaitingManagementApproval?: boolean;
+};
+const sessionLabels: Record<string, string> = {
+  queued: "Đã mở, chờ Supervisor điều phối",
+  running: "Đang điều phối",
+  waiting: "Đang chờ phản hồi",
+  completed: "BQL đã duyệt đóng",
+  failed: "Lỗi điều phối",
+  cancelled: "Đã hủy",
+};
+const sessionMissing: Record<string, string> = {
+  workspace: "BQL chưa có workspace trên platform",
+  group_chat: "BQL chưa có group chat điều phối",
+  supervisor: "Group chat của BQL chưa có Supervisor đã phát hành",
 };
 type Me = {
   user: { id: string; name: string };
@@ -83,6 +107,7 @@ export function ConnectedOperations() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [jobs, setJobs] = useState<Order[]>([]);
   const [detail, setDetail] = useState<Detail>();
+  const [session, setSession] = useState<Session>();
   const [catalog, setCatalog] = useState<Catalog>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -94,6 +119,7 @@ export function ConnectedOperations() {
   const [note, setNote] = useState("");
   const [available, setAvailable] = useState<Staff[]>([]);
   const [file, setFile] = useState<File>();
+  const [phase, setPhase] = useState<"before" | "after">("before");
   const [photos, setPhotos] = useState<{ id: string; original_name: string }[]>(
     [],
   );
@@ -169,6 +195,7 @@ export function ConnectedOperations() {
     if (ticketId.current) {
       const d = await request<Detail>(`/tickets/${ticketId.current}`);
       setDetail(d);
+      setSession(await request<Session>(`/tickets/${ticketId.current}/session`));
       const p = await request<{
         items: { id: string; original_name: string }[];
       }>(`/tickets/${ticketId.current}/files`);
@@ -216,6 +243,7 @@ export function ConnectedOperations() {
   useEffect(() => {
     ticketId.current = "";
     setDetail(undefined);
+    setSession(undefined);
     setPhotos([]);
   }, [path]);
   async function run(action: () => Promise<void>) {
@@ -240,12 +268,14 @@ export function ConnectedOperations() {
   async function open(id: string) {
     ticketId.current = id;
     setDetail(undefined);
+    setSession(undefined);
     setPhotos([]);
     setStaff("");
     setAvailable([]);
     await run(async () => {
       const d = await request<Detail>(`/tickets/${id}`);
       setDetail(d);
+      setSession(await request<Session>(`/tickets/${id}/session`));
       if (d.ticket.category_id && me?.role !== "staff") {
         try {
           const a = await request<{ items: Staff[] }>(
@@ -484,6 +514,51 @@ export function ConnectedOperations() {
                           </a>
                         ))}
                       </div>
+                      {session && (
+                        <article className="live-order">
+                          <h3>Phiên điều phối</h3>
+                          {session.session ? (
+                            <>
+                              <p>Supervisor: {session.session.supervisor_name}</p>
+                              <strong>
+                                {session.awaitingManagementApproval
+                                  ? "Cư dân đã xác nhận, chờ BQL duyệt đóng"
+                                  : sessionLabels[session.session.status] ||
+                                    session.session.status}
+                              </strong>
+                              {management &&
+                                session.awaitingManagementApproval && (
+                                  <div className="live-actions">
+                                    <button
+                                      disabled={busy}
+                                      onClick={() =>
+                                        void run(async () => {
+                                          await post(
+                                            `/tickets/${selected.id}/session/close-approval`,
+                                            {
+                                              version:
+                                                session.session!.state_version,
+                                              note: note.trim() || undefined,
+                                            },
+                                          );
+                                        })
+                                      }
+                                    >
+                                      Duyệt đóng session
+                                    </button>
+                                  </div>
+                                )}
+                            </>
+                          ) : (
+                            <p>
+                              Chưa có session:{" "}
+                              {sessionMissing[session.missing ?? ""] ||
+                                "ticket được tạo trước khi BQL cấu hình điều phối"}
+                              . Ticket vẫn xử lý theo luồng thủ công.
+                            </p>
+                          )}
+                        </article>
+                      )}
                       {detail.workOrders.map((order) => {
                         const mine = jobs.find((j) => j.id === order.id);
                         const next: Record<string, [string, string]> = {
@@ -574,34 +649,48 @@ export function ConnectedOperations() {
                             {!management &&
                               mine?.assignment_status === "accepted" &&
                               order.status === "arrived" && (
-                                <button
+                                <QuoteForm
                                   disabled={busy || note.trim().length < 8}
-                                  onClick={() =>
+                                  onSubmit={(quote) =>
                                     void run(async () => {
                                       await post(
                                         `/work-orders/${order.id}/repair-proposal`,
                                         {
                                           version: order.version,
                                           note: note.trim(),
+                                          ...quote,
                                         },
                                       );
                                     })
                                   }
-                                >
-                                  Gửi phương án cho cư dân
-                                </button>
+                                />
                               )}
                             {!management &&
                               mine?.assignment_status === "accepted" &&
                               order.status === "awaiting_approval" && (
-                                <button
-                                  disabled={busy}
-                                  onClick={() =>
-                                    void change(order, "in_progress")
-                                  }
-                                >
-                                  Bắt đầu sau khi cư dân đồng ý
-                                </button>
+                                <>
+                                  <OnsiteConsent
+                                    orderId={order.id}
+                                    disabled={busy}
+                                    request={request}
+                                    onDecide={(approved) =>
+                                      void run(async () => {
+                                        await post(
+                                          `/work-orders/${order.id}/repair-proposal/onsite-decision`,
+                                          { version: order.version, approved },
+                                        );
+                                      })
+                                    }
+                                  />
+                                  <button
+                                    disabled={busy}
+                                    onClick={() =>
+                                      void change(order, "in_progress")
+                                    }
+                                  >
+                                    Bắt đầu sau khi cư dân đồng ý
+                                  </button>
+                                </>
                               )}
                             {!management &&
                               mine?.assignment_status === "accepted" &&
@@ -620,7 +709,25 @@ export function ConnectedOperations() {
                               order.status === "in_progress" && (
                                 <div className="live-actions">
                                   <label>
-                                    Ảnh sau xử lý
+                                    Loại ảnh
+                                    <select
+                                      value={phase}
+                                      onChange={(e) =>
+                                        setPhase(
+                                          e.target.value as "before" | "after",
+                                        )
+                                      }
+                                    >
+                                      <option value="before">
+                                        Ảnh trước khi sửa
+                                      </option>
+                                      <option value="after">
+                                        Ảnh sau khi sửa
+                                      </option>
+                                    </select>
+                                  </label>
+                                  <label>
+                                    Ảnh hiện trường
                                     <input
                                       type="file"
                                       accept="image/jpeg,image/png,image/webp"
@@ -637,7 +744,7 @@ export function ConnectedOperations() {
                                         const p = await request<{
                                           fileId: string;
                                         }>(
-                                          `/tickets/${selected.id}/files?filename=${encodeURIComponent(file.name)}&mimeType=${encodeURIComponent(file.type)}&purpose=after`,
+                                          `/tickets/${selected.id}/files?filename=${encodeURIComponent(file.name)}&mimeType=${encodeURIComponent(file.type)}&purpose=${phase}`,
                                           {
                                             method: "POST",
                                             headers: {
@@ -653,11 +760,12 @@ export function ConnectedOperations() {
                                             file_id: p.fileId,
                                             work_order_id: order.id,
                                             assignment_id: mine.assignment_id,
-                                            purpose: "after",
+                                            purpose: phase,
                                             caption: note,
                                           },
                                         );
                                         setFile(undefined);
+                                        setPhase("after");
                                       })
                                     }
                                   >

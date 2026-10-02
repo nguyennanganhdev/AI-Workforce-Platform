@@ -6,7 +6,7 @@ import hashlib
 from typing import Annotated
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import text
@@ -143,7 +143,8 @@ async def list_messages(channel_id: str, scope: ResidentScope,
 
 @router.post("/resident/chats/{channel_id}/messages", status_code=201,
              summary="Send a message in my chat")
-async def send_message(channel_id: str, body: SendMessage, request: Request, scope: ResidentScope) -> dict[str, object]:
+async def send_message(channel_id: str, body: SendMessage, request: Request, scope: ResidentScope,
+                       background: BackgroundTasks) -> dict[str, object]:
     db, actor_id = scope
     await _owned_chat(scope, channel_id, lock=True)
     content = {"text": body.text}
@@ -180,7 +181,12 @@ async def send_message(channel_id: str, body: SendMessage, request: Request, sco
            "actor_id": actor_id, "body": json.dumps(content),
            "client_message_id": body.client_message_id})
     created = dict(result.mappings().one())
-    if request.app.state.settings.demo_mode:
+    if request.app.state.settings.reception_url:
+        # Runs after this transaction commits, so the runtime can read the message.
+        from .v3_reception_runtime import dispatch_turn
+        background.add_task(dispatch_turn, request.app, actor_id, channel_id,
+                            {"id": str(created["id"]), "text": body.text, "fileIds": content.get("fileIds", [])})
+    elif request.app.state.settings.demo_mode:
         response_text = "Reception demo đã tiếp nhận. Hãy tạo ticket trong chat để chuyển BQL."
         seq = await db.execute(text("update channels set next_message_seq=next_message_seq+1,last_message=:preview,last_message_at=now() where id=:id returning next_message_seq-1"), {"id": channel_id, "preview": response_text})
         response_message = await db.execute(text("""
@@ -208,7 +214,8 @@ async def create_chat_ticket(channel_id: str, body: ResidentTicketCreate, reques
 async def create_resident_ticket(channel_id: str, body: ResidentTicketCreate,
                                  scope: ResidentScope, *, acting_user_id: str | None = None,
                                  assessment: dict[str, object] | None = None,
-                                 receipt_key: str | None = None) -> dict[str, object]:
+                                 receipt_key: str | None = None,
+                                 requires_plan: bool = True) -> dict[str, object]:
     """Shared intake service; staff callers must authorize the Case before calling.
 
     Residence/chat ownership belong to the requester. Audit belongs to the actual
@@ -347,7 +354,8 @@ async def create_resident_ticket(channel_id: str, body: ResidentTicketCreate,
                "is_emergency": assessment["is_emergency"]} if assessment is not None else {})})
     created = dict(ticket.mappings().one())
     event_payload = ({"receipt": {**created, "version": 1}} if receipt_key is not None
-                     else {"requiresPlan": True, **({"assessment": assessment} if assessment is not None else {})})
+                     else {**({"requiresPlan": True} if requires_plan else {}),
+                           **({"assessment": assessment} if assessment is not None else {})})
     event_id = await record_event((db, acting_user_id or actor_id, False),
                                   {**created, "last_event_seq": 0}, "ticket.created",
                                   json.dumps({"source": "resident_chat", "requestHash": fingerprint, **event_payload}, default=str),
@@ -399,6 +407,9 @@ async def create_resident_ticket(channel_id: str, body: ResidentTicketCreate,
             values(nullif(current_setting('app.tenant_id',true),'')::uuid,:ticket,:file,'issue',:actor)
         """), {"ticket": ticket_id, "file": file_id, "actor": actor_id})
     if receipt_key is not None:
+        # Agent callers open the session in the Reception handoff instead.
+        from .v3_session import ensure_session
+        await ensure_session(db, acting_user_id or actor_id, ticket_id)
         created["version"] = 1
         return created
     from .v3_ticket_result import resident_ticket_result

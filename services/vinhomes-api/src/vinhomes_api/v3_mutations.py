@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
@@ -352,9 +353,19 @@ class WorkOrderTransition(BaseModel):
     note: str = Field(min_length=1, max_length=2000)
 
 
+class QuoteLine(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    quantity: Decimal = Field(gt=0, le=10000, decimal_places=3)
+    unit: str = Field(min_length=1, max_length=30)
+    unit_price: int = Field(ge=0, le=1_000_000_000)
+
+
 class RepairProposal(BaseModel):
     version: int = Field(ge=0)
     note: str = Field(min_length=8, max_length=2000)
+    lines: list[QuoteLine] = Field(default_factory=list, max_length=50)
+    labor_cost: int = Field(default=0, ge=0, le=1_000_000_000)
+    warranty_months: int = Field(default=0, ge=0, le=120)
 
 
 @router.post("/work-orders/{work_order_id}/repair-proposal", status_code=201)
@@ -366,15 +377,60 @@ async def propose_repair(work_order_id: UUID, body: RepairProposal, scope: Scope
     order = (await scope[0].execute(text("select status,version from work_orders where id=:id for update"), {"id": work_order_id})).mappings().one()
     if order["version"] != body.version or order["status"] != "arrived":
         raise HTTPException(409, "Proposal requires the current arrived work order")
+    # Amounts are computed here in whole VND; the client total is never trusted.
+    lines = [{"name": line.name, "quantity": str(line.quantity), "unit": line.unit, "unit_price": line.unit_price,
+              "amount": int((line.quantity * line.unit_price).to_integral_value(ROUND_HALF_UP))} for line in body.lines]
+    detail = {"note": body.note, "lines": lines, "labor_cost": body.labor_cost,
+              "warranty_months": body.warranty_months,
+              "total": sum(line["amount"] for line in lines) + body.labor_cost}
     approval = await scope[0].execute(text("""
         insert into work_approvals(tenant_id,work_order_id,kind,requested_to_user_id,request_detail,status,request_hash)
         select tenant_id,:order,'customer_repair',requester_user_id,
-          jsonb_build_object('note',cast(:note as text)),'pending',:hash from tickets where id=:ticket
+          cast(:detail as jsonb),'pending',:hash from tickets where id=:ticket
         returning id,status
-    """), {"order": work_order_id, "ticket": ticket["id"], "note": body.note, "hash": str(uuid4())})
+    """), {"order": work_order_id, "ticket": ticket["id"], "detail": json.dumps(detail), "hash": str(uuid4())})
     await scope[0].execute(text("update work_orders set status='awaiting_approval',version=version+1,updated_at=now() where id=:id"), {"id": work_order_id})
     await record_event(scope, ticket, "work_order.repair_proposed", json.dumps({"workOrderId": str(work_order_id)}))
     return dict(approval.mappings().one())
+
+
+class OnsiteDecision(BaseModel):
+    version: int = Field(ge=0)
+    approved: bool
+
+
+@router.post("/work-orders/{work_order_id}/repair-proposal/onsite-decision",
+             summary="Record the resident's answer given on the assigned staff member's device")
+async def decide_repair_onsite(work_order_id: UUID, body: OnsiteDecision, scope: Scope):
+    """Staff-attested consent; the resident app decision on the same approval wins if it lands first."""
+    from .v3_specialized import work_ticket, can_work_order
+    ticket = await work_ticket(scope, work_order_id, lock=True)
+    if not await can_work_order(scope, work_order_id, ticket):
+        raise HTTPException(403, "Accepted assignment required")
+    order = (await scope[0].execute(text("select status,version from work_orders where id=:id for update"), {"id": work_order_id})).mappings().one()
+    if order["version"] != body.version or order["status"] != "awaiting_approval":
+        raise HTTPException(409, "No repair proposal is awaiting the resident")
+    pending = await scope[0].execute(text("""
+        select id from work_approvals where work_order_id=:id and kind='customer_repair' and status='pending'
+          and (expires_at is null or expires_at>now())
+        order by created_at desc,id desc limit 1 for update
+    """), {"id": work_order_id})
+    approval_id = pending.scalar_one_or_none()
+    if approval_id is None:
+        raise HTTPException(409, "Approval is no longer pending")
+    status = "approved" if body.approved else "rejected"
+    decided = await scope[0].execute(text("""
+        update work_approvals set status=:status,decided_by=:actor,decided_at=now(),
+          decision_note=:note,updated_at=now() where id=:id returning id,kind,status
+    """), {"status": status, "actor": scope[1], "id": approval_id,
+           "note": "Cư dân trả lời tại hiện trường trên thiết bị của nhân viên."})
+    if not body.approved:
+        await scope[0].execute(text("update work_orders set status='arrived',version=version+1,updated_at=now() where id=:id"), {"id": work_order_id})
+    event_id = await record_event(scope, ticket, "work_approval.decided",
+                                  json.dumps({"approvalId": str(approval_id), "status": status, "channel": "onsite"}))
+    await scope[0].execute(text("update work_approvals set decided_event_id=:event where id=:id"),
+                           {"event": event_id, "id": approval_id})
+    return dict(decided.mappings().one())
 
 
 ALLOWED_TRANSITIONS = {
@@ -428,13 +484,12 @@ async def change_work_order_status(work_order_id: UUID, body: WorkOrderTransitio
         if category.scalar_one() == 'security':
             raise HTTPException(409, "Guard cancellation requires a management-approved cancel request")
     if body.status == "completed":
-        if planned:
-            before = await scope[0].execute(text("""
-                select 1 from evidence_items where work_order_id=:id
-                  and status='active' and purpose='before' limit 1
-            """), {"id": work_order_id})
-            if before.first() is None:
-                raise HTTPException(409, "Attach before-work evidence before completing work")
+        before = await scope[0].execute(text("""
+            select 1 from evidence_items where work_order_id=:id
+              and status='active' and purpose='before' limit 1
+        """), {"id": work_order_id})
+        if before.first() is None:
+            raise HTTPException(409, "Attach before-work evidence before completing work")
         pending_permissions = await scope[0].execute(text("select 1 from vh_operational_requests where work_order_id=:id and status in ('pending','approved') limit 1"), {"id": work_order_id})
         if pending_permissions.first() is not None:
             raise HTTPException(409, "Finish or cancel operational permissions before completing work")

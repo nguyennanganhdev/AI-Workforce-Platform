@@ -76,6 +76,7 @@ function readRoute(): Route {
 }
 
 import type { ConnectedResident } from "../services/use-connected-resident";
+import type { Approval } from "../services/resident-api";
 
 export function App({ live }: { live?: ConnectedResident }) {
   const resident = live
@@ -529,6 +530,7 @@ export function App({ live }: { live?: ConnectedResident }) {
                   <section className="white-card resident-consent">
                     <h3>Phương án sửa chữa cần bạn xác nhận</h3>
                     <p>{live.consent(detail.id)?.request_detail.note}</p>
+                    <RepairQuote quote={live.consent(detail.id)!.request_detail} />
                     <div className="button-row">
                       <button
                         className="primary-button"
@@ -723,4 +725,23 @@ export function App({ live }: { live?: ConnectedResident }) {
 
 function IconClipboardFallback() {
   return <IconSparkles size={30} />;
+}
+
+function RepairQuote({ quote }: { quote: Approval["request_detail"] }) {
+  if (quote.total === undefined) return null;
+  const vnd = (n: number) => `${n.toLocaleString("vi-VN")}đ`;
+  return (
+    <ul>
+      {quote.lines?.map((line, index) => (
+        <li key={index}>
+          {line.name} × {line.quantity} {line.unit}: {vnd(line.amount)}
+        </li>
+      ))}
+      <li>Tiền công: {vnd(quote.labor_cost ?? 0)}</li>
+      <li>
+        <strong>Tổng cộng: {vnd(quote.total)}</strong>
+      </li>
+      {!!quote.warranty_months && <li>Bảo hành: {quote.warranty_months} tháng</li>}
+    </ul>
+  );
 }

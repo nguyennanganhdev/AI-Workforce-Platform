@@ -21,9 +21,7 @@ from .v3_reception import (
     context,
     draft,
 )
-from .v3_reception import (
-    commit as commit_draft,
-)
+from .v3_reception import commit_draft
 from .v3_reception_supervisor import (
     Fact,
     ReceptionToSupervisorMessage,
@@ -861,7 +859,8 @@ async def _handoff_draft(scope, call: OperationCall):
     destination = await _resolve_destination(
         scope, call.model_copy(update={"operation": "resolve_management_destination"})
     )
-    if not destination.get("available"):
+    # Coverage without a versioned Supervisor still gets a ticket; management handles it manually.
+    if not destination.get("available") and "workspaceId" not in destination and "managementUnitId" not in destination:
         return agent_result(
             "handoff_ticket",
             {
@@ -891,7 +890,10 @@ async def _handoff_draft(scope, call: OperationCall):
     }:
         raise HTTPException(422, "Invalid handoff_reason")
 
-    ticket_response = await commit_draft(channel_id, draft_id, index, scope)
+    requires_plan = call.input.get("plan_required", True)
+    if not isinstance(requires_plan, bool):
+        raise HTTPException(422, "plan_required must be a boolean")
+    ticket_response = await commit_draft(channel_id, draft_id, index, scope, requires_plan=requires_plan)
     ticket_id = _uuid(ticket_response.get("id"), "created ticket id")
     db, actor = scope
     tenant = await _tenant_id(db)
@@ -934,6 +936,11 @@ async def _handoff_draft(scope, call: OperationCall):
         raise HTTPException(404, "Created resident ticket not found")
     if str(snapshot["management_unit_id"]) != str(destination["managementUnitId"]):
         raise HTTPException(409, "Management coverage changed before handoff")
+    if not destination.get("available"):
+        draft_body["ticket_id"] = str(ticket_id)
+        draft_body["ticket_code"] = snapshot["code"]
+        await _save_draft(scope, row, draft_body)
+        return {"accepted": True, "ticket": ticket_response, "team": None, "handoff": None}
 
     team = (
         (

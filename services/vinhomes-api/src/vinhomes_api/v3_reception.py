@@ -31,9 +31,10 @@ async def context(scope: Scope):
         .one()
     )
     rows = await scope[0].execute(
-        text("""select u.id as unit_id,u.code as unit_code,b.id as building_id,b.name as building_name,s.domain_id,s.id as site_id
+        text("""select u.id as unit_id,u.code as unit_code,b.id as building_id,b.name as building_name,b.code as building_code,s.domain_id,d.name as domain_name,s.id as site_id
       from unit_residents ur join units u on u.id=ur.unit_id and u.tenant_id=ur.tenant_id
       join buildings b on b.id=u.building_id and b.tenant_id=u.tenant_id join sites s on s.id=b.site_id and s.tenant_id=b.tenant_id
+      join domains d on d.id=s.domain_id and d.tenant_id=s.tenant_id
       where ur.user_id=:actor and ur.verification_status='verified' and ur.valid_from<=now() and (ur.valid_to is null or ur.valid_to>now())
       and u.status='active' and b.status='active' and s.status='active'"""),
         {"actor": scope[1]},
@@ -170,6 +171,10 @@ async def drafts(channel_id: str, scope: Scope):
     response_model=AgentBusinessResponse,
 )
 async def commit(channel_id: str, draft_id: UUID, index: int, scope: Scope):
+    return await commit_draft(channel_id, draft_id, index, scope)
+
+
+async def commit_draft(channel_id: str, draft_id: UUID, index: int, scope: Scope, *, requires_plan: bool = True):
     await _owned_chat(scope, channel_id, lock=True)
     row = (
         (
@@ -219,7 +224,7 @@ async def commit(channel_id: str, draft_id: UUID, index: int, scope: Scope):
     assessment = assessments[index] if index < len(assessments) else None
     return agent_result(
         "create_ticket",
-        await create_resident_ticket(channel_id, body, scope, assessment=assessment),
+        await create_resident_ticket(channel_id, body, scope, assessment=assessment, requires_plan=requires_plan),
         {"channel_id": channel_id},
     )
 

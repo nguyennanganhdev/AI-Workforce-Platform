@@ -1,4 +1,5 @@
 import type { Hono as HonoApp, MiddlewareHandler } from "hono";
+import { createKnowledgeRoutes, type KnowledgeRouteDeps } from "./knowledge/routes";
 import { Hono } from "hono";
 import { createTechnicalApiRoutes } from "./technical-api/routes";
 import { createTechnicalApiDependencies, type TechnicalApiOptions } from "./technical-api/runtime";
@@ -329,8 +330,10 @@ export function createApp(
   ticketReader?: TicketReader,
   vinHomesDatabase?: { database: Database; tenantId: string },
   technicalApi?: TechnicalApiOptions,
+  knowledge?: KnowledgeRouteDeps,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
+  if (knowledge) app.route("/internal/knowledge", createKnowledgeRoutes(knowledge));
   if (technicalApi) app.route("/api/technical/v1", createTechnicalApiRoutes(createTechnicalApiDependencies(technicalApi)));
   mountDesktopConnectionFailure(app, desktopHostToken);
   mountProviderOAuthProxy(app, modelProviderProxy);

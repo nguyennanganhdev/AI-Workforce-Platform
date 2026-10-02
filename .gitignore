@@ -77,3 +77,6 @@ server/chunks.json
 
 .codegraph/
 .copilotkit/
+
+# Reception runtime conversation state (local SQLite).
+agent-reception/.reception-state/

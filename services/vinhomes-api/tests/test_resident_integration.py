@@ -72,7 +72,7 @@ def create_ticket():
     return ticket["id"], category["id"]
 
 
-def finish_work(ticket_id, category_id):
+def finish_work(ticket_id, category_id, onsite=False):
     ticket = call("GET", f"/tickets/{ticket_id}", actor="management")["ticket"]
     order = call("POST", f"/tickets/{ticket_id}/work-orders", actor="management", expected=201,
                  json={"category_id":category_id,"required_specialty_id":category_id,"description":"Kiểm tra và xử lý ổ điện","ticket_version":ticket["version"]})
@@ -89,10 +89,24 @@ def finish_work(ticket_id, category_id):
         call("PATCH", f"/work-orders/{order['id']}/status", actor="technical", json={"version":order["version"],"status":status,"note":status})
     order = call("GET", f"/work-orders/{order['id']}", actor="technical")["workOrder"]
     proposal = call("POST", f"/work-orders/{order['id']}/repair-proposal", actor="technical", expected=201,
-                    json={"version":order["version"],"note":"Ki?m tra v? thay ? ?i?n b? h?ng."})
+                    json={"version":order["version"],"note":"Kiểm tra và thay ổ điện bị hỏng.","labor_cost":150000,"warranty_months":6,
+                          "lines":[{"name":"Ổ cắm đôi 3 chấu","quantity":"2","unit":"cái","unit_price":95000},
+                                   {"name":"Dây điện 2.5mm²","quantity":"1.5","unit":"m","unit_price":14000}]})
+    detail = next(a for a in call("GET", "/resident/approvals?limit=100")["items"] if a["id"] == proposal["id"])["request_detail"]
+    assert detail["total"] == 361000 and [line["amount"] for line in detail["lines"]] == [190000, 21000]
     ticket = call("GET", f"/resident/tickets/{ticket_id}")["ticket"]
-    call("POST", f"/resident/approvals/{proposal['id']}/decision", headers={"Idempotency-Key":str(uuid4())},
-         json={"version":ticket["version"],"approved":True,"note":"T?i ??ng ? ph??ng ?n s?a ch?a."})
+    decision = {"version":ticket["version"],"approved":True,"note":"Tôi đồng ý phương án sửa chữa."}
+    if onsite:
+        order = call("GET", f"/work-orders/{order['id']}", actor="technical")["workOrder"]
+        onsite_path = f"/work-orders/{order['id']}/repair-proposal/onsite-decision"
+        call("POST", onsite_path, actor="security", expected=404, json={"version":order["version"],"approved":True})
+        assert call("POST", onsite_path, actor="technical", json={"version":order["version"],"approved":True})["status"] == "approved"
+        call("POST", onsite_path, actor="technical", expected=409, json={"version":order["version"],"approved":True})
+        ticket = call("GET", f"/resident/tickets/{ticket_id}")["ticket"]
+        call("POST", f"/resident/approvals/{proposal['id']}/decision", expected=409, headers={"Idempotency-Key":str(uuid4())},
+             json={**decision,"version":ticket["version"]})
+    else:
+        call("POST", f"/resident/approvals/{proposal['id']}/decision", headers={"Idempotency-Key":str(uuid4())}, json=decision)
     order = call("GET", f"/work-orders/{order['id']}", actor="technical")["workOrder"]
     call("PATCH", f"/work-orders/{order['id']}/status", actor="technical", json={"version":order["version"],"status":"in_progress","note":"B?t ??u x? l?"})
     order = call("GET", f"/work-orders/{order['id']}", actor="technical")["workOrder"]
@@ -102,7 +116,13 @@ def finish_work(ticket_id, category_id):
                 content=image_bytes(), headers={"Content-Type":"application/octet-stream"})
     call("POST", f"/tickets/{ticket_id}/evidence", actor="technical", expected=201,
          json={"file_id":file["fileId"],"work_order_id":order["id"],"assignment_id":assignment["id"],"purpose":"after"})
-    call("PATCH", f"/work-orders/{order['id']}/status", actor="technical", json={"version":order["version"],"status":"completed","note":"Đã xử lý và chụp ảnh"})
+    done = {"version":order["version"],"status":"completed","note":"Đã xử lý và chụp ảnh"}
+    call("PATCH", f"/work-orders/{order['id']}/status", actor="technical", expected=409, json=done)
+    file = call("POST", f"/tickets/{ticket_id}/files?filename=before.png&mimeType=image/png&purpose=before", actor="technical", expected=201,
+                content=image_bytes(), headers={"Content-Type":"application/octet-stream"})
+    call("POST", f"/tickets/{ticket_id}/evidence", actor="technical", expected=201,
+         json={"file_id":file["fileId"],"work_order_id":order["id"],"assignment_id":assignment["id"],"purpose":"before"})
+    call("PATCH", f"/work-orders/{order['id']}/status", actor="technical", json=done)
     assert call("GET", f"/resident/tickets/{ticket_id}")["ticket"]["status"] == "in_progress"
     call("POST", f"/work-orders/{order['id']}/qc", actor="technical", expected=403, json={"outcome":"pass","criteria":[]})
     call("POST", f"/work-orders/{order['id']}/qc", actor="management", expected=201,
@@ -115,6 +135,10 @@ def finish_work(ticket_id, category_id):
 def test_full_confirmation_retry_and_concurrent_decisions():
     ticket, category = create_ticket()
     _, approval = finish_work(ticket, category)
+    session = call("GET", f"/tickets/{ticket}/session", actor="management")
+    assert session["awaitingManagementApproval"] is False
+    call("POST", f"/tickets/{ticket}/session/close-approval", actor="management", expected=409,
+         json={"version": session["session"]["state_version"]})
     current = call("GET", f"/resident/tickets/{ticket}")["ticket"]
     body = {"approved":True,"note":"Tôi đã kiểm tra, mọi thứ hoạt động tốt.","version":current["version"]}
     call("POST", f"/resident/approvals/{approval}/decision", expected=409,
@@ -128,11 +152,19 @@ def test_full_confirmation_retry_and_concurrent_decisions():
     winner=next(i for i,r in enumerate(responses) if r.status_code==200)
     assert decide(keys[winner]).json()==responses[winner].json()
     assert call("GET", f"/resident/tickets/{ticket}")["ticket"]["status"] == "closed"
+    # The session outlives the resident's confirmation until management approves it.
+    session = call("GET", f"/tickets/{ticket}/session", actor="management")
+    assert session["session"]["status"] == "queued" and session["awaitingManagementApproval"] is True
+    closure = {"version": session["session"]["state_version"], "note": "Đã rà soát hồ sơ."}
+    call("POST", f"/tickets/{ticket}/session/close-approval", actor="technical", expected=403, json=closure)
+    closed = call("POST", f"/tickets/{ticket}/session/close-approval", actor="management", json=closure)
+    assert closed["session"]["status"] == "completed" and closed["session"]["closure"]["approvedBy"] == "local-v3-management"
+    assert call("POST", f"/tickets/{ticket}/session/close-approval", actor="management", json=closure) == closed
 
 
 def test_rework_preserves_history_and_returns_to_management():
     ticket, category = create_ticket()
-    order, approval = finish_work(ticket, category)
+    order, approval = finish_work(ticket, category, onsite=True)
     current = call("GET", f"/resident/tickets/{ticket}")["ticket"]
     call("POST", f"/resident/approvals/{approval}/decision", headers={"Idempotency-Key":str(uuid4())},
          json={"approved":False,"note":"Ổ điện vẫn chưa hoạt động ổn định.","version":current["version"]})

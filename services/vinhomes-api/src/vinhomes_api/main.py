@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .password_auth import router as password_router
+from .reception_runtime_api import router as reception_runtime_router
 from .resident_api import operations_router as resident_intake_router
 from .resident_api import router as resident_contract_router
 from .resident_contract import ResidentBoundary, http_error, is_contract, validation_error
@@ -35,6 +36,7 @@ from .v3_operations import router as operations_router
 from .v3_plans import router as plans_router
 from .v3_reception import router as reception_router
 from .v3_reception_operations import router as reception_operations_router
+from .v3_reception_runtime import router as reception_agent_router
 from .v3_reception_supervisor import operations_router as supervisor_operations_router
 from .v3_reception_supervisor import router as reception_supervisor_router
 from .v3_report_jobs import router as report_jobs_router
@@ -45,6 +47,7 @@ from .v3_room_agents import router as room_agents_router
 from .v3_rooms import router as rooms_router
 from .v3_routes import router as v3_router
 from .v3_security import router as security_router
+from .v3_session import router as session_router
 from .v3_specialized import router as specialized_router
 from .v3_team_board import router as team_board_router
 from .v3_technical import router as technical_router
@@ -81,6 +84,7 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
         ),
         lifespan=lifespan,
     )
+    app.include_router(reception_runtime_router)
     app.add_exception_handler(StarletteHTTPException, http_error)
     app.add_exception_handler(RequestValidationError, validation_error)
     app.add_middleware(ResidentBoundary)
@@ -166,12 +170,14 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(report_jobs_router)
     app.include_router(reception_router)
     app.include_router(reception_operations_router)
+    app.include_router(reception_agent_router)
     app.include_router(billing_router)
     app.include_router(team_board_router)
     app.include_router(resident_contract_router)
     app.include_router(resident_intake_router)
     app.include_router(reception_supervisor_router)
     app.include_router(supervisor_operations_router)
+    app.include_router(session_router)
     from .resident_api import ticket_intake_router
     app.include_router(ticket_intake_router)
     if settings.demo_mode:

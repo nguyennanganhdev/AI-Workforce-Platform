@@ -87,7 +87,13 @@ export type Approval = {
   ticket_id: string;
   kind: string;
   status: string;
-  request_detail: { note?: string };
+  request_detail: {
+    note?: string;
+    lines?: { name: string; quantity: string; unit: string; amount: number }[];
+    labor_cost?: number;
+    warranty_months?: number;
+    total?: number;
+  };
 };
 export function requestView(
   detail: TicketDetail,
