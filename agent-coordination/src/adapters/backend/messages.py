@@ -1,7 +1,7 @@
 """Adapter-local guards for backend commands/events, not Reception schema V2.
 
-The composition root must also inject the canonical schema validator owned by
-DEV-5/Team Chien. These guards protect fields used to route requests. Identity,
+The composition injects a validator for the documented contracts; published
+JSON Schemas owned by DEV-5/Team Chien can augment these guards. Identity,
 membership, approval validity and business state are checked by the backend.
 """
 
@@ -20,7 +20,7 @@ JSON = dict[str, Any]
 
 class ContractValidator(Protocol):
     def validate(self, kind: str, value: Mapping[str, Any]) -> None:
-        """Validate pinned schemas; raise on failure.
+        """Validate documented boundaries/configured schemas; raise on failure.
 
         Backend: request/response/event. Reception: reception_input/output,
         reception_delivery/response/verified. Each wire direction has one schema;

@@ -10,6 +10,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from adapters.backend.errors import AdapterError
+from adapters.backend.documented_contracts import DocumentedContractValidator
 from adapters.reception.reception_gateway import ReceptionGateway
 from backend.support import client
 from reception.support import Authentication, V2Transport, input_message
@@ -27,7 +28,8 @@ class SupervisorV2Tests(unittest.IsolatedAsyncioTestCase):
         self.transport = V2Transport()
         self.transport.context = self.rig.ctx.model_dump(exclude_none=True)
         self.transport.cancelled = None
-        self.rig.service.reception = ReceptionGateway(client(self.transport), authentication=Authentication())
+        self.rig.service.reception = ReceptionGateway(
+            client(self.transport, validator=DocumentedContractValidator()), authentication=Authentication())
         self.resident_required = True
         self.all_done = True
         inspect = self.rig.authority.inspect
