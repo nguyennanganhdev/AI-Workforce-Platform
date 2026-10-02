@@ -18,6 +18,7 @@ import {
   McpError,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
+import { AUDIT_TOOLS } from "./audits/tools";
 import { CAMERA_TOOLS } from "./cameras/tools";
 import { type RawWriteHeaders, type RequestIdentity, readContext, type WriteContext, writeContext } from "./common/context";
 import { type ToolError, type ToolMode, toolError, toToolError } from "./common/errors";
@@ -25,6 +26,7 @@ import { failure, finalizeResponse, readSuccess, responseMeta, type ToolResponse
 import { DISPATCH_TOOLS } from "./dispatch/tools";
 import { EMERGENCY_TOOLS } from "./emergency/tools";
 import { GUARD_TOOLS } from "./guards/tools";
+import { INCIDENT_TOOLS } from "./incidents/tools";
 import {
   isReadTool,
   isWriteTool,
@@ -58,8 +60,15 @@ export type DomainToolDefinition = {
   outputIssues?: (data: unknown) => string[];
 };
 
-/** Domain đã có khai báo trên nhánh này. Khi merge P3 thêm `...INCIDENT_TOOLS, ...AUDIT_TOOLS`. */
-const DOMAIN_TOOLS: readonly DomainToolDefinition[] = [...GUARD_TOOLS, ...CAMERA_TOOLS, ...DISPATCH_TOOLS, ...EMERGENCY_TOOLS];
+/** Khai báo của các domain; mỗi tool phải khớp x-tools, lệch thì buildRegistry báo lỗi ngay lúc nạp. */
+const DOMAIN_TOOLS: readonly DomainToolDefinition[] = [
+  ...GUARD_TOOLS,
+  ...CAMERA_TOOLS,
+  ...DISPATCH_TOOLS,
+  ...EMERGENCY_TOOLS,
+  ...INCIDENT_TOOLS,
+  ...AUDIT_TOOLS,
+];
 
 export type RegisteredTool = ToolContract & Omit<DomainToolDefinition, keyof ToolContract>;
 

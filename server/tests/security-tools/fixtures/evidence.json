@@ -1,0 +1,332 @@
+[
+  {
+    "evidence_id": "ev_0001",
+    "incident_id": "inc_01",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0001",
+    "action": "create_incident",
+    "idempotency_key": "idem_inc_01_0001",
+    "summary": "Tạo incident",
+    "created_at": "2026-09-29T04:14:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0002",
+    "incident_id": "inc_02",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0002",
+    "action": "create_incident",
+    "idempotency_key": "idem_inc_02_0002",
+    "summary": "Tạo incident",
+    "created_at": "2026-09-29T04:19:30.000Z"
+  },
+  {
+    "evidence_id": "ev_0003",
+    "incident_id": "inc_03",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0003",
+    "action": "create_incident",
+    "idempotency_key": "idem_inc_03_0003",
+    "summary": "Tạo incident",
+    "created_at": "2026-09-29T04:22:30.000Z"
+  },
+  {
+    "evidence_id": "ev_0004",
+    "incident_id": "inc_04",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0004",
+    "action": "create_incident",
+    "idempotency_key": "idem_inc_04_0004",
+    "summary": "Tạo incident",
+    "created_at": "2026-09-29T00:58:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0005",
+    "incident_id": "inc_06",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0005",
+    "action": "create_incident",
+    "idempotency_key": "idem_inc_06_0005",
+    "summary": "Tạo incident",
+    "created_at": "2026-09-29T03:10:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0006",
+    "incident_id": "inc_07",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0006",
+    "action": "create_incident",
+    "idempotency_key": "idem_inc_07_0006",
+    "summary": "Tạo incident",
+    "created_at": "2026-09-29T02:40:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0007",
+    "incident_id": "inc_08",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0007",
+    "action": "create_incident",
+    "idempotency_key": "idem_inc_08_0007",
+    "summary": "Tạo incident",
+    "created_at": "2026-09-29T03:30:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0008",
+    "incident_id": "inc_04",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0008",
+    "action": "dispatch_guard",
+    "idempotency_key": "idem_inc_04_0008",
+    "summary": "Điều guard_010 tới incident",
+    "created_at": "2026-09-29T01:00:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0009",
+    "incident_id": "inc_04",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0009",
+    "action": "cancel_dispatch",
+    "idempotency_key": "idem_inc_04_0009",
+    "summary": "Hủy lệnh điều động",
+    "created_at": "2026-09-29T01:05:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0010",
+    "incident_id": "inc_04",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0010",
+    "action": "dispatch_guard",
+    "idempotency_key": "idem_inc_04_0010",
+    "summary": "Điều guard_001 tới incident",
+    "created_at": "2026-09-29T01:10:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0011",
+    "incident_id": "inc_01",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0011",
+    "action": "dispatch_guard",
+    "idempotency_key": "idem_inc_01_0011",
+    "summary": "Điều guard_004 tới incident",
+    "created_at": "2026-09-29T04:15:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0012",
+    "incident_id": "inc_02",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0012",
+    "action": "dispatch_guard",
+    "idempotency_key": "idem_inc_02_0012",
+    "summary": "Điều guard_007 tới incident",
+    "created_at": "2026-09-29T04:20:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0013",
+    "incident_id": "inc_02",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0013",
+    "action": "dispatch_guard",
+    "idempotency_key": "idem_inc_02_0013",
+    "summary": "Điều guard_005 tới incident",
+    "created_at": "2026-09-29T04:21:50.000Z"
+  },
+  {
+    "evidence_id": "ev_0014",
+    "incident_id": "inc_03",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0014",
+    "action": "dispatch_guard",
+    "idempotency_key": "idem_inc_03_0014",
+    "summary": "Điều guard_006 tới incident",
+    "created_at": "2026-09-29T04:24:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0015",
+    "incident_id": "inc_01",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0015",
+    "action": "escalate_emergency",
+    "idempotency_key": "idem_inc_01_0015",
+    "summary": "Báo khẩn tới ct_sup_day",
+    "created_at": "2026-09-29T04:16:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0016",
+    "incident_id": "inc_01",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0016",
+    "action": "escalate_emergency",
+    "idempotency_key": "idem_inc_01_0016",
+    "summary": "Báo khẩn tới ct_pm_01",
+    "created_at": "2026-09-29T04:17:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0017",
+    "incident_id": "inc_02",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0017",
+    "action": "escalate_emergency",
+    "idempotency_key": "idem_inc_02_0017",
+    "summary": "Báo khẩn tới ct_sup_day",
+    "created_at": "2026-09-29T04:20:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0018",
+    "incident_id": "inc_02",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0018",
+    "action": "escalate_emergency",
+    "idempotency_key": "idem_inc_02_0018",
+    "summary": "Báo khẩn tới ct_coord_01",
+    "created_at": "2026-09-29T04:21:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0019",
+    "incident_id": "inc_03",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0019",
+    "action": "escalate_emergency",
+    "idempotency_key": "idem_inc_03_0019",
+    "summary": "Báo khẩn tới ct_sup_day",
+    "created_at": "2026-09-29T04:23:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0020",
+    "incident_id": "inc_04",
+    "evidence_type": "OPERATOR_NOTE",
+    "actor": {
+      "actor_id": "usr_bql_01",
+      "actor_type": "HUMAN"
+    },
+    "provider": null,
+    "provider_reference_id": null,
+    "action": null,
+    "idempotency_key": null,
+    "summary": "Bảo vệ xác nhận đã hết ồn, cư dân đồng ý kết thúc",
+    "created_at": "2026-09-29T01:38:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0021",
+    "incident_id": "inc_04",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0021",
+    "action": "update_incident",
+    "idempotency_key": "idem_inc_04_0021",
+    "summary": "Chuyển incident sang RESOLVED",
+    "created_at": "2026-09-29T01:40:00.000Z"
+  },
+  {
+    "evidence_id": "ev_0022",
+    "incident_id": "inc_07",
+    "evidence_type": "ACTION_RECEIPT",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "provider": "core_api",
+    "provider_reference_id": "op_0022",
+    "action": "update_incident",
+    "idempotency_key": "idem_inc_07_0022",
+    "summary": "Chuyển incident sang IN_PROGRESS",
+    "created_at": "2026-09-29T02:45:00.000Z"
+  }
+]

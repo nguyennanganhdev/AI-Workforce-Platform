@@ -1,0 +1,152 @@
+[
+  {
+    "name": "binding_create_incident",
+    "input": {
+      "contract_version": "0.3",
+      "proposal_id": "prop_vec_0001",
+      "tenant_id": "tn_vh_a",
+      "property_id": "pr_a1",
+      "ticket_id": "tk_a_0099",
+      "task_id": "task_a_0099",
+      "actor": {
+        "actor_id": "svc_action_executor",
+        "actor_type": "SERVICE"
+      },
+      "action": "create_incident",
+      "idempotency_key": "idem_vec_create_incident",
+      "arguments": {
+        "incident_type": "SUSPICIOUS_ACTIVITY",
+        "description": "Ng\u01b0\u1eddi l\u1ea1 \u0111i l\u1ea1i nhi\u1ec1u l\u1ea7n quanh h\u1ea7m",
+        "severity": "P2",
+        "location_id": "loc_a1_b2parking"
+      }
+    },
+    "canonical": "{\"action\":\"create_incident\",\"actor\":{\"actor_id\":\"svc_action_executor\",\"actor_type\":\"SERVICE\"},\"arguments\":{\"description\":\"Ng\u01b0\u1eddi l\u1ea1 \u0111i l\u1ea1i nhi\u1ec1u l\u1ea7n quanh h\u1ea7m\",\"incident_type\":\"SUSPICIOUS_ACTIVITY\",\"location_id\":\"loc_a1_b2parking\",\"severity\":\"P2\"},\"contract_version\":\"0.3\",\"idempotency_key\":\"idem_vec_create_incident\",\"property_id\":\"pr_a1\",\"proposal_id\":\"prop_vec_0001\",\"task_id\":\"task_a_0099\",\"tenant_id\":\"tn_vh_a\",\"ticket_id\":\"tk_a_0099\"}",
+    "sha256": "32e7dbf94e553f70e985991a86214bacd4d370578cda64ddd4095ac5323e8ffa"
+  },
+  {
+    "name": "binding_update_incident",
+    "input": {
+      "contract_version": "0.3",
+      "proposal_id": "prop_vec_0001",
+      "tenant_id": "tn_vh_a",
+      "property_id": "pr_a1",
+      "ticket_id": "tk_a_0099",
+      "task_id": "task_a_0099",
+      "actor": {
+        "actor_id": "svc_action_executor",
+        "actor_type": "SERVICE"
+      },
+      "action": "update_incident",
+      "idempotency_key": "idem_vec_update_incident",
+      "arguments": {
+        "incident_id": "inc_a_p2",
+        "expected_version": 1,
+        "status": "IN_PROGRESS",
+        "note": "B\u1ea3o v\u1ec7 \u0111ang x\u00e1c minh"
+      }
+    },
+    "canonical": "{\"action\":\"update_incident\",\"actor\":{\"actor_id\":\"svc_action_executor\",\"actor_type\":\"SERVICE\"},\"arguments\":{\"expected_version\":1,\"incident_id\":\"inc_a_p2\",\"note\":\"B\u1ea3o v\u1ec7 \u0111ang x\u00e1c minh\",\"status\":\"IN_PROGRESS\"},\"contract_version\":\"0.3\",\"idempotency_key\":\"idem_vec_update_incident\",\"property_id\":\"pr_a1\",\"proposal_id\":\"prop_vec_0001\",\"task_id\":\"task_a_0099\",\"tenant_id\":\"tn_vh_a\",\"ticket_id\":\"tk_a_0099\"}",
+    "sha256": "119c4bbb7b098048b9115af1b905701f38b45929b42f7c80dee60386fff0b725"
+  },
+  {
+    "name": "binding_dispatch_guard",
+    "input": {
+      "contract_version": "0.3",
+      "proposal_id": "prop_vec_0001",
+      "tenant_id": "tn_vh_a",
+      "property_id": "pr_a1",
+      "ticket_id": "tk_a_0099",
+      "task_id": "task_a_0099",
+      "actor": {
+        "actor_id": "svc_action_executor",
+        "actor_type": "SERVICE"
+      },
+      "action": "dispatch_guard",
+      "idempotency_key": "idem_vec_dispatch_guard",
+      "arguments": {
+        "incident_id": "inc_a_p0",
+        "incident_version": 6,
+        "guard_id": "guard_a_01",
+        "instruction": "H\u1ed7 tr\u1ee3 ki\u1ec3m tra c\u1ed5ng s\u1ed1 2"
+      }
+    },
+    "canonical": "{\"action\":\"dispatch_guard\",\"actor\":{\"actor_id\":\"svc_action_executor\",\"actor_type\":\"SERVICE\"},\"arguments\":{\"guard_id\":\"guard_a_01\",\"incident_id\":\"inc_a_p0\",\"incident_version\":6,\"instruction\":\"H\u1ed7 tr\u1ee3 ki\u1ec3m tra c\u1ed5ng s\u1ed1 2\"},\"contract_version\":\"0.3\",\"idempotency_key\":\"idem_vec_dispatch_guard\",\"property_id\":\"pr_a1\",\"proposal_id\":\"prop_vec_0001\",\"task_id\":\"task_a_0099\",\"tenant_id\":\"tn_vh_a\",\"ticket_id\":\"tk_a_0099\"}",
+    "sha256": "366cb72fd5fccbdd98703dc6b3a8818fdb971813ddf653d4ccd4dffde8d52f2a"
+  },
+  {
+    "name": "binding_cancel_dispatch",
+    "input": {
+      "contract_version": "0.3",
+      "proposal_id": "prop_vec_0001",
+      "tenant_id": "tn_vh_a",
+      "property_id": "pr_a1",
+      "ticket_id": "tk_a_0099",
+      "task_id": "task_a_0099",
+      "actor": {
+        "actor_id": "svc_action_executor",
+        "actor_type": "SERVICE"
+      },
+      "action": "cancel_dispatch",
+      "idempotency_key": "idem_vec_cancel_dispatch",
+      "arguments": {
+        "dispatch_id": "disp_a_01",
+        "expected_version": 1,
+        "reason": "\u0110\u00e3 x\u00e1c minh l\u00e0 b\u00e1o \u0111\u1ed9ng nh\u1ea7m"
+      }
+    },
+    "canonical": "{\"action\":\"cancel_dispatch\",\"actor\":{\"actor_id\":\"svc_action_executor\",\"actor_type\":\"SERVICE\"},\"arguments\":{\"dispatch_id\":\"disp_a_01\",\"expected_version\":1,\"reason\":\"\u0110\u00e3 x\u00e1c minh l\u00e0 b\u00e1o \u0111\u1ed9ng nh\u1ea7m\"},\"contract_version\":\"0.3\",\"idempotency_key\":\"idem_vec_cancel_dispatch\",\"property_id\":\"pr_a1\",\"proposal_id\":\"prop_vec_0001\",\"task_id\":\"task_a_0099\",\"tenant_id\":\"tn_vh_a\",\"ticket_id\":\"tk_a_0099\"}",
+    "sha256": "7ffe7b800071325f164871a64f10d6616468821c0c6708793025a48f8704156e"
+  },
+  {
+    "name": "binding_escalate_emergency",
+    "input": {
+      "contract_version": "0.3",
+      "proposal_id": "prop_vec_0001",
+      "tenant_id": "tn_vh_a",
+      "property_id": "pr_a1",
+      "ticket_id": "tk_a_0099",
+      "task_id": "task_a_0099",
+      "actor": {
+        "actor_id": "svc_action_executor",
+        "actor_type": "SERVICE"
+      },
+      "action": "escalate_emergency",
+      "idempotency_key": "idem_vec_escalate_emergency",
+      "arguments": {
+        "incident_id": "inc_a_p0",
+        "incident_version": 6,
+        "protocol_id": "proto_a_intrusion_p0",
+        "protocol_version": 1,
+        "contact_id": "contact_a_coord",
+        "reason": "Gi\u00e1m s\u00e1t ch\u01b0a x\u00e1c nh\u1eadn, c\u1ea7n \u0111i\u1ec1u ph\u1ed1i vi\u00ean"
+      }
+    },
+    "canonical": "{\"action\":\"escalate_emergency\",\"actor\":{\"actor_id\":\"svc_action_executor\",\"actor_type\":\"SERVICE\"},\"arguments\":{\"contact_id\":\"contact_a_coord\",\"incident_id\":\"inc_a_p0\",\"incident_version\":6,\"protocol_id\":\"proto_a_intrusion_p0\",\"protocol_version\":1,\"reason\":\"Gi\u00e1m s\u00e1t ch\u01b0a x\u00e1c nh\u1eadn, c\u1ea7n \u0111i\u1ec1u ph\u1ed1i vi\u00ean\"},\"contract_version\":\"0.3\",\"idempotency_key\":\"idem_vec_escalate_emergency\",\"property_id\":\"pr_a1\",\"proposal_id\":\"prop_vec_0001\",\"task_id\":\"task_a_0099\",\"tenant_id\":\"tn_vh_a\",\"ticket_id\":\"tk_a_0099\"}",
+    "sha256": "43498de908df301da6272c717bfe519ebe3cf1e0145f562f0403feddf751bda4"
+  },
+  {
+    "name": "binding_acknowledge_emergency",
+    "input": {
+      "contract_version": "0.3",
+      "proposal_id": "prop_vec_0001",
+      "tenant_id": "tn_vh_a",
+      "property_id": "pr_a1",
+      "ticket_id": "tk_a_0099",
+      "task_id": "task_a_0099",
+      "actor": {
+        "actor_id": "svc_action_executor",
+        "actor_type": "SERVICE"
+      },
+      "action": "acknowledge_emergency",
+      "idempotency_key": "idem_vec_acknowledge_emergency",
+      "arguments": {
+        "escalation_id": "esc_a_01",
+        "expected_version": 2,
+        "ack_receipt_id": "ackr_0001"
+      }
+    },
+    "canonical": "{\"action\":\"acknowledge_emergency\",\"actor\":{\"actor_id\":\"svc_action_executor\",\"actor_type\":\"SERVICE\"},\"arguments\":{\"ack_receipt_id\":\"ackr_0001\",\"escalation_id\":\"esc_a_01\",\"expected_version\":2},\"contract_version\":\"0.3\",\"idempotency_key\":\"idem_vec_acknowledge_emergency\",\"property_id\":\"pr_a1\",\"proposal_id\":\"prop_vec_0001\",\"task_id\":\"task_a_0099\",\"tenant_id\":\"tn_vh_a\",\"ticket_id\":\"tk_a_0099\"}",
+    "sha256": "bca5867a181f98c910efd24e1ee0078ca37e8b0aed31c626dab2dcc6fdad8761"
+  }
+]
