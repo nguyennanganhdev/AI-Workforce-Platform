@@ -1,0 +1,42 @@
+{
+  "status": "proposal_pending_DD07_C14_review",
+  "version": "1.0.0",
+  "period": "[from,to); explicit offsets and IANA timezone; backend computes consistent snapshot and watermark",
+  "metrics": [
+    {
+      "id": "ticket_volume",
+      "version": "1.0.0",
+      "unit": "tickets",
+      "definition": "Distinct ticket IDs created within period in authorized scope; reopened ticket keeps one ID. Include cancelled tickets in volume, label cancellations separately in detailed dataset. Status/category breakdown must use the same cohort and snapshot."
+    },
+    {
+      "id": "sla",
+      "version": "1.0.0",
+      "unit": "percent",
+      "definition": "100 * satisfied eligible SLA cycles / eligible SLA cycles due within period; approved pause intervals and reopened cycles follow pinned backend SLA policy. Cancelled/not-applicable cycles excluded with explicit counts. Empty denominator means missing, not 0 or 100."
+    },
+    {
+      "id": "assignments",
+      "version": "1.0.0",
+      "unit": "assignments",
+      "definition": "Distinct backend assignment IDs accepted within period; offered/expired/rejected proposals excluded. Reassignment is another assignment ID and must be labelled in detailed dataset, not a new ticket."
+    },
+    {
+      "id": "outcomes",
+      "version": "1.0.0",
+      "unit": "work_orders",
+      "definition": "Distinct work-order IDs whose evidence/completion backend verified within period; Supervisor completed alone excluded. Reopened work order is counted once per distinct ID in the cohort; expose reopened/cancelled breakdown separately."
+    }
+  ],
+  "lineage_required": [
+    "report_request_id",
+    "real source_message_id",
+    "snapshot_id",
+    "as_of",
+    "metric_id",
+    "metric_version",
+    "source_ids",
+    "authorized reference IDs"
+  ],
+  "notes": "DD07 owns code computation and detailed breakdown schema; C14 owns authorized snapshot queries/persistence. This proposal does not register executable metrics or claim real backend support. Freeze meanings and pin versions before publish. Any incompatible denominator/cohort change must increment metric version."
+}
