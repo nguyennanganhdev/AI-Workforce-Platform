@@ -23,11 +23,11 @@ from support.fakes import make_context
 from support.harness import room_args
 
 SCHEMAS = Path(__file__).resolve().parents[3] / "docs/teams/dong/agent-room-schemas"
-EXAMPLES = json.loads((SCHEMAS / "examples-v2.json").read_text())
+EXAMPLES = json.loads((SCHEMAS / "examples-v2.json").read_text(encoding="utf-8"))
 
 
 def schema(name):
-    return json.loads((SCHEMAS / f"{name}.schema.json").read_text())
+    return json.loads((SCHEMAS / f"{name}.schema.json").read_text(encoding="utf-8"))
 
 
 @pytest.mark.parametrize(
