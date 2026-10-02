@@ -119,6 +119,11 @@ của Team Hoàng, cần các bạn rà lại:
    `prompts/workflow.py`: thêm ba dòng nói rõ `intent` chỉ xét tin nhắn hiện tại.
 4. `runtime/backend.py`: model hay bỏ `title`; lớp chuyển đổi lấy câu đầu của mô tả làm tiêu đề.
 
+Lời trả lời: trong graph, model chỉ phân loại và trích xuất (JSON); mọi câu cư dân đọc là câu cố định trong
+code. `runtime/voice.py` thêm một lượt model viết lại câu đó cho tự nhiên theo tin nhắn của cư dân, không được
+thêm dữ kiện hay cam kết; lỗi hoặc mất câu hỏi thì dùng lại câu gốc. Câu trả lời có trích dẫn và lượt khẩn
+cấp không qua bước này.
+
 Còn tồn tại:
 
 - `gpt-4o-mini` vẫn đọc sai lượt bổ sung thông tin thành sự cố mới; không dùng model này.

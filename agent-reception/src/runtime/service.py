@@ -27,8 +27,11 @@ from ..persistence import open_sqlite_checkpointer
 from .backend import BackendClient, BackendOperations, DraftStore, RequestPolicy
 from .knowledge import KnowledgeSearch
 from .model import ChatCompletionsModel, ModelConfig
+from .voice import reword
 
 FAILED_REPLY = "Xin lỗi, tôi chưa xử lý được tin nhắn này. Bạn thử lại sau ít phút hoặc gửi phản ánh bằng biểu mẫu nhé."
+# Said only when this turn filed the request under the backend's emergency policy.
+EMERGENCY_REPLY = "Mình đã chuyển yêu cầu của bạn đến Ban quản lý ở mức khẩn cấp."
 EMPTY_REPLY = "Tôi đã ghi nhận tin nhắn của bạn."
 
 
@@ -147,7 +150,7 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                 async def resolve_session(context, signal):
                     return {"channel_id": context["channelId"], "reception_session_id": context["bindingId"]}
 
-                app.state.backend, app.state.tools = backend, tools
+                app.state.backend, app.state.tools, app.state.model = backend, tools, chat_model
                 app.state.graph = create_reception_workflow_factory(WorkflowOptions(
                     intake=KnowledgeSearch(settings.knowledge_url, backend, client, chat_model),
                     resolve_session=resolve_session, reconcile=tools.invoke,
@@ -181,7 +184,14 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                 except Exception:  # noqa: BLE001 - the resident still gets an answer
                     result = {"status": "failed"}
                 reply = FAILED_REPLY if result["status"] in ("failed", "cancelled") else result["state"].get("reply") or EMPTY_REPLY
+                state = result.get("state") or {}
+                # Cited answers are already written from their sources, and an emergency
+                # must not wait for wording; everything else is reworded for the resident.
+                if result["status"] not in ("failed", "cancelled") and state.get("reply")                         and (state.get("intake") or {}).get("kind") != "answer"                         and state.get("handoff_reason") != "emergency":
+                    reply = await reword(request.app.state.model, body.message.text, reply)
                 code = tools.handoffs.pop(body.channel_id, None)
+                if code and state.get("handoff_reason") == "emergency":
+                    reply = EMERGENCY_REPLY
                 if code:
                     reply += f"\nMã yêu cầu của bạn: {code}."
                 await backend.call(

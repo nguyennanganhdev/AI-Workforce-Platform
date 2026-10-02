@@ -530,7 +530,9 @@ export function App({ live }: { live?: ConnectedResident }) {
                   <section className="white-card resident-consent">
                     <h3>Phương án sửa chữa cần bạn xác nhận</h3>
                     <p>{live.consent(detail.id)?.request_detail.note}</p>
-                    <RepairQuote quote={live.consent(detail.id)!.request_detail} />
+                    <RepairQuote
+                      quote={live.consent(detail.id)!.request_detail}
+                    />
                     <div className="button-row">
                       <button
                         className="primary-button"
@@ -632,29 +634,33 @@ export function App({ live }: { live?: ConnectedResident }) {
             ))}
           {route.page === "notifications" && (
             <>
-              {(state.conversations ?? [])
-                .filter((c) => c.unread > 0)
-                .map((c) => (
-                  <button
-                    key={c.id}
-                    className="notification-card"
-                    onClick={() => {
-                      if (live) {
-                        live.select(c.id);
-                        return;
-                      }
-                      if (commit((s) => selectConversation(s, c.id)))
-                        location.hash = `/chat/${c.id}`;
-                    }}
-                  >
-                    <span>
-                      <strong>
-                        {c.unread} tin chưa đọc · {c.title}
-                      </strong>
-                      <p>{c.messages.at(-1)?.text}</p>
-                    </span>
-                  </button>
-                ))}
+              {(state.conversations ?? []).some((c) => c.unread > 0) && (
+                <div className="page-section stack">
+                  {(state.conversations ?? [])
+                    .filter((c) => c.unread > 0)
+                    .map((c) => (
+                      <button
+                        key={c.id}
+                        className="notification-card"
+                        onClick={() => {
+                          if (live) {
+                            live.select(c.id);
+                            return;
+                          }
+                          if (commit((s) => selectConversation(s, c.id)))
+                            location.hash = `/chat/${c.id}`;
+                        }}
+                      >
+                        <span>
+                          <strong>
+                            {c.unread} tin chưa đọc · {c.title}
+                          </strong>
+                          <p>{c.messages.at(-1)?.text}</p>
+                        </span>
+                      </button>
+                    ))}
+                </div>
+              )}
               <Notifications requests={state.requests} onOpen={openRequest} />
             </>
           )}
@@ -741,7 +747,9 @@ function RepairQuote({ quote }: { quote: Approval["request_detail"] }) {
       <li>
         <strong>Tổng cộng: {vnd(quote.total)}</strong>
       </li>
-      {!!quote.warranty_months && <li>Bảo hành: {quote.warranty_months} tháng</li>}
+      {!!quote.warranty_months && (
+        <li>Bảo hành: {quote.warranty_months} tháng</li>
+      )}
     </ul>
   );
 }
