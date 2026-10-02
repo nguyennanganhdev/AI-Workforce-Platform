@@ -150,9 +150,17 @@ export class MockSecurityProvider implements SecurityProvider {
       this.scopes.set(scopeKey(scope), structuredClone(scope));
   }
 
-  /** Dữ liệu sống của một scope (không phải bản sao): lệnh worker của mock-write tác động lên đây. */
+  /**
+   * Dữ liệu sống của một scope (không phải bản sao): lệnh worker của mock-write tác động lên đây.
+   * Sửa dữ liệu qua đường này thì gọi `invalidateCursors()` sau đó; `createMockEnvironment` tự làm.
+   */
   liveScope(tenant_id: string, property_id: string): MockScopeData | undefined {
     return this.scopes.get(scopeKey({ tenant_id, property_id }));
+  }
+
+  /** Dữ liệu vừa đổi ngoài `write()` (callback worker): cursor phát trước đó hết hiệu lực (§7). */
+  invalidateCursors(): void {
+    this.revision += 1;
   }
 
   /** Thay dữ liệu một scope trong test; cursor phát trước đó hết hiệu lực. */

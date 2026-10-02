@@ -4,65 +4,39 @@
     "role": "SECURITY_SUPERVISOR",
     "priority": 1,
     "availability": "ON_DUTY",
-    "supported_severities": [
-      "P0",
-      "P1"
-    ],
-    "channels": [
-      "PHONE",
-      "PUSH"
-    ]
+    "supported_severities": ["P0", "P1"],
+    "channels": ["PHONE", "PUSH"]
   },
   {
     "contact_id": "ct_sup_night",
     "role": "SECURITY_SUPERVISOR",
     "priority": 1,
     "availability": "OFF_DUTY",
-    "supported_severities": [
-      "P0",
-      "P1"
-    ],
-    "channels": [
-      "PHONE",
-      "SMS"
-    ]
+    "supported_severities": ["P0", "P1"],
+    "channels": ["PHONE", "SMS"]
   },
   {
     "contact_id": "ct_coord_01",
     "role": "EMERGENCY_COORDINATOR",
     "priority": 2,
     "availability": "ON_DUTY",
-    "supported_severities": [
-      "P0"
-    ],
-    "channels": [
-      "PHONE"
-    ]
+    "supported_severities": ["P0"],
+    "channels": ["PHONE"]
   },
   {
     "contact_id": "ct_pm_01",
     "role": "PROPERTY_MANAGER",
     "priority": 3,
     "availability": "ON_DUTY",
-    "supported_severities": [
-      "P0",
-      "P1"
-    ],
-    "channels": [
-      "PHONE",
-      "EMAIL"
-    ]
+    "supported_severities": ["P0", "P1"],
+    "channels": ["PHONE", "EMAIL"]
   },
   {
     "contact_id": "ct_pm_02",
     "role": "PROPERTY_MANAGER",
     "priority": 4,
     "availability": "UNKNOWN",
-    "supported_severities": [
-      "P1"
-    ],
-    "channels": [
-      "EMAIL"
-    ]
+    "supported_severities": ["P1"],
+    "channels": ["EMAIL"]
   }
 ]

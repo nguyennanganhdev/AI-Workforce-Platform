@@ -375,3 +375,126 @@ describe("POST /faults", () => {
     ).toThrow(/mock/);
   });
 });
+
+describe("POST /faults: lệnh worker", () => {
+  const worker = (command: string, input: Record<string, unknown>) =>
+    control({
+      action: "worker",
+      command,
+      input: {
+        tenant_id: SCOPE.tenant_id,
+        property_id: SCOPE.property_id,
+        ...input,
+      },
+    });
+
+  test("callback dispatch qua HTTP đổi trạng thái và ghi timeline", async () => {
+    const created = await write("dispatch_guard", DISPATCH, "key_cb");
+    const dispatchId = created.data.dispatch_id as string;
+    const res = await worker("recordDispatchStatus", {
+      event_id: "evt_cb_1",
+      dispatch_id: dispatchId,
+      expected_version: 1,
+      to: "EN_ROUTE",
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as Row).result).toMatchObject({
+      ok: true,
+      replayed: false,
+      data: { status: "EN_ROUTE", version: 2 },
+    });
+    expect(
+      (await read("get_dispatch", { dispatch_id: dispatchId })).data.status,
+    ).toBe("EN_ROUTE");
+    const timeline = await read("get_security_event_timeline", {
+      incident_id: "inc_01",
+      limit: 100,
+    });
+    expect(
+      timeline.data.events.some(
+        (e: Row) =>
+          e.event_type === "DISPATCH_STATUS_CHANGED" &&
+          e.data.dispatch_id === dispatchId,
+      ),
+    ).toBe(true);
+  });
+
+  test("callback thành công làm cũ cursor; callback trùng event_id thì không", async () => {
+    const created = await write("dispatch_guard", DISPATCH, "key_cursor");
+    const dispatchId = created.data.dispatch_id as string;
+    const page = async () =>
+      read("get_security_event_timeline", { incident_id: "inc_02", limit: 2 });
+    const next = async (cursor: string) =>
+      read("get_security_event_timeline", {
+        incident_id: "inc_02",
+        limit: 2,
+        cursor,
+      });
+
+    const before = (await page()).data.next_cursor as string;
+    expect(before).toBeString();
+    const callback = {
+      event_id: "evt_cursor_1",
+      dispatch_id: dispatchId,
+      expected_version: 1,
+      to: "EN_ROUTE",
+    };
+    await worker("recordDispatchStatus", callback);
+    expect((await next(before)).error.code).toBe("VALIDATION_ERROR");
+
+    const after = (await page()).data.next_cursor as string;
+    const replay = (await (
+      await worker("recordDispatchStatus", callback)
+    ).json()) as Row;
+    expect(replay.result).toMatchObject({ ok: true, replayed: true });
+    expect((await next(after)).success).toBe(true);
+  });
+
+  test("lệnh worker sai → 400, không đổi dữ liệu", async () => {
+    expect(
+      (
+        await control({
+          action: "worker",
+          command: "deleteEverything",
+          input: {},
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await control({
+          action: "worker",
+          command: "expireEscalation",
+          input: "x",
+        })
+      ).status,
+    ).toBe(400);
+    const missing = await worker("recordAckReceipt", {
+      event_id: "evt_bad",
+      escalation_id: "esc_0001",
+      contact_id: "ct_sup_day",
+    });
+    expect(missing.status).toBe(400);
+    expect(((await missing.json()) as Row).error).toContain("actor");
+  });
+
+  test("reset xóa trạng thái worker (event_id dùng lại được)", async () => {
+    const created = await write("dispatch_guard", DISPATCH, "key_reset_cb");
+    const callback = {
+      event_id: "evt_reset",
+      dispatch_id: created.data.dispatch_id,
+      expected_version: 1,
+      to: "EN_ROUTE",
+    };
+    await worker("recordDispatchStatus", callback);
+    await control({ action: "reset" });
+    const again = await write("dispatch_guard", DISPATCH, "key_reset_cb");
+    const res = (await (
+      await worker("recordDispatchStatus", {
+        ...callback,
+        dispatch_id: again.data.dispatch_id,
+      })
+    ).json()) as Row;
+    expect(res.result).toMatchObject({ ok: true, replayed: false });
+  });
+});

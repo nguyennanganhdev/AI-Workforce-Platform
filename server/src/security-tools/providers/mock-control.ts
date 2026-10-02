@@ -4,12 +4,15 @@
  * để test chạy ngoài process (E2E) điều khiển được server mock. Không bao giờ bật ở production.
  */
 import { readBodyText } from "../common/body";
+import { isId } from "../common/context";
 import { parseStrictJson, StrictJsonError } from "../common/strict-json";
 import { loadFixtureScope, MockSecurityProvider } from "./mock-provider";
 import {
+  createMockWrite,
   createWriteControl,
-  createWriteHandlers,
   type MockWriteFault,
+  type WorkerCommands,
+  type WorkerResult,
   type WriteControl,
 } from "./mock-write";
 import {
@@ -57,6 +60,11 @@ export type MockEnvironment = {
   provider: SecurityProvider;
   clock: MockClock;
   control: WriteControl;
+  /**
+   * Lệnh nội bộ Core mà worker platform gọi (callback dispatch, kết quả gửi tin, nhận ACK, quá hạn).
+   * Dùng chung state và đồng hồ với provider; callback thành công làm cũ cursor đã phát.
+   */
+  worker: WorkerCommands;
   /** Giữ WRITE của tool ở IN_PROGRESS tới khi `release` (barrier cho request đồng thời). */
   hold(tool: WriteToolName): void;
   release(tool: WriteToolName): void;
@@ -70,13 +78,23 @@ export function createMockEnvironment(
   const clock = createMockClock();
   const control = createWriteControl();
   const releases = new Map<WriteToolName, () => void>();
-  const build = () =>
-    new MockSecurityProvider({
+  const build = () => {
+    // Handler WRITE và worker phải dùng chung một createMockWrite: chung reservation guard,
+    // bộ đếm id và chống trùng event_id. Worker sửa dữ liệu sống của chính provider này.
+    let provider: MockSecurityProvider | undefined;
+    const mock = createMockWrite({
+      control,
+      now: clock.now,
+      scopeOf: (tenant, property) => provider?.liveScope(tenant, property),
+    });
+    provider = new MockSecurityProvider({
       scopes: [loadFixtureScope()],
       now: clock.now,
       cursorSecret: options.cursorSecret,
-      writeHandlers: createWriteHandlers({ control }),
+      writeHandlers: mock.handlers,
     });
+    return { provider, worker: invalidatingCursors(mock.worker, provider) };
+  };
   let current = build();
 
   const release = (tool: WriteToolName) => {
@@ -87,12 +105,20 @@ export function createMockEnvironment(
     provider: {
       name: "mock",
       read: (tool, input, context, call) =>
-        current.read(tool, input, context, call),
+        current.provider.read(tool, input, context, call),
       write: (tool, input, invocation, call) =>
-        current.write(tool, input, invocation, call),
+        current.provider.write(tool, input, invocation, call),
     },
     clock,
     control,
+    worker: {
+      recordDispatchStatus: (input) =>
+        current.worker.recordDispatchStatus(input),
+      recordNotificationResult: (input) =>
+        current.worker.recordNotificationResult(input),
+      expireEscalation: (input) => current.worker.expireEscalation(input),
+      recordAckReceipt: (input) => current.worker.recordAckReceipt(input),
+    },
     hold(tool) {
       release(tool);
       releases.set(tool, control.hold(tool));
@@ -104,6 +130,27 @@ export function createMockEnvironment(
       clock.reset();
       current = build();
     },
+  };
+}
+
+/**
+ * Worker sửa dữ liệu ngoài `write()` nên provider không tự biết snapshot đã đổi. Callback thành công
+ * (không phải replay theo event_id) làm cũ cursor đã phát, để mọi trang của một cursor cùng snapshot.
+ */
+function invalidatingCursors(
+  worker: WorkerCommands,
+  provider: MockSecurityProvider,
+): WorkerCommands {
+  const after = <T>(result: WorkerResult<T>): WorkerResult<T> => {
+    if (result.ok && !result.replayed) provider.invalidateCursors();
+    return result;
+  };
+  return {
+    recordDispatchStatus: (input) => after(worker.recordDispatchStatus(input)),
+    recordNotificationResult: (input) =>
+      after(worker.recordNotificationResult(input)),
+    expireEscalation: (input) => after(worker.expireEscalation(input)),
+    recordAckReceipt: (input) => after(worker.recordAckReceipt(input)),
   };
 }
 
@@ -133,8 +180,9 @@ const MAX_CONTROL_BODY_BYTES = 4096;
  *   { "action": "set_clock", "at": "2026-10-01T03:00:00.000Z" }
  *   { "action": "advance_clock", "ms": 60000 }
  *   { "action": "reset" }
+ *   { "action": "worker", "command": "<lệnh worker>", "input": { … } }   // xem workerCall
  *
- * Trả `{ "ok": true, "now": <giờ của đồng hồ mock> }`; lệnh sai → 400.
+ * Trả `{ "ok": true, "now": <giờ của đồng hồ mock> }`, lệnh worker có thêm `result`; lệnh sai → 400.
  */
 export function createFaultsHandler(
   env: MockEnvironment,
@@ -207,11 +255,103 @@ export function createFaultsHandler(
       case "reset":
         env.reset();
         break;
+      case "worker": {
+        const call = workerCall(env.worker, command.command, command.input);
+        if (typeof call === "string") return bad(call);
+        // Lệnh hợp lệ thì luôn 200; kết quả nghiệp vụ (kể cả bị từ chối) nằm trong `result`.
+        return Response.json({
+          ok: true,
+          now: env.clock.now().toISOString(),
+          result: call(),
+        });
+      }
       default:
         return bad(
-          "action phải là set_fault | hold | release | set_clock | advance_clock | reset",
+          "action phải là set_fault | hold | release | set_clock | advance_clock | reset | worker",
         );
     }
     return Response.json({ ok: true, now: env.clock.now().toISOString() });
   };
+}
+
+const WORKER_COMMANDS = [
+  "recordDispatchStatus",
+  "recordNotificationResult",
+  "expireEscalation",
+  "recordAckReceipt",
+] as const;
+
+/**
+ * Kiểm `input` của một lệnh worker rồi trả hàm gọi nó, hoặc chuỗi lỗi. Chỉ kiểm kiểu và field bắt
+ * buộc; luật nghiệp vụ (transition, version, deadline) do chính lệnh worker quyết.
+ *
+ *   { "action": "worker", "command": "recordNotificationResult", "input": { "tenant_id", "property_id",
+ *     "event_id", "escalation_id", "expected_version", "result": "NOTIFIED", "provider_reference_id" } }
+ */
+function workerCall(
+  worker: WorkerCommands,
+  command: unknown,
+  input: unknown,
+): (() => WorkerResult<unknown>) | string {
+  if (
+    typeof command !== "string" ||
+    !(WORKER_COMMANDS as readonly string[]).includes(command)
+  ) {
+    return `command phải là một trong: ${WORKER_COMMANDS.join(", ")}`;
+  }
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    return "input phải là object";
+  }
+  const i = input as Record<string, unknown>;
+  const missing = (fields: Record<string, (value: unknown) => boolean>) =>
+    Object.entries(fields).find(([name, ok]) => !ok(i[name]))?.[0];
+  const version = (v: unknown) => Number.isSafeInteger(v) && (v as number) >= 1;
+  const optionalId = (v: unknown) => v === undefined || isId(v);
+  const actor = (v: unknown) => {
+    const a = v as { actor_id?: unknown; actor_type?: unknown } | null;
+    return (
+      a !== null &&
+      typeof a === "object" &&
+      isId(a.actor_id) &&
+      (a.actor_type === "HUMAN" || a.actor_type === "SERVICE")
+    );
+  };
+  const common = { tenant_id: isId, property_id: isId, event_id: isId };
+
+  const fields: Record<
+    (typeof WORKER_COMMANDS)[number],
+    Record<string, (value: unknown) => boolean>
+  > = {
+    recordDispatchStatus: {
+      ...common,
+      dispatch_id: isId,
+      expected_version: version,
+      to: (v) => typeof v === "string",
+      failure_code: optionalId,
+    },
+    recordNotificationResult: {
+      ...common,
+      escalation_id: isId,
+      expected_version: version,
+      result: (v) => v === "NOTIFIED" || v === "FAILED",
+      provider_reference_id: isId,
+      failure_code: optionalId,
+    },
+    expireEscalation: {
+      ...common,
+      escalation_id: isId,
+      expected_version: version,
+    },
+    recordAckReceipt: {
+      ...common,
+      escalation_id: isId,
+      contact_id: isId,
+      actor,
+    },
+  };
+  const name = command as (typeof WORKER_COMMANDS)[number];
+  const bad = missing(fields[name]);
+  if (bad !== undefined) return `input.${bad} thiếu hoặc sai kiểu`;
+  // Đã kiểm field bắt buộc; kiểu chính xác của từng lệnh do WorkerCommands định nghĩa.
+  return () => (worker[name] as (x: unknown) => WorkerResult<unknown>)(i);
 }

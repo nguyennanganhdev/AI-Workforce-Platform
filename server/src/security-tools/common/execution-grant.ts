@@ -10,7 +10,14 @@
  * binding/key được platform cấp lại, nên ở đây không có kiểm "jti đã dùng".
  */
 import { createHash, timingSafeEqual } from "node:crypto";
-import { createRemoteJWKSet, decodeJwt, decodeProtectedHeader, errors as joseErrors, type JWTVerifyGetKey, jwtVerify } from "jose";
+import {
+  createRemoteJWKSet,
+  decodeJwt,
+  decodeProtectedHeader,
+  errors as joseErrors,
+  type JWTVerifyGetKey,
+  jwtVerify,
+} from "jose";
 import { validate } from "../schema/index";
 import type { WriteGuard, WriteGuardResult } from "../tools";
 import { type Actor, isId } from "./context";
@@ -103,10 +110,12 @@ function serialize(value: unknown, depth: number): string {
   if (depth > MAX_DEPTH) throw new CanonicalizeError("Dữ liệu lồng quá sâu");
   switch (typeof value) {
     case "string":
-      if (!value.isWellFormed()) throw new CanonicalizeError("Unicode không hợp lệ");
+      if (!value.isWellFormed())
+        throw new CanonicalizeError("Unicode không hợp lệ");
       return JSON.stringify(value);
     case "number":
-      if (!Number.isSafeInteger(value)) throw new CanonicalizeError("Số phải là integer trong miền an toàn");
+      if (!Number.isSafeInteger(value))
+        throw new CanonicalizeError("Số phải là integer trong miền an toàn");
       return String(value); // -0 thành "0", đúng JCS
     case "boolean":
       return value ? "true" : "false";
@@ -114,17 +123,20 @@ function serialize(value: unknown, depth: number): string {
       if (value === null) throw new CanonicalizeError("null không hợp lệ");
       if (Array.isArray(value)) {
         const items: string[] = [];
-        for (let i = 0; i < value.length; i++) items.push(serialize(value[i], depth + 1));
+        for (let i = 0; i < value.length; i++)
+          items.push(serialize(value[i], depth + 1));
         return `[${items.join(",")}]`;
       }
       const prototype = Object.getPrototypeOf(value);
-      if (prototype !== Object.prototype && prototype !== null) throw new CanonicalizeError("Chỉ nhận object thuần");
+      if (prototype !== Object.prototype && prototype !== null)
+        throw new CanonicalizeError("Chỉ nhận object thuần");
       const record = value as Record<string, unknown>;
       // sort() mặc định so theo code unit UTF-16, đúng thứ tự JCS yêu cầu.
       const members = Object.keys(record)
         .sort()
         .map((key) => {
-          if (!key.isWellFormed()) throw new CanonicalizeError("Unicode không hợp lệ");
+          if (!key.isWellFormed())
+            throw new CanonicalizeError("Unicode không hợp lệ");
           return `${JSON.stringify(key)}:${serialize(record[key], depth + 1)}`;
         });
       return `{${members.join(",")}}`;
@@ -136,7 +148,9 @@ function serialize(value: unknown, depth: number): string {
 
 /** payload_hash: JCS → UTF-8 → SHA-256 → hex chữ thường (§4). */
 export function payloadHash(binding: ActionBinding): string {
-  return createHash("sha256").update(canonicalize(binding), "utf8").digest("hex");
+  return createHash("sha256")
+    .update(canonicalize(binding), "utf8")
+    .digest("hex");
 }
 
 function sameHash(a: string, b: string): boolean {
@@ -172,9 +186,13 @@ export function createWriteGuard(config: GrantVerifierConfig): WriteGuard {
     if (keys instanceof URL && keys.protocol !== "https:") {
       throw new Error("JWKS URL của execution grant phải là HTTPS");
     }
-    resolvers.set(issuer, keys instanceof URL ? createRemoteJWKSet(keys) : keys);
+    resolvers.set(
+      issuer,
+      keys instanceof URL ? createRemoteJWKSet(keys) : keys,
+    );
   }
-  if (resolvers.size === 0) throw new Error("Cần ít nhất một issuer cho execution grant");
+  if (resolvers.size === 0)
+    throw new Error("Cần ít nhất một issuer cho execution grant");
 
   return async (request) => {
     const { context, headers, tool, now } = request;
@@ -184,10 +202,16 @@ export function createWriteGuard(config: GrantVerifierConfig): WriteGuard {
     });
 
     const token = headers.execution_grant;
-    if (token === null || token === "") return reject("GRANT_MISSING", "Thiếu execution grant.");
+    if (token === null || token === "")
+      return reject("GRANT_MISSING", "Thiếu execution grant.");
     const key = headers.idempotency_key;
-    if (key === null || !isId(key)) return reject("VALIDATION_ERROR", "Idempotency-Key thiếu hoặc sai định dạng.");
-    if (token.length > MAX_GRANT_LENGTH) return reject("GRANT_INVALID", "Execution grant không hợp lệ.");
+    if (key === null || !isId(key))
+      return reject(
+        "VALIDATION_ERROR",
+        "Idempotency-Key thiếu hoặc sai định dạng.",
+      );
+    if (token.length > MAX_GRANT_LENGTH)
+      return reject("GRANT_INVALID", "Execution grant không hợp lệ.");
 
     // Header chặt: đúng alg/typ/kid, không có jku/x5u/jwk/crit hay tham số lạ.
     let header: ReturnType<typeof decodeProtectedHeader>;
@@ -202,7 +226,8 @@ export function createWriteGuard(config: GrantVerifierConfig): WriteGuard {
       typeof header.kid === "string" &&
       header.kid.length > 0 &&
       Object.keys(header).every((name) => ALLOWED_HEADER_PARAMS.has(name));
-    if (!headerOk) return reject("GRANT_INVALID", "Execution grant không hợp lệ.");
+    if (!headerOk)
+      return reject("GRANT_INVALID", "Execution grant không hợp lệ.");
 
     // `iss` đọc trước khi verify chỉ để chọn key của issuer; jwtVerify bên dưới ép khớp chính xác và
     // chữ ký phải đúng key đó, nên grant không thể mượn key của issuer khác.
@@ -212,8 +237,10 @@ export function createWriteGuard(config: GrantVerifierConfig): WriteGuard {
     } catch {
       return reject("GRANT_INVALID", "Execution grant không hợp lệ.");
     }
-    const getKey = typeof issuer === "string" ? resolvers.get(issuer) : undefined;
-    if (issuer === undefined || getKey === undefined) return reject("GRANT_INVALID", "Execution grant không hợp lệ.");
+    const getKey =
+      typeof issuer === "string" ? resolvers.get(issuer) : undefined;
+    if (issuer === undefined || getKey === undefined)
+      return reject("GRANT_INVALID", "Execution grant không hợp lệ.");
 
     let payload: Record<string, unknown>;
     try {
@@ -227,20 +254,29 @@ export function createWriteGuard(config: GrantVerifierConfig): WriteGuard {
         requiredClaims: ["iss", "aud", "sub", "jti", "iat", "nbf", "exp"],
       }));
     } catch (error) {
-      if (error instanceof joseErrors.JWTExpired) return reject("GRANT_EXPIRED", "Execution grant đã hết hạn.");
+      if (error instanceof joseErrors.JWTExpired)
+        return reject("GRANT_EXPIRED", "Execution grant đã hết hạn.");
       // Mọi lỗi còn lại, kể cả không lấy được key, đều fail closed. Không lộ lý do cho caller.
       return reject("GRANT_INVALID", "Execution grant không hợp lệ.");
     }
 
     // Claims: id, hằng số (aud, contract_version), payload_hash, field lạ... đều do schema kiểm.
-    if (!validate(GRANT_CLAIMS_REF, payload).ok) return reject("GRANT_INVALID", "Execution grant không hợp lệ.");
+    if (!validate(GRANT_CLAIMS_REF, payload).ok)
+      return reject("GRANT_INVALID", "Execution grant không hợp lệ.");
     const claims = payload as unknown as GrantClaims;
 
     const nowSec = Math.floor(now.getTime() / 1000);
     const timeError = checkTimes(claims, nowSec);
-    if (timeError) return reject(timeError, timeError === "GRANT_EXPIRED" ? "Execution grant đã hết hạn." : "Execution grant không hợp lệ.");
+    if (timeError)
+      return reject(
+        timeError,
+        timeError === "GRANT_EXPIRED"
+          ? "Execution grant đã hết hạn."
+          : "Execution grant không hợp lệ.",
+      );
 
-    if (claims.sub !== context.principal_id) return reject("GRANT_INVALID", "Grant không cấp cho caller này.");
+    if (claims.sub !== context.principal_id)
+      return reject("GRANT_INVALID", "Grant không cấp cho caller này.");
     if (
       claims.tenant_id !== context.tenant_id ||
       claims.property_id !== context.property_id ||
@@ -249,8 +285,10 @@ export function createWriteGuard(config: GrantVerifierConfig): WriteGuard {
     ) {
       return reject("SCOPE_MISMATCH", "Grant không khớp scope của phiên.");
     }
-    if (claims.action !== tool) return reject("GRANT_INVALID", "Grant không cấp cho action này.");
-    if (claims.idempotency_key !== key) return reject("GRANT_INVALID", "Idempotency-Key không khớp grant.");
+    if (claims.action !== tool)
+      return reject("GRANT_INVALID", "Grant không cấp cho action này.");
+    if (claims.idempotency_key !== key)
+      return reject("GRANT_INVALID", "Idempotency-Key không khớp grant.");
 
     // Dựng lại binding từ claims đã verify + đúng arguments sẽ gửi provider, rồi so hash.
     const binding: ActionBinding = {
@@ -265,26 +303,39 @@ export function createWriteGuard(config: GrantVerifierConfig): WriteGuard {
       idempotency_key: claims.idempotency_key,
       arguments: request.arguments,
     };
-    if (!validate(ACTION_BINDING_REF, binding).ok) return reject("VALIDATION_ERROR", "ActionBinding không hợp lệ.");
+    if (!validate(ACTION_BINDING_REF, binding).ok)
+      return reject("VALIDATION_ERROR", "ActionBinding không hợp lệ.");
     let hash: string;
     try {
       hash = payloadHash(binding);
     } catch (error) {
-      if (error instanceof CanonicalizeError) return reject("VALIDATION_ERROR", `Arguments không canonicalize được: ${error.message}.`);
+      if (error instanceof CanonicalizeError)
+        return reject(
+          "VALIDATION_ERROR",
+          `Arguments không canonicalize được: ${error.message}.`,
+        );
       throw error;
     }
-    if (!sameHash(hash, claims.payload_hash)) return reject("GRANT_INVALID", "Payload không khớp grant đã duyệt.");
+    if (!sameHash(hash, claims.payload_hash))
+      return reject("GRANT_INVALID", "Payload không khớp grant đã duyệt.");
 
-    return { ok: true, write: { context, idempotency_key: key, claims, binding } };
+    return {
+      ok: true,
+      write: { context, idempotency_key: key, claims, binding },
+    };
   };
 }
 
 /** Quy tắc thời gian §4: iat ≤ nbf < exp, exp - iat ≤ 300, iat/nbf ≤ now+30, now < exp+30. */
-function checkTimes(claims: GrantClaims, nowSec: number): "GRANT_INVALID" | "GRANT_EXPIRED" | null {
+function checkTimes(
+  claims: GrantClaims,
+  nowSec: number,
+): "GRANT_INVALID" | "GRANT_EXPIRED" | null {
   const { iat, nbf, exp } = claims;
   if (!(iat <= nbf && nbf < exp)) return "GRANT_INVALID";
   if (exp - iat > MAX_GRANT_LIFETIME_SEC) return "GRANT_INVALID";
-  if (iat > nowSec + CLOCK_SKEW_SEC || nbf > nowSec + CLOCK_SKEW_SEC) return "GRANT_INVALID";
+  if (iat > nowSec + CLOCK_SKEW_SEC || nbf > nowSec + CLOCK_SKEW_SEC)
+    return "GRANT_INVALID";
   if (nowSec >= exp + CLOCK_SKEW_SEC) return "GRANT_EXPIRED";
   return null;
 }
