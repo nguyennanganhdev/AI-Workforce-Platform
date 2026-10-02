@@ -151,11 +151,12 @@ class Question(Model):
 
 class Action(Model):
     action_id: Id
-    channel: Literal["room", "backend", "reception"]
+    channel: Literal["room", "backend", "reception", "draft"]
     operation: Id
     wire: Dict
     plan_version: int
     status: Literal["pending", "sending", "accepted", "unknown", "done", "failed"] = "pending"
+    dispatch_attempt: Annotated[int, Field(ge=0, strict=True)] = 0
     receipt: Optional[Dict] = None
     previous_action_id: Optional[Id] = None
 
@@ -191,6 +192,8 @@ class SupervisorState(Model):
     completion: Optional[Dict] = None
     publication_draft: Optional[Dict] = None
     question_draft: Optional[Text] = None
+    plan_draft: Optional[ProposedPlan] = None
+    draft_receipts: Dict[str, Dict] = Field(default_factory=dict)
     feedback: List[Dict] = Field(default_factory=list)
     tasks: Dict[str, TaskMetadata] = Field(default_factory=dict)
     task_drafts: List[TaskSpec] = Field(default_factory=list)
@@ -215,6 +218,10 @@ class CatalogEntry(Model):
     participant: ParticipantSpec
     # Trusted ACL for NEW tasks. Empty is forbidden: DEV-2 empty means public.
     task_readers: Annotated[List[Id], Field(min_length=1)]
+    capabilities: List[Id] = Field(default_factory=list)
+    constraints: Dict = Field(default_factory=dict)
+    tool_grants: List[Id] = Field(default_factory=list)
+    knowledge_grants: List[Id] = Field(default_factory=list)
 
 
 class Publication(Model):

@@ -48,10 +48,11 @@ def validate_decision(decision, state: SupervisorState, view: AuthorityView) -> 
 
 
 class Planner:
-    def __init__(self, client: ModelClient, *, attempts: int = 2, timeout: float = 30):
+    def __init__(self, client: ModelClient, *, attempts: int = 2, timeout: float = 30, trace=None):
         if type(attempts) is not int or not 1 <= attempts <= 5 or not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("invalid planner limits")
         self.client, self.attempts, self.timeout = client, attempts, timeout
+        self.trace = trace
 
     async def decide(self, state: SupervisorState, view: AuthorityView):
         prompt = {
@@ -67,9 +68,14 @@ class Planner:
                 raw = await asyncio.wait_for(self.client.generate(prompt), self.timeout)
                 decision = DECISION.validate_json(raw)
                 validate_decision(decision, state, view)
+                if self.trace is not None:
+                    await self.trace.record(state,prompt,decision.model_dump(mode='json'),None)
                 return decision
             except (ValidationError, SupervisorError) as exc:
-                prompt["repair_error"] = exc.code if isinstance(exc, SupervisorError) else "invalid_decision_json"
+                code = exc.code if isinstance(exc, SupervisorError) else "invalid_decision_json"
+                if self.trace is not None:
+                    await self.trace.record(state,prompt,None,code)
+                prompt["repair_error"] = code
             except TimeoutError:
                 raise SupervisorError("model_timeout") from None
             except Exception:
