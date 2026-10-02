@@ -31,7 +31,7 @@ UNAVAILABLE_REPLY = "Trợ lý lễ tân tạm thời chưa phản hồi đượ
 # Danger to people or the building. Matched with diacritics: without them "cháy" (fire)
 # and "chảy" (leaking) are the same letters, and a leak must not page as an emergency.
 EMERGENCY_TERMS = (
-    "cháy", "bốc khói", "khói đen", "mùi gas", "mùi ga", "rò gas", "rò rỉ gas", "chập điện", "giật điện",
+    "cháy", "bốc khói", "khói bốc", "khói đen", "mùi khét", "mùi gas", "mùi ga", "rò gas", "rò rỉ gas", "chập điện", "giật điện",
     "tia lửa", "nổ lớn", "kẹt thang máy", "kẹt trong thang", "ngập nước", "vỡ ống nước", "sập trần",
 )
 
@@ -59,8 +59,10 @@ async def evaluate_policy(body: PolicyRequest, scope: Scope) -> dict[str, object
     message = unicodedata.normalize("NFC", body.message_text.lower())
     for term in BENIGN_TERMS:
         message = message.replace(term, " ")
-    emergency = any(term in message for term in EMERGENCY_TERMS)
     proposal = body.assessment or {}
+    # The keyword list cannot cover every phrasing. The model may raise an emergency;
+    # it can never lower one the keywords found.
+    emergency = any(term in message for term in EMERGENCY_TERMS) or proposal.get("proposed_action") == "emergency_handoff"
     declined, failed = proposal.get("self_help_declined") is True, proposal.get("self_help_failed") is True
     staff_required = emergency or declined or failed or proposal.get("explicit_staff_request") is True \
         or proposal.get("intent") in {"incident", "service_request"}

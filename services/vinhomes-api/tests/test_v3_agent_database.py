@@ -195,6 +195,11 @@ def test_reception_policy_and_reply_are_backend_decisions(database, monkeypatch)
         assert not bulb["emergency"] and bulb["staff_required"]
         smoke = c.post(policy, json={"message_text": "Bóng đèn bị cháy và đang bốc khói", "assessment": None}).json()
         assert smoke["emergency"]
+        raised = c.post(policy, json={"message_text": "Ổ điện phát tia sáng lạ", "assessment": {"proposed_action": "emergency_handoff"}}).json()
+        assert raised["emergency"] and raised["handoff_reason"] == "emergency"
+        # A model proposal cannot lower what the keywords found.
+        kept = c.post(policy, json={"message_text": "Có mùi khét trong bếp", "assessment": {"proposed_action": "start_ticket"}}).json()
+        assert kept["emergency"]
         question = c.post(policy, json={
             "message_text": "Phí quản lý tháng này bao nhiêu?", "assessment": {"intent": "information"}}).json()
         assert not question["staff_required"] and question["self_help_allowed"] is False
