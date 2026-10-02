@@ -103,6 +103,18 @@ Biến môi trường ở `.env.example` (`RECEPTION_SERVICE_TOKEN`, `RECEPTION_
 Chưa có trong runtime: nhận sự kiện từ Supervisor (chưa có Supervisor chạy), trả lời tương tác của Supervisor,
 self-help (backend trả 501 nên graph mời hỗ trợ trực tiếp), checkpointer PostgreSQL cho nhiều replica.
 
+Đánh giá hội thoại với model thật: `tests/evals/run_live.py` gửi 52 kịch bản tiếng Việt
+(`tests/evals/live_conversations.vi.json`) qua API cư dân rồi chấm bằng dữ kiện từ backend (có tạo yêu cầu
+không, mức ưu tiên, có lượt nào hỏng không) và bằng một model chấm độ tự nhiên, độ đúng. Lệnh này tốn lượt gọi
+model và tạo yêu cầu thật, nên chỉ chạy trên database tạm:
+
+```sh
+python tests/evals/run_live.py --backend http://127.0.0.1:8011 --only emergency
+```
+
+Điểm gốc 03/10/2026 (graph cố định, `gpt-5.4-mini`, chấm bằng `gpt-5.4`, hai lần chạy): đạt kiểm tra cứng
+85–88%, đạt phát biểu 87–88%, tự nhiên 4,2–4,4/5, trễ trung vị 6 giây. Nhóm yếu nhất: tin nhắn mơ hồ (33%).
+
 Kiểm thử đầu-cuối qua HTTP thật: `tests/runtime/test_resident_chat_e2e.py` (cần backend, runtime và
 `tests/runtime/fake_llm.py`; model trong test là stub xác định, không phải LLM thật).
 
