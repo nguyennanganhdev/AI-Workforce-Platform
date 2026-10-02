@@ -11,21 +11,63 @@
  * Luật nghiệp vụ lấy từ dispatch/service.ts và emergency/service.ts để mock và Core cùng semantics.
  * Một lần commit ghi cùng lúc: entity, evidence ACTION_RECEIPT, event, related_counts và version của
  * incident, rồi mới lưu kết quả vào ledger. Mock không gửi thông báo và không chạy SLA timer:
- * dispatch/escalation mới dừng ở PENDING như Core (§1).
+ * dispatch/escalation mới dừng ở PENDING như Core (§1). Callback của worker platform (§9:
+ * recordDispatchStatus, recordNotificationResult, recordAckReceipt, expireEscalation) là
+ * `createMockWrite().worker`: test gọi tay thay cho worker, mỗi callback ghi event + evidence.
  *
  * Luật Incident (create/update) lấy từ incidents/service.ts của P3.
  */
 import type { EvidenceItem } from "../audits/types";
+import type { Actor } from "../common/context";
 import { type ErrorCode, type ToolError, toolError } from "../common/errors";
-import { decideIdempotency, type IdempotencyDecision, type OperationRecord, resultOf } from "../common/idempotency";
+import {
+  decideIdempotency,
+  type IdempotencyDecision,
+  type OperationRecord,
+  resultOf,
+} from "../common/idempotency";
 import { timestamp, type WriteEvidence } from "../common/responses";
-import { applyCancel, checkCancelDispatch, checkDispatchGuard, createDispatch, isOpenDispatch, type Rejection } from "../dispatch/service";
-import type { Dispatch } from "../dispatch/types";
-import { applyAcknowledge, applyNotificationResult, checkAcknowledge, checkEscalate, createEscalation } from "../emergency/service";
-import type { AckReceipt, EmergencyEscalation, EmergencyProtocol, EscalationContact } from "../emergency/types";
-import type { GuardStatus, Location } from "../guards/types";
-import { applyUpdate, checkUpdateIncident, createIncident, incidentUpdatedEvent } from "../incidents/service";
-import type { CreateIncidentInput, UpdateIncidentInput } from "../incidents/types";
+import {
+  applyCancel,
+  applyDispatchStatus,
+  checkCancelDispatch,
+  checkDispatchGuard,
+  createDispatch,
+  isOpenDispatch,
+  type Rejection,
+} from "../dispatch/service";
+import type {
+  Dispatch,
+  DispatchFailureCode,
+  DispatchStatus,
+} from "../dispatch/types";
+import {
+  applyAcknowledge,
+  applyExpire,
+  applyNotificationResult,
+  checkAcknowledge,
+  checkEscalate,
+  createEscalation,
+} from "../emergency/service";
+import type {
+  AckReceipt,
+  EmergencyEscalation,
+  EmergencyProtocol,
+  EscalationContact,
+  EscalationFailureCode,
+} from "../emergency/types";
+import type { GuardStatus } from "../guards/types";
+import {
+  applyUpdate,
+  checkUpdateIncident,
+  createIncident,
+  incidentUpdatedEvent,
+} from "../incidents/service";
+import type {
+  CreateIncidentInput,
+  Incident,
+  UpdateIncidentInput,
+} from "../incidents/types";
 import type { MockScopeData, MockWriteHandler } from "./mock-provider";
 import type { VerifiedWrite, WriteResult, WriteToolName } from "./provider";
 
@@ -67,8 +109,14 @@ export type WriteControl = {
 };
 
 export function createWriteControl(): WriteControl {
-  const faults = new Map<WriteToolName, { fault: MockWriteFault; times: number }>();
-  const holds = new Map<WriteToolName, { promise: Promise<void>; release: () => void }>();
+  const faults = new Map<
+    WriteToolName,
+    { fault: MockWriteFault; times: number }
+  >();
+  const holds = new Map<
+    WriteToolName,
+    { promise: Promise<void>; release: () => void }
+  >();
   return {
     setFault(tool, fault, times = 1) {
       if (times > 0) faults.set(tool, { fault, times });
@@ -126,21 +174,40 @@ export class MockOperationLedger {
     };
     const keyId = id(invocation.context, request.idempotency_key);
     const proposalId = id(invocation.context, request.proposal_id);
-    const decision = decideIdempotency(request, this.byKey.get(keyId) ?? null, this.byProposal.get(proposalId) ?? null);
+    const decision = decideIdempotency(
+      request,
+      this.byKey.get(keyId) ?? null,
+      this.byProposal.get(proposalId) ?? null,
+    );
     if (decision.action === "EXECUTE") {
-      const record: OperationRecord = { ...request, status: "IN_PROGRESS", result: null, rejection: null };
+      const record: OperationRecord = {
+        ...request,
+        status: "IN_PROGRESS",
+        result: null,
+        rejection: null,
+      };
       this.byKey.set(keyId, record);
       this.byProposal.set(proposalId, record);
     }
     return decision;
   }
 
-  commit(invocation: VerifiedWrite, data: unknown, evidence: WriteEvidence): void {
-    Object.assign(this.record(invocation), { status: "COMMITTED", result: { data: structuredClone(data), evidence } });
+  commit(
+    invocation: VerifiedWrite,
+    data: unknown,
+    evidence: WriteEvidence,
+  ): void {
+    Object.assign(this.record(invocation), {
+      status: "COMMITTED",
+      result: { data: structuredClone(data), evidence },
+    });
   }
 
   reject(invocation: VerifiedWrite, error: ToolError): void {
-    Object.assign(this.record(invocation), { status: "REJECTED", rejection: error });
+    Object.assign(this.record(invocation), {
+      status: "REJECTED",
+      rejection: error,
+    });
   }
 
   markUnknown(invocation: VerifiedWrite): void {
@@ -160,13 +227,16 @@ export class MockOperationLedger {
   }
 
   private record(invocation: VerifiedWrite): OperationRecord {
-    const record = this.byKey.get(id(invocation.context, invocation.idempotency_key));
+    const record = this.byKey.get(
+      id(invocation.context, invocation.idempotency_key),
+    );
     if (!record) throw new Error("Operation chưa được claim");
     return record;
   }
 }
 
-const id = (scope: Scope, value: string) => `${scope.tenant_id}\u0000${scope.property_id}\u0000${value}`;
+const id = (scope: Scope, value: string) =>
+  `${scope.tenant_id}\u0000${scope.property_id}\u0000${value}`;
 
 // ---------------------------------------------------------------------------------------------
 // Handler
@@ -177,24 +247,9 @@ export type WriteHandlersOptions = {
   ledger?: MockOperationLedger;
 };
 
-/** Field của incident mà WRITE cần. Kiểu Incident thuộc P3; đây là cấu trúc theo common.schema.json. */
-type IncidentRecord = {
-  incident_id: string;
-  ticket_id: string;
-  incident_type: string;
-  description: string | null;
-  status: string;
-  severity: string;
-  location: Location;
-  version: number;
-  created_at: string;
-  updated_at: string;
-  related_counts: { dispatches: number; escalations: number; cameras: number; evidence: number };
-};
-
 type Commit = {
   data: unknown;
-  incident: IncidentRecord;
+  incident: Incident;
   event: { event_type: string; data: Record<string, unknown> };
   summary: string;
   /** Chạy sau khi kết quả đã vào ledger (ví dụ worker gửi thất bại). */
@@ -202,21 +257,45 @@ type Commit = {
 };
 type Outcome = Commit | { rejection: NonNullable<Rejection> };
 
-export function createWriteHandlers(options: WriteHandlersOptions = {}): Partial<Record<WriteToolName, MockWriteHandler>> {
+export function createWriteHandlers(
+  options: WriteHandlersOptions = {},
+): Partial<Record<WriteToolName, MockWriteHandler>> {
+  return createMockWrite(options).handlers;
+}
+
+/**
+ * Handler WRITE cùng các lệnh worker dùng chung state (reservation guard, bộ đếm id). `scopeOf` và
+ * `now` chỉ cần cho worker; truyền cùng đồng hồ với provider và với wrapper.
+ */
+export function createMockWrite(options: MockWriteOptions = {}): MockWrite {
   const control = options.control ?? createWriteControl();
   const ledger = options.ledger ?? new MockOperationLedger();
   /** Trạng thái guard trước khi bị reserve, để trả lại đúng khi dispatch kết thúc. */
   const reservedFrom = new Map<string, GuardStatus>();
   let sequence = 0;
-  const nextId = (prefix: string) => `${prefix}_mock_${String(++sequence).padStart(4, "0")}`;
+  const nextId = (prefix: string) =>
+    `${prefix}_mock_${String(++sequence).padStart(4, "0")}`;
 
   const handler =
-    (tool: WriteToolName, body: (ctx: { scope: MockScopeData; input: Record<string, unknown>; invocation: VerifiedWrite; now: string; fault: MockWriteFault | null }) => Outcome): MockWriteHandler =>
+    (
+      tool: WriteToolName,
+      body: (ctx: {
+        scope: MockScopeData;
+        input: Record<string, unknown>;
+        invocation: VerifiedWrite;
+        now: string;
+        fault: MockWriteFault | null;
+      }) => Outcome,
+    ): MockWriteHandler =>
     async ({ scope, input, invocation, now: clock }) => {
       const early = resultOf(ledger.begin(invocation));
       if (early) return early;
 
-      const fail = (code: ErrorCode, message: string, outcome?: "NOT_COMMITTED"): WriteResult<unknown> => ({
+      const fail = (
+        code: ErrorCode,
+        message: string,
+        outcome?: "NOT_COMMITTED",
+      ): WriteResult<unknown> => ({
         ok: false,
         error: toolError(code, message, { mode: "WRITE", outcome }),
       });
@@ -224,13 +303,20 @@ export function createWriteHandlers(options: WriteHandlersOptions = {}): Partial
         await control.waitIfHeld(tool);
         const fault = control.takeFault(tool);
         if (fault === "provider_error_before_commit") {
-          const result = fail("PROVIDER_ERROR", "Mock: provider lỗi, xác nhận chưa commit.", "NOT_COMMITTED");
+          const result = fail(
+            "PROVIDER_ERROR",
+            "Mock: provider lỗi, xác nhận chưa commit.",
+            "NOT_COMMITTED",
+          );
           if (!result.ok) ledger.reject(invocation, result.error);
           return result;
         }
         if (fault === "timeout_before_commit") {
           ledger.markUnknown(invocation);
-          return fail("PROVIDER_TIMEOUT", "Mock: hết thời gian trước khi biết kết quả.");
+          return fail(
+            "PROVIDER_TIMEOUT",
+            "Mock: hết thời gian trước khi biết kết quả.",
+          );
         }
 
         const now = timestamp(clock);
@@ -246,9 +332,18 @@ export function createWriteHandlers(options: WriteHandlersOptions = {}): Partial
         ledger.commit(invocation, data, evidence);
         outcome.after?.();
 
-        if (fault === "timeout_after_commit") return fail("PROVIDER_TIMEOUT", "Mock: hết thời gian sau khi đã commit.");
+        if (fault === "timeout_after_commit")
+          return fail(
+            "PROVIDER_TIMEOUT",
+            "Mock: hết thời gian sau khi đã commit.",
+          );
         if (fault === "invalid_response") {
-          return { ok: true, data: { ...(data as object), mock_invalid_field: true }, evidence, replayed: false };
+          return {
+            ok: true,
+            data: { ...(data as object), mock_invalid_field: true },
+            evidence,
+            replayed: false,
+          };
         }
         return { ok: true, data, evidence, replayed: false };
       } catch (error) {
@@ -260,203 +355,694 @@ export function createWriteHandlers(options: WriteHandlersOptions = {}): Partial
 
   const release = (scope: MockScopeData, guardId: string, now: string) => {
     const guard = scope.guards.find((g) => g.guard_id === guardId);
-    if (!guard || guard.status !== "ASSIGNED") return;
+    if (guard?.status !== "ASSIGNED") return;
     // Mock không có roster để hỏi lại như Core; trả về trạng thái trước khi reserve nếu biết.
-    guard.status = reservedFrom.get(reservationKey(scope, guardId)) ?? "AVAILABLE";
+    guard.status =
+      reservedFrom.get(reservationKey(scope, guardId)) ?? "AVAILABLE";
     guard.updated_at = now;
     reservedFrom.delete(reservationKey(scope, guardId));
   };
 
-  return {
-    create_incident: handler("create_incident", ({ scope, input, invocation, now }) => {
-      const location = scope.locations.find((l) => l.location_id === input.location_id);
-      if (!location) return { rejection: { code: "NOT_FOUND", reason: "Không tìm thấy location trong property" } };
-      // Ticket lấy từ context tin cậy của phiên, không từ arguments (§3.1).
-      const incident = createIncident({
-        incidentId: nextId("inc"),
-        ticketId: invocation.context.ticket_id,
-        input: input as CreateIncidentInput,
-        location,
-        now,
-      }) as IncidentRecord;
-      scope.incidents.push(incident);
-      return {
-        data: incident,
-        incident,
-        event: { event_type: "INCIDENT_CREATED", data: { status: "OPEN", severity: incident.severity } },
-        summary: "Tạo incident",
-      };
-    }),
+  const handlers: Partial<Record<WriteToolName, MockWriteHandler>> = {
+    create_incident: handler(
+      "create_incident",
+      ({ scope, input, invocation, now }) => {
+        const location = scope.locations.find(
+          (l) => l.location_id === input.location_id,
+        );
+        if (!location)
+          return {
+            rejection: {
+              code: "NOT_FOUND",
+              reason: "Không tìm thấy location trong property",
+            },
+          };
+        // Ticket lấy từ context tin cậy của phiên, không từ arguments (§3.1).
+        const incident = createIncident({
+          incidentId: nextId("inc"),
+          ticketId: invocation.context.ticket_id,
+          input: input as CreateIncidentInput,
+          location,
+          now,
+        });
+        scope.incidents.push(incident);
+        return {
+          data: incident,
+          incident,
+          event: {
+            event_type: "INCIDENT_CREATED",
+            data: { status: "OPEN", severity: incident.severity },
+          },
+          summary: "Tạo incident",
+        };
+      },
+    ),
 
-    update_incident: handler("update_incident", ({ scope, input, invocation }) => {
-      const incident = findIncident(scope, input.incident_id);
-      if (!incident) return { rejection: { code: "NOT_FOUND", reason: "Không tìm thấy incident trong property" } };
-      const mismatch = ticketMismatch(incident, invocation);
-      if (mismatch) return { rejection: mismatch };
-      const patch = input as UpdateIncidentInput;
-      const rejection = checkUpdateIncident({
-        incident: incident as never,
-        input: patch,
-        evidence: (scope.evidence as unknown as EvidenceItem[]).filter((e) => e.incident_id === incident.incident_id),
-        openDispatches: dispatches(scope).filter((d) => d.incident_id === incident.incident_id && isOpenDispatch(d)).length,
-        waitingEscalations: escalations(scope).filter((e) => e.incident_id === incident.incident_id && (e.status === "PENDING" || e.status === "NOTIFIED")).length,
-      });
-      if (rejection) return { rejection };
+    update_incident: handler(
+      "update_incident",
+      ({ scope, input, invocation }) => {
+        const incident = findIncident(scope, input.incident_id);
+        if (!incident)
+          return {
+            rejection: {
+              code: "NOT_FOUND",
+              reason: "Không tìm thấy incident trong property",
+            },
+          };
+        const mismatch = ticketMismatch(incident, invocation);
+        if (mismatch) return { rejection: mismatch };
+        const patch = input as UpdateIncidentInput;
+        const rejection = checkUpdateIncident({
+          incident,
+          input: patch,
+          evidence: (scope.evidence as unknown as EvidenceItem[]).filter(
+            (e) => e.incident_id === incident.incident_id,
+          ),
+          openDispatches: dispatches(scope).filter(
+            (d) => d.incident_id === incident.incident_id && isOpenDispatch(d),
+          ).length,
+          waitingEscalations: escalations(scope).filter(
+            (e) =>
+              e.incident_id === incident.incident_id &&
+              (e.status === "PENDING" || e.status === "NOTIFIED"),
+          ).length,
+        });
+        if (rejection) return { rejection };
 
-      const before = { ...incident };
-      Object.assign(incident, applyUpdate(incident as never, patch));
-      return {
-        data: incident,
-        incident,
-        event: { event_type: "INCIDENT_UPDATED", data: incidentUpdatedEvent(before as never, incident as never, patch.note) },
-        summary: patch.status ? `Chuyển incident sang ${patch.status}` : "Cập nhật incident",
-      };
-    }),
+        const before = { ...incident };
+        Object.assign(incident, applyUpdate(incident, patch));
+        return {
+          data: incident,
+          incident,
+          event: {
+            event_type: "INCIDENT_UPDATED",
+            data: incidentUpdatedEvent(before, incident, patch.note),
+          },
+          summary: patch.status
+            ? `Chuyển incident sang ${patch.status}`
+            : "Cập nhật incident",
+        };
+      },
+    ),
 
-    dispatch_guard: handler("dispatch_guard", ({ scope, input, invocation, now, fault }) => {
-      const incident = findIncident(scope, input.incident_id);
-      if (!incident) return { rejection: { code: "NOT_FOUND", reason: "Không tìm thấy incident trong property" } };
-      const mismatch = ticketMismatch(incident, invocation);
-      if (mismatch) return { rejection: mismatch };
-      const guard = scope.guards.find((g) => g.guard_id === input.guard_id) ?? null;
-      const open = dispatches(scope).find((d) => d.guard_id === input.guard_id && isOpenDispatch(d)) ?? null;
-      const rejection =
-        checkDispatchGuard({ incident: incident as never, incidentVersion: input.incident_version as number, guard, guardOpenDispatch: open }) ??
-        (fault === "guard_unavailable" ? { code: "GUARD_NOT_AVAILABLE" as const, reason: `Guard ${String(input.guard_id)} vừa được điều cho request khác` } : null);
-      if (rejection || !guard) return { rejection: rejection ?? { code: "NOT_FOUND", reason: "Không tìm thấy guard trong property" } };
-
-      const dispatch = createDispatch({
-        dispatchId: nextId("dsp"),
-        incident: incident as never,
-        guardId: guard.guard_id,
-        instruction: input.instruction as string | undefined,
-        now,
-      });
-      // Reserve guard và tạo dispatch trong cùng một bước (§6.1).
-      reservedFrom.set(reservationKey(scope, guard.guard_id), guard.status);
-      guard.status = "ASSIGNED";
-      guard.updated_at = now;
-      scope.dispatches.push(dispatch);
-      incident.related_counts.dispatches += 1;
-      return {
-        data: dispatch,
-        incident,
-        event: { event_type: "DISPATCH_CREATED", data: { dispatch_id: dispatch.dispatch_id, guard_id: dispatch.guard_id, status: "PENDING" } },
-        summary: `Điều ${guard.guard_id} tới incident`,
-        after:
-          fault === "delivery_failed"
-            ? () => {
-                Object.assign(dispatch, { status: "FAILED", version: dispatch.version + 1, failure_code: "DELIVERY_FAILED", updated_at: now });
-                release(scope, guard.guard_id, now);
+    dispatch_guard: handler(
+      "dispatch_guard",
+      ({ scope, input, invocation, now, fault }) => {
+        const incident = findIncident(scope, input.incident_id);
+        if (!incident)
+          return {
+            rejection: {
+              code: "NOT_FOUND",
+              reason: "Không tìm thấy incident trong property",
+            },
+          };
+        const mismatch = ticketMismatch(incident, invocation);
+        if (mismatch) return { rejection: mismatch };
+        const guard =
+          scope.guards.find((g) => g.guard_id === input.guard_id) ?? null;
+        const open =
+          dispatches(scope).find(
+            (d) => d.guard_id === input.guard_id && isOpenDispatch(d),
+          ) ?? null;
+        const rejection =
+          checkDispatchGuard({
+            incident,
+            incidentVersion: input.incident_version as number,
+            guard,
+            guardOpenDispatch: open,
+          }) ??
+          (fault === "guard_unavailable"
+            ? {
+                code: "GUARD_NOT_AVAILABLE" as const,
+                reason: `Guard ${String(input.guard_id)} vừa được điều cho request khác`,
               }
-            : undefined,
-      };
-    }),
+            : null);
+        if (rejection || !guard)
+          return {
+            rejection: rejection ?? {
+              code: "NOT_FOUND",
+              reason: "Không tìm thấy guard trong property",
+            },
+          };
 
-    cancel_dispatch: handler("cancel_dispatch", ({ scope, input, invocation, now }) => {
-      const current = dispatches(scope).find((d) => d.dispatch_id === input.dispatch_id);
-      const incident = current ? findIncident(scope, current.incident_id) : undefined;
-      if (!current || !incident) return { rejection: { code: "NOT_FOUND", reason: "Không tìm thấy dispatch trong property" } };
-      const mismatch = ticketMismatch(incident, invocation);
-      if (mismatch) return { rejection: mismatch };
-      const rejection = checkCancelDispatch(current, input.expected_version as number);
-      if (rejection) return { rejection };
+        const dispatch = createDispatch({
+          dispatchId: nextId("dsp"),
+          incident,
+          guardId: guard.guard_id,
+          instruction: input.instruction as string | undefined,
+          now,
+        });
+        // Reserve guard và tạo dispatch trong cùng một bước (§6.1).
+        reservedFrom.set(reservationKey(scope, guard.guard_id), guard.status);
+        guard.status = "ASSIGNED";
+        guard.updated_at = now;
+        scope.dispatches.push(dispatch);
+        incident.related_counts.dispatches += 1;
+        return {
+          data: dispatch,
+          incident,
+          event: {
+            event_type: "DISPATCH_CREATED",
+            data: {
+              dispatch_id: dispatch.dispatch_id,
+              guard_id: dispatch.guard_id,
+              status: "PENDING",
+            },
+          },
+          summary: `Điều ${guard.guard_id} tới incident`,
+          after:
+            fault === "delivery_failed"
+              ? () => {
+                  const failed = applyDispatchStatus(dispatch, {
+                    expectedVersion: dispatch.version,
+                    to: "FAILED",
+                    failureCode: "DELIVERY_FAILED",
+                    now,
+                  });
+                  if (!failed.ok) return;
+                  Object.assign(dispatch, failed.dispatch);
+                  release(scope, guard.guard_id, now);
+                  recordCallback(
+                    scope,
+                    incident,
+                    {
+                      event_type: "DISPATCH_STATUS_CHANGED",
+                      data: {
+                        dispatch_id: dispatch.dispatch_id,
+                        previous_status: "PENDING",
+                        status: "FAILED",
+                        reason: "DELIVERY_FAILED",
+                      },
+                      summary: "Gửi lệnh điều động thất bại",
+                      provider_reference_id: nextId("ref"),
+                    },
+                    now,
+                    nextId,
+                  );
+                }
+              : undefined,
+        };
+      },
+    ),
 
-      const previous = current.status;
-      const cancelled = applyCancel(current, input.reason as string, now);
-      Object.assign(current, cancelled);
-      release(scope, current.guard_id, now);
-      return {
-        data: current,
-        incident,
-        event: {
-          event_type: "DISPATCH_STATUS_CHANGED",
-          data: { dispatch_id: current.dispatch_id, previous_status: previous, status: "CANCELLED", reason: cancelled.cancel_reason },
-        },
-        summary: "Hủy lệnh điều động",
-      };
-    }),
+    cancel_dispatch: handler(
+      "cancel_dispatch",
+      ({ scope, input, invocation, now }) => {
+        const current = dispatches(scope).find(
+          (d) => d.dispatch_id === input.dispatch_id,
+        );
+        const incident = current
+          ? findIncident(scope, current.incident_id)
+          : undefined;
+        if (!current || !incident)
+          return {
+            rejection: {
+              code: "NOT_FOUND",
+              reason: "Không tìm thấy dispatch trong property",
+            },
+          };
+        const mismatch = ticketMismatch(incident, invocation);
+        if (mismatch) return { rejection: mismatch };
+        const rejection = checkCancelDispatch(
+          current,
+          input.expected_version as number,
+        );
+        if (rejection) return { rejection };
 
-    escalate_emergency: handler("escalate_emergency", ({ scope, input, invocation, now, fault }) => {
-      const incident = findIncident(scope, input.incident_id);
-      if (!incident) return { rejection: { code: "NOT_FOUND", reason: "Không tìm thấy incident trong property" } };
-      const mismatch = ticketMismatch(incident, invocation);
-      if (mismatch) return { rejection: mismatch };
-      const protocol = (scope.protocols as unknown as EmergencyProtocol[]).find((p) => p.protocol_id === input.protocol_id) ?? null;
-      const contact = (scope.contacts as unknown as EscalationContact[]).find((c) => c.contact_id === input.contact_id) ?? null;
-      const rejection =
-        checkEscalate({
-          incident: incident as never,
-          incidentVersion: input.incident_version as number,
+        const previous = current.status;
+        const cancelled = applyCancel(current, input.reason as string, now);
+        Object.assign(current, cancelled);
+        release(scope, current.guard_id, now);
+        return {
+          data: current,
+          incident,
+          event: {
+            event_type: "DISPATCH_STATUS_CHANGED",
+            data: {
+              dispatch_id: current.dispatch_id,
+              previous_status: previous,
+              status: "CANCELLED",
+              reason: cancelled.cancel_reason,
+            },
+          },
+          summary: "Hủy lệnh điều động",
+        };
+      },
+    ),
+
+    escalate_emergency: handler(
+      "escalate_emergency",
+      ({ scope, input, invocation, now, fault }) => {
+        const incident = findIncident(scope, input.incident_id);
+        if (!incident)
+          return {
+            rejection: {
+              code: "NOT_FOUND",
+              reason: "Không tìm thấy incident trong property",
+            },
+          };
+        const mismatch = ticketMismatch(incident, invocation);
+        if (mismatch) return { rejection: mismatch };
+        const protocol =
+          (scope.protocols as unknown as EmergencyProtocol[]).find(
+            (p) => p.protocol_id === input.protocol_id,
+          ) ?? null;
+        const contact =
+          (scope.contacts as unknown as EscalationContact[]).find(
+            (c) => c.contact_id === input.contact_id,
+          ) ?? null;
+        const rejection =
+          checkEscalate({
+            incident,
+            incidentVersion: input.incident_version as number,
+            protocol,
+            protocolVersion: input.protocol_version as number,
+            contact,
+            existingForIncident: escalations(scope).filter(
+              (e) => e.incident_id === incident.incident_id,
+            ),
+          }) ??
+          (fault === "contact_unavailable"
+            ? {
+                code: "CONTACT_NOT_AVAILABLE" as const,
+                reason: `Contact ${String(input.contact_id)} vừa hết khả dụng`,
+              }
+            : null);
+        if (rejection || !protocol || !contact)
+          return {
+            rejection: rejection ?? {
+              code: "NOT_FOUND",
+              reason: "Không có protocol/contact trong property",
+            },
+          };
+        // checkEscalate đã chặn P2/P3; thu hẹp kiểu để createEscalation nhận đúng P0/P1.
+        const severity = incident.severity;
+        if (severity !== "P0" && severity !== "P1") {
+          return {
+            rejection: {
+              code: "EMERGENCY_NOT_ELIGIBLE",
+              reason: `Incident ${severity} không thuộc luồng khẩn cấp`,
+            },
+          };
+        }
+
+        const escalation = createEscalation({
+          escalationId: nextId("esc"),
+          incident: { ...incident, severity },
           protocol,
-          protocolVersion: input.protocol_version as number,
-          contact,
-          existingForIncident: escalations(scope).filter((e) => e.incident_id === incident.incident_id),
-        }) ??
-        (fault === "contact_unavailable" ? { code: "CONTACT_NOT_AVAILABLE" as const, reason: `Contact ${String(input.contact_id)} vừa hết khả dụng` } : null);
-      if (rejection || !protocol || !contact) return { rejection: rejection ?? { code: "NOT_FOUND", reason: "Không có protocol/contact trong property" } };
+          contactId: contact.contact_id,
+          reason: input.reason as string,
+          now,
+        });
+        scope.escalations.push(escalation);
+        incident.related_counts.escalations += 1;
+        return {
+          data: escalation,
+          incident,
+          event: {
+            event_type: "ESCALATION_CREATED",
+            data: {
+              escalation_id: escalation.escalation_id,
+              contact_id: contact.contact_id,
+              status: "PENDING",
+            },
+          },
+          summary: `Báo khẩn tới ${contact.contact_id}`,
+          after:
+            fault === "delivery_failed"
+              ? () => {
+                  const providerReferenceId = nextId("ntf");
+                  const failed = applyNotificationResult(escalation, {
+                    expectedVersion: escalation.version,
+                    result: "FAILED",
+                    providerReferenceId,
+                    failureCode: "DELIVERY_FAILED",
+                    now,
+                  });
+                  if (!failed.ok) return;
+                  Object.assign(escalation, failed.escalation);
+                  recordCallback(
+                    scope,
+                    incident,
+                    {
+                      event_type: "ESCALATION_STATUS_CHANGED",
+                      data: {
+                        escalation_id: escalation.escalation_id,
+                        previous_status: "PENDING",
+                        status: "FAILED",
+                        reason: "DELIVERY_FAILED",
+                      },
+                      summary: "Gửi báo khẩn thất bại",
+                      provider_reference_id: providerReferenceId,
+                    },
+                    now,
+                    nextId,
+                  );
+                }
+              : undefined,
+        };
+      },
+    ),
 
-      const escalation = createEscalation({
-        escalationId: nextId("esc"),
-        incident: incident as never,
-        protocol,
-        contactId: contact.contact_id,
-        reason: input.reason as string,
-        now,
-      });
-      scope.escalations.push(escalation);
-      incident.related_counts.escalations += 1;
-      return {
-        data: escalation,
-        incident,
-        event: { event_type: "ESCALATION_CREATED", data: { escalation_id: escalation.escalation_id, contact_id: contact.contact_id, status: "PENDING" } },
-        summary: `Báo khẩn tới ${contact.contact_id}`,
-        after:
-          fault === "delivery_failed"
-            ? () => {
-                const failed = applyNotificationResult(escalation, {
-                  expectedVersion: escalation.version,
-                  result: "FAILED",
-                  providerReferenceId: nextId("ntf"),
-                  failureCode: "DELIVERY_FAILED",
-                  now,
-                });
-                if (failed.ok) Object.assign(escalation, failed.escalation);
-              }
-            : undefined,
-      };
-    }),
+    acknowledge_emergency: handler(
+      "acknowledge_emergency",
+      ({ scope, input, invocation, now }) => {
+        const current = escalations(scope).find(
+          (e) => e.escalation_id === input.escalation_id,
+        );
+        const incident = current
+          ? findIncident(scope, current.incident_id)
+          : undefined;
+        if (!current || !incident)
+          return {
+            rejection: {
+              code: "NOT_FOUND",
+              reason: "Không tìm thấy escalation trong property",
+            },
+          };
+        const mismatch = ticketMismatch(incident, invocation);
+        if (mismatch) return { rejection: mismatch };
+        // Receipt nằm trong dữ liệu của scope (Core `recordAckReceipt`): receipt của property khác không dùng được.
+        const receipt =
+          (scope.ack_receipts as unknown as AckReceipt[]).find(
+            (r) => r.ack_receipt_id === input.ack_receipt_id,
+          ) ?? null;
+        const rejection = checkAcknowledge({
+          escalation: current,
+          expectedVersion: input.expected_version as number,
+          receipt,
+          grantActor: invocation.claims.actor,
+          delegates: (scope.delegations ?? [])
+            .filter((d) => d.contact_id === current.contact_id)
+            .map((d) => d.delegate),
+          now,
+        });
+        if (rejection || !receipt)
+          return {
+            rejection: rejection ?? {
+              code: "ACK_NOT_AUTHORIZED",
+              reason: "Không có receipt",
+            },
+          };
 
-    acknowledge_emergency: handler("acknowledge_emergency", ({ scope, input, invocation, now }) => {
-      const current = escalations(scope).find((e) => e.escalation_id === input.escalation_id);
-      const incident = current ? findIncident(scope, current.incident_id) : undefined;
-      if (!current || !incident) return { rejection: { code: "NOT_FOUND", reason: "Không tìm thấy escalation trong property" } };
-      const mismatch = ticketMismatch(incident, invocation);
-      if (mismatch) return { rejection: mismatch };
-      // Receipt nằm trong dữ liệu của scope (Core `recordAckReceipt`): receipt của property khác không dùng được.
-      const receipt = (scope.ack_receipts as unknown as AckReceipt[]).find((r) => r.ack_receipt_id === input.ack_receipt_id) ?? null;
-      const rejection = checkAcknowledge({
-        escalation: current,
-        expectedVersion: input.expected_version as number,
-        receipt,
-        grantActor: invocation.claims.actor,
-        now,
-      });
-      if (rejection || !receipt) return { rejection: rejection ?? { code: "ACK_NOT_AUTHORIZED", reason: "Không có receipt" } };
-
-      const previous = current.status;
-      Object.assign(current, applyAcknowledge(current, receipt, now));
-      return {
-        data: current,
-        incident,
-        event: {
-          event_type: "ESCALATION_STATUS_CHANGED",
-          data: { escalation_id: current.escalation_id, previous_status: previous, status: "ACKNOWLEDGED", reason: null },
-        },
-        summary: "Ghi nhận xác nhận của người trực",
-      };
-    }),
+        const previous = current.status;
+        Object.assign(current, applyAcknowledge(current, receipt, now));
+        return {
+          data: current,
+          incident,
+          event: {
+            event_type: "ESCALATION_STATUS_CHANGED",
+            data: {
+              escalation_id: current.escalation_id,
+              previous_status: previous,
+              status: "ACKNOWLEDGED",
+              reason: null,
+            },
+          },
+          summary: "Ghi nhận xác nhận của người trực",
+        };
+      },
+    ),
   };
+
+  // -------------------------------------------------------------------------------------------
+  // Lệnh worker (Core nội bộ, §9): không phải tool của agent, không cần grant
+  // -------------------------------------------------------------------------------------------
+  const clock = options.now ?? (() => new Date());
+  const scopeOf = options.scopeOf ?? (() => undefined);
+  /** Kết quả lần đầu theo event_id: callback trùng không tạo event/evidence hay tăng version lần nữa. */
+  const processed = new Map<string, unknown>();
+
+  function once<T>(
+    command: CallbackId,
+    run: (scope: MockScopeData, now: string) => WorkerResult<T>,
+  ): WorkerResult<T> {
+    const scope = scopeOf(command.tenant_id, command.property_id);
+    if (!scope) return notFound("property");
+    const key = id(command, command.event_id);
+    if (processed.has(key))
+      return {
+        ok: true,
+        data: structuredClone(processed.get(key) as T),
+        replayed: true,
+      };
+    const result = run(scope, timestamp(clock()));
+    if (result.ok) processed.set(key, structuredClone(result.data));
+    return result;
+  }
+
+  const escalationOf = (scope: MockScopeData, escalationId: string) => {
+    const escalation = escalations(scope).find(
+      (e) => e.escalation_id === escalationId,
+    );
+    const incident = escalation
+      ? findIncident(scope, escalation.incident_id)
+      : undefined;
+    return escalation && incident ? { escalation, incident } : null;
+  };
+
+  const worker: WorkerCommands = {
+    recordDispatchStatus: (input) =>
+      once(input, (scope, now) => {
+        const dispatch = dispatches(scope).find(
+          (d) => d.dispatch_id === input.dispatch_id,
+        );
+        const incident = dispatch
+          ? findIncident(scope, dispatch.incident_id)
+          : undefined;
+        if (!dispatch || !incident) return notFound("dispatch");
+        const previous = dispatch.status;
+        const applied = applyDispatchStatus(dispatch, {
+          expectedVersion: input.expected_version,
+          to: input.to,
+          now,
+          ...(input.failure_code ? { failureCode: input.failure_code } : {}),
+        });
+        if (!applied.ok) return { ok: false, rejection: applied.rejection };
+        Object.assign(dispatch, applied.dispatch);
+        if (dispatch.status === "COMPLETED" || dispatch.status === "FAILED")
+          release(scope, dispatch.guard_id, now);
+        recordCallback(
+          scope,
+          incident,
+          {
+            event_type: "DISPATCH_STATUS_CHANGED",
+            data: {
+              dispatch_id: dispatch.dispatch_id,
+              previous_status: previous,
+              status: dispatch.status,
+              reason: input.failure_code ?? null,
+            },
+            summary: `Dispatch ${previous} → ${dispatch.status}`,
+            provider_reference_id: nextId("ref"),
+          },
+          now,
+          nextId,
+        );
+        return { ok: true, data: structuredClone(dispatch), replayed: false };
+      }),
+
+    recordNotificationResult: (input) =>
+      once(input, (scope, now) => {
+        const found = escalationOf(scope, input.escalation_id);
+        if (!found) return notFound("escalation");
+        const { escalation, incident } = found;
+        const previous = escalation.status;
+        const applied = applyNotificationResult(escalation, {
+          expectedVersion: input.expected_version,
+          result: input.result,
+          providerReferenceId: input.provider_reference_id,
+          now,
+          ...(input.failure_code ? { failureCode: input.failure_code } : {}),
+        });
+        if (!applied.ok) return { ok: false, rejection: applied.rejection };
+        Object.assign(escalation, applied.escalation);
+        recordCallback(
+          scope,
+          incident,
+          {
+            event_type: "ESCALATION_STATUS_CHANGED",
+            // Callback tới từ deadline trở đi thì Core ghi ACK_TIMEOUT thay vì NOTIFIED (§6.2).
+            data: {
+              escalation_id: escalation.escalation_id,
+              previous_status: previous,
+              status: escalation.status,
+              reason:
+                escalation.status === "ACK_TIMEOUT"
+                  ? "ACK_TIMEOUT"
+                  : (input.failure_code ?? null),
+            },
+            summary: `Báo khẩn ${previous} → ${escalation.status}`,
+            provider_reference_id: input.provider_reference_id,
+          },
+          now,
+          nextId,
+        );
+        return { ok: true, data: structuredClone(escalation), replayed: false };
+      }),
+
+    expireEscalation: (input) =>
+      once(input, (scope, now) => {
+        const found = escalationOf(scope, input.escalation_id);
+        if (!found) return notFound("escalation");
+        const { escalation, incident } = found;
+        const previous = escalation.status;
+        const applied = applyExpire(escalation, {
+          expectedVersion: input.expected_version,
+          now,
+        });
+        if (!applied.ok) return { ok: false, rejection: applied.rejection };
+        Object.assign(escalation, applied.escalation);
+        recordCallback(
+          scope,
+          incident,
+          {
+            event_type: "ESCALATION_STATUS_CHANGED",
+            data: {
+              escalation_id: escalation.escalation_id,
+              previous_status: previous,
+              status: "ACK_TIMEOUT",
+              reason: "ACK_TIMEOUT",
+            },
+            summary: "Quá hạn xác nhận báo khẩn",
+            provider_reference_id: nextId("ref"),
+          },
+          now,
+          nextId,
+        );
+        return { ok: true, data: structuredClone(escalation), replayed: false };
+      }),
+
+    recordAckReceipt: (input) =>
+      once(input, (scope, now) => {
+        if (!escalationOf(scope, input.escalation_id))
+          return notFound("escalation");
+        // received_at do Core đóng dấu, caller không backdate (§6.2).
+        const receipt: AckReceipt = {
+          ack_receipt_id: nextId("ack"),
+          escalation_id: input.escalation_id,
+          contact_id: input.contact_id,
+          actor: input.actor,
+          received_at: now,
+        };
+        scope.ack_receipts.push(receipt);
+        return { ok: true, data: structuredClone(receipt), replayed: false };
+      }),
+  };
+
+  return { handlers, worker };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Lệnh worker: kiểu
+// ---------------------------------------------------------------------------------------------
+
+export type WorkerResult<T> =
+  | { ok: true; data: T; replayed: boolean }
+  | { ok: false; rejection: NonNullable<Rejection> };
+type CallbackId = { tenant_id: string; property_id: string; event_id: string };
+
+/** Interface Core nội bộ mà worker platform gọi (spec §9). Không expose cho model. */
+export type WorkerCommands = {
+  recordDispatchStatus(
+    input: CallbackId & {
+      dispatch_id: string;
+      expected_version: number;
+      to: DispatchStatus;
+      failure_code?: DispatchFailureCode;
+    },
+  ): WorkerResult<Dispatch>;
+  recordNotificationResult(
+    input: CallbackId & {
+      escalation_id: string;
+      expected_version: number;
+      result: "NOTIFIED" | "FAILED";
+      provider_reference_id: string;
+      failure_code?: EscalationFailureCode;
+    },
+  ): WorkerResult<EmergencyEscalation>;
+  expireEscalation(
+    input: CallbackId & { escalation_id: string; expected_version: number },
+  ): WorkerResult<EmergencyEscalation>;
+  recordAckReceipt(
+    input: CallbackId & {
+      escalation_id: string;
+      contact_id: string;
+      actor: Actor;
+    },
+  ): WorkerResult<AckReceipt>;
+};
+
+export type MockWriteOptions = WriteHandlersOptions & {
+  /**
+   * Lấy dữ liệu sống của một scope (`MockSecurityProvider.liveScope`). Provider chép dữ liệu lúc dựng
+   * nên không dùng được bản gốc; thiếu thì lệnh worker trả NOT_FOUND.
+   */
+  scopeOf?: (
+    tenant_id: string,
+    property_id: string,
+  ) => MockScopeData | undefined;
+  /** Đồng hồ cho worker; truyền cùng đồng hồ với provider và wrapper. */
+  now?: () => Date;
+};
+export type MockWrite = {
+  handlers: Partial<Record<WriteToolName, MockWriteHandler>>;
+  worker: WorkerCommands;
+};
+
+const notFound = (
+  what: string,
+): { ok: false; rejection: NonNullable<Rejection> } => ({
+  ok: false,
+  rejection: {
+    code: "NOT_FOUND",
+    reason: `Không tìm thấy ${what} trong property`,
+  },
+});
+
+const WORKER_ACTOR: Actor = { actor_id: "mock_worker", actor_type: "SERVICE" };
+
+/**
+ * Audit của một callback worker: evidence EXTERNAL_REFERENCE từ nguồn đã xác thực + event, tăng
+ * related_counts.evidence và version của incident (§6.3: event của callback cũng có evidence).
+ */
+function recordCallback(
+  scope: MockScopeData,
+  incident: Incident,
+  callback: {
+    event_type: string;
+    data: Record<string, unknown>;
+    summary: string;
+    provider_reference_id: string;
+  },
+  now: string,
+  nextId: (prefix: string) => string,
+): void {
+  const evidenceId = nextId("ev");
+  scope.evidence.push({
+    evidence_id: evidenceId,
+    incident_id: incident.incident_id,
+    evidence_type: "EXTERNAL_REFERENCE",
+    actor: WORKER_ACTOR,
+    provider: "mock",
+    provider_reference_id: callback.provider_reference_id,
+    action: null,
+    idempotency_key: null,
+    summary: callback.summary,
+    created_at: now,
+  });
+  scope.events.push({
+    event_id: nextId("evt"),
+    incident_id: incident.incident_id,
+    event_type: callback.event_type,
+    actor: WORKER_ACTOR,
+    created_at: now,
+    evidence_id: evidenceId,
+    data: callback.data,
+  });
+  incident.related_counts.evidence += 1;
+  incident.version += 1;
+  incident.updated_at = now;
 }
 
 /**
@@ -472,7 +1058,12 @@ function record(
   nextId: (prefix: string) => string,
 ): WriteEvidence {
   const actor = invocation.claims.actor;
-  const evidence: WriteEvidence = { evidence_id: nextId("ev"), provider: "mock", provider_reference_id: nextId("ref"), committed_at: now };
+  const evidence: WriteEvidence = {
+    evidence_id: nextId("ev"),
+    provider: "mock",
+    provider_reference_id: nextId("ref"),
+    committed_at: now,
+  };
   scope.evidence.push({
     evidence_id: evidence.evidence_id,
     incident_id: commit.incident.incident_id,
@@ -500,15 +1091,26 @@ function record(
   return evidence;
 }
 
-const reservationKey = (scope: MockScopeData, guardId: string) => `${scope.tenant_id}\u0000${scope.property_id}\u0000${guardId}`;
+const reservationKey = (scope: MockScopeData, guardId: string) =>
+  `${scope.tenant_id}\u0000${scope.property_id}\u0000${guardId}`;
 const findIncident = (scope: MockScopeData, incidentId: unknown) =>
-  (scope.incidents as unknown as IncidentRecord[]).find((i) => i.incident_id === incidentId);
+  (scope.incidents as unknown as Incident[]).find(
+    (i) => i.incident_id === incidentId,
+  );
 
 /** §3.1: WRITE trên incident đã có thì ticket của phiên phải là ticket của incident đó. */
-function ticketMismatch(incident: IncidentRecord, invocation: VerifiedWrite): Rejection {
+function ticketMismatch(
+  incident: Incident,
+  invocation: VerifiedWrite,
+): Rejection {
   return incident.ticket_id === invocation.context.ticket_id
     ? null
-    : { code: "SCOPE_MISMATCH", reason: "Ticket của phiên không phải ticket của incident" };
+    : {
+        code: "SCOPE_MISMATCH",
+        reason: "Ticket của phiên không phải ticket của incident",
+      };
 }
-const dispatches = (scope: MockScopeData) => scope.dispatches as unknown as Dispatch[];
-const escalations = (scope: MockScopeData) => scope.escalations as unknown as EmergencyEscalation[];
+const dispatches = (scope: MockScopeData) =>
+  scope.dispatches as unknown as Dispatch[];
+const escalations = (scope: MockScopeData) =>
+  scope.escalations as unknown as EmergencyEscalation[];

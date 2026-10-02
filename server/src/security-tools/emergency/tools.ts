@@ -1,7 +1,11 @@
 /**
  * Khai báo tool Emergency để P1 register (spec v0.3 §7). Xem dispatch/tools.ts.
  */
-import { type P4ToolDefinition, READ_ANNOTATIONS, WRITE_ANNOTATIONS } from "../dispatch/tools";
+import {
+  type P4ToolDefinition,
+  READ_ANNOTATIONS,
+  WRITE_ANNOTATIONS,
+} from "../dispatch/tools";
 import { EMERGENCY_SCHEMAS as S } from "./schema";
 
 export const EMERGENCY_TOOLS: readonly P4ToolDefinition[] = [
@@ -10,7 +14,8 @@ export const EMERGENCY_TOOLS: readonly P4ToolDefinition[] = [
     mode: "READ",
     inputSchema: S.GetEmergencyProtocolInput,
     outputSchema: S.GetEmergencyProtocolOutput,
-    description: "Lấy quy trình khẩn cấp đã publish của property cho đúng loại sự cố và mức P0/P1.",
+    description:
+      "Lấy quy trình khẩn cấp đã publish của property cho đúng loại sự cố và mức P0/P1.",
     annotations: READ_ANNOTATIONS,
   },
   {
@@ -18,7 +23,8 @@ export const EMERGENCY_TOOLS: readonly P4ToolDefinition[] = [
     mode: "READ",
     inputSchema: S.GetEscalationContactsInput,
     outputSchema: S.GetEscalationContactsOutput,
-    description: "Danh sách đầu mối khẩn cấp của property theo mức P0/P1, sắp theo priority. Không có số điện thoại/email.",
+    description:
+      "Danh sách đầu mối khẩn cấp của property theo mức P0/P1, sắp theo priority. Không có số điện thoại/email.",
     annotations: READ_ANNOTATIONS,
   },
   {

@@ -6,10 +6,18 @@ import type { Actor } from "../common/context"; // P1
 import type { IncidentType } from "../incidents/types"; // P3
 
 export type EmergencySeverity = "P0" | "P1";
-export type ContactRole = "SECURITY_SUPERVISOR" | "PROPERTY_MANAGER" | "EMERGENCY_COORDINATOR";
+export type ContactRole =
+  | "SECURITY_SUPERVISOR"
+  | "PROPERTY_MANAGER"
+  | "EMERGENCY_COORDINATOR";
 export type ContactAvailability = "ON_DUTY" | "OFF_DUTY" | "UNKNOWN";
 export type ContactChannel = "PHONE" | "SMS" | "PUSH" | "EMAIL";
-export type EscalationStatus = "PENDING" | "NOTIFIED" | "ACKNOWLEDGED" | "FAILED" | "ACK_TIMEOUT";
+export type EscalationStatus =
+  | "PENDING"
+  | "NOTIFIED"
+  | "ACKNOWLEDGED"
+  | "FAILED"
+  | "ACK_TIMEOUT";
 export type EscalationFailureCode = "DELIVERY_FAILED" | "PROVIDER_REJECTED";
 
 export type ProtocolStep = {
@@ -71,8 +79,31 @@ export type AckReceipt = {
   received_at: string;
 };
 
-export type GetEmergencyProtocolInput = { incident_type: IncidentType; severity: EmergencySeverity };
-export type GetEscalationContactsInput = { severity: EmergencySeverity; limit?: number; cursor?: string };
+/**
+ * Roster ủy quyền (§6.2): `delegate` được xác nhận thay cho `contact_id`. Dữ liệu nội bộ của Core,
+ * không phải DTO public nên không nằm trong EscalationContact.
+ */
+export type RosterDelegation = { contact_id: string; delegate: Actor };
+
+/** Trang kết quả của tool danh sách (contract: một collection + next_cursor). */
+export type EscalationContactPage = {
+  contacts: EscalationContact[];
+  next_cursor: string | null;
+};
+export type EscalationPage = {
+  escalations: EmergencyEscalation[];
+  next_cursor: string | null;
+};
+
+export type GetEmergencyProtocolInput = {
+  incident_type: IncidentType;
+  severity: EmergencySeverity;
+};
+export type GetEscalationContactsInput = {
+  severity: EmergencySeverity;
+  limit?: number;
+  cursor?: string;
+};
 export type EscalateEmergencyInput = {
   incident_id: string;
   incident_version: number;
@@ -81,6 +112,44 @@ export type EscalateEmergencyInput = {
   contact_id: string;
   reason: string;
 };
-export type AcknowledgeEmergencyInput = { escalation_id: string; expected_version: number; ack_receipt_id: string };
+export type AcknowledgeEmergencyInput = {
+  escalation_id: string;
+  expected_version: number;
+  ack_receipt_id: string;
+};
 export type GetEmergencyEscalationInput = { escalation_id: string };
-export type GetIncidentEscalationsInput = { incident_id: string; limit?: number; cursor?: string };
+export type GetIncidentEscalationsInput = {
+  incident_id: string;
+  limit?: number;
+  cursor?: string;
+};
+
+/** Kiểu input/data của tool Emergency cho provider (declaration merging, xem providers/provider.ts). */
+declare module "../providers/provider" {
+  interface ToolIO {
+    get_emergency_protocol: {
+      input: GetEmergencyProtocolInput;
+      data: EmergencyProtocol;
+    };
+    get_escalation_contacts: {
+      input: GetEscalationContactsInput;
+      data: EscalationContactPage;
+    };
+    escalate_emergency: {
+      input: EscalateEmergencyInput;
+      data: EmergencyEscalation;
+    };
+    acknowledge_emergency: {
+      input: AcknowledgeEmergencyInput;
+      data: EmergencyEscalation;
+    };
+    get_emergency_escalation: {
+      input: GetEmergencyEscalationInput;
+      data: EmergencyEscalation;
+    };
+    get_incident_escalations: {
+      input: GetIncidentEscalationsInput;
+      data: EscalationPage;
+    };
+  }
+}

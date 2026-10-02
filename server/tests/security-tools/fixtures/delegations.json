@@ -1,0 +1,16 @@
+[
+  {
+    "contact_id": "ct_pm_01",
+    "delegate": {
+      "actor_id": "usr_deputy_01",
+      "actor_type": "HUMAN"
+    }
+  },
+  {
+    "contact_id": "ct_sup_day",
+    "delegate": {
+      "actor_id": "usr_deputy_02",
+      "actor_type": "HUMAN"
+    }
+  }
+]

@@ -29,7 +29,11 @@ import {
 import { isOpenDispatch, toDispatchSummary } from "../dispatch/service";
 import type { Dispatch } from "../dispatch/types";
 import { sortContacts } from "../emergency/service";
-import type { EmergencySeverity, EscalationContact } from "../emergency/types";
+import type {
+  EmergencySeverity,
+  EscalationContact,
+  RosterDelegation,
+} from "../emergency/types";
 import { availableGuards, compareIds } from "../guards/service";
 import type { GuardSummary, Location } from "../guards/types";
 import {
@@ -104,6 +108,8 @@ export type MockScopeData = {
   contacts: ContactRow[];
   /** Biên nhận xác nhận của contact; handler acknowledge_emergency đọc/ghi. */
   ack_receipts: AckReceiptRow[];
+  /** Roster ủy quyền: ai được xác nhận thay contact nào (§6.2). Thiếu thì không ai được ủy quyền. */
+  delegations?: RosterDelegation[];
   evidence: EvidenceRow[];
   events: EventRow[];
 };
@@ -142,6 +148,11 @@ export class MockSecurityProvider implements SecurityProvider {
     });
     for (const scope of options.scopes)
       this.scopes.set(scopeKey(scope), structuredClone(scope));
+  }
+
+  /** Dữ liệu sống của một scope (không phải bản sao): lệnh worker của mock-write tác động lên đây. */
+  liveScope(tenant_id: string, property_id: string): MockScopeData | undefined {
+    return this.scopes.get(scopeKey({ tenant_id, property_id }));
   }
 
   /** Thay dữ liệu một scope trong test; cursor phát trước đó hết hiệu lực. */
@@ -401,6 +412,7 @@ export function loadFixtureScope(
     protocols: load("protocols"),
     contacts: load("contacts"),
     ack_receipts: load("ack_receipts"),
+    delegations: load("delegations"),
     evidence: load("evidence"),
     events: load("events"),
   };

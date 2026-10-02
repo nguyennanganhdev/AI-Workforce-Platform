@@ -12,10 +12,17 @@ export type P4ToolDefinition = {
   outputSchema: string;
   description: string;
   /** WRITE: destructiveHint=true, idempotentHint=false (§3.2). */
-  annotations: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean };
+  annotations: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+  };
 };
 
-export const WRITE_ANNOTATIONS = { destructiveHint: true, idempotentHint: false } as const;
+export const WRITE_ANNOTATIONS = {
+  destructiveHint: true,
+  idempotentHint: false,
+} as const;
 export const READ_ANNOTATIONS = { readOnlyHint: true } as const;
 
 export const DISPATCH_TOOLS: readonly P4ToolDefinition[] = [

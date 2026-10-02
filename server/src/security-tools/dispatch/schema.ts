@@ -20,8 +20,11 @@ export const DISPATCH_SCHEMAS = {
 export function dispatchRuntimeIssues(d: Dispatch): string[] {
   const issues: string[] = [];
   if (d.updated_at < d.created_at) issues.push("updated_at trước created_at");
-  if (d.cancelled_at !== null && d.status !== "CANCELLED") issues.push("cancelled_at chỉ có khi CANCELLED");
-  if (d.cancelled_at !== null && d.cancelled_at < d.created_at) issues.push("cancelled_at trước created_at");
-  if (d.failure_code !== null && d.status !== "FAILED") issues.push("failure_code chỉ có khi FAILED");
+  if (d.cancelled_at !== null && d.status !== "CANCELLED")
+    issues.push("cancelled_at chỉ có khi CANCELLED");
+  if (d.cancelled_at !== null && d.cancelled_at < d.created_at)
+    issues.push("cancelled_at trước created_at");
+  if (d.failure_code !== null && d.status !== "FAILED")
+    issues.push("failure_code chỉ có khi FAILED");
   return issues;
 }

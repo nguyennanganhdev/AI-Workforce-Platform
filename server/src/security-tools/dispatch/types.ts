@@ -4,9 +4,18 @@
  */
 import type { Location } from "../guards/types"; // P2
 
-export type DispatchStatus = "PENDING" | "EN_ROUTE" | "ON_SITE" | "COMPLETED" | "CANCELLED" | "FAILED";
+export type DispatchStatus =
+  | "PENDING"
+  | "EN_ROUTE"
+  | "ON_SITE"
+  | "COMPLETED"
+  | "CANCELLED"
+  | "FAILED";
 
-export type DispatchFailureCode = "GUARD_UNAVAILABLE" | "PROVIDER_REJECTED" | "DELIVERY_FAILED";
+export type DispatchFailureCode =
+  | "GUARD_UNAVAILABLE"
+  | "PROVIDER_REJECTED"
+  | "DELIVERY_FAILED";
 
 export type Dispatch = {
   dispatch_id: string;
@@ -27,7 +36,13 @@ export type Dispatch = {
 /** Projection đúng các field cùng tên của Dispatch; P3 import cho get_dispatch_history. */
 export type DispatchSummary = Pick<
   Dispatch,
-  "dispatch_id" | "incident_id" | "guard_id" | "status" | "version" | "created_at" | "updated_at"
+  | "dispatch_id"
+  | "incident_id"
+  | "guard_id"
+  | "status"
+  | "version"
+  | "created_at"
+  | "updated_at"
 >;
 
 export type DispatchGuardInput = {
@@ -44,3 +59,12 @@ export type CancelDispatchInput = {
   expected_version: number;
   reason: string;
 };
+
+/** Kiểu input/data của tool Dispatch cho provider (declaration merging, xem providers/provider.ts). */
+declare module "../providers/provider" {
+  interface ToolIO {
+    dispatch_guard: { input: DispatchGuardInput; data: Dispatch };
+    get_dispatch: { input: GetDispatchInput; data: Dispatch };
+    cancel_dispatch: { input: CancelDispatchInput; data: Dispatch };
+  }
+}
