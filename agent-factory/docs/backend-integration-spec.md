@@ -2,6 +2,11 @@
 
 Ngày chốt: 2026-10-02. Chủ sở hữu phần tích hợp: **team Backend**.
 
+Rà soát 2026-10-02 (đối chiếu lại với code sau khi merge `devTeamPhai`): sửa wire type
+của catalogue (mục 4.2, 7), ghi rõ `defaultToolRefs` chưa có nguồn phía BE (mục 0), bổ
+sung 410 (mục 6.3), bỏ hai command không còn trong repo (mục 9), thêm mục 11 về ranh
+giới với orchestrator. Wire contract và code của Factory không đổi.
+
 ## 0. Thay đổi contract 2026-10-02: Skill được generate, không còn được chọn
 
 Factory không còn chọn Skill từ catalogue. Mỗi construction tự sinh một
@@ -39,6 +44,14 @@ catalogue của BE trả `CATALOGUE_TOO_LARGE` dù construction không dùng ski
 BE nên ngừng project skills cho construction (vẫn giữ cho `factoryResourceFacts`
 của artifact `1`). Service Factory độc lập không có phụ thuộc này.
 
+**`defaultToolRefs` chưa có nguồn phía BE.** Adapter tham khảo
+(`server/src/agents/factory.ts::readFactoryCatalogue`) chuyển thẳng kết quả của
+`PluginStore.factoryCatalogue`, vốn không trả `defaultToolRefs`. Nối lại đúng như
+adapter hiện có thì mọi construction đều không có default tool và nhận warning
+`NO_DEFAULT_TOOL`. Team BE cần quyết định danh sách này lấy từ đâu (cấu hình
+deployment, hay theo tenant/workspace) và thêm nó vào catalogue trước khi gọi
+Factory. Factory không đọc cấu hình nào thay cho BE.
+
 ## 1. Trạng thái bàn giao và phạm vi
 
 Agent Factory là HTTP service độc lập, đã có authentication, model adapter và
@@ -53,7 +66,8 @@ không được hiểu là production integration đang hoạt động. Các age
 bị xóa, và không có grants nào được tạo để phục vụ việc bàn giao.
 
 Không thuộc phạm vi: Frontend, DAG, multi-agent orchestration, runtime mới,
-dynamic tool generation, tự cấp quyền hoặc chạy tool trong Factory.
+dynamic tool generation, tự cấp quyền hoặc chạy tool trong Factory. Ranh giới với
+orchestrator và các điểm còn mở được ghi ở mục 11.
 
 Nguồn chuẩn khi có khác biệt:
 
@@ -194,7 +208,10 @@ Factory không có endpoint đọc persisted agent hoặc recheck readiness, kh�
 Factory-owned idempotency. `Idempotency-Key` của user request là trách nhiệm BE;
 gửi header đó sang Factory không tạo bảo đảm idempotency.
 
-Catalogue DTO là `FactoryCatalogueProjection`; **không gửi fingerprint** trong body:
+Catalogue trên wire có type `FactoryConstructionRequest["catalogue"]` (chỉ `tools` và
+`defaultToolRefs`); **không gửi fingerprint** trong body. `FactoryCatalogueProjection`
+là projection nội bộ của BE, vẫn bắt buộc `skills` cho readiness của artifact `1`;
+không dùng nó làm type của request gửi Factory:
 
 | Tool field | Type/ý nghĩa |
 |---|---|
@@ -436,7 +453,10 @@ team BE có thể triển khai lại contract sau:
 
 Giới hạn adapter BE hiện có: Idempotency-Key printable ASCII, 1–128 ký tự;
 body tối đa 32 KiB; expected hash là 64 lowercase hex. Invalid artifact/conflict là
-409, storage/dependency failure là 503, deadline là 504; không lưu agent khi lỗi.
+409 (gồm `IDEMPOTENCY_CONFLICT`, `SPEC_CHANGED`, `RESOURCE_CHANGED`,
+`RESOURCE_MISSING`, `ARTIFACT_INVALID`, `RESOURCES_PENDING`), key của agent đã bị xóa
+là 410 `CONSTRUCTION_DELETED`, storage/dependency failure là 503, deadline là 504;
+không lưu agent khi lỗi.
 Factory-only errors không được pass-through thành user authentication error.
 
 Nếu team BE đổi API phía user, tự sở hữu contract đó; **không đổi Factory wire DTO
@@ -457,7 +477,7 @@ import {
   createFactoryClient,
   prepareFactoryCatalogue,
   type AgentCreationRequest,
-  type FactoryCatalogueProjection,
+  type FactoryConstructionRequest,
 } from "../../agent-factory/src/index.js"; // Ví dụ đặt ở server/src/
 
 const construct = createFactoryClient({
@@ -467,12 +487,13 @@ const construct = createFactoryClient({
 
 async function constructOverHttp(
   request: AgentCreationRequest,
-  projection: FactoryCatalogueProjection,
+  projection: FactoryConstructionRequest["catalogue"],
   signal: AbortSignal,
 ) {
   const catalogue = prepareFactoryCatalogue(projection);
   if (!catalogue.ok) return catalogue;
-  // projection do BE đọc; client bỏ fingerprint khi serialize HTTP body.
+  // projection do BE đọc, gồm cả defaultToolRefs do BE quyết định; client bỏ
+  // fingerprint khi serialize HTTP body.
   return construct(request, catalogue.value, { signal, timeoutMs: 90_000 });
 }
 ```
@@ -560,13 +581,18 @@ Các command có thật trong repo:
 ```sh
 rtk bunx bun@1.3.14 run --cwd agent-factory check
 rtk bunx bun@1.3.14 run typecheck
-rtk bunx bun@1.3.14 run typecheck:workforce
-rtk bunx bun@1.3.14 run check:architecture
 rtk env TEST_DATABASE_URL=<dedicated-test-url> bunx bun@1.3.14 test \
   server/tests/agent-factory-routes.test.ts \
   server/tests/agent-factory.integration.test.ts \
   server/tests/agent-factory-runtime.integration.test.ts
 ```
+
+Root `typecheck` chỉ chạy các workspace `app`, `server`, `worker`; Factory được kiểm tra
+bằng command `--cwd agent-factory check` ở trên. Hai script `typecheck:workforce` và
+`check:architecture` mà các bản verification cũ ghi lại **không còn trong root
+`package.json`** của nhánh hiện tại, nên repo hiện không có architecture check tự
+động. Ràng buộc "Factory không import BE/DB/Hono" (mục 7) phải được kiểm tra bằng
+review cho tới khi có script thay thế.
 
 Các integration tests hiện inject service/client riêng trong test; pass không có
 nghĩa production đã reconnect. Script lịch sử
@@ -605,3 +631,66 @@ Các kết quả ghép BE/live smoke trước lần gỡ được giữ ở
 [HTTP verification](http-integration-verification.md) như lịch sử. Trạng thái hiện
 tại là standalone Factory; production BE routes 404. Tài liệu này và JSON examples
 là gói bàn giao để triển khai integration tiếp theo.
+
+## 11. Ranh giới với orchestrator (chưa triển khai)
+
+Orchestrator là runtime điều phối groupchat của team Coordination (`agent-coordination/`,
+AgentScope; task D01–D08 trong `docs/KE_HOACH_HOAN_THIEN_5_TEAM.md`). Tại thời điểm rà
+soát, thư mục đó mới có scaffold và spike D01 chưa có ADR. Vì vậy mục này chỉ chốt
+ranh giới phía Factory và liệt kê các điểm còn mở. Đây **không phải contract đã thống
+nhất** với team Coordination, và Factory không thay đổi gì vì mục này.
+
+### 11.1 Ranh giới
+
+- Orchestrator **không gọi Factory**. Factory chỉ có `/health` và `/v1/constructions`,
+  không có endpoint đọc artifact. Orchestrator nhận artifact đã lưu/publish từ BE.
+- Factory tạo spec cho **một** agent. Nó không biết groupchat, roster, supervisor,
+  ticket hay tenant, và không sinh DAG hoặc quan hệ giữa các agent.
+- Integrity (mục 5) là việc của BE trước khi phát artifact cho runtime.
+  `hashAgentSpec`, `renderCorePrompt` và `parseStoredFactoryConfiguration` chỉ có bản
+  TypeScript. Nếu loader Python muốn tự kiểm tra lại thì cần parity theo quy tắc hash
+  ở mục 5; [response mẫu](examples/web-researcher-response.json) có `spec`,
+  `specHash` và `systemPrompt` khớp code hiện tại, dùng được làm test vector.
+- `systemPrompt` là core prompt đã compile, trong đó đã có `generatedSkill` và danh
+  sách tool. Supervisor/team context được compose ở runtime, bên ngoài core prompt;
+  không sửa core prompt rồi vẫn coi artifact là verified.
+- `spec.resources` và `spec.defaultTools` chỉ là khai báo. Quyền gọi tool vẫn do
+  grant và authorization lúc thực thi quyết định, kể cả trong groupchat.
+
+### 11.2 Field orchestrator có thể đọc
+
+| Field | Dùng cho | Lưu ý |
+|---|---|---|
+| `spec.identity` | Tên/role/description để hiển thị và mô tả subagent | Đúng nội dung user nhập, có thể là tiếng Việt |
+| `spec.goal`, `spec.responsibilities`, `spec.intent.normalizedGoal` | Mô tả agent làm gì khi supervisor chọn người xử lý | Intent được normalize bằng tiếng Anh |
+| `spec.intent.taskType` | Nhãn mô tả | Label tự do, không phải taxonomy; không dùng để route deterministic |
+| `spec.inputContract.inputFacts` | Agent cần thông tin gì và xử lý ra sao khi thiếu | Text contract qua `ag_ui_messages` |
+| `spec.outputContract.expectations` | Kỳ vọng về câu trả lời | `enforcement: "prompt_only"`: kết quả là text, không có schema được enforce |
+| `spec.resources`, `spec.defaultTools` | Tool cần bind và fingerprint để pin | Ref theo convention `serverId/toolName`; fingerprint đổi thì cần reconstruct |
+| `verification.specHash` | Khóa pin version của artifact | Đổi spec là đổi hash; không có khái niệm sửa tại chỗ |
+
+### 11.3 Điểm còn mở
+
+| # | Vấn đề | Hiện trạng đã kiểm chứng | Cần quyết định |
+|---|---|---|---|
+| 1 | Runtime | `spec.runtimeProfile` là literal `openbot_builtin_v1`; adapter BE lưu `type: "built_in"` và runtime chỉ đọc `systemPrompt`. `agent_versions.runtime` chỉ nhận `langgraph`, `agentscope`, `remote` | BE/loader map artifact sang runtime `agentscope`, hay Factory thêm runtime profile. Phương án sau cần sửa kế hoạch đã duyệt. Chốt sau ADR của D01 |
+| 2 | Lưu và publish | Adapter tham khảo lưu vào `agents.configuration` theo owner user, không có tenant. Kế hoạch 5 team publish qua `agent_versions`/`agent_releases` | Bảng ánh xạ ở 11.4 và vị trí của construction trong vòng đời draft → publish |
+| 3 | Kết quả có cấu trúc | Factory từ chối request đòi structured output được enforce (`UNSUPPORTED_CONTRACT`) | Supervisor có cần kết quả có schema không; nếu có thì là thay đổi contract của Factory |
+| 4 | Tool descriptor | Tool DTO không có version, `outputSchema` luôn `null`; fingerprint là pin duy nhất | Đối chiếu với descriptor ở mục 9.6 của kế hoạch 5 team (version, timeout, retry, idempotency) |
+| 5 | Truy vết | Wire không có `request_id`/`trace_id`; envelope lỗi của Factory không có `constructionId` | Có cần correlation id xuyên BE → Factory theo envelope mục 9.1 của kế hoạch không |
+| 6 | Schema dùng chung | Nguồn chuẩn là TypeScript type và Zod schema trong `src/spec.ts`; chưa có JSON Schema/OpenAPI | Có xuất JSON Schema cho consumer Python không |
+
+### 11.4 Ánh xạ sang bảng V3 (đề xuất, chưa được team BE duyệt)
+
+Các bảng dưới đây đã có trong `server/src/db/schema/tables.ts`. Ánh xạ là đề xuất để
+team BE xem xét; adapter hiện có không ghi vào các bảng này.
+
+| Output của Factory | Cột V3 | Ghi chú |
+|---|---|---|
+| `spec` | `agent_versions.config` | Lưu nguyên vẹn để integrity check còn dùng được |
+| `systemPrompt` | `agent_versions.instructions` | Phải bằng `renderCorePrompt(spec)` |
+| `specHash` | `agent_versions.config_hash` | Chỉ đúng nếu `config` chính là spec; nếu `config` có thêm field thì lưu `specHash` riêng |
+| `spec.runtimeProfile` | `agent_versions.runtime`, `framework_version` | Không ánh xạ trực tiếp được, xem điểm mở 1 |
+| `request.name`, `request.description` | `agent_build_requests.proposed_name`, `proposed_description` | `role` chưa có cột riêng |
+| 422 `NEEDS_INPUT` | `agent_build_requests.missing_fields` | Mỗi thông tin thiếu là một issue, path `intent.missingInformation.N`, nội dung ở `message` |
+| `ready` / `pending_resources` | `agent_releases.status` | Artifact pending không được publish |
