@@ -13,9 +13,9 @@
  * incident, rồi mới lưu kết quả vào ledger. Mock không gửi thông báo và không chạy SLA timer:
  * dispatch/escalation mới dừng ở PENDING như Core (§1).
  *
- * `create_incident` ở đây là bản TẠM để chạy được luồng grant/idempotency; tool này thuộc P3, P3 thay
- * bằng handler thật. `update_incident` chưa có handler.
+ * Luật Incident (create/update) lấy từ incidents/service.ts của P3.
  */
+import type { EvidenceItem } from "../audits/types";
 import { type ErrorCode, type ToolError, toolError } from "../common/errors";
 import { decideIdempotency, type IdempotencyDecision, type OperationRecord, resultOf } from "../common/idempotency";
 import { timestamp, type WriteEvidence } from "../common/responses";
@@ -24,6 +24,8 @@ import type { Dispatch } from "../dispatch/types";
 import { applyAcknowledge, applyNotificationResult, checkAcknowledge, checkEscalate, createEscalation } from "../emergency/service";
 import type { AckReceipt, EmergencyEscalation, EmergencyProtocol, EscalationContact } from "../emergency/types";
 import type { GuardStatus, Location } from "../guards/types";
+import { applyUpdate, checkUpdateIncident, createIncident, incidentUpdatedEvent } from "../incidents/service";
+import type { CreateIncidentInput, UpdateIncidentInput } from "../incidents/types";
 import type { MockScopeData, MockWriteHandler } from "./mock-provider";
 import type { VerifiedWrite, WriteResult, WriteToolName } from "./provider";
 
@@ -269,25 +271,45 @@ export function createWriteHandlers(options: WriteHandlersOptions = {}): Partial
     create_incident: handler("create_incident", ({ scope, input, invocation, now }) => {
       const location = scope.locations.find((l) => l.location_id === input.location_id);
       if (!location) return { rejection: { code: "NOT_FOUND", reason: "Không tìm thấy location trong property" } };
-      const incident: IncidentRecord = {
-        incident_id: nextId("inc"),
-        ticket_id: invocation.context.ticket_id,
-        incident_type: input.incident_type as string,
-        description: input.description as string,
-        status: "OPEN",
-        severity: input.severity as string,
+      // Ticket lấy từ context tin cậy của phiên, không từ arguments (§3.1).
+      const incident = createIncident({
+        incidentId: nextId("inc"),
+        ticketId: invocation.context.ticket_id,
+        input: input as CreateIncidentInput,
         location,
-        version: 0,
-        created_at: now,
-        updated_at: now,
-        related_counts: { dispatches: 0, escalations: 0, cameras: 0, evidence: 0 },
-      };
+        now,
+      }) as IncidentRecord;
       scope.incidents.push(incident);
       return {
         data: incident,
         incident,
         event: { event_type: "INCIDENT_CREATED", data: { status: "OPEN", severity: incident.severity } },
         summary: "Tạo incident",
+      };
+    }),
+
+    update_incident: handler("update_incident", ({ scope, input, invocation }) => {
+      const incident = findIncident(scope, input.incident_id);
+      if (!incident) return { rejection: { code: "NOT_FOUND", reason: "Không tìm thấy incident trong property" } };
+      const mismatch = ticketMismatch(incident, invocation);
+      if (mismatch) return { rejection: mismatch };
+      const patch = input as UpdateIncidentInput;
+      const rejection = checkUpdateIncident({
+        incident: incident as never,
+        input: patch,
+        evidence: (scope.evidence as unknown as EvidenceItem[]).filter((e) => e.incident_id === incident.incident_id),
+        openDispatches: dispatches(scope).filter((d) => d.incident_id === incident.incident_id && isOpenDispatch(d)).length,
+        waitingEscalations: escalations(scope).filter((e) => e.incident_id === incident.incident_id && (e.status === "PENDING" || e.status === "NOTIFIED")).length,
+      });
+      if (rejection) return { rejection };
+
+      const before = { ...incident };
+      Object.assign(incident, applyUpdate(incident as never, patch));
+      return {
+        data: incident,
+        incident,
+        event: { event_type: "INCIDENT_UPDATED", data: incidentUpdatedEvent(before as never, incident as never, patch.note) },
+        summary: patch.status ? `Chuyển incident sang ${patch.status}` : "Cập nhật incident",
       };
     }),
 
