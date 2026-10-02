@@ -145,6 +145,13 @@ Kết quả bộ đánh giá hội thoại (52 kịch bản, `gpt-5.4-mini`, ch�
 Khi sửa prompt, công cụ hay bước kiểm tra: chạy `tests/agent` (không cần dịch vụ) và `tests/evals/run_live.py`
 trên database tạm, so với bảng trên. `loop` chưa có test đầu-cuối với model giả lập (stub chưa hỗ trợ gọi công cụ).
 
+### Agent thẩm định tri thức (`runtime/curator.py`)
+
+`POST /v1/curations` (Bearer service token): backend gửi một cặp hỏi - đáp mà Ban quản lý vừa trả lời cho cư dân.
+Model cho biết có thông tin cá nhân không, có dùng lại được cho cư dân khác không, có nêu phí/quy định/an toàn
+không, và viết lại cặp hỏi - đáp cho tổng quát (bản viết lại bị bỏ nếu thêm con số không có trong bản gốc).
+Đây chỉ là ý kiến: quyết định duyệt, chờ duyệt hay loại là của backend (`v3_learning.decide`).
+
 Chưa có trong runtime: nhận sự kiện từ Supervisor (chưa có Supervisor chạy), trả lời tương tác của Supervisor,
 self-help (backend trả 501 nên graph mời hỗ trợ trực tiếp), checkpointer PostgreSQL cho nhiều replica.
 

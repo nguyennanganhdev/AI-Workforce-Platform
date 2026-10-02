@@ -47,6 +47,7 @@ from .v3_room_agents import router as room_agents_router
 from .v3_rooms import router as rooms_router
 from .v3_routes import router as v3_router
 from .v3_security import router as security_router
+from .v3_learning import router as learning_router
 from .v3_session import router as session_router
 from .v3_specialized import router as specialized_router
 from .v3_team_board import router as team_board_router
@@ -178,6 +179,7 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(reception_supervisor_router)
     app.include_router(supervisor_operations_router)
     app.include_router(session_router)
+    app.include_router(learning_router)
     from .resident_api import ticket_intake_router
     app.include_router(ticket_intake_router)
     if settings.demo_mode:

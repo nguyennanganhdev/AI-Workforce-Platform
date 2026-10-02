@@ -352,6 +352,42 @@ def test_a_question_without_a_source_becomes_a_session_that_management_answers(d
         assert next(x for x in c.get("/resident/chats?limit=100").json()["items"] if x["id"] == channel)["unread_count"] == 1
 
 
+def test_an_answer_becomes_knowledge_only_after_it_is_judged_or_approved(database, monkeypatch):
+    from vinhomes_api.v3_learning import decide
+
+    # The curator's verdict is advice; these rules are the decision.
+    general = {"personal_data": False, "generalizable": True, "risk": "none"}
+    assert decide(general, "Nhận hàng ở đâu?", "Tại quầy lễ tân sảnh.")[0] == "approved"
+    assert decide(general, "Phí gửi xe?", "100.000 đồng mỗi tháng.")[0] == "pending"       # a fee, whatever the model says
+    assert decide({**general, "risk": "fee_rule_safety"}, "Quy định?", "Không nuôi chó lớn.")[0] == "pending"
+    assert decide({**general, "personal_data": True}, "q", "a")[0] == "rejected"
+    assert decide({**general, "generalizable": False}, "q", "a")[0] == "rejected"
+
+    monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "2c" * 32)
+    with client(database) as c:
+        channel, message_id = resident_message(c, "Learn", "Nhận bưu phẩm ở đâu?")
+        bearer = {"Authorization": "Bearer " + delegate(c, channel, message_id)["token"]}
+        session = c.post(f"/internal/reception/chats/{channel}/inquiries", headers=bearer, json={"message_id": message_id}).json()["sessionId"]
+    with demo_client(database, "management") as management:
+        item = next(i for i in management.get("/sessions/inquiries").json()["items"] if i["id"] == session)
+        management.post(f"/sessions/{session}/answer", json={"version": item["state_version"], "text": "Tại quầy lễ tân sảnh tòa."})
+        # No curator is configured in this test, so the candidate waits for a person.
+        candidate = next(i for i in management.get("/knowledge/candidates").json()["items"] if i["question"] == "Nhận bưu phẩm ở đâu?")
+        assert candidate["answer"] == "Tại quầy lễ tân sảnh tòa." and candidate["status"] == "pending"
+        with demo_client(database, "technical") as staff:
+            assert staff.get("/knowledge/candidates").json()["items"] == []
+            assert staff.post(f"/knowledge/candidates/{candidate['id']}/decision", json={"decision": "approve"}).status_code == 403
+        approved = management.post(f"/knowledge/candidates/{candidate['id']}/decision", json={"decision": "approve"})
+        assert approved.status_code == 200 and approved.json()["status"] == "approved"
+        assert management.post(f"/knowledge/candidates/{candidate['id']}/decision", json={"decision": "reject"}).status_code == 409
+        assert all(i["id"] != candidate["id"] for i in management.get("/knowledge/candidates").json()["items"])
+    row = sql(database, "select c.status,c.pii_redacted,s.kind,r.decision from memory_candidates c "
+                        "join access_scopes s on s.id=c.scope_id join knowledge_reviews r on r.memory_candidate_id=c.id "
+                        "where c.id=$1", UUID(candidate["id"]))[0]
+    # Published to the asker's area, with the approval on record.
+    assert row == {"status": "approved", "pii_redacted": True, "kind": "zone", "decision": "approve"}
+
+
 def test_management_reads_what_the_resident_said_about_a_ticket(database):
     with client(database) as c:
         channel, _ = resident_message(c, "Conversation", "Ổ điện hỏng")

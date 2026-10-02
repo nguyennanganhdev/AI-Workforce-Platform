@@ -9,7 +9,7 @@ import json
 from typing import Annotated
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from .reception_delegation import DelegatedScope, reception_agent
 from .v3_audit import audit
 from .v3_auth import TICKET_VISIBILITY, scoped_connection
+from .v3_learning import curate, propose_from_answer
 from .v3_mutations import management_access, visible_ticket
 from .v3_reception_runtime import append_agent_message
 
@@ -192,7 +193,8 @@ async def open_inquiry(channel_id: str, body: InquiryCreate, scope: DelegatedSco
     if message is None or not (message["text"] or "").strip():
         raise HTTPException(422, "message_id must be a resident message with text in this conversation")
     homes = (await db.execute(text(f"""
-        select distinct mc.management_unit_id,u.code as unit_code,b.name as building_name
+        select distinct mc.management_unit_id,u.code as unit_code,b.name as building_name,
+          b.id as building_id,b.zone_id
         from unit_residents ur
         join units u on u.id=ur.unit_id and u.tenant_id=ur.tenant_id
         join buildings b on b.id=u.building_id and b.tenant_id=u.tenant_id
@@ -212,6 +214,11 @@ async def open_inquiry(channel_id: str, body: InquiryCreate, scope: DelegatedSco
     tenant = (await db.execute(text("select current_setting('app.tenant_id')"))).scalar_one()
     team_id = uuid5(NAMESPACE_URL, f"reception-inquiry:{tenant}:{body.message_id}")
     resident = f"{message['name'] or 'Cư dân'} (căn {homes[0]['unit_code']}, {homes[0]['building_name']})"
+    # What management answers applies to the resident's area: its zone, else its building.
+    area = (await db.execute(text(f"""
+        select id from access_scopes where tenant_id={TENANT} and ((kind='zone' and zone_id=:zone)
+          or (kind='building' and building_id=:building)) order by kind desc limit 1
+    """), {"zone": homes[0]["zone_id"], "building": homes[0]["building_id"]})).scalar_one_or_none()
     created = await db.execute(text(f"""
         insert into agent_teams(id,tenant_id,workspace_id,channel_id,request_message_id,
           supervisor_agent_id,status,shared_state,requested_by_user_id)
@@ -222,6 +229,7 @@ async def open_inquiry(channel_id: str, body: InquiryCreate, scope: DelegatedSco
            "state": json.dumps({"request": {
                "kind": "inquiry", "question": message["text"].strip(), "resident": resident,
                "residentChannelId": channel_id, "unitCode": homes[0]["unit_code"],
+               "scopeId": str(area) if area else None,
                "supervisorVersionId": str(destination["supervisor_version_id"])}}, ensure_ascii=False)})
     if created.first() is not None:
         await db.execute(text(f"""
@@ -257,16 +265,17 @@ class InquiryAnswer(BaseModel):
 
 
 @router.post("/sessions/{session_id}/answer", summary="Management answers a resident question; Reception relays it")
-async def answer_inquiry(session_id: UUID, body: InquiryAnswer, scope: Scope) -> dict[str, object]:
+async def answer_inquiry(session_id: UUID, body: InquiryAnswer, scope: Scope, request: Request,
+                         background: BackgroundTasks) -> dict[str, object]:
     db = scope[0]
     session = (await db.execute(text(f"""
-        select tm.id,tm.status,tm.state_version,tm.shared_state,{MANAGES_SESSION} as allowed
+        select tm.id,tm.status,tm.state_version,tm.shared_state,tm.workspace_id,{MANAGES_SESSION} as allowed
         from agent_teams tm join workspaces w on w.id=tm.workspace_id and w.tenant_id=tm.tenant_id
         where tm.id=:id and tm.tenant_id={TENANT} and tm.request_message_id is not null for update of tm
     """), {"id": session_id, "user_id": scope[1], "is_admin": scope[2]})).mappings().first()
     if session is None or not session["allowed"]:
         raise HTTPException(403, "Management grant for this session is required")
-    request = session["shared_state"].get("request", {})
+    request_state = session["shared_state"].get("request", {})
     answer = body.text.strip()
     if session["status"] == "completed":
         if session["shared_state"].get("closure", {}).get("answer") != answer:
@@ -274,11 +283,16 @@ async def answer_inquiry(session_id: UUID, body: InquiryAnswer, scope: Scope) ->
         return {"id": str(session["id"]), "status": "completed", "state_version": session["state_version"]}
     if session["state_version"] != body.version or session["status"] in {"failed", "cancelled"}:
         raise HTTPException(409, "Session state or version changed")
-    await append_agent_message(db, request["residentChannelId"], await reception_agent(db), "customer", {
+    await append_agent_message(db, request_state["residentChannelId"], await reception_agent(db), "customer", {
         "text": f"Ban quản lý trả lời câu hỏi của bạn: {answer}", "sessionId": str(session_id), "source": "management"})
     await db.execute(text("""
         update agent_teams set status='completed',state_version=state_version+1,finished_at=now(),
           shared_state=shared_state||jsonb_build_object('closure',cast(:closure as jsonb)) where id=:id
     """), {"id": session_id, "closure": json.dumps({"answeredBy": scope[1], "answer": answer}, ensure_ascii=False)})
     await audit(db, scope[1], "team.inquiry_answered", "agent_team", str(session_id), {})
+    # The answer is also a piece of knowledge the next resident may need.
+    candidate = await propose_from_answer(db, session_id, session["workspace_id"], request_state.get("scopeId"),
+                                          request_state["question"], answer, scope[1])
+    if candidate:
+        background.add_task(curate, request.app, scope[1], candidate, request_state["question"], answer)
     return {"id": str(session_id), "status": "completed", "state_version": session["state_version"] + 1}

@@ -90,7 +90,9 @@ async def run_agent(model, toolbox: Toolbox, system: str, history: list[dict]) -
         problems = ["không đúng định dạng JSON {reply, sources}"] if final is None else violations(final[0], toolbox, conversation)
         if not problems:
             reply, sources = final
-            titles = list(dict.fromkeys(str(toolbox.passages[rank]["title"]) for rank in sources if rank in toolbox.passages))
+            # A question handed to management was not answered from the passages, whatever the model lists.
+            titles = [] if toolbox.forwarded else list(dict.fromkeys(
+                str(toolbox.passages[rank]["title"]) for rank in sources if rank in toolbox.passages))
             return reply + ("\n(Nguồn: " + "; ".join(titles) + ")" if titles else "")
         if retried:
             break

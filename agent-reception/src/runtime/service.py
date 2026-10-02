@@ -31,6 +31,7 @@ from ..agent.loop import EMERGENCY_REPLY as AGENT_EMERGENCY_REPLY
 from ..agent.loop import run_agent
 from ..agent.prompt import system_prompt
 from ..agent.tools import Toolbox
+from .curator import judge
 from .inquiry import unanswered
 from .voice import reword
 
@@ -95,6 +96,13 @@ class Delegation(BaseModel):
     token: str = Field(min_length=1, max_length=4096, repr=False)
     expiresAt: int
     context: DelegationContext
+
+
+class Curation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(min_length=1, max_length=4000)
+    answer: str = Field(min_length=1, max_length=4000)
 
 
 class Turn(BaseModel):
@@ -197,11 +205,23 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.post("/v1/turns")
-    async def turn(body: Turn, request: Request) -> dict[str, str]:
+    def backend_only(request: Request) -> None:
         bearer = request.headers.get("authorization", "")
         if not bearer.startswith("Bearer ") or not hmac.compare_digest(bearer[7:].encode(), settings.service_token.encode()):
             raise HTTPException(401, "Invalid service credential")
+
+    @app.post("/v1/curations")
+    async def curation(body: Curation, request: Request) -> dict:
+        """Is this answer from management knowledge for other residents? The backend decides what to do with it."""
+        backend_only(request)
+        try:
+            return await judge(request.app.state.model, body.question, body.answer)
+        except Exception:  # noqa: BLE001 - no verdict: the backend keeps the candidate for a person
+            raise HTTPException(502, "Curator unavailable") from None
+
+    @app.post("/v1/turns")
+    async def turn(body: Turn, request: Request) -> dict[str, str]:
+        backend_only(request)
         context = turn_context(body)
         message = body.message.model_dump(exclude_defaults=True) | {"id": body.message.id, "text": body.message.text}
         # One turn at a time per conversation: the graph state is a single thread.

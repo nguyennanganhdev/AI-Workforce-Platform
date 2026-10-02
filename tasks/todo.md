@@ -30,16 +30,16 @@
 - [ ] T4.2 Hoãn: bộ nhớ hiện là lịch sử yêu cầu, cư dân đã xem được ở "Yêu cầu của tôi". Chỉ cần khi có bộ nhớ sở thích dạng tự do
 
 ## Giai đoạn 5 — Tự thẩm định, tự cải thiện
-- [ ] T5.1 Thu tín hiệu ngầm (S)
-- [ ] T5.2 Agent thẩm định tri thức, phân mức A/B/C (M)
-- [ ] T5.3 Điểm tin cậy vào thứ hạng; tự nâng/hạ hạng (M)
-- [ ] T5.4 Ngân hàng ví dụ mẫu từ lần BQL sửa phân loại (S)
-- [ ] T5.5 Nút duyệt một chạm cho mức C (S)
+- [ ] T5.1 Thu tín hiệu ngầm (S) — hoãn: backend đã ghi sẵn xác nhận/từ chối, mở lại, retrieval_runs; chưa có dữ liệu thật để dùng
+- [x] T5.2 Agent thẩm định tri thức, phân mức tự duyệt / chờ duyệt / loại (M)
+- [ ] T5.3 Điểm tin cậy vào thứ hạng (M) — hoãn tới khi có tín hiệu thật
+- [ ] T5.4 Ngân hàng ví dụ mẫu (S) — hoãn: ticket_triage_reviews chưa có dòng nào
+- [x] T5.5 Nút duyệt một chạm trong Operations (S)
 
 ## Giai đoạn 6 — Tối ưu truy xuất (theo số đo)
-- [ ] T6.1 Viết lại câu hỏi theo ngữ cảnh (S)
-- [ ] T6.2 Tìm không dấu, sai chính tả (S)
-- [ ] T6.3 Xếp hạng lại (S)
+- [x] T6.1 Viết lại câu hỏi theo ngữ cảnh — agent loop tự viết truy vấn đầy đủ khi gọi search_knowledge
+- [x] T6.2 Không dấu, sai chính tả — agent loop viết lại truy vấn có dấu; nhóm no-accents đạt 80–100%
+- [x] T6.3 Xếp hạng: đoạn khớp rõ nhất đứng đầu (leadClearMatch trong retrieve.ts)
 - [ ] T6.4 Thực thể và cạnh, mở rộng láng giềng (M)
 - [ ] T6.5 Đo và quyết định Qdrant (XS)
 

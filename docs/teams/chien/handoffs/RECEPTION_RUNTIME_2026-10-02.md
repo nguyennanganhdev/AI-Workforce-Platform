@@ -179,6 +179,36 @@ là mặc định trong code. Chi tiết và bảng điểm so sánh ở `agent-
 Backend thêm `GET /internal/reception/chats/{id}/context` (hội thoại gần nhất và yêu cầu đang mở) để agent
 không phải giữ trạng thái. Policy khẩn cấp theo từ khóa vẫn chạy trước model ở cả hai chế độ.
 
+## Bộ nhớ và vòng tự học (03/10/2026)
+
+**Bộ nhớ cư dân.** Ngữ cảnh mỗi lượt có 5 yêu cầu gần nhất của chính cư dân (tiêu đề, danh mục, ngày, trạng
+thái), nên agent nối được sự cố mới với lần trước. Không có kho riêng: chỉ đọc yêu cầu của cư dân đó.
+
+**Học từ câu trả lời của BQL.**
+
+1. BQL trả lời một câu hỏi → backend ghi một ứng viên tri thức (`memory_candidates`), phạm vi là phân khu của
+   người hỏi.
+2. Agent thẩm định (`agent-reception/src/runtime/curator.py`) chấm; backend quyết định (`v3_learning.decide`):
+   có thông tin cá nhân hoặc chỉ đúng cho một người → loại; nêu phí, quy định, an toàn → chờ BQL bấm duyệt
+   (Operations, trang "Tiếp nhận phản ánh", mục "Tri thức chờ duyệt"); còn lại → tự duyệt. Luật về phí/quy
+   định/an toàn do code kiểm bằng từ khóa, model không vượt được. Agent thẩm định không chạy thì ứng viên
+   nằm chờ người duyệt.
+3. `scripts/publish_learned.ps1 -DataDir <thư mục dữ liệu>` xuất các ứng viên đã duyệt thành
+   `hoi-dap-ban-quan-ly.md` trong thư mục của đúng phạm vi rồi chạy `publish.ts`. File được ghi lại toàn bộ
+   mỗi lần, nên thu hồi một ứng viên rồi chạy lại là tri thức đó biến mất. Hiện chạy tay; cần đặt lịch.
+
+Đã kiểm đầu-cuối trên database demo với model thật: hỏi "có cho mượn xe đẩy hàng không" → chuyển BQL → BQL trả
+lời → tự duyệt → xuất bản → hỏi lại ở cuộc trò chuyện mới thì Lễ tân tự trả lời.
+
+**Sửa xếp hạng tìm kiếm (file của Team Quang, `server/src/knowledge/retrieve.ts`).** Trộn hạng vector + từ khóa
+để đoạn khớp gần nguyên văn câu hỏi (độ giống 0,78) rơi khỏi top 5 vì thua các đoạn chỉ khớp từ phổ biến
+("xe", "hàng", "cư dân"; độ giống 0,52). Thêm `leadClearMatch`: đoạn có độ giống hơn đoạn kế tiếp từ 0,15 trở
+lên thì đứng đầu; các thứ hạng khác giữ nguyên. Có test trong `tests/knowledge/pipeline.test.ts`. Cần Team Quang
+rà lại ngưỡng bằng bộ đánh giá của họ.
+
+Chưa làm: điểm tin cậy theo phản hồi của cư dân đưa vào xếp hạng, và ngân hàng ví dụ từ các lần BQL sửa phân
+loại. Cả hai cần dữ liệu thật tích lũy trước (các bảng tín hiệu hiện 0 dòng).
+
 ## Đề nghị Team Hoàng
 
 - Rà `runtime/backend.py` và `runtime/service.py`; nếu đồng ý hợp đồng này thì PD11 (graph gọi bộ tool mới)

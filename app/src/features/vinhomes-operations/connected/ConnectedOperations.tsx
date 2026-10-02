@@ -8,7 +8,7 @@ import { WorkspaceFrame } from "../workspace/WorkspaceFrame";
 import { ConnectedAccounts } from "./ConnectedAccounts";
 import "./connected.css";
 import { OnsiteConsent, QuoteForm } from "./RepairQuote";
-import { Inquiries, type Inquiry } from "./Inquiries";
+import { Inquiries, LearnedAnswers, type Inquiry, type LearnedAnswer } from "./Inquiries";
 import { OperationsDashboardView } from "../components/operations-dashboard";
 import { LiveTeamPage } from "../workspace/LiveTeamPage";
 import type { CaseStage } from "../workspace/model";
@@ -130,6 +130,7 @@ export function ConnectedOperations() {
   // Closed for the resident, but the coordination session still needs management.
   const [awaitingClosure, setAwaitingClosure] = useState<string[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [learned, setLearned] = useState<LearnedAnswer[]>([]);
   const [conversation, setConversation] = useState<
     { id: string; sender_kind: string; text: string; created_at: string }[]
   >([]);
@@ -189,7 +190,7 @@ export function ConnectedOperations() {
       }
       return result;
     };
-    const [data, cat, mine, allOrders, dashboard, closures, questions] = await Promise.all([
+    const [data, cat, mine, allOrders, dashboard, closures, questions, knowledge] = await Promise.all([
       pages<Ticket>("/tickets"),
       request<Catalog>("/catalogs"),
       request<{ items: Order[] }>("/my-work-orders?limit=100"),
@@ -197,8 +198,10 @@ export function ConnectedOperations() {
       request<{approvals: {status: string; count: number}[]}>("/dashboard"),
       request<{ ticketIds: string[] }>("/sessions/awaiting-approval"),
       request<{ items: Inquiry[] }>("/sessions/inquiries"),
+      request<{ items: LearnedAnswer[] }>("/knowledge/candidates"),
     ]);
     setInquiries(questions.items);
+    setLearned(knowledge.items);
     setAwaitingClosure(closures.ticketIds);
     setStats(dashboard);
     setTickets(data);
@@ -424,6 +427,14 @@ export function ConnectedOperations() {
                 zones={(catalog?.buildings || []).map(b => ({tower: b.name, note: `${tickets.filter(t => t.building_id === b.id && !['closed', 'cancelled'].includes(t.status)).length} phản ánh đang mở`}))} />
             ) : !selected && (
               <>
+              {path === "triage" && management && (
+                <LearnedAnswers items={learned} disabled={busy}
+                  onDecide={(item, decision) =>
+                    void run(async () => {
+                      await post(`/knowledge/candidates/${item.id}/decision`, { decision });
+                    })
+                  } />
+              )}
               {path === "triage" && management && (
                 <Inquiries items={inquiries} disabled={busy}
                   onAnswer={(inquiry, text) =>

@@ -12,7 +12,7 @@ class Toolbox:
     def __init__(self, results=None):
         self.results = results or {}
         self.calls, self.evidence, self.passages = [], [], {}
-        self.status, self.emergency, self.acted = None, False, False
+        self.status, self.emergency, self.acted, self.forwarded = None, False, False, False
 
     async def call(self, name, arguments):
         self.calls.append((name, arguments))
@@ -23,6 +23,7 @@ class Toolbox:
             self.emergency = True
         if result.get("filed") or result.get("forwarded"):
             self.acted = True
+        self.forwarded = self.forwarded or bool(result.get("forwarded"))
         self.evidence.append(str(result))
         return result
 

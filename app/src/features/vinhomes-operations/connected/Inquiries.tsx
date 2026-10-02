@@ -9,6 +9,55 @@ export type Inquiry = {
   resident: string;
 };
 
+export type LearnedAnswer = {
+  id: string;
+  question: string;
+  answer: string;
+  reason: string;
+};
+
+/**
+ * Answers management gave that would become knowledge for every resident. Those stating a fee,
+ * a rule or a safety instruction are never published without this approval.
+ */
+export function LearnedAnswers({
+  items,
+  disabled,
+  onDecide,
+}: {
+  items: LearnedAnswer[];
+  disabled: boolean;
+  onDecide: (item: LearnedAnswer, decision: "approve" | "reject") => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section className="ws-card">
+      <h2>Tri thức chờ duyệt ({items.length})</h2>
+      <p>
+        Câu trả lời của Ban quản lý sẽ được Lễ tân dùng lại cho cư dân khác sau
+        khi duyệt.
+      </p>
+      {items.map((item) => (
+        <article className="live-order" key={item.id}>
+          <p>
+            <strong>{item.question}</strong>
+          </p>
+          <p>{item.answer}</p>
+          <small>{item.reason}</small>
+          <div className="live-actions">
+            <button disabled={disabled} onClick={() => onDecide(item, "approve")}>
+              Duyệt làm tri thức
+            </button>
+            <button disabled={disabled} onClick={() => onDecide(item, "reject")}>
+              Không dùng lại
+            </button>
+          </div>
+        </article>
+      ))}
+    </section>
+  );
+}
+
 /**
  * Resident questions the Reception agent had no source for. Each is a coordination session in
  * the management group chat; the answer typed here is relayed to the resident's conversation.
