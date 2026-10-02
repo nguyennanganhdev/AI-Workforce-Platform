@@ -1,0 +1,21 @@
+{
+  "config_version": "1.0",
+  "template_id": "operations-report",
+  "template_version": "1.0.0",
+  "name": "Báo cáo BQL mẫu A",
+  "metrics": ["ticket_volume", "sla"],
+  "metric_versions": {
+    "ticket_volume": "1.0.0",
+    "sla": "1.0.0",
+    "assignments": "1.0.0",
+    "outcomes": "1.0.0"
+  },
+  "scope_ids": ["scope-synthetic-a"],
+  "period": {
+    "from": "2026-09-01T00:00:00+07:00",
+    "to": "2026-10-01T00:00:00+07:00",
+    "timezone": "Asia/Ho_Chi_Minh"
+  },
+  "output_format": "docx",
+  "presentation": "summary"
+}

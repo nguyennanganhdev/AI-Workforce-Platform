@@ -1,261 +1,338 @@
-# Phân công Team Hoàng — Reception và Report agent cho 3 thành viên
+# Kế hoạch Team Hoàng — 3 thành viên
 
-## 1. Phạm vi và cách sử dụng
+> Cập nhật phân công: từ ngày 01/10/2026, **Phan Hoàng sở hữu thiết kế và tích hợp toàn bộ Reception tools**. Dương Dũng tiếp tục phụ trách Report tools. Code HTTP adapter đã có là baseline để Phan Hoàng tiếp quản, không viết lại từ đầu.
 
-Phân công này cụ thể hóa **H01–H10** trong [kế hoạch 5 team](../../KE_HOACH_HOAN_THIEN_5_TEAM.md), cập nhật theo đính chính: Team Hoàng làm **Reception agent và năng lực Report agent để BQL dễ dàng tự tạo agent trên platform**. Phần học kinh nghiệm vẫn đọc thêm [thiết kế self-help và giá](../../THIET_KE_HOC_KINH_NGHIEM_SELF_HELP_GIA.md).
+> Tiếp nhận sau review PH16 (01/10/2026, commit `df5eccd`): **Phan Dũng nhận PD11 để chuyển graph sang typed facade/V2; Phan Hoàng nhận PH17 để sửa retry và hoàn thiện HTTP contract**. PH16 đã có tools/validators local nhưng chưa DONE. Chi tiết công việc và nghiệm thu ở mục 5.1.1 và 5.3.2.
 
-Team có hai đầu ra:
+## 1. Cách AI nhận việc theo tên
 
-- Reception cố định bằng LangGraph TypeScript tại `agent-reception/`: tiếp nhận đúng khách/session, tạo/theo dõi ticket, đề xuất assessment, self-help và giá qua tool.
-- Report capability: template/config schema/prompt tại `agent-report/`, report tools/metrics/application service/rendering tại `server/src/reporting/`, export job tại `worker/src/jobs/reporting/`. BQL tạo agent riêng từ template qua UI builder Chiến xây; agent chạy trong AgentScope do Đông tích hợp. Không tạo Report runtime LangGraph thứ hai, không hardcode một Report agent dùng chung mọi BQL.
+Khi thành viên đưa file này cho AI và nói tên, AI phải thực hiện đúng thứ tự:
 
-Team Hoàng sở hữu hành vi và đầu ra báo cáo; Chiến sở hữu DB/migration, authorized data repositories, persistence ports và UI; Đông sở hữu groupchat/runtime; Team 5 sở hữu deployment/worker host. API/port giữa các phần cần chốt trước khi code song song.
+1. Đối chiếu tên chính xác: `Phan Dũng`, `Dương Dũng` hoặc `Phan Hoàng`.
+2. Chỉ đọc hàng đợi task và folder của người đó trong mục 5.
+3. Kiểm tra code và `git status` trước khi chọn việc; không làm lại task `DONE`.
+4. Nếu người dùng không nêu task ID, chọn task `READY` đầu tiên chưa đạt tiêu chí nghiệm thu.
+5. Nếu task `BLOCKED`, chỉ hoàn thành interface, validator, fixture và contract test độc lập; không giả lập dependency trong production rồi báo hoàn thành.
+6. Không sửa folder của người khác. Khi cần đổi contract do người khác sở hữu, tạo integration request trong `docs/teams/hoang/requests/<slug>/`.
+7. Chạy test phù hợp và ghi handoff trong `docs/teams/hoang/handoffs/<slug>/`.
 
-Phân công dựa trên module, chưa giả định ai có kinh nghiệm hơn. **Phan Hoàng là đầu mối tích hợp kỹ thuật được đề xuất trong kế hoạch này**, không phải quyền sửa thay tất cả thành viên.
-
-Hiện `agent-reception/` mới có các folder `src/graph`, `src/tools`, `src/adapters`, `src/persistence`, `tests` và `.gitkeep`; chưa có service Reception hoàn chỉnh. Đường dẫn chi tiết bên dưới là vị trí dự kiến để triển khai, không khẳng định file đã tồn tại. Chỉ tạo khi thực hiện task, không tạo skeleton hàng loạt.
-
-## 2. Chia việc chính
-
-Cập nhật phân công ngày 30/09/2026: Phan Dũng nhận phần graph/hội thoại/template Report trước đây của Dương Dũng; Dương Dũng nhận phần tools/API/metrics trước đây của Phan Dũng. Mã task đổi tương ứng: `DD01–DD07` cũ thành `PD01–PD07`; `PD01–PD06` cũ thành `DD01–DD06`. Khi đọc handoff cũ cần đối chiếu mapping này. Nhiệm vụ và mã `PH01–PH07` của Phan Hoàng giữ nguyên.
-
-| Thành viên | Trách nhiệm chính | Phần H01–H10 |
-|---|---|---|
-| **Phan Dũng** | Reception graph/hội thoại; Report template, câu hỏi builder, cấu hình đầu ra, narrative/prompt và bố cục báo cáo | H01/H02/H05/H06/H07 phần hội thoại; **H08 chính**, H10 nội dung |
-| **Dương Dũng** | Reception tools/API client; report tools, chuẩn hóa yêu cầu, định nghĩa/tính chỉ số và source lineage qua authorized data ports | H03 chính, H07 tools; **H09 chính** |
-| **Phan Hoàng** | Reception service/session/checkpoint; tích hợp Report với builder/runtime/worker/storage, render artifact và test xuyên module | H01/H04 chính, H05 reliability; **H10 chính**, tích hợp H08/H09 |
-
-Mỗi người viết test cho module của mình. Phan Hoàng nối module và chạy integration Reception/Report; Team 5 vẫn phụ trách E2E toàn nền tảng. Không giao toàn bộ Report cho một người làm sau khi Reception xong: PD06/DD05/PH06 khởi động song song từ mốc đầu.
-
-## 3. Quyền sửa folder/file
-
-**Mỗi đường dẫn có một owner.** Mọi file chưa được phân công trong `agent-reception/` phải được Phan Hoàng phân loại trước khi sửa; điều này không cấp quyền cho Phan Hoàng sửa folder đã thuộc người khác. Có thể đọc code toàn repo, nhưng không được sửa ngoài vùng được giao.
-
-| Owner | Được tạo/sửa trực tiếp | Nội dung |
-|---|---|---|
-| Phan Dũng | `agent-reception/src/graph/**` | State, nodes, edges, graph factory, interrupt decisions và routing hội thoại |
-| Phan Dũng | `agent-reception/src/prompts/**` — mới | System prompt, template hỏi/đáp, prompt version |
-| Phan Dũng | `agent-reception/tests/graph/**`, `agent-reception/tests/evals/**` — mới | Test graph và bộ tình huống tiếng Việt; dữ liệu tổng hợp đã khử PII |
-| Dương Dũng | `agent-reception/src/tools/**` | Tool definitions, input/output validation, mapping sang backend operations |
-| Dương Dũng | `agent-reception/src/adapters/backend/**` — mới | HTTP client, error mapping, request correlation; không tự suy ra quyền từ prompt |
-| Dương Dũng | `agent-reception/tests/tools/**`, `agent-reception/tests/adapters/backend/**` — mới | Test tool/client với contract fixtures và server test |
-| Phan Hoàng | `agent-reception/src/persistence/**` | Framework checkpointer adapter, binding resolver, concurrency/recovery |
-| Phan Hoàng | `agent-reception/src/adapters/transport/**`, `agent-reception/src/adapters/events/**`, `agent-reception/src/adapters/model/**` — mới | AG-UI/HTTP streaming, event ingress/resume, model factory |
-| Phan Hoàng | `agent-reception/src/contracts/**` — mới | Interface nội bộ nối graph/tools/runtime; không thay hợp đồng API nền tảng |
-| Phan Hoàng | `agent-reception/src/index.ts`, `agent-reception/src/config.ts`, `agent-reception/src/observability/**` | Entrypoint, dependency injection, config validation, trace đã lọc dữ liệu nhạy cảm |
-| Phan Hoàng | `agent-reception/tests/runtime/**`, `agent-reception/tests/persistence/**`, `agent-reception/tests/integration/**`, `agent-reception/tests/support/**`, `agent-reception/tests/adapters/transport/**`, `agent-reception/tests/adapters/events/**`, `agent-reception/tests/adapters/model/**` — mới | Session/restart/concurrency, adapter tests và fixture dùng chung |
-| Phan Hoàng | `agent-reception/package.json`, `agent-reception/bun.lock`, `agent-reception/tsconfig.json`, `agent-reception/bunfig.toml`, `agent-reception/Dockerfile`, `agent-reception/.env.example`, `agent-reception/README.md` | Cấu hình package riêng; không chứa secret; phối hợp Team 5 về build/deploy |
-| Phan Hoàng | `agent-langgraph/**` khi cần reuse thực sự | Adapter mẫu; ưu tiên đọc/reuse, không đổi sample thành Reception thứ hai |
-
-**Bổ sung quyền Report — cùng mức bắt buộc với bảng trên:**
-
-| Owner | Đường dẫn được sửa — đều là MỚI | Trách nhiệm |
-|---|---|---|
-| Phan Dũng | `agent-report/templates/**`, `agent-report/schemas/**`, `agent-report/prompts/**`, `agent-report/examples/**`, `agent-report/tests/templates/**`; `server/src/reporting/narrative/**`, `server/src/reporting/layouts/**`, `server/tests/reporting/narrative/**`, `server/tests/reporting/layouts/**` | Template, config questions/validation schema, narrative và layout; không tự cấp quyền dữ liệu |
-| Dương Dũng | `server/src/reporting/tools/**`, `server/src/reporting/metrics/**`, `server/src/reporting/application/**`, `server/tests/reporting/tools/**`, `server/tests/reporting/metrics/**`, `server/tests/reporting/application/**` | Tool/application flow, metric code và provenance; gọi data/persistence ports, không tự SQL nghiệp vụ |
-| Phan Hoàng | `agent-report/README.md`, `agent-report/manifest.json`, `agent-report/tests/integration/**`; `server/src/reporting/contracts/**`, `server/src/reporting/rendering/**`, `server/src/reporting/adapters/**`, `server/src/reporting/index.ts`, `server/tests/reporting/integration/**`, `server/tests/reporting/rendering/**`, `server/tests/reporting/adapters/**`, `server/tests/reporting/support/**`; `worker/src/jobs/reporting/**` | Manifest tích hợp, interface nội bộ, adapter gọi port Chiến, render/export và job handler; không tự mount route/worker |
-
-`agent-report/` là gói template có phiên bản, không tự dựng server/package độc lập nếu runtime Đông không cần. File mới chưa có owner trong bốn vùng reporting của Hoàng phải được phân công trước; không có quyền mặc định sửa chéo folder thành viên. Các thay đổi API chính thức trong `shared/contracts/` vẫn do Chiến sở hữu.
-
-Tài liệu mỗi người, trong vùng `docs/teams/hoang/`:
-
-- Phan Dũng: `members/phan-dung/**`, `requests/phan-dung/**`, `handoffs/phan-dung/**`.
-- Dương Dũng: `members/duong-dung/**`, `requests/duong-dung/**`, `handoffs/duong-dung/**`.
-- Phan Hoàng: `members/phan-hoang/**`, `requests/phan-hoang/**`, `handoffs/phan-hoang/**`, `integration/**`, `README.md` và file phân công này.
-
-Các thư mục tài liệu con trên cũng là **mới, tạo khi cần**. Không đổi `.gitkeep` hoặc tài liệu người khác để tạo commit trống.
-
-### 3.1. Các vùng cả 3 người không được sửa trực tiếp
-
-| Vùng | Owner ở kế hoạch toàn dự án | Cách phối hợp |
-|---|---|---|
-| `server/src/**` ngoài `reporting/**`, `server/drizzle/**`, DB catalog/generator, `app/**` | Chiến, trừ vùng Quang | Hoàng chỉ sửa reporting theo bảng trên; gửi API/UI/schema request, không tự sửa DB/repository |
-| `shared/contracts/**` | Chiến | Đề xuất contract và fixture; chỉ dùng version đã chốt |
-| `server/src/knowledge/**`, `server/src/technical-tools/**` | Quang | Yêu cầu tool retrieval/price, không tự dựng RAG hoặc bộ thống kê giá trong Reception |
-| `agent-coordination/**` | Đông | Dùng kết quả/event qua backend; không sửa supervisor hoặc groupchat |
-| `supervisor/**`, `worker/**` ngoài `src/jobs/reporting/**`, `docker-compose*.yml`, `charts/**`, `.github/**`, root manifests/lockfile | Team 5 hoặc ngoại lệ Chiến/Quang | Hoàng xuất job handler reporting; Team 5 đăng ký host; không tự sửa entrypoint/hạ tầng |
-| `agent-langgraph-agui/**`, các framework sample khác | Team 5 | Chỉ tham khảo; Reception chính dùng TypeScript đã thống nhất |
-
-Trong nhóm, cần sửa file khác owner thì gửi yêu cầu với chữ ký interface và test mong đợi. Owner thực hiện thay đổi; không chặn các phần độc lập còn lại. Shared fixture `tests/support/` do Phan Hoàng duy trì, fixture riêng giữ trong folder test của người viết.
-
-## 4. Cây cấu trúc và hướng phụ thuộc
+AI phải mở đầu kết quả làm việc bằng bốn dòng:
 
 ```text
-agent-reception/
-  src/
-    index.ts                       Phan Hoàng: nối tất cả dependency
-    config.ts                      Phan Hoàng
-    contracts/                     Phan Hoàng: interface nội bộ
-    graph/                         Phan Dũng
-    prompts/                       Phan Dũng
-    tools/                         Dương Dũng
-    adapters/
-      backend/                     Dương Dũng
-      transport/                   Phan Hoàng
-      events/                      Phan Hoàng
-      model/                       Phan Hoàng
-    persistence/                   Phan Hoàng
-    observability/                 Phan Hoàng
-  tests/                           Phân chia theo mục 3
+Thành viên: <tên>
+Task: <task ID>
+Folder được phép sửa: <danh sách>
+Dependency đang dùng: <đã có | còn thiếu>
 ```
 
-Graph phụ thuộc interface tool/model/checkpointer, không import HTTP server hoặc tự tạo database pool. Tools phụ thuộc backend client, không import graph. Entrypoint của Phan Hoàng tạo dependency rồi truyền vào graph. Không tạo vòng import giữa graph và tools. Module không tự khởi động server/job khi được import trong test.
+## 2. Phạm vi Team Hoàng
 
-Hợp đồng nền tảng từ `shared/contracts/` do Chiến cung cấp; `src/contracts/` chỉ mô tả các port nội bộ. Không sao chép DTO để tự sửa thành một API khác. Tên interface dưới đây là đề xuất cho buổi chốt đầu tiên, chưa phải code có sẵn:
+Team Hoàng chịu trách nhiệm:
 
-| Interface | Người chốt | Người cung cấp/tiêu thụ | Nội dung phải thống nhất |
-|---|---|---|---|
-| `VerifiedReceptionContext` | Phan Hoàng, đối chiếu C06 | Transport/persistence → graph/tools | Principal, tenant, user khởi tạo, binding, run, quyền hạn được backend xác minh; không đồng nhất customer và service principal |
-| `ReceptionToolPort` | Phan Hoàng + Dương Dũng | Tools → graph | Operation, validated payload, typed result/error, idempotency key, cancellation/timeout |
-| `ReceptionGraphFactory` | Phan Hoàng + Phan Dũng | Graph → entrypoint | State/schema version, model/tool/checkpointer injection, stream/interrupt/resume và result |
-| `ReceptionResumeEvent` | Phan Hoàng | Backend/event adapter → graph | Event ID, aggregate version, ticket/generation, binding/interrupt; xác thực nguồn và dedup |
-| `ReportTemplateConfig` | Phan Dũng, Phan Hoàng tích hợp | Template → builder Chiến/runtime Đông | Template/schema version, loại báo cáo, metric IDs, scope selection, kỳ/timezone, định dạng; quyền do backend xác minh |
-| `ReportDataPort` / `ReportPersistencePort` | Phan Hoàng + Dương Dũng, Chiến cung cấp implementation | Report application → backend | Authorized snapshot/as_of, dataset/metric version/hash, request/source/result lifecycle, idempotency/cancel |
-| `ReportArtifactPort` | Phan Hoàng, đối chiếu C07/C14 | Renderer/job → storage backend | File nội bộ, MIME/hash, access check; không public URL |
+- Reception Agent cố định bằng LangGraph/Python.
+- Tool client để Reception gọi API nghiệp vụ qua backend.
+- Runtime, checkpoint, interrupt/resume và tích hợp Reception.
+- Template, tool, nội dung và xuất file của Report Agent để BQL tạo agent báo cáo.
 
-Phan Hoàng chỉ commit interface sau khi hai consumer liên quan thống nhất. Phiên bản hóa thay đổi state; không sửa shape state làm checkpoint cũ không đọc được mà thiếu kế hoạch migrate hoặc chấm dứt phiên có kiểm soát.
+Team Hoàng không sở hữu database/migration, frontend, API nghiệp vụ chính, routing BQL, Supervisor/AgentScope groupchat, RAG ingestion hoặc hạ tầng triển khai toàn hệ thống.
 
-## 5. Task cụ thể cho Phan Dũng
-
-| Mã | Công việc | Dependency | Tiêu chí bàn giao |
-|---|---|---|---|
-| PD01 | State và graph factory: intake, clarify, awaiting tool, awaiting resident, handoff, completion | PH01 interface | Graph chạy với fake ports trong test, không cần LLM/network; phân biệt facts xác nhận với suy luận |
-| PD02 | Hội thoại tiếp nhận: loại yêu cầu, căn hộ cần chọn, mô tả/ảnh còn thiếu; tạo ticket sau xác minh bằng tool | PD01, DD02; C03/C04 khi tích hợp | Nhiều căn hộ không tự chọn; tool từ chối quyền thì không tiếp tục; câu hỏi không lặp vô hạn |
-| PD03 | Đề xuất assessment và phản hồi tiến độ; không tự ghi priority hoặc quyết định ban quản lý | DD02, PH03; C05/C08 | Thiếu facts cần hỏi/review; thông báo đúng ticket và không nói hoàn thành khi chỉ accepted |
-| PD04 | Luồng self-help: hỏi đồng ý, hướng dẫn đúng procedure version, khách từ chối/thất bại/dừng → handoff; giá diễn đạt từ tool | DD03; C13/Q07/Q08 | Không suy từ “nhẹ” ra “được tự sửa”; không tự sinh thao tác ngoài quy trình; không bịa số khi thiếu giá |
-| PD05 | Eval tiếng Việt và prompt version: đa ticket, mơ hồ, thiếu dữ liệu, prompt injection, self-help, giá | PD02–PD04 | Dataset có expected behavior và source/version; báo failure cases và kết quả; không dùng real PII |
-| PD06 | Template Report: bộ câu hỏi tạo agent, config JSON Schema, metric selection, prompt hệ thống và examples preview | C01/C09/C14/D02 contract; PH06 | BQL chỉ cấu hình chứ không code; phân biệt template/version với instance của BQL; không cấu hình SQL/tool tùy ý |
-| PD07 | Narrative/layout báo cáo ticket/SLA/phân công, empty/partial/error states, prompt eval chống bịa số | PD06, DD05/DD06 schema | LLM diễn giải số đã tính; mọi nhận xét có nguồn; không đồng nhất lỗi truy vấn với số 0; layout bàn giao renderer |
-
-Không tạo rule quyết định nguy hiểm/giá bằng prompt thay policy backend. Không tự học/publication procedure từ lời cư dân. Đối với giá, giữ nguyên khoảng/tiền tệ/điều kiện tool đã trả; nếu cần diễn đạt số tiền phải có deterministic formatting test.
-
-## 6. Task cụ thể cho Dương Dũng
-
-| Mã | Công việc | Dependency | Tiêu chí bàn giao |
-|---|---|---|---|
-| DD01 | Backend client, schema validation, errors, timeout, trace/correlation; mock contract server cho test | PH01; C01/C06 contract | Validate cả response; không log secret; token audience/expiry đúng; không retry mọi mutation vô điều kiện |
-| DD02 | Tools context cư dân, create/read/update ticket, submit assessment, trạng thái và file metadata được cấp quyền | DD01; C03/C04/C05/C07 | Tool chỉ gọi API đã authorize; identity không lấy từ model; duplicate request không tạo việc trùng |
-| DD03 | Tools quy trình/eligibility, self-help lifecycle/handoff, price estimate; map typed outcomes cho graph | DD01; C13/Q07/Q08 | Chưa published/expired/revoked không được dùng; declined/failed gọi backend đúng ticket; giá không tự tính trong wrapper |
-| DD04 | Contract tests và failure matrix: 401/403/404, stale version, 409, 429, timeout, response sai schema, lỗi dịch vụ | DD02/DD03 | Lỗi retryable/permanent được phân biệt; tool result không tuyên bố mutation thành công khi timeout chưa xác định |
-| DD05 | Metric catalog và report tools: validate scope/kỳ/timezone/filter; định nghĩa tử/mẫu số, reopen/cancel, version và query template IDs | PD06, PH06; C14 data contract | Report query allowlist; KPI tính bằng code, không LLM/SQL tự sinh; test boundary kỳ `[from,to)` |
-| DD06 | Application pipeline create request → snapshot → metrics → sources → render request/status; idempotency và error/cancel | DD05; C14 persistence/data ports, PH07 render port | Nguồn/row count/hash truy vết được; snapshot nhất quán; cross-scope bị từ chối; retry không sinh báo cáo chính thức đúp |
-
-Giới hạn rõ: Quang xây `find_self_help_procedure` và `estimate_repair_price` ở backend; Dương Dũng chỉ xây **client/tool wrapper của Reception** để gọi chúng. Chiến làm actual-cost API và dữ liệu; Dương Dũng không tạo thêm bảng giá hoặc đọc PostgreSQL trực tiếp.
-
-Idempotency key thuộc operation bền vững của phiên, được tạo/lưu trước khi gọi backend; không đổi key mỗi lần retry, không chỉ dùng `run_id` vì một run có nhiều thao tác. Dương Dũng cùng Phan Hoàng chốt cách lưu key và truy hồi kết quả khi response bị mất.
-
-## 7. Task cụ thể cho Phan Hoàng
-
-| Mã | Công việc | Dependency | Tiêu chí bàn giao |
-|---|---|---|---|
-| PH01 | Package Reception, config/model factory, interface nội bộ, healthcheck và test harness; kế hoạch reuse sample | C01/P01 phối hợp | Có scripts cài/chạy/test/typecheck thực; không thêm root workspace/lockfile ngoài quyền; health không lộ config secret |
-| PH02 | AG-UI transport, service authentication và binding resolver theo backend C06 | PH01, DD01; C06 | Không tin thread/user/tenant từ browser; ownership được kiểm tra trước read/run/resume; streaming lỗi kết thúc đúng |
-| PH03 | Durable checkpoint adapter, interrupt/resume, lease/fencing, event dedup, cancel và recovery | PH02; C06/P02, C08/D04 cho events | Restart không mất phiên; hai replica không chạy side effect đúp; event lặp/stale không resume sai ticket |
-| PH04 | Nối graph/tools/model/persistence; integration intake, notification, self-help và price | PD02–PD04, DD02/DD03, PH03 | Hai user/hai ticket không lẫn context; error/handoff đi hết luồng; không có production mock |
-| PH05 | Telemetry đã lọc dữ liệu, runtime/restart tests, tài liệu vận hành và bàn giao cho Team 5 | PH04, PD05, DD04 | Trace nối request/run/ticket; có test/known limits; runtime outage không mất trạng thái hoặc lộ nội dung khách khác |
-| PH06 | Contract/manifest Report và tích hợp template với builder Chiến, runtime AgentScope Đông; review gap DB request/source/version | PD06/DD05 cùng chốt contract; C09/C14/D08 | Report agent do BQL tạo chạy như subagent riêng; không sửa code runtime Đông hoặc UI Chiến; pin release/template/metric version |
-| PH07 | Renderer DOCX, artifact adapter, export job và integration tests; runtime registration qua owner | DD06 interface, PD07 layout; C07/C14/P03 | File đúng nguồn/scope; render kiểm tra bố cục; download kiểm tra quyền lại; cancel/retry/revoke không công bố sai artifact |
-
-Phan Hoàng chịu trách nhiệm **adapter checkpoint của LangGraph**, không tự thêm cột vào checkpoint framework hoặc triển khai DB nghiệp vụ C06. Phải pin dependency và kiểm chứng capability thật; RAM-only saver chỉ được dùng cho unit test. Credential framework storage tách quyền với database nghiệp vụ.
-
-Event ingress là consumer thông báo đã được backend authorize, không tự dựng notification service thứ hai. Không giữ HTTP request mở nhiều giờ chờ nhân viên xử lý; persist wait/interrupt và resume khi có sự kiện phù hợp.
-
-## 8. Thứ tự làm song song và điều kiện tích hợp
-
-Reception và Report là **hai luồng song song**. Từ H-A: PD06 chốt cấu hình, DD05 chốt metric/data contract, PH06 chốt integration với Chiến/Đông. Không phụ thuộc Report vào self-help/giá để có thể demo report ticket trước; actual-cost/self-help metrics chỉ thêm khi C13 có dữ liệu chuẩn.
-
-### Mốc H-A: chốt hợp đồng và khởi tạo
-
-- Phan Hoàng làm PH01, thống nhất interface và state version với hai thành viên; gửi yêu cầu C01/C06/P01.
-- Phan Dũng làm PD01 bằng port giả trong test và viết trước tình huống PD05.
-- Dương Dũng làm DD01 với contract fixture được thống nhất; chưa có backend thật phải ghi rõ blocked integration, không gọi mock là đã tích hợp.
-
-### Mốc H-B: intake chạy thật
-
-- Dương Dũng hoàn thành DD02; Phan Dũng nối PD02/PD03; Phan Hoàng nối PH02 và persistence tối thiểu của PH03.
-- Nghiệm thu: khách đăng nhập, chọn căn hộ hợp lệ, tạo đúng một ticket dù gửi lại, nhận trạng thái đúng người. Backend quyết định routing và triage.
-
-### Mốc H-C: session bền vững
-
-- Phan Hoàng hoàn thiện PH03; Dương Dũng kiểm tra idempotency/timeouts; Phan Dũng xử lý interrupt/restart trong graph.
-- Nghiệm thu: restart giữa tool call; khách B thử thread A; callback lặp/out-of-order; một khách có hai ticket; quyền vừa bị thu hồi. Không lỗi nào được che bằng tạo phiên hoặc ticket mới tùy tiện.
-
-### Mốc H-D: học kinh nghiệm và giá
-
-- C13/Q07/Q08 cung cấp contract/schema trước, rồi service thực để đóng task. Team Hoàng không cần đợi mới viết test nhưng không được đóng nghiệm thu chỉ bằng stub.
-- Dương Dũng làm DD03, Phan Dũng làm PD04; Phan Hoàng tích hợp PH04 và recovery.
-- Nghiệm thu: procedure được duyệt → tìm đúng → đồng ý/từ chối → ghi outcome/handoff; tool giá trả đủ/thiếu dữ liệu → Reception trả lời đúng; không hardcode 500.000–1.000.000 đồng.
-
-### Mốc H-E: bàn giao
-
-PD05 + DD04 + PH05 hợp thành báo cáo H06. PD06/PD07 + DD05/DD06 + PH06/PH07 bàn giao H08–H10. Team 5 chạy E2E với backend/RAG/Coordination thực. Chỉ đóng H01–H10 khi dependency trong kế hoạch tổng thể và các luồng thật đã đạt.
-
-### Luồng Report phải demo trước khi bàn giao
-
-1. Hai tài khoản BQL chọn cùng template Report qua UI Chiến; chọn chỉ số, kỳ, scope được cấp và cấu hình riêng; preview rồi publish agent/release.
-2. Đông nạp hai Report agent vào hai groupchat; Hoàng cung cấp manifest/prompt/tools, không tự tạo groupchat thứ ba.
-3. BQL yêu cầu báo cáo từ message thật. Backend xác minh scope và tạo report request; tool/application Dương Dũng lấy dataset snapshot qua data port Chiến, tính KPI và ghi nguồn.
-4. Narrative Phan Dũng diễn giải kết quả; job/renderer Phan Hoàng tạo DOCX qua storage backend, trả artifact có quyền và trace đến request/source.
-5. Cố truy xuất report khác BQL, revoke grant giữa run/download, retry job và dữ liệu thiếu đều phải có test. Mốc dữ liệu và thuật toán được pin; `as_of` không tự bảo đảm truy vấn lịch sử nếu chưa có snapshot/history.
-
-MVP: báo cáo ticket theo trạng thái/loại/kỳ, SLA và phân công/kết quả xử lý, định dạng DOCX. Chốt chi tiết metric và layout với BQL; không tự thêm lịch gửi email định kỳ, PDF/XLSX hoặc báo cáo tài chính. Nếu được yêu cầu thêm, cập nhật task/contract trước triển khai.
-
-## 9. Ai phối hợp với team ngoài?
-
-| Chủ đề | Đầu mối Team Hoàng | Team nhận yêu cầu |
-|---|---|---|
-| API ticket/context/assessment/files và typed errors | Dương Dũng | Chiến |
-| Binding, quyền runtime, lease, checkpoint infrastructure, event resume | Phan Hoàng | Chiến + Team 5 |
-| Retrieval quy trình, giá tham khảo, metadata eligibility | Dương Dũng, Phan Dũng review nhu cầu hội thoại | Quang + Chiến |
-| Kết quả xử lý từ supervisor và chờ người phê duyệt | Phan Hoàng, Phan Dũng review nội dung phản hồi | Đông + Chiến |
-| Nghiệp vụ hỏi/đáp, điều kiện tự sửa, câu trả lời mẫu | Phan Dũng | Chủ sản phẩm/người phụ trách nghiệp vụ; Chiến hiện thực policy |
-| Build/deploy, secret, observability và E2E | Phan Hoàng | Team 5 |
-| Report template, câu hỏi builder, layout và bộ chỉ số BQL cần | Phan Dũng | Chiến (UI), BQL/chủ sản phẩm |
-| Report data/persistence, snapshot/as_of, query allowlist và provenance | Dương Dũng | Chiến C14 |
-| Report manifest/runtime/tool grants và artifact worker | Phan Hoàng | Đông D08, Chiến C07/C09/C14, Team 5 P03/P04 |
-
-Yêu cầu ngoài scope phải ghi: task ID, endpoint/port cần có, request/response schema, auth/idempotency/error semantics, fixture, test mong đợi và phần đang bị chặn. Các điều kiện chuyên môn phải do người có thẩm quyền xác nhận, không do team Reception tự đặt theo phỏng đoán.
-
-## 10. Quy tắc tránh xung đột và tiêu chí hoàn thành
-
-1. Mỗi AI nhận rõ **tên người + mã task**. Nếu chỉ nói “Team Hoàng”, AI phải xác định thành viên trước khi sửa file có owner khác.
-2. Làm trong clone/worktree riêng do người điều phối chuẩn bị. Không chạy ba AI cùng sửa một thư mục làm việc. Theo yêu cầu hiện tại chỉ làm `develop`; không tự tạo/sửa nhánh khác hoặc force-push. Phan Hoàng điều phối thứ tự tích hợp; mỗi người commit đúng file/task của mình, không dùng `git add -A` khi có thay đổi người khác.
-3. Thay interface chung phải cập nhật consumer test và bàn giao, không gửi type mới rồi để người khác tự đoán. Không chép dữ liệu fixture thành giá/quy trình mặc định production.
-4. Các test riêng nằm trong folder owner; test integration của Phan Hoàng kiểm tra kết nối các module. Không sửa test của người khác để che lỗi interface.
-5. Task hoàn tất có code, test phù hợp, bằng chứng chạy, dependency thực, hướng dẫn cấu hình và handoff. Phân biệt mock/model giả, backend thật và model thật trong kết quả.
-6. Không cần gọi LLM thật trong mọi unit test. Dùng scripted model/tool để kiểm tra state transition và các trường hợp lỗi; eval model thật dùng dataset/version/quota được thống nhất.
-7. Phan Hoàng tạo scripts `test`/`typecheck` trong PH01 và ghi lệnh thực vào README; chưa có manifest thì không giả các lệnh đó đã chạy được. Mọi người chỉ chạy test phù hợp task, không chạy migration production.
-
-Checklist chung trước đóng H07:
-
-- Khách có thể yêu cầu kỹ thuật viên ngay, không bị buộc tự sửa.
-- Unknown facts/thiếu hướng dẫn phù hợp không bị diễn giải thành an toàn; emergency theo workflow triage, không chờ Retrieval/ảnh mới cảnh báo.
-- Nội dung chưa publish/đã revoke không được sử dụng; nếu revoke giữa phiên, kiểm tra lại và dừng/handoff.
-- Khách xác nhận kết quả; gửi hết hướng dẫn không được tự đóng ticket. Chờ khách không tự pause SLA.
-- Giá hiển thị đúng số/tiền tệ/điều kiện tool trả; thiếu dữ liệu phải thể hiện rõ, không đưa giá của khách khác làm ví dụ cá nhân.
-- Resume/retry không tạo trùng ticket, assessment, self-help attempt hay yêu cầu phân công.
-- Log/trace không chứa credential, full checkpoint hoặc PII không cần thiết.
-
-## 11. Mẫu prompt cho AI từng người
+Luồng Reception bắt buộc:
 
 ```text
-Tôi là <Phan Dũng | Dương Dũng | Phan Hoàng>, thuộc Team Hoàng.
-Task hôm nay: <PD01–PD07 | DD01–DD06 | PH01–PH07>.
-
-Đọc:
-1. docs/KE_HOACH_HOAN_THIEN_5_TEAM.md
-2. docs/teams/hoang/PHAN_CONG_3_THANH_VIEN.md
-3. docs/THIET_KE_HOC_KINH_NGHIEM_SELF_HELP_GIA.md nếu task liên quan self-help/giá.
-
-Kiểm tra git status, code hiện tại và AGENTS.md áp dụng.
-Chỉ sửa folder/file thuộc người được nêu, không chỉ dựa vào quyền chung Team Hoàng.
-Phân biệt đường dẫn dự kiến với module/API đã tồn tại; đọc contract version thực.
-Không sửa nhánh khác, force-push, migration/database thật hoặc file owner khác.
-Nếu thiếu dependency, ghi request tại docs/teams/hoang/requests/<slug-của-tôi>/,
-rồi tiếp tục phần độc lập có thể làm trong phạm vi của tôi.
-Mock chỉ dành cho test, không dùng để giả hoàn thành tích hợp production.
-Triển khai và kiểm thử task, ghi handoff tại docs/teams/hoang/handoffs/<slug-của-tôi>/.
-Báo file sửa, kết quả test, dependency chưa có và giới hạn còn lại.
+Tin nhắn → assess_request + policy
+         ├─ câu hỏi kiến thức → retrieval → trả lời có nguồn
+         ├─ cần làm rõ → chờ cư dân
+         ├─ self-help được phép → quy trình đã duyệt
+         └─ cần nhân viên/khẩn cấp
+                → tạo một ticket draft
+                → lấy hồ sơ cư dân đã xác minh
+                → thu mô tả + file_ids
+                → triage chính thức
+                → backend resolve destination/workspace
+                → handoff schema đã kiểm tra
+                → đăng ký wait → interrupt()
+                → event Supervisor → resume đúng ticket/session
 ```
 
-Slug tương ứng: `phan-dung`, `duong-dung`, `phan-hoang`. Team Hoàng có quyền module reporting được ghi rõ ở mục 3; không có quyền sửa backend khác, DB, UI, RAG hay supervisor. Nếu xung đột với kế hoạch tổng thể, giữ giới hạn hẹp hơn và yêu cầu làm rõ trước khi sửa ngoài phạm vi.
+Một hộp chat chỉ có một `active_ticket_id`. Ảnh lưu ở S3/MinIO do backend quản lý; Reception chỉ giữ `file_id` và `source_message_id`.
+
+## 3. Baseline đã hoàn thành — không làm lại
+
+### 3.1. Phan Dũng — `DONE`
+
+- Workflow Python đã có node phân loại, knowledge/self-help, tạo ticket, hồ sơ, incident, triage, routing, handoff và active-ticket dialogue.
+- LLM chỉ đề xuất hành động; policy và code quyết định nhánh thực thi.
+- Graph giữ `pending_file_refs` qua nhiều lượt hỏi hồ sơ, chống trùng và không ghi đè ảnh cũ bằng lượt mới.
+- Hỗ trợ tin nhắn chỉ có ảnh, ảnh trước khi chọn căn hộ và ảnh bổ sung sau handoff.
+- Graph yêu cầu backend xác nhận ảnh đã được liên kết trước khi xóa pending reference.
+
+File nền:
+
+- `agent-reception/src/graph/workflow.py`
+- `agent-reception/src/graph/workflow_validation.py`
+- `agent-reception/src/graph/workflow_contracts.py`
+- `agent-reception/src/prompts/workflow.py`
+- `agent-reception/tests/graph/test_image_references.py`
+
+### 3.2. HTTP tool adapter — `DONE_BASELINE`, chuyển ownership cho Phan Hoàng
+
+- Đã có `BackendToolPort` dùng HTTP, endpoint cấu hình được.
+- Request mutation giữ nguyên `idempotency_key` khi retry.
+- Đã kiểm tra `file_ids`, loại trùng và yêu cầu `linked_file_ids` từ backend.
+- Ca timeout liên tiếp đã có test trả `unknown`, không tự tạo key mới. Review PH16 phát hiện chuỗi 503/`not_applied` rồi mất response trả nhầm kết quả cũ; lỗi này được giao PH17 ở mục 5.3.2.
+- Đã có contract test bằng HTTP backend giả lập.
+
+Phần baseline này do Dương Dũng đã hoàn thành ở giai đoạn trước. Từ lần cập nhật này, mọi thay đổi mới trong `agent-reception/src/tools/**` và `agent-reception/tests/tools/**` thuộc Phan Hoàng; AI của Dương Dũng không tiếp tục chọn task Reception tool.
+
+File nền:
+
+- `agent-reception/src/tools/backend.py`
+- `agent-reception/tests/tools/test_backend.py`
+
+### 3.3. Phan Hoàng — `DONE` trong phạm vi local/contract
+
+- Đã có SQLite checkpointer bền vững cho local/test.
+- Restart runtime có thể đọc lại state, `active_ticket_id` và file references.
+- Đã có validator snapshot phục hồi từ backend khi checkpoint chưa tồn tại.
+- Đã có `BackendSessionResolver` với endpoint cấu hình được.
+
+File nền:
+
+- `agent-reception/src/persistence/sqlite.py`
+- `agent-reception/src/persistence/recovery.py`
+- `agent-reception/src/adapters/backend/session.py`
+- `agent-reception/tests/persistence/test_sqlite.py`
+- `agent-reception/tests/adapters/backend/test_session.py`
+
+Mốc baseline trước PH16 có **158 Python tests đạt**. Mốc kiểm thử code `df5eccd` sau PH16 có **332 đạt, 5 thất bại**: 4 ca AD01 thuộc PH17 và 1 ca AD02 thuộc tích hợp graph/PD11. Năm ca thất bại thuộc hai vấn đề, không phải năm lỗi độc lập. Xem [handoff PH16](handoffs/phan-hoang/PH16.md), [kịch bản và kết quả kiểm thử](handoffs/phan-hoang/PH16_ADVERSARIAL_TESTS.md) và [request chuyển consumer/API](requests/phan-hoang/PH16_TYPED_TOOLS_INTEGRATION.md). Những kết quả local này chưa chứng minh endpoint thật, auth thật, PostgreSQL nhiều replica hoặc Supervisor thật đã tích hợp.
+
+## 4. Quyền sở hữu folder
+
+| Thành viên | Được sửa | Không được sửa trực tiếp |
+|---|---|---|
+| **Phan Dũng** | `agent-reception/src/graph/**`, `src/prompts/**`, `tests/graph/**`, `tests/evals/**`; `agent-report/templates/**`, `schemas/**`, `prompts/**`, `examples/**`; `server/src/reporting/narrative/**`, `layouts/**` | HTTP/backend adapter, persistence, transport, DB, Supervisor |
+| **Dương Dũng** | `server/src/reporting/tools/**`, `metrics/**`, `application/**` và test tương ứng | Toàn bộ `agent-reception/**`, graph, prompt, session resolver, persistence, DB/migration |
+| **Phan Hoàng** | `agent-reception/src/tools/**`, `tests/tools/**`, `src/persistence/**`, `src/adapters/backend/session.py`, `src/adapters/transport/**`, `src/adapters/events/**`, `src/adapters/model/**`, `src/observability/**`, `src/index.*`, `src/config.*`, `tests/persistence/**`, `tests/runtime/**`, `tests/integration/**`, `tests/adapters/backend/test_session.py`, package config/README; phần Report runtime ở mục 5.3 | Logic graph/prompt, API backend, DB/migration, UI, AgentScope Supervisor |
+
+Quy tắc file dùng chung:
+
+- `agent-reception/src/graph/workflow_contracts.py`: Phan Dũng sở hữu. Phan Hoàng gửi request nếu Reception tool cần đổi graph contract; không sửa âm thầm.
+- `agent-reception/src/tools/**` và `agent-reception/tests/tools/**`: Phan Hoàng sở hữu. Dương Dũng không sửa các file này.
+- `agent-reception/requirements.txt`, package config và test bootstrap chung: Phan Hoàng sở hữu.
+- `docs/SCHEMA_RECEPTION_SUPERVISOR_V1.md`: contract liên team; chỉ sửa sau khi Hoàng, Đông và Chiến chốt thay đổi.
+- `agent-reception/src/adapters/backend/session.py`: Phan Hoàng sở hữu; Dương Dũng không sửa file này.
+
+## 5. Hàng đợi công việc mới
+
+### 5.1. Phan Dũng — graph, prompt và nội dung Report
+
+Slug: `phan-dung`.
+
+| Task | Trạng thái | Công việc | Nghiệm thu |
+|---|---|---|---|
+| **PD11** | `READY` | Ưu tiên tiếp nhận PH16: chuyển graph sang 14 method có kiểu và message V2 đã chốt; approval/completion theo `message_type` | Graph gọi `ReceptionTools`; đúng input/output, context, ticket/version; giữ pending khi accepted/unknown; test graph + facade + HTTP và interrupt/resume V2 đạt; phạm vi local ở mục 5.1.1 |
+| **PD09** | `READY` | Sửa lifecycle khi ticket đang chờ Supervisor nhưng Reception vừa trả lời knowledge hoặc từ chối sự cố mới | Event Supervisor đến sau lượt trả lời vẫn resume được; không còn `INTERRUPT_MISMATCH`; không tạo ticket thứ hai |
+| **PD10** | `DONE_BASELINE` | State ảnh: ảnh chờ, ảnh đã link, ảnh của sự cố mới và ảnh trong câu trả lời interaction | Đã có logic và test; không chọn lại trừ khi test hồi quy thất bại |
+| **PD12** | `READY` | Mở rộng eval tiếng Việt cho knowledge, giá tham khảo, self-help, emergency, active ticket và prompt injection | Dataset không có PII thật; assert node, tool calls và state cuối |
+| **PD13** | `READY` | Hoàn thiện template/config/prompt Report Agent cho ba báo cáo: nhân viên, doanh thu sửa chữa, tần suất sự cố | Metric chỉ lấy từ tool; thiếu dữ liệu khác 0; hiển thị kỳ, timezone, scope, nguồn và phiên bản metric |
+| **PD14** | `READY` | Narrative/layout cho báo cáo complete/partial/empty/error | Không bịa KPI; số liệu và nhận xét truy được nguồn; fixture render ổn định |
+
+AI của Phan Dũng không viết HTTP client hoặc persistence. Khi cần Reception tool mới, mô tả input/output/error cho Phan Hoàng qua request.
+
+#### 5.1.1. PD11 — Phan Dũng tiếp nhận consumer PH16
+
+**Lý do chuyển từ `BLOCKED_CONTRACT` sang `READY`:** [schema message V2](../../SCHEMA_RECEPTION_SUPERVISOR_V1.md) đã chốt ngày 01/10/2026; tools và fixture local có tại `df5eccd`. PD11 làm consumer/test local theo schema này và review đề xuất `ph16.draft.1` với Phan Hoàng. OpenAPI hai endpoint và event resolver thật chưa được freeze; phần đó vẫn chờ PH18/PH13, không được coi contract local là API producer chính thức.
+
+Đầu vào: [PH16_TYPED_TOOLS_INTEGRATION](requests/phan-hoang/PH16_TYPED_TOOLS_INTEGRATION.md), `src/tools/contracts.py`, `facade.py`, `validation.py` và fixture trong `tests/tools/`. Các đường dẫn code ở mục này tính từ `agent-reception/`.
+
+1. Sửa `src/graph/workflow_contracts.py`, `workflow.py`, `workflow_validation.py` và test graph thuộc quyền Phan Dũng: protocol/node gọi method có kiểu cho đủ 14 operation, không tự ghép generic request tùy ý hoặc lấy tên operation từ LLM. Điều chỉnh prompt trong phạm vi cần cho enum V2.
+2. Chỉ truyền context đã xác thực gồm `tenantId`, `principalId`, `bindingId`, `runId`, `requestId`; giữ timeout/cancellation ở runtime budget. Không đưa `timeoutMs`, `signal`, checkpoint hoặc permissions vào strict tool envelope.
+3. Chuyển input/output theo bảng mapping trong request: handoff dùng ticket triple/correlation/reason; event dùng `message_type/message`; interaction giữ version cư dân đã thấy; không suy câu “đồng ý” mơ hồ thành approval. Không tự dựng routing, version hay các ID còn thiếu từ dữ liệu V1.
+4. Lưu input/key trước side effect; phân nhánh `success/accepted/failure` đúng kiểu. Giữ pending và file reference khi accepted/unknown hoặc lỗi decode sau HTTP; chỉ xóa file pending khi backend xác nhận. Phối hợp Phan Hoàng chốt version marker và xử lý checkpoint cũ, không tự relabel/replay V1 thành V2 hoặc reset session.
+5. Nghiệm thu bằng graph thật gọi facade/HTTP mock: đủ chuỗi tám operation đầu ở mục 5.3.1, interrupt/resume V2, pending qua phục hồi, event sai scope/version bị chặn, không mất ảnh hoặc tạo ticket thứ hai. `completed` vẫn cần kiểm trạng thái đóng ticket từ backend.
+
+**Test lỗi cần tiếp nhận (AD02):** `tests/tools/test_adversarial.py::test_existing_graph_can_reach_http_with_new_backend_port` hiện FAIL với `waiting_operation`, pending `create_ticket_draft`, HTTP calls = 0. Phan Dũng sửa consumer và thêm test trong `tests/graph/**`; Phan Hoàng cập nhật test tích hợp thuộc `tests/tools/**` hoặc `tests/integration/**` để inject `ReceptionTools(BackendToolPort(...))` theo interface đã thống nhất. Test sau chuyển đổi phải kiểm cả luồng, không chỉ số HTTP request lớn hơn 0. Không skip test hoặc nới validator để nhận lại envelope sai.
+
+PD11 bàn giao consumer cho Phan Hoàng nghiệm thu lại PH16 và wiring PH09. Lỗi retry AD01 do PH17 xử lý, không chuyển ownership HTTP adapter cho Phan Dũng.
+
+### 5.2. Dương Dũng — Report tools
+
+Slug: `duong-dung`.
+
+| Task | Trạng thái | Công việc | Nghiệm thu |
+|---|---|---|---|
+| **DD12** | `READY` | Thiết kế tool Report: filter options, employee performance, feedback details, repair revenue, incident frequency, supporting records, export và export status | Input có kỳ/timezone/scope; output có as-of, metric version, missing-data và source references |
+| **DD13** | `READY` | Viết Report tool wrapper và fake backend contract tests | Không raw SQL; không nhận scope do model tự khai; retry/idempotency đúng side effect class |
+| **DD14** | `BLOCKED_API` | Nối Report tools với backend dữ liệu thật của Chiến | Hai BQL không đọc chéo; doanh thu phân biệt charged/collected; frequency đếm ticket, không đếm message |
+
+Các task Reception cũ `DD09`–`DD11` đã chuyển thành `PH16`–`PH18`. AI của Dương Dũng không được chọn hoặc tiếp tục các task cũ này.
+
+Ba định nghĩa Report bắt buộc:
+
+- Đánh giá nhân viên: số việc, hoàn thành, đúng hạn, thời gian xử lý, rework, điểm trung bình và số lượt đánh giá.
+- Doanh thu sửa chữa: tiền tính phí, thực thu, còn phải thu; phân biệt ngày hoàn thành và ngày thanh toán.
+- Tần suất sự cố: nhóm điện/nước/... theo taxonomy chuẩn; tách `incident` khỏi `service_request`.
+
+AI của Dương Dũng không tự tạo API backend hoặc đọc PostgreSQL trực tiếp.
+
+### 5.3. Phan Hoàng — Reception tools, runtime, persistence và tích hợp
+
+Slug: `phan-hoang`.
+
+Folder Report được sửa thêm:
+
+- `agent-report/manifest.json`, `agent-report/README.md`
+- `server/src/reporting/contracts/**`, `rendering/**`, `adapters/**`, `index.*`
+- `worker/src/jobs/reporting/**` và test tương ứng
+
+Folder Reception tool Phan Hoàng sở hữu:
+
+- `agent-reception/src/tools/**`
+- `agent-reception/tests/tools/**`
+- Phần wiring tool port tại `agent-reception/src/index.*`, `src/config.*` và test integration thuộc phạm vi Phan Hoàng
+
+| Task | Trạng thái | Công việc | Nghiệm thu |
+|---|---|---|---|
+| **PH16** | `READY_PARTIAL` | Đã có facade/validator strict cho 14 operation tại `df5eccd`; tiếp nhận consumer PD11 để hoàn tất nghiệm thu, không làm lại phần tools đã có | Đạt local typed contract/system-internal; còn thiếu graph gọi facade và test tích hợp. Chỉ DONE khi điều kiện consumer đạt; API thật thuộc PH18 |
+| **PH17** | `READY` | Ưu tiên sửa AD01: retry mất response không dùng lại `not_applied` cũ; hoàn thiện execute/reconcile, idempotency, file confirmation và lỗi có cấu trúc | 4 ca AD01 đạt; phân biệt `not_applied`/`unknown`; giữ body/key; đủ ma trận HTTP/timeout/duplicate, không log token/PII; chi tiết mục 5.3.2 |
+| **PH18** | `BLOCKED_API` | Ánh xạ contract tool vào hai endpoint thật của Team Chiến và chạy producer-consumer test | Chỉ hoàn thành khi có OpenAPI/JSON Schema; create/update/triage/route/handoff/wait/follow-up/status/cancel/self-help/emergency chạy với backend thật |
+| **PH09** | `READY` | Tạo Python runtime composition: config, model port, graph, tool port, resolver và checkpointer | Có entrypoint Python; config fail-fast; không dùng model TypeScript trực tiếp trong Python; test bằng injected ports |
+| **PH10** | `READY_PARTIAL` | Viết transport run/read/resume/stream với authenticated context interface | Không tin tenant/user/thread từ body; contract test request/resume; auth thật chờ Chiến |
+| **PH11** | `BLOCKED_DB` | Thay SQLite local bằng PostgreSQL checkpointer cho production; lease/fencing nhiều replica | Cần `TEST_DATABASE_URL`; restart và concurrent worker test đạt; không dùng SQLite production |
+| **PH12** | `READY_PARTIAL` | Event consumer + wait registry + buffered event + dedup | Có fake event-store integration test; event trước wait không mất; bus/outbox thật chờ Team 5/Chiến |
+| **PH13** | `BLOCKED_API` | Nối graph + tools + backend + Supervisor thật | Chạy E2E knowledge → ticket → handoff → interrupt → resume; không production mock |
+| **PH14** | `READY` | Observability và isolation | Trace có request/correlation/ticket ID đã lọc; hai tenant/thread không lẫn; không log ảnh URL/token/điện thoại đầy đủ |
+| **PH15** | `READY_PARTIAL` | Report manifest, renderer/export adapter và job contract | Preview chạy bằng fixture; file có source metadata; storage/job thật chờ Chiến/Team 5 |
+
+Phan Hoàng là đầu mối gửi contract cho Team Chiến và Team Đông, nhưng không sửa code của hai team thay họ.
+
+#### 5.3.1. Contract Reception tool Phan Hoàng phải triển khai
+
+Reception chỉ dùng hai cổng HTTP do Team Chiến cung cấp:
+
+```text
+POST /internal/reception/operations/execute
+POST /internal/reception/operations/reconcile
+```
+
+`execute` là transport dùng chung, không phải một tool mở cho model tự truyền tên operation. Phan Hoàng phải cung cấp facade có kiểu cho từng operation; LangGraph gọi facade theo node do code quyết định. `reconcile` là cơ chế phục hồi khi không biết mutation trước đã áp dụng hay chưa, không phải tool nghiệp vụ cho LLM.
+
+Operation bắt buộc:
+
+| Nhóm | Operation |
+|---|---|
+| Tạo và bàn giao ticket | `create_ticket_draft`, `get_verified_resident_context`, `update_ticket_incident`, `submit_ticket_assessment`, `resolve_management_destination`, `handoff_ticket`, `register_supervisor_wait`, `get_supervisor_event` |
+| Lượt chat tiếp theo | `append_ticket_information`, `respond_supervisor_interaction`, `request_ticket_cancellation`, `get_ticket_status` |
+| Nhánh đặc biệt | `process_self_help`, `escalate_emergency` |
+
+Envelope gọi backend:
+
+```json
+{
+  "operation": "<enum cố định>",
+  "input": {},
+  "context": {
+    "tenantId": "verified-context",
+    "principalId": "verified-context",
+    "bindingId": "verified-context",
+    "runId": "verified-context",
+    "requestId": "verified-context"
+  },
+  "idempotency_key": "stable-key"
+}
+```
+
+Phan Hoàng chịu trách nhiệm với input do Reception tạo: `channel_id`, `title`, `description`, `facts`, `file_ids`, `handoff_reason`, `source_message_id`, message/interaction và bộ ba `ticket_id`/`ticket_generation`/`ticket_version` backend đã trả. Phan Hoàng không tự điền hoặc tin dữ liệu hệ thống như tenant, cư dân, số điện thoại, căn hộ, tòa, domain, severity, priority, BQL, workspace, team hoặc Supervisor; backend phải tra cứu/xác minh và trả lại.
+
+Thứ tự luồng đầu tiên phải được contract test:
+
+```text
+create_ticket_draft
+→ get_verified_resident_context
+→ update_ticket_incident
+→ submit_ticket_assessment
+→ resolve_management_destination
+→ handoff_ticket
+→ register_supervisor_wait
+→ get_supervisor_event
+```
+
+Tiêu chí bắt buộc:
+
+- Mỗi mutation có idempotency key ổn định và reconcile được sau timeout/mất response.
+- `file_ids` được loại trùng; không xóa pending reference trước khi backend xác nhận liên kết.
+- Tool không nhận `workspace_id`, `management_unit_id`, `team_id` hoặc quyền do model tự khai.
+- Handoff chỉ thành công khi backend trả `persisted=true` và `enqueued=true` đúng correlation/ticket/version.
+- Response backend được validate trước khi cập nhật LangGraph state; lỗi contract không được biến thành thành công giả.
+- Không viết endpoint, query database hoặc logic routing của Team Chiến trong folder Reception.
+
+#### 5.3.2. PH17 — Phan Hoàng tiếp nhận retry và HTTP contract
+
+**Task READY đầu tiên của Phan Hoàng sau đợt bàn giao PH16.** Phạm vi: `agent-reception/src/tools/backend.py`, validator nếu cần và `agent-reception/tests/tools/**`. Giữ facade/contract PH16 đã có; không sửa graph của Phan Dũng để né lỗi transport.
+
+1. **Sửa AD01 trước:** `_post` giữ `last_response` của lần 503/`not_applied` rồi decode lại sau khi lần thử cuối mất response. Phải trả `unknown` khi không biết kết quả lần cuối, không kết luận chưa áp dụng từ response cũ. Body/key không đổi giữa retry/reconcile; không tạo mutation/key mới để “thử lại”.
+2. Chạy và làm đạt đủ **4 biến thể** của `tests/tools/test_adversarial.py::test_last_attempt_response_loss_must_not_reuse_previous_not_applied`: `ReadTimeout` và `RemoteProtocolError`, mỗi loại trên `invoke` và `reconcile`. Đây là lỗi của baseline HTTP, không phải lỗi schema V2. Xem bằng chứng trong [AD01](handoffs/phan-hoang/PH16_ADVERSARIAL_TESTS.md).
+3. Hoàn thiện ma trận 400/401/403/404/409/410/422/429/5xx/timeout/duplicate theo contract; giữ nghĩa của failure có cấu trúc, accepted, response sai/thiếu, cùng key khác body, hủy task và khôi phục bằng reconcile. Các ca mới đã có một phần coverage, không cần viết lại chỉ để tăng số test. Kiểm token/PII không lọt vào lỗi/log.
+4. Giữ các regression đang đạt: retry cùng body/key, receipt handoff đúng ticket/version/correlation, xác nhận đủ file, hai tenant không lẫn response. Không biến lỗi decoder sau HTTP thành `not_applied` hoặc success giả.
+
+**Nghiệm thu PH17:** bốn ca AD01 chuyển từ FAIL sang PASS; bộ tools và các test hồi quy không phát sinh lỗi mới; báo đủ ma trận đã kiểm chứng. Nếu PD11 chưa xong, AD02 vẫn là lỗi tích hợp riêng phải báo rõ, không skip/xfail hoặc ghi toàn bộ suite xanh. Sau PD11 + PH17, Phan Hoàng cập nhật test tích hợp và chạy lại toàn bộ suite để xác nhận hai nguyên nhân của năm ca FAIL đã được xử lý. Không nghiệm thu dedup/transaction/auth của backend thật bằng fixture; PH18 vẫn chờ producer API.
+
+## 6. Dependency liên team
+
+| Dependency | Owner ngoài Team Hoàng | Team Hoàng làm được trước | Điều kiện tích hợp thật |
+|---|---|---|---|
+| API ticket/profile/triage/routing/file | Chiến | Interface, validator, fake contract test | OpenAPI/JSON Schema + auth + endpoint test |
+| Schema điều phối và approval/completion | Đông + Chiến | V2 message đã chốt; PD11 chuyển consumer và test local | Ánh xạ API/event resolver và kiểm chứng producer-consumer thật qua PH18/PH13 |
+| RAG/self-help/giá | Quang + Chiến | Port và hành vi fallback | Tool được đăng ký, có ACL/citation/version |
+| PostgreSQL checkpoint/lease | Team 5 | Factory/config/migration-free adapter | DB test riêng và thông số pool/retention |
+| Event bus/outbox/inbox | Chiến + Team 5 | Consumer interface, dedup/buffer tests | Event catalog và transport thật |
+| S3/MinIO | Chiến + Team 5 | Chỉ truyền `file_ids` và kiểm confirmation | Upload/complete/authorize API thật |
+
+Không đánh dấu task tích hợp là `DONE` chỉ vì fake test đạt.
+
+## 7. Thứ tự triển khai
+
+1. **Tiếp nhận PH16 trước:** Phan Dũng làm PD11 (consumer/V2, AD02); Phan Hoàng làm PH17 (retry/HTTP, AD01). Sau đó nghiệm thu lại PH16, tiếp tục PD09, PH09–PH10 và PH12. Hai owner giữ đúng phạm vi file ở mục 4.
+2. **Chốt phần contract còn thiếu:** OpenAPI backend, mapping event resolver và event catalog; dùng schema message Reception–Supervisor V2 đã chốt, không tự sửa shared schema.
+3. **Tích hợp thật:** PH18, PH11 và PH13.
+4. **Report Agent:** PD13–PD14, DD12–DD14, PH15.
+5. **Hardening:** PD12, PH14 và E2E liên team.
+
+Ba người không được cùng sửa một file trong cùng thời điểm. Thay đổi contract đi theo thứ tự: owner contract → consumer update → integration test.
+
+## 8. Test bắt buộc trước handoff
+
+- Python: `python -B -m pytest -q -p no:cacheprovider agent-reception/tests`
+- Các chuỗi sự cố PH16/PH17: `python -B -m pytest -q -p no:cacheprovider agent-reception/tests/tools/test_adversarial.py --tb=short`. Mốc `df5eccd`: 45 PASS / 5 FAIL; theo dõi riêng AD01 (PH17) và AD02 (PD11 + test tích hợp Phan Hoàng), không coi đây là kết quả đã xanh.
+- Graph: knowledge đủ không tạo ticket; ticket tạo đúng một lần; ảnh không mất qua nhiều lượt; event sai scope bị từ chối.
+- Tools do Phan Hoàng sở hữu: đủ validator theo operation; cùng idempotency key khi retry; file link confirmation; lỗi `unknown` không chạy mutation mới; reconcile không nhân đôi side effect.
+- Persistence: đóng/mở runtime vẫn đọc đúng state; backend recovery không ghép file/ticket sai user.
+- Integration thật chỉ được ghi đạt khi dùng endpoint, database và Supervisor thật.
+- Nếu Bun chưa có trong `PATH`, báo chưa chạy TypeScript tests; không ghi là đã đạt.
+
+## 9. Mẫu prompt thành viên gửi cho AI
+
+```text
+Tôi là <Phan Dũng | Dương Dũng | Phan Hoàng>, Team Hoàng.
+
+Đọc đầy đủ:
+- docs/teams/hoang/PHAN_CONG_3_THANH_VIEN.md
+- docs/SCHEMA_RECEPTION_SUPERVISOR_V1.md
+- docs/KE_HOACH_HOAN_THIEN_5_TEAM.md
+
+Nếu tôi không nêu task ID, hãy kiểm tra code rồi chọn task READY đầu tiên chưa hoàn thành
+trong đúng mục mang tên tôi. Không làm lại baseline DONE.
+
+Trước khi sửa, hãy báo tên, task ID, folder được phép sửa và dependency.
+Chỉ sửa folder của tôi. Nếu cần đổi contract/file của người khác, tạo integration request
+trong docs/teams/hoang/requests/<slug>/ và tiếp tục phần độc lập.
+
+Không đưa fake backend/model/checkpointer vào production path. Thực hiện đến tiêu chí
+nghiệm thu, chạy test, ghi handoff và báo rõ phần đã kiểm chứng, phần còn chờ team khác.
+```
+
+Slug:
+
+- Phan Dũng: `phan-dung`
+- Dương Dũng: `duong-dung`
+- Phan Hoàng: `phan-hoang`
