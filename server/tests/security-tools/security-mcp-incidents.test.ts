@@ -24,6 +24,35 @@ const fixture = (name: string): Row[] =>
     readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"),
   );
 const INCIDENTS = fixture("incidents");
+const optionalFixture = (name: string): Row[] => {
+  try {
+    return fixture(name);
+  } catch {
+    return [];
+  }
+};
+/** Kết quả search kỳ vọng tính từ fixture, để test đúng cả trước và sau khi P3 bổ sung dữ liệu. */
+function expectedSearch(f: Row): string[] {
+  return INCIDENTS.filter(
+    (i) =>
+      (f.severity === undefined || i.severity === f.severity) &&
+      (f.status === undefined || i.status === f.status) &&
+      (f.location_id === undefined ||
+        i.location.location_id === f.location_id) &&
+      (f.from === undefined || i.created_at >= f.from) &&
+      (f.to === undefined || i.created_at < f.to),
+  )
+    .sort((a, b) =>
+      a.created_at === b.created_at
+        ? a.incident_id < b.incident_id
+          ? -1
+          : 1
+        : a.created_at < b.created_at
+          ? -1
+          : 1,
+    )
+    .map((i) => i.incident_id);
+}
 const P3_TOOLS = [
   "get_incident",
   "search_incidents",
@@ -69,13 +98,7 @@ const update = (
 
 describe("P3 fixture", () => {
   test("related_counts của incident khớp dispatch/escalation/camera/evidence trong fixture", () => {
-    const evidence = (() => {
-      try {
-        return fixture("evidence");
-      } catch {
-        return [];
-      }
-    })();
+    const evidence = optionalFixture("evidence");
     for (const inc of INCIDENTS) {
       const count = (rows: Row[]) =>
         rows.filter((r) => r.incident_id === inc.incident_id).length;
@@ -129,34 +152,39 @@ describe("get_incident", () => {
 
 describe("search_incidents (§7)", () => {
   test("không filter: liệt kê trong property, sắp (created_at, incident_id)", async () => {
-    const env = await h.read("search_incidents", {});
-    expect(ids(env.data.incidents)).toEqual([
-      "inc_04",
-      "inc_01",
-      "inc_02",
-      "inc_03",
-    ]);
+    const env = await h.read("search_incidents", { limit: 100 });
+    expect(ids(env.data.incidents)).toEqual(expectedSearch({}));
     expect(env.data.next_cursor).toBeNull();
   });
 
   test.each([
-    ["severity", { severity: "P1" }, ["inc_01", "inc_03"]],
-    ["status", { status: "RESOLVED" }, ["inc_04"]],
-    ["location", { location_id: "loc_03" }, ["inc_02"]],
-    ["kết hợp AND", { severity: "P1", location_id: "loc_02" }, ["inc_03"]],
-    ["không khớp", { severity: "P3" }, []],
-  ] as const)("filter %s", async (_label, filter, expected) => {
-    expect(
-      ids((await h.read("search_incidents", filter)).data.incidents),
-    ).toEqual([...expected]);
+    ["severity", { severity: "P1" }],
+    ["status", { status: "RESOLVED" }],
+    ["location", { location_id: "loc_03" }],
+    ["kết hợp AND", { severity: "P1", location_id: "loc_02" }],
+    ["không khớp", { status: "CLOSED" }],
+  ] as const)("filter %s", async (_label, filter) => {
+    const env = await h.read("search_incidents", { ...filter, limit: 100 });
+    expect(ids(env.data.incidents)).toEqual(expectedSearch(filter));
   });
 
-  test("khoảng thời gian [from, to) trên created_at", async () => {
-    const env = await h.read("search_incidents", {
+  test("fixture đủ dữ liệu để các filter trên có nghĩa", () => {
+    expect(expectedSearch({ severity: "P1" }).length).toBeGreaterThan(1);
+    expect(expectedSearch({ status: "RESOLVED" }).length).toBeGreaterThan(0);
+    expect(
+      expectedSearch({ severity: "P1", location_id: "loc_02" }).length,
+    ).toBeGreaterThan(0);
+  });
+
+  test("khoảng thời gian [from, to) trên created_at: gồm from, không gồm to", async () => {
+    const range = {
       from: "2026-09-29T04:14:00.000Z",
       to: "2026-09-29T04:22:30.000Z",
-    });
-    expect(ids(env.data.incidents)).toEqual(["inc_01", "inc_02"]);
+    };
+    const found = ids((await h.read("search_incidents", range)).data.incidents);
+    expect(found).toEqual(expectedSearch(range));
+    expect(found).toContain("inc_01");
+    expect(found).not.toContain("inc_03");
   });
 
   test("from không nhỏ hơn to → VALIDATION_ERROR", async () => {
@@ -180,10 +208,10 @@ describe("search_incidents (§7)", () => {
       seen.push(...ids(env.data.incidents));
       cursor = env.data.next_cursor;
     } while (cursor);
-    expect(seen).toEqual(["inc_04", "inc_01", "inc_02", "inc_03"]);
-    expect((await h.read("search_incidents", { severity: "P3" })).data).toEqual(
-      { incidents: [], next_cursor: null },
-    );
+    expect(seen).toEqual(expectedSearch({}));
+    expect(
+      (await h.read("search_incidents", { status: "CLOSED" })).data,
+    ).toEqual({ incidents: [], next_cursor: null });
   });
 
   test("cursor đổi filter → VALIDATION_ERROR", async () => {
@@ -232,14 +260,39 @@ describe("audit READ: evidence, dispatch history, timeline", () => {
     },
   );
 
-  test("incident chưa có bản ghi → [] và next_cursor null", async () => {
+  test("incident mới chưa có dispatch/escalation → [] và next_cursor null", async () => {
+    const id = (await create("k_empty_lists")).data.incident_id;
     expect(
-      (await h.read("get_incident_evidence", { incident_id: "inc_03" })).data,
-    ).toEqual({ evidence: [], next_cursor: null });
+      (await h.read("get_dispatch_history", { incident_id: id })).data,
+    ).toEqual({ dispatches: [], next_cursor: null });
     expect(
-      (await h.read("get_security_event_timeline", { incident_id: "inc_03" }))
-        .data,
-    ).toEqual({ events: [], next_cursor: null });
+      (await h.read("get_incident_escalations", { incident_id: id })).data,
+    ).toEqual({ escalations: [], next_cursor: null });
+  });
+
+  test("evidence của từng incident khớp related_counts.evidence; mọi event trỏ evidence có thật", async () => {
+    for (const inc of INCIDENTS) {
+      const evidence = (
+        await h.read("get_incident_evidence", {
+          incident_id: inc.incident_id,
+          limit: 100,
+        })
+      ).data.evidence as Row[];
+      const events = (
+        await h.read("get_security_event_timeline", {
+          incident_id: inc.incident_id,
+          limit: 100,
+        })
+      ).data.events as Row[];
+      expect({ id: inc.incident_id, evidence: evidence.length }).toEqual({
+        id: inc.incident_id,
+        evidence: inc.related_counts.evidence,
+      });
+      const known = new Set(evidence.map((e) => e.evidence_id));
+      expect(
+        events.filter((e) => !known.has(e.evidence_id)).map((e) => e.event_id),
+      ).toEqual([]);
+    }
   });
 
   test("sau một WRITE: evidence và timeline đọc lại được, cùng evidence_id", async () => {
@@ -386,7 +439,10 @@ describe.skipIf(!UPDATE_READY)(
         severity: "P1",
         version: 7,
       });
-      expect(env.data.related_counts.evidence).toBe(1);
+      expect(env.data.related_counts.evidence).toBe(
+        INCIDENTS.find((i) => i.incident_id === "inc_01")!.related_counts
+          .evidence + 1,
+      );
       const events = (
         await h.read("get_security_event_timeline", { incident_id: "inc_01" })
       ).data.events;
@@ -580,8 +636,121 @@ describe.skipIf(!UPDATE_READY)(
       ).toBe(7);
     });
 
-    test.todo(
-      "RESOLVED → CLOSED bị chặn khi còn dispatch mở hoặc escalation đang chờ (chốt với P3 loại evidence nào được nhận làm bằng chứng resolution)",
+    const resolutionNote = (incident: string) =>
+      optionalFixture("evidence").find(
+        (e) =>
+          e.incident_id === incident &&
+          (e.evidence_type === "OPERATOR_NOTE" ||
+            e.evidence_type === "EXTERNAL_REFERENCE"),
+      );
+
+    test("ACTION_RECEIPT của chính incident không được nhận làm bằng chứng giải quyết", async () => {
+      const receipt = (
+        await update(
+          "inc_01",
+          { expected_version: 6, note: "Ghi chú" },
+          "k_rcpt",
+        )
+      ).evidence.evidence_id;
+      const env = await update(
+        "inc_01",
+        {
+          expected_version: 7,
+          status: "RESOLVED",
+          note: "Xong",
+          resolution_evidence_id: receipt,
+        },
+        "k_rcpt_resolve",
+      );
+      expectFailure(env, ["VALIDATION_ERROR", "INVALID_STATE_TRANSITION"]);
+      expect(
+        (await h.read("get_incident", { incident_id: "inc_01" })).data.status,
+      ).toBe("IN_PROGRESS");
+    });
+
+    test.skipIf(!resolutionNote("inc_04"))(
+      "RESOLVED → CLOSED bị chặn khi còn dispatch mở; hủy dispatch rồi đóng được",
+      async () => {
+        const note = resolutionNote("inc_04")!.evidence_id;
+        const s4 = session(TICKET.inc_04);
+        const version = async () =>
+          (await h.read("get_incident", { incident_id: "inc_04" })).data
+            .version as number;
+        expect(
+          (
+            await update(
+              "inc_04",
+              {
+                expected_version: await version(),
+                status: "IN_PROGRESS",
+                note: "Cư dân báo tái diễn",
+              },
+              "k_cl_1",
+            )
+          ).success,
+        ).toBe(true);
+        const dispatch = await h.write({
+          action: "dispatch_guard",
+          args: {
+            incident_id: "inc_04",
+            guard_id: "guard_002",
+            incident_version: await version(),
+          },
+          key: "k_cl_2",
+          session: s4,
+        });
+        expect(dispatch.success).toBe(true);
+        expect(
+          (
+            await update(
+              "inc_04",
+              {
+                expected_version: await version(),
+                status: "RESOLVED",
+                note: "Đã xử lý lại",
+                resolution_evidence_id: note,
+              },
+              "k_cl_3",
+            )
+          ).success,
+        ).toBe(true);
+        expectFailure(
+          await update(
+            "inc_04",
+            {
+              expected_version: await version(),
+              status: "CLOSED",
+              note: "Đóng",
+            },
+            "k_cl_4",
+          ),
+          "INVALID_STATE_TRANSITION",
+        );
+        const cancelled = await h.write({
+          action: "cancel_dispatch",
+          args: {
+            dispatch_id: dispatch.data.dispatch_id,
+            expected_version: 1,
+            reason: "Xong việc",
+          },
+          key: "k_cl_5",
+          session: s4,
+        });
+        expect(cancelled.success).toBe(true);
+        expect(
+          (
+            await update(
+              "inc_04",
+              {
+                expected_version: await version(),
+                status: "CLOSED",
+                note: "Đóng",
+              },
+              "k_cl_6",
+            )
+          ).data.status,
+        ).toBe("CLOSED");
+      },
     );
   },
 );
