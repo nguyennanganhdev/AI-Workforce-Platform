@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from .v3_audit import audit
-from .v3_auth import scoped_connection
+from .v3_auth import TICKET_VISIBILITY, scoped_connection
 from .v3_mutations import management_access, visible_ticket
 
 router = APIRouter(tags=["Vinhomes V3 coordination session"])
@@ -91,6 +91,18 @@ async def _session(db: AsyncConnection, ticket_id: UUID, *, lock: bool = False):
         order by tm.created_at desc limit 1 {"for update of tm" if lock else ""}
     """), {"ticket": ticket_id})
     return row.mappings().first()
+
+
+@router.get("/sessions/awaiting-approval", summary="Closed tickets whose session still waits for management")
+async def sessions_awaiting_approval(scope: Scope) -> dict[str, object]:
+    rows = await scope[0].execute(text(f"""
+        select t.id from tickets t
+        join lateral (select status from agent_teams tm where tm.ticket_id=t.id and tm.tenant_id=t.tenant_id
+                      order by tm.created_at desc limit 1) s on true
+        where t.status='closed' and s.status not in ('completed','failed','cancelled') and {TICKET_VISIBILITY}
+        order by t.updated_at desc limit 200
+    """), {"user_id": scope[1], "is_admin": scope[2]})
+    return {"ticketIds": [str(row[0]) for row in rows]}
 
 
 @router.get("/tickets/{ticket_id}/session", summary="Coordination session of a ticket")

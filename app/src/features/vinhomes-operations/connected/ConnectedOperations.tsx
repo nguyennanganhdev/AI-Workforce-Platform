@@ -111,7 +111,9 @@ export function ConnectedOperations() {
   const [catalog, setCatalog] = useState<Catalog>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [local, setLocal] = useState(false);
+  // Unknown until the health check answers; nothing is loaded before that, so the first
+  // request already carries the demo actor when the backend is a local demo.
+  const [local, setLocal] = useState<boolean>();
   const [actor, setActor] = useState(
     () => sessionStorage.getItem("operations.local-actor") || "management",
   );
@@ -124,6 +126,8 @@ export function ConnectedOperations() {
     [],
   );
   const [orders, setOrders] = useState<Order[]>([]);
+  // Closed for the resident, but the coordination session still needs management.
+  const [awaitingClosure, setAwaitingClosure] = useState<string[]>([]);
   const locked = useRef(false);
   const ticketId = useRef("");
   const request = useCallback(
@@ -180,13 +184,15 @@ export function ConnectedOperations() {
       }
       return result;
     };
-    const [data, cat, mine, allOrders, dashboard] = await Promise.all([
+    const [data, cat, mine, allOrders, dashboard, closures] = await Promise.all([
       pages<Ticket>("/tickets"),
       request<Catalog>("/catalogs"),
       request<{ items: Order[] }>("/my-work-orders?limit=100"),
       pages<Order>("/work-orders"),
       request<{approvals: {status: string; count: number}[]}>("/dashboard"),
+      request<{ ticketIds: string[] }>("/sessions/awaiting-approval"),
     ]);
+    setAwaitingClosure(closures.ticketIds);
     setStats(dashboard);
     setTickets(data);
     setCatalog(cat);
@@ -207,19 +213,21 @@ export function ConnectedOperations() {
     fetch("/api/business/health")
       .then((r) => r.json())
       .then((r) => {
-        if (
-          active &&
-          r.dataMode === "faker-database" &&
-          import.meta.env.VITE_ALLOW_DEMO_BACKEND === "true"
-        )
-          setLocal(true);
+        if (active)
+          setLocal(
+            r.dataMode === "faker-database" &&
+              import.meta.env.VITE_ALLOW_DEMO_BACKEND === "true",
+          );
       })
-      .catch(() => {});
+      .catch(() => {
+        if (active) setLocal(false);
+      });
     return () => {
       active = false;
     };
   }, []);
   useEffect(() => {
+    if (local === undefined) return;
     let stopped = false;
     const poll = async () => {
       try {
@@ -239,7 +247,7 @@ export function ConnectedOperations() {
       stopped = true;
       clearInterval(timer);
     };
-  }, [load]);
+  }, [load, local]);
   useEffect(() => {
     ticketId.current = "";
     setDetail(undefined);
@@ -409,8 +417,8 @@ export function ConnectedOperations() {
                 rows={visible.map((t): WorkItem => ({key: t.id, ticket: t.id, ticketId: t.code, title: t.title,
                   place: catalog?.buildings.find(b => b.id === t.building_id)?.name || 'Chưa xác định vị trí',
                   severity: t.priority, department: catalog?.serviceCategories.find(c => c.id === t.category_id)?.name || 'Chưa phân loại',
-                  assignee: '', status: labels[t.status] || t.status, updatedAt: t.updated_at,
-                  phase: ['closed', 'cancelled'].includes(t.status) ? 'history' : t.status === 'resolved' ? 'waiting' : t.status === 'in_progress' ? 'active' : 'new',
+                  assignee: '', status: awaitingClosure.includes(t.id) ? 'Chờ BQL duyệt đóng' : labels[t.status] || t.status, updatedAt: t.updated_at,
+                  phase: awaitingClosure.includes(t.id) && management ? 'waiting' : ['closed', 'cancelled'].includes(t.status) ? 'history' : t.status === 'resolved' ? 'waiting' : t.status === 'in_progress' ? 'active' : 'new',
                 }))} onOpen={row => void open(row.ticket!)} />
             )}
             <div>
@@ -478,7 +486,7 @@ export function ConnectedOperations() {
                             </button>
                           </div>
                         )}
-                      <h3>Ảnh phản ánh</h3>
+                      <h3>Ảnh của ticket (phản ánh, trước và sau khi sửa)</h3>
                       <div className="live-photos">
                         {photos.map((p) => (
                           <a
@@ -775,7 +783,8 @@ export function ConnectedOperations() {
                               )}
                             {management &&
                               order.status === "completed" &&
-                              selected.status !== "closed" && (
+                              // Once QC passed the ticket is resolved and waits for the resident.
+                              !["resolved", "closed"].includes(selected.status) && (
                                 <div className="live-actions">
                                   <button
                                     disabled={busy}

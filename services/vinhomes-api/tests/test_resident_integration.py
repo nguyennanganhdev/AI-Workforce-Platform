@@ -155,11 +155,13 @@ def test_full_confirmation_retry_and_concurrent_decisions():
     # The session outlives the resident's confirmation until management approves it.
     session = call("GET", f"/tickets/{ticket}/session", actor="management")
     assert session["session"]["status"] == "queued" and session["awaitingManagementApproval"] is True
+    assert ticket in call("GET", "/sessions/awaiting-approval", actor="management")["ticketIds"]
     closure = {"version": session["session"]["state_version"], "note": "Đã rà soát hồ sơ."}
     call("POST", f"/tickets/{ticket}/session/close-approval", actor="technical", expected=403, json=closure)
     closed = call("POST", f"/tickets/{ticket}/session/close-approval", actor="management", json=closure)
     assert closed["session"]["status"] == "completed" and closed["session"]["closure"]["approvedBy"] == "local-v3-management"
     assert call("POST", f"/tickets/{ticket}/session/close-approval", actor="management", json=closure) == closed
+    assert ticket not in call("GET", "/sessions/awaiting-approval", actor="management")["ticketIds"]
 
 
 def test_rework_preserves_history_and_returns_to_management():

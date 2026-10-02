@@ -16,7 +16,11 @@ export const Route = createFileRoute("/_authed")({
         if(!canViewPath(account.role,location.pathname))throw redirect({href:landing(account.role)});
         return;
       }
-      const response = await fetch('/api/business/operations/me', { credentials: 'include' });
+      // A local demo backend picks its seeded actor from this header; real backends ignore it.
+      const demoActor = import.meta.env.VITE_ALLOW_DEMO_BACKEND === 'true'
+        ? { 'X-Demo-Actor': sessionStorage.getItem('operations.local-actor') || 'management' }
+        : undefined;
+      const response = await fetch('/api/business/operations/me', { credentials: 'include', headers: demoActor });
       if (response.status === 401) throw redirect({ href: '/operations/login' });
       if (response.status === 403) throw new Error('Tài khoản chưa được cấp quyền Operations trong phạm vi này.');
       if (!response.ok) throw new Error('Không kết nối được dịch vụ xác thực và phân quyền Operations. Kiểm tra backend trước khi đăng nhập.');
