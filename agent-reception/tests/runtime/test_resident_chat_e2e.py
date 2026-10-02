@@ -2,6 +2,8 @@
 
 Needs the backend (local actors), the Reception runtime and tests/runtime/fake_llm.py running:
 RECEPTION_E2E_BACKEND_URL=http://127.0.0.1:8011 RECEPTION_E2E_TOKEN=... pytest tests/runtime/test_resident_chat_e2e.py
+The same tests hold for both agents: run them once against a runtime started with
+RECEPTION_AGENT=graph and once against one started with RECEPTION_AGENT=loop.
 """
 
 import os
@@ -60,13 +62,23 @@ def test_incident_chat_creates_a_ticket_management_can_work_on():
                "description": "Kiểm tra ổ điện", "ticket_version": ticket["version"]})
 
     reply, _ = say(chat, "Cho tôi hỏi tiến độ xử lý đến đâu rồi?")
-    assert "đang được xử lý" in reply
+    # The graph answers in general terms; the model-led agent reports the status the backend holds.
+    assert "đang được xử lý" in reply or "đã giao cho nhân viên" in reply
 
 
 def test_a_model_guess_among_the_facts_does_not_lose_the_request():
     chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
     reply, _ = say(chat, "Ổ điện bếp bị hỏng, có vẻ do chập.")
     assert "Mã yêu cầu của bạn: VH-" in reply
+
+
+def test_an_emergency_is_filed_at_emergency_level_with_the_fixed_reply():
+    chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
+    reply, _ = say(chat, "Ổ điện phòng khách có khói bốc ra và mùi khét.")
+    assert reply.startswith("Mình đã chuyển yêu cầu của bạn đến Ban quản lý ở mức khẩn cấp.")
+    assert "Mã yêu cầu của bạn: VH-" in reply
+    ticket_id = next(c for c in call("GET", "/resident/chats")["items"] if c["id"] == chat)["ticket_id"]
+    assert call("GET", f"/tickets/{ticket_id}", actor="management")["ticket"]["priority"] == "critical"
 
 
 def test_a_question_without_a_source_goes_to_management_and_the_answer_comes_back():

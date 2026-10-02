@@ -44,11 +44,44 @@ def proposal(data):
             "priority": "normal", "severity": "minor", "reason": "Sự cố thiết bị trong căn hộ."}
 
 
+def agent_step(messages):
+    """The model-led agent (src/agent): one tool for the resident's message, then a reply from its result."""
+    def tool(name, **arguments):
+        return {"role": "assistant", "content": None, "tool_calls": [{
+            "id": "call-1", "type": "function", "function": {"name": name, "arguments": json.dumps(arguments, ensure_ascii=False)}}]}
+
+    def reply(text, sources=()):
+        return {"role": "assistant", "content": json.dumps({"reply": text, "sources": list(sources)}, ensure_ascii=False)}
+
+    last = messages[-1]
+    if last["role"] == "tool":
+        result = json.loads(last["content"])
+        if result.get("filed"):
+            return reply("Mình đã ghi nhận yêu cầu của bạn và chuyển tới Ban quản lý.")
+        if result.get("forwarded"):
+            return reply("Mình đã chuyển câu hỏi của bạn tới Ban quản lý.")
+        if "status" in result:
+            return reply(f"Yêu cầu của bạn {result['status']}.")
+        if result.get("passages"):
+            return reply(result["passages"][0]["text"], [result["passages"][0]["rank"]])
+        if "passages" in result:
+            return tool("ask_management")
+        return reply("Mình chưa hỗ trợ được việc này.")
+    text = last["content"]
+    if "tiến độ" in text.lower():
+        return tool("request_status")
+    if any(word in text.lower() for word in INCIDENT_WORDS):
+        return tool("file_request", title=text[:60], description=text, category_code="technical", priority="normal")
+    return tool("search_knowledge", query=text)
+
+
 @app.post("/chat/completions")
 async def completions(request: Request):
     body = await request.json()
-    system, user = body["messages"][0]["content"], json.loads(body["messages"][1]["content"])
     assert body["response_format"] == {"type": "json_object"}
+    if "tools" in body:
+        return {"choices": [{"message": agent_step(body["messages"])}]}
+    system, user = body["messages"][0]["content"], json.loads(body["messages"][1]["content"])
     if '"route"' in system:
         return {"choices": [{"message": {"role": "assistant", "content": json.dumps({"route": "management"})}}]}
     if '"used"' in system:

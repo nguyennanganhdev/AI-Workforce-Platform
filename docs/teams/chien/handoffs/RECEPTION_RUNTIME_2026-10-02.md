@@ -220,3 +220,4 @@ loại. Cả hai cần dữ liệu thật tích lũy trước (các bảng tín 
 Backend: `pytest` trong `services/vinhomes-api` (cần PostgreSQL thử; xem `tests/test_resident_contract.py`).
 Đầu-cuối: bật backend (demo, có `RECEPTION_DELEGATION_KEY`), runtime và `tests/runtime/fake_llm.py`, rồi
 `RECEPTION_E2E_BACKEND_URL=… RECEPTION_E2E_TOKEN=… pytest tests/runtime/test_resident_chat_e2e.py` trong `agent-reception`.
+Chạy cho cả hai chế độ agent (runtime bật `RECEPTION_AGENT=graph` rồi `RECEPTION_AGENT=loop`); 7 test đạt ở cả hai (03/10/2026).

@@ -143,7 +143,8 @@ Kết quả bộ đánh giá hội thoại (52 kịch bản, `gpt-5.4-mini`, ch�
 | Nhóm tin nhắn mơ hồ | 33% | 100% |
 
 Khi sửa prompt, công cụ hay bước kiểm tra: chạy `tests/agent` (không cần dịch vụ) và `tests/evals/run_live.py`
-trên database tạm, so với bảng trên. `loop` chưa có test đầu-cuối với model giả lập (stub chưa hỗ trợ gọi công cụ).
+trên database tạm, so với bảng trên. Test đầu-cuối với model giả lập (`tests/runtime/test_resident_chat_e2e.py`)
+chạy cho cả hai chế độ: `fake_llm.py` trả lời cả yêu cầu JSON của graph lẫn yêu cầu gọi công cụ của `loop`.
 
 ### Agent thẩm định tri thức (`runtime/curator.py`)
 
@@ -168,7 +169,8 @@ python tests/evals/run_live.py --backend http://127.0.0.1:8011 --only emergency
 85–88%, đạt phát biểu 87–88%, tự nhiên 4,2–4,4/5, trễ trung vị 6 giây. Nhóm yếu nhất: tin nhắn mơ hồ (33%).
 
 Kiểm thử đầu-cuối qua HTTP thật: `tests/runtime/test_resident_chat_e2e.py` (cần backend, runtime và
-`tests/runtime/fake_llm.py`; model trong test là stub xác định, không phải LLM thật).
+`tests/runtime/fake_llm.py`; model trong test là stub xác định, không phải LLM thật). Chạy hai lần: một lần với
+runtime bật `RECEPTION_AGENT=graph`, một lần với `RECEPTION_AGENT=loop`; cả 7 test phải đạt ở cả hai.
 
 ## Internal contracts
 
