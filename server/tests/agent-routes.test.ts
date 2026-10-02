@@ -5,6 +5,7 @@ import {
   AgentNotFoundError,
   AgentNotManageableError,
   type AgentProfileStore,
+  GeneratedConfigurationImmutableError,
   ProtectedAgentError,
 } from "../src/agents/profile-store";
 import type {
@@ -530,6 +531,70 @@ describe("agent lifecycle routes", () => {
     expect(response.status).toBe(status);
     expect(await json(response)).toEqual({ error: message });
   });
+
+  test("generated profiles add only their summary and builtIn; legacy DTO keys are unchanged", async () => {
+    const specHash = "a".repeat(64);
+    const store = fakeStore({
+      async list() {
+        return [
+          profile(),
+          profile({
+            id: "generated-1",
+            endpoint: null,
+            generated: { state: "pending_resources", specHash },
+          }),
+        ];
+      },
+    });
+    const { agents } = (await json(
+      await appFor(store).request("http://openbot.test/"),
+    )) as { agents: Record<string, unknown>[] };
+    expect(Object.keys(agents[0] ?? {}).sort()).toEqual(
+      [
+        "avatarSeed",
+        "builtIn",
+        "canManage",
+        "hidden",
+        "id",
+        "mine",
+        "name",
+        "roleDescription",
+        "systemOwned",
+        "title",
+        "visibility",
+      ].sort(),
+    );
+    expect(agents[1]).toMatchObject({
+      id: "generated-1",
+      builtIn: true,
+      generated: { state: "pending_resources", specHash },
+    });
+  });
+
+  test.each(["update", "duplicate"] as const)(
+    "maps a generated %s refusal to a stable 409",
+    async (method) => {
+      const store = fakeStore({
+        [method]: async () => {
+          throw new GeneratedConfigurationImmutableError("agent-1");
+        },
+      });
+      const response = await appFor(store).request(
+        method === "update"
+          ? "http://openbot.test/agent-1"
+          : "http://openbot.test/agent-1/duplicate",
+        {
+          method: method === "update" ? "PATCH" : "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(validInput),
+        },
+      );
+      expect(response.status).toBe(409);
+      expect(await json(response)).toMatchObject({
+        code: "GENERATED_CONFIGURATION_IMMUTABLE",
+      });
+    },
+  );
 
   test("rethrows unexpected errors to the outer Hono error handler", async () => {
     const store = fakeStore({

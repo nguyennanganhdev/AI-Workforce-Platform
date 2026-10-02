@@ -13,6 +13,7 @@ import { useState } from "react";
 import type { ZodType } from "zod";
 import { AbstractAvatar } from "@/components/agents/abstract-avatar";
 import { CallbackTokenPanel } from "@/components/agents/callback-token-panel";
+import { GeneratedAgentSetup } from "@/components/agents/create-generated-agent";
 import { HandoffPanel } from "@/components/agents/handoff-panel";
 import { RoutinesList } from "@/components/routines/routines-list";
 import { Button } from "@/components/ui/button";
@@ -220,7 +221,11 @@ function AgentDialogBody({ agentId }: { agentId: string }) {
           </header>
           <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 pb-6">
             {section === "general" ? (
-              <GeneralSection agentId={agentId} profile={profile} />
+              profile.generated ? (
+                <GeneratedAgentSetup agentId={agentId} profile={profile} />
+              ) : (
+                <GeneralSection agentId={agentId} profile={profile} />
+              )
             ) : section === "access" ? (
               <AccessSection agentId={agentId} />
             ) : section === "connection" ? (
@@ -743,12 +748,14 @@ function ManageSection({
           <ItemContent>
             <ItemTitle>Duplicate</ItemTitle>
             <ItemDescription>
-              A copy of your own, with no key and no channels.
+              {profile.generated
+                ? "A generated coworker cannot be copied. Create a new one from the same description instead."
+                : "A copy of your own, with no key and no channels."}
             </ItemDescription>
           </ItemContent>
           <ItemActions>
             <Button
-              disabled={duplicateAgent.isPending}
+              disabled={duplicateAgent.isPending || Boolean(profile.generated)}
               onClick={async () => {
                 const copy = await duplicateAgent.mutateAsync(agentId);
                 await navigate({ search: { agent: copy.id }, to: "/agents" });

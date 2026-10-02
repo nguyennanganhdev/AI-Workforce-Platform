@@ -79,6 +79,24 @@ skills:
       - google-drive/search_files
       - google-drive/read_file_content
 
+  # Research on the public web rather than in connected documents. `tavily` is a catalogue
+  # connector; like every ref above, naming its tool here grants it to nobody.
+  - slug: research-synthesis
+    title: Research and synthesize
+    summary: Search the web, compare several sources and write a brief with the source URLs.
+    instructions: >-
+      Research the question on the Internet before answering it. Turn the request into two or three
+      specific search queries and run each with the web search tool; search again in different words
+      if the results miss the point. Use at least three independent sources, and prefer primary or
+      official ones, such as a project's own documentation, a paper or a standard, over commentary
+      about them. Compare what the sources say: state where they agree, and name any conflicting or
+      uncertain claim rather than quietly picking one side. Write a concise report with the finding
+      first, then the evidence, then what is still open, and put the URL of the source beside every
+      claim it supports. Never state a fact that no source you found supports. If the search returned
+      nothing useful, say so and say what you searched for.
+    tools:
+      - tavily/tavily_search
+
   # The skill that writes skills. Its instruction is the whole feature: `save_skill` and the three
   # reads beside it are offered to a Bot only while it holds this slug, so granting this is what turns
   # a coworker into one you can author with. See app/src/lib/copilot/skill-tools.tsx.

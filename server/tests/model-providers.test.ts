@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { LLMock } from "@copilotkit/aimock";
 import { z } from "zod";
+import { factoryCompletionOptions } from "../src/agents/factory";
 import {
   normalizeModelBaseUrls,
   resolveRuntimeAgents,
@@ -10,6 +11,7 @@ import { encryptSecret, resolveModelApiKey } from "../src/credentials";
 import {
   anthropicMessagesUrl,
   createModelCompleter,
+  type ModelCallObservation,
 } from "../src/routing/model";
 import { validateTenantPackage } from "../src/tenant-package";
 
@@ -520,3 +522,343 @@ test("cancelling an Anthropic selector closes its in-flight HTTP request", async
     await server.stop(true);
   }
 }, 5000);
+
+describe("Factory completion limits and observations (I07)", () => {
+  test.each(["openai", "anthropic"] as const)(
+    "%s defaults, output budgets and exact provider usage",
+    async (provider) => {
+      const observations: ModelCallObservation[] = [];
+      const bodies: Record<string, unknown>[] = [];
+      let includeUsage = true;
+      const server = Bun.serve({
+        port: 0,
+        hostname: "127.0.0.1",
+        async fetch(request) {
+          bodies.push(await request.json());
+          return Response.json(
+            provider === "openai"
+              ? {
+                  choices: [{ message: { content: "{}" } }],
+                  ...(includeUsage
+                    ? {
+                        usage: {
+                          prompt_tokens: 37,
+                          completion_tokens: 11,
+                          total_tokens: 48,
+                          prompt_tokens_details: { cached_tokens: 5 },
+                          completion_tokens_details: { reasoning_tokens: 3 },
+                        },
+                      }
+                    : {}),
+                }
+              : {
+                  content: [{ type: "text", text: "{}" }],
+                  ...(includeUsage
+                    ? {
+                        usage: {
+                          input_tokens: 37,
+                          output_tokens: 11,
+                          cache_creation_input_tokens: 5,
+                          cache_read_input_tokens: 3,
+                          cache_creation: { ephemeral_5m_input_tokens: 5 },
+                        },
+                      }
+                    : {}),
+                },
+          );
+        },
+      });
+      try {
+        process.env.OPENAI_BASE_URL = server.url.origin;
+        process.env.ANTHROPIC_BASE_URL = server.url.origin;
+        const base = {
+          model: provider === "openai" ? packageModel : anthropicModel,
+          resolveApiKey: async () => "synthetic-fixture",
+          observe: (event: ModelCallObservation) => observations.push(event),
+        };
+        await createModelCompleter(base)("JSON");
+        await createModelCompleter({
+          ...base,
+          timeoutMs: 20_000,
+          outputTokenBudget: 4096,
+        })("JSON");
+        includeUsage = false;
+        await createModelCompleter(base)("JSON");
+        expect(bodies).toHaveLength(3);
+        expect(bodies[0]).not.toHaveProperty("temperature");
+        if (provider === "anthropic") {
+          expect(bodies[0]?.max_tokens).toBe(1024);
+          expect(bodies[1]?.max_tokens).toBe(4096);
+          expect(bodies[0]).not.toHaveProperty("response_format");
+        } else {
+          expect(bodies[0]).not.toHaveProperty("max_completion_tokens");
+          expect(bodies[1]?.max_completion_tokens).toBe(4096);
+          expect(bodies[0]?.response_format).toEqual({ type: "json_object" });
+        }
+        expect(observations).toHaveLength(3);
+        for (const event of observations.slice(0, 2)) {
+          expect(event.status).toBe("success");
+          expect(event.httpStatus).toBe(200);
+          expect(event.usage).toEqual({
+            inputTokens: 37,
+            outputTokens: 11,
+            totalTokens: provider === "openai" ? 48 : null,
+            details:
+              provider === "openai"
+                ? {
+                    prompt_tokens_details: { cached_tokens: 5 },
+                    completion_tokens_details: { reasoning_tokens: 3 },
+                  }
+                : {
+                    cache_creation_input_tokens: 5,
+                    cache_read_input_tokens: 3,
+                    cache_creation: { ephemeral_5m_input_tokens: 5 },
+                  },
+          });
+          expect(event.durationMs).toBeGreaterThanOrEqual(0);
+        }
+        expect(observations[2]?.usage).toBeNull();
+        expect(JSON.stringify(observations)).not.toContain("synthetic-fixture");
+      } finally {
+        await server.stop(true);
+      }
+    },
+  );
+
+  test("HTTP errors and malformed content emit one observation without retry or exposing response bodies", async () => {
+    let requests = 0;
+    let mode = "http";
+    const events: ModelCallObservation[] = [];
+    const server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch() {
+        requests++;
+        return mode === "http"
+          ? new Response("secret diagnostic", { status: 503 })
+          : Response.json({ choices: [] });
+      },
+    });
+    try {
+      process.env.OPENAI_BASE_URL = server.url.origin;
+      const complete = createModelCompleter({
+        model: packageModel,
+        resolveApiKey: async () => "fixture",
+        observe: (event) => events.push(event),
+      });
+      await expect(complete("JSON")).rejects.toThrow(
+        "router model answered 503",
+      );
+      mode = "content";
+      await expect(complete("JSON")).rejects.toThrow("no text");
+      expect(requests).toBe(2);
+      expect(events.map(({ status }) => status)).toEqual([
+        "http_error",
+        "error",
+      ]);
+      expect(events.every(({ usage }) => usage === null)).toBe(true);
+      expect(JSON.stringify(events)).not.toContain("secret diagnostic");
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("missing key, stalled key lookup and cancellation make no HTTP request or fallback", async () => {
+    const events: ModelCallObservation[] = [];
+    const base = {
+      model: packageModel,
+      observe: (event: ModelCallObservation) => events.push(event),
+    };
+    await expect(
+      createModelCompleter({ ...base, resolveApiKey: async () => null })(
+        "JSON",
+      ),
+    ).rejects.toThrow("no model key");
+    const lateKey = Promise.withResolvers<string>();
+    await expect(
+      createModelCompleter({
+        ...base,
+        timeoutMs: 20,
+        resolveApiKey: async () => lateKey.promise,
+      })("JSON"),
+    ).rejects.toThrow();
+    lateKey.resolve("fixture");
+    const abort = new AbortController();
+    abort.abort();
+    let reads = 0;
+    await expect(
+      createModelCompleter({
+        ...base,
+        resolveApiKey: async () => {
+          reads++;
+          return "fixture";
+        },
+      })("JSON", abort.signal),
+    ).rejects.toThrow();
+    expect(reads).toBe(0);
+    expect(events).toHaveLength(0);
+  });
+
+  test.each(["response", "body"])(
+    "timeout and caller cancellation interrupt stalled %s and observe one attempted HTTP call",
+    async (boundary) => {
+      for (const cancelled of [false, true]) {
+        const entered = Promise.withResolvers<void>();
+        const never = Promise.withResolvers<Response>();
+        let requests = 0;
+        const events: ModelCallObservation[] = [];
+        const server = Bun.serve({
+          port: 0,
+          hostname: "127.0.0.1",
+          async fetch(request) {
+            // Consume the upload before cancelling; otherwise Bun's fixture shutdown stalls.
+            await request.text();
+            requests++;
+            entered.resolve();
+            return boundary === "response"
+              ? never.promise
+              : new Response(
+                  new ReadableStream({
+                    start(controller) {
+                      controller.enqueue(
+                        new TextEncoder().encode('{"choices":['),
+                      );
+                    },
+                  }),
+                  { headers: { "content-type": "application/json" } },
+                );
+          },
+        });
+        try {
+          process.env.OPENAI_BASE_URL = server.url.origin;
+          const abort = new AbortController();
+          const pending = createModelCompleter({
+            model: packageModel,
+            timeoutMs: cancelled ? 1000 : 40,
+            resolveApiKey: async () => "fixture",
+            observe: (event) => events.push(event),
+          })("JSON", abort.signal);
+          const settled = pending.then(
+            () => "unexpected success",
+            () => "failed",
+          );
+          await bounded(entered.promise, "entered");
+          if (cancelled) abort.abort();
+          expect(await bounded(settled, "cancelled completion")).toBe("failed");
+          expect(requests).toBe(1);
+          expect(events).toHaveLength(1);
+          expect(events[0]?.status).toBe(cancelled ? "cancelled" : "timeout");
+          expect(events[0]?.usage).toBeNull();
+          expect(events[0]!.durationMs).toBeGreaterThanOrEqual(0);
+        } finally {
+          never.resolve(new Response("{}"));
+          await server.stop(true);
+        }
+      }
+    },
+  );
+
+  test("the Factory's completion options carry its model and 4,096-token budget to either provider; other callers are unchanged", async () => {
+    // Recorded on an OpenAI-compatible gateway: construction sent no output limit, the gateway
+    // reserved the model's maximum and answered HTTP 402, reported as MODEL_UNAVAILABLE.
+    const bodies: Record<string, unknown>[] = [];
+    const server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      async fetch(request) {
+        bodies.push(await request.json());
+        // Both providers' answer shapes at once; each path reads its own.
+        return Response.json({
+          choices: [{ message: { content: "{}" } }],
+          content: [{ type: "text", text: "{}" }],
+        });
+      },
+    });
+    try {
+      process.env.OPENAI_BASE_URL = server.url.origin;
+      process.env.ANTHROPIC_BASE_URL = server.url.origin;
+      const resolveApiKey = async () => "synthetic-fixture";
+      const strong = factoryCompletionOptions(packageModel, {
+        FACTORY_MODEL: " stronger-model ",
+      });
+      expect(strong).toEqual({
+        model: { provider: "openai", defaultModel: "stronger-model" },
+        timeoutMs: 20_000,
+        outputTokenBudget: 4096,
+      });
+      // Unset or blank: construction stays on the runtime model, still bounded.
+      for (const environment of [{}, { FACTORY_MODEL: "  " }])
+        expect(factoryCompletionOptions(packageModel, environment).model).toBe(
+          packageModel,
+        );
+      await createModelCompleter({ ...strong, resolveApiKey })("JSON");
+      await createModelCompleter({
+        ...factoryCompletionOptions(packageModel, {}),
+        resolveApiKey,
+      })("JSON");
+      await createModelCompleter({
+        ...factoryCompletionOptions(anthropicModel, {}),
+        resolveApiKey,
+      })("JSON");
+      // The intent router and skill selection, built as index.ts builds them.
+      await createModelCompleter({ model: packageModel, resolveApiKey })(
+        "JSON",
+      );
+      expect(
+        bodies.map((body) => [
+          body.model,
+          body.max_completion_tokens,
+          body.max_tokens,
+        ]),
+      ).toEqual([
+        ["stronger-model", 4096, undefined],
+        [packageModel.defaultModel, 4096, undefined],
+        [anthropicModel.defaultModel, undefined, 4096],
+        [packageModel.defaultModel, undefined, undefined],
+      ]);
+      expect(bodies[3]).not.toHaveProperty("max_completion_tokens");
+      expect(bodies[3]).not.toHaveProperty("max_tokens");
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  test("BOT_MAX_OUTPUT_TOKENS is an opt-in positive integer on the runtime model", () => {
+    expect(
+      runtimeModelForEnvironment(packageModel, {
+        BOT_MAX_OUTPUT_TOKENS: " 2048 ",
+      }),
+    ).toEqual({ ...packageModel, outputTokenBudget: 2048 });
+    for (const value of [undefined, "", "   "])
+      expect(
+        runtimeModelForEnvironment(packageModel, {
+          BOT_MAX_OUTPUT_TOKENS: value,
+        }),
+      ).not.toHaveProperty("outputTokenBudget");
+    for (const value of ["0", "-1", "1.5", "1e3", "many", "2048 tokens"])
+      expect(() =>
+        runtimeModelForEnvironment(packageModel, {
+          BOT_MAX_OUTPUT_TOKENS: value,
+        }),
+      ).toThrow("BOT_MAX_OUTPUT_TOKENS must be a positive integer.");
+  });
+
+  test("invalid completion bounds are refused", () => {
+    for (const timeoutMs of [0, -1, Infinity, 90_001])
+      expect(() =>
+        createModelCompleter({
+          model: packageModel,
+          resolveApiKey: async () => "fixture",
+          timeoutMs,
+        }),
+      ).toThrow("invalid completion limits");
+    for (const outputTokenBudget of [0, -1, Infinity, 16_385])
+      expect(() =>
+        createModelCompleter({
+          model: packageModel,
+          resolveApiKey: async () => "fixture",
+          outputTokenBudget,
+        }),
+      ).toThrow("invalid completion limits");
+  });
+});

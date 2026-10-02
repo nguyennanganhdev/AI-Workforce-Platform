@@ -12,6 +12,8 @@ import {
 } from "./agents/callback-token";
 import type { BotAccessCheck } from "./agents/profile-policy";
 import type { AgentProfileStore } from "./agents/profile-store";
+import type { AgentFactoryService } from "./agents/factory";
+import { createAgentFactoryRoutes } from "./agents/factory-routes";
 import { createAgentRoutes } from "./agents/routes";
 import {
   type AuditEventType,
@@ -332,6 +334,11 @@ export function createApp(
   modelProviderProxy?: ModelProviderProxy,
   userPreferences?: UserPreferencesStore,
   voiceSessions?: VoiceSessionServices,
+  /**
+   * Meta-Agent construction, already wired to the model, plugin and profile stores by the caller.
+   * Appended last like everything above it. Absent leaves `/api/agent-factory` unmounted.
+   */
+  agentFactory?: AgentFactoryService,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
   mountDesktopConnectionFailure(app, desktopHostToken);
@@ -486,7 +493,10 @@ export function createApp(
   // Workforce modules share OpenBot's authenticated host. Tenant/subject
   // authorization remains a prerequisite for future domain use cases.
   app.use("/api/platform/*", (context, next) => {
-    if (context.req.method === "GET" && context.req.path === "/api/platform/health") {
+    if (
+      context.req.method === "GET" &&
+      context.req.path === "/api/platform/health"
+    ) {
       return next();
     }
     return requireUser(context, next);
@@ -1234,6 +1244,14 @@ export function createApp(
         ),
       );
     }
+  }
+
+  // Its own prefix, so no factory path can be captured by `/api/agents/:agentId`.
+  if (agentFactory) {
+    app.route(
+      "/api/agent-factory",
+      createAgentFactoryRoutes(agentFactory, requireUser),
+    );
   }
 
   if (channelStore) {

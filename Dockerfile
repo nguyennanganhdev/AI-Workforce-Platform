@@ -56,6 +56,8 @@ COPY app/package.json app/package.json
 COPY server/package.json server/package.json
 COPY worker/package.json worker/package.json
 RUN bun install --frozen-lockfile
+COPY agent-factory/package.json agent-factory/bun.lock agent-factory/
+RUN cd agent-factory && bun install --frozen-lockfile --production --ignore-scripts
 
 # The lockfile travels with the manifest, because `--frozen-lockfile` with no lockfile in the context
 # is not an error: bun resolves afresh, succeeds, and the flag has decorated nothing. With both files
@@ -83,6 +85,7 @@ COPY shared shared
 # The server's source as well: the app's prebuild step reads the tenant package through
 # `server/src/tenant-package`, so the app cannot be built without it.
 COPY server server
+COPY agent-factory/src agent-factory/src
 COPY examples examples
 RUN bun run --cwd app build
 
@@ -121,6 +124,7 @@ WORKDIR /app
 # present and broken.
 COPY --from=deps /prod/node_modules node_modules
 COPY --from=deps /prod/server/node_modules server/node_modules
+COPY --from=deps /src/agent-factory/node_modules agent-factory/node_modules
 COPY --from=deps /src/package.json package.json
 COPY --from=deps /src/bun.lock bun.lock
 # The browser's tree is a separate install root with its own lockfile rather than a workspace of the
@@ -129,6 +133,7 @@ COPY --from=deps /src/bun.lock bun.lock
 COPY --from=deps /src/agent-computer/node_modules agent-computer/node_modules
 
 COPY server server
+COPY agent-factory/src agent-factory/src
 COPY shared shared
 COPY examples examples
 COPY agent-computer/src agent-computer/src

@@ -20,6 +20,8 @@ COPY app/package.json app/package.json
 COPY server/package.json server/package.json
 COPY worker/package.json worker/package.json
 RUN bun install --frozen-lockfile
+COPY agent-factory/package.json agent-factory/bun.lock agent-factory/
+RUN cd agent-factory && bun install --frozen-lockfile --production --ignore-scripts
 
 
 FROM deps AS app-build
@@ -32,6 +34,7 @@ COPY shared shared
 # The server's source too: `generate-app-config` reads the tenant package through
 # `server/src/tenant-package`, so the app cannot be built without it.
 COPY server server
+COPY agent-factory/src agent-factory/src
 COPY examples examples
 RUN bun run --cwd app build
 
@@ -49,8 +52,10 @@ COPY --from=deps /app/node_modules node_modules
 COPY --from=deps /app/package.json package.json
 COPY --from=deps /app/bun.lock bun.lock
 COPY --from=deps /app/server/node_modules server/node_modules
+COPY --from=deps /app/agent-factory/node_modules agent-factory/node_modules
 
 COPY server server
+COPY agent-factory/src agent-factory/src
 COPY shared shared
 COPY examples examples
 

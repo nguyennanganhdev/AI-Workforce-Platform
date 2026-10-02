@@ -1,4 +1,4 @@
-import type { DomainSubjectRef, JsonValue, RequestContext } from './context.js';
+import type { DomainSubjectRef, JsonValue, RequestContext } from "./context.js";
 
 /** Draft transport DTOs. Keep the Python TypedDict definitions aligned. */
 export interface RuntimePlan {
@@ -28,7 +28,12 @@ export interface RuntimeEvent {
   readonly session: RuntimeSessionRef;
   readonly eventId: string;
   readonly correlationId: string;
-  readonly type: 'RUN_STARTED' | 'STEP_COMPLETED' | 'RUN_COMPLETED' | 'RUN_FAILED' | 'RUN_CANCELLED';
+  readonly type:
+    | "RUN_STARTED"
+    | "STEP_COMPLETED"
+    | "RUN_COMPLETED"
+    | "RUN_FAILED"
+    | "RUN_CANCELLED";
   readonly occurredAt: string;
   readonly payload: Readonly<Record<string, JsonValue>>;
 }

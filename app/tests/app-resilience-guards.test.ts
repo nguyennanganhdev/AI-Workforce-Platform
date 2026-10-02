@@ -76,6 +76,35 @@ describe("control/screen/client guards", () => {
     ).rejects.toThrow("Nope.");
   });
 
+  test("client headers are optional: absent sends what it always did, present merges after JSON", async () => {
+    const seen: RequestInit[] = [];
+    globalThis.fetch = (async (_path: unknown, init: RequestInit) => {
+      seen.push(init);
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    const { client, tryClient } = await import("../src/lib/client");
+    await client("http://x.test/plain");
+    await client("http://x.test/json", { method: "POST", body: { a: 1 } });
+    await tryClient("http://x.test/keyed", {
+      method: "POST",
+      body: { a: 1 },
+      headers: { "Idempotency-Key": "k-1" },
+    });
+    await tryClient("http://x.test/header-only", {
+      headers: { "Idempotency-Key": "k-2" },
+    });
+    expect(seen.map(({ headers }) => headers)).toEqual([
+      undefined,
+      { "content-type": "application/json" },
+      { "content-type": "application/json", "Idempotency-Key": "k-1" },
+      { "Idempotency-Key": "k-2" },
+    ]);
+    expect(seen.every(({ credentials }) => credentials === "include")).toBe(
+      true,
+    );
+    expect(seen[2]?.body).toBe('{"a":1}');
+  });
+
   test("readScreenshot reports unavailable on a mistyped frame", async () => {
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ base64: 42, width: "x", height: 1 }), {

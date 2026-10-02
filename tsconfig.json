@@ -9,5 +9,11 @@
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["server/src/platform/**/*.ts", "server/src/domains/**/*.ts", "shared/platform/**/*.ts", "shared/domains/**/*.ts", "domain-tools/**/*.ts"]
+  "include": [
+    "server/src/platform/**/*.ts",
+    "server/src/domains/**/*.ts",
+    "shared/platform/**/*.ts",
+    "shared/domains/**/*.ts",
+    "domain-tools/**/*.ts"
+  ]
 }

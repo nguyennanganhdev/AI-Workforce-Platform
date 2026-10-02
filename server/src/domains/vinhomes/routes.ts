@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono } from "hono";
 
 // Add authenticated routes as domain use cases are implemented.
 export function vinhomesRoutes() {

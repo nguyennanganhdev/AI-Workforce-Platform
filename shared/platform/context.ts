@@ -1,7 +1,13 @@
-export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 
 export interface ActorRef {
-  readonly kind: 'user' | 'service' | 'agent';
+  readonly kind: "user" | "service" | "agent";
   readonly id: string;
 }
 

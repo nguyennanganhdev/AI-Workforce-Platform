@@ -1,5 +1,19 @@
 import type { RuntimeModel } from "../copilot";
 
+export interface ModelCallObservation {
+  readonly durationMs: number;
+  readonly status: "success" | "http_error" | "error" | "timeout" | "cancelled";
+  readonly httpStatus: number | null;
+  readonly usage: {
+    readonly inputTokens: number | null;
+    readonly outputTokens: number | null;
+    readonly totalTokens: number | null;
+    readonly details: Readonly<
+      Record<string, number | Readonly<Record<string, number>>>
+    >;
+  } | null;
+}
+
 /**
  * The one model call the router makes, kept apart from the routing logic so that logic stays a pure
  * function the tests drive without a network. This reuses the deployment's own model and key — the
@@ -11,68 +25,178 @@ import type { RuntimeModel } from "../copilot";
 export function createModelCompleter(deps: {
   model: RuntimeModel;
   resolveApiKey: () => Promise<string | null>;
+  timeoutMs?: number;
+  outputTokenBudget?: number;
+  observe?: (event: ModelCallObservation) => void;
 }): (prompt: string, signal?: AbortSignal) => Promise<string> {
+  const timeoutMs = deps.timeoutMs ?? 10_000;
+  const outputTokenBudget = deps.outputTokenBudget;
+  if (
+    !Number.isInteger(timeoutMs) ||
+    timeoutMs < 1 ||
+    timeoutMs > 90_000 ||
+    (outputTokenBudget !== undefined &&
+      (!Number.isInteger(outputTokenBudget) ||
+        outputTokenBudget < 1 ||
+        outputTokenBudget > 16_384))
+  )
+    throw new Error("invalid completion limits");
   return async (prompt: string, signal?: AbortSignal) => {
-    signal?.throwIfAborted();
-    const key = await deps.resolveApiKey();
-    signal?.throwIfAborted();
-    if (!key) throw new Error("no model key");
-    const anthropic = deps.model.provider === "anthropic";
-    const response = await fetch(
-      anthropic
-        ? anthropicMessagesUrl(process.env)
-        : chatCompletionsUrl(process.env),
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(anthropic
-            ? { "x-api-key": key, "anthropic-version": "2023-06-01" }
-            : { authorization: `Bearer ${key}` }),
-        },
-        body: JSON.stringify({
-          model: deps.model.defaultModel,
-          /*
-           * No temperature.
-           *
-           * It was zero, for a router that answers the same way twice. Reasoning models refuse the
-           * setting outright — "Unsupported value: 'temperature' does not support 0 with this model.
-           * Only the default (1) value is supported" — and this call treats a throw as "not sure", so
-           * every routing decision quietly became the default coworker and the roster was never
-           * consulted. A question naming Google Drive went to a Bot holding no Drive tools, which is
-           * the exact failure the roster exists to prevent, and nothing said so.
-           *
-           * Omitted rather than set per model, because a list of which models accept it is a list that
-           * goes stale. `response_format` and a prompt that asks for one object keep the answer tight,
-           * and the confidence floor still sends an unsure match to the default.
-           */
-          ...(anthropic
-            ? { max_tokens: 1024 }
-            : { response_format: { type: "json_object" } }),
-          messages: [{ role: "user", content: prompt }],
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const activeSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    // Keep one listener through key/fetch/body: Bun 1.3.14 cancels the timeout when
+    // its last listener is removed, even if another stage subsequently adds one.
+    let abort: () => void = () => {};
+    const aborted = new Promise<never>((_, reject) => {
+      abort = () => reject(activeSignal.reason);
+      activeSignal.addEventListener("abort", abort, { once: true });
+    });
+    const bounded = async <T>(operation: () => Promise<T>): Promise<T> => {
+      activeSignal.throwIfAborted();
+      return Promise.race([
+        aborted,
+        Promise.resolve().then(() => {
+          activeSignal.throwIfAborted();
+          return operation();
         }),
-        signal: signal
-          ? AbortSignal.any([signal, AbortSignal.timeout(10_000)])
-          : AbortSignal.timeout(10_000),
-      },
-    );
-    if (!response.ok)
-      throw new Error(`router model answered ${response.status}`);
-    const body = (await response.json()) as {
-      choices?: { message?: { content?: unknown } }[];
-      content?: { type?: string; text?: unknown }[];
+      ]);
     };
-    const content = anthropic
-      ? body.content
-          ?.filter(
-            (block) => block.type === "text" && typeof block.text === "string",
-          )
-          .map((block) => block.text)
-          .join("") || undefined
-      : body.choices?.[0]?.message?.content;
-    if (typeof content !== "string")
-      throw new Error("router model returned no text");
-    return content;
+    const anthropic = deps.model.provider === "anthropic";
+    let started: number | null = null;
+    let status: ModelCallObservation["status"] = "error";
+    let httpStatus: number | null = null;
+    let usage: ModelCallObservation["usage"] = null;
+    try {
+      const key = await bounded(deps.resolveApiKey);
+      activeSignal.throwIfAborted();
+      if (!key) throw new Error("no model key");
+      started = performance.now();
+      const response = await bounded(() =>
+        fetch(
+          anthropic
+            ? anthropicMessagesUrl(process.env)
+            : chatCompletionsUrl(process.env),
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              ...(anthropic
+                ? { "x-api-key": key, "anthropic-version": "2023-06-01" }
+                : { authorization: `Bearer ${key}` }),
+            },
+            body: JSON.stringify({
+              model: deps.model.defaultModel,
+              /*
+               * No temperature.
+               *
+               * It was zero, for a router that answers the same way twice. Reasoning models refuse the
+               * setting outright — "Unsupported value: 'temperature' does not support 0 with this model.
+               * Only the default (1) value is supported" — and this call treats a throw as "not sure", so
+               * every routing decision quietly became the default coworker and the roster was never
+               * consulted. A question naming Google Drive went to a Bot holding no Drive tools, which is
+               * the exact failure the roster exists to prevent, and nothing said so.
+               *
+               * Omitted rather than set per model, because a list of which models accept it is a list that
+               * goes stale. `response_format` and a prompt that asks for one object keep the answer tight,
+               * and the confidence floor still sends an unsure match to the default.
+               */
+              ...(anthropic
+                ? { max_tokens: outputTokenBudget ?? 1024 }
+                : {
+                    response_format: { type: "json_object" },
+                    ...(outputTokenBudget === undefined
+                      ? {}
+                      : { max_completion_tokens: outputTokenBudget }),
+                  }),
+              messages: [{ role: "user", content: prompt }],
+            }),
+            signal: activeSignal,
+          },
+        ),
+      );
+      httpStatus = response.status;
+      if (!response.ok) {
+        status = "http_error";
+        throw new Error(`router model answered ${response.status}`);
+      }
+      const body = (await bounded(() => response.json())) as {
+        choices?: { message?: { content?: unknown } }[];
+        content?: { type?: string; text?: unknown }[];
+        usage?: unknown;
+      };
+      if (
+        body.usage &&
+        typeof body.usage === "object" &&
+        !Array.isArray(body.usage)
+      ) {
+        const reported = body.usage as Record<string, unknown>;
+        const count = (field: string) =>
+          typeof reported[field] === "number" &&
+          Number.isFinite(reported[field]) &&
+          reported[field] >= 0
+            ? (reported[field] as number)
+            : null;
+        const details: Record<string, number | Record<string, number>> = {};
+        for (const field of [
+          "prompt_tokens_details",
+          "completion_tokens_details",
+          "cache_creation_input_tokens",
+          "cache_read_input_tokens",
+          "cache_creation",
+          "input_tokens_details",
+          "output_tokens_details",
+        ]) {
+          const value = reported[field];
+          if (typeof value === "number" && Number.isFinite(value) && value >= 0)
+            details[field] = value;
+          else if (value && typeof value === "object" && !Array.isArray(value))
+            details[field] = Object.fromEntries(
+              Object.entries(value).filter(
+                ([, v]) =>
+                  typeof v === "number" && Number.isFinite(v) && v >= 0,
+              ),
+            ) as Record<string, number>;
+        }
+        usage = {
+          inputTokens: count(anthropic ? "input_tokens" : "prompt_tokens"),
+          outputTokens: count(
+            anthropic ? "output_tokens" : "completion_tokens",
+          ),
+          totalTokens: count("total_tokens"),
+          details,
+        };
+      }
+      const content = anthropic
+        ? body.content
+            ?.filter(
+              (block) =>
+                block.type === "text" && typeof block.text === "string",
+            )
+            .map((block) => block.text)
+            .join("") || undefined
+        : body.choices?.[0]?.message?.content;
+      if (typeof content !== "string")
+        throw new Error("router model returned no text");
+      activeSignal.throwIfAborted();
+      status = "success";
+      return content;
+    } catch (error) {
+      if (activeSignal.aborted)
+        status =
+          activeSignal.reason?.name === "TimeoutError"
+            ? "timeout"
+            : "cancelled";
+      throw error;
+    } finally {
+      activeSignal.removeEventListener("abort", abort);
+      if (started !== null)
+        deps.observe?.({
+          durationMs: performance.now() - started,
+          status,
+          httpStatus,
+          usage,
+        });
+    }
   };
 }
 

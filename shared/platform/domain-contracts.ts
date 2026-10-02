@@ -1,5 +1,14 @@
-import type { ActionProposal, ActionValidation, DomainActionReceipt } from './action-contracts.js';
-import type { DomainScope, DomainSubjectRef, JsonValue, RequestContext } from './context.js';
+import type {
+  ActionProposal,
+  ActionValidation,
+  DomainActionReceipt,
+} from "./action-contracts.js";
+import type {
+  DomainScope,
+  DomainSubjectRef,
+  JsonValue,
+  RequestContext,
+} from "./context.js";
 
 export interface DomainContext {
   readonly subject: DomainSubjectRef;
@@ -9,7 +18,7 @@ export interface DomainContext {
 export interface DomainCapability {
   readonly key: string;
   readonly description: string;
-  readonly effect: 'READ' | 'ANALYZE' | 'PROPOSE';
+  readonly effect: "READ" | "ANALYZE" | "PROPOSE";
 }
 
 export interface EvidenceDescriptor {
@@ -22,10 +31,25 @@ export interface EvidenceDescriptor {
 /** All methods enforce tenant, membership and subject access in the domain. */
 export interface DomainAdapter {
   readonly namespace: string;
-  resolveSubject(context: RequestContext, ref: DomainSubjectRef): Promise<DomainContext>;
-  validateAction(context: RequestContext, proposal: ActionProposal): Promise<ActionValidation>;
-  submitAction(context: RequestContext, proposal: ActionProposal): Promise<DomainActionReceipt>;
-  listCapabilities(context: RequestContext, scope: DomainScope): Promise<readonly DomainCapability[]>;
+  resolveSubject(
+    context: RequestContext,
+    ref: DomainSubjectRef,
+  ): Promise<DomainContext>;
+  validateAction(
+    context: RequestContext,
+    proposal: ActionProposal,
+  ): Promise<ActionValidation>;
+  submitAction(
+    context: RequestContext,
+    proposal: ActionProposal,
+  ): Promise<DomainActionReceipt>;
+  listCapabilities(
+    context: RequestContext,
+    scope: DomainScope,
+  ): Promise<readonly DomainCapability[]>;
   resolveActorScope(context: RequestContext): Promise<DomainScope>;
-  getEvidence(context: RequestContext, refs: readonly string[]): Promise<readonly EvidenceDescriptor[]>;
+  getEvidence(
+    context: RequestContext,
+    refs: readonly string[],
+  ): Promise<readonly EvidenceDescriptor[]>;
 }

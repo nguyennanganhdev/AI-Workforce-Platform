@@ -1,10 +1,16 @@
 import { mutationOptions, type QueryClient } from "@tanstack/react-query";
-import { client } from "@/lib/client";
+import { client, tryClient } from "@/lib/client";
+import type {
+  AgentCreationRequest,
+  FactoryErrorResponse,
+} from "../../../../agent-factory/src/contracts";
 import {
   type AgentProfile,
   type AgentVisibility,
   agentApiPath,
   agentKeys,
+  type FactoryArtifact,
+  factoryApiPath,
 } from "./queries";
 
 export type AgentInput = {
@@ -35,6 +41,83 @@ export function createAgentMutationOptions(queryClient: QueryClient) {
         fallback: FALLBACK,
       }),
     onSuccess: () => invalidateAgents(queryClient),
+  });
+}
+
+/**
+ * A factory request that did not produce an artifact. `status` 0 means no answer arrived at all, so
+ * the server may or may not have acted; `body` is the server's safe envelope when there was one.
+ */
+export class FactoryRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: FactoryErrorResponse | null,
+  ) {
+    super(body?.error ?? "The server's answer did not arrive.");
+  }
+}
+
+async function factoryRequest(
+  path: string,
+  options: Parameters<typeof tryClient>[1],
+  success: readonly number[],
+) {
+  const response = await tryClient(path, options).catch(() => {
+    throw new FactoryRequestError(0, null);
+  });
+  const body = (await response.json().catch(() => null)) as unknown;
+  if (!success.includes(response.status) || !body || typeof body !== "object")
+    throw new FactoryRequestError(
+      response.status,
+      body && typeof body === "object" && "error" in body
+        ? (body as FactoryErrorResponse)
+        : null,
+    );
+  return { status: response.status, body };
+}
+
+/**
+ * Build a coworker from name, role and description. 201 is ready, 202 is saved but waiting for
+ * access; anything else throws. The caller owns the key: the same one for an unchanged retry, so a
+ * lost answer replays instead of building a second coworker.
+ */
+export function constructAgentMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({
+    mutationFn: async (variables: {
+      request: AgentCreationRequest;
+      idempotencyKey: string;
+    }) => {
+      const { status, body } = await factoryRequest(
+        "/api/agent-factory/constructions",
+        {
+          method: "POST",
+          body: variables.request,
+          headers: { "Idempotency-Key": variables.idempotencyKey },
+        },
+        [201, 202],
+      );
+      return { status: status as 201 | 202, artifact: body as FactoryArtifact };
+    },
+    // Settled, not success: an answer lost on the way back may still have created the coworker.
+    onSettled: () => invalidateAgents(queryClient),
+  });
+}
+
+/**
+ * Re-read the creator's grants and connections for the stored artifact. Never builds or grants
+ * anything; a coworker still waiting answers 409 `RESOURCES_PENDING`.
+ */
+export function recheckFactoryMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({
+    mutationFn: async (variables: { agentId: string; specHash: string }) =>
+      (
+        await factoryRequest(
+          `${factoryApiPath(variables.agentId)}/recheck`,
+          { method: "POST", body: { specHash: variables.specHash } },
+          [200],
+        )
+      ).body as FactoryArtifact,
+    onSettled: () => invalidateAgents(queryClient),
   });
 }
 

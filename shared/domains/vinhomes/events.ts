@@ -1,7 +1,10 @@
-import type { JsonValue } from '../../platform/context.js';
+import type { JsonValue } from "../../platform/context.js";
 
-export interface VinhomesEvent<TType extends string, TPayload extends JsonValue> {
-  readonly stream: 'vinhomes';
+export interface VinhomesEvent<
+  TType extends string,
+  TPayload extends JsonValue,
+> {
+  readonly stream: "vinhomes";
   readonly eventId: string;
   readonly tenantId: string;
   readonly incidentId: string | null;

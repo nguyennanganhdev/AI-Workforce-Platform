@@ -1,11 +1,11 @@
-import type { DomainSubjectRef, JsonValue } from './context.js';
+import type { DomainSubjectRef, JsonValue } from "./context.js";
 
 /** A proposal is not an approval or permission to execute a WRITE tool. */
 export interface ActionProposal {
   readonly proposalId: string;
   readonly subject: DomainSubjectRef;
   readonly actionType: string;
-  readonly producerType: 'AGENT' | 'USER' | 'SYSTEM';
+  readonly producerType: "AGENT" | "USER" | "SYSTEM";
   readonly producerId: string;
   readonly producerVersion: string | null;
   readonly payload: Readonly<Record<string, JsonValue>>;

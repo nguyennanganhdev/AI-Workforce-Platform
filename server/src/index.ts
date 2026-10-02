@@ -11,6 +11,7 @@ import { workOwner } from "../../shared/work-owner";
 import { mintRunAssertion, readRunAssertion } from "./agents/callback-token";
 import { createAgentFetch } from "./agents/endpoint";
 import { askTheirOwnPerson, escalationTool } from "./agents/escalation";
+import { createFactoryRuntimeReadiness } from "./agents/factory";
 import { createHandoffDesk, HANDOFF_KIND } from "./agents/handoff";
 import { createHandoffDelivery } from "./agents/handoff-delivery";
 import { createHandoffRunner } from "./agents/handoff-runner";
@@ -231,6 +232,9 @@ const loadAgentsForActor = createRuntimeAgentLoader(
   database,
   agentVault,
   config.managedAgent,
+  // Deferred: the plugin store it reads is built below, and no agent loads before a request does.
+  // Chat, routines and handoff all load through here, so generated rows are gated on every path.
+  (actor, row) => factoryRuntimeReadiness(actor, row),
 );
 await synchronizeTenantPackage(database, tenantPackage);
 /*
@@ -389,6 +393,9 @@ const pluginStore = createPluginStore({
    */
   broker: composio?.broker,
 });
+
+// Generated coworkers run on their creator's current grants and connections, read fresh per load.
+const factoryRuntimeReadiness = createFactoryRuntimeReadiness(pluginStore);
 
 // Logo metadata is optional; a vendor outage must not prevent the API from starting.
 if (composio) {
