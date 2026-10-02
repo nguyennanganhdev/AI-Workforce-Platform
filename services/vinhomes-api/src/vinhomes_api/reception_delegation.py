@@ -123,6 +123,11 @@ async def start_run(db, actor_id: str, channel_id: str, message_id: str, policy_
         insert into runtime_identities(tenant_id,backend_id,principal_id,runtime_user_key,status)
         values({TENANT},:backend,:principal,:actor,'active') on conflict (backend_id,principal_id) do nothing
     """), {"backend": backend, "principal": principal["id"], "actor": actor_id})
+    # A turn lasts seconds and its token ten minutes: anything still "running" after that was abandoned.
+    await db.execute(text(f"""
+        update agent_runs set status='failed',error_code='abandoned',finished_at=now()
+        where tenant_id={TENANT} and channel_id=:channel and status='running' and started_at<now()-interval '15 minutes'
+    """), {"channel": channel_id})
     binding = (await db.execute(text(f"""
         select id,agent_version_id,policy_version from runtime_session_bindings
         where tenant_id={TENANT} and channel_id=:channel and agent_id=:agent
@@ -165,12 +170,14 @@ async def start_run(db, actor_id: str, channel_id: str, message_id: str, policy_
             "context": {k: claims[k] for k in ("tenantId", "runId", "bindingId", "principalId")}}
 
 
-async def finish_run(db, run_id: str, succeeded: bool) -> None:
-    """Ending the run revokes its token."""
+async def finish_run(db, run_id: str, succeeded: bool, usage: dict | None = None) -> None:
+    """Ending the run revokes its token. `usage` is what the runtime reports the turn cost."""
+    usage = usage or {}
     await db.execute(text(f"""
-        update agent_runs set status=:status,finished_at=now()
+        update agent_runs set status=:status,finished_at=now(),input_tokens=:input,output_tokens=:output
         where tenant_id={TENANT} and id=cast(:id as uuid) and status='running'
-    """), {"id": run_id, "status": "succeeded" if succeeded else "failed"})
+    """), {"id": run_id, "status": "succeeded" if succeeded else "failed",
+           "input": int(usage.get("input_tokens") or 0), "output": int(usage.get("output_tokens") or 0)})
 
 
 async def delegated_scope(request: Request):

@@ -91,8 +91,12 @@ async def run_agent(model, toolbox: Toolbox, system: str, history: list[dict]) -
         if not problems:
             reply, sources = final
             # A question handed to management was not answered from the passages, whatever the model lists.
-            titles = [] if toolbox.forwarded else list(dict.fromkeys(
-                str(toolbox.passages[rank]["title"]) for rank in sources if rank in toolbox.passages))
+            used = [] if toolbox.forwarded else [toolbox.passages[rank] for rank in sources if rank in toolbox.passages]
+            if not used and not toolbox.forwarded:
+                # The model forgot to name its sources: a figure in the reply still shows where it came from.
+                figures = [_digits(figure) for figure in FIGURE.findall(reply) if len(_digits(figure)) >= 2]
+                used = [p for p in toolbox.passages.values() if any(f in _digits(p["text"]) for f in figures)]
+            titles = list(dict.fromkeys(str(passage["title"]) for passage in used))
             return reply + ("\n(Nguồn: " + "; ".join(titles) + ")" if titles else "")
         if retried:
             break

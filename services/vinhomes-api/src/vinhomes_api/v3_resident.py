@@ -169,6 +169,13 @@ async def send_message(channel_id: str, body: SendMessage, request: Request, sco
         if previous["body"] != content:
             raise HTTPException(409, "clientMessageId already used with different content")
         return dict(previous)
+    recent = await db.execute(text("""
+        select count(*) from messages where sender_user_id=:actor and sender_kind='user'
+          and created_at>now()-interval '1 minute'
+          and tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
+    """), {"actor": actor_id})
+    if recent.scalar_one() >= request.app.state.settings.resident_messages_per_minute:
+        raise HTTPException(429, "Bạn đang gửi quá nhanh. Vui lòng thử lại sau một phút.", headers={"Retry-After": "60"})
     sequence = await db.execute(text("""
         update channels set next_message_seq=next_message_seq+1,
             last_message=:preview, last_message_at=now(), updated_at=now()

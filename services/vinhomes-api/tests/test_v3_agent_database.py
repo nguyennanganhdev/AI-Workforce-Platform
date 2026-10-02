@@ -406,6 +406,48 @@ def test_management_reads_what_the_resident_said_about_a_ticket(database):
         assert other.get(f"/tickets/{ticket_id}/conversation").status_code == 404
 
 
+def test_runs_record_usage_and_a_stale_run_is_closed(database, monkeypatch):
+    from vinhomes_api.reception_delegation import finish_run
+    from vinhomes_api.v3_reception_runtime import _resident_transaction
+
+    monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "3d" * 32)
+    with client(database) as c:
+        channel, first = resident_message(c, "Usage")
+        run = delegate(c, channel, first)["context"]["runId"]
+
+        async def finish():
+            async with _resident_transaction(c.app, "local-v3-resident") as db:
+                await finish_run(db, run, True, {"input_tokens": 1200, "output_tokens": 80})
+
+        c.portal.call(finish)
+        row = sql(database, "select status,input_tokens,output_tokens from agent_runs where id=$1", UUID(run))[0]
+        assert row == {"status": "succeeded", "input_tokens": 1200, "output_tokens": 80}
+
+        # A run left running by a crash is closed when the conversation's next turn opens.
+        second = c.post(f"/resident/chats/{channel}/messages", json={"text": "Lượt hai", "client_message_id": str(uuid4())}).json()
+        stale = delegate(c, channel, second["id"])
+        sql(database, "update agent_runs set started_at=now()-interval '20 minutes' where id=$1", UUID(stale["context"]["runId"]))
+        third = c.post(f"/resident/chats/{channel}/messages", json={"text": "Lượt ba", "client_message_id": str(uuid4())}).json()
+        delegate(c, channel, third["id"])
+        status = sql(database, "select status,error_code from agent_runs where id=$1", UUID(stale["context"]["runId"]))[0]
+        assert status == {"status": "failed", "error_code": "abandoned"}
+        assert c.get("/internal/reception/catalog", headers={"Authorization": "Bearer " + stale["token"]}).status_code == 403
+
+
+def test_a_resident_cannot_flood_the_assistant(database):
+    # Other tests share this database and resident, so the limit is three more than already sent.
+    sent = sql(database, "select count(*) as n from messages where sender_user_id='local-v3-resident' "
+                         "and sender_kind='user' and created_at>now()-interval '1 minute'")[0]["n"]
+    settings = V3Settings("127.0.0.1", 8000, database["runtime"], TENANT, None, "local-v3-resident",
+                          resident_allowed_origins=("http://testserver",), resident_messages_per_minute=sent + 3)
+    with TestClient(create_app(settings), client=("127.0.0.1", 50000)) as c:
+        channel = c.post("/resident/chats", json={"title": "Flood"}).json()["id"]
+        send = lambda: c.post(f"/resident/chats/{channel}/messages", json={"text": "a", "client_message_id": str(uuid4())})  # noqa: E731
+        assert [send().status_code for _ in range(3)] == [201, 201, 201]
+        limited = send()
+        assert limited.status_code == 429 and limited.headers["Retry-After"] == "60"
+
+
 def test_reception_reads_the_conversation_and_its_open_request(database, monkeypatch):
     monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "1b" * 32)
     with client(database) as c:

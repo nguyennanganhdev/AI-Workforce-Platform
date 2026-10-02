@@ -173,7 +173,7 @@ async def _resident_transaction(app, actor_id: str):
 async def dispatch_turn(app, actor_id: str, channel_id: str, message: dict[str, object]) -> None:
     """Run after the resident message is committed; the runtime stores its own reply."""
     settings = app.state.settings
-    run_id, delivered = None, False
+    run_id, delivered, usage = None, False, None
     try:
         async with _resident_transaction(app, actor_id) as db:
             delegation = await start_run(db, actor_id, channel_id, str(message["id"]), POLICY_VERSION)
@@ -186,6 +186,8 @@ async def dispatch_turn(app, actor_id: str, channel_id: str, message: dict[str, 
                 json={"user_id": actor_id, "channel_id": channel_id, "message": message, "delegation": delegation},
             )
         delivered = response.status_code == 200
+        if delivered:
+            usage = response.json().get("usage")
         if not delivered:
             log.warning("Reception runtime returned HTTP %s", response.status_code)
     except httpx.HTTPError as exc:
@@ -195,7 +197,7 @@ async def dispatch_turn(app, actor_id: str, channel_id: str, message: dict[str, 
     try:
         async with _resident_transaction(app, actor_id) as db:
             if run_id:
-                await finish_run(db, run_id, delivered)
+                await finish_run(db, run_id, delivered, usage if isinstance(usage, dict) else None)
             if not delivered:
                 # The resident must not be left without an answer when the runtime is down.
                 await write_reply(db, channel_id, UNAVAILABLE_REPLY, UUID(str(message["id"])))

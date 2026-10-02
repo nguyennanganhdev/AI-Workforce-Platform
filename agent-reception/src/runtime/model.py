@@ -5,6 +5,7 @@ Every Reception prompt asks for one JSON object, so the request pins JSON output
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
@@ -14,6 +15,19 @@ from langchain_core.messages import SystemMessage
 
 class ModelUnavailable(Exception):
     pass
+
+
+# Token usage of the turn in progress. The model object is shared by concurrent turns, so the
+# count lives in the turn's own context rather than on the model.
+turn_usage: ContextVar[dict | None] = ContextVar("turn_usage", default=None)
+
+
+def _count(payload: dict) -> None:
+    usage, reported = turn_usage.get(), payload.get("usage")
+    if usage is not None and isinstance(reported, dict):
+        usage["input_tokens"] += int(reported.get("prompt_tokens") or 0)
+        usage["output_tokens"] += int(reported.get("completion_tokens") or 0)
+        usage["model_calls"] += 1
 
 
 @dataclass(frozen=True)
@@ -53,7 +67,9 @@ class ChatCompletionsModel:
                 },
             )
             response.raise_for_status()
-            content = response.json()["choices"][0]["message"]["content"]
+            payload = response.json()
+            _count(payload)
+            content = payload["choices"][0]["message"]["content"]
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
             # Never surface provider payloads or credentials to the graph.
             raise ModelUnavailable("MODEL_UNAVAILABLE") from None
@@ -72,7 +88,9 @@ class ChatCompletionsModel:
                       "response_format": {"type": "json_object"}},
             )
             response.raise_for_status()
-            message = response.json()["choices"][0]["message"]
+            payload = response.json()
+            _count(payload)
+            message = payload["choices"][0]["message"]
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
             raise ModelUnavailable("MODEL_UNAVAILABLE") from None
         if not isinstance(message, dict):

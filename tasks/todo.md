@@ -40,13 +40,13 @@
 - [x] T6.1 Viết lại câu hỏi theo ngữ cảnh — agent loop tự viết truy vấn đầy đủ khi gọi search_knowledge
 - [x] T6.2 Không dấu, sai chính tả — agent loop viết lại truy vấn có dấu; nhóm no-accents đạt 80–100%
 - [x] T6.3 Xếp hạng: đoạn khớp rõ nhất đứng đầu (leadClearMatch trong retrieve.ts)
-- [ ] T6.4 Thực thể và cạnh, mở rộng láng giềng (M)
-- [ ] T6.5 Đo và quyết định Qdrant (XS)
+- [ ] T6.4 Thực thể và cạnh (M) — hoãn: nhóm câu hỏi thông tin đã đạt 100%, chưa có số đo cho thấy cần
+- [x] T6.5 Qdrant: không cần lúc này — 277 đoạn, tìm kiếm trung bình 486 ms (phần lớn là gọi embedding), chưa có index ANN và vẫn nhanh
 
 ## Giai đoạn 7 — Vận hành thật
-- [ ] T7.1 Phiên Lễ tân trên PostgreSQL; dọn run treo (M)
-- [ ] T7.2 Chi phí, độ trễ, giới hạn tần suất (S)
+- [x] T7.1 Agent loop không giữ trạng thái (đọc hội thoại từ backend) nên chạy được nhiều bản; run treo quá 15 phút tự đóng. Chế độ graph vẫn dùng SQLite
+- [x] T7.2 Token và độ trễ mỗi lượt ghi vào agent_runs và log; giới hạn 30 tin/phút mỗi cư dân
 - [ ] T7.3 Ma trận phân quyền + test từ chối (M)
 - [ ] T7.4 Một đường migration duy nhất (M)
-- [ ] T7.5 Tắt đăng nhập demo ở bản chạy thật (S)
+- [x] T7.5 Đã có sẵn: backend từ chối khởi động chế độ demo khi host không phải loopback
 - [ ] T7.6 Nhập dữ liệu tổ chức thật qua Agent Factory (L, phụ thuộc Team Phái)

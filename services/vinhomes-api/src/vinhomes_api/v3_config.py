@@ -29,6 +29,8 @@ class V3Settings:
     resident_local_storage: bool = False
     reception_service_token: str | None = None
     reception_url: str | None = None
+    # Messages one resident may send to the assistant per minute; each one costs model calls.
+    resident_messages_per_minute: int = 30
 
     @classmethod
     def from_env(cls) -> "V3Settings":
@@ -98,4 +100,5 @@ class V3Settings:
             resident_local_storage=local_storage,
             reception_service_token=reception_token,
             reception_url=reception_url,
+            resident_messages_per_minute=int(os.getenv('VINHOMES_API_RESIDENT_MESSAGES_PER_MINUTE', '30')),
         )

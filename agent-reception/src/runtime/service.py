@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import logging
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -26,7 +28,7 @@ from ..graph import (
 from ..persistence import open_sqlite_checkpointer
 from .backend import BackendClient, BackendOperations, DraftStore, RequestPolicy
 from .knowledge import KnowledgeSearch
-from .model import ChatCompletionsModel, ModelConfig
+from .model import ChatCompletionsModel, ModelConfig, turn_usage
 from ..agent.loop import EMERGENCY_REPLY as AGENT_EMERGENCY_REPLY
 from ..agent.loop import run_agent
 from ..agent.prompt import system_prompt
@@ -35,6 +37,7 @@ from .curator import judge
 from .inquiry import unanswered
 from .voice import reword
 
+log = logging.getLogger("reception.runtime")
 FAILED_REPLY = "Xin lỗi, tôi chưa xử lý được tin nhắn này. Bạn thử lại sau ít phút hoặc gửi phản ánh bằng biểu mẫu nhé."
 # Said only when this turn filed the request under the backend's emergency policy.
 EMERGENCY_REPLY = "Mình đã chuyển yêu cầu của bạn đến Ban quản lý ở mức khẩn cấp."
@@ -220,9 +223,19 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
             raise HTTPException(502, "Curator unavailable") from None
 
     @app.post("/v1/turns")
-    async def turn(body: Turn, request: Request) -> dict[str, str]:
+    async def turn(body: Turn, request: Request) -> dict:
         backend_only(request)
         context = turn_context(body)
+        started = time.monotonic()
+        usage = {"input_tokens": 0, "output_tokens": 0, "model_calls": 0}
+        turn_usage.set(usage)
+
+        def measured() -> dict:
+            usage["latency_ms"] = int((time.monotonic() - started) * 1000)
+            # One line per turn for cost and latency tracking; no message text, no identifiers of the resident.
+            log.info("turn agent=%s model_calls=%s input_tokens=%s output_tokens=%s latency_ms=%s", settings.agent,
+                     usage["model_calls"], usage["input_tokens"], usage["output_tokens"], usage["latency_ms"])
+            return usage
         message = body.message.model_dump(exclude_defaults=True) | {"id": body.message.id, "text": body.message.text}
         # One turn at a time per conversation: the graph state is a single thread.
         async with locks.setdefault(body.channel_id, asyncio.Lock()):
@@ -243,7 +256,7 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                         {"text": reply[:10000], "reply_to_id": body.message.id})
                 finally:
                     backend.tokens.pop(body.channel_id, None)
-                return {"status": "completed", "reply": reply}
+                return {"status": "completed", "reply": reply, "usage": measured()}
             try:
                 try:
                     result = await run_turn(request.app.state.graph, context, message)
@@ -273,6 +286,6 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                     {"text": reply[:10000], "reply_to_id": body.message.id})
             finally:
                 backend.tokens.pop(body.channel_id, None)
-        return {"status": result["status"], "reply": reply}
+        return {"status": result["status"], "reply": reply, "usage": measured()}
 
     return app

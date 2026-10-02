@@ -61,6 +61,15 @@ def test_answer_from_a_passage_carries_its_source():
     assert toolbox.calls == [("search_knowledge", {"query": "phí gửi xe máy"})]
 
 
+def test_a_figure_taken_from_a_passage_is_attributed_even_when_the_model_names_no_source():
+    passages = [{"rank": 1, "title": "Nội quy trông giữ xe", "text": "Phí gửi xe máy là 100.000 đồng mỗi tháng.", "unverified": False},
+                {"rank": 2, "title": "Dịch vụ cư dân", "text": "Phòng gym ở tầng 2.", "unverified": False}]
+    toolbox = Toolbox({"search_knowledge": {"passages": passages}})
+    reply = run(Model(tool_call("search_knowledge", query="phí gửi xe máy"),
+                      final("Phí gửi xe máy là 100.000 đồng mỗi tháng.")), toolbox)
+    assert reply.endswith("(Nguồn: Nội quy trông giữ xe)")
+
+
 def test_a_figure_without_a_source_is_sent_back_once_then_replaced():
     toolbox = Toolbox({"search_knowledge": {"passages": [], "note": "Không có nguồn phù hợp."}})
     model = Model(tool_call("search_knowledge", query="phí gửi xe máy"),
