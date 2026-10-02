@@ -1,5 +1,7 @@
 import type { Hono as HonoApp, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
+import { createTechnicalApiRoutes } from "./technical-api/routes";
+import { createTechnicalApiDependencies, type TechnicalApiOptions } from "./technical-api/runtime";
 import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/bun";
 import { MAX_IMAGE_BYTES } from "../../shared/attachments";
@@ -323,8 +325,10 @@ export function createApp(
   /** Native model OAuth stays server-side; callers hold only a separate local bearer. */
   modelProviderProxy?: ModelProviderProxy,
   vinHomesDatabase?: { database: Database; tenantId: string },
+  technicalApi?: TechnicalApiOptions,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
+  if (technicalApi) app.route("/api/technical/v1", createTechnicalApiRoutes(createTechnicalApiDependencies(technicalApi)));
   mountDesktopConnectionFailure(app, desktopHostToken);
   mountProviderOAuthProxy(app, modelProviderProxy);
 

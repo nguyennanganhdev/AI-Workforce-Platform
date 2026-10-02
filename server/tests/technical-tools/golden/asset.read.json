@@ -1,0 +1,35 @@
+{
+  "request": {
+    "building_id": "11111111-1111-4111-8111-111111111111",
+    "asset_id": "AC-A1-1205-01"
+  },
+  "response": {
+    "status": "OK",
+    "trace_id": "tr-a2-002",
+    "server_time": "2026-09-30T09:01:00Z",
+    "data": {
+      "assets": [
+        {
+          "asset_id": "AC-A1-1205-01",
+          "type": "air_conditioner",
+          "model": "ACME-X1",
+          "location": "A1-1205/phòng khách",
+          "ownership": "resident",
+          "warranty_until": "2027-03-31",
+          "status": "active",
+          "updated_at": "2026-09-20T02:00:00Z"
+        }
+      ]
+    },
+    "errors": [],
+    "missing_fields": [],
+    "provenance": [
+      {
+        "source_system": "asset_adapter",
+        "source_record_id": "AC-A1-1205-01",
+        "source_version": "etag-17",
+        "retrieved_at": "2026-09-30T09:01:00Z"
+      }
+    ]
+  }
+}

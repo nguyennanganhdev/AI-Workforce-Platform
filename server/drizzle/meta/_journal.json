@@ -64,6 +64,13 @@
       "when": 1790819701728,
       "tag": "0008_reception_command_receipt",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790906101729,
+      "tag": "0009_technical_agent_api",
+      "breakpoints": true
     }
   ]
 }

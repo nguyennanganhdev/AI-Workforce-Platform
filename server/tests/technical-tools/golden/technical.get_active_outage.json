@@ -1,0 +1,35 @@
+{
+  "request": {
+    "building_id": "11111111-1111-4111-8111-111111111111",
+    "service_type": "water",
+    "occurred_at": "2026-09-30T08:30:00Z"
+  },
+  "response": {
+    "status": "OK",
+    "trace_id": "tr-a2-005",
+    "server_time": "2026-09-30T09:04:00Z",
+    "data": {
+      "outages": [
+        {
+          "outage_id": "51111111-1111-4111-8111-111111111111",
+          "service_type": "water",
+          "status": "active",
+          "scope_ids": ["11111111-1111-4111-8111-111111111111"],
+          "started_at": "2026-09-30T08:00:00Z",
+          "ended_at": null,
+          "published_eta": null
+        }
+      ]
+    },
+    "errors": [],
+    "missing_fields": [],
+    "provenance": [
+      {
+        "source_system": "application_db",
+        "source_record_id": "51111111-1111-4111-8111-111111111111",
+        "source_version": "2026-09-30T08:05:00Z",
+        "retrieved_at": "2026-09-30T09:04:00Z"
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+-- Execute as database owner after creating a LOGIN role named vinhomes_technical_api.
+GRANT USAGE ON SCHEMA public TO vinhomes_technical_api;
+GRANT SELECT ON agents,agent_versions,tenant_memberships,scoped_user_roles,access_scopes,
+ buildings,zones,sites,units,unit_residents,tickets,work_orders,work_assignments,staff_profiles,evidence_items,
+ files,service_interruptions,interruption_scopes,work_approvals,knowledge_bases,
+ knowledge_documents,document_versions,document_scopes,document_acl,vh_assets,
+ vh_technical_agent_grants,vh_technical_sop_profiles,vh_technical_sensors,
+ vh_technical_sensor_samples,vh_technical_measurement_records,vh_technical_executor_results,
+ vh_technical_maintenance_events,vh_technical_approval_requests,vh_technical_vendors,
+ vh_technical_api_receipts,vh_technical_api_audit TO vinhomes_technical_api;
+GRANT INSERT ON work_approvals,service_interruptions,interruption_scopes,
+ vh_technical_measurement_records,vh_technical_executor_results,vh_technical_maintenance_events,
+ vh_technical_approval_requests,vh_technical_api_receipts,vh_technical_api_audit TO vinhomes_technical_api;
