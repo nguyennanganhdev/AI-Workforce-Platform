@@ -8,6 +8,7 @@ import { WorkspaceFrame } from "../workspace/WorkspaceFrame";
 import { ConnectedAccounts } from "./ConnectedAccounts";
 import "./connected.css";
 import { OnsiteConsent, QuoteForm } from "./RepairQuote";
+import { Inquiries, type Inquiry } from "./Inquiries";
 import { OperationsDashboardView } from "../components/operations-dashboard";
 import { LiveTeamPage } from "../workspace/LiveTeamPage";
 import type { CaseStage } from "../workspace/model";
@@ -128,6 +129,10 @@ export function ConnectedOperations() {
   const [orders, setOrders] = useState<Order[]>([]);
   // Closed for the resident, but the coordination session still needs management.
   const [awaitingClosure, setAwaitingClosure] = useState<string[]>([]);
+  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [conversation, setConversation] = useState<
+    { id: string; sender_kind: string; text: string; created_at: string }[]
+  >([]);
   const locked = useRef(false);
   const ticketId = useRef("");
   const request = useCallback(
@@ -184,14 +189,16 @@ export function ConnectedOperations() {
       }
       return result;
     };
-    const [data, cat, mine, allOrders, dashboard, closures] = await Promise.all([
+    const [data, cat, mine, allOrders, dashboard, closures, questions] = await Promise.all([
       pages<Ticket>("/tickets"),
       request<Catalog>("/catalogs"),
       request<{ items: Order[] }>("/my-work-orders?limit=100"),
       pages<Order>("/work-orders"),
       request<{approvals: {status: string; count: number}[]}>("/dashboard"),
       request<{ ticketIds: string[] }>("/sessions/awaiting-approval"),
+      request<{ items: Inquiry[] }>("/sessions/inquiries"),
     ]);
+    setInquiries(questions.items);
     setAwaitingClosure(closures.ticketIds);
     setStats(dashboard);
     setTickets(data);
@@ -202,6 +209,7 @@ export function ConnectedOperations() {
       const d = await request<Detail>(`/tickets/${ticketId.current}`);
       setDetail(d);
       setSession(await request<Session>(`/tickets/${ticketId.current}/session`));
+      setConversation((await request<{ items: typeof conversation }>(`/tickets/${ticketId.current}/conversation`)).items);
       const p = await request<{
         items: { id: string; original_name: string }[];
       }>(`/tickets/${ticketId.current}/files`);
@@ -252,6 +260,7 @@ export function ConnectedOperations() {
     ticketId.current = "";
     setDetail(undefined);
     setSession(undefined);
+    setConversation([]);
     setPhotos([]);
   }, [path]);
   async function run(action: () => Promise<void>) {
@@ -277,6 +286,7 @@ export function ConnectedOperations() {
     ticketId.current = id;
     setDetail(undefined);
     setSession(undefined);
+    setConversation([]);
     setPhotos([]);
     setStaff("");
     setAvailable([]);
@@ -284,6 +294,7 @@ export function ConnectedOperations() {
       const d = await request<Detail>(`/tickets/${id}`);
       setDetail(d);
       setSession(await request<Session>(`/tickets/${id}/session`));
+      setConversation((await request<{ items: typeof conversation }>(`/tickets/${id}/conversation`)).items);
       if (d.ticket.category_id && me?.role !== "staff") {
         try {
           const a = await request<{ items: Staff[] }>(
@@ -412,6 +423,15 @@ export function ConnectedOperations() {
                 }))}
                 zones={(catalog?.buildings || []).map(b => ({tower: b.name, note: `${tickets.filter(t => t.building_id === b.id && !['closed', 'cancelled'].includes(t.status)).length} phản ánh đang mở`}))} />
             ) : !selected && (
+              <>
+              {path === "triage" && management && (
+                <Inquiries items={inquiries} disabled={busy}
+                  onAnswer={(inquiry, text) =>
+                    void run(async () => {
+                      await post(`/sessions/${inquiry.id}/answer`, { version: inquiry.state_version, text });
+                    })
+                  } />
+              )}
               <WorkListView key={path} title={connectedPages[path]} manager={management} history={history} onHistory={setHistory}
                 initialBoard={path === 'kanban'} connectedAccount={{role: management ? 'manager' : 'staff', scope: 'được cấp trên hệ thống'}}
                 rows={visible.map((t): WorkItem => ({key: t.id, ticket: t.id, ticketId: t.code, title: t.title,
@@ -420,6 +440,7 @@ export function ConnectedOperations() {
                   assignee: '', status: awaitingClosure.includes(t.id) ? 'Chờ BQL duyệt đóng' : labels[t.status] || t.status, updatedAt: t.updated_at,
                   phase: awaitingClosure.includes(t.id) && management ? 'waiting' : ['closed', 'cancelled'].includes(t.status) ? 'history' : t.status === 'resolved' ? 'waiting' : t.status === 'in_progress' ? 'active' : 'new',
                 }))} onOpen={row => void open(row.ticket!)} />
+              </>
             )}
             <div>
               {selected && (
@@ -522,6 +543,19 @@ export function ConnectedOperations() {
                           </a>
                         ))}
                       </div>
+                      {conversation.length > 0 && (
+                        <article className="live-order">
+                          <h3>Trao đổi của cư dân với Lễ tân</h3>
+                          <ol>
+                            {conversation.map((m) => (
+                              <li key={m.id}>
+                                <time>{new Date(m.created_at).toLocaleString("vi-VN")}</time>{" "}
+                                · <strong>{m.sender_kind === "user" ? "Cư dân" : "Lễ tân"}:</strong> {m.text}
+                              </li>
+                            ))}
+                          </ol>
+                        </article>
+                      )}
                       {session && (
                         <article className="live-order">
                           <h3>Phiên điều phối</h3>

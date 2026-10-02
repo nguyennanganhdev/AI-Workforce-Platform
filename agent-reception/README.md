@@ -101,6 +101,9 @@ Biến môi trường ở `.env.example` (`RECEPTION_SERVICE_TOKEN`, `RECEPTION_
   Passage phải nói về đúng đối tượng được hỏi (hỏi Masteri mà chỉ có nguồn Sapphire thì coi là không đủ nguồn);
   câu trả lời kết thúc bằng dòng `(Nguồn: <tiêu đề tài liệu>)` do code ghép, không phải model viết.
   Kho tri thức nạp bằng `server/src/knowledge/publish.ts`, dịch vụ tìm kiếm chạy bằng `server/src/knowledge/serve.ts`.
+- `runtime/inquiry.py`: câu hỏi không có nguồn. Model chỉ phân loại (về tòa nhà / ngoài phạm vi / chưa rõ); câu về
+  tòa nhà được chuyển thành session trong group chat của BQL qua `POST /internal/reception/chats/{id}/inquiries`,
+  và backend đưa câu trả lời của BQL (sau này là Supervisor) về lại cuộc trò chuyện.
 - `runtime/voice.py` viết lại câu trả lời cố định của graph cho tự nhiên; không được thêm dữ kiện hay cam kết.
 - Lớp chuyển đổi chỉ ghi vào yêu cầu các dữ kiện cư dân tự nêu (`customer_report`); dữ kiện model tự suy luận bị bỏ,
   vì backend từ chối loại này và cả yêu cầu sẽ bị rơi.

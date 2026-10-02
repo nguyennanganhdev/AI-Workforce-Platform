@@ -159,6 +159,19 @@ Chưa đo được bằng bộ 93 câu của Team Quang: chuỗi đáp án trong
 của repo dữ liệu sau lần sửa văn phong 01/10/2026 (ví dụ bộ đánh giá chờ "không dừng đỗ quá 1 giờ", dữ liệu ghi
 "không được dừng quá một giờ"). Cần Team Quang cập nhật đáp án hoặc ghim phiên bản dữ liệu.
 
+## Câu hỏi không có nguồn đi vào session của BQL (03/10/2026)
+
+- Lễ tân không trả lời được thì mở một session **không có ticket** (`agent_teams.request_message_id` = tin nhắn
+  của cư dân, đúng như schema đã dành sẵn) trong group chat của đơn vị quản lý phụ trách căn hộ; câu hỏi được
+  đăng vào phòng để Supervisor và BQL thấy.
+- Operations, trang "Tiếp nhận phản ánh": danh sách câu hỏi chờ trả lời. BQL trả lời
+  (`POST /sessions/{id}/answer`), Lễ tân chuyển câu trả lời vào đúng cuộc trò chuyện của cư dân, session đóng.
+- Khi Supervisor của Team Đông chạy, nó trả lời qua cùng endpoint; phía Lễ tân không đổi.
+- Màn chi tiết ticket trong Operations hiện "Trao đổi của cư dân với Lễ tân" (`GET /tickets/{id}/conversation`),
+  nên BQL thấy thông tin cư dân tự bổ sung.
+- Giới hạn: quyền với session hỏi đáp chỉ tính vai trò management ở phạm vi tenant hoặc đúng đơn vị quản lý;
+  cư dân có nhà thuộc hai đơn vị quản lý khác nhau thì chưa chuyển được.
+
 ## Đề nghị Team Hoàng
 
 - Rà `runtime/backend.py` và `runtime/service.py`; nếu đồng ý hợp đồng này thì PD11 (graph gọi bộ tool mới)

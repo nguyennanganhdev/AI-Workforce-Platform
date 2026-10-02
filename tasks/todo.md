@@ -12,9 +12,9 @@
 ### Điểm dừng 1 — duyệt bảng điểm gốc
 
 ## Giai đoạn 2 — Câu không có nguồn vào session của BQL
-- [ ] T2.1 Lễ tân mở yêu cầu hỏi đáp khi không có nguồn (M)
-- [ ] T2.2 Tin nhắn từ session về chat cư dân (M)
-- [ ] T2.3 Màn tin nhắn session trong Operations (M)
+- [x] T2.1 Lễ tân mở yêu cầu hỏi đáp khi không có nguồn (M)
+- [x] T2.2 Tin nhắn từ session về chat cư dân (M)
+- [x] T2.3 Màn tin nhắn session trong Operations (M)
 
 ## Giai đoạn 3 — Agent do model dẫn dắt
 - [ ] T3.1 Model adapter gọi tool (S)

@@ -352,6 +352,24 @@ def test_a_question_without_a_source_becomes_a_session_that_management_answers(d
         assert next(x for x in c.get("/resident/chats?limit=100").json()["items"] if x["id"] == channel)["unread_count"] == 1
 
 
+def test_management_reads_what_the_resident_said_about_a_ticket(database):
+    with client(database) as c:
+        channel, _ = resident_message(c, "Conversation", "Ổ điện hỏng")
+        unit = c.get("/resident/me").json()["units"][0]
+        ticket = c.post(f"/resident/chats/{channel}/tickets", headers={"Idempotency-Key": str(uuid4())}, json={
+            "domain_id": unit["domain_id"], "building_id": unit["building_id"], "unit_id": unit["id"],
+            "category_id": CATEGORY, "title": "Ổ điện hỏng", "description": "Ổ điện hỏng từ sáng.",
+            "contact_name": "Cư dân", "contact_phone": "0900000000", "location": "Phòng khách", "request_kind": "incident"}).json()
+        c.post(f"/resident/chats/{channel}/messages", json={"text": "Bổ sung: ổ nằm cạnh tivi.", "client_message_id": str(uuid4())})
+    ticket_id = ticket["ticket"]["id"] if "ticket" in ticket else ticket["id"]
+    with demo_client(database, "management") as management:
+        items = management.get(f"/tickets/{ticket_id}/conversation").json()["items"]
+        assert [m["text"] for m in items if m["sender_kind"] == "user"] == ["Ổ điện hỏng", "Bổ sung: ổ nằm cạnh tivi."]
+    with demo_client(database, "security") as other:
+        # Staff without this ticket cannot read the resident's conversation.
+        assert other.get(f"/tickets/{ticket_id}/conversation").status_code == 404
+
+
 def test_operation_identity_rollback_and_missing_receipt(database):
     with client(database) as c:
         body = {

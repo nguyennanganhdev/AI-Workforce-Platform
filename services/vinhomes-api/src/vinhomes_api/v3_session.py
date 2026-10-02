@@ -95,6 +95,17 @@ async def _session(db: AsyncConnection, ticket_id: UUID, *, lock: bool = False):
     return row.mappings().first()
 
 
+@router.get("/tickets/{ticket_id}/conversation", summary="What the resident and Reception said about a ticket")
+async def ticket_conversation(ticket_id: UUID, scope: Scope) -> dict[str, object]:
+    await visible_ticket(scope, ticket_id)
+    rows = await scope[0].execute(text(f"""
+        select m.id,m.seq,m.sender_kind,m.body->>'text' as text,m.created_at from messages m
+        where m.channel_id=(select channel_id from tickets where id=:ticket) and m.tenant_id={TENANT} and m.visibility in ('room','customer')
+          and m.body->>'text'<>'' order by m.seq desc limit 100
+    """), {"ticket": ticket_id})
+    return {"items": [dict(row) for row in rows.mappings()][::-1]}
+
+
 @router.get("/sessions/awaiting-approval", summary="Closed tickets whose session still waits for management")
 async def sessions_awaiting_approval(scope: Scope) -> dict[str, object]:
     rows = await scope[0].execute(text(f"""
