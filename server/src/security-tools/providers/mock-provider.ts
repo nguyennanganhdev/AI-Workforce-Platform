@@ -9,10 +9,27 @@
  * - Fault injection là cấu hình constructor, không phải field trong arguments.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { camerasAtLocation, searchCameras, sortIncidentCameras } from "../cameras/service";
-import type { CameraSummary, IncidentCamera, SearchCamerasInput } from "../cameras/types";
+import {
+  camerasAtLocation,
+  searchCameras,
+  sortIncidentCameras,
+} from "../cameras/service";
+import type {
+  CameraSummary,
+  IncidentCamera,
+  SearchCamerasInput,
+} from "../cameras/types";
 import type { ReadContext } from "../common/context";
-import { type ErrorCode, ToolFailure, toolError, toToolError } from "../common/errors";
+import {
+  type ErrorCode,
+  ToolFailure,
+  toolError,
+  toToolError,
+} from "../common/errors";
+import { isOpenDispatch, toDispatchSummary } from "../dispatch/service";
+import type { Dispatch } from "../dispatch/types";
+import { sortContacts } from "../emergency/service";
+import type { EmergencySeverity, EscalationContact } from "../emergency/types";
 import { availableGuards, compareIds } from "../guards/service";
 import type { GuardSummary, Location } from "../guards/types";
 import {
@@ -32,16 +49,46 @@ import {
   type WriteToolName,
 } from "./provider";
 
-/** Bản ghi của domain chưa có type trên nhánh này: chỉ khai báo field mock cần để lọc/sắp. */
+/**
+ * Bản ghi trong scope. Dispatch/contact dùng kiểu thật của P4 để mock READ gọi chung luật với
+ * dispatch/emergency service; các domain còn lại chỉ khai báo field mock cần để lọc/sắp.
+ */
 type Row = Record<string, unknown>;
-type IncidentRow = Row & { incident_id: string; created_at: string; location: Location; severity: string; status: string };
-type DispatchRow = Row & { dispatch_id: string; incident_id: string; guard_id: string; status: string; created_at: string };
-type EscalationRow = Row & { escalation_id: string; incident_id: string; created_at: string };
-type ProtocolRow = Row & { protocol_id: string; version: number; incident_type: string; severity: string };
-type ContactRow = Row & { contact_id: string; priority: number; supported_severities: string[] };
-type AckReceiptRow = Row & { ack_receipt_id: string; escalation_id: string; contact_id: string };
-type EvidenceRow = Row & { evidence_id: string; incident_id: string; created_at: string };
-type EventRow = Row & { event_id: string; incident_id: string; created_at: string };
+type IncidentRow = Row & {
+  incident_id: string;
+  created_at: string;
+  location: Location;
+  severity: string;
+  status: string;
+};
+type DispatchRow = Dispatch;
+type EscalationRow = Row & {
+  escalation_id: string;
+  incident_id: string;
+  created_at: string;
+};
+type ProtocolRow = Row & {
+  protocol_id: string;
+  version: number;
+  incident_type: string;
+  severity: string;
+};
+type ContactRow = EscalationContact;
+type AckReceiptRow = Row & {
+  ack_receipt_id: string;
+  escalation_id: string;
+  contact_id: string;
+};
+type EvidenceRow = Row & {
+  evidence_id: string;
+  incident_id: string;
+  created_at: string;
+};
+type EventRow = Row & {
+  event_id: string;
+  incident_id: string;
+  created_at: string;
+};
 
 export type MockScopeData = {
   tenant_id: string;
@@ -79,9 +126,6 @@ export type MockProviderOptions = {
   writeHandlers?: Partial<Record<WriteToolName, MockWriteHandler>>;
 };
 
-const OPEN_DISPATCH = new Set(["PENDING", "EN_ROUTE", "ON_SITE"]);
-const DISPATCH_SUMMARY_KEYS = ["dispatch_id", "incident_id", "guard_id", "status", "version", "created_at", "updated_at"];
-
 export class MockSecurityProvider implements SecurityProvider {
   readonly name = "mock";
   private readonly scopes = new Map<string, MockScopeData>();
@@ -92,8 +136,12 @@ export class MockSecurityProvider implements SecurityProvider {
 
   constructor(private readonly options: MockProviderOptions) {
     this.now = options.now ?? (() => new Date());
-    this.cursors = createCursorCodec({ secret: options.cursorSecret ?? crypto.randomUUID(), now: this.now });
-    for (const scope of options.scopes) this.scopes.set(scopeKey(scope), structuredClone(scope));
+    this.cursors = createCursorCodec({
+      secret: options.cursorSecret ?? crypto.randomUUID(),
+      now: this.now,
+    });
+    for (const scope of options.scopes)
+      this.scopes.set(scopeKey(scope), structuredClone(scope));
   }
 
   /** Thay dữ liệu một scope trong test; cursor phát trước đó hết hiệu lực. */
@@ -109,12 +157,25 @@ export class MockSecurityProvider implements SecurityProvider {
     _options: ProviderCallOptions,
   ): Promise<ReadResult<ToolData<T>>> {
     const fault = this.options.faults?.[tool];
-    if (fault === "timeout") return { ok: false, error: toolError("PROVIDER_TIMEOUT", "Mock: hết thời gian.", { mode: "READ" }) };
-    if (fault === "provider_error") return { ok: false, error: toolError("PROVIDER_ERROR", "Mock: lỗi provider.", { mode: "READ" }) };
+    if (fault === "timeout")
+      return {
+        ok: false,
+        error: toolError("PROVIDER_TIMEOUT", "Mock: hết thời gian.", {
+          mode: "READ",
+        }),
+      };
+    if (fault === "provider_error")
+      return {
+        ok: false,
+        error: toolError("PROVIDER_ERROR", "Mock: lỗi provider.", {
+          mode: "READ",
+        }),
+      };
     try {
       const data = this.query(tool, input as Row, context);
       const out = structuredClone(data) as Row;
-      if (fault === "invalid_response") out.stream_url = "rtsp://mock.invalid/live";
+      if (fault === "invalid_response")
+        out.stream_url = "rtsp://mock.invalid/live";
       return { ok: true, data: out as ToolData<T> };
     } catch (error) {
       return { ok: false, error: toToolError(error, "READ") };
@@ -129,11 +190,23 @@ export class MockSecurityProvider implements SecurityProvider {
   ): Promise<WriteResult<ToolData<T>>> {
     const handler = this.options.writeHandlers?.[tool];
     if (!handler) {
-      return { ok: false, error: toolError("AUTH_ERROR", `Mock chưa có handler WRITE cho ${tool}.`, { mode: "WRITE" }) };
+      return {
+        ok: false,
+        error: toolError(
+          "AUTH_ERROR",
+          `Mock chưa có handler WRITE cho ${tool}.`,
+          { mode: "WRITE" },
+        ),
+      };
     }
     const scope = this.scopeOf(invocation.context);
     try {
-      const result = await handler({ scope, input: input as Row, invocation, now: this.now() });
+      const result = await handler({
+        scope,
+        input: input as Row,
+        invocation,
+        now: this.now(),
+      });
       if (result.ok) this.revision += 1;
       return result as WriteResult<ToolData<T>>;
     } catch (error) {
@@ -144,21 +217,30 @@ export class MockSecurityProvider implements SecurityProvider {
   private query(tool: ReadToolName, input: Row, context: ReadContext): unknown {
     const s = this.scopeOf(context);
     const page = <T>(items: readonly T[], key: string) => {
-      const { items: slice, next_cursor } = paginate(items, input as PageRequest & Row, this.binding(tool, context), this.cursors);
+      const { items: slice, next_cursor } = paginate(
+        items,
+        input as PageRequest & Row,
+        this.binding(tool, context),
+        this.cursors,
+      );
       return { [key]: slice, next_cursor };
     };
     const id = (field: string) => input[field] as string;
 
     switch (tool) {
       case "get_incident":
-        return found(s.incidents.find((i) => i.incident_id === id("incident_id")));
+        return found(
+          s.incidents.find((i) => i.incident_id === id("incident_id")),
+        );
       case "search_incidents": {
         const from = input.from as string | undefined;
         const to = input.to as string | undefined;
-        if (from !== undefined && to !== undefined && !(from < to)) throw invalid("from phải nhỏ hơn to.");
+        if (from !== undefined && to !== undefined && !(from < to))
+          throw invalid("from phải nhỏ hơn to.");
         const items = s.incidents.filter(
           (i) =>
-            (input.location_id === undefined || i.location.location_id === input.location_id) &&
+            (input.location_id === undefined ||
+              i.location.location_id === input.location_id) &&
             (input.severity === undefined || i.severity === input.severity) &&
             (input.status === undefined || i.status === input.status) &&
             (from === undefined || i.created_at >= from) &&
@@ -168,32 +250,55 @@ export class MockSecurityProvider implements SecurityProvider {
       }
       case "get_available_guards": {
         requireLocation(s, id("location_id"));
-        const busy = new Set(s.dispatches.filter((d) => OPEN_DISPATCH.has(d.status)).map((d) => d.guard_id));
+        const busy = new Set(
+          s.dispatches.filter(isOpenDispatch).map((d) => d.guard_id),
+        );
         return page(availableGuards(s.guards, busy), "guards");
       }
       case "get_guard_status":
         return found(s.guards.find((g) => g.guard_id === id("guard_id")));
       case "get_dispatch":
-        return found(s.dispatches.find((d) => d.dispatch_id === id("dispatch_id")));
+        return found(
+          s.dispatches.find((d) => d.dispatch_id === id("dispatch_id")),
+        );
       case "get_emergency_protocol": {
-        const matches = s.protocols.filter((p) => p.incident_type === input.incident_type && p.severity === input.severity);
+        const matches = s.protocols.filter(
+          (p) =>
+            p.incident_type === input.incident_type &&
+            p.severity === input.severity,
+        );
         return found(matches.sort((a, b) => b.version - a.version)[0]);
       }
       case "get_escalation_contacts": {
-        const items = s.contacts
-          .filter((c) => c.supported_severities.includes(input.severity as string))
-          .sort((a, b) => a.priority - b.priority || compareIds(a.contact_id, b.contact_id));
-        return page(items, "contacts");
+        const severity = input.severity as EmergencySeverity;
+        return page(
+          sortContacts(
+            s.contacts.filter((c) => c.supported_severities.includes(severity)),
+          ),
+          "contacts",
+        );
       }
       case "get_emergency_escalation":
-        return found(s.escalations.find((e) => e.escalation_id === id("escalation_id")));
+        return found(
+          s.escalations.find((e) => e.escalation_id === id("escalation_id")),
+        );
       case "get_incident_escalations":
         requireIncident(s, id("incident_id"));
-        return page(byCreated(s.escalations.filter((e) => e.incident_id === id("incident_id")), "escalation_id"), "escalations");
+        return page(
+          byCreated(
+            s.escalations.filter((e) => e.incident_id === id("incident_id")),
+            "escalation_id",
+          ),
+          "escalations",
+        );
       case "get_camera_metadata":
         return found(s.cameras.find((c) => c.camera_id === id("camera_id")));
       case "search_cameras": {
-        const { limit: _limit, cursor: _cursor, ...filters } = input as SearchCamerasInput;
+        const {
+          limit: _limit,
+          cursor: _cursor,
+          ...filters
+        } = input as SearchCamerasInput;
         return page(searchCameras(s.cameras, filters), "cameras");
       }
       case "get_cameras_by_location":
@@ -201,23 +306,51 @@ export class MockSecurityProvider implements SecurityProvider {
         return page(camerasAtLocation(s.cameras, id("location_id")), "cameras");
       case "get_incident_cameras":
         requireIncident(s, id("incident_id"));
-        return page(sortIncidentCameras(s.incident_cameras.filter((c) => c.incident_id === id("incident_id"))), "cameras");
+        return page(
+          sortIncidentCameras(
+            s.incident_cameras.filter(
+              (c) => c.incident_id === id("incident_id"),
+            ),
+          ),
+          "cameras",
+        );
       case "get_incident_evidence":
         requireIncident(s, id("incident_id"));
-        return page(byCreated(s.evidence.filter((e) => e.incident_id === id("incident_id")), "evidence_id"), "evidence");
+        return page(
+          byCreated(
+            s.evidence.filter((e) => e.incident_id === id("incident_id")),
+            "evidence_id",
+          ),
+          "evidence",
+        );
       case "get_dispatch_history": {
         requireIncident(s, id("incident_id"));
-        const items = byCreated(s.dispatches.filter((d) => d.incident_id === id("incident_id")), "dispatch_id");
-        return page(items.map((d) => Object.fromEntries(DISPATCH_SUMMARY_KEYS.map((k) => [k, d[k]]))), "dispatches");
+        const items = byCreated(
+          s.dispatches.filter((d) => d.incident_id === id("incident_id")),
+          "dispatch_id",
+        );
+        return page(items.map(toDispatchSummary), "dispatches");
       }
       case "get_security_event_timeline":
         requireIncident(s, id("incident_id"));
-        return page(byCreated(s.events.filter((e) => e.incident_id === id("incident_id")), "event_id"), "events");
+        return page(
+          byCreated(
+            s.events.filter((e) => e.incident_id === id("incident_id")),
+            "event_id",
+          ),
+          "events",
+        );
     }
   }
 
-  private scopeOf(context: { tenant_id: string; property_id: string }): MockScopeData {
-    return this.scopes.get(scopeKey(context)) ?? emptyScope(context.tenant_id, context.property_id);
+  private scopeOf(context: {
+    tenant_id: string;
+    property_id: string;
+  }): MockScopeData {
+    return (
+      this.scopes.get(scopeKey(context)) ??
+      emptyScope(context.tenant_id, context.property_id)
+    );
   }
 
   private binding(tool: ReadToolName, context: ReadContext) {
@@ -236,16 +369,24 @@ export class MockSecurityProvider implements SecurityProvider {
 // ---------------------------------------------------------------------------------------------
 
 /** Fixture dùng chung cho mock và test; không nằm trong src để không lẫn vào code production. */
-export const FIXTURE_DIR = new URL("../../../tests/security-tools/fixtures/", import.meta.url);
+export const FIXTURE_DIR = new URL(
+  "../../../tests/security-tools/fixtures/",
+  import.meta.url,
+);
 
 /**
  * Dữ liệu mặc định từ `server/tests/security-tools/fixtures/<tên>.json`. File chưa có thì để mảng
  * rỗng; domain thêm file đúng tên là provider tự nạp.
  */
-export function loadFixtureScope(tenant_id = "tenant_demo", property_id = "property_demo"): MockScopeData {
+export function loadFixtureScope(
+  tenant_id = "tenant_demo",
+  property_id = "property_demo",
+): MockScopeData {
   const load = <T>(name: string): T[] => {
     const url = new URL(`${name}.json`, FIXTURE_DIR);
-    return existsSync(url) ? (JSON.parse(readFileSync(url, "utf8")) as T[]) : [];
+    return existsSync(url)
+      ? (JSON.parse(readFileSync(url, "utf8")) as T[])
+      : [];
   };
   return {
     tenant_id,
@@ -265,7 +406,10 @@ export function loadFixtureScope(tenant_id = "tenant_demo", property_id = "prope
   };
 }
 
-export function emptyScope(tenant_id: string, property_id: string): MockScopeData {
+export function emptyScope(
+  tenant_id: string,
+  property_id: string,
+): MockScopeData {
   return {
     tenant_id,
     property_id,
@@ -284,15 +428,24 @@ export function emptyScope(tenant_id: string, property_id: string): MockScopeDat
   };
 }
 
-const scopeKey = (scope: { tenant_id: string; property_id: string }) => `${scope.tenant_id}\u0000${scope.property_id}`;
+const scopeKey = (scope: { tenant_id: string; property_id: string }) =>
+  `${scope.tenant_id}\u0000${scope.property_id}`;
 
 /** Sort `(created_at, id)` tăng dần (§7). */
-function byCreated<T extends Row & { created_at: string }>(items: readonly T[], idField: string): T[] {
-  return [...items].sort((a, b) => compareIds(a.created_at, b.created_at) || compareIds(String(a[idField]), String(b[idField])));
+function byCreated<T extends Row & { created_at: string }>(
+  items: readonly T[],
+  idField: string,
+): T[] {
+  return [...items].sort(
+    (a, b) =>
+      compareIds(a.created_at, b.created_at) ||
+      compareIds(String(a[idField]), String(b[idField])),
+  );
 }
 
 function found<T>(item: T | undefined): T {
-  if (item === undefined) throw failure("NOT_FOUND", "Không tìm thấy dữ liệu trong property.");
+  if (item === undefined)
+    throw failure("NOT_FOUND", "Không tìm thấy dữ liệu trong property.");
   return item;
 }
 
@@ -306,4 +459,5 @@ function requireLocation(scope: MockScopeData, locationId: string): void {
 }
 
 const invalid = (message: string) => failure("VALIDATION_ERROR", message);
-const failure = (code: ErrorCode, message: string) => new ToolFailure(toolError(code, message, { mode: "READ" }));
+const failure = (code: ErrorCode, message: string) =>
+  new ToolFailure(toolError(code, message, { mode: "READ" }));

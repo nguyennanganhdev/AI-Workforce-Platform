@@ -8,11 +8,29 @@ export type CameraStatus = "ONLINE" | "OFFLINE" | "MAINTENANCE" | "UNKNOWN";
 /** Biết loại ngoài taxonomy → OTHER; chưa biết → UNKNOWN. Không nullable. */
 export type CameraType = "FIXED" | "PTZ" | "PANORAMIC" | "OTHER" | "UNKNOWN";
 /** Core cấp, agent không tự suy diễn khoảng cách. */
-export type CameraIncidentRelation = "AT_LOCATION" | "NEAR_LOCATION" | "MANUALLY_LINKED";
+export type CameraIncidentRelation =
+  | "AT_LOCATION"
+  | "NEAR_LOCATION"
+  | "MANUALLY_LINKED";
 
-export const CAMERA_STATUSES: readonly CameraStatus[] = ["ONLINE", "OFFLINE", "MAINTENANCE", "UNKNOWN"];
-export const CAMERA_TYPES: readonly CameraType[] = ["FIXED", "PTZ", "PANORAMIC", "OTHER", "UNKNOWN"];
-export const CAMERA_INCIDENT_RELATIONS: readonly CameraIncidentRelation[] = ["AT_LOCATION", "NEAR_LOCATION", "MANUALLY_LINKED"];
+export const CAMERA_STATUSES: readonly CameraStatus[] = [
+  "ONLINE",
+  "OFFLINE",
+  "MAINTENANCE",
+  "UNKNOWN",
+];
+export const CAMERA_TYPES: readonly CameraType[] = [
+  "FIXED",
+  "PTZ",
+  "PANORAMIC",
+  "OTHER",
+  "UNKNOWN",
+];
+export const CAMERA_INCIDENT_RELATIONS: readonly CameraIncidentRelation[] = [
+  "AT_LOCATION",
+  "NEAR_LOCATION",
+  "MANUALLY_LINKED",
+];
 
 export type CameraSummary = {
   camera_id: string;
@@ -40,8 +58,22 @@ export type SearchCamerasInput = {
   limit?: number;
   cursor?: string;
 };
-export type GetCamerasByLocationInput = { location_id: string; limit?: number; cursor?: string };
-export type GetIncidentCamerasInput = { incident_id: string; limit?: number; cursor?: string };
+export type GetCamerasByLocationInput = {
+  location_id: string;
+  limit?: number;
+  cursor?: string;
+};
+export type GetIncidentCamerasInput = {
+  incident_id: string;
+  limit?: number;
+  cursor?: string;
+};
 
-export type CameraPage = { cameras: CameraSummary[]; next_cursor: string | null };
-export type IncidentCameraPage = { cameras: IncidentCamera[]; next_cursor: string | null };
+export type CameraPage = {
+  cameras: CameraSummary[];
+  next_cursor: string | null;
+};
+export type IncidentCameraPage = {
+  cameras: IncidentCamera[];
+  next_cursor: string | null;
+};

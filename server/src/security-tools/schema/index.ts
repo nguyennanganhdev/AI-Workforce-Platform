@@ -6,17 +6,27 @@
  * `security_mcp.schema.json#/$defs/DispatchGuardOutput` — cùng dạng với DISPATCH_SCHEMAS của P4.
  */
 import { readFileSync } from "node:fs";
-import Ajv2020, { type ErrorObject, type ValidateFunction } from "ajv/dist/2020";
+import Ajv2020, {
+  type ErrorObject,
+  type ValidateFunction,
+} from "ajv/dist/2020";
 import addFormats from "ajv-formats";
 import type { ToolMode } from "../common/errors";
 
-export const SCHEMA_FILES = ["common.schema.json", "security_mcp.schema.json", "security_skill.schema.json"] as const;
+export const SCHEMA_FILES = [
+  "common.schema.json",
+  "security_mcp.schema.json",
+  "security_skill.schema.json",
+] as const;
 export type SchemaFile = (typeof SCHEMA_FILES)[number];
 
 type JsonObject = { [key: string]: unknown };
 
 const documents: Record<SchemaFile, JsonObject> = Object.fromEntries(
-  SCHEMA_FILES.map((file) => [file, JSON.parse(readFileSync(new URL(`./${file}`, import.meta.url), "utf8"))]),
+  SCHEMA_FILES.map((file) => [
+    file,
+    JSON.parse(readFileSync(new URL(`./${file}`, import.meta.url), "utf8")),
+  ]),
 ) as Record<SchemaFile, JsonObject>;
 
 // Không coerce, không chèn default, không bỏ field lạ (từ điển schema, "JSON Schema và cách dùng").
@@ -55,7 +65,9 @@ export type ValidationResult = { ok: true } | { ok: false; issues: string[] };
 
 export function validate(ref: string, value: unknown): ValidationResult {
   const fn = validatorFor(ref);
-  return fn(value) ? { ok: true } : { ok: false, issues: describeErrors(fn.errors ?? []) };
+  return fn(value)
+    ? { ok: true }
+    : { ok: false, issues: describeErrors(fn.errors ?? []) };
 }
 
 /**
@@ -67,7 +79,9 @@ export function describeErrors(errors: readonly ErrorObject[]): string[] {
   for (const error of errors) {
     const path = error.instancePath === "" ? "(root)" : error.instancePath;
     if (error.keyword === "additionalProperties") {
-      lines.add(`${path}: field lạ "${String(error.params.additionalProperty)}"`);
+      lines.add(
+        `${path}: field lạ "${String(error.params.additionalProperty)}"`,
+      );
     } else if (error.keyword === "required") {
       lines.add(`${path}: thiếu "${String(error.params.missingProperty)}"`);
     } else {
@@ -88,7 +102,11 @@ export type ToolContract = {
   outputSchema: string;
 };
 
-type XTool = { mode: ToolMode; inputSchema: { $ref: string }; outputSchema: { $ref: string } };
+type XTool = {
+  mode: ToolMode;
+  inputSchema: { $ref: string };
+  outputSchema: { $ref: string };
+};
 
 /** 22 tool theo contract, đúng thứ tự trong schema. */
 export const TOOL_CONTRACTS: readonly ToolContract[] = Object.entries(
@@ -141,9 +159,15 @@ export function bundleSchema(ref: string): JsonObject {
     return out;
   };
 
-  const body = rewrite(definition(root.file, root.def), root.file) as JsonObject;
+  const body = rewrite(
+    definition(root.file, root.def),
+    root.file,
+  ) as JsonObject;
   for (let next = queue.shift(); next; next = queue.shift()) {
-    defs[localName(next.file, next.def)] = rewrite(definition(next.file, next.def), next.file);
+    defs[localName(next.file, next.def)] = rewrite(
+      definition(next.file, next.def),
+      next.file,
+    );
   }
   return {
     $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -159,9 +183,12 @@ function definition(file: SchemaFile, def: string): unknown {
 }
 
 function parseRef(ref: string): { file: SchemaFile; def: string } {
-  const match = ref.match(/^([a-z_]+\.schema\.json)#\/\$defs\/([A-Za-z0-9_]+)$/);
+  const match = ref.match(
+    /^([a-z_]+\.schema\.json)#\/\$defs\/([A-Za-z0-9_]+)$/,
+  );
   const file = match?.[1] as SchemaFile | undefined;
-  if (!match?.[2] || !file || !SCHEMA_FILES.includes(file)) throw new Error(`Ref schema không hợp lệ: ${ref}`);
+  if (!match?.[2] || !file || !SCHEMA_FILES.includes(file))
+    throw new Error(`Ref schema không hợp lệ: ${ref}`);
   return { file, def: match[2] };
 }
 

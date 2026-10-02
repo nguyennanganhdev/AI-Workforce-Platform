@@ -5,12 +5,25 @@
  * throw raw exception/body. Wrapper (tools.ts) map lỗi, thêm meta/envelope và validate output.
  */
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import type { CameraPage, CameraSummary, GetCameraMetadataInput, GetCamerasByLocationInput, GetIncidentCamerasInput, IncidentCameraPage, SearchCamerasInput } from "../cameras/types";
+import type {
+  CameraPage,
+  CameraSummary,
+  GetCameraMetadataInput,
+  GetCamerasByLocationInput,
+  GetIncidentCamerasInput,
+  IncidentCameraPage,
+  SearchCamerasInput,
+} from "../cameras/types";
 import type { ReadContext, WriteContext } from "../common/context";
 import { type ToolError, fail } from "../common/errors";
 import type { ActionBinding, GrantClaims } from "../common/execution-grant";
 import type { WriteEvidence } from "../common/responses";
-import type { GetAvailableGuardsInput, GetGuardStatusInput, GuardPage, GuardSummary } from "../guards/types";
+import type {
+  GetAvailableGuardsInput,
+  GetGuardStatusInput,
+  GuardPage,
+  GuardSummary,
+} from "../guards/types";
 
 export const READ_TOOL_NAMES = [
   "get_incident",
@@ -57,12 +70,22 @@ export interface ToolIO {
   get_guard_status: { input: GetGuardStatusInput; data: GuardSummary };
   get_camera_metadata: { input: GetCameraMetadataInput; data: CameraSummary };
   search_cameras: { input: SearchCamerasInput; data: CameraPage };
-  get_cameras_by_location: { input: GetCamerasByLocationInput; data: CameraPage };
-  get_incident_cameras: { input: GetIncidentCamerasInput; data: IncidentCameraPage };
+  get_cameras_by_location: {
+    input: GetCamerasByLocationInput;
+    data: CameraPage;
+  };
+  get_incident_cameras: {
+    input: GetIncidentCamerasInput;
+    data: IncidentCameraPage;
+  };
 }
 
-export type ToolInput<T extends ToolName> = T extends keyof ToolIO ? ToolIO[T]["input"] : Record<string, unknown>;
-export type ToolData<T extends ToolName> = T extends keyof ToolIO ? ToolIO[T]["data"] : unknown;
+export type ToolInput<T extends ToolName> = T extends keyof ToolIO
+  ? ToolIO[T]["input"]
+  : Record<string, unknown>;
+export type ToolData<T extends ToolName> = T extends keyof ToolIO
+  ? ToolIO[T]["data"]
+  : unknown;
 
 export type ProviderCallOptions = {
   /** Hủy khi hết budget của wrapper. Với WRITE, hủy không đồng nghĩa rollback. */
@@ -75,9 +98,15 @@ export type ProviderCallOptions = {
  * Rejection typed: đúng một ToolError, không raw exception/body. `replayed` = true khi WRITE trả lại
  * failure terminal đã lưu của lần đầu (operation REJECTED, xem common/idempotency.ts).
  */
-export type ProviderFailure = { ok: false; error: ToolError; replayed?: boolean };
+export type ProviderFailure = {
+  ok: false;
+  error: ToolError;
+  replayed?: boolean;
+};
 export type ReadResult<T> = { ok: true; data: T } | ProviderFailure;
-export type WriteResult<T> = { ok: true; data: T; evidence: WriteEvidence; replayed: boolean } | ProviderFailure;
+export type WriteResult<T> =
+  | { ok: true; data: T; evidence: WriteEvidence; replayed: boolean }
+  | ProviderFailure;
 
 /** WRITE đã qua common/execution-grant.ts: claims đã verify, binding dựng lại và đã so payload_hash. */
 export type VerifiedWrite = {
@@ -104,8 +133,10 @@ export interface SecurityProvider {
   ): Promise<WriteResult<ToolData<T>>>;
 }
 
-export const isReadTool = (name: string): name is ReadToolName => (READ_TOOL_NAMES as readonly string[]).includes(name);
-export const isWriteTool = (name: string): name is WriteToolName => (WRITE_TOOL_NAMES as readonly string[]).includes(name);
+export const isReadTool = (name: string): name is ReadToolName =>
+  (READ_TOOL_NAMES as readonly string[]).includes(name);
+export const isWriteTool = (name: string): name is WriteToolName =>
+  (WRITE_TOOL_NAMES as readonly string[]).includes(name);
 
 // ---------------------------------------------------------------------------------------------
 // Cursor và phân trang (spec §7)
@@ -139,25 +170,40 @@ export type CursorCodec = {
  * binding, offset và hạn dùng, nên cursor không lộ filter/principal. Real provider không dùng codec
  * này: Core ký/lưu cursor của mình (§7), MCP chuyển nguyên.
  */
-export function createCursorCodec(options: { secret: string | Uint8Array; ttlMs?: number; now?: () => Date }): CursorCodec {
+export function createCursorCodec(options: {
+  secret: string | Uint8Array;
+  ttlMs?: number;
+  now?: () => Date;
+}): CursorCodec {
   const ttl = options.ttlMs ?? CURSOR_TTL_MS;
   const now = options.now ?? (() => new Date());
-  const mac = (part: string) => createHmac("sha256", options.secret).update(part).digest();
+  const mac = (part: string) =>
+    createHmac("sha256", options.secret).update(part).digest();
 
   return {
     encode(binding, offset) {
       const payload = Buffer.from(
-        JSON.stringify({ v: 1, b: bindingHash(binding), o: offset, x: now().getTime() + ttl }),
+        JSON.stringify({
+          v: 1,
+          b: bindingHash(binding),
+          o: offset,
+          x: now().getTime() + ttl,
+        }),
       ).toString("base64url");
       return `${payload}.${mac(payload).toString("base64url")}`;
     },
     decode(cursor, binding) {
-      const invalid = (): never => fail("VALIDATION_ERROR", "Cursor không hợp lệ, hết hạn hoặc không khớp truy vấn.");
+      const invalid = (): never =>
+        fail(
+          "VALIDATION_ERROR",
+          "Cursor không hợp lệ, hết hạn hoặc không khớp truy vấn.",
+        );
       const [payload, signature, extra] = cursor.split(".");
       if (!payload || !signature || extra !== undefined) return invalid();
       const expected = mac(payload);
       const given = Buffer.from(signature, "base64url");
-      if (given.length !== expected.length || !timingSafeEqual(given, expected)) return invalid();
+      if (given.length !== expected.length || !timingSafeEqual(given, expected))
+        return invalid();
       let parsed: { v?: unknown; b?: unknown; o?: unknown; x?: unknown };
       try {
         parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
@@ -198,11 +244,17 @@ export function paginate<T>(
   const offset = cursor === undefined ? 0 : codec.decode(cursor, full);
   const page = items.slice(offset, offset + limit);
   const next = offset + limit;
-  return { items: page, next_cursor: page.length > 0 && next < items.length ? codec.encode(full, next) : null };
+  return {
+    items: page,
+    next_cursor:
+      page.length > 0 && next < items.length ? codec.encode(full, next) : null,
+  };
 }
 
 function bindingHash(binding: CursorBinding): string {
-  return createHash("sha256").update(stableStringify(binding)).digest("base64url");
+  return createHash("sha256")
+    .update(stableStringify(binding))
+    .digest("base64url");
 }
 
 /** JSON với key sắp xếp, chỉ để hash binding nội bộ (không phải JCS cho grant). */

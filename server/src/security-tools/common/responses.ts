@@ -23,24 +23,63 @@ export type ResponseMeta = {
   replayed: boolean;
 };
 
-export type ReadSuccess<T> = { success: true; data: T; evidence: null; error: null; meta: ResponseMeta };
-export type WriteSuccess<T> = { success: true; data: T; evidence: WriteEvidence; error: null; meta: ResponseMeta };
-export type Failure = { success: false; data: null; evidence: null; error: ToolError; meta: ResponseMeta };
-export type ToolResponse<T = unknown> = ReadSuccess<T> | WriteSuccess<T> | Failure;
+export type ReadSuccess<T> = {
+  success: true;
+  data: T;
+  evidence: null;
+  error: null;
+  meta: ResponseMeta;
+};
+export type WriteSuccess<T> = {
+  success: true;
+  data: T;
+  evidence: WriteEvidence;
+  error: null;
+  meta: ResponseMeta;
+};
+export type Failure = {
+  success: false;
+  data: null;
+  evidence: null;
+  error: ToolError;
+  meta: ResponseMeta;
+};
+export type ToolResponse<T = unknown> =
+  | ReadSuccess<T>
+  | WriteSuccess<T>
+  | Failure;
 
 /** Timestamp contract: UTC, đúng 3 chữ số mili giây. */
-export const timestamp = (date: Date = new Date()): string => date.toISOString();
+export const timestamp = (date: Date = new Date()): string =>
+  date.toISOString();
 
-export function responseMeta(correlationId: string, options: { replayed?: boolean; now?: Date } = {}): ResponseMeta {
-  return { correlation_id: correlationId, executed_at: timestamp(options.now), replayed: options.replayed ?? false };
+export function responseMeta(
+  correlationId: string,
+  options: { replayed?: boolean; now?: Date } = {},
+): ResponseMeta {
+  return {
+    correlation_id: correlationId,
+    executed_at: timestamp(options.now),
+    replayed: options.replayed ?? false,
+  };
 }
 
 export function readSuccess<T>(data: T, meta: ResponseMeta): ReadSuccess<T> {
-  return { success: true, data, evidence: null, error: null, meta: { ...meta, replayed: false } };
+  return {
+    success: true,
+    data,
+    evidence: null,
+    error: null,
+    meta: { ...meta, replayed: false },
+  };
 }
 
 /** `meta.replayed` lấy từ provider/idempotency, không tự suy ở đây. */
-export function writeSuccess<T>(data: T, evidence: WriteEvidence, meta: ResponseMeta): WriteSuccess<T> {
+export function writeSuccess<T>(
+  data: T,
+  evidence: WriteEvidence,
+  meta: ResponseMeta,
+): WriteSuccess<T> {
   return { success: true, data, evidence, error: null, meta };
 }
 
@@ -77,18 +116,26 @@ export function finalizeResponse(
   const plain = JSON.parse(JSON.stringify(response)) as ToolResponse;
   const checked = validate(contract.outputSchema, plain);
   const issues = checked.ok ? [] : checked.issues;
-  if (checked.ok && plain.success && runtimeIssues) issues.push(...runtimeIssues(plain.data));
+  if (checked.ok && plain.success && runtimeIssues)
+    issues.push(...runtimeIssues(plain.data));
   if (issues.length === 0) return { response: plain, issues };
 
-  const code = response.success ? "PROVIDER_INVALID_RESPONSE" : "INTERNAL_ERROR";
+  const code = response.success
+    ? "PROVIDER_INVALID_RESPONSE"
+    : "INTERNAL_ERROR";
   const message = response.success
     ? `Dữ liệu ${contract.name} từ provider không đúng contract.`
     : "Lỗi nội bộ khi tạo response.";
-  const replacement = failure(toolError(code, message, { mode: contract.mode }), { ...plain.meta, replayed: false });
+  const replacement = failure(
+    toolError(code, message, { mode: contract.mode }),
+    { ...plain.meta, replayed: false },
+  );
   const fallback = validate(contract.outputSchema, replacement);
   if (!fallback.ok) {
     // Chỉ xảy ra khi meta/correlation_id hỏng: lỗi lập trình của wrapper.
-    throw new Error(`Không tạo được Failure hợp lệ cho ${contract.name}: ${fallback.issues.join("; ")}`);
+    throw new Error(
+      `Không tạo được Failure hợp lệ cho ${contract.name}: ${fallback.issues.join("; ")}`,
+    );
   }
   return { response: replacement, issues };
 }

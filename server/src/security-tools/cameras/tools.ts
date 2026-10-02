@@ -6,7 +6,8 @@ import type { DomainToolDefinition } from "../tools";
 import { cameraOutputIssues } from "./boundary";
 import { CAMERA_SCHEMAS as S, cameraPageIssues } from "./schema";
 
-const METADATA_ONLY = "Chỉ metadata: không có video, ảnh, stream hay link tải; OFFLINE vẫn trả metadata.";
+const METADATA_ONLY =
+  "Chỉ metadata: không có video, ảnh, stream hay link tải; OFFLINE vẫn trả metadata.";
 
 export const CAMERA_TOOLS: readonly DomainToolDefinition[] = [
   {

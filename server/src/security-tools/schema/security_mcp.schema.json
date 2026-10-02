@@ -37,10 +37,7 @@
           "type": "object"
         }
       },
-      "required": [
-        "name",
-        "arguments"
-      ],
+      "required": ["name", "arguments"],
       "additionalProperties": false,
       "oneOf": [
         {
@@ -287,13 +284,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -313,24 +304,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -368,10 +352,7 @@
           ]
         }
       },
-      "required": [
-        "incidents",
-        "next_cursor"
-      ],
+      "required": ["incidents", "next_cursor"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -381,9 +362,7 @@
                 "maxItems": 0
               }
             },
-            "required": [
-              "incidents"
-            ]
+            "required": ["incidents"]
           },
           "then": {
             "properties": {
@@ -417,13 +396,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -443,24 +416,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -496,13 +462,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -522,30 +482,20 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "RECONCILE",
-                          "NEVER"
-                        ]
+                        "enum": ["RECONCILE", "NEVER"]
                       },
                       "operation_state": {
-                        "enum": [
-                          "UNKNOWN",
-                          "FAILED"
-                        ]
+                        "enum": ["UNKNOWN", "FAILED"]
                       }
                     }
                   }
@@ -578,13 +528,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -604,30 +548,20 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "RECONCILE",
-                          "NEVER"
-                        ]
+                        "enum": ["RECONCILE", "NEVER"]
                       },
                       "operation_state": {
-                        "enum": [
-                          "UNKNOWN",
-                          "FAILED"
-                        ]
+                        "enum": ["UNKNOWN", "FAILED"]
                       }
                     }
                   }
@@ -662,10 +596,7 @@
           ]
         }
       },
-      "required": [
-        "guards",
-        "next_cursor"
-      ],
+      "required": ["guards", "next_cursor"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -675,9 +606,7 @@
                 "maxItems": 0
               }
             },
-            "required": [
-              "guards"
-            ]
+            "required": ["guards"]
           },
           "then": {
             "properties": {
@@ -711,13 +640,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -737,24 +660,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -790,13 +706,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -816,24 +726,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -869,13 +772,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -895,30 +792,20 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "RECONCILE",
-                          "NEVER"
-                        ]
+                        "enum": ["RECONCILE", "NEVER"]
                       },
                       "operation_state": {
-                        "enum": [
-                          "UNKNOWN",
-                          "FAILED"
-                        ]
+                        "enum": ["UNKNOWN", "FAILED"]
                       }
                     }
                   }
@@ -951,13 +838,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -977,24 +858,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -1030,13 +904,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -1056,30 +924,20 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "RECONCILE",
-                          "NEVER"
-                        ]
+                        "enum": ["RECONCILE", "NEVER"]
                       },
                       "operation_state": {
-                        "enum": [
-                          "UNKNOWN",
-                          "FAILED"
-                        ]
+                        "enum": ["UNKNOWN", "FAILED"]
                       }
                     }
                   }
@@ -1112,13 +970,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -1138,24 +990,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -1193,10 +1038,7 @@
           ]
         }
       },
-      "required": [
-        "contacts",
-        "next_cursor"
-      ],
+      "required": ["contacts", "next_cursor"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -1206,9 +1048,7 @@
                 "maxItems": 0
               }
             },
-            "required": [
-              "contacts"
-            ]
+            "required": ["contacts"]
           },
           "then": {
             "properties": {
@@ -1242,13 +1082,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -1268,24 +1102,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -1321,13 +1148,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -1347,30 +1168,20 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "RECONCILE",
-                          "NEVER"
-                        ]
+                        "enum": ["RECONCILE", "NEVER"]
                       },
                       "operation_state": {
-                        "enum": [
-                          "UNKNOWN",
-                          "FAILED"
-                        ]
+                        "enum": ["UNKNOWN", "FAILED"]
                       }
                     }
                   }
@@ -1403,13 +1214,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -1429,30 +1234,20 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "RECONCILE",
-                          "NEVER"
-                        ]
+                        "enum": ["RECONCILE", "NEVER"]
                       },
                       "operation_state": {
-                        "enum": [
-                          "UNKNOWN",
-                          "FAILED"
-                        ]
+                        "enum": ["UNKNOWN", "FAILED"]
                       }
                     }
                   }
@@ -1485,13 +1280,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -1511,24 +1300,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -1566,10 +1348,7 @@
           ]
         }
       },
-      "required": [
-        "escalations",
-        "next_cursor"
-      ],
+      "required": ["escalations", "next_cursor"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -1579,9 +1358,7 @@
                 "maxItems": 0
               }
             },
-            "required": [
-              "escalations"
-            ]
+            "required": ["escalations"]
           },
           "then": {
             "properties": {
@@ -1615,13 +1392,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -1641,24 +1412,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -1694,13 +1458,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -1720,24 +1478,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -1775,10 +1526,7 @@
           ]
         }
       },
-      "required": [
-        "cameras",
-        "next_cursor"
-      ],
+      "required": ["cameras", "next_cursor"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -1788,9 +1536,7 @@
                 "maxItems": 0
               }
             },
-            "required": [
-              "cameras"
-            ]
+            "required": ["cameras"]
           },
           "then": {
             "properties": {
@@ -1824,13 +1570,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -1850,24 +1590,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -1905,10 +1638,7 @@
           ]
         }
       },
-      "required": [
-        "cameras",
-        "next_cursor"
-      ],
+      "required": ["cameras", "next_cursor"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -1918,9 +1648,7 @@
                 "maxItems": 0
               }
             },
-            "required": [
-              "cameras"
-            ]
+            "required": ["cameras"]
           },
           "then": {
             "properties": {
@@ -1954,13 +1682,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -1980,24 +1702,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -2035,10 +1750,7 @@
           ]
         }
       },
-      "required": [
-        "cameras",
-        "next_cursor"
-      ],
+      "required": ["cameras", "next_cursor"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -2048,9 +1760,7 @@
                 "maxItems": 0
               }
             },
-            "required": [
-              "cameras"
-            ]
+            "required": ["cameras"]
           },
           "then": {
             "properties": {
@@ -2084,13 +1794,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -2110,24 +1814,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -2165,10 +1862,7 @@
           ]
         }
       },
-      "required": [
-        "evidence",
-        "next_cursor"
-      ],
+      "required": ["evidence", "next_cursor"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -2178,9 +1872,7 @@
                 "maxItems": 0
               }
             },
-            "required": [
-              "evidence"
-            ]
+            "required": ["evidence"]
           },
           "then": {
             "properties": {
@@ -2214,13 +1906,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -2240,24 +1926,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -2295,10 +1974,7 @@
           ]
         }
       },
-      "required": [
-        "dispatches",
-        "next_cursor"
-      ],
+      "required": ["dispatches", "next_cursor"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -2308,9 +1984,7 @@
                 "maxItems": 0
               }
             },
-            "required": [
-              "dispatches"
-            ]
+            "required": ["dispatches"]
           },
           "then": {
             "properties": {
@@ -2344,13 +2018,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -2370,24 +2038,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"
@@ -2425,10 +2086,7 @@
           ]
         }
       },
-      "required": [
-        "events",
-        "next_cursor"
-      ],
+      "required": ["events", "next_cursor"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -2438,9 +2096,7 @@
                 "maxItems": 0
               }
             },
-            "required": [
-              "events"
-            ]
+            "required": ["events"]
           },
           "then": {
             "properties": {
@@ -2474,13 +2130,7 @@
               "$ref": "common.schema.json#/$defs/ResponseMeta"
             }
           },
-          "required": [
-            "success",
-            "data",
-            "evidence",
-            "error",
-            "meta"
-          ],
+          "required": ["success", "data", "evidence", "error", "meta"],
           "additionalProperties": false
         },
         {
@@ -2500,24 +2150,17 @@
                         ]
                       }
                     },
-                    "required": [
-                      "code"
-                    ]
+                    "required": ["code"]
                   }
                 },
-                "required": [
-                  "error"
-                ]
+                "required": ["error"]
               },
               "then": {
                 "properties": {
                   "error": {
                     "properties": {
                       "retry": {
-                        "enum": [
-                          "BACKOFF",
-                          "NEVER"
-                        ]
+                        "enum": ["BACKOFF", "NEVER"]
                       },
                       "operation_state": {
                         "const": "NOT_STARTED"

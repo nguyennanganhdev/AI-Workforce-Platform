@@ -15,11 +15,19 @@ import type { Location } from "../guards/types";
 import type { CameraSummary, IncidentCamera } from "./types";
 
 const LOCATION_KEYS = ["location_id", "building", "floor", "zone"] as const;
-const CAMERA_KEYS = ["camera_id", "location", "status", "camera_type", "reference_id", "last_seen_at"] as const;
+const CAMERA_KEYS = [
+  "camera_id",
+  "location",
+  "status",
+  "camera_type",
+  "reference_id",
+  "last_seen_at",
+] as const;
 const INCIDENT_CAMERA_KEYS = ["incident_id", "camera", "relation"] as const;
 
 /** Tên field gợi ý media/credential. Dùng để quét output, kể cả object lồng. */
-const FORBIDDEN_KEY = /stream|rtsp|hls|webrtc|url|uri|href|frame|snapshot|image|video|thumbnail|playback|recording|face|password|passwd|credential|token|secret|username|api_?key/i;
+const FORBIDDEN_KEY =
+  /stream|rtsp|hls|webrtc|url|uri|href|frame|snapshot|image|video|thumbnail|playback|recording|face|password|passwd|credential|token|secret|username|api_?key/i;
 /** Chuỗi trông như địa chỉ tải được: scheme://, data:, blob:. */
 const ADDRESS_LIKE = /[a-z][a-z0-9+.-]*:\/\/|\bdata:|\bblob:/i;
 
@@ -55,12 +63,15 @@ export function cameraOutputIssues(data: unknown): string[] {
   const issues: string[] = [];
   const walk = (node: unknown, path: string) => {
     if (typeof node === "string") {
-      if (ADDRESS_LIKE.test(node)) issues.push(`${path}: chuỗi dạng địa chỉ media`);
+      if (ADDRESS_LIKE.test(node))
+        issues.push(`${path}: chuỗi dạng địa chỉ media`);
     } else if (Array.isArray(node)) {
-      node.forEach((item, index) => walk(item, `${path}/${index}`));
+      for (const [index, item] of node.entries())
+        walk(item, `${path}/${index}`);
     } else if (node !== null && typeof node === "object") {
       for (const [key, value] of Object.entries(node)) {
-        if (FORBIDDEN_KEY.test(key) && key !== "reference_id") issues.push(`${path}/${key}: field không thuộc metadata`);
+        if (FORBIDDEN_KEY.test(key) && key !== "reference_id")
+          issues.push(`${path}/${key}: field không thuộc metadata`);
         walk(value, `${path}/${key}`);
       }
     }
@@ -79,19 +90,33 @@ function toLocation(raw: unknown): Location {
   };
 }
 
-function exactObject<K extends string>(raw: unknown, keys: readonly K[]): Record<K, unknown> {
+function exactObject<K extends string>(
+  raw: unknown,
+  keys: readonly K[],
+): Record<K, unknown> {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) invalid();
   const actual = Object.keys(raw as object);
-  if (actual.length !== keys.length || !actual.every((key) => (keys as readonly string[]).includes(key))) invalid();
+  if (
+    actual.length !== keys.length ||
+    !actual.every((key) => (keys as readonly string[]).includes(key))
+  )
+    invalid();
   return raw as Record<K, unknown>;
 }
 
 function checked<T>(def: "CameraSummary" | "IncidentCamera", value: T): T {
-  if (!validate(`common.schema.json#/$defs/${def}`, value).ok || cameraOutputIssues(value).length > 0) invalid();
+  if (
+    !validate(`common.schema.json#/$defs/${def}`, value).ok ||
+    cameraOutputIssues(value).length > 0
+  )
+    invalid();
   return value;
 }
 
 function invalid(): never {
   // Message cố định: không đưa field/giá trị upstream vào lỗi.
-  return fail("PROVIDER_INVALID_RESPONSE", "Dữ liệu camera từ provider không đúng metadata contract.");
+  return fail(
+    "PROVIDER_INVALID_RESPONSE",
+    "Dữ liệu camera từ provider không đúng metadata contract.",
+  );
 }

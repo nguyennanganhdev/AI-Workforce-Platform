@@ -18,12 +18,7 @@
     },
     "Severity": {
       "type": "string",
-      "enum": [
-        "P0",
-        "P1",
-        "P2",
-        "P3"
-      ]
+      "enum": ["P0", "P1", "P2", "P3"]
     },
     "IncidentType": {
       "type": "string",
@@ -41,49 +36,23 @@
     },
     "IncidentStatus": {
       "type": "string",
-      "enum": [
-        "OPEN",
-        "IN_PROGRESS",
-        "RESOLVED",
-        "CLOSED"
-      ]
+      "enum": ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"]
     },
     "GuardStatus": {
       "type": "string",
-      "enum": [
-        "AVAILABLE",
-        "ASSIGNED",
-        "UNAVAILABLE",
-        "OFF_DUTY",
-        "UNKNOWN"
-      ]
+      "enum": ["AVAILABLE", "ASSIGNED", "UNAVAILABLE", "OFF_DUTY", "UNKNOWN"]
     },
     "CameraStatus": {
       "type": "string",
-      "enum": [
-        "ONLINE",
-        "OFFLINE",
-        "MAINTENANCE",
-        "UNKNOWN"
-      ]
+      "enum": ["ONLINE", "OFFLINE", "MAINTENANCE", "UNKNOWN"]
     },
     "CameraType": {
       "type": "string",
-      "enum": [
-        "FIXED",
-        "PTZ",
-        "PANORAMIC",
-        "OTHER",
-        "UNKNOWN"
-      ]
+      "enum": ["FIXED", "PTZ", "PANORAMIC", "OTHER", "UNKNOWN"]
     },
     "CameraIncidentRelation": {
       "type": "string",
-      "enum": [
-        "AT_LOCATION",
-        "NEAR_LOCATION",
-        "MANUALLY_LINKED"
-      ]
+      "enum": ["AT_LOCATION", "NEAR_LOCATION", "MANUALLY_LINKED"]
     },
     "DispatchStatus": {
       "type": "string",
@@ -106,39 +75,19 @@
     },
     "ContactAvailability": {
       "type": "string",
-      "enum": [
-        "ON_DUTY",
-        "OFF_DUTY",
-        "UNKNOWN"
-      ]
+      "enum": ["ON_DUTY", "OFF_DUTY", "UNKNOWN"]
     },
     "EscalationStatus": {
       "type": "string",
-      "enum": [
-        "PENDING",
-        "NOTIFIED",
-        "ACKNOWLEDGED",
-        "FAILED",
-        "ACK_TIMEOUT"
-      ]
+      "enum": ["PENDING", "NOTIFIED", "ACKNOWLEDGED", "FAILED", "ACK_TIMEOUT"]
     },
     "EvidenceType": {
       "type": "string",
-      "enum": [
-        "ACTION_RECEIPT",
-        "OPERATOR_NOTE",
-        "EXTERNAL_REFERENCE"
-      ]
+      "enum": ["ACTION_RECEIPT", "OPERATOR_NOTE", "EXTERNAL_REFERENCE"]
     },
     "SkillStatus": {
       "type": "string",
-      "enum": [
-        "COMPLETED",
-        "PROPOSED",
-        "NEEDS_INPUT",
-        "NEEDS_HUMAN",
-        "FAILED"
-      ]
+      "enum": ["COMPLETED", "PROPOSED", "NEEDS_INPUT", "NEEDS_HUMAN", "FAILED"]
     },
     "CoverageStatus": {
       "type": "string",
@@ -211,16 +160,10 @@
         },
         "actor_type": {
           "type": "string",
-          "enum": [
-            "HUMAN",
-            "SERVICE"
-          ]
+          "enum": ["HUMAN", "SERVICE"]
         }
       },
-      "required": [
-        "actor_id",
-        "actor_type"
-      ],
+      "required": ["actor_id", "actor_type"],
       "additionalProperties": false
     },
     "ReadContext": {
@@ -278,9 +221,7 @@
                 }
               }
             },
-            "required": [
-              "task_id"
-            ]
+            "required": ["task_id"]
           },
           "then": {
             "properties": {
@@ -369,12 +310,7 @@
           ]
         }
       },
-      "required": [
-        "location_id",
-        "building",
-        "floor",
-        "zone"
-      ],
+      "required": ["location_id", "building", "floor", "zone"],
       "additionalProperties": false
     },
     "RelatedCounts": {
@@ -401,12 +337,7 @@
           "maximum": 9007199254740991
         }
       },
-      "required": [
-        "dispatches",
-        "escalations",
-        "cameras",
-        "evidence"
-      ],
+      "required": ["dispatches", "escalations", "cameras", "evidence"],
       "additionalProperties": false
     },
     "Incident": {
@@ -495,12 +426,7 @@
           "$ref": "#/$defs/Timestamp"
         }
       },
-      "required": [
-        "guard_id",
-        "status",
-        "current_location",
-        "updated_at"
-      ],
+      "required": ["guard_id", "status", "current_location", "updated_at"],
       "additionalProperties": false
     },
     "CameraSummary": {
@@ -562,11 +488,7 @@
           "$ref": "#/$defs/CameraIncidentRelation"
         }
       },
-      "required": [
-        "incident_id",
-        "camera",
-        "relation"
-      ],
+      "required": ["incident_id", "camera", "relation"],
       "additionalProperties": false
     },
     "Dispatch": {
@@ -671,9 +593,7 @@
                 "const": "CANCELLED"
               }
             },
-            "required": [
-              "status"
-            ]
+            "required": ["status"]
           },
           "then": {
             "properties": {
@@ -697,9 +617,7 @@
                 "const": "FAILED"
               }
             },
-            "required": [
-              "status"
-            ]
+            "required": ["status"]
           },
           "then": {
             "properties": {
@@ -808,10 +726,7 @@
         },
         "severity": {
           "type": "string",
-          "enum": [
-            "P0",
-            "P1"
-          ]
+          "enum": ["P0", "P1"]
         },
         "steps": {
           "type": "array",
@@ -858,10 +773,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": [
-              "P0",
-              "P1"
-            ]
+            "enum": ["P0", "P1"]
           },
           "minItems": 1,
           "maxItems": 2,
@@ -871,12 +783,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": [
-              "PHONE",
-              "SMS",
-              "PUSH",
-              "EMAIL"
-            ]
+            "enum": ["PHONE", "SMS", "PUSH", "EMAIL"]
           },
           "minItems": 1,
           "maxItems": 4,
@@ -904,10 +811,7 @@
         },
         "severity": {
           "type": "string",
-          "enum": [
-            "P0",
-            "P1"
-          ]
+          "enum": ["P0", "P1"]
         },
         "protocol_id": {
           "$ref": "#/$defs/Id"
@@ -990,10 +894,7 @@
           "anyOf": [
             {
               "type": "string",
-              "enum": [
-                "DELIVERY_FAILED",
-                "PROVIDER_REJECTED"
-              ]
+              "enum": ["DELIVERY_FAILED", "PROVIDER_REJECTED"]
             },
             {
               "type": "null"
@@ -1036,9 +937,7 @@
                 "const": "PENDING"
               }
             },
-            "required": [
-              "status"
-            ]
+            "required": ["status"]
           },
           "then": {
             "properties": {
@@ -1055,15 +954,10 @@
           "if": {
             "properties": {
               "status": {
-                "enum": [
-                  "NOTIFIED",
-                  "ACKNOWLEDGED"
-                ]
+                "enum": ["NOTIFIED", "ACKNOWLEDGED"]
               }
             },
-            "required": [
-              "status"
-            ]
+            "required": ["status"]
           },
           "then": {
             "properties": {
@@ -1087,9 +981,7 @@
                 "type": "null"
               }
             },
-            "required": [
-              "notification_reference_id"
-            ]
+            "required": ["notification_reference_id"]
           },
           "then": {
             "properties": {
@@ -1115,9 +1007,7 @@
                 "const": "ACKNOWLEDGED"
               }
             },
-            "required": [
-              "status"
-            ]
+            "required": ["status"]
           },
           "then": {
             "properties": {
@@ -1159,9 +1049,7 @@
                 "const": "FAILED"
               }
             },
-            "required": [
-              "status"
-            ]
+            "required": ["status"]
           },
           "then": {
             "properties": {
@@ -1299,9 +1187,7 @@
                 "const": "ACTION_RECEIPT"
               }
             },
-            "required": [
-              "evidence_type"
-            ]
+            "required": ["evidence_type"]
           },
           "then": {
             "properties": {
@@ -1448,10 +1334,7 @@
           "$ref": "#/$defs/Severity"
         }
       },
-      "required": [
-        "status",
-        "severity"
-      ],
+      "required": ["status", "severity"],
       "additionalProperties": false
     },
     "INCIDENT_UPDATEDData": {
@@ -1504,11 +1387,7 @@
           "const": "PENDING"
         }
       },
-      "required": [
-        "dispatch_id",
-        "guard_id",
-        "status"
-      ],
+      "required": ["dispatch_id", "guard_id", "status"],
       "additionalProperties": false
     },
     "DISPATCH_STATUS_CHANGEDData": {
@@ -1536,12 +1415,7 @@
           ]
         }
       },
-      "required": [
-        "dispatch_id",
-        "previous_status",
-        "status",
-        "reason"
-      ],
+      "required": ["dispatch_id", "previous_status", "status", "reason"],
       "additionalProperties": false
     },
     "ESCALATION_CREATEDData": {
@@ -1557,11 +1431,7 @@
           "const": "PENDING"
         }
       },
-      "required": [
-        "escalation_id",
-        "contact_id",
-        "status"
-      ],
+      "required": ["escalation_id", "contact_id", "status"],
       "additionalProperties": false
     },
     "ESCALATION_STATUS_CHANGEDData": {
@@ -1589,12 +1459,7 @@
           ]
         }
       },
-      "required": [
-        "escalation_id",
-        "previous_status",
-        "status",
-        "reason"
-      ],
+      "required": ["escalation_id", "previous_status", "status", "reason"],
       "additionalProperties": false
     },
     "EVIDENCE_ADDEDData": {
@@ -1607,10 +1472,7 @@
           "$ref": "#/$defs/EvidenceType"
         }
       },
-      "required": [
-        "evidence_id",
-        "evidence_type"
-      ],
+      "required": ["evidence_id", "evidence_type"],
       "additionalProperties": false
     },
     "ResponseMeta": {
@@ -1626,11 +1488,7 @@
           "type": "boolean"
         }
       },
-      "required": [
-        "correlation_id",
-        "executed_at",
-        "replayed"
-      ],
+      "required": ["correlation_id", "executed_at", "replayed"],
       "additionalProperties": false
     },
     "ToolError": {
@@ -1646,12 +1504,7 @@
         },
         "retry": {
           "type": "string",
-          "enum": [
-            "NEVER",
-            "BACKOFF",
-            "SAME_KEY",
-            "RECONCILE"
-          ]
+          "enum": ["NEVER", "BACKOFF", "SAME_KEY", "RECONCILE"]
         },
         "retry_after_ms": {
           "anyOf": [
@@ -1667,12 +1520,7 @@
         },
         "operation_state": {
           "type": "string",
-          "enum": [
-            "NOT_STARTED",
-            "IN_PROGRESS",
-            "UNKNOWN",
-            "FAILED"
-          ]
+          "enum": ["NOT_STARTED", "IN_PROGRESS", "UNKNOWN", "FAILED"]
         }
       },
       "required": [
@@ -1729,9 +1577,7 @@
         {
           "properties": {
             "code": {
-              "enum": [
-                "IDEMPOTENCY_IN_PROGRESS"
-              ]
+              "enum": ["IDEMPOTENCY_IN_PROGRESS"]
             },
             "retry": {
               "const": "SAME_KEY"
@@ -1744,9 +1590,7 @@
         {
           "properties": {
             "code": {
-              "enum": [
-                "IDEMPOTENCY_RESULT_EXPIRED"
-              ]
+              "enum": ["IDEMPOTENCY_RESULT_EXPIRED"]
             },
             "retry": {
               "const": "RECONCILE"
@@ -1759,9 +1603,7 @@
         {
           "properties": {
             "code": {
-              "enum": [
-                "RATE_LIMITED"
-              ]
+              "enum": ["RATE_LIMITED"]
             },
             "retry": {
               "const": "BACKOFF"
@@ -1774,10 +1616,7 @@
         {
           "properties": {
             "code": {
-              "enum": [
-                "PROVIDER_TIMEOUT",
-                "PROVIDER_ERROR"
-              ]
+              "enum": ["PROVIDER_TIMEOUT", "PROVIDER_ERROR"]
             },
             "retry": {
               "const": "BACKOFF"
@@ -1808,9 +1647,7 @@
         {
           "properties": {
             "code": {
-              "enum": [
-                "PROVIDER_ERROR"
-              ]
+              "enum": ["PROVIDER_ERROR"]
             },
             "retry": {
               "const": "NEVER"
@@ -1823,10 +1660,7 @@
         {
           "properties": {
             "code": {
-              "enum": [
-                "PROVIDER_INVALID_RESPONSE",
-                "INTERNAL_ERROR"
-              ]
+              "enum": ["PROVIDER_INVALID_RESPONSE", "INTERNAL_ERROR"]
             },
             "retry": {
               "const": "NEVER"
@@ -1842,15 +1676,10 @@
           "if": {
             "properties": {
               "retry": {
-                "enum": [
-                  "NEVER",
-                  "RECONCILE"
-                ]
+                "enum": ["NEVER", "RECONCILE"]
               }
             },
-            "required": [
-              "retry"
-            ]
+            "required": ["retry"]
           },
           "then": {
             "properties": {
@@ -1867,9 +1696,7 @@
                 "const": "IDEMPOTENCY_IN_PROGRESS"
               }
             },
-            "required": [
-              "code"
-            ]
+            "required": ["code"]
           },
           "then": {
             "properties": {
@@ -1888,9 +1715,7 @@
           "$ref": "#/$defs/Id"
         }
       },
-      "required": [
-        "incident_id"
-      ],
+      "required": ["incident_id"],
       "additionalProperties": false
     },
     "SearchIncidentsInput": {
@@ -1943,12 +1768,7 @@
           "$ref": "#/$defs/Id"
         }
       },
-      "required": [
-        "incident_type",
-        "description",
-        "severity",
-        "location_id"
-      ],
+      "required": ["incident_type", "description", "severity", "location_id"],
       "additionalProperties": false
     },
     "UpdateIncidentInput": {
@@ -1977,39 +1797,26 @@
           "$ref": "#/$defs/Id"
         }
       },
-      "required": [
-        "incident_id",
-        "expected_version"
-      ],
+      "required": ["incident_id", "expected_version"],
       "additionalProperties": false,
       "allOf": [
         {
           "anyOf": [
             {
-              "required": [
-                "status"
-              ]
+              "required": ["status"]
             },
             {
-              "required": [
-                "severity"
-              ]
+              "required": ["severity"]
             },
             {
-              "required": [
-                "note"
-              ]
+              "required": ["note"]
             }
           ]
         },
         {
           "dependentRequired": {
-            "status": [
-              "note"
-            ],
-            "severity": [
-              "note"
-            ]
+            "status": ["note"],
+            "severity": ["note"]
           }
         },
         {
@@ -2019,14 +1826,10 @@
                 "const": "RESOLVED"
               }
             },
-            "required": [
-              "status"
-            ]
+            "required": ["status"]
           },
           "then": {
-            "required": [
-              "resolution_evidence_id"
-            ]
+            "required": ["resolution_evidence_id"]
           }
         }
       ]
@@ -2048,9 +1851,7 @@
           "maxLength": 2048
         }
       },
-      "required": [
-        "location_id"
-      ],
+      "required": ["location_id"],
       "additionalProperties": false
     },
     "GetGuardStatusInput": {
@@ -2060,9 +1861,7 @@
           "$ref": "#/$defs/Id"
         }
       },
-      "required": [
-        "guard_id"
-      ],
+      "required": ["guard_id"],
       "additionalProperties": false
     },
     "DispatchGuardInput": {
@@ -2085,11 +1884,7 @@
           "maxLength": 2000
         }
       },
-      "required": [
-        "incident_id",
-        "incident_version",
-        "guard_id"
-      ],
+      "required": ["incident_id", "incident_version", "guard_id"],
       "additionalProperties": false
     },
     "GetDispatchInput": {
@@ -2099,9 +1894,7 @@
           "$ref": "#/$defs/Id"
         }
       },
-      "required": [
-        "dispatch_id"
-      ],
+      "required": ["dispatch_id"],
       "additionalProperties": false
     },
     "CancelDispatchInput": {
@@ -2121,11 +1914,7 @@
           "maxLength": 2000
         }
       },
-      "required": [
-        "dispatch_id",
-        "expected_version",
-        "reason"
-      ],
+      "required": ["dispatch_id", "expected_version", "reason"],
       "additionalProperties": false
     },
     "GetEmergencyProtocolInput": {
@@ -2136,16 +1925,10 @@
         },
         "severity": {
           "type": "string",
-          "enum": [
-            "P0",
-            "P1"
-          ]
+          "enum": ["P0", "P1"]
         }
       },
-      "required": [
-        "incident_type",
-        "severity"
-      ],
+      "required": ["incident_type", "severity"],
       "additionalProperties": false
     },
     "GetEscalationContactsInput": {
@@ -2153,10 +1936,7 @@
       "properties": {
         "severity": {
           "type": "string",
-          "enum": [
-            "P0",
-            "P1"
-          ]
+          "enum": ["P0", "P1"]
         },
         "limit": {
           "type": "integer",
@@ -2169,9 +1949,7 @@
           "maxLength": 2048
         }
       },
-      "required": [
-        "severity"
-      ],
+      "required": ["severity"],
       "additionalProperties": false
     },
     "EscalateEmergencyInput": {
@@ -2227,11 +2005,7 @@
           "$ref": "#/$defs/Id"
         }
       },
-      "required": [
-        "escalation_id",
-        "expected_version",
-        "ack_receipt_id"
-      ],
+      "required": ["escalation_id", "expected_version", "ack_receipt_id"],
       "additionalProperties": false
     },
     "GetEmergencyEscalationInput": {
@@ -2241,9 +2015,7 @@
           "$ref": "#/$defs/Id"
         }
       },
-      "required": [
-        "escalation_id"
-      ],
+      "required": ["escalation_id"],
       "additionalProperties": false
     },
     "GetIncidentEscalationsInput": {
@@ -2263,9 +2035,7 @@
           "maxLength": 2048
         }
       },
-      "required": [
-        "incident_id"
-      ],
+      "required": ["incident_id"],
       "additionalProperties": false
     },
     "GetCameraMetadataInput": {
@@ -2275,9 +2045,7 @@
           "$ref": "#/$defs/Id"
         }
       },
-      "required": [
-        "camera_id"
-      ],
+      "required": ["camera_id"],
       "additionalProperties": false
     },
     "SearchCamerasInput": {
@@ -2332,9 +2100,7 @@
           "maxLength": 2048
         }
       },
-      "required": [
-        "location_id"
-      ],
+      "required": ["location_id"],
       "additionalProperties": false
     },
     "GetIncidentCamerasInput": {
@@ -2354,9 +2120,7 @@
           "maxLength": 2048
         }
       },
-      "required": [
-        "incident_id"
-      ],
+      "required": ["incident_id"],
       "additionalProperties": false
     },
     "GetIncidentEvidenceInput": {
@@ -2376,9 +2140,7 @@
           "maxLength": 2048
         }
       },
-      "required": [
-        "incident_id"
-      ],
+      "required": ["incident_id"],
       "additionalProperties": false
     },
     "GetDispatchHistoryInput": {
@@ -2398,9 +2160,7 @@
           "maxLength": 2048
         }
       },
-      "required": [
-        "incident_id"
-      ],
+      "required": ["incident_id"],
       "additionalProperties": false
     },
     "GetSecurityEventTimelineInput": {
@@ -2420,9 +2180,7 @@
           "maxLength": 2048
         }
       },
-      "required": [
-        "incident_id"
-      ],
+      "required": ["incident_id"],
       "additionalProperties": false
     },
     "ActionProposal": {
@@ -2640,10 +2398,7 @@
           "$ref": "#/$defs/Id"
         }
       },
-      "required": [
-        "execution_grant",
-        "idempotency_key"
-      ],
+      "required": ["execution_grant", "idempotency_key"],
       "additionalProperties": false
     },
     "ActionBinding": {
@@ -2783,13 +2538,7 @@
           "$ref": "#/$defs/ResponseMeta"
         }
       },
-      "required": [
-        "success",
-        "data",
-        "evidence",
-        "error",
-        "meta"
-      ],
+      "required": ["success", "data", "evidence", "error", "meta"],
       "additionalProperties": false
     }
   }

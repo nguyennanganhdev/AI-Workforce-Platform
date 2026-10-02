@@ -40,7 +40,11 @@ export class RealSecurityProvider implements SecurityProvider {
     context: ReadContext,
     options: ProviderCallOptions,
   ): Promise<ReadResult<ToolData<T>>> {
-    const result = await this.core.query(context, { name: tool, arguments: input as Record<string, unknown> }, options);
+    const result = await this.core.query(
+      context,
+      { name: tool, arguments: input as Record<string, unknown> },
+      options,
+    );
     if (!result.ok) return result;
     const adapt = ADAPTERS[tool];
     if (!adapt) return { ok: true, data: result.data as ToolData<T> };
@@ -65,12 +69,19 @@ export class RealSecurityProvider implements SecurityProvider {
   ): Promise<WriteResult<ToolData<T>>> {
     return {
       ok: false,
-      error: toolError("AUTH_ERROR", "Deployment này chưa bật WRITE tới Core API.", { mode: "WRITE" }),
+      error: toolError(
+        "AUTH_ERROR",
+        "Deployment này chưa bật WRITE tới Core API.",
+        { mode: "WRITE" },
+      ),
     };
   }
 }
 
-function cameraPage<T>(data: unknown, item: (raw: unknown) => T): { cameras: T[]; next_cursor: string | null } {
+function cameraPage<T>(
+  data: unknown,
+  item: (raw: unknown) => T,
+): { cameras: T[]; next_cursor: string | null } {
   const page = data as { cameras?: unknown; next_cursor?: unknown } | null;
   const keys = page && typeof page === "object" ? Object.keys(page) : [];
   if (
@@ -79,7 +90,12 @@ function cameraPage<T>(data: unknown, item: (raw: unknown) => T): { cameras: T[]
     !Array.isArray(page.cameras) ||
     !(page.next_cursor === null || typeof page.next_cursor === "string")
   ) {
-    throw new ToolFailure(toolError("PROVIDER_INVALID_RESPONSE", "Trang camera từ provider không đúng contract."));
+    throw new ToolFailure(
+      toolError(
+        "PROVIDER_INVALID_RESPONSE",
+        "Trang camera từ provider không đúng contract.",
+      ),
+    );
   }
   return { cameras: page.cameras.map(item), next_cursor: page.next_cursor };
 }

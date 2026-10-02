@@ -22,7 +22,8 @@ export const GUARD_TOOLS: readonly DomainToolDefinition[] = [
     mode: "READ",
     inputSchema: S.GetGuardStatusInput,
     outputSchema: S.GetGuardStatusOutput,
-    description: "Trạng thái hiện tại và vị trí gần nhất (nếu biết) của một bảo vệ trong property.",
+    description:
+      "Trạng thái hiện tại và vị trí gần nhất (nếu biết) của một bảo vệ trong property.",
     annotations: { readOnlyHint: true },
   },
 ];

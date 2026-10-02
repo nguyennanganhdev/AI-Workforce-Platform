@@ -19,7 +19,14 @@ export function parseStrictJson(text: string): unknown {
     throw new StrictJsonError(`${message} tại vị trí ${i}`);
   };
   const skip = () => {
-    while (i < text.length && (text[i] === " " || text[i] === "\t" || text[i] === "\n" || text[i] === "\r")) i++;
+    while (
+      i < text.length &&
+      (text[i] === " " ||
+        text[i] === "\t" ||
+        text[i] === "\n" ||
+        text[i] === "\r")
+    )
+      i++;
   };
   const expect = (char: string) => {
     if (text[i] !== char) error(`Cần '${char}'`);
@@ -60,7 +67,12 @@ export function parseStrictJson(text: string): unknown {
         skip();
         expect(":");
         // defineProperty để key "__proto__" là dữ liệu thường, không đổi prototype.
-        Object.defineProperty(out, key, { value: value(), enumerable: true, writable: true, configurable: true });
+        Object.defineProperty(out, key, {
+          value: value(),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
         skip();
         if (text[i] === ",") {
           i++;
@@ -90,7 +102,11 @@ export function parseStrictJson(text: string): unknown {
       }
     }
     if (char === '"') return string();
-    const literal = text.slice(i).match(/^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/);
+    const literal = text
+      .slice(i)
+      .match(
+        /^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/,
+      );
     if (!literal) return error("Giá trị JSON không hợp lệ");
     i += literal[0].length;
     return JSON.parse(literal[0]);

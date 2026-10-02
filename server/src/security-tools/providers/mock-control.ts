@@ -6,8 +6,17 @@
 import { readBodyText } from "../common/body";
 import { parseStrictJson, StrictJsonError } from "../common/strict-json";
 import { loadFixtureScope, MockSecurityProvider } from "./mock-provider";
-import { createWriteControl, createWriteHandlers, type MockWriteFault, type WriteControl } from "./mock-write";
-import { isWriteTool, type SecurityProvider, type WriteToolName } from "./provider";
+import {
+  createWriteControl,
+  createWriteHandlers,
+  type MockWriteFault,
+  type WriteControl,
+} from "./mock-write";
+import {
+  isWriteTool,
+  type SecurityProvider,
+  type WriteToolName,
+} from "./provider";
 
 // ---------------------------------------------------------------------------------------------
 // Đồng hồ giả
@@ -55,7 +64,9 @@ export type MockEnvironment = {
   reset(): void;
 };
 
-export function createMockEnvironment(options: { cursorSecret?: string } = {}): MockEnvironment {
+export function createMockEnvironment(
+  options: { cursorSecret?: string } = {},
+): MockEnvironment {
   const clock = createMockClock();
   const control = createWriteControl();
   const releases = new Map<WriteToolName, () => void>();
@@ -75,8 +86,10 @@ export function createMockEnvironment(options: { cursorSecret?: string } = {}): 
   return {
     provider: {
       name: "mock",
-      read: (tool, input, context, call) => current.read(tool, input, context, call),
-      write: (tool, input, invocation, call) => current.write(tool, input, invocation, call),
+      read: (tool, input, context, call) =>
+        current.read(tool, input, context, call),
+      write: (tool, input, invocation, call) =>
+        current.write(tool, input, invocation, call),
     },
     clock,
     control,
@@ -123,32 +136,50 @@ const MAX_CONTROL_BODY_BYTES = 4096;
  *
  * Trả `{ "ok": true, "now": <giờ của đồng hồ mock> }`; lệnh sai → 400.
  */
-export function createFaultsHandler(env: MockEnvironment): (request: Request) => Promise<Response> {
-  const bad = (message: string) => Response.json({ ok: false, error: message }, { status: 400 });
+export function createFaultsHandler(
+  env: MockEnvironment,
+): (request: Request) => Promise<Response> {
+  const bad = (message: string) =>
+    Response.json({ ok: false, error: message }, { status: 400 });
   return async (request) => {
-    if (request.method !== "POST") return Response.json({ ok: false, error: "Method not allowed" }, { status: 405, headers: { allow: "POST" } });
+    if (request.method !== "POST")
+      return Response.json(
+        { ok: false, error: "Method not allowed" },
+        { status: 405, headers: { allow: "POST" } },
+      );
     const body = await readBodyText(request, MAX_CONTROL_BODY_BYTES);
     if (!body.ok) return bad("Body không hợp lệ");
     let command: Record<string, unknown>;
     try {
       const parsed = parseStrictJson(body.text);
-      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return bad("Body phải là object");
+      if (
+        parsed === null ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed)
+      )
+        return bad("Body phải là object");
       command = parsed as Record<string, unknown>;
     } catch (error) {
-      if (error instanceof StrictJsonError) return bad("Body không phải JSON hợp lệ");
+      if (error instanceof StrictJsonError)
+        return bad("Body không phải JSON hợp lệ");
       throw error;
     }
 
     const tool = command.tool;
-    const needTool = (): WriteToolName | null => (typeof tool === "string" && isWriteTool(tool) ? tool : null);
+    const needTool = (): WriteToolName | null =>
+      typeof tool === "string" && isWriteTool(tool) ? tool : null;
     switch (command.action) {
       case "set_fault": {
         const target = needTool();
         const fault = command.fault;
         const times = command.times ?? 1;
         if (!target) return bad("tool phải là một WRITE tool");
-        if (typeof fault !== "string" || !Object.hasOwn(WRITE_FAULTS, fault)) return bad(`fault phải là một trong: ${Object.keys(WRITE_FAULTS).join(", ")}`);
-        if (!Number.isSafeInteger(times) || (times as number) < 1) return bad("times phải là số nguyên ≥ 1");
+        if (typeof fault !== "string" || !Object.hasOwn(WRITE_FAULTS, fault))
+          return bad(
+            `fault phải là một trong: ${Object.keys(WRITE_FAULTS).join(", ")}`,
+          );
+        if (!Number.isSafeInteger(times) || (times as number) < 1)
+          return bad("times phải là số nguyên ≥ 1");
         env.control.setFault(target, fault as MockWriteFault, times as number);
         break;
       }
@@ -162,12 +193,14 @@ export function createFaultsHandler(env: MockEnvironment): (request: Request) =>
       }
       case "set_clock": {
         const at = typeof command.at === "string" ? new Date(command.at) : null;
-        if (!at || Number.isNaN(at.getTime())) return bad("at phải là timestamp ISO 8601");
+        if (!at || Number.isNaN(at.getTime()))
+          return bad("at phải là timestamp ISO 8601");
         env.clock.set(at);
         break;
       }
       case "advance_clock": {
-        if (!Number.isSafeInteger(command.ms)) return bad("ms phải là số nguyên");
+        if (!Number.isSafeInteger(command.ms))
+          return bad("ms phải là số nguyên");
         env.clock.advance(command.ms as number);
         break;
       }
@@ -175,7 +208,9 @@ export function createFaultsHandler(env: MockEnvironment): (request: Request) =>
         env.reset();
         break;
       default:
-        return bad("action phải là set_fault | hold | release | set_clock | advance_clock | reset");
+        return bad(
+          "action phải là set_fault | hold | release | set_clock | advance_clock | reset",
+        );
     }
     return Response.json({ ok: true, now: env.clock.now().toISOString() });
   };

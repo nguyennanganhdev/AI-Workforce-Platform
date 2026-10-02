@@ -6,9 +6,14 @@
  * chunk vượt, không đọc hết body vào bộ nhớ.
  */
 
-export type BodyText = { ok: true; text: string } | { ok: false; reason: "too_large" | "invalid_utf8" };
+export type BodyText =
+  | { ok: true; text: string }
+  | { ok: false; reason: "too_large" | "invalid_utf8" };
 
-export async function readBodyText(message: Request | Response, maxBytes: number): Promise<BodyText> {
+export async function readBodyText(
+  message: Request | Response,
+  maxBytes: number,
+): Promise<BodyText> {
   const declared = Number(message.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > maxBytes) {
     await message.body?.cancel().catch(() => {});
@@ -38,7 +43,10 @@ export async function readBodyText(message: Request | Response, maxBytes: number
   }
   try {
     // fatal: byte UTF-8 sai bị từ chối, không âm thầm thay bằng U+FFFD.
-    return { ok: true, text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+    return {
+      ok: true,
+      text: new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    };
   } catch {
     return { ok: false, reason: "invalid_utf8" };
   }

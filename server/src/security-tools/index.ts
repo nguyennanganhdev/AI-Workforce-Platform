@@ -28,7 +28,10 @@ import {
 } from "./common/context";
 import { createWriteGuard } from "./common/execution-grant";
 import { parseStrictJson, StrictJsonError } from "./common/strict-json";
-import { createFaultsHandler, createMockEnvironment } from "./providers/mock-control";
+import {
+  createFaultsHandler,
+  createMockEnvironment,
+} from "./providers/mock-control";
 import { RealSecurityProvider } from "./providers/real-provider";
 import { registerSecurityTools, type SecurityToolsOptions } from "./tools";
 
@@ -48,40 +51,76 @@ export type SecurityMcpOptions = SecurityToolsOptions & {
 };
 
 /** Handler Web Standard: gắn vào Bun.serve, Hono `app.all(path, (c) => handler(c.req.raw))`... */
-export function createSecurityMcpHandler(options: SecurityMcpOptions): (request: Request) => Promise<Response> {
-  const allowedOrigins = new Set((options.allowedOrigins ?? []).map((origin) => new URL(origin).origin));
+export function createSecurityMcpHandler(
+  options: SecurityMcpOptions,
+): (request: Request) => Promise<Response> {
+  const allowedOrigins = new Set(
+    (options.allowedOrigins ?? []).map((origin) => new URL(origin).origin),
+  );
   return async (request) => {
     const correlationId = correlationIdFrom(request.headers);
-    const reply = (status: number, body: unknown, headers: Record<string, string> = {}) =>
-      Response.json(body, { status, headers: { [HEADERS.correlationId]: correlationId, ...headers } });
+    const reply = (
+      status: number,
+      body: unknown,
+      headers: Record<string, string> = {},
+    ) =>
+      Response.json(body, {
+        status,
+        headers: { [HEADERS.correlationId]: correlationId, ...headers },
+      });
 
     // Chống DNS rebinding (MCP Streamable HTTP): có Origin thì phải nằm trong allowlist. Caller
     // service-to-service không gửi Origin nên không bị ảnh hưởng.
     const origin = request.headers.get("origin");
-    if (origin !== null && !allowedOrigins.has(origin)) return reply(403, rpcError(-32000, "Origin không được phép"));
+    if (origin !== null && !allowedOrigins.has(origin))
+      return reply(403, rpcError(-32000, "Origin không được phép"));
 
     // Stateless, JSON response: không có SSE stream (GET) hay session để xóa (DELETE).
-    if (request.method !== "POST") return reply(405, rpcError(-32000, "Method not allowed"), { allow: "POST" });
+    if (request.method !== "POST")
+      return reply(405, rpcError(-32000, "Method not allowed"), {
+        allow: "POST",
+      });
 
     let identity: RequestIdentity;
     try {
-      const caller = await options.verifyAccessToken(request.headers.get("authorization"));
-      identity = { caller, correlation_id: correlationId, write_headers: rawWriteHeaders(request.headers) };
+      const caller = await options.verifyAccessToken(
+        request.headers.get("authorization"),
+      );
+      identity = {
+        caller,
+        correlation_id: correlationId,
+        write_headers: rawWriteHeaders(request.headers),
+      };
     } catch (error) {
       if (!(error instanceof AuthenticationError)) throw error;
-      const challenge = error.status === 401 ? 'Bearer error="invalid_token"' : 'Bearer error="insufficient_scope"';
-      return reply(error.status, rpcError(-32001, error.message), { "www-authenticate": challenge });
+      const challenge =
+        error.status === 401
+          ? 'Bearer error="invalid_token"'
+          : 'Bearer error="insufficient_scope"';
+      return reply(error.status, rpcError(-32001, error.message), {
+        "www-authenticate": challenge,
+      });
     }
 
     const version = request.headers.get("mcp-protocol-version");
     if (version !== null && version !== MCP_PROTOCOL_VERSION) {
-      return reply(400, rpcError(-32000, `Chỉ hỗ trợ MCP-Protocol-Version ${MCP_PROTOCOL_VERSION}`));
+      return reply(
+        400,
+        rpcError(
+          -32000,
+          `Chỉ hỗ trợ MCP-Protocol-Version ${MCP_PROTOCOL_VERSION}`,
+        ),
+      );
     }
 
     let body: unknown;
     try {
-      const read = await readBodyText(request, options.maxBodyBytes ?? MAX_BODY_BYTES);
-      if (!read.ok && read.reason === "too_large") return reply(413, rpcError(-32600, "Request quá lớn"));
+      const read = await readBodyText(
+        request,
+        options.maxBodyBytes ?? MAX_BODY_BYTES,
+      );
+      if (!read.ok && read.reason === "too_large")
+        return reply(413, rpcError(-32600, "Request quá lớn"));
       if (!read.ok) return reply(400, rpcError(-32700, "Parse error"));
       body = parseStrictJson(read.text);
     } catch (error) {
@@ -90,12 +129,19 @@ export function createSecurityMcpHandler(options: SecurityMcpOptions): (request:
     }
     pinProtocolVersion(body);
 
-    const server = new Server(SERVER_INFO, { capabilities: { tools: { listChanged: false } } });
+    const server = new Server(SERVER_INFO, {
+      capabilities: { tools: { listChanged: false } },
+    });
     registerSecurityTools(server, identity, options);
-    const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+    });
     try {
       await server.connect(transport);
-      const response = await transport.handleRequest(request, { parsedBody: body });
+      const response = await transport.handleRequest(request, {
+        parsedBody: body,
+      });
       response.headers.set(HEADERS.correlationId, correlationId);
       return response;
     } finally {
@@ -109,8 +155,17 @@ export function createSecurityMcpHandler(options: SecurityMcpOptions): (request:
  * quy tắc negotiate của MCP, thay vì server âm thầm chạy profile khác.
  */
 function pinProtocolVersion(body: unknown): void {
-  const message = body as { method?: unknown; params?: { protocolVersion?: unknown } } | null;
-  if (message && typeof message === "object" && message.method === "initialize" && message.params && typeof message.params === "object") {
+  const message = body as {
+    method?: unknown;
+    params?: { protocolVersion?: unknown };
+  } | null;
+  if (
+    message &&
+    typeof message === "object" &&
+    message.method === "initialize" &&
+    message.params &&
+    typeof message.params === "object"
+  ) {
     message.params.protocolVersion = MCP_PROTOCOL_VERSION;
   }
 }
@@ -137,7 +192,9 @@ function rpcError(code: number, message: string) {
  * `<jwks>` là URL HTTPS, hoặc đường dẫn tới file jwks.json cục bộ (chỉ khi NODE_ENV khác production,
  * để test/dev ký token và grant bằng key local). Provider mock bị từ chối khi NODE_ENV=production.
  */
-export function configFromEnv(env: Record<string, string | undefined> = process.env) {
+export function configFromEnv(
+  env: Record<string, string | undefined> = process.env,
+) {
   const required = (name: string) => {
     const value = env[name]?.trim();
     if (!value) throw new Error(`Thiếu biến môi trường ${name}`);
@@ -145,9 +202,11 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
   };
   const production = env.NODE_ENV === "production";
   const providerKind = env.SECURITY_MCP_PROVIDER?.trim() || "core";
-  if (providerKind === "mock" && production) throw new Error("Không dùng provider mock ở production");
+  if (providerKind === "mock" && production)
+    throw new Error("Không dùng provider mock ở production");
   const testControl = env.SECURITY_MCP_TEST_CONTROL?.trim() === "1";
-  if (testControl && providerKind !== "mock") throw new Error("SECURITY_MCP_TEST_CONTROL chỉ dùng với provider mock");
+  if (testControl && providerKind !== "mock")
+    throw new Error("SECURITY_MCP_TEST_CONTROL chỉ dùng với provider mock");
   const grantIssuers = env.SECURITY_MCP_GRANT_ISSUERS?.trim();
   const mock = providerKind === "mock" ? createMockEnvironment() : null;
   const provider =
@@ -160,7 +219,9 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
           }),
         )
       : (() => {
-          throw new Error(`SECURITY_MCP_PROVIDER không hợp lệ: ${providerKind}`);
+          throw new Error(
+            `SECURITY_MCP_PROVIDER không hợp lệ: ${providerKind}`,
+          );
         })());
   return {
     port: Number.parseInt(env.SECURITY_MCP_PORT?.trim() || "8790", 10),
@@ -172,50 +233,82 @@ export function configFromEnv(env: Record<string, string | undefined> = process.
       // Mock: wrapper (meta.executed_at, hạn grant) và provider dùng chung đồng hồ giả.
       now: mock?.clock.now,
       verifyAccessToken: createAccessTokenVerifier({
-        issuers: issuerKeysFromEnv("SECURITY_MCP_ACCESS_ISSUERS", required("SECURITY_MCP_ACCESS_ISSUERS"), production),
+        issuers: issuerKeysFromEnv(
+          "SECURITY_MCP_ACCESS_ISSUERS",
+          required("SECURITY_MCP_ACCESS_ISSUERS"),
+          production,
+        ),
         audience: required("SECURITY_MCP_ACCESS_AUDIENCE"),
       }),
       writeGuard: grantIssuers
-        ? createWriteGuard({ issuers: issuerKeysFromEnv("SECURITY_MCP_GRANT_ISSUERS", grantIssuers, production) })
+        ? createWriteGuard({
+            issuers: issuerKeysFromEnv(
+              "SECURITY_MCP_GRANT_ISSUERS",
+              grantIssuers,
+              production,
+            ),
+          })
         : undefined,
-      allowedOrigins: (env.SECURITY_MCP_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+      allowedOrigins: (env.SECURITY_MCP_ALLOWED_ORIGINS ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
     } satisfies SecurityMcpOptions,
   };
 }
 
 /** Parse map issuer → JWKS. URL giữ nguyên (HTTPS do verifier kiểm); giá trị khác là file jwks.json cục bộ. */
-function issuerKeysFromEnv(name: string, value: string, production: boolean): Record<string, IssuerKeys> {
+function issuerKeysFromEnv(
+  name: string,
+  value: string,
+  production: boolean,
+): Record<string, IssuerKeys> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
   } catch {
     parsed = null;
   }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).length === 0) {
-    throw new Error(`${name} phải là JSON {"<issuer>": "<jwks>"} có ít nhất một issuer`);
+  if (
+    parsed === null ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed) ||
+    Object.keys(parsed).length === 0
+  ) {
+    throw new Error(
+      `${name} phải là JSON {"<issuer>": "<jwks>"} có ít nhất một issuer`,
+    );
   }
   const issuers: Record<string, IssuerKeys> = {};
   for (const [issuer, source] of Object.entries(parsed)) {
-    if (typeof source !== "string" || source.trim() === "") throw new Error(`${name}: JWKS của ${issuer} không hợp lệ`);
+    if (typeof source !== "string" || source.trim() === "")
+      throw new Error(`${name}: JWKS của ${issuer} không hợp lệ`);
     if (/^[a-z][a-z0-9+.-]*:\/\//i.test(source)) {
       issuers[issuer] = new URL(source);
       continue;
     }
-    if (production) throw new Error(`${name}: JWKS cục bộ chỉ dùng ngoài production (${issuer})`);
-    issuers[issuer] = createLocalJWKSet(JSON.parse(readFileSync(resolve(source), "utf8")) as JSONWebKeySet);
+    if (production)
+      throw new Error(
+        `${name}: JWKS cục bộ chỉ dùng ngoài production (${issuer})`,
+      );
+    issuers[issuer] = createLocalJWKSet(
+      JSON.parse(readFileSync(resolve(source), "utf8")) as JSONWebKeySet,
+    );
   }
   return issuers;
 }
 
 export function startSecurityMcpServer(config = configFromEnv()) {
-  if (!Number.isInteger(config.port) || config.port <= 0) throw new Error("SECURITY_MCP_PORT không hợp lệ");
+  if (!Number.isInteger(config.port) || config.port <= 0)
+    throw new Error("SECURITY_MCP_PORT không hợp lệ");
   const handle = createSecurityMcpHandler(config.options);
   return serve({
     port: config.port,
     fetch: (request) => {
       const pathname = new URL(request.url).pathname;
       if (pathname === config.path) return handle(request);
-      if (pathname === "/faults" && config.faults) return config.faults(request);
+      if (pathname === "/faults" && config.faults)
+        return config.faults(request);
       return new Response("Not found", { status: 404 });
     },
   });

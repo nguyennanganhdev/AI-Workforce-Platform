@@ -5,7 +5,14 @@
  * arguments, `_meta` hay header scope thô (X-Tenant-Id...). Grant và Idempotency-Key giữ nguyên
  * dạng thô để common/execution-grant.ts verify, ở đây không tự diễn giải.
  */
-import { createRemoteJWKSet, decodeJwt, errors as joseErrors, type JWTPayload, type JWTVerifyGetKey, jwtVerify } from "jose";
+import {
+  createRemoteJWKSet,
+  decodeJwt,
+  errors as joseErrors,
+  type JWTPayload,
+  type JWTVerifyGetKey,
+  jwtVerify,
+} from "jose";
 import { fail, type ToolMode } from "./errors";
 
 export type Actor = {
@@ -70,7 +77,8 @@ export const HEADERS = {
 
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
-export const isId = (value: unknown): value is string => typeof value === "string" && ID_PATTERN.test(value);
+export const isId = (value: unknown): value is string =>
+  typeof value === "string" && ID_PATTERN.test(value);
 
 export function readContext(identity: RequestIdentity): ReadContext {
   const { caller } = identity;
@@ -88,7 +96,11 @@ export function readContext(identity: RequestIdentity): ReadContext {
 export function writeContext(identity: RequestIdentity): WriteContext {
   const { caller } = identity;
   if (caller.ticket_id === null || caller.task_id === null) {
-    fail("AUTH_ERROR", "Access token không có ticket/task nên không được gọi WRITE.", { mode: "WRITE" });
+    fail(
+      "AUTH_ERROR",
+      "Access token không có ticket/task nên không được gọi WRITE.",
+      { mode: "WRITE" },
+    );
   }
   return {
     tenant_id: caller.tenant_id,
@@ -147,7 +159,9 @@ export class AuthenticationError extends Error {
   }
 }
 
-export type AccessTokenVerifier = (authorization: string | null) => Promise<AuthenticatedCaller>;
+export type AccessTokenVerifier = (
+  authorization: string | null,
+) => Promise<AuthenticatedCaller>;
 
 /**
  * Verify `Authorization: Bearer <access-token>` do trusted gateway mint.
@@ -155,13 +169,20 @@ export type AccessTokenVerifier = (authorization: string | null) => Promise<Auth
  * Claim bắt buộc: sub, tenant_id, property_id, scope. ticket_id/task_id có thể thiếu hoặc null.
  * Một token chỉ một tenant/property; caller không tự mở rộng scope.
  */
-export function createAccessTokenVerifier(config: AccessTokenConfig): AccessTokenVerifier {
+export function createAccessTokenVerifier(
+  config: AccessTokenConfig,
+): AccessTokenVerifier {
   const resolvers = new Map<string, JWTVerifyGetKey>();
   for (const [issuer, keys] of Object.entries(config.issuers)) {
-    if (keys instanceof URL && keys.protocol !== "https:") throw new Error("JWKS URL của access token phải là HTTPS");
-    resolvers.set(issuer, keys instanceof URL ? createRemoteJWKSet(keys) : keys);
+    if (keys instanceof URL && keys.protocol !== "https:")
+      throw new Error("JWKS URL của access token phải là HTTPS");
+    resolvers.set(
+      issuer,
+      keys instanceof URL ? createRemoteJWKSet(keys) : keys,
+    );
   }
-  if (resolvers.size === 0) throw new Error("Cần ít nhất một issuer cho access token");
+  if (resolvers.size === 0)
+    throw new Error("Cần ít nhất một issuer cho access token");
   const options = {
     audience: config.audience,
     algorithms: [...(config.algorithms ?? ["ES256", "RS256"])],
@@ -180,14 +201,16 @@ export function createAccessTokenVerifier(config: AccessTokenConfig): AccessToke
       throw new AuthenticationError(401, "Access token không hợp lệ.");
     }
     const getKey = issuer === undefined ? undefined : resolvers.get(issuer);
-    if (issuer === undefined || getKey === undefined) throw new AuthenticationError(401, "Access token không hợp lệ.");
+    if (issuer === undefined || getKey === undefined)
+      throw new AuthenticationError(401, "Access token không hợp lệ.");
 
     let payload: JWTPayload;
     try {
       ({ payload } = await jwtVerify(token, getKey, { ...options, issuer }));
     } catch (error) {
       // Không trả chi tiết lý do (alg/kid/issuer) cho caller.
-      if (error instanceof joseErrors.JOSEError) throw new AuthenticationError(401, "Access token không hợp lệ.");
+      if (error instanceof joseErrors.JOSEError)
+        throw new AuthenticationError(401, "Access token không hợp lệ.");
       throw error;
     }
     return callerFromClaims(payload);
@@ -198,25 +221,52 @@ export function createAccessTokenVerifier(config: AccessTokenConfig): AccessToke
 export function callerFromClaims(payload: JWTPayload): AuthenticatedCaller {
   const { sub, tenant_id, property_id } = payload;
   if (!isId(sub) || !isId(tenant_id) || !isId(property_id)) {
-    throw new AuthenticationError(401, "Access token thiếu principal hoặc scope tenant/property.");
+    throw new AuthenticationError(
+      401,
+      "Access token thiếu principal hoặc scope tenant/property.",
+    );
   }
   const ticket = optionalId(payload.ticket_id);
   const task = optionalId(payload.task_id);
-  if (ticket === undefined || task === undefined || (task !== null && ticket === null)) {
-    throw new AuthenticationError(401, "ticket_id/task_id trong access token không hợp lệ.");
+  if (
+    ticket === undefined ||
+    task === undefined ||
+    (task !== null && ticket === null)
+  ) {
+    throw new AuthenticationError(
+      401,
+      "ticket_id/task_id trong access token không hợp lệ.",
+    );
   }
-  const granted = typeof payload.scope === "string" ? new Set(payload.scope.split(" ")) : new Set<string>();
+  const granted =
+    typeof payload.scope === "string"
+      ? new Set(payload.scope.split(" "))
+      : new Set<string>();
   const modes = new Set<ToolMode>();
   for (const mode of ["READ", "WRITE"] as const) {
     if (granted.has(SECURITY_SCOPES[mode])) modes.add(mode);
   }
-  if (modes.size === 0) throw new AuthenticationError(403, "Access token không có quyền Security MCP.");
-  return { principal_id: sub, tenant_id, property_id, ticket_id: ticket, task_id: task, modes };
+  if (modes.size === 0)
+    throw new AuthenticationError(
+      403,
+      "Access token không có quyền Security MCP.",
+    );
+  return {
+    principal_id: sub,
+    tenant_id,
+    property_id,
+    ticket_id: ticket,
+    task_id: task,
+    modes,
+  };
 }
 
 function bearerToken(authorization: string | null): string {
-  const match = authorization?.match(/^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/);
-  if (!match?.[1]) throw new AuthenticationError(401, "Thiếu Bearer access token.");
+  const match = authorization?.match(
+    /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/,
+  );
+  if (!match?.[1])
+    throw new AuthenticationError(401, "Thiếu Bearer access token.");
   return match[1];
 }
 

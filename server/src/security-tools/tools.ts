@@ -20,9 +20,28 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { AUDIT_TOOLS } from "./audits/tools";
 import { CAMERA_TOOLS } from "./cameras/tools";
-import { type RawWriteHeaders, type RequestIdentity, readContext, type WriteContext, writeContext } from "./common/context";
-import { type ToolError, type ToolMode, toolError, toToolError } from "./common/errors";
-import { failure, finalizeResponse, readSuccess, responseMeta, type ToolResponse, toCallToolResult, writeSuccess } from "./common/responses";
+import {
+  type RawWriteHeaders,
+  type RequestIdentity,
+  readContext,
+  type WriteContext,
+  writeContext,
+} from "./common/context";
+import {
+  type ToolError,
+  type ToolMode,
+  toolError,
+  toToolError,
+} from "./common/errors";
+import {
+  failure,
+  finalizeResponse,
+  readSuccess,
+  responseMeta,
+  type ToolResponse,
+  toCallToolResult,
+  writeSuccess,
+} from "./common/responses";
 import { DISPATCH_TOOLS } from "./dispatch/tools";
 import { EMERGENCY_TOOLS } from "./emergency/tools";
 import { GUARD_TOOLS } from "./guards/tools";
@@ -39,12 +58,21 @@ import {
   WRITE_TOOL_NAMES,
   type WriteToolName,
 } from "./providers/provider";
-import { bundleSchema, TOOL_CONTRACTS, type ToolContract, validate } from "./schema";
+import {
+  bundleSchema,
+  TOOL_CONTRACTS,
+  type ToolContract,
+  validate,
+} from "./schema";
 
 /** Tổng budget MCP cho một call (§5): Core tối đa 20 giây, cả call tối đa 25 giây. */
 export const TOOL_BUDGET_MS = 25_000;
 
-export type ToolAnnotations = { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean };
+export type ToolAnnotations = {
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+};
 
 /** Khai báo tool của domain. Cùng shape với P4ToolDefinition, thêm hai hook runtime tùy chọn. */
 export type DomainToolDefinition = {
@@ -70,7 +98,8 @@ const DOMAIN_TOOLS: readonly DomainToolDefinition[] = [
   ...AUDIT_TOOLS,
 ];
 
-export type RegisteredTool = ToolContract & Omit<DomainToolDefinition, keyof ToolContract>;
+export type RegisteredTool = ToolContract &
+  Omit<DomainToolDefinition, keyof ToolContract>;
 
 // Phải khai báo trước SECURITY_TOOLS: buildRegistry chạy ngay lúc nạp module.
 const DEFAULT_ANNOTATIONS: Record<ToolMode, ToolAnnotations> = {
@@ -79,7 +108,10 @@ const DEFAULT_ANNOTATIONS: Record<ToolMode, ToolAnnotations> = {
   WRITE: { destructiveHint: true, idempotentHint: false },
 };
 
-export const SECURITY_TOOLS: readonly RegisteredTool[] = buildRegistry(TOOL_CONTRACTS, DOMAIN_TOOLS);
+export const SECURITY_TOOLS: readonly RegisteredTool[] = buildRegistry(
+  TOOL_CONTRACTS,
+  DOMAIN_TOOLS,
+);
 const BY_NAME = new Map(SECURITY_TOOLS.map((tool) => [tool.name, tool]));
 
 // ---------------------------------------------------------------------------------------------
@@ -96,14 +128,18 @@ export type WriteGuardRequest = {
   now: Date;
 };
 
-export type WriteGuardResult = { ok: true; write: VerifiedWrite } | { ok: false; error: ToolError };
+export type WriteGuardResult =
+  | { ok: true; write: VerifiedWrite }
+  | { ok: false; error: ToolError };
 
 /**
  * Verify JWS (ES256, kid, iss/aud/sub, thời gian), claims khớp context/action/key, dựng
  * ActionBinding và so payload_hash. Lỗi trả ToolError GRANT_* / IDEMPOTENCY_* / SCOPE_MISMATCH.
  * Không cấu hình thì WRITE bị ẩn trong tools/list và bị từ chối ở tools/call (deployment chỉ READ).
  */
-export type WriteGuard = (request: WriteGuardRequest) => Promise<WriteGuardResult>;
+export type WriteGuard = (
+  request: WriteGuardRequest,
+) => Promise<WriteGuardResult>;
 
 export type SecurityToolsOptions = {
   provider: SecurityProvider;
@@ -121,8 +157,13 @@ export type SecurityToolsOptions = {
 const bundled = new Map<string, Tool>();
 
 /** Tool caller được phép thấy. Bot chỉ có READ không thấy WRITE; kiểm lại ở tools/call. */
-export function listTools(identity: RequestIdentity, options: Pick<SecurityToolsOptions, "writeGuard">): Tool[] {
-  return SECURITY_TOOLS.filter((tool) => allowed(tool, identity, options)).map(exportTool);
+export function listTools(
+  identity: RequestIdentity,
+  options: Pick<SecurityToolsOptions, "writeGuard">,
+): Tool[] {
+  return SECURITY_TOOLS.filter((tool) => allowed(tool, identity, options)).map(
+    exportTool,
+  );
 }
 
 /** Schema của từng input/output đã bundle độc lập; không còn $ref trỏ file local. */
@@ -149,23 +190,38 @@ export async function callTool(
 ): Promise<CallToolResult> {
   const tool = BY_NAME.get(name);
   // Tool không tồn tại là lỗi giao thức (JSON-RPC), không phải Failure nghiệp vụ (§3.2).
-  if (!tool) throw new McpError(JsonRpcErrorCode.InvalidParams, `Unknown tool: ${name}`);
+  if (!tool)
+    throw new McpError(JsonRpcErrorCode.InvalidParams, `Unknown tool: ${name}`);
 
   const now = options.now ?? (() => new Date());
   let response: ToolResponse;
   try {
     response = await execute(tool, args ?? {}, identity, options, now);
   } catch (error) {
-    response = failure(toToolError(error, tool.mode), responseMeta(identity.correlation_id, { now: now() }));
+    response = failure(
+      toToolError(error, tool.mode),
+      responseMeta(identity.correlation_id, { now: now() }),
+    );
   }
-  const { response: checked, issues } = finalizeResponse(tool, response, tool.outputIssues);
-  if (issues.length > 0) (options.onOutputRejected ?? defaultOutputRejected)(tool.name, issues);
+  const { response: checked, issues } = finalizeResponse(
+    tool,
+    response,
+    tool.outputIssues,
+  );
+  if (issues.length > 0)
+    (options.onOutputRejected ?? defaultOutputRejected)(tool.name, issues);
   return toCallToolResult(checked);
 }
 
 /** Gắn tools/list và tools/call vào một MCP Server đã dựng cho request đã xác thực. */
-export function registerSecurityTools(server: Server, identity: RequestIdentity, options: SecurityToolsOptions): void {
-  server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: listTools(identity, options) }));
+export function registerSecurityTools(
+  server: Server,
+  identity: RequestIdentity,
+  options: SecurityToolsOptions,
+): void {
+  server.setRequestHandler(ListToolsRequestSchema, () => ({
+    tools: listTools(identity, options),
+  }));
   server.setRequestHandler(CallToolRequestSchema, (request) =>
     callTool(request.params.name, request.params.arguments, identity, options),
   );
@@ -178,27 +234,52 @@ async function execute(
   options: SecurityToolsOptions,
   now: () => Date,
 ): Promise<ToolResponse> {
-  const fail = (error: ToolError) => failure(error, responseMeta(identity.correlation_id, { now: now() }));
+  const fail = (error: ToolError) =>
+    failure(error, responseMeta(identity.correlation_id, { now: now() }));
   const mode = tool.mode;
 
   if (!allowed(tool, identity, options)) {
-    return fail(toolError("AUTH_ERROR", "Caller không có quyền gọi tool này.", { mode }));
+    return fail(
+      toolError("AUTH_ERROR", "Caller không có quyền gọi tool này.", { mode }),
+    );
   }
 
   const checked = validate(tool.inputSchema, args);
   const issues = checked.ok ? (tool.inputIssues?.(args) ?? []) : checked.issues;
   if (issues.length > 0) {
-    return fail(toolError("VALIDATION_ERROR", `Input không hợp lệ: ${issues.join("; ")}`, { mode }));
+    return fail(
+      toolError(
+        "VALIDATION_ERROR",
+        `Input không hợp lệ: ${issues.join("; ")}`,
+        { mode },
+      ),
+    );
   }
 
   const budget = options.budgetMs ?? TOOL_BUDGET_MS;
   const controller = new AbortController();
-  const call: ProviderCallOptions = { signal: controller.signal, deadline: Date.now() + budget };
+  const call: ProviderCallOptions = {
+    signal: controller.signal,
+    deadline: Date.now() + budget,
+  };
 
   if (isReadTool(tool.name)) {
-    const result = await withDeadline(options.provider.read(tool.name, args as ToolInput<typeof tool.name>, readContext(identity), call), controller, budget, "READ");
+    const result = await withDeadline(
+      options.provider.read(
+        tool.name,
+        args as ToolInput<typeof tool.name>,
+        readContext(identity),
+        call,
+      ),
+      controller,
+      budget,
+      "READ",
+    );
     if (!result.ok) return fail(result.error);
-    return readSuccess(result.data, responseMeta(identity.correlation_id, { now: now() }));
+    return readSuccess(
+      result.data,
+      responseMeta(identity.correlation_id, { now: now() }),
+    );
   }
 
   if (!isWriteTool(tool.name) || !options.writeGuard) {
@@ -213,9 +294,33 @@ async function execute(
     now: now(),
   });
   if (!guarded.ok) return fail(guarded.error);
-  const result = await withDeadline(options.provider.write(tool.name, args as ToolInput<typeof tool.name>, guarded.write, call), controller, budget, "WRITE");
-  if (!result.ok) return failure(result.error, responseMeta(identity.correlation_id, { replayed: result.replayed ?? false, now: now() }));
-  return writeSuccess(result.data, result.evidence, responseMeta(identity.correlation_id, { replayed: result.replayed, now: now() }));
+  const result = await withDeadline(
+    options.provider.write(
+      tool.name,
+      args as ToolInput<typeof tool.name>,
+      guarded.write,
+      call,
+    ),
+    controller,
+    budget,
+    "WRITE",
+  );
+  if (!result.ok)
+    return failure(
+      result.error,
+      responseMeta(identity.correlation_id, {
+        replayed: result.replayed ?? false,
+        now: now(),
+      }),
+    );
+  return writeSuccess(
+    result.data,
+    result.evidence,
+    responseMeta(identity.correlation_id, {
+      replayed: result.replayed,
+      now: now(),
+    }),
+  );
 }
 
 /**
@@ -232,7 +337,14 @@ async function withDeadline<T>(
   const timeout = new Promise<ProviderFailure>((resolve) => {
     timer = setTimeout(() => {
       controller.abort();
-      resolve({ ok: false, error: toolError("PROVIDER_TIMEOUT", "Tool vượt quá thời gian cho phép.", { mode }) });
+      resolve({
+        ok: false,
+        error: toolError(
+          "PROVIDER_TIMEOUT",
+          "Tool vượt quá thời gian cho phép.",
+          { mode },
+        ),
+      });
     }, budgetMs);
   });
   try {
@@ -242,7 +354,11 @@ async function withDeadline<T>(
   }
 }
 
-function allowed(tool: RegisteredTool, identity: RequestIdentity, options: Pick<SecurityToolsOptions, "writeGuard">): boolean {
+function allowed(
+  tool: RegisteredTool,
+  identity: RequestIdentity,
+  options: Pick<SecurityToolsOptions, "writeGuard">,
+): boolean {
   if (!identity.caller.modes.has(tool.mode)) return false;
   return tool.mode === "READ" || options.writeGuard !== undefined;
 }
@@ -251,16 +367,25 @@ function defaultOutputRejected(tool: string, issues: string[]): void {
   console.warn(`[security-mcp] output ${tool} không đúng contract`, issues);
 }
 
-function buildRegistry(contracts: readonly ToolContract[], domain: readonly DomainToolDefinition[]): RegisteredTool[] {
+function buildRegistry(
+  contracts: readonly ToolContract[],
+  domain: readonly DomainToolDefinition[],
+): RegisteredTool[] {
   const expected = new Map<string, ToolMode>([
     ...READ_TOOL_NAMES.map((name) => [name, "READ"] as const),
     ...WRITE_TOOL_NAMES.map((name) => [name, "WRITE"] as const),
   ]);
-  if (contracts.length !== expected.size || contracts.some((c) => expected.get(c.name) !== c.mode)) {
-    throw new Error("Danh mục tool trong providers/provider.ts lệch x-tools của security_mcp.schema.json");
+  if (
+    contracts.length !== expected.size ||
+    contracts.some((c) => expected.get(c.name) !== c.mode)
+  ) {
+    throw new Error(
+      "Danh mục tool trong providers/provider.ts lệch x-tools của security_mcp.schema.json",
+    );
   }
   const byName = new Map(domain.map((tool) => [tool.name, tool]));
-  if (byName.size !== domain.length) throw new Error("Tool domain khai báo trùng tên");
+  if (byName.size !== domain.length)
+    throw new Error("Tool domain khai báo trùng tên");
   for (const tool of domain) {
     const contract = contracts.find((c) => c.name === tool.name);
     if (
@@ -276,7 +401,9 @@ function buildRegistry(contracts: readonly ToolContract[], domain: readonly Doma
     const tool = byName.get(contract.name);
     return {
       ...contract,
-      description: tool?.description ?? `${contract.name} (${contract.mode}). Xem Security MCP contract v0.3 §7.`,
+      description:
+        tool?.description ??
+        `${contract.name} (${contract.mode}). Xem Security MCP contract v0.3 §7.`,
       annotations: tool?.annotations ?? DEFAULT_ANNOTATIONS[contract.mode],
       inputIssues: tool?.inputIssues,
       outputIssues: tool?.outputIssues,

@@ -12,9 +12,20 @@ export type Location = {
 };
 
 /** Chỉ AVAILABLE đủ điều kiện ban đầu để dispatch. UNKNOWN chỉ khi nguồn thật sự không biết. */
-export type GuardStatus = "AVAILABLE" | "ASSIGNED" | "UNAVAILABLE" | "OFF_DUTY" | "UNKNOWN";
+export type GuardStatus =
+  | "AVAILABLE"
+  | "ASSIGNED"
+  | "UNAVAILABLE"
+  | "OFF_DUTY"
+  | "UNKNOWN";
 
-export const GUARD_STATUSES: readonly GuardStatus[] = ["AVAILABLE", "ASSIGNED", "UNAVAILABLE", "OFF_DUTY", "UNKNOWN"];
+export const GUARD_STATUSES: readonly GuardStatus[] = [
+  "AVAILABLE",
+  "ASSIGNED",
+  "UNAVAILABLE",
+  "OFF_DUTY",
+  "UNKNOWN",
+];
 
 export type GuardSummary = {
   guard_id: string;
@@ -24,7 +35,11 @@ export type GuardSummary = {
   updated_at: string;
 };
 
-export type GetAvailableGuardsInput = { location_id: string; limit?: number; cursor?: string };
+export type GetAvailableGuardsInput = {
+  location_id: string;
+  limit?: number;
+  cursor?: string;
+};
 export type GetGuardStatusInput = { guard_id: string };
 
 export type GuardPage = { guards: GuardSummary[]; next_cursor: string | null };

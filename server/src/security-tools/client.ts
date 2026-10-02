@@ -19,7 +19,11 @@
 import { readBodyText } from "./common/body";
 import type { ReadContext } from "./common/context";
 import { type ErrorCode, type ToolError, toolError } from "./common/errors";
-import type { ProviderCallOptions, ReadResult, ReadToolName } from "./providers/provider";
+import type {
+  ProviderCallOptions,
+  ReadResult,
+  ReadToolName,
+} from "./providers/provider";
 
 export const CORE_REQUEST_TIMEOUT_MS = 20_000;
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
@@ -36,14 +40,20 @@ export type CoreClientConfig = {
 /** Kết quả HTTP thô đã phân loại, dùng chung cho READ và WRITE. */
 export type CoreHttpResult =
   | { kind: "ok"; status: number; body: unknown }
-  | { kind: "error"; status: number; code: ErrorCode | null; retryAfterMs: number | null }
+  | {
+      kind: "error";
+      status: number;
+      code: ErrorCode | null;
+      retryAfterMs: number | null;
+    }
   | { kind: "timeout" }
   | { kind: "network" }
   | { kind: "invalid_body"; status: number };
 
 /** Mã Core được phép trả cho READ, giữ nguyên mã; mã khác coi là lỗi provider. */
 const READ_PASSTHROUGH: Partial<Record<ErrorCode, string>> = {
-  VALIDATION_ERROR: "Core từ chối truy vấn vì tham số hoặc cursor không hợp lệ.",
+  VALIDATION_ERROR:
+    "Core từ chối truy vấn vì tham số hoặc cursor không hợp lệ.",
   SCOPE_MISMATCH: "Truy vấn lệch scope được cấp.",
   NOT_FOUND: "Không tìm thấy dữ liệu trong property.",
   RATE_LIMITED: "Core đang giới hạn tần suất, thử lại sau.",
@@ -54,8 +64,13 @@ export class CoreClient {
   private readonly timeoutMs: number;
 
   constructor(private readonly config: CoreClientConfig) {
-    const local = config.baseUrl.hostname === "localhost" || config.baseUrl.hostname === "127.0.0.1";
-    if (config.baseUrl.protocol !== "https:" && !(local && config.baseUrl.protocol === "http:")) {
+    const local =
+      config.baseUrl.hostname === "localhost" ||
+      config.baseUrl.hostname === "127.0.0.1";
+    if (
+      config.baseUrl.protocol !== "https:" &&
+      !(local && config.baseUrl.protocol === "http:")
+    ) {
       throw new Error("Core API phải dùng HTTPS");
     }
     this.fetch = config.fetch ?? fetch;
@@ -68,10 +83,21 @@ export class CoreClient {
     call: { name: ReadToolName; arguments: Record<string, unknown> },
     options: ProviderCallOptions,
   ): Promise<ReadResult<unknown>> {
-    const result = await this.post("security/v0.3/query", { context, tool_call: call }, context.correlation_id, options);
+    const result = await this.post(
+      "security/v0.3/query",
+      { context, tool_call: call },
+      context.correlation_id,
+      options,
+    );
     if (result.kind === "ok") {
       const body = result.body;
-      if (body !== null && typeof body === "object" && !Array.isArray(body) && "data" in body && Object.keys(body).length === 1) {
+      if (
+        body !== null &&
+        typeof body === "object" &&
+        !Array.isArray(body) &&
+        "data" in body &&
+        Object.keys(body).length === 1
+      ) {
         return { ok: true, data: (body as { data: unknown }).data };
       }
       return { ok: false, error: readError("PROVIDER_INVALID_RESPONSE") };
@@ -80,7 +106,12 @@ export class CoreClient {
   }
 
   /** POST JSON tới Core với credential của MCP. Không throw; mọi lỗi được phân loại. */
-  async post(path: string, body: unknown, correlationId: string, options: ProviderCallOptions): Promise<CoreHttpResult> {
+  async post(
+    path: string,
+    body: unknown,
+    correlationId: string,
+    options: ProviderCallOptions,
+  ): Promise<CoreHttpResult> {
     const budget = Math.min(this.timeoutMs, options.deadline - Date.now());
     if (budget <= 0) return { kind: "timeout" };
     const timeout = AbortSignal.timeout(budget);
@@ -88,18 +119,21 @@ export class CoreClient {
 
     let response: Response;
     try {
-      response = await this.fetch(new URL(path, withTrailingSlash(this.config.baseUrl)), {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${await this.config.credential()}`,
-          "content-type": "application/json",
-          accept: "application/json",
-          "x-correlation-id": correlationId,
+      response = await this.fetch(
+        new URL(path, withTrailingSlash(this.config.baseUrl)),
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${await this.config.credential()}`,
+            "content-type": "application/json",
+            accept: "application/json",
+            "x-correlation-id": correlationId,
+          },
+          body: JSON.stringify(body),
+          signal,
+          redirect: "error",
         },
-        body: JSON.stringify(body),
-        signal,
-        redirect: "error",
-      });
+      );
     } catch {
       return signal.aborted ? { kind: "timeout" } : { kind: "network" };
     }
@@ -107,14 +141,19 @@ export class CoreClient {
     let parsed: unknown;
     try {
       const body = await readBodyText(response, MAX_RESPONSE_BYTES);
-      if (!body.ok && body.reason === "too_large") return { kind: "invalid_body", status: response.status };
+      if (!body.ok && body.reason === "too_large")
+        return { kind: "invalid_body", status: response.status };
       if (!body.ok) throw new SyntaxError("Body không phải UTF-8");
       parsed = JSON.parse(body.text);
     } catch {
       if (signal.aborted) return { kind: "timeout" };
-      return response.ok ? { kind: "invalid_body", status: response.status } : errorResult(response, null);
+      return response.ok
+        ? { kind: "invalid_body", status: response.status }
+        : errorResult(response, null);
     }
-    return response.ok ? { kind: "ok", status: response.status, body: parsed } : errorResult(response, parsed);
+    return response.ok
+      ? { kind: "ok", status: response.status, body: parsed }
+      : errorResult(response, parsed);
   }
 }
 
@@ -125,11 +164,14 @@ function errorResult(response: Response, body: unknown): CoreHttpResult {
     kind: "error",
     status: response.status,
     code: typeof code === "string" ? (code as ErrorCode) : null,
-    retryAfterMs: Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter * 1000 : null,
+    retryAfterMs:
+      Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter * 1000 : null,
   };
 }
 
-function readFailure(result: Exclude<CoreHttpResult, { kind: "ok" }>): ToolError {
+function readFailure(
+  result: Exclude<CoreHttpResult, { kind: "ok" }>,
+): ToolError {
   switch (result.kind) {
     case "timeout":
       return readError("PROVIDER_TIMEOUT");
@@ -139,8 +181,12 @@ function readFailure(result: Exclude<CoreHttpResult, { kind: "ok" }>): ToolError
       return readError("PROVIDER_INVALID_RESPONSE");
     case "error": {
       const code = result.status === 429 ? "RATE_LIMITED" : result.code;
-      if (code && code in READ_PASSTHROUGH) {
-        return toolError(code, READ_PASSTHROUGH[code]!, { mode: "READ", retryAfterMs: result.retryAfterMs ?? undefined });
+      const message = code ? READ_PASSTHROUGH[code] : undefined;
+      if (code && message) {
+        return toolError(code, message, {
+          mode: "READ",
+          retryAfterMs: result.retryAfterMs ?? undefined,
+        });
       }
       // 401/403 ở đây là credential của MCP, không phải lỗi quyền của caller.
       return readError("PROVIDER_ERROR");
@@ -148,7 +194,9 @@ function readFailure(result: Exclude<CoreHttpResult, { kind: "ok" }>): ToolError
   }
 }
 
-function readError(code: "PROVIDER_TIMEOUT" | "PROVIDER_ERROR" | "PROVIDER_INVALID_RESPONSE"): ToolError {
+function readError(
+  code: "PROVIDER_TIMEOUT" | "PROVIDER_ERROR" | "PROVIDER_INVALID_RESPONSE",
+): ToolError {
   const messages = {
     PROVIDER_TIMEOUT: "Core API không trả lời kịp.",
     PROVIDER_ERROR: "Core API tạm thời lỗi.",

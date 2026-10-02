@@ -6,16 +6,26 @@ import { fail } from "../common/errors";
 import type { GuardStatus, GuardSummary, RosterEntry } from "./types";
 
 /** So ID theo code unit, giống sort mặc định của Core/JSON; không dùng localeCompare. */
-export const compareIds = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+export const compareIds = (a: string, b: string) =>
+  a < b ? -1 : a > b ? 1 : 0;
 
-export const sortGuards = (guards: readonly GuardSummary[]) => [...guards].sort((a, b) => compareIds(a.guard_id, b.guard_id));
+export const sortGuards = (guards: readonly GuardSummary[]) =>
+  [...guards].sort((a, b) => compareIds(a.guard_id, b.guard_id));
 
 /**
  * Danh sách cho get_available_guards: guard được phân công property, AVAILABLE và không có dispatch
  * mở. Không lọc theo current_location (có thể null hoặc ở chỗ khác). Bản đọc không đặt chỗ.
  */
-export function availableGuards(guards: readonly GuardSummary[], guardsWithOpenDispatch: ReadonlySet<string>): GuardSummary[] {
-  return sortGuards(guards.filter((g) => g.status === "AVAILABLE" && !guardsWithOpenDispatch.has(g.guard_id)));
+export function availableGuards(
+  guards: readonly GuardSummary[],
+  guardsWithOpenDispatch: ReadonlySet<string>,
+): GuardSummary[] {
+  return sortGuards(
+    guards.filter(
+      (g) =>
+        g.status === "AVAILABLE" && !guardsWithOpenDispatch.has(g.guard_id),
+    ),
+  );
 }
 
 /**
@@ -36,7 +46,11 @@ export function availableGuards(guards: readonly GuardSummary[], guardsWithOpenD
  * Giá trị roster ngoài các enum trên → PROVIDER_INVALID_RESPONSE, không đoán.
  * Bảng này chờ P4 xác nhận (đầu mục 13); đổi bảng thì sửa test guards đi kèm.
  */
-export function deriveGuardStatus(roster: RosterEntry | null, hasOpenDispatch: boolean, now: string): GuardStatus {
+export function deriveGuardStatus(
+  roster: RosterEntry | null,
+  hasOpenDispatch: boolean,
+  now: string,
+): GuardStatus {
   if (roster === null) return hasOpenDispatch ? "ASSIGNED" : "UNKNOWN";
   switch (roster.employment) {
     case "ACTIVE":
@@ -48,7 +62,8 @@ export function deriveGuardStatus(roster: RosterEntry | null, hasOpenDispatch: b
       return unsupported();
   }
   if (hasOpenDispatch) return "ASSIGNED";
-  if (!roster.shifts.some((shift) => shift.start <= now && now < shift.end)) return "OFF_DUTY";
+  if (!roster.shifts.some((shift) => shift.start <= now && now < shift.end))
+    return "OFF_DUTY";
   switch (roster.duty_state) {
     case "ON_DUTY":
       return "AVAILABLE";
@@ -72,7 +87,10 @@ export function toGuardSummary(
   reservation: { open: boolean; updatedAt: string | null },
   now: string,
 ): GuardSummary {
-  const updated = reservation.updatedAt !== null && reservation.updatedAt > roster.updated_at ? reservation.updatedAt : roster.updated_at;
+  const updated =
+    reservation.updatedAt !== null && reservation.updatedAt > roster.updated_at
+      ? reservation.updatedAt
+      : roster.updated_at;
   return {
     guard_id: roster.guard_id,
     status: deriveGuardStatus(roster, reservation.open, now),
@@ -82,5 +100,8 @@ export function toGuardSummary(
 }
 
 function unsupported(): never {
-  return fail("PROVIDER_INVALID_RESPONSE", "Roster có trạng thái ngoài bảng ánh xạ GuardStatus.");
+  return fail(
+    "PROVIDER_INVALID_RESPONSE",
+    "Roster có trạng thái ngoài bảng ánh xạ GuardStatus.",
+  );
 }

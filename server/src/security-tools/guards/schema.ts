@@ -10,7 +10,8 @@ export const GUARD_SCHEMAS = {
   GuardSummary: "common.schema.json#/$defs/GuardSummary",
   GetAvailableGuardsInput: "common.schema.json#/$defs/GetAvailableGuardsInput",
   GetGuardStatusInput: "common.schema.json#/$defs/GetGuardStatusInput",
-  GetAvailableGuardsOutput: "security_mcp.schema.json#/$defs/GetAvailableGuardsOutput",
+  GetAvailableGuardsOutput:
+    "security_mcp.schema.json#/$defs/GetAvailableGuardsOutput",
   GetGuardStatusOutput: "security_mcp.schema.json#/$defs/GetGuardStatusOutput",
 } as const;
 
@@ -18,9 +19,11 @@ export const GUARD_SCHEMAS = {
 export function availableGuardsIssues(page: GuardPage): string[] {
   const issues: string[] = [];
   page.guards.forEach((guard, index) => {
-    if (guard.status !== "AVAILABLE") issues.push(`/guards/${index}: status khác AVAILABLE`);
+    if (guard.status !== "AVAILABLE")
+      issues.push(`/guards/${index}: status khác AVAILABLE`);
     const previous = page.guards[index - 1];
-    if (previous && previous.guard_id >= guard.guard_id) issues.push(`/guards/${index}: không tăng dần theo guard_id`);
+    if (previous && previous.guard_id >= guard.guard_id)
+      issues.push(`/guards/${index}: không tăng dần theo guard_id`);
   });
   return issues;
 }

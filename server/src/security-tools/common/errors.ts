@@ -29,7 +29,11 @@ export type ErrorCode =
   | "INTERNAL_ERROR";
 
 export type RetryMode = "NEVER" | "BACKOFF" | "SAME_KEY" | "RECONCILE";
-export type OperationState = "NOT_STARTED" | "IN_PROGRESS" | "UNKNOWN" | "FAILED";
+export type OperationState =
+  | "NOT_STARTED"
+  | "IN_PROGRESS"
+  | "UNKNOWN"
+  | "FAILED";
 export type ToolMode = "READ" | "WRITE";
 
 export type ToolError = {
@@ -71,12 +75,27 @@ const IN_PROGRESS_RETRY_AFTER_MS = 1000;
 
 type Policy = Pick<ToolError, "retry" | "retry_after_ms" | "operation_state">;
 
-const NEVER_NOT_STARTED: Policy = { retry: "NEVER", retry_after_ms: null, operation_state: "NOT_STARTED" };
-const NEVER_FAILED: Policy = { retry: "NEVER", retry_after_ms: null, operation_state: "FAILED" };
-const RECONCILE_UNKNOWN: Policy = { retry: "RECONCILE", retry_after_ms: null, operation_state: "UNKNOWN" };
+const NEVER_NOT_STARTED: Policy = {
+  retry: "NEVER",
+  retry_after_ms: null,
+  operation_state: "NOT_STARTED",
+};
+const NEVER_FAILED: Policy = {
+  retry: "NEVER",
+  retry_after_ms: null,
+  operation_state: "FAILED",
+};
+const RECONCILE_UNKNOWN: Policy = {
+  retry: "RECONCILE",
+  retry_after_ms: null,
+  operation_state: "UNKNOWN",
+};
 
 /** Bảng §5.1. Không có default: thêm ErrorCode mới mà quên ở đây sẽ lỗi typecheck. */
-export function retryPolicy(code: ErrorCode, options: ToolErrorOptions = {}): Policy {
+export function retryPolicy(
+  code: ErrorCode,
+  options: ToolErrorOptions = {},
+): Policy {
   const write = options.mode === "WRITE";
   switch (code) {
     case "VALIDATION_ERROR":
@@ -97,17 +116,27 @@ export function retryPolicy(code: ErrorCode, options: ToolErrorOptions = {}): Po
       return NEVER_FAILED;
     case "IDEMPOTENCY_IN_PROGRESS":
       // Schema cố định 1000ms cho mã này.
-      return { retry: "SAME_KEY", retry_after_ms: IN_PROGRESS_RETRY_AFTER_MS, operation_state: "IN_PROGRESS" };
+      return {
+        retry: "SAME_KEY",
+        retry_after_ms: IN_PROGRESS_RETRY_AFTER_MS,
+        operation_state: "IN_PROGRESS",
+      };
     case "IDEMPOTENCY_RESULT_EXPIRED":
       return RECONCILE_UNKNOWN;
     case "RATE_LIMITED":
-      return { retry: "BACKOFF", retry_after_ms: clampRetryAfter(options.retryAfterMs), operation_state: "NOT_STARTED" };
+      return {
+        retry: "BACKOFF",
+        retry_after_ms: clampRetryAfter(options.retryAfterMs),
+        operation_state: "NOT_STARTED",
+      };
     case "PROVIDER_TIMEOUT":
       // READ chưa có side effect nên thử lại được; WRITE không biết đã commit chưa.
       return write ? RECONCILE_UNKNOWN : backoff();
     case "PROVIDER_ERROR":
       if (!write) return backoff();
-      return options.outcome === "NOT_COMMITTED" ? NEVER_FAILED : RECONCILE_UNKNOWN;
+      return options.outcome === "NOT_COMMITTED"
+        ? NEVER_FAILED
+        : RECONCILE_UNKNOWN;
     case "PROVIDER_INVALID_RESPONSE":
     case "INTERNAL_ERROR":
       // Response hỏng có thể xảy ra sau commit; không tạo thất bại chắc chắn cho WRITE.
@@ -116,8 +145,16 @@ export function retryPolicy(code: ErrorCode, options: ToolErrorOptions = {}): Po
 }
 
 /** Tạo ToolError với retry/operation_state/retry_after_ms đúng §5.1. */
-export function toolError(code: ErrorCode, message: string, options: ToolErrorOptions = {}): ToolError {
-  return { code, message: clampMessage(message), ...retryPolicy(code, options) };
+export function toolError(
+  code: ErrorCode,
+  message: string,
+  options: ToolErrorOptions = {},
+): ToolError {
+  return {
+    code,
+    message: clampMessage(message),
+    ...retryPolicy(code, options),
+  };
 }
 
 /** Đổi mode của một ToolError đã có (ví dụ lỗi provider tạo ở READ được dùng lại cho WRITE). */
@@ -140,7 +177,11 @@ export class ToolFailure extends Error {
   }
 }
 
-export function fail(code: ErrorCode, message: string, options?: ToolErrorOptions): never {
+export function fail(
+  code: ErrorCode,
+  message: string,
+  options?: ToolErrorOptions,
+): never {
   throw new ToolFailure(toolError(code, message, options));
 }
 
@@ -151,18 +192,25 @@ export function toToolError(error: unknown, mode: ToolMode): ToolError {
 }
 
 function backoff(): Policy {
-  return { retry: "BACKOFF", retry_after_ms: IN_PROGRESS_RETRY_AFTER_MS, operation_state: "NOT_STARTED" };
+  return {
+    retry: "BACKOFF",
+    retry_after_ms: IN_PROGRESS_RETRY_AFTER_MS,
+    operation_state: "NOT_STARTED",
+  };
 }
 
 function clampRetryAfter(value: number | undefined): number {
-  if (value === undefined || !Number.isFinite(value)) return IN_PROGRESS_RETRY_AFTER_MS;
+  if (value === undefined || !Number.isFinite(value))
+    return IN_PROGRESS_RETRY_AFTER_MS;
   return Math.min(MAX_RETRY_AFTER_MS, Math.max(0, Math.round(value)));
 }
 
 function clampMessage(message: string): string {
   const trimmed = message.trim();
   if (trimmed.length === 0) return "Lỗi không có mô tả.";
-  return trimmed.length > MAX_MESSAGE ? `${cutAtCodePoint(trimmed, MAX_MESSAGE - 1)}…` : trimmed;
+  return trimmed.length > MAX_MESSAGE
+    ? `${cutAtCodePoint(trimmed, MAX_MESSAGE - 1)}…`
+    : trimmed;
 }
 
 /** Cắt không để lại nửa cặp surrogate: Unicode không hợp lệ làm hỏng JSON/JCS phía sau. */

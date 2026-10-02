@@ -37,27 +37,17 @@
           ]
         }
       },
-      "required": [
-        "section",
-        "status",
-        "reason",
-        "next_cursor"
-      ],
+      "required": ["section", "status", "reason", "next_cursor"],
       "additionalProperties": false,
       "allOf": [
         {
           "if": {
             "properties": {
               "status": {
-                "enum": [
-                  "MISSING",
-                  "PARTIAL"
-                ]
+                "enum": ["MISSING", "PARTIAL"]
               }
             },
-            "required": [
-              "status"
-            ]
+            "required": ["status"]
           },
           "then": {
             "properties": {
@@ -78,9 +68,7 @@
                 }
               }
             },
-            "required": [
-              "status"
-            ]
+            "required": ["status"]
           },
           "then": {
             "properties": {
@@ -124,12 +112,7 @@
           "maxLength": 2000
         }
       },
-      "required": [
-        "section",
-        "code",
-        "resource_id",
-        "detail"
-      ],
+      "required": ["section", "code", "resource_id", "detail"],
       "additionalProperties": false
     },
     "CameraContextItem": {
@@ -159,11 +142,7 @@
           ]
         }
       },
-      "required": [
-        "camera",
-        "incident_id",
-        "relation"
-      ],
+      "required": ["camera", "incident_id", "relation"],
       "additionalProperties": false,
       "allOf": [
         {
@@ -173,9 +152,7 @@
                 "type": "null"
               }
             },
-            "required": [
-              "incident_id"
-            ]
+            "required": ["incident_id"]
           },
           "then": {
             "properties": {
@@ -224,12 +201,7 @@
           "maxItems": 100
         }
       },
-      "required": [
-        "incident",
-        "summary",
-        "cameras",
-        "evidence"
-      ],
+      "required": ["incident", "summary", "cameras", "evidence"],
       "additionalProperties": false
     },
     "ManagementData": {
@@ -264,11 +236,7 @@
           "maxItems": 100
         }
       },
-      "required": [
-        "incident",
-        "latest_event",
-        "dispatches"
-      ],
+      "required": ["incident", "latest_event", "dispatches"],
       "additionalProperties": false
     },
     "GuardResponseData": {
@@ -306,12 +274,7 @@
           ]
         }
       },
-      "required": [
-        "incident",
-        "candidates",
-        "selected_guard_id",
-        "dispatch"
-      ],
+      "required": ["incident", "candidates", "selected_guard_id", "dispatch"],
       "additionalProperties": false
     },
     "EmergencyResponseData": {
@@ -378,9 +341,7 @@
           "maxItems": 100
         }
       },
-      "required": [
-        "cameras"
-      ],
+      "required": ["cameras"],
       "additionalProperties": false
     },
     "AuditData": {
@@ -565,9 +526,7 @@
           "type": "boolean"
         }
       },
-      "required": [
-        "incident_id"
-      ],
+      "required": ["incident_id"],
       "additionalProperties": false
     },
     "IncidentManagementSkillInput": {
@@ -583,10 +542,7 @@
               "$ref": "common.schema.json#/$defs/CreateIncidentInput"
             }
           },
-          "required": [
-            "operation",
-            "draft"
-          ],
+          "required": ["operation", "draft"],
           "additionalProperties": false
         },
         {
@@ -599,10 +555,7 @@
               "$ref": "common.schema.json#/$defs/Id"
             }
           },
-          "required": [
-            "operation",
-            "incident_id"
-          ],
+          "required": ["operation", "incident_id"],
           "additionalProperties": false
         },
         {
@@ -615,10 +568,7 @@
               "$ref": "common.schema.json#/$defs/UpdateIncidentInput"
             }
           },
-          "required": [
-            "operation",
-            "change"
-          ],
+          "required": ["operation", "change"],
           "additionalProperties": false
         }
       ]
@@ -641,10 +591,7 @@
               "maxLength": 2000
             }
           },
-          "required": [
-            "operation",
-            "incident_id"
-          ],
+          "required": ["operation", "incident_id"],
           "additionalProperties": false
         },
         {
@@ -662,11 +609,7 @@
               "maxLength": 2000
             }
           },
-          "required": [
-            "operation",
-            "dispatch_id",
-            "reason"
-          ],
+          "required": ["operation", "dispatch_id", "reason"],
           "additionalProperties": false
         }
       ]
@@ -678,9 +621,7 @@
           "$ref": "common.schema.json#/$defs/Id"
         }
       },
-      "required": [
-        "incident_id"
-      ],
+      "required": ["incident_id"],
       "additionalProperties": false
     },
     "CameraContextLookupSkillInput": {
@@ -696,10 +637,7 @@
               "$ref": "common.schema.json#/$defs/Id"
             }
           },
-          "required": [
-            "by",
-            "incident_id"
-          ],
+          "required": ["by", "incident_id"],
           "additionalProperties": false
         },
         {
@@ -712,10 +650,7 @@
               "$ref": "common.schema.json#/$defs/Id"
             }
           },
-          "required": [
-            "by",
-            "location_id"
-          ],
+          "required": ["by", "location_id"],
           "additionalProperties": false
         },
         {
@@ -728,10 +663,7 @@
               "$ref": "common.schema.json#/$defs/Id"
             }
           },
-          "required": [
-            "by",
-            "camera_id"
-          ],
+          "required": ["by", "camera_id"],
           "additionalProperties": false
         },
         {
@@ -744,10 +676,7 @@
               "$ref": "common.schema.json#/$defs/SearchCamerasInput"
             }
           },
-          "required": [
-            "by",
-            "filters"
-          ],
+          "required": ["by", "filters"],
           "additionalProperties": false
         }
       ]
@@ -759,9 +688,7 @@
           "$ref": "common.schema.json#/$defs/Id"
         }
       },
-      "required": [
-        "incident_id"
-      ],
+      "required": ["incident_id"],
       "additionalProperties": false
     },
     "SecurityIncidentReportSkillInput": {
@@ -772,17 +699,10 @@
         },
         "report_type": {
           "type": "string",
-          "enum": [
-            "summary",
-            "operational",
-            "full"
-          ]
+          "enum": ["summary", "operational", "full"]
         }
       },
-      "required": [
-        "incident_id",
-        "report_type"
-      ],
+      "required": ["incident_id", "report_type"],
       "additionalProperties": false
     },
     "SkillOutput": {
@@ -846,9 +766,7 @@
                     "const": "INCIDENT"
                   }
                 },
-                "required": [
-                  "section"
-                ]
+                "required": ["section"]
               },
               "minContains": 0,
               "maxContains": 1
@@ -860,9 +778,7 @@
                     "const": "TIMELINE"
                   }
                 },
-                "required": [
-                  "section"
-                ]
+                "required": ["section"]
               },
               "minContains": 0,
               "maxContains": 1
@@ -874,9 +790,7 @@
                     "const": "DISPATCH"
                   }
                 },
-                "required": [
-                  "section"
-                ]
+                "required": ["section"]
               },
               "minContains": 0,
               "maxContains": 1
@@ -888,9 +802,7 @@
                     "const": "ESCALATION"
                   }
                 },
-                "required": [
-                  "section"
-                ]
+                "required": ["section"]
               },
               "minContains": 0,
               "maxContains": 1
@@ -902,9 +814,7 @@
                     "const": "CAMERA"
                   }
                 },
-                "required": [
-                  "section"
-                ]
+                "required": ["section"]
               },
               "minContains": 0,
               "maxContains": 1
@@ -916,9 +826,7 @@
                     "const": "EVIDENCE"
                   }
                 },
-                "required": [
-                  "section"
-                ]
+                "required": ["section"]
               },
               "minContains": 0,
               "maxContains": 1
@@ -930,9 +838,7 @@
                     "const": "PROTOCOL"
                   }
                 },
-                "required": [
-                  "section"
-                ]
+                "required": ["section"]
               },
               "minContains": 0,
               "maxContains": 1
@@ -944,9 +850,7 @@
                     "const": "GUARD"
                   }
                 },
-                "required": [
-                  "section"
-                ]
+                "required": ["section"]
               },
               "minContains": 0,
               "maxContains": 1
@@ -958,9 +862,7 @@
                     "const": "CONTACT"
                   }
                 },
-                "required": [
-                  "section"
-                ]
+                "required": ["section"]
               },
               "minContains": 0,
               "maxContains": 1
@@ -1005,9 +907,7 @@
                 "const": "PROPOSED"
               }
             },
-            "required": [
-              "status"
-            ]
+            "required": ["status"]
           },
           "then": {
             "properties": {
@@ -1036,9 +936,7 @@
                 "const": "COMPLETED"
               }
             },
-            "required": [
-              "status"
-            ]
+            "required": ["status"]
           },
           "then": {
             "properties": {
@@ -1060,22 +958,14 @@
                       "const": "INCIDENT"
                     },
                     "status": {
-                      "enum": [
-                        "MISSING",
-                        "PARTIAL"
-                      ]
+                      "enum": ["MISSING", "PARTIAL"]
                     }
                   },
-                  "required": [
-                    "section",
-                    "status"
-                  ]
+                  "required": ["section", "status"]
                 }
               }
             },
-            "required": [
-              "coverage"
-            ]
+            "required": ["coverage"]
           },
           "then": {
             "properties": {
@@ -1086,9 +976,7 @@
                       "const": "INCIDENT"
                     }
                   },
-                  "required": [
-                    "section"
-                  ]
+                  "required": ["section"]
                 }
               }
             }
@@ -1104,22 +992,14 @@
                       "const": "TIMELINE"
                     },
                     "status": {
-                      "enum": [
-                        "MISSING",
-                        "PARTIAL"
-                      ]
+                      "enum": ["MISSING", "PARTIAL"]
                     }
                   },
-                  "required": [
-                    "section",
-                    "status"
-                  ]
+                  "required": ["section", "status"]
                 }
               }
             },
-            "required": [
-              "coverage"
-            ]
+            "required": ["coverage"]
           },
           "then": {
             "properties": {
@@ -1130,9 +1010,7 @@
                       "const": "TIMELINE"
                     }
                   },
-                  "required": [
-                    "section"
-                  ]
+                  "required": ["section"]
                 }
               }
             }
@@ -1148,22 +1026,14 @@
                       "const": "DISPATCH"
                     },
                     "status": {
-                      "enum": [
-                        "MISSING",
-                        "PARTIAL"
-                      ]
+                      "enum": ["MISSING", "PARTIAL"]
                     }
                   },
-                  "required": [
-                    "section",
-                    "status"
-                  ]
+                  "required": ["section", "status"]
                 }
               }
             },
-            "required": [
-              "coverage"
-            ]
+            "required": ["coverage"]
           },
           "then": {
             "properties": {
@@ -1174,9 +1044,7 @@
                       "const": "DISPATCH"
                     }
                   },
-                  "required": [
-                    "section"
-                  ]
+                  "required": ["section"]
                 }
               }
             }
@@ -1192,22 +1060,14 @@
                       "const": "ESCALATION"
                     },
                     "status": {
-                      "enum": [
-                        "MISSING",
-                        "PARTIAL"
-                      ]
+                      "enum": ["MISSING", "PARTIAL"]
                     }
                   },
-                  "required": [
-                    "section",
-                    "status"
-                  ]
+                  "required": ["section", "status"]
                 }
               }
             },
-            "required": [
-              "coverage"
-            ]
+            "required": ["coverage"]
           },
           "then": {
             "properties": {
@@ -1218,9 +1078,7 @@
                       "const": "ESCALATION"
                     }
                   },
-                  "required": [
-                    "section"
-                  ]
+                  "required": ["section"]
                 }
               }
             }
@@ -1236,22 +1094,14 @@
                       "const": "CAMERA"
                     },
                     "status": {
-                      "enum": [
-                        "MISSING",
-                        "PARTIAL"
-                      ]
+                      "enum": ["MISSING", "PARTIAL"]
                     }
                   },
-                  "required": [
-                    "section",
-                    "status"
-                  ]
+                  "required": ["section", "status"]
                 }
               }
             },
-            "required": [
-              "coverage"
-            ]
+            "required": ["coverage"]
           },
           "then": {
             "properties": {
@@ -1262,9 +1112,7 @@
                       "const": "CAMERA"
                     }
                   },
-                  "required": [
-                    "section"
-                  ]
+                  "required": ["section"]
                 }
               }
             }
@@ -1280,22 +1128,14 @@
                       "const": "EVIDENCE"
                     },
                     "status": {
-                      "enum": [
-                        "MISSING",
-                        "PARTIAL"
-                      ]
+                      "enum": ["MISSING", "PARTIAL"]
                     }
                   },
-                  "required": [
-                    "section",
-                    "status"
-                  ]
+                  "required": ["section", "status"]
                 }
               }
             },
-            "required": [
-              "coverage"
-            ]
+            "required": ["coverage"]
           },
           "then": {
             "properties": {
@@ -1306,9 +1146,7 @@
                       "const": "EVIDENCE"
                     }
                   },
-                  "required": [
-                    "section"
-                  ]
+                  "required": ["section"]
                 }
               }
             }
@@ -1324,22 +1162,14 @@
                       "const": "PROTOCOL"
                     },
                     "status": {
-                      "enum": [
-                        "MISSING",
-                        "PARTIAL"
-                      ]
+                      "enum": ["MISSING", "PARTIAL"]
                     }
                   },
-                  "required": [
-                    "section",
-                    "status"
-                  ]
+                  "required": ["section", "status"]
                 }
               }
             },
-            "required": [
-              "coverage"
-            ]
+            "required": ["coverage"]
           },
           "then": {
             "properties": {
@@ -1350,9 +1180,7 @@
                       "const": "PROTOCOL"
                     }
                   },
-                  "required": [
-                    "section"
-                  ]
+                  "required": ["section"]
                 }
               }
             }
@@ -1368,22 +1196,14 @@
                       "const": "GUARD"
                     },
                     "status": {
-                      "enum": [
-                        "MISSING",
-                        "PARTIAL"
-                      ]
+                      "enum": ["MISSING", "PARTIAL"]
                     }
                   },
-                  "required": [
-                    "section",
-                    "status"
-                  ]
+                  "required": ["section", "status"]
                 }
               }
             },
-            "required": [
-              "coverage"
-            ]
+            "required": ["coverage"]
           },
           "then": {
             "properties": {
@@ -1394,9 +1214,7 @@
                       "const": "GUARD"
                     }
                   },
-                  "required": [
-                    "section"
-                  ]
+                  "required": ["section"]
                 }
               }
             }
@@ -1412,22 +1230,14 @@
                       "const": "CONTACT"
                     },
                     "status": {
-                      "enum": [
-                        "MISSING",
-                        "PARTIAL"
-                      ]
+                      "enum": ["MISSING", "PARTIAL"]
                     }
                   },
-                  "required": [
-                    "section",
-                    "status"
-                  ]
+                  "required": ["section", "status"]
                 }
               }
             },
-            "required": [
-              "coverage"
-            ]
+            "required": ["coverage"]
           },
           "then": {
             "properties": {
@@ -1438,9 +1248,7 @@
                       "const": "CONTACT"
                     }
                   },
-                  "required": [
-                    "section"
-                  ]
+                  "required": ["section"]
                 }
               }
             }
@@ -1500,10 +1308,7 @@
               "items": {
                 "properties": {
                   "action": {
-                    "enum": [
-                      "create_incident",
-                      "update_incident"
-                    ]
+                    "enum": ["create_incident", "update_incident"]
                   }
                 }
               }
@@ -1534,10 +1339,7 @@
               "items": {
                 "properties": {
                   "action": {
-                    "enum": [
-                      "dispatch_guard",
-                      "cancel_dispatch"
-                    ]
+                    "enum": ["dispatch_guard", "cancel_dispatch"]
                   }
                 }
               }
@@ -1568,9 +1370,7 @@
               "items": {
                 "properties": {
                   "action": {
-                    "enum": [
-                      "escalate_emergency"
-                    ]
+                    "enum": ["escalate_emergency"]
                   }
                 }
               }
@@ -1693,10 +1493,7 @@
         "get_security_event_timeline",
         "get_incident_evidence"
       ],
-      "proposalActions": [
-        "create_incident",
-        "update_incident"
-      ],
+      "proposalActions": ["create_incident", "update_incident"],
       "inputSchema": {
         "$ref": "#/$defs/IncidentManagementSkillInput"
       },
@@ -1711,10 +1508,7 @@
         "get_dispatch",
         "get_dispatch_history"
       ],
-      "proposalActions": [
-        "dispatch_guard",
-        "cancel_dispatch"
-      ],
+      "proposalActions": ["dispatch_guard", "cancel_dispatch"],
       "inputSchema": {
         "$ref": "#/$defs/GuardResponseSkillInput"
       },
@@ -1729,9 +1523,7 @@
         "get_escalation_contacts",
         "get_incident_escalations"
       ],
-      "proposalActions": [
-        "escalate_emergency"
-      ],
+      "proposalActions": ["escalate_emergency"],
       "inputSchema": {
         "$ref": "#/$defs/EmergencyResponseSkillInput"
       },
