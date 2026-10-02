@@ -27,7 +27,7 @@ afterEach(() => {
 const actor = {
   id: "synthetic-reader",
   email: "reader@example.test",
-  role: "user" as const,
+  role: "customer" as const,
 };
 const input = {
   name: "Synthetic",

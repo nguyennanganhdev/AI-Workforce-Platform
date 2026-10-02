@@ -1,7 +1,5 @@
 import type { Hono as HonoApp, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
-import { platformRoutes } from "./platform/routes";
-import { vinhomesRoutes } from "./domains/vinhomes/routes";
 import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/bun";
 import { MAX_IMAGE_BYTES } from "../../shared/attachments";
@@ -56,11 +54,6 @@ import { configuredAuthProviders, type DeploymentConfig } from "./config";
 import type { CredentialAdminService, CredentialInput } from "./credentials";
 import type { Database } from "./db/client";
 import { withoutStatement } from "./db/query-failure";
-import { createTranscriptionProvider } from "./dictation/provider";
-import { createDictationRoutes } from "./dictation/routes";
-import { createVoiceProvider } from "./voice/provider";
-import { createVoiceRoutes } from "./voice/routes";
-import type { VoiceSessionServices } from "./voice/session-routes";
 import { mountDesktopConnectionFailure } from "./desktop-connection-failure";
 import type { HostAccessBroker } from "./host-access/broker";
 import { createHostAccessRoutes } from "./host-access/routes";
@@ -90,8 +83,6 @@ import {
   InstructionsTooLongError,
   type UserInstructionsStore,
 } from "./user-instructions";
-import type { UserPreferencesStore } from "./user-preferences";
-import { userPreferencesRoutes } from "./user-preferences-routes";
 
 /**
  * How much of a multipart body is boundary, headers and other fields rather than file.
@@ -332,8 +323,6 @@ export function createApp(
   composio?: { broker: ComposioBroker },
   /** Native model OAuth stays server-side; callers hold only a separate local bearer. */
   modelProviderProxy?: ModelProviderProxy,
-  userPreferences?: UserPreferencesStore,
-  voiceSessions?: VoiceSessionServices,
   /**
    * Meta-Agent construction, already wired to the model, plugin and profile stores by the caller.
    * Appended last like everything above it. Absent leaves `/api/agent-factory` unmounted.
@@ -362,8 +351,6 @@ export function createApp(
        * both halves, so off means off.
        */
       generativeUi: config.generativeUi,
-      transcription: Boolean(config.transcription),
-      voice: Boolean(config.voice),
       /*
        * Which identity providers this deployment can sign somebody in with.
        *
@@ -490,41 +477,6 @@ export function createApp(
       ? createRequireUser(auth, roleRepository)
       : authenticationUnavailable;
 
-  // Workforce modules share OpenBot's authenticated host. Tenant/subject
-  // authorization remains a prerequisite for future domain use cases.
-  app.use("/api/platform/*", (context, next) => {
-    if (
-      context.req.method === "GET" &&
-      context.req.path === "/api/platform/health"
-    ) {
-      return next();
-    }
-    return requireUser(context, next);
-  });
-  app.use("/api/domains/*", requireUser);
-  app.route("/api/platform", platformRoutes());
-  app.route("/api/domains/vinhomes", vinhomesRoutes());
-
-  app.route(
-    "/api/audio",
-    createDictationRoutes(
-      requireUser,
-      config.transcription
-        ? createTranscriptionProvider(config.transcription)
-        : undefined,
-    ),
-  );
-  app.route(
-    "/api/voice",
-    createVoiceRoutes(
-      requireUser,
-      config.voice ? createVoiceProvider(config.voice) : undefined,
-      channelStore,
-      agentProfileStore,
-      voiceSessions,
-    ),
-  );
-
   app.get("/api/me", requireUser, async (context) =>
     context.json({
       user: {
@@ -581,11 +533,6 @@ export function createApp(
    * somebody's mouth in every channel they work in. An administrator has no business here either,
    * for the same reason.
    */
-  app.route(
-    "/api/settings/preferences",
-    userPreferencesRoutes(requireUser, userPreferences),
-  );
-
   app.get("/api/settings/instructions", requireUser, async (context) => {
     if (!userInstructions) {
       return context.json(
@@ -746,9 +693,12 @@ export function createApp(
 
     const body = await context.req.json().catch(() => null);
     const role = (body as { role?: unknown } | null)?.role;
-    if (role !== "admin" && role !== "user") {
+    if (role !== "admin" && role !== "customer") {
       return context.json(
-        { error: "A role of admin or user is required." },
+        {
+          error:
+            "A role of admin or customer is required. Management/staff grants require an explicit access scope.",
+        },
         400,
       );
     }

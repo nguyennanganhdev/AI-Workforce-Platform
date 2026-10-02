@@ -164,7 +164,6 @@ export type WithdrawnGrant = {
 export type ServerRecord = {
   id: string;
   title: string;
-  logo: string | null;
   vendor: string;
   url: string;
   summary: string;
@@ -2007,7 +2006,11 @@ export function createPluginStore(options: PluginStoreOptions) {
           scope: input.scope,
         })
         .onConflictDoUpdate({
-          target: [mcpUserCredentials.serverId, mcpUserCredentials.userId],
+          target: [
+            mcpUserCredentials.tenantId,
+            mcpUserCredentials.serverId,
+            mcpUserCredentials.userId,
+          ],
           set: {
             credentialId: stored.id,
             scope: input.scope,
@@ -3317,7 +3320,6 @@ export function createPluginStore(options: PluginStoreOptions) {
     async addBrokeredApp(input: {
       slug: string;
       title: string;
-      logo?: string | null;
       by: string;
       /**
        * How this app connects, resolved from the catalogue row the administrator chose.
@@ -3398,7 +3400,6 @@ export function createPluginStore(options: PluginStoreOptions) {
         .values({
           id: `composio-${input.slug}`,
           title: input.title,
-          logo: input.logo ?? null,
           // The broker, whoever publishes the app behind it. `vendor` is what the first-party rule
           // is checked against, and Composio is who this deployment is actually talking to.
           vendor: "Composio",
@@ -3429,7 +3430,6 @@ export function createPluginStore(options: PluginStoreOptions) {
           target: mcpServers.id,
           set: {
             title: input.title,
-            logo: input.logo ?? null,
             url,
             /*
              * WRITTEN BESIDE THE URL, BECAUSE THE TWO ARE ONE FACT AND A ROW HOLDING HALF OF IT IS
@@ -4432,7 +4432,6 @@ export function createPluginStore(options: PluginStoreOptions) {
         return {
           id: row.id,
           title: row.title,
-          logo: row.logo,
           vendor: row.vendor,
           url: effectiveUrl(row, entry),
           summary: entry?.summary ?? "",
@@ -4734,7 +4733,7 @@ export function createPluginStore(options: PluginStoreOptions) {
         // Editing keeps the owner it already had. Whose a skill is, is not something a re-save
         // should quietly change, and the route has already checked this person may edit it.
         .onConflictDoUpdate({
-          target: skills.slug,
+          target: skills.id,
           set: {
             title: input.title,
             summary: input.summary,
@@ -4839,7 +4838,12 @@ export function createPluginStore(options: PluginStoreOptions) {
         .insert(pluginGrants)
         .values({ kind, ref, agentId, grantedBy: by })
         .onConflictDoUpdate({
-          target: [pluginGrants.kind, pluginGrants.ref, pluginGrants.agentId],
+          target: [
+            pluginGrants.tenantId,
+            pluginGrants.kind,
+            pluginGrants.ref,
+            pluginGrants.agentId,
+          ],
           set: { grantedBy: by, updatedAt: new Date() },
         });
 
@@ -5618,7 +5622,11 @@ export function createPluginStore(options: PluginStoreOptions) {
           probeAction: input.probeAction,
         })
         .onConflictDoUpdate({
-          target: [composioConnections.toolkit, composioConnections.userId],
+          target: [
+            composioConnections.tenantId,
+            composioConnections.toolkit,
+            composioConnections.userId,
+          ],
           set,
         });
       return { verifiedAt, wrote: true };

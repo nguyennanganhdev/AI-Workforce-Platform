@@ -1,5 +1,5 @@
 {
-  "name": "ai-workforce-platform",
+  "name": "openbot",
   "version": "0.0.15",
   "license": "MIT",
   "private": true,
@@ -26,12 +26,7 @@
     "diagram": "bun scripts/architecture-diagram.ts",
     "composio:smoke": "bun scripts/composio-smoke.ts",
     "mock:knowledge": "bun scripts/mock-knowledge-mcp.ts",
-    "typecheck:workforce": "tsc --noEmit -p tsconfig.json",
-    "check:architecture": "bun scripts/check-architecture.mjs",
-    "check:runtime": "python scripts/check-runtime.py",
-    "eval:factory-quality": "bun server/scripts/factory-quality-eval.ts",
-    "test:workforce": "bun test ./tests/app.test.ts ./tests/architecture.test.mjs",
-    "check": "bun run typecheck && bun run typecheck:workforce && bun run check:architecture && bun run check:runtime && bun run test:workforce"
+    "eval:factory-quality": "bun server/scripts/factory-quality-eval.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",

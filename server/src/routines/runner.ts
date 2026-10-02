@@ -81,7 +81,7 @@ export function createRoutineRunner(options: {
 
     const { routineId, ownerUserId, agentId, channelId, instruction } = context;
     // Everything below is done AS the owner: their channel, their thread, their grants.
-    const owner: AgentActor = { id: ownerUserId, role: "user" };
+    const owner: AgentActor = { id: ownerUserId, role: "customer" };
 
     /** One activity record, from the routine's Bot, or a logged miss. Never a throw. */
     async function say(text: string): Promise<void> {

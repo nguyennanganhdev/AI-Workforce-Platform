@@ -21,7 +21,7 @@ import { testEnvironment } from "./support/environment";
 const actor = {
   id: "user-1",
   email: "member@openbot.test",
-  role: "user",
+  role: "customer",
 } as const;
 
 const validInput: CreateAgentInput = {
@@ -631,7 +631,7 @@ describe("agent route composition", () => {
         handler: () => new Response(null, { status: 204 }),
         api: { getSession: async () => session },
       },
-      { rolesForUser: async () => ["user"] },
+      { rolesForUser: async () => ["customer"] },
       /*
        * Positions 4-9: auditReader, credentialService, packageStatusReader, copilotHandler,
        * computerGateway, computerPolicy. `store` is position 10, agentProfileStore.
@@ -703,7 +703,7 @@ describe("which Bots a Bot may hand work to", () => {
 
   function appWith(
     handoff: Parameters<typeof createAgentRoutes>[5],
-    who: { id: string; email: string; role: "admin" | "user" } = admin,
+    who: { id: string; email: string; role: "admin" | "customer" } = admin,
   ) {
     const app = new Hono<{ Variables: AppVariables }>();
     const asWho: MiddlewareHandler<{ Variables: AppVariables }> = async (

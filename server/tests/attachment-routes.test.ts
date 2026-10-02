@@ -2392,7 +2392,7 @@ describe("attachment route composition", () => {
         handler: () => new Response(null, { status: 204 }),
         api: { getSession: async () => session },
       },
-      { rolesForUser: async () => ["user"] },
+      { rolesForUser: async () => ["customer"] },
       // Positions 4-25, ending at userInstructions. `attachmentDatabase` is position 26, the same
       // gap channel-routes.test.ts leaves for channelStore at position 11.
       undefined,

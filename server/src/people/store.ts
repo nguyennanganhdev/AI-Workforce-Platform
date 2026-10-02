@@ -5,7 +5,7 @@ import {
   accounts,
   revokedAccess,
   sessions,
-  userRoles,
+  platformAdmins,
   users,
 } from "../db/schema";
 
@@ -188,10 +188,10 @@ export function createPeopleStore(
     if (cursor) {
       filters.push(
         sql`(
-          (${users.lastSignedInAt} is null and (${cursor.lastSignedInAt}::timestamptz is not null or ${users.email} > ${cursor.email}))
+          (${users.lastSignedInAt} is null and (${cursor.lastSignedInAt}::timestamptz is not null or coalesce(${users.email}, ${users.phoneE164}, ${users.id}) > ${cursor.email}))
           or (${users.lastSignedInAt} is not null and ${cursor.lastSignedInAt}::timestamptz is not null and (
             ${users.lastSignedInAt} < ${cursor.lastSignedInAt}::timestamptz
-            or (${users.lastSignedInAt} = ${cursor.lastSignedInAt}::timestamptz and ${users.email} > ${cursor.email})
+            or (${users.lastSignedInAt} = ${cursor.lastSignedInAt}::timestamptz and coalesce(${users.email}, ${users.phoneE164}, ${users.id}) > ${cursor.email})
           ))
         )`,
       );
@@ -200,7 +200,7 @@ export function createPeopleStore(
     const rows = await database
       .select({
         id: users.id,
-        email: users.email,
+        email: sql<string>`coalesce(${users.email}, ${users.phoneE164}, ${users.id})`,
         name: users.name,
         image: users.image,
         /*
@@ -210,7 +210,7 @@ export function createPeopleStore(
          */
         roles: sql<
           string[]
-        >`coalesce(array_agg(distinct ${userRoles.role}) filter (where ${userRoles.role} is not null), '{}')`,
+        >`case when bool_or(${platformAdmins.userId} is not null) then array['admin'] else coalesce((select array_agg(distinct sr.role_code) from scoped_user_roles sr join tenant_memberships tm on tm.id=sr.membership_id where tm.user_id=${users.id} and tm.status='active' and sr.tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid and sr.valid_from<=now() and (sr.valid_to is null or sr.valid_to>now())), array[]::text[]) end`,
         providers: sql<
           string[]
         >`coalesce(array_agg(distinct ${accounts.providerId}) filter (where ${accounts.providerId} is not null), '{}')`,
@@ -218,7 +218,7 @@ export function createPeopleStore(
         revoked: sql<boolean>`bool_or(${revokedAccess.email} is not null)`,
       })
       .from(users)
-      .leftJoin(userRoles, eq(userRoles.userId, users.id))
+      .leftJoin(platformAdmins, eq(platformAdmins.userId, users.id))
       .leftJoin(accounts, eq(accounts.userId, users.id))
       .leftJoin(
         revokedAccess,
@@ -233,7 +233,10 @@ export function createPeopleStore(
        * signed in floats above everybody who just did. On a deployment of any size that is the
        * whole first screen given to people who have never used it.
        */
-      .orderBy(sql`${users.lastSignedInAt} desc nulls last`, users.email)
+      .orderBy(
+        sql`${users.lastSignedInAt} desc nulls last`,
+        sql`coalesce(${users.email}, ${users.phoneE164}, ${users.id})`,
+      )
       // One more than asked for, so "is there another page" is answered without a second count
       // query over the same aggregate.
       .limit(limit + 1);
@@ -248,7 +251,13 @@ export function createPeopleStore(
         name: row.name,
         image: row.image,
         // `admin` wins, the same way the request guard reads it. Anything else is a plain user.
-        role: row.roles.includes("admin") ? "admin" : "user",
+        role: row.roles.includes("admin")
+          ? "admin"
+          : row.roles.includes("management")
+            ? "management"
+            : row.roles.includes("staff")
+              ? "staff"
+              : "customer",
         providers: row.providers,
         lastSignedInAt: row.lastSignedInAt
           ? new Date(row.lastSignedInAt).toISOString()
@@ -305,9 +314,14 @@ export function createPeopleStore(
 
       await database.transaction(async (tx) => {
         await tx
-          .insert(revokedAccess)
-          .values({ email: normalize(user.email), revokedBy })
-          .onConflictDoNothing();
+          .update(users)
+          .set({ status: "suspended", disabledAt: new Date() })
+          .where(eq(users.id, userId));
+        if (user.email)
+          await tx
+            .insert(revokedAccess)
+            .values({ email: normalize(user.email!), revokedBy })
+            .onConflictDoNothing();
         await tx.delete(sessions).where(eq(sessions.userId, userId));
       });
     },
@@ -338,8 +352,13 @@ export function createPeopleStore(
       if (!user) return;
 
       await database
-        .delete(revokedAccess)
-        .where(eq(revokedAccess.email, normalize(user.email)));
+        .update(users)
+        .set({ status: "active", disabledAt: null })
+        .where(eq(users.id, userId));
+      if (user.email)
+        await database
+          .delete(revokedAccess)
+          .where(eq(revokedAccess.email, normalize(user.email)));
     },
 
     async isRevoked(email) {

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { electron } from "@better-auth/electron";
 import { betterAuth } from "better-auth";
@@ -11,18 +11,12 @@ import {
   mountDesktopConnectionFailure,
 } from "../src/desktop-connection-failure";
 
-// The native status store is process-wide and survives between test files.
-const clearOrganizationFailure = () =>
-  clearDesktopConnectionFailure("organization");
-beforeEach(clearOrganizationFailure);
-afterEach(clearOrganizationFailure);
-
 const employee = {
   id: "employee-1",
   email: "employee@example.com",
   name: "Employee",
   image: null,
-  role: "user" as const,
+  role: "customer" as const,
 };
 
 test("missing local cookie requests focused refresh; transient authority failure and refused sign-out remain retryable", async () => {
@@ -44,6 +38,7 @@ test("missing local cookie requests focused refresh; transient authority failure
       })
     ).json();
   try {
+    clearDesktopConnectionFailure("organization");
     expect(await auth.api.getSession({ headers: new Headers() })).toBeNull();
     expect(await failure()).toEqual({
       connection: "organization",
@@ -80,13 +75,14 @@ test("missing local cookie requests focused refresh; transient authority failure
     expect(signout.headers.get("set-cookie")).toBeNull();
     expect(await failure()).toBeNull();
   } finally {
+    clearDesktopConnectionFailure("organization");
     authority.stop(true);
   }
 });
 
 test("organization identity and current role come from the authority; expiry and revocation fail closed", async () => {
   let status = 200;
-  let role: "admin" | "user" = "user";
+  let role: "admin" | "customer" = "customer";
   const saved: string[] = [];
   const authority = Bun.serve({
     hostname: "127.0.0.1",

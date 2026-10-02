@@ -53,7 +53,7 @@ const MANAGED = "http://localhost:4201/ag-ui";
 const actor = {
   id: "owner",
   email: "owner@example.test",
-  role: "user" as const,
+  role: "customer" as const,
 };
 
 /** Every update the store was asked to make, as the route parsed it. */

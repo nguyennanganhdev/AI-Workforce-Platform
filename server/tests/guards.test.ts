@@ -44,7 +44,7 @@ describe("server authorization", () => {
 
   test("denies a signed-in user from an administrator route", async () => {
     const app = createApp(config, authenticatedAs("member"), {
-      rolesForUser: async () => ["user"],
+      rolesForUser: async () => ["customer"],
     });
 
     const response = await app.request("http://openbot.local/api/admin/status");
@@ -57,7 +57,7 @@ describe("server authorization", () => {
 
   test("returns the authenticated user actor", async () => {
     const app = createApp(config, authenticatedAs("member"), {
-      rolesForUser: async () => ["user"],
+      rolesForUser: async () => ["customer"],
     });
 
     const response = await app.request("http://openbot.local/api/me");
@@ -69,7 +69,7 @@ describe("server authorization", () => {
         email: "member@openbot.test",
         name: "OpenBot Member",
         image: "https://example.test/member.png",
-        role: "user",
+        role: "customer",
         // No store was passed, so this deployment tracks no onboarding and the app gates nobody.
         onboarding: null,
       },

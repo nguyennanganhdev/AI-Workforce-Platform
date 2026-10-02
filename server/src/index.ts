@@ -6,7 +6,6 @@ import {
 import { serve } from "bun";
 import { eq } from "drizzle-orm";
 import { COMPUTER_GUIDANCE } from "../../shared/bot-prompt";
-import { DICTATION_HTTP_IDLE_SECONDS } from "../../shared/dictation";
 import { workOwner } from "../../shared/work-owner";
 import { mintRunAssertion, readRunAssertion } from "./agents/callback-token";
 import { createAgentFetch } from "./agents/endpoint";
@@ -37,7 +36,7 @@ import { createRoleRepository } from "./auth/guards";
 import { createIdentityProviderStore } from "./auth/identity-provider-store";
 import { createOrganizationAuth } from "./auth/organization";
 import { organizationUserStore } from "./auth/organization-store";
-import type { OpenBotRole } from "./auth/roles";
+import { strongestRole, type OpenBotRole } from "./auth/roles";
 import {
   loadAttachmentForTurn,
   markAttachmentsSent,
@@ -56,8 +55,6 @@ import {
 } from "./channels/summary";
 import { createThreadIdentity } from "./channels/thread-identity";
 import { createChannelTitler } from "./channels/titler";
-import { createVoiceSessionStore } from "./voice/sessions";
-import { createVoiceSummarizer } from "./voice/summary";
 import { createSandboxedStore } from "./components/sandboxed";
 import { createComponentStore } from "./components/store";
 import { createComputerGateway } from "./computer/gateway";
@@ -88,6 +85,10 @@ import {
   resolveModelApiKey,
 } from "./credentials";
 import { createDatabase } from "./db/client";
+import {
+  deploymentScope,
+  initializeDeploymentScope,
+} from "./db/deployment-scope";
 import { intelligenceChannelMappings } from "./db/schema";
 import { createHostAccessBroker } from "./host-access/broker";
 import { hostAccessTools } from "./host-access/tools";
@@ -98,7 +99,6 @@ import { createProviderOAuthProxy } from "./provider-oauth";
 import { useRoutineTools } from "./plugins/builtin-routines";
 import { useComposioClient } from "./plugins/composio";
 import { createComposioClient } from "./plugins/composio-adapter";
-import { backfillComposioLogos } from "./plugins/logos";
 import { redirectUriFor } from "./plugins/oauth";
 import { createPluginStore } from "./plugins/store";
 import { grantedSkills, grantedTools, REFUSAL_MARKER } from "./plugins/tools";
@@ -113,7 +113,6 @@ import {
   synchronizeTenantPackage,
 } from "./tenant-package";
 import { createUserInstructionsStore } from "./user-instructions";
-import { createUserPreferencesStore } from "./user-preferences";
 import { repeatAfterEach } from "./work/loop";
 import {
   createWorkQueue,
@@ -141,16 +140,14 @@ async function resolveRequestActor(request: Request): Promise<{
   if (!user) {
     throw new Error("A CopilotKit run requires a signed-in user.");
   }
-  const roles = user.role
-    ? [user.role]
-    : await roleRepository.rolesForUser(user.id);
-  if (!roles.includes("admin") && !roles.includes("user")) {
+  const roles = await roleRepository.rolesForUser(user.id);
+  if (!strongestRole(roles)) {
     throw new Error("A CopilotKit run requires an authorized user.");
   }
   return {
     id: user.id,
     name: user.name ?? user.email ?? user.id,
-    role: roles.includes("admin") ? "admin" : "user",
+    role: strongestRole(roles)!,
   };
 }
 
@@ -170,7 +167,7 @@ const identifyUser: IdentifyUser = async (request) => {
  * and a run still fails in `identifyUser`, which has no anonymous case because a thread must belong
  * to somebody.
  */
-const ANONYMOUS_ACTOR = { id: "", role: "user" } as const;
+const ANONYMOUS_ACTOR = { id: "", role: "customer" } as const;
 
 const identifyActor: IdentifyActor = async (request) => {
   try {
@@ -185,7 +182,12 @@ const config = loadConfig();
 // Read with the rest of the configuration, where an empty variable is an absent one. See
 // `serverPort` in config.ts for what `process.env.PORT ?? …` did with `PORT=` instead.
 const port = config.port;
-const database = createDatabase(config.databaseUrl);
+const tenantPackage = await loadTenantPackage(config.tenantPackageDirectory);
+const database = createDatabase(
+  config.databaseUrl,
+  deploymentScope(tenantPackage.tenantId),
+);
+await initializeDeploymentScope(database, tenantPackage.tenantId);
 await initializeDevActorUser(database, config.singleUser);
 // The vault, built before the agent store because a customer's agent may sit behind a key and that
 // key belongs here rather than on the agent row. See agents/auth-header.ts.
@@ -202,7 +204,6 @@ const agentProfileStore = createAgentProfileStore(
 );
 // Read here rather than beside the synchronise below, because the package names the deployment and
 // the channel store needs that name before it can mint a thread id.
-const tenantPackage = await loadTenantPackage(config.tenantPackageDirectory);
 const threadIdentity = createThreadIdentity(
   config.deploymentId ?? tenantPackage.tenantId,
 );
@@ -396,15 +397,6 @@ const pluginStore = createPluginStore({
 
 // Generated coworkers run on their creator's current grants and connections, read fresh per load.
 const factoryRuntimeReadiness = createFactoryRuntimeReadiness(pluginStore);
-
-// Logo metadata is optional; a vendor outage must not prevent the API from starting.
-if (composio) {
-  void backfillComposioLogos(database, composio.broker).catch(() => {
-    console.warn(
-      "Composio app logos could not be updated. Existing icons remain available; missing logos will be retried on the next restart.",
-    );
-  });
-}
 
 /**
  * Routines, and the one moment its tools are told what to act on.
@@ -793,12 +785,12 @@ const actorFor = async (ownerUserId: string): Promise<AgentActor> => {
   // silently borrowing the dev actor's identity would be worse than finding nothing.
   if (config.singleUser) return { id: ownerUserId, role: DEV_ACTOR.role };
   const roles = await roleRepository.rolesForUser(ownerUserId);
-  if (!roles.includes("admin") && !roles.includes("user")) {
+  if (!strongestRole(roles)) {
     throw new Error("A routine requires an authorized owner.");
   }
   return {
     id: ownerUserId,
-    role: roles.includes("admin") ? "admin" : "user",
+    role: strongestRole(roles)!,
   };
 };
 
@@ -1334,15 +1326,6 @@ const app = createApp(
   process.env.OPENBOT_MODEL_OAUTH_FILE?.trim()
     ? createProviderOAuthProxy(process.env.OPENBOT_MODEL_OAUTH_FILE.trim())
     : undefined,
-  createUserPreferencesStore(database),
-  {
-    store: createVoiceSessionStore(database, channelStore),
-    summarize: createVoiceSummarizer({
-      model: runtimeModel,
-      resolveApiKey: resolveRuntimeModelApiKey,
-    }),
-    channels: channelStore,
-  },
 );
 
 /**
@@ -1395,11 +1378,6 @@ serve<SocketData>({
   port,
   async fetch(request, server) {
     const url = new URL(request.url);
-    if (url.pathname === "/api/audio/transcriptions") {
-      server.timeout(request, DICTATION_HTTP_IDLE_SECONDS);
-    }
-    if (url.pathname === "/api/voice/calls") server.timeout(request, 30);
-    if (url.pathname === "/api/voice/sessions") server.timeout(request, 30);
     const streamBotId = streamPathBotId(url.pathname);
     if (
       streamBotId !== null &&

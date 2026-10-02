@@ -176,11 +176,16 @@ describe("audit event immutability", () => {
     const files = (await readdir(directory))
       .filter((name) => name.endsWith(".sql"))
       .sort();
-    const chain = (
-      await Promise.all(
-        files.map((name) => readFile(new URL(name, directory), "utf8")),
-      )
-    ).join("\n");
+    const chain = files.length
+      ? (
+          await Promise.all(
+            files.map((name) => readFile(new URL(name, directory), "utf8")),
+          )
+        ).join("\n")
+      : await readFile(
+          new URL("../src/db/invariants.sql", import.meta.url),
+          "utf8",
+        );
 
     expect(chain).toContain("FUNCTION prevent_audit_event_mutation");
     expect(chain).toContain("BEFORE UPDATE OR DELETE ON audit_events");
@@ -248,7 +253,7 @@ describe("admin audit API", () => {
     const app = createApp(
       config,
       memberAuth,
-      { rolesForUser: async () => ["user"] },
+      { rolesForUser: async () => ["customer"] },
       { list: async () => ({ events: [] }) },
     );
 

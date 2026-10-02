@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from "hono";
 import type { Database } from "../db/client";
-import { users } from "../db/schema";
+import { users, platformAdmins } from "../db/schema";
 import type { AppVariables, AuthenticatedActor } from "./guards";
 
 /**
@@ -43,16 +43,22 @@ export async function initializeDevActorUser(
       email: DEV_ACTOR.email,
       name,
       emailVerified: false,
+      status: "active",
     })
     .onConflictDoUpdate({
       target: users.id,
       set: {
         email: DEV_ACTOR.email,
         name,
+        status: "active",
         updatedAt: new Date(),
       },
     });
 
+  await database
+    .insert(platformAdmins)
+    .values({ userId: DEV_ACTOR.id })
+    .onConflictDoNothing();
   return true;
 }
 
