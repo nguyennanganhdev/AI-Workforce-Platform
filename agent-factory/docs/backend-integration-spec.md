@@ -4,8 +4,8 @@ Ngày chốt: 2026-10-02. Chủ sở hữu phần tích hợp: **team Backend**.
 
 Rà soát 2026-10-02 (đối chiếu lại với code sau khi merge `devTeamPhai`): sửa wire type
 của catalogue (mục 4.2, 7), ghi rõ `defaultToolRefs` chưa có nguồn phía BE (mục 0), bổ
-sung 410 (mục 6.3), bỏ hai command không còn trong repo (mục 9), thêm mục 11 về ranh
-giới với orchestrator. Wire contract và code của Factory không đổi.
+sung 410 (mục 6.3), bỏ hai command không còn trong repo (mục 9), thêm mục 11 trỏ
+tới đặc tả tích hợp với Coordination. Wire contract và code của Factory không đổi.
 
 ## 0. Thay đổi contract 2026-10-02: Skill được generate, không còn được chọn
 
@@ -632,65 +632,18 @@ Các kết quả ghép BE/live smoke trước lần gỡ được giữ ở
 tại là standalone Factory; production BE routes 404. Tài liệu này và JSON examples
 là gói bàn giao để triển khai integration tiếp theo.
 
-## 11. Ranh giới với orchestrator (chưa triển khai)
+## 11. Tích hợp với Coordination (orchestrator)
 
-Orchestrator là runtime điều phối groupchat của team Coordination (`agent-coordination/`,
-AgentScope; task D01–D08 trong `docs/KE_HOACH_HOAN_THIEN_5_TEAM.md`). Tại thời điểm rà
-soát, thư mục đó mới có scaffold và spike D01 chưa có ADR. Vì vậy mục này chỉ chốt
-ranh giới phía Factory và liệt kê các điểm còn mở. Đây **không phải contract đã thống
-nhất** với team Coordination, và Factory không thay đổi gì vì mục này.
+Nội dung này đã được tách sang
+[đặc tả tích hợp với Coordination](coordination-integration-spec.md), viết lại sau khi
+code của team Coordination vào `develop`. Tài liệu đó là bản đề xuất v0, chưa được
+team Coordination và team Backend duyệt.
 
-### 11.1 Ranh giới
+Ba điểm áp dụng cho cả hai tài liệu:
 
-- Orchestrator **không gọi Factory**. Factory chỉ có `/health` và `/v1/constructions`,
-  không có endpoint đọc artifact. Orchestrator nhận artifact đã lưu/publish từ BE.
-- Factory tạo spec cho **một** agent. Nó không biết groupchat, roster, supervisor,
-  ticket hay tenant, và không sinh DAG hoặc quan hệ giữa các agent.
-- Integrity (mục 5) là việc của BE trước khi phát artifact cho runtime.
-  `hashAgentSpec`, `renderCorePrompt` và `parseStoredFactoryConfiguration` chỉ có bản
-  TypeScript. Nếu loader Python muốn tự kiểm tra lại thì cần parity theo quy tắc hash
-  ở mục 5; [response mẫu](examples/web-researcher-response.json) có `spec`,
-  `specHash` và `systemPrompt` khớp code hiện tại, dùng được làm test vector.
-- `systemPrompt` là core prompt đã compile, trong đó đã có `generatedSkill` và danh
-  sách tool. Supervisor/team context được compose ở runtime, bên ngoài core prompt;
-  không sửa core prompt rồi vẫn coi artifact là verified.
-- `spec.resources` và `spec.defaultTools` chỉ là khai báo. Quyền gọi tool vẫn do
-  grant và authorization lúc thực thi quyết định, kể cả trong groupchat.
-
-### 11.2 Field orchestrator có thể đọc
-
-| Field | Dùng cho | Lưu ý |
-|---|---|---|
-| `spec.identity` | Tên/role/description để hiển thị và mô tả subagent | Đúng nội dung user nhập, có thể là tiếng Việt |
-| `spec.goal`, `spec.responsibilities`, `spec.intent.normalizedGoal` | Mô tả agent làm gì khi supervisor chọn người xử lý | Intent được normalize bằng tiếng Anh |
-| `spec.intent.taskType` | Nhãn mô tả | Label tự do, không phải taxonomy; không dùng để route deterministic |
-| `spec.inputContract.inputFacts` | Agent cần thông tin gì và xử lý ra sao khi thiếu | Text contract qua `ag_ui_messages` |
-| `spec.outputContract.expectations` | Kỳ vọng về câu trả lời | `enforcement: "prompt_only"`: kết quả là text, không có schema được enforce |
-| `spec.resources`, `spec.defaultTools` | Tool cần bind và fingerprint để pin | Ref theo convention `serverId/toolName`; fingerprint đổi thì cần reconstruct |
-| `verification.specHash` | Khóa pin version của artifact | Đổi spec là đổi hash; không có khái niệm sửa tại chỗ |
-
-### 11.3 Điểm còn mở
-
-| # | Vấn đề | Hiện trạng đã kiểm chứng | Cần quyết định |
-|---|---|---|---|
-| 1 | Runtime | `spec.runtimeProfile` là literal `openbot_builtin_v1`; adapter BE lưu `type: "built_in"` và runtime chỉ đọc `systemPrompt`. `agent_versions.runtime` chỉ nhận `langgraph`, `agentscope`, `remote` | BE/loader map artifact sang runtime `agentscope`, hay Factory thêm runtime profile. Phương án sau cần sửa kế hoạch đã duyệt. Chốt sau ADR của D01 |
-| 2 | Lưu và publish | Adapter tham khảo lưu vào `agents.configuration` theo owner user, không có tenant. Kế hoạch 5 team publish qua `agent_versions`/`agent_releases` | Bảng ánh xạ ở 11.4 và vị trí của construction trong vòng đời draft → publish |
-| 3 | Kết quả có cấu trúc | Factory từ chối request đòi structured output được enforce (`UNSUPPORTED_CONTRACT`) | Supervisor có cần kết quả có schema không; nếu có thì là thay đổi contract của Factory |
-| 4 | Tool descriptor | Tool DTO không có version, `outputSchema` luôn `null`; fingerprint là pin duy nhất | Đối chiếu với descriptor ở mục 9.6 của kế hoạch 5 team (version, timeout, retry, idempotency) |
-| 5 | Truy vết | Wire không có `request_id`/`trace_id`; envelope lỗi của Factory không có `constructionId` | Có cần correlation id xuyên BE → Factory theo envelope mục 9.1 của kế hoạch không |
-| 6 | Schema dùng chung | Nguồn chuẩn là TypeScript type và Zod schema trong `src/spec.ts`; chưa có JSON Schema/OpenAPI | Có xuất JSON Schema cho consumer Python không |
-
-### 11.4 Ánh xạ sang bảng V3 (đề xuất, chưa được team BE duyệt)
-
-Các bảng dưới đây đã có trong `server/src/db/schema/tables.ts`. Ánh xạ là đề xuất để
-team BE xem xét; adapter hiện có không ghi vào các bảng này.
-
-| Output của Factory | Cột V3 | Ghi chú |
-|---|---|---|
-| `spec` | `agent_versions.config` | Lưu nguyên vẹn để integrity check còn dùng được |
-| `systemPrompt` | `agent_versions.instructions` | Phải bằng `renderCorePrompt(spec)` |
-| `specHash` | `agent_versions.config_hash` | Chỉ đúng nếu `config` chính là spec; nếu `config` có thêm field thì lưu `specHash` riêng |
-| `spec.runtimeProfile` | `agent_versions.runtime`, `framework_version` | Không ánh xạ trực tiếp được, xem điểm mở 1 |
-| `request.name`, `request.description` | `agent_build_requests.proposed_name`, `proposed_description` | `role` chưa có cột riêng |
-| 422 `NEEDS_INPUT` | `agent_build_requests.missing_fields` | Mỗi thông tin thiếu là một issue, path `intent.missingInformation.N`, nội dung ở `message` |
-| `ready` / `pending_resources` | `agent_releases.status` | Artifact pending không được publish |
+- Coordination **không gọi Factory**. Factory chỉ có `/health` và `/v1/constructions`;
+  artifact tới Coordination qua Backend.
+- Integrity ở mục 5 là việc của Backend trước khi phát artifact cho bất kỳ runtime nào.
+- Bảng ánh xạ output của Factory sang `agent_versions`, `agent_releases` và
+  `agent_build_requests` nằm ở mục 5 của tài liệu Coordination, vì đó là nơi lưu mà
+  Coordination đọc.
