@@ -1,0 +1,9 @@
+{
+  "mode": "production",
+  "ingress_token_env": "COORDINATION_INGRESS_TOKEN",
+  "factory": null,
+  "supervisor": null,
+  "host": "127.0.0.1",
+  "port": 4300,
+  "max_body_bytes": 1048576
+}

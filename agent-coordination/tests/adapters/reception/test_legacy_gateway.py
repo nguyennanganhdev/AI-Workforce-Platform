@@ -4,8 +4,8 @@ from adapters.backend.approval_client import ApprovalClient
 from adapters.backend.client import HttpResponse
 from adapters.backend.errors import AdapterError
 from adapters.reception.reception_gateway import ReceptionGateway
-from backend.support import Transport, client, request as backend_request
-from reception.support import input_message, output_message
+from tests.adapters.backend.support import Transport, client, request as backend_request
+from tests.adapters.reception.support import input_message, output_message
 
 
 def request(kind):

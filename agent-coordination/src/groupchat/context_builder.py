@@ -111,6 +111,6 @@ def reception_context(
         raise RoomError('STALE_RECEPTION_CONTEXT')
     return ContextItem(
         item_id='reception-v2-ticket',
-        content=message.model_dump_json(exclude_none=True),
+        content=message.model_dump_json(),
         reader_agent_version_ids=readers,
     )

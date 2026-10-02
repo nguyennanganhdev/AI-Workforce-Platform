@@ -10,7 +10,11 @@ class StateStore(Protocol):
 
     async def commit(self, state: SupervisorState, expected_version: Optional[int],
                      *, delivery_id: Optional[str] = None) -> bool:
-        """Atomic CAS + inbox ACK + full checkpoint/journal, rollback on failure.
+        """Atomic CAS + optional delivery ACK + full checkpoint/journal.
+
+        Composed inbox workers defer delivery ACK by passing delivery_id=None;
+        their claim ACK atomically completes source delivery only after dependent
+        D07 durable decisions/enqueue. Roll back ACK on failed CAS/lease.
 
         Scope key includes tenant/ticket/generation; check domain/workspace/binding
         and current generation under a durable fence. expected=None means create.

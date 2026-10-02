@@ -11,6 +11,7 @@ def invalidate(state: SupervisorState, reason: str) -> None:
     state.approvals = {}
     state.pending_resident = state.pending_ticket_version = None
     state.question_draft = None
+    state.plan_draft = None
     state.completion = None
     state.publication_draft = None
     state.task_drafts = []

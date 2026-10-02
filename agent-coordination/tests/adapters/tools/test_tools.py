@@ -3,7 +3,7 @@ import unittest
 from adapters.backend.client import HttpResponse
 from adapters.backend.errors import AdapterError
 from adapters.tools.tool_client import ToolClient
-from backend.support import Transport, client, request
+from tests.adapters.backend.support import Transport, client, request
 
 
 class ToolTests(unittest.IsolatedAsyncioTestCase):

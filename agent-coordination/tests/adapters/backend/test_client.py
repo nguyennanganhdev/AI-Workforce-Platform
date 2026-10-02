@@ -6,7 +6,7 @@ import unittest
 from adapters.backend.client import BackendClient, HttpResponse
 from adapters.backend.errors import AdapterError
 from adapters.backend.messages import MESSAGE_TYPES, validate_request
-from backend.support import Headers, Transport, Validator, client, request
+from tests.adapters.backend.support import Headers, Transport, Validator, client, request
 
 
 class ClientTests(unittest.IsolatedAsyncioTestCase):

@@ -102,7 +102,7 @@ async def test_serializable_checkpoint_and_atomic_ack(rig):
 
 
 async def test_two_independent_rooms_have_separate_journals(rig, proposal):
-    from conftest import Rig
+    from tests.supervisor.conftest import Rig
     from support.fakes import make_context
     other = Rig()
     other.ctx = make_context('TEST-2')
