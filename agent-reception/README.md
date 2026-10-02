@@ -80,6 +80,9 @@ python -m pip install -r requirements.txt
 python -m uvicorn src.runtime.service:create_app --factory --host 127.0.0.1 --port 4202
 ```
 
+Trên Windows: chép `.env.example` thành `.env`, điền giá trị, rồi chạy `scripts/start_runtime.ps1`
+(script nạp `.env` và dùng `.venv` nếu có). Không ghi key thật vào `.env.example`.
+
 Biến môi trường ở `.env.example` (`RECEPTION_SERVICE_TOKEN`, `RECEPTION_BACKEND_URL`, `RECEPTION_MODEL`,
 `OPENAI_API_KEY`). Backend bật bằng `VINHOMES_API_RECEPTION_SERVICE_TOKEN`, `VINHOMES_API_RECEPTION_URL` và
 `RECEPTION_DELEGATION_KEY` (khóa ký chỉ backend giữ).

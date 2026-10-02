@@ -277,6 +277,11 @@ class ReceptionWorkflowGraph:
             response.content,
             [message["id"] for message in pending_messages]
             or [data["message"]["id"]],
+            {
+                item["message_id"]
+                for item in data.get("conversation_history", [])
+                if item.get("role") == "resident"
+            },
         )
 
     async def _receive_message(self, data, config):
@@ -589,7 +594,8 @@ class ReceptionWorkflowGraph:
                 if isinstance(error, GraphFault)
                 else "RESIDENT_EXTRACTION_UNAVAILABLE",
             )
-        if turn["intent"] == "new_incident":
+        # Before anything is recorded there is no other incident: the first report is this one.
+        if turn["intent"] == "new_incident" and data.get("incident"):
             return self._next(
                 {
                     **data,
@@ -1138,6 +1144,10 @@ class ReceptionWorkflowGraph:
                 "pending_interaction": None,
                 "reply": "Câu trả lời đã được hệ thống tiếp nhận.",
             }
+        if operation in ("request_ticket_cancellation", "get_ticket_status"):
+            # A cancellation or a progress question is not incident content: it must not
+            # stay queued and colour how the next message of the resident is read.
+            updated["pending_incident_messages"] = []
         if operation == "request_ticket_cancellation":
             return {
                 **updated,

@@ -191,6 +191,10 @@ def test_reception_policy_and_reply_are_backend_decisions(database, monkeypatch)
         leak = c.post(policy, json={
             "message_text": "Vòi nước bị chảy nhỏ giọt", "assessment": {"intent": "incident"}}).json()
         assert not leak["emergency"] and leak["staff_required"] and leak["handoff_reason"] == "needs_staff"
+        bulb = c.post(policy, json={"message_text": "Bóng đèn hành lang bị cháy bóng, tối om", "assessment": {"intent": "incident"}}).json()
+        assert not bulb["emergency"] and bulb["staff_required"]
+        smoke = c.post(policy, json={"message_text": "Bóng đèn bị cháy và đang bốc khói", "assessment": None}).json()
+        assert smoke["emergency"]
         question = c.post(policy, json={
             "message_text": "Phí quản lý tháng này bao nhiêu?", "assessment": {"intent": "information"}}).json()
         assert not question["staff_required"] and question["self_help_allowed"] is False

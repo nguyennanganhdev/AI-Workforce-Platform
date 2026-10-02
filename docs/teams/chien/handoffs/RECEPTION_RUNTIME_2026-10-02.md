@@ -1,7 +1,8 @@
 # Ghép Reception vào chat cư dân — bàn giao 02/10/2026
 
 Gửi: Team Hoàng (chủ `agent-reception/`), Team Đông, Team Quang, Team 5.
-Trạng thái: chạy được đầu-cuối trên PostgreSQL thật với model stub; **chưa chạy với LLM thật** vì repo chưa có key.
+Trạng thái: chạy được đầu-cuối trên PostgreSQL thật, với model stub trong test tự động và với LLM thật
+(`gpt-5.4-mini`) khi chạy tay ngày 03/10/2026. Chưa có bộ eval tiếng Việt tự động cho LLM thật.
 
 ## Vì sao có thay đổi trong `agent-reception/`
 
@@ -98,6 +99,36 @@ Tắt toàn bộ Reception ngay lập tức: `update runtime_backends set enable
 6. Backend chết giữa lượt thì run nằm lại ở `running`; token vẫn hết hạn sau 10 phút. Chưa có job dọn run treo.
 7. Phiên bản agent Lễ tân (`agent_versions`) được tạo tự động ở lần đầu, nội dung chỉ là bản ghi định danh;
    khi Agent Factory quản lý phiên bản thật thì binding mới sẽ dùng phiên bản mới nhất.
+
+## Chạy với LLM thật (03/10/2026)
+
+Chạy tay qua API cư dân trên database demo, model `gpt-5.4-mini`, mỗi lượt 3–6 giây. Các kịch bản đã đúng:
+báo sự cố → ticket + session; hỏi tiến độ; bổ sung thông tin; yêu cầu hủy; hỏi thông tin (chưa có nguồn);
+báo cháy → ticket critical; chào hỏi rồi báo sự cố; tin nhắn không dấu; hỏi thông tin rồi báo sự cố.
+
+Để đến được đó phải sửa bốn chỗ mà model stub không lộ ra. Ba chỗ nằm trong `src/graph` và `src/prompts`
+của Team Hoàng, cần các bạn rà lại:
+
+1. `workflow.py` `_collect_incident_details`: lượt báo sự cố đầu tiên được model gắn nhãn `new_incident` và
+   graph từ chối như thể đã có sự cố khác. Nay chỉ từ chối khi đã có sự cố được ghi.
+2. `workflow_validation.py` `parse_turn`: model nhắc lại dữ kiện của lượt trước và cả lượt bị
+   `MODEL_CANNOT_VERIFY_FACTS`. Nay bỏ qua dữ kiện trích từ tin nhắn cũ có thật trong hội thoại; nguồn không
+   tồn tại và `staff_verified` vẫn bị chặn (test `test_injection_cannot_supply_authority` giữ nguyên).
+3. `workflow.py` sau `get_ticket_status`/`request_ticket_cancellation`: câu hỏi tiến độ nằm lại trong
+   `pending_incident_messages` làm lượt kế tiếp bị đọc thành hỏi tiến độ. Nay xóa danh sách đó.
+   `prompts/workflow.py`: thêm ba dòng nói rõ `intent` chỉ xét tin nhắn hiện tại.
+4. `runtime/backend.py`: model hay bỏ `title`; lớp chuyển đổi lấy câu đầu của mô tả làm tiêu đề.
+
+Còn tồn tại:
+
+- `gpt-4o-mini` vẫn đọc sai lượt bổ sung thông tin thành sự cố mới; không dùng model này.
+- Mô tả mơ hồ ("nhà tôi có vấn đề về nước") vẫn tạo ticket ngay, không hỏi lại chi tiết.
+- Thông tin cư dân tự bổ sung khi Supervisor không hỏi bị backend V2 từ chối (409). Lớp chuyển đổi coi là
+  chưa chuyển: tin nhắn nằm trong cuộc trò chuyện của ticket, cư dân nhận câu "đã lưu, đang chờ chuyển".
+  Cần một message type cho thông tin tự nguyện, hoặc BQL đọc được hội thoại của ticket.
+- Báo cháy chỉ nhận câu "đã tiếp nhận" kèm mã; chưa có hướng dẫn an toàn vì chưa có tri thức được duyệt.
+- Policy khẩn cấp bỏ qua vài cách nói thường ngày của "cháy" ("cháy bóng", "cháy cầu chì"). Danh sách này và
+  danh sách từ khóa khẩn cấp cần BQL duyệt.
 
 ## Đề nghị Team Hoàng
 

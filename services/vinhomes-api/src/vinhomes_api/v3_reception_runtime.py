@@ -36,6 +36,11 @@ EMERGENCY_TERMS = (
 )
 
 
+# Everyday uses of "cháy" that are a broken part, not a fire. Removed before matching, so
+# "bóng đèn bị cháy, có mùi khét và bốc khói" is still an emergency through its other terms.
+BENIGN_TERMS = ("cháy bóng", "bóng đèn bị cháy", "bóng đèn cháy", "bóng bị cháy", "đèn bị cháy", "cháy cầu chì", "cầu chì bị cháy")
+
+
 class PolicyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -52,6 +57,8 @@ async def catalog(scope: Scope) -> dict[str, object]:
 @router.post("/internal/reception/policy/evaluate", summary="Authoritative request policy for one resident turn")
 async def evaluate_policy(body: PolicyRequest, scope: Scope) -> dict[str, object]:
     message = unicodedata.normalize("NFC", body.message_text.lower())
+    for term in BENIGN_TERMS:
+        message = message.replace(term, " ")
     emergency = any(term in message for term in EMERGENCY_TERMS)
     proposal = body.assessment or {}
     declined, failed = proposal.get("self_help_declined") is True, proposal.get("self_help_failed") is True

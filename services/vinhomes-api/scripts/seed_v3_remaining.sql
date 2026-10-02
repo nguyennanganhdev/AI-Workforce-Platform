@@ -105,4 +105,6 @@ VALUES (md5('demo-asset')::uuid,'11111111-1111-5111-a111-111111111111','77777777
 INSERT INTO vh_sensor_readings(id,tenant_id,asset_id,parameter,value,unit,measured_at,source,recorded_by)
 VALUES (md5('demo-sensor')::uuid,'11111111-1111-5111-a111-111111111111',md5('demo-asset')::uuid,
  'pressure',2.5,'bar','2026-10-01T00:00:00Z','synthetic-demo','local-v3-management') ON CONFLICT DO NOTHING;
+-- Reception needs a verified contact phone before it files a request for the resident.
+UPDATE users SET phone_e164='+84901234567' WHERE id='local-v3-resident' AND phone_e164 IS NULL;
 COMMIT;

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -253,7 +254,11 @@ class BackendOperations:
         draft_id, record = await self._record(value)
         incident = value["incident"]
         title, description = incident["title"].strip()[:300], incident["description"].strip()[:10000]
-        fields = {"facts": incident["facts"], "file_ids": incident["file_ids"], "source_message_id": context["requestId"]}
+        if not title and description:
+            # Models often give only the description; its first sentence is the resident's own words.
+            title = re.split(r"(?<=[.!?])\s|\n", description, maxsplit=1)[0][:120].strip()
+            incident = {**incident, "title": title}
+        fields ={"facts": incident["facts"], "file_ids": incident["file_ids"], "source_message_id": context["requestId"]}
         if title:
             fields["title"] = title
         if description:
@@ -360,8 +365,15 @@ class BackendOperations:
         draft_id, record = await self._record(value)
         if not record.get("ticket"):
             raise OperationRejected("TICKET_NOT_SUBMITTED")
-        delivered = await self._follow_up(context, draft_id, record, key, "information_provided",
-                                          value["message"].strip() or "Cư dân gửi thêm ảnh.", value)
+        try:
+            delivered = await self._follow_up(context, draft_id, record, key, "information_provided",
+                                              value["message"].strip() or "Cư dân gửi thêm ảnh.", value)
+        except OperationRejected as error:
+            if str(error) != "BACKEND_HTTP_409":
+                raise
+            # The Supervisor accepts information only while it is asking for it. What the
+            # resident volunteers stays in the conversation attached to the ticket.
+            delivered = False
         return {"ticket": self._ticket(draft_id, await self.store.get(draft_id)), "delivered": delivered,
                 "scope_changed": False, "linked_file_ids": value.get("file_ids", [])}
 

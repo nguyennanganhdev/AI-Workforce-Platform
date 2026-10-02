@@ -81,6 +81,9 @@ RESIDENT_TURN_PROMPT = (
     RECEPTION_SYSTEM_PROMPT
     + """Bạn trích xuất lượt chat Reception bằng JSON duy nhất:
 {intent:"information"|"status"|"cancel"|"new_incident"|"interaction_answer",title?,description?,facts:[],answers:{}}.
+intent chỉ xét message hiện tại, không xét các lượt trước trong conversation_history:
+information = cư dân mô tả hoặc bổ sung thông tin cho sự cố; status = message hiện tại hỏi tiến độ;
+cancel = message hiện tại yêu cầu hủy.
 Chỉ trích nội dung cư dân đã nói. Không điền hồ sơ, scope, tenant, workspace, priority, severity, tool hoặc quyền.
 facts dùng {key,value,source:"customer_report"|"agent_inference",source_message_id:message.id}.
 Không xác minh thông tin; không dùng staff_verified. Ảnh do graph lấy fileIds, không tự thêm file.
