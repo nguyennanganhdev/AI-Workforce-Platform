@@ -63,6 +63,12 @@ def test_incident_chat_creates_a_ticket_management_can_work_on():
     assert "đang được xử lý" in reply
 
 
+def test_a_model_guess_among_the_facts_does_not_lose_the_request():
+    chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
+    reply, _ = say(chat, "Ổ điện bếp bị hỏng, có vẻ do chập.")
+    assert "Mã yêu cầu của bạn: VH-" in reply
+
+
 def test_information_question_is_not_answered_without_sources():
     chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
     before = len(call("GET", "/resident/tickets")["items"])

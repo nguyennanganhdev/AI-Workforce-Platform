@@ -258,7 +258,10 @@ class BackendOperations:
             # Models often give only the description; its first sentence is the resident's own words.
             title = re.split(r"(?<=[.!?])\s|\n", description, maxsplit=1)[0][:120].strip()
             incident = {**incident, "title": title}
-        fields ={"facts": incident["facts"], "file_ids": incident["file_ids"], "source_message_id": context["requestId"]}
+        # The request records what the resident reported. A model's own guess is not evidence,
+        # and the backend refuses one that cites a resident message, which would lose the request.
+        reported = [fact for fact in incident["facts"] if fact.get("source") == "customer_report"]
+        fields = {"facts": reported, "file_ids": incident["file_ids"], "source_message_id": context["requestId"]}
         if title:
             fields["title"] = title
         if description:

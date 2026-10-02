@@ -31,9 +31,11 @@ def turn(data):
     if "hủy" in text.lower():
         return {"intent": "cancel", "facts": [], "answers": {}}
     source = (data.get("pending_incident_messages") or [message])[-1]["id"]
-    return {"intent": "information", "title": text[:60], "description": text,
-            "facts": [{"key": "reported", "value": text[:100], "source": "customer_report", "source_message_id": source}],
-            "answers": {}}
+    facts = [{"key": "reported", "value": text[:100], "source": "customer_report", "source_message_id": source}]
+    if "có vẻ" in text.lower():
+        # Real models add their own guesses, labelled as such and citing the resident's message.
+        facts.append({"key": "cause", "value": "chập điện", "source": "agent_inference", "source_message_id": source})
+    return {"intent": "information", "title": text[:60], "description": text, "facts": facts, "answers": {}}
 
 
 def proposal(data):
