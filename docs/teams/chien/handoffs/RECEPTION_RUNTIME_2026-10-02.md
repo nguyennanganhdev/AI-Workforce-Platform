@@ -197,7 +197,9 @@ thái), nên agent nối được sự cố mới với lần trước. Không c
    nằm chờ người duyệt.
 3. `scripts/publish_learned.ps1 -DataDir <thư mục dữ liệu>` xuất các ứng viên đã duyệt thành
    `hoi-dap-ban-quan-ly.md` trong thư mục của đúng phạm vi rồi chạy `publish.ts`. File được ghi lại toàn bộ
-   mỗi lần, nên thu hồi một ứng viên rồi chạy lại là tri thức đó biến mất. Hiện chạy tay; cần đặt lịch.
+   mỗi lần, nên thu hồi một ứng viên rồi chạy lại là tri thức đó biến mất. Thêm `-EveryMinutes 5` thì lệnh tự
+   lặp: để chạy cạnh bản demo là không còn bước tay nào (file không đổi thì không tốn lượt embedding). Bản
+   production cần một job định kỳ của platform thay cho script này.
 
 Đã kiểm đầu-cuối trên database demo với model thật: hỏi "có cho mượn xe đẩy hàng không" → chuyển BQL → BQL trả
 lời → tự duyệt → xuất bản → hỏi lại ở cuộc trò chuyện mới thì Lễ tân tự trả lời.
