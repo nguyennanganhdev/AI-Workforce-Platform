@@ -1,15 +1,6 @@
-"""DEV-3 runner: pin source namespaces before test packages enter sys.path."""
+"""Compatibility entrypoint using the standard package pytest configuration."""
+import subprocess
 import sys
-import unittest
 from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[4]
-sys.path.insert(0, str(ROOT / "agent-coordination/src"))
-import adapters.backend  # noqa: E402,F401
-import adapters.reception  # noqa: E402,F401
-import adapters.tools.tool_client  # noqa: E402,F401
-
-if __name__ == "__main__":
-    suite = unittest.defaultTestLoader.discover(str(Path(__file__).resolve().parents[1]))
-    result = unittest.TextTestRunner(verbosity=1).run(suite)
-    raise SystemExit(0 if result.wasSuccessful() else 1)
+package = next(parent for parent in Path(__file__).resolve().parents if parent.name == "agent-coordination")
+raise SystemExit(subprocess.call([sys.executable, "-m", "pytest", "-q", str(Path(__file__).resolve().parent)], cwd=package.parent))
