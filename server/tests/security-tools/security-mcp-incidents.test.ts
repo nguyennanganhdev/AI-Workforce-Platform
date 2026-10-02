@@ -6,7 +6,6 @@
  */
 import { beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { createWriteHandlers } from "../../src/security-tools/providers/mock-write";
 import { SECURITY_TOOLS } from "../../src/security-tools/tools";
 import {
   createHarness,
@@ -24,14 +23,7 @@ const fixture = (name: string): Row[] =>
     readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"),
   );
 const INCIDENTS = fixture("incidents");
-const optionalFixture = (name: string): Row[] => {
-  try {
-    return fixture(name);
-  } catch {
-    return [];
-  }
-};
-/** Kết quả search kỳ vọng tính từ fixture, để test đúng cả trước và sau khi P3 bổ sung dữ liệu. */
+/** Kết quả search kỳ vọng tính từ fixture, để test không phụ thuộc số bản ghi cụ thể. */
 function expectedSearch(f: Row): string[] {
   return INCIDENTS.filter(
     (i) =>
@@ -62,13 +54,6 @@ const P3_TOOLS = [
   "get_dispatch_history",
   "get_security_event_timeline",
 ];
-const UPDATE_READY = createWriteHandlers().update_incident !== undefined;
-const REGISTERED = SECURITY_TOOLS.filter((t) =>
-  P3_TOOLS.includes(t.name),
-).every((t) => !t.description.endsWith("Xem Security MCP contract v0.3 §7."));
-const MISSING_INCIDENTS = [
-  ...new Set(fixture("incident-cameras").map((c) => c.incident_id)),
-].filter((id) => !INCIDENTS.some((i) => i.incident_id === id));
 
 const ids = (rows: Row[]) => rows.map((r) => r.incident_id);
 const NEW = {
@@ -98,7 +83,7 @@ const update = (
 
 describe("P3 fixture", () => {
   test("related_counts của incident khớp dispatch/escalation/camera/evidence trong fixture", () => {
-    const evidence = optionalFixture("evidence");
+    const evidence = fixture("evidence");
     for (const inc of INCIDENTS) {
       const count = (rows: Row[]) =>
         rows.filter((r) => r.incident_id === inc.incident_id).length;
@@ -112,17 +97,12 @@ describe("P3 fixture", () => {
     }
   });
 
-  test.skipIf(MISSING_INCIDENTS.length > 0)(
-    "incident-cameras chỉ trỏ tới incident có trong incidents.json",
-    () => {
-      expect(MISSING_INCIDENTS).toEqual([]);
-    },
-  );
-
-  test.skipIf(MISSING_INCIDENTS.length === 0)(
-    `CHỜ P3 (việc 9): incidents.json còn thiếu ${MISSING_INCIDENTS.join(", ")}`,
-    () => {},
-  );
+  test("incident-cameras chỉ trỏ tới incident có trong incidents.json", () => {
+    const missing = [
+      ...new Set(fixture("incident-cameras").map((c) => c.incident_id)),
+    ].filter((id) => !INCIDENTS.some((i) => i.incident_id === id));
+    expect(missing).toEqual([]);
+  });
 });
 
 describe("get_incident", () => {
@@ -422,359 +402,337 @@ describe("update_incident: ràng buộc input (§6.1, chặn ở wrapper)", () =
   });
 });
 
-describe.skipIf(!UPDATE_READY)(
-  "update_incident: luật nghiệp vụ (§6.1) — tự bật khi mock có handler của P3",
-  () => {
-    const open = async (key: string) => (await create(key)).data as Row;
+describe("update_incident: luật nghiệp vụ (§6.1)", () => {
+  const open = async (key: string) => (await create(key)).data as Row;
 
-    test("chỉ note: thành công, version +1, status giữ nguyên, có evidence và event INCIDENT_UPDATED", async () => {
-      const env = await update(
-        "inc_01",
-        { expected_version: 6, note: "Đã kiểm tra hiện trường" },
-        "k_note",
-      );
-      expect(env.data).toMatchObject({
-        incident_id: "inc_01",
+  test("chỉ note: thành công, version +1, status giữ nguyên, có evidence và event INCIDENT_UPDATED", async () => {
+    const env = await update(
+      "inc_01",
+      { expected_version: 6, note: "Đã kiểm tra hiện trường" },
+      "k_note",
+    );
+    expect(env.data).toMatchObject({
+      incident_id: "inc_01",
+      status: "IN_PROGRESS",
+      severity: "P1",
+      version: 7,
+    });
+    expect(env.data.related_counts.evidence).toBe(
+      INCIDENTS.find((i) => i.incident_id === "inc_01")!.related_counts
+        .evidence + 1,
+    );
+    const events = (
+      await h.read("get_security_event_timeline", { incident_id: "inc_01" })
+    ).data.events;
+    expect(events.at(-1)).toMatchObject({
+      event_type: "INCIDENT_UPDATED",
+      evidence_id: env.evidence.evidence_id,
+      data: {
+        previous_status: "IN_PROGRESS",
         status: "IN_PROGRESS",
+        previous_severity: "P1",
         severity: "P1",
-        version: 7,
-      });
-      expect(env.data.related_counts.evidence).toBe(
-        INCIDENTS.find((i) => i.incident_id === "inc_01")!.related_counts
-          .evidence + 1,
-      );
-      const events = (
-        await h.read("get_security_event_timeline", { incident_id: "inc_01" })
-      ).data.events;
-      expect(events.at(-1)).toMatchObject({
-        event_type: "INCIDENT_UPDATED",
-        evidence_id: env.evidence.evidence_id,
-        data: {
-          previous_status: "IN_PROGRESS",
-          status: "IN_PROGRESS",
-          previous_severity: "P1",
-          severity: "P1",
-          note: "Đã kiểm tra hiện trường",
-        },
-      });
-    });
-
-    test("OPEN → IN_PROGRESS kèm note", async () => {
-      const inc = await open("k_t1");
-      expect(
-        (
-          await update(
-            inc.incident_id,
-            {
-              expected_version: inc.version,
-              status: "IN_PROGRESS",
-              note: "Bảo vệ đang xử lý",
-            },
-            "k_t1u",
-            TICKET.inc_01,
-          )
-        ).data.status,
-      ).toBe("IN_PROGRESS");
-    });
-
-    test("đổi severity ở IN_PROGRESS kèm note", async () => {
-      const env = await update(
-        "inc_01",
-        { expected_version: 6, severity: "P0", note: "Khói lan rộng" },
-        "k_sev",
-      );
-      expect(env.data.severity).toBe("P0");
-    });
-
-    test.each([
-      [
-        "IN_PROGRESS → OPEN",
-        "inc_01",
-        { expected_version: 6, status: "OPEN", note: "Quay lại" },
-      ],
-      [
-        "IN_PROGRESS → CLOSED",
-        "inc_01",
-        { expected_version: 6, status: "CLOSED", note: "Đóng luôn" },
-      ],
-      [
-        "status trùng trạng thái hiện tại",
-        "inc_01",
-        { expected_version: 6, status: "IN_PROGRESS", note: "Không đổi gì" },
-      ],
-      [
-        "RESOLVED → OPEN",
-        "inc_04",
-        { expected_version: 5, status: "OPEN", note: "Mở lại sai cách" },
-      ],
-      [
-        "đổi severity khi đã RESOLVED",
-        "inc_04",
-        { expected_version: 5, severity: "P1", note: "Nâng mức" },
-      ],
-    ])(
-      "%s → INVALID_STATE_TRANSITION, incident không đổi",
-      async (_label, incident, args) => {
-        const before = (await h.read("get_incident", { incident_id: incident }))
-          .data;
-        expectFailure(
-          await update(incident, args, `k_bad_${incident}`),
-          "INVALID_STATE_TRANSITION",
-        );
-        expect(
-          (await h.read("get_incident", { incident_id: incident })).data,
-        ).toEqual(before);
+        note: "Đã kiểm tra hiện trường",
       },
+    });
+  });
+
+  test("OPEN → IN_PROGRESS kèm note", async () => {
+    const inc = await open("k_t1");
+    expect(
+      (
+        await update(
+          inc.incident_id,
+          {
+            expected_version: inc.version,
+            status: "IN_PROGRESS",
+            note: "Bảo vệ đang xử lý",
+          },
+          "k_t1u",
+          TICKET.inc_01,
+        )
+      ).data.status,
+    ).toBe("IN_PROGRESS");
+  });
+
+  test("đổi severity ở IN_PROGRESS kèm note", async () => {
+    const env = await update(
+      "inc_01",
+      { expected_version: 6, severity: "P0", note: "Khói lan rộng" },
+      "k_sev",
+    );
+    expect(env.data.severity).toBe("P0");
+  });
+
+  test.each([
+    [
+      "IN_PROGRESS → OPEN",
+      "inc_01",
+      { expected_version: 6, status: "OPEN", note: "Quay lại" },
+    ],
+    [
+      "IN_PROGRESS → CLOSED",
+      "inc_01",
+      { expected_version: 6, status: "CLOSED", note: "Đóng luôn" },
+    ],
+    [
+      "status trùng trạng thái hiện tại",
+      "inc_01",
+      { expected_version: 6, status: "IN_PROGRESS", note: "Không đổi gì" },
+    ],
+    [
+      "RESOLVED → OPEN",
+      "inc_04",
+      { expected_version: 5, status: "OPEN", note: "Mở lại sai cách" },
+    ],
+    [
+      "đổi severity khi đã RESOLVED",
+      "inc_04",
+      { expected_version: 5, severity: "P1", note: "Nâng mức" },
+    ],
+  ])(
+    "%s → INVALID_STATE_TRANSITION, incident không đổi",
+    async (_label, incident, args) => {
+      const before = (await h.read("get_incident", { incident_id: incident }))
+        .data;
+      expectFailure(
+        await update(incident, args, `k_bad_${incident}`),
+        "INVALID_STATE_TRANSITION",
+      );
+      expect(
+        (await h.read("get_incident", { incident_id: incident })).data,
+      ).toEqual(before);
+    },
+  );
+
+  test("RESOLVED → IN_PROGRESS (mở lại có note) được phép", async () => {
+    const env = await update(
+      "inc_04",
+      {
+        expected_version: 5,
+        status: "IN_PROGRESS",
+        note: "Cư dân báo tái diễn",
+      },
+      "k_reopen",
+    );
+    expect(env.data).toMatchObject({ status: "IN_PROGRESS", version: 6 });
+  });
+
+  test("RESOLVED → CLOSED khi không còn dispatch mở hay escalation đang chờ", async () => {
+    const env = await update(
+      "inc_04",
+      { expected_version: 5, status: "CLOSED", note: "Hoàn tất" },
+      "k_close",
+    );
+    expect(env.data.status).toBe("CLOSED");
+    const after = env.data.version;
+    expectFailure(
+      await update(
+        "inc_04",
+        { expected_version: after, note: "Ghi chú sau khi đóng" },
+        "k_after_close",
+      ),
+      "INVALID_STATE_TRANSITION",
+    );
+  });
+
+  test("expected_version cũ → CONFLICT", async () => {
+    expectFailure(
+      await update(
+        "inc_01",
+        { expected_version: 5, note: "Version cũ" },
+        "k_stale",
+      ),
+      "CONFLICT",
+    );
+  });
+
+  test("RESOLVED với evidence của incident khác → bị từ chối", async () => {
+    const other = await create("k_other_inc");
+    const env = await update(
+      "inc_01",
+      {
+        expected_version: 6,
+        status: "RESOLVED",
+        note: "Xong",
+        resolution_evidence_id: other.evidence.evidence_id,
+      },
+      "k_foreign_ev",
+    );
+    expectFailure(env, [
+      "NOT_FOUND",
+      "VALIDATION_ERROR",
+      "INVALID_STATE_TRANSITION",
+      "CONFLICT",
+    ]);
+    expect(
+      (await h.read("get_incident", { incident_id: "inc_01" })).data.status,
+    ).toBe("IN_PROGRESS");
+  });
+
+  test("phiên của ticket khác → SCOPE_MISMATCH", async () => {
+    expectFailure(
+      await update(
+        "inc_02",
+        { expected_version: 6, note: "Sai phiên" },
+        "k_ticket",
+        TICKET.inc_01,
+      ),
+      "SCOPE_MISMATCH",
+    );
+  });
+
+  test("incident không tồn tại → NOT_FOUND", async () => {
+    expectFailure(
+      await update(
+        "inc_missing",
+        { expected_version: 1, note: "x" },
+        "k_missing",
+      ),
+      "NOT_FOUND",
+    );
+  });
+
+  test("replay cùng key trả kết quả lần đầu, không tăng version lần nữa", async () => {
+    const first = await update(
+      "inc_01",
+      { expected_version: 6, note: "Ghi chú" },
+      "k_upd_replay",
+    );
+    const again = await update(
+      "inc_01",
+      { expected_version: 6, note: "Ghi chú" },
+      "k_upd_replay",
+    );
+    expect(again).toMatchObject({
+      success: true,
+      meta: { replayed: true },
+      data: first.data,
+    });
+    expect(
+      (await h.read("get_incident", { incident_id: "inc_01" })).data.version,
+    ).toBe(7);
+  });
+
+  const resolutionNote = (incident: string) =>
+    fixture("evidence").find(
+      (e) =>
+        e.incident_id === incident &&
+        (e.evidence_type === "OPERATOR_NOTE" ||
+          e.evidence_type === "EXTERNAL_REFERENCE"),
     );
 
-    test("RESOLVED → IN_PROGRESS (mở lại có note) được phép", async () => {
-      const env = await update(
-        "inc_04",
-        {
-          expected_version: 5,
-          status: "IN_PROGRESS",
-          note: "Cư dân báo tái diễn",
-        },
-        "k_reopen",
-      );
-      expect(env.data).toMatchObject({ status: "IN_PROGRESS", version: 6 });
-    });
+  test("ACTION_RECEIPT của chính incident không được nhận làm bằng chứng giải quyết", async () => {
+    const receipt = (
+      await update("inc_01", { expected_version: 6, note: "Ghi chú" }, "k_rcpt")
+    ).evidence.evidence_id;
+    const env = await update(
+      "inc_01",
+      {
+        expected_version: 7,
+        status: "RESOLVED",
+        note: "Xong",
+        resolution_evidence_id: receipt,
+      },
+      "k_rcpt_resolve",
+    );
+    expectFailure(env, ["VALIDATION_ERROR", "INVALID_STATE_TRANSITION"]);
+    expect(
+      (await h.read("get_incident", { incident_id: "inc_01" })).data.status,
+    ).toBe("IN_PROGRESS");
+  });
 
-    test("RESOLVED → CLOSED khi không còn dispatch mở hay escalation đang chờ", async () => {
-      const env = await update(
-        "inc_04",
-        { expected_version: 5, status: "CLOSED", note: "Hoàn tất" },
-        "k_close",
-      );
-      expect(env.data.status).toBe("CLOSED");
-      const after = env.data.version;
-      expectFailure(
+  test("RESOLVED → CLOSED bị chặn khi còn dispatch mở; hủy dispatch rồi đóng được", async () => {
+    const note = resolutionNote("inc_04")!.evidence_id;
+    const s4 = session(TICKET.inc_04);
+    const version = async () =>
+      (await h.read("get_incident", { incident_id: "inc_04" })).data
+        .version as number;
+    expect(
+      (
         await update(
           "inc_04",
-          { expected_version: after, note: "Ghi chú sau khi đóng" },
-          "k_after_close",
-        ),
-        "INVALID_STATE_TRANSITION",
-      );
-    });
-
-    test("expected_version cũ → CONFLICT", async () => {
-      expectFailure(
-        await update(
-          "inc_01",
-          { expected_version: 5, note: "Version cũ" },
-          "k_stale",
-        ),
-        "CONFLICT",
-      );
-    });
-
-    test("RESOLVED với evidence của incident khác → bị từ chối", async () => {
-      const other = await create("k_other_inc");
-      const env = await update(
-        "inc_01",
-        {
-          expected_version: 6,
-          status: "RESOLVED",
-          note: "Xong",
-          resolution_evidence_id: other.evidence.evidence_id,
-        },
-        "k_foreign_ev",
-      );
-      expectFailure(env, [
-        "NOT_FOUND",
-        "VALIDATION_ERROR",
-        "INVALID_STATE_TRANSITION",
-        "CONFLICT",
-      ]);
-      expect(
-        (await h.read("get_incident", { incident_id: "inc_01" })).data.status,
-      ).toBe("IN_PROGRESS");
-    });
-
-    test("phiên của ticket khác → SCOPE_MISMATCH", async () => {
-      expectFailure(
-        await update(
-          "inc_02",
-          { expected_version: 6, note: "Sai phiên" },
-          "k_ticket",
-          TICKET.inc_01,
-        ),
-        "SCOPE_MISMATCH",
-      );
-    });
-
-    test("incident không tồn tại → NOT_FOUND", async () => {
-      expectFailure(
-        await update(
-          "inc_missing",
-          { expected_version: 1, note: "x" },
-          "k_missing",
-        ),
-        "NOT_FOUND",
-      );
-    });
-
-    test("replay cùng key trả kết quả lần đầu, không tăng version lần nữa", async () => {
-      const first = await update(
-        "inc_01",
-        { expected_version: 6, note: "Ghi chú" },
-        "k_upd_replay",
-      );
-      const again = await update(
-        "inc_01",
-        { expected_version: 6, note: "Ghi chú" },
-        "k_upd_replay",
-      );
-      expect(again).toMatchObject({
-        success: true,
-        meta: { replayed: true },
-        data: first.data,
-      });
-      expect(
-        (await h.read("get_incident", { incident_id: "inc_01" })).data.version,
-      ).toBe(7);
-    });
-
-    const resolutionNote = (incident: string) =>
-      optionalFixture("evidence").find(
-        (e) =>
-          e.incident_id === incident &&
-          (e.evidence_type === "OPERATOR_NOTE" ||
-            e.evidence_type === "EXTERNAL_REFERENCE"),
-      );
-
-    test("ACTION_RECEIPT của chính incident không được nhận làm bằng chứng giải quyết", async () => {
-      const receipt = (
-        await update(
-          "inc_01",
-          { expected_version: 6, note: "Ghi chú" },
-          "k_rcpt",
+          {
+            expected_version: await version(),
+            status: "IN_PROGRESS",
+            note: "Cư dân báo tái diễn",
+          },
+          "k_cl_1",
         )
-      ).evidence.evidence_id;
-      const env = await update(
-        "inc_01",
-        {
-          expected_version: 7,
-          status: "RESOLVED",
-          note: "Xong",
-          resolution_evidence_id: receipt,
-        },
-        "k_rcpt_resolve",
-      );
-      expectFailure(env, ["VALIDATION_ERROR", "INVALID_STATE_TRANSITION"]);
-      expect(
-        (await h.read("get_incident", { incident_id: "inc_01" })).data.status,
-      ).toBe("IN_PROGRESS");
-    });
-
-    test.skipIf(!resolutionNote("inc_04"))(
-      "RESOLVED → CLOSED bị chặn khi còn dispatch mở; hủy dispatch rồi đóng được",
-      async () => {
-        const note = resolutionNote("inc_04")!.evidence_id;
-        const s4 = session(TICKET.inc_04);
-        const version = async () =>
-          (await h.read("get_incident", { incident_id: "inc_04" })).data
-            .version as number;
-        expect(
-          (
-            await update(
-              "inc_04",
-              {
-                expected_version: await version(),
-                status: "IN_PROGRESS",
-                note: "Cư dân báo tái diễn",
-              },
-              "k_cl_1",
-            )
-          ).success,
-        ).toBe(true);
-        const dispatch = await h.write({
-          action: "dispatch_guard",
-          args: {
-            incident_id: "inc_04",
-            guard_id: "guard_002",
-            incident_version: await version(),
-          },
-          key: "k_cl_2",
-          session: s4,
-        });
-        expect(dispatch.success).toBe(true);
-        expect(
-          (
-            await update(
-              "inc_04",
-              {
-                expected_version: await version(),
-                status: "RESOLVED",
-                note: "Đã xử lý lại",
-                resolution_evidence_id: note,
-              },
-              "k_cl_3",
-            )
-          ).success,
-        ).toBe(true);
-        expectFailure(
-          await update(
-            "inc_04",
-            {
-              expected_version: await version(),
-              status: "CLOSED",
-              note: "Đóng",
-            },
-            "k_cl_4",
-          ),
-          "INVALID_STATE_TRANSITION",
-        );
-        const cancelled = await h.write({
-          action: "cancel_dispatch",
-          args: {
-            dispatch_id: dispatch.data.dispatch_id,
-            expected_version: 1,
-            reason: "Xong việc",
-          },
-          key: "k_cl_5",
-          session: s4,
-        });
-        expect(cancelled.success).toBe(true);
-        expect(
-          (
-            await update(
-              "inc_04",
-              {
-                expected_version: await version(),
-                status: "CLOSED",
-                note: "Đóng",
-              },
-              "k_cl_6",
-            )
-          ).data.status,
-        ).toBe("CLOSED");
+      ).success,
+    ).toBe(true);
+    const dispatch = await h.write({
+      action: "dispatch_guard",
+      args: {
+        incident_id: "inc_04",
+        guard_id: "guard_002",
+        incident_version: await version(),
       },
-    );
-  },
-);
-
-describe.skipIf(!REGISTERED)(
-  "đăng ký tool P3 — tự bật khi INCIDENT_TOOLS/AUDIT_TOOLS vào DOMAIN_TOOLS",
-  () => {
-    test("7 tool P3 có mô tả riêng và annotation đúng mode", () => {
-      for (const name of P3_TOOLS) {
-        const tool = SECURITY_TOOLS.find((t) => t.name === name)!;
-        expect(tool.description.length).toBeGreaterThan(20);
-        if (tool.mode === "READ")
-          expect(tool.annotations.readOnlyHint).toBe(true);
-        else expect(tool.annotations.idempotentHint).toBe(false);
-      }
+      key: "k_cl_2",
+      session: s4,
     });
-  },
-);
+    expect(dispatch.success).toBe(true);
+    expect(
+      (
+        await update(
+          "inc_04",
+          {
+            expected_version: await version(),
+            status: "RESOLVED",
+            note: "Đã xử lý lại",
+            resolution_evidence_id: note,
+          },
+          "k_cl_3",
+        )
+      ).success,
+    ).toBe(true);
+    expectFailure(
+      await update(
+        "inc_04",
+        {
+          expected_version: await version(),
+          status: "CLOSED",
+          note: "Đóng",
+        },
+        "k_cl_4",
+      ),
+      "INVALID_STATE_TRANSITION",
+    );
+    const cancelled = await h.write({
+      action: "cancel_dispatch",
+      args: {
+        dispatch_id: dispatch.data.dispatch_id,
+        expected_version: 1,
+        reason: "Xong việc",
+      },
+      key: "k_cl_5",
+      session: s4,
+    });
+    expect(cancelled.success).toBe(true);
+    expect(
+      (
+        await update(
+          "inc_04",
+          {
+            expected_version: await version(),
+            status: "CLOSED",
+            note: "Đóng",
+          },
+          "k_cl_6",
+        )
+      ).data.status,
+    ).toBe("CLOSED");
+  });
+});
 
-test.skipIf(REGISTERED)(
-  "CHỜ P3 (việc 2–4): INCIDENT_TOOLS/AUDIT_TOOLS chưa được đăng ký",
-  () => {},
-);
-test.skipIf(UPDATE_READY)(
-  "CHỜ P3 (việc 7): mock chưa có handler update_incident",
-  () => {},
-);
+describe("đăng ký tool P3", () => {
+  test("7 tool P3 có mô tả riêng và annotation đúng mode", () => {
+    for (const name of P3_TOOLS) {
+      const tool = SECURITY_TOOLS.find((t) => t.name === name)!;
+      expect(tool.description.length).toBeGreaterThan(20);
+      if (tool.mode === "READ")
+        expect(tool.annotations.readOnlyHint).toBe(true);
+      else expect(tool.annotations.idempotentHint).toBe(false);
+    }
+  });
+});
