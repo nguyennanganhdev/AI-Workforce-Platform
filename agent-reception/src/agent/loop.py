@@ -96,7 +96,8 @@ async def run_agent(model, toolbox: Toolbox, system: str, history: list[dict]) -
                 # The model forgot to name its sources: a figure in the reply still shows where it came from.
                 figures = [_digits(figure) for figure in FIGURE.findall(reply) if len(_digits(figure)) >= 2]
                 used = [p for p in toolbox.passages.values() if any(f in _digits(p["text"]) for f in figures)]
-            titles = list(dict.fromkeys(str(passage["title"]) for passage in used))
+            # Three titles are enough to show where an answer comes from.
+            titles = list(dict.fromkeys(str(passage["title"]) for passage in used))[:3]
             return reply + ("\n(Nguồn: " + "; ".join(titles) + ")" if titles else "")
         if retried:
             break
