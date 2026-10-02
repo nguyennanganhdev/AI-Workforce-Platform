@@ -312,6 +312,46 @@ def test_knowledge_authorization_follows_the_residents_home(database, monkeypatc
             assert c.post(path, headers=bearer, json={**ask, "scopeId": scopes[elsewhere]}).status_code == 403
 
 
+def test_a_question_without_a_source_becomes_a_session_that_management_answers(database, monkeypatch):
+    monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "0a" * 32)
+    question, answer = "Phòng sinh hoạt cộng đồng có cho thuê không?", "Có, bạn đăng ký tại lễ tân sảnh trước 3 ngày."
+    with client(database) as c:
+        channel, message_id = resident_message(c, "Inquiry", question)
+        path = f"/internal/reception/chats/{channel}/inquiries"
+        assert c.post(path, json={"message_id": message_id}).status_code == 401
+        bearer = {"Authorization": "Bearer " + delegate(c, channel, message_id)["token"]}
+        opened = c.post(path, headers=bearer, json={"message_id": message_id})
+        assert opened.status_code == 201, opened.text
+        assert opened.json()["accepted"] is True
+        session = opened.json()["sessionId"]
+        # Asking again about the same message does not open a second session.
+        assert c.post(path, headers=bearer, json={"message_id": message_id}).json()["sessionId"] == session
+    # The session has no ticket and the management group chat shows the question.
+    team = sql(database, "select status,ticket_id,request_message_id,channel_id from agent_teams where id=$1", UUID(session))[0]
+    assert team["status"] == "queued" and team["ticket_id"] is None and str(team["request_message_id"]) == message_id
+    room = sql(database, "select body->>'text' as text from messages where channel_id=$1 order by seq desc limit 1", team["channel_id"])[0]
+    assert question in room["text"]
+
+    with demo_client(database, "technical") as staff:
+        assert staff.get("/sessions/inquiries").json()["items"] == []
+        assert staff.post(f"/sessions/{session}/answer", json={"version": 0, "text": answer}).status_code == 403
+    with demo_client(database, "management") as management:
+        item = next(i for i in management.get("/sessions/inquiries").json()["items"] if i["id"] == session)
+        assert item["question"] == question and item["status"] == "queued" and item["unit_code"] == "1201"
+        body = {"version": item["state_version"], "text": answer}
+        done = management.post(f"/sessions/{session}/answer", json=body)
+        assert done.status_code == 200, done.text
+        assert done.json()["status"] == "completed"
+        # A retry is the same answer; a different answer to an answered question is refused.
+        assert management.post(f"/sessions/{session}/answer", json=body).json() == done.json()
+        assert management.post(f"/sessions/{session}/answer", json={**body, "text": "Khác"}).status_code == 409
+        assert all(i["id"] != session for i in management.get("/sessions/inquiries").json()["items"])
+    with client(database) as c:
+        last = c.get(f"/resident/chats/{channel}/messages?limit=100").json()["items"][-1]
+        assert last["sender_kind"] == "agent" and answer in last["body"]["text"]
+        assert next(x for x in c.get("/resident/chats?limit=100").json()["items"] if x["id"] == channel)["unread_count"] == 1
+
+
 def test_operation_identity_rollback_and_missing_receipt(database):
     with client(database) as c:
         body = {

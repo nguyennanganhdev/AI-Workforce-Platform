@@ -49,6 +49,8 @@ async def completions(request: Request):
     body = await request.json()
     system, user = body["messages"][0]["content"], json.loads(body["messages"][1]["content"])
     assert body["response_format"] == {"type": "json_object"}
+    if '"route"' in system:
+        return {"choices": [{"message": {"role": "assistant", "content": json.dumps({"route": "management"})}}]}
     if '"used"' in system:
         answer = {"answer": user["passages"][0]["text"], "used": [user["passages"][0]["rank"]]}
     else:

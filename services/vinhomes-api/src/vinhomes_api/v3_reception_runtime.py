@@ -78,6 +78,21 @@ async def evaluate_policy(body: PolicyRequest, scope: Scope) -> dict[str, object
     }
 
 
+async def append_agent_message(db: AsyncConnection, channel_id: str, agent: str, visibility: str,
+                               body: dict[str, object], reply_to: UUID | None = None) -> dict[str, object]:
+    seq = (await db.execute(text("""
+        update channels set next_message_seq=next_message_seq+1,last_message=:preview,last_message_at=now(),updated_at=now()
+        where id=:id returning next_message_seq-1
+    """), {"id": channel_id, "preview": str(body.get("text", ""))[:200]})).scalar_one()
+    created = await db.execute(text(f"""
+        insert into messages(tenant_id,channel_id,seq,sender_kind,sender_agent_id,visibility,body,reply_to_id)
+        values ({TENANT},:channel,:seq,'agent',:agent,:visibility,cast(:body as jsonb),:reply_to)
+        returning id,seq
+    """), {"channel": channel_id, "seq": seq, "agent": agent, "visibility": visibility,
+           "body": json.dumps(body, ensure_ascii=False), "reply_to": reply_to})
+    return dict(created.mappings().one())
+
+
 async def write_reply(db: AsyncConnection, channel_id: str, reply: str, reply_to: UUID) -> dict[str, object]:
     """One agent reply per resident message; a retry returns the stored reply."""
     agent = await reception_agent(db)
@@ -88,17 +103,7 @@ async def write_reply(db: AsyncConnection, channel_id: str, reply: str, reply_to
     """), {"channel": channel_id, "reply_to": reply_to, "agent": agent})).mappings().first()
     if old:
         return dict(old)
-    seq = (await db.execute(text("""
-        update channels set next_message_seq=next_message_seq+1,last_message=:preview,last_message_at=now(),updated_at=now()
-        where id=:id returning next_message_seq-1
-    """), {"id": channel_id, "preview": reply[:200]})).scalar_one()
-    created = await db.execute(text(f"""
-        insert into messages(tenant_id,channel_id,seq,sender_kind,sender_agent_id,visibility,body,reply_to_id)
-        values ({TENANT},:channel,:seq,'agent',:agent,'customer',cast(:body as jsonb),:reply_to)
-        returning id,seq
-    """), {"channel": channel_id, "seq": seq, "agent": agent,
-           "body": json.dumps({"text": reply}, ensure_ascii=False), "reply_to": reply_to})
-    return dict(created.mappings().one())
+    return await append_agent_message(db, channel_id, agent, "customer", {"text": reply}, reply_to)
 
 
 class ReplyCreate(BaseModel):

@@ -69,12 +69,19 @@ def test_a_model_guess_among_the_facts_does_not_lose_the_request():
     assert "Mã yêu cầu của bạn: VH-" in reply
 
 
-def test_information_question_is_not_answered_without_sources():
+def test_a_question_without_a_source_goes_to_management_and_the_answer_comes_back():
     chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
     before = len(call("GET", "/resident/tickets")["items"])
-    reply, _ = say(chat, "Bể bơi mở cửa lúc mấy giờ?")
-    assert "Chưa có đủ nguồn" in reply
+    question = f"Bể bơi mở cửa lúc mấy giờ? ({uuid4().hex[:6]})"
+    reply, _ = say(chat, question)
+    # Reception does not guess and does not open a request: the question becomes a management session.
+    assert "chuyển câu hỏi của bạn tới Ban quản lý" in reply
     assert len(call("GET", "/resident/tickets")["items"]) == before
+    inquiry = next(i for i in call("GET", "/sessions/inquiries", actor="management")["items"] if i["question"] == question)
+    call("POST", f"/sessions/{inquiry['id']}/answer", actor="management",
+         json={"version": inquiry["state_version"], "text": "Bể bơi mở từ 6 giờ đến 21 giờ."})
+    last = call("GET", f"/resident/chats/{chat}/messages?limit=100")["items"][-1]
+    assert last["sender_kind"] == "agent" and "6 giờ đến 21 giờ" in last["body"]["text"]
 
 
 def test_information_question_is_answered_from_cited_passages():

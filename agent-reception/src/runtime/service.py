@@ -27,6 +27,7 @@ from ..persistence import open_sqlite_checkpointer
 from .backend import BackendClient, BackendOperations, DraftStore, RequestPolicy
 from .knowledge import KnowledgeSearch
 from .model import ChatCompletionsModel, ModelConfig
+from .inquiry import unanswered
 from .voice import reword
 
 FAILED_REPLY = "Xin lỗi, tôi chưa xử lý được tin nhắn này. Bạn thử lại sau ít phút hoặc gửi phản ánh bằng biểu mẫu nhé."
@@ -185,9 +186,17 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                     result = {"status": "failed"}
                 reply = FAILED_REPLY if result["status"] in ("failed", "cancelled") else result["state"].get("reply") or EMPTY_REPLY
                 state = result.get("state") or {}
+                ok = result["status"] not in ("failed", "cancelled") and bool(state.get("reply"))
+                answered = (state.get("intake") or {}).get("kind") == "answer"
+                handed_over = None
+                if ok and not answered and (state.get("decision") or {}).get("next_action") == "retrieve_knowledge":
+                    # No source answers the question: it goes to the management session, or it is out of scope.
+                    handed_over = await unanswered(request.app.state.model, backend, context, body.channel_id, message)
+                if handed_over:
+                    reply = handed_over
                 # Cited answers are already written from their sources, and an emergency
                 # must not wait for wording; everything else is reworded for the resident.
-                if result["status"] not in ("failed", "cancelled") and state.get("reply")                         and (state.get("intake") or {}).get("kind") != "answer"                         and state.get("handoff_reason") != "emergency":
+                elif ok and not answered and state.get("handoff_reason") != "emergency":
                     reply = await reword(request.app.state.model, body.message.text, reply)
                 code = tools.handoffs.pop(body.channel_id, None)
                 if code and state.get("handoff_reason") == "emergency":
