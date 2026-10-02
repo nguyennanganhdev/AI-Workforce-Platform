@@ -1,6 +1,17 @@
 -- Relational fixtures for the new V3 endpoints. Existing workflow state is preserved.
 BEGIN;
 SELECT set_config('app.tenant_id','11111111-1111-5111-a111-111111111111',true);
+-- Existing demo installations also need a version for Reception handoff.
+INSERT INTO agent_versions(id,tenant_id,agent_id,version_no,runtime,framework_version,
+ instructions,config,config_hash,created_by)
+SELECT 'dddddddd-dddd-5ddd-addd-ddddddddddd1',tenant_id,id,1,'agentscope',
+ 'demo-record-only','Supervisor demo record-only version','{}',repeat('0',64),
+ 'local-v3-management'
+FROM agents WHERE id='demo-supervisor'
+ AND tenant_id='11111111-1111-5111-a111-111111111111'
+ AND NOT EXISTS (SELECT 1 FROM agent_versions WHERE agent_id='demo-supervisor'
+   AND tenant_id='11111111-1111-5111-a111-111111111111' AND version_no=1)
+ON CONFLICT(id) DO NOTHING;
 INSERT INTO security_cameras(id,tenant_id,building_id,code,name,location,status)
 SELECT md5('demo-camera:'||n)::uuid,'11111111-1111-5111-a111-111111111111',
  '77777777-7777-5777-a777-777777777777','CAM-DEMO-'||n,'Camera demo '||n,

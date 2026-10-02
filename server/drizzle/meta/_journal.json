@@ -57,6 +57,13 @@
       "when": 1790819701727,
       "tag": "0007_reception_supervisor_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790819701728,
+      "tag": "0008_reception_command_receipt",
+      "breakpoints": true
     }
   ]
 }

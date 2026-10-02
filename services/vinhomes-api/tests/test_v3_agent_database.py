@@ -1,0 +1,342 @@
+"""Agent business APIs exercised against migrated, seeded PostgreSQL."""
+
+from contextlib import contextmanager
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
+
+import pytest
+from fastapi.testclient import TestClient
+from test_resident_contract import CATEGORY, TENANT, client, sql
+from test_resident_contract import (
+    database as database,  # noqa: PLC0414 -- pytest fixture export
+)
+from vinhomes_api.main import create_app
+from vinhomes_api.v3_config import V3Settings
+
+EXECUTE = "/internal/reception/operations/execute"
+RECONCILE = "/internal/reception/operations/reconcile"
+
+
+@contextmanager
+def demo_client(database, actor):
+    settings = V3Settings(
+        "127.0.0.1", 8000, database["runtime"], TENANT, None, None, demo_mode=True
+    )
+    with TestClient(
+        create_app(settings),
+        client=("127.0.0.1", 50000),
+        headers={"X-Demo-Actor": actor},
+    ) as c:
+        yield c
+
+
+def operation(c, name, payload=None, expected=200):
+    body = {
+        "operation": name,
+        "input": payload or {},
+        "context": {},
+        "idempotency_key": str(uuid4()),
+    }
+    response = c.post(EXECUTE, json=body)
+    assert response.status_code == expected, response.text
+    return response.json(), body
+
+
+def test_reception_draft_handoff_and_durable_retry(database):
+    with client(database) as c:
+        context, _ = operation(c, "get_verified_resident_context")
+        place = context["residences"][0]
+        chat = c.post("/resident/chats", json={"title": "PostgreSQL agent flow"})
+        assert chat.status_code == 201, chat.text
+        channel = chat.json()["id"]
+        message = c.post(
+            f"/resident/chats/{channel}/messages",
+            json={
+                "text": "Bathroom is overflowing",
+                "client_message_id": str(uuid4()),
+            },
+        )
+        assert message.status_code == 201, message.text
+        before = sql(database, "select count(*) as n from tickets")[0]["n"]
+        draft, request = operation(
+            c,
+            "create_ticket_draft",
+            {
+                "channel_id": channel,
+                "title": "Bathroom overflow",
+                "description": "Resident reports water overflowing in bathroom",
+                "domain_id": place["domain_id"],
+                "building_id": place["building_id"],
+                "unit_id": place["unit_id"],
+                "category_id": CATEGORY,
+                "source_message_id": message.json()["id"],
+            },
+        )
+        assert sql(database, "select count(*) as n from tickets")[0]["n"] == before
+        assert c.post(EXECUTE, json=request).json()["replayed"] is True
+        assert c.post(RECONCILE, json=request).json()["status"] == "completed"
+        bad = {**request, "input": {**request["input"], "title": "Changed"}}
+        assert c.post(EXECUTE, json=bad).status_code == 409
+        target = {"channel_id": channel, "draft_id": draft["draftId"]}
+        operation(
+            c,
+            "update_ticket_incident",
+            {**target, "fields": {"request_kind": "incident"}},
+        )
+        operation(
+            c,
+            "submit_ticket_assessment",
+            {
+                **target,
+                "assessment": {
+                    "priority": "high",
+                    "severity": "major",
+                    "reason": "Resident-reported overflow",
+                },
+            },
+        )
+        destination, _ = operation(c, "resolve_management_destination", target)
+        assert destination["available"], destination
+        handoff, request = operation(c, "handoff_ticket", target)
+        assert handoff["accepted"], handoff
+        ticket_id = handoff["ticket"]["id"]
+        assert c.post(EXECUTE, json=request).json()["ticket"]["id"] == ticket_id
+        assert (
+            c.post(RECONCILE, json=request).json()["result"]["ticket"]["id"]
+            == ticket_id
+        )
+        persisted = sql(
+            database,
+            "select priority,severity from tickets where id=$1",
+            UUID(ticket_id),
+        )[0]
+        assert persisted == {"priority": "high", "severity": "major"}
+        assert (
+            sql(
+                database,
+                "select count(*) as n from vh_reception_supervisor_messages where ticket_id=$1",
+                UUID(ticket_id),
+            )[0]["n"]
+            == 1
+        )
+        waiting, _ = operation(c, "register_supervisor_wait", {"ticket_id": ticket_id})
+        assert waiting["registered"] and waiting["waitMode"] == "poll"
+        operation(c, "get_supervisor_event", {"ticket_id": ticket_id})
+        status, _ = operation(c, "get_ticket_status", {"ticket_id": ticket_id})
+        assert status["ticket"]["id"] == ticket_id
+        assert status["agentContext"]["source"] == "business_api"
+
+
+def test_operation_identity_rollback_and_missing_receipt(database):
+    with client(database) as c:
+        body = {
+            "operation": "get_verified_resident_context",
+            "input": {},
+            "context": {"principalId": "local-v3-admin"},
+            "idempotency_key": str(uuid4()),
+        }
+        assert c.post(EXECUTE, json=body).status_code == 403
+        body["context"] = {"tenantId": str(uuid4())}
+        assert c.post(EXECUTE, json=body).status_code == 403
+        body["context"] = {}
+        assert c.post(RECONCILE, json=body).json()["found"] is False
+        _, unsupported = operation(c, "process_self_help", expected=501)
+        assert c.post(RECONCILE, json=unsupported).json()["found"] is False
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/catalogs",
+        "/dashboard",
+        "/operations-profile",
+        "/tickets",
+        "/work-orders",
+        "/dispatch-queue",
+        "/tasks",
+        "/approvals",
+        "/triage-reviews",
+        "/plans",
+        "/rooms",
+        "/assets",
+        "/technical/active-outages",
+        "/security/alerts",
+        "/reports/filter-options",
+        "/reports/employee-performance",
+        "/reports/employee-feedback",
+        "/reports/repair-revenue",
+        "/reports/incident-frequency-summary",
+        "/memory/namespaces",
+        "/admin/accounts",
+        "/admin/agent-reviews",
+        "/admin/memory-candidates",
+        "/my/notifications",
+    ],
+)
+def test_seeded_database_read_apis(database, path):
+    actor = "management" if path.startswith("/reports/") else "admin"
+    with client(database, actor) as c:
+        params = {
+            "buildingId": "77777777-7777-5777-a777-777777777777",
+            "categoryId": CATEGORY,
+            "fromDate": "2020-01-01",
+            "toDate": "2029-01-01",
+        }
+        if path == "/reports/employee-feedback":
+            params["staffId"] = str(
+                sql(
+                    database,
+                    "select id from staff_profiles where user_id='local-v3-technical'",
+                )[0]["id"]
+            )
+        if path == "/memory/namespaces":
+            params["ticketId"] = str(
+                sql(database, "select id from tickets limit 1")[0]["id"]
+            )
+        response = c.get(path, params=params)
+        assert response.status_code == 200, response.text
+
+
+def test_billing_invoice_payment_retry_and_database_totals(database):
+    ticket = sql(
+        database, "select id from tickets where category_id=$1 limit 1", UUID(CATEGORY)
+    )[0]["id"]
+    issuer = sql(
+        database, "select id from staff_profiles where user_id='local-v3-technical'"
+    )[0]["id"]
+    with demo_client(database, "management") as c:
+        body = {
+            "issued_by_staff_id": str(issuer),
+            "bill_to_user_id": "local-v3-resident",
+            "idempotency_key": str(uuid4()),
+            "lines": [
+                {
+                    "category_id": CATEGORY,
+                    "description": "Demo labor",
+                    "quantity": 1,
+                    "unit_price": 150000,
+                }
+            ],
+        }
+        response = c.post(f"/tickets/{ticket}/invoices", json=body)
+        assert response.status_code == 201, response.text
+        iid = response.json()["invoice"]["id"]
+        assert (
+            c.post(f"/tickets/{ticket}/invoices", json=body).json()["invoice"]["id"]
+            == iid
+        )
+        payment = {"amount": 50000, "idempotency_key": str(uuid4())}
+        assert c.post(f"/invoices/{iid}/demo-payments", json=payment).status_code == 409
+        assert c.post(f"/invoices/{iid}/issue").status_code == 200
+        paid = c.post(f"/invoices/{iid}/demo-payments", json=payment)
+        assert paid.status_code == 201, paid.text
+        assert (
+            c.post(f"/invoices/{iid}/demo-payments", json=payment).json()["paymentId"]
+            == paid.json()["paymentId"]
+        )
+        detail = c.get(f"/invoices/{iid}").json()
+        assert float(detail["collectedAmount"]) == 50000
+        assert float(detail["outstandingAmount"]) == 100000
+        assert (
+            c.post(
+                f"/invoices/{iid}/demo-payments",
+                json={"amount": 100001, "idempotency_key": str(uuid4())},
+            ).status_code
+            == 409
+        )
+    assert (
+        sql(
+            database,
+            "select count(*) as n from payments where invoice_id=$1",
+            UUID(iid),
+        )[0]["n"]
+        == 1
+    )
+
+
+def test_security_emergency_notification_ack_and_retry(database):
+    ticket = sql(
+        database, "select id,version from tickets where code='DEMO-SEC-EMERGENCY'"
+    )[0]
+    with client(database, "management") as c:
+        body = {
+            "message": "Synthetic emergency",
+            "ticket_version": ticket["version"],
+            "idempotency_key": str(uuid4()),
+        }
+        response = c.post(f"/tickets/{ticket['id']}/emergency-alerts", json=body)
+        assert response.status_code == 201, response.text
+        alert = response.json()
+        assert (
+            c.post(f"/tickets/{ticket['id']}/emergency-alerts", json=body).json()["id"]
+            == alert["id"]
+        )
+        action = {"version": alert["version"], "note": "Acknowledged test"}
+        assert (
+            c.post(f"/security/alerts/{alert['id']}/ack", json=action).status_code
+            == 403
+        )
+        assert (
+            c.post(f"/security/alerts/{alert['id']}/escalate", json=action).status_code
+            == 409
+        )
+    with client(database, "security") as c:
+        ack = c.post(f"/security/alerts/{alert['id']}/ack", json=action)
+        assert ack.status_code == 200, ack.text
+        assert ack.json()["status"] == "acknowledged"
+        assert (
+            c.post(f"/security/alerts/{alert['id']}/ack", json=action).status_code
+            == 200
+        )
+    assert (
+        sql(
+            database,
+            "select status from security_alerts where id=$1",
+            UUID(alert["id"]),
+        )[0]["status"]
+        == "acknowledged"
+    )
+
+
+def test_sensor_history_and_scoped_report_export(database):
+    building = "77777777-7777-5777-a777-777777777777"
+    with client(database, "management") as c:
+        assets = c.get("/assets", params={"buildingId": building}).json()["items"]
+        aid = assets[0]["id"]
+        reading = c.post(
+            f"/assets/{aid}/sensor-readings",
+            json={
+                "parameter": "pressure",
+                "value": 2.5,
+                "unit": "bar",
+                "measured_at": datetime.now(UTC).isoformat(),
+                "source": "synthetic-test",
+            },
+        )
+        assert reading.status_code == 201, reading.text
+        readings = c.get(f"/assets/{aid}/sensor-readings")
+        assert readings.status_code == 200 and readings.json()["items"]
+        assert c.get(f"/assets/{aid}/maintenance-history").status_code == 200
+        body = {
+            "kind": "issued_revenue",
+            "building_id": building,
+            "category_id": CATEGORY,
+            "from_date": "2020-01-01",
+            "to_date": "2029-01-01",
+            "idempotency_key": str(uuid4()),
+        }
+        export = c.post("/reports/exports", json=body)
+        assert export.status_code == 201, export.text
+        result = export.json()
+        assert result["status"] == "ready" and result["downloadUrl"]
+        assert (
+            c.post("/reports/exports", json=body).json()["reportId"]
+            == result["reportId"]
+        )
+        assert (
+            c.get(f"/reports/exports/{result['reportId']}").json()["status"] == "ready"
+        )
+        content = c.get(result["downloadUrl"])
+        assert content.status_code == 200 and content.content.startswith(b"PK")
+    with client(database, "resident") as c:
+        assert c.get(result["downloadUrl"]).status_code in (403, 404)

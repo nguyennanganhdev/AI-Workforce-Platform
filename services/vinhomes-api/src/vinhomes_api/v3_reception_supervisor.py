@@ -82,7 +82,7 @@ class RequestSnapshot(StrictPayload):
         "unknown", "minor", "moderate", "major", "critical", "not_applicable"
     ]
     is_emergency: bool
-    triage_decision_id: UUID = Field(default=None)
+    triage_decision_id: UUID | None = None
     handoff_reason: Literal[
         "needs_staff", "self_help_declined", "self_help_failed", "emergency"
     ]
@@ -608,7 +608,7 @@ async def supervisor_inbox(
         await scope[0].execute(text(f"""
             select id,payload,created_at from vh_reception_supervisor_messages
             where tenant_id={TENANT} and team_id=:team_id and direction='reception_to_supervisor'
-              and (:after_at is null or (created_at,id)>
+              and (cast(:after_at as timestamptz) is null or (created_at,id)>
                 (cast(:after_at as timestamptz),cast(:after_id as uuid)))
             order by created_at,id limit :limit
         """), {"team_id": team_id, "after_at": after_at, "after_id": after_id,
@@ -794,7 +794,7 @@ async def resident_results(
         await db.execute(text(f"""
             select id,payload,created_at from vh_reception_supervisor_messages
             where tenant_id={TENANT} and ticket_id=:ticket_id and direction='supervisor_to_reception'
-              and (:after_at is null or (created_at,id)>
+              and (cast(:after_at as timestamptz) is null or (created_at,id)>
                 (cast(:after_at as timestamptz),cast(:after_id as uuid)))
             order by created_at,id limit :limit
         """), {"ticket_id": ticket_id, "after_at": after_at, "after_id": after_id,
