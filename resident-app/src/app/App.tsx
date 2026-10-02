@@ -655,7 +655,7 @@ export function App({ live }: { live?: ConnectedResident }) {
                           <strong>
                             {c.unread} tin chưa đọc · {c.title}
                           </strong>
-                          <p>{c.messages.at(-1)?.text}</p>
+                          <p>{c.preview ?? c.messages.at(-1)?.text}</p>
                         </span>
                       </button>
                     ))}

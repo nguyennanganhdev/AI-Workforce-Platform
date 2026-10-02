@@ -85,6 +85,14 @@
   color: #8796ad;
   font-size: 11px;
   margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.resident-rooms-list time {
+  color: #8796ad;
+  font-size: 11px;
+  white-space: nowrap;
 }
 .resident-rooms-search {
   display: flex;

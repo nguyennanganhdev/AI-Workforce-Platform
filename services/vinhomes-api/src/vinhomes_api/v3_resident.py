@@ -109,13 +109,17 @@ async def list_chats(scope: ResidentScope, limit: int = Query(50, ge=1, le=100),
                      offset: int = Query(0, ge=0, le=100000)) -> dict[str, object]:
     db, actor_id = scope
     result = await db.execute(text("""
-        select c.id, c.name, c.description, c.last_message_at, c.created_at,
+        select c.id, c.name, c.description, c.last_message_at, c.created_at, c.last_message,
+               -- What the conversation is about: its request, else the resident's first words.
+               coalesce(t.title, (select left(first.body->>'text', 80) from messages first
+                 where first.channel_id=c.id and first.sender_kind='user' and first.body->>'text'<>''
+                 order by first.seq limit 1), c.name) as title,
                t.id as ticket_id, t.code as ticket_code, t.status as ticket_status,
                (select count(*) from messages msg where msg.channel_id=c.id and msg.seq>m.last_read_seq
                  and msg.visibility in ('room','customer') and msg.sender_user_id is distinct from :actor_id) as unread_count
         from channels c
         join channel_memberships m on m.channel_id=c.id and m.tenant_id=c.tenant_id
-        left join lateral (select t.id,t.code,t.status from tickets t where t.channel_id=c.id and t.tenant_id=c.tenant_id order by t.created_at desc,t.id limit 1) t on true
+        left join lateral (select t.id,t.code,t.status,t.title from tickets t where t.channel_id=c.id and t.tenant_id=c.tenant_id order by t.created_at desc,t.id limit 1) t on true
         where c.kind='reception' and c.deleted_at is null
           and c.created_by=:actor_id and m.user_id=:actor_id
           and c.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid

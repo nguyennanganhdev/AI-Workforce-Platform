@@ -177,6 +177,28 @@ def resident_message(c, title, text="Xin chào"):
     return channel, message["id"]
 
 
+def test_chat_list_shows_what_each_conversation_is_about(database):
+    with client(database) as c:
+        empty = c.post("/resident/chats", json={"title": "Hội thoại mới"}).json()["id"]
+        talked, _ = resident_message(c, "Hội thoại mới", "Vòi nước bếp bị rò từ sáng nay, nước chảy xuống tủ.")
+        filed, _ = resident_message(c, "Hội thoại mới", "Ổ điện hỏng")
+        me = c.get("/resident/me").json()
+        unit = me["units"][0]
+        ticket = c.post(f"/resident/chats/{filed}/tickets", headers={"Idempotency-Key": str(uuid4())}, json={
+            "domain_id": unit["domain_id"], "building_id": unit["building_id"], "unit_id": unit["id"],
+            "category_id": CATEGORY, "title": "Ổ điện phòng khách không có điện", "description": "Ổ điện hỏng từ sáng.",
+            "contact_name": "Cư dân", "contact_phone": "0900000000", "location": "Phòng khách", "request_kind": "incident"})
+        assert ticket.status_code == 201, ticket.text
+        chats = {x["id"]: x for x in c.get("/resident/chats?limit=100").json()["items"]}
+        # No ticket yet: the resident's own first words name the conversation.
+        assert chats[talked]["title"] == "Vòi nước bếp bị rò từ sáng nay, nước chảy xuống tủ."
+        assert chats[talked]["last_message"] == "Vòi nước bếp bị rò từ sáng nay, nước chảy xuống tủ."
+        # With a ticket: its title, and the code and status to show under it.
+        assert chats[filed]["title"] == "Ổ điện phòng khách không có điện"
+        assert chats[filed]["ticket_code"].startswith("VH-") and chats[filed]["ticket_status"] == "open"
+        assert chats[empty]["title"] == "Hội thoại mới" and chats[empty]["last_message"] is None
+
+
 def test_reception_policy_and_reply_are_backend_decisions(database, monkeypatch):
     monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "ab" * 32)
     with client(database) as c:

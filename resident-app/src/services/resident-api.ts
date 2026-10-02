@@ -57,7 +57,13 @@ export type Profile = {
 export type Chat = {
   id: string;
   name: string;
+  /** The request's title, else the resident's first words, else `name`. */
+  title: string;
+  last_message: string | null;
+  last_message_at: string | null;
+  created_at: string;
   ticket_id?: string;
+  ticket_code?: string;
   unread_count: number;
 };
 export type Message = {

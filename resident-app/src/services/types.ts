@@ -46,6 +46,11 @@ export type ResidentConversation = {
   messages: ChatMessage[];
   draft: Draft | null;
   requestId?: string;
+  /** Code and status of the linked request, as the resident reads them. */
+  requestCode?: string;
+  requestStatus?: string;
+  /** Last message of the conversation, for lists that do not load its messages. */
+  preview?: string;
   unread: number;
   updatedAt: string;
 };

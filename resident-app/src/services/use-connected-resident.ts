@@ -11,7 +11,12 @@ import {
   type TicketDetail,
   type Approval,
 } from "./resident-api";
-import type { Draft, Photo, ResidentState } from "./types";
+import {
+  statusLabels,
+  type Draft,
+  type Photo,
+  type ResidentState,
+} from "./types";
 
 const empty: ResidentState = {
   version: 1,
@@ -95,14 +100,16 @@ export function useConnectedResident() {
         ),
       ),
     );
-    const chatMessages = messages.filter((m) => m.body.text).map((m) => ({
-      id: m.id,
-      role:
-        m.sender_kind === "user"
-          ? ("resident" as const)
-          : ("assistant" as const),
-      text: m.body.text || "",
-    }));
+    const chatMessages = messages
+      .filter((m) => m.body.text)
+      .map((m) => ({
+        id: m.id,
+        role:
+          m.sender_kind === "user"
+            ? ("resident" as const)
+            : ("assistant" as const),
+        text: m.body.text || "",
+      }));
     // Reception answers within the backend's three-minute dispatch limit, or the backend
     // stores a fallback reply. Older unanswered messages predate the agent.
     const last = messages.at(-1);
@@ -126,10 +133,17 @@ export function useConnectedResident() {
       awaitingReply: awaiting.current,
       conversations: chats.map((c) => ({
         id: c.id,
-        title: c.name,
+        title: c.title || c.name,
         requestId: c.ticket_id,
+        requestCode: c.ticket_code,
+        requestStatus: c.ticket_id
+          ? statusLabels[
+              requests.find((r) => r.id === c.ticket_id)?.status ?? "received"
+            ]
+          : undefined,
+        preview: c.last_message ?? undefined,
         unread: c.id === selected && path[0] === "chat" ? 0 : c.unread_count,
-        updatedAt: (c as Chat & { updated_at?: string }).updated_at || "",
+        updatedAt: c.last_message_at || c.created_at,
         messages: c.id === selected ? chatMessages : [],
         draft: drafts.current.get(c.id) ?? null,
       })),
