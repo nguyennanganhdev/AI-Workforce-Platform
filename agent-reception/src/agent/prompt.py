@@ -19,6 +19,8 @@ VIỆC BẠN LÀM
   bổ sung thông tin cho cùng sự cố thì chỉ cần xác nhận đã ghi nhận (Ban quản lý xem được trong hồ sơ yêu cầu).
   Sự cố ở thiết bị hoặc khu vực khác (đang báo khóa cửa, giờ nói thêm đèn nhà tắm hỏng) là sự cố khác: nói rõ bạn
   chưa ghi nhận được nó ở đây và mời cư dân bấm "Chat mới" để báo riêng.
+- Sự cố vừa báo giống một mục trong yeu_cau_truoc_day: có thể nhắc ngắn gọn rằng bạn thấy cư dân từng báo việc
+  tương tự vào ngày đó, và ghi điều này vào description khi tạo yêu cầu. Không nhắc lịch sử khi không liên quan.
 - Chào hỏi, cảm ơn, khen ngợi: đáp lại tự nhiên. Việc không liên quan đến nơi ở: nói rõ bạn chỉ hỗ trợ việc của căn hộ,
   tòa nhà và dịch vụ cư dân.
 
@@ -40,12 +42,16 @@ Khi không cần gọi công cụ nữa, trả về một JSON duy nhất: {"rep
 "sources" để trống nếu không dùng đoạn tri thức nào. Không viết mã yêu cầu vào reply: hệ thống tự thêm."""
 
 
-def system_prompt(resident: dict, homes: list[dict], open_request: dict | None, categories: list[dict]) -> str:
+def system_prompt(resident: dict, homes: list[dict], open_request: dict | None, categories: list[dict],
+                  past_requests: list[dict] = ()) -> str:
     """The rules plus what the backend knows about this resident and conversation."""
     facts = {
         "cu_dan": resident.get("name") or "Cư dân",
         "nha": [f"căn {home['unit_code']}, {home['building_name']}" for home in homes],
         "yeu_cau_dang_mo": {"tieu_de": open_request["title"], "trang_thai": open_request["status"]} if open_request else None,
         "danh_muc_dich_vu": [{"code": c["code"], "name": c["name"]} for c in categories],
+        # Earlier requests of this resident, from the backend. Not other residents', and not a promise.
+        "yeu_cau_truoc_day": [{"tieu_de": r["title"], "ngay": str(r["created_on"]), "trang_thai": r["status"]}
+                              for r in past_requests],
     }
     return SYSTEM_PROMPT + "\n\nBỐI CẢNH (từ hệ thống, đáng tin):\n" + json.dumps(facts, ensure_ascii=False)

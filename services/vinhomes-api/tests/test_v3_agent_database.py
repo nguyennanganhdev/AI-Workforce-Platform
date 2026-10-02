@@ -387,8 +387,14 @@ def test_reception_reads_the_conversation_and_its_open_request(database, monkeyp
             "domain_id": unit["domain_id"], "building_id": unit["building_id"], "unit_id": unit["id"],
             "category_id": CATEGORY, "title": "Ổ điện hỏng", "description": "Ổ điện hỏng từ sáng.",
             "contact_name": "Cư dân", "contact_phone": "0900000000", "location": "Phòng khách", "request_kind": "incident"})
-        request = c.get(path, headers=bearer).json()["open_request"]
+        after = c.get(path, headers=bearer).json()
+        request = after["open_request"]
         assert request["title"] == "Ổ điện hỏng" and request["status"] == "open" and request["code"].startswith("VH-")
+        # Long-term memory is the resident's own earlier requests, never anyone else's or the open one.
+        mine = {str(row["id"]) for row in sql(database, "select id from tickets where requester_user_id='local-v3-resident'")}
+        assert after["past_requests"] and len(after["past_requests"]) <= 5
+        assert {r["id"] for r in after["past_requests"]} <= mine - {request["id"]}
+        assert all(set(r) == {"id", "title", "status", "category", "created_on"} for r in after["past_requests"])
 
 
 def test_operation_identity_rollback_and_missing_receipt(database):

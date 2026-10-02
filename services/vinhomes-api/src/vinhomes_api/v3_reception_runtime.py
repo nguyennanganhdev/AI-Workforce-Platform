@@ -129,7 +129,15 @@ async def conversation_context(channel_id: str, scope: Scope) -> dict[str, objec
         from tickets t where t.channel_id=:channel and t.tenant_id={TENANT} and t.requester_user_id=:actor
           and t.status not in ('closed','cancelled') order by t.created_at desc limit 1
     """), {"channel": channel_id, "actor": run["user_id"]})).mappings().first()
-    return {"history": history, "open_request": dict(request) if request else None}
+    # The resident's own earlier requests: what the agent may remember about them across conversations.
+    past = await db.execute(text(f"""
+        select t.id,t.title,t.status,c.name as category,t.created_at::date as created_on
+        from tickets t left join service_categories c on c.id=t.category_id
+        where t.tenant_id={TENANT} and t.requester_user_id=:actor and t.id is distinct from cast(:open as uuid)
+        order by t.created_at desc limit 5
+    """), {"actor": run["user_id"], "open": str(request["id"]) if request else None})
+    return {"history": history, "open_request": dict(request) if request else None,
+            "past_requests": [{**dict(row), "id": str(row["id"])} for row in past.mappings()]}
 
 
 class ReplyCreate(BaseModel):

@@ -158,8 +158,9 @@ async def agent_turn(backend: BackendClient, client: httpx.AsyncClient, model, k
         outcome = await toolbox.emergency_request(message["text"])
         reply = AGENT_EMERGENCY_REPLY if "error" not in outcome else FAILED_REPLY
     else:
-        reply = await run_agent(model, toolbox, system_prompt(resident["resident"], resident["residences"],
-                                                              turn["open_request"], categories), turn["history"])
+        reply = await run_agent(model, toolbox, system_prompt(
+            resident["resident"], resident["residences"], turn["open_request"], categories,
+            turn.get("past_requests", [])), turn["history"])
     return reply, toolbox.filed_code
 
 

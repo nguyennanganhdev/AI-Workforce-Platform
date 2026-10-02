@@ -26,8 +26,8 @@
 ### Điểm dừng 2 — quyết định bật agent mới
 
 ## Giai đoạn 4 — Bộ nhớ dài hạn
-- [ ] T4.1 Bộ nhớ cư dân từ ticket đã đóng (M)
-- [ ] T4.2 Cư dân xem và xóa bộ nhớ của mình (S)
+- [x] T4.1 Bộ nhớ cư dân: 5 yêu cầu gần nhất của chính cư dân đưa vào ngữ cảnh agent (không cần kho mới; chỉ đọc dữ liệu của cư dân đó)
+- [ ] T4.2 Hoãn: bộ nhớ hiện là lịch sử yêu cầu, cư dân đã xem được ở "Yêu cầu của tôi". Chỉ cần khi có bộ nhớ sở thích dạng tự do
 
 ## Giai đoạn 5 — Tự thẩm định, tự cải thiện
 - [ ] T5.1 Thu tín hiệu ngầm (S)
