@@ -105,7 +105,7 @@ def request_approval(state, view, stage, now):
     state.phase = "waiting_management" if stage == "management_plan" else "waiting_resident_plan"
 
 
-def prepare_decision(state, decision, view, now):
+def prepare_decision(state, decision, view, now, *, persist_drafts=False):
     """Pure, validated intent construction; no model/network/storage calls."""
     validate_decision(decision, state, view)
     kind = decision.kind
@@ -157,6 +157,9 @@ def prepare_decision(state, decision, view, now):
                                        **plan_fields(state))
         state.pause_reason = "waiting_backend_publication"
     elif kind == "plan":
+        if persist_drafts and state.reception is not None:
+            state.plan_draft = decision.plan.model_copy(deep=True)
+            return
         require(view.plan_id is not None, "dependency_unavailable:plan_identity")
         if state.assignment:
             require(view.revision_reconciled, "dependency_unavailable:live_assignment_reconciliation")
@@ -317,13 +320,15 @@ class SupervisorService:
     def __init__(self, *, store: StateStore, authority: Authority, verifier: EventVerifier,
                  event_types: Dict[str, str], planner: Planner, room: RoomBridge,
                  backend: BackendBridge, groupchat_version_id: str,
-                 turn_policy: Optional[TurnPolicy] = None,
+                 turn_policy: Optional[TurnPolicy] = None, publisher=None, groupchat_resolver=None,
                  max_steps: int = 16, clock=None,
                  reception: Optional[ReceptionPort] = None):
         require(bool(groupchat_version_id) and type(max_steps) is int and max_steps > 0, "invalid_config")
         require(all(v in INBOUND_TYPES for v in event_types.values()), "unsupported_event_mapping")
         self.reception = reception
         self.store, self.authority, self.verifier = store, authority, verifier
+        self.publisher = publisher
+        self.groupchat_resolver = groupchat_resolver
         self.event_types = dict(event_types)
         self.planner, self.room, self.backend = planner, room, backend
         self.groupchat_version_id, self.turn_policy = groupchat_version_id, turn_policy or TurnPolicy()
@@ -334,8 +339,12 @@ class SupervisorService:
         require(await self.store.commit(state, expected, delivery_id=delivery_id), "state_conflict")
         return state
 
-    async def handle_delivery(self, delivery: PendingDelivery, trusted_context: object):
-        """trusted_context is transport/worker authentication, NOT a user JSON Context."""
+    async def handle_delivery(self, delivery: PendingDelivery, trusted_context: object, *, acknowledge=True):
+        """Trusted worker auth; composition defers delivery ACK until D07 intent.
+
+        Standalone callers retain atomic checkpoint+ACK. Composition passes False
+        and its inbox owner ACKs only after dependent durable work is accepted.
+        """
         require(delivery.target == "supervisor", "wrong_target")
         validate_event(delivery.event)
         validate_payload(delivery.message_type, delivery.event["payload"])
@@ -358,7 +367,7 @@ class SupervisorService:
         prior = state.events.get(delivery.event_id)
         if prior is not None:
             require(prior == delivery.fingerprint, "event_conflict")
-            return await self._save(state, old.version, delivery.event_id)
+            return await self._save(state, old.version, delivery.event_id if acknowledge else None)
         # Worker retries after action reconciliation; do not lose events while an
         # effect is in flight, or let a reply rewrite the dispatch fence.
         require(state.action is None, "action_pending")
@@ -368,7 +377,7 @@ class SupervisorService:
         apply_message(state, delivery.message_type, delivery.event["payload"], self.clock())
         state.events[delivery.event_id] = delivery.fingerprint
         state.aggregate_versions[aggregate] = version
-        return await self._save(state, old.version if old else None, delivery.event_id)
+        return await self._save(state, old.version if old else None, delivery.event_id if acknowledge else None)
 
     async def handle_reception(self, raw: Dict[str, Any], authentication: object) -> SupervisorState:
         require(self.reception is not None, "dependency_unavailable:reception_v2")
@@ -376,8 +385,12 @@ class SupervisorService:
         verified = await self.reception.verify(message.model_copy(deep=True), authentication)
         require(verified.message == message, "verified_message_mismatch")
         old = await self.store.load(verified.context)
+        group_pin = old.groupchat_version_id if old else self.groupchat_version_id
+        if old is None and self.groupchat_resolver is not None:
+            group_pin = await self.groupchat_resolver(verified.context)
+            require(isinstance(group_pin,str) and bool(group_pin), 'dependency_unavailable:supervisor_group_release')
         state = old.model_copy(deep=True) if old else SupervisorState(
-            context=verified.context, groupchat_version_id=self.groupchat_version_id,
+            context=verified.context, groupchat_version_id=group_pin,
             turn_policy=self.turn_policy)
         require(old is None or old.reception is not None, "v1_checkpoint_requires_migration")
         receive(state, verified, self.clock())
@@ -402,7 +415,12 @@ class SupervisorService:
         require(receipt.get(identity) == a.wire[identity], "receipt_mismatch")
         expected = state.version
         a.receipt = receipt
-        if a.channel == "reception":
+        if a.channel == "draft":
+            from runtime.publication import DraftPublisher
+            DraftPublisher.validate(a,receipt)
+            state.draft_receipts[a.wire['draft_key']] = receipt
+            a.status = "done"
+        elif a.channel == "reception":
             require(receipt.get("status") in ("accepted", "completed"), "invalid_receipt")
             a.status = "done"
             if a.operation in ("completed", "cancelled", "failed"):
@@ -479,6 +497,10 @@ class SupervisorService:
     def _check_action(self, state):
         a = state.action
         require(a is not None and a.plan_version == state.revision, "stale_action")
+        if a.channel == "draft":
+            require(self.publisher is not None and a.wire['request_id'] == a.action_id and
+                    a.wire['context'] == state.context.model_dump(mode='json'), 'draft_identity_mismatch')
+            return
         if a.channel == "reception":
             message = SupervisorMessage.model_validate(a.wire)
             require(message.message_type == a.operation and
@@ -546,9 +568,12 @@ class SupervisorService:
         self._check_action(state)
         await self.authority.authorize_action(state.model_copy(deep=True), a.model_copy(deep=True))
         a.status = "sending"
+        a.dispatch_attempt += 1
         state = await self._save(state, state.version)
         try:
-            if a.channel == "reception":
+            if a.channel == "draft":
+                receipt = await self.publisher.dispatch(state.model_copy(deep=True),a.model_copy(deep=True))
+            elif a.channel == "reception":
                 require(self.reception is not None, "dependency_unavailable:reception_v2")
                 receipt = await self.reception.send(SupervisorMessage.model_validate(a.wire), state.context)
             else:
@@ -567,6 +592,39 @@ class SupervisorService:
                 state.pause_reason = "outcome_unknown"
             return await self._save(state, old_version)
         return await self._record(state, receipt)
+
+    def _prepare_publication(self, state, view):
+        # Versioned consumer proposal, not a canonical backend request schema.
+        from .models import PlanDecision
+        if state.plan_draft is not None:
+            kind, content = 'plan', state.plan_draft.model_dump(mode='json')
+        elif state.question_draft is not None:
+            kind, content = 'question', {'question':state.question_draft}
+        elif state.publication_draft is not None:
+            kind, content = 'result', dict(state.publication_draft)
+        elif state.phase == 'waiting_cancellation' and view.cancellation_confirmed is None:
+            kind, content = 'cancel', {'source_message_id':state.reception.source_message_id}
+        else:
+            return False
+        draft_key = fingerprint({'scope':state.context.model_dump(mode='json'),
+            'revision':state.revision,'kind':kind,'content':content,
+            'source_message_id':state.reception.source_message_id if state.reception else None})
+        prior = state.draft_receipts.get(draft_key)
+        if prior:
+            if kind == 'plan':
+                require(view.plan_id == prior['canonical_id'] and view.ticket_version == prior['ticket_version'],
+                        'dependency_unavailable:canonical_plan_projection')
+                proposal = state.plan_draft
+                state.plan_draft = None
+                prepare_decision(state,PlanDecision(kind='plan',plan=proposal),view,self.clock())
+                return True
+            return False  # Authority projection will drive pending/QC/cancel gates.
+        key = stable_id(state,'draft:'+draft_key)
+        state.action = Action(action_id=key,channel='draft',operation=kind,plan_version=state.revision,
+            wire={'request_id':key,'draft_key':draft_key,'context':state.context.model_dump(mode='json'),
+                  'ticket_version':state.ticket_version,'kind':kind,'content':content,
+                  'target_plan_version':state.revision + (1 if kind == 'plan' and state.phase == 'waiting_result_validation' else 0)})
+        return True
 
     async def resume(self, context: Context, trigger: str = "worker") -> SupervisorState:
         # trigger is diagnostic only: no caller string can approve/unpause work.
@@ -601,6 +659,8 @@ class SupervisorService:
                     for a in state.journal
                 ):
                     action(state, "backend", "completion.requested", dict(state.completion))
+                elif self.publisher is not None and self._prepare_publication(state,view):
+                    pass
                 elif prepare_next(state, view, self.clock()):
                     pass
                 elif state.question_draft is not None:
@@ -614,7 +674,7 @@ class SupervisorService:
                     if state.room:
                         current_room = await self.room.read(context, state.room.room_id)
                         require(current_room.room_version == state.room.room_version, "STALE_VERSION")
-                    prepare_decision(state, decision, view, self.clock())
+                    prepare_decision(state, decision, view, self.clock(), persist_drafts=self.publisher is not None)
                 else:
                     return state
                 await self._save(state, original.version)

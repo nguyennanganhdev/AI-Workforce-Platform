@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 from copy import deepcopy
+from uuid import uuid5, NAMESPACE_URL
 
 from pydantic import ValidationError
 from typing import Optional, Union
@@ -127,6 +128,7 @@ class RoomService:
             payload.instruction,
             context.tasks,
             context.ticket,
+            room.groupchat_version_id,
         )
 
     async def execute(self, raw: Union[Command, dict]) -> Union[Success, Failure]:
@@ -153,6 +155,14 @@ class RoomService:
                 "Dependency failed; inspect operation before retry",
             )
 
+    async def _authorized_snapshot(self, context, operation):
+        # Read detached state, authorize outside the storage transaction. Every
+        # mutation below compares the observed room version/fence before apply.
+        async with self.state.transaction(context) as state:
+            observed = state.model_copy(deep=True)
+        await self.resolver.authorize(context, operation, observed.snapshot)
+        return observed
+
     async def _execute(self, command: Command) -> Union[Success, Failure]:
         ctx, p = command.context, command.payload
         result: Union[Success, Failure]
@@ -168,9 +178,54 @@ class RoomService:
         # Giới hạn độ dài khóa nội bộ ngay cả khi phía gọi dùng đủ 256 ký tự.
         key_hash = hashlib.sha256(command.idempotency_key.encode()).hexdigest()
         key = f"{p.operation}:{key_hash}"
+        observed = await self._authorized_snapshot(ctx, p.operation)
+        prepared_members = []
+        prepared_active = None
+        before = observed.snapshot
+        if key not in observed.operations:
+            if isinstance(p, OpenRoom) and before is None:
+                draft_room = Snapshot(room_id=new_id(), scope=ctx,
+                    groupchat_version_id=p.groupchat_version_id, participants=[], policy=p.turn_policy)
+                for spec in p.participants:
+                    resolved = await self.resolver.resolve(ctx, p.groupchat_version_id, spec, draft_room)
+                    validate_resolved(spec, resolved, draft_room)
+                    draft_room.participants.append(resolved)
+                prepared_members = draft_room.participants
+            elif isinstance(p, AddParticipant) and before:
+                resolved = await self.resolver.resolve(ctx,before.groupchat_version_id,p.participant,before)
+                validate_resolved(p.participant,resolved,before)
+                prepared_members = [resolved]
+            elif isinstance(p, (RunTurn, MentionAgent)) and before:
+                # Validate cheap local guards before provisioning remote child-run.
+                if before.room_id != p.room_id: raise RoomError("NOT_FOUND")
+                if before.active_operation: raise RoomError("ROOM_BUSY" if before.room_state == "running" else "ROOM_PAUSED")
+                if before.room_version != p.expected_room_version: raise RoomError("STALE_VERSION")
+                if before.room_state == "closed": raise RoomError("ROOM_CLOSED")
+                if isinstance(p, RunTurn):
+                    if before.room_state == "paused": raise RoomError("TURN_LIMIT" if before.pause_reason == "max_turns" else "ROOM_PAUSED")
+                    if before.turns_used >= before.policy.max_turns: raise RoomError("TURN_LIMIT")
+                    if before.last_speaker == p.speaker_agent_version_id and before.consecutive_turns >= before.policy.max_consecutive_turns: raise RoomError("CONSECUTIVE_LIMIT")
+                    if p.turn_id in before.used_turn_ids: raise RoomError("IDEMPOTENCY_CONFLICT")
+                    participant = member(before,p.speaker_agent_version_id)
+                else:
+                    participant = next((x for x in before.participants if x.platform_agent_id==p.mentioned_agent_id),None)
+                    if participant is None: raise RoomError("NOT_MEMBER")
+                    if p.task_id and p.task_id not in before.tasks: raise RoomError("NOT_FOUND")
+                messaging.validate_message(before,MessageInput(content=p.instruction,in_reply_to_message_id=p.in_reply_to_message_id))
+                selected = context_builder.build(before,participant.agent_version_id,p.task_id,p.in_reply_to_message_id)
+                # Stable preparation ID across retry/restart. Producer must guarantee
+                # idempotent child provisioning; no source-run guess enters invocation.
+                operation_id = str(uuid5(NAMESPACE_URL,repr((ctx.scope(),key,digest))))
+                run_id = await self.resolver.invocation_run(ctx,before,participant,operation_id)
+                prepared_active = ActiveOperation(operation_id=operation_id,dedup_key=key,
+                    fence=observed.fence+1,command=command,participant=participant,source_run_id=run_id,
+                    mailbox_message_ids=list(selected.mailbox_message_ids))
+                await self.invocation.prepare(self._invocation(before,prepared_active))
         async with self.state.transaction(ctx) as state:
             room = state.snapshot
-            await self.resolver.authorize(ctx, p.operation, room)
+            if (state.fence != observed.fence or
+                (room.room_version if room else None) != (before.room_version if before else None)):
+                raise RoomError("STALE_VERSION")
             if room and not room.scope.same_room_scope(ctx):
                 raise RoomError("SCOPE_MISMATCH")
             if key in state.operations:
@@ -207,12 +262,7 @@ class RoomService:
                         participants=[],
                         policy=p.turn_policy,
                     )
-                    for spec in p.participants:
-                        resolved = await self.resolver.resolve(
-                            ctx, p.groupchat_version_id, spec, room
-                        )
-                        validate_resolved(spec, resolved, room)
-                        room.participants.append(resolved)
+                    room.participants = prepared_members
                     for item in p.ticket_context:
                         task_board.put_context(room, item)
                     messaging.append(room, p.initial_message, ctx.principal_id)
@@ -295,27 +345,9 @@ class RoomService:
                             in_reply_to_message_id=p.in_reply_to_message_id,
                         ),
                     )
-                    operation_id = new_id()
-                    run_id = await self.resolver.invocation_run(
-                        ctx, room, participant, operation_id
-                    )
-                    active = ActiveOperation(
-                        operation_id=operation_id,
-                        dedup_key=key,
-                        fence=state.fence + 1,
-                        command=command,
-                        participant=participant,
-                        source_run_id=run_id,
-                    )
-                    selected = context_builder.build(
-                        room,
-                        participant.agent_version_id,
-                        p.task_id,
-                        p.in_reply_to_message_id,
-                    )
-                    active.mailbox_message_ids = list(selected.mailbox_message_ids)
+                    assert prepared_active is not None
+                    active = prepared_active
                     invocation = self._invocation(room, active)
-                    await self.invocation.prepare(invocation)
                     if isinstance(p, MentionAgent):
                         # Giữ câu hỏi cho người đọc phòng; câu hỏi đã được gửi làm chỉ dẫn.
                         messaging.append(
@@ -359,11 +391,7 @@ class RoomService:
                     elif isinstance(p, PutContext):
                         task_board.put_context(room, p.item)
                     elif isinstance(p, AddParticipant):
-                        resolved = await self.resolver.resolve(
-                            ctx, room.groupchat_version_id, p.participant, room
-                        )
-                        validate_resolved(p.participant, resolved, room)
-                        room.participants.append(resolved)
+                        room.participants.append(prepared_members[0])
                     elif isinstance(p, UpdateTurnPolicy):
                         room.audit_events.append(
                             {
@@ -400,9 +428,9 @@ class RoomService:
             await self.complete(
                 invocation, "cancel" if confirmed else "outcome_unknown"
             )
+            await self._authorized_snapshot(ctx, p.operation)
             async with self.state.transaction(ctx) as state:
                 assert state.snapshot
-                await self.resolver.authorize(ctx, p.operation, state.snapshot)
                 assert active is not None
                 target = state.operations[active.dedup_key].result
                 result = target.model_copy(
@@ -437,9 +465,8 @@ class RoomService:
             task.add_done_callback(self._consume_task)
             await asyncio.shield(self.complete(invocation, "outcome_unknown"))
             raise
-        async with self.state.transaction(ctx) as state:
-            await self.resolver.authorize(ctx, p.operation, state.snapshot)
-            return state.operations[key].result.model_copy(deep=True)
+        observed = await self._authorized_snapshot(ctx, p.operation)
+        return observed.operations[key].result.model_copy(deep=True)
 
     @staticmethod
     def _consume_task(task: asyncio.Task) -> None:
@@ -466,6 +493,7 @@ class RoomService:
         """
         try:
             await self.resolver.authorize(invocation.context, "complete_turn", None)
+            observed = await self._authorized_snapshot(invocation.context, "complete_turn")
             async with self.state.transaction(invocation.context) as state:
                 room = state.snapshot
                 if (
@@ -474,7 +502,8 @@ class RoomService:
                     or not room.scope.same_room_scope(invocation.context)
                 ):
                     return False
-                await self.resolver.authorize(invocation.context, "complete_turn", room)
+                if not observed.snapshot or room.room_version != observed.snapshot.room_version:
+                    return False
                 active = room.active_operation
                 if (
                     not active
@@ -570,9 +599,11 @@ class RoomService:
     async def query(self, query: Query) -> Union[Success, Failure]:
         try:
             await self.resolver.authorize(query.context, query.operation, None)
+            observed = await self._authorized_snapshot(query.context, query.operation)
             async with self.state.transaction(query.context) as state:
                 room = state.snapshot
-                await self.resolver.authorize(query.context, query.operation, room)
+                if (room.room_version if room else None) != (observed.snapshot.room_version if observed.snapshot else None):
+                    raise RoomError("STALE_VERSION")
                 if not room or room.room_id != query.room_id:
                     raise RoomError("NOT_FOUND")
                 if not room.scope.same_room_scope(query.context):

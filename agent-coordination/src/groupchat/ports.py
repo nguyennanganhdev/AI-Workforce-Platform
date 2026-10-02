@@ -77,6 +77,8 @@ class Invocation:
     instruction: str
     tasks: tuple[TaskItem, ...] = ()
     ticket_context: tuple[ContextItem, ...] = ()
+    groupchat_version_id: Optional[str] = None
+    artifact_hash: Optional[str] = None
 
 
 class AgentInvocationPort(Protocol):

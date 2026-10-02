@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from adapters.backend.client import BackendClient
 from adapters.backend.errors import AdapterError
 from adapters.backend.http_transport import UrllibTransport
-from backend.support import Headers, Validator, request
+from tests.adapters.backend.support import Headers, Validator, request
 
 
 class TransportTests(unittest.IsolatedAsyncioTestCase):

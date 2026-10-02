@@ -6,7 +6,7 @@ import json
 from adapters.backend.client import HttpResponse
 from adapters.backend.errors import AdapterError
 from adapters.backend.messages import fingerprint
-from backend.support import CONTEXT, Validator, client
+from tests.adapters.backend.support import CONTEXT, Validator, client
 
 
 def input_message(kind="ticket_submitted", *, identity="input-1", version="1", **changes):

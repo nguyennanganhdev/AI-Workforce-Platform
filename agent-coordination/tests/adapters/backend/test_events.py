@@ -4,7 +4,7 @@ import unittest
 
 from adapters.backend.errors import AdapterError
 from adapters.backend.events import EventIngress, INBOUND_TYPES
-from backend.support import CONTEXT, Inbox, Validator, Verifier, event, request
+from tests.adapters.backend.support import CONTEXT, Inbox, Validator, Verifier, event, request
 
 
 class EventTests(unittest.IsolatedAsyncioTestCase):
