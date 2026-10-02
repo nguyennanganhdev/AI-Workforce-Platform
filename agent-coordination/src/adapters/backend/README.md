@@ -156,10 +156,10 @@ Python 3.11+, Pydantic V2 đã dùng trong DEV-1/DEV-2; test ghép dùng pytest 
 harness hiện có. Không sửa dependency/lockfile chung; DEV-5 quản lý các dependency.
 
 ```powershell
-python -B agent-coordination/tests/adapters/reception/run_tests.py
+agent-coordination/.venv/bin/python -m pytest -q agent-coordination/tests/adapters/reception
 ```
 
-Runner riêng tránh test package che source namespace. Test bao phủ V2 hai chiều,
+Chạy trực tiếp pytest với cấu hình package. Test bao phủ V2 hai chiều,
 source/snapshot/time/enum, null fact, quyền, bản cũ/sai bước, một pending request,
 dedup quyết định/bản tin, nhiều tenant, reply không tự nâng version, mention sidecar,
 hủy, completed/QC, backend yêu cầu xử lý tiếp, timeout/lost ACK và transport HTTP

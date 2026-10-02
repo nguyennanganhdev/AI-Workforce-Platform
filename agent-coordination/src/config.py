@@ -1,4 +1,4 @@
-"""Explicit development configuration; no model substitution or tool overrides."""
+"""Explicit service/provider configuration; no model substitution or tool overrides."""
 import hashlib
 import json
 from typing import Literal

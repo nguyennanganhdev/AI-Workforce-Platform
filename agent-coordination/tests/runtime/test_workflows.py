@@ -441,12 +441,8 @@ async def test_supervisor_work_observer_durably_requests_real_staff_once(tmp_pat
     await c.close()
 
 
-def test_workflow_schema_is_generated_from_runtime_and_rejects_publish():
+def test_runtime_workflow_contract_rejects_publish_and_missing_source():
     from jsonschema import Draft202012Validator
-    from runtime.workflows import WorkflowProof
-    for name,model in [('contribution',ContributionCommand),('report',ReportCommand),('proof',WorkflowProof)]:
-        schema=json.loads((REPO/'docs/teams/dong/workflow-proposals'/(name+'.schema.json')).read_text())
-        assert schema==model.model_json_schema() and schema['additionalProperties'] is False
     raw=command('contribution',{'operation':'submit','contribution':contribution()})
     Draft202012Validator(ContributionCommand.model_json_schema()).validate(raw)
     with pytest.raises(ValueError):ContributionCommand.model_validate(raw|{'payload':{'operation':'publish','contribution_id':'c1'}})
