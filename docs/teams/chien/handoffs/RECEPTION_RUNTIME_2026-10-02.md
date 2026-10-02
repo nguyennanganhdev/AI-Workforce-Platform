@@ -148,8 +148,10 @@ Kho `github.com/leduc1707/Data-Vinhome` (140 file, 114 tài liệu sau khi gộp
   thật, không cần chạy cả platform server. Mỗi lần tìm, dịch vụ hỏi backend
   (`/internal/reception/v1/knowledge-authorization`) cư dân của lượt chat này được đọc phạm vi nào.
 - Masteri Waterfront do Masterise Property Management vận hành, không phải Vinhomes. Dữ liệu của họ được chính
-  repo đánh dấu "cần xác minh", chỉ gắn vào phạm vi Masteri và mang cờ chưa xác minh. Một file cấp đơn vị
-  (`02-masterise/quy-trinh-chung-...md`) không có phạm vi tương ứng nên chưa xuất bản.
+  repo đánh dấu "cần xác minh", chỉ gắn vào phạm vi Masteri và mang cờ chưa xác minh. File cấp đơn vị
+  (`02-masterise/quy-trinh-chung-...md`) được gắn vào phân khu duy nhất mà đơn vị đó vận hành (Masteri
+  Waterfront). Khi một đơn vị có từ hai phân khu trở lên, file cấp đơn vị không có một phạm vi duy nhất: lệnh báo
+  ra và không xuất bản, không bao giờ đẩy lên cả khu.
 - Vector tạo bằng OpenAI `text-embedding-3-large`: nội dung từng đoạn được gửi tới OpenAI khi nạp.
 
 Kết quả: bộ đánh giá hội thoại sau khi có tri thức đạt kiểm tra cứng 87%, phát biểu 88%, tự nhiên 4,42/5, trễ

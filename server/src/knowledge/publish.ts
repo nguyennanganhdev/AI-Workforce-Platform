@@ -10,14 +10,20 @@
  * (`/internal/reception/v1/knowledge-authorization`) decides who can read a document:
  *
  *   00-do-thi                  -> the site
+ *   <operator>                 -> the zone of the one area that operator runs here
  *   <operator>/<area>          -> the zone whose code is <area>
  *   .../<building>             -> the building whose code is <building>
+ *
+ * An operator with several areas has no single scope for its own documents: they are reported
+ * like any folder without a scope, never published to the whole site.
  *
  * A folder with no such scope is reported and its documents are not published. Re-running is
  * safe: unchanged files are skipped and files that disappeared are retired. The tenant's
  * Reception agents are granted the knowledge base, and its id is printed for KNOWLEDGE_BASE_ID.
  * Chunk text is sent to the embedding provider.
  */
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { SQL } from "bun";
 import { createDatabase } from "../db/client";
 import { URBAN } from "./dev-fixture";
@@ -86,6 +92,13 @@ const file: string = existingFile?.id ??
     insert into files (tenant_id, scope_kind, document_id, original_name, owner_principal_id, status)
     values (${tenant}, 'document', ${sourceDocument}, ${site.code}, ${principal.id}, 'staged') returning id`));
 
+/** The area folders of an operator folder; a name that is no zone code simply matches nothing. */
+async function areasOf(operator: string): Promise<string[]> {
+  const entries = await readdir(join(root as string, operator), { withFileTypes: true });
+  // The empty name keeps the SQL list valid for an operator folder without sub-folders.
+  return ["", ...entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name)];
+}
+
 const missing = new Set<string>();
 async function resolveScopeId(key: string): Promise<string> {
   const parts = key.split("/");
@@ -101,7 +114,12 @@ async function resolveScopeId(key: string): Promise<string> {
           ? await admin`
               select a.id from access_scopes a join zones z on z.id = a.zone_id
               where a.tenant_id = ${tenant} and a.kind = 'zone' and z.site_id = ${site.id} and z.code = ${leaf}`
-          : [];
+          : parts.length === 1
+            ? await admin`
+                select a.id from access_scopes a join zones z on z.id = a.zone_id
+                where a.tenant_id = ${tenant} and a.kind = 'zone' and z.site_id = ${site.id}
+                  and z.code in ${admin(await areasOf(key))}`
+            : [];
   if (rows.length !== 1) {
     missing.add(key);
     throw new Error(`no scope in the database for folder ${key}`);
