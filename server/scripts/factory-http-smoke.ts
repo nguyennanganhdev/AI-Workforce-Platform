@@ -93,7 +93,7 @@ try {
   }
   const who = await json(`${backendUrl}/api/me`);
   assert.equal(who.status, 200);
-  const actor = (who.body as { user: { id: string; role: "admin" | "user" } })
+  const actor = (who.body as { user: { id: string; role: "admin" | "staff" } })
     .user;
   assert(
     actor.id && actor.role,

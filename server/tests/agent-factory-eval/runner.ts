@@ -38,7 +38,7 @@ import {
 } from "./scoring.js";
 
 const root = resolve(import.meta.dir, "../../..");
-const actor = { id: "factory-evaluation-owner", role: "user" as const };
+const actor = { id: "factory-evaluation-owner", role: "staff" as const };
 const secrets = () =>
   [
     process.env.FACTORY_SERVICE_TOKEN,

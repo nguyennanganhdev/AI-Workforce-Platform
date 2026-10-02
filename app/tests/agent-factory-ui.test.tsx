@@ -196,7 +196,7 @@ function artifact(
 }
 
 /** Everything the server was asked, and the answers it will give. */
-let viewer: { id: string; email: string; role: "admin" | "user" };
+let viewer: { id: string; email: string; role: "admin" | "staff" };
 let constructions: { key: string; input: unknown }[];
 let rechecks: { id: string; specHash: string }[];
 let grants: { kind: string; ref: string; agentId: string }[];
@@ -210,7 +210,7 @@ let onRecheck: (id: string) => FactoryUseCaseResult;
 let dropNextConstruction: boolean;
 
 beforeEach(() => {
-  viewer = { id: "owner", email: "owner@example.test", role: "user" };
+  viewer = { id: "owner", email: "owner@example.test", role: "staff" };
   constructions = [];
   rechecks = [];
   grants = [];
