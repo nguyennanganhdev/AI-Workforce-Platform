@@ -1,0 +1,11 @@
+.venv
+.hardening
+__pycache__
+.pytest_cache
+build
+dist
+*.egg-info
+tests
+*.sqlite*
+.env
+.env.*

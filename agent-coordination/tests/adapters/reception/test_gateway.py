@@ -8,8 +8,8 @@ from adapters.backend.client import HttpResponse
 from adapters.backend.errors import AdapterError
 from adapters.backend.messages import validate_request
 from adapters.reception.reception_gateway import ReceptionGateway
-from backend.support import CONTEXT, client, request
-from reception.support import Authentication, gateway_parts, input_message, output_message
+from tests.adapters.backend.support import CONTEXT, client, request
+from tests.adapters.reception.support import Authentication, gateway_parts, input_message, output_message
 
 
 class ReceptionV2Tests(unittest.IsolatedAsyncioTestCase):
@@ -315,7 +315,7 @@ class ReceptionV2Tests(unittest.IsolatedAsyncioTestCase):
             await gateway.resolve(raw, "verified-source")
 
     async def test_two_tenants_same_message_id_never_share_routing_or_delivery(self):
-        from reception.support import V2Transport
+        from tests.adapters.reception.support import V2Transport
 
         first, second = V2Transport(), V2Transport()
         second.context.update(tenant_id="tenant-b", ticket_id="ticket-2", workspace_id="workspace-2",
@@ -367,7 +367,7 @@ class ReceptionV2Tests(unittest.IsolatedAsyncioTestCase):
             await gateway.verify(input_message(), "verified-source")
         self.assertFalse(backend.calls)
         from adapters.backend.client import BackendClient
-        from backend.support import Headers, Validator
+        from tests.adapters.backend.support import Headers, Validator
 
         gateway = ReceptionGateway(BackendClient(base_url="https://backend.test", routes={},
             transport=backend, headers=Headers(), validator=Validator()), authentication=Authentication())

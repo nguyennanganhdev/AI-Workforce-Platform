@@ -48,6 +48,8 @@ class AgentSessionProvider(Protocol):
 
 class AgentScopeAdapter:
     def __init__(self, provider: AgentSessionProvider):
+        from .agentscope_remote import require_sdk
+        require_sdk()
         self.provider = provider
 
     async def _validate(self, session: AgentSession, invocation: Invocation) -> None:

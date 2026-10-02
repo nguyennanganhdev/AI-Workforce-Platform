@@ -3,22 +3,15 @@
 Reuse DEV-1's test harness without editing it. The original mixed event catalog
 is retained; V2 replies go through the gateway.
 """
-import importlib.util
-import sys
 import unittest
 from copy import deepcopy
-from pathlib import Path
 
 from adapters.backend.errors import AdapterError
 from adapters.reception.reception_gateway import ReceptionGateway
-from backend.support import client
-from reception.support import Authentication, V2Transport, input_message
+from tests.adapters.backend.support import client
+from tests.adapters.reception.support import Authentication, V2Transport, input_message
 
-TESTS = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(TESTS))
-spec = importlib.util.spec_from_file_location("dev3_supervisor_test_support", TESTS / "supervisor/conftest.py")
-support = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(support)
+from tests.supervisor import conftest as support
 
 
 class SupervisorV2Tests(unittest.IsolatedAsyncioTestCase):
