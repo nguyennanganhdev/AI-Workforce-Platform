@@ -370,6 +370,27 @@ def test_management_reads_what_the_resident_said_about_a_ticket(database):
         assert other.get(f"/tickets/{ticket_id}/conversation").status_code == 404
 
 
+def test_reception_reads_the_conversation_and_its_open_request(database, monkeypatch):
+    monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "1b" * 32)
+    with client(database) as c:
+        channel, first = resident_message(c, "Context", "Ổ điện hỏng")
+        other, _ = resident_message(c, "Other", "Chuyện khác")
+        bearer = {"Authorization": "Bearer " + delegate(c, channel, first)["token"]}
+        path = f"/internal/reception/chats/{channel}/context"
+        assert c.get(path).status_code == 401
+        assert c.get(f"/internal/reception/chats/{other}/context", headers=bearer).status_code == 403
+        before = c.get(path, headers=bearer).json()
+        assert [(m["role"], m["text"]) for m in before["history"]] == [("resident", "Ổ điện hỏng")]
+        assert before["open_request"] is None
+        unit = c.get("/resident/me").json()["units"][0]
+        c.post(f"/resident/chats/{channel}/tickets", headers={"Idempotency-Key": str(uuid4())}, json={
+            "domain_id": unit["domain_id"], "building_id": unit["building_id"], "unit_id": unit["id"],
+            "category_id": CATEGORY, "title": "Ổ điện hỏng", "description": "Ổ điện hỏng từ sáng.",
+            "contact_name": "Cư dân", "contact_phone": "0900000000", "location": "Phòng khách", "request_kind": "incident"})
+        request = c.get(path, headers=bearer).json()["open_request"]
+        assert request["title"] == "Ổ điện hỏng" and request["status"] == "open" and request["code"].startswith("VH-")
+
+
 def test_operation_identity_rollback_and_missing_receipt(database):
     with client(database) as c:
         body = {

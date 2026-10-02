@@ -172,6 +172,13 @@ của repo dữ liệu sau lần sửa văn phong 01/10/2026 (ví dụ bộ đá
 - Giới hạn: quyền với session hỏi đáp chỉ tính vai trò management ở phạm vi tenant hoặc đúng đơn vị quản lý;
   cư dân có nhà thuộc hai đơn vị quản lý khác nhau thì chưa chuyển được.
 
+## Agent do model dẫn dắt (03/10/2026)
+
+`RECEPTION_AGENT=loop` bật agent mới trong `agent-reception/src/agent`; graph của Team Hoàng giữ nguyên và vẫn
+là mặc định trong code. Chi tiết và bảng điểm so sánh ở `agent-reception/README.md`, mục "Hai chế độ agent".
+Backend thêm `GET /internal/reception/chats/{id}/context` (hội thoại gần nhất và yêu cầu đang mở) để agent
+không phải giữ trạng thái. Policy khẩn cấp theo từ khóa vẫn chạy trước model ở cả hai chế độ.
+
 ## Đề nghị Team Hoàng
 
 - Rà `runtime/backend.py` và `runtime/service.py`; nếu đồng ý hợp đồng này thì PD11 (graph gọi bộ tool mới)

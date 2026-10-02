@@ -17,11 +17,11 @@
 - [x] T2.3 Màn tin nhắn session trong Operations (M)
 
 ## Giai đoạn 3 — Agent do model dẫn dắt
-- [ ] T3.1 Model adapter gọi tool (S)
-- [ ] T3.2 Bộ tool cho agent, có test bất biến (M)
-- [ ] T3.3a Vòng agent + cổng policy (M)
-- [ ] T3.3b Bước kiểm tra đầu ra (M)
-- [ ] T3.4 Chạy song song, so điểm với graph cũ (S)
+- [x] T3.1 Model adapter gọi tool (S)
+- [x] T3.2 Bộ tool cho agent (M) — luật trong tools.py; test đơn vị ở tests/agent
+- [x] T3.3a Vòng agent + cổng policy (M)
+- [x] T3.3b Bước kiểm tra đầu ra (M)
+- [x] T3.4 So điểm với graph cũ bằng bộ đánh giá trên hai môi trường tạm (thay cho chạy ngầm): loop 94–100% / 96–100% / 4,75–4,88 so với graph 87% / 88% / 4,42
 
 ### Điểm dừng 2 — quyết định bật agent mới
 

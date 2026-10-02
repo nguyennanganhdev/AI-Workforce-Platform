@@ -60,3 +60,21 @@ class ChatCompletionsModel:
         if not isinstance(content, str):
             raise ModelUnavailable("MODEL_UNAVAILABLE")
         return SimpleNamespace(content=content)
+
+    async def complete(self, messages: list[dict], tools: list[dict]) -> dict:
+        """One step of a tool-calling conversation; returns the assistant message as the provider gave it."""
+        try:
+            response = await self.client.post(
+                self.config.base_url.rstrip("/") + "/chat/completions",
+                headers={"Authorization": "Bearer " + self.config.api_key},
+                timeout=self.config.timeout_seconds,
+                json={"model": self.config.model, "messages": messages, "tools": tools,
+                      "response_format": {"type": "json_object"}},
+            )
+            response.raise_for_status()
+            message = response.json()["choices"][0]["message"]
+        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
+            raise ModelUnavailable("MODEL_UNAVAILABLE") from None
+        if not isinstance(message, dict):
+            raise ModelUnavailable("MODEL_UNAVAILABLE")
+        return message

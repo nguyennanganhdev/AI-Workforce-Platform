@@ -38,7 +38,8 @@ EMERGENCY_TERMS = (
 
 # Everyday uses of "cháy" that are a broken part, not a fire. Removed before matching, so
 # "bóng đèn bị cháy, có mùi khét và bốc khói" is still an emergency through its other terms.
-BENIGN_TERMS = ("cháy bóng", "bóng đèn bị cháy", "bóng đèn cháy", "bóng bị cháy", "đèn bị cháy", "cháy cầu chì", "cầu chì bị cháy")
+BENIGN_TERMS = ("cháy bóng", "bóng đèn bị cháy", "bóng đèn cháy", "bóng bị cháy", "đèn bị cháy", "cháy cầu chì", "cầu chì bị cháy",
+                "cơm bị cháy", "cơm cháy", "nấu ăn bị cháy", "đồ ăn bị cháy", "cháy nắng")
 
 
 class PolicyRequest(BaseModel):
@@ -104,6 +105,31 @@ async def write_reply(db: AsyncConnection, channel_id: str, reply: str, reply_to
     if old:
         return dict(old)
     return await append_agent_message(db, channel_id, agent, "customer", {"text": reply}, reply_to)
+
+
+@router.get("/internal/reception/chats/{channel_id}/context",
+            summary="What an agent needs to continue this conversation: its recent messages and open request")
+async def conversation_context(channel_id: str, scope: Scope) -> dict[str, object]:
+    db, run = scope
+    if channel_id != run["channel_id"]:
+        raise HTTPException(403, "Channel differs from delegated binding")
+    messages = await db.execute(text(f"""
+        select id,sender_kind,body->>'text' as text from messages
+        where channel_id=:channel and tenant_id={TENANT} and visibility in ('room','customer') and body->>'text'<>''
+        order by seq desc limit 30
+    """), {"channel": channel_id})
+    history = [{"id": str(m["id"]), "role": "resident" if m["sender_kind"] == "user" else "reception", "text": m["text"]}
+               for m in messages.mappings()][::-1]
+    # The conversation's request still being worked on, with the message the Supervisor received for it.
+    request = (await db.execute(text(f"""
+        select t.id,t.code,t.title,t.status,t.version,t.priority,
+          (select s.payload from vh_reception_supervisor_messages s
+            where s.ticket_id=t.id and s.tenant_id=t.tenant_id and s.message_type='ticket_submitted'
+            order by s.created_at desc limit 1) as submitted
+        from tickets t where t.channel_id=:channel and t.tenant_id={TENANT} and t.requester_user_id=:actor
+          and t.status not in ('closed','cancelled') order by t.created_at desc limit 1
+    """), {"channel": channel_id, "actor": run["user_id"]})).mappings().first()
+    return {"history": history, "open_request": dict(request) if request else None}
 
 
 class ReplyCreate(BaseModel):

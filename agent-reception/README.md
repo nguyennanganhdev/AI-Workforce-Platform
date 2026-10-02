@@ -109,6 +109,42 @@ Biến môi trường ở `.env.example` (`RECEPTION_SERVICE_TOKEN`, `RECEPTION_
   vì backend từ chối loại này và cả yêu cầu sẽ bị rơi.
 - `runtime/model.py` gọi chat completions kiểu OpenAI với đầu ra JSON.
 
+### Hai chế độ agent (đồng chủ sở hữu: Team Hoàng và Team Chiến)
+
+`RECEPTION_AGENT` chọn bộ não của một lượt chat; cả hai dùng chung service, ủy quyền, backend và tri thức.
+
+| | `graph` (mặc định) | `loop` |
+|---|---|---|
+| Mã nguồn | `src/graph` (Team Hoàng) | `src/agent` |
+| Ai dẫn dắt hội thoại | Code: phân loại rồi đi nhánh cố định | Model: tự hỏi lại, tự chọn công cụ, tự viết câu trả lời |
+| Trạng thái | Checkpoint LangGraph (SQLite) | Không giữ trạng thái: mỗi lượt đọc hội thoại và yêu cầu đang mở từ backend |
+| Số lượt gọi model mỗi lượt chat | 3–4 | 2 (thường) |
+
+`src/agent` gồm ba file:
+
+- `prompt.py`: vai trò, việc được làm và không được làm, định dạng trả lời `{reply, sources}`.
+- `tools.py`: sáu công cụ (`search_knowledge`, `file_request`, `report_emergency`, `request_status`,
+  `cancel_request`, `ask_management`) và các luật code giữ: một hội thoại một yêu cầu đang mở; danh mục và mức ưu
+  tiên phải hợp lệ; khẩn cấp do policy backend xác nhận; `ask_management` chỉ sau khi đã tìm tri thức.
+  `file_request` gói cả chuỗi nháp → vị trí → mô tả → đánh giá → định tuyến → bàn giao của backend.
+- `loop.py`: vòng gọi công cụ (tối đa 6 bước) và bước kiểm tra câu trả lời trước khi gửi. Câu trả lời bị trả lại
+  cho model một lần, rồi thay bằng câu an toàn, nếu: nêu con số không có trong kết quả công cụ hay lời cư dân;
+  nói "đã ghi nhận/đã chuyển" mà lượt đó không có hành động nào thành công; khẳng định đã xong khi backend chưa
+  xác nhận; hứa thời gian hay miễn phí; dùng từ nội bộ.
+
+Kết quả bộ đánh giá hội thoại (52 kịch bản, `gpt-5.4-mini`, chấm bằng `gpt-5.4`, có tri thức):
+
+| Chỉ số | `graph` | `loop` (4 lần chạy) |
+|---|---|---|
+| Đạt kiểm tra cứng | 87% | 94–100% |
+| Đạt phát biểu của kịch bản | 88% | 96–100% |
+| Tự nhiên (1–5) | 4,42 | 4,75–4,88 |
+| Trễ trung vị | 5,1 s | 3,0–3,9 s |
+| Nhóm tin nhắn mơ hồ | 33% | 100% |
+
+Khi sửa prompt, công cụ hay bước kiểm tra: chạy `tests/agent` (không cần dịch vụ) và `tests/evals/run_live.py`
+trên database tạm, so với bảng trên. `loop` chưa có test đầu-cuối với model giả lập (stub chưa hỗ trợ gọi công cụ).
+
 Chưa có trong runtime: nhận sự kiện từ Supervisor (chưa có Supervisor chạy), trả lời tương tác của Supervisor,
 self-help (backend trả 501 nên graph mời hỗ trợ trực tiếp), checkpointer PostgreSQL cho nhiều replica.
 

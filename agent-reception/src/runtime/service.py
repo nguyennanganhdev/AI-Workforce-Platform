@@ -27,6 +27,10 @@ from ..persistence import open_sqlite_checkpointer
 from .backend import BackendClient, BackendOperations, DraftStore, RequestPolicy
 from .knowledge import KnowledgeSearch
 from .model import ChatCompletionsModel, ModelConfig
+from ..agent.loop import EMERGENCY_REPLY as AGENT_EMERGENCY_REPLY
+from ..agent.loop import run_agent
+from ..agent.prompt import system_prompt
+from ..agent.tools import Toolbox
 from .inquiry import unanswered
 from .voice import reword
 
@@ -43,6 +47,8 @@ class Settings:
     state_path: str
     model: ModelConfig
     knowledge_url: str | None = None
+    # "graph": the fixed workflow (src/graph). "loop": the model-led agent (src/agent).
+    agent: str = "graph"
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -55,6 +61,7 @@ class Settings:
             service_token=token,
             state_path=os.getenv("RECEPTION_STATE_PATH", ".reception-state/reception.sqlite3"),
             knowledge_url=os.getenv("RECEPTION_KNOWLEDGE_URL", "").strip() or None,
+            agent="loop" if os.getenv("RECEPTION_AGENT", "").strip() == "loop" else "graph",
             model=ModelConfig(
                 model=os.getenv("RECEPTION_MODEL", "").strip(),
                 api_key=os.getenv("OPENAI_API_KEY", "").strip(),
@@ -135,6 +142,27 @@ async def run_turn(graph, context: dict, message: dict) -> dict:
     return await graph.run({"context": context, "message": message, "operationId": message["id"]})
 
 
+async def agent_turn(backend: BackendClient, client: httpx.AsyncClient, model, knowledge_url: str | None,
+                     context: dict, message: dict) -> tuple[str, str | None]:
+    """One turn of the model-led agent. Returns the reply and the code of a request filed in this turn."""
+    channel = context["channelId"]
+    turn = await backend.call("GET", f"/internal/reception/chats/{channel}/context", context)
+    resident = await backend.execute(context, "get_verified_resident_context", {}, "agent-context:" + message["id"])
+    categories = (await backend.call("GET", "/internal/reception/catalog", context))["categories"]
+    policy = await backend.call("POST", "/internal/reception/policy/evaluate", context,
+                                {"message_text": message["text"], "assessment": None})
+    toolbox = Toolbox(backend, client, knowledge_url, context, message, turn["open_request"],
+                      {"homes": resident["residences"]}, categories)
+    if policy.get("emergency") is True:
+        # The policy's keywords decide before any model runs.
+        outcome = await toolbox.emergency_request(message["text"])
+        reply = AGENT_EMERGENCY_REPLY if "error" not in outcome else FAILED_REPLY
+    else:
+        reply = await run_agent(model, toolbox, system_prompt(resident["resident"], resident["residences"],
+                                                              turn["open_request"], categories), turn["history"])
+    return reply, toolbox.filed_code
+
+
 def create_app(settings: Settings | None = None, model=None) -> FastAPI:
     settings = settings or Settings.from_env()
     locks: dict[str, asyncio.Lock] = {}
@@ -152,6 +180,7 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                     return {"channel_id": context["channelId"], "reception_session_id": context["bindingId"]}
 
                 app.state.backend, app.state.tools, app.state.model = backend, tools, chat_model
+                app.state.client = client
                 app.state.graph = create_reception_workflow_factory(WorkflowOptions(
                     intake=KnowledgeSearch(settings.knowledge_url, backend, client, chat_model),
                     resolve_session=resolve_session, reconcile=tools.invoke,
@@ -179,6 +208,21 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
             tools, backend = request.app.state.tools, request.app.state.backend
             tools.handoffs.pop(body.channel_id, None)
             backend.tokens[body.channel_id] = body.delegation.token
+            if settings.agent == "loop":
+                try:
+                    try:
+                        reply, code = await agent_turn(backend, request.app.state.client, request.app.state.model,
+                                                       settings.knowledge_url, context, message)
+                    except Exception:  # noqa: BLE001 - the resident still gets an answer
+                        reply, code = FAILED_REPLY, None
+                    if code:
+                        reply += f"\nMã yêu cầu của bạn: {code}."
+                    await backend.call(
+                        "POST", f"/internal/reception/chats/{body.channel_id}/replies", context,
+                        {"text": reply[:10000], "reply_to_id": body.message.id})
+                finally:
+                    backend.tokens.pop(body.channel_id, None)
+                return {"status": "completed", "reply": reply}
             try:
                 try:
                     result = await run_turn(request.app.state.graph, context, message)
