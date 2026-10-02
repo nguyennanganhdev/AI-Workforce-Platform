@@ -1,9 +1,10 @@
 """Resident chat, ticket tracking, and in-app notification endpoints."""
 
+
 import json
 import hashlib
 from typing import Annotated
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
@@ -12,8 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from .v3_auth import resident_connection
-from .v3_mutations import record_event
-
+from .v3_mutations import UNRESOLVED_QC, record_event, requires_plan
 
 router = APIRouter(tags=["Vinhomes V3 resident"])
 ResidentScope = Annotated[tuple[AsyncConnection, str], Depends(resident_connection, scope="function")]
@@ -54,6 +54,7 @@ class CreateChat(BaseModel):
 class SendMessage(BaseModel):
     text: str = Field(min_length=1, max_length=10000)
     client_message_id: str = Field(min_length=1, max_length=120)
+    file_ids: list[UUID] = Field(default_factory=list, max_length=20)
 
     @field_validator("text", "client_message_id")
     @classmethod
@@ -82,7 +83,8 @@ class ResidentTicketCreate(BaseModel):
     contact_phone: str = Field(min_length=1, max_length=30)
     request_kind: str = Field(pattern="^(incident|service_request)$")
     file_ids: list[UUID] = Field(default_factory=list, max_length=3)
-    location: str = Field(min_length=3, max_length=500)
+    location: str | None = Field(default=None, min_length=3, max_length=500)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=160)
 
 
 @router.post("/resident/chats", status_code=201, summary="Create a resident chat")
@@ -113,7 +115,7 @@ async def list_chats(scope: ResidentScope, limit: int = Query(50, ge=1, le=100),
                  and msg.visibility in ('room','customer') and msg.sender_user_id is distinct from :actor_id) as unread_count
         from channels c
         join channel_memberships m on m.channel_id=c.id and m.tenant_id=c.tenant_id
-        left join tickets t on t.channel_id=c.id and t.tenant_id=c.tenant_id
+        left join lateral (select t.id,t.code,t.status from tickets t where t.channel_id=c.id and t.tenant_id=c.tenant_id order by t.created_at desc,t.id limit 1) t on true
         where c.kind='reception' and c.deleted_at is null
           and c.created_by=:actor_id and m.user_id=:actor_id
           and c.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
@@ -144,6 +146,13 @@ async def list_messages(channel_id: str, scope: ResidentScope,
 async def send_message(channel_id: str, body: SendMessage, request: Request, scope: ResidentScope) -> dict[str, object]:
     db, actor_id = scope
     await _owned_chat(scope, channel_id, lock=True)
+    content = {"text": body.text}
+    if body.file_ids:
+        content['fileIds'] = [str(fid) for fid in dict.fromkeys(body.file_ids)]
+        for fid in body.file_ids:
+            image = await db.execute(text("select 1 from files where id=:id and channel_id=:channel and uploaded_by=:actor and status='ready'"), {'id':fid,'channel':channel_id,'actor':actor_id})
+            if image.first() is None:
+                raise HTTPException(422, 'Ready image from this conversation required')
     existing = await db.execute(text("""
         select id, seq, body, created_at from messages
         where channel_id=:channel_id and sender_user_id=:actor_id
@@ -152,7 +161,7 @@ async def send_message(channel_id: str, body: SendMessage, request: Request, sco
            "client_message_id": body.client_message_id})
     previous = existing.mappings().first()
     if previous is not None:
-        if previous["body"] != {"text": body.text}:
+        if previous["body"] != content:
             raise HTTPException(409, "clientMessageId already used with different content")
         return dict(previous)
     sequence = await db.execute(text("""
@@ -168,16 +177,21 @@ async def send_message(channel_id: str, body: SendMessage, request: Request, sco
                 :client_message_id)
         returning id, seq, body, created_at
     """), {"channel_id": channel_id, "seq": sequence.scalar_one(),
-           "actor_id": actor_id, "body": json.dumps({"text": body.text}),
+           "actor_id": actor_id, "body": json.dumps(content),
            "client_message_id": body.client_message_id})
     created = dict(result.mappings().one())
     if request.app.state.settings.demo_mode:
         response_text = "Reception demo đã tiếp nhận. Hãy tạo ticket trong chat để chuyển BQL."
         seq = await db.execute(text("update channels set next_message_seq=next_message_seq+1,last_message=:preview,last_message_at=now() where id=:id returning next_message_seq-1"), {"id": channel_id, "preview": response_text})
-        await db.execute(text("""
+        response_message = await db.execute(text("""
             insert into messages(tenant_id,channel_id,seq,sender_kind,sender_agent_id,visibility,body,reply_to_id)
             values(nullif(current_setting('app.tenant_id',true),'')::uuid,:channel_id,:seq,'agent','demo-reception','customer',cast(:body as jsonb),:reply)
+            returning id
         """), {"channel_id": channel_id, "seq": seq.scalar_one(), "body": json.dumps({"text": response_text, "mode": "faker"}), "reply": created["id"]})
+        message_id=response_message.scalar_one()
+        await db.execute(text("""insert into notification_deliveries(tenant_id,user_id,message_id,channel,dedupe_key,payload,status,available_at)
+          values(nullif(current_setting('app.tenant_id',true),'')::uuid,:actor,:message,'in_app',:key,cast(:payload as jsonb),'pending',now())
+          on conflict(tenant_id,user_id,channel,dedupe_key) do nothing"""),{'actor':actor_id,'message':message_id,'key':f'reception:{message_id}','payload':json.dumps({'type':'reception.message','channelId':channel_id,'message':'Reception demo đã phản hồi'})})
     return created
 
 
@@ -185,28 +199,75 @@ async def send_message(channel_id: str, body: SendMessage, request: Request, sco
              summary="Create a ticket for my verified unit in this chat")
 async def create_chat_ticket(channel_id: str, body: ResidentTicketCreate, request: Request,
                              scope: ResidentScope) -> dict[str, object]:
+    # The resident app sends an Idempotency-Key header and gets the stored receipt back;
+    # agent callers use body.idempotency_key and get the AgentBusinessResponse snapshot.
+    return await create_resident_ticket(channel_id, body, scope,
+                                        receipt_key=request.headers.get("Idempotency-Key"))
+
+
+async def create_resident_ticket(channel_id: str, body: ResidentTicketCreate,
+                                 scope: ResidentScope, *, acting_user_id: str | None = None,
+                                 assessment: dict[str, object] | None = None,
+                                 receipt_key: str | None = None) -> dict[str, object]:
+    """Shared intake service; staff callers must authorize the Case before calling.
+
+    Residence/chat ownership belong to the requester. Audit belongs to the actual
+    actor performing intake, including management materializing a resident Case.
+    """
     db, actor_id = scope
     await _owned_chat(scope, channel_id, lock=True)
-    key = request.headers.get("Idempotency-Key", "")
-    if not 8 <= len(key) <= 120:
-        raise HTTPException(422, "Idempotency-Key must contain 8 to 120 characters")
-    digest = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
-    receipt = await db.execute(text("""
-        select e.payload from ticket_events e join tickets t on t.id=e.ticket_id and t.tenant_id=e.tenant_id
-        where t.channel_id=:channel_id and t.requester_user_id=:actor_id
-          and e.idempotency_key=:key and e.actor_user_id=:actor_id
-    """), {"channel_id": channel_id, "actor_id": actor_id, "key": key})
-    previous = receipt.scalar_one_or_none()
-    if previous is not None:
-        if previous.get("requestHash") != digest:
-            raise HTTPException(409, "Idempotency-Key already used with different content")
-        return previous["receipt"]
-    exists = await db.execute(text("""
-        select 1 from tickets where channel_id=:channel_id
-          and tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
-    """), {"channel_id": channel_id})
-    if exists.first() is not None:
-        raise HTTPException(409, "This chat already has a ticket")
+    from .v3_security import digest
+    if receipt_key is not None:
+        if not 8 <= len(receipt_key) <= 120:
+            raise HTTPException(422, "Idempotency-Key must contain 8 to 120 characters")
+        if body.location is None:
+            raise HTTPException(422, "location is required")
+        fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
+        receipt = await db.execute(text("""
+            select e.payload from ticket_events e join tickets t on t.id=e.ticket_id and t.tenant_id=e.tenant_id
+            where t.channel_id=:channel_id and t.requester_user_id=:actor_id
+              and e.idempotency_key=:key and e.actor_user_id=:actor_id
+        """), {"channel_id": channel_id, "actor_id": actor_id, "key": receipt_key})
+        previous = receipt.scalar_one_or_none()
+        if previous is not None:
+            if previous.get("requestHash") != fingerprint:
+                raise HTTPException(409, "Idempotency-Key already used with different content")
+            return previous["receipt"]
+        exists = await db.execute(text("""
+            select 1 from tickets where channel_id=:channel_id
+              and tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
+        """), {"channel_id": channel_id})
+        if exists.first() is not None:
+            raise HTTPException(409, "This chat already has a ticket")
+        ticket_id = uuid4()
+    if assessment is not None:
+        priority = assessment.get("priority")
+        severity = assessment.get("severity")
+        is_emergency = assessment.get("is_emergency")
+        reason = assessment.get("reason")
+        if priority not in {"low", "normal", "high", "critical"}:
+            raise HTTPException(422, "Invalid assessed priority")
+        if severity not in {"unknown", "minor", "moderate", "major", "critical", "not_applicable"}:
+            raise HTTPException(422, "Invalid assessed severity")
+        if not isinstance(is_emergency, bool) or (is_emergency and priority != "critical"):
+            raise HTTPException(422, "Emergency assessment requires critical priority")
+        if not isinstance(reason, str) or not reason.strip() or len(reason) > 2000:
+            raise HTTPException(422, "Assessment reason is required")
+    if receipt_key is None:
+        fingerprint = (
+            digest(body.model_dump(exclude={"idempotency_key"}))
+            if assessment is None
+            else digest({"ticket": body.model_dump(exclude={"idempotency_key"}), "assessment": assessment})
+        )
+        tenant = (await db.execute(text("select current_setting('app.tenant_id')"))).scalar_one()
+        ticket_id = uuid5(NAMESPACE_URL, f'ticket:{tenant}:{channel_id}:{actor_id}:{body.idempotency_key}') if body.idempotency_key else uuid4()
+        old = (await db.execute(text('select id,code,channel_id,status,version from tickets where id=:id and requester_user_id=:actor'), {'id':ticket_id,'actor':actor_id})).mappings().first()
+        if old:
+            stored = (await db.execute(text("select payload->>'requestHash' from ticket_events where ticket_id=:id and event_type='ticket.created' order by seq limit 1"), {'id':ticket_id})).scalar_one_or_none()
+            if stored != fingerprint:
+                raise HTTPException(409, 'Ticket key already used with different content')
+            from .v3_ticket_result import resident_ticket_result
+            return await resident_ticket_result(db, actor_id, ticket_id, replayed=True)
     location = await db.execute(text("""
         select u.id, u.code as unit_code, b.id as building_id,
                b.name as building_name, b.site_id, b.zone_id
@@ -255,19 +316,20 @@ async def create_chat_ticket(channel_id: str, body: ResidentTicketCreate, reques
             and choices[1]["priority"] == selected["priority"]
             and choices[1]["management_unit_id"] != selected["management_unit_id"]):
         raise HTTPException(409, "Ambiguous management coverage")
-    ticket_id = uuid4()
-    ticket = await db.execute(text("""
+    assessment_columns = ", priority, severity, is_emergency" if assessment is not None else ", priority"
+    assessment_values = ", :priority, :severity, :is_emergency" if assessment is not None else ", 'normal'"
+    ticket = await db.execute(text(f"""
         insert into tickets
-          (id, tenant_id, code, requester_user_id, channel_id, unit_id,
+           (id, tenant_id, code, requester_user_id, channel_id, unit_id,
            domain_id, site_id, zone_id, building_id, management_unit_id,
-           coverage_id, category_id, title, description, priority, status,
-           contact_name, contact_phone, address_snapshot, request_kind)
+           coverage_id, category_id, title, description, status,
+           contact_name, contact_phone, address_snapshot, request_kind{assessment_columns})
         values (:id, nullif(current_setting('app.tenant_id', true), '')::uuid,
                 :code, :actor_id, :channel_id, :unit_id, :domain_id,
                 :site_id, :zone_id, :building_id, :management_unit_id,
                 :coverage_id, :category_id, :title, :description,
-                'normal', 'open', :contact_name, :contact_phone,
-                cast(:address as jsonb), :request_kind)
+                'open', :contact_name, :contact_phone,
+                cast(:address as jsonb), :request_kind{assessment_values})
         returning id, code, channel_id, status, version
     """), {"id": ticket_id, "code": f"VH-{ticket_id.hex[:12].upper()}",
            "actor_id": actor_id, "channel_id": channel_id, "unit_id": body.unit_id,
@@ -278,12 +340,18 @@ async def create_chat_ticket(channel_id: str, body: ResidentTicketCreate, reques
            "title": body.title, "description": body.description,
            "contact_name": body.contact_name, "contact_phone": body.contact_phone,
            "address": json.dumps({"building": place["building_name"],
-                                  "unit": place["unit_code"], "location": body.location}),
-           "request_kind": body.request_kind})
+                                  "unit": place["unit_code"],
+                                  **({"location": body.location} if body.location is not None else {})}),
+           "request_kind": body.request_kind,
+           **({"priority": assessment["priority"], "severity": assessment["severity"],
+               "is_emergency": assessment["is_emergency"]} if assessment is not None else {})})
     created = dict(ticket.mappings().one())
-    event_id = await record_event((db, actor_id, False),
+    event_payload = ({"receipt": {**created, "version": 1}} if receipt_key is not None
+                     else {"requiresPlan": True, **({"assessment": assessment} if assessment is not None else {})})
+    event_id = await record_event((db, acting_user_id or actor_id, False),
                                   {**created, "last_event_seq": 0}, "ticket.created",
-                                  json.dumps({"source": "resident_chat", "requestHash": digest, "receipt": {**created, "version": 1}}, default=str), to_status="open", idempotency_key=key)
+                                  json.dumps({"source": "resident_chat", "requestHash": fingerprint, **event_payload}, default=str),
+                                  to_status="open", idempotency_key=receipt_key)
     await db.execute(text("""
         insert into ticket_routing_history
           (tenant_id, ticket_id, to_management_id, status, reason, requested_at)
@@ -330,8 +398,11 @@ async def create_chat_ticket(channel_id: str, body: ResidentTicketCreate, reques
             insert into ticket_files(tenant_id,ticket_id,file_id,purpose,uploaded_by)
             values(nullif(current_setting('app.tenant_id',true),'')::uuid,:ticket,:file,'issue',:actor)
         """), {"ticket": ticket_id, "file": file_id, "actor": actor_id})
-    created["version"] = 1
-    return created
+    if receipt_key is not None:
+        created["version"] = 1
+        return created
+    from .v3_ticket_result import resident_ticket_result
+    return await resident_ticket_result(db, actor_id, ticket_id, replayed=False)
 
 
 @router.get("/resident/tickets", summary="List my tickets")
@@ -427,23 +498,37 @@ async def decide_resident_approval(approval_id: UUID, body: ResidentApprovalDeci
     if approval["kind"] == "customer_repair" and not body.approved:
         await db.execute(text("update work_orders set status='arrived',version=version+1,updated_at=now() where id=:id and status='awaiting_approval'"), {"id": approval["work_order_id"]})
     if approval["kind"] == "customer_completion":
-        if ticket["status"] != "resolved":
-            raise HTTPException(409, "Ticket must be resolved before completion confirmation")
-        eligible = await db.execute(text("""
-            select w.id from work_orders w where w.ticket_id=:id
-              and w.status not in ('cancelled','rejected')
-              and not exists (select 1 from vh_qc_redo_orders r where r.source_work_order_id=w.id)
-              and (w.status<>'completed' or coalesce((select outcome from vh_qc_results q
-                where q.work_order_id=w.id order by checked_at desc,id desc limit 1),'missing')<>'pass')
-        """), {"id": ticket["id"]})
-        if eligible.first() is not None:
-            raise HTTPException(409, "All work orders must pass QC before confirmation")
-        target_status = "closed" if body.approved else "in_progress"
+        planned = await requires_plan((db, actor_id, False), ticket["id"])
+        if planned:
+            work = (await db.execute(text('select status from work_orders where id=:id for update'), {'id':approval['work_order_id']})).scalar_one()
+            if work != 'completed' or ticket['status'] in {'closed','cancelled'}:
+                raise HTTPException(409, 'Completed work and active ticket required')
+            unfinished = await db.execute(text(f"""select 1 from work_orders w where w.ticket_id=:ticket and w.required and w.status not in ('cancelled','rejected')
+              and (w.status!='completed' or (w.id!=:work and not exists(select 1 from work_approvals a where a.work_order_id=w.id and a.tenant_id=w.tenant_id and a.kind='customer_completion' and a.status='approved'))
+                or {UNRESOLVED_QC})
+              limit 1"""), {'ticket':ticket['id'],'work':approval['work_order_id']})
+            if body.approved:
+                target_status = 'closed' if unfinished.first() is None else ticket['status']
+            else:
+                target_status = 'in_progress'
+        else:
+            if ticket["status"] != "resolved":
+                raise HTTPException(409, "Ticket must be resolved before completion confirmation")
+            eligible = await db.execute(text("""
+                select w.id from work_orders w where w.ticket_id=:id
+                  and w.status not in ('cancelled','rejected')
+                  and not exists (select 1 from vh_qc_redo_orders r where r.source_work_order_id=w.id)
+                  and (w.status<>'completed' or coalesce((select outcome from vh_qc_results q
+                    where q.work_order_id=w.id order by checked_at desc,id desc limit 1),'missing')<>'pass')
+            """), {"id": ticket["id"]})
+            if eligible.first() is not None:
+                raise HTTPException(409, "All work orders must pass QC before confirmation")
+            target_status = "closed" if body.approved else "in_progress"
         await db.execute(text("""
             update tickets set status=:status, closed_at=case when :status='closed' then now() else null end,
               resolved_at=case when :status='closed' then resolved_at else null end where id=:id
         """), {"id": ticket["id"], "status": target_status})
-        if not body.approved:
+        if not body.approved and not planned:
             # Re-open intake, preserving all work orders, evidence and QC history.
             await db.execute(text("update tickets set status='triaging',reopen_count=reopen_count+1 where id=:id"), {"id": ticket["id"]})
             target_status = "triaging"
@@ -468,7 +553,7 @@ async def my_approvals(scope: ResidentScope,
                        limit: int = Query(50, ge=1, le=100)) -> dict[str, object]:
     db, actor_id = scope
     result = await db.execute(text("""
-        select a.id, a.kind, a.status, a.request_detail, a.expires_at,
+        select a.id, a.work_order_id, a.kind, a.status, a.request_detail, a.expires_at,
                a.created_at, w.ticket_id, t.code as ticket_code
         from work_approvals a
         join work_orders w on w.id=a.work_order_id and w.tenant_id=a.tenant_id

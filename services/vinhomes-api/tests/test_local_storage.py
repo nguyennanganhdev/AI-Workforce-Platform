@@ -8,7 +8,7 @@ from vinhomes_api.v3_files import local_only, validate_image
 
 def request(enabled, host="127.0.0.1"):
     return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(settings=SimpleNamespace(
-        local_file_storage=enabled, dev_user_id=None, demo_mode=False, host=host))))
+        local_file_storage=enabled, resident_local_storage=False, dev_user_id=None, demo_mode=False, host=host))))
 
 
 def test_real_identity_storage_requires_explicit_local_configuration():

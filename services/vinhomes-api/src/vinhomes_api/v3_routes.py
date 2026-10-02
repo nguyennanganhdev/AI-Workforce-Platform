@@ -1,5 +1,6 @@
 """Active V3 read API. The retired vh_* routes are intentionally not mounted."""
 
+
 from typing import Annotated
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from .v3_agent_results import AgentBusinessResponse, agent_result
 from .v3_auth import TICKET_VISIBILITY, scoped_connection
 
 router = APIRouter(tags=["Vinhomes V3"])
@@ -22,7 +24,7 @@ def _rows(result: object) -> list[dict[str, object]]:
     return [dict(row) for row in result.mappings().all()]
 
 
-@router.get("/management-units/resolve", summary="Resolve management unit for a building and domain")
+@router.get("/management-units/resolve", summary="Resolve management unit for a building and domain", response_model=AgentBusinessResponse)
 async def resolve_management_unit(
     scope: Scope,
     building_id: UUID = Query(..., alias="buildingId"),
@@ -91,8 +93,8 @@ async def resolve_management_unit(
     unit_ids = {row["management_unit_id"] for row in best_by_category.values()}
     if len(unit_ids) != 1:
         raise HTTPException(409, "Management unit varies by service category; provide serviceCategoryId")
-    return {"managementUnitId": next(iter(unit_ids)), "buildingId": building_id,
-            "domainId": domain_id, "serviceCategoryId": service_category_id}
+    return agent_result('resolve_management_destination', {"managementUnitId": next(iter(unit_ids)), "buildingId": building_id,
+            "domainId": domain_id, "serviceCategoryId": service_category_id}, {'building_id': building_id, 'domain_id': domain_id})
 
 
 @router.get("/tickets", summary="Danh sách ticket V3")

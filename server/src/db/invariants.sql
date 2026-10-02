@@ -72,7 +72,7 @@ BEGIN
   IF NEW.status='ready' AND (obj.status<>'ready' OR obj.scan_status<>'clean' OR obj.verified_at IS NULL) THEN RAISE EXCEPTION 'File is not verified'; END IF;
  END IF;
  IF TG_OP='UPDATE' AND OLD.accepted_object_id IS NOT NULL AND NEW.accepted_object_id IS DISTINCT FROM OLD.accepted_object_id THEN RAISE EXCEPTION 'Accepted bytes are immutable'; END IF;
- IF TG_OP='UPDATE' AND (NEW.tenant_id,NEW.owner_principal_id,NEW.scope_kind,NEW.ticket_id,NEW.channel_id,NEW.document_id,NEW.report_id) IS DISTINCT FROM (OLD.tenant_id,OLD.owner_principal_id,OLD.scope_kind,OLD.ticket_id,OLD.channel_id,OLD.document_id,OLD.report_id) THEN RAISE EXCEPTION 'File security scope is immutable'; END IF;
+ IF TG_OP='UPDATE' AND (NEW.tenant_id,NEW.owner_principal_id,NEW.scope_kind,NEW.ticket_id,NEW.channel_id,NEW.document_id,NEW.report_id,NEW.unit_id) IS DISTINCT FROM (OLD.tenant_id,OLD.owner_principal_id,OLD.scope_kind,OLD.ticket_id,OLD.channel_id,OLD.document_id,OLD.report_id,OLD.unit_id) THEN RAISE EXCEPTION 'File security scope is immutable'; END IF;
  RETURN NEW;
 END $$;
 --> statement-breakpoint
@@ -210,7 +210,7 @@ DECLARE capacity integer; used integer;
 BEGIN
  IF NEW.status NOT IN ('offered','accepted') THEN RETURN NEW; END IF;
  SELECT max_concurrent_jobs INTO STRICT capacity FROM staff_profiles WHERE id=NEW.staff_id AND tenant_id=NEW.tenant_id FOR UPDATE;
- SELECT count(*) INTO used FROM work_assignments WHERE staff_id=NEW.staff_id AND id<>NEW.id AND (status='accepted' OR (status='offered' AND offer_expires_at>now()));
+ SELECT count(*) INTO used FROM work_assignments a JOIN work_orders w ON w.id=a.work_order_id AND w.tenant_id=a.tenant_id WHERE a.tenant_id=NEW.tenant_id AND a.staff_id=NEW.staff_id AND a.id<>NEW.id AND w.status NOT IN ('completed','cancelled','rejected') AND (a.status='accepted' OR (a.status='offered' AND a.offer_expires_at>now()));
  IF used>=capacity THEN RAISE EXCEPTION 'Staff capacity exhausted' USING ERRCODE='23514'; END IF;
  IF NEW.status='offered' AND (NEW.offer_expires_at IS NULL OR NEW.offer_expires_at<=now()) THEN RAISE EXCEPTION 'Offer must have a future expiry'; END IF;
  IF NEW.status='accepted' AND (NEW.accepted_at IS NULL OR NEW.eta_at IS NULL) THEN RAISE EXCEPTION 'Accepted assignment requires acknowledgment and ETA'; END IF;

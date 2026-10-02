@@ -1,0 +1,12 @@
+{
+  "workApprovalKinds": ["customer_repair", "management_water_shutdown", "customer_completion", "management_security_dispatch", "management_security_cancel"],
+  "schemaModule": "../schema/security.ts",
+  "tables": {
+    "security_cameras": "Tenant/building-scoped camera metadata; no stream or external calls.",
+    "security_emergency_contacts": "Ordered active recipients per building with ACK timeout.",
+    "security_alerts": "Ticket emergency alert with actor, idempotency hash, status and version.",
+    "security_alert_deliveries": "Per-recipient snapshot, notification/deadline and durable ACK/escalation state."
+  },
+  "migration": "0003_vinhomes_security",
+  "invariants": ["Tenant RLS is enabled and forced.", "Only the current recipient can ACK before deadline.", "Management can escalate after deadline.", "Guard dispatch and cancellation require responsible management approval."]
+}

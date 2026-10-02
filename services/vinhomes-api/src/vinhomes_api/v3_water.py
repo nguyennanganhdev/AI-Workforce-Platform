@@ -1,5 +1,6 @@
 """Water interruption lifecycle with management approval and resident notices."""
 
+
 import hashlib
 import json
 from datetime import datetime
@@ -11,6 +12,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from .v3_agent_results import AgentBusinessResponse, agent_result
 from .v3_auth import scoped_connection
 from .v3_mutations import record_event, visible_ticket
 
@@ -82,7 +84,7 @@ async def _responsible_management(scope: Scope, work: dict[str, object]) -> None
 
 
 @router.post("/work-orders/{work_order_id}/water-shutdown-request", status_code=201,
-             summary="Request approval for a scoped water shutdown")
+             summary="Request approval for a scoped water shutdown", response_model=AgentBusinessResponse)
 async def request_water_shutdown(work_order_id: UUID, body: WaterShutdownRequest,
                                  scope: Scope) -> dict[str, object]:
     db = scope[0]
@@ -120,7 +122,7 @@ async def request_water_shutdown(work_order_id: UUID, body: WaterShutdownRequest
     """), {"work_order_id": work_order_id, "request_hash": request_hash})
     old = prior.mappings().first()
     if old is not None:
-        return dict(old)
+        return agent_result('utility_isolation.request', dict(old), {'work_order_id': work_order_id})
     approval = await db.execute(text("""
         insert into work_approvals
           (tenant_id, work_order_id, kind, required_scope_id, request_detail,
@@ -152,11 +154,11 @@ async def request_water_shutdown(work_order_id: UUID, body: WaterShutdownRequest
     await record_event(scope, ticket, "water.shutdown_requested",
                        json.dumps({"interruptionId": str(created["id"]),
                                    "approvalId": str(approval_id)}))
-    return created
+    return agent_result('utility_isolation.request', created, {'work_order_id': work_order_id})
 
 
 @router.get("/work-orders/{work_order_id}/water-interruptions",
-            summary="List water interruptions for a visible work order")
+            summary="List water interruptions for a visible work order", response_model=AgentBusinessResponse)
 async def water_interruptions(work_order_id: UUID, scope: Scope) -> dict[str, object]:
     await _work(scope, work_order_id)
     result = await scope[0].execute(text("""
@@ -166,7 +168,7 @@ async def water_interruptions(work_order_id: UUID, scope: Scope) -> dict[str, ob
           and tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
         order by created_at desc limit 100
     """), {"work_order_id": work_order_id})
-    return {"items": [dict(row) for row in result.mappings()]}
+    return agent_result('water.read', {"items": [dict(row) for row in result.mappings()]}, {'work_order_id': work_order_id})
 
 
 async def _interruption(scope: Scope, interruption_id: UUID) -> tuple[dict[str, object], dict[str, object]]:
@@ -213,7 +215,7 @@ async def _notify_affected(db: AsyncConnection, interruption_id: UUID,
 
 
 @router.post("/water-interruptions/{interruption_id}/notify",
-             summary="Notify affected residents after management approval")
+             summary="Notify affected residents after management approval", response_model=AgentBusinessResponse)
 async def notify_water_shutdown(interruption_id: UUID, scope: Scope) -> dict[str, object]:
     interruption, ticket = await _interruption(scope, interruption_id)
     work = await _work(scope, interruption["work_order_id"])
@@ -227,11 +229,11 @@ async def notify_water_shutdown(interruption_id: UUID, scope: Scope) -> dict[str
     """), {"id": interruption_id})
     await record_event(scope, ticket, "water.shutdown_notified",
                        json.dumps({"interruptionId": str(interruption_id)}))
-    return dict(updated.mappings().one())
+    return agent_result('water.notify', dict(updated.mappings().one()), {'interruption_id': interruption_id})
 
 
 @router.post("/water-interruptions/{interruption_id}/start",
-             summary="Record that the approved water shutdown began")
+             summary="Record that the approved water shutdown began", response_model=AgentBusinessResponse)
 async def start_water_shutdown(interruption_id: UUID, scope: Scope) -> dict[str, object]:
     interruption, ticket = await _interruption(scope, interruption_id)
     await _assigned_staff(scope, interruption["work_order_id"])
@@ -244,11 +246,11 @@ async def start_water_shutdown(interruption_id: UUID, scope: Scope) -> dict[str,
     """), {"id": interruption_id, "actor_id": scope[1]})
     await record_event(scope, ticket, "water.shutdown_started",
                        json.dumps({"interruptionId": str(interruption_id)}))
-    return dict(updated.mappings().one())
+    return agent_result('water.start', dict(updated.mappings().one()), {'interruption_id': interruption_id})
 
 
 @router.post("/water-interruptions/{interruption_id}/restore",
-             summary="Record water restoration and notify residents")
+             summary="Record water restoration and notify residents", response_model=AgentBusinessResponse)
 async def restore_water(interruption_id: UUID, scope: Scope) -> dict[str, object]:
     interruption, ticket = await _interruption(scope, interruption_id)
     await _assigned_staff(scope, interruption["work_order_id"])
@@ -262,4 +264,4 @@ async def restore_water(interruption_id: UUID, scope: Scope) -> dict[str, object
     await _notify_affected(scope[0], interruption_id, "restored")
     await record_event(scope, ticket, "water.restored",
                        json.dumps({"interruptionId": str(interruption_id)}))
-    return dict(updated.mappings().one())
+    return agent_result('water.restore', dict(updated.mappings().one()), {'interruption_id': interruption_id})

@@ -128,7 +128,7 @@ async def post_room_message(room_id: str, body: RoomMessage,
             select 1 from channel_agents ca join agents a on a.id=ca.agent_id
             where ca.channel_id=:room_id and ca.agent_id=:agent_id
               and ca.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
-              and a.tenant_id=ca.tenant_id limit 1
+              and a.tenant_id=ca.tenant_id and a.status='active' limit 1
         """), {"room_id": room_id, "agent_id": body.mention_agent_id})
         if allowed.first() is None:
             raise HTTPException(422, "Mentioned agent is not in this room")

@@ -17,7 +17,7 @@ export default defineConfig({
    * next generated migration treats them as absent. Add the file here in the same change that adds
    * the schema file.
    */
-  schema: ["./src/db/schema/tables.ts"],
+  schema: ["./src/db/schema/tables.ts", "./src/db/schema/security.ts"],
   out: "./drizzle",
   dbCredentials: {
     url: databaseUrl,

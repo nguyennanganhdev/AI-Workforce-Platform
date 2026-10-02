@@ -43,7 +43,7 @@ Màn kết nối thật được tách khỏi màn preview để không đưa re
 3. Event không UPDATE để thêm receipt; ghi receipt/idempotency ngay khi INSERT.
 4. Hoàn thành thi công không đồng nghĩa đạt QC. Chỉ phát hành yêu cầu xác nhận khi các phiếu cần xử lý đều hoàn thành và QC PASS.
 5. Không cho BQL dùng chuyển trạng thái trực tiếp để đóng thay cư dân.
-6. Phiếu completed/cancelled giải phóng assignment. Migration `0003_release_finished_assignments.sql` sửa các assignment cũ còn chiếm tải.
+6. Phiếu completed/cancelled giải phóng assignment. Migration `0010_release_finished_assignments.sql` (đổi số từ 0003 khi gộp backend) sửa các assignment cũ còn chiếm tải.
 7. Retry quyết định trả cùng payload; version cũ và key trùng khác nội dung bị từ chối.
 8. Thu hẹp quyền đọc của staff theo assignment; lỗi máy chủ auth không bị chuyển thành đăng nhập thành công hoặc demo.
 9. Chặn mutation từ browser origin ngoài cấu hình.

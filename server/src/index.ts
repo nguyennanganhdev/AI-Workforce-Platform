@@ -1238,6 +1238,12 @@ repeatAfterEach(async () => {
   }
 }, 10_000);
 
+if (Boolean(process.env.TECHNICAL_API_DATABASE_URL) !== Boolean(process.env.TECHNICAL_API_TENANT_ID)) {
+  throw new Error("Configure both TECHNICAL_API_DATABASE_URL and TECHNICAL_API_TENANT_ID to enable Technical A2 API");
+}
+if (process.env.TECHNICAL_API_TENANT_ID && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(process.env.TECHNICAL_API_TENANT_ID)) {
+  throw new Error("TECHNICAL_API_TENANT_ID must be a UUID");
+}
 const app = createApp(
   config,
   auth,
@@ -1322,6 +1328,14 @@ const app = createApp(
     : undefined,
   createTicketReader(database, deploymentScope(tenantPackage.tenantId).tenantId),
   { database, tenantId: deploymentScope(tenantPackage.tenantId).tenantId },
+  process.env.TECHNICAL_API_DATABASE_URL && process.env.TECHNICAL_API_TENANT_ID
+    ? {
+        database: createDatabase(process.env.TECHNICAL_API_DATABASE_URL),
+        tenantId: process.env.TECHNICAL_API_TENANT_ID,
+        encryptionKey: config.keyEncryptionKey,
+        lookupToken: async (hash: string) => agentProfileStore.agentForCallbackToken(hash),
+      }
+    : undefined,
 );
 
 /**

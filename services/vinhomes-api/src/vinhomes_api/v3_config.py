@@ -23,6 +23,9 @@ class V3Settings:
     demo_mode: bool = False
     password_auth: bool = False
     local_file_storage: bool = False
+    resident_allowed_origins: tuple[str, ...] = ()
+    resident_signing_key: str | None = None
+    resident_local_storage: bool = False
 
     @classmethod
     def from_env(cls) -> "V3Settings":
@@ -54,6 +57,20 @@ class V3Settings:
                 raise ValueError("Database demo uses seeded actors; unset AUTH_URL and DEV_USER_ID")
         if dev_user_id and auth_url:
             raise ValueError("Choose VINHOMES_API_AUTH_URL or VINHOMES_API_DEV_USER_ID")
+        origins = tuple(o.strip().rstrip('/') for o in os.getenv('VINHOMES_API_RESIDENT_ALLOWED_ORIGINS', '').split(',') if o.strip())
+        from urllib.parse import urlsplit
+        for origin in origins:
+            parsed = urlsplit(origin)
+            if parsed.scheme not in {'http','https'} or not parsed.netloc or parsed.path or parsed.query or parsed.fragment or parsed.username:
+                raise ValueError('Resident allowed origins must be explicit HTTP(S) origins')
+        signing_key = os.getenv('VINHOMES_API_RESIDENT_SIGNING_KEY', '').strip() or None
+        if signing_key and (len(signing_key) < 64 or any(c not in '0123456789abcdefABCDEF' for c in signing_key)):
+            raise ValueError('Resident signing key requires at least 32 bytes encoded as even-length hex')
+        if signing_key and len(signing_key) % 2:
+            raise ValueError('Resident signing key must have an even length')
+        local_storage = os.getenv('VINHOMES_API_RESIDENT_LOCAL_STORAGE', '0') == '1'
+        if local_storage and host not in {'127.0.0.1', 'localhost', '::1'}:
+            raise ValueError('Resident local storage requires a loopback host')
         return cls(
             host=host,
             port=port,
@@ -64,4 +81,7 @@ class V3Settings:
             demo_mode=demo_mode,
             password_auth=password_auth,
             local_file_storage=os.getenv("VINHOMES_API_LOCAL_FILE_STORAGE", "0") == "1",
+            resident_allowed_origins=origins,
+            resident_signing_key=signing_key,
+            resident_local_storage=local_storage,
         )

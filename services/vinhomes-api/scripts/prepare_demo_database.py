@@ -44,6 +44,7 @@ async def seed() -> None:
         await db.execute((SERVICE / "scripts/seed_v3_local.sql").read_text(encoding="utf-8"))
         await db.execute((SERVICE / "scripts/seed_v3_faker.sql").read_text(encoding="utf-8"))
         await db.execute((SERVICE / "scripts/seed_v3_demo_ui.sql").read_text(encoding="utf-8"))
+        await db.execute((SERVICE / "scripts/seed_v3_remaining.sql").read_text(encoding="utf-8"))
         password = read_env(LOCAL / "runtime.env")["API_PASSWORD"]
         # Password is locally generated; quote as a SQL literal for DDL (no bind parameters).
         literal = "'" + password.replace("'", "''") + "'"
@@ -57,7 +58,7 @@ async def seed() -> None:
         await db.close()
 
 
-async def prepare_ui_scope() -> None:
+async def prepare_ui_scope(upgrade: bool = False) -> None:
     db = await asyncpg.connect(read_env(LOCAL / "migration.env")["DATABASE_URL"])
     try:
         if await db.fetchval("select current_database()") != "vinhomes_v3":
@@ -65,6 +66,9 @@ async def prepare_ui_scope() -> None:
         if await db.fetchval("select count(*) from tenants where id <> '11111111-1111-5111-a111-111111111111'"):
             raise RuntimeError("Refusing UI fixtures with another tenant")
         await db.execute((SERVICE / "scripts/seed_v3_demo_ui.sql").read_text(encoding="utf-8"))
+        if upgrade:
+            await db.execute((SERVICE / "scripts/seed_v3_remaining.sql").read_text(encoding="utf-8"))
+            await db.execute((SERVICE / "scripts/grant_v3_api_role.sql").read_text(encoding="utf-8"))
         print("Local demo UI site permissions ready; workflow data preserved.")
     finally:
         await db.close()
@@ -77,5 +81,7 @@ if __name__ == "__main__":
         asyncio.run(seed())
     elif sys.argv[1:] == ["ui"]:
         asyncio.run(prepare_ui_scope())
+    elif sys.argv[1:] == ["upgrade"]:
+        asyncio.run(prepare_ui_scope(upgrade=True))
     else:
-        raise SystemExit("Usage: prepare_demo_database.py prepare|seed|ui")
+        raise SystemExit("Usage: prepare_demo_database.py prepare|seed|ui|upgrade")

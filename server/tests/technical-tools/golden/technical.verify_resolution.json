@@ -1,0 +1,36 @@
+{
+  "request": {
+    "building_id": "11111111-1111-4111-8111-111111111111",
+    "incident_id": "31111111-1111-4111-8111-111111111111",
+    "workorder_id": "41111111-1111-4111-8111-111111111111",
+    "result_id": "ER-9001",
+    "sop_document_ids": ["21111111-1111-4111-8111-111111111111"]
+  },
+  "response": {
+    "status": "OK",
+    "trace_id": "tr-a2-010",
+    "server_time": "2026-09-30T09:09:00Z",
+    "data": {
+      "verification_status": "VERIFIED",
+      "checks": [
+        {
+          "criterion": "Không còn rò tại thời điểm kiểm tra",
+          "status": "passed",
+          "source_refs": ["evidence:EV-22", "measurement:MS-701"]
+        }
+      ],
+      "required_actions": ["Chuyển người có thẩm quyền xác nhận hoàn tất"],
+      "source_refs": ["result:ER-9001", "doc:SOP-HVAC-012:v3"]
+    },
+    "errors": [],
+    "missing_fields": [],
+    "provenance": [
+      {
+        "source_system": "application_db",
+        "source_record_id": "41111111-1111-4111-8111-111111111111",
+        "source_version": 4,
+        "retrieved_at": "2026-09-30T09:09:00Z"
+      }
+    ]
+  }
+}

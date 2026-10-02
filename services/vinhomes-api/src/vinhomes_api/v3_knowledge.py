@@ -1,5 +1,6 @@
 """Scoped published knowledge search for operations users."""
 
+
 from typing import Annotated
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from .v3_agent_results import AgentBusinessResponse, agent_result
 from .v3_auth import scoped_connection
 
 
@@ -14,7 +16,7 @@ router = APIRouter(tags=["Vinhomes V3 knowledge"])
 Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
 
 
-@router.get("/knowledge/search", summary="Search published knowledge in my scope")
+@router.get("/knowledge/search", summary="Search published knowledge in my scope", response_model=AgentBusinessResponse)
 async def search_knowledge(
     scope: Scope,
     query: str = Query(..., min_length=2, max_length=300),
@@ -69,4 +71,4 @@ async def search_knowledge(
         order by rank desc, d.id, kc.ordinal limit :limit
     """), {"query": query.strip(), "domain_id": domain_id,
            "actor_id": actor_id, "limit": limit})
-    return {"items": [dict(row) for row in result.mappings()]}
+    return agent_result('sop_kb.retrieve', {"items": [dict(row) for row in result.mappings()]}, {'domain_id': domain_id, 'limit': limit})

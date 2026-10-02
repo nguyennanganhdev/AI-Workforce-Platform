@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from .v3_agent_results import AgentBusinessResponse, agent_result
 from .v3_auth import TICKET_VISIBILITY, scoped_connection
 from .v3_mutations import record_event, visible_ticket
 
@@ -37,6 +38,19 @@ async def operations_me(request: Request, scope: Scope):
     roles = list(grants.scalars())
     return {"user": dict(user), "role": "admin" if admin else "management" if "management" in roles else "staff",
             "dataMode": "local-database" if request.app.state.settings.demo_mode or request.app.state.settings.dev_user_id else "database"}
+
+
+@router.get("/operations-profile", summary="Authenticated operations identity and actual grants")
+async def operations_profile(scope: Scope):
+    db, actor, admin = scope
+    user = (await db.execute(text("select id,name from users where id=:id"), {"id": actor})).mappings().one()
+    roles = (await db.execute(text("""select distinct r.role_code from scoped_user_roles r
+      join tenant_memberships m on m.id=r.membership_id and m.tenant_id=r.tenant_id
+      where m.user_id=:actor and m.status='active' and r.valid_from<=now()
+        and (r.valid_to is null or r.valid_to>now())
+        and r.tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid"""), {"actor": actor})).scalars().all()
+    return {"user": dict(user), "roles": sorted(roles), "isAdmin": admin,
+            "canManage": admin or "management" in roles}
 
 
 @router.get("/catalogs", summary="Domains, sites, buildings and operations catalogs")
@@ -168,7 +182,7 @@ async def approvals(scope: Scope, status: str | None = None,
         join work_orders w on w.id=a.work_order_id and w.tenant_id=a.tenant_id
         join tickets t on t.id=w.ticket_id and t.tenant_id=w.tenant_id
         where {TICKET_VISIBILITY}
-          and a.kind='management_water_shutdown'
+          and a.kind in ('management_water_shutdown','management_security_dispatch','management_security_cancel')
           and (cast(:status as text) is null or a.status=:status)
           and (:is_admin or a.requested_to_user_id=:user_id
                or (a.required_scope_id is not null and exists (
@@ -277,7 +291,7 @@ class ApprovalDecision(BaseModel):
     note: str = Field(min_length=1, max_length=2000)
 
 
-@router.post("/approvals/{approval_id}/decision", summary="Approve or reject a work request")
+@router.post("/approvals/{approval_id}/decision", summary="Approve or reject a work request", response_model=AgentBusinessResponse)
 async def decide_approval(approval_id: UUID, body: ApprovalDecision, scope: Scope) -> dict[str, object]:
     db, actor_id, _ = scope
     result = await db.execute(text(f"""
@@ -291,6 +305,9 @@ async def decide_approval(approval_id: UUID, body: ApprovalDecision, scope: Scop
     approval = result.mappings().first()
     if approval is None:
         raise HTTPException(404, "Approval not found")
+    if approval["kind"] in {"management_security_dispatch", "management_security_cancel"}:
+        from .v3_security import decide_security
+        return agent_result("approval.decision", await decide_security(approval_id, body.status, body.note, scope), {"approval_id": approval_id, "ticket_id": approval["ticket_id"]})
     if approval["kind"] != "management_water_shutdown":
         raise HTTPException(403, "This approval requires its assigned customer")
     ticket = await visible_ticket(scope, approval["ticket_id"], lock=True)
@@ -341,4 +358,4 @@ async def decide_approval(approval_id: UUID, body: ApprovalDecision, scope: Scop
     await db.execute(text("""
         update work_approvals set decided_event_id=:event_id where id=:approval_id
     """), {"event_id": event_id, "approval_id": approval_id})
-    return decision
+    return agent_result("approval.decision", decision, {"approval_id": approval_id, "ticket_id": approval["ticket_id"]})
