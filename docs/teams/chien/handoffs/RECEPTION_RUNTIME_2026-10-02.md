@@ -135,6 +135,30 @@ Còn tồn tại:
 - Policy khẩn cấp bỏ qua vài cách nói thường ngày của "cháy" ("cháy bóng", "cháy cầu chì"). Danh sách này và
   danh sách từ khóa khẩn cấp cần BQL duyệt.
 
+## Tri thức chạy thật (03/10/2026)
+
+Kho `github.com/leduc1707/Data-Vinhome` (140 file, 114 tài liệu sau khi gộp) đã nạp vào database demo.
+
+- Nạp: `server/src/knowledge/publish.ts <thư-mục> --site ocean-park-1 --user <người xuất bản>`. Khác `cli.ts` (bản
+  dev tự tạo phạm vi), lệnh này gắn tài liệu vào phạm vi thật: `00-do-thi` → site, `<đơn vị>/<phân khu>` → zone có
+  cùng mã, thư mục tòa → building có cùng mã. Thư mục không có phạm vi tương ứng thì báo ra và không xuất bản.
+- Demo: `seed_v3_ocean_park.sql` đổi site demo thành Vinhomes Ocean Park 1, thêm 8 phân khu và 14 tòa; cư dân
+  demo ở S1.01 (Sapphire).
+- Tìm kiếm: `server/src/knowledge/serve.ts` (cổng 8787) phục vụ `POST /internal/knowledge/search` với phân quyền
+  thật, không cần chạy cả platform server. Mỗi lần tìm, dịch vụ hỏi backend
+  (`/internal/reception/v1/knowledge-authorization`) cư dân của lượt chat này được đọc phạm vi nào.
+- Masteri Waterfront do Masterise Property Management vận hành, không phải Vinhomes. Dữ liệu của họ được chính
+  repo đánh dấu "cần xác minh", chỉ gắn vào phạm vi Masteri và mang cờ chưa xác minh. Một file cấp đơn vị
+  (`02-masterise/quy-trinh-chung-...md`) không có phạm vi tương ứng nên chưa xuất bản.
+- Vector tạo bằng OpenAI `text-embedding-3-large`: nội dung từng đoạn được gửi tới OpenAI khi nạp.
+
+Kết quả: bộ đánh giá hội thoại sau khi có tri thức đạt kiểm tra cứng 87%, phát biểu 88%, tự nhiên 4,42/5, trễ
+trung vị 5,1 giây (trước: 85–88%, 87–88%, 4,2–4,4, 6 giây); nhóm câu hỏi thông tin 100%.
+
+Chưa đo được bằng bộ 93 câu của Team Quang: chuỗi đáp án trong `ocean-park.v1.json` không còn khớp câu chữ
+của repo dữ liệu sau lần sửa văn phong 01/10/2026 (ví dụ bộ đánh giá chờ "không dừng đỗ quá 1 giờ", dữ liệu ghi
+"không được dừng quá một giờ"). Cần Team Quang cập nhật đáp án hoặc ghim phiên bản dữ liệu.
+
 ## Đề nghị Team Hoàng
 
 - Rà `runtime/backend.py` và `runtime/service.py`; nếu đồng ý hợp đồng này thì PD11 (graph gọi bộ tool mới)

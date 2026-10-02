@@ -28,6 +28,8 @@ GRANT INSERT,UPDATE ON agent_teams,team_members,team_tasks TO vinhomes_v3_api;
 -- One run per resident message, bound to the conversation's Reception session.
 GRANT INSERT ON runtime_identities,runtime_session_bindings TO vinhomes_v3_api;
 GRANT INSERT,UPDATE ON agent_runs TO vinhomes_v3_api;
+-- The knowledge search service audits every retrieval under this role.
+GRANT INSERT ON retrieval_runs,retrieval_hits TO vinhomes_v3_api;
 GRANT INSERT ON team_mailbox TO vinhomes_v3_api;
 GRANT INSERT,UPDATE ON vh_resident_cases,vh_resident_photos,vh_resident_outbox TO vinhomes_v3_api;
 GRANT SELECT,INSERT ON vh_reception_supervisor_messages TO vinhomes_v3_api;

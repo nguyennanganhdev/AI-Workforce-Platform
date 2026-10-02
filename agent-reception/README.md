@@ -98,6 +98,12 @@ Biến môi trường ở `.env.example` (`RECEPTION_SERVICE_TOKEN`, `RECEPTION_
   `/internal/reception/v1/execute`. Backend tự suy ra cư dân, tenant, run từ token.
 - Policy (khẩn cấp, cần nhân viên) do backend quyết định ở `/internal/reception/policy/evaluate`; model chỉ đề xuất.
 - `runtime/knowledge.py` gọi `search_knowledge` v1 khi có `RECEPTION_KNOWLEDGE_URL` và chỉ trả lời từ passage có trích dẫn.
+  Passage phải nói về đúng đối tượng được hỏi (hỏi Masteri mà chỉ có nguồn Sapphire thì coi là không đủ nguồn);
+  câu trả lời kết thúc bằng dòng `(Nguồn: <tiêu đề tài liệu>)` do code ghép, không phải model viết.
+  Kho tri thức nạp bằng `server/src/knowledge/publish.ts`, dịch vụ tìm kiếm chạy bằng `server/src/knowledge/serve.ts`.
+- `runtime/voice.py` viết lại câu trả lời cố định của graph cho tự nhiên; không được thêm dữ kiện hay cam kết.
+- Lớp chuyển đổi chỉ ghi vào yêu cầu các dữ kiện cư dân tự nêu (`customer_report`); dữ kiện model tự suy luận bị bỏ,
+  vì backend từ chối loại này và cả yêu cầu sẽ bị rơi.
 - `runtime/model.py` gọi chat completions kiểu OpenAI với đầu ra JSON.
 
 Chưa có trong runtime: nhận sự kiện từ Supervisor (chưa có Supervisor chạy), trả lời tương tác của Supervisor,

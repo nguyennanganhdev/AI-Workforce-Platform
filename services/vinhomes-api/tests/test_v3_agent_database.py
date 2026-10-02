@@ -279,6 +279,39 @@ def test_reception_delegation_is_bound_to_one_running_turn(database, monkeypatch
         assert c.get("/internal/reception/catalog", headers={"Authorization": "Bearer " + again["token"]}).status_code == 200
 
 
+def test_knowledge_authorization_follows_the_residents_home(database, monkeypatch):
+    monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "ef" * 32)
+    path = "/internal/reception/v1/knowledge-authorization"
+    scopes = {(row["kind"], row["code"]): str(row["id"]) for row in sql(database, """
+        select a.id, a.kind, coalesce(b.code, z.code, s.code) as code from access_scopes a
+        left join buildings b on b.id=a.building_id left join zones z on z.id=a.zone_id left join sites s on s.id=a.site_id
+        where a.kind in ('site','zone','building')""")}
+    with client(database) as c:
+        channel, message_id = resident_message(c, "Knowledge")
+        bearer = {"Authorization": "Bearer " + delegate(c, channel, message_id)["token"]}
+        knowledge_base = sql(database, """
+            insert into knowledge_bases(tenant_id,domain_id,code,name,status)
+            select tenant_id,domain_id,'authorization-test','Test','active' from sites limit 1 returning id""")[0]["id"]
+        ask = {"knowledgeBaseId": str(knowledge_base)}
+        # A resident session is not enough, and neither is a delegation without a grant.
+        assert c.post(path, json=ask).status_code == 401
+        assert c.post(path, headers=bearer, json=ask).status_code == 403
+        sql(database, """
+            insert into agent_knowledge_grants(tenant_id,agent_id,knowledge_base_id,granted_by)
+            select tenant_id,id,$1,'local-v3-management' from agents where purpose='reception'""", knowledge_base)
+
+        granted = c.post(path, headers=bearer, json=ask)
+        assert granted.status_code == 200, granted.text
+        context = granted.json()["context"]
+        # The demo resident lives in S1.01: that building, its area and the urban site, nothing else.
+        assert context["targetScopeId"] == scopes[("building", "S1.01")]
+        assert set(context["ancestorScopeIds"]) == {scopes[("zone", "sapphire")], scopes[("site", "ocean-park-1")]}
+        assert context["userId"] == "local-v3-resident" and context["roleCodes"] == ["resident"]
+        # Another operator's area, or another building, cannot be asked for.
+        for elsewhere in (("zone", "masteri-waterfront"), ("building", "P1")):
+            assert c.post(path, headers=bearer, json={**ask, "scopeId": scopes[elsewhere]}).status_code == 403
+
+
 def test_operation_identity_rollback_and_missing_receipt(database):
     with client(database) as c:
         body = {

@@ -3,11 +3,11 @@
 ## Giai đoạn 0 — Nền để đo, dọn giao diện
 - [x] T0.1 Danh sách hội thoại và thông báo dễ đọc (S) — commit b6db9a7
 - [x] T0.2 Bộ đánh giá hội thoại tiếng Việt chạy tự động, có điểm gốc (M) — commit 33cdf61
-- [ ] T0.3 Dọn dữ liệu thử trong database demo (XS, cần đồng ý)
+- [x] T0.3 Dọn dữ liệu thử trong database demo (khôi phục bản sao lưu trước khi thử + nâng cấp lại)
 
 ## Giai đoạn 1 — Tri thức chạy thật
-- [ ] T1.1 Nạp Data-Vinhome, ánh xạ phạm vi ↔ tòa, cấp quyền cho Lễ tân (M)
-- [ ] T1.2 Bật route tìm kiếm; Lễ tân trả lời có trích dẫn; test route cấp quyền (S)
+- [x] T1.1 Nạp Data-Vinhome, ánh xạ phạm vi ↔ tòa, cấp quyền cho Lễ tân (M) — 114 tài liệu; bộ 93 câu chưa đo được (đáp án lệch dữ liệu)
+- [x] T1.2 Bật route tìm kiếm; Lễ tân trả lời có trích dẫn; test route cấp quyền (S)
 
 ### Điểm dừng 1 — duyệt bảng điểm gốc
 

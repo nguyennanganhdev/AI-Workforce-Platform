@@ -77,7 +77,7 @@ def database(tmp_path_factory):
         try:
             for entry in json.loads((PROJECT/"server/drizzle/meta/_journal.json").read_text())["entries"]:
                 await db.execute((PROJECT/"server/drizzle"/(entry["tag"]+".sql")).read_text(encoding="utf-8").replace("--> statement-breakpoint", ""))
-            for name in ("seed_v3_local.sql","seed_v3_faker.sql","seed_v3_demo_ui.sql","seed_v3_remaining.sql"):
+            for name in ("seed_v3_local.sql","seed_v3_faker.sql","seed_v3_demo_ui.sql","seed_v3_remaining.sql","seed_v3_ocean_park.sql"):
                 await db.execute((SERVICE/"scripts"/name).read_text(encoding="utf-8"))
             grants = (SERVICE/"scripts/grant_v3_api_role.sql").read_text(encoding="utf-8").replace("GRANT CONNECT ON DATABASE vinhomes_v3",f'GRANT CONNECT ON DATABASE "{test_name}"')
             await db.execute(grants)

@@ -45,6 +45,7 @@ async def seed() -> None:
         await db.execute((SERVICE / "scripts/seed_v3_faker.sql").read_text(encoding="utf-8"))
         await db.execute((SERVICE / "scripts/seed_v3_demo_ui.sql").read_text(encoding="utf-8"))
         await db.execute((SERVICE / "scripts/seed_v3_remaining.sql").read_text(encoding="utf-8"))
+        await db.execute((SERVICE / "scripts/seed_v3_ocean_park.sql").read_text(encoding="utf-8"))
         password = read_env(LOCAL / "runtime.env")["API_PASSWORD"]
         # Password is locally generated; quote as a SQL literal for DDL (no bind parameters).
         literal = "'" + password.replace("'", "''") + "'"
@@ -68,6 +69,7 @@ async def prepare_ui_scope(upgrade: bool = False) -> None:
         await db.execute((SERVICE / "scripts/seed_v3_demo_ui.sql").read_text(encoding="utf-8"))
         if upgrade:
             await db.execute((SERVICE / "scripts/seed_v3_remaining.sql").read_text(encoding="utf-8"))
+            await db.execute((SERVICE / "scripts/seed_v3_ocean_park.sql").read_text(encoding="utf-8"))
             await db.execute((SERVICE / "scripts/grant_v3_api_role.sql").read_text(encoding="utf-8"))
         print("Local demo UI site permissions ready; workflow data preserved.")
     finally:
