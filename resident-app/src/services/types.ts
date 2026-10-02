@@ -37,6 +37,8 @@ export type ResidentState = {
   draft: Draft | null;
   conversations?: ResidentConversation[];
   activeConversationId?: string;
+  /** The resident's last message has no reply yet. */
+  awaitingReply?: boolean;
 };
 export type ResidentConversation = {
   id: string;

@@ -1263,6 +1263,9 @@ h3 {
   border: 1px solid #e9ebef;
   padding: 13px 16px;
 }
+.message-waiting p {
+  color: #8a8f99;
+}
 .message-bubble p {
   white-space: pre-wrap;
   font-size: 13px;

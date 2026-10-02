@@ -33,6 +33,7 @@ export function useConnectedResident() {
   const active = useRef("");
   const drafts = useRef(new Map<string, Draft>());
   const lock = useRef(false);
+  const awaiting = useRef(false);
   const generation = useRef(0);
   const keys = useRef(new Map<string, string>());
   const keyFor = (value: string) => {
@@ -102,6 +103,12 @@ export function useConnectedResident() {
           : ("assistant" as const),
       text: m.body.text || "",
     }));
+    // Reception answers within the backend's three-minute dispatch limit, or the backend
+    // stores a fallback reply. Older unanswered messages predate the agent.
+    const last = messages.at(-1);
+    awaiting.current =
+      last?.sender_kind === "user" &&
+      Date.now() - Date.parse(last.created_at) < 180_000;
     const linked = chats.find((c) => c.id === selected)?.ticket_id;
     if (linked)
       chatMessages.push({
@@ -116,6 +123,7 @@ export function useConnectedResident() {
       messages: chatMessages,
       draft: drafts.current.get(selected) ?? null,
       activeConversationId: selected,
+      awaitingReply: awaiting.current,
       conversations: chats.map((c) => ({
         id: c.id,
         title: c.name,
@@ -180,9 +188,11 @@ export function useConnectedResident() {
     };
     route();
     window.addEventListener("hashchange", route);
+    let ticks = 0;
     const timer = setInterval(() => {
-      if (!document.hidden) load();
-    }, 5000);
+      // Poll quickly only while the resident is waiting for the assistant.
+      if (!document.hidden && (awaiting.current || ++ticks % 4 === 0)) load();
+    }, 1250);
     return () => {
       disposed = true;
       clearInterval(timer);

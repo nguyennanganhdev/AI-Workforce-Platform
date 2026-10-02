@@ -256,6 +256,18 @@ export function Assistant({
                 </div>
               </div>
             ))}
+            {state.awaitingReply && (
+              <div className="message assistant">
+                <span className="assistant-avatar small-avatar">
+                  <IconSparkles size={15} />
+                </span>
+                <div className="message-body">
+                  <div className="message-bubble message-waiting">
+                    <p>Trợ lý đang trả lời…</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}
