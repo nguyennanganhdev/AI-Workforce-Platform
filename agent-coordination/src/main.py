@@ -86,6 +86,31 @@ class MockModelClient(ModelClient):
     async def generate(self, prompt: dict) -> str:
         return '{"decision": "mocked"}'
 
+class AgentScopeModelClient(ModelClient):
+    """
+    DEV-5: Client kết nối Model qua thư viện AgentScope.
+    """
+    def __init__(self, config):
+        import agentscope
+        from agentscope.models import load_model_by_config_name
+        
+        model_config = {
+            "config_name": "coordination_model",
+            "model_type": config.MODEL_PROVIDER,
+            "model_name": config.MODEL_NAME,
+            "api_key": config.MODEL_API_KEY,
+        }
+        if config.MODEL_API_BASE:
+            model_config["client_args"] = {"base_url": config.MODEL_API_BASE}
+            
+        agentscope.init(model_configs=[model_config])
+        self.model_wrapper = load_model_by_config_name("coordination_model")
+
+    async def generate(self, prompt: dict) -> str:
+        # Giả định planner sẽ tạo ra prompt có cấu trúc phù hợp
+        response = self.model_wrapper(prompt)
+        return response.text
+
 class MockEventVerifier:
     async def resolve(self, event: dict, trusted_context: object):
         from groupchat.models import Context
@@ -99,12 +124,21 @@ class MockEventVerifier:
 
 
 # =========================================================================
-# MAIN INTEGRATION
+# MAIN INTEGRATION (DEV-5 - FastAPI App)
 # =========================================================================
-async def main():
-    from config import get_settings
-    config = get_settings()
-    
+from fastapi import FastAPI
+from config import get_settings
+import uvicorn
+
+config = get_settings()
+
+app = FastAPI(
+    title="Agent Coordination Service",
+    description="Core Routing & Agent Supervisor Service",
+    version="1.0.0"
+)
+
+async def init_services():
     # Configure logging using ENV variable
     log_level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
     logging.basicConfig(level=log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -118,7 +152,14 @@ async def main():
     authority = MockAuthority()
     resolver = MockParticipantResolver()
     agent_port = MockAgentInvocationPort()
-    model_client = MockModelClient()
+    
+    # DEV-5: Tích hợp Model Client (Fall back về Mock nếu chưa có API Key)
+    if config.MODEL_API_KEY:
+        logger.info(f"Khởi tạo AgentScopeModelClient với model: {config.MODEL_NAME}")
+        model_client = AgentScopeModelClient(config)
+    else:
+        logger.warning(f"Không tìm thấy MODEL_API_KEY. Fallback về MockModelClient cho {config.MODEL_NAME}.")
+        model_client = MockModelClient()
     
     # 2. Khởi tạo DEV-2: RoomService
     # Groupchat room service điều phối agents
@@ -174,8 +215,62 @@ async def main():
     # Return supervisor to be used by the event loop or test harness
     return supervisor
 
+@app.on_event("startup")
+async def startup_event():
+    app.state.supervisor = await init_services()
+
+@app.get("/health")
+async def health_check():
+    if config.ENABLE_HEALTH_CHECK:
+        return {"status": "ok", "env": config.ENV, "service": "agent-coordination"}
+    return {"status": "disabled"}
+
+# --- DEV-5: Integration Endpoints ---
+from pydantic import BaseModel, ConfigDict
+from typing import List, Optional
+
+class Attachment(BaseModel):
+    file_id: str
+    type: str
+
+class TicketFacts(BaseModel):
+    mo_ta: Optional[str] = None
+    vi_tri: Optional[str] = None
+    
+    model_config = ConfigDict(extra="allow")
+
+class TicketReport(BaseModel):
+    text: str
+    facts: TicketFacts
+    attachments: List[Attachment]
+
+class TicketPayload(BaseModel):
+    version: int
+    ticket_id: str
+    report: TicketReport
+
+@app.post("/api/v1/tickets")
+async def receive_ticket(payload: TicketPayload):
+    """
+    Giả lập Endpoint nhận Ticket từ Lễ tân (DEV-3).
+    Dùng để test nối luồng vào Supervisor (DEV-1).
+    """
+    supervisor = app.state.supervisor
+    # await supervisor.process_event(...)
+    
+    return {
+        "version": 1,
+        "ticket_id": payload.ticket_id,
+        "status": "need_info",
+        "resident_brief": {
+            "facts": [
+                "Bộ phận xử lý cần xác nhận vị trí nước đang chảy.",
+                "Phản ánh đã được tiếp nhận."
+            ],
+            "question": "Nước đang chảy liên tục hay chỉ xuất hiện khi trời mưa?",
+            "attachments": []
+        }
+    }
+
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+    uvicorn.run("main:app", host="0.0.0.0", port=config.PORT, reload=config.DEBUG)

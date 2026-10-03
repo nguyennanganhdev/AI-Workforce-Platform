@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     
     # 2. Cấu hình Model (LLM)
     MODEL_PROVIDER: str = Field(default="openai", description="Nhà cung cấp LLM (openai, azure, v.v...)")
-    MODEL_NAME: str = Field(default="gpt-4", description="Tên Model cần dùng")
+    MODEL_NAME: str = Field(default="gpt-5.6-luna", description="Tên Model cần dùng")
     MODEL_API_KEY: str = Field(default="", description="API Key cho LLM")
     MODEL_API_BASE: str | None = Field(default=None, description="URL Base nếu dùng private LLM/Azure")
     
