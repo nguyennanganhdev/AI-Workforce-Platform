@@ -1,0 +1,533 @@
+{
+  "base_commit": "9ecd1437b8c9629f51e68886e6dc17bc3da7e77e",
+  "branch": "codex/report-agent-PHH",
+  "notes": [
+    "Failures are test cases, not independent defects.",
+    "Eight missing_meta failures in first phase were caused by the test helper.",
+    "Two deadline cases in corrected baseline require a new configuration contract.",
+    "Raw XML tracebacks remain local; this committed summary excludes absolute host paths and hostname."
+  ],
+  "phases": [
+    {
+      "phase": "report-before-fixes",
+      "summary": {
+        "tests": 175,
+        "failures": 43,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 132
+      },
+      "failures": [
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_unknown_operation_is_sanitized_without_http[operation1]",
+          "message": "TypeError: unhashable type: 'list'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_unknown_operation_is_sanitized_without_http[operation2]",
+          "message": "TypeError: unhashable type: 'dict'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-get_report_filter_options-args0-/reports/filter-options-fields0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-get_employee_performance_summary-args1-/reports/employee-performance-fields1]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-get_employee_feedback_details-args2-/reports/employee-feedback-fields2]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-get_repair_revenue_summary-args3-/reports/repair-revenue-fields3]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-get_incident_frequency_summary-args4-/reports/incident-frequency-summary-fields4]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-get_report_supporting_records-args5-/reports/supporting-records-fields5]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-create_report_export-args6-/reports/exports-fields6]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-get_report_export_status-args7-/reports/exports/55555555-5555-4555-8555-555555555555-fields7]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_feedback_score_must_be_within_database_scale[0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_feedback_score_must_be_within_database_scale[6]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_average_rating_must_be_within_database_scale[0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_average_rating_must_be_within_database_scale[5.1]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_average_rating_must_be_within_database_scale[999]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_average_rating_must_be_within_database_scale[6]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_huge_numeric_does_not_crash_boundary",
+          "message": "OverflowError: int too large to convert to float",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_identity_is_required[]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_identity_is_required[not-a-uuid]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_identity_is_required[ ]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_bad_money_is_not_reported_as_valid[1e10000]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_revenue_internal_invariants[change0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_revenue_internal_invariants[change1]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_revenue_internal_invariants[change2]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_revenue_internal_invariants[change3]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_pagination_cannot_loop_or_advance_short_page[0-0-0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_pagination_cannot_loop_or_advance_short_page[0-50-50]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_pagination_cannot_loop_or_advance_short_page[1-0-1_0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_filter_options_do_not_advertise_invalid_records[categories-value0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_filter_options_do_not_advertise_invalid_records[employees-value1]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_filter_options_do_not_advertise_invalid_records[exportFormats-value2]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_filter_options_do_not_advertise_invalid_records[buildings-value3]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_metadata_shape_or_fact_contradiction_is_rejected[facts-value0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_metadata_shape_or_fact_contradiction_is_rejected[missingFields-private]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_metadata_shape_or_fact_contradiction_is_rejected[facts-value2]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_export_requires_complete_status_fields[downloadUrl]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_export_requires_complete_status_fields[kind]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_export_requires_complete_status_fields[execution]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_total_deadline_covers_slow_transport_and_keeps_write_unknown",
+          "message": "TypeError: ReportBackend.__init__() got an unexpected keyword argument 'operation_timeout_seconds'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_invalid_timeout_configuration_fails_cleanly[True]",
+          "message": "Failed: DID NOT RAISE ValueError",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_invalid_timeout_configuration_fails_cleanly[10]",
+          "message": "TypeError: '<' not supported between instances of 'int' and 'str'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_invalid_timeout_configuration_fails_cleanly[None]",
+          "message": "TypeError: '<' not supported between instances of 'int' and 'NoneType'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_operation_deadline_cannot_exceed_descriptor_budget",
+          "message": "TypeError: ReportBackend.__init__() got an unexpected keyword argument 'operation_timeout_seconds'",
+          "final_outcome": "passed"
+        }
+      ]
+    },
+    {
+      "phase": "report-baseline-corrected",
+      "summary": {
+        "tests": 180,
+        "failures": 40,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 140
+      },
+      "failures": [
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_unknown_operation_is_sanitized_without_http[operation1]",
+          "message": "TypeError: unhashable type: 'list'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_unknown_operation_is_sanitized_without_http[operation2]",
+          "message": "TypeError: unhashable type: 'dict'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_feedback_score_must_be_within_database_scale[0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_feedback_score_must_be_within_database_scale[6]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_average_rating_must_be_within_database_scale[0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_average_rating_must_be_within_database_scale[5.1]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_average_rating_must_be_within_database_scale[999]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_average_rating_must_be_within_database_scale[6]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_huge_numeric_does_not_crash_boundary",
+          "message": "OverflowError: int too large to convert to float",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_identity_is_required[]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_identity_is_required[not-a-uuid]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_employee_identity_is_required[ ]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_bad_money_is_not_reported_as_valid[1e10000]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_revenue_internal_invariants[change0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_revenue_internal_invariants[change1]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_revenue_internal_invariants[change2]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_revenue_internal_invariants[change3]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_pagination_cannot_loop_or_advance_short_page[0-0-0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_pagination_cannot_loop_or_advance_short_page[0-50-50]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_pagination_cannot_loop_or_advance_short_page[1-0-1_0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_filter_options_do_not_advertise_invalid_records[categories-value0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_filter_options_do_not_advertise_invalid_records[employees-value1]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_filter_options_do_not_advertise_invalid_records[exportFormats-value2]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_filter_options_do_not_advertise_invalid_records[buildings-value3]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_metadata_shape_or_fact_contradiction_is_rejected[facts-value0]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_metadata_shape_or_fact_contradiction_is_rejected[missingFields-private]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_metadata_shape_or_fact_contradiction_is_rejected[facts-value2]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_export_requires_complete_status_fields[downloadUrl]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_export_requires_complete_status_fields[kind]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_export_requires_complete_status_fields[execution]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_total_deadline_covers_slow_transport_and_keeps_write_unknown",
+          "message": "TypeError: ReportBackend.__init__() got an unexpected keyword argument 'operation_timeout_seconds'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_invalid_timeout_configuration_fails_cleanly[True]",
+          "message": "Failed: DID NOT RAISE ValueError",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_invalid_timeout_configuration_fails_cleanly[10]",
+          "message": "TypeError: '<' not supported between instances of 'int' and 'str'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_invalid_timeout_configuration_fails_cleanly[None]",
+          "message": "TypeError: '<' not supported between instances of 'int' and 'NoneType'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_operation_deadline_cannot_exceed_descriptor_budget",
+          "message": "TypeError: ReportBackend.__init__() got an unexpected keyword argument 'operation_timeout_seconds'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_frequency_group_identity_is_not_optional[missing_period]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_frequency_group_identity_is_not_optional[invalid_period]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_frequency_group_identity_is_not_optional[missing_category]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_frequency_group_identity_is_not_optional[duplicate_group]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_zero_total_with_fake_groups_is_rejected",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        }
+      ]
+    },
+    {
+      "phase": "report-after-initial-fixes",
+      "summary": {
+        "tests": 180,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 180
+      },
+      "failures": []
+    },
+    {
+      "phase": "report-money-before",
+      "summary": {
+        "tests": 3,
+        "failures": 3,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 0
+      },
+      "failures": [
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_json_numeric_money_keeps_digits_before_float_conversion",
+          "message": "AssertionError: assert '9007199254740994.0' == '9007199254740993.01'\n  \n  - 9007199254740993.01\n  ?                ^  -\n  + 9007199254740994.0\n  ?                ^",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_money_strings_follow_json_numeric_syntax[1_000]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_money_strings_follow_json_numeric_syntax[ 100 ]",
+          "message": "KeyError: 'error'",
+          "final_outcome": "passed"
+        }
+      ]
+    },
+    {
+      "phase": "report-boundaries-before",
+      "summary": {
+        "tests": 27,
+        "failures": 2,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 25
+      },
+      "failures": [
+        {
+          "case": "server.tests.reporting.tools.test_boundaries::test_deep_json_cannot_escape_as_recursion_error[1200]",
+          "message": "RecursionError: maximum recursion depth exceeded",
+          "final_outcome": "passed"
+        },
+        {
+          "case": "server.tests.reporting.tools.test_boundaries::test_numeric_budget_much_larger_than_float_does_not_escape",
+          "message": "OverflowError: int too large to convert to float",
+          "final_outcome": "passed"
+        }
+      ]
+    },
+    {
+      "phase": "report-final-tests",
+      "summary": {
+        "tests": 256,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 256
+      },
+      "failures": []
+    },
+    {
+      "phase": "report-pre-push-tests",
+      "summary": {
+        "tests": 256,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 256
+      },
+      "failures": []
+    }
+  ]
+}

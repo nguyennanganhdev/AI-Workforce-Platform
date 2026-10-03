@@ -1,0 +1,4 @@
+httpx==0.28.1
+pydantic==2.13.5
+# Windows does not normally provide an IANA timezone database.
+tzdata>=2025.2

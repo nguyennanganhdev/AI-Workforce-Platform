@@ -1,0 +1,1059 @@
+{
+  "summary": {
+    "tests": 256,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "passed": 256
+  },
+  "cases_by_module": {
+    "server.tests.reporting.tools.test_adversarial": 127,
+    "server.tests.reporting.tools.test_backend_routes": 1,
+    "server.tests.reporting.tools.test_boundaries": 27,
+    "server.tests.reporting.tools.test_export_lifecycle": 6,
+    "server.tests.reporting.tools.test_tools": 61,
+    "server.tests.reporting.narrative.test_operations": 34
+  },
+  "source_sha256": {
+    "server/src/reporting/tools/__init__.py": "066848e7b5d966d92618412dface6485acb0846180d2b74ef62a0395e6ae3e6d",
+    "server/src/reporting/tools/catalog.py": "ba713dd6517a30c401d525dcc950c2da3a7f552febf47cef8a14d4aa8c7484fc",
+    "server/src/reporting/tools/contracts.py": "dde9f2c352dc4d2a5066acbec292d31aac09251ee2389a16cd4c4a8258b478fd",
+    "server/src/reporting/tools/facade.py": "a9e46e81a1a81f7b1f9abd66b4b213850abc0ed24e3cd940fac5159bc2f9e796",
+    "server/src/reporting/application/__init__.py": "b3d8a683277cd4365ea362fd90d03db048c5fbe59a4fdbee96e1b2c72a128693",
+    "server/src/reporting/application/client.py": "b224c49964005ec1655a75ed86865d0e3686e670333ddb17aea8411ee876bd69",
+    "server/src/reporting/metrics/__init__.py": "c035524a0bb95e3fa293685d7c779faf23a5ca0625a825cb394bd7b0f1452efd",
+    "server/src/reporting/metrics/normalize.py": "bbc89f0538ddd23bcf7a34294ff4d4617b16d5701f59037ef3196d751875c939",
+    "server/tests/reporting/tools/conftest.py": "a06f5fd3b7a69eb6812e97d3ddc3bdd1edd0c54601812169c58b45189cfc7b93",
+    "server/tests/reporting/tools/test_adversarial.py": "381a3e5074a29865e04e4afc6cfb61b8b5ae2bac30e593c2bb9de1f265d1f1db",
+    "server/tests/reporting/tools/test_backend_routes.py": "8dde55e3dae5884a69abd8f8e2ebf461325744cf37308796167dea9d0c0f772e",
+    "server/tests/reporting/tools/test_boundaries.py": "ee9238d7a8dcf9630f384ee7dd04372654bd29ab257519909ea94fb71a858912",
+    "server/tests/reporting/tools/test_export_lifecycle.py": "ce3062e8938eb2371c9e33282ad5bd91e8bd9a8ec5335aae3f585dc62299b1c2",
+    "server/tests/reporting/tools/test_tools.py": "5f05472ef2e088087f7aab4ac8a3ef6626c4f9f885461ec82533bb74d0ee99bf"
+  },
+  "cases": [
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_unknown_operation_is_sanitized_without_http[None]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_unknown_operation_is_sanitized_without_http[operation1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_unknown_operation_is_sanitized_without_http[operation2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_unknown_operation_is_sanitized_without_http[7]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_unknown_operation_is_sanitized_without_http[True]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_unknown_operation_is_sanitized_without_http[unknown_operation]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_non_object_arguments_are_rejected[None]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_non_object_arguments_are_rejected[arguments1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_non_object_arguments_are_rejected[instructions]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_non_object_arguments_are_rejected[1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_non_object_arguments_are_rejected[True]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-get_report_filter_options-args0-/reports/filter-options-fields0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-get_employee_performance_summary-args1-/reports/employee-performance-fields1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-get_employee_feedback_details-args2-/reports/employee-feedback-fields2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-get_repair_revenue_summary-args3-/reports/repair-revenue-fields3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-get_incident_frequency_summary-args4-/reports/incident-frequency-summary-fields4]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-get_report_supporting_records-args5-/reports/supporting-records-fields5]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-create_report_export-args6-/reports/exports-fields6]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[missing_meta-get_report_export_status-args7-/reports/exports/55555555-5555-4555-8555-555555555555-fields7]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_operation-get_report_filter_options-args0-/reports/filter-options-fields0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_operation-get_employee_performance_summary-args1-/reports/employee-performance-fields1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_operation-get_employee_feedback_details-args2-/reports/employee-feedback-fields2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_operation-get_repair_revenue_summary-args3-/reports/repair-revenue-fields3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_operation-get_incident_frequency_summary-args4-/reports/incident-frequency-summary-fields4]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_operation-get_report_supporting_records-args5-/reports/supporting-records-fields5]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_operation-create_report_export-args6-/reports/exports-fields6]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_operation-get_report_export_status-args7-/reports/exports/55555555-5555-4555-8555-555555555555-fields7]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_source-get_report_filter_options-args0-/reports/filter-options-fields0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_source-get_employee_performance_summary-args1-/reports/employee-performance-fields1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_source-get_employee_feedback_details-args2-/reports/employee-feedback-fields2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_source-get_repair_revenue_summary-args3-/reports/repair-revenue-fields3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_source-get_incident_frequency_summary-args4-/reports/incident-frequency-summary-fields4]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_source-get_report_supporting_records-args5-/reports/supporting-records-fields5]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_source-create_report_export-args6-/reports/exports-fields6]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[wrong_source-get_report_export_status-args7-/reports/exports/55555555-5555-4555-8555-555555555555-fields7]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[bad_resource-get_report_filter_options-args0-/reports/filter-options-fields0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[bad_resource-get_employee_performance_summary-args1-/reports/employee-performance-fields1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[bad_resource-get_employee_feedback_details-args2-/reports/employee-feedback-fields2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[bad_resource-get_repair_revenue_summary-args3-/reports/repair-revenue-fields3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[bad_resource-get_incident_frequency_summary-args4-/reports/incident-frequency-summary-fields4]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[bad_resource-get_report_supporting_records-args5-/reports/supporting-records-fields5]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[bad_resource-create_report_export-args6-/reports/exports-fields6]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_all_routes_reject_broken_metadata[bad_resource-get_report_export_status-args7-/reports/exports/55555555-5555-4555-8555-555555555555-fields7]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_items_wrong_shape[None]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_items_wrong_shape[value1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_items_wrong_shape[rows]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_items_wrong_shape[value3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_items_wrong_shape[value4]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_items_wrong_shape[value5]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_feedback_score_must_be_within_database_scale[0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_feedback_score_must_be_within_database_scale[6]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_feedback_score_must_be_within_database_scale[-1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_feedback_score_must_be_within_database_scale[True]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_feedback_score_must_be_within_database_scale[NaN]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_feedback_score_must_be_within_database_scale[Infinity]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_feedback_score_must_be_within_database_scale[1e10000]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_employee_average_rating_must_be_within_database_scale[0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_employee_average_rating_must_be_within_database_scale[5.1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_employee_average_rating_must_be_within_database_scale[999]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_employee_average_rating_must_be_within_database_scale[6]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_employee_huge_numeric_does_not_crash_boundary",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_employee_identity_is_required[]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_employee_identity_is_required[not-a-uuid]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_employee_identity_is_required[ ]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_duplicate_employee_rows_are_not_double_counted",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_bad_money_is_not_reported_as_valid[NaN]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_bad_money_is_not_reported_as_valid[-0.01]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_bad_money_is_not_reported_as_valid[True]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_bad_money_is_not_reported_as_valid[None]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_bad_money_is_not_reported_as_valid[Infinity]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_bad_money_is_not_reported_as_valid[1e10000]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_revenue_internal_invariants[change0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_revenue_internal_invariants[change1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_revenue_internal_invariants[change2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_revenue_internal_invariants[change3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_overpayment_does_not_invent_negative_outstanding",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_multiple_currencies_remain_separate",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_pagination_cannot_loop_or_advance_short_page[0-0-0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_pagination_cannot_loop_or_advance_short_page[0-50-50]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_pagination_cannot_loop_or_advance_short_page[1-0-1_0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_pagination_cannot_loop_or_advance_short_page[1-0--1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_pagination_cannot_loop_or_advance_short_page[1-0-True]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_pagination_cannot_loop_or_advance_short_page[1-0-1_1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_full_page_cursor_moves_forward_and_terminal_page_is_empty",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_filter_options_do_not_advertise_invalid_records[categories-value0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_filter_options_do_not_advertise_invalid_records[employees-value1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_filter_options_do_not_advertise_invalid_records[exportFormats-value2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_filter_options_do_not_advertise_invalid_records[buildings-value3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_metadata_shape_or_fact_contradiction_is_rejected[facts-value0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_metadata_shape_or_fact_contradiction_is_rejected[missingFields-private]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_metadata_shape_or_fact_contradiction_is_rejected[facts-value2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_export_requires_complete_status_fields[downloadUrl]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_export_requires_complete_status_fields[kind]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_export_requires_complete_status_fields[execution]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_transport_retry_then_success_and_auth_revocation",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_json_contract_failure_not_retried[200]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_json_contract_failure_not_retried[201]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_json_contract_failure_not_retried[204]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_total_deadline_covers_slow_transport_and_keeps_write_unknown",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_invalid_timeout_configuration_fails_cleanly[True]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_invalid_timeout_configuration_fails_cleanly[False]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_invalid_timeout_configuration_fails_cleanly[10]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_invalid_timeout_configuration_fails_cleanly[None]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_invalid_timeout_configuration_fails_cleanly[nan]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_invalid_timeout_configuration_fails_cleanly[inf]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_invalid_timeout_configuration_fails_cleanly[0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_invalid_timeout_configuration_fails_cleanly[-1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_operation_deadline_cannot_exceed_descriptor_budget",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_owned_and_injected_http_clients_have_correct_lifecycle",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_period_accepts_exact_limits_and_leap_day[1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_period_accepts_exact_limits_and_leap_day[3660]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_null_vs_omitted_category_do_not_change_http_filter",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_success_does_not_mutate_backend_payload",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_frequency_group_identity_is_not_optional[missing_period]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_frequency_group_identity_is_not_optional[invalid_period]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_frequency_group_identity_is_not_optional[missing_category]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_frequency_group_identity_is_not_optional[duplicate_group]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_zero_total_with_fake_groups_is_rejected",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_json_numeric_money_keeps_digits_before_float_conversion",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_money_strings_follow_json_numeric_syntax[1_000]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_money_strings_follow_json_numeric_syntax[ 100 ]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_ambiguous_or_non_object_json_is_rejected[{\"agentContext\":{},\"agentContext\":{}}]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_ambiguous_or_non_object_json_is_rejected[{\"n\":NaN}]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_ambiguous_or_non_object_json_is_rejected[[]]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_ambiguous_or_non_object_json_is_rejected[null]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_deadline_includes_retry_backoff",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_adversarial::test_external_cancel_after_export_send_propagates_and_does_not_retry",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_backend_routes::test_all_tools_against_current_backend_routes",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_named_public_methods_are_callable[get_report_filter_options-args0-/reports/filter-options-fields0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_named_public_methods_are_callable[get_employee_performance_summary-args1-/reports/employee-performance-fields1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_named_public_methods_are_callable[get_employee_feedback_details-args2-/reports/employee-feedback-fields2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_named_public_methods_are_callable[get_repair_revenue_summary-args3-/reports/repair-revenue-fields3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_named_public_methods_are_callable[get_incident_frequency_summary-args4-/reports/incident-frequency-summary-fields4]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_named_public_methods_are_callable[get_report_supporting_records-args5-/reports/supporting-records-fields5]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_named_public_methods_are_callable[create_report_export-args6-/reports/exports-fields6]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_named_public_methods_are_callable[get_report_export_status-args7-/reports/exports/55555555-5555-4555-8555-555555555555-fields7]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_runtime_context_invalid_configuration_is_rejected[change0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_runtime_context_invalid_configuration_is_rejected[change1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_runtime_context_invalid_configuration_is_rejected[change2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_runtime_context_invalid_configuration_is_rejected[change3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_runtime_context_invalid_configuration_is_rejected[change4]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_cookie_not_present_in_context_repr",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_required_metric_missing_is_not_filled_with_zero[average_processing_seconds]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_required_metric_missing_is_not_filled_with_zero[average_rating]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_required_metric_missing_is_not_filled_with_zero[rating_count]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_required_metric_missing_is_not_filled_with_zero[completed_count]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_employee_has_no_completed_jobs_but_has_separate_feedback_cohort",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_unclassified_group_and_pre_period_bucket_are_valid",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_empty_frequency_has_no_invented_zero_group",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_invoice_overpayment_can_coexist_with_unpaid_invoice",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_bad_supporting_record_identity[rows0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_bad_supporting_record_identity[rows1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_deep_json_cannot_escape_as_recursion_error[600]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_deep_json_cannot_escape_as_recursion_error[1200]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_boundaries::test_numeric_budget_much_larger_than_float_does_not_escape",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_export_lifecycle::test_real_route_replay_and_changed_payload_conflict",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_export_lifecycle::test_same_key_is_separate_for_two_principals_and_owner_guard_applies",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_export_lifecycle::test_non_admin_building_revocation_blocks_status_replay_and_download",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_export_lifecycle::test_stale_runtime_grant_is_not_backend_authorization",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_export_lifecycle::test_download_matches_export_kind_and_period[incident_frequency]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_export_lifecycle::test_download_matches_export_kind_and_period[issued_revenue]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_eight_routes[get_report_filter_options-args0-/reports/filter-options-fields0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_eight_routes[get_employee_performance_summary-args1-/reports/employee-performance-fields1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_eight_routes[get_employee_feedback_details-args2-/reports/employee-feedback-fields2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_eight_routes[get_repair_revenue_summary-args3-/reports/repair-revenue-fields3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_eight_routes[get_incident_frequency_summary-args4-/reports/incident-frequency-summary-fields4]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_eight_routes[get_report_supporting_records-args5-/reports/supporting-records-fields5]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_eight_routes[create_report_export-args6-/reports/exports-fields6]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_eight_routes[get_report_export_status-args7-/reports/exports/55555555-5555-4555-8555-555555555555-fields7]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_untrusted_input_never_reaches_http[change0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_untrusted_input_never_reaches_http[change1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_untrusted_input_never_reaches_http[change2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_untrusted_input_never_reaches_http[change3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_untrusted_input_never_reaches_http[change4]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_untrusted_input_never_reaches_http[change5]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_untrusted_input_never_reaches_http[change6]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_untrusted_input_never_reaches_http[change7]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_untrusted_input_never_reaches_http[change8]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_untrusted_input_never_reaches_http[change9]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_untrusted_input_never_reaches_http[change10]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_untrusted_input_never_reaches_http[change11]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_exports_reject_unsupported_semantics[args0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_exports_reject_unsupported_semantics[args1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_exports_reject_unsupported_semantics[args2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_exports_reject_unsupported_semantics[args3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_exports_reject_unsupported_semantics[args4]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_exports_reject_unsupported_semantics[args5]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_ratios_computed_by_code_and_zero_denominator_is_missing",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_ratio_and_money_precision",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_frequency_uses_ticket_total_and_validates_sum",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_empty_distinct_from_http_error",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_error_mapping_without_retry[401-AUTHENTICATION_REQUIRED]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_error_mapping_without_retry[403-REPORT_SCOPE_FORBIDDEN]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_error_mapping_without_retry[404-REPORT_NOT_FOUND]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_error_mapping_without_retry[409-REPORT_CONFLICT]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_error_mapping_without_retry[422-BACKEND_INPUT_REJECTED]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_error_mapping_without_retry[429-RATE_LIMITED]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_read_retries_bounded",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_export_unknown_not_automatically_retried[timeout]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_export_unknown_not_automatically_retried[500]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_export_unknown_not_automatically_retried[bad_json]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_export_unknown_not_automatically_retried[bad_shape]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_export_unknown_not_automatically_retried[redirect]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_retry_same_export_key_is_preserved",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_export_response_binding[change0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_export_response_binding[change1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_export_response_binding[change2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_export_response_binding[change3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_export_response_binding[change4]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_revocation_checked_again_by_backend_for_status",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_concurrent_principals_keep_cookies_and_scope_separate",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_mismatched_response_resource_is_rejected",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_invalid_metric_values_rejected[row0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_invalid_metric_values_rejected[row1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_invalid_metric_values_rejected[row2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_invalid_metric_values_rejected[row3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_catalog_has_strict_inputs_and_no_identity_fields",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_cancel_propagates_without_retry",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_unsafe_backend_url_rejected[http://business.example]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_unsafe_backend_url_rejected[https://user:pass@example.com]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_unsafe_backend_url_rejected[https://example.com?token=private]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.tools.test_tools::test_unsafe_backend_url_rejected[file:///data]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_distinct_granted_configs_and_versions",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_config_rejects_authority[sql]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_config_rejects_authority[tools]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_config_rejects_authority[workspace_id]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_config_rejects_authority[prompt]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_config_version_period_timezone[<lambda>0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_config_version_period_timezone[<lambda>1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_config_version_period_timezone[<lambda>2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_config_version_period_timezone[<lambda>3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_config_version_period_timezone[<lambda>4]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_config_version_period_timezone[<lambda>5]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_values_and_lineage_zero_differs_from_missing",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_noncomplete_reports_do_not_invent_zero[empty-Kh\\xf4ng c\\xf3 d\\u1eef li\\u1ec7u]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_noncomplete_reports_do_not_invent_zero[partial-m\\u1ed9t ph\\u1ea7n]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_noncomplete_reports_do_not_invent_zero[error-l\\u1ed7i truy v\\u1ea5n]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_forbidden_stale_or_duplicate_lineage[<lambda>0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_forbidden_stale_or_duplicate_lineage[<lambda>1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_forbidden_stale_or_duplicate_lineage[<lambda>2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_forbidden_stale_or_duplicate_lineage[<lambda>3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_forbidden_stale_or_duplicate_lineage[<lambda>4]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_forbidden_stale_or_duplicate_lineage[<lambda>5]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_forbidden_stale_or_duplicate_lineage[<lambda>6]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_forbidden_stale_or_duplicate_lineage[<lambda>7]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_count_kpi_is_finite_nonnegative_integer[nan]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_count_kpi_is_finite_nonnegative_integer[inf]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_count_kpi_is_finite_nonnegative_integer[-1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_count_kpi_is_finite_nonnegative_integer[True]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_count_kpi_is_finite_nonnegative_integer[1.5]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_missing_values_units_and_complete_consistency[<lambda>0]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_missing_values_units_and_complete_consistency[<lambda>1]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_missing_values_units_and_complete_consistency[<lambda>2]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_missing_values_units_and_complete_consistency[<lambda>3]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_missing_values_units_and_complete_consistency[<lambda>4]",
+      "outcome": "passed"
+    },
+    {
+      "case": "server.tests.reporting.narrative.test_operations::test_html_escapes_injection_and_includes_semantic_sources",
+      "outcome": "passed"
+    }
+  ]
+}
