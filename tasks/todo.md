@@ -70,7 +70,7 @@ hành thật): `docs/teams/chien/TIEN_DO_VA_KE_HOACH_2026-10-03.md`.
 - [ ] A5 Chốt 5 quyết định liên team
 - [ ] B1 Một phần: Supervisor có binding, run và API riêng (`/internal/coordination/v1`); subagent chưa
 - [x] B2 Supervisor thật nhận yêu cầu từ Lễ tân, lưu phiên bền, trả `accepted` (`agent-coordination/src/vinhomes`)
-- [ ] B3 Supervisor lập phương án bằng model thật
+- [ ] B3 Supervisor lập phương án bằng model thật (model thật đã giao việc và nhận phân tích; phương án thuộc M3)
 - [ ] B4 Phát hành phiên bản agent; nối lại Agent Factory
 - [ ] B5 Cổng tool với 3 port và 2 tool đọc database thật
 - [ ] B6 Sub-agent kỹ thuật dùng tool trong một yêu cầu thật
@@ -87,7 +87,9 @@ Chi tiết: `docs/teams/chien/SUPERVISOR_SESSION_V2_M0_M1_2026-10-03.md`.
 - [x] M0 Baseline, kiểm kê, session và bảng contract
 - [x] M1a Runtime nối backend thật cho `ticket_submitted → accepted`, có đối soát khi mất phản hồi
 - [ ] M1b Kho PostgreSQL cho checkpoint, inbox, journal; test hai tiến trình
-- [ ] M2 Một specialist và model thật
+- [x] M2 Một specialist và model thật: admin duyệt là phát hành, agent được mời theo danh mục ticket, agent kỹ
+  thuật trả lời trong phòng, Operations hiện phân tích (`docs/teams/chien/SUPERVISOR_SESSION_V2_M2_2026-10-04.md`)
+- [ ] M2b Cổng tool cho agent chuyên môn (bắt đầu bằng ba tool đọc của Team Quang)
 - [ ] M3 Hỏi lại cư dân, phương án, hai lần duyệt, hoàn tất, hủy
 - [ ] M4 Pause, resume, stop và màn quản lý session trên Operations
 - [ ] M5 Nghiệm thu lỗi và triển khai giới hạn
