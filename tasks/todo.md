@@ -50,3 +50,33 @@
 - [ ] T7.4 Một phần: db:verify đã đạt (đếm bảng từ schema thay vì số cứng). Còn lại: migration 0001, 0002, 0007–0011 viết tay nên thiếu snapshot; cần đưa các bảng vh_* vào schema TS rồi sinh lại — việc của cả các team đã thêm migration
 - [x] T7.5 Đã có sẵn: backend từ chối khởi động chế độ demo khi host không phải loopback
 - [ ] T7.6 Nhập dữ liệu tổ chức thật qua Agent Factory (L, phụ thuộc Team Phái)
+
+## Bổ sung ngày 03/10
+- [x] Test đầu-cuối với model giả chạy cho cả `graph` và `loop` (8 test mỗi chế độ)
+- [x] File chung của Masterise nạp vào phân khu duy nhất mà đơn vị đó vận hành
+- [x] `publish_learned.ps1 -EveryMinutes` tự lặp, không còn bước chạy tay
+- [x] Operations hiện đúng yêu cầu khẩn cấp (backend trả `critical`, giao diện từng so với `P0`)
+- [x] Câu trả lời khẩn cấp kèm hướng dẫn an toàn do Ban quản lý duyệt (cháy, mùi gas, kẹt thang máy)
+- [x] Database demo dựng lại sạch; bản chuẩn để khôi phục: `.local-v3-faker/backups/vinhomes_v3-clean-baseline-*.dump`
+
+## Đợt tiếp theo — cả platform
+Tiến độ từng team, các quyết định cần chốt và kế hoạch A (nền chung), B (Supervisor chạy thật), C (Vinhomes vận
+hành thật): `docs/teams/chien/TIEN_DO_VA_KE_HOACH_2026-10-03.md`.
+
+- [ ] A1 Gộp PR #25 vào `develop`
+- [ ] A2 Team Phái đưa `agent-factory/` và `security-tools/` vào `develop` (hai PR)
+- [ ] A3 Team Đông dọn 5 PR nội bộ
+- [ ] A4 Sửa nền kiểm thử: 48 test `app`, 5 test Lễ tân, snapshot migration
+- [ ] A5 Chốt 5 quyết định liên team
+- [ ] B1 Ủy quyền cho nhóm agent và endpoint Authority
+- [ ] B2 Coordination chạy với ràng buộc thật
+- [ ] B3 Supervisor lập phương án bằng model thật
+- [ ] B4 Phát hành phiên bản agent; nối lại Agent Factory
+- [ ] B5 Cổng tool với 3 port và 2 tool đọc database thật
+- [ ] B6 Sub-agent kỹ thuật dùng tool trong một yêu cầu thật
+- [ ] C1 Đăng nhập thật
+- [ ] C2 Đóng gói và môi trường chung
+- [ ] C3 Ban quản lý duyệt từ khóa khẩn cấp và hướng dẫn an toàn
+- [ ] C4 Job định kỳ nạp tri thức
+- [ ] C5 Giám sát và xoay vòng token
+- [ ] C6 Bổ sung dữ liệu, cập nhật bộ 93 câu
