@@ -5,7 +5,7 @@ from adapters.backend.errors import AdapterError
 from groupchat.reception import ReceptionMessage
 from persistence.sqlite import DevelopmentStore
 from runtime.ingress import DurableIngress
-from runtime.service import Worker
+from runtime.service import Continuation, Worker
 from tests.adapters.reception.support import input_message
 from support.fakes import make_context
 
@@ -49,6 +49,73 @@ async def test_unknown_worker_jobs_are_durable_bounded_and_never_acked(tmp_path)
     with store.connection() as db:
         assert db.execute('SELECT status FROM inbox').fetchone()==('blocked',)
         assert db.execute('SELECT count(*) FROM acknowledgements').fetchone()==(0,)
+
+
+async def test_normal_continuations_survive_recovery_bound_and_restart(tmp_path):
+    now = [100.]
+    store = DevelopmentStore(tmp_path/'f.sqlite', clock=lambda: now[0])
+    await store.accept('job', {'work': 'multiple bounded supervisor slices'})
+    fences = []
+    async def handle(claim):
+        fences.append(claim.fence)
+        return Continuation() if len(fences) <= 4 else None
+    for _ in range(4):
+        worker = Worker(store, handle, owner='w', max_attempts=3)
+        assert await worker.once()
+        with store.connection() as db:
+            assert db.execute('SELECT status FROM inbox').fetchone() == ('pending',)
+        now[0] += 6
+        store = DevelopmentStore(store.path, clock=lambda: now[0])
+    assert await Worker(store, handle, owner='w', max_attempts=3).once()
+    assert fences == [1, 2, 3, 4, 5]
+    with store.connection() as db:
+        assert db.execute('SELECT status FROM inbox').fetchone() == ('done',)
+
+
+@pytest.mark.parametrize('raises', [False, True])
+async def test_recovery_after_continuations_has_its_own_durable_bound(tmp_path, raises):
+    now = [100.]
+    store = DevelopmentStore(tmp_path/'f.sqlite', clock=lambda: now[0])
+    await store.accept('job', {'work': 'yield then reconcile'})
+    attempts = []
+    async def handle(claim):
+        attempts.append((claim.fence, claim.recovery_attempts))
+        if len(attempts) <= 4:
+            return Continuation()
+        if raises:
+            raise AdapterError('temporary_failure')
+        return 5
+    for index in range(7):
+        worker = Worker(store, handle, owner='w', max_attempts=3)
+        if raises and index >= 4:
+            with pytest.raises(AdapterError, match='temporary_failure'):
+                await worker.once()
+        else:
+            assert await worker.once()
+        with store.connection() as db:
+            assert db.execute('SELECT status FROM inbox').fetchone() == (
+                'blocked' if index == 6 else 'pending',)
+        now[0] += 6
+        store = DevelopmentStore(store.path, clock=lambda: now[0])
+    assert attempts == [(1,0),(2,0),(3,0),(4,0),(5,0),(6,1),(7,2)]
+    assert not await Worker(store, handle, owner='w').once()
+    with store.connection() as db:
+        assert db.execute('SELECT count(*) FROM acknowledgements').fetchone() == (0,)
+
+
+async def test_expired_claim_counts_recovery_without_resetting_fence(tmp_path):
+    now = [100.]
+    store = DevelopmentStore(tmp_path/'f.sqlite', clock=lambda: now[0])
+    await store.accept('job', {'work': 'abandoned owner'})
+    first = await store.claim('first', 1)
+    now[0] += 2
+    store = DevelopmentStore(store.path, clock=lambda: now[0])
+    second = await store.claim('second')
+    assert (first.fence, first.recovery_attempts) == (1,0)
+    assert (second.fence, second.recovery_attempts) == (2,1)
+    with pytest.raises(AdapterError, match='stale_fence'):
+        await store.defer(first, 5, recovery=True)
+    await store.ack(second)
 
 
 async def test_worker_renews_lease_during_io_and_other_worker_cannot_claim(tmp_path):

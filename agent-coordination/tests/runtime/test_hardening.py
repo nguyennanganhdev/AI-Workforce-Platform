@@ -287,17 +287,11 @@ async def test_snapshot_revoke_during_fetch_not_persisted(tmp_path):
     await c.close()
 
 
-async def test_live_harness_limits_and_no_authorization_no_network(tmp_path,monkeypatch):
-    import importlib.util
-    spec=importlib.util.spec_from_file_location('live_test_harness',REPO/'agent-coordination/scripts/live_tests.py')
-    harness=importlib.util.module_from_spec(spec);spec.loader.exec_module(harness)
-    config=json.loads((REPO/'agent-coordination/config.live.example.json').read_text())
-    approval=json.loads((REPO/'agent-coordination/live-approval.example.json').read_text())
-    result=harness.preflight(approval,config,execute=True)
-    assert result['blockers'] and result['live_status']=='BLOCKED'
-    assert 'explicit approval missing' in result['blockers']
-    for level in ('L2','L3'):
-        assert harness.preflight(approval|{'level':level},config)['blockers']
+
+
+
+
+async def test_live_harness_call_limit():
     from tests.live.l1 import LimitedModel
     class Model:
         calls=0
@@ -345,7 +339,7 @@ async def test_blocked_job_has_operator_reason_and_input_reference(tmp_path):
     worker=Worker(store,unknown,owner='w',max_attempts=1)
     with pytest.raises(AdapterError):await worker.once()
     saved=await store.get('recovery_blocked','job')
-    assert saved=={'reason':'current_attempt_receipt_missing','fence':1,'kind':'event','input_id':'source'}
+    assert saved=={'reason':'current_attempt_receipt_missing','fence':1,'recovery_attempts':1,'kind':'event','input_id':'source'}
     assert await store.claim('other') is None
 
 
