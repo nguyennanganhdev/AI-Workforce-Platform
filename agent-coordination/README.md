@@ -1,0 +1,116 @@
+# Coordination runtime
+
+Python 3.12, AgentScope **2.0.9**. Runtime and test dependencies are pinned in
+`requirements.lock`; keep this environment separate from the other teams.
+
+From repository root:
+
+```bash
+python3.12 -m venv agent-coordination/.venv
+agent-coordination/.venv/bin/python -m pip install -r agent-coordination/requirements.lock
+agent-coordination/.venv/bin/python -m pip install --no-deps --no-build-isolation -e agent-coordination
+agent-coordination/.venv/bin/python -m pytest -q agent-coordination
+agent-coordination/.venv/bin/python -m main
+```
+
+## Configuration and production dependencies
+
+`COORDINATION_CONFIG` points to a JSON file validated by `config.ServiceConfig`.
+Start from `config.example.json`. Credentials are environment references, never
+literal config values; the service does not automatically load `.env`.
+`COORDINATION_INGRESS_TOKEN` requires at least 32 characters. Bindings separately
+verify source actors and delegation; this bearer token does not grant business
+authority. No implicit model or production factory is supplied.
+
+A trusted `module:factory` assembles `runtime.composition.build` with
+`ProductionBindings`: allocated storage, Authority/event verifier, Reception
+authentication, published agent/group resolver, released OpenBot sessions,
+tool grants, Supervisor model/budget, delegation, worker authentication and
+producer readiness. Factories in `tests` or `support` are rejected.
+`runtime.backend.ProducerOperations` requires evidenced routes and explicit wire
+encode/decode mappings. `runtime.contracts.SchemaValidator` requires all eight
+pinned producer schemas. Interfaces and test fixtures do not establish readiness.
+
+The service defaults to `127.0.0.1:4300`. `/health` checks process health;
+`/ready` stays 503 until required bindings are ready. Proposed routes are
+`POST /v2/reception`, `/v2/events`, `/v2/contributions`, `/v2/reports`, and
+`/v2/report-downloads`; Platform owns their deployment mount. Durable acceptance
+must be confirmed before HTTP 202. New ingress rejects V1.
+
+Production producer mappings, canonical backend schemas, published agent resolver
+and allocated storage remain external integration dependencies. C13 contribution
+and C14 report ports are consumer proposals, not frozen backend endpoints.
+Unbound workflows fail closed. Do not mark the full business flow ready based on
+local unit tests. Backend owns approvals, staff assignment, QC and ticket closure;
+`RUN_FINISHED` alone is not business completion.
+
+## Checkpoints and recovery
+
+`persistence.sqlite.DevelopmentStore` is isolated development framework storage;
+it rejects production and `:memory:`. It is not a business database. Platform must
+provide equivalent checkpoint/CAS, records, inbox/lease and receipt semantics.
+Only the Supervisor action journal dispatches outgoing intents. Network/model
+calls and resolver preparation stay outside Room transactions.
+
+Worker claims carry a monotonically increasing fencing token and an independent,
+durable `recovery_attempts` count. Normal `Continuation` yields preserve that count.
+Recovery deferrals increment it atomically with the scheduling update; takeover of
+an expired owner also counts abandoned work. The development store uses the
+existing `records` namespace `inbox_recovery_count`, so old stores need no new SQL
+column. Production inbox adapters must expose `claim.recovery_attempts` and support
+`defer(claim, seconds, recovery=True)` with the same fenced atomic semantics.
+Default recovery stops after three attempts, five seconds apart; exhausted jobs
+stay `blocked` and are never successfully ACKed. Counters survive worker restart.
+
+Unknown remote dispatch must reconcile its original operation/attempt; it must
+not be blindly replayed under a fresh identity. OpenBot durable lookup/cancel/usage
+remains a producer dependency. Inspect the current receipt/fence before operator
+recovery; do not delete the journal or fabricate a not-applied proof. Worker lease
+renewal prevents stale writes, and shutdown drains for ten seconds before local
+cancellation. Remote cancellation requires producer confirmation.
+
+V1 checkpoint migration and same-generation processing after `completed` remain
+deferred. Coordinate rollout with Reception/Backend and drain or explicitly
+reconcile old pending requests before enabling V2; do not reinterpret old replies
+as new approvals. Reopened tickets use backend-issued generations.
+
+## Report and contribution integration
+
+D07 accepts backend-verified staff/source/evidence and keeps actual cost separate
+from model spend. A verified `work.completed` queues the producer's stable staff
+request before inbox ACK. Agent output cannot approve or publish contributions.
+
+D08 binds `report_producer` and verified `ReportArtifacts`. Mount the existing
+Report schema/config/template/prompt and narrative implementation read-only;
+`COORDINATION_REPORT_ROOT` and `COORDINATION_REPORT_HASH` select an approved bundle.
+Room turns and mentions persist its hash in `ActiveOperation`; released sessions
+must attest the same hash. Snapshot/export/download permissions remain producer
+controlled. Downloads are authenticated, bounded and checked for revocation;
+no public bucket or local file URLs are returned.
+
+## Contract regeneration and evaluation
+
+Regenerate the published room contracts using the pinned environment:
+
+```bash
+PYTHONPATH=agent-coordination/src agent-coordination/.venv/bin/python agent-coordination/scripts/generate_room_schemas.py
+```
+
+Contract tests read the published JSON files and compare them with runtime models.
+They must not replace published contracts with dynamically generated schemas.
+
+Offline guards exercise the real safety validators, with synthetic business data:
+
+```bash
+agent-coordination/.venv/bin/python -m evaluation.runner --model-pin offline-no-model --release-pin offline-catalog-v1 --output /tmp/coordination-evaluation.json
+```
+
+Add `--observations <json-file>` to score supplied recorded decisions: an object
+keyed by dataset case ID, each with `state`, `authority`, `decision`, and an explicit
+`effects` list. Missing cases/evidence, wrong specialties and forbidden effects
+fail with a nonzero exit status. Results pin dataset/source hashes and model/release
+labels, with `live_status: NOT RUN` and unknown cost. Offline guards measure safety,
+not live model quality. `tests/live/l1.py` retains the ProviderModel-to-Planner
+harness with simulated business bindings; paid execution requires explicit
+credentials, budget and authorization. No live command or automatic paid run is
+configured by this package.

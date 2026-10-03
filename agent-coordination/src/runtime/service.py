@@ -68,15 +68,15 @@ class Worker:
                 if isinstance(retry_after, Continuation):
                     await self.store.defer(claim,retry_after.delay)
                 elif retry_after is not None:
-                    if claim.fence >= self.max_attempts: await self.store.park(claim)
-                    else: await self.store.defer(claim,retry_after)
+                    if claim.recovery_attempts + 1 >= self.max_attempts: await self.store.park(claim)
+                    else: await self.store.defer(claim,retry_after,recovery=True)
                 else:
                     await self.store.ack(claim)
         except Exception as exc:
             try:
                 reason=exc.code if isinstance(exc,AdapterError) else type(exc).__name__
-                if claim.fence >= self.max_attempts: await self.store.park(claim,reason=reason)
-                else: await self.store.defer(claim,5)
+                if claim.recovery_attempts + 1 >= self.max_attempts: await self.store.park(claim,reason=reason)
+                else: await self.store.defer(claim,5,recovery=True)
             except AdapterError: pass  # takeover owns it now
             raise
         finally:

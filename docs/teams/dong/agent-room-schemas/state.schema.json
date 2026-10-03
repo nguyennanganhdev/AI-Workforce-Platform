@@ -32,6 +32,20 @@
           "title": "Source Run Id",
           "type": "string"
         },
+        "artifact_hash": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Artifact Hash"
+        },
         "mailbox_message_ids": {
           "items": {
             "maxLength": 256,
@@ -218,6 +232,18 @@
           "title": "Contract Version",
           "type": "string"
         },
+        "type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Type"
+        },
         "request_id": {
           "maxLength": 256,
           "minLength": 1,
@@ -314,6 +340,20 @@
           "minLength": 1,
           "title": "Principal Id",
           "type": "string"
+        },
+        "initiated_by_user_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Initiated By User Id"
         },
         "domain_id": {
           "maxLength": 256,
@@ -1286,7 +1326,7 @@
     },
     "Snapshot": {
       "additionalProperties": false,
-      "description": "Internal DEV-4 aggregate; never expose bindings/framework refs to clients.",
+      "description": "Internal aggregate; không expose binding/framework reference cho client.",
       "properties": {
         "room_id": {
           "maxLength": 256,
