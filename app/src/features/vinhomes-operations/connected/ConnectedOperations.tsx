@@ -55,8 +55,20 @@ type Session = {
     supervisor?: { acceptedAt?: string } | null;
     runtime?: { phase: string; pauseReason?: string | null } | null;
   } | null;
+  // What the Supervisor's room did: the specialists it invited, their tasks and their replies.
+  room?: {
+    members: string[];
+    tasks: { description: string; status: string; agent: string }[];
+    replies: { id: string; agent: string; text: string; created_at: string }[];
+  };
   missing?: string;
   awaitingManagementApproval?: boolean;
+};
+const roomTaskLabels: Record<string, string> = {
+  pending: "chờ làm",
+  running: "đang làm",
+  blocked: "đang vướng",
+  done: "đã xong",
 };
 const sessionLabels: Record<string, string> = {
   queued: "Đã mở, chờ Supervisor điều phối",
@@ -70,6 +82,12 @@ const sessionLabels: Record<string, string> = {
 const supervisorPause: Record<string, string> = {
   "planner:no_specialist_available":
     "Phòng chưa có agent chuyên môn nên Supervisor chuyển lại cho Ban quản lý xử lý.",
+  "planner:analysis_ready":
+    "Agent chuyên môn đã phân tích xong. Ban quản lý lập phương án xử lý từ phân tích bên dưới.",
+  "planner:planner_model_not_configured":
+    "Supervisor chưa được cấu hình model nên chuyển lại cho Ban quản lý xử lý.",
+  AGENT_FAILURE:
+    "Agent chuyên môn không trả lời được sau nhiều lần thử. Ban quản lý xử lý tiếp.",
 };
 const sessionMissing: Record<string, string> = {
   workspace: "BQL chưa có workspace trên platform",
@@ -600,6 +618,33 @@ export function ConnectedOperations() {
                                     `Supervisor tạm dừng (${session.session.runtime.pauseReason || "không rõ lý do"}); Ban quản lý xử lý tiếp.`}
                                 </p>
                               )}
+                              {!!session.room?.members.length && (
+                                <p>
+                                  Agent tham gia:{" "}
+                                  {session.room.members.join(", ")}
+                                </p>
+                              )}
+                              {session.room?.tasks.map((task) => (
+                                <p key={task.description}>
+                                  Việc giao cho {task.agent} (
+                                  {roomTaskLabels[task.status] || task.status}
+                                  ): {task.description}
+                                </p>
+                              ))}
+                              {session.room?.replies.map((reply) => (
+                                <div key={reply.id}>
+                                  <p>
+                                    <strong>{reply.agent}</strong> trả lời lúc{" "}
+                                    {new Date(reply.created_at).toLocaleString(
+                                      "vi-VN",
+                                    )}
+                                    :
+                                  </p>
+                                  <p className="live-reply">
+                                    {reply.text}
+                                  </p>
+                                </div>
+                              ))}
                               <strong>
                                 {session.awaitingManagementApproval
                                   ? "Cư dân đã xác nhận, chờ BQL duyệt đóng"

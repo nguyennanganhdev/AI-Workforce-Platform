@@ -7,6 +7,7 @@
 .live-detail > p { margin: 12px 0; }
 .live-detail h3 { margin: 20px 0 12px; }
 .live-order { padding: 16px; border: 1px solid var(--border); border-radius: 8px; margin: 16px 0; }
+.live-reply { white-space: pre-wrap; }
 .live-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; align-items: end; }
 .live-error { padding: 16px; background: #ffe6e4; border-radius: 8px; display: flex; justify-content: space-between; gap: 15px; }
 .local-actor { max-width: 400px; }
