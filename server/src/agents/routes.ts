@@ -10,6 +10,7 @@ import {
   AgentNotFoundError,
   AgentNotManageableError,
   type AgentProfileStore,
+  GeneratedConfigurationImmutableError,
   ManagedAgentUnavailableError,
   ProtectedAgentError,
 } from "./profile-store";
@@ -292,8 +293,11 @@ export function createAgentRoutes(
   const dto = (actor: AgentActor, agent: AgentProfile) => ({
     ...agentDto(actor, agent),
     // A string comparison on purpose: two absent values must not read as "runs on our Bot".
+    // A generated coworker runs in-process with no endpoint; every other row keeps the legacy test.
     builtIn:
-      typeof agent.endpoint === "string" && agent.endpoint === managedEndpoint,
+      agent.generated !== undefined ||
+      (typeof agent.endpoint === "string" &&
+        agent.endpoint === managedEndpoint),
   });
   const routes = new Hono<{ Variables: AppVariables }>();
 
@@ -716,7 +720,7 @@ function boundedText(
     : { ok: false, error };
 }
 
-function agentDto(actor: AgentActor, agent: AgentProfile) {
+export function agentDto(actor: AgentActor, agent: AgentProfile) {
   return {
     id: agent.id,
     name: agent.name,
@@ -737,6 +741,8 @@ function agentDto(actor: AgentActor, agent: AgentProfile) {
     // another user's coworker, so a roster that split "mine" on it would file other people's work
     // under yours, and only for administrators, who are the least likely to notice.
     mine: agent.ownerUserId === actor.id,
+    // Only on generated rows, so a legacy DTO keeps its exact keys.
+    ...(agent.generated ? { generated: agent.generated } : {}),
   };
 }
 
@@ -755,6 +761,16 @@ function mapStoreError(context: Context, error: unknown): Response {
   }
   if (error instanceof ManagedAgentUnavailableError) {
     return context.json({ error: error.message }, 400);
+  }
+  if (error instanceof GeneratedConfigurationImmutableError) {
+    return context.json(
+      {
+        error:
+          "This coworker was generated from a verified specification and cannot be edited or copied.",
+        code: "GENERATED_CONFIGURATION_IMMUTABLE",
+      },
+      409,
+    );
   }
   throw error;
 }

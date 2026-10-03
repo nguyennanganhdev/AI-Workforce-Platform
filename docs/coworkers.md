@@ -14,6 +14,35 @@ A coworker is a Bot with a durable profile and standing role. The role is sent w
 
 Package-provided agents are public and ownerless. User-created coworkers are owned by the creator.
 
+## Generated coworkers (Meta-Agent P0)
+
+The default Create coworker flow asks for **name, role and description** (80, 120 and
+1,000 characters respectively). The server generates a structured AgentSpec, resolves
+required resources against the installed catalogue, compiles the core instructions and
+runs deterministic checks plus an independent semantic review. You do not choose a model,
+prompt, MCP server, tool or schema. Failed construction does not fall back to legacy creation.
+
+Generated coworkers are private and use the existing in-process built-in runtime, including
+when a managed remote endpoint is configured. Their canonical configuration is stored in
+`agents.configuration.factory.spec`, with the compiler-owned `configuration.systemPrompt`
+projection. This is the P0 path, separate from deferred Workforce publishing/versioning.
+
+**Ready** means construction passed and required access is currently available. **Waiting
+for access** means the artifact was saved but cannot run: an authorized person must explicitly
+approve the displayed resources through the existing grants flow and/or the creator must
+connect the required account, then recheck. An administrator's own connection cannot substitute
+for the creator's connection. Partial approvals remain pending; successful grants are retained.
+Readiness is checked again at runtime, and revocation or changed resources blocks subsequent
+runs. A changed tool/skill definition requires recreation, not automatic rewriting.
+
+Generated identity and configuration are read-only in P0, and copying is disabled. Inspection,
+resource setup, hiding, deletion and existing conversation history remain available. Recreate a
+coworker to change its job. Input/output requirements guide the model in ordinary text; semantic
+review is not a guarantee of correct answers or strict structured output.
+
+P0 release acceptance is **blocked** pending the final browser and configured-model quality
+gates; see [verification prerequisites](development.md#meta-agent-p0-verification).
+
 ## Standing role
 
 Remote coworkers receive a system message derived from their title and role description:
@@ -56,7 +85,7 @@ Hiding is personal roster state. It removes the coworker from one user's list wi
 
 ## Default endpoint
 
-Product-created coworkers use:
+Legacy coworkers can use:
 
 ```dotenv
 MANAGED_AGENT_AG_UI_URL=http://localhost:4201/ag-ui
@@ -66,8 +95,8 @@ That is `agent-langgraph`, which runs a real framework and its own tool loop. Th
 `4200` hand-writes the protocol and leaves the loop to whatever is watching, so it is a reference
 rather than something to build a deployment on.
 
-The URL is optional. Set it with `MANAGED_AGENT_TOKEN`, or leave it unset: product-created coworkers
-then need their own endpoint, and a package agent whose endpoint expands to nothing is omitted
+The URL is optional. Set it with `MANAGED_AGENT_TOKEN`, or leave it unset: legacy coworkers
+then use their explicit endpoint or the existing built-in prompt path, and a package agent whose endpoint expands to nothing is omitted
 rather than registered against a missing host. A leftover token with no URL is ignored.
 Package-provided agents otherwise use their own `agents.yaml` configuration.
 
@@ -85,7 +114,7 @@ agents:
     endpoint: http://risk.internal/ag-ui
 ```
 
-In the product, create or edit a coworker from `/agents` and set:
+In the product, choose **Connect an existing agent** from `/agents`, or edit a legacy coworker, and set:
 
 - name;
 - title;

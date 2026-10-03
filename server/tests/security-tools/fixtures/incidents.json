@@ -1,0 +1,163 @@
+[
+  {
+    "incident_id": "inc_01",
+    "ticket_id": "tkt_1001",
+    "incident_type": "FIRE",
+    "description": "Chập điện, có khói tại tủ điện chốt bảo vệ cổng chính",
+    "status": "IN_PROGRESS",
+    "severity": "P1",
+    "location": {
+      "location_id": "loc_01",
+      "building": "Tòa A",
+      "floor": "T1",
+      "zone": "Cổng chính"
+    },
+    "version": 6,
+    "created_at": "2026-09-29T04:14:00.000Z",
+    "updated_at": "2026-09-29T04:20:00.000Z",
+    "related_counts": {
+      "dispatches": 1,
+      "escalations": 2,
+      "cameras": 2,
+      "evidence": 4
+    }
+  },
+  {
+    "incident_id": "inc_02",
+    "ticket_id": "tkt_1002",
+    "incident_type": "INTRUSION",
+    "description": "Người lạ vượt barie vào hầm xe B1",
+    "status": "IN_PROGRESS",
+    "severity": "P0",
+    "location": {
+      "location_id": "loc_03",
+      "building": "Tòa A",
+      "floor": "B1",
+      "zone": "Hầm xe"
+    },
+    "version": 6,
+    "created_at": "2026-09-29T04:19:30.000Z",
+    "updated_at": "2026-09-29T04:21:50.000Z",
+    "related_counts": {
+      "dispatches": 2,
+      "escalations": 2,
+      "cameras": 2,
+      "evidence": 5
+    }
+  },
+  {
+    "incident_id": "inc_03",
+    "ticket_id": "tkt_1003",
+    "incident_type": "VIOLENCE",
+    "description": "Ẩu đả giữa hai cư dân tại sảnh Tòa A",
+    "status": "IN_PROGRESS",
+    "severity": "P1",
+    "location": {
+      "location_id": "loc_02",
+      "building": "Tòa A",
+      "floor": "T1",
+      "zone": "Sảnh"
+    },
+    "version": 4,
+    "created_at": "2026-09-29T04:22:30.000Z",
+    "updated_at": "2026-09-29T04:25:05.000Z",
+    "related_counts": {
+      "dispatches": 1,
+      "escalations": 1,
+      "cameras": 1,
+      "evidence": 3
+    }
+  },
+  {
+    "incident_id": "inc_04",
+    "ticket_id": "tkt_1004",
+    "incident_type": "DISTURBANCE",
+    "description": "Gây ồn tại sảnh Tòa B",
+    "status": "RESOLVED",
+    "severity": "P2",
+    "location": {
+      "location_id": "loc_04",
+      "building": "Tòa B",
+      "floor": "T1",
+      "zone": "Sảnh"
+    },
+    "version": 5,
+    "created_at": "2026-09-29T00:58:00.000Z",
+    "updated_at": "2026-09-29T01:40:00.000Z",
+    "related_counts": {
+      "dispatches": 2,
+      "escalations": 0,
+      "cameras": 1,
+      "evidence": 6
+    }
+  },
+  {
+    "incident_id": "inc_06",
+    "ticket_id": "tkt_1006",
+    "incident_type": "THEFT",
+    "description": "Cư dân báo mất túi xách để quên tại khu cổng chính",
+    "status": "OPEN",
+    "severity": "P2",
+    "location": {
+      "location_id": "loc_01",
+      "building": "Tòa A",
+      "floor": "T1",
+      "zone": "Cổng chính"
+    },
+    "version": 1,
+    "created_at": "2026-09-29T03:10:00.000Z",
+    "updated_at": "2026-09-29T03:10:00.000Z",
+    "related_counts": {
+      "dispatches": 0,
+      "escalations": 0,
+      "cameras": 1,
+      "evidence": 1
+    }
+  },
+  {
+    "incident_id": "inc_07",
+    "ticket_id": "tkt_1007",
+    "incident_type": "SUSPICIOUS_ACTIVITY",
+    "description": "Người lạ đi lại nhiều lần quanh sảnh Tòa B lúc nửa đêm",
+    "status": "IN_PROGRESS",
+    "severity": "P2",
+    "location": {
+      "location_id": "loc_04",
+      "building": "Tòa B",
+      "floor": "T1",
+      "zone": "Sảnh"
+    },
+    "version": 2,
+    "created_at": "2026-09-29T02:40:00.000Z",
+    "updated_at": "2026-09-29T02:45:00.000Z",
+    "related_counts": {
+      "dispatches": 0,
+      "escalations": 0,
+      "cameras": 1,
+      "evidence": 2
+    }
+  },
+  {
+    "incident_id": "inc_08",
+    "ticket_id": "tkt_1008",
+    "incident_type": "ACCESS_CONTROL",
+    "description": "Cửa từ sảnh Tòa B không đóng, thẻ từ không nhận",
+    "status": "OPEN",
+    "severity": "P3",
+    "location": {
+      "location_id": "loc_04",
+      "building": "Tòa B",
+      "floor": "T1",
+      "zone": "Sảnh"
+    },
+    "version": 1,
+    "created_at": "2026-09-29T03:30:00.000Z",
+    "updated_at": "2026-09-29T03:30:00.000Z",
+    "related_counts": {
+      "dispatches": 0,
+      "escalations": 0,
+      "cameras": 2,
+      "evidence": 1
+    }
+  }
+]

@@ -299,6 +299,29 @@ export const CATALOGUE: readonly CatalogueEntry[] = Object.freeze([
     ]),
     docsUrl: "https://github.com/CopilotKit/OpenBot/blob/main/docs/routines.md",
   },
+  {
+    key: "tavily",
+    title: "Tavily",
+    vendor: "Tavily",
+    summary: "Web search: pages on the public Internet, with their addresses.",
+    /*
+     * Tavily's own search API, through an adapter that keeps one stable tool — see
+     * `./tavily-rest` for why that is not their hosted MCP server.
+     */
+    host: "https://api.tavily.com",
+    path: "/search",
+    transport: "tavily-rest",
+    /*
+     * `none` as far as this catalogue's credentials go: there is no token for an administrator to
+     * paste and no account for a person to connect, so no row ever points at one. The deployment's
+     * own key is `TAVILY_API_KEY` in its environment, read by the transport when a call is made.
+     * Every person's search sees the same public web, which is why the trail says `deployment`.
+     */
+    auth: Object.freeze({ kind: "none" }),
+    writeTools: Object.freeze([]),
+    docsUrl:
+      "https://docs.tavily.com/documentation/api-reference/endpoint/search",
+  },
 ]);
 
 const BY_KEY = new Map(CATALOGUE.map((entry) => [entry.key, entry]));
