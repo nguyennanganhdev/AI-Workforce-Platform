@@ -7,7 +7,9 @@ const configSchema = z
     url: z.url().refine((value) => /^https?:/i.test(value)),
     apiKey: z.string().trim().min(1),
     model: z.string().trim().min(1),
-    provider: z.enum(["openai", "openai-compatible"]).default("openai"),
+    provider: z
+      .enum(["openai", "openai-compatible", "deepseek"])
+      .default("openai"),
   })
   .superRefine((config, context) => {
     if (!URL.canParse(config.url)) return;
@@ -55,6 +57,12 @@ export function createHttpCompleter(
   if (!parsed.success) throw new Error("Invalid Factory model configuration.");
   const config = parsed.data;
   return async (prompt, signal) => {
+    // DeepSeek thinks by default: even "low" effort took 35–70 s per draft and 9–41 s per review,
+    // past the 20 s call cap. Without thinking it fences its JSON unless JSON Output is on, and at
+    // its default temperature it now and then answered in the request's language and broke rules.
+    const deepseekFactory =
+      config.provider === "deepseek" &&
+      /^FACTORY_(GENERATE|REVIEW):/.test(prompt);
     const response = await send(config.url, {
       method: "POST",
       headers: {
@@ -66,6 +74,13 @@ export function createHttpCompleter(
         messages: [{ role: "user", content: prompt }],
         [config.provider === "openai" ? "max_completion_tokens" : "max_tokens"]:
           4096,
+        ...(deepseekFactory
+          ? {
+              reasoning_effort: "none",
+              response_format: { type: "json_object" },
+              temperature: 0,
+            }
+          : {}),
       }),
       ...(signal ? { signal } : {}),
       redirect: "error",

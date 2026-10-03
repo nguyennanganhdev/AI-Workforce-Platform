@@ -47,8 +47,14 @@ HTTP process is running; it does not call the model. Configure
 `FACTORY_HOST=0.0.0.0` when running behind a private service network or container.
 
 `FACTORY_MODEL_PROVIDER=openai` sends `max_completion_tokens=4096`.
-`openai-compatible` sends `max_tokens=4096` to the configured full chat-completions
-URL. Neither option silently changes the model or falls back to another provider.
+`openai-compatible` and `deepseek` send `max_tokens=4096` to the configured full
+chat-completions URL. No option silently changes the model or falls back to another provider.
+DeepSeek Factory generation, repair and review also send `reasoning_effort="none"`,
+`response_format={"type":"json_object"}` and `temperature=0`: DeepSeek thinks by default,
+and even at low effort a draft took 35–70 s and a review 9–41 s, past the 20-second call
+cap; without thinking it wraps JSON in a Markdown fence unless JSON Output is on, and at its
+default temperature it occasionally answered in the request's language and misread the
+intent rules. Other DeepSeek calls keep its defaults. JSON validation is unchanged.
 The standalone transport supports this chat-completions protocol; the existing
 BE's Anthropic transport remains in BE and is not copied into this module.
 Model requests use native `fetch`, with the unchanged core's 20-second call cap,
@@ -132,10 +138,10 @@ Set these in the repository root `.env` (shared by BE and Factory):
 ```dotenv
 FACTORY_SERVICE_URL=http://127.0.0.1:4010
 FACTORY_SERVICE_TOKEN=<private-token-at-least-32-characters>
-FACTORY_MODEL_PROVIDER=openai
-FACTORY_MODEL_API_URL=https://api.openai.com/v1/chat/completions
+FACTORY_MODEL_PROVIDER=deepseek
+FACTORY_MODEL_API_URL=https://api.deepseek.com/chat/completions
 FACTORY_MODEL_API_KEY=<model-api-key>
-FACTORY_MODEL=<model-name>
+FACTORY_MODEL=deepseek-v4-pro
 ```
 
 Generate a token once with `openssl rand -hex 32` and put it in the root `.env`.

@@ -101,8 +101,8 @@ requirements: [{need,fulfillment:"model_on_input"|"tool",source:SOURCE,proposedR
 toolArguments: [TOOL_ARGUMENT];
 inputFacts: [{name,required:boolean,missingBehavior}]; outputExpectations: nonempty string[];
 unresolvedQuestions: string[]; unsupportedRequirements: [{kind:"enforced_structured_output"|"runtime_profile",source:SOURCE}].
-INTENT is your reading of the request, written first and from its name, role and description alone, before any catalogue entry is considered: exactly {normalizedGoal,taskType,explicitRequirements:string[],inferredRequirements:string[],confidence:"HIGH"|"MEDIUM"|"LOW",missingInformation:string[]}, with no other keys. The request may be short and in any language. INTENT is always written in English, so requests that mean the same thing in different languages get the same INTENT. normalizedGoal is one sentence saying what the agent is for. taskType is one short lower_snake_case label for the kind of work, such as data_analysis or document_summarization; it describes the work and is never a catalogue ref. explicitRequirements are the capabilities the request states outright. inferredRequirements are the capabilities those statements plainly imply and nothing further, never a method, quantity, preference or caveat found only in a catalogue description: analysing sales data implies data analysis, and summarizing with citations implies keeping track of where each statement came from. Both lists hold capabilities, never catalogue refs, and neither names a product, vendor, system, account, database or tool that the request does not name: researching customers implies no CRM and no customer database. Nothing in INTENT is taken from the catalogue: a method, a preference or an output structure that only a catalogue description suggests belongs in SKILL, never in INTENT. confidence is judged on three points the request itself must state or plainly imply: the kind of work, where the information it works on comes from (supplied by the user, or an outside origin such as the internet or a named system; asking for cited sources implies sources found outside), and what it gives back. HIGH when all three are there; MEDIUM when the kind of work is understandable but the origin of its information or what it gives back is left open; LOW when the request is too vague to say what the agent must do, such as a bare job title. The kind of work alone never says where its information comes from: research, analysis, monitoring or support may run on supplied content, on an internal system or on the internet, and when the request does not say which, that origin is an open point and is never inferred. That the catalogue offers a tool for the work never makes a point clear. missingInformation lists the open points as short phrases: empty for HIGH, nonempty for MEDIUM and LOW.
-Intent rule: every other field follows from INTENT. requirements cover each explicit and inferred requirement and nothing else. The SOURCE of every such requirement has kind "request" and quotes the request words that state it or that it was inferred from, also when a catalogue tool fulfils it. Decide what each requirement needs from the meaning of INTENT, not from the wording or the language of the request: a capability that needs information or an action outside the supplied input is a resource need, and one that only reasons over supplied content is model_on_input. Whatever missingInformation lists is never filled with a guess: it gets no requirement, no tool and no SKILL step. For LOW return only {"intent":INTENT} and no other field: code asks the person for missingInformation and builds nothing.
+INTENT is your reading of the request, written first and from its name, role and description alone, before any catalogue entry is considered: exactly {normalizedGoal,taskType,explicitRequirements:string[],inferredRequirements:string[],confidence:"HIGH"|"MEDIUM"|"LOW",missingInformation:string[]}, with no other keys. The request may be short and in any language. INTENT is always written in English, so requests that mean the same thing in different languages get the same INTENT, even when the request and the other fields are in another language. normalizedGoal is one sentence saying what the agent is for. taskType is one short lower_snake_case label for the kind of work, such as data_analysis or document_summarization; it describes the work and is never a catalogue ref. explicitRequirements are the capabilities the request states outright. inferredRequirements are the capabilities those statements plainly imply and nothing further, never a method, quantity, preference or caveat found only in a catalogue description: analysing sales data implies data analysis, and summarizing with citations implies keeping track of where each statement came from. Both lists hold capabilities, never catalogue refs, and neither names a product, vendor, system, account, database or tool that the request does not name: researching customers implies no CRM and no customer database. Nothing in INTENT is taken from the catalogue: a method, a preference or an output structure that only a catalogue description suggests belongs in SKILL, never in INTENT. confidence is judged on three points the request itself must state or plainly imply: the kind of work, where the information it works on comes from (supplied by the user, or an outside origin such as the internet or a named system; asking for cited sources implies sources found outside), and what it gives back. HIGH when all three are there; MEDIUM when the kind of work is understandable but the origin of its information or what it gives back is left open; LOW when the request is too vague to say what the agent must do, such as a bare job title. The kind of work alone never says where its information comes from: research, analysis, monitoring or support may run on supplied content, on an internal system or on the internet, and when the request does not say which, that origin is an open point and is never inferred. That the catalogue offers a tool for the work never makes a point clear. missingInformation lists the open points as short phrases: empty for HIGH, nonempty for MEDIUM and LOW. Only those three points can be open: how the agent does the work, such as its method, level of detail, output format or language, is left to SKILL and is never an open point. confidence follows from missingInformation: HIGH when it is empty, LOW only when the kind of work is one of its points, MEDIUM otherwise.
+Intent rule: every other field follows from INTENT. requirements cover each explicit and inferred requirement and nothing else. The SOURCE of every such requirement has kind "request" and quotes the request words that state it or that it was inferred from, also when a catalogue tool fulfils it. Decide what each requirement needs from the meaning of INTENT, not from the wording or the language of the request: a capability that needs information or an action outside the supplied input is a resource need, and one that only reasons over supplied content is model_on_input. Whatever missingInformation lists is never filled with a guess: it gets no requirement, no tool and no SKILL step. unresolvedQuestions holds only a question without which the requested work cannot be done at all: never a point already in missingInformation, and never how the agent works, which SKILL decides. For LOW return only {"intent":INTENT} and no other field: code asks the person for missingInformation and builds nothing. For HIGH and MEDIUM return every field.
 SOURCE is one provenance object, identical everywhere it appears and for every requirement fulfillment: exactly {kind:"request",field:"name"|"role"|"description",quote:literal substring of that field} or {kind:"resource",ref:exact catalogue ref}, with no other keys. It is never a string, null or omitted, and never a toolArguments sourceKind such as "user_input". Its kind is only "request" or "resource": a catalogue entry's own kind, "tool", is never a SOURCE kind, and a tool is cited as {kind:"resource",ref:that entry's ref}. quote is copied character for character from that request field: one contiguous run with nothing added, dropped, reworded or re-punctuated.
 TOOL_ARGUMENT is one flat object of five strings: exactly {ref,argument,sourceKind:"user_input"|"runtime_context"|"tool_result",sourceRef,missingBehavior}, with no other keys. ref is the exact catalogue ref of a tool in a requirement's proposedRefs. argument is the NAME of one required argument, copied from the "required" list of that tool's inputSchema: a plain string, never a value, an object or a name-to-value mapping. sourceRef for "user_input" is the name of one inputFacts entry, copied character for character. missingBehavior says what to do when that input is absent. Emit exactly one TOOL_ARGUMENT for every name in "required" of every proposed tool, and none for optional arguments or for tools not proposed; a proposed tool with required arguments and no TOOL_ARGUMENT is refused. Example for a proposed tool whose inputSchema.required is ["query"]: {"ref":"<that tool's exact ref>","argument":"query","sourceKind":"user_input","sourceRef":"<name of one inputFacts entry>","missingBehavior":"Ask what to search for."}.
 SKILL is the procedural knowledge this agent works by. You write it for this request; it is never chosen from a catalogue, and it is declarative text, never code: exactly {name,objective,procedure:nonempty string[],toolUsageGuidance:[{toolRef,whenToUse,purpose,guidance}],constraints:string[],completionCriteria:nonempty string[]}, with no other keys. name is a short label for the method. objective is one sentence saying what following the skill achieves for this request. procedure is the ordered steps of this specific work, each saying what is done and with what; a step that would fit any agent, such as "use tools when necessary" or "complete the task carefully", is refused. toolUsageGuidance has exactly one entry for every ref in any requirement's proposedRefs, and none for any other ref except a default tool this work needs: toolRef is that exact catalogue ref, whenToUse is the situation that calls for the tool, purpose is what it is used for in this work, and guidance is how to call it and what to do with its output, including when to call it again. No SKILL text names a catalogue tool that has no toolUsageGuidance entry, or a tool, system or permission the catalogue does not provide: a skill grants nothing, and the agent can call only what it is given. constraints are the limits the method keeps. completionCriteria say when the work is done and can be checked from the answer. SKILL carries no code, commands, credentials or keys.
@@ -143,6 +143,21 @@ function repairExpectations(
   };
 }
 
+/** The kept draft carries its reading, so the rule that copies every unflagged field keeps it too. */
+function repairData({
+  intent,
+  ...repair
+}: {
+  draft?: AgentDraft;
+  intent?: IntentNormalizationResult;
+  issues: readonly FactoryIssue[];
+  paths: readonly string[];
+}) {
+  if (!repair.draft || !intent) return repair;
+  const { originalInput: _, ...reading } = intent;
+  return { ...repair, draft: { intent: reading, ...repair.draft } };
+}
+
 export async function generateDraft(
   request: AgentCreationRequest,
   snapshot: FactoryCatalogue,
@@ -150,6 +165,7 @@ export async function generateDraft(
   signal?: AbortSignal,
   repair?: {
     draft?: AgentDraft;
+    intent?: IntentNormalizationResult;
     issues: readonly FactoryIssue[];
     paths: readonly string[];
   },
@@ -168,7 +184,7 @@ FACTORY_REPAIR: ${
           : "The previous output was rejected whole and is not kept: return one complete new draft that does not repeat the findings, keeping every user responsibility and constraint."
       } The field contract above is unchanged and binds the replacement, SOURCE included; a finding whose path ends in .source means that value broke the SOURCE contract. REPAIR_EXPECTED_JSON is built by code from the validator: schemas holds the exact JSON Schema the replacement must satisfy at each field a finding names, and requiredToolArguments lists, per tool ref, the argument names that each need exactly one toolArguments entry whose argument is that name as a plain string. Use the SAME catalogue. No new requirement may replace or erase a missing need.
 REPAIR_EXPECTED_JSON=${JSON.stringify(repairExpectations(repair, snapshot))}
-REPAIR_DATA_JSON=${JSON.stringify(repair)}`
+REPAIR_DATA_JSON=${JSON.stringify(repairData(repair))}`
     : factoryGenerationPrompt(request, snapshot);
   const raw = await complete(prompt, signal);
   if (Buffer.byteLength(raw, "utf8") > FACTORY_LIMITS.draftBytes)
@@ -293,6 +309,7 @@ export async function constructAgentSpec(
     const input = normalized.value;
     const catalogue = bounded.value;
     let previous: AgentDraft | undefined;
+    let reading: IntentNormalizationResult | undefined;
     let issues: readonly FactoryIssue[] = [];
     let paths: readonly string[] = [];
     for (const attempt of [1, 2] as const) {
@@ -339,7 +356,12 @@ export async function constructAgentSpec(
         call(attempt === 1 ? "generate" : "repair"),
         signal,
         attempt === 2
-          ? { ...(previous ? { draft: previous } : {}), issues, paths }
+          ? {
+              ...(previous ? { draft: previous } : {}),
+              ...(reading ? { intent: reading } : {}),
+              issues,
+              paths,
+            }
           : undefined,
       );
       if (
@@ -412,6 +434,7 @@ export async function constructAgentSpec(
         issues = review.value.criterionFindings;
       }
       previous = generated.ok ? generated.value.draft : undefined;
+      reading = generated.ok ? generated.value.intent : undefined;
       paths = repairScopeFor(issues, previous);
       if (!paths.length) return { ok: false, issues };
       if (attempt === 2)

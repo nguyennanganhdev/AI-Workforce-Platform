@@ -632,9 +632,11 @@ describe("semantic review and bounded repair of the skill", () => {
       researcher().generatedSkill.procedure,
     );
     expect(model.prompts).toHaveLength(4);
-    expect(
-      JSON.parse(model.prompts[2]!.split("REPAIR_DATA_JSON=")[1]!).paths,
-    ).toEqual(["generatedSkill"]);
+    const repair = JSON.parse(model.prompts[2]!.split("REPAIR_DATA_JSON=")[1]!);
+    expect(repair.paths).toEqual(["generatedSkill"]);
+    // Observed live: shown the draft without its reading, a repair dropped intent and was refused.
+    expect(repair.draft.intent).toEqual(generic.intent);
+    expect(repair).not.toHaveProperty("intent");
   });
 
   test("a second rejection ends construction: no third generation", async () => {

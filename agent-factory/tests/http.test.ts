@@ -318,6 +318,95 @@ test("compatible model protocol, cancellation, malformed and oversized provider 
   ).toThrow();
 });
 
+test("DeepSeek reuses compatible requests and parses only final content", async () => {
+  const content = '{"ok":true}';
+  const complete = createHttpCompleter(
+    {
+      provider: "deepseek",
+      url: "https://api.deepseek.com/chat/completions",
+      model: "deepseek-v4-pro",
+      apiKey: "synthetic-deepseek-key",
+    },
+    async (url, options) => {
+      expect(url).toBe("https://api.deepseek.com/chat/completions");
+      expect(options.method).toBe("POST");
+      expect(options.redirect).toBe("error");
+      expect(new Headers(options.headers).get("authorization")).toBe(
+        "Bearer synthetic-deepseek-key",
+      );
+      expect(JSON.parse(String(options.body))).toEqual({
+        model: "deepseek-v4-pro",
+        messages: [{ role: "user", content: "Return JSON only." }],
+        max_tokens: 4096,
+      });
+      return Response.json({
+        choices: [{ message: { content, reasoning_content: "ignored" } }],
+      });
+    },
+  );
+  expect(await complete("Return JSON only.")).toBe(content);
+});
+
+test("only DeepSeek Factory generation and review turn thinking off, ask for JSON Output and use temperature 0", async () => {
+  for (const provider of ["openai", "openai-compatible", "deepseek"] as const) {
+    const requests: Record<string, unknown>[] = [];
+    const complete = createHttpCompleter(
+      {
+        provider,
+        url: "http://model/chat/completions",
+        apiKey: "key",
+        model: "fixture",
+      },
+      async (_url, options) => {
+        requests.push(JSON.parse(String(options.body)));
+        return Response.json({ choices: [{ message: { content: "{}" } }] });
+      },
+    );
+    const prompts = [
+      "FACTORY_GENERATE: draft",
+      "FACTORY_REVIEW: artifact",
+      "Reply with OK.",
+    ];
+    for (const prompt of prompts) expect(await complete(prompt)).toBe("{}");
+    const deepseekFactory = provider === "deepseek" ? [true, true, false] : [];
+    for (const [index, request] of requests.entries()) {
+      expect(request).toEqual({
+        model: "fixture",
+        messages: [{ role: "user", content: prompts[index] }],
+        [provider === "openai" ? "max_completion_tokens" : "max_tokens"]: 4096,
+        ...(deepseekFactory[index]
+          ? {
+              reasoning_effort: "none",
+              response_format: { type: "json_object" },
+              temperature: 0,
+            }
+          : {}),
+      });
+    }
+  }
+});
+
+test("DeepSeek reasoning that leaves no final content is still refused", async () => {
+  const complete = createHttpCompleter(
+    {
+      provider: "deepseek",
+      url: "https://api.deepseek.com/chat/completions",
+      model: "deepseek-v4-pro",
+      apiKey: "synthetic-deepseek-key",
+    },
+    async () =>
+      Response.json({
+        choices: [
+          {
+            finish_reason: "length",
+            message: { content: "", reasoning_content: "spent the budget" },
+          },
+        ],
+      }),
+  );
+  await expect(complete("FACTORY_GENERATE: draft")).rejects.toThrow();
+});
+
 test("model configuration rejects provider credential misrouting before HTTP and hides values", () => {
   const openai = {
     provider: "openai" as const,
@@ -341,11 +430,21 @@ test("model configuration rejects provider credential misrouting before HTTP and
   for (const config of [
     { ...openai, url: openrouter.url },
     { ...openai, provider: "openai-compatible" as const, url: openrouter.url },
+    {
+      ...openai,
+      provider: "deepseek" as const,
+      url: "https://api.deepseek.com/chat/completions",
+    },
     { ...openai, url: "https://another-provider.test/v1/chat/completions" },
     { ...openai, url: "http://api.openai.com/v1/chat/completions" },
     { ...openai, url: "https://api.openai.com/other" },
     { ...openrouter, url: openai.url },
     { ...openrouter, provider: "openai" as const },
+    {
+      ...openrouter,
+      provider: "deepseek" as const,
+      url: "https://api.deepseek.com/chat/completions",
+    },
     {
       ...openai,
       url: "https://secret:password@api.openai.com/v1/chat/completions",
@@ -360,65 +459,68 @@ test("model configuration rejects provider credential misrouting before HTTP and
   expect(calls).toBe(0);
 });
 
-test("standalone entry starts without BE and serves a complete HTTP construction", async () => {
-  let calls = 0;
-  const model = Bun.serve({
-    port: 0,
-    fetch: async (request) => {
-      calls++;
-      const input = (await request.json()) as {
-        messages: { content: string }[];
-      };
-      return Response.json({
-        choices: [
-          {
-            message: {
-              content: await successfulCompletion(input.messages[0]!.content),
+test.each(["openai", "deepseek"] as const)(
+  "standalone entry starts without BE and serves a complete HTTP construction with %s",
+  async (provider) => {
+    let calls = 0;
+    const model = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        calls++;
+        const input = (await request.json()) as {
+          messages: { content: string }[];
+        };
+        return Response.json({
+          choices: [
+            {
+              message: {
+                content: await successfulCompletion(input.messages[0]!.content),
+              },
             },
-          },
-        ],
-      });
-    },
-  });
-  const child = Bun.spawn({
-    cmd: [process.execPath, "src/server.ts"],
-    cwd: fileURLToPath(new URL("..", import.meta.url)),
-    env: {
-      ...process.env,
-      FACTORY_SERVICE_TOKEN: token,
-      FACTORY_HOST: "127.0.0.1",
-      FACTORY_PORT: "0",
-      FACTORY_MODEL_PROVIDER: "openai",
-      FACTORY_MODEL_API_URL: model.url.href,
-      FACTORY_MODEL_API_KEY: "offline-test-key",
-      FACTORY_MODEL: "fixture",
-    },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  try {
-    const reader = child.stdout.getReader();
-    const output = await reader.read();
-    reader.releaseLock();
-    const url = new TextDecoder()
-      .decode(output.value)
-      .match(/http:\/\/[^\s]+/)?.[0];
-    expect(url).toBeDefined();
-    if (!url) throw new Error("Factory did not start.");
-    expect((await fetch(new URL("/health", url))).status).toBe(200);
-    const request = call();
-    const response = await fetch(new URL("/v1/constructions", url), {
-      method: "POST",
-      headers: request.headers,
-      body: JSON.stringify(body),
+          ],
+        });
+      },
     });
-    expect(response.status).toBe(200);
-    const artifact = (await response.json()) as FactoryConstructionResponse;
-    expect(artifact.specHash).toBe(hashAgentSpec(artifact.spec));
-    expect(calls).toBe(2);
-  } finally {
-    child.kill();
-    await child.exited;
-    model.stop(true);
-  }
-});
+    const child = Bun.spawn({
+      cmd: [process.execPath, "src/server.ts"],
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      env: {
+        ...process.env,
+        FACTORY_SERVICE_TOKEN: token,
+        FACTORY_HOST: "127.0.0.1",
+        FACTORY_PORT: "0",
+        FACTORY_MODEL_PROVIDER: provider,
+        FACTORY_MODEL_API_URL: model.url.href,
+        FACTORY_MODEL_API_KEY: "offline-test-key",
+        FACTORY_MODEL: "fixture",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    try {
+      const reader = child.stdout.getReader();
+      const output = await reader.read();
+      reader.releaseLock();
+      const url = new TextDecoder()
+        .decode(output.value)
+        .match(/http:\/\/[^\s]+/)?.[0];
+      expect(url).toBeDefined();
+      if (!url) throw new Error("Factory did not start.");
+      expect((await fetch(new URL("/health", url))).status).toBe(200);
+      const request = call();
+      const response = await fetch(new URL("/v1/constructions", url), {
+        method: "POST",
+        headers: request.headers,
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(200);
+      const artifact = (await response.json()) as FactoryConstructionResponse;
+      expect(artifact.specHash).toBe(hashAgentSpec(artifact.spec));
+      expect(calls).toBe(2);
+    } finally {
+      child.kill();
+      await child.exited;
+      model.stop(true);
+    }
+  },
+);

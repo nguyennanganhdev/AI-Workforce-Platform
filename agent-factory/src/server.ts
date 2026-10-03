@@ -8,7 +8,7 @@ const environment = z
     FACTORY_PORT: z.coerce.number().int().min(0).max(65535).default(4010),
     FACTORY_HOST: z.string().min(1).default("127.0.0.1"),
     FACTORY_MODEL_PROVIDER: z
-      .enum(["openai", "openai-compatible"])
+      .enum(["openai", "openai-compatible", "deepseek"])
       .default("openai"),
     FACTORY_MODEL_API_URL: z
       .url()
