@@ -89,7 +89,8 @@ Chi tiết: `docs/teams/chien/SUPERVISOR_SESSION_V2_M0_M1_2026-10-03.md`.
 - [ ] M1b Kho PostgreSQL cho checkpoint, inbox, journal; test hai tiến trình
 - [x] M2 Một specialist và model thật: admin duyệt là phát hành, agent được mời theo danh mục ticket, agent kỹ
   thuật trả lời trong phòng, Operations hiện phân tích (`docs/teams/chien/SUPERVISOR_SESSION_V2_M2_2026-10-04.md`)
-- [ ] M2b Cổng tool cho agent chuyên môn (bắt đầu bằng ba tool đọc của Team Quang)
+- [x] M2b Cổng tool cho agent chuyên môn: ba tool đọc của Team Quang, quyền theo lượt chạy của phiên
+  (`docs/teams/chien/TOOL_GATEWAY_VA_KHAO_SAT_NHANH_2026-10-04.md`); tool ghi chưa mở
 - [ ] M3 Hỏi lại cư dân, phương án, hai lần duyệt, hoàn tất, hủy
 - [ ] M4 Pause, resume, stop và màn quản lý session trên Operations
 - [ ] M5 Nghiệm thu lỗi và triển khai giới hạn
