@@ -65,7 +65,7 @@ Database được khôi phục từ bản sao cũ thì phải chạy lại `setu
 | Việc | Kết quả |
 |---|---|
 | Backend | 64 đạt, 6 bỏ qua |
-| `agent-coordination` | 426 đạt (19 của gói `vinhomes`; 3 mới: gọi tool rồi trả lời, dịch vụ tool không trả lời, tool không được cấp) |
+| `agent-coordination` | 428 đạt (21 của gói `vinhomes`; mới: gọi tool rồi trả lời, dịch vụ tool không trả lời, tool không được cấp, hỏi thêm trong phiên, câu hỏi cho phiên chưa có phòng) |
 | `server`: `technical-session.routes`, `technical-api.routes`, `technical-tools` | 893 đạt; kiểm tra kiểu 0 lỗi |
 | Chạy thật, database dùng-rồi-bỏ | Agent gọi `sop_kb.retrieve`, dịch vụ tool chấp nhận theo lượt chạy, có dòng kiểm toán |
 | Trình duyệt, tài khoản thật | 8/8 bước tới khi BQL thấy phân tích có kết quả tra cứu |
@@ -74,7 +74,8 @@ Chưa kiểm bằng test tự động: câu truy vấn nhận diện lượt ch�
 
 ### Điều cần biết
 
-1. **Độ ổn định của agent có tool.** Bộ đánh giá có 10 ca. Qua 7 lần chạy thật, 4 lần đạt 10/10 và 3 lần hỏng
+1. **Độ ổn định của agent có tool.** Bộ đánh giá có 10 ca (nay là 11, thêm ca câu hỏi tiếp theo; hai lần chạy
+   bộ 11 ca đều đạt đủ). Qua 7 lần chạy thật, 4 lần đạt 10/10 và 3 lần hỏng
    đúng một ca (mỗi lần một ca khác: không gọi SOP khi bắt buộc, hoặc diễn đạt khác mẫu). Agent chỉ được nộp
    duyệt ở lần đạt đủ. Nguyên nhân là model nhỏ không theo quy trình một cách tuyệt đối; `agent-bot` không cho
    đặt temperature. Đề xuất: dùng model mạnh hơn cho agent chuyên môn, hoặc cho `agent-bot` nhận temperature.
@@ -108,13 +109,35 @@ Các nhánh chính của Team Đông, Quang, Hoàng (`dev_TeamDong`, `dev_TeamQu
 - Phải ghim `jose` về `6.2.10` để `server` qua kiểm tra kiểu.
 - Tool an ninh chạy với dữ liệu giả; bản thật cần backend có `security/v0.3/query` và token ký bằng JWKS.
 
+## Phần 3 — Hỏi thêm agent trong phiên, và danh sách phiên theo phòng
+
+Ban quản lý mở ticket trên Operations, đọc phân tích của agent, rồi hỏi thêm ngay trong khung "Phiên điều phối".
+Agent trả lời trong chính phòng của phiên đó, thấy ticket và câu trả lời trước của mình. Đã chạy thật trên bản
+đăng nhập thật: hỏi, khoảng 10 giây sau câu trả lời hiện trong khung phiên.
+
+| Thao tác | API | Ghi chú |
+|---|---|---|
+| BQL hỏi agent | `POST /tickets/{id}/session/questions` (`text`, `client_message_id`, `agent_id` khi phiên có nhiều agent) | Cần quyền quản lý trên ticket; mỗi phiên một câu hỏi đang chờ; gửi lại cùng `client_message_id` không tạo câu thứ hai |
+| Runtime lấy câu hỏi | `GET /internal/coordination/v1/mentions` | Chỉ câu đang chờ; câu của phiên không còn hiện hành bị đánh dấu từ chối |
+| Runtime báo kết quả | `POST /internal/coordination/v1/teams/{id}/mentions/{message_id}` (`done` hoặc `failed`) | Gọi lại được; chỉ câu đang chờ mới đổi |
+| Phiên của phòng | `GET /rooms/{room}/teams` | Thêm mã ticket, tiêu đề và trạng thái Supervisor báo |
+
+- Câu hỏi là một lượt nói riêng của agent trong phòng (lệnh `mention_agent` của Team Đông), có lượt chạy riêng ở
+  backend. Phiên của Supervisor không bị đánh thức và không tốn quyết định nào của model Supervisor.
+- Kết quả được ghi lại ở runtime trước khi báo cho backend, nên báo hỏng thì lần sau báo lại, không hỏi agent lần hai.
+- Agent đã bị thu hồi thì không trả lời được; câu hỏi hiện là "agent không trả lời được".
+- Màn "Nhóm ban quản lý" liệt kê các phiên của phòng với mã ticket và trạng thái.
+
+Chưa làm trong mục này: tạm dừng, chạy tiếp và dừng phiên. Hiện Supervisor luôn dừng sau khi có phân tích, nên
+"chạy tiếp" chỉ có nghĩa khi có luồng phương án (mục 2 dưới đây). Lời gọi `@agent` gõ tự do trong phòng chung (không
+gắn ticket) vẫn chỉ được xếp hàng.
+
 ## Việc tiếp theo
 
-1. Quản lý session trên Operations: danh sách theo phòng, tạm dừng, chạy tiếp, dừng; chuyển lời gọi `@agent`
-   trong phòng BQL vào phòng của Supervisor.
-2. Màn hình tạo, đánh giá, duyệt, thu hồi agent; luồng phiên bản 2 của cùng một agent; nối Agent Factory.
-3. Phương án, hỏi lại cư dân, hai lần duyệt (cần backend cấp `ticket_version` mới cho mỗi yêu cầu chờ).
-4. Mở tool ghi cho phiên: đối soát kết quả chưa rõ theo mã lần gọi.
-5. Agent an ninh và bộ chuyển cho tool an ninh; tool báo cáo.
-6. Triển khai: Dockerfile và compose cho các dịch vụ của ta, kho PostgreSQL cho Supervisor. CI để sau, theo
+1. Màn hình tạo, đánh giá, duyệt, thu hồi agent; luồng phiên bản 2 của cùng một agent; nối Agent Factory.
+2. Phương án, hỏi lại cư dân, hai lần duyệt (cần backend cấp `ticket_version` mới cho mỗi yêu cầu chờ); kèm tạm
+   dừng, chạy tiếp, dừng phiên.
+3. Mở tool ghi cho phiên: đối soát kết quả chưa rõ theo mã lần gọi.
+4. Agent an ninh và bộ chuyển cho tool an ninh; tool báo cáo.
+5. Triển khai: Dockerfile và compose cho các dịch vụ của ta, kho PostgreSQL cho Supervisor. CI để sau, theo
    quyết định của điều phối.

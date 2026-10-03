@@ -60,9 +60,18 @@ type Session = {
     members: string[];
     tasks: { description: string; status: string; agent: string }[];
     replies: { id: string; agent: string; text: string; created_at: string }[];
+    // What management asked an agent inside this session, and whether it was answered yet.
+    questions: { id: string; agent: string; text: string; status: string }[];
   };
   missing?: string;
   awaitingManagementApproval?: boolean;
+};
+const questionLabels: Record<string, string> = {
+  queued: "đang chờ agent trả lời",
+  running: "đang chờ agent trả lời",
+  done: "đã trả lời",
+  failed: "agent không trả lời được",
+  refused: "phiên không còn nhận câu hỏi",
 };
 const roomTaskLabels: Record<string, string> = {
   pending: "chờ làm",
@@ -148,6 +157,7 @@ export function ConnectedOperations() {
   );
   const [staff, setStaff] = useState("");
   const [note, setNote] = useState("");
+  const [question, setQuestion] = useState("");
   const [available, setAvailable] = useState<Staff[]>([]);
   const [file, setFile] = useState<File>();
   const [phase, setPhase] = useState<"before" | "after">("before");
@@ -645,6 +655,49 @@ export function ConnectedOperations() {
                                   </p>
                                 </div>
                               ))}
+                              {session.room?.questions.map((asked) => (
+                                <p key={asked.id}>
+                                  BQL hỏi {asked.agent} (
+                                  {questionLabels[asked.status] || asked.status}
+                                  ): {asked.text}
+                                </p>
+                              ))}
+                              {management &&
+                                !!session.room?.members.length &&
+                                !["completed", "failed", "cancelled"].includes(
+                                  session.session.status,
+                                ) && (
+                                  <div className="live-actions">
+                                    <label>
+                                      Hỏi thêm agent trong phiên
+                                      <textarea
+                                        value={question}
+                                        onChange={(e) =>
+                                          setQuestion(e.target.value)
+                                        }
+                                      />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      disabled={busy || !question.trim()}
+                                      onClick={() =>
+                                        void run(async () => {
+                                          await post(
+                                            `/tickets/${selected.id}/session/questions`,
+                                            {
+                                              text: question.trim(),
+                                              client_message_id:
+                                                crypto.randomUUID(),
+                                            },
+                                          );
+                                          setQuestion("");
+                                        })
+                                      }
+                                    >
+                                      Gửi câu hỏi cho agent
+                                    </button>
+                                  </div>
+                                )}
                               <strong>
                                 {session.awaitingManagementApproval
                                   ? "Cư dân đã xác nhận, chờ BQL duyệt đóng"

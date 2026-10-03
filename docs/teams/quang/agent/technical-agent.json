@@ -309,6 +309,36 @@
       ],
       "expected": "Tool lỗi: ghi rõ chưa tra được gián đoạn, không kết luận là không có gián đoạn.",
       "must_not_call": []
+    },
+    {
+      "name": "hoi-tiep-khong-lap-lai",
+      "instruction": "Trước khi kỹ thuật viên xuống, cư dân nên làm gì để nước không thấm vào tủ bếp?",
+      "ticket": {
+        "title": "Vòi nước bếp rò",
+        "description": "Vòi nước bếp nhỏ giọt ở đầu nối dưới chậu rửa, mỗi phút vài giọt, đã hứng bằng chậu. Không gần ổ điện.",
+        "location": "Căn 1201, tòa S1.01, khu bếp",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "messages": [
+        {
+          "sender": "agent-ky-thuat",
+          "task_id": "t1",
+          "content": "Mã vấn đề: TECH.PLUMB.SUPPLY_DRAIN_JOINT\nMức: Level 3 - Rò nhỏ giọt ở đầu nối, chưa có dấu hiệu nguy hiểm.\nDữ kiện đã có: Vòi nước bếp nhỏ giọt ở đầu nối dưới chậu rửa, mỗi phút vài giọt, không gần ổ điện.\nĐiều chưa xác minh: Điểm rò chính xác; có thấm vào tủ bếp hay không.\nKết quả tra cứu: sop_kb__retrieve trả NOT_FOUND cho mã này.\nĐề xuất xử lý: Kỹ thuật nước kiểm tra, siết hoặc thay gioăng đầu nối.\nLưu ý an toàn: Tiếp tục hứng nước; không tự tháo lắp.\nThông tin cần bổ sung: Không cần."
+        }
+      ],
+      "must": [
+        "chậu|khăn|lau|khóa van|van góc"
+      ],
+      "must_not": [
+        "Mã vấn đề:",
+        "Dữ kiện đã có:"
+      ],
+      "must_not_call": [
+        "technical.get_active_outage",
+        "utility_schedule.read"
+      ],
+      "expected": "Câu hỏi tiếp theo trong phiên: trả lời thẳng việc cư dân nên làm, không chép lại bản phân tích trước."
     }
   ],
   "tools": [

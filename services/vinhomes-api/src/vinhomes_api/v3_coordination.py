@@ -14,6 +14,7 @@ how the Supervisor runtime (agent-coordination) reaches that exchange without be
   runs       the agent run of one turn of a member
   release    what the backend attests about a member's agent version before it is invoked
   room       the room's tasks, turns and specialist replies, mirrored for management to read
+  mentions   questions management asked a specialist inside a session, waiting for the room
 
 The service token only proves the caller is the runtime. Every call names a team and is checked
 against it: the workspace has an active service identity, the Supervisor agent is an active
@@ -543,3 +544,55 @@ async def room(team_id: UUID, body: Room, db: Scope) -> dict[str, Any]:
               and team_member_id in (select id from team_members where team_id=:team)
         """), {"run": run.run_id, "status": run.status, "team": team["id"]})
     return {"ok": True, "messages_stored": stored}
+
+
+@router.get("/mentions", summary="Questions management asked a specialist inside a session, oldest first")
+async def mentions(db: Scope, limit: int = Query(default=20, ge=1, le=50)) -> dict[str, Any]:
+    """Queued questions only. One whose session is no longer current is refused here and not listed."""
+    rows = (await db.execute(text(f"""
+        select m.id as message_id,cast(m.body->>'sessionId' as uuid) as team_id,mm.agent_id,
+          substr(m.body->>'text',position(': ' in m.body->>'text')+2) as text,
+          (select tm.version_id from team_members tm where tm.tenant_id=mm.tenant_id and tm.agent_id=mm.agent_id
+             and tm.team_id=cast(m.body->>'sessionId' as uuid) and tm.member_kind='specialist' and tm.status='active'
+          ) as version_id
+        from message_mentions mm
+        join messages m on m.id=mm.message_id and m.tenant_id=mm.tenant_id
+        where mm.tenant_id={TENANT} and mm.status='queued' and m.body->>'kind'='session_question'
+        order by m.created_at,m.id limit :limit
+    """), {"limit": limit})).mappings().all()
+    items = []
+    for row in rows:
+        try:
+            team = await team_authority(db, row["team_id"])
+            context = None if team["status"] in FINAL else await session_context(db, team, create=False)
+        except HTTPException:
+            context = None
+        if context is None or row["version_id"] is None:
+            await db.execute(text(f"""
+                update message_mentions set status='refused' where tenant_id={TENANT} and message_id=:message
+                  and agent_id=:agent and status='queued'
+            """), {"message": row["message_id"], "agent": row["agent_id"]})
+            continue
+        items.append({"message_id": str(row["message_id"]), "team_id": str(row["team_id"]),
+                      "agent_id": row["agent_id"], "agent_version_id": str(row["version_id"]),
+                      "text": row["text"], "context": context})
+    return {"items": items}
+
+
+class MentionOutcome(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["done", "failed"]
+    run_id: UUID | None = None
+
+
+@router.post("/teams/{team_id}/mentions/{message_id}", summary="What became of a question asked inside a session")
+async def mention_outcome(team_id: UUID, message_id: UUID, body: MentionOutcome, db: Scope) -> dict[str, Any]:
+    """Repeatable: only a question still waiting changes."""
+    team = await team_authority(db, team_id)
+    await db.execute(text(f"""
+        update message_mentions mm set status=:status,resolved_run_id=:run
+        from messages m where m.id=mm.message_id and m.tenant_id=mm.tenant_id and mm.tenant_id={TENANT}
+          and mm.message_id=:message and m.body->>'sessionId'=:team and mm.status in ('queued','running')
+    """), {"status": body.status, "run": body.run_id, "message": message_id, "team": str(team["id"])})
+    return {"ok": True}

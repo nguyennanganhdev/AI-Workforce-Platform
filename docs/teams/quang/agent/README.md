@@ -34,11 +34,15 @@ Với tool: `tool_results` là điều tool trả lời trong ca đó (tool khô
 là không tìm thấy gì), `must_call` là tool bắt buộc phải gọi, `must_not_call` là tool không được gọi. Nhờ vậy một
 ca nói rõ tool trả gì và agent phải nói gì sau đó, mà không cần dữ liệu thật trong database.
 
-Mười ca hiện có: cầu dao nhảy có tia lửa (Level 1), điều hòa chảy nước (Level 2), rò nước trong tường (Level 2),
+Một ca có thể có `messages`: những gì phòng đã có cho agent (ví dụ câu trả lời trước của nó), dùng cho ca câu hỏi
+tiếp theo. Chạy bộ đánh giá mà không lưu gì: `python -m vinhomes.publish <định nghĩa> --check`.
+
+Mười một ca hiện có: cầu dao nhảy có tia lửa (Level 1), điều hòa chảy nước (Level 2), rò nước trong tường (Level 2),
 trần nứt võng (Level 1), vòi bếp rò đầu nối (Level 3, phải dẫn mã SOP mà tool trả về), nước thải trào ngược
 (Level 2), mô tả không đủ để phân loại (không được gọi tool), yêu cầu đọc cảm biến (phải nói chưa có công cụ, không
-đưa số đo), nước yếu khi đang có gián đoạn chung (phải nêu đúng giờ khôi phục đã công bố), và tool báo lỗi (phải
-ghi chưa tra được, không kết luận là không có gián đoạn).
+đưa số đo), nước yếu khi đang có gián đoạn chung (phải nêu đúng giờ khôi phục đã công bố), tool báo lỗi (phải
+ghi chưa tra được, không kết luận là không có gián đoạn), và câu hỏi tiếp theo của BQL (phải trả lời thẳng, không
+chép lại bản phân tích trước).
 
 Độ ổn định đo được với `gpt-5.4-mini`: 7 lần chạy cả bộ thì 4 lần đạt 10/10, 3 lần hỏng đúng một ca.
 

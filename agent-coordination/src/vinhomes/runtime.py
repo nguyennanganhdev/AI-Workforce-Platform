@@ -32,7 +32,8 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from adapters.backend.errors import AdapterError
-from groupchat.models import TurnPolicy
+from groupchat.models import Command, Context, MentionAgent, Success, TurnPolicy
+from groupchat.models import RoomData
 from groupchat.room import RoomService
 from persistence.budget import ScopedBudgets
 from persistence.sqlite import DevelopmentStore
@@ -153,10 +154,11 @@ class Runtime:
                        if settings and settings.openbot else UnboundInvocation("agent_invocation"))
         model = PlannerModel(budget, client, model=settings.model if settings else None,
                              base_url=settings.model_base_url if settings else Settings.model_base_url)
+        self.rooms = RoomService(Resolver(backend, self.teams), specialists, store)
         self.service = SupervisorService(
             store=store, authority=authority, verifier=UnboundEvents("backend_events"), event_types={},
             planner=Planner(model), reception=Reception(backend),
-            room=RoomBridge(RoomService(Resolver(backend, self.teams), specialists, store)),
+            room=RoomBridge(self.rooms),
             backend=UnboundBackendActions("backend_actions"), groupchat_version_id="vinhomes-supervisor",
             groupchat_resolver=group_pin, max_steps=MAX_STEPS, turn_policy=TURNS)
 
@@ -170,10 +172,17 @@ class Runtime:
             await self.store.accept(key, {"kind": "reception", "wire": message, "team_id": item["team_id"]})
         if page.get("next_cursor") and page["next_cursor"] != cursor:
             self.store.save_cursor(page["next_cursor"])
+        # Questions management asked a specialist inside a session. The backend lists one until its
+        # outcome is reported; the local inbox takes each once.
+        for item in (await self.backend.mentions())["items"]:
+            key = json.dumps((item["context"]["tenant_id"], "mention", item["message_id"]), separators=(",", ":"))
+            await self.store.accept(key, {"kind": "mention", **item})
         return len(page["items"])
 
     async def handle(self, claim) -> float | None:
         """One message, from verification to whatever the session now waits for."""
+        if claim.payload["kind"] == "mention":
+            return await self.answer(claim.payload)
         wire, team = claim.payload["wire"], claim.payload["team_id"]
         self.teams[(wire["tenant_id"], wire["ticket_id"], wire["ticket_generation"])] = team
         try:
@@ -195,18 +204,50 @@ class Runtime:
                  state.context.ticket_generation, state.phase, state.pause_reason, state.version)
         try:
             await self.backend.status(team, state.phase, state.pause_reason, state.version)
-            await self.mirror(team, state)
+            if state.room is not None:
+                await self.mirror(team, state.room, state.terminal_results.values())
         except AdapterError as error:
             log.warning("session not reported for ticket=%s: %s", state.context.ticket_id, error.code)
         if state.action and state.action.status in ("sending", "unknown", "accepted"):
             return SETTLE_SECONDS
         return None
 
-    async def mirror(self, team: str, state: SupervisorState) -> None:
+    async def answer(self, item: dict) -> float | None:
+        """A question management asked a specialist inside a session: one turn of that agent in the room."""
+        context, team, question = Context.model_validate(item["context"]), item["team_id"], item["message_id"]
+        self.teams[context.scope()] = team
+        asked = await self.store.get("mention_result", question)
+        if asked is None:
+            state = await self.store.load(context)
+            turn = None
+            if state is not None and state.room is not None:
+                room = await self.service.room.read(context, state.room.room_id)
+                key = "mention:" + question
+                # Asked under the agent's latest task, so it reads what it answered there.
+                task = next((t.task_id for t in reversed(room.tasks)
+                             if t.assignee_agent_version_id == item["agent_version_id"]), None)
+                result = await self.rooms.execute(Command(
+                    request_id=key, trace_id=key, idempotency_key=key, context=context,
+                    payload=MentionAgent(room_id=room.room_id, expected_room_version=room.room_version,
+                                         mentioned_agent_id=item["agent_id"], instruction=item["text"], task_id=task)))
+                if isinstance(result, Success):
+                    turn = result.data
+                else:
+                    log.warning("question not answered for ticket=%s: %s", context.ticket_id, result.error.code)
+            answered = turn is not None and turn.turn_status == "success"
+            asked = {"status": "done" if answered else "failed", "run_id": turn.source_run_id if turn else None,
+                     "room": turn.model_dump(mode="json") if turn else None}
+            # Kept before anything is reported, so a restart reports this outcome instead of asking again.
+            await self.store.put_once("mention_result", question, asked)
+        if asked["room"]:
+            turn = RoomData.model_validate(asked["room"])
+            await self.mirror(team, turn, [turn])
+        await self.backend.mention_outcome(team, question, asked["status"], asked["run_id"])
+        log.info("question ticket=%s answered=%s", context.ticket_id, asked["status"])
+        return None
+
+    async def mirror(self, team: str, room: RoomData, turns) -> None:
         """Send the backend what the room holds: tasks, specialist replies and finished turns."""
-        room = state.room
-        if room is None:
-            return
         members = {p.agent_version_id for p in room.participants}
         await self.backend.room(team, {
             "tasks": [{"task_id": t.task_id, "description": t.description[:4000],
@@ -216,7 +257,7 @@ class Runtime:
                           **({"task_id": m.task_id} if m.task_id else {})}
                          for m in room.messages if m.sender in members][-500:],
             "runs": [{"run_id": r.source_run_id, "status": "succeeded" if r.turn_status == "success" else "failed"}
-                     for r in state.terminal_results.values() if r.source_run_id][-200:]})
+                     for r in turns if r.source_run_id][-200:]})
 
     async def work(self) -> bool:
         """Handle one claimed message. False when there was nothing to do."""

@@ -39,6 +39,8 @@ class FakeBackend:
         self.specialists, self.members, self.turns, self.mirrors = [], {}, [], []
         self.release_revoked = False
         self.tool_descriptors = []  # the read tools the member's version was approved with
+        self.questions, self.answered = [], []  # asked by management inside a session; outcomes reported
+        self.lose_outcome = False  # the next outcome report gets no answer
 
     def _check(self):
         if self.unreachable:
@@ -114,6 +116,18 @@ class FakeBackend:
 
     async def room(self, team_id, mirror):
         self.mirrors.append(mirror)
+        return {"ok": True}
+
+    async def mentions(self):
+        self._check()
+        waiting = [q for q in self.questions if q["message_id"] not in {a[0] for a in self.answered}]
+        return {"items": [{**q, "context": self.context(q["team_id"])} for q in waiting]}
+
+    async def mention_outcome(self, team_id, message_id, status, run_id):
+        if self.lose_outcome:
+            self.lose_outcome = False
+            raise AdapterError("backend_outcome_unknown", retryable=True, outcome_unknown=True)
+        self.answered.append((message_id, status, run_id))
         return {"ok": True}
 
     async def authorize(self, team_id, action_id, channel, operation):
@@ -481,3 +495,42 @@ async def test_a_tool_the_version_was_not_granted_is_a_failed_turn(staffed):
     assert providers.tool_calls == []
     state = session(runtime)
     assert (state["phase"], state["pause_reason"], state["action_in_flight"]) == ("paused", "AGENT_FAILURE", None)
+
+
+async def test_management_asks_the_agent_a_follow_up_inside_the_session(staffed):
+    backend, providers = FakeBackend(message()), Providers(ANALYSIS, "Không cần khóa van tổng; khóa van góc dưới chậu là đủ.")
+    runtime = staffed(backend, providers)
+    await runtime.round()
+    assert session(runtime)["pause_reason"] == "planner:analysis_ready"
+
+    backend.questions = [{"message_id": "question-1", "team_id": "team-1", "agent_id": "technical",
+                          "agent_version_id": "technical-v1", "text": "Có cần khóa van tổng không?"}]
+    backend.lose_outcome = True
+    await runtime.round()
+    # The agent answered, but the report of it did not reach the backend: nothing is marked yet.
+    assert len(providers.bot) == 2 and backend.answered == []
+    runtime.store.clock.now += 20
+    await runtime.round()
+    # One more turn of the same agent in the same room, under a run of its own; the Supervisor's
+    # session is not resumed and no planner decision is spent on it.
+    assert providers.decisions == ["tasks", "run", "complete_task"] and len(providers.bot) == 2
+    asked = json.loads(providers.bot[1]["messages"][0]["content"])
+    assert asked["instruction"] == "Có cần khóa van tổng không?"
+    assert ANALYSIS in json.dumps(asked["messages"], ensure_ascii=False)  # it sees what it said before
+    # Tried again: the outcome that was kept is reported, and the agent is not asked a second time.
+    assert len(providers.bot) == 2 and backend.answered == [("question-1", "done", "run-turn-2")]
+    assert [m["content"] for m in backend.mirrors[-1]["messages"]] == [
+        ANALYSIS, "Không cần khóa van tổng; khóa van góc dưới chậu là đủ."]
+    assert backend.mirrors[-1]["runs"] == [{"run_id": "run-turn-2", "status": "succeeded"}]
+    assert not await runtime.work()
+
+
+async def test_a_question_for_a_session_without_a_room_is_reported_as_failed(staffed):
+    backend, providers = FakeBackend(message()), Providers()
+    runtime = staffed(backend, providers)
+    backend.specialists = []  # nobody was offered, so the Supervisor never opened a room
+    await runtime.round()
+    backend.questions = [{"message_id": "question-1", "team_id": "team-1", "agent_id": "technical",
+                          "agent_version_id": "technical-v1", "text": "Còn rò không?"}]
+    await runtime.round()
+    assert providers.bot == [] and backend.answered == [("question-1", "failed", None)]

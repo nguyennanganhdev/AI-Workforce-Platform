@@ -295,6 +295,32 @@ def test_a_published_specialist_enters_the_room_and_its_work_is_mirrored(databas
         assert seen["members"] == [name]
         assert seen["tasks"] == [{"description": "Xác định nguyên nhân rò nước", "status": "done", "agent": name}]
         assert [(r["agent"], r["text"]) for r in seen["replies"]] == [(name, "Khả năng cao do gioăng vòi.")]
+        # Management asks the agent a follow-up inside the session; the runtime picks it up and reports back.
+        with demo_client(database, "technical") as staff:
+            # A technician who is not on this ticket does not even see it.
+            assert staff.post(f"/tickets/{ticket}/session/questions", json={
+                "text": "x", "client_message_id": "q0"}).status_code == 404
+        with demo_client(database, "management") as management:
+            ask = {"text": "Có cần khóa van tổng không?", "client_message_id": f"q-{team}"}
+            asked = management.post(f"/tickets/{ticket}/session/questions", json=ask)
+            assert asked.status_code == 201 and asked.json()["status"] == "queued", asked.text
+            assert management.post(f"/tickets/{ticket}/session/questions", json=ask).json() == {
+                "id": asked.json()["id"], "status": "queued", "replayed": True}
+            # One question at a time: the room runs one turn at a time.
+            assert management.post(f"/tickets/{ticket}/session/questions", json={
+                "text": "Câu khác", "client_message_id": "q2"}).status_code == 409
+            assert management.post(f"/tickets/{ticket}/session/questions", json={
+                "text": "x", "client_message_id": "q3", "agent_id": "demo-supervisor"}).status_code == 422
+        queued = [m for m in c.get(BASE + "/mentions", headers=SERVICE).json()["items"] if m["team_id"] == team]
+        assert [(m["message_id"], m["agent_id"], m["agent_version_id"], m["text"]) for m in queued] == [
+            (asked.json()["id"], technical, version, "Có cần khóa van tổng không?")]
+        assert queued[0]["context"]["ticket_id"] == str(ticket)
+        done = BASE + f"/teams/{team}/mentions/{asked.json()['id']}"
+        assert c.post(done, headers=SERVICE, json={"status": "done", "run_id": run}).json() == {"ok": True}
+        assert not [m for m in c.get(BASE + "/mentions", headers=SERVICE).json()["items"] if m["team_id"] == team]
+        with demo_client(database, "management") as management:
+            [question] = management.get(f"/tickets/{ticket}/session").json()["room"]["questions"]
+            assert (question["agent"], question["text"], question["status"]) == (name, "Có cần khóa van tổng không?", "done")
         outsider = {**mirror, "tasks": [{**mirror["tasks"][0], "assignee_agent_version_id": security}]}
         assert c.post(BASE + f"/teams/{team}/room", headers=SERVICE, json=outsider).status_code == 409
 

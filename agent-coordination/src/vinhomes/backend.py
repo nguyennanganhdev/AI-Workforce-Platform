@@ -79,3 +79,10 @@ class Backend:
 
     async def room(self, team_id: str, mirror: dict) -> dict:
         return await self._call("POST", f"/teams/{team_id}/room", mirror)
+
+    async def mentions(self) -> dict:
+        return await self._call("GET", "/mentions")
+
+    async def mention_outcome(self, team_id: str, message_id: str, status: str, run_id: str | None) -> dict:
+        return await self._call("POST", f"/teams/{team_id}/mentions/{message_id}",
+                                {"status": status, **({"run_id": run_id} if run_id else {})})

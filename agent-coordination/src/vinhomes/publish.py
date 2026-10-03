@@ -53,7 +53,9 @@ async def answer(client: httpx.AsyncClient, instructions: str, case: dict, tools
                  defaults: dict) -> tuple[str, list[str]]:
     """One room turn for an evaluation case: the agent's `content` and the tools it called."""
     thread = f"evaluation:{case['name']}"
-    asked = {"instruction": case["instruction"], "tasks": [], "messages": [],
+    # `messages` is what the room already holds for the agent: empty for a first task, the agent's
+    # earlier answer for a follow-up question.
+    asked = {"instruction": case["instruction"], "tasks": [], "messages": case.get("messages", []),
              "context": [{"item_id": "reception-v2-ticket", "content": json.dumps(case["ticket"], ensure_ascii=False)}]}
     messages = [{"id": "context", "role": "user", "content": json.dumps(asked, ensure_ascii=False)}]
     headers = {"x-openbot-agent-token": os.environ["MANAGED_AGENT_TOKEN"], "Accept": "text/event-stream"}
@@ -162,12 +164,22 @@ def must(response: httpx.Response, step: str) -> dict:
 async def main() -> int:
     parser = argparse.ArgumentParser(description="Draft, evaluate and submit an agent for admin review")
     parser.add_argument("definition", type=Path)
-    parser.add_argument("--room", required=True, help="the management room that owns the agent")
+    parser.add_argument("--room", help="the management room that owns the agent")
     parser.add_argument("--demo", action="store_true", help="the backend runs with demo actors")
     parser.add_argument("--approve", action="store_true", help="also record the admin's approval")
+    parser.add_argument("--check", action="store_true", help="only run the evaluation; nothing is stored")
     args = parser.parse_args()
     definition = json.loads(args.definition.read_text(encoding="utf-8"))
     instructions = (args.definition.parent / definition["instructions_file"]).read_text(encoding="utf-8").strip()
+    if args.check:
+        async with httpx.AsyncClient(timeout=120) as bot:
+            cases = await evaluate(bot, instructions, definition["cases"],
+                                   await tool_descriptions(bot, definition.get("tools", [])),
+                                   definition.get("tool_defaults", {}))
+        print(f"{sum(c['passed'] for c in cases)}/{len(cases)} cases passed")
+        return 0 if all(c["passed"] for c in cases) else 1
+    if not args.room:
+        parser.error("--room is required unless --check is given")
     backend = os.environ["COORDINATION_BACKEND_URL"]
     # A changed definition is a new draft: an approved agent's configuration is immutable.
     key = hashlib.sha256(json.dumps([definition, instructions], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
