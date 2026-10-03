@@ -5,7 +5,7 @@ from adapters.backend.errors import AdapterError
 from groupchat.reception import ReceptionMessage
 from persistence.sqlite import DevelopmentStore
 from runtime.ingress import DurableIngress
-from runtime.service import Worker
+from runtime.service import Continuation, Worker
 from tests.adapters.reception.support import input_message
 from support.fakes import make_context
 
@@ -49,6 +49,27 @@ async def test_unknown_worker_jobs_are_durable_bounded_and_never_acked(tmp_path)
     with store.connection() as db:
         assert db.execute('SELECT status FROM inbox').fetchone()==('blocked',)
         assert db.execute('SELECT count(*) FROM acknowledgements').fetchone()==(0,)
+
+
+async def test_normal_continuations_survive_recovery_bound_and_restart(tmp_path):
+    now = [100.]
+    store = DevelopmentStore(tmp_path/'f.sqlite', clock=lambda: now[0])
+    await store.accept('job', {'work': 'multiple bounded supervisor slices'})
+    fences = []
+    async def handle(claim):
+        fences.append(claim.fence)
+        return Continuation() if len(fences) <= 4 else None
+    for _ in range(4):
+        worker = Worker(store, handle, owner='w', max_attempts=3)
+        assert await worker.once()
+        with store.connection() as db:
+            assert db.execute('SELECT status FROM inbox').fetchone() == ('pending',)
+        now[0] += 6
+        store = DevelopmentStore(store.path, clock=lambda: now[0])
+    assert await Worker(store, handle, owner='w', max_attempts=3).once()
+    assert fences == [1, 2, 3, 4, 5]
+    with store.connection() as db:
+        assert db.execute('SELECT status FROM inbox').fetchone() == ('done',)
 
 
 async def test_worker_renews_lease_during_io_and_other_worker_cannot_claim(tmp_path):

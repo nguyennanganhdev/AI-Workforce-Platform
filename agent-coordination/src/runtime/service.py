@@ -25,6 +25,12 @@ class Components:
     close: object
 
 
+@dataclass(frozen=True)
+class Continuation:
+    """Yielded normal work, distinct from bounded recovery of an unknown outcome."""
+    delay: float = 5
+
+
 class Worker:
     """One inbox owner; state/action journal remains the sole outbound dispatcher.
 
@@ -59,7 +65,9 @@ class Worker:
                 raise AdapterError('stale_fence')
             retry_after = await execution
             with self.store.lease_scope(claim):
-                if retry_after is not None:
+                if isinstance(retry_after, Continuation):
+                    await self.store.defer(claim,retry_after.delay)
+                elif retry_after is not None:
                     if claim.fence >= self.max_attempts: await self.store.park(claim)
                     else: await self.store.defer(claim,retry_after)
                 else:

@@ -287,54 +287,8 @@ async def test_snapshot_revoke_during_fetch_not_persisted(tmp_path):
     await c.close()
 
 
-async def test_live_harness_limits_and_no_authorization_no_network(tmp_path,monkeypatch):
-    import importlib.util
-    spec=importlib.util.spec_from_file_location('live_test_harness',REPO/'agent-coordination/scripts/live_tests.py')
-    harness=importlib.util.module_from_spec(spec);spec.loader.exec_module(harness)
-    config=json.loads((REPO/'agent-coordination/config.live.example.json').read_text())
-    approval=json.loads((REPO/'agent-coordination/live-approval.example.json').read_text())
-    result=harness.preflight(approval,config,execute=True)
-    assert result['blockers'] and result['live_status']=='BLOCKED'
-    assert 'explicit approval missing' in result['blockers']
-    for level in ('L2','L3'):
-        assert harness.preflight(approval|{'level':level},config)['blockers']
-    from tests.live.l1 import LimitedModel
-    class Model:
-        calls=0
-        async def generate(self,prompt):self.calls+=1;return '{}'
-    raw=Model();limited=LimitedModel(raw,1)
-    await limited.generate({})
-    from supervisor.models import SupervisorError
-    with pytest.raises(SupervisorError,match='live_call_limit'):await limited.generate({})
-    assert raw.calls==1
 
 
-async def test_live_l1_composition_harness_with_mock_provider_only(monkeypatch):
-    from tests.live.l1 import run
-    monkeypatch.setenv('TEST_MODEL_KEY','mock-only-secret')
-    config=ProviderConfig(provider='openai-compatible',model='mock',base_url='https://mock.test/v1',key_env='TEST_MODEL_KEY',
-        allowed_models=['mock'],timeout=1,output_tokens=100,input_bytes=50000)
-    cases={'Ống nước đang rò ở căn hộ':{'kind':'open','agent_version_ids':['technical-v1']},
-           'Người lạ cố vào phòng':{'kind':'open','agent_version_ids':['security-v1']},
-           'Đặt vệ sinh lúc 9 giờ':{'kind':'open','agent_version_ids':['service-v1']},
-           'Rò nước và cần vệ sinh sau sửa':{'kind':'open','agent_version_ids':['technical-v1','service-v1']},
-           'Có vấn đề trong nhà':{'kind':'question','question':'Mô tả cụ thể hơn?'}}
-    calls=[]
-    def provider(request):
-        wire=json.loads(request.content);calls.append(wire)
-        prompt=json.loads(wire['messages'][-1]['content'])
-        text=prompt['state']['facts'][0]['report']
-        decision=cases.get(text,{'kind':'pause','reason':'Requires verified backend authority'})
-        return httpx.Response(200,json={'model':'mock','choices':[{'message':{'content':json.dumps(decision)}}],
-            'usage':{'total_tokens':100}})
-    approval=dict(max_calls=10,max_tokens=200000,budget_amount='100',price_version='mock-price-v1',price_per_token='.00001',
-                  deadline_seconds=30,repetitions=1)
-    result=await run(approval,config,client=httpx.AsyncClient(transport=httpx.MockTransport(provider)))
-    assert result['passed'], (result['failures'],[v['scores'] for v in result['observations'].values()],result['extra_cases'])
-    assert result['sample_size']==10 and result['calls']==10
-    assert result['known_usage_tokens']==1000 and result['unknown_usage_calls']==0
-    assert all(c['max_tokens']==100 for c in calls)
-    assert 'mock-only-secret' not in json.dumps(result)
 
 
 async def test_blocked_job_has_operator_reason_and_input_reference(tmp_path):

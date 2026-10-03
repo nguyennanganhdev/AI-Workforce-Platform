@@ -64,8 +64,10 @@ class RoomService:
         resolver: ParticipantResolver,
         invocation: AgentInvocationPort,
         state: RoomStatePort,
+        *, report_artifacts=None,
     ):
         self.resolver, self.invocation, self.state = resolver, invocation, state
+        self.report_artifacts = report_artifacts
 
     @staticmethod
     def data(
@@ -129,6 +131,7 @@ class RoomService:
             context.tasks,
             context.ticket,
             room.groupchat_version_id,
+            active.artifact_hash,
         )
 
     async def execute(self, raw: Union[Command, dict]) -> Union[Success, Failure]:
@@ -181,6 +184,7 @@ class RoomService:
         observed = await self._authorized_snapshot(ctx, p.operation)
         prepared_members = []
         prepared_active = None
+        draft_room = None
         before = observed.snapshot
         if key not in observed.operations:
             if isinstance(p, OpenRoom) and before is None:
@@ -213,12 +217,18 @@ class RoomService:
                     if p.task_id and p.task_id not in before.tasks: raise RoomError("NOT_FOUND")
                 messaging.validate_message(before,MessageInput(content=p.instruction,in_reply_to_message_id=p.in_reply_to_message_id))
                 selected = context_builder.build(before,participant.agent_version_id,p.task_id,p.in_reply_to_message_id)
+                artifact_hash = None
+                if participant.role == 'report':
+                    if self.report_artifacts is None:
+                        raise RoomError("DEPENDENCY_UNAVAILABLE", "Verified Report artifacts are required")
+                    artifact_hash = self.report_artifacts.artifact_hash
                 # Stable preparation ID across retry/restart. Producer must guarantee
                 # idempotent child provisioning; no source-run guess enters invocation.
                 operation_id = str(uuid5(NAMESPACE_URL,repr((ctx.scope(),key,digest))))
                 run_id = await self.resolver.invocation_run(ctx,before,participant,operation_id)
                 prepared_active = ActiveOperation(operation_id=operation_id,dedup_key=key,
                     fence=observed.fence+1,command=command,participant=participant,source_run_id=run_id,
+                    artifact_hash=artifact_hash,
                     mailbox_message_ids=list(selected.mailbox_message_ids))
                 await self.invocation.prepare(self._invocation(before,prepared_active))
         async with self.state.transaction(ctx) as state:
@@ -255,13 +265,8 @@ class RoomService:
                         raise RoomError(
                             "NOT_FOUND", "Cannot create a caller-selected room ID"
                         )
-                    room = Snapshot(
-                        room_id=new_id(),
-                        scope=ctx,
-                        groupchat_version_id=p.groupchat_version_id,
-                        participants=[],
-                        policy=p.turn_policy,
-                    )
+                    assert draft_room is not None
+                    room = draft_room
                     room.participants = prepared_members
                     for item in p.ticket_context:
                         task_board.put_context(room, item)

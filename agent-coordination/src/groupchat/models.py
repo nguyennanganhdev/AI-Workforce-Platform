@@ -282,6 +282,7 @@ class ActiveOperation(Model):
     command: Command
     participant: Participant
     source_run_id: Id
+    artifact_hash: Optional[Id] = None
     mailbox_message_ids: list[Id] = Field(default_factory=list)
     dispatch_started: bool = True
 

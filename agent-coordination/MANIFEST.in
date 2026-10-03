@@ -1,9 +1,0 @@
-include requirements.lock
-include Dockerfile
-include README.md
-include config.example.json
-include config.live.example.json
-include live-approval.example.json
-include .env.example
-include scripts/package_smoke.py
-include scripts/live_tests.py
