@@ -3035,7 +3035,6 @@ export const tickets = pgTable(
       withCheck: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
     }),
     unique("tickets_unique_0").on(t.tenantId, t.code),
-    unique("tickets_unique_1").on(t.channelId),
     check(
       "tickets_check_0",
       sql`priority IS NULL OR priority IN ('low','normal','high','critical')`,
@@ -3633,7 +3632,7 @@ export const workApprovals = pgTable(
     ),
     check(
       "work_approvals_check_1",
-      sql`kind IN ('customer_repair','management_water_shutdown','customer_completion')`,
+      sql`kind IN ('customer_repair','management_water_shutdown','customer_completion','management_security_dispatch','management_security_cancel')`,
     ),
     check(
       "work_approvals_check_2",
@@ -4484,6 +4483,8 @@ export const files = pgTable(
     ownerPrincipalId: uuid("owner_principal_id").notNull(),
     /** Phạm vi sở hữu credential */
     scopeKind: text("scope_kind").notNull(),
+    /** Căn hộ được kiểm quyền cho ảnh cư dân trước khi có Case/ticket. */
+    unitId: uuid("unit_id"),
     /** Tham chiếu nguồn chuẩn của yêu cầu cư dân */
     ticketId: uuid("ticket_id"),
     /** Tham chiếu cửa sổ reception hoặc groupchat quản lý */
@@ -4543,6 +4544,11 @@ export const files = pgTable(
       foreignColumns: [fileObjects.tenantId, fileObjects.id],
     }).onDelete("restrict"),
     unique("files_tenant_key_uq").on(t.tenantId, t.id),
+    foreignKey({
+      name: "files_unit_id_fk",
+      columns: [t.tenantId, t.unitId],
+      foreignColumns: [units.tenantId, units.id],
+    }).onDelete("restrict"),
     pgPolicy("files_tenant_policy", {
       for: "all",
       using: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
@@ -4550,11 +4556,11 @@ export const files = pgTable(
     }),
     check(
       "files_check_0",
-      sql`num_nonnulls(ticket_id,channel_id,document_id,report_id)=1`,
+      sql`num_nonnulls(ticket_id,channel_id,document_id,report_id,unit_id)=1`,
     ),
     check(
       "files_check_1",
-      sql`(scope_kind='ticket' AND ticket_id IS NOT NULL) OR (scope_kind='channel' AND channel_id IS NOT NULL) OR (scope_kind='document' AND document_id IS NOT NULL) OR (scope_kind='report' AND report_id IS NOT NULL)`,
+      sql`(scope_kind='ticket' AND ticket_id IS NOT NULL) OR (scope_kind='channel' AND channel_id IS NOT NULL) OR (scope_kind='document' AND document_id IS NOT NULL) OR (scope_kind='report' AND report_id IS NOT NULL) OR (scope_kind='resident' AND unit_id IS NOT NULL)`,
     ),
     check(
       "files_check_2",
@@ -4562,7 +4568,7 @@ export const files = pgTable(
     ),
     check(
       "files_check_3",
-      sql`scope_kind IN ('ticket','channel','document','report')`,
+      sql`scope_kind IN ('ticket','channel','document','report','resident')`,
     ),
     check(
       "files_check_4",
@@ -10141,6 +10147,178 @@ export const workReassignmentRequests = pgTable(
     check(
       "work_reassignment_requests_check_3",
       sql`status IN ('requested','approved','rejected','executing','completed','cancelled','expired')`,
+    ),
+  ],
+);
+
+/** Immutable Reception/Supervisor V2 messages and the single resident-facing pending request. */
+export const receptionSupervisorMessages = pgTable(
+  "vh_reception_supervisor_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull(),
+    direction: text("direction").notNull(),
+    messageId: text("message_id").notNull(),
+    correlationId: text("correlation_id").notNull(),
+    ticketId: uuid("ticket_id").notNull(),
+    teamId: uuid("team_id").notNull(),
+    ticketGeneration: integer("ticket_generation").notNull(),
+    messageType: text("message_type").notNull(),
+    payload: jsonb("payload").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    responseBody: jsonb("response_body").notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t): PgTableExtraConfigValue[] => [
+    foreignKey({
+      name: "vh_reception_supervisor_messages_tenant_id_fk",
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "vh_reception_supervisor_messages_ticket_id_fk",
+      columns: [t.tenantId, t.ticketId],
+      foreignColumns: [tickets.tenantId, tickets.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "vh_reception_supervisor_messages_team_id_fk",
+      columns: [t.tenantId, t.teamId],
+      foreignColumns: [agentTeams.tenantId, agentTeams.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "vh_reception_supervisor_messages_created_by_fk",
+      columns: [t.createdBy],
+      foreignColumns: [users.id],
+    }).onDelete("restrict"),
+    unique("vh_reception_supervisor_messages_tenant_key_uq").on(
+      t.tenantId,
+      t.id,
+    ),
+    unique("vh_reception_supervisor_messages_message_id_uq").on(
+      t.tenantId,
+      t.messageId,
+    ),
+    pgPolicy("vh_reception_supervisor_messages_tenant_policy", {
+      for: "all",
+      using: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
+      withCheck: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
+    }),
+    check(
+      "vh_reception_supervisor_messages_direction_check",
+      sql`direction IN ('reception_to_supervisor','supervisor_to_reception')`,
+    ),
+    check(
+      "vh_reception_supervisor_messages_generation_check",
+      sql`ticket_generation>=0`,
+    ),
+    check(
+      "vh_reception_supervisor_messages_message_id_check",
+      sql`length(message_id) BETWEEN 1 AND 200`,
+    ),
+    check(
+      "vh_reception_supervisor_messages_correlation_id_check",
+      sql`length(correlation_id) BETWEEN 1 AND 200`,
+    ),
+    check(
+      "vh_reception_supervisor_messages_payload_check",
+      sql`jsonb_typeof(payload)='object'`,
+    ),
+    check(
+      "vh_reception_supervisor_messages_response_check",
+      sql`jsonb_typeof(response_body)='object'`,
+    ),
+    check(
+      "vh_reception_supervisor_messages_hash_check",
+      sql`payload_hash ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "vh_reception_supervisor_messages_type_check",
+      sql`(direction='reception_to_supervisor' AND message_type IN ('ticket_submitted','information_provided','plan_approved','plan_rejected','plan_change_requested','cancel_requested')) OR (direction='supervisor_to_reception' AND message_type IN ('accepted','in_progress','information_requested','plan_approval_requested','completed','failed','cancelled'))`,
+    ),
+    index("vh_reception_supervisor_messages_team_page_idx").on(
+      t.tenantId,
+      t.teamId,
+      t.createdAt,
+      t.id,
+    ),
+    index("vh_reception_supervisor_messages_ticket_page_idx").on(
+      t.tenantId,
+      t.ticketId,
+      t.ticketGeneration,
+      t.createdAt,
+      t.id,
+    ),
+  ],
+);
+
+export const receptionSupervisorPending = pgTable(
+  "vh_reception_supervisor_pending",
+  {
+    tenantId: uuid("tenant_id").notNull(),
+    ticketId: uuid("ticket_id").notNull(),
+    teamId: uuid("team_id").notNull(),
+    ticketGeneration: integer("ticket_generation").notNull(),
+    correlationId: text("correlation_id").notNull(),
+    pendingKind: text("pending_kind").notNull(),
+    supervisorMessageId: text("supervisor_message_id").notNull(),
+    planId: uuid("plan_id"),
+    planVersion: bigint("plan_version", { mode: "number" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t): PgTableExtraConfigValue[] => [
+    foreignKey({
+      name: "vh_reception_supervisor_pending_tenant_id_fk",
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "vh_reception_supervisor_pending_ticket_id_fk",
+      columns: [t.tenantId, t.ticketId],
+      foreignColumns: [tickets.tenantId, tickets.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "vh_reception_supervisor_pending_team_id_fk",
+      columns: [t.tenantId, t.teamId],
+      foreignColumns: [agentTeams.tenantId, agentTeams.id],
+    }).onDelete("restrict"),
+    primaryKey({
+      name: "vh_reception_supervisor_pending_pk",
+      columns: [t.tenantId, t.ticketId, t.ticketGeneration],
+    }),
+    unique("vh_reception_supervisor_pending_message_uq").on(
+      t.tenantId,
+      t.supervisorMessageId,
+    ),
+    pgPolicy("vh_reception_supervisor_pending_tenant_policy", {
+      for: "all",
+      using: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
+      withCheck: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
+    }),
+    check(
+      "vh_reception_supervisor_pending_kind_check",
+      sql`pending_kind IN ('information','plan_approval')`,
+    ),
+    check(
+      "vh_reception_supervisor_pending_generation_check",
+      sql`ticket_generation>=0`,
+    ),
+    check(
+      "vh_reception_supervisor_pending_correlation_check",
+      sql`length(correlation_id) BETWEEN 1 AND 200`,
+    ),
+    check(
+      "vh_reception_supervisor_pending_plan_check",
+      sql`(pending_kind='information' AND plan_id IS NULL AND plan_version IS NULL) OR (pending_kind='plan_approval' AND plan_id IS NOT NULL AND plan_version IS NOT NULL)`,
+    ),
+    index("vh_reception_supervisor_pending_team_idx").on(
+      t.tenantId,
+      t.teamId,
+      t.createdAt,
     ),
   ],
 );

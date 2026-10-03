@@ -8,6 +8,83 @@
       "when": 1790683783987,
       "tag": "0000_grey_blockbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790750000000,
+      "tag": "0001_vinhomes_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790750000001,
+      "tag": "0002_vinhomes_qc_redo",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790819701723,
+      "tag": "0003_vinhomes_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790819701724,
+      "tag": "0004_vinhomes_business_flows",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790819701725,
+      "tag": "0005_assignment_capacity",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790819701726,
+      "tag": "0006_resident_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790819701727,
+      "tag": "0007_reception_supervisor_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790819701728,
+      "tag": "0008_reception_command_receipt",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790906101729,
+      "tag": "0009_technical_agent_api",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790906101730,
+      "tag": "0010_release_finished_assignments",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790906101731,
+      "tag": "0011_reception_runtime_backend",
+      "breakpoints": true
     }
   ]
 }

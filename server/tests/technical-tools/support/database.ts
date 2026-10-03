@@ -62,6 +62,10 @@ export type TestDatabase = {
 async function openPglite(shared: boolean): Promise<TestDatabase> {
   const client = new PGlite({ extensions: { vector, btree_gist } });
   await client.exec(await readFile(BASELINE, "utf8"));
+  const journal = JSON.parse(await readFile(resolve(MIGRATIONS, "meta/_journal.json"), "utf8")) as { entries: { idx: number; tag: string }[] };
+  for (const migration of journal.entries.filter((entry) => entry.idx > 0)) {
+    await client.exec(await readFile(resolve(MIGRATIONS, `${migration.tag}.sql`), "utf8"));
+  }
   const database = drizzlePglite({ client, schema });
   await seedWorld(database);
   await client.exec(`

@@ -1,8 +1,13 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { AppSidebar } from "@/components/app-sidebar/app-sidebar";
 import { SidebarShell } from "@/components/layout/sidebar-shell";
 
 export const Route = createFileRoute("/_authed/_app")({
+  beforeLoad: () => {
+    if (typeof window !== "undefined" && window.location.port === "3020") {
+      throw redirect({ to: "/operations/my-tasks" });
+    }
+  },
   component: RouteComponent,
 });
 

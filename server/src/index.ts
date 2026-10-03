@@ -19,6 +19,8 @@ import { createAgentProfileStore } from "./agents/profile-store";
 import type { AgentActor } from "./agents/profile-types";
 import { createRuntimeAgentLoader } from "./agents/runtime-agents";
 import { createApp } from "./app";
+import { knowledgeRuntimeFromEnv } from "./knowledge/runtime";
+import { createTicketReader } from "./business/tickets";
 import {
   type AuditInitiator,
   createAuditReader,
@@ -1237,6 +1239,13 @@ repeatAfterEach(async () => {
   }
 }, 10_000);
 
+if (Boolean(process.env.TECHNICAL_API_DATABASE_URL) !== Boolean(process.env.TECHNICAL_API_TENANT_ID)) {
+  throw new Error("Configure both TECHNICAL_API_DATABASE_URL and TECHNICAL_API_TENANT_ID to enable Technical A2 API");
+}
+if (process.env.TECHNICAL_API_TENANT_ID && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(process.env.TECHNICAL_API_TENANT_ID)) {
+  throw new Error("TECHNICAL_API_TENANT_ID must be a UUID");
+}
+const knowledgeRuntime = await knowledgeRuntimeFromEnv(process.env);
 const app = createApp(
   config,
   auth,
@@ -1319,6 +1328,17 @@ const app = createApp(
   process.env.OPENBOT_MODEL_OAUTH_FILE?.trim()
     ? createProviderOAuthProxy(process.env.OPENBOT_MODEL_OAUTH_FILE.trim())
     : undefined,
+  createTicketReader(database, deploymentScope(tenantPackage.tenantId).tenantId),
+  { database, tenantId: deploymentScope(tenantPackage.tenantId).tenantId },
+  process.env.TECHNICAL_API_DATABASE_URL && process.env.TECHNICAL_API_TENANT_ID
+    ? {
+        database: createDatabase(process.env.TECHNICAL_API_DATABASE_URL),
+        tenantId: process.env.TECHNICAL_API_TENANT_ID,
+        encryptionKey: config.keyEncryptionKey,
+        lookupToken: async (hash: string) => agentProfileStore.agentForCallbackToken(hash),
+      }
+    : undefined,
+  knowledgeRuntime,
 );
 
 /**

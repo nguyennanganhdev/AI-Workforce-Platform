@@ -67,6 +67,24 @@ function adjust(
 }
 
 /**
+ * How far ahead in similarity the closest passage must be to lead regardless of fusion.
+ *
+ * Rank fusion counts a keyword match on common words ("xe", "hàng", "cư dân") as much as a close
+ * semantic match, so a passage that restates the question (similarity 0.78 against 0.52 for the
+ * next) could fall out of the top five because it missed the keyword list. A margin, rather than
+ * an absolute similarity, keeps this independent of the embedding model.
+ */
+const CLEAR_MATCH_MARGIN = 0.15;
+
+/** Put the passage that is clearly the closest in meaning first; leave every other order as fused. */
+function leadClearMatch<T extends { similarity: number }>(sorted: T[]): T[] {
+  const bySimilarity = [...sorted].sort((a, b) => b.similarity - a.similarity);
+  const [best, next] = bySimilarity;
+  if (!best || !next || best.similarity - next.similarity < CLEAR_MATCH_MARGIN) return sorted;
+  return [best, ...sorted.filter((hit) => hit !== best)];
+}
+
+/**
  * Retrieval is: embed the question and build its keyword query, let the store narrow to what this
  * caller may read and run both searches within that, fuse, adjust for scope level, sourcing, status
  * and recency, then write the audit row. Nothing here filters after the fact, and the authority
@@ -96,9 +114,11 @@ export async function retrieve(
     : { authorizedDocumentIds: [], hits: [] };
 
   const now = Date.now();
-  const ranked = found.hits
-    .map((hit) => ({ ...hit, ...adjust(hit, now) }))
-    .sort((a, b) => b.score - a.score)
+  const ranked = leadClearMatch(
+    found.hits
+      .map((hit) => ({ ...hit, ...adjust(hit, now) }))
+      .sort((a, b) => b.score - a.score),
+  )
     .slice(0, topK)
     .map((hit, index) => ({
       ...hit,

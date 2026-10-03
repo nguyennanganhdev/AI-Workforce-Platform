@@ -70,6 +70,13 @@ export function createIngestStore(database: Database): IngestStore {
         const document = one(upserted, "document");
         const documentId = String(document.id);
 
+        // scopeIds is the complete desired set. Re-ingestion must revoke removed
+        // scopes even when the document content hash did not change.
+        await tx.execute(sql`
+          DELETE FROM document_scopes WHERE tenant_id=${input.tenantId}
+            AND document_id=${documentId}
+            AND scope_id::text NOT IN (SELECT jsonb_array_elements_text(${jsonList(input.scopeIds)}))`);
+
         for (const scopeId of input.scopeIds) {
           await tx.execute(
             sql`
@@ -324,7 +331,14 @@ function authorizedDocuments(
 
 export function createRetrievalStore(database: Database): RetrievalStore {
   return {
-    ensureEmbeddingModel: createIngestStore(database).ensureEmbeddingModel,
+    async ensureEmbeddingModel(spec) {
+      // Retrieval never creates/activates models. Only the ingestion role can do so.
+      const model = one(await rows(database, sql`
+        SELECT id FROM embedding_models WHERE provider=${spec.provider}
+          AND model_name=${spec.modelName} AND model_revision=${spec.modelRevision}
+          AND dimension=${spec.dimension} AND distance_metric=${spec.distanceMetric} AND active`), "active embedding model");
+      return { id: String(model.id) };
+    },
 
     async searchAuthorized(input) {
       const authorized = authorizedDocuments(

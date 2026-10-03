@@ -71,6 +71,113 @@ Mọi route/method khác trả 404. Không có run endpoint hoặc mock nghiệp
 Chạy trực tiếp mới khởi động service; SIGINT/SIGTERM dừng listener.
 PH04 sử dụng model trả về để inject vào graph; test gọi `server.stop(true)` để dọn tài nguyên.
 
+## Runtime service (Python)
+
+`src/runtime/` ghép graph nghiệp vụ với model, backend và nơi lưu phiên thành một service chạy được:
+
+```sh
+python -m pip install -r requirements.txt
+python -m uvicorn src.runtime.service:create_app --factory --host 127.0.0.1 --port 4202
+```
+
+Trên Windows: chép `.env.example` thành `.env`, điền giá trị, rồi chạy `scripts/start_runtime.ps1`
+(script nạp `.env` và dùng `.venv` nếu có). Không ghi key thật vào `.env.example`.
+
+Biến môi trường ở `.env.example` (`RECEPTION_SERVICE_TOKEN`, `RECEPTION_BACKEND_URL`, `RECEPTION_MODEL`,
+`OPENAI_API_KEY`). Backend bật bằng `VINHOMES_API_RECEPTION_SERVICE_TOKEN`, `VINHOMES_API_RECEPTION_URL` và
+`RECEPTION_DELEGATION_KEY` (khóa ký chỉ backend giữ).
+
+- `POST /v1/turns` (Bearer service token): backend gọi sau khi tin nhắn cư dân đã commit. Service chạy một
+  lượt graph theo từng cuộc trò chuyện rồi ghi câu trả lời qua `POST /internal/reception/chats/{id}/replies`.
+  App cư dân chỉ đọc hội thoại từ backend.
+- Ủy quyền: service token chỉ chứng minh lời gọi đến từ backend. Mỗi lượt, backend mở một run gắn với phiên
+  của cuộc trò chuyện và gửi kèm token ngắn hạn (`delegation`). Runtime dùng token đó cho mọi lời gọi ngược về
+  backend và tìm tri thức; token chỉ giữ trong bộ nhớ, không ghi vào checkpoint, và hết hiệu lực khi lượt kết thúc.
+- `runtime/backend.py` là lớp chuyển đổi: hợp đồng backend là chuẩn (draft chưa phải ticket, handoff tạo ticket,
+  kết quả phẳng). Graph thấy draft dưới một `ticket_id` ổn định; từng operation được dịch sang
+  `/internal/reception/v1/execute`. Backend tự suy ra cư dân, tenant, run từ token.
+- Policy (khẩn cấp, cần nhân viên) do backend quyết định ở `/internal/reception/policy/evaluate`; model chỉ đề xuất.
+- Hướng dẫn an toàn khi khẩn cấp: policy trả thêm `safety_guidance` theo đúng hợp đồng graph đã có
+  (`graph/assessment.parse_request_policy`: `approved`, `answer`, `retrievalRunId`, `citations`) khi Ban quản lý
+  đã duyệt một câu cho loại khẩn cấp đó ở nơi cư dân ở. Câu trả lời là câu khẩn cấp cố định, rồi tới nguyên văn
+  câu đã duyệt, rồi mã yêu cầu; không model nào viết hay sửa câu này. Chưa có câu được duyệt thì chỉ có câu cố
+  định. Chế độ `graph` lấy từ `safety_reply` trong state, chế độ `loop` lấy thẳng từ policy
+  (`runtime/service.safety_line`). Test: `tests/runtime/test_emergency_guidance.py` và test đầu-cuối.
+- `runtime/knowledge.py` gọi `search_knowledge` v1 khi có `RECEPTION_KNOWLEDGE_URL` và chỉ trả lời từ passage có trích dẫn.
+  Passage phải nói về đúng đối tượng được hỏi (hỏi Masteri mà chỉ có nguồn Sapphire thì coi là không đủ nguồn);
+  câu trả lời kết thúc bằng dòng `(Nguồn: <tiêu đề tài liệu>)` do code ghép, không phải model viết.
+  Kho tri thức nạp bằng `server/src/knowledge/publish.ts`, dịch vụ tìm kiếm chạy bằng `server/src/knowledge/serve.ts`.
+- `runtime/inquiry.py`: câu hỏi không có nguồn. Model chỉ phân loại (về tòa nhà / ngoài phạm vi / chưa rõ); câu về
+  tòa nhà được chuyển thành session trong group chat của BQL qua `POST /internal/reception/chats/{id}/inquiries`,
+  và backend đưa câu trả lời của BQL (sau này là Supervisor) về lại cuộc trò chuyện.
+- `runtime/voice.py` viết lại câu trả lời cố định của graph cho tự nhiên; không được thêm dữ kiện hay cam kết.
+- Lớp chuyển đổi chỉ ghi vào yêu cầu các dữ kiện cư dân tự nêu (`customer_report`); dữ kiện model tự suy luận bị bỏ,
+  vì backend từ chối loại này và cả yêu cầu sẽ bị rơi.
+- `runtime/model.py` gọi chat completions kiểu OpenAI với đầu ra JSON.
+
+### Hai chế độ agent (đồng chủ sở hữu: Team Hoàng và Team Chiến)
+
+`RECEPTION_AGENT` chọn bộ não của một lượt chat; cả hai dùng chung service, ủy quyền, backend và tri thức.
+
+| | `graph` (mặc định) | `loop` |
+|---|---|---|
+| Mã nguồn | `src/graph` (Team Hoàng) | `src/agent` |
+| Ai dẫn dắt hội thoại | Code: phân loại rồi đi nhánh cố định | Model: tự hỏi lại, tự chọn công cụ, tự viết câu trả lời |
+| Trạng thái | Checkpoint LangGraph (SQLite) | Không giữ trạng thái: mỗi lượt đọc hội thoại và yêu cầu đang mở từ backend |
+| Số lượt gọi model mỗi lượt chat | 3–4 | 2 (thường) |
+
+`src/agent` gồm ba file:
+
+- `prompt.py`: vai trò, việc được làm và không được làm, định dạng trả lời `{reply, sources}`.
+- `tools.py`: sáu công cụ (`search_knowledge`, `file_request`, `report_emergency`, `request_status`,
+  `cancel_request`, `ask_management`) và các luật code giữ: một hội thoại một yêu cầu đang mở; danh mục và mức ưu
+  tiên phải hợp lệ; khẩn cấp do policy backend xác nhận; `ask_management` chỉ sau khi đã tìm tri thức.
+  `file_request` gói cả chuỗi nháp → vị trí → mô tả → đánh giá → định tuyến → bàn giao của backend.
+- `loop.py`: vòng gọi công cụ (tối đa 6 bước) và bước kiểm tra câu trả lời trước khi gửi. Câu trả lời bị trả lại
+  cho model một lần, rồi thay bằng câu an toàn, nếu: nêu con số không có trong kết quả công cụ hay lời cư dân;
+  nói "đã ghi nhận/đã chuyển" mà lượt đó không có hành động nào thành công; khẳng định đã xong khi backend chưa
+  xác nhận; hứa thời gian hay miễn phí; dùng từ nội bộ.
+
+Kết quả bộ đánh giá hội thoại (52 kịch bản, `gpt-5.4-mini`, chấm bằng `gpt-5.4`, có tri thức):
+
+| Chỉ số | `graph` | `loop` (4 lần chạy) |
+|---|---|---|
+| Đạt kiểm tra cứng | 87% | 94–100% |
+| Đạt phát biểu của kịch bản | 88% | 96–100% |
+| Tự nhiên (1–5) | 4,42 | 4,75–4,88 |
+| Trễ trung vị | 5,1 s | 3,0–3,9 s |
+| Nhóm tin nhắn mơ hồ | 33% | 100% |
+
+Khi sửa prompt, công cụ hay bước kiểm tra: chạy `tests/agent` (không cần dịch vụ) và `tests/evals/run_live.py`
+trên database tạm, so với bảng trên. Test đầu-cuối với model giả lập (`tests/runtime/test_resident_chat_e2e.py`)
+chạy cho cả hai chế độ: `fake_llm.py` trả lời cả yêu cầu JSON của graph lẫn yêu cầu gọi công cụ của `loop`.
+
+### Agent thẩm định tri thức (`runtime/curator.py`)
+
+`POST /v1/curations` (Bearer service token): backend gửi một cặp hỏi - đáp mà Ban quản lý vừa trả lời cho cư dân.
+Model cho biết có thông tin cá nhân không, có dùng lại được cho cư dân khác không, có nêu phí/quy định/an toàn
+không, và viết lại cặp hỏi - đáp cho tổng quát (bản viết lại bị bỏ nếu thêm con số không có trong bản gốc).
+Đây chỉ là ý kiến: quyết định duyệt, chờ duyệt hay loại là của backend (`v3_learning.decide`).
+
+Chưa có trong runtime: nhận sự kiện từ Supervisor (chưa có Supervisor chạy), trả lời tương tác của Supervisor,
+self-help (backend trả 501 nên graph mời hỗ trợ trực tiếp), checkpointer PostgreSQL cho nhiều replica.
+
+Đánh giá hội thoại với model thật: `tests/evals/run_live.py` gửi 52 kịch bản tiếng Việt
+(`tests/evals/live_conversations.vi.json`) qua API cư dân rồi chấm bằng dữ kiện từ backend (có tạo yêu cầu
+không, mức ưu tiên, có lượt nào hỏng không) và bằng một model chấm độ tự nhiên, độ đúng. Lệnh này tốn lượt gọi
+model và tạo yêu cầu thật, nên chỉ chạy trên database tạm:
+
+```sh
+python tests/evals/run_live.py --backend http://127.0.0.1:8011 --only emergency
+```
+
+Điểm gốc 03/10/2026 (graph cố định, `gpt-5.4-mini`, chấm bằng `gpt-5.4`, hai lần chạy): đạt kiểm tra cứng
+85–88%, đạt phát biểu 87–88%, tự nhiên 4,2–4,4/5, trễ trung vị 6 giây. Nhóm yếu nhất: tin nhắn mơ hồ (33%).
+
+Kiểm thử đầu-cuối qua HTTP thật: `tests/runtime/test_resident_chat_e2e.py` (cần backend, runtime và
+`tests/runtime/fake_llm.py`; model trong test là stub xác định, không phải LLM thật). Chạy hai lần: một lần với
+runtime bật `RECEPTION_AGENT=graph`, một lần với `RECEPTION_AGENT=loop`; cả 7 test phải đạt ở cả hai.
+
 ## Internal contracts
 
 `src/contracts/index.ts` là **đề xuất nội bộ `0.1.0-draft.1`**, state schema v1.

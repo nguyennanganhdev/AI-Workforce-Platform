@@ -1,0 +1,21 @@
+# Starts the knowledge search service on 127.0.0.1:8787 for the local demo.
+# Settings: .local-v3-faker/knowledge.env; the embedding key comes from agent-reception/.env.
+$ErrorActionPreference = 'Stop'
+$serviceRoot = Split-Path $PSScriptRoot -Parent
+$projectRoot = Split-Path (Split-Path $serviceRoot -Parent) -Parent
+$configFile = Join-Path $serviceRoot '.local-v3-faker/knowledge.env'
+if (!(Test-Path -LiteralPath $configFile)) { throw 'Publish the knowledge first (server/src/knowledge/publish.ts) and create .local-v3-faker/knowledge.env' }
+$keyFile = Join-Path $projectRoot 'agent-reception/.env'
+@($keyFile, $configFile) | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { Get-Content -LiteralPath $_ } | ForEach-Object {
+    if ($_ -and !$_.StartsWith('#')) {
+        $setting = $_ -split '=', 2
+        if ($setting[1] -and ($setting[0] -like 'KNOWLEDGE_*' -or $setting[0] -in @('RECEPTION_API_URL', 'OPENAI_API_KEY', 'OPENAI_BASE_URL'))) {
+            [Environment]::SetEnvironmentVariable($setting[0], $setting[1], 'Process')
+        }
+    }
+}
+# Bun prefers DATABASE_URL over what the service passes; the service must use its own.
+Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+Set-Location -LiteralPath (Join-Path $projectRoot 'server')
+& bun src/knowledge/serve.ts
+exit $LASTEXITCODE

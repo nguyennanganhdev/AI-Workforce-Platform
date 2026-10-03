@@ -26,18 +26,25 @@ async function rejects(name, fn) {
 }
 try {
   if (!process.argv[2]) await db.exec("CREATE EXTENSION vector;");
+  // Every table the loaded SQL declares must exist afterwards. Counted from the SQL itself, so
+  // adding a table to the design does not need this script edited.
+  let declared = 0;
   for (const path of process.argv[2]
     ? [process.argv[2]]
     : [
         "../.codex-artifacts/schema-check/schema.sql",
         "src/db/invariants.sql",
         "src/db/generated-invariants.sql",
-      ])
-    await db.exec(await readFile(resolve(server, path), "utf8"));
+      ]) {
+    const statements = await readFile(resolve(server, path), "utf8");
+    declared += (statements.match(/^CREATE TABLE /gm) ?? []).length;
+    await db.exec(statements);
+  }
   const { rows } = await db.query(
     "SELECT count(*)::int AS n FROM pg_tables WHERE schemaname='public'",
   );
-  assert.equal(rows[0].n, 148);
+  assert.ok(declared > 0, "no CREATE TABLE statement was loaded");
+  assert.equal(rows[0].n, declared);
   checks++;
   const t1 = await insert("tenants", {
     code: "tenant-a",

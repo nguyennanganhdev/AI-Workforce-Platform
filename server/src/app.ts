@@ -1,5 +1,8 @@
 import type { Hono as HonoApp, MiddlewareHandler } from "hono";
+import { createKnowledgeRoutes, type KnowledgeRouteDeps } from "./knowledge/routes";
 import { Hono } from "hono";
+import { createTechnicalApiRoutes } from "./technical-api/routes";
+import { createTechnicalApiDependencies, type TechnicalApiOptions } from "./technical-api/runtime";
 import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/bun";
 import { MAX_IMAGE_BYTES } from "../../shared/attachments";
@@ -50,6 +53,8 @@ import type { PolicyStore } from "./computer/policy-store";
 import { createComputerRoutes } from "./computer/routes";
 import { configuredAuthProviders, type DeploymentConfig } from "./config";
 import type { CredentialAdminService, CredentialInput } from "./credentials";
+import { createTicketRoutes } from "./business/ticket-routes";
+import type { TicketReader } from "./business/tickets";
 import type { Database } from "./db/client";
 import { withoutStatement } from "./db/query-failure";
 import { mountDesktopConnectionFailure } from "./desktop-connection-failure";
@@ -81,6 +86,7 @@ import {
   InstructionsTooLongError,
   type UserInstructionsStore,
 } from "./user-instructions";
+import { createVinhomesRoutes } from "./vinhomes/routes";
 
 /**
  * How much of a multipart body is boundary, headers and other fields rather than file.
@@ -321,8 +327,14 @@ export function createApp(
   composio?: { broker: ComposioBroker },
   /** Native model OAuth stays server-side; callers hold only a separate local bearer. */
   modelProviderProxy?: ModelProviderProxy,
+  ticketReader?: TicketReader,
+  vinHomesDatabase?: { database: Database; tenantId: string },
+  technicalApi?: TechnicalApiOptions,
+  knowledge?: KnowledgeRouteDeps,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
+  if (knowledge) app.route("/internal/knowledge", createKnowledgeRoutes(knowledge));
+  if (technicalApi) app.route("/api/technical/v1", createTechnicalApiRoutes(createTechnicalApiDependencies(technicalApi)));
   mountDesktopConnectionFailure(app, desktopHostToken);
   mountProviderOAuthProxy(app, modelProviderProxy);
 
@@ -469,6 +481,16 @@ export function createApp(
     : auth && roleRepository
       ? createRequireUser(auth, roleRepository)
       : authenticationUnavailable;
+
+  if (ticketReader) {
+    app.route("/api/vinhomes", createTicketRoutes(ticketReader, requireUser));
+  }
+  if (vinHomesDatabase) {
+    app.route(
+      "/api/vinhomes/v3",
+      createVinhomesRoutes(vinHomesDatabase.database, vinHomesDatabase.tenantId, requireUser),
+    );
+  }
 
   app.get("/api/me", requireUser, async (context) =>
     context.json({

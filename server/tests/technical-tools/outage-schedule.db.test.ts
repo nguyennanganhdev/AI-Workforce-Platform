@@ -57,11 +57,11 @@ async function keysFor(
 }
 
 describe("the schema under test", () => {
-  test("is the whole published baseline, not a subset written for the test", async () => {
+  test("loads the baseline and all V3 migrations through 0009", async () => {
     const rows = await db.rows<{ tables: number }>(
       "select count(*)::int as tables from pg_tables where schemaname = 'public'",
     );
-    expect(rows[0]?.tables).toBe(148);
+    expect(rows[0]?.tables).toBe(193);
   });
 
   test("is read as a role that row-level security applies to", async () => {

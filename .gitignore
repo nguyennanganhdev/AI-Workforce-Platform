@@ -51,11 +51,32 @@ venv/
 .ruff_cache/
 .mypy_cache/
 
+# Workforce scaffold
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.markdown-collab/
 # Local schema verification output and downloaded development tooling.
 .codex-artifacts/
+services/vinhomes-api/.local-postgres/
+services/vinhomes-api/.local-v3-postgres/
+services/vinhomes-api/.local-v3-files/
+services/vinhomes-api/.local-v3-faker/
+services/vinhomes-api/.local-connected/
 
 # `cli.ts --dump-chunks` output: chunks of the resident knowledge base, regenerated from the data repo.
 server/chunks.json
 
 .codegraph/
 .copilotkit/
+
+# Reception runtime conversation state (local SQLite).
+agent-reception/.reception-state/

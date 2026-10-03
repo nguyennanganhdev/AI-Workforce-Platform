@@ -277,6 +277,11 @@ class ReceptionWorkflowGraph:
             response.content,
             [message["id"] for message in pending_messages]
             or [data["message"]["id"]],
+            {
+                item["message_id"]
+                for item in data.get("conversation_history", [])
+                if item.get("role") == "resident"
+            },
         )
 
     async def _receive_message(self, data, config):
@@ -589,11 +594,12 @@ class ReceptionWorkflowGraph:
                 if isinstance(error, GraphFault)
                 else "RESIDENT_EXTRACTION_UNAVAILABLE",
             )
-        if turn["intent"] == "new_incident":
+        # Before anything is recorded there is no other incident: the first report is this one.
+        if turn["intent"] == "new_incident" and data.get("incident"):
             return self._next(
                 {
                     **data,
-                    "reply": "Cuộc hội thoại gắn với ticket hiện tại. Vui lòng mở cuộc hội thoại mới cho sự cố khác.",
+                    "reply": "Cuộc hội thoại này đang theo một yêu cầu. Bạn mở cuộc hội thoại mới cho sự cố khác nhé.",
                     "pending_file_refs": [],
                     "pending_incident_messages": [],
                 },
@@ -720,7 +726,7 @@ class ReceptionWorkflowGraph:
                 {
                     **data,
                     "turn": turn,
-                    "reply": "Ticket hiện tại vẫn được giữ. Vui lòng mở cuộc hội thoại mới cho sự cố khác.",
+                    "reply": "Yêu cầu hiện tại vẫn được giữ. Bạn mở cuộc hội thoại mới cho sự cố khác nhé.",
                     "pending_file_refs": [],
                     "pending_incident_messages": [],
                 },
@@ -805,7 +811,7 @@ class ReceptionWorkflowGraph:
             return self._plan(
                 {
                     **base,
-                    "reply": "Supervisor báo công việc hoàn tất; đang kiểm tra xác nhận từ backend.",
+                    "reply": "Bộ phận xử lý báo đã xong việc; mình đang kiểm tra xác nhận hoàn tất.",
                 },
                 "get_ticket_status",
                 self._ticket_input(base),
@@ -1076,7 +1082,7 @@ class ReceptionWorkflowGraph:
             return {
                 **updated,
                 "ack": parse_ack(raw, pending["input"]["message"]["correlation_id"]),
-                "reply": "Ticket đã được hệ thống tiếp nhận để chuyển xử lý.",
+                "reply": "Mình đã ghi nhận và chuyển yêu cầu của bạn đến Ban quản lý.",
             }
         if operation == "register_supervisor_wait":
             if v.get("registered") is not True:
@@ -1114,7 +1120,7 @@ class ReceptionWorkflowGraph:
             return {
                 **updated,
                 "ticket": ticket,
-                "reply": "Thông tin đã được bổ sung vào ticket hiện tại."
+                "reply": "Mình đã bổ sung thông tin vào yêu cầu của bạn."
                 if delivered
                 else "Thông tin đã được lưu; đang chờ chuyển đến bộ phận xử lý.",
             }
@@ -1138,6 +1144,10 @@ class ReceptionWorkflowGraph:
                 "pending_interaction": None,
                 "reply": "Câu trả lời đã được hệ thống tiếp nhận.",
             }
+        if operation in ("request_ticket_cancellation", "get_ticket_status"):
+            # A cancellation or a progress question is not incident content: it must not
+            # stay queued and colour how the next message of the resident is read.
+            updated["pending_incident_messages"] = []
         if operation == "request_ticket_cancellation":
             return {
                 **updated,
@@ -1165,14 +1175,14 @@ class ReceptionWorkflowGraph:
                     "ticket": ticket,
                     "phase": "terminal",
                     "next": END,
-                    "reply": "Backend xác nhận ticket đã được hủy."
+                    "reply": "Yêu cầu của bạn đã được hủy."
                     if status == "cancelled"
-                    else "Backend xác nhận ticket đã hoàn tất xử lý.",
+                    else "Yêu cầu của bạn đã được xử lý xong.",
                 }
             return {
                 **updated,
                 "ticket": ticket,
-                "reply": "Ticket đang được xử lý; chưa có xác nhận hoàn tất từ backend.",
+                "reply": "Yêu cầu của bạn đang được xử lý, chưa có xác nhận hoàn tất.",
             }
         raise GraphFault("TOOL_NOT_ALLOWED")
 
@@ -1227,7 +1237,7 @@ class ReceptionWorkflowGraph:
                     "last_error": error.code
                     if isinstance(error, GraphFault)
                     else "INVALID_WORKFLOW_OUTPUT",
-                    "reply": "Chưa xác minh được kết quả; cần đối soát với backend.",
+                    "reply": "Mình chưa xác minh được kết quả; Ban quản lý sẽ kiểm tra lại.",
                 }
         if (
             isinstance(result, dict)
@@ -1240,7 +1250,7 @@ class ReceptionWorkflowGraph:
             "phase": "waiting_operation",
             "next": "wait_for_operation",
             "wait_kind": "operation",
-            "reply": "Đang chờ backend xác nhận kết quả thao tác.",
+            "reply": "Mình đang chờ hệ thống xác nhận kết quả.",
         }
 
     async def _wait_for_operation(self, data, config):

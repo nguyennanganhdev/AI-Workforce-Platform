@@ -252,6 +252,21 @@ describe("retrieve", () => {
     expect(recorded[0]?.authorizedDocumentIds).toEqual(["doc-1"]);
   });
 
+  test("a passage clearly closest in meaning leads, whatever its fused rank", async () => {
+    // Fused order is c0, c1, c2. c2 restates the question; the others only share common words.
+    const clear = await retrieve(
+      { store: retrievalStore([0.52, 0.5, 0.78]).store, embedder },
+      { context, knowledgeBaseId: "kb1", query: "mượn xe đẩy hàng?" },
+    );
+    expect(clear.hits.map((hit) => hit.chunkId)).toEqual(["c2", "c0", "c1"]);
+    // Without a clear lead the fused order stands.
+    const close = await retrieve(
+      { store: retrievalStore([0.52, 0.5, 0.6]).store, embedder },
+      { context, knowledgeBaseId: "kb1", query: "mượn xe đẩy hàng?" },
+    );
+    expect(close.hits.map((hit) => hit.chunkId)).toEqual(["c0", "c1", "c2"]);
+  });
+
   test("nothing close enough means insufficient sources", async () => {
     const { store } = retrievalStore([0.05]);
     const result = await retrieve(

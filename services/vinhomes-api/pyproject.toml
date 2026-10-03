@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-workforce-vinhomes-api"
+version = "0.1.0"
+description = "Vinhomes domain API service"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.142,<1",
+  "pydantic>=2.11,<3",
+  "uvicorn>=0.30,<1",
+  "SQLAlchemy[asyncio]>=2.0,<3",
+  "asyncpg>=0.29,<1",
+  "alembic>=1.13,<2",
+  "httpx>=0.27,<1",
+  "python-multipart>=0.0.20,<1",
+  "Pillow>=11,<13",
+]
+
+[project.optional-dependencies]
+test = ["httpx>=0.27,<1", "pytest>=8,<10", "aiosqlite>=0.20,<1"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+vinhomes_api = ["demo_ui/*.html", "demo_ui/*.css", "demo_ui/*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

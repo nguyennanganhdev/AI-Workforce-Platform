@@ -293,7 +293,7 @@ def build_handoff(state, sent_at) -> dict:
     }
 
 
-def parse_turn(content, message_ids) -> dict:
+def parse_turn(content, message_ids, earlier_message_ids=()) -> dict:
     if not isinstance(content, str) or len(content) > 32768:
         raise GraphFault("INVALID_RESIDENT_TURN")
     try:
@@ -306,6 +306,14 @@ def parse_turn(content, message_ids) -> dict:
     allowed_message_ids = (
         {message_ids} if isinstance(message_ids, str) else set(strings(message_ids, 32))
     )
+    # Models repeat facts from earlier turns of the same conversation. Those were handled
+    # in their own turn, so they are dropped here; a source that never existed still faults.
+    parsed_facts = [
+        fact
+        for fact in parsed_facts
+        if fact["source_message_id"] in allowed_message_ids
+        or fact["source_message_id"] not in earlier_message_ids
+    ]
     if any(
         fact["source"] == "staff_verified"
         or fact["source_message_id"] not in allowed_message_ids
