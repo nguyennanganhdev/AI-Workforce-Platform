@@ -9,6 +9,9 @@ become a candidate (memory_candidates). A curator model judges it; code then dec
 
 Approved candidates are exported to Markdown and published by the knowledge pipeline
 (scripts/export_learned_knowledge.py), so retrieval, scopes and citations stay in one place.
+
+Safety guidance for emergency replies uses the same approval: scripts/propose_emergency_guidance.py
+proposes the text of each area's own document, and only an approved text is ever sent.
 """
 
 import hashlib
@@ -42,6 +45,41 @@ MANAGES_CANDIDATE = """(:is_admin or exists (
     where m.user_id=:user_id and m.status='active' and r.role_code='management' and r.tenant_id=c.tenant_id
       and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now())
       and (s.kind='tenant' or (s.kind='management' and s.management_unit_id=w.management_unit_id))))"""
+
+
+# Candidates management decides on: learned answers and safety guidance for emergency replies.
+REVIEWABLE = "(c.evidence ? 'sessionId' or c.evidence ? 'emergencyKind')"
+
+
+async def approved_guidance(db: AsyncConnection, user_id: str, kind: str) -> dict[str, object] | None:
+    """The safety text management approved for this kind of emergency where the resident lives.
+
+    Shaped as the Reception graph expects it (graph/assessment.parse_request_policy). None when
+    nothing is approved, or when the resident's homes are in different areas and the advice differs.
+    """
+    from .v3_session import CURRENT_HOME
+    homes = (await db.execute(text(f"""
+        select distinct b.id as building_id,b.zone_id,b.site_id from unit_residents ur
+        join units u on u.id=ur.unit_id and u.tenant_id=ur.tenant_id
+        join buildings b on b.id=u.building_id and b.tenant_id=u.tenant_id
+        where ur.user_id=:user and ur.tenant_id={TENANT} and {CURRENT_HOME}
+    """), {"user": user_id})).mappings().all()
+    if len({home["zone_id"] for home in homes}) != 1:
+        return None
+    row = (await db.execute(text(f"""
+        select c.id,c.proposed_text,c.proposal_revision,c.proposal_hash from memory_candidates c
+        join access_scopes s on s.id=c.scope_id and s.tenant_id=c.tenant_id
+        where c.tenant_id={TENANT} and c.status='approved' and c.evidence->>'emergencyKind'=:kind
+          and (s.kind='tenant' or (s.kind='site' and s.site_id=:site) or (s.kind='zone' and s.zone_id=:zone)
+            or (s.kind='building' and s.building_id=any(cast(:buildings as uuid[]))))
+        order by array_position(array['building','zone','site','tenant'],s.kind),c.updated_at desc limit 1
+    """), {"kind": kind, "site": homes[0]["site_id"], "zone": homes[0]["zone_id"],
+           "buildings": [home["building_id"] for home in homes]})).mappings().first()
+    if row is None:
+        return None
+    return {"approved": True, "answer": row["proposed_text"], "retrievalRunId": f"guidance:{row['id']}",
+            "citations": [{"documentId": str(row["id"]), "version": str(row["proposal_revision"]),
+                           "chunkId": row["proposal_hash"]}]}
 
 
 async def propose_from_answer(db: AsyncConnection, session_id: UUID, workspace_id: object, scope_id: object,
@@ -128,14 +166,14 @@ async def curate(app, actor_id: str, candidate_id: UUID, question: str, answer: 
         log.warning("Curator did not judge candidate %s", candidate_id)
 
 
-@router.get("/knowledge/candidates", summary="Learned answers waiting for management's approval")
+@router.get("/knowledge/candidates", summary="Learned answers and safety guidance waiting for management's approval")
 async def candidates(scope: Scope) -> dict[str, object]:
     rows = await scope[0].execute(text(f"""
         select c.id,c.status,c.reason,c.created_at,c.evidence->>'question' as question,c.evidence->>'answer' as answer
         from memory_candidates c
         join memory_namespaces n on n.id=c.namespace_id and n.tenant_id=c.tenant_id
         join workspaces w on w.id=n.workspace_id and w.tenant_id=n.tenant_id
-        where c.tenant_id={TENANT} and c.status='pending' and c.evidence ? 'sessionId' and {MANAGES_CANDIDATE}
+        where c.tenant_id={TENANT} and c.status='pending' and {REVIEWABLE} and {MANAGES_CANDIDATE}
         order by c.created_at limit 100
     """), {"user_id": scope[1], "is_admin": scope[2]})
     return {"items": [dict(row) for row in rows.mappings()]}
@@ -145,13 +183,13 @@ class Decision(BaseModel):
     decision: Literal["approve", "reject"]
 
 
-@router.post("/knowledge/candidates/{candidate_id}/decision", summary="Management approves or rejects a learned answer")
+@router.post("/knowledge/candidates/{candidate_id}/decision", summary="Management approves or rejects a candidate")
 async def decide_candidate(candidate_id: UUID, body: Decision, scope: Scope) -> dict[str, object]:
     allowed = (await scope[0].execute(text(f"""
         select c.status from memory_candidates c
         join memory_namespaces n on n.id=c.namespace_id and n.tenant_id=c.tenant_id
         join workspaces w on w.id=n.workspace_id and w.tenant_id=n.tenant_id
-        where c.id=:id and c.tenant_id={TENANT} and c.evidence ? 'sessionId' and {MANAGES_CANDIDATE}
+        where c.id=:id and c.tenant_id={TENANT} and {REVIEWABLE} and {MANAGES_CANDIDATE}
     """), {"id": candidate_id, "user_id": scope[1], "is_admin": scope[2]})).scalar_one_or_none()
     if allowed is None:
         raise HTTPException(403, "Management grant for this knowledge is required")

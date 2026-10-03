@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from .reception_delegation import DelegatedScope as Scope
 from .reception_delegation import finish_run, reception_agent, start_run
+from .v3_learning import approved_guidance
 from .v3_resident import _owned_chat
 
 log = logging.getLogger(__name__)
@@ -30,10 +31,16 @@ UNAVAILABLE_REPLY = "Trợ lý lễ tân tạm thời chưa phản hồi đượ
 
 # Danger to people or the building. Matched with diacritics: without them "cháy" (fire)
 # and "chảy" (leaking) are the same letters, and a leak must not page as an emergency.
-EMERGENCY_TERMS = (
-    "cháy", "bốc khói", "khói bốc", "khói đen", "mùi khét", "mùi gas", "mùi ga", "rò gas", "rò rỉ gas", "chập điện", "giật điện",
-    "tia lửa", "nổ lớn", "kẹt thang máy", "kẹt trong thang", "ngập nước", "vỡ ống nước", "sập trần",
-)
+# Grouped by what the resident should do meanwhile: management approves safety guidance per kind.
+EMERGENCY_KINDS = {
+    "fire": ("cháy", "bốc khói", "khói bốc", "khói đen", "mùi khét", "tia lửa", "nổ lớn"),
+    "gas": ("mùi gas", "mùi ga", "rò gas", "rò rỉ gas"),
+    "electric": ("chập điện", "giật điện"),
+    "elevator": ("kẹt thang máy", "kẹt trong thang"),
+    "water": ("ngập nước", "vỡ ống nước"),
+    "structure": ("sập trần",),
+}
+EMERGENCY_TERMS = tuple(term for terms in EMERGENCY_KINDS.values() for term in terms)
 
 
 # Everyday uses of "cháy" that are a broken part, not a fire. Removed before matching, so
@@ -63,7 +70,10 @@ async def evaluate_policy(body: PolicyRequest, scope: Scope) -> dict[str, object
     proposal = body.assessment or {}
     # The keyword list cannot cover every phrasing. The model may raise an emergency;
     # it can never lower one the keywords found.
-    emergency = any(term in message for term in EMERGENCY_TERMS) or proposal.get("proposed_action") == "emergency_handoff"
+    kind = next((name for name, terms in EMERGENCY_KINDS.items() if any(term in message for term in terms)), None)
+    emergency = kind is not None or proposal.get("proposed_action") == "emergency_handoff"
+    # Safety advice is only ever the text management approved for this kind at the resident's home.
+    guidance = await approved_guidance(scope[0], scope[1]["user_id"], kind) if kind else None
     declined, failed = proposal.get("self_help_declined") is True, proposal.get("self_help_failed") is True
     staff_required = emergency or declined or failed or proposal.get("explicit_staff_request") is True \
         or proposal.get("intent") in {"incident", "service_request"}
@@ -76,6 +86,7 @@ async def evaluate_policy(body: PolicyRequest, scope: Scope) -> dict[str, object
         "missing_information": [],
         "handoff_reason": "emergency" if emergency else "self_help_declined" if declined
         else "self_help_failed" if failed else "needs_staff",
+        **({"safety_guidance": guidance} if guidance else {}),
     }
 
 

@@ -34,8 +34,9 @@ export function LearnedAnswers({
     <section className="ws-card">
       <h2>Tri thức chờ duyệt ({items.length})</h2>
       <p>
-        Câu trả lời của Ban quản lý sẽ được Lễ tân dùng lại cho cư dân khác sau
-        khi duyệt.
+        Lễ tân chỉ dùng các nội dung dưới đây sau khi Ban quản lý duyệt: câu
+        trả lời để dùng lại cho cư dân khác, và hướng dẫn an toàn gửi kèm khi
+        cư dân báo khẩn cấp.
       </p>
       {items.map((item) => (
         <article className="live-order" key={item.id}>
@@ -46,7 +47,7 @@ export function LearnedAnswers({
           <small>{item.reason}</small>
           <div className="live-actions">
             <button disabled={disabled} onClick={() => onDecide(item, "approve")}>
-              Duyệt làm tri thức
+              Duyệt
             </button>
             <button disabled={disabled} onClick={() => onDecide(item, "reject")}>
               Không dùng lại

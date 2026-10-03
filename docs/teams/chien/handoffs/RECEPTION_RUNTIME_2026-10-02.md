@@ -204,6 +204,23 @@ thái), nên agent nối được sự cố mới với lần trước. Không c
 Đã kiểm đầu-cuối trên database demo với model thật: hỏi "có cho mượn xe đẩy hàng không" → chuyển BQL → BQL trả
 lời → tự duyệt → xuất bản → hỏi lại ở cuộc trò chuyện mới thì Lễ tân tự trả lời.
 
+**Hướng dẫn an toàn trong câu trả lời khẩn cấp (03/10/2026).** Cư dân báo khẩn cấp nhận câu cố định, kèm
+hướng dẫn nên làm gì trong lúc chờ nếu Ban quản lý đã duyệt câu đó.
+
+1. `scripts/propose_emergency_guidance.py <thư mục dữ liệu>` đọc `huong-dan-xu-ly-tinh-huong.md` của từng phân
+   khu và lấy nguyên văn câu trả lời cho ba loại: cháy, mùi gas, kẹt thang máy. Mỗi câu thành một ứng viên chờ
+   duyệt (`memory_candidates`, `evidence.emergencyKind`) của đơn vị quản lý phụ trách phân khu đó.
+   `publish_learned.ps1` chạy script này ở mỗi vòng. Chạy lại không tạo trùng; tài liệu đổi câu thì có ứng viên
+   mới, câu cũ đã duyệt vẫn dùng tới khi câu mới được duyệt.
+2. BQL duyệt ở Operations, trang "Tiếp nhận phản ánh", mục "Tri thức chờ duyệt" (cùng nút với tri thức học được).
+3. Policy backend (`v3_reception_runtime.evaluate_policy`) xếp từ khóa khẩn cấp theo loại (`EMERGENCY_KINDS`) và
+   chỉ trả `safety_guidance` khi có câu đã duyệt cho đúng loại, đúng phân khu của cư dân. Cư dân có nhà ở hai
+   phân khu thì không gửi hướng dẫn.
+
+Chưa có: hướng dẫn cho chập/giật điện, ngập nước, sập trần (tài liệu chưa có câu tương ứng); nút thu hồi một câu
+đã duyệt; phân khu chưa có đơn vị quản lý trong database thì script bỏ qua và in lý do. Tài liệu Masterise viết
+dạng gạch đầu dòng nên không được đề xuất.
+
 **Sửa xếp hạng tìm kiếm (file của Team Quang, `server/src/knowledge/retrieve.ts`).** Trộn hạng vector + từ khóa
 để đoạn khớp gần nguyên văn câu hỏi (độ giống 0,78) rơi khỏi top 5 vì thua các đoạn chỉ khớp từ phổ biến
 ("xe", "hàng", "cư dân"; độ giống 0,52). Thêm `leadClearMatch`: đoạn có độ giống hơn đoạn kế tiếp từ 0,15 trở

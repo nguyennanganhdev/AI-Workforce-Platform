@@ -32,6 +32,7 @@ Mọi bảng nghiệp vụ có RLS theo tenant; business API chạy bằng role 
 | Xem hội thoại của một yêu cầu | — | Nếu thấy yêu cầu đó | Có | — |
 | Trả lời câu hỏi cư dân (session hỏi đáp) | — | — | Đơn vị quản lý sở hữu session, hoặc cấp tenant | Chỉ mở session |
 | Duyệt tri thức học được | — | — | Đơn vị quản lý sở hữu, hoặc cấp tenant | — |
+| Duyệt hướng dẫn an toàn gửi kèm khi khẩn cấp | — | — | Đơn vị quản lý sở hữu, hoặc cấp tenant | Chỉ gửi nguyên văn câu đã duyệt |
 | Tìm tri thức | — | — | — | Tòa, phân khu, khu của cư dân; không thấy khu khác hay đơn vị vận hành khác |
 | Quyết định khẩn cấp | — | — | — | Policy của backend; model chỉ được nâng, không hạ |
 
@@ -54,6 +55,7 @@ Mọi bảng nghiệp vụ có RLS theo tenant; business API chạy bằng role 
 | `test_a_question_without_a_source_becomes_a_session_that_management_answers` | Nhân viên không thấy và không trả lời được câu hỏi |
 | `test_an_answer_becomes_knowledge_only_after_it_is_judged_or_approved` | Nhân viên không duyệt được tri thức |
 | `test_management_reads_what_the_resident_said_about_a_ticket` | Nhân viên ngoài phạm vi không đọc được hội thoại |
+| `test_emergency_guidance_reaches_a_resident_only_after_management_approves` | Câu chưa duyệt không tới cư dân; nhân viên không thấy danh sách chờ duyệt |
 | `test_runs_record_usage_and_a_stale_run_is_closed` | Token của run bị bỏ rơi hết hiệu lực |
 | `test_a_resident_cannot_flood_the_assistant` | Quá 30 tin/phút thì 429 |
 | `test_resident_integration.py` | Kỹ thuật viên không duyệt đóng session và không nghiệm thu; tạo yêu cầu cho căn hộ không phải của mình bị từ chối |

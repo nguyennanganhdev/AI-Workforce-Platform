@@ -97,6 +97,12 @@ Biến môi trường ở `.env.example` (`RECEPTION_SERVICE_TOKEN`, `RECEPTION_
   kết quả phẳng). Graph thấy draft dưới một `ticket_id` ổn định; từng operation được dịch sang
   `/internal/reception/v1/execute`. Backend tự suy ra cư dân, tenant, run từ token.
 - Policy (khẩn cấp, cần nhân viên) do backend quyết định ở `/internal/reception/policy/evaluate`; model chỉ đề xuất.
+- Hướng dẫn an toàn khi khẩn cấp: policy trả thêm `safety_guidance` theo đúng hợp đồng graph đã có
+  (`graph/assessment.parse_request_policy`: `approved`, `answer`, `retrievalRunId`, `citations`) khi Ban quản lý
+  đã duyệt một câu cho loại khẩn cấp đó ở nơi cư dân ở. Câu trả lời là câu khẩn cấp cố định, rồi tới nguyên văn
+  câu đã duyệt, rồi mã yêu cầu; không model nào viết hay sửa câu này. Chưa có câu được duyệt thì chỉ có câu cố
+  định. Chế độ `graph` lấy từ `safety_reply` trong state, chế độ `loop` lấy thẳng từ policy
+  (`runtime/service.safety_line`). Test: `tests/runtime/test_emergency_guidance.py` và test đầu-cuối.
 - `runtime/knowledge.py` gọi `search_knowledge` v1 khi có `RECEPTION_KNOWLEDGE_URL` và chỉ trả lời từ passage có trích dẫn.
   Passage phải nói về đúng đối tượng được hỏi (hỏi Masteri mà chỉ có nguồn Sapphire thì coi là không đủ nguồn);
   câu trả lời kết thúc bằng dòng `(Nguồn: <tiêu đề tài liệu>)` do code ghép, không phải model viết.

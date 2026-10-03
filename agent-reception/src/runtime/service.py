@@ -44,6 +44,13 @@ EMERGENCY_REPLY = "Mình đã chuyển yêu cầu của bạn đến Ban quản 
 EMPTY_REPLY = "Tôi đã ghi nhận tin nhắn của bạn."
 
 
+def safety_line(policy: dict) -> str:
+    """What management approved telling the resident to do meanwhile, word for word; empty until approved."""
+    guide = policy.get("safety_guidance")
+    approved = isinstance(guide, dict) and guide.get("approved") is True and isinstance(guide.get("answer"), str)
+    return "\n" + guide["answer"].strip() if approved and guide["answer"].strip() else ""
+
+
 @dataclass(frozen=True)
 class Settings:
     backend_url: str
@@ -167,7 +174,7 @@ async def agent_turn(backend: BackendClient, client: httpx.AsyncClient, model, k
     if policy.get("emergency") is True:
         # The policy's keywords decide before any model runs.
         outcome = await toolbox.emergency_request(message["text"])
-        reply = AGENT_EMERGENCY_REPLY if "error" not in outcome else FAILED_REPLY
+        reply = AGENT_EMERGENCY_REPLY + safety_line(policy) if "error" not in outcome else FAILED_REPLY
     else:
         reply = await run_agent(model, toolbox, system_prompt(
             resident["resident"], resident["residences"], turn["open_request"], categories,
@@ -278,7 +285,8 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                     reply = await reword(request.app.state.model, body.message.text, reply)
                 code = tools.handoffs.pop(body.channel_id, None)
                 if code and state.get("handoff_reason") == "emergency":
-                    reply = EMERGENCY_REPLY
+                    # The graph keeps only guidance its policy check accepted as approved.
+                    reply = EMERGENCY_REPLY + ("\n" + state["safety_reply"] if state.get("safety_reply") else "")
                 if code:
                     reply += f"\nMã yêu cầu của bạn: {code}."
                 await backend.call(

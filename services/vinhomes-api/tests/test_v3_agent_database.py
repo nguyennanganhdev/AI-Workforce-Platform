@@ -388,6 +388,53 @@ def test_an_answer_becomes_knowledge_only_after_it_is_judged_or_approved(databas
     assert row == {"status": "approved", "pii_redacted": True, "kind": "zone", "decision": "approve"}
 
 
+def test_emergency_guidance_reaches_a_resident_only_after_management_approves(database, monkeypatch, tmp_path):
+    import asyncio
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "propose_emergency_guidance", Path(__file__).parents[1] / "scripts/propose_emergency_guidance.py")
+    propose = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(propose)
+    gas = "Anh chị không bật công tắc điện, mở cửa nếu an toàn."
+    document = ("# Xử lý việc phát sinh\n\n## 1. Có mùi gas thì làm gì?\n\n" + gas + "\n\n"
+                "## 2. Khi cháy có được đi thang máy không?\n\nKhông. Anh chị đi thang bộ.\n\n"
+                "## 3. Thang máy kẹt thì sao?\n\n- Bấm chuông trong cabin:\n")
+    # The text is the document's own answer; a yes/no opener is dropped and a list is not proposed.
+    assert propose.drafts(document) == {"gas": ("Có mùi gas thì làm gì?", gas),
+                                        "fire": ("Khi cháy có được đi thang máy không?", "Anh chị đi thang bộ.")}
+    # The demo resident lives in Sapphire, so that area's document is the one that applies.
+    folder = tmp_path / "01-vinhomes" / "sapphire"
+    folder.mkdir(parents=True)
+    (folder / propose.FILE).write_text(document, encoding="utf-8")
+    monkeypatch.setenv("DATABASE_URL", database["admin"])
+    asyncio.run(propose.main(tmp_path))
+    asyncio.run(propose.main(tmp_path))  # proposing again adds nothing
+    assert sql(database, "select count(*) as n from memory_candidates where evidence ? 'emergencyKind'")[0]["n"] == 2
+
+    monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "4e" * 32)
+    policy, smell = "/internal/reception/policy/evaluate", {"message_text": "Bếp nhà tôi có mùi gas", "assessment": None}
+    with client(database) as c:
+        channel, message_id = resident_message(c, "Guidance")
+        c.headers["Authorization"] = "Bearer " + delegate(c, channel, message_id)["token"]
+        proposed = c.post(policy, json=smell).json()
+        assert proposed["emergency"] and "safety_guidance" not in proposed  # proposed is not approved
+        with demo_client(database, "technical") as staff:
+            assert staff.get("/knowledge/candidates").json()["items"] == []
+        with demo_client(database, "management") as management:
+            candidate = next(i for i in management.get("/knowledge/candidates").json()["items"] if "mùi gas" in i["question"])
+            assert candidate["answer"] == gas
+            decided = management.post(f"/knowledge/candidates/{candidate['id']}/decision", json={"decision": "approve"})
+            assert decided.status_code == 200, decided.text
+        guide = c.post(policy, json=smell).json()["safety_guidance"]
+        assert guide["approved"] is True and guide["answer"] == gas
+        assert guide["citations"][0]["documentId"] == candidate["id"]
+        # Fire guidance is still waiting for management, so a fire gets none.
+        fire = c.post(policy, json={"message_text": "Bếp nhà tôi đang cháy", "assessment": None}).json()
+        assert fire["emergency"] and "safety_guidance" not in fire
+
+
 def test_management_reads_what_the_resident_said_about_a_ticket(database):
     with client(database) as c:
         channel, _ = resident_message(c, "Conversation", "Ổ điện hỏng")
