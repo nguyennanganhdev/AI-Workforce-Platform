@@ -42,7 +42,7 @@ from supervisor.room_bridge import RoomBridge
 from supervisor.service import SupervisorService
 
 from .backend import Backend, Refused
-from .ports import (Authority, OpenBot, PlannerModel, Reception, Releases, Resolver, Specialists,
+from .ports import (Authority, OpenBot, PlannerModel, Reception, Releases, Resolver, Specialists, ToolGateway,
                     UnboundBackendActions, UnboundEvents, UnboundInvocation)
 
 log = logging.getLogger("coordination.vinhomes")
@@ -70,6 +70,10 @@ class Settings:
     model_base_url: str = "https://api.openai.com/v1"
     openbot: OpenBot | None = None
     token_limit: int = 400_000  # per session, in the ledger's conservative units
+    # The technical tool host for specialists (server/src/technical-api/serve.ts). Optional:
+    # without it a specialist that asks for a tool gets a failed turn.
+    tools_url: str | None = None
+    tools_token: str = field(default="", repr=False)
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -83,10 +87,15 @@ class Settings:
             raise ValueError("COORDINATION_MODEL and COORDINATION_OPENBOT_URL are set together or not at all")
         if model and not (os.getenv("OPENAI_API_KEY") and os.getenv("MANAGED_AGENT_TOKEN")):
             raise ValueError("OPENAI_API_KEY and MANAGED_AGENT_TOKEN are required with COORDINATION_MODEL")
+        tools = os.getenv("COORDINATION_TOOLS_URL", "").strip() or None
+        tools_token = os.getenv("COORDINATION_TOOLS_TOKEN", "").strip()
+        if tools and len(tools_token) < 32:
+            raise ValueError("COORDINATION_TOOLS_TOKEN (32+ characters) is required with COORDINATION_TOOLS_URL")
         return cls(backend_url=url, service_token=token, model=model,
                    model_base_url=os.getenv("COORDINATION_MODEL_BASE_URL", "").strip() or cls.model_base_url,
                    openbot=OpenBot(bot, os.getenv("COORDINATION_OPENBOT_MODEL", "").strip() or model) if bot else None,
                    token_limit=int(os.getenv("COORDINATION_TOKEN_LIMIT", "") or cls.token_limit),
+                   tools_url=tools, tools_token=tools_token,
                    state_path=os.getenv("COORDINATION_STATE_PATH", "").strip() or cls.state_path,
                    host=os.getenv("COORDINATION_HOST", "").strip() or cls.host,
                    port=int(os.getenv("COORDINATION_PORT", "") or cls.port),
@@ -139,7 +148,8 @@ class Runtime:
             return await authority.group_pin(context, self.teams[context.scope()])
 
         budget = ScopedBudgets(store, token_limit=settings.token_limit if settings else Settings.token_limit)
-        specialists = (Specialists(Releases(backend, self.teams, settings.openbot), store, budget, client)
+        tools = ToolGateway(client, settings.tools_url, settings.tools_token) if settings and settings.tools_url else None
+        specialists = (Specialists(Releases(backend, self.teams, settings.openbot), store, budget, client, tools=tools)
                        if settings and settings.openbot else UnboundInvocation("agent_invocation"))
         model = PlannerModel(budget, client, model=settings.model if settings else None,
                              base_url=settings.model_base_url if settings else Settings.model_base_url)

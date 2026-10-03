@@ -433,6 +433,20 @@ async def release(team_id: UUID, member_id: UUID, db: Scope) -> dict[str, Any]:
         raise HTTPException(409, "This Supervisor team has finished")
     member = await specialist_member(db, team, member_id)
     config = member["config"]
+    # The tools this version was approved with, as the tenant's catalogue describes them now.
+    # A model tool name cannot contain a dot, so `sop_kb.retrieve` is offered as `sop_kb__retrieve`.
+    # Only read tools: the tool host keeps the others closed to sessions for now.
+    descriptors = []
+    for granted in config.get("mcp_tools", []):
+        tool = (await db.execute(text(f"""
+            select description,input_schema,effect from mcp_tools
+            where tenant_id={TENANT} and server_id=:server and name=:name
+        """), {"server": granted["server_id"], "name": granted["name"]})).mappings().first()
+        if tool is None:
+            raise HTTPException(409, "A tool this agent version was approved with is no longer in the catalogue")
+        if tool["effect"] == "read":
+            descriptors.append({"name": granted["name"].replace(".", "__", 1), "description": tool["description"],
+                                "parameters": tool["input_schema"]})
     return {"tenant_id": str(team["tenant_id"]), "workspace_id": str(team["workspace_id"]),
             "ticket_id": str(team["ticket_id"]), "ticket_generation": team["ticket_generation"],
             "groupchat_version_id": str(team["supervisor_version_id"]),
@@ -446,8 +460,7 @@ async def release(team_id: UUID, member_id: UUID, db: Scope) -> dict[str, Any]:
             "config_hash": member["config_hash"],
             "knowledge_grants": [str(n) for n in config.get("knowledge_namespace_ids", [])],
             "capabilities": config.get("service_categories", []),
-            # No tool is granted until the tool gateway exists; the agent only analyses.
-            "tool_descriptors": [],
+            "tool_descriptors": descriptors,
             "name": member["name"], "instructions": member["instructions"]}
 
 

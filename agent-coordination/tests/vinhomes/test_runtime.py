@@ -38,6 +38,7 @@ class FakeBackend:
         # Published specialists offered for the ticket, who was admitted, and what the room mirrored.
         self.specialists, self.members, self.turns, self.mirrors = [], {}, [], []
         self.release_revoked = False
+        self.tool_descriptors = []  # the read tools the member's version was approved with
 
     def _check(self):
         if self.unreachable:
@@ -107,7 +108,8 @@ class FakeBackend:
                     member_id=member_id, binding_id=member["binding_id"], binding_generation=1,
                     framework_reference=member["framework_reference"], thread_id=f"coordination:{team_id}:{member_id}",
                     evaluated=True, admin_approved=True, published=True, revoked=False, prompt_hash="p", config_hash="c",
-                    knowledge_grants=[], capabilities=["technical"], tool_descriptors=[], name="Kỹ thuật",
+                    knowledge_grants=[], capabilities=["technical"], tool_descriptors=self.tool_descriptors,
+                    name="Kỹ thuật",
                     instructions="Bạn là agent kỹ thuật của Ban quản lý.")
 
     async def room(self, team_id, mirror):
@@ -308,10 +310,12 @@ def decide(prompt):
 class Providers:
     """The model provider and the OpenBot, as one HTTP transport that records what it was asked."""
 
-    def __init__(self, *replies):
+    def __init__(self, *replies, tool_call=None, tools_down=False):
         # What the Bot answers, turn by turn; the last answer repeats.
         self.replies = list(replies) or [ANALYSIS]
         self.decisions, self.bot = [], []
+        # A Bot that asks for this tool before it answers, and the tool host it reaches.
+        self.tool_call, self.tools_down, self.tool_calls = tool_call, tools_down, []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
@@ -321,9 +325,25 @@ class Providers:
             self.decisions.append(decision["kind"])
             return httpx.Response(200, json={"model": body["model"] + "-2026-03-17", "usage": {"total_tokens": 900},
                                              "choices": [{"message": {"content": json.dumps(decision)}}]})
+        if request.url.path == "/internal/technical/v1/call":
+            assert request.headers["authorization"] == "Bearer " + TOOLS_TOKEN
+            self.tool_calls.append(body)
+            if self.tools_down:
+                return httpx.Response(503, text="down")
+            return httpx.Response(200, json={"status": "OK", "data": {"outages": [OUTAGE]}, "errors": []})
         assert request.url.path == "/ag-ui" and request.headers["x-openbot-agent-token"] == "bot-token"
         self.bot.append(body)
         run = {"threadId": body["threadId"], "runId": body["runId"]}
+        if self.tool_call and not any(m["role"] == "tool" for m in body["messages"]):
+            name, arguments = self.tool_call
+            events = [{"type": "RUN_STARTED", **run}, {"type": "TEXT_MESSAGE_START", "messageId": "m", "role": "assistant"},
+                      {"type": "TEXT_MESSAGE_CONTENT", "messageId": "m", "delta": "Tôi kiểm tra sự cố đang diễn ra."},
+                      {"type": "TEXT_MESSAGE_END", "messageId": "m"},
+                      {"type": "TOOL_CALL_START", "toolCallId": "call-1", "toolCallName": name},
+                      {"type": "TOOL_CALL_ARGS", "toolCallId": "call-1", "delta": json.dumps(arguments)},
+                      {"type": "TOOL_CALL_END", "toolCallId": "call-1"}, {"type": "RUN_FINISHED", **run}]
+            return httpx.Response(200, headers={"content-type": "text/event-stream"},
+                                  content="".join(f"data: {json.dumps(e)}\n\n" for e in events).encode())
         events = [{"type": "RUN_STARTED", **run}, {"type": "TEXT_MESSAGE_START", "messageId": "m", "role": "assistant"},
                   {"type": "TEXT_MESSAGE_CONTENT", "messageId": "m",
                    "delta": self.replies[min(len(self.bot), len(self.replies)) - 1]},
@@ -332,13 +352,20 @@ class Providers:
                               content="".join(f"data: {json.dumps(e)}\n\n" for e in events).encode())
 
 
+TOOLS_TOKEN = "tools-" + "t" * 32
+OUTAGE = {"service_type": "water", "status": "in_progress", "reason": "Bảo trì bơm tăng áp"}
+OUTAGE_TOOL = {"name": "technical__get_active_outage", "description": "Sự cố đang diễn ra",
+               "parameters": {"type": "object", "properties": {"building_id": {"type": "string"}}, "required": ["building_id"]}}
+
+
 @pytest.fixture
 def staffed(tmp_path, monkeypatch):
-    """A runtime with a planner model and an OpenBot, and a backend that offers one technical agent."""
+    """A runtime with a planner model, an OpenBot and a tool host, and a backend that offers one technical agent."""
     monkeypatch.setenv("OPENAI_API_KEY", "model-key")
     monkeypatch.setenv("MANAGED_AGENT_TOKEN", "bot-token")
     settings = Settings(backend_url="http://backend", service_token="x" * 32, model="gpt-5.4-mini",
-                        openbot=OpenBot("http://127.0.0.1:4200/ag-ui", "gpt-5.4-mini"))
+                        openbot=OpenBot("http://127.0.0.1:4200/ag-ui", "gpt-5.4-mini"),
+                        tools_url="http://tools/internal/technical/v1", tools_token=TOOLS_TOKEN)
 
     def start(backend, providers):
         backend.specialists = [TECHNICAL]
@@ -414,3 +441,43 @@ async def test_without_a_planner_model_a_staffed_ticket_is_still_handed_to_manag
     runtime = start(backend)
     await runtime.round()
     assert session(runtime)["pause_reason"] == "planner:planner_model_not_configured" and backend.members == {}
+
+
+async def test_a_specialist_looks_something_up_with_a_granted_tool_before_it_answers(staffed):
+    backend = FakeBackend(message())
+    backend.tool_descriptors = [OUTAGE_TOOL]
+    providers = Providers(tool_call=("technical__get_active_outage", {"building_id": "building"}))
+    runtime = staffed(backend, providers)
+    await runtime.round()
+    # The tool host is asked under the backend's run of this turn, not under an id the runtime made up.
+    assert providers.tool_calls == [{"run_id": "run-turn-1", "tool": "technical__get_active_outage",
+                                     "arguments": {"building_id": "building"}}]
+    first, second = providers.bot
+    assert first["tools"] == [OUTAGE_TOOL] and second["runId"] != first["runId"]
+    # What the Bot said before calling the tool goes back as it was written, and the tool's answer follows.
+    assistant, result = second["messages"][-2:]
+    assert assistant["content"] == "Tôi kiểm tra sự cố đang diễn ra." and assistant["toolCalls"][0]["id"] == "call-1"
+    assert json.loads(result["content"])["result"]["data"] == {"outages": [OUTAGE]}
+    assert [m["content"] for m in backend.mirrors[-1]["messages"]] == [ANALYSIS]
+    assert session(runtime)["pause_reason"] == "planner:analysis_ready"
+
+
+async def test_a_tool_host_that_does_not_answer_is_told_to_the_agent_not_held_as_unknown(staffed):
+    backend = FakeBackend(message())
+    backend.tool_descriptors = [OUTAGE_TOOL]
+    providers = Providers(tool_call=("technical__get_active_outage", {"building_id": "building"}), tools_down=True)
+    runtime = staffed(backend, providers)
+    await runtime.round()
+    told = json.loads(providers.bot[1]["messages"][-1]["content"])["result"]
+    assert told["status"] == "INTERNAL_ERROR" and told["errors"][0]["code"] == "TOOL_UNAVAILABLE"
+    state = session(runtime)
+    assert (state["pause_reason"], state["action_in_flight"]) == ("planner:analysis_ready", None)
+
+
+async def test_a_tool_the_version_was_not_granted_is_a_failed_turn(staffed):
+    backend, providers = FakeBackend(message()), Providers(tool_call=("technical__get_active_outage", {"building_id": "b"}))
+    runtime = staffed(backend, providers)  # no tool descriptor: this version has no tool
+    await runtime.round()
+    assert providers.tool_calls == []
+    state = session(runtime)
+    assert (state["phase"], state["pause_reason"], state["action_in_flight"]) == ("paused", "AGENT_FAILURE", None)

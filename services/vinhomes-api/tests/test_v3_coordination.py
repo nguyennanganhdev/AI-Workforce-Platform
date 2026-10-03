@@ -57,7 +57,7 @@ def result(verified, kind, text, **extra):
             "supervisor_run_id": verified["supervisor_run_id"], **extra}
 
 
-def publish_specialist(database, name, categories):
+def publish_specialist(database, name, categories, tools=()):
     """Management drafts an agent in its room, records an evaluation, and an admin approves it."""
     room = f"/rooms/management-room/agents"
     with demo_client(database, "management") as management:
@@ -65,7 +65,8 @@ def publish_specialist(database, name, categories):
                                             "idempotency_key": name}).json()["id"]
         configured = management.put(f"{room}/{agent}/configuration", json={
             "instructions": "Phân tích sự cố kỹ thuật và đề xuất cách xử lý.", "description": name,
-            "service_categories": categories})
+            "service_categories": categories,
+            "mcp_tools": [{"server_id": "technical-tools", "name": tool} for tool in tools]})
         assert configured.status_code == 200, configured.text
         cases = [{"name": f"case-{n}", "input": "i", "expected": "e", "actual": "e", "passed": True,
                   "explanation": "ok"} for n in range(6)]
@@ -185,9 +186,6 @@ def test_a_supervisor_question_reaches_the_resident_and_a_stale_team_is_refused(
 
 
 def test_the_supervisor_is_offered_the_published_specialists_of_the_ticket_category(database):
-    with demo_client(database, "management") as management:
-        assert management.put("/rooms/management-room/agents/none/configuration", json={
-            "instructions": "x", "description": "x", "service_categories": ["plumbing"]}).status_code == 404
     technical, version = publish_specialist(database, f"Kỹ thuật {uuid4().hex[:6]}", ["technical"])
     publish_specialist(database, f"An ninh {uuid4().hex[:6]}", ["security"])
     with app(database) as c:
@@ -210,9 +208,39 @@ def test_the_supervisor_is_offered_the_published_specialists_of_the_ticket_categ
         assert not [s for s in after if s["agent_id"] == technical]
 
 
+def register_tools(database):
+    """The tenant's tool catalogue, as scripts/setup_session_tools.py registers it."""
+    sql(database, "insert into mcp_servers(id,title,vendor,url,tenant_id) values('technical-tools','Công cụ kỹ thuật',"
+                  "'Team Quang','internal:/internal/technical/v1',$1) on conflict (id) do nothing returning id", TENANT)
+    schema = '{"type": "object", "properties": {"building_id": {"type": "string"}}, "required": ["building_id"]}'
+    for name, effect in (("technical.get_active_outage", "read"), ("apartment_entry.request", "request")):
+        sql(database, "insert into mcp_tools(server_id,name,description,input_schema,effect,tenant_id) "
+                      "values('technical-tools',$1,$2,cast($3 as jsonb),$4,$5) on conflict (server_id,name) do nothing "
+                      "returning name", name, "Mô tả " + name, schema, effect, TENANT)
+
+
+def test_a_configuration_naming_an_unknown_category_or_tool_is_refused(database):
+    register_tools(database)
+    key = uuid4().hex[:8]
+    with demo_client(database, "management") as management:
+        agent = management.post("/rooms/management-room/agents", json={
+            "name": f"Nháp {key}", "instructions": "Phân tích sự cố.", "idempotency_key": key}).json()["id"]
+
+        def configure(**fields):
+            return management.put(f"/rooms/management-room/agents/{agent}/configuration", json={
+                "instructions": "Phân tích sự cố.", "description": "Nháp", **fields}).status_code
+
+        assert configure(service_categories=["plumbing"]) == 422
+        assert configure(mcp_tools=[{"server_id": "technical-tools", "name": "shell.exec"}]) == 422
+        assert configure(service_categories=["technical"], mcp_tools=[
+            {"server_id": "technical-tools", "name": "technical.get_active_outage"}]) == 200
+
+
 def test_a_published_specialist_enters_the_room_and_its_work_is_mirrored(database):
     name = f"Kỹ thuật {uuid4().hex[:6]}"
-    technical, version = publish_specialist(database, name, ["technical"])
+    register_tools(database)
+    technical, version = publish_specialist(database, name, ["technical"],
+                                            tools=("technical.get_active_outage", "apartment_entry.request"))
     _, security = publish_specialist(database, f"An ninh {uuid4().hex[:6]}", ["security"])
     with app(database) as c:
         team = verified_team(c, database, f"Rò nước {uuid4().hex[:6]}")
@@ -238,7 +266,11 @@ def test_a_published_specialist_enters_the_room_and_its_work_is_mirrored(databas
         released = c.get(one + "/release", headers=SERVICE).json()
         assert released["agent_version_id"] == version and released["binding_id"] == member["binding_id"]
         assert released["thread_id"] == f"coordination:{team}:{member['member_id']}"
-        assert (released["published"], released["revoked"], released["tool_descriptors"]) == (True, False, [])
+        assert (released["published"], released["revoked"]) == (True, False)
+        # The read tool it was approved with, under the name a model can call; the request tool stays closed.
+        assert released["tool_descriptors"] == [{
+            "name": "technical__get_active_outage", "description": "Mô tả technical.get_active_outage",
+            "parameters": {"type": "object", "properties": {"building_id": {"type": "string"}}, "required": ["building_id"]}}]
         assert released["instructions"].startswith("Phân tích sự cố") and released["capabilities"] == ["technical"]
 
         mirror = {"tasks": [{"task_id": "t1", "description": "Xác định nguyên nhân rò nước",

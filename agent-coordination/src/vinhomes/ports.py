@@ -196,15 +196,15 @@ class _RoomReply:
 
     OpenbotAdapter parses the final text as `{"content": ...}` JSON. Asked to write that JSON
     itself, gpt-5.4-mini closed it wrongly in a quarter to a half of live runs, so the Bot is
-    asked for plain text and the object is built here. No tool is granted yet, so every run's
-    text is its final answer.
+    asked for plain text and the object is built here. A run that ends in tool calls is not an
+    answer yet: its text goes back to the model as written.
     """
 
     def __init__(self, response: httpx.Response):
         self.response, self.status_code, self.headers = response, response.status_code, response.headers
 
     async def aiter_bytes(self):
-        decoder, text = SSEDecoder(), {}
+        decoder, text, ended, calls = SSEDecoder(), {}, [], False
 
         def encoded(event: dict) -> bytes:
             return f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode()
@@ -215,9 +215,18 @@ class _RoomReply:
                 if kind == "TEXT_MESSAGE_CONTENT" and isinstance(event.get("delta"), str):
                     text[message] = text.get(message, "") + event["delta"]
                     continue
-                if kind == "TEXT_MESSAGE_END" and message in text:
-                    yield encoded({"type": "TEXT_MESSAGE_CONTENT", "messageId": message,
-                                   "delta": json.dumps({"content": text.pop(message).strip()}, ensure_ascii=False)})
+                if kind == "TEXT_MESSAGE_END":
+                    ended.append(event)  # held until the run says whether this text was the answer
+                    continue
+                calls = calls or kind == "TOOL_CALL_START"
+                if kind in ("RUN_FINISHED", "RUN_ERROR"):
+                    for end in ended:
+                        said = text.pop(end.get("messageId"), "")
+                        if said:
+                            delta = said if calls else json.dumps({"content": said.strip()}, ensure_ascii=False)
+                            yield encoded({"type": "TEXT_MESSAGE_CONTENT", "messageId": end.get("messageId"), "delta": delta})
+                        yield encoded(end)
+                    ended = []
                 yield encoded(event)
         decoder.feed(b"", final=True)  # a stream cut mid-event is an unknown outcome, as in the adapter
 
@@ -247,17 +256,48 @@ class InstructedClient:
 
 
 class NoTools:
-    """Tool boundary until the backend's tool gateway exists: no agent version is granted a tool."""
+    """Tool boundary of a deployment with no tool host: no call can run."""
 
     async def execute_authorized(self, invocation, release, name, arguments, operation_id, run_id, call_id):
         raise AdapterError("tool_not_granted")
 
 
+class ToolGateway:
+    """Tool boundary: a specialist's tool call goes to the technical tool host.
+
+    The host decides what the call may do from the agent run of this turn, which the backend
+    opened: the member is current, its version is still published, the tool was granted to that
+    version, and the building is inside the management unit's coverage. This side sends the run
+    and what the model asked for; it holds no grant of its own.
+
+    Only read tools are open to sessions, so a call that got no answer changed nothing: the agent
+    is told the tool is unavailable and reports what it could not look up, and the room is not
+    held for a person to prove an outcome.
+    """
+
+    def __init__(self, client: httpx.AsyncClient, url: str, token: str, *, timeout: float = 30):
+        self.client, self.url, self.timeout = client, url.rstrip("/") + "/call", timeout
+        self.headers = {"Authorization": "Bearer " + token}
+
+    async def execute_authorized(self, invocation, release, name, arguments, operation_id, run_id, call_id):
+        try:
+            response = await self.client.post(self.url, headers=self.headers, timeout=self.timeout, json={
+                "run_id": invocation.source_run_id, "tool": name, "arguments": arguments})
+            result = response.json()
+            if not isinstance(result, dict) or "status" not in result:
+                raise ValueError("not a tool envelope")
+        except (httpx.HTTPError, ValueError):
+            result = {"status": "INTERNAL_ERROR", "data": None, "errors": [{
+                "code": "TOOL_UNAVAILABLE", "message": "Công cụ hiện không trả lời.", "retryable": True}]}
+        return {"operation_id": operation_id, "run_id": run_id, "call_id": call_id, "tool": name, "result": result}
+
+
 class Specialists:
     """AgentInvocationPort: one turn of a specialist on OpenBot, through team Đông's adapters."""
 
-    def __init__(self, releases: Releases, records, budget, client: httpx.AsyncClient, *, deadline: float = 120):
-        self.remote = OpenbotAdapter(ReleaseConsumer(releases, records), records, NoTools(), budget,
+    def __init__(self, releases: Releases, records, budget, client: httpx.AsyncClient, *, tools=None,
+                 deadline: float = 120):
+        self.remote = OpenbotAdapter(ReleaseConsumer(releases, records), records, tools or NoTools(), budget,
                                      client=InstructedClient(client, releases.instructions), deadline=deadline)
         self.port = AgentScopeRemoteAdapter(self.remote)
 
@@ -267,10 +307,16 @@ class Specialists:
     async def invoke(self, invocation):
         try:
             return await self.port.invoke(invocation)
-        except ValidationError:
-            # The run finished and its text is not the reply format. That is a failed turn, known
-            # for certain; reporting it as an unknown outcome would hold the room for a person.
-            raise TerminalInvocationError("The agent's reply is not in the room's reply format") from None
+        except (ValidationError, RoomError, ValueError) as error:
+            # The run finished and gave no usable answer: text outside the reply format, a tool
+            # the agent was not granted, or arguments that are not JSON. That is a failed turn,
+            # known for certain; reporting it as an unknown outcome would hold the room for a person.
+            raise TerminalInvocationError(f"The agent's turn gave no usable reply ({type(error).__name__})") from None
+        except AdapterError as error:
+            if error.code != "continuation_limit":
+                raise
+            # It kept calling tools and never answered. Only read tools ran, so nothing is in doubt.
+            raise TerminalInvocationError("The agent kept calling tools without answering") from None
 
     async def cancel(self, invocation) -> bool:
         return await self.port.cancel(invocation)

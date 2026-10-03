@@ -1,7 +1,8 @@
 # Starts the Supervisor for the Vinhomes business API on 127.0.0.1:4300 (src/vinhomes).
 # Settings: agent-coordination/.env (COORDINATION_BACKEND_URL, COORDINATION_SERVICE_TOKEN, and
 # for specialists COORDINATION_MODEL, COORDINATION_OPENBOT_URL, MANAGED_AGENT_TOKEN); the model
-# key comes from agent-reception/.env.
+# key comes from agent-reception/.env and the tool host's token from the deployment's
+# technical-api.env.
 # The demo and the password-login deployment are different databases, so each keeps its own
 # state file: use -Connected when the backend was started with start_connected.ps1.
 param([switch]$Connected)
@@ -16,6 +17,16 @@ $keyFile = Join-Path (Split-Path $root -Parent) 'agent-reception/.env'
         if ($setting[1] -and ($setting[0].StartsWith('COORDINATION_') -or $setting[0] -in @('MANAGED_AGENT_TOKEN', 'OPENAI_API_KEY'))) {
             [Environment]::SetEnvironmentVariable($setting[0], $setting[1], 'Process')
         }
+    }
+}
+# The technical tool host, when scripts/setup_session_tools.py has prepared it for this deployment
+# (services/vinhomes-api/scripts/start_technical_tools.ps1 runs it on 8788).
+$toolsFile = Join-Path (Split-Path $root -Parent) "services/vinhomes-api/$(if ($Connected) { '.local-connected' } else { '.local-v3-faker' })/technical-api.env"
+if (Test-Path -LiteralPath $toolsFile) {
+    $toolsToken = (Get-Content -LiteralPath $toolsFile | Where-Object { $_.StartsWith('TECHNICAL_TOOLS_SERVICE_TOKEN=') }) -replace '^TECHNICAL_TOOLS_SERVICE_TOKEN=', ''
+    if ($toolsToken) {
+        $env:COORDINATION_TOOLS_URL = 'http://127.0.0.1:8788/internal/technical/v1'
+        $env:COORDINATION_TOOLS_TOKEN = $toolsToken
     }
 }
 $name = if ($Connected) { 'connected' } else { 'demo' }

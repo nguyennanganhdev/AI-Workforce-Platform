@@ -143,9 +143,14 @@ category (published, in the management room), gives them tasks, runs their turns
 with the agent's published instructions, and mirrors tasks and replies to the backend for
 management to read. When every task is done the session pauses with `planner:analysis_ready`.
 
-Not bound: plans, resident questions, approvals, backend actions, backend events and tools.
-Their ports refuse (`dependency_unavailable:*`). Storage is `persistence.sqlite.DevelopmentStore`
-(one host). Tests: `tests/vinhomes` (16). On Windows run pytest with `PYTHONUTF8=1`.
+A specialist's tool call goes through `ToolGateway` to the technical tool host
+(`server/src/technical-api/serve.ts`, port 8788; `COORDINATION_TOOLS_URL`, `COORDINATION_TOOLS_TOKEN`).
+The host decides from the agent run of the turn what the call may do; only read tools are open.
+
+Not bound: plans, resident questions, approvals, backend actions, backend events, and tools
+that write. Their ports refuse (`dependency_unavailable:*`). Storage is
+`persistence.sqlite.DevelopmentStore` (one host). Tests: `tests/vinhomes` (19). On Windows run
+pytest with `PYTHONUTF8=1`.
 
 `scripts/publish_agent.ps1` takes an agent definition through the platform's flow: draft,
 evaluation on OpenBot, admin review (`docs/teams/quang/agent/`).
@@ -157,5 +162,6 @@ only a JSON reply, so `InstructedClient` adds the instructions and builds the re
 the Bot's plain text; one specialist may take consecutive turns (`TURNS`).
 
 Contract tables, acceptance matrix and open questions:
-`docs/teams/chien/SUPERVISOR_SESSION_V2_M0_M1_2026-10-03.md` and
-`docs/teams/chien/SUPERVISOR_SESSION_V2_M2_2026-10-04.md`.
+`docs/teams/chien/SUPERVISOR_SESSION_V2_M0_M1_2026-10-03.md`,
+`docs/teams/chien/SUPERVISOR_SESSION_V2_M2_2026-10-04.md` and, for tools,
+`docs/teams/chien/TOOL_GATEWAY_VA_KHAO_SAT_NHANH_2026-10-04.md`.
