@@ -71,6 +71,9 @@ agent-coordination\scripts\publish_agent.ps1 docs\teams\quang\agent\technical-ag
 Không đặt `COORDINATION_MODEL` thì hành vi như M1: nhận ticket, trả `accepted`, chuyển cho Ban quản lý.
 Database đã có từ trước cần chạy lại `scripts/grant_v3_api_role.sql` (thêm quyền trên `agent_releases`).
 
+Agent kỹ thuật đã được phát hành trên cả hai database local (demo: phòng `management-room`; đăng nhập thật:
+phòng `bql-sapphire`). Bản sao sạch mới nhất trong `.local-v3-faker/backups/` đã gồm agent này.
+
 Lưu ý: một file trạng thái mới trên database cũ sẽ đọc lại toàn bộ hàng chờ. Message của phiên đã xong bị bỏ
 qua, nhưng ticket còn mở sẽ được xử lý và có gọi model.
 
@@ -81,8 +84,10 @@ qua, nhưng ticket còn mở sẽ được xử lý và có gọi model.
 | Backend (`services/vinhomes-api`) | 63 đạt, 6 bỏ qua; có 2 test mới cho danh mục, thu hồi, vào phòng, phản chiếu |
 | `agent-coordination` | 423 đạt; 16 test của gói `vinhomes` (5 mới: vào phòng, lượt hỏng chạy lại, agent hỏng liên tục, phiên bản bị thu hồi, không có model) |
 | Màn Operations | `connected-operations-ui.test.tsx` 6 đạt; lint không thêm lỗi |
-| Đánh giá agent kỹ thuật, model thật | 8/8 ca đạt, hai lần liên tiếp |
-| Đầu-cuối, model thật, database dùng-rồi-bỏ | Lễ tân thật tạo ticket → Supervisor → agent kỹ thuật trả lời → Operations đọc được |
+| Hồi quy đầu-cuối với model giả | Tích hợp HTTP 2 đạt; đầu-cuối 9/9 ở cả hai chế độ Lễ tân, có Supervisor chạy cùng (không cấu hình model) |
+| Đánh giá agent kỹ thuật, model thật | 8/8 ca đạt, bốn lần chạy liên tiếp sau khi chuyển sang câu trả lời văn bản thường |
+| Đầu-cuối, model thật, database dùng-rồi-bỏ | Lễ tân thật tạo ticket → Supervisor → agent kỹ thuật trả lời → backend lưu việc, câu trả lời, lượt chạy |
+| Trình duyệt, đăng nhập thật | 24/24 bước: cư dân báo sự cố, BQL thấy agent tham gia và phân tích, rồi đi hết luồng tới duyệt đóng session |
 
 Chưa kiểm: hai Supervisor chạy song song; restart giữa một lượt nói; đầu-cuối tự động có agent chuyên môn với
 model giả (hiện chỉ có test ở từng phía và lần chạy thật).

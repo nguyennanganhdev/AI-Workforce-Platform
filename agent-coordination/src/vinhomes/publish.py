@@ -22,6 +22,7 @@ import json
 import os
 import re
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
 
@@ -84,16 +85,17 @@ async def evaluate(client: httpx.AsyncClient, instructions: str, cases: list[dic
     return records
 
 
-async def signed_in(backend: str, role: str, demo: bool) -> httpx.AsyncClient:
-    if demo:
-        return httpx.AsyncClient(base_url=backend, headers={"X-Demo-Actor": role}, timeout=30)
-    client = httpx.AsyncClient(base_url=backend, timeout=30)
-    prefix = f"PUBLISH_{role.upper()}_"
-    response = await client.post("/auth/login", json={"email": os.environ[prefix + "EMAIL"],
-                                                      "password": os.environ[prefix + "PASSWORD"]})
-    if response.status_code != 200:
-        raise SystemExit(f"Sign-in as {role} failed ({response.status_code})")
-    return client
+@asynccontextmanager
+async def signed_in(backend: str, role: str, demo: bool):
+    """An HTTP client acting as this role: a demo actor, or a signed-in account."""
+    async with httpx.AsyncClient(base_url=backend, headers={"X-Demo-Actor": role} if demo else {}, timeout=30) as client:
+        if not demo:
+            prefix = f"PUBLISH_{role.upper()}_"
+            response = await client.post("/auth/login", json={"identifier": os.environ[prefix + "EMAIL"],
+                                                              "password": os.environ[prefix + "PASSWORD"]})
+            if response.status_code != 200:
+                raise SystemExit(f"Sign-in as {role} failed ({response.status_code})")
+        yield client
 
 
 def must(response: httpx.Response, step: str) -> dict:
@@ -115,7 +117,7 @@ async def main() -> int:
     # A changed definition is a new draft: an approved agent's configuration is immutable.
     key = hashlib.sha256(json.dumps([definition, instructions], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
     base = f"/rooms/{args.room}/agents"
-    async with await signed_in(backend, "management", args.demo) as management:
+    async with signed_in(backend, "management", args.demo) as management:
         configuration = {"instructions": instructions, "description": definition["description"],
                          "service_categories": definition["service_categories"]}
         # A draft of this name is continued: an earlier run may have stopped at a failed case.
@@ -149,7 +151,7 @@ async def main() -> int:
         print(f"review {review['id']} is pending an admin decision")
     if not args.approve:
         return 0
-    async with await signed_in(backend, "admin", args.demo) as admin:
+    async with signed_in(backend, "admin", args.demo) as admin:
         decided = must(await admin.post(f"/admin/agent-reviews/{review['id']}/decision", json={
             "decision": "approve", "version": review["version"],
             "note": f"Đạt {len(cases)}/{len(cases)} ca đánh giá."}), "Recording the decision")
