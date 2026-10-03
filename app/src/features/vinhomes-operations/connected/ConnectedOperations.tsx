@@ -96,6 +96,8 @@ const labels: Record<string, string> = {
   awaiting_approval: "Chờ đồng ý",
   rejected: "Từ chối",
 };
+// The backend's priority as the P0–P3 codes the shared operations screens show and filter by.
+const SEVERITY: Record<string, string> = { critical: "P0", high: "P1", normal: "P2", low: "P3" };
 
 export function ConnectedOperations() {
   const path = useLocation().pathname.split("/")[2] || "";
@@ -348,7 +350,7 @@ export function ConnectedOperations() {
     });
   return (
     <ConnectedOperationsShell name={me?.user.name} management={management} administrator={me?.role === "admin"}
-      alerts={tickets.filter(t => t.priority === 'P0' && !['closed', 'cancelled'].includes(t.status)).map(t => ({id: t.id, title: t.title, location_json: {towerCode: catalog?.buildings.find(b => b.id === t.building_id)?.code}}))}>
+      alerts={tickets.filter(t => t.priority === 'critical' && !['closed', 'cancelled'].includes(t.status)).map(t => ({id: t.id, title: t.title, location_json: {towerCode: catalog?.buildings.find(b => b.id === t.building_id)?.code}}))}>
       <WorkspaceFrame
         contentOnly={!selected && !unavailable && path !== "team"}
         title={connectedPages[path] || "Không gian làm việc"}
@@ -406,7 +408,7 @@ export function ConnectedOperations() {
         ) : path === "reports" ? (
           <LiveReportsPage buildings={catalog?.buildings || []} categories={catalog?.serviceCategories || []} />
         ) : path === "team" ? (
-          <LiveTeamPage userId={me?.user.id || ''} tickets={tickets.map(t => ({id: t.id, title: t.title, severity: t.priority,
+          <LiveTeamPage userId={me?.user.id || ''} tickets={tickets.map(t => ({id: t.id, title: t.title, severity: SEVERITY[t.priority],
             stage: ({open: 'queued', triaging: 'queued', assigned: 'assigned', in_progress: 'working', resolved: 'awaiting-confirmation', closed: 'completed', cancelled: 'cancelled'} as Record<string, CaseStage>)[t.status] || 'queued',
           }))} />
         ) : (
@@ -414,14 +416,14 @@ export function ConnectedOperations() {
             {path === "" && !selected ? (
               <OperationsDashboardView roleTitle={me?.role === 'admin' ? 'Quản trị hệ thống' : 'Ban quản lý'}
                 kpis={[
-                  {label: 'Khẩn cấp P0', value: tickets.filter(t => t.priority === 'P0' && !['closed', 'cancelled'].includes(t.status)).length, note: 'Phản ánh khẩn cấp chưa đóng', to: '/operations/incidents', action: 'Xem phản ánh'},
+                  {label: 'Khẩn cấp P0', value: tickets.filter(t => t.priority === 'critical' && !['closed', 'cancelled'].includes(t.status)).length, note: 'Phản ánh khẩn cấp chưa đóng', to: '/operations/incidents', action: 'Xem phản ánh'},
                   {label: 'Đang thực hiện', value: orders.filter(o => o.status === 'in_progress').length, unit: `/ ${orders.length} phiếu`, note: 'Phiếu thi công trong phạm vi được cấp', to: '/operations/work-orders', action: 'Xem phiếu thi công'},
                   {label: 'Chờ nghiệm thu', value: orders.filter(o => o.status === 'completed').length, note: 'Phiếu thi công đã hoàn thành cần xem xét', to: '/operations/qc', action: 'Xem hồ sơ'},
                   {label: 'Chờ phê duyệt', value: Number(stats?.approvals.find(a => a.status === 'pending')?.count || 0), note: 'Yêu cầu phê duyệt trong phạm vi công việc', to: '/operations/work-orders', action: 'Xem công việc'},
                 ]}
                 watched={tickets.filter(t => !['closed', 'cancelled'].includes(t.status)).slice(0, 6).map(t => ({
                   id: t.code, title: t.title, category: catalog?.serviceCategories.find(c => c.id === t.category_id)?.name || 'Chưa phân loại',
-                  severity: t.priority, stage: labels[t.status] || t.status, sla_due_at: t.resolution_due_at,
+                  severity: SEVERITY[t.priority], stage: labels[t.status] || t.status, sla_due_at: t.resolution_due_at,
                   location_json: {towerCode: catalog?.buildings.find(b => b.id === t.building_id)?.code || 'Chưa xác định'},
                 }))}
                 zones={(catalog?.buildings || []).map(b => ({tower: b.name, note: `${tickets.filter(t => t.building_id === b.id && !['closed', 'cancelled'].includes(t.status)).length} phản ánh đang mở`}))} />
@@ -447,7 +449,7 @@ export function ConnectedOperations() {
                 initialBoard={path === 'kanban'} connectedAccount={{role: management ? 'manager' : 'staff', scope: 'được cấp trên hệ thống'}}
                 rows={visible.map((t): WorkItem => ({key: t.id, ticket: t.id, ticketId: t.code, title: t.title,
                   place: catalog?.buildings.find(b => b.id === t.building_id)?.name || 'Chưa xác định vị trí',
-                  severity: t.priority, department: catalog?.serviceCategories.find(c => c.id === t.category_id)?.name || 'Chưa phân loại',
+                  severity: SEVERITY[t.priority], department: catalog?.serviceCategories.find(c => c.id === t.category_id)?.name || 'Chưa phân loại',
                   assignee: '', status: awaitingClosure.includes(t.id) ? 'Chờ BQL duyệt đóng' : labels[t.status] || t.status, updatedAt: t.updated_at,
                   phase: awaitingClosure.includes(t.id) && management ? 'waiting' : ['closed', 'cancelled'].includes(t.status) ? 'history' : t.status === 'resolved' ? 'waiting' : t.status === 'in_progress' ? 'active' : 'new',
                 }))} onOpen={row => void open(row.ticket!)} />
@@ -470,7 +472,7 @@ export function ConnectedOperations() {
                       <h2>{selected.title}</h2>
                       <p>{selected.description}</p>
                       <p>
-                        {labels[selected.status]} · phiên bản {selected.version}
+                        {selected.priority === 'critical' ? 'Khẩn cấp · ' : ''}{labels[selected.status]} · phiên bản {selected.version}
                       </p>
                       <label>
                         Ghi chú thao tác
