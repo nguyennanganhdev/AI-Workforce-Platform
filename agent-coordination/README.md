@@ -165,3 +165,30 @@ Live examples default approved=false; real execution needs explicit permission
 and confirmed provider budget/account policy, never just a present key. L2/L3
 preflight remains contract-blocked. Ingress token rotation needs process restart;
 provider/released runtime credential references resolve at call time.
+
+## Vinhomes composition (`src/vinhomes`, added 03/10/2026 by Team Chiến)
+
+A second composition next to `runtime.composition`, for the Vinhomes business API. It does
+not change the Supervisor or group chat cores. Instead of waiting for a platform factory to
+push into `/v2/reception`, it pulls the backend's durable V2 inbox and binds the Supervisor
+to `/internal/coordination/v1` (services/vinhomes-api, `v3_coordination.py`).
+
+```sh
+python -m venv .venv            # Python 3.12; then pip install -r requirements.lock
+scripts/start_vinhomes.ps1      # add -Connected for the password-login backend
+```
+
+Settings in `agent-coordination/.env`: `COORDINATION_BACKEND_URL` and
+`COORDINATION_SERVICE_TOKEN` (equal to the backend's `VINHOMES_API_COORDINATION_SERVICE_TOKEN`).
+Port 4300 serves `/health`, `/ready` and `/sessions`.
+
+Bound today: Reception hands a ticket over, the backend verifies it and allocates the
+session binding and agent run, the Supervisor creates a durable checkpoint and sends
+`accepted`. Not bound: rooms and specialists, the planner model, backend actions, drafts and
+backend events. Their ports refuse (`dependency_unavailable:*`), and because no specialist is
+published the session pauses with `planner:no_specialist_available` and management continues
+by hand. Storage is `persistence.sqlite.DevelopmentStore` (one host). Tests:
+`tests/vinhomes` (11). On Windows run pytest with `PYTHONUTF8=1`.
+
+Contract table, acceptance matrix and open questions:
+`docs/teams/chien/SUPERVISOR_SESSION_V2_M0_M1_2026-10-03.md`.

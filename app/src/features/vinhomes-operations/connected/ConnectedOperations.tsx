@@ -51,6 +51,9 @@ type Session = {
     status: string;
     state_version: number;
     supervisor_name: string;
+    // Written by the backend when the Supervisor runtime accepts the ticket and reports its state.
+    supervisor?: { acceptedAt?: string } | null;
+    runtime?: { phase: string; pauseReason?: string | null } | null;
   } | null;
   missing?: string;
   awaitingManagementApproval?: boolean;
@@ -62,6 +65,11 @@ const sessionLabels: Record<string, string> = {
   completed: "BQL đã duyệt đóng",
   failed: "Lỗi điều phối",
   cancelled: "Đã hủy",
+};
+// Why the Supervisor stopped and left the next step to management.
+const supervisorPause: Record<string, string> = {
+  "planner:no_specialist_available":
+    "Phòng chưa có agent chuyên môn nên Supervisor chuyển lại cho Ban quản lý xử lý.",
 };
 const sessionMissing: Record<string, string> = {
   workspace: "BQL chưa có workspace trên platform",
@@ -575,6 +583,23 @@ export function ConnectedOperations() {
                           {session.session ? (
                             <>
                               <p>Supervisor: {session.session.supervisor_name}</p>
+                              {session.session.supervisor?.acceptedAt && (
+                                <p>
+                                  Supervisor đã tiếp nhận lúc{" "}
+                                  {new Date(
+                                    session.session.supervisor.acceptedAt,
+                                  ).toLocaleString("vi-VN")}
+                                  .
+                                </p>
+                              )}
+                              {session.session.runtime?.phase === "paused" && (
+                                <p>
+                                  {supervisorPause[
+                                    session.session.runtime.pauseReason || ""
+                                  ] ||
+                                    `Supervisor tạm dừng (${session.session.runtime.pauseReason || "không rõ lý do"}); Ban quản lý xử lý tiếp.`}
+                                </p>
+                              )}
                               <strong>
                                 {session.awaitingManagementApproval
                                   ? "Cư dân đã xác nhận, chờ BQL duyệt đóng"
