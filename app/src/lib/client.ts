@@ -26,17 +26,22 @@ export type ClientOptions = {
   fallback?: string;
   /** For the calls a Bot makes on a person's behalf, which are abandoned when the turn is. */
   signal?: AbortSignal;
+  /** Extra request headers, such as an `Idempotency-Key`. Absent sends exactly what it always did. */
+  headers?: Record<string, string>;
 };
 
 /** Every request in this app is authenticated, and every one of them is JSON or nothing. */
 async function send(path: string, options: ClientOptions): Promise<Response> {
+  const headers = {
+    ...(options.body === undefined
+      ? {}
+      : { "content-type": "application/json" }),
+    ...options.headers,
+  };
   return fetch(path, {
     method: options.method,
     credentials: "include",
-    headers:
-      options.body === undefined
-        ? undefined
-        : { "content-type": "application/json" },
+    headers: Object.keys(headers).length ? headers : undefined,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     ...(options.signal ? { signal: options.signal } : {}),
   });

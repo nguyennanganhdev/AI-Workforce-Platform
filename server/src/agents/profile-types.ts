@@ -1,3 +1,5 @@
+import type { GeneratedAgentSummary } from "../../../agent-factory/src/contracts.js";
+
 export type AgentVisibility = "public" | "private";
 
 export type AgentActor = {
@@ -27,6 +29,11 @@ export type AgentProfile = {
    * it. A surface only needs to know whether to offer "generate" or "rotate".
    */
   hasCallbackToken: boolean;
+  /**
+   * Present only for a Meta-Agent generated coworker, so a legacy profile keeps its exact shape.
+   * A summary, never the spec: the canonical artifact is read through the factory endpoint.
+   */
+  generated?: GeneratedAgentSummary;
 };
 
 export type CreateAgentInput = Pick<

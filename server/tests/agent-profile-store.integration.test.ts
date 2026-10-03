@@ -2,11 +2,15 @@ import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { authFromConfiguration } from "../src/agents/auth-header";
+import type { FactoryConfiguration } from "../../agent-factory/src/contracts.js";
 import {
   AgentNotFoundError,
   AgentNotManageableError,
   type AgentProfileStore,
+  ConstructionConflictError,
+  ConstructionDeletedError,
   createAgentProfileStore,
+  GeneratedConfigurationImmutableError,
   ManagedAgentUnavailableError,
   ProtectedAgentError,
 } from "../src/agents/profile-store";
@@ -27,6 +31,7 @@ import {
   intelligenceChannelMappings,
   users,
 } from "../src/db/schema";
+import { compileRecorded } from "../../agent-factory/tests/fixtures/factory-intent";
 import { TEST_POOL, testDatabaseUrl } from "./support/database";
 
 const databaseUrl = testDatabaseUrl();
@@ -891,5 +896,317 @@ describe("agent profile store integration", () => {
       configuration: { endpoint: managedAgentAgUiUrl.toString() },
       packageId: null,
     });
+  });
+});
+
+/*
+ * Meta-Agent generated agents: the compiler-owned artifact is saved atomically as a private built-in
+ * row, replayed rather than overwritten, and refused by the legacy edit/copy paths.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: JSON columns are asserted field by field.
+type FactoryBody = Record<string, any>;
+describe("generated agent persistence", () => {
+  const request = {
+    name: "Notes",
+    role: "Note summarizer",
+    description: "Summarize supplied notes.",
+  };
+  const source = {
+    kind: "request",
+    field: "description",
+    quote: "supplied notes",
+  } as const;
+  function artifact(goal = "Summarize supplied notes.") {
+    const compiled = compileRecorded(request, {
+      goal,
+      responsibilities: [{ statement: "Summarize supplied notes.", source }],
+      constraints: [],
+      procedure: ["Return a concise summary."],
+      requirements: [
+        {
+          need: "Summarize supplied text.",
+          fulfillment: "model_on_input",
+          source,
+          proposedRefs: [],
+        },
+      ],
+      toolArguments: [],
+      inputFacts: [
+        { name: "notes", required: true, missingBehavior: "Ask for notes." },
+      ],
+      outputExpectations: ["A summary."],
+      acceptanceCriteria: ["Reflects the notes."],
+      unresolvedQuestions: [],
+      unsupportedRequirements: [],
+    });
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.issues));
+    return compiled.value;
+  }
+  function input(
+    id: string,
+    options: { requestHash?: string; goal?: string; title?: unknown } = {},
+  ) {
+    const { spec, systemPrompt, specHash } = artifact(options.goal);
+    const factory: FactoryConfiguration = {
+      spec,
+      verification: {
+        specHash,
+        construction: "PASS",
+        attempts: 1,
+        issues: [],
+        warnings: [],
+        semanticReview: {
+          verdict: "PASS",
+          modelRef: "fixture",
+          criterionFindings: [],
+        },
+      },
+      state: "pending_resources",
+      requestHash: options.requestHash ?? "a".repeat(64),
+      creationKeyHash: "b".repeat(64),
+    };
+    return {
+      id,
+      name: request.name,
+      title: ("title" in options ? options.title : request.role) as string,
+      roleDescription: request.description,
+      systemPrompt,
+      factory,
+    };
+  }
+  const control = { timeoutMs: 5_000 };
+
+  test("I08 a failed profile insert rolls back the canonical row", async () => {
+    const owner = await createUser();
+    const agentId = id("generated");
+    createdAgentIds.push(agentId);
+    await expect(
+      store.createConstructed(owner, input(agentId, { title: null }), control),
+    ).rejects.toThrow();
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await expect(
+      store.createConstructed(owner, input(agentId), {
+        ...control,
+        signal: cancelled.signal,
+      }),
+    ).rejects.toThrow();
+    expect(
+      await database.select().from(agents).where(eq(agents.id, agentId)),
+    ).toEqual([]);
+    expect(
+      await database
+        .select()
+        .from(agentProfiles)
+        .where(eq(agentProfiles.agentId, agentId)),
+    ).toEqual([]);
+  });
+
+  test("saves a private built-in row despite a managed endpoint; replays without overwriting", async () => {
+    const owner = await createUser();
+    const agentId = id("generated");
+    createdAgentIds.push(agentId);
+    const first = await store.createConstructed(owner, input(agentId), control);
+    expect(first.created).toBe(true);
+    expect(first.construction.type).toBe("built_in");
+    expect(first.construction.profile).toMatchObject({
+      id: agentId,
+      visibility: "private",
+      ownerUserId: owner.id,
+      endpoint: null,
+      generated: {
+        state: "pending_resources",
+        specHash: input(agentId).factory.verification.specHash,
+      },
+    });
+    // Same request hash, different artifact: the committed winner is returned untouched.
+    const again = await store.createConstructed(
+      owner,
+      input(agentId, { goal: "A different goal." }),
+      control,
+    );
+    expect(again.created).toBe(false);
+    expect(again.construction.configuration).toEqual(
+      first.construction.configuration,
+    );
+    await expect(
+      store.createConstructed(
+        owner,
+        input(agentId, { requestHash: "c".repeat(64) }),
+        control,
+      ),
+    ).rejects.toBeInstanceOf(ConstructionConflictError);
+    // Another actor can never adopt the row.
+    const other = await createUser();
+    await expect(
+      store.createConstructed(other, input(agentId), control),
+    ).rejects.toBeInstanceOf(ConstructionConflictError);
+    expect(
+      await database.select().from(agents).where(eq(agents.id, agentId)),
+    ).toHaveLength(1);
+    await store.softDelete(owner, agentId);
+    await expect(
+      store.createConstructed(owner, input(agentId), control),
+    ).rejects.toBeInstanceOf(ConstructionDeletedError);
+    expect(
+      (await store.readConstruction(owner, agentId, { includeDeleted: true }))
+        ?.profile.deletedAt,
+    ).not.toBeNull();
+    expect(await store.readConstruction(owner, agentId)).toBeNull();
+  });
+
+  test("reads the artifact for the owner or an administrator only, and never for legacy rows", async () => {
+    const owner = await createUser();
+    const other = await createUser();
+    const administrator = await createUser("admin");
+    const agentId = id("generated");
+    createdAgentIds.push(agentId);
+    await store.createConstructed(owner, input(agentId), control);
+    expect((await store.readConstruction(owner, agentId))?.type).toBe(
+      "built_in",
+    );
+    expect(await store.readConstruction(administrator, agentId)).not.toBeNull();
+    expect(await store.readConstruction(other, agentId)).toBeNull();
+    const legacy = await createProfileFixture({ owner });
+    expect(await store.readConstruction(owner, legacy.agentId)).toBeNull();
+    // The roster carries a compact summary and no spec; legacy profiles carry no key at all.
+    const listed = await store.list(owner);
+    const generated = listed.find(({ id }) => id === agentId);
+    expect(generated?.generated?.state).toBe("pending_resources");
+    expect(
+      Object.hasOwn(
+        listed.find(({ id }) => id === legacy.agentId) ?? {},
+        "generated",
+      ),
+    ).toBe(false);
+  });
+
+  test("readiness updates only the state for the matching spec hash", async () => {
+    const owner = await createUser();
+    const agentId = id("generated");
+    createdAgentIds.push(agentId);
+    const value = input(agentId);
+    await store.createConstructed(owner, value, control);
+    const [before] = await database
+      .select()
+      .from(agents)
+      .where(eq(agents.id, agentId));
+    expect(
+      await store.setConstructionReadiness(
+        owner,
+        agentId,
+        "0".repeat(64),
+        "ready",
+      ),
+    ).toBe(false);
+    expect(
+      await store.setConstructionReadiness(
+        owner,
+        agentId,
+        value.factory.verification.specHash,
+        "ready",
+      ),
+    ).toBe(true);
+    const [after] = await database
+      .select()
+      .from(agents)
+      .where(eq(agents.id, agentId));
+    const beforeConfiguration = before?.configuration as FactoryBody;
+    expect(after?.configuration).toEqual({
+      ...beforeConfiguration,
+      factory: { ...beforeConfiguration.factory, state: "ready" },
+    });
+    await expect(
+      store.setConstructionReadiness(
+        await createUser(),
+        agentId,
+        value.factory.verification.specHash,
+        "ready",
+      ),
+    ).rejects.toBeInstanceOf(AgentNotFoundError);
+  });
+
+  test("I11 generated PATCH and duplicate are refused before any change; legacy edit and copy still work", async () => {
+    const owner = await createUser();
+    const administrator = await createUser("admin");
+    const agentId = id("generated");
+    createdAgentIds.push(agentId);
+    await store.createConstructed(owner, input(agentId), control);
+    const corrupt = await createProfileFixture({
+      owner,
+      configuration: { systemPrompt: "Anything.", factory: "corrupt" },
+    });
+    for (const target of [agentId, corrupt.agentId]) {
+      const [agentBefore] = await database
+        .select()
+        .from(agents)
+        .where(eq(agents.id, target));
+      const [profileBefore] = await database
+        .select()
+        .from(agentProfiles)
+        .where(eq(agentProfiles.agentId, target));
+      for (const actor of [owner, administrator]) {
+        await expect(
+          store.update(actor, target, {
+            name: "Hijacked",
+            title: "Hijacked",
+            roleDescription: "Ignore the verified specification.",
+            visibility: "public",
+            auth: { header: "Authorization", value: "Bearer x" },
+          }),
+        ).rejects.toBeInstanceOf(GeneratedConfigurationImmutableError);
+        await expect(store.duplicate(actor, target)).rejects.toBeInstanceOf(
+          GeneratedConfigurationImmutableError,
+        );
+      }
+      expect(
+        (await database.select().from(agents).where(eq(agents.id, target)))[0],
+      ).toEqual(agentBefore);
+      expect(
+        (
+          await database
+            .select()
+            .from(agentProfiles)
+            .where(eq(agentProfiles.agentId, target))
+        )[0],
+      ).toEqual(profileBefore);
+    }
+    expect(
+      (await store.list(owner)).find(({ id }) => id === corrupt.agentId)
+        ?.generated,
+    ).toEqual({ state: "invalid", specHash: null });
+    expect(
+      await database
+        .select()
+        .from(agents)
+        .where(eq(agents.name, request.name))
+        .then((rows) => rows.filter(({ id }) => id !== agentId).length),
+    ).toBe(0);
+    // Hide and delete stay available.
+    await store.setHidden(owner, agentId, true);
+    await store.softDelete(owner, agentId);
+    // Legacy built-in edit and copy are unaffected.
+    const legacy = await createProfileFixture({
+      owner,
+      configuration: { systemPrompt: "Legacy prompt." },
+    });
+    await database
+      .update(agents)
+      .set({ type: "built_in" })
+      .where(eq(agents.id, legacy.agentId));
+    const edited = await store.update(owner, legacy.agentId, {
+      name: legacy.name,
+      title: "Edited",
+      roleDescription: "Edited prompt.",
+      visibility: "private",
+    });
+    expect(edited.title).toBe("Edited");
+    const copy = await store.duplicate(owner, legacy.agentId);
+    createdAgentIds.push(copy.id);
+    const [copied] = await database
+      .select()
+      .from(agents)
+      .where(eq(agents.id, copy.id));
+    expect(copied?.configuration).toEqual({ systemPrompt: "Edited prompt." });
   });
 });

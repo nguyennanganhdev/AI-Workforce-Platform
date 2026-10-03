@@ -3,6 +3,7 @@ import * as composio from "./composio";
 import * as driveRest from "./google-drive-rest";
 import type { ListedTool, McpCallResult } from "./mcp";
 import * as mcp from "./mcp";
+import * as tavilyRest from "./tavily-rest";
 
 /**
  * How this deployment reaches one vendor: which protocol, from the kind `./access` resolved.
@@ -119,6 +120,7 @@ export type TransportKind =
   | "mcp"
   | "google-drive-rest"
   | "builtin-routines"
+  | "tavily-rest"
   | "composio";
 
 /**
@@ -144,6 +146,7 @@ const TRANSPORTS: Record<TransportKind, VendorTransport> = {
   mcp,
   "google-drive-rest": driveRest,
   "builtin-routines": builtinRoutines,
+  "tavily-rest": tavilyRest,
   composio,
 };
 

@@ -1,5 +1,9 @@
 import { queryOptions } from "@tanstack/react-query";
 import { client, tryClient } from "@/lib/client";
+import type {
+  FactoryArtifactResponse,
+  GeneratedAgentSummary,
+} from "../../../../agent-factory/src/contracts";
 
 export type AgentVisibility = "public" | "private";
 
@@ -46,6 +50,11 @@ export type AgentProfile = {
    * a roster on `canManage` and an administrator's "mine" fills up with other people's work.
    */
   mine: boolean;
+  /**
+   * Present only on a coworker generated from name, role and description. The persisted state, not
+   * proof it may run now: a start action waits for {@link factoryArtifactQueryOptions}.
+   */
+  generated?: GeneratedAgentSummary;
 };
 
 /**
@@ -66,6 +75,8 @@ export const agentKeys = {
     ["agents", "bot-route-detail", agentId] as const,
   handoff: (agentId: string) => ["agents", "handoff", agentId] as const,
   capabilities: () => ["agents", "capabilities"] as const,
+  /** Under `all`, so every agent write and grant recheck refreshes it too. */
+  factory: (agentId: string) => ["agents", "factory", agentId] as const,
 };
 
 /** What kinds of coworker this deployment can create. */
@@ -132,6 +143,45 @@ export function agentQueryOptions(agentId: string) {
         fallback: "Could not load this coworker",
       }),
   });
+}
+
+/** A generated coworker's verified specification and its readiness as of this request. */
+export type FactoryArtifact = FactoryArtifactResponse<AgentProfile>;
+
+export function factoryApiPath(agentId: string): string {
+  return `/api/agent-factory/${encodeURIComponent(agentId)}`;
+}
+
+/** Owner or administrator only; the server assesses readiness fresh on every read. */
+export function factoryArtifactQueryOptions(agentId: string) {
+  return queryOptions({
+    queryKey: agentKeys.factory(agentId),
+    queryFn: async (): Promise<FactoryArtifact> => {
+      const fallback = "Could not check this coworker's setup";
+      const body = (await (
+        await client(factoryApiPath(agentId), { fallback })
+      )
+        .json()
+        .catch(() => null)) as FactoryArtifact | null;
+      if (!body?.spec || !body.readiness || !body.agent) {
+        throw new Error(fallback);
+      }
+      return body;
+    },
+  });
+}
+
+/**
+ * Whether a generated coworker may be started: ready now AND ready as stored, because the runtime
+ * refuses a persisted pending state until a recheck records the change.
+ */
+export function factoryRunnable(
+  artifact: FactoryArtifact | undefined,
+): boolean {
+  return (
+    artifact?.readiness.state === "ready" &&
+    artifact.agent.generated?.state === "ready"
+  );
 }
 
 export function agentHandoffQueryOptions(agentId: string) {

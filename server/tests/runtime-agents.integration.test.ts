@@ -18,6 +18,7 @@ import {
   intelligenceChannelMappings,
   users,
 } from "../src/db/schema";
+import { compileRecorded } from "../../agent-factory/tests/fixtures/factory-intent";
 import { TEST_POOL, testDatabaseUrl } from "./support/database";
 
 const databaseUrl = testDatabaseUrl();
@@ -383,5 +384,171 @@ describe("runtime agent loading", () => {
     expect(
       reloaded?.type === "remote_ag_ui" && reloaded.standingMessage.content,
     ).toContain("Reconcile corporate card statements.");
+  });
+});
+
+/*
+ * The generated-row gate: one injected readiness reader, consulted only for generated rows, with the
+ * stored creator's identity. Absent, blocked or failing, the row is the existing unavailable agent.
+ */
+describe("generated coworker readiness at load", () => {
+  const source = {
+    kind: "request",
+    field: "description",
+    quote: "supplied notes",
+  } as const;
+  function generatedInput(state: "ready" | "pending_resources") {
+    const compiled = compileRecorded(
+      {
+        name: "Notes",
+        role: "Note summarizer",
+        description: "Summarize supplied notes.",
+      },
+      {
+        goal: "Summarize supplied notes.",
+        responsibilities: [{ statement: "Summarize supplied notes.", source }],
+        constraints: [],
+        procedure: ["Return a concise summary."],
+        requirements: [
+          {
+            need: "Summarize supplied text.",
+            fulfillment: "model_on_input",
+            source,
+            proposedRefs: [],
+          },
+        ],
+        toolArguments: [],
+        inputFacts: [
+          { name: "notes", required: true, missingBehavior: "Ask for notes." },
+        ],
+        outputExpectations: ["A summary."],
+        acceptanceCriteria: ["Reflects the notes."],
+        unresolvedQuestions: [],
+        unsupportedRequirements: [],
+      },
+    );
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.issues));
+    const id = `${testPrefix}-generated-${randomUUID()}`;
+    createdAgentIds.push(id);
+    return {
+      id,
+      name: "Notes",
+      title: "Note summarizer",
+      roleDescription: "Summarize supplied notes.",
+      systemPrompt: compiled.value.systemPrompt,
+      factory: {
+        spec: compiled.value.spec,
+        verification: {
+          specHash: compiled.value.specHash,
+          construction: "PASS" as const,
+          attempts: 1 as const,
+          issues: [],
+          warnings: [],
+          semanticReview: {
+            verdict: "PASS" as const,
+            modelRef: "fixture",
+            criterionFindings: [],
+          },
+        },
+        state,
+        requestHash: "a".repeat(64),
+        creationKeyHash: "b".repeat(64),
+      },
+    };
+  }
+  async function generated(
+    owner: AgentActor,
+    state: "ready" | "pending_resources" = "ready",
+  ) {
+    const value = generatedInput(state);
+    await profileStore.createConstructed(owner, value, { timeoutMs: 5_000 });
+    return value;
+  }
+
+  test("fails closed without a readiness reader, and never runs a pending row", async () => {
+    const owner = await createUser();
+    const ready = await generated(owner);
+    const pending = await generated(owner, "pending_resources");
+    const loaded = await loadAgents(owner);
+    for (const id of [ready.id, pending.id])
+      expect(loaded.find((agent) => agent.id === id)).toMatchObject({
+        type: "unavailable",
+      });
+  });
+
+  test("consults the reader with the stored creator only for generated rows", async () => {
+    const owner = await createUser();
+    const administrator = await createUser("admin");
+    const legacy = await createCoworker(owner);
+    const ready = await generated(owner);
+    const pending = await generated(owner, "pending_resources");
+    const calls: [string, string | null, string][] = [];
+    let verdict: { ready: true } | { ready: false; reason: string } = {
+      ready: true,
+    };
+    const load = createRuntimeAgentLoader(
+      database,
+      undefined,
+      undefined,
+      async (actor, row) => {
+        calls.push([actor.id, row.ownerUserId, row.id]);
+        if (verdict.ready === false && verdict.reason === "throw")
+          throw new Error("facts unavailable");
+        return verdict;
+      },
+    );
+
+    const asOwner = await load(owner);
+    expect(asOwner.find(({ id }) => id === ready.id)).toEqual({
+      id: ready.id,
+      name: "Notes",
+      type: "built_in",
+      systemPrompt: ready.systemPrompt.trim(),
+    });
+    // Pending never reaches the reader; legacy rows never consult it.
+    expect(asOwner.find(({ id }) => id === pending.id)?.type).toBe(
+      "unavailable",
+    );
+    expect(asOwner.find(({ id }) => id === legacy.id)?.type).toBe(
+      "remote_ag_ui",
+    );
+    expect(calls).toEqual([[owner.id, owner.id, ready.id]]);
+
+    // An administrator loading it is still judged on the creator's facts.
+    await load(administrator);
+    expect(calls.at(-1)).toEqual([administrator.id, owner.id, ready.id]);
+
+    verdict = { ready: false, reason: "Missing a grant." };
+    expect((await load(owner)).find(({ id }) => id === ready.id)).toEqual({
+      id: ready.id,
+      name: "Notes",
+      type: "unavailable",
+      reason: "Missing a grant.",
+    });
+    verdict = { ready: false, reason: "throw" };
+    const failed = await load(owner);
+    expect(failed.find(({ id }) => id === ready.id)?.type).toBe("unavailable");
+    // One failing gate does not abort anybody else's load.
+    expect(failed.find(({ id }) => id === legacy.id)?.type).toBe(
+      "remote_ag_ui",
+    );
+  });
+
+  test("a private generated row stays out of another user's load entirely", async () => {
+    const owner = await createUser();
+    const other = await createUser();
+    const ready = await generated(owner);
+    const calls: string[] = [];
+    const load = createRuntimeAgentLoader(
+      database,
+      undefined,
+      undefined,
+      async (_actor, row) => {
+        calls.push(row.id);
+        return { ready: true };
+      },
+    );
+    expect((await load(other)).some(({ id }) => id === ready.id)).toBe(false);
+    expect(calls).toEqual([]);
   });
 });

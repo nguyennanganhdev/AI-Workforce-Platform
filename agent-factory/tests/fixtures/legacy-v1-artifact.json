@@ -1,0 +1,137 @@
+{
+  "description": "A generated configuration exactly as the schemaVersion 1 compiler stored it (skill + tool), captured 2026-10-02 before generated skills. Frozen: never regenerate it from current code.",
+  "configuration": {
+    "systemPrompt": "## Identity\n{\"description\":\"Tìm kiếm thông tin trên internet và tổng hợp lại có dẫn nguồn.\",\"name\":\"Web Researcher\",\"role\":\"Internet Research Agent\"}\n\n## Goal\n\"Research a question on the internet and return a cited synthesis.\"\n\n## Responsibilities\n[\"Search the internet for information.\",\"Synthesize findings with sources.\"]\n\n## Constraints\n[\"Cite sources.\"]\n\n## Procedure\n[\"Ask for the research question when it is missing.\",\"Run several searches with tavily/tavily_search.\",\"Compare sources and note conflicts.\",\"Write a synthesis citing a source URL for every important claim.\"]\n\n## Resource needs\n[{\"fulfillment\":\"tool\",\"id\":\"r1\",\"need\":\"Search the web.\"},{\"fulfillment\":\"skill_instruction\",\"id\":\"r2\",\"need\":\"Follow a research synthesis method.\"}]\n\n## Resource usage\n[{\"argumentSources\":[{\"argument\":\"query\",\"missingBehavior\":\"Ask what to research.\",\"sourceKind\":\"user_input\",\"sourceRef\":\"research question\"}],\"fingerprint\":\"d3da0d84b16cfc9428bb6742fe46c37fffdecd7c3fe492b486e4e707107243ad\",\"kind\":\"tool\",\"ref\":\"tavily/tavily_search\",\"requirementIds\":[\"r1\"]},{\"argumentSources\":[],\"fingerprint\":\"3dec69b66c351997665afbe55120a8d6f8894b6c09e33833a70ec404870dd82f\",\"kind\":\"skill\",\"ref\":\"research-synthesis\",\"requirementIds\":[\"r2\"]}]\n\n## Input and missing-input behavior\n{\"inputFacts\":[{\"missingBehavior\":\"Ask what to research.\",\"name\":\"research question\",\"required\":true}],\"schema\":{\"minLength\":1,\"type\":\"string\"},\"transport\":\"ag_ui_messages\"}\n\n## Output expectations\n{\"enforcement\":\"prompt_only\",\"expectations\":[\"A synthesis with source URLs.\"],\"schema\":{\"minLength\":1,\"type\":\"string\"},\"transport\":\"ag_ui_messages\"}\n\n## Acceptance criteria\n[\"Every important claim cites a source URL.\"]",
+    "factory": {
+      "spec": {
+        "goal": "Research a question on the internet and return a cited synthesis.",
+        "responsibilities": [
+          {
+            "statement": "Search the internet for information.",
+            "source": {
+              "kind": "request",
+              "field": "description",
+              "quote": "Tìm kiếm thông tin trên internet"
+            }
+          },
+          {
+            "statement": "Synthesize findings with sources.",
+            "source": {
+              "kind": "request",
+              "field": "description",
+              "quote": "tổng hợp lại có dẫn nguồn"
+            }
+          }
+        ],
+        "constraints": [
+          {
+            "statement": "Cite sources.",
+            "source": {
+              "kind": "request",
+              "field": "description",
+              "quote": "có dẫn nguồn"
+            }
+          }
+        ],
+        "procedure": [
+          "Ask for the research question when it is missing.",
+          "Run several searches with tavily/tavily_search.",
+          "Compare sources and note conflicts.",
+          "Write a synthesis citing a source URL for every important claim."
+        ],
+        "acceptanceCriteria": ["Every important claim cites a source URL."],
+        "schemaVersion": 1,
+        "identity": {
+          "name": "Web Researcher",
+          "role": "Internet Research Agent",
+          "description": "Tìm kiếm thông tin trên internet và tổng hợp lại có dẫn nguồn."
+        },
+        "requirements": [
+          {
+            "id": "r1",
+            "need": "Search the web.",
+            "fulfillment": "tool",
+            "source": {
+              "kind": "request",
+              "field": "description",
+              "quote": "Tìm kiếm thông tin trên internet"
+            }
+          },
+          {
+            "id": "r2",
+            "need": "Follow a research synthesis method.",
+            "fulfillment": "skill_instruction",
+            "source": {
+              "kind": "request",
+              "field": "description",
+              "quote": "tổng hợp lại có dẫn nguồn"
+            }
+          }
+        ],
+        "resources": [
+          {
+            "kind": "tool",
+            "ref": "tavily/tavily_search",
+            "requirementIds": ["r1"],
+            "fingerprint": "d3da0d84b16cfc9428bb6742fe46c37fffdecd7c3fe492b486e4e707107243ad",
+            "argumentSources": [
+              {
+                "argument": "query",
+                "sourceKind": "user_input",
+                "sourceRef": "research question",
+                "missingBehavior": "Ask what to research."
+              }
+            ]
+          },
+          {
+            "kind": "skill",
+            "ref": "research-synthesis",
+            "requirementIds": ["r2"],
+            "fingerprint": "3dec69b66c351997665afbe55120a8d6f8894b6c09e33833a70ec404870dd82f",
+            "argumentSources": []
+          }
+        ],
+        "inputContract": {
+          "transport": "ag_ui_messages",
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          },
+          "inputFacts": [
+            {
+              "name": "research question",
+              "required": true,
+              "missingBehavior": "Ask what to research."
+            }
+          ]
+        },
+        "outputContract": {
+          "transport": "ag_ui_messages",
+          "schema": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expectations": ["A synthesis with source URLs."],
+          "enforcement": "prompt_only"
+        },
+        "runtimeProfile": "openbot_builtin_v1",
+        "compilerVersion": 1
+      },
+      "verification": {
+        "specHash": "134f40a15309aca98ad9c2405b429084b541d673709ca94edb6b448cd5ca87ac",
+        "construction": "PASS",
+        "issues": [],
+        "warnings": [],
+        "attempts": 1,
+        "semanticReview": {
+          "verdict": "PASS",
+          "modelRef": "fixture-model",
+          "criterionFindings": []
+        }
+      },
+      "state": "pending_resources",
+      "requestHash": "71f0ce6a9a0b656a3ad50c148606bb73408ca350e6c621479598b65fe57c2532",
+      "creationKeyHash": "0ee41128612a07e7b1df8ded68ee4b04ddc21797d36d6cae141e042c7f9251ea"
+    }
+  }
+}

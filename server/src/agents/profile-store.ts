@@ -1,4 +1,8 @@
-import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
+import type {
+  FactoryConfiguration,
+  GeneratedAgentSummary,
+} from "../../../agent-factory/src/contracts.js";
 import type { CredentialStore } from "../credentials";
 import type { Database } from "../db/client";
 import {
@@ -89,6 +93,53 @@ export type AgentProfileStore = {
    * presenting a credential, and the credential is the whole of its claim.
    */
   agentForCallbackToken(hash: string): Promise<{ id: string } | null>;
+  /**
+   * Save a verified Meta-Agent artifact: always private, always `built_in`, never the managed
+   * endpoint. The id is derived by the caller from the actor and idempotency key; a committed row with
+   * that id is returned rather than overwritten. Bounded by `control.timeoutMs` on the database side
+   * and checked for cancellation before commit, so a caller that gave up never gets a late save.
+   */
+  createConstructed(
+    actor: AgentActor,
+    input: ConstructedAgentInput,
+    control: { signal?: AbortSignal; timeoutMs: number },
+  ): Promise<{ created: boolean; construction: StoredConstruction }>;
+  /**
+   * The stored generated artifact, raw, for its owner or an administrator. Null for anything else,
+   * including legacy agents. `includeDeleted` is for idempotent replay only and matches the actor's own
+   * rows, so a soft-deleted construction can be refused rather than resurrected.
+   */
+  readConstruction(
+    actor: AgentActor,
+    id: string,
+    options?: { includeDeleted?: boolean },
+  ): Promise<StoredConstruction | null>;
+  /**
+   * Record a fresh readiness verdict. Only the persisted state changes; spec, prompt and report are
+   * kept. False when the stored artifact no longer has `specHash`.
+   */
+  setConstructionReadiness(
+    actor: AgentActor,
+    id: string,
+    specHash: string,
+    state: FactoryConfiguration["state"],
+  ): Promise<boolean>;
+};
+
+export type ConstructedAgentInput = {
+  id: string;
+  name: string;
+  title: string;
+  roleDescription: string;
+  systemPrompt: string;
+  factory: FactoryConfiguration;
+};
+
+export type StoredConstruction = {
+  profile: AgentProfile;
+  type: AgentRun["type"];
+  /** Unvalidated. The factory shell checks spec, hash and prompt integrity before trusting it. */
+  configuration: unknown;
 };
 
 export class AgentNotFoundError extends Error {
@@ -109,6 +160,32 @@ export class ProtectedAgentError extends Error {
   constructor(id: string) {
     super(`Agent ${id} is protected.`);
     this.name = "ProtectedAgentError";
+  }
+}
+
+/** A Meta-Agent generated configuration is compiler-owned; edit and copy would bypass verification. */
+export class GeneratedConfigurationImmutableError extends Error {
+  constructor(id: string) {
+    super(
+      `Agent ${id} has a generated configuration and cannot be edited or copied.`,
+    );
+    this.name = "GeneratedConfigurationImmutableError";
+  }
+}
+
+/** The idempotency key was already used for a different construction request. */
+export class ConstructionConflictError extends Error {
+  constructor(id: string) {
+    super(`Construction ${id} already exists for a different request.`);
+    this.name = "ConstructionConflictError";
+  }
+}
+
+/** The construction for this idempotency key was deleted; replay must not resurrect it. */
+export class ConstructionDeletedError extends Error {
+  constructor(id: string) {
+    super(`Construction ${id} was deleted.`);
+    this.name = "ConstructionDeletedError";
   }
 }
 
@@ -182,7 +259,41 @@ function mapProfile(
     // Whether a key is set, never which. The form needs to show "a key is set" so a person does not
     // wipe one by saving an unrelated edit; showing the value would put a secret in a screenshot.
     hasAuth: authFromConfiguration(row.configuration) !== null,
+    ...generatedFacts(row.configuration),
   };
+}
+
+/**
+ * Any `factory` key marks a generated agent, including a corrupt one: a malformed marker must still
+ * be protected from the legacy edit/copy paths rather than fall back to them.
+ */
+function isGeneratedConfiguration(configuration: unknown): boolean {
+  return (
+    !!configuration &&
+    typeof configuration === "object" &&
+    Object.hasOwn(configuration, "factory")
+  );
+}
+
+function generatedFacts(configuration: unknown): {
+  generated?: GeneratedAgentSummary;
+} {
+  if (!isGeneratedConfiguration(configuration)) return {};
+  const factory = (configuration as { factory?: unknown }).factory as
+    | { state?: unknown; verification?: { specHash?: unknown } }
+    | null
+    | undefined;
+  const specHash =
+    typeof factory?.verification?.specHash === "string" &&
+    /^[a-f0-9]{64}$/.test(factory.verification.specHash)
+      ? factory.verification.specHash
+      : null;
+  const state =
+    specHash &&
+    (factory?.state === "ready" || factory?.state === "pending_resources")
+      ? factory.state
+      : "invalid";
+  return { generated: { state, specHash } };
 }
 
 /**
@@ -510,6 +621,10 @@ export function createAgentProfileStore(
             .from(agents)
             .where(eq(agents.id, id))
             .limit(1);
+          // Before the vault write below and every row update: a refusal must change nothing.
+          if (isGeneratedConfiguration(row?.configuration)) {
+            throw new GeneratedConfigurationImmutableError(id);
+          }
           const previous = (row?.configuration ?? {}) as Record<
             string,
             unknown
@@ -610,6 +725,10 @@ export function createAgentProfileStore(
           .where(eq(agents.id, id))
           .limit(1);
         if (!stored) throw new AgentNotFoundError(id);
+        // `runForDuplicate` would keep the prompt and drop the artifact that protects it.
+        if (isGeneratedConfiguration(stored.configuration)) {
+          throw new GeneratedConfigurationImmutableError(id);
+        }
 
         // `auth` is a vault reference and is deliberately not carried: see `runForDuplicate`.
         const run = runForDuplicate(stored, managedConfiguration);
@@ -762,6 +881,151 @@ export function createAgentProfileStore(
 
     agentForCallbackToken(hash) {
       return findByTokenHash(database, hash);
+    },
+
+    createConstructed(actor, input, control) {
+      const aborted = () => control.signal?.throwIfAborted();
+      return database.transaction(
+        async (transaction) => {
+          // Local to this transaction: a stalled lock or statement ends inside the caller's deadline
+          // and rolls back, instead of committing after the caller has already answered 504.
+          const bound = String(Math.max(1, Math.ceil(control.timeoutMs)));
+          await transaction.execute(
+            sql`select set_config('statement_timeout', ${bound}, true)`,
+          );
+          await transaction.execute(
+            sql`select set_config('lock_timeout', ${bound}, true)`,
+          );
+          aborted();
+          const inserted = await transaction
+            .insert(agents)
+            .values({
+              id: input.id,
+              name: input.name,
+              // Explicit, never `create()`'s managed-endpoint precedence.
+              type: "built_in",
+              configuration: {
+                systemPrompt: input.systemPrompt,
+                factory: input.factory,
+              },
+            })
+            // A concurrent first request for the same key may have committed while this one was
+            // generating. Its row wins; this one must neither overwrite it nor add a second profile.
+            .onConflictDoNothing({ target: agents.id })
+            .returning({ id: agents.id });
+          if (inserted.length) {
+            await transaction.insert(agentProfiles).values({
+              agentId: input.id,
+              ownerUserId: actor.id,
+              title: input.title,
+              roleDescription: input.roleDescription,
+              avatarSeed: input.id,
+              visibility: "private",
+            });
+          } else {
+            const [winner] = await transaction
+              .select({
+                configuration: agents.configuration,
+                ownerUserId: agentProfiles.ownerUserId,
+                deletedAt: agentProfiles.deletedAt,
+              })
+              .from(agents)
+              .innerJoin(agentProfiles, eq(agentProfiles.agentId, agents.id))
+              .where(eq(agents.id, input.id));
+            if (!winner || winner.ownerUserId !== actor.id) {
+              throw new ConstructionConflictError(input.id);
+            }
+            if (winner.deletedAt) throw new ConstructionDeletedError(input.id);
+            const stored = (winner.configuration as { factory?: unknown })
+              .factory as { requestHash?: unknown } | undefined;
+            if (stored?.requestHash !== input.factory.requestHash) {
+              throw new ConstructionConflictError(input.id);
+            }
+          }
+          const [row] = await joinedProfiles(transaction, actor).where(
+            eq(agents.id, input.id),
+          );
+          const [stored] = await transaction
+            .select({ type: agents.type })
+            .from(agents)
+            .where(eq(agents.id, input.id));
+          if (!row || !stored) throw new AgentNotFoundError(input.id);
+          // Last check before commit. Anything after this point is the commit itself.
+          aborted();
+          return {
+            created: inserted.length > 0,
+            construction: {
+              profile: mapProfile(row),
+              type: stored.type,
+              configuration: row.configuration,
+            },
+          };
+        },
+        { isolationLevel: "read committed" },
+      );
+    },
+
+    async readConstruction(actor, id, options = {}) {
+      const [row] = await joinedProfiles(database, actor).where(
+        options.includeDeleted
+          ? and(eq(agents.id, id), eq(agentProfiles.ownerUserId, actor.id))
+          : and(
+              eq(agents.id, id),
+              isNull(agentProfiles.deletedAt),
+              accessFilter(actor),
+            ),
+      );
+      if (!row) return null;
+      const profile = mapProfile(row);
+      // Owner or administrator only; the ordinary roster never carries the spec.
+      if (
+        !profile.generated ||
+        (profile.deletedAt === null && !canManageAgent(actor, profile))
+      ) {
+        return null;
+      }
+      const [stored] = await database
+        .select({ type: agents.type })
+        .from(agents)
+        .where(eq(agents.id, id));
+      if (!stored) return null;
+      return { profile, type: stored.type, configuration: row.configuration };
+    },
+
+    setConstructionReadiness(actor, id, specHash, state) {
+      return database.transaction(
+        async (transaction) => {
+          await lockProfileMutationRows(transaction, id);
+          const profile = await findAccessibleProfile(transaction, actor, id);
+          if (!profile?.generated) throw new AgentNotFoundError(id);
+          requireManageable(actor, profile);
+          if (
+            profile.generated.state === "invalid" ||
+            profile.generated.specHash !== specHash
+          ) {
+            return false;
+          }
+          const [row] = await transaction
+            .select({ configuration: agents.configuration })
+            .from(agents)
+            .where(eq(agents.id, id));
+          const configuration = row?.configuration as Record<string, unknown>;
+          const factory = configuration.factory as Record<string, unknown>;
+          if (factory.state === state) return true;
+          await transaction
+            .update(agents)
+            .set({
+              configuration: {
+                ...configuration,
+                factory: { ...factory, state },
+              },
+              updatedAt: new Date(),
+            })
+            .where(eq(agents.id, id));
+          return true;
+        },
+        { isolationLevel: "read committed" },
+      );
     },
   };
 }
