@@ -88,7 +88,8 @@ async def ensure_session(db: AsyncConnection, actor: str, ticket_id: UUID) -> No
 async def _session(db: AsyncConnection, ticket_id: UUID, *, lock: bool = False):
     row = await db.execute(text(f"""
         select tm.id,tm.status,tm.state_version,tm.channel_id,tm.created_at,tm.finished_at,
-          tm.shared_state->'closure' as closure,a.name as supervisor_name
+          tm.shared_state->'closure' as closure,a.name as supervisor_name,
+          tm.shared_state->'supervisor' as supervisor,tm.shared_state->'runtime' as runtime
         from agent_teams tm join agents a on a.id=tm.supervisor_agent_id and a.tenant_id=tm.tenant_id
         where tm.ticket_id=:ticket and tm.tenant_id={TENANT}
         order by tm.created_at desc limit 1 {"for update of tm" if lock else ""}

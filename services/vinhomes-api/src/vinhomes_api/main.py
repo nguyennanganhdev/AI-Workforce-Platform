@@ -26,6 +26,7 @@ from .v3_accounts import router as accounts_router
 from .v3_agent_reviews import router as agent_reviews_router
 from .v3_billing import router as billing_router
 from .v3_config import V3Settings
+from .v3_coordination import router as coordination_router
 from .v3_conversation_images import router as conversation_images_router
 from .v3_demo import router as demo_router
 from .v3_files import router as files_router
@@ -179,6 +180,7 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(reception_supervisor_router)
     app.include_router(supervisor_operations_router)
     app.include_router(session_router)
+    app.include_router(coordination_router)
     app.include_router(learning_router)
     from .resident_api import ticket_intake_router
     app.include_router(ticket_intake_router)
