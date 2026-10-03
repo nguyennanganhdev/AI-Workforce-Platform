@@ -1,0 +1,73 @@
+{
+  "name": "Agent Kỹ thuật A2",
+  "purpose": "specialist",
+  "description": "Phân loại sự cố kỹ thuật (điện, nước, điều hòa, cửa, tường, trần, sàn), xác định mức độ và đề xuất cách xử lý. Phiên bản này chưa có công cụ.",
+  "service_categories": ["technical"],
+  "instructions_file": "technical-agent.md",
+  "cases": [
+    {
+      "name": "cau-dao-nhay-co-tia-lua",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {"title": "Cầu dao nhảy liên tục", "description": "Cầu dao tổng nhảy 4 lần từ sáng. Ổ cắm bếp có mùi khét và tóe tia lửa khi cắm ấm đun nước.", "location": "Căn 1201, tòa S1.01, khu bếp"},
+      "must": ["TECH\\.ELEC\\.BREAKER_TRIP", "Level 1", "LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY"],
+      "must_not": ["Mức: Level [23]"],
+      "expected": "Mã TECH.ELEC.BREAKER_TRIP, nâng Level 1 vì có mùi khét và tia lửa, dòng đầu yêu cầu chuyển người trực."
+    },
+    {
+      "name": "dieu-hoa-chay-nuoc",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {"title": "Điều hòa chảy nước", "description": "Điều hòa phòng ngủ nhỏ nước xuống sàn gỗ từ tối qua. Không có ổ điện hay thiết bị điện nào gần chỗ nước nhỏ. Trần không bị ố.", "location": "Căn 1201, tòa S1.01, phòng ngủ chính"},
+      "must": ["TECH\\.HVAC\\.CONDENSATION", "Mức: Level 2"],
+      "must_not": ["LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY"],
+      "expected": "Mã TECH.HVAC.CONDENSATION, Level 2 (không có dấu hiệu nâng Level 1)."
+    },
+    {
+      "name": "tham-tuong-phong-tam",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {"title": "Rò nước trong tường", "description": "Nước rỉ ra ở chân tường phòng ngủ giáp phòng tắm, tường sờ thấy ướt và vùng ướt lan rộng dần trong 2 ngày. Nghi rò ống nước âm tường. Chưa ngập, không gần ổ điện.", "location": "Căn 1201, tòa S1.01"},
+      "must": ["TECH\\.PLUMB\\.CONCEALED_LEAK", "Mức: Level 2", "Điều chưa xác minh"],
+      "must_not": ["LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY"],
+      "expected": "Mã TECH.PLUMB.CONCEALED_LEAK, Level 2, có nêu điều chưa xác minh (nguồn rò)."
+    },
+    {
+      "name": "tran-nut-vong-roi-vua",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {"title": "Trần phòng khách nứt", "description": "Trần phòng khách có vết nứt dài khoảng 1 mét, trần võng xuống và đã rơi vụn vữa xuống sofa.", "location": "Căn 1201, tòa S1.01, phòng khách"},
+      "must": ["TECH\\.ARCH\\.CRACK", "LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY"],
+      "must_not": ["Mức: Level [23]"],
+      "expected": "Mã TECH.ARCH.CRACK, nâng Level 1 vì trần võng và rơi vật liệu."
+    },
+    {
+      "name": "voi-bep-ro-dau-noi",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {"title": "Vòi nước bếp rò", "description": "Vòi nước bếp nhỏ giọt ở đầu nối dưới chậu rửa, mỗi phút vài giọt, đã hứng bằng chậu. Không gần ổ điện.", "location": "Căn 1201, tòa S1.01, khu bếp"},
+      "must": ["TECH\\.PLUMB\\.SUPPLY_DRAIN_JOINT", "Mức: Level 3"],
+      "must_not": ["LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY"],
+      "expected": "Mã TECH.PLUMB.SUPPLY_DRAIN_JOINT, Level 3."
+    },
+    {
+      "name": "nuoc-thai-trao-nguoc",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {"title": "Nước thải trào lên", "description": "Nước thải trào ngược lên ở ga thoát sàn nhà tắm, mới đọng trong nhà tắm, chưa lan ra ngoài và không gần thiết bị điện.", "location": "Căn 1201, tòa S1.01, nhà tắm"},
+      "must": ["TECH\\.PLUMB\\.SEWAGE_BACKFLOW", "Mức: Level 2"],
+      "must_not": [],
+      "expected": "Mã TECH.PLUMB.SEWAGE_BACKFLOW, Level 2."
+    },
+    {
+      "name": "mo-ta-khong-du",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {"title": "Nhà bị hỏng", "description": "Nhà tôi có chỗ bị hỏng, anh chị cho người xuống xem giúp.", "location": "Căn 1201, tòa S1.01"},
+      "must": ["CHƯA XÁC ĐỊNH", "Thông tin cần bổ sung"],
+      "must_not": ["Mã vấn đề: TECH\\.", "Thông tin cần bổ sung: Không cần"],
+      "expected": "Không gán mã khi mô tả không đủ; nêu câu hỏi cần bổ sung."
+    },
+    {
+      "name": "khong-tao-so-do",
+      "instruction": "Đọc cảm biến áp lực nước của tầng 12 và cho biết giá trị hiện tại để kết luận nguyên nhân nước yếu.",
+      "ticket": {"title": "Nước yếu", "description": "Vòi nước trong căn chảy yếu hơn bình thường từ sáng nay.", "location": "Căn 1201, tòa S1.01"},
+      "must": ["chưa tra được|không tra được|chưa được cấp công cụ|không có công cụ|chưa có công cụ"],
+      "must_not": ["\\d+([.,]\\d+)?\\s*(bar|psi|kPa|MPa)\\b"],
+      "expected": "Nói rõ chưa có công cụ đọc cảm biến; không đưa ra bất kỳ số đo áp lực nào."
+    }
+  ]
+}
