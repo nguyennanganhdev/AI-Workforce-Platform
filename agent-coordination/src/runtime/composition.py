@@ -21,7 +21,7 @@ from supervisor.service import SupervisorService
 from runtime.publication import DraftPublisher
 from runtime.ingress import DurableIngress
 from evaluation.traces import DecisionTraces
-from runtime.service import Components,Worker,REQUIRED
+from runtime.service import Components,Continuation,Worker,REQUIRED
 from runtime.workflows import Workflows
 from runtime.contributions import Contributions
 from runtime.reporting import ReportConsumer
@@ -61,7 +61,8 @@ def build(bindings: ProductionBindings):
     releases=ReleaseConsumer(bindings.release_producer,bindings.records)
     remote=OpenbotAdapter(releases,bindings.records,bindings.tool_boundary,bindings.remote_budget)
     invocation_port=AgentScopeRemoteAdapter(remote)
-    room=RoomService(bindings.resolver,invocation_port,bindings.room_store)
+    room=RoomService(bindings.resolver,invocation_port,bindings.room_store,
+        report_artifacts=bindings.report_artifacts)
     workflows=Workflows(bindings.workflow_authority,bindings.records,
         contributions=Contributions(bindings.contribution_producer,bindings.records) if bindings.contribution_producer else None,
         reports=ReportConsumer(bindings.report_artifacts,bindings.report_producer,bindings.records)
@@ -101,6 +102,10 @@ def build(bindings: ProductionBindings):
         else:
             raise ValueError('unsupported durable input')
         state = await service.resume(state.context)
+        if state.action and state.action.status == 'pending':
+            if state.phase != 'paused' and state.pause_reason is None:
+                return Continuation()  # step-budget yield; work has not been sent yet
+            return 5  # blocked dispatch retains bounded recovery, never ACK
         if state.action and state.action.status in ('sending','unknown','accepted'):
             return 5  # durable bounded reconciliation; never blind mutation retry
 

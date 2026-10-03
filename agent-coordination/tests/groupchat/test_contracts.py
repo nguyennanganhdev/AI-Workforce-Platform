@@ -1,6 +1,7 @@
 """Kiểm tra schema đã công bố, dữ liệu mẫu và chuyển đổi hợp đồng v1."""
 
 import json
+import asyncio
 from pathlib import Path
 
 import jsonschema
@@ -30,15 +31,9 @@ def schema(name):
     return json.loads((SCHEMAS / f"{name}.schema.json").read_text())
 
 
-@pytest.mark.parametrize(
-    "name,model",
-    [
-        ("command", Command),
-        ("query", Query),
-        ("result", Result),
-        ("state", ScopeState),
-    ],
-)
+@pytest.mark.parametrize("name,model", [
+    ("command", Command), ("query", Query), ("result", Result), ("state", ScopeState),
+])
 def test_published_schema_matches_model(name, model):
     published = schema(name)
     jsonschema.Draft202012Validator.check_schema(published)
@@ -46,6 +41,23 @@ def test_published_schema_matches_model(name, model):
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         **TypeAdapter(model).json_schema(),
     }
+
+
+@pytest.mark.parametrize('artifact_hash', [None, 'verified-report-artifacts'])
+async def test_active_checkpoint_matches_published_schema(harness, artifact_hash):
+    _, opened = await harness.open()
+    harness.agents.delay = 10
+    running = asyncio.create_task(harness.service.execute(harness.turn(opened.data)))
+    try:
+        await harness.agents.started.wait()
+        state = harness.state.records[harness.ctx.scope()].model_copy(deep=True)
+        state.snapshot.active_operation.artifact_hash = artifact_hash
+        serialized = state.model_dump(mode='json')
+        jsonschema.validate(serialized, schema('state'))
+        assert ScopeState.model_validate(serialized).snapshot.active_operation.artifact_hash == artifact_hash
+    finally:
+        running.cancel()
+        await asyncio.gather(running, return_exceptions=True)
 
 
 @pytest.mark.parametrize("example_name", EXAMPLES)

@@ -1,170 +1,119 @@
 # Coordination runtime
 
-Python 3.12 (tested 3.12.3), AgentScope **2.0.9**. All dependencies are pinned in
-`requirements.lock`; only this package/environment changes. Five SDK tests use a
-stub model. No paid/live model request has been made.
+Python 3.12, AgentScope **2.0.9**. Runtime and test dependencies are pinned in
+`requirements.lock`; keep this environment separate from the other teams.
 
 From repository root:
 
 ```bash
-python3 -m venv agent-coordination/.venv
+python3.12 -m venv agent-coordination/.venv
 agent-coordination/.venv/bin/python -m pip install -r agent-coordination/requirements.lock
 agent-coordination/.venv/bin/python -m pip install --no-deps --no-build-isolation -e agent-coordination
 agent-coordination/.venv/bin/python -m pytest -q agent-coordination
 agent-coordination/.venv/bin/python -m main
 ```
 
-If the host lacks `ensurepip` (as this workstation does), create the isolated venv,
-download `https://bootstrap.pypa.io/get-pip.py` **inside `.venv`**, run it with
-`.venv/bin/python3`, then install the lockfile. Do not install packages globally.
-Editable installation needs pinned setuptools/wheel already in the lockfile.
-Schema regeneration: `PYTHONPATH=agent-coordination/src
-agent-coordination/.venv/bin/python agent-coordination/scripts/generate_room_schemas.py`.
-The compatibility test runners now call standard pytest; no namespace preloading.
+## Configuration and production dependencies
 
-The service starts on `127.0.0.1:4300`. `/health` is process health; `/ready` is 503
-without every required producer/storage/auth binding. Proposed Coordination routes
-are `POST /v2/reception`, `POST /v2/events`, `POST /v2/contributions`,
-`POST /v2/reports` and authenticated `POST /v2/report-downloads`; Platform must
-register their actual mount. D07/D08 use Coordination consumer proposals, not
-frozen backend C13/C14 wire contracts. Ingress uses `Authorization: Bearer <runtime service secret>` (minimum 32
-characters). Backend verification/delegation separately authorizes source actors.
-ACK 202 requires confirmed durable accept. V1 is rejected on new service ingress.
-These routes are not invented backend Authority endpoints.
+`COORDINATION_CONFIG` points to a JSON file validated by `config.ServiceConfig`.
+Start from `config.example.json`. Credentials are environment references, never
+literal config values; the service does not automatically load `.env`.
+`COORDINATION_INGRESS_TOKEN` requires at least 32 characters. Bindings separately
+verify source actors and delegation; this bearer token does not grant business
+authority. No implicit model or production factory is supplied.
 
-`COORDINATION_CONFIG` names a JSON file conforming to `config.ServiceConfig`.
-`config.example.json` intentionally has no factory/model. Secrets are environment
-references, never config values. Dev model overrides are rejected in production;
-provider/model/allowlist/API/output/deadline/input limits are explicit. Provider
-calls have no automatic retry/fallback, each repair uses a separate budget entry,
-and config/budget hashes persist per run. There is no model default and no UI.
-Openbot is still responsible for its runtime compatibility guard and effective
-specialist model; Coordination cannot override the current Bot's global model.
+A trusted `module:factory` assembles `runtime.composition.build` with
+`ProductionBindings`: allocated storage, Authority/event verifier, Reception
+authentication, published agent/group resolver, released OpenBot sessions,
+tool grants, Supervisor model/budget, delegation, worker authentication and
+producer readiness. Factories in `tests` or `support` are rejected.
+`runtime.backend.ProducerOperations` requires evidenced routes and explicit wire
+encode/decode mappings. `runtime.contracts.SchemaValidator` requires all eight
+pinned producer schemas. Interfaces and test fixtures do not establish readiness.
 
-A trusted factory `module:factory` calls `runtime.composition.build` with
-`ProductionBindings` from allocated storage and evidenced backend operations.
-`runtime.backend.ProducerOperations` requires explicit URL, source evidence,
-request/response validators and producer wire encode/decode mappings. There are no
-fake/default Authority decisions or operation-to-URL guesses. The producer must
-supply all eight schemas required by `runtime.contracts.SchemaValidator`.
-Current repo has no frozen mappings for Authority/drafts/releases/C13/C14, so
-production assembly remains blocked. Do not set readiness flags to True based on
-interfaces, source files or test fixtures. Factory paths in `tests`/`support` are
-rejected. Signed proof creation/checking belongs to the backend delegation/tool
-producer, not model output or local bearer authentication.
+The service defaults to `127.0.0.1:4300`. `/health` checks process health;
+`/ready` stays 503 until required bindings are ready. Proposed routes are
+`POST /v2/reception`, `/v2/events`, `/v2/contributions`, `/v2/reports`, and
+`/v2/report-downloads`; Platform owns their deployment mount. Durable acceptance
+must be confirmed before HTTP 202. New ingress rejects V1.
 
-`persistence.sqlite.DevelopmentStore` is **development-only Coordination framework
-storage**, explicitly rejects production and `:memory:`. It stores checkpoint,
-Room/mailbox/tasks/action journal, dedup/inbox/receipts/release pins and quota ledger,
-not ticket/approval/business state. It proves local file/process restart and lease
-semantics, not production allocation, RPO/RTO or remote exactly-once. Platform must
-implement the same ports in its allocated namespace; no shared business SQL or new
-business DB/migration was added.
+Production producer mappings, canonical backend schemas, published agent resolver
+and allocated storage remain external integration dependencies. C13 contribution
+and C14 report ports are consumer proposals, not frozen backend endpoints.
+Unbound workflows fail closed. Do not mark the full business flow ready based on
+local unit tests. Backend owns approvals, staff assignment, QC and ticket closure;
+`RUN_FINISHED` alone is not business completion.
 
-Only the Supervisor journal dispatches outgoing intents. The inbox worker carries
-its lease via request context; stale leases cannot commit state/receipts. Network,
-model, resolver and remote prepare calls are outside Room transactions. Child-run
-prepare IDs are deterministic; backend must guarantee provisioning idempotency.
-Unknown dispatch survives restart and reconciles the **current dispatch_attempt**;
-not_applied requires producer fencing of the old sender. Openbot lacks durable
-lookup/cancel/usage today: lost response blocks replay, cancel records a tombstone
-and returns unconfirmed. RUN_FINISHED never grants business completion. Default
-worker recovery is three attempts five seconds apart (development guard, not a
-product SLA); exhausted jobs remain `blocked`, not ACKed. The worker renews its
-lease during bounded network/model I/O, cancels local execution on renewal loss,
-and cannot resurrect an expired/stolen lease. Shutdown drains for ten
-seconds then cancels local tasks; remote outcomes remain unknown.
+## Checkpoints and recovery
 
-Recovery: inspect durable job/action/attempt metadata in the allocated test store;
-ask producer for the current-attempt receipt/fence. Do not delete journal, rewrite
-wire, generate a new operation ID or reuse an old not_applied proof. Local blocked
-jobs need an authorized operator recovery contract from Platform; no unsafe reset
-endpoint is exposed. Key rotation resolves env-backed credentials at call time;
-request-scoped references must be renewed/reverified by Backend. Logs contain no
-raw exception bodies, credentials or resident history; additional observability
-and retention policy remain EXT-10.
+`persistence.sqlite.DevelopmentStore` is isolated development framework storage;
+it rejects production and `:memory:`. It is not a business database. Platform must
+provide equivalent checkpoint/CAS, records, inbox/lease and receipt semantics.
+Only the Supervisor action journal dispatches outgoing intents. Network/model
+calls and resolver preparation stay outside Room transactions.
 
-D07 accepts only backend-verified staff/evidence and exact contribution hash,
-submits review proposals idempotently and never acts as staff/reviewer/publisher.
-D08 reads existing `agent-report` config/schema/template/prompt plus
-`server/src/reporting/narrative/operations.py`, preserving missing vs zero and
-metric provenance. Those artifacts must be mounted read-only in deployment via a
-trusted repository/artifact root; Docker contains Coordination only. The metric
-catalog retains `proposal_pending_DD07_C14_review`; it is not a published metric
-release. Download rechecks producer permission; no public bucket/local file URL.
-No new scheduler, UI, backend API or migration.
+Worker claims carry a monotonically increasing fencing token and an independent,
+durable `recovery_attempts` count. Normal `Continuation` yields preserve that count.
+Recovery deferrals increment it atomically with the scheduling update; takeover of
+an expired owner also counts abandoned work. The development store uses the
+existing `records` namespace `inbox_recovery_count`, so old stores need no new SQL
+column. Production inbox adapters must expose `claim.recovery_attempts` and support
+`defer(claim, seconds, recovery=True)` with the same fenced atomic semantics.
+Default recovery stops after three attempts, five seconds apart; exhausted jobs
+stay `blocked` and are never successfully ACKed. Counters survive worker restart.
 
-D07/D08 production factory injects `workflow_authority`, `contribution_producer`,
-`report_producer` and `report_artifacts` in `ProductionBindings`. Each route checks
-required producer methods before durable ACK. `runtime/workflow_ports.py` defines
-consumer proposals; schemas and wire examples are documented in
-`docs/teams/dong/workflow-proposals/README.md`. Backend revalidates exact original
-wire, actor, source, generation/version and current worker fence, and issues
-apply-bound delegated credentials. No credentials are stored in inbox payloads.
-Records `put_once` must return True only to the atomic insert owner; identical
-nonowners reconcile rather than applying again. Tool boundary requires producer
-verification of both signed authorization and receipt before forwarding results.
+Unknown remote dispatch must reconcile its original operation/attempt; it must
+not be blindly replayed under a fresh identity. OpenBot durable lookup/cancel/usage
+remains a producer dependency. Inspect the current receipt/fence before operator
+recovery; do not delete the journal or fabricate a not-applied proof. Worker lease
+renewal prevents stale writes, and shutdown drains for ten seconds before local
+cancellation. Remote cancellation requires producer confirmation.
 
-On verified `work.completed`, Supervisor composition asks the C13 producer's
-`staff_request_for_work` for a stable, real-source staff request (or explicit None
-by backend policy), then durably enqueues it before work inbox ACK. Missing trigger
-binding blocks that input when D07 is configured. The independent contribution
-worker requests procedure/actual cost/evidence, submits staff-verified revisions,
-observes backend review/reject/request-change/publish/revoke and never reopens or
-rewrites the Supervisor terminal checkpoint. Corrections need backend permission
-and exact predecessor revision. Actual cost is separate from estimate/model spend.
+V1 checkpoint migration and same-generation processing after `completed` remain
+deferred. Coordinate rollout with Reception/Backend and drain or explicitly
+reconcile old pending requests before enabling V2; do not reinterpret old replies
+as new approvals. Reopened tickets use backend-issued generations.
 
-Report sequence: submit real source/config → prepare authorized snapshot → run
-released Report instance → persist code-owned narrative through H09/H10 → export
-canonical artifact → authenticated download. Snapshot/request/tenant/workspace,
-metric/source lineage, as-of/hash and artifact/config pins are checked. Report
-release must attest report capability and exact Report artifact hash. Model cannot
-change canonical numbers/units/lineage; optional commentary remains advisory.
-Cancel writes a scoped durable tombstone, prevents new run/result publication and
-reconciles until backend cancellation confirmation; remote Openbot termination
-remains unproven without EXT-05. Status retry returns the same receipt for the same
-message ID; use a new real control message for a fresh status query. Download is
-read-only authenticated response requiring artifact and report request identity,
-bounded streaming to 10 MiB with checksum/revoke/deadline checks; producer must
-yield bounded chunks without buffering upstream. bytes-only downloads fail closed.
-Worker routes do not return file bytes or public/local URLs.
+## Report and contribution integration
 
-Offline evaluation now executes actual core safety validators:
+D07 accepts backend-verified staff/source/evidence and keeps actual cost separate
+from model spend. A verified `work.completed` queues the producer's stable staff
+request before inbox ACK. Agent output cannot approve or publish contributions.
+
+D08 binds `report_producer` and verified `ReportArtifacts`. Mount the existing
+Report schema/config/template/prompt and narrative implementation read-only;
+`COORDINATION_REPORT_ROOT` and `COORDINATION_REPORT_HASH` select an approved bundle.
+Room turns and mentions persist its hash in `ActiveOperation`; released sessions
+must attest the same hash. Snapshot/export/download permissions remain producer
+controlled. Downloads are authenticated, bounded and checked for revocation;
+no public bucket or local file URLs are returned.
+
+## Contract regeneration and evaluation
+
+Regenerate the published room contracts using the pinned environment:
 
 ```bash
-agent-coordination/.venv/bin/python -m evaluation.runner --model-pin offline-no-model --release-pin offline-catalog-v1 --output docs/teams/dong/COORDINATION_OFFLINE_EVALUATION.json
+PYTHONPATH=agent-coordination/src agent-coordination/.venv/bin/python agent-coordination/scripts/generate_room_schemas.py
 ```
 
-Eight guard cases have individual pass/fail checks. Output pins dataset and tested
-source hashes, mode, model/release labels, cost unknown and `live_status: NOT RUN`.
-This measures hard guards, not LLM domain selection quality. To score supplied
-recorded decisions, add `--observations <json-file>`: object keyed by dataset case
-ID, each containing `state`, `authority`, `decision`, and explicit `effects` list.
-Capabilities are resolved from the supplied catalog, decisions use the actual
-Planner validator, forbidden effects/missing cases/evidence fail; exit status is
-nonzero on failure. Recorded observations are supplied offline evidence, not live
-verification. Paid evaluation still requires explicit credentials/budget.
+Contract tests read the published JSON files and compare them with runtime models.
+They must not replace published contracts with dynamically generated schemas.
 
-See the three handoff reports under `docs/teams/dong`. V1 migration and accepting
-processing after completed are **deferred**. No deployment or Git mutation beyond
-local file editing is part of these instructions.
+Offline guards exercise the real safety validators, with synthetic business data:
 
-Hardening H0–H6 now has an independent review and executable local/live preflight:
-`docs/teams/dong/COORDINATION_HARDENING_REVIEW.md` and
-`docs/teams/dong/COORDINATION_LIVE_TEST_RUNBOOK.md`. Docker installs the actual
-package; evaluation JSON is included in wheel/sdist. Production ReportArtifacts
-requires an approved expected hash, optionally from COORDINATION_REPORT_ROOT /
-COORDINATION_REPORT_HASH; only tests explicitly use development=True. Deferred
-source ACK belongs to the composed worker after D07 policy decision/enqueue.
+```bash
+agent-coordination/.venv/bin/python -m evaluation.runner --model-pin offline-no-model --release-pin offline-catalog-v1 --output /tmp/coordination-evaluation.json
+```
 
-Monetary limits are not remote billing guarantees. Provider hard_cost_required is
-rejected without tokenizer/price-bound attestation; Openbot monetary-cap budgets
-fail before network because current Bot ignores release output_tokens and has no
-usage receipt. Local call/continuation/deadline limits retain unknown reservations.
-Live examples default approved=false; real execution needs explicit permission
-and confirmed provider budget/account policy, never just a present key. L2/L3
-preflight remains contract-blocked. Ingress token rotation needs process restart;
-provider/released runtime credential references resolve at call time.
+Add `--observations <json-file>` to score supplied recorded decisions: an object
+keyed by dataset case ID, each with `state`, `authority`, `decision`, and an explicit
+`effects` list. Missing cases/evidence, wrong specialties and forbidden effects
+fail with a nonzero exit status. Results pin dataset/source hashes and model/release
+labels, with `live_status: NOT RUN` and unknown cost. Offline guards measure safety,
+not live model quality. `tests/live/l1.py` retains the ProviderModel-to-Planner
+harness with simulated business bindings; paid execution requires explicit
+credentials, budget and authorization. No live command or automatic paid run is
+configured by this package.
 
 ## Vinhomes composition (`src/vinhomes`, added 03/10/2026 by Team Chiến)
 

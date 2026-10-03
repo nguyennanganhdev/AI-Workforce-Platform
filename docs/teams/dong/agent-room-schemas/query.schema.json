@@ -16,6 +16,20 @@
           "title": "Principal Id",
           "type": "string"
         },
+        "initiated_by_user_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Initiated By User Id"
+        },
         "domain_id": {
           "maxLength": 256,
           "minLength": 1,

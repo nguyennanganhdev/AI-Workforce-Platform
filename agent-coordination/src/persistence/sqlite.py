@@ -28,6 +28,7 @@ class Claim:
     fence: int
     expires: float
     payload: dict
+    recovery_attempts: int = 0
 
 
 class DevelopmentStore:
@@ -150,13 +151,20 @@ class DevelopmentStore:
             raise ValueError('invalid lease')
         now = self.clock()
         with self.atomic() as db:
-            row = db.execute("SELECT key,body,fence FROM inbox WHERE status='pending' AND expires<=? ORDER BY rowid LIMIT 1", (now,)).fetchone()
+            row = db.execute("SELECT key,body,fence,owner FROM inbox WHERE status='pending' AND expires<=? ORDER BY rowid LIMIT 1", (now,)).fetchone()
             if not row:
                 return None
-            key, body, fence = row
+            key, body, fence, previous_owner = row
+            recovery = db.execute("SELECT body FROM records WHERE namespace='inbox_recovery_count' AND key=?", (key,)).fetchone()
+            recovery_attempts = json.loads(recovery[0]) if recovery else 0
+            if previous_owner is not None:
+                # An expired owner abandoned an attempt, unlike a normal yield.
+                recovery_attempts += 1
+                db.execute('INSERT OR REPLACE INTO records VALUES (?,?,?)',
+                           ('inbox_recovery_count',key,json.dumps(recovery_attempts)))
             fence += 1
             db.execute('UPDATE inbox SET owner=?,fence=?,expires=? WHERE key=?', (owner,fence,now+seconds,key))
-        return Claim(key,owner,fence,now+seconds,json.loads(body))
+        return Claim(key,owner,fence,now+seconds,json.loads(body),recovery_attempts)
 
     def _check_claim(self, db, claim):
         row = db.execute('SELECT owner,fence,expires,status FROM inbox WHERE key=?', (claim.key,)).fetchone()
@@ -183,17 +191,23 @@ class DevelopmentStore:
             self._check_claim(db,claim)
             db.execute('UPDATE inbox SET expires=0,owner=NULL WHERE key=?', (claim.key,))
 
-    async def defer(self, claim, seconds):
+    async def defer(self, claim, seconds, *, recovery=False):
         if not 0 < seconds <= 300: raise ValueError('invalid retry delay')
         with self.atomic() as db:
             self._check_claim(db,claim)
+            if recovery:
+                db.execute('INSERT OR REPLACE INTO records VALUES (?,?,?)',
+                           ('inbox_recovery_count',claim.key,json.dumps(claim.recovery_attempts+1)))
             db.execute('UPDATE inbox SET expires=?,owner=NULL WHERE key=?',(self.clock()+seconds,claim.key))
 
     async def park(self, claim, reason="recovery_unconfirmed"):
         # Preserve unknown/manual recovery input, never label it successfully ACKed.
         with self.atomic() as db:
             self._check_claim(db,claim)
-            details={'reason':reason,'fence':claim.fence,'kind':claim.payload.get('kind'),
+            attempts = claim.recovery_attempts+1
+            db.execute('INSERT OR REPLACE INTO records VALUES (?,?,?)',
+                       ('inbox_recovery_count',claim.key,json.dumps(attempts)))
+            details={'reason':reason,'fence':claim.fence,'recovery_attempts':attempts,'kind':claim.payload.get('kind'),
                      'input_id':claim.payload.get('wire',{}).get('message_id',claim.payload.get('wire',{}).get('event_id'))}
             db.execute('INSERT OR REPLACE INTO records VALUES (?,?,?)',
                        ('recovery_blocked',claim.key,json.dumps(details,sort_keys=True)))
