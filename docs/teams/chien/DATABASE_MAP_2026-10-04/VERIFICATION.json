@@ -1,0 +1,12 @@
+{
+  "postgres_tables": 193,
+  "postgres_columns": 2169,
+  "foreign_keys": 682,
+  "full_svg_nodes": 193,
+  "full_svg_edges": 682,
+  "sqlite_tables": 9,
+  "local_links_checked": 10,
+  "group_counts_verified": true,
+  "visual_review": "Four focused PNGs inspected; full SVG topology checked against FK catalog.",
+  "access": "Catalog/SQLite inspected read-only; no database schema/data mutations."
+}

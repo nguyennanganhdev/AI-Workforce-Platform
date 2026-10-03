@@ -1,4 +1,6 @@
-# Phan Dũng — Bàn giao tổng PD01–PD08 Python
+# Phan Dũng — Baseline graph/Report PD01–PD08 (bản gộp)
+
+> Đây là baseline lịch sử ngày 30/09, không phải trạng thái runtime hiện tại. Xem [tiến độ đã đối chiếu ngày 04/10](../../../chien/REPO_RESEARCH_2026-10-04/TEAM_PLAN_PROGRESS.md). Tám handoff riêng và nhật ký chuyển Python đã gộp vào tài liệu này.
 
 > Cập nhật assess_request: topology business graph `pd-workflow-python-2`, RequestPolicyPort bắt buộc khi chạy; hai capability self-help/emergency chưa bind backend. Xem [thiết kế và contract mới](ASSESS_REQUEST.md).
 
@@ -37,7 +39,7 @@ Không có production mock/default fake model/tool/checkpointer.
 
 Chuyển Python ban đầu có 27 files thay 22 TS files; lượt assess_request thêm
 assessment.py và test_assessment.py. ASSESS_REQUEST.md liệt kê thay đổi hiện tại.
-Bảng đối chiếu file đã xóa ở [PYTHON_MIGRATION](PYTHON_MIGRATION.md).
+Nhật ký chuyển 22 file TypeScript sang Python là lịch sử; không import lại file TS hoặc tự relabel checkpoint cũ. Có thể tra bản trước dọn trong Git/backup.
 Không sửa backend/HTTP/auth/persistence, DB/migration/UI/Supervisor/entrypoint/worker,
 shared contracts hoặc manifest/lockfile của owner khác.
 
@@ -79,5 +81,15 @@ examples chạy thủ công. Owner guard không thay auth; timeout không chứn
 Thiết kế: [WORKFLOW_DESIGN](WORKFLOW_DESIGN.md).
 Requests: [PYTHON_RUNTIME_INTEGRATION](../../requests/phan-dung/PYTHON_RUNTIME_INTEGRATION.md),
 [PD03_PD08_INTEGRATION](../../requests/phan-dung/PD03_PD08_INTEGRATION.md).
-Handoff riêng: [PD01](PD01.md), [PD02](PD02.md), [PD03](PD03.md), [PD04](PD04.md),
-[PD05](PD05.md), [PD06](PD06.md), [PD07](PD07.md), [PD08](PD08.md).
+## Những ràng buộc từ handoff riêng cần giữ
+
+- PD01: `run/resume/read` async, `stream` async iterator; dependency do runtime inject. Reported/confirmed/inferred tách biệt; backend xác nhận dữ kiện. Checkpoint input/key trước side effect; accepted/unknown giữ pending và đối soát cùng key/body. Không tự migrate/reset checkpoint TS sang Python.
+- PD02: emergency/policy đi trước knowledge; nguồn đủ có citation tới version/chunk, nguồn thiếu không tự suy ra cần nhân viên. Backend xác minh identity/scope; active ticket không tạo draft thứ hai.
+- PD03: draft có stable key; căn hộ/hồ sơ từ backend, không lấy model làm quyền. Thiếu hoặc nhiều căn hộ phải hỏi/xác minh; mất ACK không tạo lại mutation. Emergency không chờ ảnh.
+- PD04: backend giữ official triage/ticket version và chọn destination/workspace/team. Scope/version đổi phải resolve lại. Payload V1 của baseline không thay contract V2 hiện tại.
+- PD05: persisted ACK → đăng ký wait → interrupt; kiểm tenant/binding/ticket/generation/version/correlation khi resume. Hủy accepted chưa nghĩa đã hủy; event completed không tự đóng ticket. RAM-saver test không chứng minh restart nhiều tiến trình.
+- PD06: 12 eval deterministic dùng fake model/ports là consumer fixtures, không phải điểm NLP/quality/latency/cost của model thật.
+- PD07: config Report strict allowlist, scope/grants, kỳ `[from,to)`, timezone và metric/template versions. Config/template baseline là proposal; KPI do code/backend tính.
+- PD08: narrative/layout kiểm source/lineage/grants/version, finite values và units; missing khác zero, empty khác query error. HTML preview synthetic/escaped không thay DOCX render/export/download được kiểm quyền.
+
+Thiết kế node/contract ở WORKFLOW_DESIGN và ASSESS_REQUEST; yêu cầu chưa nghiệm thu giữ trong requests và phân công team.

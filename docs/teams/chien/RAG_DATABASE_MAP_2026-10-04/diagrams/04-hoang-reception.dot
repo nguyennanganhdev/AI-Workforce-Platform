@@ -1,0 +1,22 @@
+digraph G {
+graph [rankdir=TB, bgcolor="#ffffff", pad="0.5", nodesep="0.65", ranksep="0.85", splines=polyline, outputorder=edgesfirst, fontname="Segoe UI", fontsize=23, labelloc=t, label="RECEPTION GRAPH / LOOP · BACKEND VÀ RAG"];
+node [shape=plain, fontname="Segoe UI", fontsize=16];
+edge [fontname="Segoe UI", fontsize=12, color="#53657b", penwidth=1.4, arrowsize=0.7];
+"resident" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="168" BGCOLOR="#e8edf2" ALIGN="LEFT"><B>Cư dân</B></TD></TR><TR><TD WIDTH="168" ALIGN="LEFT">Câu hỏi trong chat</TD></TR></TABLE>>];
+"hoang" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="360" BGCOLOR="#e4eeff" ALIGN="LEFT"><B>Hoàng · Reception</B></TD></TR><TR><TD WIDTH="360" ALIGN="LEFT">graph: knowledge.py / loop: tools.py</TD></TR><TR><TD WIDTH="360" ALIGN="LEFT"><FONT POINT-SIZE="13">topK=5 · HTTP timeout 15s</FONT></TD></TR><TR><TD WIDTH="360" ALIGN="LEFT"><FONT POINT-SIZE="13">Không đủ nguồn → insufficient</FONT></TD></TR></TABLE>>];
+"chien" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="251" BGCOLOR="#e0f5eb" ALIGN="LEFT"><B>Chiến · Authority</B></TD></TR><TR><TD WIDTH="251" ALIGN="LEFT">knowledge-authorization</TD></TR><TR><TD WIDTH="251" ALIGN="LEFT"><FONT POINT-SIZE="13">Grant + nơi ở verified + binding/run</FONT></TD></TR><TR><TD WIDTH="251" ALIGN="LEFT"><FONT POINT-SIZE="13">Trả AuthorizedContext</FONT></TD></TR></TABLE>>];
+"quang" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="274" BGCOLOR="#fff1d8" ALIGN="LEFT"><B>Quang · RAG</B></TD></TR><TR><TD WIDTH="274" ALIGN="LEFT">POST /internal/knowledge/search</TD></TR><TR><TD WIDTH="274" ALIGN="LEFT"><FONT POINT-SIZE="13">Lọc quyền → vector + keyword → RRF</FONT></TD></TR><TR><TD WIDTH="274" ALIGN="LEFT"><FONT POINT-SIZE="13">similarity ≥ 0.35; không tạo câu trả lời</FONT></TD></TR></TABLE>>];
+"passages" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="264" BGCOLOR="#fff1d8" ALIGN="LEFT"><B>Passages + citations</B></TD></TR><TR><TD WIDTH="264" ALIGN="LEFT">documentId · versionId · chunkId</TD></TR></TABLE>>];
+"llm" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="370" BGCOLOR="#e4eeff" ALIGN="LEFT"><B>Hoàng · Model viết câu trả lời</B></TD></TR><TR><TD WIDTH="370" ALIGN="LEFT">Chỉ dùng các passages đã lấy</TD></TR><TR><TD WIDTH="370" ALIGN="LEFT"><FONT POINT-SIZE="13">graph: answer / used · loop: reply / sources</FONT></TD></TR><TR><TD WIDTH="370" ALIGN="LEFT"><FONT POINT-SIZE="13">Nêu nguồn / chưa xác minh</FONT></TD></TR></TABLE>>];
+"reply" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="360" BGCOLOR="#e8edf2" ALIGN="LEFT"><B>Backend ghi phản hồi cho cư dân</B></TD></TR><TR><TD WIDTH="360" ALIGN="LEFT">Nội dung + nguồn từ lượt retrieval</TD></TR></TABLE>>];
+"chat_backend" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="310" BGCOLOR="#e0f5eb" ALIGN="LEFT"><B>Chiến · Backend hội thoại</B></TD></TR><TR><TD WIDTH="310" ALIGN="LEFT">Commit message → cấp delegation</TD></TR></TABLE>>];
+"resident" -> "chat_backend" [label="gửi tin vào backend",style="dashed",color="#3268a8"];
+"chat_backend" -> "hoang" [label="gọi /v1/turns",style="dashed",color="#3268a8"];
+"hoang" -> "quang" [label="delegation token",style="dashed",color="#3268a8"];
+"quang" -> "chien" [label="1. xác minh trước retrieval",style="dashed",color="#3268a8"];
+"chien" -> "quang" [label="2. AuthorizedContext",style="dashed",color="#3268a8"];
+"quang" -> "passages" [label="3. retrieve → hits đã lọc",style="dashed",color="#3268a8"];
+"passages" -> "llm" [label="nội dung có nguồn",style="dashed",color="#3268a8"];
+"llm" -> "reply" [label="tổng hợp",style="dashed",color="#3268a8"];
+"legend" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="462" BGCOLOR="#f3f5f8" ALIGN="LEFT"><B>CÁCH ĐỌC</B></TD></TR><TR><TD WIDTH="462" ALIGN="LEFT">Sơ đồ luồng API/ứng dụng; không mô tả FK riêng của Hoàng.</TD></TR><TR><TD WIDTH="462" ALIGN="LEFT"><FONT POINT-SIZE="13">Snapshot 03/10/2026 · code kiểm ngày 04/10</FONT></TD></TR><TR><TD WIDTH="462" ALIGN="LEFT"><FONT POINT-SIZE="13">FK vẽ CHA → CON (con giữ khóa ngoại)</FONT></TD></TR><TR><TD WIDTH="462" ALIGN="LEFT"><FONT POINT-SIZE="13">Nét đứt: bước ứng dụng / API, không phải FK</FONT></TD></TR></TABLE>>];
+}

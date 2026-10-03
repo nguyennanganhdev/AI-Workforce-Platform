@@ -1,0 +1,509 @@
+{
+  ".claude": {
+    "files": 2,
+    "bytes": 34445,
+    "readable_text": 2,
+    "text_lines": 505,
+    "extensions": {
+      ".md": 2
+    }
+  },
+  "(root)": {
+    "files": 17,
+    "bytes": 772756,
+    "readable_text": 17,
+    "text_lines": 9115,
+    "extensions": {
+      "(none)": 5,
+      ".example": 1,
+      ".md": 3,
+      ".json": 4,
+      ".lock": 1,
+      ".toml": 1,
+      ".yml": 1,
+      ".txt": 1
+    }
+  },
+  ".github": {
+    "files": 10,
+    "bytes": 83843,
+    "readable_text": 10,
+    "text_lines": 1672,
+    "extensions": {
+      "(none)": 1,
+      ".json": 1,
+      ".md": 1,
+      ".yml": 7
+    }
+  },
+  "agent-adk": {
+    "files": 5,
+    "bytes": 12004,
+    "readable_text": 5,
+    "text_lines": 304,
+    "extensions": {
+      "(none)": 1,
+      ".txt": 2,
+      ".py": 2
+    }
+  },
+  "agent-ag2": {
+    "files": 5,
+    "bytes": 10977,
+    "readable_text": 5,
+    "text_lines": 311,
+    "extensions": {
+      "(none)": 1,
+      ".txt": 2,
+      ".py": 2
+    }
+  },
+  "agent-agno": {
+    "files": 5,
+    "bytes": 11509,
+    "readable_text": 5,
+    "text_lines": 306,
+    "extensions": {
+      "(none)": 1,
+      ".txt": 2,
+      ".py": 2
+    }
+  },
+  "agent-bot": {
+    "files": 8,
+    "bytes": 41426,
+    "readable_text": 8,
+    "text_lines": 972,
+    "extensions": {
+      "(none)": 1,
+      ".lock": 1,
+      ".json": 1,
+      ".ts": 5
+    }
+  },
+  "agent-claude-sdk": {
+    "files": 8,
+    "bytes": 42386,
+    "readable_text": 8,
+    "text_lines": 1064,
+    "extensions": {
+      "(none)": 1,
+      ".txt": 2,
+      ".py": 5
+    }
+  },
+  "agent-computer": {
+    "files": 45,
+    "bytes": 370342,
+    "readable_text": 45,
+    "text_lines": 8982,
+    "extensions": {
+      "(none)": 1,
+      ".lock": 1,
+      ".json": 2,
+      ".ts": 41
+    }
+  },
+  "agent-coordination": {
+    "files": 143,
+    "bytes": 739190,
+    "readable_text": 143,
+    "text_lines": 14845,
+    "extensions": {
+      "(none)": 9,
+      ".example": 1,
+      ".in": 1,
+      ".md": 2,
+      ".json": 2,
+      ".toml": 1,
+      ".ini": 1,
+      ".lock": 1,
+      ".py": 124,
+      ".ps1": 1
+    }
+  },
+  "agent-crewai": {
+    "files": 6,
+    "bytes": 42727,
+    "readable_text": 6,
+    "text_lines": 1188,
+    "extensions": {
+      "(none)": 1,
+      ".txt": 2,
+      ".py": 3
+    }
+  },
+  "agent-langgraph-agui": {
+    "files": 11,
+    "bytes": 85087,
+    "readable_text": 11,
+    "text_lines": 2249,
+    "extensions": {
+      "(none)": 1,
+      ".txt": 2,
+      ".py": 8
+    }
+  },
+  "agent-langgraph": {
+    "files": 17,
+    "bytes": 89568,
+    "readable_text": 17,
+    "text_lines": 2152,
+    "extensions": {
+      "(none)": 1,
+      ".lock": 1,
+      ".json": 1,
+      ".ts": 14
+    }
+  },
+  "agent-langroid": {
+    "files": 7,
+    "bytes": 21810,
+    "readable_text": 7,
+    "text_lines": 550,
+    "extensions": {
+      "(none)": 1,
+      ".txt": 2,
+      ".py": 4
+    }
+  },
+  "agent-llamaindex": {
+    "files": 5,
+    "bytes": 10578,
+    "readable_text": 5,
+    "text_lines": 301,
+    "extensions": {
+      "(none)": 1,
+      ".txt": 2,
+      ".py": 2
+    }
+  },
+  "agent-mastra": {
+    "files": 4,
+    "bytes": 20239,
+    "readable_text": 4,
+    "text_lines": 613,
+    "extensions": {
+      "(none)": 1,
+      ".json": 1,
+      ".ts": 2
+    }
+  },
+  "agent-microsoft": {
+    "files": 5,
+    "bytes": 11240,
+    "readable_text": 5,
+    "text_lines": 297,
+    "extensions": {
+      "(none)": 1,
+      ".txt": 2,
+      ".py": 2
+    }
+  },
+  "agent-pydantic-ai": {
+    "files": 5,
+    "bytes": 10608,
+    "readable_text": 5,
+    "text_lines": 283,
+    "extensions": {
+      "(none)": 1,
+      ".txt": 2,
+      ".py": 2
+    }
+  },
+  "agent-reception": {
+    "files": 89,
+    "bytes": 511005,
+    "readable_text": 89,
+    "text_lines": 12406,
+    "extensions": {
+      ".example": 1,
+      ".md": 2,
+      ".lock": 1,
+      ".toml": 1,
+      ".json": 4,
+      ".txt": 2,
+      ".ps1": 1,
+      "(none)": 5,
+      ".py": 59,
+      ".ts": 13
+    }
+  },
+  "agent-report": {
+    "files": 13,
+    "bytes": 23343,
+    "readable_text": 13,
+    "text_lines": 463,
+    "extensions": {
+      ".py": 3,
+      ".json": 5,
+      ".html": 4,
+      ".md": 1
+    }
+  },
+  "agent-strands": {
+    "files": 5,
+    "bytes": 8325,
+    "readable_text": 5,
+    "text_lines": 248,
+    "extensions": {
+      "(none)": 1,
+      ".txt": 2,
+      ".py": 2
+    }
+  },
+  "app": {
+    "files": 493,
+    "bytes": 3919380,
+    "readable_text": 493,
+    "text_lines": 96924,
+    "extensions": {
+      ".md": 2,
+      ".json": 3,
+      ".html": 1,
+      ".ts": 214,
+      ".mjs": 2,
+      ".js": 1,
+      ".tsx": 264,
+      ".css": 6
+    }
+  },
+  "assets": {
+    "files": 2,
+    "bytes": 96870,
+    "readable_text": 2,
+    "text_lines": 222,
+    "extensions": {
+      ".svg": 2
+    }
+  },
+  "changes": {
+    "files": 12,
+    "bytes": 42293,
+    "readable_text": 12,
+    "text_lines": 470,
+    "extensions": {
+      ".md": 12
+    }
+  },
+  "charts": {
+    "files": 33,
+    "bytes": 191673,
+    "readable_text": 33,
+    "text_lines": 3952,
+    "extensions": {
+      "(none)": 1,
+      ".lock": 1,
+      ".yaml": 29,
+      ".md": 1,
+      ".tpl": 1
+    }
+  },
+  "desktop": {
+    "files": 114,
+    "bytes": 5083829,
+    "readable_text": 96,
+    "text_lines": 62996,
+    "extensions": {
+      "(none)": 2,
+      ".md": 4,
+      ".lock": 2,
+      ".html": 1,
+      ".json": 11,
+      ".ts": 8,
+      ".ps1": 4,
+      ".toml": 1,
+      ".rs": 37,
+      ".png": 15,
+      ".icns": 1,
+      ".ico": 1,
+      ".yml": 1,
+      ".tsx": 14,
+      ".svg": 11,
+      ".css": 1
+    }
+  },
+  "docker": {
+    "files": 27,
+    "bytes": 9588,
+    "readable_text": 27,
+    "text_lines": 188,
+    "extensions": {
+      "(none)": 24,
+      ".sh": 3
+    }
+  },
+  "docs": {
+    "files": 94,
+    "bytes": 1112310,
+    "readable_text": 94,
+    "text_lines": 17691,
+    "extensions": {
+      ".md": 77,
+      "(none)": 10,
+      ".json": 7
+    }
+  },
+  "docx": {
+    "files": 1,
+    "bytes": 35025,
+    "readable_text": 1,
+    "text_lines": 472,
+    "extensions": {
+      ".md": 1
+    }
+  },
+  "examples": {
+    "files": 28,
+    "bytes": 159461,
+    "readable_text": 28,
+    "text_lines": 2043,
+    "extensions": {
+      ".yaml": 16,
+      ".md": 2,
+      ".lock": 2,
+      ".json": 2,
+      ".ts": 2,
+      "(none)": 2,
+      ".toml": 1,
+      ".py": 1
+    }
+  },
+  "my-docs": {
+    "files": 14,
+    "bytes": 264661,
+    "readable_text": 13,
+    "text_lines": 3153,
+    "extensions": {
+      ".md": 13,
+      ".docx": 1
+    }
+  },
+  "resident-app": {
+    "files": 41,
+    "bytes": 343436,
+    "readable_text": 41,
+    "text_lines": 9696,
+    "extensions": {
+      ".md": 10,
+      ".yaml": 1,
+      ".html": 1,
+      ".json": 2,
+      ".svg": 1,
+      ".ts": 13,
+      ".tsx": 10,
+      ".css": 3
+    }
+  },
+  "scripts": {
+    "files": 13,
+    "bytes": 144074,
+    "readable_text": 13,
+    "text_lines": 3216,
+    "extensions": {
+      ".ts": 9,
+      ".py": 1,
+      ".sh": 3
+    }
+  },
+  "server": {
+    "files": 583,
+    "bytes": 12941476,
+    "readable_text": 583,
+    "text_lines": 359277,
+    "extensions": {
+      "(none)": 8,
+      ".toml": 1,
+      ".ts": 522,
+      ".sql": 17,
+      ".md": 1,
+      ".json": 27,
+      ".py": 6,
+      ".mjs": 1
+    }
+  },
+  "services": {
+    "files": 194,
+    "bytes": 1477188,
+    "readable_text": 194,
+    "text_lines": 30698,
+    "extensions": {
+      ".cmd": 2,
+      ".md": 5,
+      ".ini": 1,
+      ".example": 1,
+      ".yml": 1,
+      ".py": 162,
+      ".mako": 1,
+      ".toml": 1,
+      ".sql": 6,
+      ".ps1": 8,
+      ".js": 2,
+      ".css": 2,
+      ".html": 2
+    }
+  },
+  "shared": {
+    "files": 19,
+    "bytes": 64778,
+    "readable_text": 19,
+    "text_lines": 1300,
+    "extensions": {
+      ".ts": 16,
+      "(none)": 1,
+      ".css": 1,
+      ".tsx": 1
+    }
+  },
+  "spire": {
+    "files": 2,
+    "bytes": 2180,
+    "readable_text": 2,
+    "text_lines": 73,
+    "extensions": {
+      ".conf": 2
+    }
+  },
+  "supervisor": {
+    "files": 19,
+    "bytes": 87032,
+    "readable_text": 19,
+    "text_lines": 2008,
+    "extensions": {
+      "(none)": 2,
+      ".lock": 1,
+      ".json": 2,
+      ".ts": 14
+    }
+  },
+  "tasks": {
+    "files": 2,
+    "bytes": 24920,
+    "readable_text": 2,
+    "text_lines": 317,
+    "extensions": {
+      ".md": 2
+    }
+  },
+  "tests": {
+    "files": 7,
+    "bytes": 36199,
+    "readable_text": 7,
+    "text_lines": 994,
+    "extensions": {
+      ".ts": 6,
+      "(none)": 1
+    }
+  },
+  "worker": {
+    "files": 9,
+    "bytes": 16009,
+    "readable_text": 9,
+    "text_lines": 414,
+    "extensions": {
+      ".json": 2,
+      ".ts": 6,
+      "(none)": 1
+    }
+  }
+}

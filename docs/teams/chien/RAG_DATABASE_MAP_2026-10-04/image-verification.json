@@ -1,0 +1,83 @@
+[
+  {
+    "name": "00-overview",
+    "width": 2472,
+    "height": 3233,
+    "warnings": [
+      {
+        "message": "Warning: no hard-coded metrics for 'Segoe UI'.  Falling back to 'Times' metrics",
+        "level": "warning"
+      },
+      {
+        "message": "Warning: no value for width of non-ASCII character 194. Falling back to width of space character",
+        "level": "warning"
+      }
+    ]
+  },
+  {
+    "name": "01-quang-ingestion",
+    "width": 3342,
+    "height": 4300,
+    "warnings": [
+      {
+        "message": "Warning: no hard-coded metrics for 'Segoe UI'.  Falling back to 'Times' metrics",
+        "level": "warning"
+      }
+    ]
+  },
+  {
+    "name": "02-quang-retrieval",
+    "width": 3994,
+    "height": 3233,
+    "warnings": [
+      {
+        "message": "Warning: no hard-coded metrics for 'Segoe UI'.  Falling back to 'Times' metrics",
+        "level": "warning"
+      }
+    ]
+  },
+  {
+    "name": "03-chien-authorization",
+    "width": 4989,
+    "height": 3150,
+    "warnings": [
+      {
+        "message": "Warning: no hard-coded metrics for 'Segoe UI'.  Falling back to 'Times' metrics",
+        "level": "warning"
+      }
+    ]
+  },
+  {
+    "name": "04-hoang-reception",
+    "width": 2658,
+    "height": 4322,
+    "warnings": [
+      {
+        "message": "Warning: no hard-coded metrics for 'Segoe UI'.  Falling back to 'Times' metrics",
+        "level": "warning"
+      }
+    ]
+  },
+  {
+    "name": "05-dong-runtime-memory",
+    "width": 5825,
+    "height": 3464,
+    "warnings": [
+      {
+        "message": "Warning: no hard-coded metrics for 'Segoe UI'.  Falling back to 'Times' metrics",
+        "level": "warning"
+      }
+    ]
+  },
+  {
+    "name": "06-data-bql-learning",
+    "width": 4700,
+    "height": 4783,
+    "warnings": [
+      {
+        "message": "Warning: no hard-coded metrics for 'Segoe UI'.  Falling back to 'Times' metrics",
+        "level": "warning"
+      }
+    ]
+  }
+]

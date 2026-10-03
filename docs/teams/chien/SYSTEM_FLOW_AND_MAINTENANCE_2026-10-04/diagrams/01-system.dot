@@ -1,0 +1,36 @@
+digraph System {
+  graph [rankdir=TB, bgcolor="#f8fafc", pad="0.35", nodesep="0.5", ranksep="0.7", fontname="Segoe UI", fontsize=24, label="AI WORKFORCE / VINHOMES — KIẾN TRÚC ĐÍCH\nĐường ứng dụng; xem README để biết trạng thái đã nối", labelloc=t];
+  node [shape=box, style="rounded,filled", fontname="Segoe UI", fontsize=16, color="#cbd5e1", fillcolor="white", margin="0.35,0.20"];
+  edge [fontname="Segoe UI", fontsize=12, color="#64748b", arrowsize=0.7];
+  ui [label="Cư dân • BQL • Nhân viên\nResident / Operations / Builder"];
+  gateway [label="Gateway + đăng nhập\nChiến", fillcolor="#dbeafe"];
+  backend [label="Backend nghiệp vụ\nTicket • quyền • duyệt • công việc\nChiến", fillcolor="#dbeafe"];
+  pg [label="PostgreSQL nghiệp vụ\nState chính thức + audit"];
+  files [label="File API → S3 / MinIO\nẢnh • tài liệu • report"];
+  reception [label="Reception\nHỏi / trả lời / bàn giao\nHoàng", fillcolor="#ffedd5"];
+  rag [label="RAG + tri thức đã duyệt\nScope / ACL / citations\nQuang", fillcolor="#ede9fe"];
+  coord [label="Supervisor + Room theo ticket\nTask Board • Mailbox • Context\nĐông", fillcolor="#ccfbf1"];
+  agents [label="Specialist / Report agent\nRelease được pin theo session", fillcolor="#ccfbf1"];
+  tools [label="Tool gateway\nRun + grant + version + receipt\nChiến / Quang / Phái", fillcolor="#dbeafe"];
+  factory [label="Agent Factory\nTạo spec / prompt / hash\nPhái", fillcolor="#fce7f3"];
+  release [label="Backend: kiểm tra + review\nPublish agent version / release\nChiến", fillcolor="#dbeafe"];
+  jobs [label="Dispatch / SLA / outbox / jobs\nThông báo và tác vụ bền vững"];
+  ui -> gateway;
+  gateway -> backend;
+  gateway -> factory [label="Catalogue có quyền"];
+  factory -> release [label="Artifact đã verify"];
+  backend -> reception [label="Message +\ndelegation"];
+  reception -> backend [label="Tool qua\nAPI"];
+  reception -> rag [label="Tra nguồn"];
+  backend -> coord [label="V2 + binding / run"];
+  coord -> backend [label="Intent / kết quả"];
+  coord -> agents [label="Giao lượt + context"];
+  release -> agents [label="Release đã publish"];
+  agents -> tools;
+  tools -> backend;
+  tools -> rag;
+  backend -> pg;
+  backend -> files;
+  backend -> jobs;
+  {rank=same; reception; coord; factory;}
+}

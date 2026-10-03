@@ -69,9 +69,9 @@ process restart, lost response/early event/two replicas/revoke/reroute; Report r
 grants/snapshot sources → DOCX/export/download với quyền tải lại. Unit/consumer test
 182 pass ở lượt assess_request không thay các kiểm chứng integration này.
 
-Các handoff PD01–PD08 và PD_ALL_VERIFICATION hiện mô tả code/API Python; lệnh pytest
-chạy từ repo root. Bảng TS → Python trong PYTHON_MIGRATION chỉ là lịch sử chuyển file,
-không yêu cầu owner import lại các file TS đã xóa.
+Baseline PD01–PD08 và các ràng buộc chuyển Python được gộp tại
+`handoffs/phan-dung/PD_ALL_VERIFICATION.md`; lệnh pytest chạy từ repo root.
+Không yêu cầu owner import lại các file TS đã xóa.
 
 Hai semantic capabilities bổ sung process_self_help/escalate_emergency và RequestPolicyPort
 bắt buộc được mô tả trong [ASSESS_REQUEST_POLICY_SELF_HELP](ASSESS_REQUEST_POLICY_SELF_HELP.md).
