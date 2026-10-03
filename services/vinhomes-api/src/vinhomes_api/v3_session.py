@@ -88,7 +88,8 @@ async def ensure_session(db: AsyncConnection, actor: str, ticket_id: UUID) -> No
 async def _session(db: AsyncConnection, ticket_id: UUID, *, lock: bool = False):
     row = await db.execute(text(f"""
         select tm.id,tm.status,tm.state_version,tm.channel_id,tm.created_at,tm.finished_at,
-          tm.shared_state->'closure' as closure,a.name as supervisor_name
+          tm.shared_state->'closure' as closure,a.name as supervisor_name,
+          tm.shared_state->'supervisor' as supervisor,tm.shared_state->'runtime' as runtime
         from agent_teams tm join agents a on a.id=tm.supervisor_agent_id and a.tenant_id=tm.tenant_id
         where tm.ticket_id=:ticket and tm.tenant_id={TENANT}
         order by tm.created_at desc limit 1 {"for update of tm" if lock else ""}
@@ -126,8 +127,107 @@ async def ticket_session(ticket_id: UUID, scope: Scope) -> dict[str, object]:
     if session is None:
         destination = await session_destination(scope[0], ticket["management_unit_id"])
         return {"session": None, "missing": destination.get("missing")}
-    return {"session": dict(session),
+    return {"session": dict(session), "room": await _room(scope[0], session["id"]),
             "awaitingManagementApproval": ticket["status"] == "closed" and session["status"] != "completed"}
+
+
+async def _room(db: AsyncConnection, team_id: UUID) -> dict[str, object]:
+    """What the Supervisor's room did for this session: who was invited, their tasks and their replies."""
+    members = await db.execute(text(f"""
+        select a.name from team_members m join agents a on a.id=m.agent_id and a.tenant_id=m.tenant_id
+        where m.team_id=:team and m.tenant_id={TENANT} and m.member_kind='specialist' order by m.created_at
+    """), {"team": team_id})
+    tasks = await db.execute(text(f"""
+        select k.description,k.status,a.name as agent from team_tasks k
+        join team_members m on m.id=k.assigned_member_id and m.tenant_id=k.tenant_id
+        join agents a on a.id=m.agent_id and a.tenant_id=m.tenant_id
+        where k.team_id=:team and k.tenant_id={TENANT} order by k.created_at
+    """), {"team": team_id})
+    # A mirrored reply is stored as "<ticket code>: <reply>"; the ticket is already on screen.
+    replies = await db.execute(text(f"""
+        select m.id,a.name as agent,substr(m.body->>'text',position(': ' in m.body->>'text')+2) as text,m.created_at
+        from messages m join agents a on a.id=m.sender_agent_id and a.tenant_id=m.tenant_id
+        where m.tenant_id={TENANT} and m.body->>'sessionId'=:team and m.body->>'kind'='specialist_reply'
+        order by m.seq
+    """), {"team": str(team_id)})
+    # What management asked an agent inside this session, and whether it was answered yet.
+    questions = await db.execute(text(f"""
+        select m.id,a.name as agent,substr(m.body->>'text',position(': ' in m.body->>'text')+2) as text,
+          mm.status,m.created_at
+        from messages m
+        join message_mentions mm on mm.message_id=m.id and mm.tenant_id=m.tenant_id
+        join agents a on a.id=mm.agent_id and a.tenant_id=mm.tenant_id
+        where m.tenant_id={TENANT} and m.body->>'sessionId'=:team and m.body->>'kind'='session_question'
+        order by m.seq
+    """), {"team": str(team_id)})
+    return {"members": [row[0] for row in members], "tasks": [dict(row) for row in tasks.mappings()],
+            "replies": [dict(row) for row in replies.mappings()],
+            "questions": [dict(row) for row in questions.mappings()]}
+
+
+class SessionQuestion(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+    client_message_id: str = Field(min_length=1, max_length=160)
+    # Needed only when the session has more than one specialist.
+    agent_id: str | None = Field(default=None, max_length=160)
+
+
+@router.post("/tickets/{ticket_id}/session/questions", status_code=201,
+             summary="Management asks a specialist of this ticket's session a question")
+async def ask_session_agent(ticket_id: UUID, body: SessionQuestion, scope: Scope) -> dict[str, object]:
+    """Stored as a message of the management room and queued for the Supervisor's room of this session.
+
+    The agent answers inside the session, with the ticket and the room's exchange as its context.
+    The backend never runs the agent; the Coordination runtime picks the question up.
+    """
+    db, actor, _ = scope
+    ticket = await visible_ticket(scope, ticket_id, lock=True)
+    if not await management_access(scope, ticket):
+        raise HTTPException(403, "Management grant for this ticket is required")
+    session = await _session(db, ticket_id, lock=True)
+    if session is None:
+        raise HTTPException(404, "This ticket has no coordination session")
+    if session["status"] in ("completed", "failed", "cancelled"):
+        raise HTTPException(409, "This session has finished")
+    specialists = (await db.execute(text(f"""
+        select m.agent_id from team_members m where m.team_id=:team and m.tenant_id={TENANT}
+          and m.member_kind='specialist' and m.status='active' order by m.created_at
+    """), {"team": session["id"]})).scalars().all()
+    agent = body.agent_id or (specialists[0] if len(specialists) == 1 else None)
+    if agent is None or agent not in specialists:
+        raise HTTPException(422, "Name a specialist that takes part in this session")
+    code = (await db.execute(text("select code from tickets where id=:id"), {"id": ticket_id})).scalar_one()
+    content = {"text": f"{code}: {body.text}", "sessionId": str(session["id"]),
+               "kind": "session_question", "mentionAgentId": agent}
+    previous = (await db.execute(text("""
+        select id,body from messages where channel_id=:room and sender_user_id=:actor and client_message_id=:client
+    """), {"room": session["channel_id"], "actor": actor, "client": body.client_message_id})).mappings().first()
+    if previous is not None:
+        if previous["body"] != content:
+            raise HTTPException(409, "client_message_id already used with different content")
+        return {"id": str(previous["id"]), "status": "queued", "replayed": True}
+    if (await db.execute(text(f"""
+        select 1 from messages m join message_mentions mm on mm.message_id=m.id and mm.tenant_id=m.tenant_id
+        where m.tenant_id={TENANT} and m.body->>'sessionId'=:team and m.body->>'kind'='session_question'
+          and mm.status in ('queued','running')
+    """), {"team": str(session["id"])})).first():
+        # The room runs one turn at a time; a second question waits for the first answer.
+        raise HTTPException(409, "A question of this session is still waiting for its answer")
+    seq = (await db.execute(text("""
+        update channels set next_message_seq=next_message_seq+1,last_message=:preview,last_message_at=now(),updated_at=now()
+        where id=:room returning next_message_seq-1
+    """), {"room": session["channel_id"], "preview": content["text"][:200]})).scalar_one()
+    message = (await db.execute(text(f"""
+        insert into messages(tenant_id,channel_id,seq,sender_kind,sender_user_id,visibility,body,client_message_id)
+        values({TENANT},:room,:seq,'user',:actor,'room',cast(:body as jsonb),:client) returning id
+    """), {"room": session["channel_id"], "seq": seq, "actor": actor, "body": json.dumps(content, ensure_ascii=False),
+           "client": body.client_message_id})).scalar_one()
+    await db.execute(text(f"""
+        insert into message_mentions(tenant_id,message_id,agent_id,requested_by,status)
+        values({TENANT},:message,:agent,:actor,'queued')
+    """), {"message": message, "agent": agent, "actor": actor})
+    await audit(db, actor, "team.agent_asked", "agent_team", str(session["id"]), {"messageId": str(message), "agentId": agent})
+    return {"id": str(message), "status": "queued", "replayed": False}
 
 
 class SessionClosure(BaseModel):

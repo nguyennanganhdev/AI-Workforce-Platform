@@ -51,9 +51,33 @@ type Session = {
     status: string;
     state_version: number;
     supervisor_name: string;
+    // Written by the backend when the Supervisor runtime accepts the ticket and reports its state.
+    supervisor?: { acceptedAt?: string } | null;
+    runtime?: { phase: string; pauseReason?: string | null } | null;
   } | null;
+  // What the Supervisor's room did: the specialists it invited, their tasks and their replies.
+  room?: {
+    members: string[];
+    tasks: { description: string; status: string; agent: string }[];
+    replies: { id: string; agent: string; text: string; created_at: string }[];
+    // What management asked an agent inside this session, and whether it was answered yet.
+    questions: { id: string; agent: string; text: string; status: string }[];
+  };
   missing?: string;
   awaitingManagementApproval?: boolean;
+};
+const questionLabels: Record<string, string> = {
+  queued: "đang chờ agent trả lời",
+  running: "đang chờ agent trả lời",
+  done: "đã trả lời",
+  failed: "agent không trả lời được",
+  refused: "phiên không còn nhận câu hỏi",
+};
+const roomTaskLabels: Record<string, string> = {
+  pending: "chờ làm",
+  running: "đang làm",
+  blocked: "đang vướng",
+  done: "đã xong",
 };
 const sessionLabels: Record<string, string> = {
   queued: "Đã mở, chờ Supervisor điều phối",
@@ -62,6 +86,17 @@ const sessionLabels: Record<string, string> = {
   completed: "BQL đã duyệt đóng",
   failed: "Lỗi điều phối",
   cancelled: "Đã hủy",
+};
+// Why the Supervisor stopped and left the next step to management.
+const supervisorPause: Record<string, string> = {
+  "planner:no_specialist_available":
+    "Phòng chưa có agent chuyên môn nên Supervisor chuyển lại cho Ban quản lý xử lý.",
+  "planner:analysis_ready":
+    "Agent chuyên môn đã phân tích xong. Ban quản lý lập phương án xử lý từ phân tích bên dưới.",
+  "planner:planner_model_not_configured":
+    "Supervisor chưa được cấu hình model nên chuyển lại cho Ban quản lý xử lý.",
+  AGENT_FAILURE:
+    "Agent chuyên môn không trả lời được sau nhiều lần thử. Ban quản lý xử lý tiếp.",
 };
 const sessionMissing: Record<string, string> = {
   workspace: "BQL chưa có workspace trên platform",
@@ -122,6 +157,7 @@ export function ConnectedOperations() {
   );
   const [staff, setStaff] = useState("");
   const [note, setNote] = useState("");
+  const [question, setQuestion] = useState("");
   const [available, setAvailable] = useState<Staff[]>([]);
   const [file, setFile] = useState<File>();
   const [phase, setPhase] = useState<"before" | "after">("before");
@@ -575,6 +611,93 @@ export function ConnectedOperations() {
                           {session.session ? (
                             <>
                               <p>Supervisor: {session.session.supervisor_name}</p>
+                              {session.session.supervisor?.acceptedAt && (
+                                <p>
+                                  Supervisor đã tiếp nhận lúc{" "}
+                                  {new Date(
+                                    session.session.supervisor.acceptedAt,
+                                  ).toLocaleString("vi-VN")}
+                                  .
+                                </p>
+                              )}
+                              {session.session.runtime?.phase === "paused" && (
+                                <p>
+                                  {supervisorPause[
+                                    session.session.runtime.pauseReason || ""
+                                  ] ||
+                                    `Supervisor tạm dừng (${session.session.runtime.pauseReason || "không rõ lý do"}); Ban quản lý xử lý tiếp.`}
+                                </p>
+                              )}
+                              {!!session.room?.members.length && (
+                                <p>
+                                  Agent tham gia:{" "}
+                                  {session.room.members.join(", ")}
+                                </p>
+                              )}
+                              {session.room?.tasks.map((task) => (
+                                <p key={task.description}>
+                                  Việc giao cho {task.agent} (
+                                  {roomTaskLabels[task.status] || task.status}
+                                  ): {task.description}
+                                </p>
+                              ))}
+                              {session.room?.replies.map((reply) => (
+                                <div key={reply.id}>
+                                  <p>
+                                    <strong>{reply.agent}</strong> trả lời lúc{" "}
+                                    {new Date(reply.created_at).toLocaleString(
+                                      "vi-VN",
+                                    )}
+                                    :
+                                  </p>
+                                  <p className="live-reply">
+                                    {reply.text}
+                                  </p>
+                                </div>
+                              ))}
+                              {session.room?.questions.map((asked) => (
+                                <p key={asked.id}>
+                                  BQL hỏi {asked.agent} (
+                                  {questionLabels[asked.status] || asked.status}
+                                  ): {asked.text}
+                                </p>
+                              ))}
+                              {management &&
+                                !!session.room?.members.length &&
+                                !["completed", "failed", "cancelled"].includes(
+                                  session.session.status,
+                                ) && (
+                                  <div className="live-actions">
+                                    <label>
+                                      Hỏi thêm agent trong phiên
+                                      <textarea
+                                        value={question}
+                                        onChange={(e) =>
+                                          setQuestion(e.target.value)
+                                        }
+                                      />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      disabled={busy || !question.trim()}
+                                      onClick={() =>
+                                        void run(async () => {
+                                          await post(
+                                            `/tickets/${selected.id}/session/questions`,
+                                            {
+                                              text: question.trim(),
+                                              client_message_id:
+                                                crypto.randomUUID(),
+                                            },
+                                          );
+                                          setQuestion("");
+                                        })
+                                      }
+                                    >
+                                      Gửi câu hỏi cho agent
+                                    </button>
+                                  </div>
+                                )}
                               <strong>
                                 {session.awaitingManagementApproval
                                   ? "Cư dân đã xác nhận, chờ BQL duyệt đóng"

@@ -166,7 +166,10 @@ async def teams(room_id: str, scope: Scope):
     await managed_room(scope, room_id)
     rows = await scope[0].execute(
         text(
-            "select id,ticket_id,status,state_version,created_at from agent_teams where channel_id=:room order by created_at desc limit 100"
+            # With the ticket's code and what the Supervisor runtime last reported, for the room's session list.
+            "select tm.id,tm.ticket_id,tm.status,tm.state_version,tm.created_at,t.code as ticket_code,t.title as ticket_title,"
+            "tm.shared_state->'runtime' as runtime from agent_teams tm join tickets t on t.id=tm.ticket_id and t.tenant_id=tm.tenant_id "
+            "where tm.channel_id=:room order by tm.created_at desc limit 100"
         ),
         {"room": room_id},
     )

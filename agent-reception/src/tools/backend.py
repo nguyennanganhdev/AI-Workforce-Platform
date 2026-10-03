@@ -82,6 +82,8 @@ class BackendToolPort:
                 if response.status_code not in (502, 503, 504):
                     return self._decode(response)
             except (httpx.TimeoutException, httpx.TransportError):
+                # This attempt may have been applied: an earlier "not applied" no longer holds.
+                last_response = None
                 if attempt + 1 == self.config.max_attempts:
                     break
             if attempt + 1 < self.config.max_attempts:

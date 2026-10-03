@@ -63,20 +63,35 @@
 Tiến độ từng team, các quyết định cần chốt và kế hoạch A (nền chung), B (Supervisor chạy thật), C (Vinhomes vận
 hành thật): `docs/teams/chien/TIEN_DO_VA_KE_HOACH_2026-10-03.md`.
 
-- [ ] A1 Gộp PR #25 vào `develop`
+- [x] A1 Gộp PR #25 vào `develop` (03/10)
 - [ ] A2 Team Phái đưa `agent-factory/` và `security-tools/` vào `develop` (hai PR)
 - [ ] A3 Team Đông dọn 5 PR nội bộ
 - [ ] A4 Sửa nền kiểm thử: 48 test `app`, 5 test Lễ tân, snapshot migration
 - [ ] A5 Chốt 5 quyết định liên team
-- [ ] B1 Ủy quyền cho nhóm agent và endpoint Authority
-- [ ] B2 Coordination chạy với ràng buộc thật
-- [ ] B3 Supervisor lập phương án bằng model thật
+- [ ] B1 Một phần: Supervisor có binding, run và API riêng (`/internal/coordination/v1`); subagent chưa
+- [x] B2 Supervisor thật nhận yêu cầu từ Lễ tân, lưu phiên bền, trả `accepted` (`agent-coordination/src/vinhomes`)
+- [ ] B3 Supervisor lập phương án bằng model thật (model thật đã giao việc và nhận phân tích; phương án thuộc M3)
 - [ ] B4 Phát hành phiên bản agent; nối lại Agent Factory
 - [ ] B5 Cổng tool với 3 port và 2 tool đọc database thật
 - [ ] B6 Sub-agent kỹ thuật dùng tool trong một yêu cầu thật
-- [ ] C1 Đăng nhập thật
+- [x] C1 Đăng nhập thật cho cư dân và nhân viên; luồng 23 bước đạt (`docs/teams/chien/CHAY_DANG_NHAP_THAT.md`)
 - [ ] C2 Đóng gói và môi trường chung
-- [ ] C3 Ban quản lý duyệt từ khóa khẩn cấp và hướng dẫn an toàn
+- [ ] C3 Một phần: 3 hướng dẫn an toàn của Sapphire đã duyệt; danh sách từ khóa và các phân khu khác chưa
 - [ ] C4 Job định kỳ nạp tri thức
 - [ ] C5 Giám sát và xoay vòng token
 - [ ] C6 Bổ sung dữ liệu, cập nhật bộ 93 câu
+
+## Supervisor và session V2 (kế hoạch `KE_HOACH_SUPERVISOR_GROUPCHAT_SESSION_V2_2026-10-03.md`)
+Chi tiết: `docs/teams/chien/SUPERVISOR_SESSION_V2_M0_M1_2026-10-03.md`.
+
+- [x] M0 Baseline, kiểm kê, session và bảng contract
+- [x] M1a Runtime nối backend thật cho `ticket_submitted → accepted`, có đối soát khi mất phản hồi
+- [ ] M1b Kho PostgreSQL cho checkpoint, inbox, journal; test hai tiến trình
+- [x] M2 Một specialist và model thật: admin duyệt là phát hành, agent được mời theo danh mục ticket, agent kỹ
+  thuật trả lời trong phòng, Operations hiện phân tích (`docs/teams/chien/SUPERVISOR_SESSION_V2_M2_2026-10-04.md`)
+- [x] M2b Cổng tool cho agent chuyên môn: ba tool đọc của Team Quang, quyền theo lượt chạy của phiên
+  (`docs/teams/chien/TOOL_GATEWAY_VA_KHAO_SAT_NHANH_2026-10-04.md`); tool ghi chưa mở
+- [x] M2c BQL hỏi thêm agent trong phiên của ticket; màn nhóm BQL liệt kê các phiên của phòng
+- [ ] M3 Hỏi lại cư dân, phương án, hai lần duyệt, hoàn tất, hủy
+- [ ] M4 Pause, resume, stop và màn quản lý session trên Operations
+- [ ] M5 Nghiệm thu lỗi và triển khai giới hạn

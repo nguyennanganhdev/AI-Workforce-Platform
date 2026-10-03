@@ -24,6 +24,8 @@ GRANT SELECT, INSERT ON vh_qc_redo_orders TO vinhomes_v3_api;
 GRANT INSERT, UPDATE ON invoices,invoice_lines,payment_intents TO vinhomes_v3_api;
 GRANT INSERT ON payments,payment_allocations,ticket_reviews TO vinhomes_v3_api;
 GRANT INSERT ON agent_versions TO vinhomes_v3_api;
+-- Admin approval publishes a version; an admin can revoke it.
+GRANT INSERT,UPDATE ON agent_releases TO vinhomes_v3_api;
 GRANT INSERT,UPDATE ON agent_teams,team_members,team_tasks TO vinhomes_v3_api;
 -- One run per resident message, bound to the conversation's Reception session.
 GRANT INSERT ON runtime_identities,runtime_session_bindings TO vinhomes_v3_api;

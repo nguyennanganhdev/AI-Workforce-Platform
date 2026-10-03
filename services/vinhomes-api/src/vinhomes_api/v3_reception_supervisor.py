@@ -623,10 +623,18 @@ async def supervisor_inbox(
 
 @operations_router.post("/results", response_model=ResultAcceptance, response_model_exclude_unset=True, status_code=201)
 async def submit_supervisor_result(body: SupervisorToReceptionResult, scope: OPERATIONS):
-    db, actor, _ = scope
+    team = await _authorized_team(scope, body.team_id, lock=True)
+    return await accept_supervisor_result(scope[0], body, team, actor=scope[1])
+
+
+async def accept_supervisor_result(db, body: SupervisorToReceptionResult, team: dict[str, Any], *,
+                                   actor: str | None = None, agent_id: str | None = None):
+    """Validate and store one Supervisor result for a team the caller was already authorized for.
+
+    The author is a person (operations API) or the team's Supervisor agent (Coordination runtime).
+    """
     payload = body.model_dump(mode="json", exclude_unset=True)
     payload_hash = _payload_hash({key: value for key, value in payload.items() if key != "sent_at"})
-    team = await _authorized_team(scope, body.team_id, lock=True)
     if str(team["ticket_id"]) != str(body.ticket_id):
         raise HTTPException(409, "Result ticket does not belong to this team")
     await _lock_message_id(db, body.message_id)
@@ -762,17 +770,18 @@ async def submit_supervisor_result(body: SupervisorToReceptionResult, scope: OPE
     await db.execute(text(f"""
         insert into vh_reception_supervisor_messages
           (tenant_id,direction,message_id,correlation_id,ticket_id,team_id,ticket_generation,
-           message_type,payload,payload_hash,response_body,created_by)
+           message_type,payload,payload_hash,response_body,created_by,created_by_agent_id)
         values ({TENANT},'supervisor_to_reception',:message_id,:correlation_id,:ticket_id,
           :team_id,:generation,:message_type,cast(:payload as jsonb),:payload_hash,
-          cast(:response as jsonb),:actor)
+          cast(:response as jsonb),:actor,:agent)
     """), {"message_id": body.message_id, "correlation_id": body.correlation_id,
            "ticket_id": body.ticket_id, "team_id": body.team_id,
            "generation": body.ticket_generation, "message_type": body.message_type,
            "payload": json.dumps(payload), "payload_hash": payload_hash,
-           "response": json.dumps(response_body), "actor": actor})
-    await audit(db, actor, "reception_supervisor.result_received", "ticket",
-                str(body.ticket_id), {"messageId": body.message_id, "messageType": body.message_type})
+           "response": json.dumps(response_body), "actor": actor, "agent": None if actor else agent_id})
+    if actor:
+        await audit(db, actor, "reception_supervisor.result_received", "ticket",
+                    str(body.ticket_id), {"messageId": body.message_id, "messageType": body.message_type})
     return response_body
 
 

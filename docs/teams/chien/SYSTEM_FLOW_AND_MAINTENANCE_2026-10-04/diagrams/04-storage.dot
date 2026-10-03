@@ -1,0 +1,22 @@
+digraph Storage {
+  graph [rankdir=TB, bgcolor="#f8fafc", pad="0.35", nodesep="0.55", ranksep="0.7", fontname="Segoe UI", fontsize=24, label="VÌ SAO CẦN RUNTIME PERSISTENCE?\nCần state bền vững; SQLite chỉ là implementation hiện tại", labelloc=t];
+  node [shape=box, style="rounded,filled", fontname="Segoe UI", fontsize=16, color="#cbd5e1", fillcolor="white", margin="0.35,0.20"];
+  edge [fontname="Segoe UI", fontsize=12, color="#64748b", arrowsize=0.7];
+  backend [label="Backend nghiệp vụ", fillcolor="#dbeafe"];
+  runtime [label="Reception / Coordination runtime", fillcolor="#ccfbf1"];
+  data [label="PostgreSQL nghiệp vụ\nTicket / quyền / plan / duyệt\nAssignment / QC / kết quả / audit", fillcolor="#dbeafe"];
+  local [label="Hiện tại: SQLite trên một host\nCheckpoint / room / inbox / lease\nOperation journal / receipts / ledger", fillcolor="#fef3c7"];
+  target [label="Đề xuất: PostgreSQL runtime storage\nReception checkpointer + adapter store\nCoordination CAS / fencing / inbox\nRole và vùng storage riêng", fillcolor="#ccfbf1"];
+  rag [label="Tri thức published / RAG\nDocument / version / chunks / vectors\nACL / citations / reviews", fillcolor="#ede9fe"];
+  file [label="Object storage\nBytes ảnh / tài liệu / báo cáo\nHash, metadata, quyền ở backend"];
+  reconcile [label="Restart / response bị mất\nHỏi receipt bằng operation ID cũ\nKiểm lại quyền + version trước resume", fillcolor="#fee2e2"];
+  backend -> data [label="State chính thức"];
+  runtime -> local [label="Tiến độ thực thi"];
+  local -> target [label="Drain hoặc migrate + verify", style=dashed];
+  runtime -> backend [label="API / delegation"];
+  runtime -> rag [label="Tra đúng quyền"];
+  backend -> file [label="Upload / download có quyền"];
+  local -> reconcile;
+  reconcile -> backend;
+  {rank=same; data; local; rag; file;}
+}

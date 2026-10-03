@@ -14,6 +14,7 @@ Ngày 03/10/2026. Phạm vi: business API (`services/vinhomes-api`), Lễ tân (
 | Lễ tân (agent) | Token ngắn hạn gắn với một lượt chat của một cư dân | `agent_runs`, `runtime_session_bindings` |
 | Dịch vụ Lễ tân gọi backend | Không có danh tính riêng: luôn mang token của lượt chat | — |
 | Backend gọi dịch vụ Lễ tân | Service token dùng chung | cấu hình |
+| Supervisor (agent của phòng BQL) | Service token của dịch vụ Supervisor, rồi kiểm theo từng nhóm: workspace có danh tính dịch vụ, agent Supervisor là thành viên, ticket đúng generation | `agent_teams`, `team_members`, `execution_principals`, `runtime_session_bindings` (loại `team`), `agent_runs` |
 
 Phạm vi (`access_scopes`): tenant, khu (site), phân khu (zone), tòa (building), đơn vị quản lý (management).
 Mọi bảng nghiệp vụ có RLS theo tenant; business API chạy bằng role không phải superuser và không bỏ qua RLS.
@@ -57,14 +58,17 @@ Mọi bảng nghiệp vụ có RLS theo tenant; business API chạy bằng role 
 | `test_management_reads_what_the_resident_said_about_a_ticket` | Nhân viên ngoài phạm vi không đọc được hội thoại |
 | `test_emergency_guidance_reaches_a_resident_only_after_management_approves` | Câu chưa duyệt không tới cư dân; nhân viên không thấy danh sách chờ duyệt |
 | `test_runs_record_usage_and_a_stale_run_is_closed` | Token của run bị bỏ rơi hết hiệu lực |
+| `test_only_the_configured_runtime_reaches_the_coordination_api` | Phiên cư dân, token sai hoặc backend chưa cấu hình đều không vào được API của Supervisor |
+| `test_a_supervisor_question_reaches_the_resident_and_a_stale_team_is_refused` | Nhóm của generation cũ bị từ chối ở mọi lời gọi; không hỏi cư dân hai câu cùng lúc |
 | `test_a_resident_cannot_flood_the_assistant` | Quá 30 tin/phút thì 429 |
 | `test_resident_integration.py` | Kỹ thuật viên không duyệt đóng session và không nghiệm thu; tạo yêu cầu cho căn hộ không phải của mình bị từ chối |
 
 ## Chưa có
 
-1. **Ủy quyền cho nhóm agent.** Supervisor và subagent cần danh tính dịch vụ theo workspace
-   (`execution_principals` loại `workspace_service`, binding loại `team`); bảng đã có, cơ chế cấp token chưa có.
-   Phụ thuộc Team Đông.
+1. **Ủy quyền cho subagent.** Supervisor đã có: backend cấp một binding loại `team` và một run cho mỗi session
+   (`v3_coordination.py`), và chỉ nhận kết quả V2 từ nó. Agent chuyên môn trong phòng thì chưa: chưa có agent
+   nào được xuất bản, và Supervisor chưa được phép làm gì ngoài gửi kết quả V2 (phòng, phương án, phân công đều
+   bị từ chối).
 2. **Gắn quyền khi tạo agent.** Agent Factory (Team Phái) chưa tạo agent, phòng, Supervisor kèm quyền cho BQL thật.
 3. **Vai trò quản lý theo khu/tòa với session hỏi đáp và tri thức.** Hiện chỉ tính vai trò ở phạm vi tenant hoặc
    đúng đơn vị quản lý.

@@ -1,10 +1,13 @@
-# Starts the knowledge search service on 127.0.0.1:8787 for the local demo.
-# Settings: .local-v3-faker/knowledge.env; the embedding key comes from agent-reception/.env.
+# Starts the knowledge search service on 127.0.0.1:8787 for the local demo, or with -Connected
+# for the password-login deployment. Settings: knowledge.env in .local-v3-faker or
+# .local-connected; the embedding key comes from agent-reception/.env.
+param([switch]$Connected)
 $ErrorActionPreference = 'Stop'
 $serviceRoot = Split-Path $PSScriptRoot -Parent
 $projectRoot = Split-Path (Split-Path $serviceRoot -Parent) -Parent
-$configFile = Join-Path $serviceRoot '.local-v3-faker/knowledge.env'
-if (!(Test-Path -LiteralPath $configFile)) { throw 'Publish the knowledge first (server/src/knowledge/publish.ts) and create .local-v3-faker/knowledge.env' }
+$local = if ($Connected) { '.local-connected' } else { '.local-v3-faker' }
+$configFile = Join-Path $serviceRoot "$local/knowledge.env"
+if (!(Test-Path -LiteralPath $configFile)) { throw "Publish the knowledge first (server/src/knowledge/publish.ts) and create $local/knowledge.env" }
 $keyFile = Join-Path $projectRoot 'agent-reception/.env'
 @($keyFile, $configFile) | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { Get-Content -LiteralPath $_ } | ForEach-Object {
     if ($_ -and !$_.StartsWith('#')) {

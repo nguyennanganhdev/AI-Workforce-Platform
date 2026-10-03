@@ -1,0 +1,27 @@
+[
+  {
+    "name": "00-overview",
+    "width": 3377,
+    "height": 3321
+  },
+  {
+    "name": "01-authority-location",
+    "width": 5088,
+    "height": 2740
+  },
+  {
+    "name": "02-ticket-work",
+    "width": 3114,
+    "height": 4094
+  },
+  {
+    "name": "03-agent-room",
+    "width": 3707,
+    "height": 3184
+  },
+  {
+    "name": "99-full-erd",
+    "format": "svg",
+    "bytes": 615195
+  }
+]

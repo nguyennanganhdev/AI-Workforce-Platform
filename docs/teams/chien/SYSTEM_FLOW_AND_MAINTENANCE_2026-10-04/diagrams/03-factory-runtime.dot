@@ -1,0 +1,20 @@
+digraph Factory {
+  graph [rankdir=TB, bgcolor="#f8fafc", pad="0.35", nodesep="0.5", ranksep="0.65", fontname="Segoe UI", fontsize=24, label="BQL CUSTOM AGENT — FACTORY ĐẾN ROOM\nConstruction, publish và quyền chạy là ba bước khác nhau", labelloc=t];
+  node [shape=box, style="rounded,filled", fontname="Segoe UI", fontsize=16, color="#cbd5e1", fillcolor="white", margin="0.35,0.20"];
+  edge [fontname="Segoe UI", fontsize=12, color="#64748b", arrowsize=0.7];
+  bql [label="BQL mô tả agent / chọn template\nWorkspace và quyền sở hữu"];
+  catalogue [label="Backend đọc catalogue đúng scope\nTool refs / schemas / fingerprints\nChiến", fillcolor="#dbeafe"];
+  factory [label="POST Factory /v1/constructions\nSpec + prompt + hash + verification\nPhái", fillcolor="#fce7f3"];
+  persist [label="Backend kiểm integrity + quyền mới\nLưu artifact + draft / idempotency\nChiến", fillcolor="#dbeafe"];
+  eval [label="Preview / evaluation → review\nChưa đạt → sửa thành phiên bản mới"];
+  pub [label="Publish agent_version + release\nGrant cấp riêng, không tự phát sinh\nChiến", fillcolor="#dbeafe"];
+  roster [label="Cấu hình roster / routing / group\nPin version cho từng session"];
+  resolver [label="Đông resolve release qua backend\nPrompt / hash / runtime / context", fillcolor="#ccfbf1"];
+  runtime [label="Supervisor giao task → specialist\nTool gateway kiểm quyền mỗi lần", fillcolor="#ccfbf1"];
+  report [label="Report: template Hoàng\nSnapshot có quyền → KPI bằng code\nNarrative → artifact → download", fillcolor="#ffedd5"];
+  bql -> catalogue -> factory -> persist -> eval -> pub -> roster -> resolver -> runtime;
+  runtime -> report [label="Nếu là Report agent"];
+  revoke [label="Revoke agent / grant\nChặn lượt hoặc tool tiếp theo", fillcolor="#fee2e2"];
+  pub -> revoke [style=dashed];
+  revoke -> runtime [style=dashed, label="Backend kiểm lại"];
+}

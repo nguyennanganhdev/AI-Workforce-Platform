@@ -1,0 +1,38 @@
+{
+  "verified_at": "2026-10-03T20:14:34.280687+00:00",
+  "branch": "dev_teamChien_HuyDo",
+  "head_observed_at_verification": "b2d3f3725ec8e37e5986b13742c9d6211059ba72",
+  "phai_ref": "e994722fa5dc558eb7c9e1bf676b83735319a33b",
+  "source_file_sha256": {
+    "agent-coordination/src/vinhomes/runtime.py": "b6ea7e65ab4afd1f533a3f697a24d267e5566f8ee36f6e7cd54f6c383f754156",
+    "agent-coordination/src/vinhomes/ports.py": "101d408f58ef223021f188d1da75216cf2eb0db324157acc263d5d57e1ee8569",
+    "agent-coordination/src/vinhomes/backend.py": "da8919e6d48b45fbb5267511c5b8f212d3e356399bf43c3d40ebafb078f115ae",
+    "agent-coordination/src/persistence/sqlite.py": "fde26d88dcb3339e87074c0091b608a2402d3bd02cccab1b5c24982c3ecb843e",
+    "agent-reception/src/runtime/service.py": "d5e0f239b73159ddddcb96d32262227c4c8a9c0868f04a59f5d508da78b02a4b",
+    "agent-reception/src/runtime/backend.py": "c8df2b39845ed0f3363fe087d119e1653a3b05d3ebca01215867942b762b106f",
+    "agent-reception/src/persistence/sqlite.py": "9cd11ca5e3f0e61bda482e3774e2ddaf5a0075953c0bbf10bf35cfb465c9ab2d",
+    "services/vinhomes-api/src/vinhomes_api/v3_coordination.py": "acbc84de04afd9ff87facae94dfda292f99885821696ecdbf255ce5cbf95894a",
+    "services/vinhomes-api/src/vinhomes_api/v3_agent_reviews.py": "ef444e9c305c64d2c0ee92ca7458896d9189fcde970b81ea0a3b85784f78d1b6",
+    "services/vinhomes-api/src/vinhomes_api/v3_reception_supervisor.py": "f5e237d885bd80e9608f7217703bba298c6764a46462121969503c1f6c8a2310",
+    "services/vinhomes-api/src/vinhomes_api/v3_completion.py": "54fea8078b515e03a398ad2a3a46c5fecf4a5a59dbe2fe69dc12e28cd877fb04",
+    "app/vite.config.ts": "876b0ac3bfa3c60258d2048eff217dd55cfe8e3011419b097c32eefff051c22a",
+    "resident-app/vite.config.ts": "bc1cdb7949e7ba5e1cefa5c358cab4e0daa519490ea6c7f480b0bb5290f421a2",
+    "server/src/app.ts": "670f6928b3df649cbcc5b765f408bcf7d9f1f1e5c7ccc64296ce2e4f6c3aaa3a"
+  },
+  "checks": {
+    "local_links": 18,
+    "markdown_fences_balanced": true,
+    "svg_files_parsed": 4,
+    "png_files": 4,
+    "visual_inspection": "All four inspected; increased text padding after first inspection",
+    "implementation_gaps_verified": [
+      "NoTools",
+      "UnboundBackendActions",
+      "UnboundEvents",
+      "analysis_ready limit"
+    ],
+    "code_or_database_changes": false,
+    "runtime_tests_or_paid_model_calls": "NOT RUN"
+  },
+  "scope": "Documentation and diagrams; current implementation is read-only evidence, not end-to-end or production acceptance"
+}

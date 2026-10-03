@@ -1,0 +1,231 @@
+﻿child_table,child_columns,parent_table,parent_columns,constraint,definition,deferrable
+access_scopes,"tenant_id,building_id",buildings,"tenant_id,id",access_scopes_building_id_fk,"FOREIGN KEY (tenant_id, building_id) REFERENCES buildings(tenant_id, id) ON DELETE RESTRICT",False
+access_scopes,"tenant_id,management_unit_id",management_units,"tenant_id,id",access_scopes_management_unit_id_fk,"FOREIGN KEY (tenant_id, management_unit_id) REFERENCES management_units(tenant_id, id) ON DELETE RESTRICT",False
+access_scopes,"tenant_id,site_id",sites,"tenant_id,id",access_scopes_site_id_fk,"FOREIGN KEY (tenant_id, site_id) REFERENCES sites(tenant_id, id) ON DELETE RESTRICT",False
+access_scopes,tenant_id,tenants,id,access_scopes_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+access_scopes,"tenant_id,zone_id",zones,"tenant_id,id",access_scopes_zone_id_fk,"FOREIGN KEY (tenant_id, zone_id) REFERENCES zones(tenant_id, id) ON DELETE RESTRICT",False
+agent_knowledge_grants,"tenant_id,agent_id",agents,"tenant_id,id",agent_knowledge_grants_agent_id_fk,"FOREIGN KEY (tenant_id, agent_id) REFERENCES agents(tenant_id, id) ON DELETE RESTRICT",False
+agent_knowledge_grants,granted_by,users,id,agent_knowledge_grants_granted_by_fk,FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE RESTRICT,False
+agent_knowledge_grants,"tenant_id,knowledge_base_id",knowledge_bases,"tenant_id,id",agent_knowledge_grants_knowledge_base_id_fk,"FOREIGN KEY (tenant_id, knowledge_base_id) REFERENCES knowledge_bases(tenant_id, id) ON DELETE RESTRICT",False
+agent_knowledge_grants,tenant_id,tenants,id,agent_knowledge_grants_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+agent_runs,actor_user_id,users,id,agent_runs_actor_user_id_fk,FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+agent_runs,"tenant_id,agent_id",agents,"tenant_id,id",agent_runs_agent_id_fk,"FOREIGN KEY (tenant_id, agent_id) REFERENCES agents(tenant_id, id) ON DELETE RESTRICT",False
+agent_runs,"tenant_id,authority_principal_id",execution_principals,"tenant_id,id",agent_runs_authority_principal_id_fk,"FOREIGN KEY (tenant_id, authority_principal_id) REFERENCES execution_principals(tenant_id, id) ON DELETE RESTRICT",False
+agent_runs,"tenant_id,binding_id",runtime_session_bindings,"tenant_id,id",agent_runs_binding_id_fk,"FOREIGN KEY (tenant_id, binding_id) REFERENCES runtime_session_bindings(tenant_id, id) ON DELETE RESTRICT",False
+agent_runs,"tenant_id,channel_id",channels,"tenant_id,id",agent_runs_channel_id_fk,"FOREIGN KEY (tenant_id, channel_id) REFERENCES channels(tenant_id, id) ON DELETE RESTRICT",False
+agent_runs,on_behalf_of_user_id,users,id,agent_runs_on_behalf_of_user_id_fk,FOREIGN KEY (on_behalf_of_user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+agent_runs,"tenant_id,parent_run_id",agent_runs,"tenant_id,id",agent_runs_parent_run_id_fk,"FOREIGN KEY (tenant_id, parent_run_id) REFERENCES agent_runs(tenant_id, id) ON DELETE RESTRICT",False
+agent_runs,"tenant_id,team_member_id",team_members,"tenant_id,id",agent_runs_team_member_id_fk,"FOREIGN KEY (tenant_id, team_member_id) REFERENCES team_members(tenant_id, id) ON DELETE RESTRICT",False
+agent_runs,tenant_id,tenants,id,agent_runs_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+agent_runs,"tenant_id,trigger_event_id",ticket_events,"tenant_id,id",agent_runs_trigger_event_id_fk,"FOREIGN KEY (tenant_id, trigger_event_id) REFERENCES ticket_events(tenant_id, id) ON DELETE RESTRICT",False
+agent_runs,"tenant_id,version_id",agent_versions,"tenant_id,id",agent_runs_version_id_fk,"FOREIGN KEY (tenant_id, version_id) REFERENCES agent_versions(tenant_id, id) ON DELETE RESTRICT",False
+agent_teams,"tenant_id,channel_id",channels,"tenant_id,id",agent_teams_channel_id_fk,"FOREIGN KEY (tenant_id, channel_id) REFERENCES channels(tenant_id, id) ON DELETE RESTRICT",False
+agent_teams,"tenant_id,request_message_id",messages,"tenant_id,id",agent_teams_request_message_id_fk,"FOREIGN KEY (tenant_id, request_message_id) REFERENCES messages(tenant_id, id) ON DELETE RESTRICT",False
+agent_teams,requested_by_user_id,users,id,agent_teams_requested_by_user_id_fk,FOREIGN KEY (requested_by_user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+agent_teams,"tenant_id,supervisor_agent_id",agents,"tenant_id,id",agent_teams_supervisor_agent_id_fk,"FOREIGN KEY (tenant_id, supervisor_agent_id) REFERENCES agents(tenant_id, id) ON DELETE RESTRICT",False
+agent_teams,tenant_id,tenants,id,agent_teams_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+agent_teams,"tenant_id,ticket_id",tickets,"tenant_id,id",agent_teams_ticket_id_fk,"FOREIGN KEY (tenant_id, ticket_id) REFERENCES tickets(tenant_id, id) ON DELETE RESTRICT",False
+agent_teams,"tenant_id,workspace_id",workspaces,"tenant_id,id",agent_teams_workspace_id_fk,"FOREIGN KEY (tenant_id, workspace_id) REFERENCES workspaces(tenant_id, id) ON DELETE RESTRICT",False
+agent_versions,"tenant_id,agent_id",agents,"tenant_id,id",agent_versions_agent_id_fk,"FOREIGN KEY (tenant_id, agent_id) REFERENCES agents(tenant_id, id) ON DELETE RESTRICT",False
+agent_versions,created_by,users,id,agent_versions_created_by_fk,FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,False
+agent_versions,"tenant_id,model_profile_id",model_profiles,"tenant_id,id",agent_versions_model_profile_id_fk,"FOREIGN KEY (tenant_id, model_profile_id) REFERENCES model_profiles(tenant_id, id) ON DELETE RESTRICT",False
+agent_versions,tenant_id,tenants,id,agent_versions_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+agents,"tenant_id,package_id",deployment_packages,"tenant_id,id",agents_package_id_fk,"FOREIGN KEY (tenant_id, package_id) REFERENCES deployment_packages(tenant_id, id) ON DELETE RESTRICT",False
+agents,tenant_id,tenants,id,agents_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+agents,"tenant_id,workspace_id",workspaces,"tenant_id,id",agents_workspace_id_fk,"FOREIGN KEY (tenant_id, workspace_id) REFERENCES workspaces(tenant_id, id) ON DELETE RESTRICT",False
+buildings,"tenant_id,site_id",sites,"tenant_id,id",buildings_site_id_fk,"FOREIGN KEY (tenant_id, site_id) REFERENCES sites(tenant_id, id) ON DELETE RESTRICT",False
+buildings,tenant_id,tenants,id,buildings_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+buildings,"tenant_id,zone_id",zones,"tenant_id,id",buildings_zone_id_fk,"FOREIGN KEY (tenant_id, zone_id) REFERENCES zones(tenant_id, id) ON DELETE RESTRICT",False
+channel_memberships,"tenant_id,channel_id",channels,"tenant_id,id",channel_memberships_channel_id_fk,"FOREIGN KEY (tenant_id, channel_id) REFERENCES channels(tenant_id, id) ON DELETE RESTRICT",False
+channel_memberships,tenant_id,tenants,id,channel_memberships_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+channel_memberships,user_id,users,id,channel_memberships_user_id_fk,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+channels,created_by,users,id,channels_created_by_fk,FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,False
+channels,"tenant_id,last_message_agent_id",agents,"tenant_id,id",channels_last_message_agent_id_fk,"FOREIGN KEY (tenant_id, last_message_agent_id) REFERENCES agents(tenant_id, id) ON DELETE RESTRICT",False
+channels,"tenant_id,package_id",deployment_packages,"tenant_id,id",channels_package_id_fk,"FOREIGN KEY (tenant_id, package_id) REFERENCES deployment_packages(tenant_id, id) ON DELETE RESTRICT",False
+channels,tenant_id,tenants,id,channels_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+channels,"tenant_id,workspace_id",workspaces,"tenant_id,id",channels_workspace_id_fk,"FOREIGN KEY (tenant_id, workspace_id) REFERENCES workspaces(tenant_id, id) ON DELETE RESTRICT",False
+context_snapshots,"tenant_id,requested_message_id",messages,"tenant_id,id",context_snapshots_requested_message_id_fk,"FOREIGN KEY (tenant_id, requested_message_id) REFERENCES messages(tenant_id, id) ON DELETE RESTRICT",False
+context_snapshots,"tenant_id,run_id",agent_runs,"tenant_id,id",context_snapshots_run_id_fk,"FOREIGN KEY (tenant_id, run_id) REFERENCES agent_runs(tenant_id, id) ON DELETE RESTRICT",False
+context_snapshots,tenant_id,tenants,id,context_snapshots_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+context_snapshots,"tenant_id,ticket_id",tickets,"tenant_id,id",context_snapshots_ticket_id_fk,"FOREIGN KEY (tenant_id, ticket_id) REFERENCES tickets(tenant_id, id) ON DELETE RESTRICT",False
+document_acl,"tenant_id,document_id",knowledge_documents,"tenant_id,id",document_acl_document_id_fk,"FOREIGN KEY (tenant_id, document_id) REFERENCES knowledge_documents(tenant_id, id) ON DELETE RESTRICT",False
+document_acl,tenant_id,tenants,id,document_acl_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+document_acl,user_id,users,id,document_acl_user_id_fk,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+document_acl,"tenant_id,workspace_id",workspaces,"tenant_id,id",document_acl_workspace_id_fk,"FOREIGN KEY (tenant_id, workspace_id) REFERENCES workspaces(tenant_id, id) ON DELETE RESTRICT",False
+document_scopes,"tenant_id,document_id",knowledge_documents,"tenant_id,id",document_scopes_document_id_fk,"FOREIGN KEY (tenant_id, document_id) REFERENCES knowledge_documents(tenant_id, id) ON DELETE RESTRICT",False
+document_scopes,"tenant_id,scope_id",access_scopes,"tenant_id,id",document_scopes_scope_id_fk,"FOREIGN KEY (tenant_id, scope_id) REFERENCES access_scopes(tenant_id, id) ON DELETE RESTRICT",False
+document_scopes,tenant_id,tenants,id,document_scopes_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+document_versions,"tenant_id,document_id",knowledge_documents,"tenant_id,id",document_versions_document_id_fk,"FOREIGN KEY (tenant_id, document_id) REFERENCES knowledge_documents(tenant_id, id) ON DELETE RESTRICT",False
+document_versions,"tenant_id,file_id",files,"tenant_id,id",document_versions_file_id_fk,"FOREIGN KEY (tenant_id, file_id) REFERENCES files(tenant_id, id) ON DELETE RESTRICT",False
+document_versions,submitted_by,users,id,document_versions_submitted_by_fk,FOREIGN KEY (submitted_by) REFERENCES users(id) ON DELETE RESTRICT,False
+document_versions,tenant_id,tenants,id,document_versions_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+domains,tenant_id,tenants,id,domains_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+execution_principals,tenant_id,tenants,id,execution_principals_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+execution_principals,user_id,users,id,execution_principals_user_id_fk,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+execution_principals,"tenant_id,workspace_id",workspaces,"tenant_id,id",execution_principals_workspace_id_fk,"FOREIGN KEY (tenant_id, workspace_id) REFERENCES workspaces(tenant_id, id) ON DELETE RESTRICT",False
+file_access_logs,"tenant_id,actor_principal_id",execution_principals,"tenant_id,id",file_access_logs_actor_principal_id_fk,"FOREIGN KEY (tenant_id, actor_principal_id) REFERENCES execution_principals(tenant_id, id) ON DELETE RESTRICT",False
+file_access_logs,actor_user_id,users,id,file_access_logs_actor_user_id_fk,FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+file_access_logs,"tenant_id,file_id",files,"tenant_id,id",file_access_logs_file_id_fk,"FOREIGN KEY (tenant_id, file_id) REFERENCES files(tenant_id, id) ON DELETE RESTRICT",False
+file_access_logs,"tenant_id,object_id",file_objects,"tenant_id,id",file_access_logs_object_id_fk,"FOREIGN KEY (tenant_id, object_id) REFERENCES file_objects(tenant_id, id) ON DELETE RESTRICT",False
+file_access_logs,"tenant_id,run_id",agent_runs,"tenant_id,id",file_access_logs_run_id_fk,"FOREIGN KEY (tenant_id, run_id) REFERENCES agent_runs(tenant_id, id) ON DELETE RESTRICT",False
+file_access_logs,tenant_id,tenants,id,file_access_logs_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+file_objects,"tenant_id,file_id",files,"tenant_id,id",file_objects_file_id_fk,"FOREIGN KEY (tenant_id, file_id) REFERENCES files(tenant_id, id) ON DELETE RESTRICT",False
+file_objects,"tenant_id,location_id",storage_locations,"tenant_id,id",file_objects_location_id_fk,"FOREIGN KEY (tenant_id, location_id) REFERENCES storage_locations(tenant_id, id) ON DELETE RESTRICT",False
+file_objects,"tenant_id,source_object_id",file_objects,"tenant_id,id",file_objects_source_object_id_fk,"FOREIGN KEY (tenant_id, source_object_id) REFERENCES file_objects(tenant_id, id) ON DELETE RESTRICT",False
+file_objects,tenant_id,tenants,id,file_objects_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+file_processing_jobs,"tenant_id,file_id",files,"tenant_id,id",file_processing_jobs_file_id_fk,"FOREIGN KEY (tenant_id, file_id) REFERENCES files(tenant_id, id) ON DELETE RESTRICT",False
+file_processing_jobs,"tenant_id,object_id",file_objects,"tenant_id,id",file_processing_jobs_object_id_fk,"FOREIGN KEY (tenant_id, object_id) REFERENCES file_objects(tenant_id, id) ON DELETE RESTRICT",False
+file_processing_jobs,tenant_id,tenants,id,file_processing_jobs_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+file_processing_jobs,"tenant_id,upload_id",file_uploads,"tenant_id,id",file_processing_jobs_upload_id_fk,"FOREIGN KEY (tenant_id, upload_id) REFERENCES file_uploads(tenant_id, id) ON DELETE RESTRICT",False
+file_upload_parts,tenant_id,tenants,id,file_upload_parts_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+file_upload_parts,"tenant_id,upload_id",file_uploads,"tenant_id,id",file_upload_parts_upload_id_fk,"FOREIGN KEY (tenant_id, upload_id) REFERENCES file_uploads(tenant_id, id) ON DELETE RESTRICT",False
+file_uploads,"tenant_id,file_id",files,"tenant_id,id",file_uploads_file_id_fk,"FOREIGN KEY (tenant_id, file_id) REFERENCES files(tenant_id, id) ON DELETE RESTRICT",False
+file_uploads,"tenant_id,location_id",storage_locations,"tenant_id,id",file_uploads_location_id_fk,"FOREIGN KEY (tenant_id, location_id) REFERENCES storage_locations(tenant_id, id) ON DELETE RESTRICT",False
+file_uploads,requested_by,users,id,file_uploads_requested_by_fk,FOREIGN KEY (requested_by) REFERENCES users(id) ON DELETE RESTRICT,False
+file_uploads,"tenant_id,result_object_id",file_objects,"tenant_id,id",file_uploads_result_object_id_fk,"FOREIGN KEY (tenant_id, result_object_id) REFERENCES file_objects(tenant_id, id) ON DELETE RESTRICT",False
+file_uploads,tenant_id,tenants,id,file_uploads_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+files,"tenant_id,accepted_object_id",file_objects,"tenant_id,id",files_accepted_object_id_fk,"FOREIGN KEY (tenant_id, accepted_object_id) REFERENCES file_objects(tenant_id, id) ON DELETE RESTRICT",False
+files,"tenant_id,channel_id",channels,"tenant_id,id",files_channel_id_fk,"FOREIGN KEY (tenant_id, channel_id) REFERENCES channels(tenant_id, id) ON DELETE RESTRICT",False
+files,"tenant_id,document_id",knowledge_documents,"tenant_id,id",files_document_id_fk,"FOREIGN KEY (tenant_id, document_id) REFERENCES knowledge_documents(tenant_id, id) ON DELETE RESTRICT",False
+files,"tenant_id,owner_principal_id",execution_principals,"tenant_id,id",files_owner_principal_id_fk,"FOREIGN KEY (tenant_id, owner_principal_id) REFERENCES execution_principals(tenant_id, id) ON DELETE RESTRICT",False
+files,"tenant_id,report_id",report_requests,"tenant_id,id",files_report_id_fk,"FOREIGN KEY (tenant_id, report_id) REFERENCES report_requests(tenant_id, id) ON DELETE RESTRICT",False
+files,tenant_id,tenants,id,files_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+files,"tenant_id,ticket_id",tickets,"tenant_id,id",files_ticket_id_fk,"FOREIGN KEY (tenant_id, ticket_id) REFERENCES tickets(tenant_id, id) ON DELETE RESTRICT",False
+files,"tenant_id,unit_id",units,"tenant_id,id",files_unit_id_fk,"FOREIGN KEY (tenant_id, unit_id) REFERENCES units(tenant_id, id)",False
+files,uploaded_by,users,id,files_uploaded_by_fk,FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE RESTRICT,False
+ingestion_jobs,embedding_model_id,embedding_models,id,ingestion_jobs_embedding_model_id_fk,FOREIGN KEY (embedding_model_id) REFERENCES embedding_models(id) ON DELETE RESTRICT,False
+ingestion_jobs,tenant_id,tenants,id,ingestion_jobs_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+ingestion_jobs,"tenant_id,version_id",document_versions,"tenant_id,id",ingestion_jobs_version_id_fk,"FOREIGN KEY (tenant_id, version_id) REFERENCES document_versions(tenant_id, id) ON DELETE RESTRICT",False
+knowledge_bases,"tenant_id,domain_id",domains,"tenant_id,id",knowledge_bases_domain_id_fk,"FOREIGN KEY (tenant_id, domain_id) REFERENCES domains(tenant_id, id) ON DELETE RESTRICT",False
+knowledge_bases,tenant_id,tenants,id,knowledge_bases_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+knowledge_categories,"tenant_id,parent_id",knowledge_categories,"tenant_id,id",knowledge_categories_parent_id_fk,"FOREIGN KEY (tenant_id, parent_id) REFERENCES knowledge_categories(tenant_id, id) ON DELETE RESTRICT",False
+knowledge_categories,tenant_id,tenants,id,knowledge_categories_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+knowledge_chunks,tenant_id,tenants,id,knowledge_chunks_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+knowledge_chunks,"tenant_id,version_id",document_versions,"tenant_id,id",knowledge_chunks_version_id_fk,"FOREIGN KEY (tenant_id, version_id) REFERENCES document_versions(tenant_id, id) ON DELETE RESTRICT",False
+knowledge_documents,"tenant_id,active_version_id",document_versions,"tenant_id,id",knowledge_documents_active_version_id_fk,"FOREIGN KEY (tenant_id, active_version_id) REFERENCES document_versions(tenant_id, id) ON DELETE RESTRICT",False
+knowledge_documents,"tenant_id,category_id",knowledge_categories,"tenant_id,id",knowledge_documents_category_id_fk,"FOREIGN KEY (tenant_id, category_id) REFERENCES knowledge_categories(tenant_id, id) ON DELETE RESTRICT",False
+knowledge_documents,"tenant_id,knowledge_base_id",knowledge_bases,"tenant_id,id",knowledge_documents_knowledge_base_id_fk,"FOREIGN KEY (tenant_id, knowledge_base_id) REFERENCES knowledge_bases(tenant_id, id) ON DELETE RESTRICT",False
+knowledge_documents,"tenant_id,memory_namespace_id",memory_namespaces,"tenant_id,id",knowledge_documents_memory_namespace_id_fk,"FOREIGN KEY (tenant_id, memory_namespace_id) REFERENCES memory_namespaces(tenant_id, id) ON DELETE RESTRICT",False
+knowledge_documents,"tenant_id,owner_management_id",management_units,"tenant_id,id",knowledge_documents_owner_management_id_fk,"FOREIGN KEY (tenant_id, owner_management_id) REFERENCES management_units(tenant_id, id) ON DELETE RESTRICT",False
+knowledge_documents,tenant_id,tenants,id,knowledge_documents_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+knowledge_embeddings,"tenant_id,chunk_id",knowledge_chunks,"tenant_id,id",knowledge_embeddings_chunk_id_fk,"FOREIGN KEY (tenant_id, chunk_id) REFERENCES knowledge_chunks(tenant_id, id) ON DELETE RESTRICT",False
+knowledge_embeddings,model_id,embedding_models,id,knowledge_embeddings_model_id_fk,FOREIGN KEY (model_id) REFERENCES embedding_models(id) ON DELETE RESTRICT,False
+knowledge_embeddings,tenant_id,tenants,id,knowledge_embeddings_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+knowledge_reviews,"tenant_id,document_version_id",document_versions,"tenant_id,id",knowledge_reviews_document_version_id_fk,"FOREIGN KEY (tenant_id, document_version_id) REFERENCES document_versions(tenant_id, id) ON DELETE RESTRICT",False
+knowledge_reviews,"tenant_id,memory_candidate_id",memory_candidates,"tenant_id,id",knowledge_reviews_memory_candidate_id_fk,"FOREIGN KEY (tenant_id, memory_candidate_id) REFERENCES memory_candidates(tenant_id, id) ON DELETE RESTRICT",False
+knowledge_reviews,reviewer_user_id,users,id,knowledge_reviews_reviewer_user_id_fk,FOREIGN KEY (reviewer_user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+knowledge_reviews,tenant_id,tenants,id,knowledge_reviews_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+management_coverage,"tenant_id,management_unit_id",management_units,"tenant_id,id",management_coverage_management_unit_id_fk,"FOREIGN KEY (tenant_id, management_unit_id) REFERENCES management_units(tenant_id, id) ON DELETE RESTRICT",False
+management_coverage,"tenant_id,scope_id",access_scopes,"tenant_id,id",management_coverage_scope_id_fk,"FOREIGN KEY (tenant_id, scope_id) REFERENCES access_scopes(tenant_id, id) ON DELETE RESTRICT",False
+management_coverage,"tenant_id,service_category_id",service_categories,"tenant_id,id",management_coverage_service_category_id_fk,"FOREIGN KEY (tenant_id, service_category_id) REFERENCES service_categories(tenant_id, id) ON DELETE RESTRICT",False
+management_coverage,tenant_id,tenants,id,management_coverage_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+management_units,tenant_id,tenants,id,management_units_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+memory_candidates,"tenant_id,namespace_id",memory_namespaces,"tenant_id,id",memory_candidates_namespace_id_fk,"FOREIGN KEY (tenant_id, namespace_id) REFERENCES memory_namespaces(tenant_id, id) ON DELETE RESTRICT",False
+memory_candidates,"tenant_id,proposed_by_agent_id",agents,"tenant_id,id",memory_candidates_proposed_by_agent_id_fk,"FOREIGN KEY (tenant_id, proposed_by_agent_id) REFERENCES agents(tenant_id, id) ON DELETE RESTRICT",False
+memory_candidates,"tenant_id,scope_id",access_scopes,"tenant_id,id",memory_candidates_scope_id_fk,"FOREIGN KEY (tenant_id, scope_id) REFERENCES access_scopes(tenant_id, id) ON DELETE RESTRICT",False
+memory_candidates,"tenant_id,source_binding_id",runtime_session_bindings,"tenant_id,id",memory_candidates_source_binding_id_fk,"FOREIGN KEY (tenant_id, source_binding_id) REFERENCES runtime_session_bindings(tenant_id, id) ON DELETE RESTRICT",False
+memory_candidates,"tenant_id,source_run_id",agent_runs,"tenant_id,id",memory_candidates_source_run_id_fk,"FOREIGN KEY (tenant_id, source_run_id) REFERENCES agent_runs(tenant_id, id) ON DELETE RESTRICT",False
+memory_candidates,"tenant_id,source_ticket_id",tickets,"tenant_id,id",memory_candidates_source_ticket_id_fk,"FOREIGN KEY (tenant_id, source_ticket_id) REFERENCES tickets(tenant_id, id) ON DELETE RESTRICT",False
+memory_candidates,subject_user_id,users,id,memory_candidates_subject_user_id_fk,FOREIGN KEY (subject_user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+memory_candidates,"tenant_id,supersedes_candidate_id",memory_candidates,"tenant_id,id",memory_candidates_supersedes_candidate_id_fk,"FOREIGN KEY (tenant_id, supersedes_candidate_id) REFERENCES memory_candidates(tenant_id, id) ON DELETE RESTRICT",False
+memory_candidates,tenant_id,tenants,id,memory_candidates_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+memory_namespaces,"tenant_id,owner_principal_id",execution_principals,"tenant_id,id",memory_namespaces_owner_principal_id_fk,"FOREIGN KEY (tenant_id, owner_principal_id) REFERENCES execution_principals(tenant_id, id) ON DELETE RESTRICT",False
+memory_namespaces,"tenant_id,team_id",agent_teams,"tenant_id,id",memory_namespaces_team_id_fk,"FOREIGN KEY (tenant_id, team_id) REFERENCES agent_teams(tenant_id, id) ON DELETE RESTRICT",False
+memory_namespaces,tenant_id,tenants,id,memory_namespaces_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+memory_namespaces,"tenant_id,workspace_id",workspaces,"tenant_id,id",memory_namespaces_workspace_id_fk,"FOREIGN KEY (tenant_id, workspace_id) REFERENCES workspaces(tenant_id, id) ON DELETE RESTRICT",False
+memory_publications,"tenant_id,approval_review_id",knowledge_reviews,"tenant_id,id",memory_publications_approval_review_id_fk,"FOREIGN KEY (tenant_id, approval_review_id) REFERENCES knowledge_reviews(tenant_id, id) ON DELETE RESTRICT",False
+memory_publications,"tenant_id,candidate_id",memory_candidates,"tenant_id,id",memory_publications_candidate_id_fk,"FOREIGN KEY (tenant_id, candidate_id) REFERENCES memory_candidates(tenant_id, id) ON DELETE RESTRICT",False
+memory_publications,"tenant_id,document_id",knowledge_documents,"tenant_id,id",memory_publications_document_id_fk,"FOREIGN KEY (tenant_id, document_id) REFERENCES knowledge_documents(tenant_id, id) ON DELETE RESTRICT",False
+memory_publications,"tenant_id,namespace_id",memory_namespaces,"tenant_id,id",memory_publications_namespace_id_fk,"FOREIGN KEY (tenant_id, namespace_id) REFERENCES memory_namespaces(tenant_id, id) ON DELETE RESTRICT",False
+memory_publications,tenant_id,tenants,id,memory_publications_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+memory_publications,"tenant_id,version_id",document_versions,"tenant_id,id",memory_publications_version_id_fk,"FOREIGN KEY (tenant_id, version_id) REFERENCES document_versions(tenant_id, id) ON DELETE RESTRICT",False
+messages,"tenant_id,channel_id",channels,"tenant_id,id",messages_channel_id_fk,"FOREIGN KEY (tenant_id, channel_id) REFERENCES channels(tenant_id, id) ON DELETE RESTRICT",False
+messages,"tenant_id,reply_to_id",messages,"tenant_id,id",messages_reply_to_id_fk,"FOREIGN KEY (tenant_id, reply_to_id) REFERENCES messages(tenant_id, id) ON DELETE RESTRICT",False
+messages,"tenant_id,run_id",agent_runs,"tenant_id,id",messages_run_id_fk,"FOREIGN KEY (tenant_id, run_id) REFERENCES agent_runs(tenant_id, id) ON DELETE RESTRICT",False
+messages,"tenant_id,sender_agent_id",agents,"tenant_id,id",messages_sender_agent_id_fk,"FOREIGN KEY (tenant_id, sender_agent_id) REFERENCES agents(tenant_id, id) ON DELETE RESTRICT",False
+messages,sender_user_id,users,id,messages_sender_user_id_fk,FOREIGN KEY (sender_user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+messages,"tenant_id,source_event_id",ticket_events,"tenant_id,id",messages_source_event_id_fk,"FOREIGN KEY (tenant_id, source_event_id) REFERENCES ticket_events(tenant_id, id) ON DELETE RESTRICT",False
+messages,tenant_id,tenants,id,messages_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+reception_sessions,"tenant_id,binding_id",runtime_session_bindings,"tenant_id,id",reception_sessions_binding_id_fk,"FOREIGN KEY (tenant_id, binding_id) REFERENCES runtime_session_bindings(tenant_id, id) ON DELETE RESTRICT",False
+reception_sessions,"tenant_id,channel_id",channels,"tenant_id,id",reception_sessions_channel_id_fk,"FOREIGN KEY (tenant_id, channel_id) REFERENCES channels(tenant_id, id) ON DELETE RESTRICT",False
+reception_sessions,customer_user_id,users,id,reception_sessions_customer_user_id_fk,FOREIGN KEY (customer_user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+reception_sessions,"tenant_id,system_agent_id",agents,"tenant_id,id",reception_sessions_system_agent_id_fk,"FOREIGN KEY (tenant_id, system_agent_id) REFERENCES agents(tenant_id, id) ON DELETE RESTRICT",False
+reception_sessions,tenant_id,tenants,id,reception_sessions_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+report_sources,"tenant_id,report_id",report_requests,"tenant_id,id",report_sources_report_id_fk,"FOREIGN KEY (tenant_id, report_id) REFERENCES report_requests(tenant_id, id) ON DELETE RESTRICT",False
+report_sources,"tenant_id,snapshot_file_id",files,"tenant_id,id",report_sources_snapshot_file_id_fk,"FOREIGN KEY (tenant_id, snapshot_file_id) REFERENCES files(tenant_id, id) ON DELETE RESTRICT",False
+report_sources,tenant_id,tenants,id,report_sources_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+retrieval_hits,"tenant_id,chunk_id",knowledge_chunks,"tenant_id,id",retrieval_hits_chunk_id_fk,"FOREIGN KEY (tenant_id, chunk_id) REFERENCES knowledge_chunks(tenant_id, id) ON DELETE RESTRICT",False
+retrieval_hits,"tenant_id,retrieval_run_id",retrieval_runs,"tenant_id,id",retrieval_hits_retrieval_run_id_fk,"FOREIGN KEY (tenant_id, retrieval_run_id) REFERENCES retrieval_runs(tenant_id, id) ON DELETE RESTRICT",False
+retrieval_hits,tenant_id,tenants,id,retrieval_hits_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+retrieval_runs,actor_user_id,users,id,retrieval_runs_actor_user_id_fk,FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+retrieval_runs,"tenant_id,agent_run_id",agent_runs,"tenant_id,id",retrieval_runs_agent_run_id_fk,"FOREIGN KEY (tenant_id, agent_run_id) REFERENCES agent_runs(tenant_id, id) ON DELETE RESTRICT",False
+retrieval_runs,"tenant_id,binding_id",runtime_session_bindings,"tenant_id,id",retrieval_runs_binding_id_fk,"FOREIGN KEY (tenant_id, binding_id) REFERENCES runtime_session_bindings(tenant_id, id) ON DELETE RESTRICT",False
+retrieval_runs,"tenant_id,knowledge_base_id",knowledge_bases,"tenant_id,id",retrieval_runs_knowledge_base_id_fk,"FOREIGN KEY (tenant_id, knowledge_base_id) REFERENCES knowledge_bases(tenant_id, id) ON DELETE RESTRICT",False
+retrieval_runs,model_id,embedding_models,id,retrieval_runs_model_id_fk,FOREIGN KEY (model_id) REFERENCES embedding_models(id) ON DELETE RESTRICT,False
+retrieval_runs,"tenant_id,principal_id",execution_principals,"tenant_id,id",retrieval_runs_principal_id_fk,"FOREIGN KEY (tenant_id, principal_id) REFERENCES execution_principals(tenant_id, id) ON DELETE RESTRICT",False
+retrieval_runs,tenant_id,tenants,id,retrieval_runs_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+run_memory_access,"tenant_id,namespace_id",memory_namespaces,"tenant_id,id",run_memory_access_namespace_id_fk,"FOREIGN KEY (tenant_id, namespace_id) REFERENCES memory_namespaces(tenant_id, id) ON DELETE RESTRICT",False
+run_memory_access,"tenant_id,run_id",agent_runs,"tenant_id,id",run_memory_access_run_id_fk,"FOREIGN KEY (tenant_id, run_id) REFERENCES agent_runs(tenant_id, id) ON DELETE RESTRICT",False
+run_memory_access,tenant_id,tenants,id,run_memory_access_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+runtime_identities,backend_id,runtime_backends,id,runtime_identities_backend_id_fk,FOREIGN KEY (backend_id) REFERENCES runtime_backends(id) ON DELETE RESTRICT,False
+runtime_identities,"tenant_id,principal_id",execution_principals,"tenant_id,id",runtime_identities_principal_id_fk,"FOREIGN KEY (tenant_id, principal_id) REFERENCES execution_principals(tenant_id, id) ON DELETE RESTRICT",False
+runtime_identities,tenant_id,tenants,id,runtime_identities_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+runtime_memory_bindings,backend_id,runtime_backends,id,runtime_memory_bindings_backend_id_fk,FOREIGN KEY (backend_id) REFERENCES runtime_backends(id) ON DELETE RESTRICT,False
+runtime_memory_bindings,"tenant_id,namespace_id",memory_namespaces,"tenant_id,id",runtime_memory_bindings_namespace_id_fk,"FOREIGN KEY (tenant_id, namespace_id) REFERENCES memory_namespaces(tenant_id, id) ON DELETE RESTRICT",False
+runtime_memory_bindings,tenant_id,tenants,id,runtime_memory_bindings_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+runtime_session_bindings,"tenant_id,identity_id,backend_id",runtime_identities,"tenant_id,id,backend_id",binding_identity_backend_fk,"FOREIGN KEY (tenant_id, identity_id, backend_id) REFERENCES runtime_identities(tenant_id, id, backend_id)",False
+runtime_session_bindings,"tenant_id,agent_id",agents,"tenant_id,id",runtime_session_bindings_agent_id_fk,"FOREIGN KEY (tenant_id, agent_id) REFERENCES agents(tenant_id, id) ON DELETE RESTRICT",False
+runtime_session_bindings,"tenant_id,agent_version_id",agent_versions,"tenant_id,id",runtime_session_bindings_agent_version_id_fk,"FOREIGN KEY (tenant_id, agent_version_id) REFERENCES agent_versions(tenant_id, id) ON DELETE RESTRICT",False
+runtime_session_bindings,backend_id,runtime_backends,id,runtime_session_bindings_backend_id_fk,FOREIGN KEY (backend_id) REFERENCES runtime_backends(id) ON DELETE RESTRICT,False
+runtime_session_bindings,"tenant_id,channel_id",channels,"tenant_id,id",runtime_session_bindings_channel_id_fk,"FOREIGN KEY (tenant_id, channel_id) REFERENCES channels(tenant_id, id) ON DELETE RESTRICT",False
+runtime_session_bindings,customer_user_id,users,id,runtime_session_bindings_customer_user_id_fk,FOREIGN KEY (customer_user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+runtime_session_bindings,"tenant_id,identity_id",runtime_identities,"tenant_id,id",runtime_session_bindings_identity_id_fk,"FOREIGN KEY (tenant_id, identity_id) REFERENCES runtime_identities(tenant_id, id) ON DELETE RESTRICT",False
+runtime_session_bindings,started_by_user_id,users,id,runtime_session_bindings_started_by_user_id_fk,FOREIGN KEY (started_by_user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+runtime_session_bindings,"tenant_id,team_member_id",team_members,"tenant_id,id",runtime_session_bindings_team_member_id_fk,"FOREIGN KEY (tenant_id, team_member_id) REFERENCES team_members(tenant_id, id) ON DELETE RESTRICT",False
+runtime_session_bindings,tenant_id,tenants,id,runtime_session_bindings_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+runtime_session_operations,"tenant_id,actor_principal_id",execution_principals,"tenant_id,id",runtime_session_operations_actor_principal_id_fk,"FOREIGN KEY (tenant_id, actor_principal_id) REFERENCES execution_principals(tenant_id, id) ON DELETE RESTRICT",False
+runtime_session_operations,"tenant_id,binding_id",runtime_session_bindings,"tenant_id,id",runtime_session_operations_binding_id_fk,"FOREIGN KEY (tenant_id, binding_id) REFERENCES runtime_session_bindings(tenant_id, id) ON DELETE RESTRICT",False
+runtime_session_operations,initiated_by_user_id,users,id,runtime_session_operations_initiated_by_user_id_fk,FOREIGN KEY (initiated_by_user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+runtime_session_operations,"tenant_id,result_run_id",agent_runs,"tenant_id,id",runtime_session_operations_result_run_id_fk,"FOREIGN KEY (tenant_id, result_run_id) REFERENCES agent_runs(tenant_id, id) ON DELETE RESTRICT",False
+runtime_session_operations,tenant_id,tenants,id,runtime_session_operations_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+runtime_session_operations,"tenant_id,trigger_event_id",ticket_events,"tenant_id,id",runtime_session_operations_trigger_event_id_fk,"FOREIGN KEY (tenant_id, trigger_event_id) REFERENCES ticket_events(tenant_id, id) ON DELETE RESTRICT",False
+scoped_user_roles,granted_by,users,id,scoped_user_roles_granted_by_fk,FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE RESTRICT,False
+scoped_user_roles,"tenant_id,membership_id",tenant_memberships,"tenant_id,id",scoped_user_roles_membership_id_fk,"FOREIGN KEY (tenant_id, membership_id) REFERENCES tenant_memberships(tenant_id, id) ON DELETE RESTRICT",False
+scoped_user_roles,"tenant_id,scope_id",access_scopes,"tenant_id,id",scoped_user_roles_scope_id_fk,"FOREIGN KEY (tenant_id, scope_id) REFERENCES access_scopes(tenant_id, id) ON DELETE RESTRICT",False
+scoped_user_roles,tenant_id,tenants,id,scoped_user_roles_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+sites,"tenant_id,domain_id",domains,"tenant_id,id",sites_domain_id_fk,"FOREIGN KEY (tenant_id, domain_id) REFERENCES domains(tenant_id, id) ON DELETE RESTRICT",False
+sites,tenant_id,tenants,id,sites_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+storage_locations,tenant_id,tenants,id,storage_locations_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+tenant_memberships,tenant_id,tenants,id,tenant_memberships_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+tenant_memberships,user_id,users,id,tenant_memberships_user_id_fk,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+tickets,"tenant_id,active_sla_cycle_id",ticket_sla_cycles,"tenant_id,id",tickets_active_sla_cycle_id_fk,"FOREIGN KEY (tenant_id, active_sla_cycle_id) REFERENCES ticket_sla_cycles(tenant_id, id) ON DELETE RESTRICT",False
+tickets,"tenant_id,assigned_team_id",agent_teams,"tenant_id,id",tickets_assigned_team_id_fk,"FOREIGN KEY (tenant_id, assigned_team_id) REFERENCES agent_teams(tenant_id, id) ON DELETE RESTRICT",False
+tickets,"tenant_id,building_id",buildings,"tenant_id,id",tickets_building_id_fk,"FOREIGN KEY (tenant_id, building_id) REFERENCES buildings(tenant_id, id) ON DELETE RESTRICT",False
+tickets,"tenant_id,category_id",service_categories,"tenant_id,id",tickets_category_id_fk,"FOREIGN KEY (tenant_id, category_id) REFERENCES service_categories(tenant_id, id) ON DELETE RESTRICT",False
+tickets,"tenant_id,channel_id",channels,"tenant_id,id",tickets_channel_id_fk,"FOREIGN KEY (tenant_id, channel_id) REFERENCES channels(tenant_id, id) ON DELETE RESTRICT",False
+tickets,"tenant_id,coverage_id",management_coverage,"tenant_id,id",tickets_coverage_id_fk,"FOREIGN KEY (tenant_id, coverage_id) REFERENCES management_coverage(tenant_id, id) ON DELETE RESTRICT",False
+tickets,"tenant_id,current_triage_decision_id",ticket_triage_decisions,"tenant_id,id",tickets_current_triage_decision_id_fk,"FOREIGN KEY (tenant_id, current_triage_decision_id) REFERENCES ticket_triage_decisions(tenant_id, id) ON DELETE RESTRICT",False
+tickets,"tenant_id,domain_id",domains,"tenant_id,id",tickets_domain_id_fk,"FOREIGN KEY (tenant_id, domain_id) REFERENCES domains(tenant_id, id) ON DELETE RESTRICT",False
+tickets,"tenant_id,incident_type_id",incident_types,"tenant_id,id",tickets_incident_type_id_fk,"FOREIGN KEY (tenant_id, incident_type_id) REFERENCES incident_types(tenant_id, id) ON DELETE RESTRICT",False
+tickets,"tenant_id,management_unit_id",management_units,"tenant_id,id",tickets_management_unit_id_fk,"FOREIGN KEY (tenant_id, management_unit_id) REFERENCES management_units(tenant_id, id) ON DELETE RESTRICT",False
+tickets,requester_user_id,users,id,tickets_requester_user_id_fk,FOREIGN KEY (requester_user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+tickets,"tenant_id,site_id",sites,"tenant_id,id",tickets_site_id_fk,"FOREIGN KEY (tenant_id, site_id) REFERENCES sites(tenant_id, id) ON DELETE RESTRICT",False
+tickets,"tenant_id,sla_policy_id",sla_policies,"tenant_id,id",tickets_sla_policy_id_fk,"FOREIGN KEY (tenant_id, sla_policy_id) REFERENCES sla_policies(tenant_id, id) ON DELETE RESTRICT",False
+tickets,tenant_id,tenants,id,tickets_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+tickets,"tenant_id,unit_id",units,"tenant_id,id",tickets_unit_id_fk,"FOREIGN KEY (tenant_id, unit_id) REFERENCES units(tenant_id, id) ON DELETE RESTRICT",False
+tickets,"tenant_id,zone_id",zones,"tenant_id,id",tickets_zone_id_fk,"FOREIGN KEY (tenant_id, zone_id) REFERENCES zones(tenant_id, id) ON DELETE RESTRICT",False
+unit_residents,tenant_id,tenants,id,unit_residents_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+unit_residents,"tenant_id,unit_id",units,"tenant_id,id",unit_residents_unit_id_fk,"FOREIGN KEY (tenant_id, unit_id) REFERENCES units(tenant_id, id) ON DELETE RESTRICT",False
+unit_residents,user_id,users,id,unit_residents_user_id_fk,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+unit_residents,verified_by,users,id,unit_residents_verified_by_fk,FOREIGN KEY (verified_by) REFERENCES users(id) ON DELETE RESTRICT,False
+units,"tenant_id,building_id",buildings,"tenant_id,id",units_building_id_fk,"FOREIGN KEY (tenant_id, building_id) REFERENCES buildings(tenant_id, id) ON DELETE RESTRICT",False
+units,"tenant_id,site_id",sites,"tenant_id,id",units_site_id_fk,"FOREIGN KEY (tenant_id, site_id) REFERENCES sites(tenant_id, id) ON DELETE RESTRICT",False
+units,tenant_id,tenants,id,units_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+units,"tenant_id,zone_id",zones,"tenant_id,id",units_zone_id_fk,"FOREIGN KEY (tenant_id, zone_id) REFERENCES zones(tenant_id, id) ON DELETE RESTRICT",False
+workspace_members,tenant_id,tenants,id,workspace_members_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+workspace_members,user_id,users,id,workspace_members_user_id_fk,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,False
+workspace_members,"tenant_id,workspace_id",workspaces,"tenant_id,id",workspace_members_workspace_id_fk,"FOREIGN KEY (tenant_id, workspace_id) REFERENCES workspaces(tenant_id, id) ON DELETE RESTRICT",False
+workspaces,"tenant_id,management_unit_id",management_units,"tenant_id,id",workspaces_management_unit_id_fk,"FOREIGN KEY (tenant_id, management_unit_id) REFERENCES management_units(tenant_id, id) ON DELETE RESTRICT",False
+workspaces,tenant_id,tenants,id,workspaces_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False
+zones,"tenant_id,site_id",sites,"tenant_id,id",zones_site_id_fk,"FOREIGN KEY (tenant_id, site_id) REFERENCES sites(tenant_id, id) ON DELETE RESTRICT",False
+zones,tenant_id,tenants,id,zones_tenant_id_fk,FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE RESTRICT,False

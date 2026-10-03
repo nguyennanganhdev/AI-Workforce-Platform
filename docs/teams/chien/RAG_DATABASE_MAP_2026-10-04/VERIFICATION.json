@@ -1,0 +1,47 @@
+{
+  "tables": 57,
+  "column_definitions": 713,
+  "foreign_keys": 230,
+  "checked_local_links": 166,
+  "png_images": [
+    {
+      "name": "00-overview.png",
+      "width": 2472,
+      "height": 3233
+    },
+    {
+      "name": "01-quang-ingestion.png",
+      "width": 3342,
+      "height": 4300
+    },
+    {
+      "name": "02-quang-retrieval.png",
+      "width": 3994,
+      "height": 3233
+    },
+    {
+      "name": "03-chien-authorization.png",
+      "width": 4989,
+      "height": 3150
+    },
+    {
+      "name": "04-hoang-reception.png",
+      "width": 2658,
+      "height": 4322
+    },
+    {
+      "name": "05-dong-runtime-memory.png",
+      "width": 5825,
+      "height": 3464
+    },
+    {
+      "name": "06-data-bql-learning.png",
+      "width": 4700,
+      "height": 4783
+    }
+  ],
+  "snapshot_document_count": 115,
+  "snapshot_chunk_count": 279,
+  "visual_review": "All seven PNGs inspected; node widths use measured Segoe UI text to avoid overflow.",
+  "database_source": "Restored backup 03/10/2026; no live data mutation."
+}

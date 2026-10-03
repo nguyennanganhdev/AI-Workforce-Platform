@@ -1,0 +1,502 @@
+[
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T19:49:14Z",
+    "databaseId": 37149272343,
+    "headBranch": "dev_teamChien_HuyDo",
+    "headSha": "a231575537759845e73b8f4c4124e5ef168b6aff",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37149272343",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T19:31:20Z",
+    "databaseId": 37148192764,
+    "headBranch": "dev_teamChien_HuyDo",
+    "headSha": "d463f1a9db4a313422eb984a7d23357a5be617f1",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37148192764",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T19:31:18Z",
+    "databaseId": 37148191070,
+    "headBranch": "dev_teamChien_HuyDo",
+    "headSha": "d463f1a9db4a313422eb984a7d23357a5be617f1",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37148191070",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T18:08:14Z",
+    "databaseId": 37143074200,
+    "headBranch": "devTeamDong/dev5",
+    "headSha": "cf9a663bbb19ae1d64c790c02d66ea439e90f47e",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37143074200",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T16:54:43Z",
+    "databaseId": 37138586894,
+    "headBranch": "dev_TeamChien",
+    "headSha": "a24ecd7568fedebec6d412da73d685bb820c1a5d",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37138586894",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T16:54:43Z",
+    "databaseId": 37138586832,
+    "headBranch": "dev_TeamChien",
+    "headSha": "a24ecd7568fedebec6d412da73d685bb820c1a5d",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37138586832",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T13:30:26Z",
+    "databaseId": 37126413864,
+    "headBranch": "develop",
+    "headSha": "d9b4e75f0d3f0cffa4393b5568aa4d0371023413",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37126413864",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T13:25:53Z",
+    "databaseId": 37126147359,
+    "headBranch": "dev_TeamDong",
+    "headSha": "a6d5cc716a0aa82bdf78bca22f4029729d95a2e9",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37126147359",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T13:14:18Z",
+    "databaseId": 37125492827,
+    "headBranch": "dev_TeamDong",
+    "headSha": "ceecb0243e83d8ff8ac93d3dc662d7c3e867ebf1",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37125492827",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T11:07:37Z",
+    "databaseId": 37118654651,
+    "headBranch": "develop",
+    "headSha": "137fd18ac459b34b8b0df39165564687fdf7282b",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37118654651",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T06:32:46Z",
+    "databaseId": 37103415939,
+    "headBranch": "codex/report-agent-PHH",
+    "headSha": "796f9091ee9b74c420dcebf8536727f3817a9bca",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37103415939",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-03T05:50:09Z",
+    "databaseId": 37101099763,
+    "headBranch": "dev_TeamChien",
+    "headSha": "2c88375ca39748aaa8e607dbba744833ae11da86",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37101099763",
+    "workflowName": "Desktop"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-03T05:50:09Z",
+    "databaseId": 37101099747,
+    "headBranch": "dev_TeamChien",
+    "headSha": "2c88375ca39748aaa8e607dbba744833ae11da86",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37101099747",
+    "workflowName": "Desktop Windows signing"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T05:50:06Z",
+    "databaseId": 37101096819,
+    "headBranch": "dev_TeamChien",
+    "headSha": "2c88375ca39748aaa8e607dbba744833ae11da86",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37101096819",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-03T05:42:27Z",
+    "databaseId": 37100685016,
+    "headBranch": "dev_TeamChien",
+    "headSha": "d7ff712c3602285c8017c1613a419325d1baacba",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37100685016",
+    "workflowName": "Desktop Windows signing"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-03T05:42:27Z",
+    "databaseId": 37100685012,
+    "headBranch": "dev_TeamChien",
+    "headSha": "d7ff712c3602285c8017c1613a419325d1baacba",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37100685012",
+    "workflowName": "Desktop"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T05:42:24Z",
+    "databaseId": 37100682472,
+    "headBranch": "dev_TeamChien",
+    "headSha": "d7ff712c3602285c8017c1613a419325d1baacba",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37100682472",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T05:00:08Z",
+    "databaseId": 37098385440,
+    "headBranch": "devTeamPhai-DucAnh",
+    "headSha": "4cca44eba6d33baf349feb918761ba575554df6c",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37098385440",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-03T04:14:45Z",
+    "databaseId": 37095892085,
+    "headBranch": "dev_TeamChien",
+    "headSha": "9ecd1437b8c9629f51e68886e6dc17bc3da7e77e",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37095892085",
+    "workflowName": "Desktop"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-03T04:14:45Z",
+    "databaseId": 37095892070,
+    "headBranch": "dev_TeamChien",
+    "headSha": "9ecd1437b8c9629f51e68886e6dc17bc3da7e77e",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37095892070",
+    "workflowName": "Desktop Windows signing"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-03T04:14:43Z",
+    "databaseId": 37095889440,
+    "headBranch": "dev_TeamChien",
+    "headSha": "9ecd1437b8c9629f51e68886e6dc17bc3da7e77e",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37095889440",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T20:54:55Z",
+    "databaseId": 37063603618,
+    "headBranch": "dev_TeamChien",
+    "headSha": "3728fba9b0e5ea95f6013b1c098b0c2c751f37fc",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37063603618",
+    "workflowName": "Desktop Windows signing"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T20:54:55Z",
+    "databaseId": 37063603436,
+    "headBranch": "dev_TeamChien",
+    "headSha": "3728fba9b0e5ea95f6013b1c098b0c2c751f37fc",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37063603436",
+    "workflowName": "Desktop"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-02T20:54:51Z",
+    "databaseId": 37063596242,
+    "headBranch": "dev_TeamChien",
+    "headSha": "3728fba9b0e5ea95f6013b1c098b0c2c751f37fc",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37063596242",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T20:51:17Z",
+    "databaseId": 37063224077,
+    "headBranch": "dev_TeamChien",
+    "headSha": "b2a652d83e21e99c61c9ab2939710bca06fe8ef3",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37063224077",
+    "workflowName": "Desktop Windows signing"
+  },
+  {
+    "conclusion": "cancelled",
+    "createdAt": "2026-10-02T20:51:17Z",
+    "databaseId": 37063223974,
+    "headBranch": "dev_TeamChien",
+    "headSha": "b2a652d83e21e99c61c9ab2939710bca06fe8ef3",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37063223974",
+    "workflowName": "Desktop"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-02T20:51:14Z",
+    "databaseId": 37063219085,
+    "headBranch": "dev_TeamChien",
+    "headSha": "b2a652d83e21e99c61c9ab2939710bca06fe8ef3",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37063219085",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T20:22:21Z",
+    "databaseId": 37060141960,
+    "headBranch": "dev_TeamChien",
+    "headSha": "13164aafd117a0477c3de1a19e0580f2e12a6f1b",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37060141960",
+    "workflowName": "Desktop Windows signing"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T20:22:21Z",
+    "databaseId": 37060141879,
+    "headBranch": "dev_TeamChien",
+    "headSha": "13164aafd117a0477c3de1a19e0580f2e12a6f1b",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37060141879",
+    "workflowName": "Desktop"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-02T20:22:17Z",
+    "databaseId": 37060134990,
+    "headBranch": "dev_TeamChien",
+    "headSha": "13164aafd117a0477c3de1a19e0580f2e12a6f1b",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37060134990",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T20:19:29Z",
+    "databaseId": 37059828854,
+    "headBranch": "dev_TeamChien",
+    "headSha": "5f73ecd183f817d69c64fa7cd6df95dd5ce1b74c",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37059828854",
+    "workflowName": "Desktop Windows signing"
+  },
+  {
+    "conclusion": "cancelled",
+    "createdAt": "2026-10-02T20:19:29Z",
+    "databaseId": 37059828683,
+    "headBranch": "dev_TeamChien",
+    "headSha": "5f73ecd183f817d69c64fa7cd6df95dd5ce1b74c",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37059828683",
+    "workflowName": "Desktop"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-02T20:19:26Z",
+    "databaseId": 37059823316,
+    "headBranch": "dev_TeamChien",
+    "headSha": "5f73ecd183f817d69c64fa7cd6df95dd5ce1b74c",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37059823316",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T20:10:46Z",
+    "databaseId": 37058899617,
+    "headBranch": "dev_TeamChien",
+    "headSha": "67bae8ff2fe1c41d8d6456b9aa3dcb44ae6b0fcc",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37058899617",
+    "workflowName": "Desktop"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T20:10:46Z",
+    "databaseId": 37058899584,
+    "headBranch": "dev_TeamChien",
+    "headSha": "67bae8ff2fe1c41d8d6456b9aa3dcb44ae6b0fcc",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37058899584",
+    "workflowName": "Desktop Windows signing"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-02T20:10:42Z",
+    "databaseId": 37058892235,
+    "headBranch": "dev_TeamChien",
+    "headSha": "67bae8ff2fe1c41d8d6456b9aa3dcb44ae6b0fcc",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37058892235",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T19:58:37Z",
+    "databaseId": 37057581173,
+    "headBranch": "dev_TeamChien",
+    "headSha": "b48238c2ae1b2c934abb8a40c78904cfe2cffdf8",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37057581173",
+    "workflowName": "Desktop"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T19:58:37Z",
+    "databaseId": 37057581169,
+    "headBranch": "dev_TeamChien",
+    "headSha": "b48238c2ae1b2c934abb8a40c78904cfe2cffdf8",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37057581169",
+    "workflowName": "Desktop Windows signing"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-02T19:58:35Z",
+    "databaseId": 37057577292,
+    "headBranch": "dev_TeamChien",
+    "headSha": "b48238c2ae1b2c934abb8a40c78904cfe2cffdf8",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37057577292",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T19:44:49Z",
+    "databaseId": 37056110543,
+    "headBranch": "dev_TeamChien",
+    "headSha": "4bea88fe98c98678fc2cb1710175624412d528e3",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37056110543",
+    "workflowName": "Desktop"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T19:44:49Z",
+    "databaseId": 37056110538,
+    "headBranch": "dev_TeamChien",
+    "headSha": "4bea88fe98c98678fc2cb1710175624412d528e3",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37056110538",
+    "workflowName": "Desktop Windows signing"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-02T19:44:45Z",
+    "databaseId": 37056103555,
+    "headBranch": "dev_TeamChien",
+    "headSha": "4bea88fe98c98678fc2cb1710175624412d528e3",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37056103555",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T19:34:45Z",
+    "databaseId": 37055028351,
+    "headBranch": "dev_TeamChien",
+    "headSha": "8f4c55a259b7ea030589c0044bf4f318b6f392af",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37055028351",
+    "workflowName": "Desktop"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T19:34:45Z",
+    "databaseId": 37055028337,
+    "headBranch": "dev_TeamChien",
+    "headSha": "8f4c55a259b7ea030589c0044bf4f318b6f392af",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37055028337",
+    "workflowName": "Desktop Windows signing"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-02T19:34:41Z",
+    "databaseId": 37055022022,
+    "headBranch": "dev_TeamChien",
+    "headSha": "8f4c55a259b7ea030589c0044bf4f318b6f392af",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37055022022",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-02T19:14:36Z",
+    "databaseId": 37052820082,
+    "headBranch": "devTeamDong/TienAnh-supervisor",
+    "headSha": "fb9d6654ae39f68ddc1027acc03ba78728caa7b5",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37052820082",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T19:04:17Z",
+    "databaseId": 37051679214,
+    "headBranch": "dev_TeamChien",
+    "headSha": "33cdf619d449ceee544043b0fd55f532e0e23822",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37051679214",
+    "workflowName": "Desktop"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T19:04:17Z",
+    "databaseId": 37051679165,
+    "headBranch": "dev_TeamChien",
+    "headSha": "33cdf619d449ceee544043b0fd55f532e0e23822",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37051679165",
+    "workflowName": "Desktop Windows signing"
+  },
+  {
+    "conclusion": "failure",
+    "createdAt": "2026-10-02T19:04:13Z",
+    "databaseId": 37051670266,
+    "headBranch": "dev_TeamChien",
+    "headSha": "33cdf619d449ceee544043b0fd55f532e0e23822",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37051670266",
+    "workflowName": "CI"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T18:16:30Z",
+    "databaseId": 37046323177,
+    "headBranch": "dev_TeamChien",
+    "headSha": "5fcff7d39fceca68698aacd214132a9d949961de",
+    "status": "completed",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37046323177",
+    "workflowName": "Desktop Windows signing"
+  }
+]

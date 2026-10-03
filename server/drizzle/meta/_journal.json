@@ -85,6 +85,13 @@
       "when": 1790906101731,
       "tag": "0011_reception_runtime_backend",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790906101732,
+      "tag": "0012_supervisor_runtime",
+      "breakpoints": true
     }
   ]
 }

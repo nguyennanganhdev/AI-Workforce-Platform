@@ -3,7 +3,7 @@
 Ngày 30/09/2026. Implementation hiện tại: `agent-reception/src/graph/workflow.py`.
 Factory: `create_reception_workflow_factory`, topology `pd-workflow-python-2`.
 `factory.py` giữ PD01/PD02 harness với marker `pd01-python-1`. Không tự migrate
-checkpoint TypeScript. Xem [handoff chuyển Python](PYTHON_MIGRATION.md).
+checkpoint TypeScript. Xem [baseline và ràng buộc đã gộp](PD_ALL_VERIFICATION.md).
 
 ```mermaid
 flowchart TD

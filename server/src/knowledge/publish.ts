@@ -3,7 +3,7 @@
  *
  *   cd server
  *   KNOWLEDGE_ADMIN_DATABASE_URL=postgresql://owner@host/db OPENAI_API_KEY=... \
- *     bun src/knowledge/publish.ts <data-dir> --site ocean-park-1 --user <publisher user id>
+ *     bun src/knowledge/publish.ts <data-dir> --site ocean-park-1 --user <publisher's user id or email>
  *
  * `cli.ts` is the developer fixture: it invents a scope per folder. This entry point maps each
  * folder to a scope of the business database instead, so the backend's own authorization
@@ -54,7 +54,8 @@ if (!site) throw new Error("No site with that code");
 const tenant: string = site.tenant_id;
 const [user] = await admin`
   select u.id from users u join tenant_memberships m on m.user_id = u.id
-  where u.id = ${argument("user")} and m.tenant_id = ${tenant} and m.status = 'active'`;
+  where (u.id = ${argument("user")} or lower(u.email) = lower(${argument("user")}))
+    and m.tenant_id = ${tenant} and m.status = 'active'`;
 if (!user) throw new Error("--user must be an active member of the tenant");
 
 /** One row by its natural key, created the first time. */
