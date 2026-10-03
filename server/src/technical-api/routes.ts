@@ -8,6 +8,8 @@ import type { TechnicalTool } from "../technical-tools/tool";
 
 export type VerifiedTechnicalCaller = Extract<CallVerdict, { ok: true }> & {
   assertion: RunAssertion;
+  /** A specialist turn of a Supervisor session: identified by its agent run, not by a person. */
+  session?: true;
 };
 export type TechnicalApiDependencies = {
   authorise(c: Context): Promise<VerifiedTechnicalCaller | null>;
