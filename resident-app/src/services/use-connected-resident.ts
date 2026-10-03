@@ -157,6 +157,11 @@ export function useConnectedResident() {
       active.current = "";
       drafts.current.clear();
     }
+    // No session at all: the sign-in page is the only useful place to be.
+    if (e instanceof ApiError && e.status === 401) {
+      location.assign("/login");
+      return;
+    }
     setError(e instanceof Error ? e.message : "Không kết nối được máy chủ.");
   };
   const run = async (action: () => Promise<void>, requireProfile = true) => {

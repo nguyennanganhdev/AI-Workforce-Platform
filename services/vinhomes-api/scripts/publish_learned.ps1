@@ -2,12 +2,14 @@
 # Each round also proposes emergency safety guidance from the folder for management to approve.
 # Once:        scripts/publish_learned.ps1 -DataDir <Data-Vinhome> [-Site ocean-park-1] [-User local-v3-management]
 # Keep going:  add -EveryMinutes 5 and leave it running next to the demo; unchanged files cost nothing.
+# Password-login deployment: add -Connected -User <publisher's email or id>.
 param([Parameter(Mandatory = $true)][string]$DataDir, [string]$Site = 'ocean-park-1', [string]$User = 'local-v3-management',
-      [int]$EveryMinutes = 0)
+      [int]$EveryMinutes = 0, [switch]$Connected)
 $ErrorActionPreference = 'Stop'
 $serviceRoot = Split-Path $PSScriptRoot -Parent
 $projectRoot = Split-Path (Split-Path $serviceRoot -Parent) -Parent
-$owner = (Get-Content -LiteralPath (Join-Path $serviceRoot '.local-v3-faker/migration.env') | Where-Object { $_.StartsWith('DATABASE_URL=') }) -replace '^DATABASE_URL=', ''
+$local = if ($Connected) { '.local-connected' } else { '.local-v3-faker' }
+$owner = (Get-Content -LiteralPath (Join-Path $serviceRoot "$local/migration.env") | Where-Object { $_.StartsWith('DATABASE_URL=') }) -replace '^DATABASE_URL=', ''
 $key = (Get-Content -LiteralPath (Join-Path $projectRoot 'agent-reception/.env') | Where-Object { $_.StartsWith('OPENAI_API_KEY=') }) -replace '^OPENAI_API_KEY=', ''
 $env:KNOWLEDGE_ADMIN_DATABASE_URL = $owner
 $env:OPENAI_API_KEY = $key

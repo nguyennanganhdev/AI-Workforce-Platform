@@ -4,7 +4,11 @@ $serviceRoot = Split-Path $PSScriptRoot -Parent
 if (!$ConfigFile) { $ConfigFile = Join-Path $serviceRoot '.env.connected' }
 if (!(Test-Path -LiteralPath $ConfigFile)) { throw "Missing $ConfigFile. Configure a real database, tenant and authentication endpoint. This launcher never seeds demo data." }
 $settings = @{}
-Get-Content -LiteralPath $ConfigFile | ForEach-Object {
+# Optional: reception.env turns on the Reception agent. The local Reception runtime is shared
+# with the demo, so its settings are read from there unless this deployment has its own.
+$receptionFile = @('.local-connected/reception.env', '.local-v3-faker/reception.env') |
+    ForEach-Object { Join-Path $serviceRoot $_ } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+@($receptionFile, $ConfigFile) | Where-Object { $_ } | ForEach-Object { Get-Content -LiteralPath $_ } | ForEach-Object {
     if ($_ -and !$_.StartsWith('#') -and $_.Contains('=')) {
         $pair = $_ -split '=', 2
         $settings[$pair[0].Trim()] = $pair[1].Trim()
