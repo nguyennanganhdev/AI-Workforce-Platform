@@ -131,13 +131,31 @@ Settings in `agent-coordination/.env`: `COORDINATION_BACKEND_URL` and
 `COORDINATION_SERVICE_TOKEN` (equal to the backend's `VINHOMES_API_COORDINATION_SERVICE_TOKEN`).
 Port 4300 serves `/health`, `/ready` and `/sessions`.
 
+For specialists, also `COORDINATION_MODEL` (the planner model), `COORDINATION_OPENBOT_URL` and
+`MANAGED_AGENT_TOKEN`; the model key is read from `agent-reception/.env`. The OpenBot is
+`agent-bot`: `scripts/start_openbot.ps1` starts it on 4200. Without these the Supervisor
+accepts a ticket and hands it to management, as before.
+
 Bound today: Reception hands a ticket over, the backend verifies it and allocates the
 session binding and agent run, the Supervisor creates a durable checkpoint and sends
-`accepted`. Not bound: rooms and specialists, the planner model, backend actions, drafts and
-backend events. Their ports refuse (`dependency_unavailable:*`), and because no specialist is
-published the session pauses with `planner:no_specialist_available` and management continues
-by hand. Storage is `persistence.sqlite.DevelopmentStore` (one host). Tests:
-`tests/vinhomes` (11). On Windows run pytest with `PYTHONUTF8=1`.
+`accepted`. It then opens a room with the specialists the backend offers for the ticket's
+category (published, in the management room), gives them tasks, runs their turns on OpenBot
+with the agent's published instructions, and mirrors tasks and replies to the backend for
+management to read. When every task is done the session pauses with `planner:analysis_ready`.
 
-Contract table, acceptance matrix and open questions:
-`docs/teams/chien/SUPERVISOR_SESSION_V2_M0_M1_2026-10-03.md`.
+Not bound: plans, resident questions, approvals, backend actions, backend events and tools.
+Their ports refuse (`dependency_unavailable:*`). Storage is `persistence.sqlite.DevelopmentStore`
+(one host). Tests: `tests/vinhomes` (16). On Windows run pytest with `PYTHONUTF8=1`.
+
+`scripts/publish_agent.ps1` takes an agent definition through the platform's flow: draft,
+evaluation on OpenBot, admin review (`docs/teams/quang/agent/`).
+
+What this composition wraps instead of changing in the cores, for Team Đông to review:
+`ProviderModel` cannot call `gpt-5.4-mini` (`max_tokens`, exact model-name match), so
+`vinhomes.ports.PlannerModel` is used; `OpenbotAdapter` sends no agent instructions and reads
+only a JSON reply, so `InstructedClient` adds the instructions and builds the reply object from
+the Bot's plain text; one specialist may take consecutive turns (`TURNS`).
+
+Contract tables, acceptance matrix and open questions:
+`docs/teams/chien/SUPERVISOR_SESSION_V2_M0_M1_2026-10-03.md` and
+`docs/teams/chien/SUPERVISOR_SESSION_V2_M2_2026-10-04.md`.

@@ -67,3 +67,15 @@ class Backend:
     async def status(self, team_id: str, phase: str, pause_reason: str | None, state_version: int) -> dict:
         return await self._call("POST", f"/teams/{team_id}/status",
                                 {"phase": phase, "pause_reason": pause_reason, "state_version": state_version})
+
+    async def admit(self, team_id: str, agent_version_id: str) -> dict:
+        return await self._call("POST", f"/teams/{team_id}/members", {"agent_version_id": agent_version_id})
+
+    async def turn_run(self, team_id: str, member_id: str, operation_id: str) -> dict:
+        return await self._call("POST", f"/teams/{team_id}/members/{member_id}/runs", {"operation_id": operation_id})
+
+    async def release(self, team_id: str, member_id: str) -> dict:
+        return await self._call("GET", f"/teams/{team_id}/members/{member_id}/release")
+
+    async def room(self, team_id: str, mirror: dict) -> dict:
+        return await self._call("POST", f"/teams/{team_id}/room", mirror)

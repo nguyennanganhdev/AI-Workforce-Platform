@@ -8,8 +8,12 @@ inbox is never taken as having handled it. One worker then handles one message a
 a lease: verify with the backend, create or load the session checkpoint, let the Supervisor
 continue, and report what the session is now waiting for.
 
+When a planner model and an OpenBot are configured, the Supervisor opens a room with the
+specialists the backend offers for the ticket, gives them tasks and runs their turns. What the
+room holds is mirrored to the backend after every step so management can read it.
+
 Storage is team Đông's development store (a SQLite file on this host). It keeps checkpoints,
-the inbox and the cursor across restarts, and it is not shared between hosts.
+rooms, the inbox and the cursor across restarts, and it is not shared between hosts.
 """
 from __future__ import annotations
 
@@ -28,7 +32,9 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from adapters.backend.errors import AdapterError
+from groupchat.models import TurnPolicy
 from groupchat.room import RoomService
+from persistence.budget import ScopedBudgets
 from persistence.sqlite import DevelopmentStore
 from supervisor.models import SupervisorError, SupervisorState
 from supervisor.planner import Planner
@@ -36,13 +42,18 @@ from supervisor.room_bridge import RoomBridge
 from supervisor.service import SupervisorService
 
 from .backend import Backend, Refused
-from .ports import (Authority, NoSpecialists, Reception, UnboundBackendActions, UnboundEvents,
-                    UnboundInvocation, UnboundResolver)
+from .ports import (Authority, OpenBot, PlannerModel, Reception, Releases, Resolver, Specialists,
+                    UnboundBackendActions, UnboundEvents, UnboundInvocation)
 
 log = logging.getLogger("coordination.vinhomes")
 LEASE_SECONDS = 60
 RETRY_SECONDS = 15  # the backend could not be reached: try the same message again
 SETTLE_SECONDS = 5  # an action is in flight or unknown: reconcile it on the next round
+SETTLE_ATTEMPTS = 3  # after that an unknown outcome waits for a person instead of being asked again
+MAX_STEPS = 40  # decisions and dispatches per message: open, tasks, turns and a plan fit well inside
+TURN_RETRIES = 2  # a turn that failed for certain is planned again this many times before a person is needed
+# A category's room often has one specialist, so the same agent may speak several times in a row.
+TURNS = TurnPolicy(max_turns=8, max_consecutive_turns=8, timeout_seconds=150)
 
 
 @dataclass(frozen=True)
@@ -53,6 +64,12 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = 4300
     poll_seconds: float = 2.0
+    # The planner model and the OpenBot specialists run on. Both or neither: without them the
+    # Supervisor accepts a ticket and hands it to management.
+    model: str | None = None
+    model_base_url: str = "https://api.openai.com/v1"
+    openbot: OpenBot | None = None
+    token_limit: int = 400_000  # per session, in the ledger's conservative units
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -60,7 +77,16 @@ class Settings:
         token = os.getenv("COORDINATION_SERVICE_TOKEN", "").strip()
         if len(token) < 32 or not url.startswith(("http://", "https://")):
             raise ValueError("COORDINATION_BACKEND_URL and COORDINATION_SERVICE_TOKEN (32+ characters) are required")
-        return cls(backend_url=url, service_token=token,
+        model = os.getenv("COORDINATION_MODEL", "").strip() or None
+        bot = os.getenv("COORDINATION_OPENBOT_URL", "").strip()
+        if bool(model) != bool(bot):
+            raise ValueError("COORDINATION_MODEL and COORDINATION_OPENBOT_URL are set together or not at all")
+        if model and not (os.getenv("OPENAI_API_KEY") and os.getenv("MANAGED_AGENT_TOKEN")):
+            raise ValueError("OPENAI_API_KEY and MANAGED_AGENT_TOKEN are required with COORDINATION_MODEL")
+        return cls(backend_url=url, service_token=token, model=model,
+                   model_base_url=os.getenv("COORDINATION_MODEL_BASE_URL", "").strip() or cls.model_base_url,
+                   openbot=OpenBot(bot, os.getenv("COORDINATION_OPENBOT_MODEL", "").strip() or model) if bot else None,
+                   token_limit=int(os.getenv("COORDINATION_TOKEN_LIMIT", "") or cls.token_limit),
                    state_path=os.getenv("COORDINATION_STATE_PATH", "").strip() or cls.state_path,
                    host=os.getenv("COORDINATION_HOST", "").strip() or cls.host,
                    port=int(os.getenv("COORDINATION_PORT", "") or cls.port),
@@ -97,13 +123,14 @@ class Store(DevelopmentStore):
                 "ticket_id": state.context.ticket_id, "ticket_generation": state.context.ticket_generation,
                 "ticket_code": state.reception.ticket_code if state.reception else None,
                 "run_id": state.supervisor_run_id, "phase": state.phase, "pause_reason": state.pause_reason,
-                "checkpoint_version": state.version, "results_sent": [a.operation for a in state.journal],
+                "checkpoint_version": state.version, "actions_done": [a.operation for a in state.journal],
                 "action_in_flight": state.action.status if state.action else None})
         return [{"blocked_inbox_items": blocked}, *sessions] if blocked else sessions
 
 
 class Runtime:
-    def __init__(self, backend: Backend, store: Store, *, owner: str | None = None):
+    def __init__(self, backend: Backend, store: Store, *, owner: str | None = None,
+                 client: httpx.AsyncClient | None = None, settings: Settings | None = None):
         self.backend, self.store, self.owner = backend, store, owner or str(uuid4())
         authority = Authority(backend)
         self.teams: dict[tuple, str] = {}  # scope -> team, known once the backend verified a message
@@ -111,12 +138,17 @@ class Runtime:
         async def group_pin(context):
             return await authority.group_pin(context, self.teams[context.scope()])
 
+        budget = ScopedBudgets(store, token_limit=settings.token_limit if settings else Settings.token_limit)
+        specialists = (Specialists(Releases(backend, self.teams, settings.openbot), store, budget, client)
+                       if settings and settings.openbot else UnboundInvocation("agent_invocation"))
+        model = PlannerModel(budget, client, model=settings.model if settings else None,
+                             base_url=settings.model_base_url if settings else Settings.model_base_url)
         self.service = SupervisorService(
             store=store, authority=authority, verifier=UnboundEvents("backend_events"), event_types={},
-            planner=Planner(NoSpecialists()), reception=Reception(backend),
-            room=RoomBridge(RoomService(UnboundResolver("participants"), UnboundInvocation("agent_invocation"), store)),
+            planner=Planner(model), reception=Reception(backend),
+            room=RoomBridge(RoomService(Resolver(backend, self.teams), specialists, store)),
             backend=UnboundBackendActions("backend_actions"), groupchat_version_id="vinhomes-supervisor",
-            groupchat_resolver=group_pin)
+            groupchat_resolver=group_pin, max_steps=MAX_STEPS, turn_policy=TURNS)
 
     async def poll(self) -> int:
         """Copy what is new in the backend's inbox into the durable local inbox."""
@@ -144,15 +176,37 @@ class Runtime:
             log.info("obsolete message for ticket=%s: the team is no longer current", wire["ticket_id"])
             return None
         state = await self.service.resume(state.context)
+        for _ in range(TURN_RETRIES):
+            if not (state.phase == "paused" and state.pause_reason in ("AGENT_FAILURE", "AGENT_TIMEOUT")):
+                break
+            # The turn is known to have failed. The Supervisor's own recovery asks the planner again.
+            state = await self.service.resume(state.context)
         log.info("session ticket=%s generation=%s phase=%s reason=%s checkpoint=%s", state.context.ticket_id,
                  state.context.ticket_generation, state.phase, state.pause_reason, state.version)
         try:
             await self.backend.status(team, state.phase, state.pause_reason, state.version)
+            await self.mirror(team, state)
         except AdapterError as error:
-            log.warning("status not reported for ticket=%s: %s", state.context.ticket_id, error.code)
+            log.warning("session not reported for ticket=%s: %s", state.context.ticket_id, error.code)
         if state.action and state.action.status in ("sending", "unknown", "accepted"):
             return SETTLE_SECONDS
         return None
+
+    async def mirror(self, team: str, state: SupervisorState) -> None:
+        """Send the backend what the room holds: tasks, specialist replies and finished turns."""
+        room = state.room
+        if room is None:
+            return
+        members = {p.agent_version_id for p in room.participants}
+        await self.backend.room(team, {
+            "tasks": [{"task_id": t.task_id, "description": t.description[:4000],
+                       "assignee_agent_version_id": t.assignee_agent_version_id, "status": t.status}
+                      for t in room.tasks],
+            "messages": [{"message_id": m.message_id, "sender_agent_version_id": m.sender, "content": m.content[:20000],
+                          **({"task_id": m.task_id} if m.task_id else {})}
+                         for m in room.messages if m.sender in members][-500:],
+            "runs": [{"run_id": r.source_run_id, "status": "succeeded" if r.turn_status == "success" else "failed"}
+                     for r in state.terminal_results.values() if r.source_run_id][-200:]})
 
     async def work(self) -> bool:
         """Handle one claimed message. False when there was nothing to do."""
@@ -177,8 +231,12 @@ class Runtime:
             retry = await execution
             if retry is None:
                 await self.store.ack(claim)
+            elif claim.recovery_attempts >= SETTLE_ATTEMPTS:
+                # Asked again and still unknown: a person decides. The checkpoint keeps the action.
+                await self.store.park(claim, reason="outcome_unknown")
+                log.error("inbox item parked: the outcome of an action stayed unknown")
             else:
-                await self.store.defer(claim, retry)
+                await self.store.defer(claim, retry, recovery=True)
         except Exception as error:  # noqa: BLE001 - every failure ends in a durable inbox state
             code = error.code if isinstance(error, (AdapterError, SupervisorError)) else type(error).__name__
             try:
@@ -216,7 +274,8 @@ def create_app(settings: Settings | None = None, *, transport: httpx.AsyncBaseTr
     @asynccontextmanager
     async def lifespan(app):
         async with httpx.AsyncClient(transport=transport) as client:
-            runtime = Runtime(Backend(settings.backend_url, settings.service_token, client), Store(settings.state_path))
+            runtime = Runtime(Backend(settings.backend_url, settings.service_token, client), Store(settings.state_path),
+                              client=client, settings=settings)
             stopping = asyncio.Event()
 
             async def loop():
