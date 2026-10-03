@@ -174,7 +174,7 @@ push into `/v2/reception`, it pulls the backend's durable V2 inbox and binds the
 to `/internal/coordination/v1` (services/vinhomes-api, `v3_coordination.py`).
 
 ```sh
-python -m venv .venv            # Python 3.12; then pip install -r requirements.lock
+# Python 3.12 venv with requirements.lock and the package itself, as described at the top.
 scripts/start_vinhomes.ps1      # add -Connected for the password-login backend
 ```
 
