@@ -211,7 +211,8 @@ def test_the_supervisor_is_offered_the_published_specialists_of_the_ticket_categ
 
 
 def test_a_published_specialist_enters_the_room_and_its_work_is_mirrored(database):
-    technical, version = publish_specialist(database, f"Kỹ thuật {uuid4().hex[:6]}", ["technical"])
+    name = f"Kỹ thuật {uuid4().hex[:6]}"
+    technical, version = publish_specialist(database, name, ["technical"])
     _, security = publish_specialist(database, f"An ninh {uuid4().hex[:6]}", ["security"])
     with app(database) as c:
         team = verified_team(c, database, f"Rò nước {uuid4().hex[:6]}")
@@ -255,6 +256,13 @@ def test_a_published_specialist_enters_the_room_and_its_work_is_mirrored(databas
                              "and body->>'sessionId'=$1 and body->>'kind'='specialist_reply'", team)
         assert said == [{"text": f"{code}: Khả năng cao do gioăng vòi.", "sender_agent_id": technical}]
         assert sql(database, "select status from agent_runs where id=$1", UUID(run))[0]["status"] == "succeeded"
+        # Management reads who was invited, what they were asked and what they answered.
+        ticket = sql(database, "select ticket_id from agent_teams where id=$1", UUID(team))[0]["ticket_id"]
+        with demo_client(database, "management") as management:
+            seen = management.get(f"/tickets/{ticket}/session").json()["room"]
+        assert seen["members"] == [name]
+        assert seen["tasks"] == [{"description": "Xác định nguyên nhân rò nước", "status": "done", "agent": name}]
+        assert [(r["agent"], r["text"]) for r in seen["replies"]] == [(name, "Khả năng cao do gioăng vòi.")]
         outsider = {**mirror, "tasks": [{**mirror["tasks"][0], "assignee_agent_version_id": security}]}
         assert c.post(BASE + f"/teams/{team}/room", headers=SERVICE, json=outsider).status_code == 409
 

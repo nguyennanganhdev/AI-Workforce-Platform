@@ -127,8 +127,31 @@ async def ticket_session(ticket_id: UUID, scope: Scope) -> dict[str, object]:
     if session is None:
         destination = await session_destination(scope[0], ticket["management_unit_id"])
         return {"session": None, "missing": destination.get("missing")}
-    return {"session": dict(session),
+    return {"session": dict(session), "room": await _room(scope[0], session["id"]),
             "awaitingManagementApproval": ticket["status"] == "closed" and session["status"] != "completed"}
+
+
+async def _room(db: AsyncConnection, team_id: UUID) -> dict[str, object]:
+    """What the Supervisor's room did for this session: who was invited, their tasks and their replies."""
+    members = await db.execute(text(f"""
+        select a.name from team_members m join agents a on a.id=m.agent_id and a.tenant_id=m.tenant_id
+        where m.team_id=:team and m.tenant_id={TENANT} and m.member_kind='specialist' order by m.created_at
+    """), {"team": team_id})
+    tasks = await db.execute(text(f"""
+        select k.description,k.status,a.name as agent from team_tasks k
+        join team_members m on m.id=k.assigned_member_id and m.tenant_id=k.tenant_id
+        join agents a on a.id=m.agent_id and a.tenant_id=m.tenant_id
+        where k.team_id=:team and k.tenant_id={TENANT} order by k.created_at
+    """), {"team": team_id})
+    # A mirrored reply is stored as "<ticket code>: <reply>"; the ticket is already on screen.
+    replies = await db.execute(text(f"""
+        select m.id,a.name as agent,substr(m.body->>'text',position(': ' in m.body->>'text')+2) as text,m.created_at
+        from messages m join agents a on a.id=m.sender_agent_id and a.tenant_id=m.tenant_id
+        where m.tenant_id={TENANT} and m.body->>'sessionId'=:team and m.body->>'kind'='specialist_reply'
+        order by m.seq
+    """), {"team": str(team_id)})
+    return {"members": [row[0] for row in members], "tasks": [dict(row) for row in tasks.mappings()],
+            "replies": [dict(row) for row in replies.mappings()]}
 
 
 class SessionClosure(BaseModel):
