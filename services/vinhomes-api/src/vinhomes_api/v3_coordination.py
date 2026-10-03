@@ -10,6 +10,10 @@ how the Supervisor runtime (agent-coordination) reaches that exchange without be
   authorize  may this team still act? asked immediately before every dispatch
   results    was a result with this id stored? the runtime's reconciliation after a lost reply
   status     what the runtime is doing with the session, shown to management
+  members    admit a published specialist to the session's room (the runtime's participant resolver)
+  runs       the agent run of one turn of a member
+  release    what the backend attests about a member's agent version before it is invoked
+  room       the room's tasks, turns and specialist replies, mirrored for management to read
 
 The service token only proves the caller is the runtime. Every call names a team and is checked
 against it: the workspace has an active service identity, the Supervisor agent is an active
@@ -18,6 +22,7 @@ one runtime session and one agent run per team, so the ids the runtime works und
 here, not values it chose. The runtime never writes a business table.
 """
 
+import hashlib
 import hmac
 import json
 from typing import Annotated, Any, Literal
@@ -104,20 +109,18 @@ async def team_authority(db, team_id: UUID, *, lock: bool = False) -> dict[str, 
     return dict(row)
 
 
-async def session_context(db, team: dict[str, Any], *, create: bool) -> dict[str, Any] | None:
-    """The runtime session and agent run of a team. Created once, on the first verified message."""
+async def member_binding(db, team: dict[str, Any], *, agent: str, version, member, key: str, namespace: str,
+                         create: bool):
+    """The runtime session of one team member: one active binding per member, allocated here."""
     backend = (await db.execute(text("select id from runtime_backends where code=:code and enabled"),
                                 {"code": RUNTIME_BACKEND})).scalar_one_or_none()
     if backend is None:
         raise HTTPException(503, "Coordination runtime backend is not registered or is disabled")
-    key = f"coordination:{team['id']}"
     binding = (await db.execute(text(f"""
         select id from runtime_session_bindings where tenant_id={TENANT} and backend_id=:backend
           and runtime_session_key=:key and status='active'
     """), {"backend": backend, "key": key})).scalar_one_or_none()
-    if binding is None:
-        if not create:
-            return None
+    if binding is None and create:
         await db.execute(text(f"""
             insert into runtime_identities(tenant_id,backend_id,principal_id,runtime_user_key,status)
             values({TENANT},:backend,:principal,:key,'active') on conflict (backend_id,principal_id) do nothing
@@ -125,15 +128,24 @@ async def session_context(db, team: dict[str, Any], *, create: bool) -> dict[str
         binding = (await db.execute(text(f"""
             insert into runtime_session_bindings(tenant_id,identity_id,backend_id,channel_id,agent_id,agent_version_id,
               team_member_id,audience_kind,started_by_user_id,runtime_session_key,checkpoint_namespace,status,policy_version)
-            select {TENANT},i.id,i.backend_id,:channel,:agent,:version,:member,'team',:requester,:key,'supervisor','active',:policy
+            select {TENANT},i.id,i.backend_id,:channel,:agent,:version,:member,'team',:requester,:key,:namespace,'active',:policy
             from runtime_identities i where i.backend_id=:backend and i.principal_id=:principal
             returning id
         """), {"backend": backend, "principal": team["principal_id"], "channel": team["channel_id"],
-               "agent": team["supervisor_agent_id"], "version": team["supervisor_version_id"],
-               "member": team["member_id"], "requester": team["requested_by_user_id"], "key": key,
-               "policy": POLICY_VERSION})).scalar_one()
+               "agent": agent, "version": version, "member": member, "requester": team["requested_by_user_id"],
+               "key": key, "namespace": namespace, "policy": POLICY_VERSION})).scalar_one()
         await db.execute(text("update team_members set binding_id=:binding,updated_at=now() where id=:member and binding_id is null"),
-                         {"binding": binding, "member": team["member_id"]})
+                         {"binding": binding, "member": member})
+    return binding
+
+
+async def session_context(db, team: dict[str, Any], *, create: bool) -> dict[str, Any] | None:
+    """The runtime session and agent run of a team. Created once, on the first verified message."""
+    binding = await member_binding(db, team, agent=team["supervisor_agent_id"], version=team["supervisor_version_id"],
+                                   member=team["member_id"], key=f"coordination:{team['id']}",
+                                   namespace="supervisor", create=create)
+    if binding is None:
+        return None
     run_key = f"supervisor-session:{team['id']}"
     await db.execute(text(f"""
         insert into agent_runs(tenant_id,channel_id,agent_id,version_id,team_member_id,idempotency_key,status,started_at,
@@ -172,7 +184,8 @@ async def specialists(db, team: dict[str, Any]) -> list[dict[str, Any]]:
         order by a.name
     """), {"channel": team["channel_id"], "category": team["category_code"]})).mappings().all()
     return [{"agent_version_id": str(row["version_id"]), "agent_id": row["agent_id"], "name": row["name"],
-             "description": row["description"], "service_categories": row["categories"],
+             "role": team["category_code"], "description": row["description"],
+             "service_categories": row["categories"],
              "tools": [tool["name"] for tool in row["tools"] or []]} for row in rows]
 
 
@@ -287,9 +300,9 @@ async def authorize(team_id: UUID, body: Authorize, db: Scope) -> dict[str, Any]
     team = await team_authority(db, team_id)
     if team["status"] in FINAL:
         raise HTTPException(409, "This Supervisor team has finished")
-    if body.channel != "reception":
-        # Room, backend and draft actions have no producer contract yet.
-        raise HTTPException(409, "Only Reception results are bound for the Supervisor so far")
+    if body.channel not in ("reception", "room"):
+        # Backend and draft actions have no producer contract yet.
+        raise HTTPException(409, "Only Reception results and room actions are bound for the Supervisor so far")
     return {"authorized": True}
 
 
@@ -321,3 +334,199 @@ async def status(team_id: UUID, body: Status, db: Scope) -> dict[str, Any]:
     """), {"id": team["id"], "runtime": json.dumps({
         "phase": body.phase, "pauseReason": body.pause_reason, "stateVersion": body.state_version})})
     return {"ok": True}
+
+
+class Admit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    agent_version_id: UUID
+
+
+async def specialist_member(db, team: dict[str, Any], member_id: UUID) -> dict[str, Any]:
+    """A specialist of this team whose pinned version is still published."""
+    row = (await db.execute(text(f"""
+        select m.id,m.agent_id,m.version_id,m.binding_id,b.generation,b.runtime_session_key,
+          v.instructions,v.config,v.config_hash,a.name,
+          exists(select 1 from agent_releases r where r.version_id=m.version_id and r.tenant_id=m.tenant_id
+                 and r.status='published' and r.revoked_at is null) as published,
+          exists(select 1 from vh_agent_reviews rv where rv.agent_id=m.agent_id and rv.tenant_id=m.tenant_id
+                 and rv.status='approved' and rv.config_hash=v.config_hash) as approved
+        from team_members m
+        join agents a on a.id=m.agent_id and a.tenant_id=m.tenant_id
+        join agent_versions v on v.id=m.version_id and v.tenant_id=m.tenant_id
+        join runtime_session_bindings b on b.id=m.binding_id and b.tenant_id=m.tenant_id and b.status='active'
+        where m.id=:member and m.team_id=:team and m.tenant_id={TENANT}
+          and m.member_kind='specialist' and m.status='active'
+    """), {"member": member_id, "team": team["id"]})).mappings().first()
+    if row is None:
+        raise HTTPException(404, "No such specialist in this session")
+    if not row["published"] or not row["approved"]:
+        raise HTTPException(409, "This agent version was revoked or has no approved review")
+    return dict(row)
+
+
+@router.post("/teams/{team_id}/members", summary="Admit a published specialist to the session's room")
+async def admit(team_id: UUID, body: Admit, db: Scope) -> dict[str, Any]:
+    team = await team_authority(db, team_id, lock=True)
+    if team["status"] in FINAL:
+        raise HTTPException(409, "This Supervisor team has finished")
+    if await session_context(db, team, create=False) is None:
+        raise HTTPException(409, "No Reception message was verified for this team yet")
+    offered = next((s for s in await specialists(db, team)
+                    if s["agent_version_id"] == str(body.agent_version_id)), None)
+    if offered is None:
+        raise HTTPException(409, "This agent version is not offered to this session")
+    member = (await db.execute(text(f"""
+        select id,version_id from team_members where team_id=:team and agent_id=:agent and tenant_id={TENANT}
+    """), {"team": team["id"], "agent": offered["agent_id"]})).mappings().first()
+    if member is None:
+        member = (await db.execute(text(f"""
+            insert into team_members(tenant_id,team_id,agent_id,version_id,member_kind,status)
+            values({TENANT},:team,:agent,:version,'specialist','active') returning id,version_id
+        """), {"team": team["id"], "agent": offered["agent_id"], "version": body.agent_version_id})).mappings().one()
+    elif member["version_id"] != body.agent_version_id:
+        # A session keeps the version it admitted; a newer one is for the next session.
+        raise HTTPException(409, "This agent is already a member with another version")
+    binding = await member_binding(db, team, agent=offered["agent_id"], version=body.agent_version_id,
+                                   member=member["id"], key=f"coordination:{team['id']}:{member['id']}",
+                                   namespace="specialist", create=True)
+    return {"agent_version_id": str(body.agent_version_id), "role": offered["role"],
+            "platform_agent_id": offered["agent_id"], "member_id": str(member["id"]), "binding_id": str(binding),
+            "binding_generation": 1, "framework_agent_id": offered["agent_id"],
+            "framework_reference": f"openbot:{binding}"}
+
+
+class Turn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    operation_id: str = Field(min_length=1, max_length=200)
+
+
+@router.post("/teams/{team_id}/members/{member_id}/runs", summary="The agent run of one turn of a specialist")
+async def turn_run(team_id: UUID, member_id: UUID, body: Turn, db: Scope) -> dict[str, Any]:
+    team = await team_authority(db, team_id)
+    if team["status"] in FINAL:
+        raise HTTPException(409, "This Supervisor team has finished")
+    member = await specialist_member(db, team, member_id)
+    context = await session_context(db, team, create=False)
+    key = f"turn:{team['id']}:{body.operation_id}"
+    # The same operation asked twice gets the same run: a retried turn is not a second turn.
+    await db.execute(text(f"""
+        insert into agent_runs(tenant_id,channel_id,agent_id,version_id,team_member_id,parent_run_id,idempotency_key,status,
+          started_at,trace_id,binding_id,authority_principal_id,policy_version,authority_version)
+        values({TENANT},:channel,:agent,:version,:member,:parent,:key,'running',now(),:trace,:binding,:principal,:policy,:authz)
+        on conflict (tenant_id,idempotency_key) do nothing
+    """), {"channel": team["channel_id"], "agent": member["agent_id"], "version": member["version_id"],
+           "member": member["id"], "parent": context["run_id"], "key": key, "trace": str(uuid4()),
+           "binding": member["binding_id"], "principal": team["principal_id"], "policy": POLICY_VERSION,
+           "authz": team["authz_version"]})
+    run = (await db.execute(text(f"select id from agent_runs where tenant_id={TENANT} and idempotency_key=:key"),
+                            {"key": key})).scalar_one()
+    return {"run_id": str(run)}
+
+
+@router.get("/teams/{team_id}/members/{member_id}/release",
+            summary="What the backend attests about a member's agent version, asked before every invocation")
+async def release(team_id: UUID, member_id: UUID, db: Scope) -> dict[str, Any]:
+    team = await team_authority(db, team_id)
+    if team["status"] in FINAL:
+        raise HTTPException(409, "This Supervisor team has finished")
+    member = await specialist_member(db, team, member_id)
+    config = member["config"]
+    return {"tenant_id": str(team["tenant_id"]), "workspace_id": str(team["workspace_id"]),
+            "ticket_id": str(team["ticket_id"]), "ticket_generation": team["ticket_generation"],
+            "groupchat_version_id": str(team["supervisor_version_id"]),
+            "agent_version_id": str(member["version_id"]), "member_id": str(member["id"]),
+            "binding_id": str(member["binding_id"]), "binding_generation": member["generation"],
+            "framework_reference": f"openbot:{member['binding_id']}", "thread_id": member["runtime_session_key"],
+            # Both hold by construction: a version exists only from an approved review whose
+            # evaluation passed every case, and specialist_member refused anything else.
+            "evaluated": True, "admin_approved": True, "published": True, "revoked": False,
+            "prompt_hash": hashlib.sha256(member["instructions"].encode()).hexdigest(),
+            "config_hash": member["config_hash"],
+            "knowledge_grants": [str(n) for n in config.get("knowledge_namespace_ids", [])],
+            "capabilities": config.get("service_categories", []),
+            # No tool is granted until the tool gateway exists; the agent only analyses.
+            "tool_descriptors": [],
+            "name": member["name"], "instructions": member["instructions"]}
+
+
+class RoomTask(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str = Field(min_length=1, max_length=256)
+    description: str = Field(min_length=1, max_length=4000)
+    assignee_agent_version_id: UUID
+    status: Literal["pending", "in_progress", "blocked", "completed"]
+
+
+class RoomMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    message_id: str = Field(min_length=1, max_length=256)
+    sender_agent_version_id: UUID
+    content: str = Field(min_length=1, max_length=20000)
+    task_id: str | None = Field(default=None, max_length=256)
+
+
+class RoomRun(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: UUID
+    status: Literal["succeeded", "failed"]
+
+
+class Room(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    tasks: list[RoomTask] = Field(default_factory=list, max_length=200)
+    messages: list[RoomMessage] = Field(default_factory=list, max_length=500)
+    runs: list[RoomRun] = Field(default_factory=list, max_length=200)
+
+
+TASK_STATUS = {"pending": "pending", "in_progress": "running", "blocked": "blocked", "completed": "done"}
+
+
+@router.post("/teams/{team_id}/room", summary="Mirror the room's tasks, turns and specialist replies for management")
+async def room(team_id: UUID, body: Room, db: Scope) -> dict[str, Any]:
+    """Repeatable: a task is keyed by its id, a reply by its room message id, a run by its id."""
+    team = await team_authority(db, team_id, lock=True)
+    members = {str(row["version_id"]): row for row in (await db.execute(text(f"""
+        select id,agent_id,version_id from team_members where team_id=:team and tenant_id={TENANT}
+          and member_kind='specialist'
+    """), {"team": team["id"]})).mappings()}
+    for task in body.tasks:
+        member = members.get(str(task.assignee_agent_version_id))
+        if member is None:
+            raise HTTPException(409, "A task is assigned to an agent that is not a member of this session")
+        await db.execute(text(f"""
+            insert into team_tasks(tenant_id,team_id,ticket_id,title,description,status,assigned_member_id,idempotency_key)
+            values({TENANT},:team,:ticket,:title,:description,:status,:member,:key)
+            on conflict (team_id,idempotency_key) do update
+              set status=excluded.status,version=team_tasks.version+1,updated_at=now()
+              where team_tasks.status<>excluded.status
+        """), {"team": team["id"], "ticket": team["ticket_id"], "title": task.description[:120],
+               "description": task.description, "status": TASK_STATUS[task.status], "member": member["id"],
+               "key": task.task_id})
+    stored = 0
+    for message in body.messages:
+        member = members.get(str(message.sender_agent_version_id))
+        if member is None:
+            raise HTTPException(409, "A reply comes from an agent that is not a member of this session")
+        known = (await db.execute(text(f"""
+            select 1 from messages where channel_id=:channel and tenant_id={TENANT}
+              and body->>'sessionId'=:team and body->>'roomMessageId'=:message
+        """), {"channel": team["channel_id"], "team": str(team["id"]), "message": message.message_id})).first()
+        if known is None:
+            await append_agent_message(db, team["channel_id"], member["agent_id"], "room", {
+                "text": f"{team['ticket_code']}: {message.content}", "sessionId": str(team["id"]),
+                "kind": "specialist_reply", "roomMessageId": message.message_id,
+                **({"taskId": message.task_id} if message.task_id else {})})
+            stored += 1
+    for run in body.runs:
+        await db.execute(text(f"""
+            update agent_runs set status=:status,finished_at=now(),updated_at=now()
+            where id=:run and tenant_id={TENANT} and status='running'
+              and team_member_id in (select id from team_members where team_id=:team)
+        """), {"run": run.run_id, "status": run.status, "team": team["id"]})
+    return {"ok": True, "messages_stored": stored}

@@ -128,7 +128,7 @@ def test_the_supervisor_receives_a_ticket_and_accepts_it(database):
         assert c.post(BASE + f"/teams/{team}/authorize", headers=SERVICE, json={
             "action_id": accepted["message_id"], "channel": "reception", "operation": "accepted"}).json() == {"authorized": True}
         assert c.post(BASE + f"/teams/{team}/authorize", headers=SERVICE, json={
-            "action_id": "a", "channel": "room", "operation": "open_room"}).status_code == 409
+            "action_id": "a", "channel": "draft", "operation": "plan"}).status_code == 409
         lookup = BASE + f"/teams/{team}/results/{accepted['message_id']}"
         assert c.get(lookup, headers=SERVICE).json()["found"] is False
         sent = c.post(BASE + "/reception/send", headers=SERVICE, json={"message": accepted})
@@ -196,7 +196,7 @@ def test_the_supervisor_is_offered_the_published_specialists_of_the_ticket_categ
         assert seen["category"] == "technical"
         offered = [s for s in seen["specialists"] if s["agent_id"] == technical]
         assert offered == [{"agent_version_id": version, "agent_id": technical, "name": offered[0]["name"],
-                            "description": offered[0]["name"], "service_categories": ["technical"], "tools": []}]
+                            "role": "technical", "description": offered[0]["name"], "service_categories": ["technical"], "tools": []}]
         # Another category's agent is published in the same room and is not offered for this ticket.
         assert all(s["service_categories"] == ["technical"] for s in seen["specialists"])
 
@@ -208,3 +208,58 @@ def test_the_supervisor_is_offered_the_published_specialists_of_the_ticket_categ
             assert admin.post(f"/admin/agents/{technical}/release/revoke", json={"note": "x"}).status_code == 404
         after = c.get(BASE + f"/teams/{team}/view", headers=SERVICE).json()["specialists"]
         assert not [s for s in after if s["agent_id"] == technical]
+
+
+def test_a_published_specialist_enters_the_room_and_its_work_is_mirrored(database):
+    technical, version = publish_specialist(database, f"Kỹ thuật {uuid4().hex[:6]}", ["technical"])
+    _, security = publish_specialist(database, f"An ninh {uuid4().hex[:6]}", ["security"])
+    with app(database) as c:
+        team = verified_team(c, database, f"Rò nước {uuid4().hex[:6]}")
+        code = sql(database, "select t.code from agent_teams tm join tickets t on t.id=tm.ticket_id where tm.id=$1",
+                   UUID(team))[0]["code"]
+        members = BASE + f"/teams/{team}/members"
+        # Published, but for another category: the Supervisor cannot bring it into this room.
+        assert c.post(members, headers=SERVICE, json={"agent_version_id": security}).status_code == 409
+        member = c.post(members, headers=SERVICE, json={"agent_version_id": version}).json()
+        assert (member["platform_agent_id"], member["role"], member["binding_generation"]) == (technical, "technical", 1)
+        assert c.post(members, headers=SERVICE, json={"agent_version_id": version}).json() == member
+        assert c.post(BASE + f"/teams/{team}/authorize", headers=SERVICE, json={
+            "action_id": "a", "channel": "room", "operation": "open_room"}).json() == {"authorized": True}
+        assert c.post(BASE + f"/teams/{team}/authorize", headers=SERVICE, json={
+            "action_id": "a", "channel": "backend", "operation": "approval.requested"}).status_code == 409
+
+        one = members + f"/{member['member_id']}"
+        run = c.post(one + "/runs", headers=SERVICE, json={"operation_id": "op-1"}).json()["run_id"]
+        assert c.post(one + "/runs", headers=SERVICE, json={"operation_id": "op-1"}).json()["run_id"] == run
+        parent = sql(database, "select p.idempotency_key from agent_runs r join agent_runs p on p.id=r.parent_run_id "
+                               "where r.id=$1", UUID(run))[0]["idempotency_key"]
+        assert parent == "supervisor-session:" + team
+        released = c.get(one + "/release", headers=SERVICE).json()
+        assert released["agent_version_id"] == version and released["binding_id"] == member["binding_id"]
+        assert released["thread_id"] == f"coordination:{team}:{member['member_id']}"
+        assert (released["published"], released["revoked"], released["tool_descriptors"]) == (True, False, [])
+        assert released["instructions"].startswith("Phân tích sự cố") and released["capabilities"] == ["technical"]
+
+        mirror = {"tasks": [{"task_id": "t1", "description": "Xác định nguyên nhân rò nước",
+                             "assignee_agent_version_id": version, "status": "in_progress"}],
+                  "messages": [{"message_id": "m1", "sender_agent_version_id": version,
+                                "content": "Khả năng cao do gioăng vòi.", "task_id": "t1"}],
+                  "runs": [{"run_id": run, "status": "succeeded"}]}
+        assert c.post(BASE + f"/teams/{team}/room", headers=SERVICE, json=mirror).json() == {"ok": True, "messages_stored": 1}
+        mirror["tasks"][0]["status"] = "completed"
+        # Sent again after the task finished: the reply is not stored twice, the task moves on.
+        assert c.post(BASE + f"/teams/{team}/room", headers=SERVICE, json=mirror).json() == {"ok": True, "messages_stored": 0}
+        assert sql(database, "select status,version,title from team_tasks where team_id=$1", UUID(team)) == [
+            {"status": "done", "version": 1, "title": "Xác định nguyên nhân rò nước"}]
+        said = sql(database, "select body->>'text' as text,sender_agent_id from messages where channel_id='management-room' "
+                             "and body->>'sessionId'=$1 and body->>'kind'='specialist_reply'", team)
+        assert said == [{"text": f"{code}: Khả năng cao do gioăng vòi.", "sender_agent_id": technical}]
+        assert sql(database, "select status from agent_runs where id=$1", UUID(run))[0]["status"] == "succeeded"
+        outsider = {**mirror, "tasks": [{**mirror["tasks"][0], "assignee_agent_version_id": security}]}
+        assert c.post(BASE + f"/teams/{team}/room", headers=SERVICE, json=outsider).status_code == 409
+
+        # Revoked while the session runs: the next turn of that agent is refused.
+        with demo_client(database, "admin") as admin:
+            assert admin.post(f"/admin/agents/{technical}/release/revoke", json={"note": "Thu hồi"}).status_code == 200
+        assert c.get(one + "/release", headers=SERVICE).status_code == 409
+        assert c.post(one + "/runs", headers=SERVICE, json={"operation_id": "op-2"}).status_code == 409
