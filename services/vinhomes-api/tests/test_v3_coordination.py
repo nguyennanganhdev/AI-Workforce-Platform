@@ -57,6 +57,36 @@ def result(verified, kind, text, **extra):
             "supervisor_run_id": verified["supervisor_run_id"], **extra}
 
 
+def publish_specialist(database, name, categories):
+    """Management drafts an agent in its room, records an evaluation, and an admin approves it."""
+    room = f"/rooms/management-room/agents"
+    with demo_client(database, "management") as management:
+        agent = management.post(room, json={"name": name, "instructions": "Phân tích sự cố.",
+                                            "idempotency_key": name}).json()["id"]
+        configured = management.put(f"{room}/{agent}/configuration", json={
+            "instructions": "Phân tích sự cố kỹ thuật và đề xuất cách xử lý.", "description": name,
+            "service_categories": categories})
+        assert configured.status_code == 200, configured.text
+        cases = [{"name": f"case-{n}", "input": "i", "expected": "e", "actual": "e", "passed": True,
+                  "explanation": "ok"} for n in range(6)]
+        review = management.post(f"{room}/{agent}/review-submissions", json={
+            "configuration_hash": configured.json()["configurationHash"], "evaluator": "test", "round": 1, "cases": cases})
+        assert review.status_code == 201, review.text
+    with demo_client(database, "admin") as admin:
+        decided = admin.post(f"/admin/agent-reviews/{review.json()['id']}/decision",
+                             json={"decision": "approve", "version": review.json()["version"], "note": "Đạt"})
+        assert decided.status_code == 200, decided.text
+    return agent, decided.json()["versionId"]
+
+
+def verified_team(c, database, title):
+    handoff, _ = hand_over(c, title)
+    team = handoff["team"]["id"]
+    message = sql(database, "select message_id from vh_reception_supervisor_messages where team_id=$1", UUID(team))[0]["message_id"]
+    assert c.post(BASE + "/reception/verify", headers=SERVICE, json={"team_id": team, "message_id": message}).status_code == 200
+    return team
+
+
 def test_only_the_configured_runtime_reaches_the_coordination_api(database):
     with app(database, token=None) as c:
         assert c.get(BASE + "/inbox", headers=SERVICE).status_code == 503
@@ -152,3 +182,29 @@ def test_a_supervisor_question_reaches_the_resident_and_a_stale_team_is_refused(
         assert c.post(BASE + "/reception/send", headers=SERVICE,
                       json={"message": result(verified, "in_progress", "Đang xử lý.")}).status_code == 409
         assert c.get(BASE + f"/teams/{team}/view", headers=SERVICE).status_code == 409
+
+
+def test_the_supervisor_is_offered_the_published_specialists_of_the_ticket_category(database):
+    with demo_client(database, "management") as management:
+        assert management.put("/rooms/management-room/agents/none/configuration", json={
+            "instructions": "x", "description": "x", "service_categories": ["plumbing"]}).status_code == 404
+    technical, version = publish_specialist(database, f"Kỹ thuật {uuid4().hex[:6]}", ["technical"])
+    publish_specialist(database, f"An ninh {uuid4().hex[:6]}", ["security"])
+    with app(database) as c:
+        team = verified_team(c, database, f"Rò nước {uuid4().hex[:6]}")
+        seen = c.get(BASE + f"/teams/{team}/view", headers=SERVICE).json()
+        assert seen["category"] == "technical"
+        offered = [s for s in seen["specialists"] if s["agent_id"] == technical]
+        assert offered == [{"agent_version_id": version, "agent_id": technical, "name": offered[0]["name"],
+                            "description": offered[0]["name"], "service_categories": ["technical"], "tools": []}]
+        # Another category's agent is published in the same room and is not offered for this ticket.
+        assert all(s["service_categories"] == ["technical"] for s in seen["specialists"])
+
+        with demo_client(database, "management") as management:
+            assert management.post(f"/admin/agents/{technical}/release/revoke", json={"note": "x"}).status_code == 403
+        with demo_client(database, "admin") as admin:
+            revoked = admin.post(f"/admin/agents/{technical}/release/revoke", json={"note": "Trả lời sai quy trình"})
+            assert revoked.status_code == 200 and revoked.json()["versionId"] == version
+            assert admin.post(f"/admin/agents/{technical}/release/revoke", json={"note": "x"}).status_code == 404
+        after = c.get(BASE + f"/teams/{team}/view", headers=SERVICE).json()["specialists"]
+        assert not [s for s in after if s["agent_id"] == technical]

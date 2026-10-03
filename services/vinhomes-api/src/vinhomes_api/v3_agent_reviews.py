@@ -47,6 +47,8 @@ class AgentConfiguration(BaseModel):
     description: str = Field(min_length=1, max_length=2000)
     mcp_tools: list[ToolReference] = Field(default_factory=list, max_length=50)
     knowledge_namespace_ids: list[UUID] = Field(default_factory=list, max_length=20)
+    # Ticket categories this agent serves. A Supervisor is offered it only for those tickets.
+    service_categories: list[str] = Field(default_factory=list, max_length=10)
     framework_version: str = Field(
         default="demo-record-only", min_length=1, max_length=120
     )
@@ -81,6 +83,13 @@ async def configure(
         )
         if available.first() is None:
             raise HTTPException(422, "Namespace outside the agent workspace")
+    for code in body.service_categories:
+        available = await scope[0].execute(
+            text("select 1 from service_categories where code=:code and enabled"),
+            {"code": code},
+        )
+        if available.first() is None:
+            raise HTTPException(422, "Unknown service category")
     config = body.model_dump(mode="json")
     await scope[0].execute(
         text("update agents set configuration=cast(:config as jsonb) where id=:id"),
@@ -265,6 +274,12 @@ async def decide(review_id: UUID, body: ReviewDecision, scope: Admin):
                 },
             )
         ).scalar_one()
+        # Approval is the publication: only a published version may enter a Supervisor's room.
+        await scope[0].execute(
+            text(f"""insert into agent_releases(tenant_id,agent_id,version_id,status,published_by,published_at)
+          values({TENANT},:agent,:version,'published',:actor,now())"""),
+            {"agent": ref["agent_id"], "version": version_id, "actor": scope[1]},
+        )
         await scope[0].execute(
             text("update agents set status='active' where id=:id"),
             {"id": ref["agent_id"]},
@@ -283,6 +298,41 @@ async def decide(review_id: UUID, body: ReviewDecision, scope: Admin):
         "versionId": version_id,
         "execution": "not performed by this API",
     }
+
+
+class Revocation(BaseModel):
+    note: str = Field(min_length=1, max_length=2000)
+
+
+@router.post("/admin/agents/{agent_id}/release/revoke")
+async def revoke(agent_id: str, body: Revocation, scope: Admin):
+    """Withdraw the published version: no new room admits it and running turns are refused."""
+    if not scope[2]:
+        raise HTTPException(403, "Platform admin required")
+    release = (
+        (
+            await scope[0].execute(
+                text(
+                    "update agent_releases set status='revoked',revoked_at=now(),updated_at=now() "
+                    "where agent_id=:id and status='published' and revoked_at is null returning id,version_id"
+                ),
+                {"id": agent_id},
+            )
+        )
+        .mappings()
+        .first()
+    )
+    if release is None:
+        raise HTTPException(404, "No published version of this agent")
+    await audit(
+        scope[0],
+        scope[1],
+        "agent.release_revoked",
+        "agent",
+        agent_id,
+        {"releaseId": release["id"], "versionId": release["version_id"], "note": body.note},
+    )
+    return {"agentId": agent_id, "versionId": release["version_id"], "status": "revoked"}
 
 
 @router.get("/rooms/{room_id}/agents/{agent_id}/versions")

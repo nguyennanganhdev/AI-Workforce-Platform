@@ -81,6 +81,7 @@ async def team_authority(db, team_id: UUID, *, lock: bool = False) -> dict[str, 
           tm.supervisor_agent_id,tm.requested_by_user_id,
           t.code as ticket_code,t.version as ticket_version,t.reopen_count,t.status as ticket_status,
           t.domain_id,t.channel_id as resident_channel_id,
+          (select code from service_categories sc where sc.id=t.category_id and sc.tenant_id=t.tenant_id) as category_code,
           mem.id as member_id,mem.version_id as supervisor_version_id,
           p.id as principal_id,p.authz_version
         from agent_teams tm
@@ -149,6 +150,30 @@ async def session_context(db, team: dict[str, Any], *, create: bool) -> dict[str
             "domain_id": str(team["domain_id"]), "workspace_id": str(team["workspace_id"]),
             "ticket_id": str(team["ticket_id"]), "ticket_generation": team["ticket_generation"],
             "binding_id": str(binding), "run_id": str(run)}
+
+
+async def specialists(db, team: dict[str, Any]) -> list[dict[str, Any]]:
+    """The agents a Supervisor may invite for this ticket.
+
+    An agent of the management room, active, whose published version declares the ticket's
+    service category. A ticket without a category is offered nobody: management handles it.
+    """
+    if team["category_code"] is None:
+        return []
+    rows = (await db.execute(text(f"""
+        select v.id as version_id,a.id as agent_id,a.name,v.config->>'description' as description,
+          v.config->'service_categories' as categories,v.config->'mcp_tools' as tools
+        from channel_agents ca
+        join agents a on a.id=ca.agent_id and a.tenant_id=ca.tenant_id and a.status='active' and a.purpose='specialist'
+        join agent_releases r on r.agent_id=a.id and r.tenant_id=a.tenant_id and r.status='published' and r.revoked_at is null
+        join agent_versions v on v.id=r.version_id and v.tenant_id=r.tenant_id
+        where ca.channel_id=:channel and ca.tenant_id={TENANT}
+          and v.config->'service_categories' ? :category
+        order by a.name
+    """), {"channel": team["channel_id"], "category": team["category_code"]})).mappings().all()
+    return [{"agent_version_id": str(row["version_id"]), "agent_id": row["agent_id"], "name": row["name"],
+             "description": row["description"], "service_categories": row["categories"],
+             "tools": [tool["name"] for tool in row["tools"] or []]} for row in rows]
 
 
 @router.get("/inbox", summary="V2 messages from Reception waiting for the Supervisor, oldest first")
@@ -243,18 +268,10 @@ async def view(team_id: UUID, db: Scope) -> dict[str, Any]:
         select pending_kind from vh_reception_supervisor_pending
         where tenant_id={TENANT} and ticket_id=:ticket and ticket_generation=:generation
     """), {"ticket": team["ticket_id"], "generation": team["ticket_generation"]})).scalar_one_or_none()
-    # Specialists a Supervisor may invite: agents of the room with a version. None are published yet.
-    specialists = (await db.execute(text(f"""
-        select v.id as version_id,a.name from channel_agents ca
-        join agents a on a.id=ca.agent_id and a.tenant_id=ca.tenant_id and a.status='active' and a.purpose='specialist'
-        join agent_versions v on v.agent_id=a.id and v.tenant_id=a.tenant_id
-        join agent_releases r on r.version_id=v.id and r.tenant_id=v.tenant_id and r.status='published'
-        where ca.channel_id=:channel and ca.tenant_id={TENANT} order by a.name,v.version_no desc
-    """), {"channel": team["channel_id"]})).mappings().all()
     return {"context": context, "team_status": team["status"], "ticket_status": team["ticket_status"],
             "ticket_version": str(team["ticket_version"]), "ticket_code": team["ticket_code"],
             "supervisor_version_id": str(team["supervisor_version_id"]), "pending_resident": pending,
-            "specialists": [{"agent_version_id": str(row["version_id"]), "name": row["name"]} for row in specialists]}
+            "category": team["category_code"], "specialists": await specialists(db, team)}
 
 
 class Authorize(BaseModel):
