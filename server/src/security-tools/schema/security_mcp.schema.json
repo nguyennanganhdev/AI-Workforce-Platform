@@ -1,0 +1,2379 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Security v0.3 — security_mcp.schema.json",
+  "$comment": "Validate formats explicitly. See security_mcp_schema.md for runtime-only constraints and usage.",
+  "$defs": {
+    "ToolCall": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": [
+            "get_incident",
+            "search_incidents",
+            "create_incident",
+            "update_incident",
+            "get_available_guards",
+            "get_guard_status",
+            "dispatch_guard",
+            "get_dispatch",
+            "cancel_dispatch",
+            "get_emergency_protocol",
+            "get_escalation_contacts",
+            "escalate_emergency",
+            "acknowledge_emergency",
+            "get_emergency_escalation",
+            "get_incident_escalations",
+            "get_camera_metadata",
+            "search_cameras",
+            "get_cameras_by_location",
+            "get_incident_cameras",
+            "get_incident_evidence",
+            "get_dispatch_history",
+            "get_security_event_timeline"
+          ]
+        },
+        "arguments": {
+          "type": "object"
+        }
+      },
+      "required": ["name", "arguments"],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "name": {
+              "const": "get_incident"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/GetIncidentInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "search_incidents"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/SearchIncidentsInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "create_incident"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/CreateIncidentInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "update_incident"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/UpdateIncidentInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "get_available_guards"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/GetAvailableGuardsInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "get_guard_status"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/GetGuardStatusInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "dispatch_guard"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/DispatchGuardInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "get_dispatch"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/GetDispatchInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "cancel_dispatch"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/CancelDispatchInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "get_emergency_protocol"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/GetEmergencyProtocolInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "get_escalation_contacts"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/GetEscalationContactsInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "escalate_emergency"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/EscalateEmergencyInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "acknowledge_emergency"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/AcknowledgeEmergencyInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "get_emergency_escalation"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/GetEmergencyEscalationInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "get_incident_escalations"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/GetIncidentEscalationsInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "get_camera_metadata"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/GetCameraMetadataInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "search_cameras"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/SearchCamerasInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "get_cameras_by_location"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/GetCamerasByLocationInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "get_incident_cameras"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/GetIncidentCamerasInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "get_incident_evidence"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/GetIncidentEvidenceInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "get_dispatch_history"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/GetDispatchHistoryInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "get_security_event_timeline"
+            },
+            "arguments": {
+              "$ref": "common.schema.json#/$defs/GetSecurityEventTimelineInput"
+            }
+          }
+        }
+      ]
+    },
+    "GetIncidentOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "common.schema.json#/$defs/Incident"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "SearchIncidentsPage": {
+      "type": "object",
+      "properties": {
+        "incidents": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/Incident"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["incidents", "next_cursor"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "incidents": {
+                "maxItems": 0
+              }
+            },
+            "required": ["incidents"]
+          },
+          "then": {
+            "properties": {
+              "next_cursor": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "SearchIncidentsOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/SearchIncidentsPage"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "CreateIncidentOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "common.schema.json#/$defs/Incident"
+            },
+            "evidence": {
+              "$ref": "common.schema.json#/$defs/WriteEvidence"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["RECONCILE", "NEVER"]
+                      },
+                      "operation_state": {
+                        "enum": ["UNKNOWN", "FAILED"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "UpdateIncidentOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "common.schema.json#/$defs/Incident"
+            },
+            "evidence": {
+              "$ref": "common.schema.json#/$defs/WriteEvidence"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["RECONCILE", "NEVER"]
+                      },
+                      "operation_state": {
+                        "enum": ["UNKNOWN", "FAILED"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "GetAvailableGuardsPage": {
+      "type": "object",
+      "properties": {
+        "guards": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/GuardSummary"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["guards", "next_cursor"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "guards": {
+                "maxItems": 0
+              }
+            },
+            "required": ["guards"]
+          },
+          "then": {
+            "properties": {
+              "next_cursor": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "GetAvailableGuardsOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/GetAvailableGuardsPage"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "GetGuardStatusOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "common.schema.json#/$defs/GuardSummary"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "DispatchGuardOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "common.schema.json#/$defs/Dispatch"
+            },
+            "evidence": {
+              "$ref": "common.schema.json#/$defs/WriteEvidence"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["RECONCILE", "NEVER"]
+                      },
+                      "operation_state": {
+                        "enum": ["UNKNOWN", "FAILED"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "GetDispatchOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "common.schema.json#/$defs/Dispatch"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "CancelDispatchOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "common.schema.json#/$defs/Dispatch"
+            },
+            "evidence": {
+              "$ref": "common.schema.json#/$defs/WriteEvidence"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["RECONCILE", "NEVER"]
+                      },
+                      "operation_state": {
+                        "enum": ["UNKNOWN", "FAILED"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "GetEmergencyProtocolOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "common.schema.json#/$defs/EmergencyProtocol"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "GetEscalationContactsPage": {
+      "type": "object",
+      "properties": {
+        "contacts": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/EscalationContact"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["contacts", "next_cursor"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "contacts": {
+                "maxItems": 0
+              }
+            },
+            "required": ["contacts"]
+          },
+          "then": {
+            "properties": {
+              "next_cursor": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "GetEscalationContactsOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/GetEscalationContactsPage"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "EscalateEmergencyOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "common.schema.json#/$defs/EmergencyEscalation"
+            },
+            "evidence": {
+              "$ref": "common.schema.json#/$defs/WriteEvidence"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["RECONCILE", "NEVER"]
+                      },
+                      "operation_state": {
+                        "enum": ["UNKNOWN", "FAILED"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "AcknowledgeEmergencyOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "common.schema.json#/$defs/EmergencyEscalation"
+            },
+            "evidence": {
+              "$ref": "common.schema.json#/$defs/WriteEvidence"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["RECONCILE", "NEVER"]
+                      },
+                      "operation_state": {
+                        "enum": ["UNKNOWN", "FAILED"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "GetEmergencyEscalationOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "common.schema.json#/$defs/EmergencyEscalation"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "GetIncidentEscalationsPage": {
+      "type": "object",
+      "properties": {
+        "escalations": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/EmergencyEscalation"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["escalations", "next_cursor"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "escalations": {
+                "maxItems": 0
+              }
+            },
+            "required": ["escalations"]
+          },
+          "then": {
+            "properties": {
+              "next_cursor": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "GetIncidentEscalationsOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/GetIncidentEscalationsPage"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "GetCameraMetadataOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "common.schema.json#/$defs/CameraSummary"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "SearchCamerasPage": {
+      "type": "object",
+      "properties": {
+        "cameras": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/CameraSummary"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["cameras", "next_cursor"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "cameras": {
+                "maxItems": 0
+              }
+            },
+            "required": ["cameras"]
+          },
+          "then": {
+            "properties": {
+              "next_cursor": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "SearchCamerasOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/SearchCamerasPage"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "GetCamerasByLocationPage": {
+      "type": "object",
+      "properties": {
+        "cameras": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/CameraSummary"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["cameras", "next_cursor"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "cameras": {
+                "maxItems": 0
+              }
+            },
+            "required": ["cameras"]
+          },
+          "then": {
+            "properties": {
+              "next_cursor": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "GetCamerasByLocationOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/GetCamerasByLocationPage"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "GetIncidentCamerasPage": {
+      "type": "object",
+      "properties": {
+        "cameras": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/IncidentCamera"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["cameras", "next_cursor"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "cameras": {
+                "maxItems": 0
+              }
+            },
+            "required": ["cameras"]
+          },
+          "then": {
+            "properties": {
+              "next_cursor": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "GetIncidentCamerasOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/GetIncidentCamerasPage"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "GetIncidentEvidencePage": {
+      "type": "object",
+      "properties": {
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/EvidenceItem"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["evidence", "next_cursor"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "evidence": {
+                "maxItems": 0
+              }
+            },
+            "required": ["evidence"]
+          },
+          "then": {
+            "properties": {
+              "next_cursor": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "GetIncidentEvidenceOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/GetIncidentEvidencePage"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "GetDispatchHistoryPage": {
+      "type": "object",
+      "properties": {
+        "dispatches": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/DispatchSummary"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["dispatches", "next_cursor"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "dispatches": {
+                "maxItems": 0
+              }
+            },
+            "required": ["dispatches"]
+          },
+          "then": {
+            "properties": {
+              "next_cursor": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "GetDispatchHistoryOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/GetDispatchHistoryPage"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "GetSecurityEventTimelinePage": {
+      "type": "object",
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/SecurityEvent"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["events", "next_cursor"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "events": {
+                "maxItems": 0
+              }
+            },
+            "required": ["events"]
+          },
+          "then": {
+            "properties": {
+              "next_cursor": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "GetSecurityEventTimelineOutput": {
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "success": {
+              "const": true
+            },
+            "data": {
+              "$ref": "#/$defs/GetSecurityEventTimelinePage"
+            },
+            "evidence": {
+              "type": "null"
+            },
+            "error": {
+              "type": "null"
+            },
+            "meta": {
+              "$ref": "common.schema.json#/$defs/ResponseMeta"
+            }
+          },
+          "required": ["success", "data", "evidence", "error", "meta"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "common.schema.json#/$defs/Failure",
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "code": {
+                        "enum": [
+                          "PROVIDER_TIMEOUT",
+                          "PROVIDER_ERROR",
+                          "PROVIDER_INVALID_RESPONSE",
+                          "INTERNAL_ERROR"
+                        ]
+                      }
+                    },
+                    "required": ["code"]
+                  }
+                },
+                "required": ["error"]
+              },
+              "then": {
+                "properties": {
+                  "error": {
+                    "properties": {
+                      "retry": {
+                        "enum": ["BACKOFF", "NEVER"]
+                      },
+                      "operation_state": {
+                        "const": "NOT_STARTED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "$ref": "#/$defs/ToolCall",
+  "x-tools": {
+    "get_incident": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/GetIncidentInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GetIncidentOutput"
+      }
+    },
+    "search_incidents": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/SearchIncidentsInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/SearchIncidentsOutput"
+      }
+    },
+    "create_incident": {
+      "mode": "WRITE",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/CreateIncidentInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/CreateIncidentOutput"
+      }
+    },
+    "update_incident": {
+      "mode": "WRITE",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/UpdateIncidentInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/UpdateIncidentOutput"
+      }
+    },
+    "get_available_guards": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/GetAvailableGuardsInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GetAvailableGuardsOutput"
+      }
+    },
+    "get_guard_status": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/GetGuardStatusInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GetGuardStatusOutput"
+      }
+    },
+    "dispatch_guard": {
+      "mode": "WRITE",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/DispatchGuardInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/DispatchGuardOutput"
+      }
+    },
+    "get_dispatch": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/GetDispatchInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GetDispatchOutput"
+      }
+    },
+    "cancel_dispatch": {
+      "mode": "WRITE",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/CancelDispatchInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/CancelDispatchOutput"
+      }
+    },
+    "get_emergency_protocol": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/GetEmergencyProtocolInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GetEmergencyProtocolOutput"
+      }
+    },
+    "get_escalation_contacts": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/GetEscalationContactsInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GetEscalationContactsOutput"
+      }
+    },
+    "escalate_emergency": {
+      "mode": "WRITE",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/EscalateEmergencyInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/EscalateEmergencyOutput"
+      }
+    },
+    "acknowledge_emergency": {
+      "mode": "WRITE",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/AcknowledgeEmergencyInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/AcknowledgeEmergencyOutput"
+      }
+    },
+    "get_emergency_escalation": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/GetEmergencyEscalationInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GetEmergencyEscalationOutput"
+      }
+    },
+    "get_incident_escalations": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/GetIncidentEscalationsInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GetIncidentEscalationsOutput"
+      }
+    },
+    "get_camera_metadata": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/GetCameraMetadataInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GetCameraMetadataOutput"
+      }
+    },
+    "search_cameras": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/SearchCamerasInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/SearchCamerasOutput"
+      }
+    },
+    "get_cameras_by_location": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/GetCamerasByLocationInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GetCamerasByLocationOutput"
+      }
+    },
+    "get_incident_cameras": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/GetIncidentCamerasInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GetIncidentCamerasOutput"
+      }
+    },
+    "get_incident_evidence": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/GetIncidentEvidenceInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GetIncidentEvidenceOutput"
+      }
+    },
+    "get_dispatch_history": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/GetDispatchHistoryInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GetDispatchHistoryOutput"
+      }
+    },
+    "get_security_event_timeline": {
+      "mode": "READ",
+      "inputSchema": {
+        "$ref": "common.schema.json#/$defs/GetSecurityEventTimelineInput"
+      },
+      "outputSchema": {
+        "$ref": "#/$defs/GetSecurityEventTimelineOutput"
+      }
+    }
+  }
+}

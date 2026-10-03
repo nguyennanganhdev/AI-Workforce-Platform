@@ -1,0 +1,351 @@
+[
+  {
+    "event_id": "evt_0001",
+    "incident_id": "inc_01",
+    "event_type": "INCIDENT_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T04:14:00.000Z",
+    "evidence_id": "ev_0001",
+    "data": {
+      "status": "OPEN",
+      "severity": "P1"
+    }
+  },
+  {
+    "event_id": "evt_0002",
+    "incident_id": "inc_02",
+    "event_type": "INCIDENT_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T04:19:30.000Z",
+    "evidence_id": "ev_0002",
+    "data": {
+      "status": "OPEN",
+      "severity": "P0"
+    }
+  },
+  {
+    "event_id": "evt_0003",
+    "incident_id": "inc_03",
+    "event_type": "INCIDENT_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T04:22:30.000Z",
+    "evidence_id": "ev_0003",
+    "data": {
+      "status": "OPEN",
+      "severity": "P1"
+    }
+  },
+  {
+    "event_id": "evt_0004",
+    "incident_id": "inc_04",
+    "event_type": "INCIDENT_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T00:58:00.000Z",
+    "evidence_id": "ev_0004",
+    "data": {
+      "status": "OPEN",
+      "severity": "P2"
+    }
+  },
+  {
+    "event_id": "evt_0005",
+    "incident_id": "inc_06",
+    "event_type": "INCIDENT_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T03:10:00.000Z",
+    "evidence_id": "ev_0005",
+    "data": {
+      "status": "OPEN",
+      "severity": "P2"
+    }
+  },
+  {
+    "event_id": "evt_0006",
+    "incident_id": "inc_07",
+    "event_type": "INCIDENT_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T02:40:00.000Z",
+    "evidence_id": "ev_0006",
+    "data": {
+      "status": "OPEN",
+      "severity": "P2"
+    }
+  },
+  {
+    "event_id": "evt_0007",
+    "incident_id": "inc_08",
+    "event_type": "INCIDENT_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T03:30:00.000Z",
+    "evidence_id": "ev_0007",
+    "data": {
+      "status": "OPEN",
+      "severity": "P3"
+    }
+  },
+  {
+    "event_id": "evt_0008",
+    "incident_id": "inc_04",
+    "event_type": "DISPATCH_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T01:00:00.000Z",
+    "evidence_id": "ev_0008",
+    "data": {
+      "dispatch_id": "dsp_0001",
+      "guard_id": "guard_010",
+      "status": "PENDING"
+    }
+  },
+  {
+    "event_id": "evt_0009",
+    "incident_id": "inc_04",
+    "event_type": "DISPATCH_STATUS_CHANGED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T01:05:00.000Z",
+    "evidence_id": "ev_0009",
+    "data": {
+      "dispatch_id": "dsp_0001",
+      "previous_status": "PENDING",
+      "status": "CANCELLED",
+      "reason": "Cư dân báo đã hết ồn, không cần xử lý"
+    }
+  },
+  {
+    "event_id": "evt_0010",
+    "incident_id": "inc_04",
+    "event_type": "DISPATCH_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T01:10:00.000Z",
+    "evidence_id": "ev_0010",
+    "data": {
+      "dispatch_id": "dsp_0002",
+      "guard_id": "guard_001",
+      "status": "PENDING"
+    }
+  },
+  {
+    "event_id": "evt_0011",
+    "incident_id": "inc_01",
+    "event_type": "DISPATCH_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T04:15:00.000Z",
+    "evidence_id": "ev_0011",
+    "data": {
+      "dispatch_id": "dsp_0003",
+      "guard_id": "guard_004",
+      "status": "PENDING"
+    }
+  },
+  {
+    "event_id": "evt_0012",
+    "incident_id": "inc_02",
+    "event_type": "DISPATCH_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T04:20:00.000Z",
+    "evidence_id": "ev_0012",
+    "data": {
+      "dispatch_id": "dsp_0004",
+      "guard_id": "guard_007",
+      "status": "PENDING"
+    }
+  },
+  {
+    "event_id": "evt_0013",
+    "incident_id": "inc_02",
+    "event_type": "DISPATCH_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T04:21:50.000Z",
+    "evidence_id": "ev_0013",
+    "data": {
+      "dispatch_id": "dsp_0005",
+      "guard_id": "guard_005",
+      "status": "PENDING"
+    }
+  },
+  {
+    "event_id": "evt_0014",
+    "incident_id": "inc_03",
+    "event_type": "DISPATCH_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T04:24:00.000Z",
+    "evidence_id": "ev_0014",
+    "data": {
+      "dispatch_id": "dsp_0006",
+      "guard_id": "guard_006",
+      "status": "PENDING"
+    }
+  },
+  {
+    "event_id": "evt_0015",
+    "incident_id": "inc_01",
+    "event_type": "ESCALATION_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T04:16:00.000Z",
+    "evidence_id": "ev_0015",
+    "data": {
+      "escalation_id": "esc_0001",
+      "contact_id": "ct_sup_day",
+      "status": "PENDING"
+    }
+  },
+  {
+    "event_id": "evt_0016",
+    "incident_id": "inc_01",
+    "event_type": "ESCALATION_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T04:17:00.000Z",
+    "evidence_id": "ev_0016",
+    "data": {
+      "escalation_id": "esc_0002",
+      "contact_id": "ct_pm_01",
+      "status": "PENDING"
+    }
+  },
+  {
+    "event_id": "evt_0017",
+    "incident_id": "inc_02",
+    "event_type": "ESCALATION_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T04:20:00.000Z",
+    "evidence_id": "ev_0017",
+    "data": {
+      "escalation_id": "esc_0003",
+      "contact_id": "ct_sup_day",
+      "status": "PENDING"
+    }
+  },
+  {
+    "event_id": "evt_0018",
+    "incident_id": "inc_02",
+    "event_type": "ESCALATION_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T04:21:00.000Z",
+    "evidence_id": "ev_0018",
+    "data": {
+      "escalation_id": "esc_0004",
+      "contact_id": "ct_coord_01",
+      "status": "PENDING"
+    }
+  },
+  {
+    "event_id": "evt_0019",
+    "incident_id": "inc_03",
+    "event_type": "ESCALATION_CREATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T04:23:00.000Z",
+    "evidence_id": "ev_0019",
+    "data": {
+      "escalation_id": "esc_0005",
+      "contact_id": "ct_sup_day",
+      "status": "PENDING"
+    }
+  },
+  {
+    "event_id": "evt_0020",
+    "incident_id": "inc_04",
+    "event_type": "EVIDENCE_ADDED",
+    "actor": {
+      "actor_id": "usr_bql_01",
+      "actor_type": "HUMAN"
+    },
+    "created_at": "2026-09-29T01:38:00.000Z",
+    "evidence_id": "ev_0020",
+    "data": {
+      "evidence_id": "ev_0020",
+      "evidence_type": "OPERATOR_NOTE"
+    }
+  },
+  {
+    "event_id": "evt_0021",
+    "incident_id": "inc_04",
+    "event_type": "INCIDENT_UPDATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T01:40:00.000Z",
+    "evidence_id": "ev_0021",
+    "data": {
+      "previous_status": "OPEN",
+      "status": "RESOLVED",
+      "previous_severity": "P2",
+      "severity": "P2",
+      "note": "Đã xử lý, có xác nhận của bảo vệ"
+    }
+  },
+  {
+    "event_id": "evt_0022",
+    "incident_id": "inc_07",
+    "event_type": "INCIDENT_UPDATED",
+    "actor": {
+      "actor_id": "svc_action_executor",
+      "actor_type": "SERVICE"
+    },
+    "created_at": "2026-09-29T02:45:00.000Z",
+    "evidence_id": "ev_0022",
+    "data": {
+      "previous_status": "OPEN",
+      "status": "IN_PROGRESS",
+      "previous_severity": "P2",
+      "severity": "P2",
+      "note": "Bảo vệ đang theo dõi camera"
+    }
+  }
+]
