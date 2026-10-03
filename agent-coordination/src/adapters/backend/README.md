@@ -2,6 +2,10 @@
 
 Theo `docs/teams/dong/PHAN_CONG_NOI_BO_COORDINATION.md` ngày 01/10/2026.
 Chỉ sửa `src/adapters/{backend,reception,tools}/**` và test tương ứng.
+Implementation production phía adapter và contract cần ghép được mô tả tại
+[PRODUCTION_HANDOFF.md](PRODUCTION_HANDOFF.md). Hai schema Reception V2 đã chốt
+trong doc; URL/auth và contract API nội bộ bổ sung cần ghép với owner. Không coi
+tên operation hoặc test fake là endpoint đang chạy.
 Reception ↔ Supervisor mới dùng `schema_version: "2.0"`, `message_type`, `message`.
 Giữ đường backend V1 riêng cho bridge DEV-1 và checkpoint cũ; không tự chuyển
 envelope, checkpoint hoặc quyết định V1 sang V2.
@@ -31,9 +35,10 @@ receipt = await gateway.send(supervisor_message, verified.context)
 - `send` nhận `SupervisorMessage` hoặc mapping V2 và `groupchat.models.Context`
   hoặc mapping, trả `{message_id, status: accepted | completed}` cho action journal.
   `status` ở đây là ACK API nội bộ, không phải field trong output gửi Reception.
-- Guard dùng lại model V2 của DEV-1/DEV-2, kiểm strict type và JSON hữu hạn.
-  `facts[].value = null` được giữ nguyên. Bộ canonical validator vẫn bắt buộc;
-  adapter không tạo/sửa JSON Schema của DEV-5 hoặc Team Chiến.
+- `DocumentedContractValidator` dùng model V2 của DEV-1/DEV-2 theo doc, kiểm type,
+  JSON hữu hạn, nguồn phản hồi và điều kiện completed; giữ `facts[].value = null`.
+  Có thể bổ sung JSON Schema pin do owner cung cấp; không bắt buộc 14 file schema.
+  Adapter không tạo/sửa JSON Schema chung của DEV-5 hoặc Team Chiến.
 - Gateway không xây ID, số điện thoại, địa chỉ hoặc mức ưu tiên từ model.
   Backend phải đối chiếu **toàn bộ snapshot** với dữ liệu đã xác minh; gateway chỉ
   trả snapshot khi backend xác nhận. Backend trả snapshot đổi nội dung/phiên bản
@@ -91,6 +96,12 @@ Không có default xác thực giả hoặc permissive.
 | `reception_response` | ACK/error API với `message_id` |
 | `reception_verified` | Snapshot/context/run và sidecar đã xác minh |
 | `request`, `response`, `event` | Envelope API/sự kiện backend hiện hành |
+
+Các `kind` này là nhánh kiểm tra trong adapter, không phải thêm schema Reception.
+`build_adapters` mặc định bật `reception` và `workflow`, không bật RPC proposal
+`events`/`authority`. Hai tính năng bổ sung chỉ bật khi có route/auth/validator phù
+hợp. Tính năng chưa bật không làm luồng cơ bản lỗi khởi tạo. Validator/JSON Schema
+được inject nếu triển khai đòi hỏi contract nội bộ khác; không có fallback bỏ kiểm.
 
 Error response dùng `{message_id, status: "error", error: {code, retryable}}`.
 HTTP 403/409 hoặc business error không làm gateway trả một quyết định hợp lệ.
@@ -171,6 +182,6 @@ và khôi phục journal. Storage giả không chứng minh restart process ho�
 DB thực tế.
 
 Để chạy production còn cần: paths/semantics và delegated auth từ Team Chiến;
-schema chuẩn/canonical validator, mount và Authority authorize/reconcile kênh
+contract API nội bộ đã thống nhất, mount và Authority authorize/reconcile kênh
 `reception` từ DEV-5; durable inbox/checkpoint/fencing từ DEV-4; rollout với Reception
 team Hoàng. Test chưa chứng minh API staging, UI, DB transaction hoặc restart thật.

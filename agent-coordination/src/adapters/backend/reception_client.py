@@ -36,8 +36,10 @@ class ReceptionClient:
         if self._authentication is None:
             raise AdapterError("reception_authentication_required")
         try:
+            from adapters.reception.authentication import proof_headers
             headers = dict(await asyncio.wait_for(
-                self._authentication.headers(authentication), self._timeout))
+                proof_headers(self._authentication, authentication, wire, purpose="reception"),
+                self._timeout))
         except AdapterError:
             raise
         except TimeoutError:

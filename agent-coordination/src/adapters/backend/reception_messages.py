@@ -1,6 +1,6 @@
 """V2 guards using boundary models already shared by DEV-1/DEV-2.
 
-The injected canonical validator remains required. Imports are lazy so backend
+An injected boundary validator remains required. Imports are lazy so backend
 approval, tool and event clients keep their standard-library-only boundary.
 """
 from __future__ import annotations

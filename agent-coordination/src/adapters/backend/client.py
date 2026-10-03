@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import time
 from dataclasses import dataclass
-from typing import Any, Literal, Mapping, Protocol
+from typing import Any, Callable, Literal, Mapping, Protocol
 from urllib.parse import urlsplit
 
 from .errors import AdapterError, ValidationError
@@ -61,6 +62,7 @@ class BackendClient:
         self, *, base_url: str, routes: Mapping[str, str], transport: HttpTransport,
         headers: HeaderProvider, validator: ContractValidator, timeout: float = 15,
         allow_http: bool = False, max_response_bytes: int = 1_048_576,
+        observer: Callable[[JSON], None] | None = None,
     ) -> None:
         parts = urlsplit(base_url)
         if (parts.scheme not in ({"https", "http"} if allow_http else {"https"})
@@ -83,10 +85,48 @@ class BackendClient:
         self._validator = validator
         self._timeout = timeout
         self._max_response = max_response_bytes
+        self._observer = observer
 
     @property
     def validator(self) -> ContractValidator:
         return self._validator
+
+    async def call_contract(
+        self, operation: str, request: Mapping[str, Any], *,
+        request_schema: str, response_schema: str, identity: str = "request_id",
+        authentication_headers: Mapping[str, str] | None = None,
+    ) -> JSON:
+        """Explicit internal contracts for lookup/authority/tools, never V1 conversion.
+
+        The composition supplies pinned schemas and actual routes. The peer must
+        echo the identity and return accepted/completed + data or a business error.
+        This method never generates an ID, retries, or infers business authority.
+        """
+        if operation not in self._routes:
+            raise AdapterError("operation_not_configured")
+        if identity not in {"request_id", "message_id", "event_id"}:
+            raise ValidationError()
+        wire = snapshot(request)
+        expected = wire.get(identity)
+        if not isinstance(expected, str) or not expected.strip():
+            raise ValidationError()
+        validate_with(self._validator, request_schema, wire)
+        headers = {"X-Request-Id": expected}
+        if identity == "message_id":
+            headers = {"X-Message-Id": expected}
+        if "idempotency_key" in wire:
+            key = wire["idempotency_key"]
+            if not isinstance(key, str) or not key.strip():
+                raise ValidationError()
+            headers["Idempotency-Key"] = key
+        if "correlation_id" in wire:
+            correlation = wire["correlation_id"]
+            if not isinstance(correlation, str) or not correlation.strip():
+                raise ValidationError()
+            headers["X-Correlation-Id"] = correlation
+        data = await self._exchange(operation, wire, headers,
+                                    authentication_headers=authentication_headers)
+        return self._receipt(data, identity, expected, response_schema, operation=operation)["data"]
 
     async def call(self, operation: str, request: Mapping[str, Any]) -> BackendResult:
         if operation not in self._routes:
@@ -98,7 +138,7 @@ class BackendClient:
             "Idempotency-Key": wire["idempotency_key"],
             "X-Request-Id": wire["request_id"], "X-Trace-Id": wire["trace_id"],
         })
-        data = self._receipt(data, "request_id", wire["request_id"], "response")
+        data = self._receipt(data, "request_id", wire["request_id"], "response", operation=operation)
         return BackendResult(data["request_id"], data["status"], data["data"])
 
     async def call_reception(
@@ -138,7 +178,7 @@ class BackendClient:
             "X-Message-Id": message["message_id"],
             "X-Correlation-Id": message["correlation_id"],
         }, authentication_headers=authentication_headers)
-        data = self._receipt(data, "message_id", message["message_id"], "reception_response")
+        data = self._receipt(data, "message_id", message["message_id"], "reception_response", operation=operation)
         return ReceptionReceipt(data["message_id"], data["status"], data["data"])
 
     async def _exchange(
@@ -165,15 +205,19 @@ class BackendClient:
         if any("\r" in v or "\n" in v for v in headers.values()):
             raise ValidationError()
         body = json.dumps(wire, ensure_ascii=False, allow_nan=False).encode("utf-8")
+        started = time.monotonic()
         try:
             response = await asyncio.wait_for(self._transport.post(
                 self._origin + self._routes[operation], headers=headers,
                 body=body, timeout=self._timeout,
             ), timeout=self._timeout)
         except TimeoutError:
+            self._observe(operation, wire, started, None)
             raise AdapterError("timeout", retryable=True, outcome_unknown=True) from None
         except OSError:
+            self._observe(operation, wire, started, None)
             raise AdapterError("unavailable", retryable=True, outcome_unknown=True) from None
+        self._observe(operation, wire, started, response.status)
         if len(response.body) > self._max_response:
             raise AdapterError("invalid_backend_response", outcome_unknown=True)
         if not 200 <= response.status < 300:
@@ -187,6 +231,26 @@ class BackendClient:
         except (ValueError, TypeError, ValidationError):
             raise AdapterError("invalid_backend_response", outcome_unknown=True) from None
 
+    def _observe(self, operation: str, wire: JSON, started: float, status: int | None) -> None:
+        if self._observer is None:
+            return
+        message = wire.get("message") if isinstance(wire.get("message"), dict) else wire
+        metadata = {key: message[key] for key in (
+            "request_id", "message_id", "correlation_id", "task_id", "run_id"
+        ) if key in message}
+        metadata.update(operation=operation, phase="http", http_status=status,
+                        elapsed_seconds=time.monotonic() - started)
+        # HTTP status is transport evidence, never a successful business outcome.
+        self._emit(metadata)
+
+    def _emit(self, metadata: JSON) -> None:
+        if self._observer is None:
+            return
+        try:
+            self._observer(metadata)
+        except Exception:
+            pass  # a diagnostic sink cannot cause a successful mutation to retry
+
     @staticmethod
     def _check_headers(headers: Mapping[str, str], reserved: set[str]) -> None:
         seen: set[str] = set()
@@ -197,7 +261,8 @@ class BackendClient:
                 raise AdapterError("invalid_credentials_headers")
             seen.add(name.lower())
 
-    def _receipt(self, data: JSON, identity: str, expected: str, schema: str) -> JSON:
+    def _receipt(self, data: JSON, identity: str, expected: str, schema: str, *,
+                 operation: str | None = None) -> JSON:
         try:
             validate_with(self._validator, schema, data)
             if data.get(identity) != expected:
@@ -206,11 +271,19 @@ class BackendClient:
                 error = data.get("error")
                 if not isinstance(error, dict) or error.get("code") not in ERROR_CODES:
                     raise ValidationError()
+                if operation is not None:
+                    self._emit({"operation": operation, "phase": "receipt", identity: expected,
+                                "status": "error", "code": error["code"]})
                 raise AdapterError(error["code"], retryable=error.get("retryable") is True,
                                    outcome_unknown=error["code"] == "unavailable")
             if (data.get("status") not in ("accepted", "completed")
                     or not isinstance(data.get("data"), dict) or "error" in data):
                 raise ValidationError()
         except (ValueError, TypeError, ValidationError):
+            if operation is not None:
+                self._emit({"operation": operation, "phase": "receipt", identity: expected,
+                            "status": "error", "code": "invalid_backend_response", "outcome_unknown": True})
             raise AdapterError("invalid_backend_response", outcome_unknown=True) from None
+        if operation is not None:
+            self._emit({"operation": operation, "phase": "receipt", identity: expected, "status": data["status"]})
         return data
