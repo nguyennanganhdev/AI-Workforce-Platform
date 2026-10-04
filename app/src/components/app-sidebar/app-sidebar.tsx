@@ -263,6 +263,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent className="scroll-fade-b">
+        <SidebarMenu className="px-2">
+          <SidebarMenuItem><SidebarMenuButton render={<Link to="/operations/team" />}>
+            Nhóm điều phối BQL
+          </SidebarMenuButton></SidebarMenuItem>
+        </SidebarMenu>
         <SidebarMenu>
           <SidebarGroup className="gap-px">
             <SidebarMenuItem>

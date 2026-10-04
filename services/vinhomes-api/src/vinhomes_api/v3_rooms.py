@@ -5,7 +5,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -20,9 +20,9 @@ async def _room(scope: MemberScope, room_id: str, *, lock: bool = False) -> None
     db, actor_id = scope
     result = await db.execute(text("""
         select c.id from channels c
-        join channel_memberships m on m.channel_id=c.id and m.tenant_id=c.tenant_id
+        left join channel_memberships m on m.channel_id=c.id and m.tenant_id=c.tenant_id and m.user_id=:actor_id
         where c.id=:room_id and c.kind='management' and c.deleted_at is null
-          and m.user_id=:actor_id
+          and (m.user_id=:actor_id or exists(select 1 from platform_admins where user_id=:actor_id))
           and c.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
     """ + (" for update of c" if lock else "")), {"room_id": room_id, "actor_id": actor_id})
     if result.first() is None:
@@ -30,17 +30,24 @@ async def _room(scope: MemberScope, room_id: str, *, lock: bool = False) -> None
 
 
 class RoomMessage(BaseModel):
-    text: str = Field(min_length=1, max_length=10000)
+    text: str = Field(default="", max_length=10000)
     client_message_id: str = Field(min_length=1, max_length=120)
     mention_agent_id: str | None = Field(default=None, max_length=160)
+    # Files uploaded to this room beforehand (v3_room_files.py). The platform's cap: 8 on one message.
+    file_ids: list[UUID] = Field(default_factory=list, max_length=8)
 
     @field_validator("text", "client_message_id")
     @classmethod
-    def nonempty(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("value must not be blank")
-        return value
+    def trimmed(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def said(self):
+        if not self.client_message_id or not (self.text or self.file_ids):
+            raise ValueError("a message needs an id and either text or a file")
+        if len(set(self.file_ids)) != len(self.file_ids):
+            raise ValueError("a file is attached once")
+        return self
 
 
 @router.get("/rooms", summary="List my management rooms")
@@ -50,8 +57,8 @@ async def list_rooms(scope: MemberScope, limit: int = Query(50, ge=1, le=100)) -
         select c.id, c.name, c.description, c.workspace_id,
                c.last_message_at, m.last_read_seq
         from channels c
-        join channel_memberships m on m.channel_id=c.id and m.tenant_id=c.tenant_id
-        where m.user_id=:actor_id and c.kind='management' and c.deleted_at is null
+        left join channel_memberships m on m.channel_id=c.id and m.tenant_id=c.tenant_id and m.user_id=:actor_id
+        where (m.user_id=:actor_id or exists(select 1 from platform_admins where user_id=:actor_id)) and c.kind='management' and c.deleted_at is null
           and c.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
         order by coalesce(c.last_message_at, c.created_at) desc limit :limit
     """), {"actor_id": actor_id, "limit": limit})
@@ -65,7 +72,14 @@ async def room_messages(room_id: str, scope: MemberScope,
     await _room(scope, room_id)
     result = await scope[0].execute(text("""
         select id, seq, sender_kind, sender_user_id, sender_agent_id, body, created_at,
-               (select name from users where users.id=messages.sender_user_id) as sender_name
+               (select name from users where users.id=messages.sender_user_id) as sender_name,
+               (select mm.status from message_mentions mm where mm.message_id=messages.id
+                 and mm.tenant_id=messages.tenant_id order by mm.created_at limit 1) as mention_status,
+               (select coalesce(json_agg(json_build_object('id',f.id,'name',f.original_name,'mime_type',f.declared_mime_type,
+                    'size_bytes',o.size_bytes) order by mf.ordinal),'[]'::json)
+                 from message_files mf join files f on f.id=mf.file_id and f.tenant_id=mf.tenant_id
+                 join file_objects o on o.id=f.accepted_object_id and o.tenant_id=f.tenant_id
+                 where mf.message_id=messages.id and mf.tenant_id=messages.tenant_id) as files
         from messages where channel_id=:room_id and visibility='room'
           and seq>:after_seq
           and tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
@@ -78,7 +92,11 @@ async def room_messages(room_id: str, scope: MemberScope,
 async def room_agents(room_id: str, scope: MemberScope) -> dict[str, object]:
     await _room(scope, room_id)
     result = await scope[0].execute(text("""
-        select a.id,a.name from channel_agents ca join agents a
+        select a.id,a.name,a.status,a.purpose,
+          exists(select 1 from agent_releases rel join agent_versions v on v.id=rel.version_id and v.tenant_id=rel.tenant_id
+            where rel.agent_id=a.id and rel.status='published' and rel.revoked_at is null
+              and v.version_no=(select max(v2.version_no) from agent_versions v2 where v2.agent_id=a.id)) as published
+        from channel_agents ca join agents a
           on a.id=ca.agent_id and a.tenant_id=ca.tenant_id
         where ca.channel_id=:id
           and ca.tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid
@@ -109,6 +127,12 @@ async def mention_status(room_id: str, message_id: UUID,
              summary="Post to my room, optionally requesting an agent mention")
 async def post_room_message(room_id: str, body: RoomMessage,
                             request: Request, scope: MemberScope) -> dict[str, object]:
+    return await post_message(room_id, body, request, scope)
+
+
+async def post_message(room_id: str, body: RoomMessage, request: Request, scope: MemberScope, *,
+                       routine_run_id: str | None = None) -> dict[str, object]:
+    """Post as the scope's actor. A schedule's firing (v3_routines) names its run, which the message then carries."""
     db, actor_id = scope
     await _room(scope, room_id, lock=True)
     previous = await db.execute(text("""
@@ -119,6 +143,8 @@ async def post_room_message(room_id: str, body: RoomMessage,
            "client_message_id": body.client_message_id})
     row = previous.mappings().first()
     content = {"text": body.text, "mentionAgentId": body.mention_agent_id}
+    if routine_run_id:
+        content["routineRunId"] = routine_run_id
     if row is not None:
         if row["body"] != content:
             raise HTTPException(409, "clientMessageId already used with different content")
@@ -136,7 +162,7 @@ async def post_room_message(room_id: str, body: RoomMessage,
         update channels set next_message_seq=next_message_seq+1,
             last_message=:preview, last_message_at=now(), updated_at=now()
         where id=:room_id returning next_message_seq-1
-    """), {"room_id": room_id, "preview": body.text[:200]})
+    """), {"room_id": room_id, "preview": body.text[:200] or "[Tệp đính kèm]"})
     message = await db.execute(text("""
         insert into messages (tenant_id, channel_id, seq, sender_kind, sender_user_id,
                               visibility, body, client_message_id)
@@ -147,6 +173,20 @@ async def post_room_message(room_id: str, body: RoomMessage,
     """), {"room_id": room_id, "seq": sequence.scalar_one(), "actor_id": actor_id,
            "content": json.dumps(content), "client_message_id": body.client_message_id})
     created = dict(message.mappings().one())
+    if body.file_ids:
+        # Only files this person uploaded to this room and has not used yet. Anything else refuses the message.
+        own = (await db.execute(text("""
+            select f.id from files f where f.id=any(:ids) and f.scope_kind='channel' and f.channel_id=:room_id
+              and f.uploaded_by=:actor_id and f.status='ready'
+              and not exists(select 1 from message_files mf where mf.file_id=f.id and mf.tenant_id=f.tenant_id)
+        """), {"ids": body.file_ids, "room_id": room_id, "actor_id": actor_id})).scalars().all()
+        if len(own) != len(body.file_ids):
+            raise HTTPException(422, "Tệp đính kèm không hợp lệ hoặc đã được dùng cho tin nhắn khác.")
+        for ordinal, file_id in enumerate(body.file_ids):
+            await db.execute(text("""
+                insert into message_files (tenant_id, message_id, file_id, ordinal)
+                values (nullif(current_setting('app.tenant_id', true), '')::uuid, :message_id, :file_id, :ordinal)
+            """), {"message_id": created["id"], "file_id": file_id, "ordinal": ordinal})
     if body.mention_agent_id:
         await db.execute(text("""
             insert into message_mentions (tenant_id, message_id, agent_id, requested_by, status)
@@ -154,7 +194,7 @@ async def post_room_message(room_id: str, body: RoomMessage,
                     :message_id, :agent_id, :actor_id, 'queued')
         """), {"message_id": created["id"], "agent_id": body.mention_agent_id,
                "actor_id": actor_id})
-        if request.app.state.settings.demo_mode:
+        if request.app.state.settings.demo_mode and not request.app.state.settings.coordination_service_token:
             seq = await db.execute(text("update channels set next_message_seq=next_message_seq+1 where id=:id returning next_message_seq-1"), {"id": room_id})
             await db.execute(text("""
                 insert into messages(tenant_id,channel_id,seq,sender_kind,sender_agent_id,visibility,body,reply_to_id)

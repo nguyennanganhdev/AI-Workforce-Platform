@@ -1,0 +1,372 @@
+{
+  "name": "Agent Kỹ thuật A2",
+  "purpose": "specialist",
+  "description": "Phân loại sự cố kỹ thuật (điện, nước, điều hòa, cửa, tường, trần, sàn), xác định mức độ và đề xuất cách xử lý. Tra được gián đoạn điện nước đang diễn ra, lịch cắt điện nước và SOP.",
+  "service_categories": [
+    "technical"
+  ],
+  "instructions_file": "technical-agent.md",
+  "cases": [
+    {
+      "name": "cau-dao-nhay-co-tia-lua",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Cầu dao nhảy liên tục",
+        "description": "Cầu dao tổng nhảy 4 lần từ sáng. Ổ cắm bếp có mùi khét và tóe tia lửa khi cắm ấm đun nước.",
+        "location": "Căn 1201, tòa S1.01, khu bếp",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ELEC\\.(BREAKER_TRIP|FIXTURE_FAILURE)",
+        "Level 1",
+        "LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY"
+      ],
+      "must_not": [
+        "Mức: Level [23]"
+      ],
+      "expected": "Mã điện (TECH.ELEC.BREAKER_TRIP hoặc FIXTURE_FAILURE), nâng Level 1 vì có mùi khét và tia lửa, dòng đầu yêu cầu chuyển người trực.",
+      "must_call": [],
+      "must_not_call": [
+        "technical.get_active_outage",
+        "utility_schedule.read"
+      ]
+    },
+    {
+      "name": "dieu-hoa-chay-nuoc",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Điều hòa chảy nước",
+        "description": "Điều hòa phòng ngủ nhỏ nước xuống sàn gỗ từ tối qua. Không có ổ điện hay thiết bị điện nào gần chỗ nước nhỏ. Trần không bị ố.",
+        "location": "Căn 1201, tòa S1.01, phòng ngủ chính",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.HVAC\\.CONDENSATION",
+        "Mức: Level 2"
+      ],
+      "must_not": [
+        "LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY"
+      ],
+      "expected": "Mã TECH.HVAC.CONDENSATION, Level 2 (không có dấu hiệu nâng Level 1).",
+      "must_not_call": [
+        "technical.get_active_outage"
+      ],
+      "must_call": [
+        "sop_kb.retrieve"
+      ]
+    },
+    {
+      "name": "tham-tuong-phong-tam",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Rò nước trong tường",
+        "description": "Nước rỉ ra ở chân tường phòng ngủ giáp phòng tắm, tường sờ thấy ướt và vùng ướt lan rộng dần trong 2 ngày. Nghi rò ống nước âm tường. Chưa ngập, không gần ổ điện.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.PLUMB\\.CONCEALED_LEAK",
+        "Mức: Level 2",
+        "Điều chưa xác minh"
+      ],
+      "must_not": [
+        "LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY"
+      ],
+      "expected": "Mã TECH.PLUMB.CONCEALED_LEAK, Level 2, có nêu điều chưa xác minh (nguồn rò).",
+      "must_call": [
+        "sop_kb.retrieve"
+      ],
+      "must_not_call": [
+        "technical.get_active_outage"
+      ]
+    },
+    {
+      "name": "tran-nut-vong-roi-vua",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Trần phòng khách nứt",
+        "description": "Trần phòng khách có vết nứt dài khoảng 1 mét, trần võng xuống và đã rơi vụn vữa xuống sofa.",
+        "location": "Căn 1201, tòa S1.01, phòng khách",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ARCH\\.CRACK",
+        "LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY"
+      ],
+      "must_not": [
+        "Mức: Level [23]"
+      ],
+      "expected": "Mã TECH.ARCH.CRACK, nâng Level 1 vì trần võng và rơi vật liệu.",
+      "must_not_call": [
+        "technical.get_active_outage",
+        "utility_schedule.read"
+      ],
+      "must_call": []
+    },
+    {
+      "name": "voi-bep-ro-dau-noi",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Vòi nước bếp rò",
+        "description": "Vòi nước bếp nhỏ giọt ở đầu nối dưới chậu rửa, mỗi phút vài giọt, đã hứng bằng chậu. Không gần ổ điện.",
+        "location": "Căn 1201, tòa S1.01, khu bếp",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.PLUMB\\.SUPPLY_DRAIN_JOINT",
+        "Mức: Level 3",
+        "SOP-PLUMB-012"
+      ],
+      "must_not": [
+        "LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY"
+      ],
+      "expected": "Mã TECH.PLUMB.SUPPLY_DRAIN_JOINT, Level 3; có tra SOP và dẫn mã SOP-PLUMB-012 làm nguồn.",
+      "tool_results": {
+        "sop_kb.retrieve": {
+          "status": "OK",
+          "errors": [],
+          "data": {
+            "documents": [
+              {
+                "document_id": "e1111111-1111-4111-8111-111111111111",
+                "code": "SOP-PLUMB-012",
+                "title": "Xử lý rò tại đầu nối cấp nước",
+                "version_no": 2,
+                "effective_from": "2026-01-01T00:00:00Z",
+                "effective_to": null,
+                "excerpt": "Khóa van góc, tháo đầu nối, thay gioăng và băng tan, siết lại, thử áp 10 phút không rò.",
+                "acceptance_criteria": [
+                  {
+                    "criterion": "Thử áp 10 phút không rò",
+                    "evidence": "ảnh sau khi sửa"
+                  }
+                ],
+                "source_refs": [
+                  "SOP-PLUMB-012@2"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "must_call": [
+        "sop_kb.retrieve"
+      ],
+      "must_not_call": [
+        "technical.get_active_outage"
+      ]
+    },
+    {
+      "name": "nuoc-thai-trao-nguoc",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Nước thải trào lên",
+        "description": "Nước thải trào ngược lên ở ga thoát sàn nhà tắm, mới đọng trong nhà tắm, chưa lan ra ngoài và không gần thiết bị điện.",
+        "location": "Căn 1201, tòa S1.01, nhà tắm",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.PLUMB\\.SEWAGE_BACKFLOW",
+        "Mức: Level 2"
+      ],
+      "must_not": [],
+      "expected": "Mã TECH.PLUMB.SEWAGE_BACKFLOW, Level 2.",
+      "must_call": [
+        "sop_kb.retrieve"
+      ],
+      "must_not_call": [
+        "technical.get_active_outage"
+      ]
+    },
+    {
+      "name": "mo-ta-khong-du",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Nhà bị hỏng",
+        "description": "Nhà tôi có chỗ bị hỏng, anh chị cho người xuống xem giúp.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "CHƯA XÁC ĐỊNH",
+        "Thông tin cần bổ sung"
+      ],
+      "must_not": [
+        "Mã vấn đề: TECH\\.",
+        "Thông tin cần bổ sung: Không cần"
+      ],
+      "expected": "Không gán mã khi mô tả không đủ; nêu câu hỏi cần bổ sung.",
+      "must_not_call": [
+        "technical.get_active_outage",
+        "utility_schedule.read",
+        "sop_kb.retrieve"
+      ],
+      "must_call": []
+    },
+    {
+      "name": "khong-tao-so-do",
+      "instruction": "Đọc cảm biến áp lực nước của tầng 12 và cho biết giá trị hiện tại để kết luận nguyên nhân nước yếu.",
+      "ticket": {
+        "title": "Nước yếu",
+        "description": "Vòi nước trong căn chảy yếu hơn bình thường từ sáng nay.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "chưa có công cụ|không có công cụ|chưa đọc được|không đọc được|chưa tra được|không tra được"
+      ],
+      "must_not": [
+        "\\d+([.,]\\d+)?\\s*(bar|psi|kPa|MPa)\\b"
+      ],
+      "expected": "Nói rõ chưa đọc được cảm biến; không đưa ra bất kỳ số đo áp lực nào.",
+      "must_call": [],
+      "must_not_call": []
+    },
+    {
+      "name": "nuoc-yeu-co-gian-doan-chung",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Nước yếu",
+        "description": "Từ 8 giờ sáng nay tất cả vòi nước trong căn chảy rất yếu.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "tool_results": {
+        "technical.get_active_outage": {
+          "status": "OK",
+          "errors": [],
+          "data": {
+            "outages": [
+              {
+                "outage_id": "a1111111-1111-4111-8111-111111111111",
+                "service_type": "water",
+                "status": "in_progress",
+                "scope_ids": [
+                  "b1111111-1111-4111-8111-111111111111"
+                ],
+                "started_at": "2026-10-04T07:45:00+07:00",
+                "ended_at": null,
+                "published_eta": "2026-10-04T16:00:00+07:00"
+              }
+            ]
+          }
+        }
+      },
+      "must": [
+        "gián đoạn|cắt nước|sự cố chung",
+        "16[:h]00|16 giờ"
+      ],
+      "must_not": [
+        "LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY"
+      ],
+      "must_call": [
+        "technical.get_active_outage"
+      ],
+      "expected": "Gọi tool kiểm tra gián đoạn; nêu đang có gián đoạn nước chung và thời gian khôi phục đã công bố (16:00), không tự đoán giờ khác.",
+      "must_not_call": []
+    },
+    {
+      "name": "tool-loi-khong-suy-doan",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Mất nước",
+        "description": "Căn tôi mất nước hoàn toàn từ 8 giờ sáng nay.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "tool_results": {
+        "technical.get_active_outage": {
+          "status": "INTERNAL_ERROR",
+          "data": null,
+          "errors": [
+            {
+              "code": "INTERNAL_ERROR",
+              "message": "The tool could not complete the request.",
+              "retryable": true
+            }
+          ]
+        }
+      },
+      "must": [
+        "chưa tra được|không tra được"
+      ],
+      "must_not": [
+        "không có (sự cố|gián đoạn)",
+        "không ghi nhận (sự cố|gián đoạn)"
+      ],
+      "must_call": [
+        "technical.get_active_outage"
+      ],
+      "expected": "Tool lỗi: ghi rõ chưa tra được gián đoạn, không kết luận là không có gián đoạn.",
+      "must_not_call": []
+    },
+    {
+      "name": "hoi-tiep-khong-lap-lai",
+      "instruction": "Trước khi kỹ thuật viên xuống, cư dân nên làm gì để nước không thấm vào tủ bếp?",
+      "ticket": {
+        "title": "Vòi nước bếp rò",
+        "description": "Vòi nước bếp nhỏ giọt ở đầu nối dưới chậu rửa, mỗi phút vài giọt, đã hứng bằng chậu. Không gần ổ điện.",
+        "location": "Căn 1201, tòa S1.01, khu bếp",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "messages": [
+        {
+          "sender": "agent-ky-thuat",
+          "task_id": "t1",
+          "content": "Mã vấn đề: TECH.PLUMB.SUPPLY_DRAIN_JOINT\nMức: Level 3 - Rò nhỏ giọt ở đầu nối, chưa có dấu hiệu nguy hiểm.\nDữ kiện đã có: Vòi nước bếp nhỏ giọt ở đầu nối dưới chậu rửa, mỗi phút vài giọt, không gần ổ điện.\nĐiều chưa xác minh: Điểm rò chính xác; có thấm vào tủ bếp hay không.\nKết quả tra cứu: sop_kb__retrieve trả NOT_FOUND cho mã này.\nĐề xuất xử lý: Kỹ thuật nước kiểm tra, siết hoặc thay gioăng đầu nối.\nLưu ý an toàn: Tiếp tục hứng nước; không tự tháo lắp.\nThông tin cần bổ sung: Không cần."
+        }
+      ],
+      "must": [
+        "chậu|khăn|lau|khóa van|van góc"
+      ],
+      "must_not": [
+        "Mã vấn đề:",
+        "Dữ kiện đã có:"
+      ],
+      "must_not_call": [
+        "technical.get_active_outage",
+        "utility_schedule.read"
+      ],
+      "expected": "Câu hỏi tiếp theo trong phiên: trả lời thẳng việc cư dân nên làm, không chép lại bản phân tích trước."
+    }
+  ],
+  "tools": [
+    "technical.get_active_outage",
+    "utility_schedule.read",
+    "sop_kb.retrieve"
+  ],
+  "tool_defaults": {
+    "technical.get_active_outage": {
+      "status": "OK",
+      "data": {
+        "outages": []
+      },
+      "errors": []
+    },
+    "utility_schedule.read": {
+      "status": "OK",
+      "data": {
+        "schedules": []
+      },
+      "errors": []
+    },
+    "sop_kb.retrieve": {
+      "status": "OK",
+      "data": {
+        "documents": []
+      },
+      "errors": []
+    }
+  }
+}

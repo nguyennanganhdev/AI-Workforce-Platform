@@ -257,6 +257,10 @@ async def http_error(request: Request, exc: StarletteHTTPException) -> JSONRespo
 
 
 async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    if request.url.path.startswith('/auth/'):
+        # Invalid credential requests must not reflect passwords back into clients/logs.
+        return JSONResponse(status_code=422, content={'detail': [
+            {'type': item['type'], 'loc': list(item['loc']), 'msg': item['msg']} for item in exc.errors()]})
     if not is_contract(request.url.path):
         from fastapi.exception_handlers import request_validation_exception_handler
         return await request_validation_exception_handler(request, exc)

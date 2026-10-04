@@ -562,7 +562,9 @@ async def _resolve_destination(scope, call: OperationCall):
                 ) v on true
                 where a.workspace_id=:workspace_id and a.tenant_id={TENANT}
                   and a.status='active' and a.purpose='supervisor'
-                  and ca.channel_id=:channel_id order by a.id limit 2
+                  and ca.channel_id=:channel_id
+                  and not exists(select 1 from agent_releases sr where sr.version_id=v.id and sr.tenant_id=a.tenant_id
+                    and (sr.status<>'published' or sr.revoked_at is not null)) order by a.id limit 2
             """),
                 {"workspace_id": workspace_id, "channel_id": management_channel_id},
             )

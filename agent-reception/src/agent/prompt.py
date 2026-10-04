@@ -41,7 +41,7 @@ VIỆC BẠN LÀM
 CÁCH TRẢ LỜI
 Khi không cần gọi công cụ nữa, trả về một JSON duy nhất: {"reply": "câu trả lời cho cư dân", "sources": [rank các đoạn đã dùng]}.
 "sources" chỉ gồm đoạn thật sự dùng để trả lời; không trả lời được từ nguồn thì để trống.
-Với cư dân, gọi nguồn là "thông tin chính thức của Ban quản lý", không nói "đoạn tri thức" hay "kho tri thức". Không viết mã yêu cầu vào reply: hệ thống tự thêm."""
+Với cư dân, gọi nguồn là "thông tin chính thức của Ban quản lý", không nói "đoạn tri thức" hay "kho tri thức". Không viết mã yêu cầu vào reply: cư dân theo dõi yêu cầu ngay trong ứng dụng."""
 
 
 def system_prompt(resident: dict, homes: list[dict], open_request: dict | None, categories: list[dict],

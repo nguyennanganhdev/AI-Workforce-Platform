@@ -6,7 +6,7 @@ import {
   constructAgentSpec,
   type FactoryConstructionOptions,
 } from "./service.js";
-import { parseAgentCreationRequest, prepareFactoryCatalogue } from "./spec.js";
+import { parseAgentCreationRequest, prepareFactoryCatalogue, parseFactoryConstructionResponse } from "./spec.js";
 
 export const MAX_REQUEST_BYTES = 128 * 1024;
 const bodySchema = z.strictObject({
@@ -36,7 +36,7 @@ export function createFactoryHandler(
     const path = new URL(request.url).pathname;
     if (path === "/health" && request.method === "GET")
       return Response.json({ status: "ok", service: "agent-factory" });
-    if (path !== "/v1/constructions")
+    if (path !== "/v1/constructions" && path !== "/v1/verify")
       return failure(404, "NOT_FOUND", "Endpoint not found.");
     if (request.method !== "POST") {
       const response = failure(405, "METHOD_NOT_ALLOWED", "Use POST.");
@@ -70,6 +70,15 @@ export function createFactoryHandler(
         ? failure(413, "BODY_TOO_LARGE", "Construction request is too large.")
         : failure(400, "INVALID_BODY", "A valid JSON body is required.");
     }
+    if (path === "/v1/verify") {
+      const verifiedBody = z.strictObject({ request: z.unknown(), catalogue: z.unknown(), artifact: z.unknown() }).safeParse(value);
+      if (!verifiedBody.success) return failure(400, "INVALID_BODY", "Request, catalogue and artifact are required.");
+      const input = parseAgentCreationRequest(verifiedBody.data.request);
+      const catalogue = prepareFactoryCatalogue(verifiedBody.data.catalogue);
+      if (!input.ok || !catalogue.ok) return failure(422, "INVALID_INPUT", "Invalid request or catalogue.");
+      const parsed = parseFactoryConstructionResponse(verifiedBody.data.artifact, input.value, catalogue.value);
+      return parsed.ok ? Response.json(parsed.value) : failure(422, "INVALID_ARTIFACT", "Artifact integrity check failed.", parsed.issues);
+    }
     const body = bodySchema.safeParse(value);
     if (!body.success)
       return failure(
@@ -99,6 +108,7 @@ export function createFactoryHandler(
         signal: request.signal,
       });
       if (result.ok) return Response.json(result.value);
+      console.warn(JSON.stringify({event: 'factory.refused', issues: result.issues.map(i => ({code: i.code, message: i.message, sourceStage: i.sourceStage}))}));
       const status = result.issues.some(
         ({ code }) => code === "DEADLINE_EXCEEDED",
       )

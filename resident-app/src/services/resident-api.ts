@@ -101,6 +101,11 @@ export type Approval = {
     total?: number;
   };
 };
+/** Messages stored before request codes left resident-facing text still carry one. */
+export const withoutRequestCode = (text: string) =>
+  text
+    .replace(/\s*Mã yêu cầu của bạn: \S+$/, "")
+    .replace(/cho yêu cầu VH-\w+:/, "cho yêu cầu của anh/chị:");
 export function requestView(
   detail: TicketDetail,
   canConfirm: boolean,

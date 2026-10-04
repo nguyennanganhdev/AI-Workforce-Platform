@@ -32,6 +32,7 @@ import {
 } from "./audit";
 import { startRetentionSweeps } from "./audit-retention";
 import { createAuth } from "./auth";
+import { createBusinessAuth } from "./auth/business";
 import { DEV_ACTOR, initializeDevActorUser } from "./auth/dev-actor";
 import type { AuthService } from "./auth/guards";
 import { createRoleRepository } from "./auth/guards";
@@ -185,11 +186,12 @@ const config = loadConfig();
 // `serverPort` in config.ts for what `process.env.PORT ?? …` did with `PORT=` instead.
 const port = config.port;
 const tenantPackage = await loadTenantPackage(config.tenantPackageDirectory);
+const runtimeScope = config.existingBusinessScope ?? deploymentScope(tenantPackage.tenantId);
 const database = createDatabase(
   config.databaseUrl,
-  deploymentScope(tenantPackage.tenantId),
+  runtimeScope,
 );
-await initializeDeploymentScope(database, tenantPackage.tenantId);
+if (!config.existingBusinessScope) await initializeDeploymentScope(database, tenantPackage.tenantId);
 await initializeDevActorUser(database, config.singleUser);
 // The vault, built before the agent store because a customer's agent may sit behind a key and that
 // key belongs here rather than on the agent row. See agents/auth-header.ts.
@@ -239,7 +241,7 @@ const loadAgentsForActor = createRuntimeAgentLoader(
   // Chat, routines and handoff all load through here, so generated rows are gated on every path.
   (actor, row) => factoryRuntimeReadiness(actor, row),
 );
-await synchronizeTenantPackage(database, tenantPackage);
+if (!config.existingBusinessScope) await synchronizeTenantPackage(database, tenantPackage);
 /*
  * Built before `auth`, because the deny list is consulted during sign-in and the store is what
  * holds it. It needs the administrator list too, so it can tell the screen which people the
@@ -264,7 +266,9 @@ const identityProviderStore = createIdentityProviderStore(database);
  * store that receives those rows has to exist before anything can sign in.
  */
 const signInAuditStore = createAuditStore(database);
-const auth: AuthService | undefined = config.organizationAuthUrl
+const auth: AuthService | undefined = config.businessAuthUrl
+  ? createBusinessAuth(config.businessAuthUrl, (process.env.TRUSTED_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean))
+  : config.organizationAuthUrl
   ? createOrganizationAuth({
       authorityUrl: config.organizationAuthUrl,
       materializeUser: organizationUserStore(database),
@@ -1335,8 +1339,8 @@ const app = createApp(
   process.env.OPENBOT_MODEL_OAUTH_FILE?.trim()
     ? createProviderOAuthProxy(process.env.OPENBOT_MODEL_OAUTH_FILE.trim())
     : undefined,
-  createTicketReader(database, deploymentScope(tenantPackage.tenantId).tenantId),
-  { database, tenantId: deploymentScope(tenantPackage.tenantId).tenantId },
+  createTicketReader(database, runtimeScope.tenantId),
+  { database, tenantId: runtimeScope.tenantId },
   process.env.TECHNICAL_API_DATABASE_URL && process.env.TECHNICAL_API_TENANT_ID
     ? {
         database: createDatabase(process.env.TECHNICAL_API_DATABASE_URL),

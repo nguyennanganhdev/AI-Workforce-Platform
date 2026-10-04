@@ -7,9 +7,12 @@
 .live-detail > p { margin: 12px 0; }
 .live-detail h3 { margin: 20px 0 12px; }
 .live-order { padding: 16px; border: 1px solid var(--border); border-radius: 8px; margin: 16px 0; }
+.live-reply { white-space: pre-wrap; }
 .live-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; align-items: end; }
 .live-error { padding: 16px; background: #ffe6e4; border-radius: 8px; display: flex; justify-content: space-between; gap: 15px; }
 .local-actor { max-width: 400px; }
 .live-photos { display: flex; gap: 12px; flex-wrap: wrap; }
-.live-photos a { color: var(--primary); text-decoration: underline; }
+.live-photos a { display: block; width: 132px; color: inherit; font-size: 12px; text-decoration: none; }
+.live-photos img { display: block; width: 132px; height: 132px; object-fit: cover; border-radius: 8px; border: 1px solid #d9dee7; background: #f1f3f7; }
+.live-photos span { display: block; margin-top: 4px; opacity: .75; }
 @media (max-width: 1000px) { .live-columns { grid-template-columns: 1fr; } }

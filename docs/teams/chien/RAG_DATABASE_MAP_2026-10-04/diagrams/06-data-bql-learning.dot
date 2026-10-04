@@ -1,0 +1,36 @@
+digraph G {
+graph [rankdir=TB, bgcolor="#ffffff", pad="0.5", nodesep="0.65", ranksep="0.85", splines=polyline, outputorder=edgesfirst, fontname="Segoe UI", fontsize=23, labelloc=t, label="DATA / BQL · DUYỆT TRI THỨC VÀ ĐƯỜNG NẠP LẠI"];
+node [shape=plain, fontname="Segoe UI", fontsize=16];
+edge [fontname="Segoe UI", fontsize=12, color="#53657b", penwidth=1.4, arrowsize=0.7];
+"tickets" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="218" BGCOLOR="#e8edf2" ALIGN="LEFT"><B>tickets</B></TD></TR><TR><TD WIDTH="218" ALIGN="LEFT">22 dòng · snapshot 03/10</TD></TR></TABLE>>];
+"agent_runs" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="209" BGCOLOR="#e8edf2" ALIGN="LEFT"><B>agent_runs</B></TD></TR><TR><TD WIDTH="209" ALIGN="LEFT">0 dòng · snapshot 03/10</TD></TR></TABLE>>];
+"access_scopes" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="218" BGCOLOR="#e8edf2" ALIGN="LEFT"><B>access_scopes</B></TD></TR><TR><TD WIDTH="218" ALIGN="LEFT">24 dòng · snapshot 03/10</TD></TR></TABLE>>];
+"memory_namespaces" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="209" BGCOLOR="#f0e5ff" ALIGN="LEFT"><B>memory_namespaces</B></TD></TR><TR><TD WIDTH="209" ALIGN="LEFT">1 dòng · snapshot 03/10</TD></TR></TABLE>>];
+"memory_candidates" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="272" BGCOLOR="#f0e5ff" ALIGN="LEFT"><B>memory_candidates</B></TD></TR><TR><TD WIDTH="272" ALIGN="LEFT">4 dòng · snapshot 03/10</TD></TR><TR><TD WIDTH="272" ALIGN="LEFT"><FONT POINT-SIZE="13">status; proposed_text; evidence</FONT></TD></TR><TR><TD WIDTH="272" ALIGN="LEFT"><FONT POINT-SIZE="13">proposal_hash; namespace_id; scope_id</FONT></TD></TR></TABLE>>];
+"knowledge_reviews" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="330" BGCOLOR="#e4eeff" ALIGN="LEFT"><B>knowledge_reviews</B></TD></TR><TR><TD WIDTH="330" ALIGN="LEFT">3 dòng · snapshot 03/10</TD></TR><TR><TD WIDTH="330" ALIGN="LEFT"><FONT POINT-SIZE="13">document_version_id HOẶC memory_candidate_id</FONT></TD></TR><TR><TD WIDTH="330" ALIGN="LEFT"><FONT POINT-SIZE="13">decision; reviewer_user_id; subject_hash</FONT></TD></TR></TABLE>>];
+"memory_publications" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="209" BGCOLOR="#f0e5ff" ALIGN="LEFT"><B>memory_publications</B></TD></TR><TR><TD WIDTH="209" ALIGN="LEFT">0 dòng · snapshot 03/10</TD></TR></TABLE>>];
+"knowledge_documents" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="227" BGCOLOR="#e4eeff" ALIGN="LEFT"><B>knowledge_documents</B></TD></TR><TR><TD WIDTH="227" ALIGN="LEFT">116 dòng · snapshot 03/10</TD></TR></TABLE>>];
+"document_versions" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="227" BGCOLOR="#e4eeff" ALIGN="LEFT"><B>document_versions</B></TD></TR><TR><TD WIDTH="227" ALIGN="LEFT">115 dòng · snapshot 03/10</TD></TR></TABLE>>];
+"export" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="267" BGCOLOR="#fff1d8" ALIGN="LEFT"><B>Script xuất → Markdown</B></TD></TR><TR><TD WIDTH="267" ALIGN="LEFT">hoi-dap-ban-quan-ly.md</TD></TR><TR><TD WIDTH="267" ALIGN="LEFT"><FONT POINT-SIZE="13">candidate approved → file đúng scope</FONT></TD></TR><TR><TD WIDTH="267" ALIGN="LEFT"><FONT POINT-SIZE="13">publish.ts nạp lại vào RAG</FONT></TD></TR></TABLE>>];
+"agent_runs" -> "agent_runs" [label="parent_run_id",style="solid",color="#53657b"];
+"knowledge_documents" -> "document_versions" [label="document_id",style="solid",color="#53657b"];
+"document_versions" -> "knowledge_documents" [label="active_version_id",style="solid",color="#53657b"];
+"memory_namespaces" -> "knowledge_documents" [label="memory_namespace_id",style="solid",color="#53657b"];
+"document_versions" -> "knowledge_reviews" [label="document_version_id",style="solid",color="#53657b"];
+"memory_candidates" -> "knowledge_reviews" [label="memory_candidate_id",style="solid",color="#53657b"];
+"memory_namespaces" -> "memory_candidates" [label="namespace_id",style="solid",color="#53657b"];
+"access_scopes" -> "memory_candidates" [label="scope_id",style="solid",color="#53657b"];
+"agent_runs" -> "memory_candidates" [label="source_run_id",style="solid",color="#53657b"];
+"tickets" -> "memory_candidates" [label="source_ticket_id",style="solid",color="#53657b"];
+"memory_candidates" -> "memory_candidates" [label="supersedes_candidate_id",style="solid",color="#53657b"];
+"knowledge_reviews" -> "memory_publications" [label="approval_review_id",style="solid",color="#53657b"];
+"memory_candidates" -> "memory_publications" [label="candidate_id",style="solid",color="#53657b"];
+"knowledge_documents" -> "memory_publications" [label="document_id",style="solid",color="#53657b"];
+"memory_namespaces" -> "memory_publications" [label="namespace_id",style="solid",color="#53657b"];
+"document_versions" -> "memory_publications" [label="version_id",style="solid",color="#53657b"];
+"decision" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="360" BGCOLOR="#fff1d8" ALIGN="LEFT"><B>Ứng dụng: curator → backend decide</B></TD></TR><TR><TD WIDTH="360" ALIGN="LEFT">Personal / không dùng lại → rejected</TD></TR><TR><TD WIDTH="360" ALIGN="LEFT">Chung, rủi ro thấp → auto approved</TD></TR><TR><TD WIDTH="360" ALIGN="LEFT">Phí / quy định / an toàn → BQL duyệt</TD></TR></TABLE>>];
+"memory_candidates" -> "decision" [label="xử lý candidate, không phải FK",style="dashed",color="#3268a8"];
+"decision" -> "export" [label="chỉ status approved",style="dashed",color="#3268a8"];
+"export" -> "knowledge_documents" [label="publish.ts (không phải FK)",style="dashed",color="#3268a8"];
+"legend" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="492" BGCOLOR="#f3f5f8" ALIGN="LEFT"><B>CÁCH ĐỌC</B></TD></TR><TR><TD WIDTH="492" ALIGN="LEFT">4 candidates · 3 reviews · 0 publications; script khác đường chuẩn.</TD></TR><TR><TD WIDTH="492" ALIGN="LEFT"><FONT POINT-SIZE="13">Snapshot 03/10/2026 · code kiểm ngày 04/10</FONT></TD></TR><TR><TD WIDTH="492" ALIGN="LEFT"><FONT POINT-SIZE="13">FK vẽ CHA → CON (con giữ khóa ngoại)</FONT></TD></TR><TR><TD WIDTH="492" ALIGN="LEFT"><FONT POINT-SIZE="13">Nét đứt: bước ứng dụng / API, không phải FK</FONT></TD></TR></TABLE>>];
+}

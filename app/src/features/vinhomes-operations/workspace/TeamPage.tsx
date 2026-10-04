@@ -17,7 +17,7 @@ export function TeamPage() {
     onCreateAgent={(name, specialty) => w.run(s => createAgent(s, actor, name, specialty), 'Đã tạo agent mẫu và thêm vào nhóm.')} />;
 }
 
-export function TeamView({room, agents, tickets, error = '', notice = '', onSend, onCreateAgent, connectedAccount}: {
+export function TeamView({room, agents, tickets, error = '', notice = '', onSend, onCreateAgent, connectedAccount, contentOnly = false}: {
   room: Pick<Room, 'id' | 'name' | 'messages'> & {scope: string};
   agents: Pick<Agent, 'id' | 'name'>[];
   tickets: (Pick<WorkflowCase, 'id' | 'title' | 'stage'> & {severity: string})[];
@@ -25,6 +25,7 @@ export function TeamView({room, agents, tickets, error = '', notice = '', onSend
   onSend: (text: string, agentId: string, ticketId: string) => Promise<boolean>;
   onCreateAgent?: (name: string, specialty: Agent['specialty']) => boolean;
   connectedAccount?: {role: string; scope: string};
+  contentOnly?: boolean;
 }) {
   const [text, setText] = useState('');
   const [agentId, setAgentId] = useState('');
@@ -32,14 +33,7 @@ export function TeamView({room, agents, tickets, error = '', notice = '', onSend
   const [name, setName] = useState('');
   const [specialty, setSpecialty] = useState<Agent['specialty']>('technical');
   const [sending, setSending] = useState(false);
-  return (
-    <WorkspaceFrame
-      title="Không gian ban quản lý"
-      description="Trao đổi trong nhóm và theo dõi công việc được cấp quyền."
-      error={error}
-      notice={notice}
-      connectedAccount={connectedAccount}
-    >
+  const content = <>
       <div className="ws-team-grid">
         <section className="ws-card">
           <h2>{room.name}</h2>
@@ -56,7 +50,7 @@ export function TeamView({room, agents, tickets, error = '', notice = '', onSend
                     minute: "2-digit",
                   })}
                 </time>
-                <p>
+                <p className="whitespace-pre-wrap">
                   {m.agentId && (
                     <span className="ws-status">
                       @{agents.find((a) => a.id === m.agentId)?.name}
@@ -94,6 +88,7 @@ export function TeamView({room, agents, tickets, error = '', notice = '', onSend
               <label>
                 @Nhắc agent
                 <select
+                  aria-label="@Nhắc agent"
                   value={agentId}
                   onChange={(e) => setAgentId(e.target.value)}
                 >
@@ -237,6 +232,8 @@ export function TeamView({room, agents, tickets, error = '', notice = '', onSend
           ))}
         </div>
       </section>
-    </WorkspaceFrame>
-  );
+    </>;
+  return contentOnly ? content : <WorkspaceFrame title="Không gian ban quản lý"
+    description="Trao đổi trong nhóm và theo dõi công việc được cấp quyền."
+    error={error} notice={notice} connectedAccount={connectedAccount}>{content}</WorkspaceFrame>;
 }

@@ -1,0 +1,33 @@
+digraph G {
+graph [rankdir=TB, bgcolor="#ffffff", pad="0.5", nodesep="0.65", ranksep="0.85", splines=polyline, outputorder=edgesfirst, fontname="Segoe UI", fontsize=23, labelloc=t, label="TEAM QUANG · KHO TRI THỨC VÀ AUDIT TRUY XUẤT"];
+node [shape=plain, fontname="Segoe UI", fontsize=16];
+edge [fontname="Segoe UI", fontsize=12, color="#53657b", penwidth=1.4, arrowsize=0.7];
+"knowledge_bases" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="209" BGCOLOR="#e4eeff" ALIGN="LEFT"><B>knowledge_bases</B></TD></TR><TR><TD WIDTH="209" ALIGN="LEFT">2 dòng · snapshot 03/10</TD></TR></TABLE>>];
+"knowledge_documents" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="227" BGCOLOR="#e4eeff" ALIGN="LEFT"><B>knowledge_documents</B></TD></TR><TR><TD WIDTH="227" ALIGN="LEFT">116 dòng · snapshot 03/10</TD></TR></TABLE>>];
+"document_versions" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="227" BGCOLOR="#e4eeff" ALIGN="LEFT"><B>document_versions</B></TD></TR><TR><TD WIDTH="227" ALIGN="LEFT">115 dòng · snapshot 03/10</TD></TR></TABLE>>];
+"knowledge_chunks" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="227" BGCOLOR="#e4eeff" ALIGN="LEFT"><B>knowledge_chunks</B></TD></TR><TR><TD WIDTH="227" ALIGN="LEFT">279 dòng · snapshot 03/10</TD></TR></TABLE>>];
+"embedding_models" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="298" BGCOLOR="#e0f5eb" ALIGN="LEFT"><B>embedding_models</B></TD></TR><TR><TD WIDTH="298" ALIGN="LEFT">1 dòng · snapshot 03/10</TD></TR><TR><TD WIDTH="298" ALIGN="LEFT"><FONT POINT-SIZE="13">text-embedding-3-large · v1</FONT></TD></TR><TR><TD WIDTH="298" ALIGN="LEFT"><FONT POINT-SIZE="13">dimension=1536; metric=cosine; active=true</FONT></TD></TR></TABLE>>];
+"knowledge_embeddings" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="227" BGCOLOR="#e4eeff" ALIGN="LEFT"><B>knowledge_embeddings</B></TD></TR><TR><TD WIDTH="227" ALIGN="LEFT">279 dòng · snapshot 03/10</TD></TR><TR><TD WIDTH="227" ALIGN="LEFT"><FONT POINT-SIZE="13">PK id; FK chunk_id/model_id</FONT></TD></TR><TR><TD WIDTH="227" ALIGN="LEFT"><FONT POINT-SIZE="13">embedding vector(1536)</FONT></TD></TR><TR><TD WIDTH="227" ALIGN="LEFT"><FONT POINT-SIZE="13">UNIQUE(chunk_id,model_id)</FONT></TD></TR></TABLE>>];
+"retrieval_runs" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="228" BGCOLOR="#fff1d8" ALIGN="LEFT"><B>retrieval_runs</B></TD></TR><TR><TD WIDTH="228" ALIGN="LEFT">0 dòng · snapshot 03/10</TD></TR><TR><TD WIDTH="228" ALIGN="LEFT"><FONT POINT-SIZE="13">top_k; policy_version; latency_ms</FONT></TD></TR></TABLE>>];
+"retrieval_hits" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="209" BGCOLOR="#fff1d8" ALIGN="LEFT"><B>retrieval_hits</B></TD></TR><TR><TD WIDTH="209" ALIGN="LEFT">0 dòng · snapshot 03/10</TD></TR><TR><TD WIDTH="209" ALIGN="LEFT"><FONT POINT-SIZE="13">rank; similarity; included</FONT></TD></TR></TABLE>>];
+"agent_runs" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="209" BGCOLOR="#e8edf2" ALIGN="LEFT"><B>agent_runs</B></TD></TR><TR><TD WIDTH="209" ALIGN="LEFT">0 dòng · snapshot 03/10</TD></TR></TABLE>>];
+"execution_principals" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="209" BGCOLOR="#e8edf2" ALIGN="LEFT"><B>execution_principals</B></TD></TR><TR><TD WIDTH="209" ALIGN="LEFT">2 dòng · snapshot 03/10</TD></TR></TABLE>>];
+"runtime_session_bindings" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="237" BGCOLOR="#f0e5ff" ALIGN="LEFT"><B>runtime_session_bindings</B></TD></TR><TR><TD WIDTH="237" ALIGN="LEFT">0 dòng · snapshot 03/10</TD></TR></TABLE>>];
+"execution_principals" -> "agent_runs" [label="authority_principal_id",style="solid",color="#53657b"];
+"runtime_session_bindings" -> "agent_runs" [label="binding_id",style="solid",color="#53657b"];
+"agent_runs" -> "agent_runs" [label="parent_run_id",style="solid",color="#53657b"];
+"knowledge_documents" -> "document_versions" [label="document_id",style="solid",color="#53657b"];
+"document_versions" -> "knowledge_chunks" [label="version_id",style="solid",color="#53657b"];
+"document_versions" -> "knowledge_documents" [label="active_version_id",style="solid",color="#53657b"];
+"knowledge_bases" -> "knowledge_documents" [label="knowledge_base_id",style="solid",color="#53657b"];
+"knowledge_chunks" -> "knowledge_embeddings" [label="chunk_id",style="solid",color="#53657b"];
+"embedding_models" -> "knowledge_embeddings" [label="model_id",style="solid",color="#53657b"];
+"knowledge_chunks" -> "retrieval_hits" [label="chunk_id",style="solid",color="#53657b"];
+"retrieval_runs" -> "retrieval_hits" [label="retrieval_run_id",style="solid",color="#53657b"];
+"agent_runs" -> "retrieval_runs" [label="agent_run_id",style="solid",color="#53657b"];
+"runtime_session_bindings" -> "retrieval_runs" [label="binding_id",style="solid",color="#53657b"];
+"knowledge_bases" -> "retrieval_runs" [label="knowledge_base_id",style="solid",color="#53657b"];
+"embedding_models" -> "retrieval_runs" [label="model_id",style="solid",color="#53657b"];
+"execution_principals" -> "retrieval_runs" [label="principal_id",style="solid",color="#53657b"];
+"legend" [label=<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10"><TR><TD WIDTH="446" BGCOLOR="#f3f5f8" ALIGN="LEFT"><B>CÁCH ĐỌC</B></TD></TR><TR><TD WIDTH="446" ALIGN="LEFT">Retrieval runs/hits = 0 tại snapshot; không phải số hiện tại.</TD></TR><TR><TD WIDTH="446" ALIGN="LEFT"><FONT POINT-SIZE="13">Snapshot 03/10/2026 · code kiểm ngày 04/10</FONT></TD></TR><TR><TD WIDTH="446" ALIGN="LEFT"><FONT POINT-SIZE="13">FK vẽ CHA → CON (con giữ khóa ngoại)</FONT></TD></TR><TR><TD WIDTH="446" ALIGN="LEFT"><FONT POINT-SIZE="13">Nét đứt: bước ứng dụng / API, không phải FK</FONT></TD></TR></TABLE>>];
+}

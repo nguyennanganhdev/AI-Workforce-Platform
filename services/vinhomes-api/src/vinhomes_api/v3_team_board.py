@@ -66,6 +66,45 @@ class TeamCreate(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=160)
 
 
+class SessionControl(BaseModel):
+    operation: Literal['pause', 'resume', 'stop']
+    expected_version: int = Field(ge=0)
+    request_id: str = Field(min_length=1, max_length=160)
+
+
+@router.get('/teams/{team_id}/controls')
+async def session_controls(team_id: UUID, scope: Scope):
+    team = await access(scope, team_id)
+    runtime = team['shared_state'].get('runtime')
+    return {'runtime': runtime, 'canControl': team['status'] not in ('completed', 'failed', 'cancelled')
+            and runtime is not None and isinstance(runtime.get('stateVersion'), int),
+            'items': [{k: c.get(k) for k in ('request_id', 'operation', 'status', 'result')}
+                      for c in team['shared_state'].get('controlRequests', {}).values()]}
+
+
+@router.post('/teams/{team_id}/controls', status_code=202)
+async def control_session(team_id: UUID, body: SessionControl, scope: Scope):
+    team = await access(scope, team_id, lock=True)
+    controls = team['shared_state'].get('controlRequests', {})
+    old = controls.get(body.request_id)
+    if old:
+        if old['operation'] != body.operation or old['expected_version'] != body.expected_version or old['actor'] != scope[1]:
+            raise HTTPException(409, 'This request id was used for another session control')
+        return old
+    current = team['shared_state'].get('runtime') or {}
+    if team['status'] in ('completed','failed','cancelled') or current.get('stateVersion') != body.expected_version:
+        raise HTTPException(409, 'The session changed; refresh before controlling it')
+    if any(c['status'] == 'queued' for c in controls.values()):
+        raise HTTPException(409, 'A session control is already waiting')
+    command = {**body.model_dump(), 'actor': scope[1], 'status': 'queued'}
+    controls[body.request_id] = command
+    await scope[0].execute(text("""update agent_teams set shared_state=shared_state||
+        jsonb_build_object('controlRequests',cast(:controls as jsonb)) where id=:team"""), {
+        'team': team_id, 'controls': json.dumps(controls)})
+    await audit(scope[0], scope[1], 'team.control_requested', 'agent_team', str(team_id), body.model_dump())
+    return command
+
+
 @router.post("/rooms/{room_id}/teams", status_code=201)
 async def create(room_id: str, body: TeamCreate, scope: Scope):
     room = await managed_room(scope, room_id)
@@ -166,7 +205,15 @@ async def teams(room_id: str, scope: Scope):
     await managed_room(scope, room_id)
     rows = await scope[0].execute(
         text(
-            "select id,ticket_id,status,state_version,created_at from agent_teams where channel_id=:room order by created_at desc limit 100"
+            # With the ticket's code and what the Supervisor runtime last reported, for the room's session list.
+            "select tm.id,tm.ticket_id,tm.status,tm.state_version,tm.created_at,t.code as ticket_code,t.title as ticket_title,"
+            "tm.shared_state->'runtime' as runtime,tm.updated_at,t.status as ticket_status,"
+            # The plan's own status says who the session waits for; the runtime's phase can lag behind it.
+            "(select p.status from vh_ticket_plans p where p.ticket_id=tm.ticket_id and p.tenant_id=tm.tenant_id"
+            " and p.proposed_by_agent_id=tm.supervisor_agent_id and p.created_at>=tm.created_at"
+            " order by p.created_at desc limit 1) as plan_status "
+            "from agent_teams tm join tickets t on t.id=tm.ticket_id and t.tenant_id=tm.tenant_id "
+            "where tm.channel_id=:room order by tm.created_at desc limit 100"
         ),
         {"room": room_id},
     )

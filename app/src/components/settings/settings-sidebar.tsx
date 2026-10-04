@@ -5,6 +5,8 @@ import {
   IconSettings,
 } from "@tabler/icons-react";
 import { Link, type LinkOptions } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { authProvidersQueryOptions } from "@/lib/auth/queries";
 import type * as React from "react";
 import {
   Sidebar,
@@ -17,7 +19,6 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 
-const appLinkOptions = { to: "/" } satisfies LinkOptions;
 
 const ITEMS: {
   /**
@@ -58,6 +59,8 @@ const ITEMS: {
 export function SettingsSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
+  const { data: signIn } = useQuery(authProvidersQueryOptions());
+  const appLinkOptions = { to: signIn?.businessLogin ? "/operations" : "/" } satisfies LinkOptions;
   return (
     <Sidebar {...props}>
       {/* Matched to the app sidebar's header, as Admin's is. See admin-sidebar.tsx. */}

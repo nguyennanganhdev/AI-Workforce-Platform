@@ -1,17 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation } from "@tanstack/react-router";
+import { uploadImage } from "../../../../../shared/direct-image-upload";
+import { useQuery } from "@tanstack/react-query";
+import { useLocation, useNavigate } from "@tanstack/react-router";
+import { roomSessionsQueryOptions, roomsQueryOptions } from "@/lib/rooms/queries";
+import { Coordination } from "./coordination/Coordination";
+import { sessionState } from "./coordination/model";
+import { AgentsPage } from "./ManagedAgents";
+import { ConnectionsPage } from "./Connections";
 import {
   ConnectedOperationsShell,
   connectedPages,
 } from "../layout/connected-operations-shell";
 import { WorkspaceFrame } from "../workspace/WorkspaceFrame";
-import { ConnectedAccounts } from "./ConnectedAccounts";
+import { AccountsPage } from "./admin/Accounts";
+import { AuditPage, ModelsPage, UnitsPage } from "./admin/Platform";
 import "./connected.css";
 import { OnsiteConsent, QuoteForm } from "./RepairQuote";
 import { Inquiries, LearnedAnswers, type Inquiry, type LearnedAnswer } from "./Inquiries";
 import { OperationsDashboardView } from "../components/operations-dashboard";
-import { LiveTeamPage } from "../workspace/LiveTeamPage";
-import type { CaseStage } from "../workspace/model";
 import { LiveReportsPage } from "../workspace/LiveReportsPage";
 import { WorkListView } from "../workspace/WorkPage";
 import type { WorkItem } from "../workspace/work-items";
@@ -51,23 +57,39 @@ type Session = {
     status: string;
     state_version: number;
     supervisor_name: string;
+    // Written by the backend when the Supervisor runtime accepts the ticket and reports its state.
+    supervisor?: { acceptedAt?: string } | null;
+    runtime?: { phase: string; pauseReason?: string | null } | null;
   } | null;
+  // What the Supervisor's room did: the specialists it invited, their tasks and their replies.
+  room?: {
+    members: string[];
+    tasks: { description: string; status: string; agent: string }[];
+    replies: { id: string; agent: string; text: string; created_at: string }[];
+    // What management asked an agent inside this session, and whether it was answered yet.
+    questions: { id: string; agent: string; text: string; status: string }[];
+    // The plan the Supervisor proposed from those replies. Management decides it, then the resident.
+    plan?: {
+      id: string;
+      title: string;
+      status: string;
+      version: number;
+      management_note?: string | null;
+      proposal: {
+        steps: string[];
+        performer_role: string;
+        expected_duration: string;
+        conditions: string;
+        cost?: { amount: number; currency: string } | null;
+      };
+    } | null;
+  };
   missing?: string;
   awaitingManagementApproval?: boolean;
 };
-const sessionLabels: Record<string, string> = {
-  queued: "Đã mở, chờ Supervisor điều phối",
-  running: "Đang điều phối",
-  waiting: "Đang chờ phản hồi",
-  completed: "BQL đã duyệt đóng",
-  failed: "Lỗi điều phối",
-  cancelled: "Đã hủy",
-};
-const sessionMissing: Record<string, string> = {
-  workspace: "BQL chưa có workspace trên platform",
-  group_chat: "BQL chưa có group chat điều phối",
-  supervisor: "Group chat của BQL chưa có Supervisor đã phát hành",
-};
+// What the resident reported first, then before and after the work.
+const PHOTO_ORDER = ["", "issue", "before", "after", "other"];
+const PHOTO_PURPOSE: Record<string, string> = { issue: "Phản ánh", before: "Trước khi sửa", after: "Sau khi sửa" };
 type Me = {
   user: { id: string; name: string };
   role: string;
@@ -125,7 +147,7 @@ export function ConnectedOperations() {
   const [available, setAvailable] = useState<Staff[]>([]);
   const [file, setFile] = useState<File>();
   const [phase, setPhase] = useState<"before" | "after">("before");
-  const [photos, setPhotos] = useState<{ id: string; original_name: string }[]>(
+  const [photos, setPhotos] = useState<{ id: string; original_name: string; purpose?: string }[]>(
     [],
   );
   const [orders, setOrders] = useState<Order[]>([]);
@@ -216,7 +238,7 @@ export function ConnectedOperations() {
       setSession(await request<Session>(`/tickets/${ticketId.current}/session`));
       setConversation((await request<{ items: typeof conversation }>(`/tickets/${ticketId.current}/conversation`)).items);
       const p = await request<{
-        items: { id: string; original_name: string }[];
+        items: { id: string; original_name: string; purpose?: string }[];
       }>(`/tickets/${ticketId.current}/files`);
       setPhotos(p.items);
     }
@@ -317,6 +339,24 @@ export function ConnectedOperations() {
     if (linkedTicket && me && ticketId.current !== linkedTicket) void open(linkedTicket);
   }, [linkedTicket, me?.user.id]);
   const management = me?.role === "management" || me?.role === "admin";
+  const navigate = useNavigate();
+  // Management lands on the coordination room: that is where requests wait for a decision.
+  useEffect(() => {
+    if (management && path === "") void navigate({ to: "/operations/team", replace: true });
+  }, [management, path, navigate]);
+  const rooms = useQuery({ ...roomsQueryOptions(), enabled: management });
+  const waiting = useQuery({ ...roomSessionsQueryOptions(rooms.data?.items[0]?.id || ""), enabled: management && !!rooms.data?.items.length });
+  const notices = management
+    ? (waiting.data || []).filter((s) => sessionState(s).group === "attention")
+      .map((s) => ({ id: s.id, title: s.ticket_title, note: sessionState(s).label, to: `/operations/team?session=${encodeURIComponent(s.id)}` }))
+    // A technician is told about the work offered to it until it accepts.
+    : jobs.filter((j) => j.status === "offered").map((j) => ({ id: j.id, title: tickets.find((t) => t.id === j.ticket_id)?.title || "Công việc mới",
+        note: "Việc mới chờ bạn nhận", to: `/operations/my-tasks?ticket=${encodeURIComponent(j.ticket_id)}` }));
+  const coordinating = management && path === "team";
+  // The administrator's own pages: what it sets up for management to work with.
+  const adminPage = me?.role !== "admin" ? null : path === "accounts" ? <AccountsPage /> : path === "units" ? <UnitsPage />
+    : path === "connections" ? <ConnectionsPage /> : path === "models" ? <ModelsPage /> : path === "audit" ? <AuditPage /> : null;
+  const plan = session?.room?.plan;
   const selected = detail?.ticket;
   const visible = tickets.filter((t) => {
     if (!management && !jobs.some((j) => j.ticket_id === t.id)) return false;
@@ -349,15 +389,17 @@ export function ConnectedOperations() {
       });
     });
   return (
-    <ConnectedOperationsShell name={me?.user.name} management={management} administrator={me?.role === "admin"}
+    <ConnectedOperationsShell name={me?.user.name} management={management} administrator={me?.role === "admin"} notices={notices} flush={coordinating}
       alerts={tickets.filter(t => t.priority === 'critical' && !['closed', 'cancelled'].includes(t.status)).map(t => ({id: t.id, title: t.title, location_json: {towerCode: catalog?.buildings.find(b => b.id === t.building_id)?.code}}))}>
+      {coordinating ? <Coordination userId={me?.user.id || ""} /> : path === "agents" && management ? <AgentsPage />
+        : adminPage ? adminPage :
       <WorkspaceFrame
-        contentOnly={!selected && !unavailable && path !== "team"}
+        contentOnly={!selected && !unavailable}
         title={connectedPages[path] || "Không gian làm việc"}
         description={
           me?.dataMode === "local-database"
             ? "Kết nối database local · tài khoản kiểm thử"
-            : "Điều phối và theo dõi công việc trong phạm vi được cấp."
+            : management ? "Điều phối và theo dõi công việc trong phạm vi được cấp." : "Công việc được giao cho bạn."
         }
         connectedAccount={{
           role: me?.role === "admin" ? "admin" : management ? "manager" : "staff",
@@ -397,7 +439,7 @@ export function ConnectedOperations() {
             <button onClick={() => void run(load)}>Thử lại</button>
           </div>
         )}
-        {path === "accounts" && me?.role === "admin" ? <ConnectedAccounts/> : unavailable ? (
+        {unavailable ? (
           <section className="ws-card">
             <h2>Chức năng chưa được nối đầy đủ</h2>
             <p>
@@ -407,10 +449,6 @@ export function ConnectedOperations() {
           </section>
         ) : path === "reports" ? (
           <LiveReportsPage buildings={catalog?.buildings || []} categories={catalog?.serviceCategories || []} />
-        ) : path === "team" ? (
-          <LiveTeamPage userId={me?.user.id || ''} tickets={tickets.map(t => ({id: t.id, title: t.title, severity: SEVERITY[t.priority],
-            stage: ({open: 'queued', triaging: 'queued', assigned: 'assigned', in_progress: 'working', resolved: 'awaiting-confirmation', closed: 'completed', cancelled: 'cancelled'} as Record<string, CaseStage>)[t.status] || 'queued',
-          }))} />
         ) : (
           <>
             {path === "" && !selected ? (
@@ -429,7 +467,7 @@ export function ConnectedOperations() {
                 zones={(catalog?.buildings || []).map(b => ({tower: b.name, note: `${tickets.filter(t => t.building_id === b.id && !['closed', 'cancelled'].includes(t.status)).length} phản ánh đang mở`}))} />
             ) : !selected && (
               <>
-              {path === "triage" && management && (
+              {(path === "triage" || path === "kanban") && management && (
                 <LearnedAnswers items={learned} disabled={busy}
                   onDecide={(item, decision) =>
                     void run(async () => {
@@ -437,7 +475,7 @@ export function ConnectedOperations() {
                     })
                   } />
               )}
-              {path === "triage" && management && (
+              {(path === "triage" || path === "kanban") && management && (
                 <Inquiries items={inquiries} disabled={busy}
                   onAnswer={(inquiry, text) =>
                     void run(async () => {
@@ -447,7 +485,7 @@ export function ConnectedOperations() {
               )}
               <WorkListView key={path} title={connectedPages[path]} manager={management} history={history} onHistory={setHistory}
                 initialBoard={path === 'kanban'} connectedAccount={{role: management ? 'manager' : 'staff', scope: 'được cấp trên hệ thống'}}
-                rows={visible.map((t): WorkItem => ({key: t.id, ticket: t.id, ticketId: t.code, title: t.title,
+                rows={visible.map((t): WorkItem => ({key: t.id, ticket: t.id, ticketId: "", title: t.title,
                   place: catalog?.buildings.find(b => b.id === t.building_id)?.name || 'Chưa xác định vị trí',
                   severity: SEVERITY[t.priority], department: catalog?.serviceCategories.find(c => c.id === t.category_id)?.name || 'Chưa phân loại',
                   assignee: '', status: awaitingClosure.includes(t.id) ? 'Chờ BQL duyệt đóng' : labels[t.status] || t.status, updatedAt: t.updated_at,
@@ -468,20 +506,21 @@ export function ConnectedOperations() {
                       >
                         ← Về danh sách công việc
                       </button>
-                      <small>{selected.code}</small>
                       <h2>{selected.title}</h2>
                       <p>{selected.description}</p>
                       <p>
-                        {selected.priority === 'critical' ? 'Khẩn cấp · ' : ''}{labels[selected.status]} · phiên bản {selected.version}
+                        {selected.priority === 'critical' ? 'Khẩn cấp · ' : ''}{labels[selected.status]}
                       </p>
-                      <label>
-                        Ghi chú thao tác
-                        <textarea
-                          value={note}
-                          onChange={(e) => setNote(e.target.value)}
-                          maxLength={2000}
-                        />
-                      </label>
+                      {!["closed", "cancelled"].includes(selected.status) && (
+                        <label>
+                          Ghi chú thao tác
+                          <textarea
+                            value={note}
+                            onChange={(e) => setNote(e.target.value)}
+                            maxLength={2000}
+                          />
+                        </label>
+                      )}
                       {management &&
                         ["open", "triaging"].includes(selected.status) && (
                           <div className="live-actions">
@@ -520,42 +559,22 @@ export function ConnectedOperations() {
                             </button>
                           </div>
                         )}
-                      <h3>Ảnh của ticket (phản ánh, trước và sau khi sửa)</h3>
-                      <div className="live-photos">
-                        {photos.map((p) => (
-                          <a
-                            key={p.id}
-                            href={`/api/business/files/${p.id}/content${local ? `?demoActor=${actor}` : ""}`}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              void run(async () => {
-                                const r = await fetch(
-                                  `/api/business/files/${p.id}/content`,
-                                  {
-                                    credentials: "include",
-                                    headers: local
-                                      ? { "X-Demo-Actor": actor }
-                                      : {},
-                                  },
-                                );
-                                if (!r.ok)
-                                  throw new Error("Không tải được ảnh.");
-                                const url = URL.createObjectURL(await r.blob());
-                                const link = document.createElement("a");
-                                link.href = url;
-                                link.download = p.original_name;
-                                link.click();
-                                setTimeout(
-                                  () => URL.revokeObjectURL(url),
-                                  1000,
-                                );
-                              });
-                            }}
-                          >
-                            {p.original_name}
-                          </a>
-                        ))}
-                      </div>
+                      {photos.length > 0 && (
+                        <>
+                          <h3>Ảnh</h3>
+                          <div className="live-photos">
+                            {[...photos].sort((x, y) => PHOTO_ORDER.indexOf(x.purpose || "") - PHOTO_ORDER.indexOf(y.purpose || "")).map((p) => {
+                              const source = `/api/business/files/${p.id}/content?inline=true${local ? `&demoActor=${actor}` : ""}`;
+                              return (
+                                <a key={p.id} href={source} target="_blank" rel="noreferrer">
+                                  <img src={source} alt={p.original_name} loading="lazy" />
+                                  <span>{PHOTO_PURPOSE[p.purpose || ""] || "Ảnh khác"}</span>
+                                </a>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
                       {conversation.length > 0 && (
                         <article className="live-order">
                           <h3>Trao đổi của cư dân với Lễ tân</h3>
@@ -569,49 +588,21 @@ export function ConnectedOperations() {
                           </ol>
                         </article>
                       )}
-                      {session && (
+                      {/* The session itself lives in the coordination room: management opens it there. */}
+                      {management && session?.session && (
+                        <p><a href={`/operations/team?session=${encodeURIComponent(session.session.id)}`}>Mở phiên điều phối của yêu cầu này →</a></p>
+                      )}
+                      {/* The technician works from the plan the resident agreed to, nothing earlier. */}
+                      {!management && plan?.status === "approved" && (
                         <article className="live-order">
-                          <h3>Phiên điều phối</h3>
-                          {session.session ? (
-                            <>
-                              <p>Supervisor: {session.session.supervisor_name}</p>
-                              <strong>
-                                {session.awaitingManagementApproval
-                                  ? "Cư dân đã xác nhận, chờ BQL duyệt đóng"
-                                  : sessionLabels[session.session.status] ||
-                                    session.session.status}
-                              </strong>
-                              {management &&
-                                session.awaitingManagementApproval && (
-                                  <div className="live-actions">
-                                    <button
-                                      disabled={busy}
-                                      onClick={() =>
-                                        void run(async () => {
-                                          await post(
-                                            `/tickets/${selected.id}/session/close-approval`,
-                                            {
-                                              version:
-                                                session.session!.state_version,
-                                              note: note.trim() || undefined,
-                                            },
-                                          );
-                                        })
-                                      }
-                                    >
-                                      Duyệt đóng session
-                                    </button>
-                                  </div>
-                                )}
-                            </>
-                          ) : (
-                            <p>
-                              Chưa có session:{" "}
-                              {sessionMissing[session.missing ?? ""] ||
-                                "ticket được tạo trước khi BQL cấu hình điều phối"}
-                              . Ticket vẫn xử lý theo luồng thủ công.
-                            </p>
-                          )}
+                          <h3>Phương án đã được duyệt</h3>
+                          <p>{plan.title}</p>
+                          <ol>
+                            {plan.proposal.steps.map((step) => (
+                              <li key={step}>{step}</li>
+                            ))}
+                          </ol>
+                          <p>Thời gian dự kiến: {plan.proposal.expected_duration} · Điều kiện: {plan.proposal.conditions}</p>
                         </article>
                       )}
                       {detail.workOrders.map((order) => {
@@ -624,7 +615,6 @@ export function ConnectedOperations() {
                         return (
                           <article className="live-order" key={order.id}>
                             <h3>Phiếu thi công</h3>
-                            <small>{order.id}</small>
                             <p>{order.description}</p>
                             <strong>
                               {labels[order.status] || order.status}
@@ -796,19 +786,9 @@ export function ConnectedOperations() {
                                     onClick={() =>
                                       void run(async () => {
                                         if (!file) return;
-                                        const p = await request<{
-                                          fileId: string;
-                                        }>(
+                                        const p = await uploadImage(request, `/tickets/${selected.id}/direct-uploads`,
                                           `/tickets/${selected.id}/files?filename=${encodeURIComponent(file.name)}&mimeType=${encodeURIComponent(file.type)}&purpose=${phase}`,
-                                          {
-                                            method: "POST",
-                                            headers: {
-                                              "Content-Type":
-                                                "application/octet-stream",
-                                            },
-                                            body: file,
-                                          },
-                                        );
+                                          file, file.name, crypto.randomUUID(), phase);
                                         await post(
                                           `/tickets/${selected.id}/evidence`,
                                           {
@@ -913,7 +893,7 @@ export function ConnectedOperations() {
             </div>
           </>
         )}
-      </WorkspaceFrame>
+      </WorkspaceFrame>}
     </ConnectedOperationsShell>
   );
 }

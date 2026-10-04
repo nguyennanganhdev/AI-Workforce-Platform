@@ -22,6 +22,7 @@ const app = new Hono().route(
     onError: (error) => console.error("knowledge search failed:", error instanceof Error ? error.message : error),
   }),
 );
+app.get("/health", (c) => c.json({ status: "ok" }));
 const port = Number(process.env.KNOWLEDGE_PORT ?? 8787);
-Bun.serve({ hostname: "127.0.0.1", port, fetch: app.fetch });
+Bun.serve({ hostname: process.env.KNOWLEDGE_HOST ?? "127.0.0.1", port, fetch: app.fetch });
 console.log(`Knowledge search on http://127.0.0.1:${port}/internal/knowledge/search`);

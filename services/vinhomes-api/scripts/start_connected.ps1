@@ -4,7 +4,16 @@ $serviceRoot = Split-Path $PSScriptRoot -Parent
 if (!$ConfigFile) { $ConfigFile = Join-Path $serviceRoot '.env.connected' }
 if (!(Test-Path -LiteralPath $ConfigFile)) { throw "Missing $ConfigFile. Configure a real database, tenant and authentication endpoint. This launcher never seeds demo data." }
 $settings = @{}
-Get-Content -LiteralPath $ConfigFile | ForEach-Object {
+# Optional: reception.env turns on the Reception agent. The local Reception runtime is shared
+# with the demo, so its settings are read from there unless this deployment has its own.
+$receptionFile = @('.local-connected/reception.env', '.local-v3-faker/reception.env') |
+    ForEach-Object { Join-Path $serviceRoot $_ } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+# Optional: coordination.env lets the Supervisor runtime (agent-coordination) call this API.
+$coordinationFile = Join-Path $serviceRoot '.local-connected/coordination.env'
+if (!(Test-Path -LiteralPath $coordinationFile)) { $coordinationFile = $null }
+$factoryFile = Join-Path $serviceRoot '.local-connected/factory.env'
+if (!(Test-Path -LiteralPath $factoryFile)) { $factoryFile = $null }
+@($receptionFile, $coordinationFile, $factoryFile, $ConfigFile) | Where-Object { $_ } | ForEach-Object { Get-Content -LiteralPath $_ } | ForEach-Object {
     if ($_ -and !$_.StartsWith('#') -and $_.Contains('=')) {
         $pair = $_ -split '=', 2
         $settings[$pair[0].Trim()] = $pair[1].Trim()
@@ -27,6 +36,20 @@ try {
 }
 }
 foreach ($key in $settings.Keys) { [Environment]::SetEnvironmentVariable($key,$settings[$key],'Process') }
+$env:VINHOMES_API_COORDINATION_URL = 'http://127.0.0.1:4300'
+# Where the tool gateway reaches the knowledge search service (scripts/start_knowledge.ps1) for management's agents.
+$env:VINHOMES_API_KNOWLEDGE_URL = 'http://127.0.0.1:8787'
+$toolsFile = Join-Path $serviceRoot '.local-connected/technical-api.env'
+if (Test-Path -LiteralPath $toolsFile) {
+    $env:VINHOMES_API_TECHNICAL_TOOLS_URL = 'http://127.0.0.1:8788/internal/technical/v1'
+    $env:VINHOMES_API_TECHNICAL_TOOLS_TOKEN = (Get-Content -LiteralPath $toolsFile | Where-Object { $_.StartsWith('TECHNICAL_TOOLS_SERVICE_TOKEN=') }) -replace '^TECHNICAL_TOOLS_SERVICE_TOKEN=', ''
+}
+# Optional: routines.env (scripts/setup_routines.py) turns on schedules for management's agents.
+$routinesFile = Join-Path $serviceRoot '.local-connected/routines.env'
+if (Test-Path -LiteralPath $routinesFile) {
+    $env:VINHOMES_API_ROUTINES_URL = 'http://127.0.0.1:8789/internal/routines/v1'
+    $env:VINHOMES_API_ROUTINES_TOKEN = (Get-Content -LiteralPath $routinesFile | Where-Object { $_.StartsWith('ROUTINES_SERVICE_TOKEN=') }) -replace '^ROUTINES_SERVICE_TOKEN=', ''
+}
 $env:VINHOMES_API_DEMO_MODE = '0'
 $env:VINHOMES_API_DEV_USER_ID = ''
 $env:VINHOMES_API_TENANT_KEY = ''

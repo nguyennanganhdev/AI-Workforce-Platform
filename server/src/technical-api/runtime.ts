@@ -11,6 +11,7 @@ import type {
 } from "../technical-tools";
 import type { StoredOutcome } from "../technical-tools/ports/idempotency-store";
 import { databasePorts, rows } from "./database";
+import { sessionRun } from "./session";
 import { technicalEnvelope } from "./routes";
 import type {
   TechnicalApiDependencies,
@@ -27,7 +28,9 @@ export type TechnicalApiOptions = {
 /** All ports, audit records and replay receipts share the same tenant transaction. */
 export function createTechnicalApiDependencies(
   options: TechnicalApiOptions,
-): TechnicalApiDependencies {
+): TechnicalApiDependencies & {
+  sessionCaller(runId: string): Promise<VerifiedTechnicalCaller | null>;
+} {
   const { database, tenantId } = options;
   async function scoped<T>(
     work: (tx: TenantTransaction) => Promise<T>,
@@ -54,6 +57,11 @@ export function createTechnicalApiDependencies(
     caller: VerifiedTechnicalCaller,
     buildingId?: string,
   ): Promise<ResolvedIdentity | null> {
+    if (caller.session)
+      return (
+        (await sessionRun(tx, tenantId, caller.assertion.runId))?.identity ??
+        null
+      );
     if (
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         caller.assertion.runId,
@@ -138,6 +146,22 @@ export function createTechnicalApiDependencies(
       if (!verdict.ok || !assertion) return null;
       const caller = { ...verdict, assertion };
       return (await scoped((tx) => identity(tx, caller))) ? caller : null;
+    },
+    async sessionCaller(runId) {
+      const run = await scoped((tx) => sessionRun(tx, tenantId, runId));
+      return run
+        ? {
+            ok: true,
+            botId: run.agentId,
+            actorId: run.principalId,
+            assertion: {
+              botId: run.agentId,
+              actorId: run.principalId,
+              runId,
+            },
+            session: true,
+          }
+        : null;
     },
     async refusal(status, endpoint) {
       await scoped((tx) =>

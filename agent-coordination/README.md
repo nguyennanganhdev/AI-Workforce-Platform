@@ -114,3 +114,61 @@ not live model quality. `tests/live/l1.py` retains the ProviderModel-to-Planner
 harness with simulated business bindings; paid execution requires explicit
 credentials, budget and authorization. No live command or automatic paid run is
 configured by this package.
+
+## Vinhomes composition (`src/vinhomes`, added 03/10/2026 by Team Chiến)
+
+A second composition next to `runtime.composition`, for the Vinhomes business API. It does
+not change the Supervisor or group chat cores. Instead of waiting for a platform factory to
+push into `/v2/reception`, it pulls the backend's durable V2 inbox and binds the Supervisor
+to `/internal/coordination/v1` (services/vinhomes-api, `v3_coordination.py`).
+
+```sh
+# Python 3.12 venv with requirements.lock and the package itself, as described at the top.
+scripts/start_vinhomes.ps1      # add -Connected for the password-login backend
+```
+
+Settings in `agent-coordination/.env`: `COORDINATION_BACKEND_URL` and
+`COORDINATION_SERVICE_TOKEN` (equal to the backend's `VINHOMES_API_COORDINATION_SERVICE_TOKEN`).
+Port 4300 serves `/health`, `/ready` and `/sessions`.
+
+For specialists, also `COORDINATION_MODEL` (the planner model), `COORDINATION_OPENBOT_URL` and
+`MANAGED_AGENT_TOKEN`; the model key is read from `agent-reception/.env`. The OpenBot is
+`agent-bot`: `scripts/start_openbot.ps1` starts it on 4200. Without these the Supervisor
+accepts a ticket and hands it to management, as before.
+
+Bound today: Reception hands a ticket over, the backend verifies it and allocates the
+session binding and agent run, the Supervisor creates a durable checkpoint and sends
+`accepted`. It then opens a room with the specialists the backend offers for the ticket's
+category (published, in the management room), gives them tasks, runs their turns on OpenBot
+with the agent's published instructions, and mirrors tasks and replies to the backend for
+management to read. When every task is done the planner is asked for a plan only (`PLAN_GUIDE`);
+the backend stores it in its plan table with the Supervisor as author (`Plans`), the Supervisor
+confirms it waits for management (`BackendActions`), and the session stays in `waiting_management`.
+A model that writes no plan leaves the session paused with `planner:analysis_ready`.
+
+A specialist's tool call goes through `ToolGateway` to the technical tool host
+(`server/src/technical-api/serve.ts`, port 8788; `COORDINATION_TOOLS_URL`, `COORDINATION_TOOLS_TOKEN`).
+The host decides from the agent run of the turn what the call may do; only read tools are open.
+
+Not bound: what follows management's decision (backend events, the resident's approval through
+Reception), resident questions, summaries, assignments, and tools that write. Their ports refuse
+(`dependency_unavailable:*` or `operation_not_configured`). Storage is
+`persistence.sqlite.DevelopmentStore` (one host). Tests: `tests/vinhomes` (24). On Windows run
+pytest with `PYTHONUTF8=1`.
+
+`scripts/publish_agent.ps1` takes an agent definition through the platform's flow: draft,
+evaluation on OpenBot, admin review (`docs/teams/quang/agent/`).
+
+What this composition wraps instead of changing in the cores, for Team Đông to review:
+`ProviderModel` cannot call `gpt-5.4-mini` (`max_tokens`, exact model-name match), so
+`vinhomes.ports.PlannerModel` is used; `OpenbotAdapter` sends no agent instructions and reads
+only a JSON reply, so `InstructedClient` adds the instructions and builds the reply object from
+the Bot's plain text and lets the stream stay quiet while a reasoning model thinks (the shared
+client's 5 s read timeout cut `gpt-5.5` turns short); one specialist may take consecutive turns
+(`TURNS`); the plan's `result_refs` are filled from the session, not taken from the model.
+
+Contract tables, acceptance matrix and open questions:
+`docs/teams/chien/SUPERVISOR_SESSION_V2_M0_M1_2026-10-03.md`,
+`docs/teams/chien/SUPERVISOR_SESSION_V2_M2_2026-10-04.md`, for tools
+`docs/teams/chien/TOOL_GATEWAY_VA_KHAO_SAT_NHANH_2026-10-04.md`, and for plans
+`docs/teams/chien/SUPERVISOR_PHUONG_AN_M3A_2026-10-04.md`.

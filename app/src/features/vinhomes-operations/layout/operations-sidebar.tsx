@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useOperationsData } from '../hooks/use-operations-data';
 import { type MenuId } from '../types/persona';
@@ -11,6 +12,7 @@ interface NavItemDef {
   label: string;
   to: string;
   badgeCount?: number;
+  icon?: ReactNode;
   section: 'OPERATIONS' | 'MANAGEMENT';
 }
 
@@ -143,21 +145,23 @@ export function OperationsSidebarView({ open = false, onNavigate, account, works
         <span className="block text-[15px] font-semibold text-slate-900 leading-tight">Vinhomes</span>
         <span className="block text-xs text-slate-500">Quản lý vận hành</span>
       </Link>
-      <div className="border-b border-slate-200 p-4">
+      {/* Without an identifier or a scope this block would only repeat the footer. */}
+      {(account.identifier || account.scope) && <div className="border-b border-slate-200 p-4">
         <p className="mb-2 block text-xs text-slate-500">Vai trò được cấp</p>
         <strong className="text-sm">{account.roleLabel}</strong>
-        <p className="text-xs text-slate-500 mt-1">{account?.identifier} · {account?.scope}</p>
-      </div>
+        <p className="text-xs text-slate-500 mt-1">{[account.identifier, account.scope].filter(Boolean).join(' · ')}</p>
+      </div>}
       <nav aria-label="Chức năng vận hành" className="flex-1 space-y-5 overflow-y-auto p-3">
-        <div><p className="px-3 pb-1.5 text-xs text-slate-500">Không gian làm việc</p>{workspaceItems.map(([path, label]) => <a key={path} href={`/operations/${path}`} onClick={onNavigate} aria-current={currentPath === `/operations/${path}` ? 'page' : undefined}>{label}</a>)}</div>
+        {workspaceItems.length > 0 && <div><p className="px-3 pb-1.5 text-xs text-slate-500">Không gian làm việc</p>{workspaceItems.map(([path, label]) => <a key={path} href={`/operations/${path}`} onClick={onNavigate} aria-current={currentPath === `/operations/${path}` ? 'page' : undefined}>{label}</a>)}</div>}
         {[{title: 'Công việc', items: operationItems}, {title: 'Quản lý', items: managementItems}].map((section) => section.items.length > 0 && (
           <div key={section.title}>
-            <p className="px-3 pb-1.5 text-xs text-slate-500">{section.title}</p>
+            {/* One short list needs no heading; the headings sort a long one. */}
+            {operationItems.length > 0 && managementItems.length > 0 && <p className="px-3 pb-1.5 text-xs text-slate-500">{section.title}</p>}
             {section.items.map((item) => {
               const active = item.to === '/operations' ? currentPath === '/operations' || currentPath === '/operations/' : currentPath.startsWith(item.to);
               return <Link key={item.id} to={item.to} activeOptions={{ exact: item.to === '/operations' }} onClick={onNavigate} aria-current={active ? 'page' : undefined}>
-                <span>{item.label}</span>
-                {item.badgeCount !== undefined && <span>{item.badgeCount}</span>}
+                <span className="flex items-center gap-2.5">{item.icon}{item.label}</span>
+                {item.badgeCount !== undefined && <span aria-label={`${item.badgeCount} mục cần xử lý`}>{item.badgeCount}</span>}
               </Link>;
             })}
           </div>

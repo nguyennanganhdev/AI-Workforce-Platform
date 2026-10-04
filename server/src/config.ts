@@ -6,6 +6,7 @@
 import { singleUserEnabled } from "./auth/dev-actor";
 import { normalizeDomain } from "./auth/email-domain";
 import { organizationAuthority } from "./auth/organization";
+import { businessAuthority } from "./auth/business";
 import type { ActionPolicy } from "./computer/policy";
 import { parseActionPolicy } from "./computer/policy-store";
 
@@ -254,6 +255,8 @@ export type DeploymentConfig = {
   auth?: AuthConfig;
   /** Customer OpenBot authority for employee desktop sessions, separate from Intelligence. */
   organizationAuthUrl?: string;
+  businessAuthUrl?: string;
+  existingBusinessScope?: { tenantId: string; workspaceId: string };
   /**
    * Admit everybody as one fixed administrator instead of requiring sign-in.
    *
@@ -1240,6 +1243,14 @@ export function loadConfig(
     ? organizationAuthority(organizationAuthValue)
     : undefined;
   const managedAgent = managedAgentConfig(environment);
+  const businessAuthValue = optional(environment, "OPENBOT_BUSINESS_AUTH_URL");
+  const businessAuthUrl = businessAuthValue ? businessAuthority(businessAuthValue) : undefined;
+  const businessTenant = optional(environment, "OPENBOT_BUSINESS_TENANT_ID");
+  const businessWorkspace = optional(environment, "OPENBOT_BUSINESS_WORKSPACE_ID");
+  if (businessAuthUrl && (auth || organizationAuthUrl)) throw new Error("Choose one authentication authority");
+  if (businessAuthUrl && (!businessTenant || !businessWorkspace ||
+    ![businessTenant, businessWorkspace].every((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))))
+    throw new Error("Business authentication requires the existing business tenant and workspace UUIDs");
   const workerSharedSecret = optional(environment, "WORKER_SHARED_SECRET");
 
   return {
@@ -1267,6 +1278,7 @@ export function loadConfig(
     oauth: { google },
     auth,
     ...(organizationAuthUrl ? { organizationAuthUrl } : {}),
+    ...(businessAuthUrl ? { businessAuthUrl, existingBusinessScope: { tenantId: businessTenant!, workspaceId: businessWorkspace! } } : {}),
     /*
      * The authority short-circuits this, and that ordering is load-bearing: a white-label
      * deployment naming an external authority lets it win, and `singleUserAllowed` is never
@@ -1274,6 +1286,7 @@ export function loadConfig(
      */
     singleUser:
       !organizationAuthUrl &&
+      !businessAuthUrl &&
       singleUserAllowed(environment, configuredAuthProviders(auth).length > 0),
     accessibility: accessibilityEnabled(environment),
     generativeUi: generativeUiEnabled(environment),

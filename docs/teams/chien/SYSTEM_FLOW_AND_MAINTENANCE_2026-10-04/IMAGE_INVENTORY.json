@@ -1,0 +1,22 @@
+[
+  {
+    "name": "01-system",
+    "width": 3896,
+    "height": 2710
+  },
+  {
+    "name": "02-resident-flow",
+    "width": 2528,
+    "height": 3634
+  },
+  {
+    "name": "03-factory-runtime",
+    "width": 1520,
+    "height": 3279
+  },
+  {
+    "name": "04-storage",
+    "width": 3205,
+    "height": 1393
+  }
+]

@@ -1,5 +1,7 @@
 # Tiến độ các team và kế hoạch triển khai tiếp
 
+> Phần trạng thái là snapshot lịch sử 03/10; đọc [báo cáo 04/10](REPO_RESEARCH_2026-10-04/README.md) để biết thay đổi sau đó. Giữ tài liệu này cho backlog/tiêu chí A–C. Bản rà Đông 01/10 và báo cáo 7 tool cũ đã bỏ khỏi cây tài liệu; nguồn lịch sử vẫn ở Git/backup.
+
 Ngày 03/10/2026. Người viết: phía Team Chiến (backend, frontend, điều phối platform). Nguồn: trạng thái các nhánh
 và PR trên GitHub lúc 12:50 ngày 03/10, tài liệu trong `docs/teams/*`, và các lần chạy kiểm thử nêu ở từng mục.
 Chỗ nào chỉ dựa trên tài liệu của team khác mà chưa tự chạy lại thì ghi rõ.

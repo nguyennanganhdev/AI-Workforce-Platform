@@ -6,7 +6,7 @@ import type {
   FactoryReadOptions,
   FactoryResult,
 } from "./contracts.js";
-import { readBoundedText } from "./io.js";
+import { operationDeadline, readBoundedText } from "./io.js";
 import { factoryDependencyFailure, runFactoryOperation } from "./service.js";
 import {
   FACTORY_LIMITS,
@@ -53,14 +53,11 @@ export function createFactoryClient(
     catalogue: FactoryCatalogue,
     control: FactoryReadOptions = {},
   ): Promise<FactoryResult<FactoryConstructionResponse>> => {
-    const timeout = AbortSignal.timeout(
+    const deadline = operationDeadline(
       Math.max(1, Math.floor(Math.min(control.timeoutMs ?? 90_000, 90_000))),
+      control.signal,
     );
-    const signal = control.signal
-      ? AbortSignal.any([control.signal, timeout])
-      : timeout;
-    const keepDeadline = () => {};
-    timeout.addEventListener("abort", keepDeadline);
+    const { signal } = deadline;
     try {
       signal.throwIfAborted();
       if (!endpoint)
@@ -125,7 +122,7 @@ export function createFactoryClient(
         ],
       };
     } finally {
-      timeout.removeEventListener("abort", keepDeadline);
+      deadline.dispose();
     }
   };
 }

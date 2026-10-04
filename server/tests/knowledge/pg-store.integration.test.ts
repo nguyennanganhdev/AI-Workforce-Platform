@@ -234,6 +234,19 @@ describe.skipIf(!url)("knowledge pg store", () => {
     expect(hits).toBeGreaterThan(0);
   });
 
+  test("a run with no acting user searches under its roles and is audited with no actor", async () => {
+    const result = await ask(
+      "giờ yên lặng",
+      context({ userId: null, roleCodes: ["management"] }),
+    );
+    expect(result.hits.map((hit) => hit.documentTitle)).toContain(
+      "sapphire/quy-dinh.md",
+    );
+    const [run] =
+      await admin`select actor_user_id from retrieval_runs where id = ${result.retrievalRunId}`;
+    expect(run.actor_user_id).toBeNull();
+  });
+
   test("an exact code the vectors cannot tell apart is found by the keyword list, with its metadata", async () => {
     await ingestDocument(deps(), {
       tenantId: ids.tenant,

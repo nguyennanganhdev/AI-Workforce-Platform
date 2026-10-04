@@ -39,7 +39,7 @@ export function ConversationList({
     )
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const matches = (c: (typeof rooms)[number]) =>
-    `${c.title} ${c.requestCode ?? ""} ${c.preview ?? ""}`
+    `${c.title} ${c.preview ?? ""}`
       .toLocaleLowerCase()
       .includes(search.toLocaleLowerCase());
   const unread = rooms.reduce((n, c) => n + c.unread, 0);
@@ -59,7 +59,7 @@ export function ConversationList({
           <div className="resident-rooms-search">
             <input
               aria-label="Tìm hội thoại"
-              placeholder="Tìm nội dung hoặc mã yêu cầu"
+              placeholder="Tìm hội thoại"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -82,13 +82,12 @@ export function ConversationList({
               <span>
                 <strong>{c.title}</strong>
                 <small>
-                  {c.requestCode
-                    ? `${c.requestCode} · ${c.requestStatus}`
-                    : c.draft
+                  {c.requestStatus ??
+                    (c.draft
                       ? "Đang soạn phản ánh"
                       : (c.preview ??
                         c.messages.at(-1)?.text ??
-                        "Chưa có tin nhắn")}
+                        "Chưa có tin nhắn"))}
                 </small>
               </span>
               <time dateTime={c.updatedAt}>{when(c.updatedAt)}</time>

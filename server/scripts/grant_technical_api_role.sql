@@ -8,6 +8,11 @@ GRANT SELECT ON agents,agent_versions,tenant_memberships,scoped_user_roles,acces
  vh_technical_sensor_samples,vh_technical_measurement_records,vh_technical_executor_results,
  vh_technical_maintenance_events,vh_technical_approval_requests,vh_technical_vendors,
  vh_technical_api_receipts,vh_technical_api_audit TO vinhomes_technical_api;
+-- A Supervisor session's specialist is identified by its agent run (src/technical-api/session.ts).
+GRANT SELECT ON agent_runs,team_members,agent_teams,agent_releases,workspaces,management_coverage
+ TO vinhomes_technical_api;
+GRANT SELECT ON channels,channel_memberships,users,platform_admins,execution_principals,runtime_session_bindings
+ TO vinhomes_technical_api;
 GRANT INSERT ON work_approvals,service_interruptions,interruption_scopes,
  vh_technical_measurement_records,vh_technical_executor_results,vh_technical_maintenance_events,
  vh_technical_approval_requests,vh_technical_api_receipts,vh_technical_api_audit TO vinhomes_technical_api;

@@ -284,7 +284,7 @@ const RRF_K = 60;
 function authorizedDocuments(
   context: {
     tenantId: string;
-    userId: string;
+    userId: string | null;
     roleCodes: string[];
     workspaceId?: string;
     targetScopeId: string;

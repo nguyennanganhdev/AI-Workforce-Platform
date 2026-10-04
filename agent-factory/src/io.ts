@@ -1,3 +1,22 @@
+/** Explicit timer also bounds collaborators that do not implement fetch cancellation. */
+export function operationDeadline(milliseconds: number, parent?: AbortSignal) {
+  const controller = new AbortController();
+  const cancel = () => controller.abort(parent?.reason);
+  if (parent?.aborted) cancel();
+  else parent?.addEventListener("abort", cancel, { once: true });
+  const timer = setTimeout(
+    () => controller.abort(new DOMException("Factory deadline exceeded.", "TimeoutError")),
+    milliseconds,
+  );
+  return {
+    signal: controller.signal,
+    dispose() {
+      clearTimeout(timer);
+      parent?.removeEventListener("abort", cancel);
+    },
+  };
+}
+
 /** Bound bytes before decoding, including bodies without Content-Length. */
 export async function readBoundedText(
   message: Request | Response,

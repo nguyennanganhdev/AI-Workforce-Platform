@@ -1101,7 +1101,7 @@ export const agentReleases = pgTable(
       withCheck: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
     }),
     uniqueIndex("agent_releases_partial_0")
-      .on(t.agentId)
+      .on(t.versionId)
       .where(sql`status='published' AND revoked_at IS NULL`),
     check(
       "agent_releases_check_0",

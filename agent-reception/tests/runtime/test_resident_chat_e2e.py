@@ -41,7 +41,8 @@ def say(chat, text, client_message_id=None):
 def test_incident_chat_creates_a_ticket_management_can_work_on():
     chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
     reply, sent = say(chat, "Ổ điện phòng khách bị hỏng, không có điện từ sáng nay.")
-    assert "Mã yêu cầu của bạn: VH-" in reply
+    # The request code is for staff; the resident follows the request in the app.
+    assert "VH-" not in reply
     # A retried send must not make Reception answer, or open a ticket, twice.
     call("POST", f"/resident/chats/{chat}/messages", expected=201, json=sent)
     time.sleep(3)
@@ -55,7 +56,8 @@ def test_incident_chat_creates_a_ticket_management_can_work_on():
     created = next(e for e in detail["events"] if e["event_type"] == "ticket.created")
     assert "requiresPlan" not in created["payload"] and created["payload"]["assessment"]["priority"] == "normal"
     # The seeded management unit has a Supervisor, so the handoff opened the coordination session.
-    assert call("GET", f"/tickets/{ticket_id}/session", actor="management")["session"]["status"] == "queued"
+    # It waits ("queued") until a Supervisor runtime accepts it ("running").
+    assert call("GET", f"/tickets/{ticket_id}/session", actor="management")["session"]["status"] in ("queued", "running")
     # Direct flow: management can dispatch without a plan approval step.
     call("POST", f"/tickets/{ticket_id}/work-orders", actor="management", expected=201,
          json={"category_id": ticket["category_id"], "required_specialty_id": ticket["category_id"],
@@ -68,15 +70,14 @@ def test_incident_chat_creates_a_ticket_management_can_work_on():
 
 def test_a_model_guess_among_the_facts_does_not_lose_the_request():
     chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
-    reply, _ = say(chat, "Ổ điện bếp bị hỏng, có vẻ do chập.")
-    assert "Mã yêu cầu của bạn: VH-" in reply
+    say(chat, "Ổ điện bếp bị hỏng, có vẻ do chập.")
+    assert next(c for c in call("GET", "/resident/chats")["items"] if c["id"] == chat)["ticket_id"]
 
 
 def test_an_emergency_is_filed_at_emergency_level_with_the_fixed_reply():
     chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
     reply, _ = say(chat, "Ổ điện phòng khách có khói bốc ra và mùi khét.")
     assert reply.startswith("Mình đã chuyển yêu cầu của bạn đến Ban quản lý ở mức khẩn cấp.")
-    assert "Mã yêu cầu của bạn: VH-" in reply
     ticket_id = next(c for c in call("GET", "/resident/chats")["items"] if c["id"] == chat)["ticket_id"]
     assert call("GET", f"/tickets/{ticket_id}", actor="management")["ticket"]["priority"] == "critical"
 
@@ -92,9 +93,7 @@ def test_an_emergency_reply_carries_the_safety_guidance_management_approved():
     reply, _ = say(chat, "Bếp nhà tôi có mùi gas rất nặng.")
     if not pending and guidance not in reply:
         pytest.skip("No gas guidance was proposed in this database")
-    lines = reply.splitlines()
-    assert lines[0] == "Mình đã chuyển yêu cầu của bạn đến Ban quản lý ở mức khẩn cấp." and lines[1] == guidance
-    assert lines[2].startswith("Mã yêu cầu của bạn: VH-")
+    assert reply.splitlines() == ["Mình đã chuyển yêu cầu của bạn đến Ban quản lý ở mức khẩn cấp.", guidance]
 
 
 def test_a_question_without_a_source_goes_to_management_and_the_answer_comes_back():
@@ -144,3 +143,25 @@ def test_resident_is_told_when_the_runtime_is_down():
             return
         time.sleep(0.5)
     raise AssertionError("No fallback reply was stored")
+
+
+@pytest.mark.skipif(not os.getenv("RECEPTION_E2E_SUPERVISOR"), reason="No Supervisor runtime (agent-coordination) in this stack")
+def test_the_supervisor_receives_the_ticket_reception_handed_over():
+    """Also needs `python -m vinhomes` (agent-coordination) pointed at the same backend."""
+    chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
+    say(chat, "Ổ điện phòng ngủ bị hỏng, không cắm được thiết bị nào.")
+    ticket_id = next(c for c in call("GET", "/resident/chats")["items"] if c["id"] == chat)["ticket_id"]
+    session, deadline = {}, time.time() + 30
+    while time.time() < deadline and not (session.get("runtime") and session.get("status") == "running"):
+        time.sleep(0.5)
+        session = call("GET", f"/tickets/{ticket_id}/session", actor="management")["session"]
+    # The Supervisor accepted the ticket under a run the backend allocated, then handed it to management.
+    assert session["status"] == "running" and session["supervisor"]["lastMessageType"] == "accepted"
+    assert session["runtime"]["phase"] == "paused"
+    assert session["runtime"]["pauseReason"] == "planner:no_specialist_available"
+    results = call("GET", f"/api/domains/vinhomes/resident/reception-supervisor/tickets/{ticket_id}/results")["items"]
+    assert [r["message_type"] for r in results] == ["accepted"]
+    assert results[0]["supervisor_run_id"] == session["supervisor"]["runId"]
+    # Acceptance is a note for management; the resident hears from Reception once.
+    messages = call("GET", f"/resident/chats/{chat}/messages?limit=100")["items"]
+    assert len([m for m in messages if m["sender_kind"] == "agent"]) == 1

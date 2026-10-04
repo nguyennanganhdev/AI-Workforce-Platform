@@ -1,0 +1,512 @@
+[
+  {
+    "author": {
+      "id": "U_kgDOCJrKOg",
+      "is_bot": false,
+      "login": "NguyenPhuongDng",
+      "name": ""
+    },
+    "baseRefName": "develop",
+    "headRefName": "dev_TeamDong",
+    "isDraft": false,
+    "mergedAt": "2026-10-03T13:30:24Z",
+    "number": 30,
+    "state": "MERGED",
+    "title": "Dev team dong",
+    "updatedAt": "2026-10-03T13:30:24Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/30"
+  },
+  {
+    "author": {
+      "id": "U_kgDOCkNIsg",
+      "is_bot": false,
+      "login": "AnhDc2004",
+      "name": ""
+    },
+    "baseRefName": "devTeamPhai",
+    "headRefName": "devTeamPhai-DucAnh",
+    "isDraft": false,
+    "mergedAt": "2026-10-03T05:02:41Z",
+    "number": 29,
+    "state": "MERGED",
+    "title": "Cập nhật phần security-tools",
+    "updatedAt": "2026-10-03T05:02:41Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/29"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjg1NDkxNzcz",
+      "is_bot": false,
+      "login": "photienanh",
+      "name": "Phó Tiến Anh"
+    },
+    "baseRefName": "dev_TeamDong",
+    "headRefName": "devTeamDong/TienAnh-supervisor",
+    "isDraft": false,
+    "mergedAt": "2026-10-03T13:14:16Z",
+    "number": 28,
+    "state": "MERGED",
+    "title": "refactor: refactor agent coordination codebase: remove unused runner,…",
+    "updatedAt": "2026-10-03T13:14:16Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/28"
+  },
+  {
+    "author": {
+      "id": "U_kgDOCJrKOg",
+      "is_bot": false,
+      "login": "NguyenPhuongDng",
+      "name": ""
+    },
+    "baseRefName": "develop",
+    "headRefName": "dev_TeamDong",
+    "isDraft": false,
+    "mergedAt": "2026-10-02T15:40:31Z",
+    "number": 27,
+    "state": "MERGED",
+    "title": "Dev team dong",
+    "updatedAt": "2026-10-02T15:40:31Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/27"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjg1NDkxNzcz",
+      "is_bot": false,
+      "login": "photienanh",
+      "name": "Phó Tiến Anh"
+    },
+    "baseRefName": "dev_TeamDong",
+    "headRefName": "devTeamDong/TienAnh-supervisor",
+    "isDraft": false,
+    "mergedAt": "2026-10-02T15:21:55Z",
+    "number": 26,
+    "state": "MERGED",
+    "title": "feat(coordination): add durable agent workflow runtime",
+    "updatedAt": "2026-10-02T15:21:55Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/26"
+  },
+  {
+    "author": {
+      "id": "U_kgDOC_mh9w",
+      "is_bot": false,
+      "login": "ChienhocIT",
+      "name": ""
+    },
+    "baseRefName": "develop",
+    "headRefName": "dev_TeamChien",
+    "isDraft": false,
+    "mergedAt": "2026-10-03T11:07:34Z",
+    "number": 25,
+    "state": "MERGED",
+    "title": "Tích hợp team Chiến: frontend resident/operations + backend V3 vào develop",
+    "updatedAt": "2026-10-03T11:07:35Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/25"
+  },
+  {
+    "author": {
+      "id": "U_kgDOC4V_yg",
+      "is_bot": false,
+      "login": "NghiaBui1605",
+      "name": ""
+    },
+    "baseRefName": "dev_TeamDong",
+    "headRefName": "devTeamDong/dev3",
+    "isDraft": false,
+    "mergedAt": null,
+    "number": 24,
+    "state": "OPEN",
+    "title": "Implement HMAC source proof authentication and reception ingress",
+    "updatedAt": "2026-10-02T10:16:49Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/24"
+  },
+  {
+    "author": {
+      "id": "U_kgDOCJrKOg",
+      "is_bot": false,
+      "login": "NguyenPhuongDng",
+      "name": ""
+    },
+    "baseRefName": "develop",
+    "headRefName": "dev_TeamDong",
+    "isDraft": false,
+    "mergedAt": "2026-10-01T14:18:38Z",
+    "number": 23,
+    "state": "MERGED",
+    "title": "Dev team dong",
+    "updatedAt": "2026-10-01T14:18:38Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/23"
+  },
+  {
+    "author": {
+      "id": "U_kgDOCJrKOg",
+      "is_bot": false,
+      "login": "NguyenPhuongDng",
+      "name": ""
+    },
+    "baseRefName": "dev_TeamDong",
+    "headRefName": "devTeamDong/dev5",
+    "isDraft": false,
+    "mergedAt": null,
+    "number": 22,
+    "state": "OPEN",
+    "title": "Base xong lien ket DEV 123",
+    "updatedAt": "2026-10-03T18:08:13Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/22"
+  },
+  {
+    "author": {
+      "id": "U_kgDOCJEVkQ",
+      "is_bot": false,
+      "login": "DungPhanHoangg05",
+      "name": ""
+    },
+    "baseRefName": "develop",
+    "headRefName": "dev_TeamHoang",
+    "isDraft": false,
+    "mergedAt": "2026-10-01T10:16:22Z",
+    "number": 21,
+    "state": "MERGED",
+    "title": "feat: bổ sung Reception workflow, typed tools và nền tảng Report agent",
+    "updatedAt": "2026-10-01T10:16:22Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/21"
+  },
+  {
+    "author": {
+      "id": "U_kgDOBqGuyQ",
+      "is_bot": false,
+      "login": "phucvan101",
+      "name": ""
+    },
+    "baseRefName": "dev_TeamQuang",
+    "headRefName": "phuc_rag",
+    "isDraft": false,
+    "mergedAt": "2026-10-01T08:50:05Z",
+    "number": 20,
+    "state": "MERGED",
+    "title": "bỏ sung thêm hàm json tạo file",
+    "updatedAt": "2026-10-01T08:50:05Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/20"
+  },
+  {
+    "author": {
+      "id": "U_kgDOBqGuyQ",
+      "is_bot": false,
+      "login": "phucvan101",
+      "name": ""
+    },
+    "baseRefName": "dev_TeamQuang",
+    "headRefName": "phuc_rag",
+    "isDraft": false,
+    "mergedAt": "2026-10-01T07:56:18Z",
+    "number": 19,
+    "state": "MERGED",
+    "title": "doc phuc",
+    "updatedAt": "2026-10-01T07:56:18Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/19"
+  },
+  {
+    "author": {
+      "id": "U_kgDOCLSZTg",
+      "is_bot": false,
+      "login": "kaiosz02",
+      "name": "Hoàng Văn Quang"
+    },
+    "baseRefName": "develop",
+    "headRefName": "dev_TeamQuang",
+    "isDraft": false,
+    "mergedAt": "2026-10-01T10:16:53Z",
+    "number": 18,
+    "state": "MERGED",
+    "title": "Dev team quang",
+    "updatedAt": "2026-10-01T10:16:54Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/18"
+  },
+  {
+    "author": {
+      "id": "U_kgDODq1-PA",
+      "is_bot": false,
+      "login": "thanhdatpham938-hub",
+      "name": "phamdat2807"
+    },
+    "baseRefName": "dev_TeamQuang",
+    "headRefName": "technical_tool_Dat_merge",
+    "isDraft": false,
+    "mergedAt": "2026-10-01T07:09:57Z",
+    "number": 17,
+    "state": "MERGED",
+    "title": "feat(technical-tools): 14 technical tools, gộp bộ khung của PR #12",
+    "updatedAt": "2026-10-01T07:09:57Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/17"
+  },
+  {
+    "author": {
+      "id": "U_kgDOBqGuyQ",
+      "is_bot": false,
+      "login": "phucvan101",
+      "name": ""
+    },
+    "baseRefName": "dev_TeamQuang",
+    "headRefName": "phuc_rag",
+    "isDraft": false,
+    "mergedAt": "2026-10-01T07:27:25Z",
+    "number": 16,
+    "state": "MERGED",
+    "title": "rag from data letan",
+    "updatedAt": "2026-10-01T07:45:40Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/16"
+  },
+  {
+    "author": {
+      "id": "U_kgDOC4V_yg",
+      "is_bot": false,
+      "login": "NghiaBui1605",
+      "name": ""
+    },
+    "baseRefName": "dev_TeamDong",
+    "headRefName": "devTeamDong/dev3",
+    "isDraft": false,
+    "mergedAt": "2026-10-01T07:23:00Z",
+    "number": 15,
+    "state": "MERGED",
+    "title": "Implement Reception Gateway V2 with enhanced validation and backend i…",
+    "updatedAt": "2026-10-01T07:23:00Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/15"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjg1NDkxNzcz",
+      "is_bot": false,
+      "login": "photienanh",
+      "name": "Phó Tiến Anh"
+    },
+    "baseRefName": "dev_TeamDong",
+    "headRefName": "devTeamDong/TienAnh-supervisor",
+    "isDraft": false,
+    "mergedAt": "2026-10-01T04:26:03Z",
+    "number": 14,
+    "state": "MERGED",
+    "title": "feat(agent-coordination): add Reception–Supervisor schema V2 flow",
+    "updatedAt": "2026-10-01T04:26:04Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/14"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjg1NDkxNzcz",
+      "is_bot": false,
+      "login": "photienanh",
+      "name": "Phó Tiến Anh"
+    },
+    "baseRefName": "dev_TeamDong",
+    "headRefName": "devTeamDong/TienAnh-supervisor",
+    "isDraft": false,
+    "mergedAt": "2026-10-01T03:06:52Z",
+    "number": 13,
+    "state": "MERGED",
+    "title": "refactor: update type hints using typing instead of | for clarity and…",
+    "updatedAt": "2026-10-01T03:06:52Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/13"
+  },
+  {
+    "author": {
+      "id": "U_kgDOBerS-A",
+      "is_bot": false,
+      "login": "giapthinh123",
+      "name": "Giáp Hoàng Thịnh"
+    },
+    "baseRefName": "dev_TeamQuang",
+    "headRefName": "dev_TeamQuang_ThinhGH_tool",
+    "isDraft": false,
+    "mergedAt": "2026-10-01T03:05:17Z",
+    "number": 12,
+    "state": "MERGED",
+    "title": "feat(technical-tools): triển khai khung và adapter POC cho 7 tool đầu",
+    "updatedAt": "2026-10-01T07:45:54Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/12"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjg1NDkxNzcz",
+      "is_bot": false,
+      "login": "photienanh",
+      "name": "Phó Tiến Anh"
+    },
+    "baseRefName": "dev_TeamDong",
+    "headRefName": "devTeamDong/TienAnh-supervisor",
+    "isDraft": false,
+    "mergedAt": "2026-10-01T02:16:50Z",
+    "number": 11,
+    "state": "MERGED",
+    "title": "feat(supervisor): Implement planner, ports, room bridge, and service for decision-making orchestration",
+    "updatedAt": "2026-10-01T02:16:50Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/11"
+  },
+  {
+    "author": {
+      "id": "U_kgDOB5nW4A",
+      "is_bot": false,
+      "login": "VoQuocHuy123",
+      "name": ""
+    },
+    "baseRefName": "dev_TeamDong",
+    "headRefName": "dev_TeamDong_checkpointing",
+    "isDraft": false,
+    "mergedAt": null,
+    "number": 10,
+    "state": "OPEN",
+    "title": "feat(checkpointing): DEV-4 session checkpointing & recovery",
+    "updatedAt": "2026-09-30T16:11:48Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/10"
+  },
+  {
+    "author": {
+      "id": "U_kgDOEl-TmA",
+      "is_bot": false,
+      "login": "tiendo-pixel",
+      "name": ""
+    },
+    "baseRefName": "dev_TeamDong",
+    "headRefName": "devTeamDong/tiendo-ml-engineer",
+    "isDraft": false,
+    "mergedAt": null,
+    "number": 9,
+    "state": "OPEN",
+    "title": "Dev team dong/tiendo ml engineer",
+    "updatedAt": "2026-09-30T16:16:38Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/9"
+  },
+  {
+    "author": {
+      "id": "U_kgDOCLSZTg",
+      "is_bot": false,
+      "login": "kaiosz02",
+      "name": "Hoàng Văn Quang"
+    },
+    "baseRefName": "dev_TeamQuang",
+    "headRefName": "quanghv/docs_tool_technical_tools",
+    "isDraft": false,
+    "mergedAt": "2026-09-30T10:40:31Z",
+    "number": 8,
+    "state": "MERGED",
+    "title": "thêm tài liệu cho dev code tools",
+    "updatedAt": "2026-10-01T07:45:26Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/8"
+  },
+  {
+    "author": {
+      "id": "U_kgDOC4V_yg",
+      "is_bot": false,
+      "login": "NghiaBui1605",
+      "name": ""
+    },
+    "baseRefName": "dev_TeamDong",
+    "headRefName": "devTeamDong/dev3",
+    "isDraft": false,
+    "mergedAt": "2026-09-30T09:57:08Z",
+    "number": 7,
+    "state": "MERGED",
+    "title": "feat: Implement backend operations and reception gateway",
+    "updatedAt": "2026-09-30T09:57:08Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/7"
+  },
+  {
+    "author": {
+      "id": "MDQ6VXNlcjg1NDkxNzcz",
+      "is_bot": false,
+      "login": "photienanh",
+      "name": "Phó Tiến Anh"
+    },
+    "baseRefName": "dev_TeamDong",
+    "headRefName": "devTeamDong/TienAnh-agent-room",
+    "isDraft": false,
+    "mergedAt": "2026-09-30T13:15:48Z",
+    "number": 6,
+    "state": "MERGED",
+    "title": "feat(groupchat): implement AgentScope adapter and related modules for…",
+    "updatedAt": "2026-09-30T13:15:48Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/6"
+  },
+  {
+    "author": {
+      "id": "U_kgDOC_mh9w",
+      "is_bot": false,
+      "login": "ChienhocIT",
+      "name": ""
+    },
+    "baseRefName": "frontendNgoDinhKhanh",
+    "headRefName": "develop",
+    "isDraft": false,
+    "mergedAt": "2026-09-29T21:37:05Z",
+    "number": 5,
+    "state": "MERGED",
+    "title": "chore: sync develop database V3 into frontendNgoDinhKhanh",
+    "updatedAt": "2026-09-29T21:37:43Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/5"
+  },
+  {
+    "author": {
+      "id": "U_kgDOC_mh9w",
+      "is_bot": false,
+      "login": "ChienhocIT",
+      "name": ""
+    },
+    "baseRefName": "frondendVuVietAnh",
+    "headRefName": "develop",
+    "isDraft": false,
+    "mergedAt": "2026-09-29T21:37:05Z",
+    "number": 4,
+    "state": "MERGED",
+    "title": "chore: sync develop database V3 into frondendVuVietAnh",
+    "updatedAt": "2026-09-29T21:37:40Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/4"
+  },
+  {
+    "author": {
+      "id": "U_kgDOC_mh9w",
+      "is_bot": false,
+      "login": "ChienhocIT",
+      "name": ""
+    },
+    "baseRefName": "frontend/ft-resident",
+    "headRefName": "develop",
+    "isDraft": false,
+    "mergedAt": "2026-09-29T21:37:05Z",
+    "number": 3,
+    "state": "MERGED",
+    "title": "chore: sync develop database V3 into frontend/ft-resident",
+    "updatedAt": "2026-09-29T21:37:38Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/3"
+  },
+  {
+    "author": {
+      "id": "U_kgDOC_mh9w",
+      "is_bot": false,
+      "login": "ChienhocIT",
+      "name": ""
+    },
+    "baseRefName": "develop",
+    "headRefName": "dev_TeamChien",
+    "isDraft": false,
+    "mergedAt": "2026-09-28T07:50:34Z",
+    "number": 2,
+    "state": "MERGED",
+    "title": "feat(db): complete workforce ERD and coordination persistence",
+    "updatedAt": "2026-09-28T07:50:34Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/2"
+  },
+  {
+    "author": {
+      "id": "U_kgDOC_mh9w",
+      "is_bot": false,
+      "login": "ChienhocIT",
+      "name": ""
+    },
+    "baseRefName": "develop",
+    "headRefName": "chore/import-openbot",
+    "isDraft": false,
+    "mergedAt": "2026-09-26T11:33:01Z",
+    "number": 1,
+    "state": "MERGED",
+    "title": "Integrate OpenBot foundation with Workforce architecture",
+    "updatedAt": "2026-09-29T09:32:04Z",
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/1"
+  }
+]

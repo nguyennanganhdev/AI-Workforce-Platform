@@ -110,5 +110,5 @@ Không đăng ký fixture `draft` làm operation production từ fixture này.
 
 State/factory/prompt control protocol, interrupt/resume nội bộ, bounded questions,
 tool allowlist, provenance và unit tests không cần LLM/network đã triển khai.
-Handoff ở `docs/teams/hoang/handoffs/phan-dung/PD01.md` ghi kết quả chạy thực.
+Handoff ở `docs/teams/hoang/handoffs/phan-dung/PD_ALL_VERIFICATION.md` ghi kết quả chạy thực.
 Việc freeze contract và tích hợp backend/checkpoint/transport thật vẫn mở.

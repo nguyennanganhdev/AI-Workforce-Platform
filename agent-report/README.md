@@ -68,6 +68,13 @@ Danh mục API hiện không có cờ tự phân loại “repair”, nên khôn
 Catalog Python chưa đăng ký vào `FIRST_PARTY_TOOLS` (hiện rỗng) hoặc AgentScope gateway;
 owner runtime cần nối descriptor và handler `reporting.<operation>` qua cổng Python.
 Phần narrative/layout/template `operations-v1` có sẵn chưa được chuyển sang output của bốn tool này.
+
+**Cập nhật 04/10/2026 (Team Chiến): đã nối vào cổng tool của API.** `services/vinhomes-api` giữ bản sao nguyên văn
+của `server/src/reporting` trong `_vendor/reporting` và phục vụ bốn tool qua
+`POST /internal/coordination/v1/tools/call` với tên `reporting.<operation>`. Cổng không gọi HTTP: nó chạy chính các
+hàm route trong transaction đã kiểm quyền và trả đúng dạng JSON của route. `repair_category_ids` lấy từ cấu hình
+`VINHOMES_API_REPAIR_CATEGORY_CODES`. Đã chạy thật trong phòng nhóm BQL với PostgreSQL và model thật; chi tiết và một
+đề nghị về mô tả `filter_report_scope` ở `docs/teams/chien/BQL_B1_B6_PROGRESS_2026-10-04.md`, mục "Agent báo cáo".
 34 test narrative chỉ là hồi quy, không phải proof tích hợp tool mới.
 
 ## Phân trang và tính số liệu

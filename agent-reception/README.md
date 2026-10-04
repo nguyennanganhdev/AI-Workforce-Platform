@@ -100,7 +100,7 @@ Biến môi trường ở `.env.example` (`RECEPTION_SERVICE_TOKEN`, `RECEPTION_
 - Hướng dẫn an toàn khi khẩn cấp: policy trả thêm `safety_guidance` theo đúng hợp đồng graph đã có
   (`graph/assessment.parse_request_policy`: `approved`, `answer`, `retrievalRunId`, `citations`) khi Ban quản lý
   đã duyệt một câu cho loại khẩn cấp đó ở nơi cư dân ở. Câu trả lời là câu khẩn cấp cố định, rồi tới nguyên văn
-  câu đã duyệt, rồi mã yêu cầu; không model nào viết hay sửa câu này. Chưa có câu được duyệt thì chỉ có câu cố
+  câu đã duyệt (mã yêu cầu không gửi cho cư dân); không model nào viết hay sửa câu này. Chưa có câu được duyệt thì chỉ có câu cố
   định. Chế độ `graph` lấy từ `safety_reply` trong state, chế độ `loop` lấy thẳng từ policy
   (`runtime/service.safety_line`). Test: `tests/runtime/test_emergency_guidance.py` và test đầu-cuối.
 - `runtime/knowledge.py` gọi `search_knowledge` v1 khi có `RECEPTION_KNOWLEDGE_URL` và chỉ trả lời từ passage có trích dẫn.

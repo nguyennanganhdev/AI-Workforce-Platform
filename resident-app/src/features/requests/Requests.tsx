@@ -36,7 +36,6 @@ export function RequestCard({
         <IconTool size={21} stroke={1.7} />
       </span>
       <span className="request-copy">
-        <span className="eyebrow">{request.code ?? request.id}</span>
         <strong>{request.title}</strong>
         <span className={`status ${request.status}`}>
           <i />
@@ -244,7 +243,7 @@ export function RequestDetail({
         </section>
       )}
       <p className="footnote">
-        Dữ liệu trải nghiệm trên thiết bị của bạn. Chưa kết nối Ban quản lý.
+        {connected ? "Thông tin và tiến độ được cập nhật từ Ban quản lý." : "Dữ liệu trải nghiệm trên thiết bị của bạn. Chưa kết nối Ban quản lý."}
       </p>
     </div>
   );

@@ -1,0 +1,15 @@
+{
+  "captured": "2026-10-04T02:48:19.889980+07:00",
+  "root": "E:\\AI-Workforce-Platform",
+  "head": "a231575537759845e73b8f4c4124e5ef168b6aff",
+  "branch": "dev_teamChien_HuyDo",
+  "develop": "d9b4e75f0d3f0cffa4393b5568aa4d0371023413",
+  "main": "a655710d164e8a30569224e47ddce9f0eafbf09d",
+  "status": "## dev_teamChien_HuyDo\n M services/vinhomes-api/src/vinhomes_api/v3_coordination.py\n?? docs/teams/chien/DATABASE_MAP_2026-10-04/\n?? docs/teams/chien/RAG_DATABASE_MAP_2026-10-04/\n?? docs/teams/chien/REPO_RESEARCH_2026-10-04/",
+  "file_count": 2122,
+  "branch_count": 35,
+  "authors": 29,
+  "recent_nonmerge_commits": 187,
+  "pr_count": 30,
+  "worktrees": "E:/AI-Workforce-Platform                                                        a231575 [dev_teamChien_HuyDo]\nE:/AI-Workforce-Platform/.codex-artifacts/review-behuy-20261002                 6b8e166 (detached HEAD)\nE:/AI-Workforce-Platform/.codex-artifacts/review-behuy-worktree                 c63e90a [dev_TeamChien-beHuy]\nE:/AI-Workforce-Platform/.codex-artifacts/review-dong-20261001                  cd69bda (detached HEAD)\nE:/AI-Workforce-Platform/.codex-artifacts/review-dong-20261002                  b538638 [dev_TeamDong]\nE:/AI-Workforce-Platform/.codex-artifacts/review-dong-checkpoint-20261001       56ca8f3 (detached HEAD)\nE:/AI-Workforce-Platform/.codex-artifacts/review-dong-ml-20261001               84771cd (detached HEAD)\nE:/AI-Workforce-Platform/.codex-artifacts/review-dong-supervisor-20261001       32ca17a (detached HEAD)\nE:/AI-Workforce-Platform/.codex-artifacts/review-khanh-c420607                  c420607 (detached HEAD)\nE:/AI-Workforce-Platform/.codex-artifacts/review-openbot-20261002               649d3f0 (detached HEAD)\nE:/AI-Workforce-Platform/.codex-artifacts/sync-develop-20260930/ngo-dinh-khanh  aeedeb1 (detached HEAD)\nE:/AI-Workforce-Platform/.codex-artifacts/sync-develop-20260930/resident        e65d23f (detached HEAD)\nE:/AI-Workforce-Platform/.codex-artifacts/sync-develop-20260930/vu-viet-anh     f760830 (detached HEAD)"
+}

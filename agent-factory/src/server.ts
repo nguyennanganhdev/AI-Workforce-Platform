@@ -15,6 +15,9 @@ const environment = z
       .default("https://api.openai.com/v1/chat/completions"),
     FACTORY_MODEL_API_KEY: z.string().trim().min(1),
     FACTORY_MODEL: z.string().trim().min(1),
+    FACTORY_CALL_TIMEOUT_MS: z.coerce.number().int().min(1000).max(90000).default(60000),
+    FACTORY_REASONING_EFFORT: z.enum(["none", "low", "medium", "high", "xhigh"]).optional(),
+    FACTORY_MAX_COMPLETION_TOKENS: z.coerce.number().int().min(1024).max(16384).default(8192),
   })
   .safeParse(process.env);
 if (!environment.success) {
@@ -33,11 +36,15 @@ const server = Bun.serve({
   fetch: createFactoryHandler({
     token: config.FACTORY_SERVICE_TOKEN,
     modelRef: `${config.FACTORY_MODEL_PROVIDER}/${config.FACTORY_MODEL}`,
+    callTimeoutMs: config.FACTORY_CALL_TIMEOUT_MS,
+    observe: (event) => console.log(JSON.stringify({ event: "factory.stage", ...event })),
     complete: createHttpCompleter({
       provider: config.FACTORY_MODEL_PROVIDER,
       url: config.FACTORY_MODEL_API_URL,
       apiKey: config.FACTORY_MODEL_API_KEY,
       model: config.FACTORY_MODEL,
+      maxCompletionTokens: config.FACTORY_MAX_COMPLETION_TOKENS,
+      ...(config.FACTORY_REASONING_EFFORT ? { reasoningEffort: config.FACTORY_REASONING_EFFORT } : {}),
     }),
   }),
 });

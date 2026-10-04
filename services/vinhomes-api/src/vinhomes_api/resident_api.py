@@ -80,7 +80,7 @@ async def ticket_intake_photos(scope, ticket_id, file_id=None):
         and (cast(:file as uuid) is null or f.id=cast(:file as uuid))
         and f.status='ready' and f.deleted_at is null and o.status='ready'
         and o.scan_status='clean' and o.verified_at is not null
-        and o.mime_type in ('image/jpeg','image/png','image/webp') and s.provider='local_fs' and s.status!='disabled'
+        and o.mime_type in ('image/jpeg','image/png','image/webp') and s.provider='{photos.object_storage.provider()}' and s.status!='disabled'
       order by f.id limit 100'''), {'ticket': ticket_id, 'file': file_id})).mappings())
 
 
@@ -98,7 +98,6 @@ async def list_ticket_intake_photos(ticket_id: UUID, request: Request, scope: Op
                         operation_id='readTicketResidentIntakePhoto', responses={200: {'content': {'image/jpeg': {}, 'image/png': {}, 'image/webp': {}}}})
 async def read_ticket_intake_photo(ticket_id: UUID, file_id: UUID, request: Request, scope: Operations, access: str = Query(max_length=128)):
     from .v3_files import local_only
-    from fastapi.responses import FileResponse
     local_only(request)
     photos.verify_access(scope, file_id, request, access)
     rows = await ticket_intake_photos(scope, ticket_id, file_id)
@@ -108,8 +107,8 @@ async def read_ticket_intake_photo(ticket_id: UUID, file_id: UUID, request: Requ
     path = photos.object_path(row['object_key'])
     if not path.is_file():
         fail(404, 'PHOTO_NOT_FOUND', 'Không tìm thấy nội dung ảnh.')
-    return FileResponse(path, media_type=row['mime_type'], filename=row['original_name'], content_disposition_type='inline',
-                        headers={'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'})
+    return photos.object_storage.respond(path, media_type=row['mime_type'], filename=row['original_name'], content_disposition_type='inline',
+                                  headers={'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'})
 
 
 @router.get("/me", response_model=Profile, operation_id="getResidentProfile")

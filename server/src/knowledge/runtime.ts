@@ -9,7 +9,7 @@ import { SUPPORTED_EMBEDDING_MODELS } from "./types";
 const authority = z.object({
   ok: z.literal(true), knowledgeBaseId: z.uuid(),
   context: z.object({
-    tenantId: z.uuid(), userId: z.string().min(1), roleCodes: z.array(z.string()),
+    tenantId: z.uuid(), userId: z.string().min(1).nullable(), roleCodes: z.array(z.string()),
     targetScopeId: z.uuid(), ancestorScopeIds: z.array(z.uuid()),
     agentRunId: z.uuid(), principalId: z.uuid(), bindingId: z.uuid(),
   }),
@@ -17,10 +17,13 @@ const authority = z.object({
 
 export function createBackendKnowledgeAuthorization(options: {
   baseUrl: string; tenantId: string; knowledgeBaseId: string; fetch?: typeof fetch;
+  internalHttpHost?: string;
 }): AuthorizeKnowledgeSearch {
   const base = new URL(options.baseUrl);
   if (base.username || base.password || base.search || base.hash ||
-      !(base.protocol === "https:" || (base.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(base.hostname)))) {
+      !(base.protocol === "https:" || (base.protocol === "http:" &&
+        (["localhost", "127.0.0.1", "[::1]"].includes(base.hostname) ||
+          (options.internalHttpHost === "api" && base.hostname === "api"))))) {
     throw new Error("Knowledge authority requires HTTPS or loopback HTTP");
   }
   return async (request, ask) => {
@@ -55,11 +58,16 @@ export async function knowledgeRuntimeFromEnv(env: Record<string, string | undef
   const database = createDatabase(required("KNOWLEDGE_DATABASE_URL"), { tenantId });
   const roles = await database.execute(sql`SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user`) as unknown as { rolsuper: boolean; rolbypassrls: boolean }[];
   if (roles[0]?.rolsuper !== false || roles[0]?.rolbypassrls !== false) throw new Error("Knowledge runtime requires NOSUPERUSER NOBYPASSRLS");
+  // Embeddings keep their own key and address. Reception's chat model may move to another vendor;
+  // the vectors stored here were made by this model and must be queried with it.
+  const embeddingKey = env.KNOWLEDGE_EMBEDDING_API_KEY?.trim();
   return {
-    authorize: createBackendKnowledgeAuthorization({ baseUrl: required("RECEPTION_API_URL"), tenantId, knowledgeBaseId }),
+    authorize: createBackendKnowledgeAuthorization({ baseUrl: required("RECEPTION_API_URL"), tenantId, knowledgeBaseId,
+      internalHttpHost: env.KNOWLEDGE_INTERNAL_HTTP_HOST }),
     retrieval: {
       store: createRetrievalStore(database),
-      embedder: createOpenAIEmbedder({ apiKey: required("OPENAI_API_KEY"), baseUrl: env.OPENAI_BASE_URL,
+      embedder: createOpenAIEmbedder({ apiKey: embeddingKey || required("OPENAI_API_KEY"),
+        baseUrl: env.KNOWLEDGE_EMBEDDING_BASE_URL?.trim() || (embeddingKey ? undefined : env.OPENAI_BASE_URL),
         model: z.enum(SUPPORTED_EMBEDDING_MODELS).parse(env.KNOWLEDGE_EMBEDDING_MODEL ?? "text-embedding-3-large") }),
     },
   };

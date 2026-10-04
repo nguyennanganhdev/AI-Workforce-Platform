@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { uploadImage } from "../../../shared/direct-image-upload";
 import {
   api,
   ApiError,
   allPages,
   requestView,
+  withoutRequestCode,
   type Profile,
   type Chat,
   type Message,
@@ -25,6 +27,9 @@ const empty: ResidentState = {
   conversations: [],
   draft: null,
 };
+export type SupervisorInteraction = {ticket_id: string; pending_kind: 'information' | 'plan_approval'; ticket_version: number;
+  question: string; plan_id?: string; title?: string; proposal?: {steps: string[]; conditions: string; expected_duration: string;
+    cost?: {amount: number; currency: string} | null}};
 
 export function useConnectedResident() {
   const [state, setState] = useState<ResidentState>(empty);
@@ -32,6 +37,7 @@ export function useConnectedResident() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [interactions, setInteractions] = useState<SupervisorInteraction[]>([]);
   const [contact, setContact] = useState({ unit: "", category: "", phone: "" });
   const current = useRef(state);
   current.current = state;
@@ -47,11 +53,12 @@ export function useConnectedResident() {
   };
   const refresh = useCallback(async () => {
     const revision = ++generation.current;
-    const [p, chats, tickets, a] = await Promise.all([
+    const [p, chats, tickets, a, pending] = await Promise.all([
       api<Profile>("/resident/me"),
       allPages<Chat>("/resident/chats"),
       allPages<Ticket>("/resident/tickets"),
       api<{ items: Approval[] }>("/resident/approvals?limit=100"),
+      api<{items: SupervisorInteraction[]}>("/resident/supervisor-interactions"),
     ]);
     if (
       p.dataMode !== "database" &&
@@ -62,6 +69,12 @@ export function useConnectedResident() {
       );
     }
     const selected = active.current;
+    setInteractions(
+      pending.items.map((i) => ({
+        ...i,
+        question: withoutRequestCode(i.question),
+      })),
+    );
     const path = location.hash.slice(2).split("/");
     const detailId = path[0] === "requests" ? path[1] : undefined;
     const detail = detailId
@@ -108,7 +121,7 @@ export function useConnectedResident() {
           m.sender_kind === "user"
             ? ("resident" as const)
             : ("assistant" as const),
-        text: m.body.text || "",
+        text: withoutRequestCode(m.body.text || ""),
       }));
     // Reception answers within the backend's three-minute dispatch limit, or the backend
     // stores a fallback reply. Older unanswered messages predate the agent.
@@ -135,13 +148,14 @@ export function useConnectedResident() {
         id: c.id,
         title: c.title || c.name,
         requestId: c.ticket_id,
-        requestCode: c.ticket_code,
         requestStatus: c.ticket_id
           ? statusLabels[
               requests.find((r) => r.id === c.ticket_id)?.status ?? "received"
             ]
           : undefined,
-        preview: c.last_message ?? undefined,
+        preview: c.last_message
+          ? withoutRequestCode(c.last_message)
+          : undefined,
         unread: c.id === selected && path[0] === "chat" ? 0 : c.unread_count,
         updatedAt: c.last_message_at || c.created_at,
         messages: c.id === selected ? chatMessages : [],
@@ -156,6 +170,11 @@ export function useConnectedResident() {
       setApprovals([]);
       active.current = "";
       drafts.current.clear();
+    }
+    // No session at all: the sign-in page is the only useful place to be.
+    if (e instanceof ApiError && e.status === 401) {
+      location.assign("/login");
+      return;
     }
     setError(e instanceof Error ? e.message : "Không kết nối được máy chủ.");
   };
@@ -236,6 +255,15 @@ export function useConnectedResident() {
     setContact,
     setError,
     refresh: () => run(async () => {}, false),
+    interaction: (id: string) => interactions.find(i => i.ticket_id === id),
+    respondSupervisor: (item: SupervisorInteraction, decision: 'information' | 'approve' | 'reject' | 'request_changes', note: string) =>
+      run(async () => {
+        const body = {decision, note: note.trim(), ticket_version: item.ticket_version};
+        const signature = `${item.ticket_id}:supervisor:${JSON.stringify(body)}`;
+        await api(`/resident/tickets/${item.ticket_id}/supervisor-response`, {method:'POST',
+          body: JSON.stringify({...body, request_id: keyFor(signature)})});
+        keys.current.delete(signature);
+      }),
     newChat: () =>
       run(async () => {
         await create();
@@ -331,21 +359,10 @@ export function useConnectedResident() {
         const files = [];
         for (const photo of d.photos) {
           const blob = await (await fetch(photo.url)).blob();
-          files.push(
-            await api<{ id: string }>(
-              `/resident/chats/${active.current}/photos?filename=${encodeURIComponent(photo.name)}&mimeType=${encodeURIComponent(blob.type)}`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/octet-stream",
-                  "Idempotency-Key": keyFor(
-                    `${active.current}:photo:${photo.id}`,
-                  ),
-                },
-                body: blob,
-              },
-            ),
-          );
+          const stored = await uploadImage(api, `/resident/chats/${active.current}/direct-uploads`,
+            `/resident/chats/${active.current}/photos?filename=${encodeURIComponent(photo.name)}&mimeType=${encodeURIComponent(blob.type)}`,
+            blob, photo.name, keyFor(`${active.current}:photo:${photo.id}`));
+          files.push({ id: stored.fileId });
         }
         const body = JSON.stringify({
           domain_id: unit.domain_id,

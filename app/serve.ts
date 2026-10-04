@@ -27,7 +27,17 @@ if (!serverPort.ok) {
   throw new Error(serverPort.reason.replace(/^PORT /, "SERVER_PORT "));
 }
 const PORT = appPort.port;
-const SERVER = `http://127.0.0.1:${serverPort.port}`;
+const SERVER = process.env.OPENBOT_SERVER_URL?.replace(/\/$/, "") || `http://127.0.0.1:${serverPort.port}`;
+
+/** Business routes retain the signed-in cookie and use the deployment-owned API URL. */
+export function businessTarget(pathname: string, search: string, base = process.env.VINHOMES_API_URL): string | null {
+  if (pathname !== "/api/business" && !pathname.startsWith("/api/business/")) return null;
+  if (!base) throw new Error("Business API is not configured");
+  const configured = new URL(base);
+  if (!["http:", "https:"].includes(configured.protocol) || configured.username || configured.password || configured.search || configured.hash)
+    throw new Error("Business API configuration is invalid");
+  return configured.href.replace(/\/$/, "") + (pathname.slice("/api/business".length) || "/") + search;
+}
 
 /**
  * Which file answers a path, or `null` when the app's own router should.
@@ -219,7 +229,9 @@ if (import.meta.main) {
       const url = new URL(request.url);
 
       if (isApiCall(url.pathname)) {
-        const target = SERVER + url.pathname + url.search;
+        let target: string;
+        try { target = businessTarget(url.pathname, url.search) ?? SERVER + url.pathname + url.search; }
+        catch { return Response.json({ error: "Dịch vụ nghiệp vụ chưa được cấu hình." }, { status: 503 }); }
         if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
           const upstream = new BunWebSocket(target.replace(/^http/, "ws"), {
             headers: upstreamWebSocketHeaders(request.headers),

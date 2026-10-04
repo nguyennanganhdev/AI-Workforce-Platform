@@ -7,6 +7,7 @@ import type {
   IntentNormalizationResult,
   VerificationResult,
 } from "./contracts.js";
+import { operationDeadline } from "./io.js";
 import {
   draftFieldSchema,
   FACTORY_LIMITS,
@@ -36,6 +37,7 @@ export interface FactoryConstructionOptions {
   readonly modelRef: string;
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
+  readonly callTimeoutMs?: number;
   readonly now?: () => number;
   readonly observe?: (event: FactoryObservation) => void;
 }
@@ -247,13 +249,8 @@ export async function constructAgentSpec(
     Math.floor(Math.min(options.timeoutMs ?? 90_000, 90_000)),
   );
   const started = now();
-  const deadline = AbortSignal.timeout(timeoutMs);
-  // Bun 1.3.14 cancels a timeout when its last listener is removed between stages.
-  const keepDeadline = () => {};
-  deadline.addEventListener("abort", keepDeadline);
-  const signal = options.signal
-    ? AbortSignal.any([options.signal, deadline])
-    : deadline;
+  const deadline = operationDeadline(timeoutMs, options.signal);
+  const { signal } = deadline;
   try {
     signal.throwIfAborted();
     const normalized = parseAgentCreationRequest(structuredClone(request));
@@ -306,10 +303,8 @@ export async function constructAgentSpec(
               "TimeoutError",
             );
           const callStarted = now();
-          const callSignal =
-            timeoutMs - (now() - started) <= 20_000
-              ? signal
-              : AbortSignal.any([signal, AbortSignal.timeout(20_000)]);
+          const callDeadline = operationDeadline(Math.min(options.callTimeoutMs ?? 20_000, timeoutMs - (now() - started)), signal);
+          const callSignal = callDeadline.signal;
           let status: FactoryObservation["status"] = "failure";
           try {
             const result = await runFactoryOperation(
@@ -325,6 +320,7 @@ export async function constructAgentSpec(
             status = "success";
             return result;
           } finally {
+            callDeadline.dispose();
             options.observe?.({
               stage,
               attempt,
@@ -444,6 +440,6 @@ export async function constructAgentSpec(
       };
     return factoryDependencyFailure(error, signal);
   } finally {
-    deadline.removeEventListener("abort", keepDeadline);
+    deadline.dispose();
   }
 }

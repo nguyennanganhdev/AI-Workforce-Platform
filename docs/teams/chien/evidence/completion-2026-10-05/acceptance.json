@@ -1,0 +1,74 @@
+{
+  "date": "2026-10-05",
+  "scope": "local Docker; no public domain acceptance",
+  "api": {
+    "passed": 84,
+    "skipped": 7,
+    "real_postgres": true,
+    "real_minio": true
+  },
+  "typescript_linux": {
+    "passed": 175,
+    "failed": 0
+  },
+  "resident_tests": {
+    "passed": 17,
+    "failed": 0
+  },
+  "typecheck": [
+    "app",
+    "server",
+    "worker",
+    "resident-app"
+  ],
+  "auth": {
+    "same_canonical_user": true,
+    "shared_logout_revokes_both": true,
+    "personal_account_page": true,
+    "live_oauth_vendor": false
+  },
+  "direct_upload": {
+    "browser_minio_post_status": 204,
+    "business_complete_status": 200,
+    "ticket_status": 201,
+    "api_photo_byte_posts": 0,
+    "mobile_horizontal_overflow": false
+  },
+  "backup": {
+    "directory": "20261004T202438Z",
+    "business_tables": 194,
+    "checkpoint_tables": 6,
+    "objects": 8,
+    "row_counts_match": true,
+    "object_checksums_match": true,
+    "fresh_databases": [
+      "vinhomes_restore_business_20261004202441",
+      "vinhomes_restore_coordination_20261004202441"
+    ],
+    "fresh_bucket": "vinhomes-restore-20261004202441"
+  },
+  "monitor": {
+    "failure_threshold": 3,
+    "unavailable_event_observed": true,
+    "recovered_event_observed": true,
+    "webhook_delivery_verified": false
+  },
+  "provider_acceptance": {
+    "reception_key": {
+      "http_status": 401,
+      "error_code": "invalid_api_key"
+    },
+    "factory_key": {
+      "http_status": 429,
+      "error_code": "credit_balance_exhausted"
+    },
+    "gemini": "no configured key found",
+    "deepseek": "no configured key found",
+    "claude": "no configured key found"
+  },
+  "report_preset": {
+    "created_automatically_on_admin_unit_creation": true,
+    "model_evaluation": "failed; draft preserved",
+    "published_without_pass": false
+  }
+}

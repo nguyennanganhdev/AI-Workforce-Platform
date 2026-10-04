@@ -27,8 +27,12 @@ class V3Settings:
     resident_allowed_origins: tuple[str, ...] = ()
     resident_signing_key: str | None = None
     resident_local_storage: bool = False
+    # A container deployment keeps files on a volume its operator mounts and backs up.
+    volume_file_storage: bool = False
     reception_service_token: str | None = None
     reception_url: str | None = None
+    # Authenticates the Coordination runtime (the Supervisor) on /internal/coordination.
+    coordination_service_token: str | None = None
     # Messages one resident may send to the assistant per minute; each one costs model calls.
     resident_messages_per_minute: int = 30
 
@@ -85,6 +89,11 @@ class V3Settings:
         if reception_url and not re.fullmatch(r'(?:[0-9a-fA-F]{2}){32,}', os.getenv('RECEPTION_DELEGATION_KEY', '')):
             # Fail at startup instead of answering every resident with the fallback reply.
             raise ValueError('Reception URL requires RECEPTION_DELEGATION_KEY (at least 32 random bytes as hex)')
+        coordination_token = os.getenv('VINHOMES_API_COORDINATION_SERVICE_TOKEN', '').strip() or None
+        if coordination_token and len(coordination_token) < 32:
+            raise ValueError('Coordination service token requires at least 32 characters')
+        if coordination_token and coordination_token == reception_token:
+            raise ValueError('Coordination and Reception need different service tokens')
         return cls(
             host=host,
             port=port,
@@ -98,7 +107,9 @@ class V3Settings:
             resident_allowed_origins=origins,
             resident_signing_key=signing_key,
             resident_local_storage=local_storage,
+            volume_file_storage=os.getenv("VINHOMES_API_VOLUME_FILE_STORAGE", "0") == "1",
             reception_service_token=reception_token,
             reception_url=reception_url,
+            coordination_service_token=coordination_token,
             resident_messages_per_minute=int(os.getenv('VINHOMES_API_RESIDENT_MESSAGES_PER_MINUTE', '30')),
         )

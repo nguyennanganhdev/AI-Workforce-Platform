@@ -8,6 +8,8 @@ const configSchema = z
     apiKey: z.string().trim().min(1),
     model: z.string().trim().min(1),
     provider: z.enum(["openai", "openai-compatible"]).default("openai"),
+    reasoningEffort: z.enum(["none", "low", "medium", "high", "xhigh"]).optional(),
+    maxCompletionTokens: z.number().int().min(1024).max(16384).default(4096),
   })
   .superRefine((config, context) => {
     if (!URL.canParse(config.url)) return;
@@ -64,8 +66,9 @@ export function createHttpCompleter(
       body: JSON.stringify({
         model: config.model,
         messages: [{ role: "user", content: prompt }],
+        ...(config.reasoningEffort ? { reasoning_effort: config.reasoningEffort } : {}),
         [config.provider === "openai" ? "max_completion_tokens" : "max_tokens"]:
-          4096,
+          config.maxCompletionTokens,
       }),
       ...(signal ? { signal } : {}),
       redirect: "error",
