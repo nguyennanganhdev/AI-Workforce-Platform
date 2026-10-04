@@ -138,6 +138,9 @@ services:
       TECHNICAL_API_DATABASE_URL: ${TECHNICAL_API_DATABASE_URL:?restricted tools database URL required}
       TECHNICAL_API_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
       TECHNICAL_TOOLS_SERVICE_TOKEN: ${TECHNICAL_TOOLS_SERVICE_TOKEN:?tool token required}
+      # Seals the tokens of the external MCP connections an administrator adds. Without it that
+      # screen answers "not configured" and everything else works. Changing it loses every stored token.
+      TECHNICAL_CONNECTIONS_KEY: ${CONNECTIONS_KEY:-}
     healthcheck:
       interval: 15s
       timeout: 8s

@@ -12,7 +12,9 @@ chạy được; cần Team Quang rà lại.
 ## Phát hành
 
 Backend, Bot (`agent-coordination/scripts/start_openbot.ps1`) và dịch vụ tool
-(`services/vinhomes-api/scripts/start_technical_tools.ps1`) phải đang chạy.
+(`services/vinhomes-api/scripts/start_technical_tools.ps1`) phải đang chạy. Từ 04/10/2026 tool host này còn phục vụ
+`/internal/technical/v1/connections` cho kết nối MCP ngoài của agent BQL (Team Chiến; cần `TECHNICAL_CONNECTIONS_KEY`);
+các tool kỹ thuật và `/call` không đổi.
 
 ```powershell
 agent-coordination\scripts\publish_agent.ps1 docs\teams\quang\agent\technical-agent.json -Room management-room -Approve

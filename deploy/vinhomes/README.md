@@ -61,6 +61,11 @@ Nó in `migrations-applied`, `grants-applied` kèm tên hai role (lấy từ ch�
 tool mà cổng không còn phục vụ. Agent chỉ được cấp tool đã đăng ký, nên chạy lại cả hai job mỗi lần lên bản mới,
 trước `up -d`.
 
+Kết nối ngoài cho agent của BQL (máy chủ MCP theo địa chỉ https, do quản trị viên thêm ở màn "Kết nối ngoài"):
+`technical-tools` giữ khóa `CONNECTIONS_KEY` để mã hóa khóa truy cập của từng kết nối và là nơi duy nhất gọi ra máy chủ
+MCP, nên container này cần đi được ra internet tới các địa chỉ đó. Để trống `CONNECTIONS_KEY` thì màn hình báo chưa
+cấu hình, các phần khác không đổi. Đổi `CONNECTIONS_KEY` thì mọi khóa đã lưu không mở được nữa: phải nhập lại từng kết nối.
+
 Ảnh cư dân gửi và ảnh thi công nằm trong volume `api-files` (gắn vào `/var/lib/vinhomes/files` của `api`). API chỉ
 lưu file ra đĩa khi đang nghe trên loopback; trong container quy tắc đó được mở bằng cài đặt riêng
 `VINHOMES_API_VOLUME_FILE_STORAGE=1`, compose đã đặt sẵn. Cách lưu này chỉ dùng cho một máy chủ và một bản `api`.

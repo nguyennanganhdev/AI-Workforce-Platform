@@ -100,28 +100,74 @@ Chi tiết: `docs/teams/chien/SUPERVISOR_SESSION_V2_M0_M1_2026-10-03.md`.
 - [x] M4 Pause, resume, stop và màn quản lý session trên Operations: màn Điều phối, trang Agent, menu 4 mục
 - [ ] M5 Nghiệm thu lỗi và triển khai giới hạn
 
-## Kết nối ngoài cho agent của BQL (hạng mục riêng, 05/10/2026; chưa bắt đầu code)
+## Kết nối ngoài cho agent của BQL (MCP theo URL; làm ngày 04/10/2026, đêm)
 
-Hiện trạng: agent của BQL chỉ chọn được tool đọc do cổng tool của API phục vụ (báo cáo, an ninh, kỹ thuật). OpenBot
-có sẵn hệ kết nối ngoài (`server/src/plugins`: MCP theo URL, Google Drive, Tavily, ứng dụng qua Composio; cấp quyền,
-chính sách và audit nằm ở `callTool`), nhưng máy chủ OpenBot chưa chạy trong stack Vinhomes. Hai kiểu đăng nhập dùng
-chung bảng `users`/`sessions`; API nghiệp vụ nhận phiên mật khẩu riêng hoặc phiên OpenBot qua `VINHOMES_API_AUTH_URL`.
+Chủ dự án chốt: làm **MCP theo URL** trước, agent dùng **khóa dùng chung** của nhóm BQL (phiên do Supervisor chạy không
+có người đứng sau, nên chỉ kiểu này dùng được trong phiên). Kết nối theo tài khoản từng người (OAuth) cần thống nhất
+đăng nhập với OpenBot, để sau.
 
-- [x] K0 Chủ dự án chốt ngày 05/10/2026: làm kết nối **MCP theo URL** trước; agent dùng **tài khoản dùng chung
-      của đơn vị quản lý** (phiên do Supervisor chạy không có người đứng sau, nên chỉ kiểu này dùng được trong phiên).
-Với hai quyết định trên, kết nối đầu tiên **không cần chờ thống nhất đăng nhập**: admin đăng nhập bằng tài khoản
-nghiệp vụ như hiện nay; phần gọi MCP dùng lại mã của OpenBot (`server/src/plugins/mcp.ts`: liệt kê tool, gọi tool,
-giới hạn kích thước kết quả; `server/src/credentials.ts`: mã hóa khóa) chạy trong tool host Bun sẵn có, đúng đường
-"cổng tool của API → tool host" đang dùng cho tool kỹ thuật. Thống nhất đăng nhập với OpenBot là điều kiện của kết nối
-theo tài khoản từng người (OAuth), để sau.
+Cách làm: kết nối là một dòng trong danh mục tool sẵn có (`mcp_servers`, provenance `custom`, kèm nhóm được dùng) và
+một khóa đã mã hóa (`credentials`, kind `mcp`), không thêm bảng. Tool host Bun (`server/src/technical-api`) giữ khóa mã
+hóa và là nơi duy nhất gọi ra máy chủ MCP, bằng mã MCP của OpenBot (`server/src/plugins/mcp.ts`). API nghiệp vụ kiểm
+quyền và ghi audit.
 
-- [ ] K1 Lưu kết nối của một đơn vị quản lý: địa chỉ MCP (HTTPS), khóa được mã hóa khi lưu, trạng thái bật/tắt.
-      Kiểm: khóa không đọc lại được qua API; đơn vị khác không thấy kết nối.
-- [ ] K2 Tool host: liệt kê tool của một kết nối và gọi một tool, bằng mã MCP của OpenBot. Chỉ tool mà máy chủ MCP
-      đánh dấu chỉ-đọc mới được đăng ký vào danh mục; tool còn lại không cấp được.
-- [ ] K3 Cổng tool của API chuyển lời gọi sang tool host sau khi kiểm lượt chạy, bản agent đã ghim, quyền và đơn vị;
-      ghi audit như các tool khác. Test: có quyền, không có quyền, kết nối đã tắt, đơn vị khác, tool không chỉ-đọc.
-- [ ] K4 Màn admin trên Operations: thêm kết nối cho một đơn vị, nút "Kiểm tra kết nối" hiện danh sách tool, bật/tắt.
-- [ ] K5 Hộp cấu hình agent (thẻ "Phạm vi và công cụ") hiện tool của các kết nối đang bật, gom theo tên kết nối.
-- [ ] K6 Nghiệm thu: một máy chủ MCP thử chạy local; agent của BQL trả lời trong phòng nhóm bằng dữ liệu từ kết nối,
-      có audit. Cần khóa model còn số dư.
+- [x] K1 Lưu kết nối của một nhóm: địa chỉ https, khóa mã hóa khi lưu, không API nào trả lại khóa. Test: BQL gọi API
+      quản trị bị 403; danh sách không chứa khóa.
+- [x] K2 Tool host liệt kê và gọi tool (`/internal/technical/v1/connections`). Khác kế hoạch ban đầu: **không tin** nhãn
+      "chỉ đọc" do máy chủ MCP tự khai (đúng quy tắc sẵn có của OpenBot); quản trị viên chọn từng công cụ được phép.
+      Công cụ máy chủ tự đánh dấu phá hủy thì không chọn được.
+- [x] K3 Cổng tool chuyển lời gọi sau khi kiểm lượt chạy, bản agent đã ghim, quyền, nhóm của kết nối, khóa còn hiệu
+      lực; ghi audit. Test: OK, lỗi do tool, tool host lỗi, khóa bị thu hồi, công cụ phá hủy, gỡ công cụ đang được agent
+      đã phát hành dùng (bị từ chối, nêu tên agent).
+- [x] K4 Màn "Kết nối ngoài" của quản trị viên: thêm kết nối, mở ra là hỏi máy chủ danh sách công cụ, chọn công cụ
+      được phép, xóa. Không có nút bật/tắt riêng: bỏ chọn công cụ là tắt; bảng hiện có không có cột trạng thái.
+- [x] K5 Hộp cấu hình agent hiện công cụ của kết nối, gom theo tên kết nối, chỉ với nhóm được dùng.
+- [ ] K6 Nghiệm thu bằng máy chủ MCP thử (`server/scripts/mcp_test_server.ts`). Đã chạy trên trình duyệt: quản trị viên
+      thêm kết nối và cho phép công cụ (6/6 bước); BQL cấp công cụ cho agent mới và lưu (3/3 bước); tool host gọi máy
+      chủ MCP thật bằng khóa đã mã hóa. **Chưa chạy:** đánh giá, phát hành và câu trả lời của agent trong phòng nhóm, vì
+      khóa model mới bị `api.openai.com` trả 401 `invalid_api_key` (và `OPENAI_BASE_URL` trong `agent-reception/.env`
+      đang trống).
+- [ ] Còn thiếu: đổi khóa của một kết nối (hiện phải xóa rồi thêm lại); công tắc tắt khẩn cấp một kết nối đang được
+      agent dùng (hiện phải thu hồi agent trước); chạy trong container với một máy chủ MCP thật trên internet.
+
+## Phát hành agent không qua quản trị viên (chủ dự án chốt 04/10/2026, đêm)
+
+- [x] BQL tự phát hành agent sau khi đánh giá trên máy chủ đạt cả 6 ca; không còn bước quản trị viên duyệt trên giao
+      diện. Quản trị viên cấu hình nền tảng (tài khoản, kết nối ngoài) và vẫn thu hồi được agent ở trang Agent.
+- [ ] Chạy lại vòng tạo → đánh giá → phát hành trên giao diện khi khóa model dùng được.
+
+## Lưu ảnh và tệp trên MinIO/S3 (chủ dự án nêu 04/10/2026, đêm; chưa làm)
+
+Hiện trạng: cơ sở dữ liệu đã có đủ bảng cho object storage: `storage_locations` (provider, bucket, prefix),
+`file_objects` (`object_key`, `version_id`, checksum, trạng thái quét), `files`, `file_uploads` (phiên upload),
+`ticket_files`. Code hiện chỉ có provider `local_fs`: 4 module của API đọc/ghi thẳng ra đĩa (`v3_files.py`,
+`resident_photos.py`, `v3_conversation_images.py`, `v3_resident_support.py`); container lưu vào volume `api-files`.
+
+- [ ] M1 Một lớp lưu trữ chung (ghi, đọc, xóa theo `storage_locations.provider`) thay cho 4 chỗ ghi đĩa; giữ `local_fs`.
+- [ ] M2 Provider `s3` cho MinIO/S3 (thêm thư viện S3 vào image API); khóa truy cập lấy từ biến môi trường.
+- [ ] M3 Dịch vụ MinIO trong compose, tạo bucket riêng tư, dòng `storage_locations` provider `s3`.
+- [ ] M4 Bước đầu ảnh vẫn đi qua API (kiểm quyền như hiện nay, hai frontend không đổi). Upload thẳng lên MinIO bằng
+      phiên upload (`file_uploads`) theo tài liệu luồng mục tiêu là bước sau.
+- [ ] M5 Chuyển ảnh đang nằm trong volume/đĩa sang bucket; test tải lên, xem, quyền, và mất kết nối MinIO.
+
+## Giao diện còn phải hoàn thiện (rà ngày 04/10/2026, đêm)
+
+Nhân viên kỹ thuật: luồng nhận việc → báo giá → ảnh trước/sau → gửi kết quả chạy được (đã kiểm 14/14 bước), nhưng giao
+diện chưa được làm lại như bên BQL.
+
+- [x] Mục "Công việc đã hoàn thành" đưa nhân viên về trang đăng nhập (đã sửa).
+- [ ] Ba mục menu cùng mở một danh sách: gộp còn "Việc của tôi" với hai thẻ Đang mở / Lịch sử.
+- [ ] Trang chi tiết: ảnh hiện dạng tên file thay vì hình; còn mã `VH-…`, "phiên bản 19", ô ghi chú trên việc đã xong;
+      trên điện thoại nút quay lại và mã bị dồn một hàng.
+- [ ] Chuông thông báo việc mới được giao; menu chưa có biểu tượng.
+
+Quản trị viên:
+
+- [ ] Trang "Tài khoản" còn kiểu cũ (biểu mẫu dài, chưa tìm kiếm/lọc).
+- [ ] Chưa có màn tạo đơn vị quản lý, nhóm BQL và phạm vi tòa nhà (đang làm bằng script).
+- [ ] Chưa có màn cấu hình model và xem nhật ký audit.
+
+Ban quản lý:
+
+- [ ] Trang chi tiết công việc còn khối "Phiên điều phối" cũ; danh sách công việc còn mã `VH-…`.
+- [ ] Hộp đánh giá agent bắt nhập tay 6 tình huống.

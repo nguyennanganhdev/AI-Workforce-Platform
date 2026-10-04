@@ -220,6 +220,33 @@ chưa chạy lại trên image mới vì khóa model hết số dư.
 Hạng mục kết nối ngoài cho agent của BQL: chủ dự án chốt làm MCP theo URL trước, dùng tài khoản dùng chung của đơn
 vị; kế hoạch K1–K6 ở `tasks/todo.md`, chưa bắt đầu code.
 
+## Kết nối ngoài (MCP) cho agent của BQL và BQL tự phát hành agent (04/10, đêm; chạy local)
+
+Chủ dự án chốt thêm: BQL tự phát hành agent, không cần quản trị viên duyệt; quản trị viên là người cấu hình nền tảng.
+
+- **Kết nối MCP theo URL.** Quản trị viên thêm kết nối ở màn "Kết nối ngoài" (tên, địa chỉ https, khóa truy cập, nhóm
+  được dùng), mở kết nối để xem máy chủ đang có công cụ nào và chọn công cụ được phép. BQL thấy các công cụ đó trong
+  hộp cấu hình agent, gom theo tên kết nối. Không thêm bảng: dùng `mcp_servers`, `mcp_tools`, `credentials` sẵn có.
+- **Ai giữ gì.** Tool host (`server/src/technical-api/connection-routes.ts`) giữ khóa mã hóa và gọi máy chủ MCP bằng
+  mã của OpenBot. API (`v3_connections.py`, cổng tool) kiểm quyền, nhóm, bản agent đã ghim và ghi audit; API chỉ lưu
+  khóa ở dạng đã mã hóa và không trả lại.
+- **Quy tắc an toàn.** Nhãn "chỉ đọc" do máy chủ MCP tự khai không được tin; quản trị viên chọn từng công cụ. Công cụ
+  máy chủ tự đánh dấu phá hủy không chọn được. Địa chỉ phải là https tới tên miền công khai. Gỡ công cụ hoặc xóa kết
+  nối bị từ chối khi agent đã phát hành còn dùng, kèm tên agent. Nội dung agent gửi cho công cụ đi ra máy chủ ngoài, và
+  câu trả lời của máy chủ ngoài được model đọc: chỉ nối tới máy chủ tin được.
+- **BQL tự phát hành.** API vốn đã cho BQL phát hành sau khi đánh giá trên máy chủ đạt; nay giao diện bỏ danh sách
+  "Agent chờ duyệt" của quản trị viên, nút Phát hành không bắt ghi chú. Quản trị viên vẫn thu hồi được ở trang Agent.
+- **Sửa lỗi nhân viên kỹ thuật:** mục "Công việc đã hoàn thành" đưa về trang đăng nhập; nay mở đúng lịch sử.
+
+Đã kiểm: test backend 72 đạt, 7 bỏ qua (có test mới cho kết nối); test giao diện kết nối 1, điều phối 4; typecheck app
+và server; trên trình duyệt với máy chủ MCP thử: quản trị viên thêm kết nối và cho phép công cụ 6/6 bước, BQL cấp công
+cụ cho agent mới 3/3 bước; image `technical-tools` build lại và trả lời các route kết nối.
+
+Chưa kiểm: đánh giá, phát hành và câu trả lời của agent dùng công cụ ngoài, vì khóa model mới bị `api.openai.com` trả
+401 `invalid_api_key`. Chưa chạy kết nối trong cả stack container.
+
+Kế hoạch và việc còn lại (kết nối, MinIO/S3, giao diện nhân viên và quản trị viên): `tasks/todo.md`.
+
 ## Thứ tự hoàn thiện tiếp
 
 1. Kiểm UI các nút điều khiển phiên; vòng agent v1→v2, BQL từ chối/thu hồi và admin ghi đè. Hoàn thiện cấp scope/workspace BQL trên màn admin.

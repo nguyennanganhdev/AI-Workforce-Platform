@@ -10,12 +10,15 @@
 2. Registers the tool catalogue for the tenant (`mcp_servers` row `technical-tools` and one
    `mcp_tools` row per tool), so an agent's configuration can name the tools it is granted.
 3. Writes <local>/technical-api.env (ignored by git): TECHNICAL_API_DATABASE_URL,
-   TECHNICAL_API_TENANT_ID and TECHNICAL_TOOLS_SERVICE_TOKEN. Nothing is printed from it.
+   TECHNICAL_API_TENANT_ID, TECHNICAL_TOOLS_SERVICE_TOKEN and TECHNICAL_CONNECTIONS_KEY (the key that
+   seals the tokens of external MCP connections; kept across runs, or every stored token is lost).
+   Nothing is printed from it.
 
 No business data is seeded. Run again any time: every step is repeatable.
 Then start the host with scripts/start_technical_tools.ps1.
 """
 import asyncio
+import base64
 import json
 import secrets
 import shutil
@@ -50,6 +53,9 @@ async def main(connected: bool, local: Path | None) -> None:
     known = existing.get("TECHNICAL_API_DATABASE_URL")
     password = urlsplit(known).password if known else secrets.token_hex(24)
     token = existing.get("TECHNICAL_TOOLS_SERVICE_TOKEN") or secrets.token_urlsafe(32)
+    sealing = existing.get("TECHNICAL_CONNECTIONS_KEY") or base64.b64encode(secrets.token_bytes(32)).decode()
+    # Set by hand to reach a test MCP server over plain http on this machine; kept as it is.
+    origins = existing.get("TECHNICAL_CONNECTIONS_HTTP_ORIGINS", "")
     # The catalogue comes from the tools themselves, so what is registered is what the host runs.
     bun = shutil.which("bun")  # on Windows the launcher is not found by its bare name
     if bun is None:
@@ -86,7 +92,8 @@ async def main(connected: bool, local: Path | None) -> None:
         await db.close()
     url = urlunsplit((address.scheme, f"{role}:{quote(password)}@{address.hostname}:{address.port}", address.path, "", ""))
     path.write_text(f"TECHNICAL_API_DATABASE_URL={url}\nTECHNICAL_API_TENANT_ID={tenant}\n"
-                    f"TECHNICAL_TOOLS_SERVICE_TOKEN={token}\n", encoding="utf-8")
+                    f"TECHNICAL_TOOLS_SERVICE_TOKEN={token}\nTECHNICAL_CONNECTIONS_KEY={sealing}\n"
+                    + (f"TECHNICAL_CONNECTIONS_HTTP_ORIGINS={origins}\n" if origins else ""), encoding="utf-8")
     print(f"Technical tools ready for sessions: role {role}, {len(catalogue)} tools registered under '{SERVER}'. "
           f"Settings saved in {path} (keep it out of git).")
 
