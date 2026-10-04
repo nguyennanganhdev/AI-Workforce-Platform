@@ -95,6 +95,33 @@ Chi tiết: `docs/teams/chien/SUPERVISOR_SESSION_V2_M0_M1_2026-10-03.md`.
 - [x] M2d Admin duyệt và thu hồi agent trên Operations; agent chuyên môn chạy `gpt-5.5`
 - [x] M3a Supervisor đề xuất phương án (tác giả là agent), BQL duyệt hoặc từ chối trên Operations
   (`docs/teams/chien/SUPERVISOR_PHUONG_AN_M3A_2026-10-04.md`)
-- [ ] M3b Quyết định của BQL về tới Supervisor, cư dân duyệt qua Lễ tân, hỏi lại cư dân, hoàn tất, hủy
-- [ ] M4 Pause, resume, stop và màn quản lý session trên Operations
+- [x] M3b Quyết định của BQL về tới Supervisor, cư dân duyệt qua Lễ tân, hỏi lại cư dân, hoàn tất, hủy
+  (`docs/teams/chien/BQL_B1_B6_PROGRESS_2026-10-04.md`)
+- [x] M4 Pause, resume, stop và màn quản lý session trên Operations: màn Điều phối, trang Agent, menu 4 mục
 - [ ] M5 Nghiệm thu lỗi và triển khai giới hạn
+
+## Kết nối ngoài cho agent của BQL (hạng mục riêng, 05/10/2026; chưa bắt đầu code)
+
+Hiện trạng: agent của BQL chỉ chọn được tool đọc do cổng tool của API phục vụ (báo cáo, an ninh, kỹ thuật). OpenBot
+có sẵn hệ kết nối ngoài (`server/src/plugins`: MCP theo URL, Google Drive, Tavily, ứng dụng qua Composio; cấp quyền,
+chính sách và audit nằm ở `callTool`), nhưng máy chủ OpenBot chưa chạy trong stack Vinhomes. Hai kiểu đăng nhập dùng
+chung bảng `users`/`sessions`; API nghiệp vụ nhận phiên mật khẩu riêng hoặc phiên OpenBot qua `VINHOMES_API_AUTH_URL`.
+
+- [x] K0 Chủ dự án chốt ngày 05/10/2026: làm kết nối **MCP theo URL** trước; agent dùng **tài khoản dùng chung
+      của đơn vị quản lý** (phiên do Supervisor chạy không có người đứng sau, nên chỉ kiểu này dùng được trong phiên).
+Với hai quyết định trên, kết nối đầu tiên **không cần chờ thống nhất đăng nhập**: admin đăng nhập bằng tài khoản
+nghiệp vụ như hiện nay; phần gọi MCP dùng lại mã của OpenBot (`server/src/plugins/mcp.ts`: liệt kê tool, gọi tool,
+giới hạn kích thước kết quả; `server/src/credentials.ts`: mã hóa khóa) chạy trong tool host Bun sẵn có, đúng đường
+"cổng tool của API → tool host" đang dùng cho tool kỹ thuật. Thống nhất đăng nhập với OpenBot là điều kiện của kết nối
+theo tài khoản từng người (OAuth), để sau.
+
+- [ ] K1 Lưu kết nối của một đơn vị quản lý: địa chỉ MCP (HTTPS), khóa được mã hóa khi lưu, trạng thái bật/tắt.
+      Kiểm: khóa không đọc lại được qua API; đơn vị khác không thấy kết nối.
+- [ ] K2 Tool host: liệt kê tool của một kết nối và gọi một tool, bằng mã MCP của OpenBot. Chỉ tool mà máy chủ MCP
+      đánh dấu chỉ-đọc mới được đăng ký vào danh mục; tool còn lại không cấp được.
+- [ ] K3 Cổng tool của API chuyển lời gọi sang tool host sau khi kiểm lượt chạy, bản agent đã ghim, quyền và đơn vị;
+      ghi audit như các tool khác. Test: có quyền, không có quyền, kết nối đã tắt, đơn vị khác, tool không chỉ-đọc.
+- [ ] K4 Màn admin trên Operations: thêm kết nối cho một đơn vị, nút "Kiểm tra kết nối" hiện danh sách tool, bật/tắt.
+- [ ] K5 Hộp cấu hình agent (thẻ "Phạm vi và công cụ") hiện tool của các kết nối đang bật, gom theo tên kết nối.
+- [ ] K6 Nghiệm thu: một máy chủ MCP thử chạy local; agent của BQL trả lời trong phòng nhóm bằng dữ liệu từ kết nối,
+      có audit. Cần khóa model còn số dư.

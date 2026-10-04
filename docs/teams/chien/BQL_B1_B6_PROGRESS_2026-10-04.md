@@ -201,6 +201,25 @@ viên không đổi; đăng nhập OpenBot và tài khoản nghiệp vụ vẫn 
 
 Ảnh chụp: `.codex-artifacts/bql-ui-v2/` (không đưa vào git).
 
+## Đóng gói Docker sau các thay đổi trong ngày (04/10, đêm muộn)
+
+Build lại cả 9 image và chạy stack trên bản sao cơ sở dữ liệu. Ba thiếu sót lộ ra khi chạy và đã sửa:
+
+- **Ảnh không lưu được trong container** (tải ảnh trả 503 nên kỹ thuật viên không gửi được kết quả): API chỉ lưu ra
+  đĩa khi nghe trên loopback. Chủ dự án chọn lưu vào volume: thêm cài đặt riêng `VINHOMES_API_VOLUME_FILE_STORAGE`,
+  volume `api-files`. Quy tắc loopback cho chạy local giữ nguyên.
+- **Bản triển khai mới không cấp được tool cho agent:** danh mục tool chỉ được đăng ký bằng script chạy từ mã nguồn.
+  Nay job `upgrade` đăng ký tool kỹ thuật và job mới `catalogue` đăng ký tool của cổng tool API
+  (`python -m vinhomes_api.tool_catalogue`, dùng chung với `scripts/setup_session_tools.py`).
+- **Cư dân nhận 502 sau mỗi lần thay container API:** nginx của ứng dụng cư dân giữ địa chỉ cũ. Nay nó hỏi lại DNS
+  của Docker.
+
+Kết quả kiểm và phần chưa kiểm: [deploy/vinhomes/README.md](../../../deploy/vinhomes/README.md). Các bước cần model
+chưa chạy lại trên image mới vì khóa model hết số dư.
+
+Hạng mục kết nối ngoài cho agent của BQL: chủ dự án chốt làm MCP theo URL trước, dùng tài khoản dùng chung của đơn
+vị; kế hoạch K1–K6 ở `tasks/todo.md`, chưa bắt đầu code.
+
 ## Thứ tự hoàn thiện tiếp
 
 1. Kiểm UI các nút điều khiển phiên; vòng agent v1→v2, BQL từ chối/thu hồi và admin ghi đè. Hoàn thiện cấp scope/workspace BQL trên màn admin.

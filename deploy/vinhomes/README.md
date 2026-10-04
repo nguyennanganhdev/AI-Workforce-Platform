@@ -17,7 +17,8 @@ Người đọc: người dựng hoặc vận hành stack trên một máy chủ
 | `factory` | Agent Factory | 4010 |
 | `operations` | Giao diện Operations (bản build), chuyển tiếp `/api/business` kèm cookie | 3020, mở ra máy chủ |
 | `resident` | Ứng dụng cư dân (file tĩnh sau nginx), chuyển tiếp `/api/business` | 3011, mở ra máy chủ |
-| `upgrade` | Job chạy tay: migration và cấp lại quyền cho hai role giới hạn | không có |
+| `upgrade` | Job chạy tay: migration, cấp lại quyền cho hai role giới hạn, đăng ký tool kỹ thuật | không có |
+| `catalogue` | Job chạy tay sau `upgrade`: đăng ký tool của cổng tool API (báo cáo, an ninh) | không có |
 
 Không nằm trong stack: PostgreSQL (dùng cơ sở dữ liệu đã có sẵn role giới hạn quyền và tổ chức đầu tiên), TLS và
 reverse proxy, và đăng nhập thống nhất với tài khoản OpenBot.
@@ -49,13 +50,20 @@ HTTPS hoặc loopback, nên hai dịch vụ gặp nhau trên loopback và không
 cd deploy/vinhomes
 docker compose --env-file deployment.env --profile upgrade build
 docker compose --env-file deployment.env --profile upgrade run --rm upgrade
+docker compose --env-file deployment.env --profile upgrade run --rm catalogue
 docker compose --env-file deployment.env up -d
 docker compose --env-file deployment.env ps
 ```
 
 Job `upgrade` cần `MIGRATION_DATABASE_URL` (chủ sở hữu cơ sở dữ liệu); không dịch vụ đang chạy nào được cấp URL này.
-Nó in `migrations-applied` rồi `grants-applied` kèm tên hai role, lấy từ chính URL kết nối của `api` và
-`technical-tools`. Chạy lại job mỗi lần lên bản mới, trước `up -d`.
+Nó in `migrations-applied`, `grants-applied` kèm tên hai role (lấy từ chính URL kết nối của `api` và
+`technical-tools`), rồi `technical-tools-registered`. Job `catalogue` in `gateway-tools-registered` kèm tên tool và xóa
+tool mà cổng không còn phục vụ. Agent chỉ được cấp tool đã đăng ký, nên chạy lại cả hai job mỗi lần lên bản mới,
+trước `up -d`.
+
+Ảnh cư dân gửi và ảnh thi công nằm trong volume `api-files` (gắn vào `/var/lib/vinhomes/files` của `api`). API chỉ
+lưu file ra đĩa khi đang nghe trên loopback; trong container quy tắc đó được mở bằng cài đặt riêng
+`VINHOMES_API_VOLUME_FILE_STORAGE=1`, compose đã đặt sẵn. Cách lưu này chỉ dùng cho một máy chủ và một bản `api`.
 
 Chín dịch vụ phải ở trạng thái `healthy` (`agents-net` không có kiểm tra sức khỏe). Lần chạy thử, cả stack sẵn sàng
 sau khoảng 30 giây. Operations ở `http://<máy chủ>:3020/operations`, ứng dụng cư dân ở `http://<máy chủ>:3011`;
@@ -80,15 +88,27 @@ sau khoảng 30 giây. Operations ở `http://<máy chủ>:3020/operations`, ứ
   mới với tag mới trước khi chạy.
 - Migration chỉ đi tới. Sao lưu cơ sở dữ liệu trước khi migrate
   (`docs/teams/chien/DATABASE_BACKUP_AND_ENV_2026-10-04.md`); quay lui dữ liệu là restore bản sao lưu đó.
-- Trạng thái của Lễ tân nằm trong volume `reception-state`; `down -v` xóa volume này.
+- Trạng thái của Lễ tân nằm trong volume `reception-state`, ảnh nằm trong volume `api-files`; `down -v` xóa cả
+  hai. Sao lưu cơ sở dữ liệu mà không sao lưu `api-files` thì bản ghi ảnh còn nhưng file mất.
 
 ## Đã kiểm chứng và chưa kiểm chứng
 
-Đã chạy trên bản sao cơ sở dữ liệu đăng nhập thật, model thật: build 9 image, job `upgrade`, cả 9 dịch vụ `healthy`,
-năm bước kiểm tra ở trên, khởi động lại riêng từng dịch vụ `openbot` và `coordination`. Qua hai giao diện trong
-container, bằng trình duyệt và tài khoản thật: cư dân gửi yêu cầu trong chat, trả lời hai câu hỏi của Supervisor,
-BQL duyệt phương án, cư dân đồng ý, đúng một phiếu thi công được tạo.
+Lần chạy 04/10/2026 (đêm), build lại cả 9 image từ mã hiện tại, trên bản sao cơ sở dữ liệu đăng nhập thật:
 
-Chưa kiểm chứng: `factory` mới qua kiểm tra sức khỏe, chưa tạo agent trong container; chưa có TLS, reverse proxy,
-giới hạn tài nguyên, thu thập log tập trung hay cảnh báo; chưa thử khởi động lại cả máy chủ; chưa chạy hai bản
-`coordination` song song; job `upgrade` mới chạy trên cơ sở dữ liệu đã ở migration mới nhất (chỉ cấp lại quyền).
+- Job `upgrade` và `catalogue`: từ danh mục tool rỗng, hai job đăng ký lại đủ 14 tool kỹ thuật, 4 tool báo cáo và
+  2 tool an ninh.
+- Cả 9 dịch vụ `healthy`; gọi `/operations/me` khi chưa đăng nhập trả 401.
+- Qua hai giao diện trong container, bằng trình duyệt và tài khoản thật: BQL mở phiên từ chuông thông báo và duyệt
+  phương án trong màn Điều phối; một yêu cầu đi từ phân công, kỹ thuật viên nhận việc, báo giá, cư dân đồng ý, tải ảnh
+  trước/sau (2 file nằm trong volume `api-files`), gửi kết quả, cư dân xác nhận, tới BQL duyệt đóng phiên.
+- Thay container `api` trong lúc stack đang chạy: ứng dụng cư dân gọi lại được API sau vài giây (nginx hỏi lại DNS
+  của Docker). Trước khi sửa, cư dân nhận 502 cho tới khi container `resident` khởi động lại.
+
+Lần chạy trước đó trong ngày, khi khóa model còn số dư, đã kiểm trong container: cư dân gửi yêu cầu trong chat, trả lời
+hai câu hỏi của Supervisor, BQL duyệt phương án, cư dân đồng ý, đúng một phiếu thi công được tạo; khởi động lại riêng
+`openbot` và `coordination`.
+
+Chưa kiểm chứng: các bước cần model trên image mới (khóa model hết số dư từ tối 04/10): phiên mới do Supervisor lập
+phương án, agent báo cáo gọi tool, hỏi agent trong phiên. `factory` mới qua kiểm tra sức khỏe, chưa tạo agent trong
+container. Chưa có TLS, reverse proxy, giới hạn tài nguyên, thu thập log tập trung hay cảnh báo; chưa thử khởi động
+lại cả máy chủ; chưa chạy hai bản `coordination` song song. Lưu ảnh ra volume chỉ dùng cho một máy chủ.
