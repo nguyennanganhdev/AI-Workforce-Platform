@@ -174,12 +174,12 @@ async def session_context(db, team: dict[str, Any], *, create: bool) -> dict[str
             "binding_id": str(binding), "run_id": str(run)}
 
 
-def plan_for_resident(code: str, proposal: dict[str, Any]) -> str:
-    """The plan as the resident reads it in their conversation."""
+def plan_for_resident(proposal: dict[str, Any]) -> str:
+    """The plan as the resident reads it in the request's own conversation, so without the request code."""
     steps = "\n".join(f"{n}. {step}" for n, step in enumerate(proposal["steps"], 1))
     cost = proposal.get("cost")
     price = f"{Decimal(str(cost['amount'])):,.0f} {cost['currency']}".replace(",", ".") if cost else "chưa có"
-    return (f"Ban quản lý đề xuất phương án xử lý cho yêu cầu {code}:\n{proposal['summary']}\n\n"
+    return (f"Ban quản lý đề xuất phương án xử lý cho yêu cầu của anh/chị:\n{proposal['summary']}\n\n"
             f"Các bước:\n{steps}\n\n"
             f"Người thực hiện: {proposal['performer_role']}\nThời gian dự kiến: {proposal['expected_duration']}\n"
             f"Điều kiện: {proposal['conditions']}\nChi phí dự kiến: {price}\n\n"
@@ -323,7 +323,7 @@ async def view(team_id: UUID, db: Scope) -> dict[str, Any]:
     # Management approved: the resident is asked next, in these words and no others.
     asking = {} if plan is None or plan["status"] != "resident_pending" else {
         "resident_recipient": team["requester_user_id"], "resident_request_type": "plan_approval_requested",
-        "resident_request_message": plan_for_resident(team["ticket_code"], plan["proposal"])}
+        "resident_request_message": plan_for_resident(plan["proposal"])}
     questions = [q for q in team["shared_state"].get("residentRequests", {}).values() if not q.get("resolved")]
     question = questions[-1] if questions else None
     supervisor_instructions = (await db.execute(text('select instructions from agent_versions where id=:version'),

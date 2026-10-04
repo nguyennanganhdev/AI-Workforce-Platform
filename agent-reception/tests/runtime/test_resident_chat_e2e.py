@@ -41,7 +41,8 @@ def say(chat, text, client_message_id=None):
 def test_incident_chat_creates_a_ticket_management_can_work_on():
     chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
     reply, sent = say(chat, "Ổ điện phòng khách bị hỏng, không có điện từ sáng nay.")
-    assert "Mã yêu cầu của bạn: VH-" in reply
+    # The request code is for staff; the resident follows the request in the app.
+    assert "VH-" not in reply
     # A retried send must not make Reception answer, or open a ticket, twice.
     call("POST", f"/resident/chats/{chat}/messages", expected=201, json=sent)
     time.sleep(3)
@@ -69,15 +70,14 @@ def test_incident_chat_creates_a_ticket_management_can_work_on():
 
 def test_a_model_guess_among_the_facts_does_not_lose_the_request():
     chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
-    reply, _ = say(chat, "Ổ điện bếp bị hỏng, có vẻ do chập.")
-    assert "Mã yêu cầu của bạn: VH-" in reply
+    say(chat, "Ổ điện bếp bị hỏng, có vẻ do chập.")
+    assert next(c for c in call("GET", "/resident/chats")["items"] if c["id"] == chat)["ticket_id"]
 
 
 def test_an_emergency_is_filed_at_emergency_level_with_the_fixed_reply():
     chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
     reply, _ = say(chat, "Ổ điện phòng khách có khói bốc ra và mùi khét.")
     assert reply.startswith("Mình đã chuyển yêu cầu của bạn đến Ban quản lý ở mức khẩn cấp.")
-    assert "Mã yêu cầu của bạn: VH-" in reply
     ticket_id = next(c for c in call("GET", "/resident/chats")["items"] if c["id"] == chat)["ticket_id"]
     assert call("GET", f"/tickets/{ticket_id}", actor="management")["ticket"]["priority"] == "critical"
 
@@ -93,9 +93,7 @@ def test_an_emergency_reply_carries_the_safety_guidance_management_approved():
     reply, _ = say(chat, "Bếp nhà tôi có mùi gas rất nặng.")
     if not pending and guidance not in reply:
         pytest.skip("No gas guidance was proposed in this database")
-    lines = reply.splitlines()
-    assert lines[0] == "Mình đã chuyển yêu cầu của bạn đến Ban quản lý ở mức khẩn cấp." and lines[1] == guidance
-    assert lines[2].startswith("Mã yêu cầu của bạn: VH-")
+    assert reply.splitlines() == ["Mình đã chuyển yêu cầu của bạn đến Ban quản lý ở mức khẩn cấp.", guidance]
 
 
 def test_a_question_without_a_source_goes_to_management_and_the_answer_comes_back():
@@ -151,8 +149,7 @@ def test_resident_is_told_when_the_runtime_is_down():
 def test_the_supervisor_receives_the_ticket_reception_handed_over():
     """Also needs `python -m vinhomes` (agent-coordination) pointed at the same backend."""
     chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
-    reply, _ = say(chat, "Ổ điện phòng ngủ bị hỏng, không cắm được thiết bị nào.")
-    assert "Mã yêu cầu của bạn: VH-" in reply
+    say(chat, "Ổ điện phòng ngủ bị hỏng, không cắm được thiết bị nào.")
     ticket_id = next(c for c in call("GET", "/resident/chats")["items"] if c["id"] == chat)["ticket_id"]
     session, deadline = {}, time.time() + 30
     while time.time() < deadline and not (session.get("runtime") and session.get("status") == "running"):

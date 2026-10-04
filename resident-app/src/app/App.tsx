@@ -636,36 +636,19 @@ export function App({ live }: { live?: ConnectedResident }) {
               </div>
             ))}
           {route.page === "notifications" && (
-            <>
-              {(state.conversations ?? []).some((c) => c.unread > 0) && (
-                <div className="page-section stack">
-                  {(state.conversations ?? [])
-                    .filter((c) => c.unread > 0)
-                    .map((c) => (
-                      <button
-                        key={c.id}
-                        className="notification-card"
-                        onClick={() => {
-                          if (live) {
-                            live.select(c.id);
-                            return;
-                          }
-                          if (commit((s) => selectConversation(s, c.id)))
-                            location.hash = `/chat/${c.id}`;
-                        }}
-                      >
-                        <span>
-                          <strong>
-                            {c.unread} tin chưa đọc · {c.title}
-                          </strong>
-                          <p>{c.preview ?? c.messages.at(-1)?.text}</p>
-                        </span>
-                      </button>
-                    ))}
-                </div>
-              )}
-              <Notifications requests={state.requests} onOpen={openRequest} />
-            </>
+            <Notifications
+              requests={state.requests}
+              conversations={state.conversations ?? []}
+              onOpen={openRequest}
+              onOpenChat={(id) => {
+                if (live) {
+                  live.select(id);
+                  return;
+                }
+                if (commit((s) => selectConversation(s, id)))
+                  location.hash = `/chat/${id}`;
+              }}
+            />
           )}
           {route.page === "profile" && (
             <Profile

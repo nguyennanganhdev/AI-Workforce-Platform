@@ -36,7 +36,6 @@ export function RequestCard({
         <IconTool size={21} stroke={1.7} />
       </span>
       <span className="request-copy">
-        <span className="eyebrow">{request.code ?? request.id}</span>
         <strong>{request.title}</strong>
         <span className={`status ${request.status}`}>
           <i />

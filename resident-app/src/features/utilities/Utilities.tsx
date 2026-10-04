@@ -6,6 +6,7 @@ import {
   IconClipboardList,
   IconInfoCircle,
   IconMapPin,
+  IconMessageCircle,
   IconSwimming,
   IconBarbell,
   IconTrees,
@@ -15,7 +16,11 @@ import {
 import { Neighborhood } from "../../components/Illustrations";
 import { resident } from "../../mocks/seed";
 import { dateLabel } from "../requests/Requests";
-import type { ResidentRequest } from "../../services/types";
+import type {
+  RequestStatus,
+  ResidentConversation,
+  ResidentRequest,
+} from "../../services/types";
 import type { Profile as ResidentProfile } from "../../services/resident-api";
 import { exitResidentPreview } from "../auth/demo-access";
 
@@ -136,44 +141,83 @@ export function Utilities({
   );
 }
 
+/** What a request's status means to the resident, when no event says it better. */
+const statusNews: Record<RequestStatus, string> = {
+  received: "Ban quản lý đã tiếp nhận yêu cầu của bạn.",
+  processing: "Yêu cầu đang được xử lý.",
+  confirmation: "Đã xử lý xong, mời bạn kiểm tra và xác nhận.",
+  completed: "Yêu cầu đã hoàn tất.",
+  cancelled: "Yêu cầu đã được hủy.",
+};
+
 export function Notifications({
   requests,
+  conversations,
   onOpen,
+  onOpenChat,
 }: {
   requests: ResidentRequest[];
+  conversations: ResidentConversation[];
   onOpen: (id: string) => void;
+  onOpenChat: (id: string) => void;
 }) {
+  // One card per subject: a request with unread messages shows as its conversation, not twice.
+  const unread = conversations.filter((c) => c.unread > 0);
+  const items = [
+    ...unread.map((c) => ({
+      key: c.id,
+      title: c.title,
+      body: c.preview ?? c.messages.at(-1)?.text ?? "Bạn có tin nhắn mới.",
+      at: c.updatedAt,
+      unread: c.unread,
+      urgent: false,
+      open: () => onOpenChat(c.id),
+    })),
+    ...requests
+      .filter((r) => !unread.some((c) => c.requestId === r.id))
+      .map((r) => ({
+        key: r.id,
+        title: r.title,
+        body: r.events.at(-1)?.label ?? statusNews[r.status],
+        at: r.events.at(-1)?.at || r.createdAt,
+        unread: 0,
+        urgent: r.status === "confirmation",
+        open: () => onOpen(r.id),
+      })),
+  ].sort(
+    (a, b) =>
+      Math.sign(b.unread) - Math.sign(a.unread) || b.at.localeCompare(a.at),
+  );
   return (
     <div className="page-section stack">
       <p className="page-description">
-        Cập nhật mới nhất từ các yêu cầu của bạn.
+        Tin nhắn mới và cập nhật từ các yêu cầu của bạn.
       </p>
-      {requests.length ? (
-        [...requests]
-          .sort((a, b) =>
-            (b.events.at(-1)?.at || b.createdAt).localeCompare(
-              a.events.at(-1)?.at || a.createdAt,
-            ),
-          )
-          .map((r) => (
-            <button
-              className="notification-card"
-              key={r.id}
-              onClick={() => onOpen(r.id)}
-            >
-              <span
-                className={`icon-tile ${r.status === "confirmation" ? "orange" : "blue"}`}
-              >
+      {items.length ? (
+        items.map((item) => (
+          <button
+            className="notification-card"
+            key={item.key}
+            onClick={item.open}
+          >
+            <span className={`icon-tile ${item.urgent ? "orange" : "blue"}`}>
+              {item.unread ? (
+                <IconMessageCircle size={21} />
+              ) : (
                 <IconBell size={21} />
-              </span>
-              <span>
-                <strong>{r.events.at(-1)?.label || "Cập nhật yêu cầu"}</strong>
-                <p>{r.title}</p>
-                <time>{dateLabel(r.events.at(-1)?.at || r.createdAt)}</time>
-              </span>
-              <IconChevronRight size={18} className="muted shrink" />
-            </button>
-          ))
+              )}
+            </span>
+            <span>
+              <strong>{item.title}</strong>
+              <p>{item.body}</p>
+              <time>{dateLabel(item.at)}</time>
+            </span>
+            {item.unread > 0 && (
+              <b aria-label={`${item.unread} tin chưa đọc`}>{item.unread}</b>
+            )}
+            <IconChevronRight size={18} className="muted shrink" />
+          </button>
+        ))
       ) : (
         <div className="empty-state">
           <IconBell />

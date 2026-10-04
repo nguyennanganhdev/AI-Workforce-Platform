@@ -1101,16 +1101,33 @@ h3 {
 }
 .notification-card > span:nth-child(2) {
   flex: 1;
+  min-width: 0;
+}
+.notification-card strong,
+.notification-card p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 .notification-card strong {
   font-size: 13px;
   font-weight: 600;
+  line-height: 1.5;
 }
 .notification-card p {
-  margin: 8px 0;
+  margin: 6px 0 8px;
   font-size: 12px;
   line-height: 1.6;
   color: var(--muted);
+}
+.notification-card b {
+  background: var(--blue);
+  color: white;
+  font-size: 11px;
+  padding: 3px 7px;
+  border-radius: 20px;
 }
 .notification-card time {
   font-size: 10px;

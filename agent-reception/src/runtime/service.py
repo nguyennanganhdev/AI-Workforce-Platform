@@ -252,12 +252,11 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
             if settings.agent == "loop":
                 try:
                     try:
-                        reply, code = await agent_turn(backend, request.app.state.client, request.app.state.model,
-                                                       settings.knowledge_url, context, message)
+                        # The request code stays internal: the resident follows the request from its card.
+                        reply, _ = await agent_turn(backend, request.app.state.client, request.app.state.model,
+                                                    settings.knowledge_url, context, message)
                     except Exception:  # noqa: BLE001 - the resident still gets an answer
-                        reply, code = FAILED_REPLY, None
-                    if code:
-                        reply += f"\nMã yêu cầu của bạn: {code}."
+                        reply = FAILED_REPLY
                     await backend.call(
                         "POST", f"/internal/reception/chats/{body.channel_id}/replies", context,
                         {"text": reply[:10000], "reply_to_id": body.message.id})
@@ -287,8 +286,6 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                 if code and state.get("handoff_reason") == "emergency":
                     # The graph keeps only guidance its policy check accepted as approved.
                     reply = EMERGENCY_REPLY + ("\n" + state["safety_reply"] if state.get("safety_reply") else "")
-                if code:
-                    reply += f"\nMã yêu cầu của bạn: {code}."
                 await backend.call(
                     "POST", f"/internal/reception/chats/{body.channel_id}/replies", context,
                     {"text": reply[:10000], "reply_to_id": body.message.id})

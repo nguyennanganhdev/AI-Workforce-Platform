@@ -4,6 +4,7 @@ import {
   ApiError,
   allPages,
   requestView,
+  withoutRequestCode,
   type Profile,
   type Chat,
   type Message,
@@ -67,7 +68,12 @@ export function useConnectedResident() {
       );
     }
     const selected = active.current;
-    setInteractions(pending.items);
+    setInteractions(
+      pending.items.map((i) => ({
+        ...i,
+        question: withoutRequestCode(i.question),
+      })),
+    );
     const path = location.hash.slice(2).split("/");
     const detailId = path[0] === "requests" ? path[1] : undefined;
     const detail = detailId
@@ -114,7 +120,7 @@ export function useConnectedResident() {
           m.sender_kind === "user"
             ? ("resident" as const)
             : ("assistant" as const),
-        text: m.body.text || "",
+        text: withoutRequestCode(m.body.text || ""),
       }));
     // Reception answers within the backend's three-minute dispatch limit, or the backend
     // stores a fallback reply. Older unanswered messages predate the agent.
@@ -141,13 +147,14 @@ export function useConnectedResident() {
         id: c.id,
         title: c.title || c.name,
         requestId: c.ticket_id,
-        requestCode: c.ticket_code,
         requestStatus: c.ticket_id
           ? statusLabels[
               requests.find((r) => r.id === c.ticket_id)?.status ?? "received"
             ]
           : undefined,
-        preview: c.last_message ?? undefined,
+        preview: c.last_message
+          ? withoutRequestCode(c.last_message)
+          : undefined,
         unread: c.id === selected && path[0] === "chat" ? 0 : c.unread_count,
         updatedAt: c.last_message_at || c.created_at,
         messages: c.id === selected ? chatMessages : [],
