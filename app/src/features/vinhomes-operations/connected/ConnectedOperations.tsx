@@ -6,6 +6,7 @@ import {
 } from "../layout/connected-operations-shell";
 import { WorkspaceFrame } from "../workspace/WorkspaceFrame";
 import { AgentReviews } from "./AgentReviews";
+import { SessionControls } from "@/features/vinhomes-operations/connected/SessionControls";
 import { ConnectedAccounts } from "./ConnectedAccounts";
 import "./connected.css";
 import { OnsiteConsent, QuoteForm } from "./RepairQuote";
@@ -638,6 +639,7 @@ export function ConnectedOperations() {
                           {session.session ? (
                             <>
                               <p>Supervisor: {session.session.supervisor_name}</p>
+                              <SessionControls teamId={session.session.id} />
                               {session.session.supervisor?.acceptedAt && (
                                 <p>
                                   Supervisor đã tiếp nhận lúc{" "}

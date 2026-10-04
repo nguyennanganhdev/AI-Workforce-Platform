@@ -25,6 +25,9 @@ const empty: ResidentState = {
   conversations: [],
   draft: null,
 };
+export type SupervisorInteraction = {ticket_id: string; pending_kind: 'information' | 'plan_approval'; ticket_version: number;
+  question: string; plan_id?: string; title?: string; proposal?: {steps: string[]; conditions: string; expected_duration: string;
+    cost?: {amount: number; currency: string} | null}};
 
 export function useConnectedResident() {
   const [state, setState] = useState<ResidentState>(empty);
@@ -32,6 +35,7 @@ export function useConnectedResident() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [interactions, setInteractions] = useState<SupervisorInteraction[]>([]);
   const [contact, setContact] = useState({ unit: "", category: "", phone: "" });
   const current = useRef(state);
   current.current = state;
@@ -47,11 +51,12 @@ export function useConnectedResident() {
   };
   const refresh = useCallback(async () => {
     const revision = ++generation.current;
-    const [p, chats, tickets, a] = await Promise.all([
+    const [p, chats, tickets, a, pending] = await Promise.all([
       api<Profile>("/resident/me"),
       allPages<Chat>("/resident/chats"),
       allPages<Ticket>("/resident/tickets"),
       api<{ items: Approval[] }>("/resident/approvals?limit=100"),
+      api<{items: SupervisorInteraction[]}>("/resident/supervisor-interactions"),
     ]);
     if (
       p.dataMode !== "database" &&
@@ -62,6 +67,7 @@ export function useConnectedResident() {
       );
     }
     const selected = active.current;
+    setInteractions(pending.items);
     const path = location.hash.slice(2).split("/");
     const detailId = path[0] === "requests" ? path[1] : undefined;
     const detail = detailId
@@ -241,6 +247,15 @@ export function useConnectedResident() {
     setContact,
     setError,
     refresh: () => run(async () => {}, false),
+    interaction: (id: string) => interactions.find(i => i.ticket_id === id),
+    respondSupervisor: (item: SupervisorInteraction, decision: 'information' | 'approve' | 'reject' | 'request_changes', note: string) =>
+      run(async () => {
+        const body = {decision, note: note.trim(), ticket_version: item.ticket_version};
+        const signature = `${item.ticket_id}:supervisor:${JSON.stringify(body)}`;
+        await api(`/resident/tickets/${item.ticket_id}/supervisor-response`, {method:'POST',
+          body: JSON.stringify({...body, request_id: keyFor(signature)})});
+        keys.current.delete(signature);
+      }),
     newChat: () =>
       run(async () => {
         await create();

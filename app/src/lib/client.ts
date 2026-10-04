@@ -26,6 +26,7 @@ export type ClientOptions = {
   fallback?: string;
   /** For the calls a Bot makes on a person's behalf, which are abandoned when the turn is. */
   signal?: AbortSignal;
+  headers?: Record<string, string>;
 };
 
 /** Every request in this app is authenticated, and every one of them is JSON or nothing. */
@@ -33,10 +34,7 @@ async function send(path: string, options: ClientOptions): Promise<Response> {
   return fetch(path, {
     method: options.method,
     credentials: "include",
-    headers:
-      options.body === undefined
-        ? undefined
-        : { "content-type": "application/json" },
+    headers: { ...options.headers, ...(options.body === undefined ? {} : { "content-type": "application/json" }) },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     ...(options.signal ? { signal: options.signal } : {}),
   });
@@ -91,7 +89,7 @@ export async function client<T>(
      */
     const message = await response
       .json()
-      .then((body: { error?: string }) => body.error)
+      .then((body: { error?: string; detail?: unknown }) => body.error ?? (typeof body.detail === "string" ? body.detail : undefined))
       .catch(() => undefined);
     throw new Error(message ?? options.fallback ?? "That request failed.");
   }

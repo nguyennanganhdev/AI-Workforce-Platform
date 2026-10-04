@@ -22,6 +22,7 @@ import {
 } from "../services/conversations";
 
 import { RequestDetail, Requests } from "../features/requests/Requests";
+import { SupervisorResponse } from "../features/requests/SupervisorResponse";
 import {
   Amenities,
   Building,
@@ -526,7 +527,9 @@ export function App({ live }: { live?: ConnectedResident }) {
                         )
                   }
                 />
-                {live?.consent(detail.id) && (
+                {live?.interaction(detail.id) && <SupervisorResponse key={`${detail.id}:${live.interaction(detail.id)!.ticket_version}`}
+                  item={live.interaction(detail.id)!} busy={live.busy} onRespond={(decision, note) => live.respondSupervisor(live.interaction(detail.id)!, decision, note)} />}
+                {live?.consent(detail.id) && !live.interaction(detail.id) && (
                   <section className="white-card resident-consent">
                     <h3>Phương án sửa chữa cần bạn xác nhận</h3>
                     <p>{live.consent(detail.id)?.request_detail.note}</p>

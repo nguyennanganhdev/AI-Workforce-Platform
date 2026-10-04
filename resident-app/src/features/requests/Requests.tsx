@@ -244,7 +244,7 @@ export function RequestDetail({
         </section>
       )}
       <p className="footnote">
-        Dữ liệu trải nghiệm trên thiết bị của bạn. Chưa kết nối Ban quản lý.
+        {connected ? "Thông tin và tiến độ được cập nhật từ Ban quản lý." : "Dữ liệu trải nghiệm trên thiết bị của bạn. Chưa kết nối Ban quản lý."}
       </p>
     </div>
   );
