@@ -93,6 +93,8 @@ Chi tiết: `docs/teams/chien/SUPERVISOR_SESSION_V2_M0_M1_2026-10-03.md`.
   (`docs/teams/chien/TOOL_GATEWAY_VA_KHAO_SAT_NHANH_2026-10-04.md`); tool ghi chưa mở
 - [x] M2c BQL hỏi thêm agent trong phiên của ticket; màn nhóm BQL liệt kê các phiên của phòng
 - [x] M2d Admin duyệt và thu hồi agent trên Operations; agent chuyên môn chạy `gpt-5.5`
-- [ ] M3 Hỏi lại cư dân, phương án, hai lần duyệt, hoàn tất, hủy
+- [x] M3a Supervisor đề xuất phương án (tác giả là agent), BQL duyệt hoặc từ chối trên Operations
+  (`docs/teams/chien/SUPERVISOR_PHUONG_AN_M3A_2026-10-04.md`)
+- [ ] M3b Quyết định của BQL về tới Supervisor, cư dân duyệt qua Lễ tân, hỏi lại cư dân, hoàn tất, hủy
 - [ ] M4 Pause, resume, stop và màn quản lý session trên Operations
 - [ ] M5 Nghiệm thu lỗi và triển khai giới hạn
