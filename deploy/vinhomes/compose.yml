@@ -53,6 +53,10 @@ services:
       RECEPTION_MODEL: ${RECEPTION_MODEL:-gpt-5.4-mini}
       RECEPTION_AGENT: ${RECEPTION_AGENT:-graph}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
+      # Another vendor for this role: its provider name, its own key, and an address only for `custom`.
+      RECEPTION_MODEL_PROVIDER: ${RECEPTION_MODEL_PROVIDER:-}
+      RECEPTION_MODEL_API_KEY: ${RECEPTION_MODEL_API_KEY:-}
+      RECEPTION_MODEL_BASE_URL: ${RECEPTION_MODEL_BASE_URL:-}
     volumes:
       - reception-state:/var/lib/reception
     depends_on:
@@ -92,6 +96,10 @@ services:
       COORDINATION_TOKEN_LIMIT: ${COORDINATION_TOKEN_LIMIT:-400000}
       MANAGED_AGENT_TOKEN: ${MANAGED_AGENT_TOKEN:?OpenBot token required}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
+      COORDINATION_MODEL_PROVIDER: ${COORDINATION_MODEL_PROVIDER:-}
+      COORDINATION_MODEL_API_KEY: ${COORDINATION_MODEL_API_KEY:-}
+      COORDINATION_MODEL_BASE_URL: ${COORDINATION_MODEL_BASE_URL:-}
+      COORDINATION_MODEL_ANSWERS_AS: ${COORDINATION_MODEL_ANSWERS_AS:-}
     depends_on:
       api:
         condition: service_healthy
@@ -117,6 +125,9 @@ services:
       RECEPTION_API_URL: http://api:8000
       KNOWLEDGE_INTERNAL_HTTP_HOST: api
       OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
+      # The embedding model's own key and address, when OPENAI_API_KEY is not the one that made the vectors.
+      KNOWLEDGE_EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      KNOWLEDGE_EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
     depends_on:
       api:
         condition: service_healthy
@@ -171,7 +182,9 @@ services:
     restart: unless-stopped
     environment:
       BOT_MODEL: ${SPECIALIST_MODEL:-gpt-5.5}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
+      # The specialists' own vendor: set the key and the address together, or neither for OpenAI.
+      OPENAI_API_KEY: ${SPECIALIST_MODEL_API_KEY:-${OPENAI_API_KEY:?model key required}}
+      OPENAI_BASE_URL: ${SPECIALIST_MODEL_BASE_URL:-}
       MANAGED_AGENT_TOKEN: ${MANAGED_AGENT_TOKEN:?OpenBot token required}
     network_mode: service:agents-net
     healthcheck:

@@ -61,6 +61,27 @@ Nó in `migrations-applied`, `grants-applied` kèm tên hai role (lấy từ ch�
 tool mà cổng không còn phục vụ. Agent chỉ được cấp tool đã đăng ký, nên chạy lại cả hai job mỗi lần lên bản mới,
 trước `up -d`.
 
+### Model theo vai trò
+
+Mỗi vai trò có model, nhà cung cấp, khóa và địa chỉ riêng. Để trống thì mọi vai trò dùng OpenAI với `OPENAI_API_KEY`.
+
+| Vai trò | Model | Nhà cung cấp và khóa |
+|---|---|---|
+| Lễ tân | `RECEPTION_MODEL` | `RECEPTION_MODEL_PROVIDER`, `RECEPTION_MODEL_API_KEY`, `RECEPTION_MODEL_BASE_URL` |
+| Supervisor | `COORDINATION_MODEL` | `COORDINATION_MODEL_PROVIDER`, `COORDINATION_MODEL_API_KEY`, `COORDINATION_MODEL_BASE_URL` |
+| Agent chuyên môn | `SPECIALIST_MODEL` | `SPECIALIST_MODEL_API_KEY` và `SPECIALIST_MODEL_BASE_URL` (đặt cả hai) |
+| Factory | `FACTORY_MODEL` | dùng `OPENAI_API_KEY` |
+| Embedding tri thức | cố định theo kho đã nhập | `EMBEDDING_API_KEY`, `EMBEDDING_BASE_URL` |
+
+`PROVIDER` nhận `openai`, `google`, `deepseek`, `groq`, `anthropic` hoặc `custom`; với `custom` phải đặt `BASE_URL`. Các
+nhà cung cấp này được gọi qua giao thức chat-completions tương thích OpenAI. `OPENAI_API_KEY` chỉ được gửi tới OpenAI:
+vai trò dùng nhà cung cấp khác mà thiếu khóa riêng thì dịch vụ không khởi động. Supervisor từ chối câu trả lời ghi tên
+model khác tên đã cấu hình; nếu nhà cung cấp trả tên khác (ví dụ alias), khai tên đó ở `COORDINATION_MODEL_ANSWERS_AS`.
+
+Giới hạn đã biết: `anthropic` đi qua lớp tương thích của Anthropic, lớp này bỏ qua yêu cầu trả JSON nên chỉ dùng để
+thử. Chưa vai trò nào được chạy thử với khóa thật của Google, DeepSeek, Groq hay Anthropic; phần đã kiểm là dịch vụ
+gửi đúng khóa, đúng địa chỉ và đúng tham số cho từng nhà cung cấp. Quản trị viên xem model đang chạy ở màn "Model".
+
 Kết nối ngoài cho agent của BQL (máy chủ MCP theo địa chỉ https, do quản trị viên thêm ở màn "Kết nối ngoài"):
 `technical-tools` giữ khóa `CONNECTIONS_KEY` để mã hóa khóa truy cập của từng kết nối và là nơi duy nhất gọi ra máy chủ
 MCP, nên container này cần đi được ra internet tới các địa chỉ đó. Để trống `CONNECTIONS_KEY` thì màn hình báo chưa

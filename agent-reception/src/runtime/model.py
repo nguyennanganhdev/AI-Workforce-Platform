@@ -5,6 +5,7 @@ Every Reception prompt asks for one JSON object, so the request pins JSON output
 
 from __future__ import annotations
 
+import os
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from types import SimpleNamespace
@@ -29,6 +30,36 @@ def _count(payload: dict) -> None:
         usage["output_tokens"] += int(reported.get("completion_tokens") or 0)
         usage["model_calls"] += 1
 
+# Providers that speak the chat-completions API this runtime sends. Anthropic's own compatibility
+# endpoint ignores `response_format`, so a JSON answer is not guaranteed there: for trials only.
+PROVIDERS = {
+    "openai": "https://api.openai.com/v1",
+    "google": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "deepseek": "https://api.deepseek.com",
+    "groq": "https://api.groq.com/openai/v1",
+    "anthropic": "https://api.anthropic.com/v1",
+}
+
+
+def model_endpoint(role: str, env=None) -> tuple[str, str, str]:
+    """The provider, base URL and key of one role (RECEPTION, COORDINATION, ...).
+
+    `<ROLE>_MODEL_PROVIDER` names the provider (default `openai`, or `custom` with its own URL),
+    `<ROLE>_MODEL_API_KEY` its key and `<ROLE>_MODEL_BASE_URL` another address. The shared
+    OPENAI_API_KEY / OPENAI_BASE_URL are only used for OpenAI: one vendor's key is never sent to
+    another vendor's endpoint.
+    """
+    env = os.environ if env is None else env
+    get = lambda name: (env.get(name) or "").strip()
+    provider = get(f"{role}_MODEL_PROVIDER").lower() or "openai"
+    if provider not in PROVIDERS and provider != "custom":
+        raise ValueError(f"{role}_MODEL_PROVIDER must be one of {', '.join(PROVIDERS)} or custom")
+    shared = provider == "openai"
+    base = get(f"{role}_MODEL_BASE_URL") or (get("OPENAI_BASE_URL") if shared else "") or PROVIDERS.get(provider, "")
+    if not base.startswith(("http://", "https://")):
+        raise ValueError(f"{role}_MODEL_BASE_URL is required with {role}_MODEL_PROVIDER=custom")
+    return provider, base, get(f"{role}_MODEL_API_KEY") or (get("OPENAI_API_KEY") if shared else "")
+
 
 @dataclass(frozen=True)
 class ModelConfig:
@@ -36,6 +67,7 @@ class ModelConfig:
     api_key: str = field(repr=False)
     base_url: str = "https://api.openai.com/v1"
     timeout_seconds: float = 40.0
+    provider: str = "openai"
 
     def __post_init__(self):
         if not self.model.strip() or not self.api_key.strip():

@@ -23,6 +23,7 @@ from supervisor.models import (AuthorityView, CatalogEntry, PauseDecision, PlanD
                                SupervisorError, VerifiedReception)
 
 from .backend import Backend, Refused
+from .models import output_limit
 
 NOT_BOUND = "dependency_unavailable:"
 log = logging.getLogger("coordination.vinhomes")
@@ -397,9 +398,11 @@ class PlannerModel:
 
     def __init__(self, budget, client: httpx.AsyncClient, *, model: str | None, base_url: str,
                  key_env: str = "OPENAI_API_KEY", output_tokens: int = 2048, timeout: float = 60,
-                 instruction_loader=None):
+                 instruction_loader=None, key: str | None = None, provider: str = "openai", answers_as: str | None = None):
         self.budget, self.client, self.model, self.url = budget, client, model, base_url.rstrip("/") + "/chat/completions"
         self.key_env, self.output_tokens, self.timeout = key_env, output_tokens, timeout
+        # The role's own key and provider (models.py); `key_env` remains for callers that pass none.
+        self.key, self.provider, self.answers_as = key, provider, answers_as
         self.instruction_loader = instruction_loader
 
     @staticmethod
@@ -431,7 +434,7 @@ class PlannerModel:
         if not prompt["catalog"]:
             # Nobody is published for this ticket's category: management handles it by hand.
             return self._pause("no_specialist_available")
-        key = os.environ.get(self.key_env)
+        key = self.key or os.environ.get(self.key_env)
         if not self.model or not key:
             return self._pause("planner_model_not_configured")
         room = prompt["state"]["room"]
@@ -456,13 +459,13 @@ class PlannerModel:
         try:
             response = await self.client.post(self.url, headers={"Authorization": "Bearer " + key}, timeout=self.timeout,
                                               json={"model": self.model, "messages": messages,
-                                                    "max_completion_tokens": self.output_tokens,
+                                                    **output_limit(self.provider, self.output_tokens),
                                                     "response_format": {"type": "json_object"}})
             if response.status_code != 200:
                 raise AdapterError("model_provider_error")
             data = response.json()
             # A dated snapshot of the configured model is that model; anything else is a substitution.
-            if not str(data.get("model", "")).startswith(self.model):
+            if not str(data.get("model", "")).startswith(self.answers_as or self.model):
                 raise AdapterError("effective_model_mismatch")
             text = data["choices"][0]["message"]["content"]
             await budget.reconcile(call, tokens=min(data["usage"]["total_tokens"],

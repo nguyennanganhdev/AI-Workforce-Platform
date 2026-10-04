@@ -50,6 +50,7 @@ from supervisor.room_bridge import RoomBridge
 from supervisor.service import SupervisorService
 
 from .backend import Backend, Refused
+from .models import model_endpoint
 from .ports import (Authority, BackendActions, BackendEvents, OpenBot, PlannerModel, Plans, Reception, Releases, Resolver,
                     Specialists, ToolGateway, UnboundInvocation)
 
@@ -76,6 +77,10 @@ class Settings:
     # Supervisor accepts a ticket and hands it to management.
     model: str | None = None
     model_base_url: str = "https://api.openai.com/v1"
+    model_provider: str = "openai"
+    model_key: str = field(default="", repr=False)
+    # The name the provider answers with, when it is not the configured name or a dated form of it.
+    model_answers_as: str | None = None
     openbot: OpenBot | None = None
     token_limit: int = 400_000  # per session, in the ledger's conservative units
     # The technical tool host for specialists (server/src/technical-api/serve.ts). Optional:
@@ -94,14 +99,17 @@ class Settings:
         bot = os.getenv("COORDINATION_OPENBOT_URL", "").strip()
         if bool(model) != bool(bot):
             raise ValueError("COORDINATION_MODEL and COORDINATION_OPENBOT_URL are set together or not at all")
-        if model and not (os.getenv("OPENAI_API_KEY") and os.getenv("MANAGED_AGENT_TOKEN")):
-            raise ValueError("OPENAI_API_KEY and MANAGED_AGENT_TOKEN are required with COORDINATION_MODEL")
+        provider, base_url, key = model_endpoint("COORDINATION")
+        if model and not (key and os.getenv("MANAGED_AGENT_TOKEN")):
+            raise ValueError("The planner's key (COORDINATION_MODEL_API_KEY, or OPENAI_API_KEY for OpenAI) and "
+                             "MANAGED_AGENT_TOKEN are required with COORDINATION_MODEL")
         tools = os.getenv("COORDINATION_TOOLS_URL", "").strip() or None
         tools_token = os.getenv("COORDINATION_TOOLS_TOKEN", "").strip()
         if tools and len(tools_token) < 32:
             raise ValueError("COORDINATION_TOOLS_TOKEN (32+ characters) is required with COORDINATION_TOOLS_URL")
         return cls(backend_url=url, service_token=token, model=model,
-                   model_base_url=os.getenv("COORDINATION_MODEL_BASE_URL", "").strip() or cls.model_base_url,
+                   model_base_url=base_url, model_provider=provider, model_key=key,
+                   model_answers_as=os.getenv("COORDINATION_MODEL_ANSWERS_AS", "").strip() or None,
                    openbot=OpenBot(bot, os.getenv("COORDINATION_OPENBOT_MODEL", "").strip() or model) if bot else None,
                    token_limit=int(os.getenv("COORDINATION_TOKEN_LIMIT", "") or cls.token_limit),
                    tools_url=tools, tools_token=tools_token,
@@ -167,6 +175,9 @@ class Runtime:
             return (await backend.view(self.teams[context.scope()])).get('supervisor_instructions', '')
         model = PlannerModel(budget, client, model=settings.model if settings else None,
                              base_url=settings.model_base_url if settings else Settings.model_base_url,
+                             key=settings.model_key if settings else None,
+                             provider=settings.model_provider if settings else "openai",
+                             answers_as=settings.model_answers_as if settings else None,
                              instruction_loader=instructions)
         self.rooms = RoomService(Resolver(backend, self.teams), specialists, store)
         self.service = SupervisorService(
@@ -559,7 +570,9 @@ def create_app(settings: Settings | None = None, *, transport: httpx.AsyncBaseTr
                 await asyncio.wait_for(task, LEASE_SECONDS)
 
     async def health(request):
-        return JSONResponse({"status": "ok"})
+        # Which models work here, for the administrator's screen. Never a key or an address.
+        return JSONResponse({"status": "ok", "model": settings.model, "provider": settings.model_provider,
+                             "specialist_model": settings.openbot.model if settings.openbot else None})
 
     async def ready(request):
         try:

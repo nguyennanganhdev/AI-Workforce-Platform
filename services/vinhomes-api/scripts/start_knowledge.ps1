@@ -1,6 +1,7 @@
 # Starts the knowledge search service on 127.0.0.1:8787 for the local demo, or with -Connected
 # for the password-login deployment. Settings: knowledge.env in .local-v3-faker or
-# .local-connected; the embedding key comes from agent-reception/.env.
+# .local-connected; the embedding key comes from agent-reception/.env (OPENAI_API_KEY), or from
+# KNOWLEDGE_EMBEDDING_API_KEY / KNOWLEDGE_EMBEDDING_BASE_URL when the chat model uses another vendor.
 param([switch]$Connected)
 $ErrorActionPreference = 'Stop'
 $serviceRoot = Split-Path $PSScriptRoot -Parent

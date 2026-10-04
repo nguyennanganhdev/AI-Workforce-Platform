@@ -28,7 +28,7 @@ from ..graph import (
 from ..persistence import open_sqlite_checkpointer
 from .backend import BackendClient, BackendOperations, DraftStore, RequestPolicy
 from .knowledge import KnowledgeSearch
-from .model import ChatCompletionsModel, ModelConfig, turn_usage
+from .model import ChatCompletionsModel, ModelConfig, model_endpoint, turn_usage
 from ..agent.loop import EMERGENCY_REPLY as AGENT_EMERGENCY_REPLY
 from ..agent.loop import run_agent
 from ..agent.prompt import system_prompt
@@ -67,6 +67,7 @@ class Settings:
         backend = os.getenv("RECEPTION_BACKEND_URL", "").strip()
         if len(token) < 32 or not backend.startswith(("http://", "https://")):
             raise ValueError("RECEPTION_SERVICE_TOKEN (32+ characters) and RECEPTION_BACKEND_URL are required")
+        provider, base_url, api_key = model_endpoint("RECEPTION")
         return cls(
             backend_url=backend,
             service_token=token,
@@ -75,8 +76,9 @@ class Settings:
             agent="loop" if os.getenv("RECEPTION_AGENT", "").strip() == "loop" else "graph",
             model=ModelConfig(
                 model=os.getenv("RECEPTION_MODEL", "").strip(),
-                api_key=os.getenv("OPENAI_API_KEY", "").strip(),
-                base_url=os.getenv("OPENAI_BASE_URL", "").strip() or "https://api.openai.com/v1",
+                api_key=api_key,
+                base_url=base_url,
+                provider=provider,
             ),
         )
 
@@ -213,7 +215,8 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, str]:
-        return {"status": "ok"}
+        # Which model answers residents, for the administrator's screen. Never the key or the address.
+        return {"status": "ok", "model": settings.model.model, "provider": settings.model.provider}
 
     def backend_only(request: Request) -> None:
         bearer = request.headers.get("authorization", "")

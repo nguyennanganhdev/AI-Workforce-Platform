@@ -58,12 +58,16 @@ export async function knowledgeRuntimeFromEnv(env: Record<string, string | undef
   const database = createDatabase(required("KNOWLEDGE_DATABASE_URL"), { tenantId });
   const roles = await database.execute(sql`SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user`) as unknown as { rolsuper: boolean; rolbypassrls: boolean }[];
   if (roles[0]?.rolsuper !== false || roles[0]?.rolbypassrls !== false) throw new Error("Knowledge runtime requires NOSUPERUSER NOBYPASSRLS");
+  // Embeddings keep their own key and address. Reception's chat model may move to another vendor;
+  // the vectors stored here were made by this model and must be queried with it.
+  const embeddingKey = env.KNOWLEDGE_EMBEDDING_API_KEY?.trim();
   return {
     authorize: createBackendKnowledgeAuthorization({ baseUrl: required("RECEPTION_API_URL"), tenantId, knowledgeBaseId,
       internalHttpHost: env.KNOWLEDGE_INTERNAL_HTTP_HOST }),
     retrieval: {
       store: createRetrievalStore(database),
-      embedder: createOpenAIEmbedder({ apiKey: required("OPENAI_API_KEY"), baseUrl: env.OPENAI_BASE_URL,
+      embedder: createOpenAIEmbedder({ apiKey: embeddingKey || required("OPENAI_API_KEY"),
+        baseUrl: env.KNOWLEDGE_EMBEDDING_BASE_URL?.trim() || (embeddingKey ? undefined : env.OPENAI_BASE_URL),
         model: z.enum(SUPPORTED_EMBEDDING_MODELS).parse(env.KNOWLEDGE_EMBEDDING_MODEL ?? "text-embedding-3-large") }),
     },
   };
