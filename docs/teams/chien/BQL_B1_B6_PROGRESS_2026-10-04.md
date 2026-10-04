@@ -63,6 +63,43 @@ hết xung đột. Ghi nhận từ lần merge:
 - Test server cần cơ sở dữ liệu (`TEST_DATABASE_URL`) chưa chạy lại sau merge; các test kỹ thuật, tri thức, Factory,
   giao diện và typecheck đã chạy lại và đạt.
 
+## Luồng trọn vẹn và phần quản trị (04/10, đêm; chạy local)
+
+Chạy bằng trình duyệt với ba tài khoản thật (cư dân, BQL, kỹ thuật viên) và model thật, không dùng Docker:
+
+- **Một yêu cầu đi hết vòng đời:** cư dân gửi trong chat → Lễ tân tạo ticket → Supervisor mời agent, hỏi lại cư dân
+  hai lần, lập phương án → BQL duyệt → cư dân đồng ý → đúng 1 phiếu thi công → BQL phân công → kỹ thuật viên nhận
+  việc, tới nơi, gửi báo giá → cư dân đồng ý báo giá → thi công, ảnh trước/sau, gửi kết quả → BQL nghiệm thu → cư dân
+  xác nhận → BQL duyệt đóng. Kết quả: ticket `closed`, phiên `completed` (ticket `VH-3B8AB506EABE`, 19 bước).
+- **Phòng nhóm BQL** (`/operations/team`) là một màn: agent của nhóm, danh sách phiên kèm nút điều khiển, chat nhóm
+  có `@agent`, bảng công việc. Mỗi phiên nay ghi rõ đang chờ ai (BQL duyệt phương án, cư dân trả lời, cư dân đồng ý,
+  phân công và thi công) và mã ticket mở thẳng chi tiết ticket.
+- **Admin gắn BQL vào đơn vị quản lý:** màn tài khoản có ô "Đơn vị quản lý" cho vai trò Ban quản lý. Tài khoản tạo ra
+  chỉ có quyền trong đơn vị đó và tự vào phòng nhóm của đơn vị; đổi vai trò hoặc khóa thì rời phòng. Không chọn đơn vị
+  thì giữ quyền toàn khu như cũ. Kiểm bằng trình duyệt 6/6 bước và test đăng nhập thật 4/4.
+- **Admin ghi đè:** quản trị viên đọc được mọi phòng quản lý và thu hồi agent của bất kỳ phòng nào (test API và test
+  đăng nhập thật đã cập nhật theo hành vi này).
+- Sửa nhỏ: kỹ thuật viên mở ticket không còn thấy lỗi 404 của nút điều khiển phiên (nút chỉ dành cho BQL).
+
+Giới hạn ghi nhận:
+
+- Sau khi BQL đóng phiên, checkpoint của Supervisor vẫn ở `execution_ready`; trạng thái đúng nằm ở backend
+  (`completed`) và đó là cái giao diện hiển thị. Phần phân công, thi công, QC do BQL và kỹ thuật viên làm trên
+  Operations, Supervisor không điều phối.
+- Cơ sở dữ liệu local chỉ có một kỹ thuật viên; khi người này đang bận một phiếu thì ô "Nhân viên nhận việc" trống.
+  Màn admin chưa tạo được hồ sơ nhân viên (chuyên môn, ca làm) cho tài khoản nhân viên mới.
+- **Báo cáo (B6) chưa đồng bộ được với Team Hoàng.** Bản trên `develop` không phải bản cập nhật của bản đang nhúng:
+  bộ tool khác hẳn (`filter_report_scope`, `get_repair_bill_summary`, `get_ticket_frequency_summary`,
+  `get_employee_star_summary` thay cho 8 tool cũ như `get_incident_frequency_summary`) và cách gọi backend cũng
+  khác. Chép đè làm cổng tool không khởi động. Cần Team Hoàng chốt bộ tool nào là chuẩn; khi đổi phải viết lại lớp
+  nối trong `v3_tool_gateway.py`, đăng ký lại catalogue và phát hành lại agent báo cáo vì tên tool đã cấp thay đổi.
+
+- **Test server cần cơ sở dữ liệu:** chạy trên PostgreSQL riêng đã migrate thì không xong trong 9 phút. Các test tích
+  hợp gốc của OpenBot (`agent-profile-store`, `agent-handoff`, `agent-factory*`) chèn vào `agents`/`mcp_servers` mà
+  không có `tenant_id`, trong khi schema V2 bắt buộc cột này; mỗi hook lỗi chờ 5 giây. File test và migration gốc
+  giống hệt trên `develop`, nên đây là lệch có sẵn giữa test gốc và schema V2, không do nhánh này. 3921 test không
+  cần bảng dữ liệu vẫn đạt.
+
 ## Thứ tự hoàn thiện tiếp
 
 1. Kiểm UI các nút điều khiển phiên; vòng agent v1→v2, BQL từ chối/thu hồi và admin ghi đè. Hoàn thiện cấp scope/workspace BQL trên màn admin.
