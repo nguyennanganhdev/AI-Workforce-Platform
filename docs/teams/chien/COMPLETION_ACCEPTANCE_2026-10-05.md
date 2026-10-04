@@ -47,3 +47,5 @@ Các dịch vụ vẫn chạy để kiểm nghiệp vụ. Không gọi bản nà
 [Snapshot 38 remote](BRANCH_AUDIT_2026-10-05.md). Current `dev_teamChien_HuyDo`; head PR #31 `dev_TeamChien`, base `develop`.
 Trước commit hoàn thiện đã chứa đủ `origin/develop`, 62 commit riêng; local develop cũ được giữ.
 CI/merge #31: đang kiểm tra để phát hành, sẽ cập nhật sau checks GitHub.
+Zizmor phát hiện ba pin Rust action cũ không còn trong lịch sử repo upstream; đã chuyển tới SHA trong `master`,
+giữ input `toolchain: stable` theo [hướng dẫn chính thức](https://github.com/dtolnay/rust-toolchain#choice-of-full-length-commit-sha).
