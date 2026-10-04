@@ -75,7 +75,6 @@ export function ConnectedOperationsShell({
   useEffect(() => {
     document.title = `${notices.length ? `(${notices.length}) ` : ""}Vinhomes · Quản lý vận hành`;
   }, [notices.length]);
-  const staffPages = ["my-tasks", "work-orders", "completed-tasks"];
   return (
     <div
       lang="vi"
@@ -95,7 +94,9 @@ export function ConnectedOperationsShell({
         operationItems={management
           ? managementNav.map(({page, icon}) => ({id: page as MenuId, label: connectedPages[page], to: `/operations/${page}`, icon, section: 'OPERATIONS' as const,
               badgeCount: page === 'team' && notices.length ? notices.length : undefined}))
-          : staffPages.map(page => ({id: page as MenuId, label: connectedPages[page], to: `/operations/${page}`, section: 'OPERATIONS' as const}))}
+          // A technician has one list: what is open and, on its second tab, what is done.
+          : [{id: 'my-tasks' as MenuId, label: connectedPages['my-tasks'], to: '/operations/my-tasks', section: 'OPERATIONS' as const,
+              icon: <IconChecklist className="size-4" stroke={1.75} />, badgeCount: notices.length || undefined}]}
         managementItems={administrator ? adminNav.map(({page, icon}) => ({id: page as MenuId, label: connectedPages[page], to: `/operations/${page}`, icon, section: 'MANAGEMENT' as const})) : []} />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <OperationsHeaderView menuOpen={open} onToggleMenu={() => setOpen(!open)}

@@ -194,7 +194,7 @@ export function WorkListView({ rows, manager, history, onHistory, onOpen, error 
       </span>
       <strong>{r.title}</strong>
       <p>
-        {r.ticketId} · {r.place}
+        {[r.ticketId, r.place].filter(Boolean).join(" · ")}
       </p>
       <small>
         {r.assignee} · {r.status}
