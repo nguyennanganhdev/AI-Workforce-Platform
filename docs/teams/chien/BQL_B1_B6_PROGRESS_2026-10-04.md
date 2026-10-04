@@ -247,6 +247,28 @@ Chưa kiểm: đánh giá, phát hành và câu trả lời của agent dùng c�
 
 Kế hoạch và việc còn lại (kết nối, MinIO/S3, giao diện nhân viên và quản trị viên): `tasks/todo.md`.
 
+## Model theo vai trò, giao diện quản trị viên và lưu ảnh trên MinIO/S3 (05/10; chạy local và container)
+
+- **Model theo vai trò.** Lễ tân, Supervisor, agent chuyên môn và embedding có nhà cung cấp, khóa, địa chỉ riêng
+  (`openai`, `google`, `deepseek`, `groq`, `anthropic`, `custom`). Khóa OpenAI chỉ gửi tới OpenAI; vai trò dùng nhà cung
+  cấp khác mà thiếu khóa riêng thì không khởi động. Chưa chạy với khóa thật của nhà cung cấp nào ngoài OpenAI.
+- **Quản trị viên** có menu riêng: Tài khoản (làm lại), Đơn vị quản lý, Kết nối ngoài, Model, Nhật ký. Ba màn sau chỉ đọc.
+- **Ảnh và tệp** lưu trong bucket riêng tư trên MinIO/S3 khi đặt `VINHOMES_API_S3_ENDPOINT`; dùng nguyên các bảng
+  `storage_locations` và `file_objects` đã có. Ảnh vẫn đi qua API. Job `storage` chuyển ảnh cũ từ đĩa sang bucket.
+  Image `minio/minio` không còn kéo được từ Docker Hub; compose dùng `cgr.dev/chainguard/minio`.
+- **Agent báo cáo:** 4 tool đã đóng gói; agent là dữ liệu của phòng nhóm, bản triển khai mới phải tạo qua trang Agent
+  (cấu hình ở `docs/teams/hoang/agent/`). Agent không được mời vào phiên vì không khai danh mục.
+
+Đã kiểm: test backend 76 đạt, 7 bỏ qua (có test admin và 3 test lưu trữ chạy với MinIO thật); test Supervisor 36, Lễ tân
+18; test giao diện quản trị 3, kết nối 1; typecheck app và server. Trong container trên bản sao cơ sở dữ liệu: build lại
+9 image, 9 dịch vụ `healthy` với Lễ tân đặt `deepseek` và Supervisor đặt `google`, màn Model báo đúng; job `storage`
+chuyển 6 ảnh cũ sang bucket và chạy lại không chuyển gì thêm; ảnh cũ tải được, ảnh mới tải lên rồi tải về đúng nội dung;
+năm màn quản trị mở được.
+
+Chưa kiểm: mọi bước cần model (khóa hiện tại bị từ chối 401), nên chưa có hội thoại thật với Gemini, DeepSeek hay
+Claude và chưa nghiệm thu agent dùng công cụ MCP. Chưa thử ảnh hội thoại và ảnh cư dân trên bucket qua giao diện (đã
+kiểm lớp lưu trữ bằng test).
+
 ## Thứ tự hoàn thiện tiếp
 
 1. Kiểm UI các nút điều khiển phiên; vòng agent v1→v2, BQL từ chối/thu hồi và admin ghi đè. Hoàn thiện cấp scope/workspace BQL trên màn admin.

@@ -136,21 +136,59 @@ quyền và ghi audit.
       diện. Quản trị viên cấu hình nền tảng (tài khoản, kết nối ngoài) và vẫn thu hồi được agent ở trang Agent.
 - [ ] Chạy lại vòng tạo → đánh giá → phát hành trên giao diện khi khóa model dùng được.
 
-## Lưu ảnh và tệp trên MinIO/S3 (chủ dự án nêu 04/10/2026, đêm; chưa làm)
+## Lưu ảnh và tệp trên MinIO/S3 (làm ngày 05/10/2026)
 
-Hiện trạng: cơ sở dữ liệu đã có đủ bảng cho object storage: `storage_locations` (provider, bucket, prefix),
-`file_objects` (`object_key`, `version_id`, checksum, trạng thái quét), `files`, `file_uploads` (phiên upload),
-`ticket_files`. Code hiện chỉ có provider `local_fs`: 4 module của API đọc/ghi thẳng ra đĩa (`v3_files.py`,
-`resident_photos.py`, `v3_conversation_images.py`, `v3_resident_support.py`); container lưu vào volume `api-files`.
+Bảng đã có sẵn và được dùng nguyên: `storage_locations` (provider, bucket), `file_objects` (`object_key`), `files`,
+`ticket_files`. Không thêm bảng hay cột.
 
-- [ ] M1 Một lớp lưu trữ chung (ghi, đọc, xóa theo `storage_locations.provider`) thay cho 4 chỗ ghi đĩa; giữ `local_fs`.
-- [ ] M2 Provider `s3` cho MinIO/S3 (thêm thư viện S3 vào image API); khóa truy cập lấy từ biến môi trường.
-- [ ] M3 Dịch vụ MinIO trong compose, tạo bucket riêng tư, dòng `storage_locations` provider `s3`.
-- [ ] M4 Bước đầu ảnh vẫn đi qua API (kiểm quyền như hiện nay, hai frontend không đổi). Upload thẳng lên MinIO bằng
-      phiên upload (`file_uploads`) theo tài liệu luồng mục tiêu là bước sau.
-- [ ] M5 Chuyển ảnh đang nằm trong volume/đĩa sang bucket; test tải lên, xem, quyền, và mất kết nối MinIO.
+- [x] M1 Một lớp lưu trữ chung (`vinhomes_api/storage.py`): 5 module đọc/ghi ảnh dùng chung, lưu đĩa vẫn chạy như cũ.
+- [x] M2 Provider `s3` cho MinIO/S3 (thư viện `minio`); bật bằng `VINHOMES_API_S3_ENDPOINT`, khóa lấy từ biến môi trường.
+- [x] M3 Compose có dịch vụ `minio`, bucket riêng tư, job `storage` tạo bucket và ghi nhận nơi lưu.
+- [x] M4 Ảnh vẫn đi qua API (kiểm quyền như cũ, hai frontend không đổi).
+- [x] M5 Chuyển ảnh cũ: job `storage` chép file sang bucket rồi đổi bản ghi nơi lưu. Cơ sở dữ liệu không cho đổi nơi lưu
+      của từng ảnh, nên cái được đổi là bản ghi `storage_locations`. Đã kiểm với MinIO thật (test) và trong container
+      (6 ảnh cũ chuyển sang bucket, tải lại được; tải ảnh mới lên và tải về đúng nội dung).
+- [ ] Upload thẳng từ trình duyệt lên MinIO bằng phiên upload (`file_uploads`) theo tài liệu luồng mục tiêu.
+- [ ] Lời gọi MinIO còn chạy đồng bộ trong vài route (chặn vòng lặp trong lúc gọi); chuyển sang thread khi có tải thật.
+- [ ] `scripts/cleanup_resident_photos.py` (dọn ảnh cư dân hết hạn) mới chạy với lưu đĩa.
+- [ ] Container `minio` chưa có kiểm tra sức khỏe; chưa có khóa riêng chỉ có quyền trên bucket; chưa bật versioning.
+- [ ] Giao diện kỹ thuật viên còn hiện ảnh dạng tên file.
 
-## Giao diện còn phải hoàn thiện (rà ngày 04/10/2026, đêm)
+## Model theo vai trò, nhiều nhà cung cấp (làm ngày 05/10/2026)
+
+Theo `docs/teams/chien/MULTI_MODEL_REPO_AUDIT_2026-10-04.md`, bốn vấn đề cần sửa trước khi dùng nhiều nhà cung cấp:
+
+- [x] Tách khóa và địa chỉ của embedding khỏi chat (`KNOWLEDGE_EMBEDDING_API_KEY`, `_BASE_URL`).
+- [x] Mỗi vai trò có nhà cung cấp, khóa, địa chỉ riêng: Lễ tân (`RECEPTION_MODEL_*`), Supervisor (`COORDINATION_MODEL_*`),
+      agent chuyên môn (`COORDINATION_OPENBOT_MODEL_*`). Khóa OpenAI không bao giờ gửi sang nhà cung cấp khác.
+- [x] Gemini, DeepSeek, Groq đi qua giao thức tương thích OpenAI; Supervisor đổi tham số giới hạn token theo nhà cung cấp
+      và cho khai tên model nhà cung cấp trả về.
+- [x] Launcher, compose và file mẫu cùng dùng một bộ tên biến; màn "Model" của quản trị viên hiện model từng vai trò.
+- [ ] **Chưa chạy với khóa thật** của Google, DeepSeek, Groq, Anthropic: phần đã kiểm là mỗi vai trò gửi đúng khóa, đúng
+      địa chỉ, đúng tham số (test) và stack container khởi động, báo đúng nhà cung cấp. Cần khóa để chạy hội thoại thật.
+- [ ] Claude: mới qua lớp tương thích của Anthropic (bỏ qua yêu cầu trả JSON), chỉ để thử. Cần adapter Messages riêng.
+- [ ] Agent chuyên môn (agent-bot) và Factory chưa được kiểm tham số riêng với nhà cung cấp khác OpenAI.
+- [ ] Eval của Lễ tân còn dùng chung model với Lễ tân làm giám khảo; cần giám khảo cố định khi so sánh model.
+- [ ] Embedding Google/Voyage/BGE: chưa làm (cần model space riêng, nhập lại tri thức, chỉnh lại ngưỡng).
+- [ ] Màn "Model" chỉ xem; chưa có nút gọi thử model và chưa đổi model từ giao diện.
+
+## Giao diện quản trị viên (làm ngày 05/10/2026)
+
+- [x] Menu riêng: Tài khoản, Đơn vị quản lý, Kết nối ngoài, Model, Nhật ký.
+- [x] Tài khoản làm lại: tìm kiếm, lọc vai trò, tạo, đổi vai trò và đơn vị, duyệt, khóa.
+- [x] Đơn vị quản lý (chỉ xem), Model (chỉ xem), Nhật ký (lọc theo loại, xem sự kiện cũ hơn).
+- [ ] Tạo đơn vị quản lý, nhóm BQL và giao tòa nhà từ giao diện (hiện bằng script `provision_connected.py`).
+- [ ] Đặt lại mật khẩu cho tài khoản; xóa tài khoản.
+- [ ] Nhật ký chưa tìm theo người hoặc theo khoảng thời gian, chưa xuất file.
+
+## Agent báo cáo trong phòng nhóm (rà ngày 05/10/2026)
+
+- [x] 4 tool báo cáo đã đóng gói (job `catalogue`); agent đang phát hành ở local và trả lời khi được nhắc trong phòng.
+- [ ] Agent là dữ liệu của phòng, chưa có lệnh tự tạo khi cài đặt: bản triển khai mới phải tạo qua trang Agent
+      (cấu hình ở `docs/teams/hoang/agent/`). `publish_agent.ps1` mới đọc được tool kỹ thuật.
+- [ ] Agent báo cáo không khai danh mục nên Supervisor không mời vào phiên; chủ dự án chưa nói có cần hay không.
+
+## Giao diện còn phải hoàn thiện
 
 Nhân viên kỹ thuật: luồng nhận việc → báo giá → ảnh trước/sau → gửi kết quả chạy được (đã kiểm 14/14 bước), nhưng giao
 diện chưa được làm lại như bên BQL.
@@ -161,13 +199,15 @@ diện chưa được làm lại như bên BQL.
       trên điện thoại nút quay lại và mã bị dồn một hàng.
 - [ ] Chuông thông báo việc mới được giao; menu chưa có biểu tượng.
 
-Quản trị viên:
-
-- [ ] Trang "Tài khoản" còn kiểu cũ (biểu mẫu dài, chưa tìm kiếm/lọc).
-- [ ] Chưa có màn tạo đơn vị quản lý, nhóm BQL và phạm vi tòa nhà (đang làm bằng script).
-- [ ] Chưa có màn cấu hình model và xem nhật ký audit.
-
 Ban quản lý:
 
 - [ ] Trang chi tiết công việc còn khối "Phiên điều phối" cũ; danh sách công việc còn mã `VH-…`.
 - [ ] Hộp đánh giá agent bắt nhập tay 6 tình huống.
+
+## Chờ khóa model dùng được
+
+Khóa trong `agent-reception/.env` bị `api.openai.com` trả 401 `invalid_api_key` (kiểm ngày 04/10, 23:10).
+
+- [ ] Đánh giá và phát hành "Agent Sổ tay" (bản nháp đang có ở local), hỏi agent trong phòng nhóm bằng công cụ của kết
+      nối MCP (K6).
+- [ ] Chạy lại luồng trọn vẹn trên giao diện mới và các bước cần model trong container.
