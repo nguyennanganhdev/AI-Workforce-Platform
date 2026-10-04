@@ -63,6 +63,21 @@ type Session = {
     replies: { id: string; agent: string; text: string; created_at: string }[];
     // What management asked an agent inside this session, and whether it was answered yet.
     questions: { id: string; agent: string; text: string; status: string }[];
+    // The plan the Supervisor proposed from those replies. Management decides it, then the resident.
+    plan?: {
+      id: string;
+      title: string;
+      status: string;
+      version: number;
+      management_note?: string | null;
+      proposal: {
+        steps: string[];
+        performer_role: string;
+        expected_duration: string;
+        conditions: string;
+        cost?: { amount: number; currency: string } | null;
+      };
+    } | null;
   };
   missing?: string;
   awaitingManagementApproval?: boolean;
@@ -73,6 +88,12 @@ const questionLabels: Record<string, string> = {
   done: "đã trả lời",
   failed: "agent không trả lời được",
   refused: "phiên không còn nhận câu hỏi",
+};
+const planLabels: Record<string, string> = {
+  management_pending: "chờ Ban quản lý duyệt",
+  resident_pending: "Ban quản lý đã duyệt, chờ cư dân đồng ý",
+  approved: "cư dân đã đồng ý",
+  rejected: "đã bị từ chối",
 };
 const roomTaskLabels: Record<string, string> = {
   pending: "chờ làm",
@@ -98,6 +119,9 @@ const supervisorPause: Record<string, string> = {
     "Supervisor chưa được cấu hình model nên chuyển lại cho Ban quản lý xử lý.",
   AGENT_FAILURE:
     "Agent chuyên môn không trả lời được sau nhiều lần thử. Ban quản lý xử lý tiếp.",
+  // The session is not "paused" here: one action is held because nobody knows whether it applied.
+  outcome_unknown:
+    "Một bước của phiên chưa rõ kết quả nên Supervisor dừng lại. Ban quản lý xử lý tiếp.",
 };
 const sessionMissing: Record<string, string> = {
   workspace: "BQL chưa có workspace trên platform",
@@ -159,6 +183,7 @@ export function ConnectedOperations() {
   const [staff, setStaff] = useState("");
   const [note, setNote] = useState("");
   const [question, setQuestion] = useState("");
+  const [planNote, setPlanNote] = useState("");
   const [available, setAvailable] = useState<Staff[]>([]);
   const [file, setFile] = useState<File>();
   const [phase, setPhase] = useState<"before" | "after">("before");
@@ -354,6 +379,7 @@ export function ConnectedOperations() {
     if (linkedTicket && me && ticketId.current !== linkedTicket) void open(linkedTicket);
   }, [linkedTicket, me?.user.id]);
   const management = me?.role === "management" || me?.role === "admin";
+  const plan = session?.room?.plan;
   const selected = detail?.ticket;
   const visible = tickets.filter((t) => {
     if (!management && !jobs.some((j) => j.ticket_id === t.id)) return false;
@@ -621,7 +647,7 @@ export function ConnectedOperations() {
                                   .
                                 </p>
                               )}
-                              {session.session.runtime?.phase === "paused" && (
+                              {session.session.runtime?.pauseReason && (
                                 <p>
                                   {supervisorPause[
                                     session.session.runtime.pauseReason || ""
@@ -663,6 +689,81 @@ export function ConnectedOperations() {
                                   ): {asked.text}
                                 </p>
                               ))}
+                              {plan && (
+                                <div>
+                                  <p>
+                                    <strong>
+                                      Phương án Supervisor đề xuất
+                                    </strong>{" "}
+                                    ({planLabels[plan.status] || plan.status}
+                                    ): {plan.title}
+                                  </p>
+                                  <ol>
+                                    {plan.proposal.steps.map((step) => (
+                                      <li key={step}>{step}</li>
+                                    ))}
+                                  </ol>
+                                  <p>
+                                    Người thực hiện:{" "}
+                                    {plan.proposal.performer_role} · Thời gian dự
+                                    kiến: {plan.proposal.expected_duration} ·
+                                    Điều kiện: {plan.proposal.conditions} · Chi
+                                    phí dự kiến:{" "}
+                                    {plan.proposal.cost
+                                      ? `${plan.proposal.cost.amount.toLocaleString("vi-VN")} ${plan.proposal.cost.currency}`
+                                      : "chưa có"}
+                                  </p>
+                                  {plan.management_note && (
+                                    <p>
+                                      Ghi chú của Ban quản lý:{" "}
+                                      {plan.management_note}
+                                    </p>
+                                  )}
+                                  {management &&
+                                    plan.status === "management_pending" && (
+                                      <div className="live-actions">
+                                        <label>
+                                          Ghi chú duyệt phương án
+                                          <input
+                                            value={planNote}
+                                            maxLength={2000}
+                                            onChange={(e) =>
+                                              setPlanNote(e.target.value)
+                                            }
+                                          />
+                                        </label>
+                                        {(["approve", "reject"] as const).map(
+                                          (decision) => (
+                                            <button
+                                              key={decision}
+                                              type="button"
+                                              disabled={
+                                                busy || !planNote.trim()
+                                              }
+                                              onClick={() =>
+                                                void run(async () => {
+                                                  await post(
+                                                    `/plans/${plan.id}/management-decision`,
+                                                    {
+                                                      decision,
+                                                      version: plan.version,
+                                                      note: planNote.trim(),
+                                                    },
+                                                  );
+                                                  setPlanNote("");
+                                                })
+                                              }
+                                            >
+                                              {decision === "approve"
+                                                ? "Duyệt phương án"
+                                                : "Từ chối phương án"}
+                                            </button>
+                                          ),
+                                        )}
+                                      </div>
+                                    )}
+                                </div>
+                              )}
                               {management &&
                                 !!session.room?.members.length &&
                                 !["completed", "failed", "cancelled"].includes(
