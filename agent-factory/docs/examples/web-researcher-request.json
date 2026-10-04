@@ -1,0 +1,64 @@
+{
+  "request": {
+    "name": "Web Researcher",
+    "role": "Internet Research Agent",
+    "description": "Tìm kiếm thông tin trên Internet và tổng hợp câu trả lời có dẫn nguồn."
+  },
+  "catalogue": {
+    "tools": [
+      {
+        "kind": "tool",
+        "ref": "tavily/tavily_search",
+        "name": "tavily_search",
+        "title": "Tavily",
+        "description": "Search the public web. Returns JSON {results:[{title,url,content}]}: for each matching page its title, its address and a short extract of what it says. Use the url to cite a source.",
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "query"
+          ],
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "What to search the web for."
+            },
+            "max_results": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 1,
+              "description": "How many results to return. Defaults to 5."
+            }
+          }
+        },
+        "outputSchema": null,
+        "effect": "read",
+        "destructive": false
+      },
+      {
+        "kind": "tool",
+        "ref": "example-knowledge/query",
+        "name": "query",
+        "title": "Example knowledge base",
+        "description": "Illustrative only: retrieve passages from the organization's internal documents. Returns JSON {passages:[{document,text}]}.",
+        "inputSchema": {
+          "type": "object",
+          "required": [
+            "query"
+          ],
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "What to look up."
+            }
+          }
+        },
+        "outputSchema": null,
+        "effect": "read",
+        "destructive": false
+      }
+    ],
+    "defaultToolRefs": [
+      "example-knowledge/query"
+    ]
+  }
+}
