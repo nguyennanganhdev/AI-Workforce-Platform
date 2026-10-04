@@ -200,10 +200,14 @@ def test_the_supervisor_is_offered_the_published_specialists_of_the_ticket_categ
 
         with demo_client(database, "management") as management:
             assert management.post(f"/admin/agents/{technical}/release/revoke", json={"note": "x"}).status_code == 403
+            assert management.get("/admin/agent-releases").status_code == 403
         with demo_client(database, "admin") as admin:
+            listed = next(r for r in admin.get("/admin/agent-releases").json()["items"] if r["agent_id"] == technical)
+            assert (listed["version_no"], listed["service_categories"], listed["tools"]) == (1, ["technical"], [])
             revoked = admin.post(f"/admin/agents/{technical}/release/revoke", json={"note": "Trả lời sai quy trình"})
             assert revoked.status_code == 200 and revoked.json()["versionId"] == version
             assert admin.post(f"/admin/agents/{technical}/release/revoke", json={"note": "x"}).status_code == 404
+            assert not [r for r in admin.get("/admin/agent-releases").json()["items"] if r["agent_id"] == technical]
         after = c.get(BASE + f"/teams/{team}/view", headers=SERVICE).json()["specialists"]
         assert not [s for s in after if s["agent_id"] == technical]
 

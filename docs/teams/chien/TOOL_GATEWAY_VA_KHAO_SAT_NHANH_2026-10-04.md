@@ -132,9 +132,20 @@ Chưa làm trong mục này: tạm dừng, chạy tiếp và dừng phiên. Hi�
 "chạy tiếp" chỉ có nghĩa khi có luồng phương án (mục 2 dưới đây). Lời gọi `@agent` gõ tự do trong phòng chung (không
 gắn ticket) vẫn chỉ được xếp hàng.
 
+## Phần 4 — Admin duyệt và thu hồi agent trên Operations
+
+Trang "Tài khoản" của admin có thêm hai khối: **Agent chờ duyệt** (mô tả, danh mục phục vụ, tool được cấp, chỉ
+dẫn, kết quả từng ca đánh giá; duyệt hoặc từ chối kèm ghi chú) và **Agent đã phát hành** (thu hồi kèm lý do).
+Duyệt là phát hành. API: `GET /admin/agent-reviews`, `POST /admin/agent-reviews/{id}/decision`,
+`GET /admin/agent-releases` (mới), `POST /admin/agents/{id}/release/revoke`.
+
+Theo quyết định của điều phối, tạo nháp và chạy đánh giá vẫn dùng `publish_agent.ps1` cho tới khi nối Agent
+Factory. Agent chuyên môn chạy `gpt-5.5` (`COORDINATION_OPENBOT_MODEL`), Supervisor giữ `gpt-5.4-mini`. Với
+`gpt-5.5`, bộ 11 ca chạy ba lần: hai lần đạt đủ, một lần hỏng một ca vì cách diễn đạt; ca đó chạy riêng 6/6 đạt.
+
 ## Việc tiếp theo
 
-1. Màn hình tạo, đánh giá, duyệt, thu hồi agent; luồng phiên bản 2 của cùng một agent; nối Agent Factory.
+1. Luồng phiên bản 2 của cùng một agent; BQL tự tạo và cấu hình agent trên màn hình; nối Agent Factory.
 2. Phương án, hỏi lại cư dân, hai lần duyệt (cần backend cấp `ticket_version` mới cho mỗi yêu cầu chờ); kèm tạm
    dừng, chạy tiếp, dừng phiên.
 3. Mở tool ghi cho phiên: đối soát kết quả chưa rõ theo mã lần gọi.

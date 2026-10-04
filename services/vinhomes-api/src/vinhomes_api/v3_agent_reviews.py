@@ -184,7 +184,8 @@ async def reviews(
         raise HTTPException(403, "Platform admin required")
     rows = await scope[0].execute(
         text(
-            "select r.*,a.name from vh_agent_reviews r join agents a on a.id=r.agent_id and a.tenant_id=r.tenant_id where r.status=:status order by r.created_at limit :limit"
+            # With the configuration under review: an admin approves what the agent is told and granted.
+            "select r.*,a.name,a.configuration from vh_agent_reviews r join agents a on a.id=r.agent_id and a.tenant_id=r.tenant_id where r.status=:status order by r.created_at limit :limit"
         ),
         {"status": status, "limit": limit},
     )
@@ -298,6 +299,24 @@ async def decide(review_id: UUID, body: ReviewDecision, scope: Admin):
         "versionId": version_id,
         "execution": "not performed by this API",
     }
+
+
+@router.get("/admin/agent-releases")
+async def releases(scope: Admin):
+    """The agent versions a Supervisor may invite now: published and not revoked."""
+    if not scope[2]:
+        raise HTTPException(403, "Platform admin required")
+    rows = await scope[0].execute(
+        text(
+            "select a.id as agent_id,a.name,v.version_no,r.published_at,w.name as workspace,"
+            "v.config->'service_categories' as service_categories,v.config->'mcp_tools' as tools "
+            "from agent_releases r join agents a on a.id=r.agent_id and a.tenant_id=r.tenant_id "
+            "join agent_versions v on v.id=r.version_id and v.tenant_id=r.tenant_id "
+            "left join workspaces w on w.id=a.workspace_id and w.tenant_id=a.tenant_id "
+            "where r.status='published' and r.revoked_at is null order by r.published_at desc"
+        )
+    )
+    return {"items": [dict(r) for r in rows.mappings()]}
 
 
 class Revocation(BaseModel):

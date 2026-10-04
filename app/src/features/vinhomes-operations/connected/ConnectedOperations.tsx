@@ -5,6 +5,7 @@ import {
   connectedPages,
 } from "../layout/connected-operations-shell";
 import { WorkspaceFrame } from "../workspace/WorkspaceFrame";
+import { AgentReviews } from "./AgentReviews";
 import { ConnectedAccounts } from "./ConnectedAccounts";
 import "./connected.css";
 import { OnsiteConsent, QuoteForm } from "./RepairQuote";
@@ -433,7 +434,7 @@ export function ConnectedOperations() {
             <button onClick={() => void run(load)}>Thử lại</button>
           </div>
         )}
-        {path === "accounts" && me?.role === "admin" ? <ConnectedAccounts/> : unavailable ? (
+        {path === "accounts" && me?.role === "admin" ? <><ConnectedAccounts/><AgentReviews/></> : unavailable ? (
           <section className="ws-card">
             <h2>Chức năng chưa được nối đầy đủ</h2>
             <p>
