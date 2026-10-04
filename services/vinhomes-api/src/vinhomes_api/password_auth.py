@@ -9,7 +9,7 @@ import hmac
 import secrets
 import time
 from collections import OrderedDict
-from uuid import uuid4
+from uuid import UUID, uuid4
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -174,14 +174,20 @@ async def administrator(request: Request):
 
 class AccountCreate(Registration):
     role: Literal["customer","staff","management"]
+    management_unit_id: UUID | None = None
 
 
 class AccountAccess(BaseModel):
     role: Literal["customer","staff","management"]
     status: Literal["active","suspended"]
+    # A management account works within one unit: its tickets, its room and its agents.
+    # Without a unit it keeps the whole tenant, as before.
+    management_unit_id: UUID | None = None
 
 
-async def grant_access(db,request:Request,user_id:str,actor:str,role:str,status:str):
+async def grant_access(db,request:Request,user_id:str,actor:str,role:str,status:str,unit:UUID|None=None):
+    if unit is not None and role != "management":
+        raise HTTPException(422,"Chỉ tài khoản Ban quản lý được gắn với một đơn vị quản lý.")
     await context(db,request,actor)
     tenant = str(request.app.state.settings.tenant_id)
     member = (await db.execute(text("select id from tenant_memberships where user_id=:user and tenant_id=cast(:tenant as uuid) for update"),{"user":user_id,"tenant":tenant})).scalar_one_or_none()
@@ -189,10 +195,25 @@ async def grant_access(db,request:Request,user_id:str,actor:str,role:str,status:
         raise HTTPException(404,"Tài khoản không thuộc tenant này.")
     await db.execute(text("update tenant_memberships set status=:status,joined_at=coalesce(joined_at,now()),updated_at=now() where id=:id"),{"id":member,"status":status})
     await db.execute(text("update scoped_user_roles set valid_to=now() where membership_id=:member and (valid_to is null or valid_to>now())"),{"member":member})
-    if status == "active":
+    if not (status == "active" and role == "management" and unit is None):
+        # A tenant-wide manager keeps the rooms they are in. Anyone else leaves every management room
+        # here and, when placed in a unit, joins that unit's rooms below.
+        await db.execute(text("""delete from channel_memberships cm using channels c
+            where c.id=cm.channel_id and c.tenant_id=cm.tenant_id and c.kind='management'
+              and cm.user_id=:user and cm.tenant_id=cast(:tenant as uuid)"""),{"user":user_id,"tenant":tenant})
+    if status == "active" and unit is not None:
+        scope = (await db.execute(text("select id from access_scopes where tenant_id=cast(:tenant as uuid) and kind='management' and management_unit_id=:unit limit 1"),{"tenant":tenant,"unit":unit})).scalar_one_or_none()
+        if scope is None:
+            raise HTTPException(404,"Đơn vị quản lý không tồn tại hoặc chưa được cấp phạm vi truy cập.")
+        await db.execute(text("""insert into channel_memberships(tenant_id,channel_id,user_id)
+            select c.tenant_id,c.id,:user from channels c join workspaces w on w.id=c.workspace_id and w.tenant_id=c.tenant_id
+            where c.tenant_id=cast(:tenant as uuid) and c.kind='management' and c.deleted_at is null
+              and w.status='active' and w.management_unit_id=:unit on conflict do nothing"""),{"user":user_id,"tenant":tenant,"unit":unit})
+    elif status == "active":
         scope = (await db.execute(text("select id from access_scopes where tenant_id=cast(:tenant as uuid) and kind='tenant' limit 1"),{"tenant":tenant})).scalar_one_or_none()
         if scope is None:
             scope = (await db.execute(text("insert into access_scopes(tenant_id,kind) values(cast(:tenant as uuid),'tenant') returning id"),{"tenant":tenant})).scalar_one()
+    if status == "active":
         await db.execute(text("insert into scoped_user_roles(tenant_id,membership_id,scope_id,role_code,granted_by,valid_from) values(cast(:tenant as uuid),:member,:scope,:role,:actor,now())"),{"tenant":tenant,"member":member,"scope":scope,"role":role,"actor":actor})
     await db.execute(text("delete from sessions where user_id=:id and token like 'vinhomes-v1:%'"),{"id":user_id})
 
@@ -206,7 +227,10 @@ async def list_accounts(request:Request):
             select u.id,u.name,u.email,m.status,
               exists(select 1 from platform_admins pa where pa.user_id=u.id) as administrator,
               coalesce((select r.role_code from scoped_user_roles r where r.membership_id=m.id
-                and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now()) order by r.valid_from desc limit 1),'customer') as role
+                and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now()) order by r.valid_from desc limit 1),'customer') as role,
+              (select s.management_unit_id from scoped_user_roles r join access_scopes s on s.id=r.scope_id and s.tenant_id=r.tenant_id
+                where r.membership_id=m.id and r.role_code='management' and s.kind='management'
+                  and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now()) order by r.valid_from desc limit 1) as management_unit_id
             from users u join tenant_memberships m on m.user_id=u.id
             where m.tenant_id=cast(:tenant as uuid) order by u.created_at desc limit 200
         """),{"tenant":str(request.app.state.settings.tenant_id)})
@@ -230,8 +254,19 @@ async def create_account(body:AccountCreate,request:Request):
         await db.execute(text("insert into users(id,email,name,status) values(:id,:email,:name,'active')"),{"id":user,"email":email,"name":body.name.strip()})
         await db.execute(text("insert into accounts(id,account_id,provider_id,user_id,password) values(:id,:user,:provider,:user,:password)"),{"id":str(uuid4()),"user":user,"provider":PROVIDER,"password":hashed})
         await db.execute(text("insert into tenant_memberships(tenant_id,user_id,status) values(cast(:tenant as uuid),:user,'pending')"),{"tenant":str(request.app.state.settings.tenant_id),"user":user})
-        await grant_access(db,request,user,actor["id"],body.role,"active")
+        await grant_access(db,request,user,actor["id"],body.role,"active",body.management_unit_id)
     return {"id":user}
+
+
+@router.get("/management-units")
+async def management_units(request:Request):
+    """The units an administrator can place a management account in."""
+    actor=await administrator(request)
+    async with enabled(request).begin() as db:
+        await context(db,request,actor["id"])
+        result=await db.execute(text("""select mu.id,mu.name from management_units mu
+            where mu.tenant_id=cast(:tenant as uuid) and mu.status='active' order by mu.name"""),{"tenant":str(request.app.state.settings.tenant_id)})
+        return {"items":[dict(r) for r in result.mappings()]}
 
 
 @router.patch("/accounts/{user_id}")
@@ -240,7 +275,7 @@ async def change_access(user_id:str,body:AccountAccess,request:Request):
     async with enabled(request).begin() as db:
         if user_id == actor["id"] or (await db.execute(text("select 1 from platform_admins where user_id=:id"),{"id":user_id})).first():
             raise HTTPException(409,"Không thể sửa quyền tài khoản quản trị qua màn hình này.")
-        await grant_access(db,request,user_id,actor["id"],body.role,body.status)
+        await grant_access(db,request,user_id,actor["id"],body.role,body.status,body.management_unit_id)
     return {"ok":True}
 
 

@@ -44,6 +44,7 @@ def clients():
                 async with db.transaction():
                     for uid in created:
                         await db.execute("delete from sessions where user_id=$1",uid)
+                        await db.execute("delete from channel_memberships where user_id=$1",uid)
                         await db.execute("delete from scoped_user_roles where membership_id in(select id from tenant_memberships where user_id=$1)",uid)
                         await db.execute("delete from tenant_memberships where user_id=$1",uid)
                         await db.execute("delete from accounts where user_id=$1",uid)
@@ -146,7 +147,8 @@ def test_connected_catalogs_room_messages_and_private_photo_storage(clients):
         asyncio.run(create_room())
         assert any(r["id"] == room_id for r in user.get("/rooms").json()["items"])
         assert user.get(f"/rooms/{room_id}/agents").json() == {"items": []}
-        assert admin.get(f"/rooms/{room_id}/agents").status_code == 404
+        # A platform administrator reads every management room without being a member of it.
+        assert admin.get(f"/rooms/{room_id}/agents").json() == {"items": []}
         body = {"text": "Stored room message", "client_message_id": str(uuid4())}
         sent = user.post(f"/rooms/{room_id}/messages", json=body)
         assert sent.status_code == 201, sent.text
@@ -196,3 +198,35 @@ def test_connected_catalogs_room_messages_and_private_photo_storage(clients):
                 assert path.is_relative_to(file_root)
                 path.unlink(missing_ok=True)
         asyncio.run(clean_room())
+
+
+def test_admin_puts_a_management_account_in_one_unit_and_takes_it_out(clients):
+    """A unit-scoped manager works in that unit's room; without the unit the room is closed again."""
+    admin,user,created,_=clients
+    units=admin.get("/auth/management-units")
+    assert units.status_code == 200 and units.json()["items"],units.text
+    unit=units.json()["items"][0]["id"]
+    assert user.get("/auth/management-units").status_code == 401
+    email=f"unit-manager-{uuid4()}@example.invalid";password=secrets.token_urlsafe(20)
+    made=admin.post("/auth/accounts",json={"email":email,"name":"Temporary unit manager","password":password,
+                                          "role":"management","management_unit_id":unit})
+    assert made.status_code == 201,made.text
+    uid=made.json()["id"];created.append(uid)
+    listed=next(a for a in admin.get("/auth/accounts").json()["items"] if a["id"] == uid)
+    assert (listed["role"],listed["management_unit_id"]) == ("management",unit)
+    assert user.post("/auth/login",json={"identifier":email,"password":password}).status_code == 200
+    assert user.get("/operations/me").json()["role"] == "management"
+    rooms=user.get("/rooms").json()["items"]
+    assert rooms, "the unit's management room is listed for its manager"
+    room=rooms[0]["id"]
+    assert user.get(f"/rooms/{room}/agent-management").status_code == 200
+    assert user.get(f"/rooms/{room}/teams").status_code == 200
+    # A unit only makes sense for management, and it must exist.
+    assert admin.patch(f"/auth/accounts/{uid}",json={"role":"staff","status":"active","management_unit_id":unit}).status_code == 422
+    assert admin.patch(f"/auth/accounts/{uid}",json={"role":"management","status":"active","management_unit_id":str(uuid4())}).status_code == 404
+    # Made a technician: the room and its agents are no longer theirs.
+    assert admin.patch(f"/auth/accounts/{uid}",json={"role":"staff","status":"active"}).status_code == 200
+    assert user.post("/auth/login",json={"identifier":email,"password":password}).status_code == 200
+    assert user.get("/rooms").json()["items"] == []
+    assert user.get(f"/rooms/{room}/agent-management").status_code in (403,404)
+

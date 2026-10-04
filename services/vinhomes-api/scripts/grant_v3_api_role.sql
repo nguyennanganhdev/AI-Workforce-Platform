@@ -21,6 +21,8 @@ GRANT INSERT, UPDATE ON
   vh_conversation_uploads
 TO vinhomes_v3_api;
 GRANT SELECT, INSERT ON vh_qc_redo_orders TO vinhomes_v3_api;
+-- An administrator moves a management account between units: it leaves the rooms of the old one.
+GRANT DELETE ON channel_memberships TO vinhomes_v3_api;
 GRANT INSERT, UPDATE ON invoices,invoice_lines,payment_intents TO vinhomes_v3_api;
 GRANT INSERT ON payments,payment_allocations,ticket_reviews TO vinhomes_v3_api;
 GRANT INSERT ON agent_versions TO vinhomes_v3_api;
