@@ -9,7 +9,7 @@ import os
 from datetime import date
 from uuid import UUID, uuid4
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import text
@@ -22,6 +22,7 @@ from .v3_billing import invoice_detail
 from .v3_operations import catalogs
 from .v3_security import cameras, contacts
 from .v3_connections import connection, host
+from . import v3_agent_knowledge as agent_knowledge
 from ._vendor.reporting.application.client import exact_decimal, invalid_constant, json_safe_numbers, unique_object
 from ._vendor.reporting.tools.catalog import tool_descriptors
 from ._vendor.reporting.tools.facade import ReportTools
@@ -81,7 +82,8 @@ def catalogue():
     return ([{'server_id': 'reporting', 'name': 'reporting.' + t['name'], 'description': t['description'],
         'input_schema': t['inputSchema'], 'effect': t['effect'], 'version': t['version']} for t in tool_descriptors() if t['effect'] == 'read'] +
         [{'server_id': 'security-tools', 'name': name, 'description': description, 'version': '1.0.1',
-          'input_schema': BuildingRead.model_json_schema(), 'effect': 'read'} for name, (description, _) in SECURITY.items()])
+          'input_schema': BuildingRead.model_json_schema(), 'effect': 'read'} for name, (description, _) in SECURITY.items()] +
+        [agent_knowledge.TOOL])
 
 
 class ReportingBackend:
@@ -158,7 +160,7 @@ class Call(BaseModel):
 
 
 @router.post('/call')
-async def call(body: Call, db: Scope):
+async def call(body: Call, request: Request, db: Scope):
     status, result = 'FORBIDDEN', None
     run, withheld = None, False
     try:
@@ -186,6 +188,8 @@ async def call(body: Call, db: Scope):
             args = BuildingRead.model_validate(body.arguments)
             payload = await SECURITY[body.tool][1]((db, run['actor_user_id'] or '', True), args.building_id)
             result = {'outcome': 'success', 'data': jsonable_encoder(payload), 'limitations': ['Camera catalogue only; live device feeds are not connected.']}
+        elif grant['server_id'] == 'knowledge' and body.tool == agent_knowledge.NAME:
+            result = await agent_knowledge.search(db, run, body.arguments, request.app.state.settings.coordination_service_token or '')
         elif grant['server_id'] == 'technical-tools':
             url, token = os.getenv('VINHOMES_API_TECHNICAL_TOOLS_URL', '').rstrip('/'), os.getenv('VINHOMES_API_TECHNICAL_TOOLS_TOKEN', '')
             if not url or len(token) < 32:

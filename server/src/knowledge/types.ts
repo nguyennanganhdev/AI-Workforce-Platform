@@ -179,7 +179,8 @@ export interface IngestStore {
  */
 export type AuthorizedContext = {
   tenantId: string;
-  userId: string;
+  /** The person the agent acts for. Null for a specialist in a Supervisor session: it works for its unit. */
+  userId: string | null;
   roleCodes: string[];
   workspaceId?: string;
   /** The scope the question is about, e.g. one building. */

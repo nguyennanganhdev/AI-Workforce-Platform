@@ -9,7 +9,7 @@ import { SUPPORTED_EMBEDDING_MODELS } from "./types";
 const authority = z.object({
   ok: z.literal(true), knowledgeBaseId: z.uuid(),
   context: z.object({
-    tenantId: z.uuid(), userId: z.string().min(1), roleCodes: z.array(z.string()),
+    tenantId: z.uuid(), userId: z.string().min(1).nullable(), roleCodes: z.array(z.string()),
     targetScopeId: z.uuid(), ancestorScopeIds: z.array(z.uuid()),
     agentRunId: z.uuid(), principalId: z.uuid(), bindingId: z.uuid(),
   }),

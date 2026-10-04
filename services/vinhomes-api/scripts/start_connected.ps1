@@ -37,6 +37,8 @@ try {
 }
 foreach ($key in $settings.Keys) { [Environment]::SetEnvironmentVariable($key,$settings[$key],'Process') }
 $env:VINHOMES_API_COORDINATION_URL = 'http://127.0.0.1:4300'
+# Where the tool gateway reaches the knowledge search service (scripts/start_knowledge.ps1) for management's agents.
+$env:VINHOMES_API_KNOWLEDGE_URL = 'http://127.0.0.1:8787'
 $toolsFile = Join-Path $serviceRoot '.local-connected/technical-api.env'
 if (Test-Path -LiteralPath $toolsFile) {
     $env:VINHOMES_API_TECHNICAL_TOOLS_URL = 'http://127.0.0.1:8788/internal/technical/v1'

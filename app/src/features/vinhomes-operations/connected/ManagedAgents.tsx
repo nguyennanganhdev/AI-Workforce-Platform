@@ -16,7 +16,7 @@ import { roomsQueryOptions } from "@/lib/rooms/queries";
 import { queryClient } from "@/query-client";
 import { AgentSchedules } from "./AgentSchedules";
 
-const SERVERS: Record<string, string> = { reporting: "Báo cáo", "security-tools": "An ninh", "technical-tools": "Kỹ thuật" };
+const SERVERS: Record<string, string> = { reporting: "Báo cáo", "security-tools": "An ninh", "technical-tools": "Kỹ thuật", knowledge: "Tri thức" };
 
 /** Where an agent stands, in one phrase: what management needs to know before opening it. */
 export function agentStanding(agent: ManagedAgent): { label: string; live: boolean } {
