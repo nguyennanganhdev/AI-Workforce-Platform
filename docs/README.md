@@ -17,6 +17,7 @@ Không cần đọc hết folder. Chọn tài liệu theo việc cần làm; cá
 | Database và ERD thực tế | [Database map](teams/chien/DATABASE_MAP_2026-10-04/README.md) — 193 bảng ở snapshot local |
 | RAG, scope, embeddings và tri thức học được | [RAG map](teams/chien/RAG_DATABASE_MAP_2026-10-04/README.md) |
 | Chạy với đăng nhập thật | [Hướng dẫn chạy](teams/chien/CHAY_DANG_NHAP_THAT.md) |
+| Restore database và điền env cho thành viên | [Backup / env](teams/chien/DATABASE_BACKUP_AND_ENV_2026-10-04.md) |
 | Quyền theo vai trò | [Ma trận RBAC](teams/chien/RBAC_MATRIX_2026-10-03.md) |
 | API đang triển khai | [Backend V3](../services/vinhomes-api/README.md); khi backend chạy, xem `/docs` và `/openapi.json` |
 | Contract HTTP của 14 tool kỹ thuật | [Technical API](teams/quang/TECHNICAL_API.md) |

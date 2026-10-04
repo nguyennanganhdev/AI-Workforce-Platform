@@ -1,0 +1,40 @@
+# Tiến độ B1–B6: code, kiểm chứng và việc còn lại
+
+Đối chiếu ngày 04/10/2026, nhánh `dev_teamChien_HuyDo`, HEAD `2288bed`. Các thay đổi được mô tả bên dưới đang ở working tree, chưa commit/push. Đây là bằng chứng chạy local với PostgreSQL và tài khoản đăng nhập thật, chưa phải nghiệm thu production. CI giữ tắt theo quyết định đã chốt.
+
+## Kết quả hiện tại
+
+| Mục | Đã triển khai | Bằng chứng và giới hạn |
+| --- | --- | --- |
+| B1: tool kỹ thuật | Gateway kiểm run, release đã ghim, grant đọc và coverage; lưu audit. Ba tool đọc của Quang đã nối. | Thiếu SOP/gián đoạn đủ phiên bản, hiệu lực, scope/ACL. Tool có thể trả rỗng đúng dữ liệu; không phải gateway chưa mở. [Bộ bàn giao cần yêu cầu](TEAM_QUANG_DATA_HANDOFF_2026-10-04.md). Tool ghi/tạo yêu cầu chưa mở. |
+| B2: Supervisor và chat trong OpenBot | Nhóm BQL, các phiên theo ticket, hỏi agent trong phiên, phòng chung `@agent`, nút tạm dừng/chạy tiếp/dừng. API lệnh có version, idempotency và trạng thái chờ runtime xác nhận. | Chat phòng chung đã trả lời bằng model thật, gồm tool báo cáo và an ninh. Gõ tên agent tự do đã được kiểm chứng. Nút điều khiển có implementation/test; còn kiểm chứng đủ ba nút qua UI trên phiên thử. |
+| B3: BQL custom agent/Factory | Tạo nháp, sửa chỉ dẫn, chọn danh mục/tool đọc, Factory tạo và backend xác minh artifact, đánh giá model thật, BQL phát hành/từ chối/thu hồi. Bản phát hành bất biến; phiên cũ giữ version đã ghim. Admin có API/màn review, quản lý tài khoản và quyền ghi đè. | Factory → 6 ca model thật → BQL phát hành qua UI đã đạt. Agent an ninh cấu hình thủ công → 6 ca → phát hành UI cũng đạt. Còn kiểm chứng vòng v1→v2, từ chối/thu hồi qua UI; UI admin cấp scope BQL chi tiết cần hoàn thiện. Không dùng kết quả đánh giá do trình duyệt tự khai để BQL phát hành. |
+| B4: phương án và hai lần duyệt | Supervisor lập phương án, nhận quyết định BQL qua inbox, hỏi cư dân; cư dân bổ sung/đồng ý/từ chối/yêu cầu sửa bằng UI; tạo công việc sau hai lần duyệt. | Ticket thử `VH-8648E61BD489`: hỏi giờ có mặt → cư dân trả lời → phương án v1 → BQL từ chối → v2 → BQL duyệt → cư dân yêu cầu sau 18 giờ → v3 giữ đúng lịch mới → BQL duyệt → cư dân đồng ý → đúng 1 work order `queued`. Còn kiểm chứng cư dân từ chối bằng model thật và luồng tiếp nhận ban đầu hoàn toàn qua Reception UI. |
+| B5: an ninh | Hai tool `security.camera.read`, `security.contact.read` qua gateway; agent phát hành được lọc theo danh mục để Supervisor mời. | Chat UI gọi thật cả hai tool, mỗi call audit `OK`; dữ liệu tại tòa thử hiện rỗng và agent nói rõ. Chưa chạy ticket an ninh trọn phiên Supervisor với model thật. Không có API camera/kiểm soát ra vào; không chứng minh thiết bị hoạt động. |
+| B6: báo cáo | Facade báo cáo qua gateway và dữ liệu PostgreSQL; quyền workspace/actor/building, tool đọc và audit. | Agent chat UI gọi báo cáo tần suất sự cố trong Sapphire; truy vấn tòa ngoài workspace bị từ chối. Chưa nghiệm thu toàn bộ loại báo cáo, đối soát số liệu và export/action có duyệt. |
+
+## Kiểm chứng đã chạy
+
+- Lượt chạy lại toàn bộ trước smoke Docker: `agent-coordination` **443 passed** (một kỳ vọng test cũ về tên tool đã sửa theo tên catalogue), backend PostgreSQL **70 passed, 6 skipped**, Factory **44 passed**, typecheck app/resident/server sạch, schema check đạt, build app đạt.
+- Toàn bộ bộ kiểm thử `agent-coordination`: **442 passed** trước lần sửa tên tool cuối. Sau sửa đã chạy lại nhóm BQL/runtime + PostgreSQL: **5 passed**, gồm kiểm tên tool nhiều đoạn, replay không gọi lại model và PostgreSQL CAS/fencing/quota.
+- API coordination trên PostgreSQL đã migrate/seed: **12 passed** sau sửa, gồm cư dân đồng ý/từ chối/yêu cầu sửa, idempotency, quyền tool và thu hồi giữa lượt chạy.
+- Factory: **44 passed** ở lượt kiểm tra trước; đã có lượt tạo bằng `gpt-5.5` thật qua UI.
+- Typecheck OpenBot app và Resident app đạt ở lượt cuối. `git diff --check` đạt. Build app, typecheck server và schema check đã có lượt đạt trước đó; cần chạy lại các check áp dụng cho bản cuối trước commit.
+- Checkpoint Supervisor đã chuyển sang database PostgreSQL riêng trên cùng cluster. Restart runtime vẫn đọc ticket thử ở `execution_ready`, checkpoint version **66**, cùng run, không có action đang bay. Hai kiểm thử PostgreSQL riêng cũng đã đạt.
+- Playwright desktop/mobile không có page error trong các lượt đã đạt. Đã xem ảnh phòng BQL mobile và chi tiết cư dân; sửa dòng mô tả dữ liệu local sai khi đang dùng backend thật.
+
+Bộ ca đánh giá agent có model thật nhưng tool trong đánh giá dùng fixture không tác động. Các lượt chat báo cáo/an ninh kể trên gọi gateway và PostgreSQL thật, được kiểm riêng. Không cộng các bộ test chồng lặp thành một tổng.
+
+Ticket B4 được chuẩn bị bằng operation API có đăng nhập và một tin nhắn cư dân được đánh dấu fixture trong database local. Từ câu hỏi Supervisor, phản hồi cư dân, sửa/duyệt phương án đến tạo work order đều dùng UI/model thật. Không gọi đây là luồng Reception UI từ đầu đến cuối; công việc chưa được phân công, thi công, QC hay đóng ticket.
+
+Bằng chứng máy local nằm trong `.codex-artifacts/` (được ignore): `bql-agent-ui-evidence.json`, `bql-room-ui-evidence.json`, `bql-plan-ui-evidence.json`, `bql-security-ui-evidence.json`, `bql-runtime-acceptance.json` và ảnh UI. Bằng chứng giữ cả lượt thất bại và lượt sửa đạt; không chứa khóa provider/tài khoản trong báo cáo.
+
+## Thứ tự hoàn thiện tiếp
+
+1. Kiểm UI các nút điều khiển phiên; vòng agent v1→v2, BQL từ chối/thu hồi và admin ghi đè. Hoàn thiện cấp scope/workspace BQL trên màn admin.
+2. Chạy ticket an ninh thật qua Supervisor; kiểm cư dân từ chối và luồng tiếp nhận Reception UI từ đầu. Đối soát các báo cáo còn lại trên dữ liệu có số liệu.
+3. Team Quang bàn giao SOP/gián đoạn, file nguồn, manifest, mapping UUID, scope/ACL và script import; nhập và kiểm truy vấn có dữ liệu/hết hiệu lực/ngoài quyền. An ninh cần danh mục camera/đầu mối nghiệp vụ; thiết bị cần API/dataset được phép riêng.
+4. **Đã làm ngày 04/10 (chiều):** build lại 7 image từ working tree, smoke stack trên bản sao database đăng nhập thật với model thật, khởi động lại riêng `openbot` và `coordination`, đăng nhập qua `app/serve.ts` bằng cookie thật. Smoke tìm ra và đã sửa hai lỗi chặn trong compose: thiếu `VINHOMES_API_ALLOWED_ORIGINS` (đăng nhập bị từ chối) và địa chỉ `http://openbot:4200` bị lõi Supervisor từ chối vì không phải HTTPS/loopback (lượt agent dừng với `VALIDATION_ERROR`); nay `coordination` và `openbot` dùng chung không gian mạng qua `agents-net`. Hướng dẫn và giới hạn: [deploy/vinhomes/README.md](../../../deploy/vinhomes/README.md). Còn lại: đóng gói hai frontend, TLS/reverse proxy, SSO thống nhất giữa OpenBot và tài khoản nghiệp vụ, Factory mới qua health trong container.
+5. Ghi provenance Factory/report vendor và reconcile tài liệu triển khai; rà soát diff, chạy check phù hợp rồi commit. Chưa merge toàn bộ nhánh Phái và chưa push.
+
+Không chốt production-ready trước khi hoàn tất các bước áp dụng ở trên. Supervisor seed cũ chưa có release là một ngoại lệ bootstrap cần chuẩn hóa trước production; agent mới ở phòng chung bắt buộc có published release.
