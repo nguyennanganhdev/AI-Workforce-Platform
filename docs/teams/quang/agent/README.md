@@ -61,3 +61,16 @@ chép lại bản phân tích trước).
   được cấp cho workspace của BQL (`document_acl`, loại `workspace`) thì agent mới đọc được.
 - Quy trình dùng tool trong chỉ dẫn (mục QUY TRÌNH) là đề xuất của Team Chiến; cần Team Quang xác nhận, nhất là
   việc Level 1 không chờ tra cứu.
+
+## Thay đổi ngày 05/10/2026 chạm tới phần của Team Quang
+
+- **Tool host giữ nguyên ràng buộc role chỉ đọc và thêm.** Lịch chạy agent cần sửa, xóa dữ liệu nên chạy ở dịch vụ
+  riêng (`server/src/room-routines`, role riêng), không dùng role của tool host. Không có gì thay đổi trong
+  `technical-api/runtime.ts` hay quyền của `vinhomes_technical_api`.
+- **Kết nối MCP ngoài (`technical-api/connection-routes.ts`).** Trước khi gọi máy chủ ngoài, tham số được kiểm bằng
+  `plugins/content-governance.ts`; tham số chứa thông tin xác thực bị trả 400 và không rời hệ thống.
+- **Module tri thức (`server/src/knowledge`).** `AuthorizedContext.userId` có thể là `null`: agent chuyên môn trong
+  phiên Supervisor tra cứu thay cho đơn vị, không thay cho một người. Luật theo người (`document_acl` loại `user`)
+  không khớp với `null`; nhật ký tra cứu ghi không có người. Agent chuyên môn đọc kho tri thức qua tool
+  `knowledge.search` của cổng tool API, với vai trò `management`. Tài liệu SOP muốn agent kỹ thuật đọc được qua tool
+  này thì phát hành vào kho tri thức với phạm vi tòa nhà hoặc phạm vi của đơn vị quản lý.

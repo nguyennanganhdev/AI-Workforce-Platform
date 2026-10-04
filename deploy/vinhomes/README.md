@@ -83,6 +83,21 @@ Trong trang Agent, BQL đặt lịch cho một agent đã phát hành: chỉ d�
 - Lượt mà agent không trả lời trong 10 phút được ghi "bỏ qua".
 - `ROUTINES_SERVICE_TOKEN` là token chung của `api` và `routines` (cả hai chiều).
 
+### Kho tri thức cho agent của BQL
+
+Job `catalogue` đăng ký thêm tool đọc `knowledge.search` (nhóm "Tri thức" trong trang Agent). Agent được cấp tool này
+tra cứu kho tri thức đã phát hành (`KNOWLEDGE_BASE_ID`) cho một tòa nhà trong phạm vi của đơn vị; đơn vị phụ trách
+nhiều tòa thì agent phải nêu `building_id`. Dịch vụ `knowledge` vẫn hỏi lại `api` ai đang tìm, như với Lễ tân; `api`
+trả lời bằng quyền của đúng lượt chạy đang gọi tool, và lượt chạy đã kết thúc thì không tra cứu được nữa. Tài liệu
+phát hành cho phạm vi của đơn vị quản lý (áp dụng cho cấp dưới) chỉ agent của đơn vị đó đọc được.
+
+### Ảnh và tệp trong phòng nhóm
+
+Thành viên phòng nhóm đính kèm ảnh (PNG, JPEG, GIF, WebP, tới 8 MB) và tệp văn bản (txt, md, csv, json, tới 1 MB),
+tối đa 8 tệp một tin. Tệp nằm cùng bucket với ảnh của yêu cầu và chỉ được đọc qua `api` bởi thành viên của phòng.
+Agent được nhắc trong tin có tệp nhận nội dung tệp văn bản (tối đa 20.000 ký tự) và tên ảnh; agent chưa xem được ảnh.
+Tệp đã tải lên nhưng không gửi kèm tin nào vẫn nằm trong bucket, chưa có bước dọn.
+
 ### Model theo vai trò
 
 Mỗi vai trò có model, nhà cung cấp, khóa và địa chỉ riêng. Để trống thì mọi vai trò dùng OpenAI với `OPENAI_API_KEY`.
@@ -196,6 +211,21 @@ khai. Job chạy bằng tài khoản chủ như các job `upgrade`, nên không 
   hai. Sao lưu cơ sở dữ liệu mà không sao lưu bucket thì bản ghi ảnh còn nhưng file mất.
 
 ## Đã kiểm chứng và chưa kiểm chứng
+
+Lần chạy 05/10/2026 (đợt 3), build lại 9 image từ một bản sao sạch của nhánh, trên bản sao cơ sở dữ liệu đăng nhập
+thật đã bị thu lại các quyền của bản này trước khi chạy job:
+
+- Job `upgrade` in `grants-applied` với ba role; job `catalogue` đăng ký thêm `knowledge.search`; job `storage` chuyển
+  8 ảnh; job `audit-retention` in `audit-retention-swept` (0 dòng, vì không có dòng nào quá hạn). 11 dịch vụ `healthy`,
+  có `routines`.
+- Lịch chạy: đặt lịch qua giao diện vận hành (https), cho lịch đến hạn, `routines` giao lượt chạy, `api` đăng câu hỏi
+  vào phòng nhóm, Supervisor nhận; lượt chạy đóng "lỗi" vì khóa model bị từ chối; xóa lịch xóa cả lượt chạy.
+- Tệp phòng nhóm: tải ảnh và tệp văn bản, gửi kèm tin, tệp nằm trong bucket và đọc lại đúng nội dung; trang phòng
+  nhóm hiện ảnh.
+- Role của `technical-tools` vẫn không có quyền sửa, xóa trên bảng nào; role của `routines` chỉ được sửa bốn bảng lịch.
+
+Chưa kiểm ở lần này: một lượt chạy theo lịch mà agent trả lời được, tra cứu kho tri thức của agent BQL với embedding
+thật, và agent đọc tệp đính kèm (đều cần khóa model dùng được).
 
 Lần chạy 05/10/2026, build lại cả 9 image, trên bản sao cơ sở dữ liệu đăng nhập thật, có `proxy` với chứng chỉ nội bộ:
 

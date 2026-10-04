@@ -217,20 +217,56 @@ Theo `docs/teams/chien/MULTI_MODEL_REPO_AUDIT_2026-10-04.md`, bốn vấn đề 
 - [ ] Agent báo cáo có vào phiên của Supervisor hay chỉ trả lời trong phòng nhóm.
 - [ ] Dùng dữ liệu của Team Quang vào đâu (loại sự cố, ca đánh giá, tri thức tham khảo nội bộ).
 
-## Tính năng OpenBot đã có sẵn mà phần Vinhomes chưa dùng (rà ngày 05/10/2026)
+## Tính năng OpenBot đưa vào cho BQL (làm ngày 05/10/2026, đợt 3)
 
-Xếp theo lợi ích cho BQL; mỗi mục là một hạng mục riêng, chưa làm.
+Theo `docs/teams/chien/OPENBOT_FEATURES_FOR_BQL_2026-10-05.md`. Phần Vinhomes không chạy server OpenBot, nên chỉ dùng
+các module tách chạy riêng được.
 
-- [ ] Routines (`server/src/routines`): chạy agent theo lịch. Dùng cho báo cáo tuần tự động trong phòng nhóm, nhắc yêu
-      cầu quá hạn.
-- [ ] Playground của admin: thử agent trực tiếp. Dùng thay cho việc nhập tay 6 ca đánh giá.
-- [ ] Skills: gói chỉ dẫn dùng lại giữa các agent (quy trình chuẩn của BQL).
-- [ ] Tệp đính kèm, tóm tắt và tiêu đề luồng trong kênh (`server/src/channels`): phòng nhóm hiện chỉ có chữ.
-- [ ] Kết nối theo tài khoản từng người (Google Drive, ứng dụng qua Composio) và nhà cung cấp đăng nhập (SSO): cần
-      thống nhất đăng nhập với OpenBot trước.
-- [ ] Kho tri thức cho agent của BQL: cấu hình agent đã có chỗ khai namespace tri thức, giao diện chưa mở.
-- [ ] Chọn model theo từng agent (`server/src/routing`): hiện mọi agent chuyên môn dùng chung một model.
-- [ ] Giữ và xuất nhật ký audit theo thời hạn (`audit-retention`).
+### Lịch chạy agent (Routines)
+
+- [x] Dịch vụ `routines` (`server/src/room-routines`) dùng nguyên kho lịch, bộ quét và hàng đợi của OpenBot. Role
+      database riêng: tool host của Team Quang từ chối chạy khi role của nó được sửa hoặc xóa dữ liệu.
+- [x] API quyết ai được đặt lịch (quản lý của phòng, là thành viên; agent đã phát hành) và thực hiện lượt chạy: đăng
+      chỉ dẫn vào phòng nhóm dưới tên người đặt lịch, nhắc agent. Kết quả của câu hỏi đóng lượt chạy.
+- [x] Trang Agent có thẻ "Lịch chạy": hằng ngày, Thứ Hai đến Thứ Sáu, hằng tuần; giờ Việt Nam; bật, tắt, xóa; kết quả
+      lượt gần nhất bằng chữ. Câu hỏi theo lịch được ghi "Theo lịch" trong phòng nhóm.
+- [x] Đã thử trên trình duyệt với stack local: đặt lịch, đến hạn, tin vào phòng, Supervisor nhận, tắt, xóa.
+- [ ] Chưa sửa được lịch đã đặt (xóa rồi đặt lại). Chưa có trần số lịch theo đơn vị (trần 20 lịch là theo người).
+- [ ] Chạy ở chế độ demo (không có Supervisor) thì lượt chạy không được đóng, 10 phút sau ghi "bỏ qua".
+
+### Kho tri thức cho agent của BQL
+
+- [x] Tool đọc `knowledge.search` sau cổng tool: phiên bản đã phát hành phải được cấp tool, tòa nhà phải trong phạm
+      vi của đơn vị, mỗi lần gọi có nhật ký.
+- [x] Dịch vụ tìm kiếm vẫn hỏi lại API ai đang tìm. Với agent chuyên môn, API cấp một mã theo lượt chạy và trả lời
+      bằng quyền của lượt chạy đó: vai trò quản lý, phạm vi tòa nhà, kèm phạm vi của chính đơn vị.
+- [x] Lượt chạy trong phiên Supervisor không có người hỏi: dịch vụ tìm kiếm chấp nhận và ghi nhật ký không có người.
+- [ ] Chưa chạy trọn vẹn với embedding thật (khóa model bị từ chối). Ngưỡng tương đồng 0,35 đặt theo câu hỏi của cư
+      dân, chưa đo với câu hỏi của BQL.
+- [ ] Chưa có tài liệu nào phát hành riêng cho đơn vị quản lý; trường `knowledge_namespace_ids` vẫn không dùng.
+
+### Ảnh và tệp trong phòng nhóm
+
+- [x] Đính kèm ảnh (PNG, JPEG, GIF, WebP, tới 8 MB) và tệp văn bản (txt, md, csv, json, tới 1 MB), tối đa 8 tệp một
+      tin: giới hạn của OpenBot (`shared/attachments.ts`). API kiểm nội dung khớp loại đã khai.
+- [x] Lưu bằng `message_files` và nơi lưu chung (MinIO/S3 hoặc đĩa khi chạy local); chỉ thành viên phòng đọc được.
+- [x] Agent được nhắc nhận nội dung tệp văn bản (tối đa 20.000 ký tự mỗi lượt) và tên ảnh.
+- [ ] Agent chưa xem được ảnh: cần bộ chuyển của lõi Supervisor (Team Đông) gửi phần ảnh.
+- [ ] Chưa dọn tệp đã tải lên mà không gắn vào tin nhắn nào. Chưa đính kèm được trong phiên điều phối.
+
+### Hai việc nhỏ
+
+- [x] Tool host kiểm tham số trước khi gọi máy chủ MCP ngoài; tham số chứa thông tin xác thực bị giữ lại, nhật ký ghi
+      `ARGUMENTS_WITHHELD`.
+- [x] Job `audit-retention` dọn nhật ký cũ hơn `AUDIT_RETENTION_DAYS`. Phải khai tenant trên kết nối: đã thử, không
+      khai thì xóa 0 dòng.
+- [ ] Chưa có lịch tự chạy job dọn nhật ký (đặt bằng bộ hẹn giờ của máy chủ). Chưa có xuất nhật ký ra tệp.
+
+### Chưa làm, xếp theo thứ tự đề xuất của tài liệu nghiên cứu
+
+- [ ] Tìm web bằng Tavily: cần chủ dự án quyết có cho agent đọc web không.
+- [ ] Skills, rồi model theo từng agent: chỉ đáng làm khi BQL có nhiều agent.
+- [ ] SSO và kết nối theo tài khoản từng người: phụ thuộc việc thống nhất đăng nhập với OpenBot.
 
 ## Chờ khóa model dùng được
 
@@ -240,3 +276,6 @@ Khóa trong `agent-reception/.env` bị `api.openai.com` trả 401 `invalid_api_
       nối MCP (K6).
 - [ ] Chạy lại luồng trọn vẹn trên giao diện mới và các bước cần model trong container.
 - [ ] Chạy thử một nhà cung cấp thứ hai (Gemini hoặc DeepSeek) bằng khóa thật.
+- [ ] Lịch chạy: một lượt mà agent trả lời được (đã thấy lượt chạy tới Supervisor và đóng "lỗi" vì model không trả lời).
+- [ ] Agent tra cứu kho tri thức bằng `knowledge.search` với embedding thật, và đánh giá, phát hành một agent có tool này.
+- [ ] Agent đọc tệp văn bản đính kèm trong phòng nhóm và trả lời.

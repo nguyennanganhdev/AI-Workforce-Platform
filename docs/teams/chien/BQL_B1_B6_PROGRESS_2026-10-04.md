@@ -269,6 +269,28 @@ Chưa kiểm: mọi bước cần model (khóa hiện tại bị từ chối 401
 Claude và chưa nghiệm thu agent dùng công cụ MCP. Chưa thử ảnh hội thoại và ảnh cư dân trên bucket qua giao diện (đã
 kiểm lớp lưu trữ bằng test).
 
+## Lịch chạy agent, kho tri thức cho agent, tệp trong phòng nhóm (05/10, đợt 3; chạy local và container)
+
+Bốn việc theo `OPENBOT_FEATURES_FOR_BQL_2026-10-05.md`; danh sách chi tiết ở `tasks/todo.md`.
+
+- **Lịch chạy agent.** BQL đặt lịch cho agent đã phát hành ở trang Agent (thẻ "Lịch chạy"). Dịch vụ mới `routines`
+  dùng kho lịch, bộ quét và hàng đợi của OpenBot; đến giờ, API đăng chỉ dẫn vào phòng nhóm dưới tên người đặt lịch và
+  nhắc agent. Dịch vụ có role database riêng vì tool host của Team Quang không chấp nhận role được sửa, xóa.
+- **Kho tri thức cho agent.** Tool đọc `knowledge.search` sau cổng tool. Dịch vụ tìm kiếm hỏi lại API như với Lễ tân;
+  API trả lời bằng quyền của lượt chạy: vai trò quản lý, tòa nhà trong phạm vi, kèm phạm vi của đơn vị.
+- **Ảnh và tệp trong phòng nhóm.** Đính kèm theo giới hạn của OpenBot, lưu bằng `message_files` trên nơi lưu chung;
+  agent nhận nội dung tệp văn bản, chưa xem được ảnh.
+- **Hai việc nhỏ.** Tool host giữ lại tham số chứa thông tin xác thực trước khi gọi máy chủ MCP ngoài; job
+  `audit-retention` dọn nhật ký quá hạn.
+
+Đã kiểm: test backend 78 đạt (10 bỏ qua), test của dịch vụ lịch và module tri thức trên database đã migrate, test
+giao diện; ba luồng trên trình duyệt với stack local (đặt lịch tới khi Supervisor nhận, gửi ảnh và tệp, người ngoài
+phòng bị từ chối); 14 bước trong container build từ bản sao sạch của nhánh (xem `deploy/vinhomes/README.md`).
+
+Chưa kiểm: mọi bước cần model. Khóa trong `agent-reception/.env` vẫn bị từ chối, nên lượt chạy theo lịch đã thấy đều
+đóng "lỗi: Agent không trả lời được", chưa có lần tra cứu tri thức nào với embedding thật, và chưa có agent nào được
+phát hành kèm tool `knowledge.search`.
+
 ## Thứ tự hoàn thiện tiếp
 
 1. Kiểm UI các nút điều khiển phiên; vòng agent v1→v2, BQL từ chối/thu hồi và admin ghi đè. Hoàn thiện cấp scope/workspace BQL trên màn admin.

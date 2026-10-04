@@ -38,3 +38,10 @@ Nội dung dưới đây là đúng bản đang phát hành ở môi trường l
 
 Biến `VINHOMES_API_REPAIR_CATEGORY_CODES` (compose: `REPAIR_CATEGORY_CODES`) phải nêu các nhóm dịch vụ tính là sửa chữa,
 nếu không tool hóa đơn trả `REPORT_REPAIR_CATEGORIES_REQUIRED`.
+
+## Chạy agent báo cáo theo lịch (từ 05/10/2026)
+
+BQL đặt lịch cho agent báo cáo ở trang Agent, thẻ "Lịch chạy" (ví dụ Thứ Hai đến Thứ Sáu lúc 08:00, chỉ dẫn "Tóm tắt
+yêu cầu của ngày hôm qua"). Đến giờ, chỉ dẫn được đăng vào phòng nhóm dưới tên người đặt lịch và agent trả lời như khi
+được nhắc. Agent và các tool báo cáo không đổi: lượt chạy theo lịch đi đúng đường của một câu hỏi trong phòng, với
+quyền của người đặt lịch. Chỉ dẫn nên nêu rõ kỳ báo cáo ("hôm qua", "7 ngày gần nhất") vì agent yêu cầu có kỳ.
