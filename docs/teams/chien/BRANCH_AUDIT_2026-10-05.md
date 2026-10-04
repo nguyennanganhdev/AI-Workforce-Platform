@@ -1,8 +1,8 @@
-# R? so?t nh?nh ? 05/10/2026
+# Rà soát nhánh — 05/10/2026
 
-Snapshot sau `git fetch origin --prune`. So s?nh v?i remote `origin/develop`, kh?ng d?ng local `develop` ?ang c?. S? commit ri?ng kh?ng ph?i ph?n tr?m ho?n th?nh.
+Snapshot sau `git fetch origin --prune`. So sánh với remote `origin/develop`, không dùng local `develop` đang cũ. Số commit riêng không phải phần trăm hoàn thành.
 
-| Nh?nh | HEAD | Ng?y commit | Ri?ng so v?i develop | Thi?u develop | Commit cu?i |
+| Nhánh | HEAD | Ngày commit | Riêng so với develop | Thiếu develop | Commit cuối |
 |---|---|---|---:|---:|---|
 | origin/dev_TeamChien | `904f1ca` | 2026-10-05 | 62 | 0 | docs: what the OpenBot features for management became, how they are deployed and what was checked |
 | origin/dev_teamChien_HuyDo | `904f1ca` | 2026-10-05 | 62 | 0 | docs: what the OpenBot features for management became, how they are deployed and what was checked |
@@ -43,8 +43,12 @@ Snapshot sau `git fetch origin --prune`. So s?nh v?i remote `origin/develop`, kh
 | origin | `a655710` | 2026-09-26 | 0 | 204 | feat: initialize server structure with Hono framework and domain routes |
 | origin/main | `a655710` | 2026-09-26 | 0 | 204 | feat: initialize server structure with Hono framework and domain routes |
 
-Nh?nh hi?n t?i l?c b?t ??u: `dev_teamChien_HuyDo` ? `04a5131`, tr?ng `origin/dev_TeamChien`, ch?a ?? `origin/develop` (`b391952`), 57 commit ri?ng. Local `develop` ? `6fa4aa0` c? h?n remote; kh?ng reset checkout ?ang d?ng.
+Nhánh hiện tại lúc bắt đầu: `dev_teamChien_HuyDo` ở `04a5131`, trùng `origin/dev_TeamChien`, chứa đủ `origin/develop` (`b391952`), 57 commit riêng. Local `develop` ở `6fa4aa0` cũ hơn remote; không reset checkout đang dùng.
 
-Trong phi?n n?y, phi?n MCP c?a ng??i d?ng ?? b? sung `77e3d6d` (l?c credential/audit retention), `b36dd76` (l?ch agent), `4faa41a` (tri th?c), `69cf151` (file trong ph?ng), `904f1ca` (t?i li?u). C?c commit ?? ???c gi? nguy?n; thay ??i ho?n thi?n ???c ??t trong commit ri?ng.
+Trong phiên này, phiên MCP của người dùng đã bổ sung `77e3d6d` (lọc credential/audit retention), `b36dd76` (lịch agent), `4faa41a` (tri thức), `69cf151` (file trong phòng), `904f1ca` (tài liệu). Các commit đó được giữ nguyên; thay đổi hoàn thiện được đặt trong commit riêng.
 
-PR #31: base `develop`, head `dev_TeamChien`. Ng??i d?ng cho ph?p b?t CI v? merge khi checks ??t.
+PR #31: base `develop`, head `dev_TeamChien`. Người dùng cho phép bật CI và merge khi checks đạt.
+
+Sau snapshot: `fa2674d` hoàn thiện Docker/tài khoản/đơn vị/preset/upload; `a34f68f` sửa pin Rust action cho CI.
+PR #31 đã gộp vào `develop` tại `d5d5b2e` sau khi checks đạt. Bảng trên là snapshot trước các commit hoàn thiện,
+không dùng số thiếu develop trong bảng để mô tả trạng thái sau merge.

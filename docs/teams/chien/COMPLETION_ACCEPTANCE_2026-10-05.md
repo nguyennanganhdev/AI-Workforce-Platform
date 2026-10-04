@@ -5,7 +5,7 @@ Người dùng chốt Docker local trước; bật CI và merge PR #31 khi check
 | Task | Đã làm/kiểm hiện tại | Chưa đạt |
 |---|---|---|
 | 1. Model/UI/MCP | UI mới dùng tài khoản thật: admin tạo đơn vị, chung đăng nhập, cư dân tạo ticket có ảnh MinIO. Gọi API model thật để kiểm khóa. | Reception key: 401 `invalid_api_key`; Factory key: 429 `credit_balance_exhausted`. Chưa tìm khóa Gemini/DeepSeek/Claude. Chưa nghiệm thu hội thoại/plan/MCP trên image mới; không dùng mock/bằng chứng cũ thay thế. |
-| 2. Docker/restore/monitor/CI | Các dịch vụ/container healthy. Restore độc lập: 194 bảng nghiệp vụ, 6 bảng checkpoint, 8 object; số dòng/checksum khớp. Monitor unavailable sau 3 lần và recovered khi lên lại. CI đã bật. | Domain/chứng chỉ thật hoãn theo người dùng. Webhook chưa có đích để nghiệm thu. CI/merge cập nhật bên dưới. |
+| 2. Docker/restore/monitor/CI | Các dịch vụ/container healthy. Restore độc lập: 194 bảng nghiệp vụ, 6 bảng checkpoint, 8 object; số dòng/checksum khớp. Monitor unavailable sau 3 lần và recovered khi lên lại. CI đã bật và đạt; PR #31 đã gộp. | Domain/chứng chỉ thật hoãn theo người dùng. Webhook chưa có đích để nghiệm thu. Chưa khởi động app trên dữ liệu restore hay thử mất host nguồn. |
 | 3. Admin tạo đơn vị | UI tên/mã/tòa/dịch vụ, transaction tạo coverage/workspace/phòng BQL/Supervisor/membership admin/preset báo cáo. RBAC/tenant/input/overlap/rollback đạt; Playwright POST 201. | Admin cấp thêm tài khoản BQL ở trang Tài khoản. |
 | 4. Preset báo cáo | Instructions chính thức đóng gói trong API image; tự có nháp khi tạo đơn vị. Job idempotent cài vào phòng BQL mặc định, giữ nguyên agent đã chỉnh sửa/phát hành/thu hồi; chỉ publish khi sáu ca runtime đạt. | Model lỗi nên job giữ nháp; tự phát hành chưa nghiệm thu, cần chạy lại khi có khóa/quota. |
 | 5. Một đăng nhập | OpenBot xác minh `vinhomes_session` qua nghiệp vụ mỗi request, cùng `users.id`, quyền canonical; role riêng giới hạn bảng. `/api/me`, trang tài khoản và sign-out dùng chung phiên Operations. Có link Kết nối cá nhân. | OAuth thật cần client/consent. MCP trong phòng BQL vẫn thuộc phiên MCP; caller cá nhân chưa nghiệm thu. Account host dùng plugin store theo user; runtime OpenBot tổng quát cần Intelligence riêng. Agent nghiệp vụ chạy qua Coordination/agent-bot. |
@@ -21,6 +21,8 @@ Người dùng chốt Docker local trước; bật CI và merge PR #31 khi check
 [JSON đã loại credential/hội thoại](evidence/completion-2026-10-05/acceptance.json).
 Ảnh/trace giữ local ở `.codex-artifacts/completion-ui.json`, `completion-direct-ui.json`, `completion-admin-unit.png`,
 `completion-openbot-accounts.png`, `completion-resident-upload*.png`, `completion-backup-restore.log`, `completion-monitor-events.log`.
+Kiểm thêm `.codex-artifacts/completion-personal-ui.json`: link Kết nối cá nhân từ Operations tải xong trạng thái connector;
+Back to app quay lại Operations, không có lỗi JavaScript. Chưa có vendor được bật trong môi trường nghiệm thu.
 
 ## Bản chạy và vận hành
 
@@ -46,6 +48,10 @@ Các dịch vụ vẫn chạy để kiểm nghiệp vụ. Không gọi bản nà
 
 [Snapshot 38 remote](BRANCH_AUDIT_2026-10-05.md). Current `dev_teamChien_HuyDo`; head PR #31 `dev_TeamChien`, base `develop`.
 Trước commit hoàn thiện đã chứa đủ `origin/develop`, 62 commit riêng; local develop cũ được giữ.
-CI/merge #31: đang kiểm tra để phát hành, sẽ cập nhật sau checks GitHub.
+Đã gộp [PR #31](https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/31) lúc 03:52 ngày 05/10/2026 (Asia/Saigon),
+merge commit `d5d5b2e0edf1512a47e03998696e2ee70a1f0bb9`, source head `a34f68fe69800c8140ca07929305159c947f420d`.
+Trước khi gộp, types/contracts, business integration, zizmor, desktop core/macOS/Linux/Windows và signing regression đều đạt.
+Job ký app/NSIS bằng Azure được bỏ qua vì chưa có cấu hình chứng chỉ; không phải bằng chứng ký phát hành thật.
+Kết quả/link từng check nằm trong JSON nghiệm thu. Nhánh hiện tại được fast-forward về commit merge; local `develop` cũ vẫn giữ nguyên.
 Zizmor phát hiện ba pin Rust action cũ không còn trong lịch sử repo upstream; đã chuyển tới SHA trong `master`,
 giữ input `toolchain: stable` theo [hướng dẫn chính thức](https://github.com/dtolnay/rust-toolchain#choice-of-full-length-commit-sha).

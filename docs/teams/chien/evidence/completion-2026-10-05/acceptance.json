@@ -25,7 +25,9 @@
     "same_canonical_user": true,
     "shared_logout_revokes_both": true,
     "personal_account_page": true,
-    "live_oauth_vendor": false
+    "live_oauth_vendor": false,
+    "operations_personal_accounts_link": true,
+    "settings_back_to_operations": true
   },
   "direct_upload": {
     "browser_minio_post_status": 204,
@@ -70,5 +72,70 @@
     "created_automatically_on_admin_unit_creation": true,
     "model_evaluation": "failed; draft preserved",
     "published_without_pass": false
+  },
+  "release": {
+    "pr": 31,
+    "url": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/31",
+    "state": "MERGED",
+    "merged_at": "2026-10-04T20:52:25Z",
+    "head_commit": "a34f68fe69800c8140ca07929305159c947f420d",
+    "merge_commit": "d5d5b2e0edf1512a47e03998696e2ee70a1f0bb9",
+    "checks_verified_before_merge": [
+      {
+        "link": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37233040572/job/111526623609",
+        "name": "Sign and verify app and NSIS installer",
+        "state": "SKIPPED"
+      },
+      {
+        "link": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37233040574/job/111526575758",
+        "name": "app (macos)",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37233040574/job/111526575795",
+        "name": "app (linux)",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37233040568/job/111526575759",
+        "name": "types-and-contracts",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37233040568/job/111526575867",
+        "name": "business-integration",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37233040574/job/111526575873",
+        "name": "core",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37233040562/job/111526575594",
+        "name": "Static analysis (zizmor)",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37233040572/job/111526575668",
+        "name": "Signing regressions (no Azure access)",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37233040574/job/111526575604",
+        "name": "app (windows)",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37233037499/job/111526566984",
+        "name": "types-and-contracts",
+        "state": "SUCCESS"
+      },
+      {
+        "link": "https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/37233037141/job/111526566212",
+        "name": "business-integration",
+        "state": "SUCCESS"
+      }
+    ]
   }
 }

@@ -5,7 +5,8 @@ Playwright headless; giữ MCP cho phiên khác. Không commit credentials.
 
 - [ ] 1. Model/UI/MCP: UI nghiệp vụ đạt; model mới chưa đạt. Reception key 401, Factory key 429 hết credit;
   chưa tìm khóa Gemini/DeepSeek/Claude. Đã hỏi file/key hợp lệ, chờ người dùng.
-- [ ] 2. Docker/restore/monitor/CI: Docker/restore hai DB/8 object, alert/recovery đạt; còn checks GitHub/merge. Domain hoãn.
+- [x] 2. Docker local/restore/monitor/CI: restore hai DB/8 object, alert/recovery đạt; CI đạt và PR #31 đã gộp
+  vào `develop` tại `d5d5b2e`. Domain/chứng chỉ public hoãn; chưa kiểm webhook thật hay khởi động app từ dữ liệu restore.
 - [x] 3. Admin tạo đơn vị UI: transaction/RBAC/tenant/input/overlap, phòng/Supervisor; Playwright đạt.
 - [ ] 4. Preset báo cáo: đóng gói/cài nháp tự động/idempotent; publish qua real evaluation còn chờ key/quota.
 - [x] 5. Một đăng nhập: account host cùng identity, role riêng, không fallback dev-admin, logout cả hai;
