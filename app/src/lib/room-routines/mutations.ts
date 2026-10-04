@@ -19,6 +19,11 @@ export function createRoomRoutineMutationOptions(queryClient: QueryClient) {
     await ask(base(roomId), { method: "POST", body }, "Không đặt được lịch.");
   }, onSuccess: (_, { roomId }) => refresh(queryClient, roomId) });
 }
+export function changeRoomRoutineMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({ mutationFn: async ({ roomId, id, ...body }: { roomId: string; id: string; instruction: string; hour: number; minute: number; days: number[] }) => {
+    await ask(`${base(roomId)}/${encodeURIComponent(id)}`, { method: "PUT", body }, "Không sửa được lịch.");
+  }, onSuccess: (_, { roomId }) => refresh(queryClient, roomId) });
+}
 export function switchRoomRoutineMutationOptions(queryClient: QueryClient) {
   return mutationOptions({ mutationFn: async ({ roomId, id, enabled }: { roomId: string; id: string; enabled: boolean }) => {
     await ask(`${base(roomId)}/${encodeURIComponent(id)}/enabled`, { method: "PUT", body: { enabled } }, enabled ? "Không bật được lịch." : "Không tắt được lịch.");

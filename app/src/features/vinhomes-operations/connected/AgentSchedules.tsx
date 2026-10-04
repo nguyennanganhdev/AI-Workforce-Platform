@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { createRoomRoutineMutationOptions, removeRoomRoutineMutationOptions, switchRoomRoutineMutationOptions } from "@/lib/room-routines/mutations";
+import { changeRoomRoutineMutationOptions, createRoomRoutineMutationOptions, removeRoomRoutineMutationOptions, switchRoomRoutineMutationOptions } from "@/lib/room-routines/mutations";
 import { roomRoutinesQueryOptions, type RoomRoutine } from "@/lib/room-routines/queries";
 import { queryClient } from "@/query-client";
 
@@ -34,14 +34,25 @@ function lastRun(routine: RoomRoutine, at: (iso: string) => string): string {
 export function AgentSchedules({ roomId, agentId }: { roomId: string; agentId: string }) {
   const routines = useQuery(roomRoutinesQueryOptions(roomId));
   const create = useMutation(createRoomRoutineMutationOptions(queryClient));
+  const change = useMutation(changeRoomRoutineMutationOptions(queryClient));
   const flip = useMutation(switchRoomRoutineMutationOptions(queryClient));
   const remove = useMutation(removeRoomRoutineMutationOptions(queryClient));
   const [instruction, setInstruction] = useState("");
   const [every, setEvery] = useState<"daily" | "working" | "weekly">("working");
   const [day, setDay] = useState(1);
   const [time, setTime] = useState("08:00");
-  const busy = create.isPending || flip.isPending || remove.isPending;
-  const error = routines.error || create.error || flip.error || remove.error;
+  // The schedule the form is changing; "" while it makes a new one.
+  const [editing, setEditing] = useState("");
+  const busy = create.isPending || change.isPending || flip.isPending || remove.isPending;
+  const error = routines.error || create.error || change.error || flip.error || remove.error;
+  function edit(routine?: RoomRoutine) {
+    const days = routine?.schedule?.days;
+    setEditing(routine?.id ?? "");
+    setInstruction(routine?.instruction ?? "");
+    setEvery(!routine?.schedule ? "working" : !days!.length || days!.length === 7 ? "daily" : days!.join() === WORKING_DAYS.join() ? "working" : "weekly");
+    setDay(days?.length && days.length < 7 ? days[0]! : 1);
+    setTime(routine?.schedule ? `${two(routine.schedule.hour)}:${two(routine.schedule.minute)}` : "08:00");
+  }
   const items = (routines.data?.items || []).filter((routine) => routine.agent_id === agentId);
   const at = (iso: string) => new Date(iso).toLocaleString("vi-VN",
     { timeZone: routines.data?.timezone, weekday: "long", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -62,6 +73,7 @@ export function AgentSchedules({ roomId, agentId }: { roomId: string; agentId: s
                 <span className="ml-auto flex gap-2">
                   <Button size="sm" variant="outline" disabled={busy}
                     onClick={() => flip.mutate({ roomId, id: routine.id, enabled: !routine.enabled })}>{routine.enabled ? "Tắt" : "Bật"}</Button>
+                  <Button size="sm" variant="outline" disabled={busy} aria-label={`Sửa lịch ${scheduleLabel(routine)}`} onClick={() => edit(routine)}>Sửa</Button>
                   <Button size="sm" variant="ghost" disabled={busy} aria-label={`Xóa lịch ${scheduleLabel(routine)}`}
                     onClick={() => remove.mutate({ roomId, id: routine.id })}>Xóa</Button>
                 </span>
@@ -76,13 +88,14 @@ export function AgentSchedules({ roomId, agentId }: { roomId: string; agentId: s
       ) : <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">Agent này chưa có lịch nào.</p>}
       <form className="space-y-3 rounded-lg border border-border p-3" onSubmit={async (event) => {
         event.preventDefault();
+        const timing = { roomId, instruction: instruction.trim(), hour, minute, days: every === "daily" ? [] : every === "working" ? WORKING_DAYS : [day] };
         try {
-          await create.mutateAsync({ roomId, agent_id: agentId, instruction: instruction.trim(), hour, minute,
-            days: every === "daily" ? [] : every === "working" ? WORKING_DAYS : [day] });
-          setInstruction("");
+          if (editing) await change.mutateAsync({ ...timing, id: editing });
+          else await create.mutateAsync({ ...timing, agent_id: agentId });
+          edit();
         } catch { /* visible mutation error */ }
       }}>
-        <p className="text-sm font-medium">Đặt lịch mới</p>
+        <p className="text-sm font-medium">{editing ? "Sửa lịch" : "Đặt lịch mới"}</p>
         <div className="space-y-1.5">
           <label htmlFor="schedule-instruction" className="text-xs text-muted-foreground">Chỉ dẫn gửi cho agent mỗi lần chạy</label>
           <Textarea id="schedule-instruction" rows={3} maxLength={2000} value={instruction} disabled={busy}
@@ -110,8 +123,9 @@ export function AgentSchedules({ roomId, agentId }: { roomId: string; agentId: s
             <Input id="schedule-time" type="time" className="w-32" value={time} disabled={busy} onChange={(e) => setTime(e.target.value)} />
           </div>
           <Button type="submit" size="sm" disabled={busy || !instruction.trim() || !Number.isInteger(hour) || !Number.isInteger(minute)}>
-            {create.isPending ? "Đang đặt…" : "Đặt lịch"}
+            {create.isPending || change.isPending ? "Đang lưu…" : editing ? "Lưu thay đổi" : "Đặt lịch"}
           </Button>
+          {editing && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => edit()}>Hủy</Button>}
         </div>
       </form>
       {error && <p role="alert" className="text-sm text-destructive">{error.message}</p>}

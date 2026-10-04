@@ -40,6 +40,10 @@ def schedule_service(database, monkeypatch):
                     json['channelId'], json['instruction'], json['cron'], json['timezone'], TENANT)
                 return httpx.Response(201, json={'id': made, 'nextRunAt': '2026-10-06T01:00:00.000Z'})
             made = path.split('/')[1]
+            if path.endswith('/update'):
+                await asyncio.to_thread(sql, database, 'update routines set instruction=$2,cron=$3 where id=$1 and owner_user_id=$4 returning id',
+                                        made, json['instruction'], json['cron'], json['ownerUserId'])
+                return httpx.Response(200, json={'id': made, 'nextRunAt': '2026-10-06T09:30:00.000Z'})
             if path.endswith('/enabled'):
                 await asyncio.to_thread(sql, database, 'update routines set enabled=$2 where id=$1 and owner_user_id=$3 returning id', made, json['enabled'], json['ownerUserId'])
             else:
@@ -126,11 +130,19 @@ def test_management_schedules_a_published_agent_and_a_firing_is_a_mention_in_the
         refused = fire(third).json()
         assert not refused['posted'] and 'phát hành' in refused['reason'] and status(third)['status'] == 'failed'
 
+        # What it asks and when can be changed; the agent it asks cannot.
+        assert c.put(f'{ROOM}/{routine}', json={'agent_id': agent, 'instruction': 'x', 'hour': 9, 'minute': 0}).status_code == 422
+        assert c.put(f'{ROOM}/routine_unknown', json={'instruction': 'x', 'hour': 9, 'minute': 0}).status_code == 404
+        assert c.put(f'{ROOM}/{routine}', json={'instruction': ' Báo cáo cuối ngày. ', 'hour': 16, 'minute': 30, 'days': []}).status_code == 200
+        row = next(i for i in c.get(ROOM).json()['items'] if i['id'] == routine)
+        assert (row['instruction'], row['schedule']) == ('Báo cáo cuối ngày.', {'minute': 30, 'hour': 16, 'days': []})
         assert c.put(f'{ROOM}/{routine}/enabled', json={'enabled': False}).status_code == 200
         assert not next(i for i in c.get(ROOM).json()['items'] if i['id'] == routine)['enabled']
         assert c.put(f'{ROOM}/routine_unknown/enabled', json={'enabled': False}).status_code == 404
         assert c.delete(f'{ROOM}/{routine}').status_code == 200
         assert all(i['id'] != routine for i in c.get(ROOM).json()['items'])
-    assert [path for path, _ in seen[1:]] == [f'/{routine}/enabled', f'/{routine}/remove']
+    assert seen[1:] == [(f'/{routine}/update', {'ownerUserId': 'local-v3-management', 'instruction': 'Báo cáo cuối ngày.', 'cron': '30 16 * * *'}),
+                        (f'/{routine}/enabled', {'ownerUserId': 'local-v3-management', 'enabled': False}),
+                        (f'/{routine}/remove', {'ownerUserId': 'local-v3-management'})]
     events = sql(database, "select event_type from audit_events where target_type='routine' and target_id=$1 order by created_at", routine)
-    assert [e['event_type'] for e in events] == ['routine.created', 'routine.switched', 'routine.removed']
+    assert [e['event_type'] for e in events] == ['routine.created', 'routine.changed', 'routine.switched', 'routine.removed']

@@ -58,6 +58,16 @@ test.skipIf(!database)("a schedule is kept for its owner, fires once per due min
   expect((await post(`/${id}/enabled`, { ownerUserId: OWNER, enabled: false })).status).toBe(200);
   expect((await post(`/${id}/enabled`, { ownerUserId: OWNER, enabled: true })).status).toBe(200);
 
+  // What it asks and when can be changed by its owner; the next run follows the new time (16:30 in Ho Chi Minh City).
+  expect((await post(`/${id}/update`, { ownerUserId: "local-v3-resident", instruction: "x", cron: "30 16 * * *" })).status).toBe(404);
+  expect((await post(`/${id}/update`, { ownerUserId: OWNER, instruction: "x", cron: "* * * * *" })).status).toBe(422);
+  const changed = await post(`/${id}/update`, { ownerUserId: OWNER, instruction: "Báo cáo cuối ngày.", cron: "30 16 * * *" });
+  expect(changed.status).toBe(200);
+  const moved = new Date(((await changed.json()) as { nextRunAt: string }).nextRunAt);
+  expect([moved.getUTCHours(), moved.getUTCMinutes()]).toEqual([9, 30]);
+  const [kept] = await database!.select().from(routines).where(eq(routines.id, id));
+  expect([kept!.instruction, kept!.cron, kept!.timezone]).toEqual(["Báo cáo cuối ngày.", "30 16 * * *", "Asia/Ho_Chi_Minh"]);
+
   // Due now. Whole seconds, as every stamp the schedule itself writes.
   const due = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000);
   await database!.update(routines).set({ nextRunAt: due }).where(eq(routines.id, id));

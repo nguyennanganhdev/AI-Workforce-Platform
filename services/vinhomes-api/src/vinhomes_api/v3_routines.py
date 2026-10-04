@@ -55,9 +55,9 @@ async def service(path: str, payload: dict) -> dict:
     return body
 
 
-class Schedule(BaseModel):
+class Timing(BaseModel):
+    """What a schedule asks and when."""
     model_config = ConfigDict(extra='forbid')
-    agent_id: str = Field(min_length=1, max_length=160)
     instruction: str = Field(min_length=1, max_length=2000)
     hour: int = Field(ge=0, le=23)
     minute: int = Field(ge=0, le=59)
@@ -77,6 +77,14 @@ class Schedule(BaseModel):
         if any(day < 0 or day > 6 for day in value) or len(set(value)) != len(value):
             raise ValueError('days are 0 (Sunday) to 6 (Saturday), each at most once')
         return sorted(value)
+
+    @property
+    def cron(self) -> str:
+        return f"{self.minute} {self.hour} * * {','.join(str(day) for day in self.days) or '*'}"
+
+
+class Schedule(Timing):
+    agent_id: str = Field(min_length=1, max_length=160)
 
 
 class Enabled(BaseModel):
@@ -138,11 +146,21 @@ async def schedule(room_id: str, body: Schedule, scope: Scope) -> dict[str, obje
     if not (await db.execute(text('select ' + PUBLISHED), {'room': room_id, 'agent': body.agent_id})).scalar_one():
         raise HTTPException(422, 'Agent chưa có bản phát hành trong phòng này.')
     await within_cap(db, actor)
-    cron = f"{body.minute} {body.hour} * * {','.join(str(day) for day in body.days) or '*'}"
     made = await service('', {'ownerUserId': actor, 'agentId': body.agent_id, 'channelId': room_id,
-                               'instruction': body.instruction, 'cron': cron, 'timezone': TIMEZONE})
-    await audit(db, actor, 'routine.created', 'routine', made['id'], {'room': room_id, 'agent': body.agent_id, 'cron': cron})
+                               'instruction': body.instruction, 'cron': body.cron, 'timezone': TIMEZONE})
+    await audit(db, actor, 'routine.created', 'routine', made['id'], {'room': room_id, 'agent': body.agent_id, 'cron': body.cron})
     return {'id': made['id'], 'next_run_at': made['nextRunAt']}
+
+
+@router.put('/rooms/{room_id}/routines/{routine_id}', summary='Change what a schedule of the room asks and when')
+async def change(room_id: str, routine_id: str, body: Timing, scope: Scope) -> dict[str, object]:
+    db, actor = scope
+    await managed_room(scope, room_id, lock=False)
+    routine = await routine_in(db, room_id, routine_id)
+    # Any manager of the room may change it; the schedule stays its owner's and keeps its agent.
+    changed = await service(f'/{routine_id}/update', {'ownerUserId': routine['owner_user_id'], 'instruction': body.instruction, 'cron': body.cron})
+    await audit(db, actor, 'routine.changed', 'routine', routine_id, {'room': room_id, 'cron': body.cron})
+    return {'id': routine_id, 'next_run_at': changed['nextRunAt']}
 
 
 @router.put('/rooms/{room_id}/routines/{routine_id}/enabled', summary='Switch a schedule of the room on or off')

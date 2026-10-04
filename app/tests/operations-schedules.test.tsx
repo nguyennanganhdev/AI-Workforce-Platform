@@ -30,7 +30,9 @@ test("management reads an agent's schedules in plain words, sets a weekly one, a
     if (method === "GET") return Response.json({ items, timezone: "Asia/Ho_Chi_Minh" });
     sent.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     if (method === "POST" && full) { full = false; return Response.json({ detail: "Người đặt lịch đã có 20 lịch đang bật. Tắt bớt một lịch trước." }, { status: 409 }); }
-    if (method === "PUT") items = items.map((item) => item.id === "routine_1" ? { ...item, enabled: false } : item);
+    if (method === "PUT" && url.endsWith("/enabled")) items = items.map((item) => item.id === "routine_1" ? { ...item, enabled: false } : item);
+    else if (method === "PUT") items = items.map((item) => item.id === "routine_1" ? { ...item, instruction: "Tóm tắt yêu cầu hôm qua, kèm số quá hạn.",
+      cron: "15 9 * * *", schedule: { hour: 9, minute: 15, days: [] } } : item);
     if (method === "DELETE") items = items.filter((item) => item.id !== "routine_1");
     return Response.json({ id: "routine_2" }, { status: method === "POST" ? 201 : 200 });
   }) as typeof fetch;
@@ -59,6 +61,21 @@ test("management reads an agent's schedules in plain words, sets a weekly one, a
   await waitFor(() => expect((view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy") as HTMLTextAreaElement).value).toBe(""));
   expect(sent.at(-1)).toEqual({ method: "POST", url: "/api/business/rooms/room-1/routines",
     body: { agent_id: "report", instruction: "Báo cáo tuần.", hour: 16, minute: 30, days: [5] } });
+
+  // Changing a schedule fills the form with what it holds; saving sends the new timing and never another agent.
+  fireEvent.click(view.getByRole("button", { name: /Sửa lịch/ }));
+  expect((view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy") as HTMLTextAreaElement).value).toBe("Tóm tắt yêu cầu hôm qua.");
+  expect((view.getByLabelText("Lặp lại") as HTMLSelectElement).value).toBe("working");
+  expect((view.getByLabelText("Lúc") as HTMLInputElement).value).toBe("08:00");
+  fireEvent.change(view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy"), { target: { value: "Tóm tắt yêu cầu hôm qua, kèm số quá hạn." } });
+  fireEvent.change(view.getByLabelText("Lặp lại"), { target: { value: "daily" } });
+  fireEvent.change(view.getByLabelText("Lúc"), { target: { value: "09:15" } });
+  fireEvent.click(view.getByRole("button", { name: "Lưu thay đổi" }));
+  await waitFor(() => expect(view.getByRole("list", { name: "Lịch đã đặt" }).textContent).toContain("Hằng ngày lúc 09:15"));
+  expect(sent.at(-1)).toEqual({ method: "PUT", url: "/api/business/rooms/room-1/routines/routine_1",
+    body: { instruction: "Tóm tắt yêu cầu hôm qua, kèm số quá hạn.", hour: 9, minute: 15, days: [] } });
+  // The form is back to making a new one.
+  expect(view.getByRole("button", { name: "Đặt lịch" })).toBeTruthy();
 
   fireEvent.click(view.getByRole("button", { name: "Tắt" }));
   await view.findByRole("button", { name: "Bật" });

@@ -95,6 +95,19 @@ export function createRoutineRoutes(serviceToken: string, database: Database) {
       return Response.json({ ok: true });
     });
   });
+  app.post("/:id/update", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    if (!named(body, "ownerUserId", "instruction", "cron"))
+      return c.json({ error: "An owner, an instruction and a schedule are required." }, 422);
+    return answer(async () => {
+      // The store recomputes the next run from the new schedule, in the routine's own timezone.
+      const changed = await store.update(body.ownerUserId, c.req.param("id"), {
+        instruction: body.instruction,
+        cron: body.cron,
+      });
+      return Response.json({ id: changed.id, nextRunAt: changed.nextRunAt });
+    });
+  });
   app.post("/:id/remove", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     if (!named(body, "ownerUserId"))

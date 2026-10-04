@@ -153,7 +153,7 @@ const EVENT: Record<string, string> = {
   "room.agent_created": "Tạo agent", "room.agent_answered": "Agent trả lời trong nhóm",
   "team.created": "Mở phiên điều phối", "team.closure_approved": "Duyệt đóng phiên", "team.control_requested": "Điều khiển phiên", "team.agent_asked": "Hỏi agent trong phiên",
   "connection.created": "Thêm kết nối ngoài", "connection.tools_allowed": "Chọn công cụ được phép", "connection.removed": "Xóa kết nối ngoài",
-  "routine.created": "Đặt lịch chạy agent", "routine.switched": "Bật hoặc tắt lịch chạy", "routine.removed": "Xóa lịch chạy",
+  "routine.created": "Đặt lịch chạy agent", "routine.changed": "Sửa lịch chạy", "routine.switched": "Bật hoặc tắt lịch chạy", "routine.removed": "Xóa lịch chạy",
   "reception.delegation_issued": "Lễ tân nhận quyền thay cư dân", "reception_supervisor.input_received": "Supervisor nhận yêu cầu",
   "reception_supervisor.result_received": "Supervisor trả kết quả",
 };
