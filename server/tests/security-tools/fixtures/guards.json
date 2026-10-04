@@ -1,0 +1,97 @@
+[
+  {
+    "guard_id": "guard_001",
+    "status": "AVAILABLE",
+    "current_location": {
+      "location_id": "loc_04",
+      "building": "Tòa B",
+      "floor": "T1",
+      "zone": "Sảnh"
+    },
+    "updated_at": "2026-09-29T01:36:00.000Z"
+  },
+  {
+    "guard_id": "guard_002",
+    "status": "AVAILABLE",
+    "current_location": {
+      "location_id": "loc_01",
+      "building": "Tòa A",
+      "floor": "T1",
+      "zone": "Cổng chính"
+    },
+    "updated_at": "2026-09-28T20:15:30.000Z"
+  },
+  {
+    "guard_id": "guard_003",
+    "status": "AVAILABLE",
+    "current_location": null,
+    "updated_at": "2026-09-29T00:33:30.000Z"
+  },
+  {
+    "guard_id": "guard_004",
+    "status": "ASSIGNED",
+    "current_location": {
+      "location_id": "loc_01",
+      "building": "Tòa A",
+      "floor": "T1",
+      "zone": "Cổng chính"
+    },
+    "updated_at": "2026-09-29T04:19:45.000Z"
+  },
+  {
+    "guard_id": "guard_005",
+    "status": "ASSIGNED",
+    "current_location": {
+      "location_id": "loc_03",
+      "building": "Tòa A",
+      "floor": "B1",
+      "zone": "Hầm xe"
+    },
+    "updated_at": "2026-09-29T04:21:50.000Z"
+  },
+  {
+    "guard_id": "guard_006",
+    "status": "ASSIGNED",
+    "current_location": {
+      "location_id": "loc_02",
+      "building": "Tòa A",
+      "floor": "T1",
+      "zone": "Sảnh"
+    },
+    "updated_at": "2026-09-29T04:25:05.000Z"
+  },
+  {
+    "guard_id": "guard_007",
+    "status": "OFF_DUTY",
+    "current_location": null,
+    "updated_at": "2026-09-28T23:00:00.000Z"
+  },
+  {
+    "guard_id": "guard_008",
+    "status": "UNAVAILABLE",
+    "current_location": {
+      "location_id": "loc_05",
+      "building": "Tòa B",
+      "floor": "T1",
+      "zone": "Thang máy"
+    },
+    "updated_at": "2026-09-29T03:00:00.000Z"
+  },
+  {
+    "guard_id": "guard_009",
+    "status": "UNKNOWN",
+    "current_location": null,
+    "updated_at": "2026-09-29T02:00:00.000Z"
+  },
+  {
+    "guard_id": "guard_010",
+    "status": "AVAILABLE",
+    "current_location": {
+      "location_id": "loc_06",
+      "building": "Khuôn viên",
+      "floor": null,
+      "zone": "Công viên nội khu"
+    },
+    "updated_at": "2026-09-29T01:05:00.000Z"
+  }
+]

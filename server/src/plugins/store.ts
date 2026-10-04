@@ -1,4 +1,12 @@
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import type {
+  FactoryCatalogueProjection,
+  FactoryIssue,
+  FactoryReadOptions,
+  FactoryResourceFact,
+  FactoryResourceRef,
+  FactoryResult,
+} from "../../../agent-factory/src/contracts.js";
 import {
   type AuditInitiator,
   type AuditStore,
@@ -40,6 +48,7 @@ import {
   skills,
   skillTools,
 } from "../db/schema";
+import { FACTORY_LIMITS } from "../../../agent-factory/src/index.js";
 import {
   accessFor,
   type ServerAccess,
@@ -1253,13 +1262,18 @@ export function createPluginStore(options: PluginStoreOptions) {
   }
 
   /** The refs each of these skills declares, keyed by skill id. Skills with none are absent. */
-  async function toolsDeclaredBy(skillIds: string[]) {
+  async function toolsDeclaredBy(
+    skillIds: string[],
+    reader: Pick<Database, "select"> = database,
+    limit?: number,
+  ) {
     if (skillIds.length === 0) return new Map<string, string[]>();
-    const rows = await database
-      .select()
+    const query = reader
+      .select({ skillId: skillTools.skillId, ref: skillTools.ref })
       .from(skillTools)
       .where(inArray(skillTools.skillId, skillIds))
       .orderBy(asc(skillTools.ref));
+    const rows = await (limit === undefined ? query : query.limit(limit));
     const bySkill = new Map<string, string[]>();
     for (const row of rows) {
       bySkill.set(row.skillId, [...(bySkill.get(row.skillId) ?? []), row.ref]);
@@ -2456,9 +2470,10 @@ export function createPluginStore(options: PluginStoreOptions) {
    */
   async function brokeredAppRow(
     toolkit: string,
+    reader: Pick<Database, "select"> = database,
   ): Promise<BrokeredAppRow | null> {
     const url = `composio://${toolkit}`;
-    return (await brokeredAppRowsAt([url])).get(url) ?? null;
+    return (await brokeredAppRowsAt([url], reader)).get(url) ?? null;
   }
 
   /**
@@ -2482,10 +2497,11 @@ export function createPluginStore(options: PluginStoreOptions) {
    */
   async function brokeredAppRowsAt(
     urls: string[],
+    reader: Pick<Database, "select"> = database,
   ): Promise<Map<string, BrokeredAppRow>> {
     const answering = new Map<string, BrokeredAppRow>();
     if (urls.length === 0) return answering;
-    const rows = await database
+    const rows = await reader
       .select({
         id: mcpServers.id,
         url: mcpServers.url,
@@ -2521,11 +2537,388 @@ export function createPluginStore(options: PluginStoreOptions) {
    * {@link SchemeKind}: `unreadable` is what a caller needs in order to fail closed, and a boolean
    * cannot carry it.
    */
-  async function brokeredAppKind(toolkit: string): Promise<SchemeKind> {
-    return schemeKind(await brokeredAppScheme(toolkit));
+  async function brokeredAppKind(
+    toolkit: string,
+    reader: Pick<Database, "select"> = database,
+  ): Promise<SchemeKind> {
+    return schemeKind(
+      (await brokeredAppRow(toolkit, reader))?.authScheme ?? null,
+    );
+  }
+
+  class FactoryCatalogueTooLargeError extends Error {}
+
+  // These are read-only facts; never use connectionTokenFor, which can refresh credentials.
+  async function factoryRead<T>(
+    control: FactoryReadOptions,
+    work: (reader: Pick<Database, "select">, check: () => void) => Promise<T>,
+  ): Promise<FactoryResult<T>> {
+    const timeout = Math.min(control.timeoutMs ?? 5000, 5000);
+    const started = performance.now();
+    const check = () => {
+      control.signal?.throwIfAborted();
+      if (
+        !Number.isFinite(timeout) ||
+        timeout <= 0 ||
+        performance.now() - started >= timeout
+      )
+        throw new Error("timeout");
+    };
+    try {
+      check();
+      const value = await database.transaction(async (tx) => {
+        await tx.execute(sql`set transaction read only`);
+        await tx.execute(
+          sql`select set_config('statement_timeout', ${String(Math.ceil(timeout))}, true)`,
+        );
+        await tx.execute(
+          sql`select set_config('lock_timeout', ${String(Math.ceil(timeout))}, true)`,
+        );
+        check();
+        const value = await work(tx, check);
+        check();
+        return value;
+      });
+      check();
+      return { ok: true, value };
+    } catch (error) {
+      return {
+        ok: false,
+        issues: [
+          {
+            code:
+              error instanceof FactoryCatalogueTooLargeError
+                ? "CATALOGUE_TOO_LARGE"
+                : control.signal?.aborted
+                  ? "CANCELLED"
+                  : performance.now() - started >= timeout
+                    ? "READ_TIMEOUT"
+                    : "DEPENDENCY_UNAVAILABLE",
+            path: "",
+            sourceStage:
+              error instanceof FactoryCatalogueTooLargeError
+                ? "resources"
+                : "dependency",
+            evidenceRefs: [],
+            message: "Resource facts could not be read.",
+          },
+        ],
+      };
+    }
+  }
+
+  async function factoryProjection(
+    reader: Pick<Database, "select">,
+    actor: SkillActor,
+    check: () => void,
+    refs?: readonly FactoryResourceRef[],
+  ): Promise<FactoryCatalogueProjection> {
+    check();
+    const toolRefs = refs
+      ?.filter(({ kind }) => kind === "tool")
+      .map(({ ref }) => ref);
+    const skillRefs = refs
+      ?.filter(({ kind }) => kind === "skill")
+      .map(({ ref }) => ref);
+    const toolRows =
+      toolRefs?.length === 0
+        ? []
+        : await reader
+            .select({
+              serverId: mcpTools.serverId,
+              name: mcpTools.name,
+              description: sql<string>`left(${mcpTools.description}, ${FACTORY_LIMITS.catalogueBytes + 1})`,
+              inputSchema: sql<unknown>`case when octet_length(${mcpTools.inputSchema}::text) > ${FACTORY_LIMITS.catalogueBytes} then null else ${mcpTools.inputSchema} end`,
+              oversized: sql<boolean>`octet_length(${mcpTools.inputSchema}::text) > ${FACTORY_LIMITS.catalogueBytes} or octet_length(${mcpTools.description}) > ${FACTORY_LIMITS.catalogueBytes}`,
+              effect: mcpTools.effect,
+              destructive: mcpTools.destructive,
+              title: sql<string>`left(${mcpServers.title}, ${FACTORY_LIMITS.catalogueBytes + 1})`,
+            })
+            .from(mcpTools)
+            .innerJoin(mcpServers, eq(mcpServers.id, mcpTools.serverId))
+            .where(
+              toolRefs
+                ? inArray(
+                    sql`${mcpTools.serverId} || '/' || ${mcpTools.name}`,
+                    toolRefs,
+                  )
+                : undefined,
+            )
+            .orderBy(asc(mcpTools.serverId), asc(mcpTools.name))
+            .limit(FACTORY_LIMITS.tools + 1);
+    check();
+    if (
+      toolRows.length > FACTORY_LIMITS.tools ||
+      toolRows.some(({ oversized }) => oversized)
+    )
+      throw new FactoryCatalogueTooLargeError();
+    const skillRows =
+      skillRefs?.length === 0
+        ? []
+        : await reader
+            .select({
+              id: skills.id,
+              slug: skills.slug,
+              title: sql<string>`left(${skills.title}, ${FACTORY_LIMITS.catalogueBytes + 1})`,
+              summary: sql<string>`left(${skills.summary}, ${FACTORY_LIMITS.catalogueBytes + 1})`,
+              instructions: sql<string>`left(${skills.instructions}, ${FACTORY_LIMITS.catalogueBytes + 1})`,
+              oversized: sql<boolean>`octet_length(${skills.instructions}) > ${FACTORY_LIMITS.catalogueBytes} or octet_length(${skills.summary}) > ${FACTORY_LIMITS.catalogueBytes}`,
+            })
+            .from(skills)
+            .where(
+              and(
+                actor.isAdmin
+                  ? undefined
+                  : or(
+                      isNull(skills.ownerUserId),
+                      eq(skills.ownerUserId, actor.id),
+                    ),
+                skillRefs ? inArray(skills.slug, skillRefs) : undefined,
+              ),
+            )
+            .orderBy(asc(skills.slug))
+            .limit(FACTORY_LIMITS.skills + 1);
+    check();
+    if (
+      skillRows.length > FACTORY_LIMITS.skills ||
+      skillRows.some(({ oversized }) => oversized)
+    )
+      throw new FactoryCatalogueTooLargeError();
+    const declared = await toolsDeclaredBy(
+      skillRows.map(({ id }) => id),
+      reader,
+      // Even empty JSON strings spend at least three bytes per declaration. Overflow always fails below.
+      Math.floor(FACTORY_LIMITS.catalogueBytes / 3) + 1,
+    );
+    check();
+    const projection: FactoryCatalogueProjection = {
+      tools: toolRows.map((row) => ({
+        kind: "tool",
+        ref: `${row.serverId}/${row.name}`,
+        name: row.name,
+        title: row.title,
+        description: row.description,
+        inputSchema:
+          row.inputSchema as FactoryCatalogueProjection["tools"][number]["inputSchema"],
+        outputSchema: null,
+        effect: classifyTool(
+          catalogueEntry(row.serverId),
+          row.name,
+          true,
+          row.effect,
+        ),
+        destructive: row.destructive,
+      })),
+      skills: skillRows.map((row) => ({
+        kind: "skill",
+        ref: row.slug,
+        title: row.title,
+        description: row.summary,
+        instructions: row.instructions,
+        toolRefs: declared.get(row.id) ?? [],
+      })),
+    };
+    if (
+      Buffer.byteLength(JSON.stringify(projection), "utf8") >
+      FACTORY_LIMITS.catalogueBytes
+    )
+      throw new FactoryCatalogueTooLargeError();
+    return projection;
+  }
+
+  const factoryFailure = (
+    code: string,
+    message: string,
+  ): { ok: false; issues: FactoryIssue[] } => ({
+    ok: false,
+    issues: [
+      { code, path: "", sourceStage: "resources", evidenceRefs: [], message },
+    ],
+  });
+
+  async function decideGrant(
+    kind: PluginKind,
+    ref: string,
+    agentId: string,
+    reader: Pick<Database, "select"> = database,
+  ): Promise<PluginDecision> {
+    const [row] = await reader
+      .select()
+      .from(pluginGrants)
+      .where(
+        and(
+          eq(pluginGrants.kind, kind),
+          eq(pluginGrants.ref, ref),
+          eq(pluginGrants.agentId, agentId),
+        ),
+      )
+      .limit(1);
+    if (!row)
+      return {
+        allowed: false,
+        reason:
+          kind === "mcp"
+            ? `This Bot has not been given the tool ${ref}.`
+            : `This Bot has not been given the skill ${ref}.`,
+      };
+    return { allowed: true };
   }
 
   return {
+    async factoryCatalogue(
+      actor: SkillActor,
+      control: FactoryReadOptions = {},
+    ): Promise<FactoryResult<FactoryCatalogueProjection>> {
+      if (!actor.id)
+        return factoryFailure(
+          "UNAUTHENTICATED",
+          "An authenticated actor is required.",
+        );
+      const result = await factoryRead(control, (reader, check) =>
+        factoryProjection(reader, actor, check),
+      );
+      if (!result.ok) return result;
+      const value = result.value;
+      if (
+        value.tools.length > FACTORY_LIMITS.tools ||
+        value.skills.length > FACTORY_LIMITS.skills ||
+        Buffer.byteLength(JSON.stringify(value), "utf8") >
+          FACTORY_LIMITS.catalogueBytes
+      ) {
+        return factoryFailure(
+          "CATALOGUE_TOO_LARGE",
+          "Catalogue exceeds construction limits.",
+        );
+      }
+      return result;
+    },
+
+    /** actorId is always the stored creator; administrator inspection must not substitute its own accounts. */
+    async factoryResourceFacts(
+      actorId: string,
+      agentId: string,
+      refs: readonly FactoryResourceRef[],
+      control: FactoryReadOptions = {},
+      actorIsAdmin = false,
+    ): Promise<FactoryResult<FactoryResourceFact[]>> {
+      if (!actorId)
+        return factoryFailure(
+          "UNAUTHENTICATED",
+          "An authenticated actor is required.",
+        );
+      if (
+        refs.filter(({ kind }) => kind === "tool").length >
+          FACTORY_LIMITS.selectedTools ||
+        refs.filter(({ kind }) => kind === "skill").length >
+          FACTORY_LIMITS.selectedSkills
+      ) {
+        return factoryFailure(
+          "TOO_MANY_RESOURCES",
+          "Selected resource count exceeds construction limits.",
+        );
+      }
+      return factoryRead(control, async (reader, check) => {
+        const projection = await factoryProjection(
+          reader,
+          { id: actorId, isAdmin: actorIsAdmin },
+          check,
+          refs,
+        );
+        const candidates = [...projection.tools, ...projection.skills];
+        const facts: FactoryResourceFact[] = [];
+        for (const selected of refs) {
+          check();
+          const resource =
+            candidates.find(
+              ({ kind, ref }) => kind === selected.kind && ref === selected.ref,
+            ) ?? null;
+          const granted = (
+            await decideGrant(
+              selected.kind === "tool" ? "mcp" : "skill",
+              selected.ref,
+              agentId,
+              reader,
+            )
+          ).allowed;
+          check();
+          let configured = !!resource;
+          let connected = !!resource;
+          if (resource?.kind === "tool") {
+            const serverId = resource.ref.split("/")[0] ?? "";
+            const [server] = await reader
+              .select({
+                id: mcpServers.id,
+                title: mcpServers.title,
+                url: mcpServers.url,
+                provenance: mcpServers.provenance,
+                authScheme: mcpServers.authScheme,
+                credentialId: mcpServers.credentialId,
+                activeCredential: sql<boolean>`${credentialRows.id} is not null and ${credentialRows.revokedAt} is null`,
+              })
+              .from(mcpServers)
+              .leftJoin(
+                credentialRows,
+                eq(credentialRows.id, mcpServers.credentialId),
+              )
+              .where(eq(mcpServers.id, serverId))
+              .limit(1);
+            check();
+            if (!server) {
+              configured = false;
+              connected = false;
+            } else {
+              const entry = catalogueEntry(server.id);
+              const access = accessFor(server, entry);
+              if (access.credential === "person-oauth") {
+                configured = server.activeCredential;
+                const [account] = await reader
+                  .select({
+                    active: sql<boolean>`${credentialRows.id} is not null and ${credentialRows.revokedAt} is null`,
+                  })
+                  .from(mcpUserCredentials)
+                  .leftJoin(
+                    credentialRows,
+                    eq(credentialRows.id, mcpUserCredentials.credentialId),
+                  )
+                  .where(
+                    and(
+                      eq(mcpUserCredentials.serverId, server.id),
+                      eq(mcpUserCredentials.userId, actorId),
+                    ),
+                  )
+                  .limit(1);
+                connected = account?.active ?? false;
+              } else if (access.credential === "brokered") {
+                if (!access.toolkit) throw new Error("unresolvable resource");
+                const kind = await brokeredAppKind(access.toolkit, reader);
+                configured = !!broker && kind !== "unreadable";
+                const [account] = await reader
+                  .select({ toolkit: composioConnections.toolkit })
+                  .from(composioConnections)
+                  .where(
+                    and(
+                      eq(composioConnections.toolkit, access.toolkit),
+                      eq(composioConnections.userId, actorId),
+                    ),
+                  )
+                  .limit(1);
+                connected = kind === "none" || !!account;
+              } else if (access.credential === "deployment-token") {
+                configured =
+                  entry?.auth.kind === "deployment-bearer" ||
+                  server.credentialId !== null
+                    ? server.activeCredential
+                    : true;
+              }
+            }
+          }
+          check();
+          facts.push({ ...selected, resource, granted, configured, connected });
+        }
+        return facts;
+      });
+    },
+
     /**
      * Add a server from the catalogue.
      *
@@ -6836,28 +7229,7 @@ export function createPluginStore(options: PluginStoreOptions) {
       ref: string,
       agentId: string,
     ): Promise<PluginDecision> {
-      const [row] = await database
-        .select()
-        .from(pluginGrants)
-        .where(
-          and(
-            eq(pluginGrants.kind, kind),
-            eq(pluginGrants.ref, ref),
-            eq(pluginGrants.agentId, agentId),
-          ),
-        )
-        .limit(1);
-
-      if (!row) {
-        return {
-          allowed: false,
-          reason:
-            kind === "mcp"
-              ? `This Bot has not been given the tool ${ref}.`
-              : `This Bot has not been given the skill ${ref}.`,
-        };
-      }
-      return { allowed: true };
+      return decideGrant(kind, ref, agentId);
     },
 
     /**

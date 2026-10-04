@@ -26,6 +26,15 @@ export function createRuntimeAgentLoader(
   vault?: { reader: CredentialSecretReader; encryptionKey: string },
   /** Secret for the deployment-managed Bot. Never sent to customer-owned endpoints. */
   managedAgent?: ManagedAgentConfig,
+  /**
+   * Fresh readiness for Meta-Agent generated rows: the stored creator's grants, connections and
+   * resource fingerprints, read on every load. Required for those rows; absent, or failing, makes a
+   * generated coworker unavailable rather than runnable. Never consulted for a legacy row.
+   */
+  factoryReadiness?: (
+    actor: AgentActor,
+    row: { id: string; ownerUserId: string | null; configuration: unknown },
+  ) => Promise<{ ready: true } | { ready: false; reason: string }>,
 ) {
   return async (actor: AgentActor): Promise<RegisteredAgent[]> => {
     const [active, tombstones] = await Promise.all([
@@ -37,8 +46,12 @@ export function createRuntimeAgentLoader(
     // agent. Tombstones are appended after, and never overwrite a live agent of the same id.
     const registered = new Map<string, RegisteredAgent>();
     for (const row of active) {
-      const agent = registeredAgentFromRow(row);
-      if (!agent) continue;
+      const normalized = registeredAgentFromRow(row);
+      if (!normalized) continue;
+      const agent =
+        normalized.type === "built_in" && isGeneratedRow(row.configuration)
+          ? await generatedAgentFor(actor, row, normalized, factoryReadiness)
+          : normalized;
       const isRemoteAgent =
         agent.type === "remote_ag_ui" || agent.type === "remote_mastra";
       // The key is resolved per load, rather than being cached on the row: revoking a
@@ -91,6 +104,50 @@ export function createRuntimeAgentLoader(
   };
 }
 
+/** Any `factory` key marks a generated row; `registeredAgentFromRow` already refused a corrupt one. */
+function isGeneratedRow(configuration: unknown): boolean {
+  return (
+    !!configuration &&
+    typeof configuration === "object" &&
+    Object.hasOwn(configuration, "factory")
+  );
+}
+
+/**
+ * The persisted-ready generated agent, or the existing unavailable representation. Fails closed on a
+ * missing reader, a blocked verdict or a reader error, and never aborts another agent's load.
+ */
+async function generatedAgentFor(
+  actor: AgentActor,
+  row: {
+    id: string;
+    name: string;
+    ownerUserId: string | null;
+    configuration: unknown;
+  },
+  agent: RegisteredAgent,
+  factoryReadiness: Parameters<typeof createRuntimeAgentLoader>[3],
+): Promise<RegisteredAgent> {
+  const unavailable = (reason: string): RegisteredAgent => ({
+    id: row.id,
+    name: row.name,
+    type: "unavailable",
+    reason,
+  });
+  if (!factoryReadiness)
+    return unavailable(
+      `${row.name} is a generated coworker and this deployment cannot check its readiness, so it cannot run.`,
+    );
+  try {
+    const verdict = await factoryReadiness(actor, row);
+    return verdict.ready ? agent : unavailable(verdict.reason);
+  } catch {
+    return unavailable(
+      `${row.name} could not be checked for readiness, so it will not run now.`,
+    );
+  }
+}
+
 /** Keep the existing pathname slash tolerance without erasing query or fragment differences. */
 function managedEndpointIdentity(value: string | URL): string | undefined {
   try {
@@ -112,6 +169,8 @@ function selectActiveAgents(database: Database, actor: AgentActor) {
       configuration: agents.configuration,
       title: agentProfiles.title,
       roleDescription: agentProfiles.roleDescription,
+      // The stored creator, whose access a generated row runs on regardless of who asks.
+      ownerUserId: agentProfiles.ownerUserId,
     })
     .from(agents)
     .innerJoin(agentProfiles, eq(agentProfiles.agentId, agents.id))

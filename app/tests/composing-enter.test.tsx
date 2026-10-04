@@ -168,6 +168,10 @@ test("the new-coworker wizard does not move on from the Enter that confirms a co
   const view = draw(
     <CreateAgentDialog onClose={() => {}} onCreated={() => {}} open />,
   );
+  // The wizard is one action away from the generated default form.
+  fireEvent.click(
+    await view.findByRole("button", { name: "Connect an existing agent" }),
+  );
 
   const name = await view.findByLabelText("Name");
   await type(name, "経費");

@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useState } from "react";
 import useMeasure from "react-use-measure";
+import { CreateGeneratedAgentForm } from "@/components/agents/create-generated-agent";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -42,12 +43,12 @@ import { isComposing } from "@/lib/composing";
 import { queryClient } from "@/query-client";
 
 /**
- * Creating a coworker, one question at a time.
+ * Creating a coworker.
  *
- * A wizard rather than a form, because the answers are three different kinds of decision: who this
- * coworker is, who may see it, and where it runs. The last one is the fork — a built-in coworker
- * needs nothing more, a managed one needs an endpoint — and a flat form showing endpoint fields to
- * everybody made the common case read like the hard one.
+ * By default from a name, a role and a description, built and verified by the server. Connecting an
+ * agent somebody already hosts is the legacy wizard below, one question at a time: a wizard rather
+ * than a form, because its answers are three different kinds of decision — who this coworker is, who
+ * may see it, and where it runs.
  */
 export function CreateAgentDialog({
   open,
@@ -64,9 +65,28 @@ export function CreateAgentDialog({
       <DialogContent>
         {/* All wizard state lives below DialogContent, whose portal unmounts on close: dismissing
             the dialog mid-way discards the half-answered steps rather than pickling them. */}
-        <CreateAgentWizard onClose={onClose} onCreated={onCreated} />
+        <CreateAgentChoice onClose={onClose} onCreated={onCreated} />
       </DialogContent>
     </Dialog>
+  );
+}
+
+function CreateAgentChoice({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (agentId: string) => void;
+}) {
+  const [connectExisting, setConnectExisting] = useState(false);
+  return connectExisting ? (
+    <CreateAgentWizard onClose={onClose} onCreated={onCreated} />
+  ) : (
+    <CreateGeneratedAgentForm
+      onCancel={onClose}
+      onConnectExisting={() => setConnectExisting(true)}
+      onCreated={onCreated}
+    />
   );
 }
 

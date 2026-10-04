@@ -1,0 +1,116 @@
+[
+  {
+    "instruction": "Nhắc nhở giữ trật tự",
+    "cancel_reason": "Cư dân báo đã hết ồn, không cần xử lý",
+    "cancelled_at": "2026-09-29T01:05:00.000Z",
+    "failure_code": null,
+    "dispatch_id": "dsp_0001",
+    "incident_id": "inc_04",
+    "guard_id": "guard_010",
+    "location": {
+      "location_id": "loc_04",
+      "building": "Tòa B",
+      "floor": "T1",
+      "zone": "Sảnh"
+    },
+    "status": "CANCELLED",
+    "version": 2,
+    "created_at": "2026-09-29T01:00:00.000Z",
+    "updated_at": "2026-09-29T01:05:00.000Z"
+  },
+  {
+    "instruction": null,
+    "cancel_reason": null,
+    "cancelled_at": null,
+    "failure_code": null,
+    "dispatch_id": "dsp_0002",
+    "incident_id": "inc_04",
+    "guard_id": "guard_001",
+    "location": {
+      "location_id": "loc_04",
+      "building": "Tòa B",
+      "floor": "T1",
+      "zone": "Sảnh"
+    },
+    "status": "COMPLETED",
+    "version": 4,
+    "created_at": "2026-09-29T01:10:00.000Z",
+    "updated_at": "2026-09-29T01:35:00.000Z"
+  },
+  {
+    "instruction": "Phong tỏa khu vực chốt cổng, không chạm tủ điện, chờ Kỹ thuật",
+    "cancel_reason": null,
+    "cancelled_at": null,
+    "failure_code": null,
+    "dispatch_id": "dsp_0003",
+    "incident_id": "inc_01",
+    "guard_id": "guard_004",
+    "location": {
+      "location_id": "loc_01",
+      "building": "Tòa A",
+      "floor": "T1",
+      "zone": "Cổng chính"
+    },
+    "status": "ON_SITE",
+    "version": 3,
+    "created_at": "2026-09-29T04:15:00.000Z",
+    "updated_at": "2026-09-29T04:19:45.000Z"
+  },
+  {
+    "instruction": null,
+    "cancel_reason": null,
+    "cancelled_at": null,
+    "failure_code": "GUARD_UNAVAILABLE",
+    "dispatch_id": "dsp_0004",
+    "incident_id": "inc_02",
+    "guard_id": "guard_007",
+    "location": {
+      "location_id": "loc_03",
+      "building": "Tòa A",
+      "floor": "B1",
+      "zone": "Hầm xe"
+    },
+    "status": "FAILED",
+    "version": 2,
+    "created_at": "2026-09-29T04:20:00.000Z",
+    "updated_at": "2026-09-29T04:21:10.000Z"
+  },
+  {
+    "instruction": "Chặn lối ra hầm B1, không đối đầu trực tiếp",
+    "cancel_reason": null,
+    "cancelled_at": null,
+    "failure_code": null,
+    "dispatch_id": "dsp_0005",
+    "incident_id": "inc_02",
+    "guard_id": "guard_005",
+    "location": {
+      "location_id": "loc_03",
+      "building": "Tòa A",
+      "floor": "B1",
+      "zone": "Hầm xe"
+    },
+    "status": "PENDING",
+    "version": 1,
+    "created_at": "2026-09-29T04:21:50.000Z",
+    "updated_at": "2026-09-29T04:21:50.000Z"
+  },
+  {
+    "instruction": "Tách hai bên, giữ khoảng cách, chờ trưởng ca",
+    "cancel_reason": null,
+    "cancelled_at": null,
+    "failure_code": null,
+    "dispatch_id": "dsp_0006",
+    "incident_id": "inc_03",
+    "guard_id": "guard_006",
+    "location": {
+      "location_id": "loc_02",
+      "building": "Tòa A",
+      "floor": "T1",
+      "zone": "Sảnh"
+    },
+    "status": "EN_ROUTE",
+    "version": 2,
+    "created_at": "2026-09-29T04:24:00.000Z",
+    "updated_at": "2026-09-29T04:25:05.000Z"
+  }
+]

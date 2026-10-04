@@ -5,7 +5,11 @@ import { AbstractAvatar } from "@/components/agents/abstract-avatar";
 import { AgentDialog } from "@/components/agents/agent-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { agentQueryOptions } from "@/lib/agents/queries";
+import {
+  agentQueryOptions,
+  factoryArtifactQueryOptions,
+  factoryRunnable,
+} from "@/lib/agents/queries";
 
 function Tag({ children }: { children: ReactNode }) {
   return (
@@ -52,6 +56,11 @@ export function AgentProfile({ agentId }: { agentId: string }) {
   const [managing, setManaging] = useState(false);
   const navigate = useNavigate();
   const agent = useQuery(agentQueryOptions(agentId));
+  /* A generated coworker starts only on a fresh ready assessment; a legacy one never asks. */
+  const artifact = useQuery({
+    ...factoryArtifactQueryOptions(agentId),
+    enabled: agent.data?.generated !== undefined,
+  });
 
   if (agent.isPending) {
     return <ProfileSkeleton />;
@@ -65,6 +74,8 @@ export function AgentProfile({ agentId }: { agentId: string }) {
   }
 
   const profile = agent.data;
+  const generated = profile.generated !== undefined;
+  const startable = !generated || factoryRunnable(artifact.data);
 
   return (
     <div className="flex w-full flex-col gap-6 p-8">
@@ -86,6 +97,15 @@ export function AgentProfile({ agentId }: { agentId: string }) {
         <div className="flex flex-wrap justify-center gap-1.5">
           <Tag>{profile.visibility === "private" ? "Private" : "Public"}</Tag>
           {profile.systemOwned ? <Tag>System owned</Tag> : null}
+          {generated ? (
+            <Tag>
+              {artifact.isPending
+                ? "Checking setup"
+                : startable
+                  ? "Ready"
+                  : "Setup needed"}
+            </Tag>
+          ) : null}
         </div>
       </header>
 
@@ -99,8 +119,15 @@ export function AgentProfile({ agentId }: { agentId: string }) {
       </section>
 
       <div className="flex flex-col gap-2">
+        {generated && !startable && !artifact.isPending ? (
+          <p className="text-sm text-muted-foreground" role="status">
+            It cannot start yet. Open Manage coworker to see what it still
+            needs.
+          </p>
+        ) : null}
         <Button
           className="w-full text-sm!"
+          disabled={!startable}
           onClick={() =>
             void navigate({ search: { agent: agentId }, to: "/channel/new" })
           }

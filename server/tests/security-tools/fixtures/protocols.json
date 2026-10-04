@@ -1,0 +1,136 @@
+[
+  {
+    "protocol_id": "prt_intrusion_p0",
+    "version": 2,
+    "incident_type": "INTRUSION",
+    "severity": "P0",
+    "steps": [
+      {
+        "order": 1,
+        "action": "Báo trưởng ca an ninh ngay, xác nhận vị trí xâm nhập qua camera gần nhất (chỉ metadata)",
+        "responsible_role": "SECURITY_SUPERVISOR",
+        "required": true,
+        "time_limit_minutes": 2
+      },
+      {
+        "order": 2,
+        "action": "Điều bảo vệ gần nhất phong tỏa lối ra, không đối đầu trực tiếp",
+        "responsible_role": "SECURITY_SUPERVISOR",
+        "required": true,
+        "time_limit_minutes": 5
+      },
+      {
+        "order": 3,
+        "action": "Báo BQL; BQL quyết định báo công an",
+        "responsible_role": "PROPERTY_MANAGER",
+        "required": true,
+        "time_limit_minutes": 10
+      },
+      {
+        "order": 4,
+        "action": "Lập biên bản, lưu bằng chứng",
+        "responsible_role": "SECURITY_SUPERVISOR",
+        "required": false,
+        "time_limit_minutes": null
+      }
+    ],
+    "ack_timeout_seconds": 120
+  },
+  {
+    "protocol_id": "prt_violence_p1",
+    "version": 1,
+    "incident_type": "VIOLENCE",
+    "severity": "P1",
+    "steps": [
+      {
+        "order": 1,
+        "action": "Báo trưởng ca an ninh",
+        "responsible_role": "SECURITY_SUPERVISOR",
+        "required": true,
+        "time_limit_minutes": 5
+      },
+      {
+        "order": 2,
+        "action": "Tách các bên, sơ cứu nếu có người bị thương, gọi cấp cứu khi cần",
+        "responsible_role": "SECURITY_SUPERVISOR",
+        "required": true,
+        "time_limit_minutes": 10
+      },
+      {
+        "order": 3,
+        "action": "Báo BQL",
+        "responsible_role": "PROPERTY_MANAGER",
+        "required": true,
+        "time_limit_minutes": 30
+      }
+    ],
+    "ack_timeout_seconds": 300
+  },
+  {
+    "protocol_id": "prt_fire_p1",
+    "version": 1,
+    "incident_type": "FIRE",
+    "severity": "P1",
+    "steps": [
+      {
+        "order": 1,
+        "action": "Phong tỏa khu vực, không để cư dân lại gần nguồn điện/nước rò",
+        "responsible_role": "SECURITY_SUPERVISOR",
+        "required": true,
+        "time_limit_minutes": 5
+      },
+      {
+        "order": 2,
+        "action": "Điều phối qua orchestrator để Kỹ thuật cắt điện khu vực; bảo vệ không tự cắt",
+        "responsible_role": "EMERGENCY_COORDINATOR",
+        "required": true,
+        "time_limit_minutes": 10
+      },
+      {
+        "order": 3,
+        "action": "Nếu có khói/lửa: nâng P0, sơ tán tầng, báo PCCC theo quy định",
+        "responsible_role": "EMERGENCY_COORDINATOR",
+        "required": true,
+        "time_limit_minutes": 2
+      },
+      {
+        "order": 4,
+        "action": "Báo BQL",
+        "responsible_role": "PROPERTY_MANAGER",
+        "required": true,
+        "time_limit_minutes": 15
+      }
+    ],
+    "ack_timeout_seconds": 180
+  },
+  {
+    "protocol_id": "prt_fire_p0",
+    "version": 1,
+    "incident_type": "FIRE",
+    "severity": "P0",
+    "steps": [
+      {
+        "order": 1,
+        "action": "Kích hoạt sơ tán, báo PCCC theo quy định",
+        "responsible_role": "EMERGENCY_COORDINATOR",
+        "required": true,
+        "time_limit_minutes": 1
+      },
+      {
+        "order": 2,
+        "action": "Bảo vệ hướng dẫn cư dân thoát hiểm, không dùng thang máy",
+        "responsible_role": "SECURITY_SUPERVISOR",
+        "required": true,
+        "time_limit_minutes": 3
+      },
+      {
+        "order": 3,
+        "action": "Báo BQL",
+        "responsible_role": "PROPERTY_MANAGER",
+        "required": true,
+        "time_limit_minutes": 5
+      }
+    ],
+    "ack_timeout_seconds": 60
+  }
+]
