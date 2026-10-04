@@ -38,7 +38,9 @@ HTTPS hoặc loopback, nên hai dịch vụ gặp nhau trên loopback và không
 4. Sao `deployment.env.example` thành `deployment.env` (được git bỏ qua) và điền. Mỗi token là một giá trị ngẫu
    nhiên riêng, tối thiểu 32 ký tự: `python -c "import secrets; print(secrets.token_hex(32))"`. Trong URL kết nối,
    máy chủ cơ sở dữ liệu phải là địa chỉ container nhìn thấy được (không phải `127.0.0.1`).
-5. `VINHOMES_ALLOWED_ORIGINS` là danh sách origin của hai giao diện. Thiếu origin thì đăng nhập bị từ chối với
+5. `REPAIR_CATEGORY_CODES` là mã các nhóm dịch vụ có hóa đơn tính là sửa chữa (ví dụ `technical`). Để trống thì
+   agent báo cáo không báo tổng hóa đơn sửa chữa.
+6. `VINHOMES_ALLOWED_ORIGINS` là danh sách origin của hai giao diện. Thiếu origin thì đăng nhập bị từ chối với
    "Untrusted browser origin".
 
 ## Chạy

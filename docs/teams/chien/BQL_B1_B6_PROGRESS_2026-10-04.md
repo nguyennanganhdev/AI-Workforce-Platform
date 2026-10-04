@@ -88,17 +88,78 @@ Giới hạn ghi nhận:
   Operations, Supervisor không điều phối.
 - Cơ sở dữ liệu local chỉ có một kỹ thuật viên; khi người này đang bận một phiếu thì ô "Nhân viên nhận việc" trống.
   Màn admin chưa tạo được hồ sơ nhân viên (chuyên môn, ca làm) cho tài khoản nhân viên mới.
-- **Báo cáo (B6) chưa đồng bộ được với Team Hoàng.** Bản trên `develop` không phải bản cập nhật của bản đang nhúng:
-  bộ tool khác hẳn (`filter_report_scope`, `get_repair_bill_summary`, `get_ticket_frequency_summary`,
-  `get_employee_star_summary` thay cho 8 tool cũ như `get_incident_frequency_summary`) và cách gọi backend cũng
-  khác. Chép đè làm cổng tool không khởi động. Cần Team Hoàng chốt bộ tool nào là chuẩn; khi đổi phải viết lại lớp
-  nối trong `v3_tool_gateway.py`, đăng ký lại catalogue và phát hành lại agent báo cáo vì tên tool đã cấp thay đổi.
+- **Báo cáo (B6):** lúc ghi mục này bản nhúng còn là bộ 8 tool cũ. Đã chốt theo bản mới nhất trên `develop` và làm
+  xong, xem mục "Agent báo cáo" bên dưới.
 
 - **Test server cần cơ sở dữ liệu:** chạy trên PostgreSQL riêng đã migrate thì không xong trong 9 phút. Các test tích
   hợp gốc của OpenBot (`agent-profile-store`, `agent-handoff`, `agent-factory*`) chèn vào `agents`/`mcp_servers` mà
   không có `tenant_id`, trong khi schema V2 bắt buộc cột này; mỗi hook lỗi chờ 5 giây. File test và migration gốc
   giống hệt trên `develop`, nên đây là lệch có sẵn giữa test gốc và schema V2, không do nhánh này. 3921 test không
   cần bảng dữ liệu vẫn đạt.
+
+## Agent báo cáo, dữ liệu Team Quang và chạy lại các luồng (04/10, khuya; chạy local)
+
+### Agent báo cáo (B6)
+
+Chốt theo bản Team Hoàng trên `develop` (`48ea913`, bộ tool 2.0.0). Bốn tool: `filter_report_scope`,
+`get_repair_bill_summary`, `get_ticket_frequency_summary`, `get_employee_star_summary`.
+
+- `services/vinhomes-api/src/vinhomes_api/_vendor/reporting` nay là bản sao nguyên văn của `server/src/reporting`.
+  Không sửa file nào trong đó; khi Team Hoàng cập nhật thì chép lại rồi chạy test cổng tool.
+- Bộ tool đọc các route sẵn có của API (`/catalogs`, `/reports/filter-options`, `/reports/supporting-records`,
+  `/reports/incident-frequency-summary`, `/reports/employee-feedback`, `/invoices/{id}`). Cổng tool
+  (`v3_tool_gateway.py`) chạy chính các hàm route đó trong transaction đã kiểm quyền, không giả cookie, và trả kết
+  quả đúng dạng JSON mà route gửi (tiền là chuỗi số thập phân chính xác). Mỗi lần đọc tòa hoặc hóa đơn đều kiểm với
+  phạm vi tòa của workspace.
+- Nhóm dịch vụ nào tính là "sửa chữa" là cấu hình của nơi triển khai: `VINHOMES_API_REPAIR_CATEGORY_CODES` (mã nhóm,
+  cách nhau bằng dấu phẩy; local đặt `technical`). Chưa đặt thì tool hóa đơn trả
+  `REPORT_REPAIR_CATEGORIES_REQUIRED` và không báo tổng.
+- `scripts/setup_session_tools.py` đăng ký 4 tool với phiên bản của chính tool và xóa các tool cổng không còn phục
+  vụ. Bảy tool cũ đã bị xóa khỏi danh mục; agent còn cầm tool cũ sẽ bị từ chối khi gọi và phải ra phiên bản mới.
+
+Kiểm chứng: test cổng tool so số ticket, số sự cố và tổng hóa đơn với SQL (20 hóa đơn, 4.100.000,00 VND), có ca thiếu
+cấu hình và ca ngoài phạm vi; cả bộ backend 71 đạt, 7 bỏ qua. Trên giao diện, BQL tạo "Agent Báo cáo" trong phòng
+nhóm, chọn 4 tool, đánh giá 6 ca bằng model thật, phát hành, rồi hỏi bằng `@Agent Báo cáo`: danh sách tòa và phân khu
+được xem (4 tòa Sapphire và phân khu Sapphire), thống kê ticket tòa S1.01 (14 ticket, 14 sự cố; khớp SQL), hóa đơn sửa
+chữa và sao đánh giá (cơ sở dữ liệu local chưa có hóa đơn và đánh giá nào; agent trả "không có dữ liệu", không ghi số
+0 thay cho lỗi).
+
+Ghi nhận khi chạy thật: schema của `filter_report_scope` không thể hiện ràng buộc "có `name` hoặc `scope_id` thì phải
+có `scope_type`, và không gửi cả hai". Bản 1 của agent gửi sai và nhận `REPORT_INPUT_INVALID`; bản 2 sửa chỉ dẫn (gọi
+với `{}` rồi tự tìm trong danh sách) thì chạy đúng. Nên nhờ Team Hoàng ghi ràng buộc này vào mô tả tool.
+
+Còn lại: "Agent kiểm chứng BQL 1791096816" (agent thử của phiên làm việc trước) vẫn phát hành với tool cũ
+`reporting.get_incident_frequency_summary`; gọi tool sẽ bị từ chối. Thu hồi hoặc ra bản mới. Tất cả ticket local
+chưa có loại sự cố nên báo cáo ghi "Không phân loại".
+
+### Dữ liệu Team Quang (`dev_TeamQuang_ddhung04`, `docs/teams/quang/technical-data`, commit `20b7b46`)
+
+Đã đọc và kiểm, chưa nhập vào hệ thống. Nhánh chỉ thêm 23 file tài liệu, không đổi code.
+
+- Đúng như mô tả: 16 hồ sơ sự cố, 77 fact có nguồn (24 + 30 + 23), 16 đoạn tri thức, 10 phản ánh công khai ở Huế,
+  32 ca giả lập, 23 câu kiểm thử, 74 mã nguồn trỏ 72 URL. Script `validate_data.ps1` của họ chạy đạt.
+- 16 mã sự cố khớp đúng 16 mã trong `server/src/technical-tools/reference/issue-codes.ts`. Mọi trích dẫn của 16 đoạn
+  tri thức nối được về fact và nguồn. Không thấy số điện thoại hay email trong các ca.
+- Chưa dùng được cho `sop_kb.retrieve`, và chính tài liệu của họ nói vậy: đây là diễn giải ngắn từ nguồn công khai
+  (182–337 ký tự mỗi đoạn), mọi bản ghi ở trạng thái `not_published`, 74/74 nguồn chưa lưu bản gốc và chưa có hash,
+  quyền dùng toàn văn chưa rõ, 22 fact chưa ghi vị trí trong nguồn. Không có SOP đã duyệt, dữ liệu gián đoạn, thiết
+  bị, mapping UUID hay script nhập, tức các mục trong `TEAM_QUANG_DATA_HANDOFF_2026-10-04.md` vẫn còn nguyên.
+- Kiểm 72 URL từ máy local: 39 mở được, 32 trả 403 với truy cập tự động (hud.gov, cdc.gov, vinhomes.vn,
+  panasonic.com), 1 không kết nối được (moit.gov.vn). Chưa kết luận link hỏng; cần người mở tay khi duyệt nguồn.
+- Dùng được ngay mà không cần duyệt SOP: (1) 16 mã sự cố làm danh mục `incident_types` để ticket hết "Không phân
+  loại"; (2) 23 câu kiểm thử và 32 ca giả lập làm ca đánh giá agent kỹ thuật; (3) 16 đoạn tri thức làm kho tham khảo
+  nội bộ riêng cho agent kỹ thuật, không trả lời cư dân. Cả ba đều chưa làm.
+
+### Chạy lại các luồng sau thay đổi trong ngày
+
+- Test: backend 71 đạt, 7 bỏ qua; tích hợp HTTP 2; Lễ tân đầu-cuối 9 + 9 (model giả lập); Supervisor 443; typecheck
+  Operations và ứng dụng cư dân đạt.
+- Trình duyệt, tài khoản thật, model thật: một yêu cầu đi hết vòng đời (ticket `VH-17DF1C67A8EC` `closed`, phiên
+  `completed`). Cư dân không còn thấy mã `VH-…` trong chat và danh sách yêu cầu.
+- Phiên của ticket `VH-B8F1E299CE24` (tạo sáng 04/10): backend ghi BQL đã duyệt, chờ cư dân, nhưng Supervisor vẫn ở
+  `waiting_management`, nên phòng nhóm ghi "chờ BQL duyệt phương án". Các phiên tạo từ chiều 04/10 không bị. Chưa
+  tìm nguyên nhân.
+- Ảnh chụp màn hình BQL và admin: `.codex-artifacts/bql-ui-2026-10-04/` (thư mục không đưa vào git).
 
 ## Thứ tự hoàn thiện tiếp
 
