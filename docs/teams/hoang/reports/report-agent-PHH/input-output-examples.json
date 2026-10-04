@@ -1,0 +1,404 @@
+[
+  {
+    "example_only": true,
+    "operation": "filter_report_scope",
+    "input": {
+      "scope_type": "building",
+      "name": "S1.01"
+    },
+    "output": {
+      "outcome": "success",
+      "operation": "filter_report_scope",
+      "sources": [
+        {
+          "method": "GET",
+          "path": "/catalogs"
+        },
+        {
+          "method": "GET",
+          "path": "/reports/filter-options"
+        }
+      ],
+      "limitations": [
+        "Các API/trang là các lần đọc riêng; chưa có snapshot nhất quán hoặc lineage đầy đủ cho từng KPI.",
+        "Phân khu dùng membership các tòa active hiện tại; không khẳng định membership lịch sử.",
+        "Employee options là danh sách backend cho phép; không chứng minh từng người thuộc mọi tòa."
+      ],
+      "data": [
+        {
+          "scope_type": "building",
+          "scope_id": "11111111-1111-4111-8111-111111111111",
+          "scope_name": "S1.01",
+          "building_ids": [
+            "11111111-1111-4111-8111-111111111111"
+          ]
+        }
+      ],
+      "employee_options": [
+        {
+          "staff_id": "55555555-5555-4555-8555-555555555555",
+          "staff_name": "A"
+        },
+        {
+          "staff_id": "77777777-7777-4777-8777-777777777777",
+          "staff_name": "B"
+        }
+      ]
+    },
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/catalogs",
+        "query": {}
+      },
+      {
+        "method": "GET",
+        "path": "/reports/filter-options",
+        "query": {}
+      }
+    ]
+  },
+  {
+    "example_only": true,
+    "operation": "get_repair_bill_summary",
+    "input": {
+      "scope_type": "zone",
+      "scope_id": "33333333-3333-4333-8333-333333333333",
+      "from_date": "2026-09-01",
+      "to_date": "2026-10-01"
+    },
+    "output": {
+      "outcome": "success",
+      "operation": "get_repair_bill_summary",
+      "sources": [
+        {
+          "method": "GET",
+          "path": "/catalogs"
+        },
+        {
+          "method": "GET",
+          "path": "/reports/filter-options"
+        },
+        {
+          "method": "GET",
+          "path": "/reports/supporting-records"
+        },
+        {
+          "method": "GET",
+          "path": "/invoices/00000010-0000-0000-0000-000000000064"
+        },
+        {
+          "method": "GET",
+          "path": "/invoices/00000010-0000-0000-0000-00000000006e"
+        }
+      ],
+      "limitations": [
+        "Các API/trang là các lần đọc riêng; chưa có snapshot nhất quán hoặc lineage đầy đủ cho từng KPI.",
+        "Phân khu dùng membership các tòa active hiện tại; không khẳng định membership lịch sử.",
+        "Tổng grand_total hóa đơn issued trong kỳ; không phải tiền đã thực thu.",
+        "Nhóm sửa chữa do runtime cấu hình; hóa đơn lẫn nhóm khác bị chặn, không cộng cả bill.",
+        "API lọc ngày theo timezone DB/session chưa được backend công bố.",
+        "Giá lấy từ supporting-records; tiền trong invoice detail không dùng để cộng vì serializer có thể mất độ chính xác. Chưa có snapshot để đối chiếu giá giữa hai lần đọc."
+      ],
+      "scope": {
+        "scope_type": "zone",
+        "scope_id": "33333333-3333-4333-8333-333333333333",
+        "scope_name": "Sapphire",
+        "building_ids": [
+          "11111111-1111-4111-8111-111111111111",
+          "22222222-2222-4222-8222-222222222222"
+        ]
+      },
+      "period": {
+        "from_date": "2026-09-01",
+        "to_date": "2026-10-01",
+        "boundary": "[from,to)",
+        "timezone": null
+      },
+      "data": {
+        "basis": "issued_repair_invoice_grand_total",
+        "items": [
+          {
+            "currency": "VND",
+            "invoice_count": 2,
+            "billed_amount": "9007199254740993.02"
+          }
+        ]
+      }
+    },
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/catalogs",
+        "query": {}
+      },
+      {
+        "method": "GET",
+        "path": "/reports/filter-options",
+        "query": {}
+      },
+      {
+        "method": "GET",
+        "path": "/reports/supporting-records",
+        "query": {
+          "buildingId": "11111111-1111-4111-8111-111111111111",
+          "fromDate": "2026-09-01",
+          "toDate": "2026-10-01",
+          "kind": "invoices",
+          "limit": "100",
+          "offset": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/invoices/00000010-0000-0000-0000-000000000064",
+        "query": {}
+      },
+      {
+        "method": "GET",
+        "path": "/reports/supporting-records",
+        "query": {
+          "buildingId": "22222222-2222-4222-8222-222222222222",
+          "fromDate": "2026-09-01",
+          "toDate": "2026-10-01",
+          "kind": "invoices",
+          "limit": "100",
+          "offset": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/invoices/00000010-0000-0000-0000-00000000006e",
+        "query": {}
+      }
+    ]
+  },
+  {
+    "example_only": true,
+    "operation": "get_ticket_frequency_summary",
+    "input": {
+      "scope_type": "zone",
+      "scope_id": "33333333-3333-4333-8333-333333333333",
+      "from_date": "2026-09-01",
+      "to_date": "2026-10-01"
+    },
+    "output": {
+      "outcome": "success",
+      "operation": "get_ticket_frequency_summary",
+      "sources": [
+        {
+          "method": "GET",
+          "path": "/catalogs"
+        },
+        {
+          "method": "GET",
+          "path": "/reports/filter-options"
+        },
+        {
+          "method": "GET",
+          "path": "/reports/supporting-records"
+        },
+        {
+          "method": "GET",
+          "path": "/reports/incident-frequency-summary"
+        }
+      ],
+      "limitations": [
+        "Các API/trang là các lần đọc riêng; chưa có snapshot nhất quán hoặc lineage đầy đủ cho từng KPI.",
+        "Phân khu dùng membership các tòa active hiện tại; không khẳng định membership lịch sử.",
+        "Ticket theo created_at; non_incident không khẳng định tất cả là service_request.",
+        "API lọc ngày theo timezone DB/session chưa được backend công bố."
+      ],
+      "scope": {
+        "scope_type": "zone",
+        "scope_id": "33333333-3333-4333-8333-333333333333",
+        "scope_name": "Sapphire",
+        "building_ids": [
+          "11111111-1111-4111-8111-111111111111",
+          "22222222-2222-4222-8222-222222222222"
+        ]
+      },
+      "period": {
+        "from_date": "2026-09-01",
+        "to_date": "2026-10-01",
+        "boundary": "[from,to)",
+        "timezone": null
+      },
+      "data": {
+        "total_ticket_count": 5,
+        "incident_ticket_count": 4,
+        "non_incident_ticket_count": 1,
+        "share_basis": "incident_ticket_count",
+        "items": [
+          {
+            "incident_type_id": "66666666-6666-4666-8666-666666666666",
+            "incident_type_name": "Điện",
+            "ticket_count": 4,
+            "share": 1.0
+          }
+        ]
+      }
+    },
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/catalogs",
+        "query": {}
+      },
+      {
+        "method": "GET",
+        "path": "/reports/filter-options",
+        "query": {}
+      },
+      {
+        "method": "GET",
+        "path": "/reports/supporting-records",
+        "query": {
+          "buildingId": "11111111-1111-4111-8111-111111111111",
+          "fromDate": "2026-09-01",
+          "toDate": "2026-10-01",
+          "kind": "tickets",
+          "limit": "100",
+          "offset": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/reports/incident-frequency-summary",
+        "query": {
+          "buildingId": "11111111-1111-4111-8111-111111111111",
+          "fromDate": "2026-09-01",
+          "toDate": "2026-10-01",
+          "interval": "month"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/reports/supporting-records",
+        "query": {
+          "buildingId": "22222222-2222-4222-8222-222222222222",
+          "fromDate": "2026-09-01",
+          "toDate": "2026-10-01",
+          "kind": "tickets",
+          "limit": "100",
+          "offset": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/reports/incident-frequency-summary",
+        "query": {
+          "buildingId": "22222222-2222-4222-8222-222222222222",
+          "fromDate": "2026-09-01",
+          "toDate": "2026-10-01",
+          "interval": "month"
+        }
+      }
+    ]
+  },
+  {
+    "example_only": true,
+    "operation": "get_employee_star_summary",
+    "input": {
+      "scope_type": "zone",
+      "scope_id": "33333333-3333-4333-8333-333333333333",
+      "from_date": "2026-09-01",
+      "to_date": "2026-10-01",
+      "staff_ids": [
+        "55555555-5555-4555-8555-555555555555"
+      ]
+    },
+    "output": {
+      "outcome": "success",
+      "operation": "get_employee_star_summary",
+      "sources": [
+        {
+          "method": "GET",
+          "path": "/catalogs"
+        },
+        {
+          "method": "GET",
+          "path": "/reports/filter-options"
+        },
+        {
+          "method": "GET",
+          "path": "/reports/employee-feedback"
+        }
+      ],
+      "limitations": [
+        "Các API/trang là các lần đọc riêng; chưa có snapshot nhất quán hoặc lineage đầy đủ cho từng KPI.",
+        "Phân khu dùng membership các tòa active hiện tại; không khẳng định membership lịch sử.",
+        "Chỉ báo cáo các staff_ids đã chọn; không khẳng định gồm toàn bộ nhân viên.",
+        "Đọc đủ feedback history rồi lọc submitted_at theo ngày UTC; API chưa lọc kỳ.",
+        "Điểm trung bình làm tròn 2 chữ số HALF_UP; không xếp hạng hoặc suy ra hiệu suất công việc."
+      ],
+      "scope": {
+        "scope_type": "zone",
+        "scope_id": "33333333-3333-4333-8333-333333333333",
+        "scope_name": "Sapphire",
+        "building_ids": [
+          "11111111-1111-4111-8111-111111111111",
+          "22222222-2222-4222-8222-222222222222"
+        ]
+      },
+      "period": {
+        "from_date": "2026-09-01",
+        "to_date": "2026-10-01",
+        "boundary": "[from,to)",
+        "timezone": "UTC"
+      },
+      "data": {
+        "basis": "customer_review_submission",
+        "total_rating_count": 2,
+        "average_stars": "4.50",
+        "items": [
+          {
+            "staff_id": "55555555-5555-4555-8555-555555555555",
+            "staff_name": "A",
+            "rating_count": 2,
+            "star_counts": {
+              "1": 0,
+              "2": 0,
+              "3": 0,
+              "4": 1,
+              "5": 1
+            },
+            "average_stars": "4.50"
+          }
+        ]
+      }
+    },
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/catalogs",
+        "query": {}
+      },
+      {
+        "method": "GET",
+        "path": "/reports/filter-options",
+        "query": {}
+      },
+      {
+        "method": "GET",
+        "path": "/reports/employee-feedback",
+        "query": {
+          "buildingId": "11111111-1111-4111-8111-111111111111",
+          "staffId": "55555555-5555-4555-8555-555555555555",
+          "limit": "100",
+          "offset": "0"
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/reports/employee-feedback",
+        "query": {
+          "buildingId": "22222222-2222-4222-8222-222222222222",
+          "staffId": "55555555-5555-4555-8555-555555555555",
+          "limit": "100",
+          "offset": "0"
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,1292 @@
+[
+  {
+    "ref": "reporting/filter-report-scope",
+    "name": "filter_report_scope",
+    "version": "2.0.0",
+    "displayName": "filter_report_scope",
+    "description": "Chọn chính xác tòa hoặc toàn phân khu được phép; tên trùng yêu cầu chọn ID.",
+    "category": "reporting",
+    "source": "first-party",
+    "visibility": "builder",
+    "allowedAgentTypes": [
+      "report"
+    ],
+    "requiredPermissions": [
+      "reports:read"
+    ],
+    "effect": "read",
+    "destructive": false,
+    "timeoutMs": 60000,
+    "retry": {
+      "maxRetries": 0,
+      "backoffMs": 0
+    },
+    "requiresIdempotencyKey": false,
+    "execution": {
+      "kind": "first-party",
+      "handler": "reporting.filter_report_scope"
+    },
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "scope_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "building",
+                "zone"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scope Type"
+        },
+        "scope_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scope Id"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        }
+      },
+      "title": "FilterInput",
+      "type": "object"
+    },
+    "outputSchema": {
+      "$defs": {
+        "EmployeeOption": {
+          "additionalProperties": false,
+          "properties": {
+            "staff_id": {
+              "title": "Staff Id",
+              "type": "string"
+            },
+            "staff_name": {
+              "title": "Staff Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "staff_id",
+            "staff_name"
+          ],
+          "title": "EmployeeOption",
+          "type": "object"
+        },
+        "Failure": {
+          "additionalProperties": false,
+          "properties": {
+            "outcome": {
+              "const": "failure",
+              "title": "Outcome",
+              "type": "string"
+            },
+            "error": {
+              "title": "Error",
+              "type": "string"
+            },
+            "retryable": {
+              "title": "Retryable",
+              "type": "boolean"
+            },
+            "candidates": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/$defs/Scope"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Candidates"
+            }
+          },
+          "required": [
+            "outcome",
+            "error",
+            "retryable"
+          ],
+          "title": "Failure",
+          "type": "object"
+        },
+        "FilterResult": {
+          "additionalProperties": false,
+          "properties": {
+            "outcome": {
+              "enum": [
+                "success",
+                "empty"
+              ],
+              "title": "Outcome",
+              "type": "string"
+            },
+            "operation": {
+              "title": "Operation",
+              "type": "string"
+            },
+            "sources": {
+              "items": {
+                "$ref": "#/$defs/Source"
+              },
+              "title": "Sources",
+              "type": "array"
+            },
+            "limitations": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Limitations",
+              "type": "array"
+            },
+            "data": {
+              "items": {
+                "$ref": "#/$defs/Scope"
+              },
+              "title": "Data",
+              "type": "array"
+            },
+            "employee_options": {
+              "items": {
+                "$ref": "#/$defs/EmployeeOption"
+              },
+              "title": "Employee Options",
+              "type": "array"
+            }
+          },
+          "required": [
+            "outcome",
+            "operation",
+            "sources",
+            "limitations",
+            "data",
+            "employee_options"
+          ],
+          "title": "FilterResult",
+          "type": "object"
+        },
+        "Scope": {
+          "additionalProperties": false,
+          "properties": {
+            "scope_type": {
+              "enum": [
+                "building",
+                "zone"
+              ],
+              "title": "Scope Type",
+              "type": "string"
+            },
+            "scope_id": {
+              "title": "Scope Id",
+              "type": "string"
+            },
+            "scope_name": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Scope Name",
+              "type": "string"
+            },
+            "building_ids": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 1000,
+              "minItems": 1,
+              "title": "Building Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "scope_type",
+            "scope_id",
+            "scope_name",
+            "building_ids"
+          ],
+          "title": "Scope",
+          "type": "object"
+        },
+        "Source": {
+          "additionalProperties": false,
+          "properties": {
+            "method": {
+              "const": "GET",
+              "title": "Method",
+              "type": "string"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            }
+          },
+          "required": [
+            "method",
+            "path"
+          ],
+          "title": "Source",
+          "type": "object"
+        }
+      },
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FilterResult"
+        },
+        {
+          "$ref": "#/$defs/Failure"
+        }
+      ]
+    }
+  },
+  {
+    "ref": "reporting/get-repair-bill-summary",
+    "name": "get_repair_bill_summary",
+    "version": "2.0.0",
+    "displayName": "get_repair_bill_summary",
+    "description": "Đọc đủ các trang hóa đơn issued, kiểm dòng sửa chữa rồi cộng grand_total theo tiền tệ.",
+    "category": "reporting",
+    "source": "first-party",
+    "visibility": "builder",
+    "allowedAgentTypes": [
+      "report"
+    ],
+    "requiredPermissions": [
+      "reports:read"
+    ],
+    "effect": "read",
+    "destructive": false,
+    "timeoutMs": 60000,
+    "retry": {
+      "maxRetries": 0,
+      "backoffMs": 0
+    },
+    "requiresIdempotencyKey": false,
+    "execution": {
+      "kind": "first-party",
+      "handler": "reporting.get_repair_bill_summary"
+    },
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "from_date": {
+          "title": "From Date",
+          "type": "string"
+        },
+        "to_date": {
+          "title": "To Date",
+          "type": "string"
+        },
+        "scope_type": {
+          "enum": [
+            "building",
+            "zone"
+          ],
+          "title": "Scope Type",
+          "type": "string"
+        },
+        "scope_id": {
+          "title": "Scope Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from_date",
+        "to_date",
+        "scope_type",
+        "scope_id"
+      ],
+      "title": "SummaryInput",
+      "type": "object"
+    },
+    "outputSchema": {
+      "$defs": {
+        "BillData": {
+          "additionalProperties": false,
+          "properties": {
+            "basis": {
+              "const": "issued_repair_invoice_grand_total",
+              "title": "Basis",
+              "type": "string"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/$defs/BillItem"
+              },
+              "title": "Items",
+              "type": "array"
+            }
+          },
+          "required": [
+            "basis",
+            "items"
+          ],
+          "title": "BillData",
+          "type": "object"
+        },
+        "BillItem": {
+          "additionalProperties": false,
+          "properties": {
+            "currency": {
+              "pattern": "^[A-Z]{3}$",
+              "title": "Currency",
+              "type": "string"
+            },
+            "invoice_count": {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Invoice Count",
+              "type": "integer"
+            },
+            "billed_amount": {
+              "title": "Billed Amount",
+              "type": "string"
+            }
+          },
+          "required": [
+            "currency",
+            "invoice_count",
+            "billed_amount"
+          ],
+          "title": "BillItem",
+          "type": "object"
+        },
+        "BillResult": {
+          "additionalProperties": false,
+          "properties": {
+            "outcome": {
+              "enum": [
+                "success",
+                "empty"
+              ],
+              "title": "Outcome",
+              "type": "string"
+            },
+            "operation": {
+              "title": "Operation",
+              "type": "string"
+            },
+            "sources": {
+              "items": {
+                "$ref": "#/$defs/Source"
+              },
+              "title": "Sources",
+              "type": "array"
+            },
+            "limitations": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Limitations",
+              "type": "array"
+            },
+            "scope": {
+              "$ref": "#/$defs/Scope"
+            },
+            "period": {
+              "$ref": "#/$defs/ResponsePeriod"
+            },
+            "data": {
+              "$ref": "#/$defs/BillData"
+            }
+          },
+          "required": [
+            "outcome",
+            "operation",
+            "sources",
+            "limitations",
+            "scope",
+            "period",
+            "data"
+          ],
+          "title": "BillResult",
+          "type": "object"
+        },
+        "Failure": {
+          "additionalProperties": false,
+          "properties": {
+            "outcome": {
+              "const": "failure",
+              "title": "Outcome",
+              "type": "string"
+            },
+            "error": {
+              "title": "Error",
+              "type": "string"
+            },
+            "retryable": {
+              "title": "Retryable",
+              "type": "boolean"
+            },
+            "candidates": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/$defs/Scope"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Candidates"
+            }
+          },
+          "required": [
+            "outcome",
+            "error",
+            "retryable"
+          ],
+          "title": "Failure",
+          "type": "object"
+        },
+        "ResponsePeriod": {
+          "additionalProperties": false,
+          "properties": {
+            "from_date": {
+              "title": "From Date",
+              "type": "string"
+            },
+            "to_date": {
+              "title": "To Date",
+              "type": "string"
+            },
+            "boundary": {
+              "const": "[from,to)",
+              "title": "Boundary",
+              "type": "string"
+            },
+            "timezone": {
+              "anyOf": [
+                {
+                  "const": "UTC",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Timezone"
+            }
+          },
+          "required": [
+            "from_date",
+            "to_date",
+            "boundary"
+          ],
+          "title": "ResponsePeriod",
+          "type": "object"
+        },
+        "Scope": {
+          "additionalProperties": false,
+          "properties": {
+            "scope_type": {
+              "enum": [
+                "building",
+                "zone"
+              ],
+              "title": "Scope Type",
+              "type": "string"
+            },
+            "scope_id": {
+              "title": "Scope Id",
+              "type": "string"
+            },
+            "scope_name": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Scope Name",
+              "type": "string"
+            },
+            "building_ids": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 1000,
+              "minItems": 1,
+              "title": "Building Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "scope_type",
+            "scope_id",
+            "scope_name",
+            "building_ids"
+          ],
+          "title": "Scope",
+          "type": "object"
+        },
+        "Source": {
+          "additionalProperties": false,
+          "properties": {
+            "method": {
+              "const": "GET",
+              "title": "Method",
+              "type": "string"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            }
+          },
+          "required": [
+            "method",
+            "path"
+          ],
+          "title": "Source",
+          "type": "object"
+        }
+      },
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BillResult"
+        },
+        {
+          "$ref": "#/$defs/Failure"
+        }
+      ]
+    }
+  },
+  {
+    "ref": "reporting/get-ticket-frequency-summary",
+    "name": "get_ticket_frequency_summary",
+    "version": "2.0.0",
+    "displayName": "get_ticket_frequency_summary",
+    "description": "Đọc ticket và summary từng tòa; tổng ticket và tần suất từng loại incident.",
+    "category": "reporting",
+    "source": "first-party",
+    "visibility": "builder",
+    "allowedAgentTypes": [
+      "report"
+    ],
+    "requiredPermissions": [
+      "reports:read"
+    ],
+    "effect": "read",
+    "destructive": false,
+    "timeoutMs": 60000,
+    "retry": {
+      "maxRetries": 0,
+      "backoffMs": 0
+    },
+    "requiresIdempotencyKey": false,
+    "execution": {
+      "kind": "first-party",
+      "handler": "reporting.get_ticket_frequency_summary"
+    },
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "from_date": {
+          "title": "From Date",
+          "type": "string"
+        },
+        "to_date": {
+          "title": "To Date",
+          "type": "string"
+        },
+        "scope_type": {
+          "enum": [
+            "building",
+            "zone"
+          ],
+          "title": "Scope Type",
+          "type": "string"
+        },
+        "scope_id": {
+          "title": "Scope Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from_date",
+        "to_date",
+        "scope_type",
+        "scope_id"
+      ],
+      "title": "SummaryInput",
+      "type": "object"
+    },
+    "outputSchema": {
+      "$defs": {
+        "Failure": {
+          "additionalProperties": false,
+          "properties": {
+            "outcome": {
+              "const": "failure",
+              "title": "Outcome",
+              "type": "string"
+            },
+            "error": {
+              "title": "Error",
+              "type": "string"
+            },
+            "retryable": {
+              "title": "Retryable",
+              "type": "boolean"
+            },
+            "candidates": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/$defs/Scope"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Candidates"
+            }
+          },
+          "required": [
+            "outcome",
+            "error",
+            "retryable"
+          ],
+          "title": "Failure",
+          "type": "object"
+        },
+        "ResponsePeriod": {
+          "additionalProperties": false,
+          "properties": {
+            "from_date": {
+              "title": "From Date",
+              "type": "string"
+            },
+            "to_date": {
+              "title": "To Date",
+              "type": "string"
+            },
+            "boundary": {
+              "const": "[from,to)",
+              "title": "Boundary",
+              "type": "string"
+            },
+            "timezone": {
+              "anyOf": [
+                {
+                  "const": "UTC",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Timezone"
+            }
+          },
+          "required": [
+            "from_date",
+            "to_date",
+            "boundary"
+          ],
+          "title": "ResponsePeriod",
+          "type": "object"
+        },
+        "Scope": {
+          "additionalProperties": false,
+          "properties": {
+            "scope_type": {
+              "enum": [
+                "building",
+                "zone"
+              ],
+              "title": "Scope Type",
+              "type": "string"
+            },
+            "scope_id": {
+              "title": "Scope Id",
+              "type": "string"
+            },
+            "scope_name": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Scope Name",
+              "type": "string"
+            },
+            "building_ids": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 1000,
+              "minItems": 1,
+              "title": "Building Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "scope_type",
+            "scope_id",
+            "scope_name",
+            "building_ids"
+          ],
+          "title": "Scope",
+          "type": "object"
+        },
+        "Source": {
+          "additionalProperties": false,
+          "properties": {
+            "method": {
+              "const": "GET",
+              "title": "Method",
+              "type": "string"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            }
+          },
+          "required": [
+            "method",
+            "path"
+          ],
+          "title": "Source",
+          "type": "object"
+        },
+        "TicketData": {
+          "additionalProperties": false,
+          "properties": {
+            "total_ticket_count": {
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "title": "Total Ticket Count",
+              "type": "integer"
+            },
+            "incident_ticket_count": {
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "title": "Incident Ticket Count",
+              "type": "integer"
+            },
+            "non_incident_ticket_count": {
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "title": "Non Incident Ticket Count",
+              "type": "integer"
+            },
+            "share_basis": {
+              "const": "incident_ticket_count",
+              "title": "Share Basis",
+              "type": "string"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/$defs/TicketItem"
+              },
+              "title": "Items",
+              "type": "array"
+            }
+          },
+          "required": [
+            "total_ticket_count",
+            "incident_ticket_count",
+            "non_incident_ticket_count",
+            "share_basis",
+            "items"
+          ],
+          "title": "TicketData",
+          "type": "object"
+        },
+        "TicketItem": {
+          "additionalProperties": false,
+          "properties": {
+            "incident_type_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Incident Type Id"
+            },
+            "incident_type_name": {
+              "title": "Incident Type Name",
+              "type": "string"
+            },
+            "ticket_count": {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Ticket Count",
+              "type": "integer"
+            },
+            "share": {
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Share",
+              "type": "number"
+            }
+          },
+          "required": [
+            "incident_type_id",
+            "incident_type_name",
+            "ticket_count",
+            "share"
+          ],
+          "title": "TicketItem",
+          "type": "object"
+        },
+        "TicketResult": {
+          "additionalProperties": false,
+          "properties": {
+            "outcome": {
+              "enum": [
+                "success",
+                "empty"
+              ],
+              "title": "Outcome",
+              "type": "string"
+            },
+            "operation": {
+              "title": "Operation",
+              "type": "string"
+            },
+            "sources": {
+              "items": {
+                "$ref": "#/$defs/Source"
+              },
+              "title": "Sources",
+              "type": "array"
+            },
+            "limitations": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Limitations",
+              "type": "array"
+            },
+            "scope": {
+              "$ref": "#/$defs/Scope"
+            },
+            "period": {
+              "$ref": "#/$defs/ResponsePeriod"
+            },
+            "data": {
+              "$ref": "#/$defs/TicketData"
+            }
+          },
+          "required": [
+            "outcome",
+            "operation",
+            "sources",
+            "limitations",
+            "scope",
+            "period",
+            "data"
+          ],
+          "title": "TicketResult",
+          "type": "object"
+        }
+      },
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TicketResult"
+        },
+        {
+          "$ref": "#/$defs/Failure"
+        }
+      ]
+    }
+  },
+  {
+    "ref": "reporting/get-employee-star-summary",
+    "name": "get_employee_star_summary",
+    "version": "2.0.0",
+    "displayName": "get_employee_star_summary",
+    "description": "Đọc feedback của nhân viên được chọn; lọc ngày gửi UTC và tính phân bố 1–5 sao.",
+    "category": "reporting",
+    "source": "first-party",
+    "visibility": "builder",
+    "allowedAgentTypes": [
+      "report"
+    ],
+    "requiredPermissions": [
+      "reports:read"
+    ],
+    "effect": "read",
+    "destructive": false,
+    "timeoutMs": 60000,
+    "retry": {
+      "maxRetries": 0,
+      "backoffMs": 0
+    },
+    "requiresIdempotencyKey": false,
+    "execution": {
+      "kind": "first-party",
+      "handler": "reporting.get_employee_star_summary"
+    },
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "from_date": {
+          "title": "From Date",
+          "type": "string"
+        },
+        "to_date": {
+          "title": "To Date",
+          "type": "string"
+        },
+        "scope_type": {
+          "enum": [
+            "building",
+            "zone"
+          ],
+          "title": "Scope Type",
+          "type": "string"
+        },
+        "scope_id": {
+          "title": "Scope Id",
+          "type": "string"
+        },
+        "staff_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Staff Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "from_date",
+        "to_date",
+        "scope_type",
+        "scope_id",
+        "staff_ids"
+      ],
+      "title": "RatingInput",
+      "type": "object"
+    },
+    "outputSchema": {
+      "$defs": {
+        "Failure": {
+          "additionalProperties": false,
+          "properties": {
+            "outcome": {
+              "const": "failure",
+              "title": "Outcome",
+              "type": "string"
+            },
+            "error": {
+              "title": "Error",
+              "type": "string"
+            },
+            "retryable": {
+              "title": "Retryable",
+              "type": "boolean"
+            },
+            "candidates": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/$defs/Scope"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Candidates"
+            }
+          },
+          "required": [
+            "outcome",
+            "error",
+            "retryable"
+          ],
+          "title": "Failure",
+          "type": "object"
+        },
+        "RatingData": {
+          "additionalProperties": false,
+          "properties": {
+            "basis": {
+              "const": "customer_review_submission",
+              "title": "Basis",
+              "type": "string"
+            },
+            "total_rating_count": {
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "title": "Total Rating Count",
+              "type": "integer"
+            },
+            "average_stars": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Average Stars"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/$defs/RatingItem"
+              },
+              "title": "Items",
+              "type": "array"
+            }
+          },
+          "required": [
+            "basis",
+            "total_rating_count",
+            "average_stars",
+            "items"
+          ],
+          "title": "RatingData",
+          "type": "object"
+        },
+        "RatingItem": {
+          "additionalProperties": false,
+          "properties": {
+            "staff_id": {
+              "title": "Staff Id",
+              "type": "string"
+            },
+            "staff_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Staff Name"
+            },
+            "rating_count": {
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "title": "Rating Count",
+              "type": "integer"
+            },
+            "star_counts": {
+              "additionalProperties": {
+                "maximum": 9223372036854775807,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "title": "Star Counts",
+              "type": "object"
+            },
+            "average_stars": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Average Stars"
+            }
+          },
+          "required": [
+            "staff_id",
+            "staff_name",
+            "rating_count",
+            "star_counts",
+            "average_stars"
+          ],
+          "title": "RatingItem",
+          "type": "object"
+        },
+        "RatingResult": {
+          "additionalProperties": false,
+          "properties": {
+            "outcome": {
+              "enum": [
+                "success",
+                "empty"
+              ],
+              "title": "Outcome",
+              "type": "string"
+            },
+            "operation": {
+              "title": "Operation",
+              "type": "string"
+            },
+            "sources": {
+              "items": {
+                "$ref": "#/$defs/Source"
+              },
+              "title": "Sources",
+              "type": "array"
+            },
+            "limitations": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Limitations",
+              "type": "array"
+            },
+            "scope": {
+              "$ref": "#/$defs/Scope"
+            },
+            "period": {
+              "$ref": "#/$defs/ResponsePeriod"
+            },
+            "data": {
+              "$ref": "#/$defs/RatingData"
+            }
+          },
+          "required": [
+            "outcome",
+            "operation",
+            "sources",
+            "limitations",
+            "scope",
+            "period",
+            "data"
+          ],
+          "title": "RatingResult",
+          "type": "object"
+        },
+        "ResponsePeriod": {
+          "additionalProperties": false,
+          "properties": {
+            "from_date": {
+              "title": "From Date",
+              "type": "string"
+            },
+            "to_date": {
+              "title": "To Date",
+              "type": "string"
+            },
+            "boundary": {
+              "const": "[from,to)",
+              "title": "Boundary",
+              "type": "string"
+            },
+            "timezone": {
+              "anyOf": [
+                {
+                  "const": "UTC",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Timezone"
+            }
+          },
+          "required": [
+            "from_date",
+            "to_date",
+            "boundary"
+          ],
+          "title": "ResponsePeriod",
+          "type": "object"
+        },
+        "Scope": {
+          "additionalProperties": false,
+          "properties": {
+            "scope_type": {
+              "enum": [
+                "building",
+                "zone"
+              ],
+              "title": "Scope Type",
+              "type": "string"
+            },
+            "scope_id": {
+              "title": "Scope Id",
+              "type": "string"
+            },
+            "scope_name": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Scope Name",
+              "type": "string"
+            },
+            "building_ids": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 1000,
+              "minItems": 1,
+              "title": "Building Ids",
+              "type": "array"
+            }
+          },
+          "required": [
+            "scope_type",
+            "scope_id",
+            "scope_name",
+            "building_ids"
+          ],
+          "title": "Scope",
+          "type": "object"
+        },
+        "Source": {
+          "additionalProperties": false,
+          "properties": {
+            "method": {
+              "const": "GET",
+              "title": "Method",
+              "type": "string"
+            },
+            "path": {
+              "title": "Path",
+              "type": "string"
+            }
+          },
+          "required": [
+            "method",
+            "path"
+          ],
+          "title": "Source",
+          "type": "object"
+        }
+      },
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RatingResult"
+        },
+        {
+          "$ref": "#/$defs/Failure"
+        }
+      ]
+    }
+  }
+]

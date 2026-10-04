@@ -1,0 +1,116 @@
+{
+  "date": "2026-10-04",
+  "phases": [
+    {
+      "phase": "before.xml",
+      "summary": {
+        "tests": 156,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 155
+      },
+      "failed_cases": [
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_total_deadline_includes_scope_reads",
+          "outcome": "failed",
+          "message": "AssertionError: assert ('BACKEND_UNAVAILABLE' == 'BACKEND_UNAVAILABLE'\n  \n    BACKEND_UNAVAILABLE and 1 == 2)\n +  where 1 = len([<Request('GET', 'https://business.example/catalogs')>])"
+        }
+      ],
+      "classification": "Windows timer fixture",
+      "cause": "Test assumed two requests within a 40 ms deadline; only one was sent and BACKEND_UNAVAILABLE was correct.",
+      "repair": "Give each scope read an explicit duration and a larger budget so scope reads jointly exceed the deadline.",
+      "final_case": [
+        {
+          "case": "server.tests.reporting.tools.test_adversarial::test_total_deadline_includes_scope_reads",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "phase": "second.xml",
+      "summary": {
+        "tests": 160,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 159
+      },
+      "failed_cases": [
+        {
+          "case": "server.tests.reporting.tools.test_existing_routes::test_four_tools_with_existing_real_fastapi_routes[get_repair_bill_summary-args1]",
+          "outcome": "failed",
+          "message": "TypeError: unsupported operand type(s) for -: 'str' and 'int'"
+        }
+      ],
+      "classification": "Incorrect SQL fake type",
+      "cause": "Invoice SQL fake returned grand_total as string, causing backend str minus int. Real SQL NUMERIC is Decimal.",
+      "repair": "Make SQL fake return Decimal. This does not demonstrate a production SQL bug.",
+      "final_case": [
+        {
+          "case": "server.tests.reporting.tools.test_existing_routes::test_four_tools_with_existing_real_fastapi_routes[get_repair_bill_summary-args1]",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "phase": "precision-router-before.xml",
+      "summary": {
+        "tests": 4,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 3
+      },
+      "failed_cases": [
+        {
+          "case": "server.tests.reporting.tools.test_existing_routes::test_four_tools_with_existing_real_fastapi_routes[get_repair_bill_summary-args1]",
+          "outcome": "failed",
+          "message": "AssertionError: {'outcome': 'failure', 'error': 'BACKEND_CONTRACT_INVALID', 'retryable': False}\nassert 'failure' == 'success'\n  \n  - success\n  + failure"
+        }
+      ],
+      "classification": "Consumer and real serialization mismatch",
+      "cause": "Actual untyped invoice-detail router serialized synthetic Decimal 9007199254740993.01 as a rounded JSON number; comparing to the typed list price rejected the invoice.",
+      "repair": "Use supporting-records grand_total only for arithmetic. Read detail for ID/status/category binding. Add precise-list/lossy-detail regression; backend serializer itself remains unchanged.",
+      "final_case": [
+        {
+          "case": "server.tests.reporting.tools.test_existing_routes::test_four_tools_with_existing_real_fastapi_routes[get_repair_bill_summary-args1]",
+          "outcome": "passed"
+        }
+      ]
+    },
+    {
+      "phase": "timestamp-router-before.xml",
+      "summary": {
+        "tests": 4,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 3
+      },
+      "failed_cases": [
+        {
+          "case": "server.tests.reporting.tools.test_existing_routes::test_four_tools_with_existing_real_fastapi_routes[get_repair_bill_summary-args1]",
+          "outcome": "failed",
+          "message": "AssertionError: {'outcome': 'failure', 'error': 'BACKEND_CONTRACT_INVALID', 'retryable': False}\nassert 'failure' == 'success'\n  \n  - success\n  + failure"
+        }
+      ],
+      "classification": "Consumer timestamp comparison bug",
+      "cause": "With actual datetime values at the SQL boundary, typed list returned a UTC Z timestamp while untyped detail returned +00:00. The same instant was rejected by string comparison.",
+      "repair": "Parse both aware timestamps and compare instants. Preserve rejection for different instants; add Z/+00:00/+07:00 regressions.",
+      "final_case": [
+        {
+          "case": "server.tests.reporting.tools.test_existing_routes::test_four_tools_with_existing_real_fastapi_routes[get_repair_bill_summary-args1]",
+          "outcome": "passed"
+        }
+      ]
+    }
+  ],
+  "test_changes": [
+    "Removed two variants asserting invoice detail monetary fields which are intentionally no longer used; replaced with an explicit precision regression.",
+    "Added 11 cases for valid empty data and transient read retries, then 3 timestamp representation cases; final total 173."
+  ],
+  "lint_history": [
+    "Initial lint found import order and unused imports plus duplicate startswith checks. Formatter expanded one-line test statements. Path preparation moved to conftest so router imports pass E402. Final lint and formatting both pass."
+  ]
+}
