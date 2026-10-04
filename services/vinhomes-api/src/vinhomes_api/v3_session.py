@@ -160,9 +160,18 @@ async def _room(db: AsyncConnection, team_id: UUID) -> dict[str, object]:
         where m.tenant_id={TENANT} and m.body->>'sessionId'=:team and m.body->>'kind'='session_question'
         order by m.seq
     """), {"team": str(team_id)})
+    # The plan the Supervisor proposed in this session, which management decides like any other plan.
+    plan = (await db.execute(text(f"""
+        select p.id,p.title,p.status,p.version,p.proposal,p.management_note,p.created_at
+        from vh_ticket_plans p join agent_teams tm on tm.ticket_id=p.ticket_id and tm.tenant_id=p.tenant_id
+        where tm.id=:team and p.tenant_id={TENANT} and p.proposed_by_agent_id=tm.supervisor_agent_id
+          and p.created_at>=tm.created_at
+        order by p.created_at desc limit 1
+    """), {"team": team_id})).mappings().first()
     return {"members": [row[0] for row in members], "tasks": [dict(row) for row in tasks.mappings()],
             "replies": [dict(row) for row in replies.mappings()],
-            "questions": [dict(row) for row in questions.mappings()]}
+            "questions": [dict(row) for row in questions.mappings()],
+            "plan": dict(plan) if plan else None}
 
 
 class SessionQuestion(BaseModel):

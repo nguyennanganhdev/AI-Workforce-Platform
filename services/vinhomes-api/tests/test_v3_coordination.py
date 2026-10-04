@@ -1,5 +1,6 @@
 """The internal API the Supervisor runtime uses, against migrated, seeded PostgreSQL."""
 
+import json
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -129,7 +130,7 @@ def test_the_supervisor_receives_a_ticket_and_accepts_it(database):
         assert c.post(BASE + f"/teams/{team}/authorize", headers=SERVICE, json={
             "action_id": accepted["message_id"], "channel": "reception", "operation": "accepted"}).json() == {"authorized": True}
         assert c.post(BASE + f"/teams/{team}/authorize", headers=SERVICE, json={
-            "action_id": "a", "channel": "draft", "operation": "plan"}).status_code == 409
+            "action_id": "a", "channel": "backend", "operation": "assignment.offered"}).status_code == 409
         lookup = BASE + f"/teams/{team}/results/{accepted['message_id']}"
         assert c.get(lookup, headers=SERVICE).json()["found"] is False
         sent = c.post(BASE + "/reception/send", headers=SERVICE, json={"message": accepted})
@@ -259,7 +260,7 @@ def test_a_published_specialist_enters_the_room_and_its_work_is_mirrored(databas
         assert c.post(BASE + f"/teams/{team}/authorize", headers=SERVICE, json={
             "action_id": "a", "channel": "room", "operation": "open_room"}).json() == {"authorized": True}
         assert c.post(BASE + f"/teams/{team}/authorize", headers=SERVICE, json={
-            "action_id": "a", "channel": "backend", "operation": "approval.requested"}).status_code == 409
+            "action_id": "a", "channel": "backend", "operation": "assignment.offered"}).status_code == 409
 
         one = members + f"/{member['member_id']}"
         run = c.post(one + "/runs", headers=SERVICE, json={"operation_id": "op-1"}).json()["run_id"]
@@ -333,3 +334,77 @@ def test_a_published_specialist_enters_the_room_and_its_work_is_mirrored(databas
             assert admin.post(f"/admin/agents/{technical}/release/revoke", json={"note": "Thu hồi"}).status_code == 200
         assert c.get(one + "/release", headers=SERVICE).status_code == 409
         assert c.post(one + "/runs", headers=SERVICE, json={"operation_id": "op-2"}).status_code == 409
+
+
+def test_the_supervisor_proposes_a_plan_that_management_then_decides(database):
+    with app(database) as c:
+        handoff, _ = hand_over(c, f"Vòi bếp rò {uuid4().hex[:6]}")
+        team, ticket = handoff["team"]["id"], handoff["ticket"]["id"]
+        message = sql(database, "select message_id from vh_reception_supervisor_messages where team_id=$1", UUID(team))[0]["message_id"]
+        assert c.post(BASE + "/reception/verify", headers=SERVICE, json={"team_id": team, "message_id": message}).status_code == 200
+        view = BASE + f"/teams/{team}/view"
+        before = c.get(view, headers=SERVICE).json()
+        assert before["plan"] is None
+        draft = {"request_id": f"draft-{uuid4().hex}", "payload_hash": "a" * 64,
+                 "ticket_version": before["ticket_version"], "target_plan_version": 1,
+                 "plan": {"summary": "Thay gioăng vòi bếp và kiểm tra áp lực nước",
+                          "steps": ["Khóa van nước căn hộ", "Thay gioăng vòi bếp"], "performer_role": "Kỹ thuật viên nước",
+                          "expected_duration": "45 phút", "conditions": "Cư dân có mặt tại căn hộ",
+                          "cost": {"amount": 150000.0, "currency": "VND", "kind": "estimate"},
+                          "result_refs": ["task-1"], "attachment_ids": []}}
+        plans = BASE + f"/teams/{team}/plans"
+        assert c.post(BASE + f"/teams/{team}/authorize", headers=SERVICE, json={
+            "action_id": draft["request_id"], "channel": "draft", "operation": "plan"}).json() == {"authorized": True}
+        # A plan made for an earlier state of the ticket is refused.
+        assert c.post(plans, headers=SERVICE, json={**draft, "ticket_version": "999"}).status_code == 409
+        stored = c.post(plans, headers=SERVICE, json=draft)
+        assert stored.status_code == 200, stored.text
+        plan = stored.json()["canonical_id"]
+        assert stored.json() == {"request_id": draft["request_id"], "status": "accepted", "payload_hash": "a" * 64,
+                                 "canonical_id": plan, "ticket_version": str(int(before["ticket_version"]) + 1),
+                                 "plan_version": 1}
+        # The same request stores nothing new; its id with other content, or a second plan, is refused.
+        assert c.post(plans, headers=SERVICE, json=draft).json() == stored.json()
+        assert c.post(plans, headers=SERVICE, json={**draft, "payload_hash": "b" * 64}).status_code == 409
+        assert c.post(plans, headers=SERVICE, json={
+            **draft, "request_id": "another", "ticket_version": stored.json()["ticket_version"]}).status_code == 409
+
+        row = sql(database, "select proposed_by,proposed_by_agent_id,status,title,steps,estimated_amount,proposal "
+                            "from vh_ticket_plans where id=$1", UUID(plan))[0]
+        assert (row["proposed_by"], row["proposed_by_agent_id"], row["status"]) == (None, "demo-supervisor", "management_pending")
+        assert row["title"] == draft["plan"]["summary"] and row["estimated_amount"] == 150000
+        steps, proposal = json.loads(row["steps"]), json.loads(row["proposal"])
+        # One visit by one technician: the steps are one work order, and stay listed in the proposal.
+        assert steps == [{"category_id": CATEGORY, "description": "1. Khóa van nước căn hộ\n2. Thay gioăng vòi bếp"}]
+        assert proposal["performer_role"] == "Kỹ thuật viên nước" and proposal["plan_version"] == 1
+        assert proposal["steps"] == draft["plan"]["steps"]
+        event = sql(database, "select actor_kind,actor_user_id,actor_agent_id from ticket_events "
+                              "where ticket_id=$1 and event_type='plan.proposed'", UUID(ticket))
+        assert event == [{"actor_kind": "agent", "actor_user_id": None, "actor_agent_id": "demo-supervisor"}]
+
+        seen = c.get(view, headers=SERVICE).json()
+        assert seen["ticket_version"] == stored.json()["ticket_version"]
+        assert seen["plan"]["plan_id"] == plan and seen["plan"]["status"] == "management_pending"
+        assert seen["plan"]["management_recipient"].startswith("management-unit:")
+        assert datetime.fromisoformat(seen["plan"]["approval_expires_at"]) > datetime.now(UTC)
+        request = BASE + f"/teams/{team}/plans/{plan}/approval-request"
+        assert c.post(BASE + f"/teams/{team}/authorize", headers=SERVICE, json={
+            "action_id": "a", "channel": "backend", "operation": "approval.requested"}).json() == {"authorized": True}
+        assert c.post(request, headers=SERVICE).json() == {"status": "accepted", "plan_id": plan}
+        assert c.post(BASE + f"/teams/{team}/plans/{uuid4()}/approval-request", headers=SERVICE).status_code == 404
+
+    with demo_client(database, "management") as management:
+        shown = management.get(f"/tickets/{ticket}/session").json()["room"]["plan"]
+        assert shown["id"] == plan and shown["status"] == "management_pending"
+        assert shown["proposal"]["expected_duration"] == "45 phút" and len(shown["proposal"]["steps"]) == 2
+        decided = management.post(f"/plans/{plan}/management-decision",
+                                  json={"decision": "approve", "version": shown["version"], "note": "Đồng ý phương án"})
+        assert decided.status_code == 200 and decided.json()["status"] == "resident_pending", decided.text
+    with app(database) as c:
+        # Management decided: the request is no longer open, and the resident's own decision works as for any plan.
+        assert c.post(request, headers=SERVICE).status_code == 409
+        assert c.get(view, headers=SERVICE).json()["plan"]["status"] == "resident_pending"
+        agreed = c.post(f"/resident/plans/{plan}/decision", json={"decision": "approve", "version": 1, "note": "Tôi đồng ý"})
+        assert agreed.status_code == 200, agreed.text
+    orders = sql(database, "select description from work_orders where ticket_id=$1", UUID(ticket))
+    assert [o["description"] for o in orders] == ["1. Khóa van nước căn hộ\n2. Thay gioăng vòi bếp"]

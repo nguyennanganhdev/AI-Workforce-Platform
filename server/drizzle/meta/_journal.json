@@ -92,6 +92,13 @@
       "when": 1790906101732,
       "tag": "0012_supervisor_runtime",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790992501732,
+      "tag": "0013_supervisor_plans",
+      "breakpoints": true
     }
   ]
 }
