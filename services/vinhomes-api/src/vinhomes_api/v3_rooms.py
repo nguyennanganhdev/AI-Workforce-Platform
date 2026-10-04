@@ -175,10 +175,12 @@ async def post_message(room_id: str, body: RoomMessage, request: Request, scope:
     created = dict(message.mappings().one())
     if body.file_ids:
         # Only files this person uploaded to this room and has not used yet. Anything else refuses the message.
+        # Locked while they are attached, so the cleanup of unsent uploads (room_file_cleanup.py) cannot take one meanwhile.
         own = (await db.execute(text("""
             select f.id from files f where f.id=any(:ids) and f.scope_kind='channel' and f.channel_id=:room_id
               and f.uploaded_by=:actor_id and f.status='ready'
               and not exists(select 1 from message_files mf where mf.file_id=f.id and mf.tenant_id=f.tenant_id)
+            for share of f
         """), {"ids": body.file_ids, "room_id": room_id, "actor_id": actor_id})).scalars().all()
         if len(own) != len(body.file_ids):
             raise HTTPException(422, "Tệp đính kèm không hợp lệ hoặc đã được dùng cho tin nhắn khác.")

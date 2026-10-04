@@ -1,6 +1,9 @@
 """Photos and files in a management room's conversation: what may be attached, who reads it, what an agent is given."""
+import asyncio
+from datetime import timedelta
 from uuid import uuid4
 
+import asyncpg
 from fastapi.testclient import TestClient
 from test_resident_contract import TENANT, image, sql
 from test_resident_contract import (
@@ -9,6 +12,7 @@ from test_resident_contract import (
 from test_v3_agent_database import demo_client
 from test_v3_coordination import BASE, SERVICE, TOKEN, publish_specialist
 from vinhomes_api import v3_files, v3_room_files
+from vinhomes_api.room_file_cleanup import clean
 from vinhomes_api.main import create_app
 from vinhomes_api.v3_config import V3Settings
 
@@ -72,6 +76,40 @@ def test_a_member_attaches_a_photo_and_a_text_file_and_only_the_room_reads_them(
         assert admin.post(ROOM + '/messages', json={'client_message_id': str(uuid4()), 'text': 'x', 'file_ids': [spare.json()['fileId']]}).status_code == 422
     stored = sql(database, "select o.object_key,o.size_bytes,f.scope_kind,f.channel_id from files f join file_objects o on o.id=f.accepted_object_id where f.id=$1", ids[0])[0]
     assert (tmp_path / stored['object_key']).read_bytes() == image() and (stored['scope_kind'], stored['channel_id']) == ('channel', 'management-room')
+
+
+def test_an_upload_never_sent_is_removed_after_a_day_and_nothing_that_was_sent_is(database, monkeypatch, tmp_path):
+    monkeypatch.delenv('VINHOMES_API_S3_ENDPOINT', raising=False)
+    monkeypatch.setattr(v3_files, 'FILE_ROOT', tmp_path)
+    monkeypatch.setattr(v3_room_files, 'FILE_ROOT', tmp_path)
+    key = lambda file: sql(database, 'select o.object_key,o.status as stored,f.status,f.deleted_at from files f join file_objects o on o.id=f.accepted_object_id where f.id=$1', file)[0]
+
+    def cleaned():
+        """The job as it runs: under the API's own role, not the owner's."""
+        async def run():
+            db = await asyncpg.connect(database['runtime'].replace('postgresql+asyncpg://', 'postgresql://'))
+            try:
+                return await clean(db, str(TENANT), tmp_path)
+            finally:
+                await db.close()
+        return asyncio.run(run())
+
+    with demo_client(database, 'management') as management:
+        sent, unsent, fresh = (upload(management, name, 'text/plain', name.encode()).json()['fileId'] for name in ('gui.txt', 'bo.txt', 'moi.txt'))
+        assert management.post(ROOM + '/messages', json={'client_message_id': str(uuid4()), 'text': 'x', 'file_ids': [sent]}).status_code == 201
+        sql(database, "update files set created_at=now()-interval '2 days' where id=any($1::uuid[]) returning id", [sent, unsent])
+        assert cleaned()['removed'] >= 1
+        # Only the old upload nobody sent: its bytes are gone and its record says so.
+        assert (key(unsent)['stored'], key(unsent)['status']) == ('deleted', 'deleted') and key(unsent)['deleted_at'] is not None
+        assert not (tmp_path / key(unsent)['object_key']).exists()
+        assert key(sent)['status'] == key(fresh)['status'] == 'ready' and (tmp_path / key(sent)['object_key']).read_bytes() == b'gui.txt'
+        assert (tmp_path / key(fresh)['object_key']).exists()
+        assert management.get(f"{ROOM}/files/{sent}/content").content == b'gui.txt'
+        # What was removed can no longer be attached or read; running again removes nothing more.
+        assert management.post(ROOM + '/messages', json={'client_message_id': str(uuid4()), 'text': 'x', 'file_ids': [unsent]}).status_code == 422
+        assert management.get(f"{ROOM}/files/{unsent}/content").status_code == 404
+        assert cleaned()['removed'] == 0
+        assert management.post(ROOM + '/messages', json={'client_message_id': str(uuid4()), 'text': 'y', 'file_ids': [fresh]}).status_code == 201
 
 
 def test_an_agent_is_given_the_text_of_attached_text_files_and_told_about_photos_it_cannot_see(database, monkeypatch, tmp_path):
