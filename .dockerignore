@@ -13,3 +13,13 @@ app/dist
 *.log
 .DS_Store
 assets/*.svg
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.env
+**/.env.*
+**/.local-*
+**/.reception-state
+**/.coordination-state
+.codex-artifacts
+deploy/vinhomes/deployment.env

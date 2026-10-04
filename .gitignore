@@ -80,3 +80,4 @@ server/chunks.json
 
 # Reception runtime conversation state (local SQLite).
 agent-reception/.reception-state/
+deploy/vinhomes/deployment.env

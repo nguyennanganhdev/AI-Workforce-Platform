@@ -1,0 +1,176 @@
+name: vinhomes
+
+x-python-health: &python-health
+  interval: 15s
+  timeout: 8s
+  retries: 5
+  start_period: 30s
+
+services:
+  api:
+    image: vinhomes-api:${VINHOMES_IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: services/vinhomes-api/Dockerfile
+    restart: unless-stopped
+    environment:
+      VINHOMES_API_DATABASE_URL: ${VINHOMES_API_DATABASE_URL:?restricted business database URL required}
+      VINHOMES_API_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
+      VINHOMES_API_PASSWORD_AUTH: '1'
+      VINHOMES_API_RESIDENT_SIGNING_KEY: ${RESIDENT_SIGNING_KEY:?32 byte hex key required}
+      VINHOMES_API_RECEPTION_SERVICE_TOKEN: ${RECEPTION_SERVICE_TOKEN:?Reception token required}
+      RECEPTION_DELEGATION_KEY: ${RECEPTION_DELEGATION_KEY:?delegation key required}
+      VINHOMES_API_RECEPTION_URL: http://reception:4202
+      VINHOMES_API_COORDINATION_SERVICE_TOKEN: ${COORDINATION_SERVICE_TOKEN:?Coordination token required}
+      VINHOMES_API_COORDINATION_URL: http://coordination:4300
+      VINHOMES_API_TECHNICAL_TOOLS_URL: http://technical-tools:8788/internal/technical/v1
+      VINHOMES_API_TECHNICAL_TOOLS_TOKEN: ${TECHNICAL_TOOLS_SERVICE_TOKEN:?tool token required}
+      FACTORY_SERVICE_URL: http://factory:4010
+      FACTORY_SERVICE_TOKEN: ${FACTORY_SERVICE_TOKEN:?Factory token required}
+      # Two settings, one list: browser sign-in and writes check the first, the resident app's CORS the second.
+      VINHOMES_API_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
+      VINHOMES_API_RESIDENT_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
+    ports:
+      - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${VINHOMES_API_PORT:-8000}:8000'
+    healthcheck:
+      <<: *python-health
+      test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/ready", timeout=5)']
+  reception:
+    image: vinhomes-reception:${VINHOMES_IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: agent-reception/Dockerfile
+    restart: unless-stopped
+    environment:
+      RECEPTION_BACKEND_URL: http://api:8000
+      RECEPTION_SERVICE_TOKEN: ${RECEPTION_SERVICE_TOKEN:?Reception token required}
+      RECEPTION_KNOWLEDGE_URL: http://knowledge:8787
+      RECEPTION_MODEL: ${RECEPTION_MODEL:-gpt-5.4-mini}
+      RECEPTION_AGENT: ${RECEPTION_AGENT:-graph}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
+    volumes:
+      - reception-state:/var/lib/reception
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      <<: *python-health
+      test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:4202/health", timeout=5)']
+  agents-net:
+    # The network namespace the Supervisor and the OpenBot share. The Supervisor sends the agent
+    # token to the Bot only over HTTPS or loopback, so the two meet on loopback here and the Bot is
+    # reachable by nobody else. This container does nothing and so does not restart on its own:
+    # either of the two can restart alone and comes back into the same namespace.
+    image: busybox:1.37
+    command: ['sleep', 'infinity']
+    init: true
+    restart: unless-stopped
+    networks:
+      default:
+        aliases: [coordination]
+  coordination:
+    image: vinhomes-coordination:${VINHOMES_IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: agent-coordination/Dockerfile.vinhomes
+    restart: unless-stopped
+    network_mode: service:agents-net
+    environment:
+      COORDINATION_BACKEND_URL: http://api:8000
+      COORDINATION_SERVICE_TOKEN: ${COORDINATION_SERVICE_TOKEN:?Coordination token required}
+      COORDINATION_DATABASE_URL: ${COORDINATION_DATABASE_URL:?dedicated checkpoint database required}
+      COORDINATION_MODEL: ${COORDINATION_MODEL:-gpt-5.4-mini}
+      COORDINATION_OPENBOT_URL: http://127.0.0.1:4200/ag-ui
+      COORDINATION_OPENBOT_MODEL: ${SPECIALIST_MODEL:-gpt-5.5}
+      COORDINATION_TOOLS_URL: http://api:8000/internal/coordination/v1/tools
+      COORDINATION_TOOLS_TOKEN: ${COORDINATION_SERVICE_TOKEN:?Coordination token required}
+      COORDINATION_TOKEN_LIMIT: ${COORDINATION_TOKEN_LIMIT:-400000}
+      MANAGED_AGENT_TOKEN: ${MANAGED_AGENT_TOKEN:?OpenBot token required}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
+    depends_on:
+      api:
+        condition: service_healthy
+      openbot:
+        condition: service_healthy
+      technical-tools:
+        condition: service_healthy
+    healthcheck:
+      <<: *python-health
+      test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:4300/ready", timeout=5)']
+  knowledge:
+    image: vinhomes-knowledge:${VINHOMES_IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: deploy/vinhomes/Dockerfile.tools
+    restart: unless-stopped
+    environment:
+      KNOWLEDGE_HOST: 0.0.0.0
+      KNOWLEDGE_PORT: '8787'
+      KNOWLEDGE_DATABASE_URL: ${KNOWLEDGE_DATABASE_URL:?restricted knowledge database URL required}
+      KNOWLEDGE_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
+      KNOWLEDGE_BASE_ID: ${KNOWLEDGE_BASE_ID:?published knowledge base required}
+      RECEPTION_API_URL: http://api:8000
+      KNOWLEDGE_INTERNAL_HTTP_HOST: api
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      test: ['CMD', 'bun', '-e', 'process.exit((await fetch("http://127.0.0.1:8787/health")).ok ? 0 : 1)']
+  technical-tools:
+    image: vinhomes-technical-tools:${VINHOMES_IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: deploy/vinhomes/Dockerfile.tools
+    command: ['bun', 'server/src/technical-api/serve.ts']
+    restart: unless-stopped
+    environment:
+      TECHNICAL_TOOLS_HOST: 0.0.0.0
+      TECHNICAL_TOOLS_PORT: '8788'
+      TECHNICAL_API_DATABASE_URL: ${TECHNICAL_API_DATABASE_URL:?restricted tools database URL required}
+      TECHNICAL_API_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
+      TECHNICAL_TOOLS_SERVICE_TOKEN: ${TECHNICAL_TOOLS_SERVICE_TOKEN:?tool token required}
+    healthcheck:
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      test: ['CMD', 'bun', '-e', 'process.exit((await fetch("http://127.0.0.1:8788/health")).ok ? 0 : 1)']
+  factory:
+    image: vinhomes-factory:${VINHOMES_IMAGE_TAG:-latest}
+    build:
+      context: ../../agent-factory
+    restart: unless-stopped
+    environment:
+      FACTORY_SERVICE_TOKEN: ${FACTORY_SERVICE_TOKEN:?Factory token required}
+      FACTORY_MODEL_API_KEY: ${OPENAI_API_KEY:?model key required}
+      FACTORY_MODEL: ${FACTORY_MODEL:-gpt-5.5}
+      FACTORY_REASONING_EFFORT: ${FACTORY_REASONING_EFFORT:-low}
+      FACTORY_CALL_TIMEOUT_MS: ${FACTORY_CALL_TIMEOUT_MS:-60000}
+      FACTORY_MAX_COMPLETION_TOKENS: ${FACTORY_MAX_COMPLETION_TOKENS:-8192}
+    healthcheck:
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      test: ['CMD', 'bun', '-e', 'process.exit((await fetch("http://127.0.0.1:4010/health")).ok ? 0 : 1)']
+  openbot:
+    image: vinhomes-openbot:${VINHOMES_IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: agent-bot/Dockerfile
+    restart: unless-stopped
+    environment:
+      BOT_MODEL: ${SPECIALIST_MODEL:-gpt-5.5}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
+      MANAGED_AGENT_TOKEN: ${MANAGED_AGENT_TOKEN:?OpenBot token required}
+    network_mode: service:agents-net
+    healthcheck:
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      test: ['CMD', 'bun', '-e', 'process.exit((await fetch("http://127.0.0.1:4200/health")).ok ? 0 : 1)']
+
+volumes:
+  reception-state:
