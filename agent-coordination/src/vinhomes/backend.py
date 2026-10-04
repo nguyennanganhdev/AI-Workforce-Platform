@@ -48,6 +48,18 @@ class Backend:
     async def inbox(self, cursor: str | None, limit: int = 50) -> dict:
         return await self._call("GET", "/inbox", params={"limit": limit, **({"cursor": cursor} if cursor else {})})
 
+    async def room_mentions(self) -> dict:
+        return await self._call('GET', '/room-mentions')
+
+    async def room_turn(self, message: str, agent: str) -> dict:
+        return await self._call('POST', f'/room-mentions/{message}/{agent}/turn')
+
+    async def room_outcome(self, message: str, agent: str, result: dict) -> dict:
+        return await self._call('POST', f'/room-mentions/{message}/{agent}/outcome', result)
+
+    async def room_tool(self, run: str, tool: str, arguments: dict) -> dict:
+        return await self._call('POST', '/tools/call', {'run_id': run, 'tool': tool, 'arguments': arguments})
+
     async def verify(self, team_id: str, message_id: str) -> dict:
         return await self._call("POST", "/reception/verify", {"team_id": team_id, "message_id": message_id})
 
@@ -83,11 +95,35 @@ class Backend:
     async def plan(self, team_id: str, draft: dict) -> dict:
         return await self._call("POST", f"/teams/{team_id}/plans", draft)
 
-    async def approval_request(self, team_id: str, plan_id: str) -> dict:
-        return await self._call("POST", f"/teams/{team_id}/plans/{plan_id}/approval-request")
+    async def question(self, team_id: str, draft: dict) -> dict:
+        return await self._call("POST", f"/teams/{team_id}/questions", draft)
+
+    async def approval_request(self, team_id: str, plan_id: str, request: dict) -> dict:
+        return await self._call("POST", f"/teams/{team_id}/plans/{plan_id}/approval-request", request)
+
+    async def events(self) -> dict:
+        return await self._call("GET", "/events")
+
+    async def controls(self) -> dict:
+        return await self._call("GET", "/controls")
+
+    async def control(self, team_id: str, request_id: str) -> dict:
+        return await self._call("GET", f"/teams/{team_id}/controls/{request_id}")
+
+    async def control_result(self, team_id: str, request_id: str, result: dict) -> dict:
+        return await self._call("POST", f"/teams/{team_id}/controls/{request_id}", result)
+
+    async def management_event(self, team_id: str, plan_id: str) -> dict:
+        return await self._call("GET", f"/teams/{team_id}/plans/{plan_id}/management-event")
+
+    async def decision_delivered(self, team_id: str, plan_id: str) -> dict:
+        return await self._call("POST", f"/teams/{team_id}/plans/{plan_id}/decision-delivered")
 
     async def mentions(self) -> dict:
         return await self._call("GET", "/mentions")
+
+    async def evaluation_view(self, body: dict) -> dict:
+        return await self._call("POST", "/agent-evaluations/view", body)
 
     async def mention_outcome(self, team_id: str, message_id: str, status: str, run_id: str | None) -> dict:
         return await self._call("POST", f"/teams/{team_id}/mentions/{message_id}",

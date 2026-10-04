@@ -20,6 +20,7 @@ rooms, the inbox and the cursor across restarts, and it is not shared between ho
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -29,12 +30,15 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
+from pydantic import BaseModel, Field, ValidationError
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from adapters.backend.errors import AdapterError
-from groupchat.models import Command, Context, MentionAgent, Success, TurnPolicy
+from adapters.backend.events import PendingDelivery
+from adapters.backend.messages import fingerprint
+from groupchat.models import CloseRoom, Command, Context, MentionAgent, Success, TurnPolicy
 from groupchat.models import RoomData
 from groupchat.room import RoomService
 from persistence.budget import ScopedBudgets
@@ -46,8 +50,8 @@ from supervisor.room_bridge import RoomBridge
 from supervisor.service import SupervisorService
 
 from .backend import Backend, Refused
-from .ports import (Authority, BackendActions, OpenBot, PlannerModel, Plans, Reception, Releases, Resolver,
-                    Specialists, ToolGateway, UnboundEvents, UnboundInvocation)
+from .ports import (Authority, BackendActions, BackendEvents, OpenBot, PlannerModel, Plans, Reception, Releases, Resolver,
+                    Specialists, ToolGateway, UnboundInvocation)
 
 log = logging.getLogger("coordination.vinhomes")
 LEASE_SECONDS = 60
@@ -78,6 +82,7 @@ class Settings:
     # without it a specialist that asks for a tool gets a failed turn.
     tools_url: str | None = None
     tools_token: str = field(default="", repr=False)
+    database_url: str | None = field(default=None, repr=False)
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -100,6 +105,7 @@ class Settings:
                    openbot=OpenBot(bot, os.getenv("COORDINATION_OPENBOT_MODEL", "").strip() or model) if bot else None,
                    token_limit=int(os.getenv("COORDINATION_TOKEN_LIMIT", "") or cls.token_limit),
                    tools_url=tools, tools_token=tools_token,
+                   database_url=os.getenv("COORDINATION_DATABASE_URL", "").strip() or None,
                    state_path=os.getenv("COORDINATION_STATE_PATH", "").strip() or cls.state_path,
                    host=os.getenv("COORDINATION_HOST", "").strip() or cls.host,
                    port=int(os.getenv("COORDINATION_PORT", "") or cls.port),
@@ -145,6 +151,8 @@ class Runtime:
     def __init__(self, backend: Backend, store: Store, *, owner: str | None = None,
                  client: httpx.AsyncClient | None = None, settings: Settings | None = None):
         self.backend, self.store, self.owner = backend, store, owner or str(uuid4())
+        self.client = client
+        self.settings = settings
         authority = Authority(backend)
         self.teams: dict[tuple, str] = {}  # scope -> team, known once the backend verified a message
 
@@ -155,11 +163,15 @@ class Runtime:
         tools = ToolGateway(client, settings.tools_url, settings.tools_token) if settings and settings.tools_url else None
         specialists = (Specialists(Releases(backend, self.teams, settings.openbot), store, budget, client, tools=tools)
                        if settings and settings.openbot else UnboundInvocation("agent_invocation"))
+        async def instructions(context):
+            return (await backend.view(self.teams[context.scope()])).get('supervisor_instructions', '')
         model = PlannerModel(budget, client, model=settings.model if settings else None,
-                             base_url=settings.model_base_url if settings else Settings.model_base_url)
+                             base_url=settings.model_base_url if settings else Settings.model_base_url,
+                             instruction_loader=instructions)
         self.rooms = RoomService(Resolver(backend, self.teams), specialists, store)
         self.service = SupervisorService(
-            store=store, authority=authority, verifier=UnboundEvents("backend_events"), event_types={},
+            store=store, authority=authority, verifier=BackendEvents(backend),
+            event_types={"approval.responded": "approval.responded"},
             planner=Planner(model), reception=Reception(backend),
             room=RoomBridge(self.rooms),
             backend=BackendActions(backend, self.teams), publisher=DraftPublisher(Plans(backend, self.teams)),
@@ -181,14 +193,34 @@ class Runtime:
         for item in (await self.backend.mentions())["items"]:
             key = json.dumps((item["context"]["tenant_id"], "mention", item["message_id"]), separators=(",", ":"))
             await self.store.accept(key, {"kind": "mention", **item})
+        for item in (await self.backend.events())["items"]:
+            key = json.dumps((item["event"]["tenant_id"], "event", item["event"]["event_id"]), separators=(",", ":"))
+            await self.store.accept(key, {"kind": "management", **item})
+        for item in (await self.backend.controls())["items"]:
+            key = json.dumps((item["context"]["tenant_id"], "control", item["command"]["request_id"]), separators=(",", ":"))
+            await self.store.accept(key, {"kind": "control", **item})
+        if hasattr(self.backend, 'room_mentions'):
+            for item in (await self.backend.room_mentions())['items']:
+                key = json.dumps((str(item['tenant_id']), 'room-mention', str(item['message_id']), item['agent_id']))
+                await self.store.accept(key, {'kind': 'room-mention', **item})
         return len(page["items"])
 
     async def handle(self, claim) -> float | None:
         """One message, from verification to whatever the session now waits for."""
         if claim.payload["kind"] == "mention":
             return await self.answer(claim.payload)
+        if claim.payload["kind"] == "management":
+            return await self.management_decision(claim.payload)
+        if claim.payload["kind"] == "control":
+            return await self.control_session(claim.payload)
+        if claim.payload['kind'] == 'room-mention':
+            return await self.answer_room(claim.payload)
         wire, team = claim.payload["wire"], claim.payload["team_id"]
         self.teams[(wire["tenant_id"], wire["ticket_id"], wire["ticket_generation"])] = team
+        held = next((s for s in self.store.sessions() if s.get("ticket_id") == wire["ticket_id"]
+                     and s.get("ticket_generation") == wire["ticket_generation"]), None)
+        if held and held["phase"] == "paused" and held["pause_reason"] == "management_pause":
+            return RETRY_SECONDS
         try:
             state = await self.service.handle_reception(wire, team)
         except Refused as error:
@@ -198,7 +230,17 @@ class Runtime:
             # handled. The backend still holds the message; there is nothing left to do with it here.
             log.info("obsolete message for ticket=%s: the team is no longer current", wire["ticket_id"])
             return None
-        state = await self.service.resume(state.context)
+        if wire["message_type"] in ("plan_rejected", "plan_change_requested"):
+            current = await self.backend.view(team)
+            if state.ticket_version != current["ticket_version"]:
+                previous = state.version
+                state.ticket_version, state.version = current["ticket_version"], previous + 1
+                if not await self.store.commit(state, previous):
+                    raise SupervisorError("state_conflict")
+        # The resident's committed approval already queued the work orders in the business API.
+        # Staff allocation stays with management; do not invent or offer an assignment here.
+        if wire["message_type"] != "plan_approved":
+            state = await self.service.resume(state.context)
         for _ in range(TURN_RETRIES):
             if not (state.phase == "paused" and state.pause_reason in ("AGENT_FAILURE", "AGENT_TIMEOUT")):
                 break
@@ -214,6 +256,145 @@ class Runtime:
             log.warning("session not reported for ticket=%s: %s", state.context.ticket_id, error.code)
         if state.action and state.action.status in ("sending", "unknown", "accepted"):
             return SETTLE_SECONDS
+        return None
+
+    async def answer_room(self, item: dict) -> None:
+        message, agent = str(item['message_id']), item['agent_id']
+        key = json.dumps((str(item['tenant_id']), message, agent))
+        result = await self.store.get('room_mention_result', key)
+        if result is None:
+            snapshot = await self.backend.room_turn(message, agent)
+            if snapshot.get('refused'):
+                return None
+            # Persist intent before billing. An interrupted generation is marked failed and
+            # needs a new explicit question; it is never silently generated a second time.
+            started = await self.store.put_once('room_mention_intent', key, snapshot['run_id'])
+            result = {'run_id': snapshot['run_id'], 'status': 'failed', 'content': ''}
+            if started and self.settings and self.settings.openbot:
+                from .publish import answer
+                async def tool(name, arguments):
+                    return await self.backend.room_tool(snapshot['run_id'], name, arguments)
+                try:
+                    async with asyncio.timeout(150):
+                        content, _ = await answer(self.client, snapshot['instructions'], {
+                            'name': key, 'instruction': snapshot['instruction'], 'ticket': {},
+                            'messages': snapshot['messages']}, snapshot['tools'], {},
+                            endpoint=self.settings.openbot.endpoint, token=os.environ[self.settings.openbot.token_env],
+                            invoke_tool=tool)
+                    result.update(status='done', content=content[:20000])
+                except (AdapterError, ValueError, httpx.HTTPError, TimeoutError):
+                    log.warning('room agent turn failed: message=%s', message)
+            await self.store.put_once('room_mention_result', key, result)
+        try:
+            await self.backend.room_outcome(message, agent, result)
+        except Refused as error:
+            if error.status != 409 or result['status'] != 'done':
+                raise
+            # A revocation during model execution refuses publication; close the run as
+            # failed so later questions do not inherit an abandoned active binding.
+            await self.backend.room_outcome(message, agent, {**result, 'status': 'failed', 'content': ''})
+        return None
+
+    async def management_decision(self, item: dict) -> float | None:
+        context, team, event = Context.model_validate(item["context"]), item["team_id"], item["event"]
+        self.teams[context.scope()] = team
+        state = await self.store.load(context)
+        if state is None:
+            raise AdapterError("session_checkpoint_missing")
+        if state.phase == "paused" and state.pause_reason == "management_pause":
+            return RETRY_SECONDS
+        # Settle an earlier dispatch before applying an event; never change an in-flight action.
+        if state.action is not None:
+            state = await self.service.resume(context)
+            if state.action is not None:
+                return SETTLE_SECONDS
+        delivery = PendingDelivery(event["tenant_id"], event["event_id"], fingerprint(event), "supervisor",
+                                   "approval.responded", item["context"], event)
+        state = await self.service.handle_delivery(delivery, team, acknowledge=False)
+        if event["payload"]["decision"] != "approve" and state.phase == "planning":
+            # A committed refusal advances the backend ticket. The next proposal is based on
+            # that new version; an approval keeps the old version until pending() binds the ask.
+            current = await self.backend.view(team)
+            if state.ticket_version != current["ticket_version"]:
+                previous = state.version
+                state.ticket_version, state.version = current["ticket_version"], previous + 1
+                if not await self.store.commit(state, previous):
+                    raise SupervisorError("state_conflict")
+        state = await self.service.resume(context)
+        await self.backend.status(team, state.phase, state.pause_reason, state.version)
+        if state.room is not None:
+            await self.mirror(team, state.room, state.terminal_results.values())
+        if state.action is not None and state.action.status in ("sending", "unknown", "accepted"):
+            return SETTLE_SECONDS
+        await self.backend.decision_delivered(team, item["plan_id"])
+        return None
+
+    async def control_session(self, item: dict) -> None:
+        context, team, command = Context.model_validate(item["context"]), item["team_id"], item["command"]
+        request = command["request_id"]
+        record_key = json.dumps((context.tenant_id, team, request), separators=(",", ":"))
+        self.teams[context.scope()] = team
+        result = await self.store.get("control_result", record_key)
+        if result is None:
+            verified = await self.backend.control(team, request)
+            original = {k: verified["command"][k] for k in command}
+            if original != command or Context.model_validate(verified["context"]) != context:
+                raise AdapterError("verified_control_mismatch")
+            state = await self.store.load(context)
+            if state is None:
+                raise AdapterError("session_checkpoint_missing")
+            key, digest = "management-control:" + request, fingerprint(command)
+            reason = None
+            if key in state.events:
+                if state.events[key] != digest:
+                    raise AdapterError("conflict")
+            elif state.version != command["expected_version"]:
+                reason = "session_changed"
+            elif state.action is not None or (state.room and state.room.room_state == "running") or state.pause_reason == "outcome_unknown":
+                reason = "outcome_unknown"
+            elif state.phase in ("completed", "cancelled", "failed"):
+                reason = "session_finished"
+            else:
+                old = state.version
+                operation = command["operation"]
+                if operation == "pause":
+                    if state.phase != "paused":
+                        state.resume_phase = state.phase
+                    state.phase, state.pause_reason = "paused", "management_pause"
+                elif operation == "resume":
+                    if state.phase == "paused":
+                        state.phase, state.pause_reason = state.resume_phase or "planning", None
+                        state.resume_phase = None
+                elif operation == "stop":
+                    if state.room:
+                        intent = await self.store.get("control_close_intent", record_key)
+                        if intent is None:
+                            room = await self.service.room.read(context, state.room.room_id)
+                            intent = Command(request_id=key, trace_id=key, idempotency_key=key,
+                                context=context, payload=CloseRoom(room_id=room.room_id, expected_room_version=room.room_version)).model_dump(mode="json")
+                            await self.store.put_once("control_close_intent", record_key, intent)
+                        closed = await self.rooms.execute(Command.model_validate(intent))
+                        if not isinstance(closed, Success):
+                            reason = closed.error.code
+                        else:
+                            state.room = closed.data
+                    if reason is None:
+                        state.phase, state.pause_reason = "cancelled", "management_stopped"
+                else:
+                    raise AdapterError("invalid_control")
+                if reason is None:
+                    state.events[key], state.version = digest, old + 1
+                    if not await self.store.commit(state, old):
+                        raise SupervisorError("state_conflict")
+            result = {"status": "refused" if reason else "applied", "reason": reason or state.pause_reason,
+                      "phase": state.phase, "state_version": state.version}
+            await self.store.put_once("control_result", record_key, result)
+        await self.backend.control_result(team, request, result)
+        if result["status"] == "applied" and command["operation"] == "resume":
+            state = await self.store.load(context)
+            if state.phase != "execution_ready":
+                state = await self.service.resume(context)
+            await self.backend.status(team, state.phase, state.pause_reason, state.version)
         return None
 
     async def answer(self, item: dict) -> float | None:
@@ -286,6 +467,9 @@ class Runtime:
             retry = await execution
             if retry is None:
                 await self.store.ack(claim)
+            elif retry == RETRY_SECONDS:
+                # Management pause is not an uncertain effect: keep the message until resume.
+                await self.store.defer(claim, retry)
             elif claim.recovery_attempts >= SETTLE_ATTEMPTS:
                 # Asked again and still unknown: a person decides. The checkpoint keeps the action.
                 await self.store.park(claim, reason="outcome_unknown")
@@ -322,6 +506,27 @@ class Runtime:
             pass
 
 
+class EvaluationCase(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    instruction: str = Field(min_length=1, max_length=2000)
+    expected: str = Field(min_length=1, max_length=2000)
+    ticket: dict = Field(default_factory=dict)
+    must: list[str] = Field(default_factory=list, max_length=20)
+    must_not: list[str] = Field(default_factory=list, max_length=20)
+    must_call: list[str] = Field(default_factory=list, max_length=20)
+    must_not_call: list[str] = Field(default_factory=list, max_length=20)
+    tool_results: dict = Field(default_factory=dict)
+
+
+class EvaluationRequest(BaseModel):
+    room_id: str = Field(min_length=1, max_length=160)
+    agent_id: str = Field(min_length=1, max_length=160)
+    actor: str = Field(min_length=1, max_length=160)
+    request_id: str = Field(min_length=1, max_length=120)
+    configuration_hash: str = Field(pattern='^[a-f0-9]{64}$')
+    cases: list[EvaluationCase] = Field(min_length=6, max_length=12)
+
+
 def create_app(settings: Settings | None = None, *, transport: httpx.AsyncBaseTransport | None = None) -> Starlette:
     settings = settings or Settings.from_env()
     box: dict = {}
@@ -329,7 +534,12 @@ def create_app(settings: Settings | None = None, *, transport: httpx.AsyncBaseTr
     @asynccontextmanager
     async def lifespan(app):
         async with httpx.AsyncClient(transport=transport) as client:
-            runtime = Runtime(Backend(settings.backend_url, settings.service_token, client), Store(settings.state_path),
+            if settings.database_url:
+                from persistence.postgres import PostgreSQLStore
+                store = PostgreSQLStore(settings.database_url)
+            else:
+                store = Store(settings.state_path)
+            runtime = Runtime(Backend(settings.backend_url, settings.service_token, client), store,
                               client=client, settings=settings)
             stopping = asyncio.Event()
 
@@ -361,5 +571,53 @@ def create_app(settings: Settings | None = None, *, transport: httpx.AsyncBaseTr
     async def sessions(request):
         return JSONResponse({"items": box["runtime"].store.sessions()})
 
-    return Starlette(routes=[Route("/health", health), Route("/ready", ready), Route("/sessions", sessions)],
+    async def evaluate(request):
+        if not settings.service_token or not hmac.compare_digest(request.headers.get('authorization', ''), 'Bearer ' + settings.service_token):
+            return JSONResponse({'error': 'Service authentication required'}, status_code=401)
+        raw = await request.body()
+        if len(raw) > 128 * 1024:
+            return JSONResponse({'error': 'Evaluation request too large'}, status_code=413)
+        try:
+            body = EvaluationRequest.model_validate_json(raw).model_dump()
+            cases = body['cases']
+            if len({c['name'] for c in cases}) != len(cases) or not settings.openbot:
+                return JSONResponse({'error': 'Evaluation cases or model unavailable'}, status_code=422)
+            runtime = box['runtime']
+            snapshot = await runtime.backend.evaluation_view(body)
+            key = json.dumps((body['room_id'], body['agent_id'], body['actor'], body['request_id']))
+            marker = fingerprint(body)
+            try:
+                started = await runtime.store.put_once('evaluation_intent', key, marker)
+            except AdapterError as error:
+                if error.code == 'conflict':
+                    return JSONResponse({'error': 'Evaluation id already used for different content'}, status_code=409)
+                raise
+            if not started:
+                if await runtime.store.get('evaluation_intent', key) != marker:
+                    return JSONResponse({'error': 'Evaluation id already used for different content'}, status_code=409)
+                result = await runtime.store.get('evaluation_result', key)
+                return JSONResponse(result or {'error': 'Evaluation is running or interrupted'}, status_code=200 if result else 409)
+            from .publish import answer, judge
+            records = []
+            async with asyncio.timeout(240):
+                for case in cases:
+                    try:
+                        content, called = await answer(runtime.client, snapshot['instructions'], case, snapshot['tools'], {},
+                            endpoint=settings.openbot.endpoint, token=os.environ[settings.openbot.token_env])
+                        problems = judge(case, content, called)
+                    except (AdapterError, ValueError, httpx.HTTPError) as error:
+                        content, problems = 'Không có câu trả lời hợp lệ.', [getattr(error, 'code', None) or type(error).__name__]
+                    records.append({'name': case['name'], 'input': case['instruction'], 'expected': case['expected'],
+                        'actual': content[:5000], 'passed': not problems,
+                        'explanation': '; '.join(problems)[:2000] if problems else 'Đạt các điều kiện của ca đánh giá.'})
+            result = {'cases': records}
+            await runtime.store.put_once('evaluation_result', key, result)
+            return JSONResponse(result)
+        except ValidationError:
+            return JSONResponse({'error': 'Invalid evaluation request'}, status_code=422)
+        except (AdapterError, KeyError, ValueError, TimeoutError):
+            return JSONResponse({'error': 'Evaluation could not be completed'}, status_code=503)
+
+    return Starlette(routes=[Route("/health", health), Route("/ready", ready), Route("/sessions", sessions),
+                            Route('/internal/evaluations', evaluate, methods=['POST'])],
                      lifespan=lifespan)

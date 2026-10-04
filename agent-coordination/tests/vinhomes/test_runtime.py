@@ -44,6 +44,10 @@ class FakeBackend:
         # The plan table: one plan per team, kept under the request id that stored it.
         self.plans, self.plan_requests, self.approval_requests = {}, [], []
         self.lose_plan = self.refuse_plan = False
+        self.decisions, self.delivered = {}, set()
+        self.lose_delivery = False
+        self.plan_history = {}
+        self.commands, self.controlled = [], []
 
     def _check(self):
         if self.unreachable:
@@ -87,31 +91,86 @@ class FakeBackend:
         if self.revoked:
             raise Refused(409)
         plan = self.plans.get(team_id)
-        return {"context": self.context(team_id), "ticket_version": "2" if plan else "1",
+        version = 2 * plan["target_plan_version"] if plan else 1
+        if plan and team_id in self.decisions and self.decisions[team_id]["event"]["payload"]["plan_version"] == plan["target_plan_version"]:
+            version += 1
+        return {"context": self.context(team_id), "ticket_version": str(version),
                 "supervisor_version_id": "supervisor-v1", "specialists": self.specialists,
                 "plan": plan and {"plan_id": "plan-" + team_id, "status": plan["status"],
                                   "management_recipient": "management-unit:m1",
-                                  "approval_expires_at": "2999-01-01T00:00:00+00:00"}}
+                                  "approval_expires_at": "2999-01-01T00:00:00+00:00",
+                                  "resident_recipient": "resident", "resident_approval_required": True,
+                                  "resident_request_type": "plan_approval_requested",
+                                  "resident_request_message": "Anh/chị đồng ý phương án này không?"}}
 
     async def plan(self, team_id, draft):
         self._check()
         self.plan_requests.append(draft)
         if self.refuse_plan:
             raise Refused(409)
-        stored = self.plans.setdefault(team_id, {**draft, "status": "management_pending"})
+        stored = self.plan_history.setdefault(draft["request_id"], {**draft, "status": "management_pending"})
+        self.plans[team_id] = stored
         if (stored["request_id"], stored["payload_hash"]) != (draft["request_id"], draft["payload_hash"]):
             raise Refused(409)
         if self.lose_plan:
             self.lose_plan = False
             raise AdapterError("backend_outcome_unknown", retryable=True, outcome_unknown=True)
         return {"request_id": draft["request_id"], "status": "accepted", "payload_hash": draft["payload_hash"],
-                "canonical_id": "plan-" + team_id, "ticket_version": "2", "plan_version": draft["target_plan_version"]}
+                "canonical_id": "plan-" + team_id, "ticket_version": str(2 * draft["target_plan_version"]),
+                "plan_version": draft["target_plan_version"]}
 
-    async def approval_request(self, team_id, plan_id):
+    async def approval_request(self, team_id, plan_id, request):
         if self.plans[team_id]["status"] != "management_pending":
             raise Refused(409)
         self.approval_requests.append(plan_id)
+        self.plans[team_id]["approval"] = request
         return {"status": "accepted", "plan_id": plan_id}
+
+    def decide_plan(self, team="team-1", decision="approve"):
+        plan = self.plans[team]
+        plan["status"] = "resident_pending" if decision == "approve" else "rejected"
+        self.delivered.discard(team)
+        event = {"event_id": f"decision-{team}-{plan['target_plan_version']}", "event_type": "approval.responded", "schema_version": "1",
+                 "tenant_id": TENANT, "aggregate_id": "plan-" + team, "aggregate_version": plan["target_plan_version"],
+                 "occurred_at": "2026-10-04T10:00:00+00:00", "correlation_id": team,
+                 "causation_id": plan["approval"]["approval_id"], "payload": {
+                     **plan["approval"], "plan_id": "plan-" + team, "stage": "management_plan",
+                     "decision": decision, "comment": "Đồng ý" if decision == "approve" else "Cần phương án khác"}}
+        self.decisions[team] = {"team_id": team, "plan_id": "plan-" + team,
+                                "context": self.context(team), "event": event}
+
+    async def events(self):
+        self._check()
+        return {"items": [v for k, v in self.decisions.items() if k not in self.delivered]}
+
+    async def management_event(self, team, plan):
+        self._check()
+        if self.revoked or self.finished:
+            raise Refused(409)
+        return self.decisions[team]
+
+    async def decision_delivered(self, team, plan):
+        if self.lose_delivery:
+            self.lose_delivery = False
+            raise AdapterError("backend_outcome_unknown", retryable=True, outcome_unknown=True)
+        self.delivered.add(team)
+        return {"ok": True}
+
+    def request_control(self, runtime, operation, version=None):
+        self.commands.append({"team_id": "team-1", "context": self.context("team-1"), "command": {
+            "request_id": f"control-{len(self.commands)}", "operation": operation, "actor": "management",
+            "expected_version": session(runtime)["checkpoint_version"] if version is None else version,
+            "status": "queued"}})
+
+    async def controls(self):
+        return {"items": [c for c in self.commands if c["command"]["request_id"] not in {r[0] for r in self.controlled}]}
+
+    async def control(self, team, request):
+        return next(c for c in self.commands if c["command"]["request_id"] == request)
+
+    async def control_result(self, team, request, result):
+        self.controlled.append((request, result))
+        return {"ok": True}
 
     async def admit(self, team_id, agent_version_id):
         offered = next((s for s in self.specialists if s["agent_version_id"] == agent_version_id), None)
@@ -348,7 +407,7 @@ def decide(prompt, plans=True):
                for m in r["messages"] if m["task_id"] == "t1" and m["sender"] == r["speaker_agent_version_id"]]
     if room["tasks"][0]["status"] == "completed" and plans:
         # Asked for a plan only, and it names a reply that does not exist: the references are not the model's to give.
-        assert sorted(ref["$ref"].rsplit("/", 1)[1] for ref in prompt["schema"]["anyOf"]) == ["PauseDecision", "PlanDecision"]
+        assert sorted(ref["$ref"].rsplit("/", 1)[1] for ref in prompt["schema"]["anyOf"]) == ["PauseDecision", "PlanDecision", "QuestionDecision"]
         return {"kind": "plan", "plan": {**PLAN, "result_refs": ["made-up"]}}
     if replies:
         return {"kind": "complete_task", "task_id": "t1", "result_refs": replies, "assessment": "Đủ căn cứ."}
@@ -477,6 +536,97 @@ async def test_a_plan_whose_receipt_was_lost_is_stored_once(staffed):
     assert session(runtime)["phase"] == "waiting_management" and backend.approval_requests == ["plan-team-1"]
 
 
+async def test_management_approval_reaches_reception_once_across_a_restart(staffed):
+    backend, providers = FakeBackend(message()), Providers()
+    runtime = staffed(backend, providers)
+    await runtime.round()
+    backend.decide_plan()
+    backend.lose_delivery = True
+    await runtime.round()
+    assert session(runtime)["phase"] == "waiting_resident_plan"
+    assert [m["message_type"] for m in backend.sent] == ["accepted", "plan_approval_requested"]
+    asked = backend.sent[-1]
+    assert asked["ticket_version"] == "3" and asked["message"] == "Anh/chị đồng ý phương án này không?"
+    runtime = staffed(backend, providers)
+    runtime.store.clock.now += 20
+    await runtime.round()
+    assert backend.delivered == {"team-1"} and len(backend.sent) == 2
+    assert providers.decisions == ["tasks", "run", "complete_task", "plan"]
+
+
+async def test_lost_resident_request_receipt_is_reconciled_without_asking_twice(staffed):
+    backend, providers = FakeBackend(message()), Providers()
+    runtime = staffed(backend, providers)
+    await runtime.round()
+    backend.decide_plan()
+    backend.lose_reply = "stored"
+    await runtime.round()
+    assert session(runtime)["action_in_flight"] == "unknown" and not backend.delivered
+    runtime.store.clock.now += 6
+    await runtime.round()
+    assert session(runtime)["phase"] == "waiting_resident_plan" and backend.delivered == {"team-1"}
+    assert len(backend.sent) == 2
+
+
+async def test_management_refusal_requires_a_new_plan_and_two_fresh_approvals(staffed):
+    backend, providers = FakeBackend(message()), Providers()
+    runtime = staffed(backend, providers)
+    await runtime.round()
+    backend.decide_plan(decision="reject")
+    await runtime.round()
+    assert session(runtime)["phase"] == "waiting_management"
+    assert [d["target_plan_version"] for d in backend.plan_requests] == [1, 2]
+    assert backend.plan_requests[-1]["ticket_version"] == "3"
+    assert [m["message_type"] for m in backend.sent] == ["accepted"]
+    backend.decide_plan(decision="approve")
+    await runtime.round()
+    assert session(runtime)["phase"] == "waiting_resident_plan" and backend.sent[-1]["ticket_version"] == "5"
+
+
+async def test_management_pause_keeps_an_approval_until_resume_then_can_stop_the_session(staffed):
+    backend, providers = FakeBackend(message()), Providers()
+    runtime = staffed(backend, providers)
+    await runtime.round()
+    backend.request_control(runtime, "pause")
+    await runtime.round()
+    assert session(runtime)["phase"] == "paused" and session(runtime)["pause_reason"] == "management_pause"
+    backend.decide_plan()
+    await runtime.round()
+    assert len(backend.sent) == 1
+    backend.request_control(runtime, "resume")
+    await runtime.round()
+    runtime.store.clock.now += 16
+    await runtime.round()
+    assert session(runtime)["phase"] == "waiting_resident_plan" and len(backend.sent) == 2
+    backend.request_control(runtime, "stop")
+    await runtime.round()
+    assert session(runtime)["phase"] == "cancelled" and backend.controlled[-1][1]["status"] == "applied"
+    assert len(backend.sent) == 2  # stopping the session does not cancel the resident's ticket
+
+
+async def test_a_stale_control_cannot_modify_the_checkpoint(staffed):
+    backend, providers = FakeBackend(message()), Providers()
+    runtime = staffed(backend, providers)
+    await runtime.round()
+    version = session(runtime)["checkpoint_version"]
+    backend.request_control(runtime, "stop", version=version - 1)
+    await runtime.round()
+    assert session(runtime)["phase"] == "waiting_management" and session(runtime)["checkpoint_version"] == version
+    assert backend.controlled[-1][1]["reason"] == "session_changed"
+
+
+async def test_an_uncommitted_or_changed_management_decision_is_never_applied(staffed):
+    backend, providers = FakeBackend(message()), Providers()
+    runtime = staffed(backend, providers)
+    await runtime.round()
+    backend.decide_plan()
+    await runtime.poll()
+    backend.decisions["team-1"]["event"]["payload"]["decision"] = "reject"
+    await runtime.round()
+    assert session(runtime)["phase"] == "waiting_management" and len(backend.sent) == 1
+    assert not backend.delivered
+
+
 async def test_a_plan_the_backend_refuses_stops_the_session_for_a_person(staffed):
     backend, providers = FakeBackend(message()), Providers()
     runtime = staffed(backend, providers)
@@ -543,8 +693,9 @@ async def test_a_specialist_looks_something_up_with_a_granted_tool_before_it_ans
     providers = Providers(tool_call=("technical__get_active_outage", {"building_id": "building"}))
     runtime = staffed(backend, providers)
     await runtime.round()
-    # The tool host is asked under the backend's run of this turn, not under an id the runtime made up.
-    assert providers.tool_calls == [{"run_id": "run-turn-1", "tool": "technical__get_active_outage",
+    # The tool host is asked under the backend's run of this turn, not under an id the runtime made up,
+    # and by the tool's catalogue name rather than the name the model was given.
+    assert providers.tool_calls == [{"run_id": "run-turn-1", "tool": "technical.get_active_outage",
                                      "arguments": {"building_id": "building"}}]
     first, second = providers.bot
     assert first["tools"] == [OUTAGE_TOOL] and second["runId"] != first["runId"]

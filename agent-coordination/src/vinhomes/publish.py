@@ -46,11 +46,12 @@ TOOL_ROUNDS = 6  # an agent that is still calling tools after this many rounds h
 
 def dotted(name: str) -> str:
     """A tool's catalogue name from the name a model calls it by."""
-    return name.replace("__", ".", 1)
+    return name.replace("__", ".")
 
 
 async def answer(client: httpx.AsyncClient, instructions: str, case: dict, tools: list[dict],
-                 defaults: dict) -> tuple[str, list[str]]:
+                 defaults: dict, *, endpoint: str | None = None, token: str | None = None,
+                 invoke_tool=None) -> tuple[str, list[str]]:
     """One room turn for an evaluation case: the agent's `content` and the tools it called."""
     thread = f"evaluation:{case['name']}"
     # `messages` is what the room already holds for the agent: empty for a first task, the agent's
@@ -58,7 +59,7 @@ async def answer(client: httpx.AsyncClient, instructions: str, case: dict, tools
     asked = {"instruction": case["instruction"], "tasks": [], "messages": case.get("messages", []),
              "context": [{"item_id": "reception-v2-ticket", "content": json.dumps(case["ticket"], ensure_ascii=False)}]}
     messages = [{"id": "context", "role": "user", "content": json.dumps(asked, ensure_ascii=False)}]
-    headers = {"x-openbot-agent-token": os.environ["MANAGED_AGENT_TOKEN"], "Accept": "text/event-stream"}
+    headers = {"x-openbot-agent-token": token or os.environ["MANAGED_AGENT_TOKEN"], "Accept": "text/event-stream"}
     # The same client the room's adapter sends through: same instructions, same reply handling.
     room, called = InstructedClient(client, {thread: instructions}), []
     for _ in range(TOOL_ROUNDS):
@@ -66,7 +67,7 @@ async def answer(client: httpx.AsyncClient, instructions: str, case: dict, tools
         wire = {"threadId": thread, "runId": run, "state": {}, "tools": tools, "forwardedProps": {}, "context": [],
                 "messages": messages}
         stream, decoder = RunStream(thread, run), SSEDecoder()
-        async with room.stream("POST", os.environ["COORDINATION_OPENBOT_URL"], headers=headers, json=wire) as response:
+        async with room.stream("POST", endpoint or os.environ["COORDINATION_OPENBOT_URL"], headers=headers, json=wire) as response:
             if response.status_code != 200:
                 raise AdapterError(f"openbot_status_{response.status_code}")
             async for chunk in response.aiter_bytes():
@@ -82,10 +83,13 @@ async def answer(client: httpx.AsyncClient, instructions: str, case: dict, tools
             for call_id, call in stream.calls.items()]})
         for call_id, call in stream.calls.items():
             name = dotted(call["name"])
+            if call['name'] not in {t['name'] for t in tools}:
+                raise AdapterError('tool_not_granted')
             called.append(name)
             # What the tool says in this case; a tool the case is silent about answers the
             # definition's default for it (found nothing).
-            result = case.get("tool_results", {}).get(name) or defaults.get(name, {"status": "OK", "data": {}, "errors": []})
+            result = (await invoke_tool(name, json.loads(call['args'])) if invoke_tool else
+                      case.get("tool_results", {}).get(name) or defaults.get(name, {"status": "OK", "data": {}, "errors": []}))
             messages.append({"id": f"result-{call_id}", "role": "tool", "toolCallId": call_id,
                              "content": json.dumps({"tool": call["name"], "result": result}, ensure_ascii=False)})
     raise AdapterError("continuation_limit")

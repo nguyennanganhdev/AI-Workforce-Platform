@@ -25,8 +25,8 @@ $toolsFile = Join-Path (Split-Path $root -Parent) "services/vinhomes-api/$(if ($
 if (Test-Path -LiteralPath $toolsFile) {
     $toolsToken = (Get-Content -LiteralPath $toolsFile | Where-Object { $_.StartsWith('TECHNICAL_TOOLS_SERVICE_TOKEN=') }) -replace '^TECHNICAL_TOOLS_SERVICE_TOKEN=', ''
     if ($toolsToken) {
-        $env:COORDINATION_TOOLS_URL = 'http://127.0.0.1:8788/internal/technical/v1'
-        $env:COORDINATION_TOOLS_TOKEN = $toolsToken
+        $env:COORDINATION_TOOLS_URL = $env:COORDINATION_BACKEND_URL.TrimEnd('/') + '/internal/coordination/v1/tools'
+        $env:COORDINATION_TOOLS_TOKEN = $env:COORDINATION_SERVICE_TOKEN
     }
 }
 $name = if ($Connected) { 'connected' } else { 'demo' }
