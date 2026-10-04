@@ -76,4 +76,7 @@ async def respond(ticket_id: UUID, body: Response, scope: RESIDENT):
         values(:id,{TENANT},:channel,:seq,'user',:actor,'customer',cast(:body as jsonb))'''),
         {'id': message_id, 'channel': ticket['channel_id'], 'seq': seq, 'actor': actor,
          'body': json.dumps({'text': body.note.strip(), 'responseHash': fingerprint, 'supervisorResponse': parsed.model_dump(mode='json')})})
+    # Answering the question is reading it: it must not stay unread in the resident's chat.
+    await db.execute(text('''update channel_memberships set last_read_seq=greatest(last_read_seq,:seq),last_read_at=now()
+        where channel_id=:channel and user_id=:actor'''), {'seq': seq, 'channel': ticket['channel_id'], 'actor': actor})
     return await submit_reception_message(parsed, scope)

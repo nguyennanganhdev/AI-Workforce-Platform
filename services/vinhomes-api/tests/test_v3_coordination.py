@@ -437,8 +437,11 @@ def test_the_supervisor_proposes_a_plan_that_management_then_decides(database, r
         assert checked.status_code == 200 and checked.json()["event"] == decision["event"]
         pending = next(i for i in c.get('/resident/supervisor-interactions').json()['items'] if i['ticket_id'] == ticket)
         response_body = {'decision': resident_decision, 'note': 'Ý kiến cư dân', 'ticket_version': pending['ticket_version'], 'request_id': str(uuid4())}
+        unread = lambda: next(x for x in c.get('/resident/chats').json()['items'] if x['id'] == resident_chat)['unread_count']
+        assert unread() > 0
         agreed = c.post(f"/resident/tickets/{ticket}/supervisor-response", json=response_body)
         assert agreed.status_code == 200, agreed.text
+        assert unread() == 0                                                  # answering the question is reading it
         assert c.post(f"/resident/tickets/{ticket}/supervisor-response", json=response_body).status_code == 200
         assert c.post(f"/resident/tickets/{ticket}/supervisor-response", json={**response_body, 'note': 'Khác'}).status_code == 409
         assert not [i for i in c.get('/resident/supervisor-interactions').json()['items'] if i['ticket_id'] == ticket]
