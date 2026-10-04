@@ -1,4 +1,4 @@
-"""Report tools and their model-facing descriptors."""
+"""Four read-only report tools."""
 
 from .contracts import RuntimeContext
 

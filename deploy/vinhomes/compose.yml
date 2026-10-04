@@ -25,6 +25,7 @@ services:
       VINHOMES_API_COORDINATION_URL: http://coordination:4300
       VINHOMES_API_TECHNICAL_TOOLS_URL: http://technical-tools:8788/internal/technical/v1
       VINHOMES_API_TECHNICAL_TOOLS_TOKEN: ${TECHNICAL_TOOLS_SERVICE_TOKEN:?tool token required}
+      VINHOMES_API_REPAIR_CATEGORY_CODES: ${REPAIR_CATEGORY_CODES:-}
       FACTORY_SERVICE_URL: http://factory:4010
       FACTORY_SERVICE_TOKEN: ${FACTORY_SERVICE_TOKEN:?Factory token required}
       # Two settings, one list: browser sign-in and writes check the first, the resident app's CORS the second.

@@ -523,13 +523,15 @@ def test_bql_publication_revision_and_admin_override(database):
         assert not next(a for a in manager.get('/rooms/management-room/agent-management').json()['items'] if a['id'] == agent)['published']
 
 
-def test_free_room_mentions_pinned_runs_real_reports_scope_and_revocation(database):
+def test_free_room_mentions_pinned_runs_real_reports_scope_and_revocation(database, monkeypatch):
     from vinhomes_api.v3_tool_gateway import catalogue
+    monkeypatch.delenv('VINHOMES_API_REPAIR_CATEGORY_CODES', raising=False)
     for t in catalogue():
         sql(database, "insert into mcp_servers(id,title,vendor,url,tenant_id) values($1,$1,'first-party','internal:tools',$2) on conflict(id) do nothing returning id", t['server_id'], TENANT)
         sql(database, "insert into mcp_tools(server_id,name,description,input_schema,effect,tenant_id) values($1,$2,$3,cast($4 as jsonb),$5,$6) on conflict(server_id,name) do nothing returning name", t['server_id'], t['name'], t['description'], json.dumps(t['input_schema']), t['effect'], TENANT)
+    reports = ('filter_report_scope', 'get_repair_bill_summary', 'get_ticket_frequency_summary', 'get_employee_star_summary')
     agent, version = publish_specialist(database, 'Room report ' + uuid4().hex[:8], ['technical'], tools=(
-        {'server_id': 'reporting', 'name': 'reporting.get_incident_frequency_summary'},
+        *({'server_id': 'reporting', 'name': 'reporting.' + name} for name in reports),
         {'server_id': 'security-tools', 'name': 'security.camera.read'}))
     settings = V3Settings('127.0.0.1', 8000, database['runtime'], TENANT, None, None,
                           demo_mode=True, coordination_service_token=TOKEN)
@@ -542,15 +544,34 @@ def test_free_room_mentions_pinned_runs_real_reports_scope_and_revocation(databa
         path = BASE + f'/room-mentions/{message}/{agent}'
         turn = c.post(path + '/turn', headers=SERVICE)
         assert turn.status_code == 200, turn.text
-        assert {t['name'] for t in turn.json()['tools']} == {
-            'reporting__get_incident_frequency_summary', 'security__camera__read'}
+        assert {t['name'] for t in turn.json()['tools']} == {'reporting__' + name for name in reports} | {'security__camera__read'}
         run = turn.json()['run_id']
         assert c.post(path + '/turn', headers=SERVICE).json()['run_id'] == run
         b = sql(database, 'select building_id from tickets where building_id is not null limit 1')[0]['building_id']
-        good = c.post(BASE + '/tools/call', headers=SERVICE, json={'run_id': run, 'tool': 'reporting.get_incident_frequency_summary',
-            'arguments': {'building_id': str(b), 'from_date': '2020-01-01', 'to_date': '2029-01-01'}})
-        assert good.status_code == 200 and good.json()['status'] == 'OK', good.text
-        assert good.json()['data']['operation'] == 'get_incident_frequency_summary'
+        report = lambda name, **arguments: c.post(BASE + '/tools/call', headers=SERVICE,
+            json={'run_id': run, 'tool': 'reporting.' + name, 'arguments': arguments}).json()
+        period = {'scope_type': 'building', 'scope_id': str(b), 'from_date': '2020-01-01', 'to_date': '2029-01-01'}
+        scopes = report('filter_report_scope')
+        assert scopes['status'] == 'OK' and str(b) in {s['scope_id'] for s in scopes['data']['data']}, scopes
+        good = report('get_ticket_frequency_summary', **period)
+        assert good['status'] == 'OK' and good['data']['operation'] == 'get_ticket_frequency_summary', good
+        counted = sql(database, "select count(*) n, count(*) filter (where request_kind='incident') incidents from tickets "
+                                "where building_id=$1 and created_at>='2020-01-01' and created_at<'2029-01-01'", b)[0]
+        assert (good['data']['data']['total_ticket_count'], good['data']['data']['incident_ticket_count']) == (counted['n'], counted['incidents'])
+        # Which categories are repair work is the deployment's setting; without it no total is reported.
+        unset = report('get_repair_bill_summary', **period)
+        assert unset['status'] == 'TOOL_ERROR' and unset['data']['error'] == 'REPORT_REPAIR_CATEGORIES_REQUIRED', unset
+        monkeypatch.setenv('VINHOMES_API_REPAIR_CATEGORY_CODES', 'technical')
+        billed = sql(database, "select count(*) n, sum(i.grand_total) total from invoices i join tickets t on t.id=i.ticket_id "
+                               "where t.building_id=$1 and i.status='issued'", b)[0]
+        bills = report('get_repair_bill_summary', **period)
+        assert bills['status'] == 'OK' and bills['data']['data']['items'] == [
+            {'currency': 'VND', 'invoice_count': billed['n'], 'billed_amount': format(billed['total'], 'f')}], bills
+        staff = sql(database, 'select id from staff_profiles limit 1')[0]['id']
+        stars = report('get_employee_star_summary', **period, staff_ids=[str(staff)])
+        assert stars['status'] == 'OK' and stars['data']['data']['items'][0]['staff_id'] == str(staff), stars
+        outside = report('get_ticket_frequency_summary', **{**period, 'scope_id': str(uuid4())})
+        assert outside['status'] == 'TOOL_ERROR' and outside['data']['error'] == 'REPORT_SCOPE_FORBIDDEN_OR_NOT_FOUND', outside
         forbidden = c.post(BASE + '/tools/call', headers=SERVICE, json={'run_id': run, 'tool': 'security.camera.read',
             'arguments': {'building_id': str(uuid4())}})
         assert forbidden.json()['status'] == 'FORBIDDEN'

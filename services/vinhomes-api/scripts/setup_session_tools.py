@@ -80,14 +80,19 @@ async def main(connected: bool, local: Path | None) -> None:
                 """, SERVER, tool["name"], tool["description"], json.dumps(tool["input_schema"]),
                     tool["side_effect"], tool["version"], tenant)
             from vinhomes_api.v3_tool_gateway import catalogue as business_catalogue
-            for tool in business_catalogue():
+            business = business_catalogue()
+            for tool in business:
                 await db.execute("""insert into mcp_servers(id,title,vendor,url,provenance,tenant_id)
                     values($1,$1,'first-party','internal:/internal/coordination/v1/tools','first-party',$2)
                     on conflict(id) do nothing""", tool['server_id'], tenant)
                 await db.execute("""insert into mcp_tools(server_id,name,description,input_schema,effect,destructive,version,tenant_id)
-                    values($1,$2,$3,cast($4 as jsonb),$5,false,'1.0.1',$6)
-                    on conflict(server_id,name) do update set description=excluded.description,input_schema=excluded.input_schema,effect=excluded.effect""",
-                    tool['server_id'], tool['name'], tool['description'], json.dumps(tool['input_schema']), tool['effect'], tenant)
+                    values($1,$2,$3,cast($4 as jsonb),$5,false,$6,$7)
+                    on conflict(server_id,name) do update set description=excluded.description,
+                      input_schema=excluded.input_schema,effect=excluded.effect,version=excluded.version""",
+                    tool['server_id'], tool['name'], tool['description'], json.dumps(tool['input_schema']), tool['effect'], tool['version'], tenant)
+            # A tool the gateway no longer serves must not stay grantable: an agent holding it is refused at the call.
+            await db.execute("delete from mcp_tools where server_id=any($1::text[]) and tenant_id=$2 and not name=any($3::text[])",
+                             list({t['server_id'] for t in business}), tenant, [t['name'] for t in business])
     finally:
         await db.close()
     url = urlunsplit((address.scheme, f"{role}:{quote(password)}@{address.hostname}:{address.port}", address.path, "", ""))

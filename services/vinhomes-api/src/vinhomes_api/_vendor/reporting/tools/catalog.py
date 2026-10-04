@@ -1,27 +1,26 @@
-"""Schema catalog for runtime registration; schemas do not grant permissions."""
+"""Only the four requested capabilities, reading existing business endpoints."""
+
+from pydantic import TypeAdapter
 
 from . import contracts as c
 
 MODELS = {
-    "get_report_filter_options": c.FilterInput,
-    "get_employee_performance_summary": c.EmployeeInput,
-    "get_employee_feedback_details": c.FeedbackInput,
-    "get_repair_revenue_summary": c.RevenueInput,
-    "get_incident_frequency_summary": c.FrequencyInput,
-    "get_report_supporting_records": c.SupportingInput,
-    "create_report_export": c.ExportInput,
-    "get_report_export_status": c.ExportStatusInput,
+    "filter_report_scope": c.FilterInput,
+    "get_repair_bill_summary": c.SummaryInput,
+    "get_ticket_frequency_summary": c.SummaryInput,
+    "get_employee_star_summary": c.RatingInput,
 }
-
+OUTPUTS = {
+    "filter_report_scope": c.FilterResult,
+    "get_repair_bill_summary": c.BillResult,
+    "get_ticket_frequency_summary": c.TicketResult,
+    "get_employee_star_summary": c.RatingResult,
+}
 DESCRIPTIONS = {
-    "get_report_filter_options": "Lấy tòa, nhóm dịch vụ và nhân viên được backend cho phép.",
-    "get_employee_performance_summary": "Hiệu suất theo kỳ phân công; đúng hạn, xử lý, rework và đánh giá.",
-    "get_employee_feedback_details": "Phản hồi một nhân viên trong tòa; phân trang, API chưa lọc kỳ.",
-    "get_repair_revenue_summary": "Tính phí, thực thu và còn phải thu theo tiền tệ; không cộng khác tiền tệ.",
-    "get_incident_frequency_summary": "Đếm ticket incident theo ngày/tuần/tháng; loại service_request.",
-    "get_report_supporting_records": "Bản ghi theo kỳ của loại được chọn; không phải toàn bộ nguồn của KPI.",
-    "create_report_export": "Xuất DOCX tần suất toàn tòa hoặc hóa đơn issued. Giữ nguyên key khi thử lại.",
-    "get_report_export_status": "Đọc trạng thái export; backend kiểm tra người tạo và quyền hiện tại.",
+    "filter_report_scope": "Chọn chính xác tòa hoặc toàn phân khu được phép; tên trùng yêu cầu chọn ID.",
+    "get_repair_bill_summary": "Đọc đủ các trang hóa đơn issued, kiểm dòng sửa chữa rồi cộng grand_total theo tiền tệ.",
+    "get_ticket_frequency_summary": "Đọc ticket và summary từng tòa; tổng ticket và tần suất từng loại incident.",
+    "get_employee_star_summary": "Đọc feedback của nhân viên được chọn; lọc ngày gửi UTC và tính phân bố 1–5 sao.",
 }
 
 
@@ -30,31 +29,22 @@ def tool_descriptors():
         {
             "ref": "reporting/" + name.replace("_", "-"),
             "name": name,
-            "version": "1.0.1",
+            "version": "2.0.0",
             "displayName": name,
             "description": DESCRIPTIONS[name],
             "category": "reporting",
             "source": "first-party",
             "visibility": "builder",
             "allowedAgentTypes": ["report"],
-            "requiredPermissions": [
-                "reports:write" if name == "create_report_export" else "reports:read"
-            ],
-            "effect": "write" if name == "create_report_export" else "read",
+            "requiredPermissions": ["reports:read"],
+            "effect": "read",
             "destructive": False,
             "timeoutMs": 60000,
-            # Retries for GET are bounded inside the client. No outer retries.
             "retry": {"maxRetries": 0, "backoffMs": 0},
-            "requiresIdempotencyKey": name == "create_report_export",
+            "requiresIdempotencyKey": False,
             "execution": {"kind": "first-party", "handler": "reporting." + name},
             "inputSchema": model.model_json_schema(),
-            "outputSchema": {
-                "type": "object",
-                "required": ["outcome"],
-                "properties": {
-                    "outcome": {"enum": ["success", "partial", "empty", "failure"]}
-                },
-            },
+            "outputSchema": TypeAdapter(OUTPUTS[name] | c.Failure).json_schema(),
         }
         for name, model in MODELS.items()
     ]

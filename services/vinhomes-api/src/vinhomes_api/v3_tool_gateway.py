@@ -17,9 +17,13 @@ from .v3_coordination import Scope, TENANT, team_authority
 from .v3_room_agents import managed_room
 from .v3_reports import _management_building
 from . import v3_report_jobs as reports
+from .v3_agent_results import AgentBusinessResponse, agent_result
+from .v3_billing import invoice_detail
+from .v3_operations import catalogs
 from .v3_security import cameras, contacts
+from ._vendor.reporting.application.client import exact_decimal, invalid_constant, json_safe_numbers, unique_object
 from ._vendor.reporting.tools.catalog import tool_descriptors
-from ._vendor.reporting.tools.facade import ReportTools, ROUTES, ALIASES
+from ._vendor.reporting.tools.facade import ReportTools
 from ._vendor.reporting.tools.contracts import RuntimeContext, ReportToolError
 
 router = APIRouter(prefix='/internal/coordination/v1/tools', tags=['Authorized agent read tools'])
@@ -74,55 +78,75 @@ SECURITY = {
 
 def catalogue():
     return ([{'server_id': 'reporting', 'name': 'reporting.' + t['name'], 'description': t['description'],
-        'input_schema': t['inputSchema'], 'effect': t['effect']} for t in tool_descriptors() if t['effect'] == 'read'] +
-        [{'server_id': 'security-tools', 'name': name, 'description': description,
+        'input_schema': t['inputSchema'], 'effect': t['effect'], 'version': t['version']} for t in tool_descriptors() if t['effect'] == 'read'] +
+        [{'server_id': 'security-tools', 'name': name, 'description': description, 'version': '1.0.1',
           'input_schema': BuildingRead.model_json_schema(), 'effect': 'read'} for name, (description, _) in SECURITY.items()])
 
 
 class ReportingBackend:
-    """Run the existing business reads in this verified transaction, with no forged cookie."""
+    """Team Hoàng's report tools read this API's own routes. Here the same route functions run in the
+    verified transaction, with no forged cookie, and each answer takes the JSON form its route sends."""
+    operation_timeout_seconds, max_pages, max_records = 60.0, 100, 10000
+    READS = {'/reports/employee-feedback': reports.feedback, '/reports/incident-frequency-summary': reports.incident_summary,
+        '/reports/supporting-records': reports.supporting}
+    NAMES = {'buildingId': 'building_id', 'staffId': 'staff_id', 'fromDate': 'from_date', 'toDate': 'to_date'}
+
     def __init__(self, db, run):
         self.db, self.run = db, run
 
-    async def request(self, method, path, context, *, params=None, body=None):
-        if method != 'GET':
-            raise ReportToolError('HUMAN_APPROVAL_REQUIRED')
+    async def request(self, path, context, *, params=None):
         scope = (self.db, self.run['actor_user_id'] or '', not bool(self.run['actor_user_id']))
         if scope[1]:
             admin = (await self.db.execute(text('select 1 from platform_admins where user_id=:actor'), {'actor': scope[1]})).first() is not None
             scope = (self.db, scope[1], admin)
+        if path == '/catalogs':
+            return wire(jsonable_encoder(await catalogs(scope)))
         if path == '/reports/filter-options':
             # Build options inside this workspace, including staff/category rows. Do not
             # call an admin-global filter API and prune a partially leaked response.
-            from .v3_agent_results import agent_result
             buildings = (await self.db.execute(text('select id,name from buildings where id=any(:ids) order by name'), {'ids': [UUID(b) for b in self.run['buildings']]})).mappings().all()
             categories = (await self.db.execute(text('select id,name,code from service_categories where enabled order by name'))).mappings().all()
             employees = (await self.db.execute(text('select sp.id,u.name,sp.employee_code from staff_profiles sp join users u on u.id=sp.user_id where sp.management_unit_id=:management order by u.name'), {'management': self.run['management_unit_id']})).mappings().all()
-            return jsonable_encoder(agent_result('get_report_filter_options', {'buildings': [dict(b) for b in buildings], 'categories': [dict(c) for c in categories], 'employees': [dict(e) for e in employees], 'exportFormats': ['docx']}, {}))
-        funcs = {'/reports/employee-performance': reports.performance, '/reports/employee-feedback': reports.feedback,
-            '/reports/repair-revenue': reports.repair_revenue, '/reports/incident-frequency-summary': reports.incident_summary,
-            '/reports/supporting-records': reports.supporting}
-        func = funcs.get(path)
+            return typed(agent_result('get_report_filter_options', {'buildings': [dict(b) for b in buildings], 'categories': [dict(c) for c in categories], 'employees': [dict(e) for e in employees], 'exportFormats': ['docx']}, {}))
+        if path.startswith('/invoices/'):
+            invoice = UUID(path.rsplit('/', 1)[-1])
+            building = (await self.db.execute(text('select t.building_id from invoices i join tickets t on t.id=i.ticket_id and t.tenant_id=i.tenant_id where i.id=:id'), {'id': invoice})).scalar_one_or_none()
+            if str(building) not in self.run['buildings']:
+                raise ReportToolError('REPORT_SCOPE_FORBIDDEN')
+            return wire(jsonable_encoder(await invoice_detail(invoice, scope)))
+        func = self.READS.get(path)
         if not func:
-            if path.startswith('/reports/exports/') and scope[1]:
-                export_id = UUID(path.rsplit('/', 1)[-1])
-                building = (await self.db.execute(text('select building_id from vh_report_exports where id=:id and created_by=:actor'),
-                    {'id': export_id, 'actor': scope[1]})).scalar_one_or_none()
-                if building is None or str(building) not in self.run['buildings']:
-                    raise ReportToolError('REPORT_SCOPE_FORBIDDEN')
-                return jsonable_encoder(await reports.export_status(export_id, scope))
             raise ReportToolError('REPORT_OPERATION_UNKNOWN')
-        reverse = {v: k for k, v in ALIASES.items()}
-        kwargs = {reverse.get(k, k): v for k, v in (params or {}).items()}
-        for k in ('building_id', 'category_id', 'staff_id'):
+        kwargs = {self.NAMES.get(k, k): v for k, v in (params or {}).items()}
+        for k in ('building_id', 'staff_id'):
             if kwargs.get(k): kwargs[k] = UUID(kwargs[k])
         for k in ('from_date', 'to_date'):
             if kwargs.get(k): kwargs[k] = date.fromisoformat(kwargs[k])
+        if str(kwargs.get('building_id')) not in self.run['buildings']:
+            raise ReportToolError('REPORT_SCOPE_FORBIDDEN')
         for name, parameter in inspect.signature(func).parameters.items():
             if name not in kwargs and hasattr(parameter.default, 'default'):
                 kwargs[name] = parameter.default.default
         # Pydantic defaults are present in the validated input, never FastAPI Query objects.
-        return jsonable_encoder(await func(scope=scope, **kwargs))
+        return typed(await func(scope=scope, **kwargs))
+
+
+def wire(value):
+    """Read a route's JSON the way the report client reads it: exact decimals, no repeated keys."""
+    return json_safe_numbers(json.loads(json.dumps(value), object_pairs_hook=unique_object,
+        parse_constant=invalid_constant, parse_float=exact_decimal))
+
+
+def typed(value):
+    """The routes that declare AgentBusinessResponse send money as exact text, not as a float."""
+    return wire(AgentBusinessResponse.model_validate(value).model_dump(mode='json'))
+
+
+async def repair_categories(db):
+    """Which categories count as repair work is this deployment's decision; the catalogue does not say."""
+    codes = [c.strip() for c in os.getenv('VINHOMES_API_REPAIR_CATEGORY_CODES', '').split(',') if c.strip()]
+    found = (await db.execute(text('select id from service_categories where enabled and code=any(:codes)'), {'codes': codes})).scalars().all()
+    return tuple(str(c) for c in found)
 
 
 class Call(BaseModel):
@@ -153,7 +177,7 @@ async def call(body: Call, db: Scope):
         if grant['server_id'] == 'reporting' and body.tool.startswith('reporting.'):
             # The facade needs a nonempty transport credential when used over HTTP. This
             # in-process port carries no credential and never transmits this marker.
-            context = RuntimeContext(str(run['authority_principal_id']), run['buildings'], 'verified-in-process')
+            context = RuntimeContext(str(run['authority_principal_id']), run['buildings'], 'verified-in-process', await repair_categories(db))
             result = await ReportTools(ReportingBackend(db, run), context).invoke(body.tool.removeprefix('reporting.'), body.arguments)
         elif grant['server_id'] == 'security-tools' and body.tool in SECURITY:
             args = BuildingRead.model_validate(body.arguments)
