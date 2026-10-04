@@ -26,11 +26,15 @@ services:
       VINHOMES_API_TECHNICAL_TOOLS_URL: http://technical-tools:8788/internal/technical/v1
       VINHOMES_API_TECHNICAL_TOOLS_TOKEN: ${TECHNICAL_TOOLS_SERVICE_TOKEN:?tool token required}
       VINHOMES_API_REPAIR_CATEGORY_CODES: ${REPAIR_CATEGORY_CODES:-}
+      # Photos of requests and of the work go to the api-files volume. One host only; back the volume up.
+      VINHOMES_API_VOLUME_FILE_STORAGE: '1'
       FACTORY_SERVICE_URL: http://factory:4010
       FACTORY_SERVICE_TOKEN: ${FACTORY_SERVICE_TOKEN:?Factory token required}
       # Two settings, one list: browser sign-in and writes check the first, the resident app's CORS the second.
       VINHOMES_API_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
       VINHOMES_API_RESIDENT_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
+    volumes:
+      - api-files:/var/lib/vinhomes/files
     ports:
       - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${VINHOMES_API_PORT:-8000}:8000'
     healthcheck:
@@ -219,8 +223,20 @@ services:
     restart: 'no'
     environment:
       DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+      VINHOMES_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
       VINHOMES_API_DATABASE_URL: ${VINHOMES_API_DATABASE_URL:?restricted business database URL required}
       TECHNICAL_API_DATABASE_URL: ${TECHNICAL_API_DATABASE_URL:?restricted tools database URL required}
+  catalogue:
+    # Run by hand after `upgrade`: registers the tools the API's gateway serves, so agents can be granted them.
+    #   docker compose --env-file deployment.env --profile upgrade run --rm catalogue
+    profiles: [upgrade]
+    image: vinhomes-api:${VINHOMES_IMAGE_TAG:-latest}
+    command: ['python', '-m', 'vinhomes_api.tool_catalogue']
+    restart: 'no'
+    environment:
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+      VINHOMES_API_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
 
 volumes:
   reception-state:
+  api-files:

@@ -27,6 +27,11 @@ EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 
 def local_only(request: Request) -> None:
     settings = request.app.state.settings
+    # Disk storage is refused off loopback so a development setting cannot end up serving a public
+    # host by accident. A container listens on every interface of its own network by design; there
+    # the operator states, with a setting of its own, that the file root is a volume it looks after.
+    if settings.volume_file_storage:
+        return
     if not (settings.local_file_storage or settings.resident_local_storage or settings.dev_user_id or settings.demo_mode) or settings.host not in {"127.0.0.1", "localhost", "::1"}:
         raise HTTPException(503, "Private local storage must be explicitly enabled on a loopback host")
 

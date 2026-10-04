@@ -5,6 +5,10 @@
  * A release that adds a table or a column also adds a line to the grant scripts, so the grants
  * are applied again every time. Role names are read from the services' own connection settings.
  * Creating the roles and the first organisation is not done here.
+ *
+ * Last, the technical tool host's catalogue is registered for the tenant, so an agent's
+ * configuration can name the tools this release serves. The API's own tools are registered by the
+ * `catalogue` job, from the API image.
  */
 import { readFile } from "node:fs/promises";
 import postgres from "postgres";
@@ -52,6 +56,29 @@ try {
   await sql.unsafe(tools);
   console.log(
     JSON.stringify({ type: "grants-applied", roles: [apiRole, toolsRole] }),
+  );
+  const tenant = process.env.VINHOMES_TENANT_ID;
+  if (!tenant) throw new Error("VINHOMES_TENANT_ID is required");
+  // The catalogue comes from the tools themselves, so what is registered is what the host runs.
+  const { describeTechnicalTools } = await import(
+    `${process.cwd()}/server/src/technical-tools`
+  );
+  const described = describeTechnicalTools();
+  await sql.begin(async (tx) => {
+    await tx`select set_config('app.tenant_id', ${tenant}, true)`;
+    await tx`
+      insert into mcp_servers(id,title,vendor,url,provenance,tenant_id)
+      values('technical-tools','Công cụ kỹ thuật','Team Quang','internal:/internal/technical/v1','first-party',${tenant})
+      on conflict (id) do update set title=excluded.title,updated_at=now()`;
+    for (const tool of described)
+      await tx`
+        insert into mcp_tools(server_id,name,description,input_schema,effect,destructive,version,tenant_id)
+        values('technical-tools',${tool.name},${tool.description},${tx.json(tool.input_schema)},${tool.side_effect},false,${tool.version},${tenant})
+        on conflict (server_id,name) do update set description=excluded.description,
+          input_schema=excluded.input_schema,effect=excluded.effect,version=excluded.version`;
+  });
+  console.log(
+    JSON.stringify({ type: "technical-tools-registered", count: described.length }),
   );
 } finally {
   await sql.end();

@@ -27,6 +27,8 @@ class V3Settings:
     resident_allowed_origins: tuple[str, ...] = ()
     resident_signing_key: str | None = None
     resident_local_storage: bool = False
+    # A container deployment keeps files on a volume its operator mounts and backs up.
+    volume_file_storage: bool = False
     reception_service_token: str | None = None
     reception_url: str | None = None
     # Authenticates the Coordination runtime (the Supervisor) on /internal/coordination.
@@ -105,6 +107,7 @@ class V3Settings:
             resident_allowed_origins=origins,
             resident_signing_key=signing_key,
             resident_local_storage=local_storage,
+            volume_file_storage=os.getenv("VINHOMES_API_VOLUME_FILE_STORAGE", "0") == "1",
             reception_service_token=reception_token,
             reception_url=reception_url,
             coordination_service_token=coordination_token,

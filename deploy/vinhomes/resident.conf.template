@@ -5,9 +5,15 @@ server {
   # Photos of an incident are uploaded through this path.
   client_max_body_size 25m;
 
+  # Docker's own DNS, asked again every few seconds. A fixed upstream is resolved once at start, and the
+  # API has a new address every time its container is replaced: residents then get 502 until nginx restarts.
+  resolver 127.0.0.11 valid=10s ipv6=off;
+
   location /api/business/ {
-    # The trailing slash drops the /api/business prefix, as the development proxy does.
-    proxy_pass ${VINHOMES_API_URL}/;
+    set $vinhomes_api ${VINHOMES_API_URL};
+    # Drops the /api/business prefix, as the development proxy does. The query string is kept.
+    rewrite ^/api/business/(.*)$ /$1 break;
+    proxy_pass $vinhomes_api;
     proxy_set_header Host $http_host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     # A chat message is answered by the Reception agent before the reply returns.
