@@ -1,6 +1,7 @@
 """The internal API the Supervisor runtime uses, against migrated, seeded PostgreSQL."""
 
 import json
+import pytest
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -67,7 +68,7 @@ def publish_specialist(database, name, categories, tools=()):
         configured = management.put(f"{room}/{agent}/configuration", json={
             "instructions": "Phân tích sự cố kỹ thuật và đề xuất cách xử lý.", "description": name,
             "service_categories": categories,
-            "mcp_tools": [{"server_id": "technical-tools", "name": tool} for tool in tools]})
+            "mcp_tools": [tool if isinstance(tool, dict) else {"server_id": "technical-tools", "name": tool} for tool in tools]})
         assert configured.status_code == 200, configured.text
         cases = [{"name": f"case-{n}", "input": "i", "expected": "e", "actual": "e", "passed": True,
                   "explanation": "ok"} for n in range(6)]
@@ -245,7 +246,7 @@ def test_a_published_specialist_enters_the_room_and_its_work_is_mirrored(databas
     name = f"Kỹ thuật {uuid4().hex[:6]}"
     register_tools(database)
     technical, version = publish_specialist(database, name, ["technical"],
-                                            tools=("technical.get_active_outage", "apartment_entry.request"))
+                                            tools=("technical.get_active_outage",))
     _, security = publish_specialist(database, f"An ninh {uuid4().hex[:6]}", ["security"])
     with app(database) as c:
         team = verified_team(c, database, f"Rò nước {uuid4().hex[:6]}")
@@ -336,9 +337,10 @@ def test_a_published_specialist_enters_the_room_and_its_work_is_mirrored(databas
         assert c.post(one + "/runs", headers=SERVICE, json={"operation_id": "op-2"}).status_code == 409
 
 
-def test_the_supervisor_proposes_a_plan_that_management_then_decides(database):
+@pytest.mark.parametrize('resident_decision', ['approve', 'reject', 'request_changes'])
+def test_the_supervisor_proposes_a_plan_that_management_then_decides(database, resident_decision):
     with app(database) as c:
-        handoff, _ = hand_over(c, f"Vòi bếp rò {uuid4().hex[:6]}")
+        handoff, resident_chat = hand_over(c, f"Vòi bếp rò {uuid4().hex[:6]}")
         team, ticket = handoff["team"]["id"], handoff["ticket"]["id"]
         message = sql(database, "select message_id from vh_reception_supervisor_messages where team_id=$1", UUID(team))[0]["message_id"]
         assert c.post(BASE + "/reception/verify", headers=SERVICE, json={"team_id": team, "message_id": message}).status_code == 200
@@ -390,8 +392,12 @@ def test_the_supervisor_proposes_a_plan_that_management_then_decides(database):
         request = BASE + f"/teams/{team}/plans/{plan}/approval-request"
         assert c.post(BASE + f"/teams/{team}/authorize", headers=SERVICE, json={
             "action_id": "a", "channel": "backend", "operation": "approval.requested"}).json() == {"authorized": True}
-        assert c.post(request, headers=SERVICE).json() == {"status": "accepted", "plan_id": plan}
-        assert c.post(BASE + f"/teams/{team}/plans/{uuid4()}/approval-request", headers=SERVICE).status_code == 404
+        asked = {"approval_id": "approval-1", "plan_version": 1}
+        assert c.post(request, headers=SERVICE, json=asked).json() == {"status": "accepted", "plan_id": plan}
+        assert c.post(request, headers=SERVICE, json=asked).status_code == 200            # the same request again
+        assert c.post(request, headers=SERVICE, json={**asked, "approval_id": "other"}).status_code == 409
+        assert c.post(BASE + f"/teams/{team}/plans/{uuid4()}/approval-request", headers=SERVICE, json=asked).status_code == 404
+        assert c.get(BASE + "/events", headers=SERVICE).json() == {"items": []}           # nobody decided yet
 
     with demo_client(database, "management") as management:
         shown = management.get(f"/tickets/{ticket}/session").json()["room"]["plan"]
@@ -401,10 +407,161 @@ def test_the_supervisor_proposes_a_plan_that_management_then_decides(database):
                                   json={"decision": "approve", "version": shown["version"], "note": "Đồng ý phương án"})
         assert decided.status_code == 200 and decided.json()["status"] == "resident_pending", decided.text
     with app(database) as c:
-        # Management decided: the request is no longer open, and the resident's own decision works as for any plan.
-        assert c.post(request, headers=SERVICE).status_code == 409
-        assert c.get(view, headers=SERVICE).json()["plan"]["status"] == "resident_pending"
-        agreed = c.post(f"/resident/plans/{plan}/decision", json={"decision": "approve", "version": 1, "note": "Tôi đồng ý"})
+        # Management decided. The runtime reads the decision as an answer to the request it made.
+        [decision] = [e for e in c.get(BASE + "/events", headers=SERVICE).json()["items"] if e["team_id"] == team]
+        assert decision["plan_id"] == plan and decision["context"] == before["context"]
+        assert decision["event"]["event_type"] == "approval.responded" and decision["event"]["payload"] == {
+            "approval_id": "approval-1", "plan_id": plan, "plan_version": 1, "stage": "management_plan",
+            "decision": "approve", "comment": "Đồng ý phương án"}
+        assert c.post(request, headers=SERVICE, json={"approval_id": "late", "plan_version": 1}).status_code == 409
+        # The backend says who is asked next and in which words; the Supervisor sends exactly that.
+        seen = c.get(view, headers=SERVICE).json()
+        assert seen["plan"]["status"] == "resident_pending" and seen["plan"]["resident_approval_required"] is True
+        assert seen["plan"]["resident_recipient"] == "local-v3-resident"
+        assert seen["plan"]["resident_request_type"] == "plan_approval_requested"
+        question = seen["plan"]["resident_request_message"]
+        assert "1. Khóa van nước căn hộ\n2. Thay gioăng vòi bếp" in question and "Chi phí dự kiến: 150.000 VND" in question
+        assert question.endswith("Anh/chị có đồng ý với phương án này không?")
+        verified = c.post(BASE + "/reception/verify", headers=SERVICE, json={"team_id": team, "message_id": message}).json()
+        sent = c.post(BASE + "/reception/send", headers=SERVICE, json={"message": result(
+            verified, "plan_approval_requested", question, ticket_version=seen["ticket_version"])})
+        assert sent.status_code == 200, sent.text
+        told = sql(database, "select body->>'text' as text from messages where channel_id=$1 and body->>'source'='supervisor'",
+                   resident_chat)
+        assert [m["text"] for m in told] == [question]
+        delivered = BASE + f"/teams/{team}/plans/{plan}/decision-delivered"
+        assert c.post(delivered, headers=SERVICE).json() == {"ok": True}
+        assert not [e for e in c.get(BASE + "/events", headers=SERVICE).json()["items"] if e["team_id"] == team]
+        # Consumption is verified again after a restart, even if delivery was already acknowledged.
+        checked = c.get(BASE + f"/teams/{team}/plans/{plan}/management-event", headers=SERVICE)
+        assert checked.status_code == 200 and checked.json()["event"] == decision["event"]
+        pending = next(i for i in c.get('/resident/supervisor-interactions').json()['items'] if i['ticket_id'] == ticket)
+        response_body = {'decision': resident_decision, 'note': 'Ý kiến cư dân', 'ticket_version': pending['ticket_version'], 'request_id': str(uuid4())}
+        agreed = c.post(f"/resident/tickets/{ticket}/supervisor-response", json=response_body)
         assert agreed.status_code == 200, agreed.text
+        assert c.post(f"/resident/tickets/{ticket}/supervisor-response", json=response_body).status_code == 200
+        assert c.post(f"/resident/tickets/{ticket}/supervisor-response", json={**response_body, 'note': 'Khác'}).status_code == 409
+        assert not [i for i in c.get('/resident/supervisor-interactions').json()['items'] if i['ticket_id'] == ticket]
+        kind = {'approve': 'plan_approved', 'reject': 'plan_rejected', 'request_changes': 'plan_change_requested'}[resident_decision]
+        inputs = sql(database, "select message_type from vh_reception_supervisor_messages where ticket_id=$1 and message_type=$2", UUID(ticket), kind)
+        assert len(inputs) == 1
+        current = sql(database, 'select version from tickets where id=$1', UUID(ticket))[0]
+        assert current['version'] == pending['ticket_version'] + 1
     orders = sql(database, "select description from work_orders where ticket_id=$1", UUID(ticket))
-    assert [o["description"] for o in orders] == ["1. Khóa van nước căn hộ\n2. Thay gioăng vòi bếp"]
+    assert [o["description"] for o in orders] == (["1. Khóa van nước căn hộ\n2. Thay gioăng vòi bếp"] if resident_decision == 'approve' else [])
+
+
+def test_a_question_is_stored_and_versioned_before_the_resident_is_asked(database):
+    with app(database) as c:
+        team = verified_team(c, database, f"Rò nước {uuid4().hex[:6]}")
+        before = c.get(BASE + f"/teams/{team}/view", headers=SERVICE).json()
+        draft = {"request_id": uuid4().hex, "payload_hash": "a" * 64,
+                 "ticket_version": before["ticket_version"], "question": "Nước rò ở vòi hay đường ống dưới bồn rửa?"}
+        route = BASE + f"/teams/{team}/questions"
+        stored = c.post(route, headers=SERVICE, json=draft)
+        assert stored.status_code == 200, stored.text
+        assert c.post(route, headers=SERVICE, json=draft).json() == stored.json()
+        assert c.post(route, headers=SERVICE, json={**draft, "question": "Khác"}).status_code == 409
+        assert c.post(route, headers=SERVICE, json={**draft, "request_id": "second"}).status_code == 409
+        after = c.get(BASE + f"/teams/{team}/view", headers=SERVICE).json()
+        assert after["resident_request_type"] == "information_requested"
+        assert after["resident_request_message"] == draft["question"]
+        assert int(after["ticket_version"]) == int(before["ticket_version"]) + 1
+        assert after["ticket_version"] == stored.json()["ticket_version"]
+        message = sql(database, "select message_id from vh_reception_supervisor_messages where team_id=$1 and message_type='ticket_submitted'", UUID(team))[0]['message_id']
+        verified = c.post(BASE + '/reception/verify', headers=SERVICE, json={'team_id': team, 'message_id': message}).json()
+        sent = c.post(BASE + '/reception/send', headers=SERVICE, json={'message': result(verified, 'information_requested', draft['question'], ticket_version=after['ticket_version'])})
+        assert sent.status_code == 200, sent.text
+        pending = next(i for i in c.get('/resident/supervisor-interactions').json()['items'] if i['ticket_id'] == after['context']['ticket_id'])
+        answer = {'decision': 'information', 'note': 'Rò ở đường ống dưới bồn rửa.', 'ticket_version': pending['ticket_version'], 'request_id': str(uuid4())}
+        route = f"/resident/tickets/{pending['ticket_id']}/supervisor-response"
+        assert c.post(route, json={**answer, 'ticket_version': 999}).status_code == 409
+        assert c.post(route, json={**answer, 'decision': 'approve'}).status_code == 422
+        reply = c.post(route, json=answer)
+        assert reply.status_code == 200, reply.text
+        assert c.post(route, json=answer).status_code == 200
+
+
+def test_bql_publication_revision_and_admin_override(database):
+    register_tools(database)
+    agent, v1 = publish_specialist(database, 'Versioned ' + uuid4().hex[:8], ['technical'])
+    base = f'/rooms/management-room/agents/{agent}'
+    cases = [{'name': f'case-{n}', 'input': 'i', 'expected': 'e', 'actual': 'e',
+              'passed': True, 'explanation': 'ok'} for n in range(6)]
+    with demo_client(database, 'management') as manager:
+        config = {'instructions': 'Only analyze, do not execute actions.', 'description': 'Version 2',
+                  'service_categories': ['technical'], 'revision_of': v1}
+        blocked = manager.put(base + '/configuration', json={**config, 'mcp_tools': [
+            {'server_id': 'technical-tools', 'name': 'apartment_entry.request'}]})
+        assert blocked.status_code == 422
+        saved = manager.put(base + '/configuration', json=config)
+        assert saved.status_code == 200, saved.text
+        review = manager.post(base + '/review-submissions', json={'configuration_hash': saved.json()['configurationHash'],
+            'evaluator': 'test', 'round': 1, 'cases': cases}).json()
+        # Fixture represents the service-verified result; arbitrary human records cannot attest it.
+        payload = {'decision': 'approve', 'version': review['version'], 'note': 'Workspace approval'}
+        assert manager.post(f"/rooms/management-room/agent-reviews/{review['id']}/decision", json=payload).status_code == 409
+        sql(database, "update vh_agent_reviews set evaluation=evaluation||'{\"_runtime_verified\":true}'::jsonb where id=$1 returning id", UUID(review['id']))
+        decision = manager.post(f"/rooms/management-room/agent-reviews/{review['id']}/decision",
+            json={'decision': 'approve', 'version': review['version'], 'note': 'Workspace approval'})
+        assert decision.status_code == 200, decision.text
+        v2 = decision.json()['versionId']
+        assert v1 != v2
+        assert manager.get(base + '/versions').json()['items'][0]['version_no'] == 2
+        # Reusing the old working draft cannot publish the same configuration again.
+        assert manager.post(base + '/review-submissions', json={'configuration_hash': saved.json()['configurationHash'],
+            'evaluator': 'test', 'round': 1, 'cases': cases}).status_code == 409
+    with demo_client(database, 'technical') as staff:
+        assert staff.get('/rooms/management-room/agent-management').status_code in (403, 404)
+        assert staff.post(base + '/release/revoke', json={'note': 'Not authorized'}).status_code in (403, 404)
+    with demo_client(database, 'admin') as admin:
+        assert admin.post(f'/admin/agents/{agent}/release/revoke', json={'note': 'Platform override'}).status_code == 200
+    with demo_client(database, 'management') as manager:
+        assert not next(a for a in manager.get('/rooms/management-room/agent-management').json()['items'] if a['id'] == agent)['published']
+
+
+def test_free_room_mentions_pinned_runs_real_reports_scope_and_revocation(database):
+    from vinhomes_api.v3_tool_gateway import catalogue
+    for t in catalogue():
+        sql(database, "insert into mcp_servers(id,title,vendor,url,tenant_id) values($1,$1,'first-party','internal:tools',$2) on conflict(id) do nothing returning id", t['server_id'], TENANT)
+        sql(database, "insert into mcp_tools(server_id,name,description,input_schema,effect,tenant_id) values($1,$2,$3,cast($4 as jsonb),$5,$6) on conflict(server_id,name) do nothing returning name", t['server_id'], t['name'], t['description'], json.dumps(t['input_schema']), t['effect'], TENANT)
+    agent, version = publish_specialist(database, 'Room report ' + uuid4().hex[:8], ['technical'], tools=(
+        {'server_id': 'reporting', 'name': 'reporting.get_incident_frequency_summary'},
+        {'server_id': 'security-tools', 'name': 'security.camera.read'}))
+    settings = V3Settings('127.0.0.1', 8000, database['runtime'], TENANT, None, None,
+                          demo_mode=True, coordination_service_token=TOKEN)
+    with TestClient(create_app(settings), client=('127.0.0.1', 50000), headers={'X-Demo-Actor': 'management'}) as c:
+        posted = c.post('/rooms/management-room/messages', json={'text': 'Read the actual incident report.',
+            'mention_agent_id': agent, 'client_message_id': str(uuid4())})
+        assert posted.status_code == 201, posted.text
+        message = posted.json()['id']
+        assert any(str(i['message_id']) == message for i in c.get(BASE + '/room-mentions', headers=SERVICE).json()['items'])
+        path = BASE + f'/room-mentions/{message}/{agent}'
+        turn = c.post(path + '/turn', headers=SERVICE)
+        assert turn.status_code == 200, turn.text
+        assert {t['name'] for t in turn.json()['tools']} == {
+            'reporting__get_incident_frequency_summary', 'security__camera__read'}
+        run = turn.json()['run_id']
+        assert c.post(path + '/turn', headers=SERVICE).json()['run_id'] == run
+        b = sql(database, 'select building_id from tickets where building_id is not null limit 1')[0]['building_id']
+        good = c.post(BASE + '/tools/call', headers=SERVICE, json={'run_id': run, 'tool': 'reporting.get_incident_frequency_summary',
+            'arguments': {'building_id': str(b), 'from_date': '2020-01-01', 'to_date': '2029-01-01'}})
+        assert good.status_code == 200 and good.json()['status'] == 'OK', good.text
+        assert good.json()['data']['operation'] == 'get_incident_frequency_summary'
+        forbidden = c.post(BASE + '/tools/call', headers=SERVICE, json={'run_id': run, 'tool': 'security.camera.read',
+            'arguments': {'building_id': str(uuid4())}})
+        assert forbidden.json()['status'] == 'FORBIDDEN'
+        camera = c.post(BASE + '/tools/call', headers=SERVICE, json={'run_id': run, 'tool': 'security.camera.read', 'arguments': {'building_id': str(b)}})
+        assert camera.json()['status'] == 'OK', camera.text
+        content = {'run_id': run, 'status': 'done', 'content': 'A real agent answer, delivered once.'}
+        assert c.post(path + '/outcome', headers=SERVICE, json=content).status_code == 200
+        assert c.post(path + '/outcome', headers=SERVICE, json=content).json()['replayed']
+        assert len(sql(database, 'select id from messages where run_id=$1', UUID(run))) == 1
+        assert c.post(BASE + '/tools/call', headers=SERVICE, json={'run_id': run, 'tool': 'security.camera.read', 'arguments': {'building_id': str(b)}}).json()['status'] == 'FORBIDDEN'
+        next_message = c.post('/rooms/management-room/messages', json={'text': 'Another question', 'mention_agent_id': agent,
+            'client_message_id': str(uuid4())}).json()['id']
+        next_path = BASE + f'/room-mentions/{next_message}/{agent}'
+        active = c.post(next_path + '/turn', headers=SERVICE).json()['run_id']
+        assert c.post(f'/rooms/management-room/agents/{agent}/release/revoke', json={'note': 'Revoked during the turn'}).status_code == 200
+        assert c.post(BASE + '/tools/call', headers=SERVICE, json={'run_id': active, 'tool': 'security.camera.read', 'arguments': {'building_id': str(b)}}).json()['status'] == 'FORBIDDEN'
+        assert c.post(next_path + '/outcome', headers=SERVICE, json={'run_id': active, 'status': 'done', 'content': 'Stale answer'}).status_code == 409

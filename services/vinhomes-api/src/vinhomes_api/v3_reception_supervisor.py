@@ -560,7 +560,7 @@ async def submit_reception_message(body: ReceptionToSupervisorMessage, scope: RE
                 raise HTTPException(409, "Plan changed before the revision request was recorded")
             await record_event(
                 (db, actor, False),
-                ticket,
+                {**ticket, "id": ticket["ticket_id"]},
                 "plan.resident_change_requested",
                 json.dumps({"planId": str(plan_id), "messageId": body.message_id}),
             )

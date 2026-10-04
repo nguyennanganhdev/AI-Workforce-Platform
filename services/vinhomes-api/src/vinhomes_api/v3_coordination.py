@@ -16,6 +16,7 @@ how the Supervisor runtime (agent-coordination) reaches that exchange without be
   room       the room's tasks, turns and specialist replies, mirrored for management to read
   mentions   questions management asked a specialist inside a session, waiting for the room
   plans      the plan the Supervisor proposes, stored for management to decide
+  events     management's decisions on those plans, listed until the runtime has taken them
 
 The service token only proves the caller is the runtime. Every call names a team and is checked
 against it: the workspace has an active service identity, the Supervisor agent is an active
@@ -90,9 +91,9 @@ async def team_authority(db, team_id: UUID, *, lock: bool = False) -> dict[str, 
     """The team as the backend holds it now, or a refusal. Nothing here comes from the runtime."""
     row = (await db.execute(text(f"""
         select tm.id,tm.tenant_id,tm.workspace_id,tm.channel_id,tm.ticket_id,tm.ticket_generation,tm.status,
-          tm.supervisor_agent_id,tm.requested_by_user_id,
+          tm.supervisor_agent_id,tm.requested_by_user_id,tm.shared_state,
           t.code as ticket_code,t.version as ticket_version,t.reopen_count,t.status as ticket_status,
-          t.domain_id,t.channel_id as resident_channel_id,w.management_unit_id,
+          t.domain_id,t.channel_id as resident_channel_id,t.requester_user_id,w.management_unit_id,
           (select code from service_categories sc where sc.id=t.category_id and sc.tenant_id=t.tenant_id) as category_code,
           mem.id as member_id,mem.version_id as supervisor_version_id,
           p.id as principal_id,p.authz_version
@@ -105,6 +106,8 @@ async def team_authority(db, team_id: UUID, *, lock: bool = False) -> dict[str, 
           and a.purpose='supervisor'
         join team_members mem on mem.team_id=tm.id and mem.tenant_id=tm.tenant_id
           and mem.agent_id=tm.supervisor_agent_id and mem.member_kind='supervisor' and mem.status='active'
+          and not exists (select 1 from agent_releases sr where sr.version_id=mem.version_id
+            and sr.tenant_id=mem.tenant_id and (sr.status<>'published' or sr.revoked_at is not null))
         join execution_principals p on p.tenant_id=tm.tenant_id and p.kind='workspace_service'
           and p.workspace_id=tm.workspace_id and p.status='active'
         where tm.id=:team and tm.tenant_id={TENANT} {"for update of tm" if lock else ""}
@@ -171,6 +174,18 @@ async def session_context(db, team: dict[str, Any], *, create: bool) -> dict[str
             "binding_id": str(binding), "run_id": str(run)}
 
 
+def plan_for_resident(code: str, proposal: dict[str, Any]) -> str:
+    """The plan as the resident reads it in their conversation."""
+    steps = "\n".join(f"{n}. {step}" for n, step in enumerate(proposal["steps"], 1))
+    cost = proposal.get("cost")
+    price = f"{Decimal(str(cost['amount'])):,.0f} {cost['currency']}".replace(",", ".") if cost else "chưa có"
+    return (f"Ban quản lý đề xuất phương án xử lý cho yêu cầu {code}:\n{proposal['summary']}\n\n"
+            f"Các bước:\n{steps}\n\n"
+            f"Người thực hiện: {proposal['performer_role']}\nThời gian dự kiến: {proposal['expected_duration']}\n"
+            f"Điều kiện: {proposal['conditions']}\nChi phí dự kiến: {price}\n\n"
+            "Anh/chị có đồng ý với phương án này không?")
+
+
 async def specialists(db, team: dict[str, Any]) -> list[dict[str, Any]]:
     """The agents a Supervisor may invite for this ticket.
 
@@ -188,6 +203,7 @@ async def specialists(db, team: dict[str, Any]) -> list[dict[str, Any]]:
         join agent_versions v on v.id=r.version_id and v.tenant_id=r.tenant_id
         where ca.channel_id=:channel and ca.tenant_id={TENANT}
           and v.config->'service_categories' ? :category
+          and v.version_no=(select max(v2.version_no) from agent_versions v2 where v2.agent_id=a.id and v2.tenant_id=a.tenant_id)
         order by a.name
     """), {"channel": team["channel_id"], "category": team["category_code"]})).mappings().all()
     return [{"agent_version_id": str(row["version_id"]), "agent_id": row["agent_id"], "name": row["name"],
@@ -230,6 +246,16 @@ async def verify(body: Verify, db: Scope) -> dict[str, Any]:
     if message is None:
         raise HTTPException(404, "No such Reception message for this team")
     context = await session_context(db, team, create=True)
+    if message["message_type"] == "information_provided":
+        requests = team["shared_state"].get("residentRequests", {})
+        changed = False
+        for question in requests.values():
+            if question["ticket_version"] == message["ticket_version"] and not question.get("resolved"):
+                question["resolved"], changed = True, True
+        if changed:
+            await db.execute(text("""update agent_teams set shared_state=shared_state||
+                jsonb_build_object('residentRequests',cast(:requests as jsonb)) where id=:team"""), {
+                "team": body.team_id, "requests": json.dumps(requests)})
     # The runtime compares this stored message with the one it was given: an old reply is never rebased.
     return {"message": message, "context": context, "supervisor_run_id": context["run_id"]}
 
@@ -290,18 +316,32 @@ async def view(team_id: UUID, db: Scope) -> dict[str, Any]:
     """), {"ticket": team["ticket_id"], "generation": team["ticket_generation"]})).scalar_one_or_none()
     # The plan this session's Supervisor proposed, if any, and who decides it.
     plan = (await db.execute(text(f"""
-        select id,status,created_at from vh_ticket_plans where tenant_id={TENANT} and ticket_id=:ticket
+        select id,status,created_at,proposal from vh_ticket_plans where tenant_id={TENANT} and ticket_id=:ticket
           and proposed_by_agent_id=:agent and created_at>=(select created_at from agent_teams where id=:team)
         order by created_at desc limit 1
     """), {"ticket": team["ticket_id"], "agent": team["supervisor_agent_id"], "team": team["id"]})).mappings().first()
+    # Management approved: the resident is asked next, in these words and no others.
+    asking = {} if plan is None or plan["status"] != "resident_pending" else {
+        "resident_recipient": team["requester_user_id"], "resident_request_type": "plan_approval_requested",
+        "resident_request_message": plan_for_resident(team["ticket_code"], plan["proposal"])}
+    questions = [q for q in team["shared_state"].get("residentRequests", {}).values() if not q.get("resolved")]
+    question = questions[-1] if questions else None
+    supervisor_instructions = (await db.execute(text('select instructions from agent_versions where id=:version'),
+        {'version': team['supervisor_version_id']})).scalar_one()
     return {"context": context, "team_status": team["status"], "ticket_status": team["ticket_status"],
             "ticket_version": str(team["ticket_version"]), "ticket_code": team["ticket_code"],
             "supervisor_version_id": str(team["supervisor_version_id"]), "pending_resident": pending,
+            "supervisor_instructions": supervisor_instructions,
+            "resident_recipient": team["requester_user_id"],
+            "resident_request_type": "information_requested" if question else None,
+            "resident_request_message": question["message"] if question else None,
             "category": team["category_code"], "specialists": await specialists(db, team),
             "plan": None if plan is None else {
-                "plan_id": str(plan["id"]), "status": plan["status"],
+                "plan_id": plan["proposal"].get("root_plan_id", str(plan["id"])), "status": plan["status"],
                 "management_recipient": f"management-unit:{team['management_unit_id']}",
-                "approval_expires_at": (plan["created_at"] + PLAN_APPROVAL_WINDOW).isoformat()}}
+                "approval_expires_at": (plan["created_at"] + PLAN_APPROVAL_WINDOW).isoformat(),
+                # Every plan needs the resident's decision: the work orders are created by it.
+                "resident_approval_required": True, **asking}}
 
 
 class Authorize(BaseModel):
@@ -318,7 +358,7 @@ async def authorize(team_id: UUID, body: Authorize, db: Scope) -> dict[str, Any]
     if team["status"] in FINAL:
         raise HTTPException(409, "This Supervisor team has finished")
     allowed = body.channel in ("reception", "room") or (body.channel, body.operation) in {
-        ("draft", "plan"), ("backend", "approval.requested")}
+        ("draft", "plan"), ("draft", "question"), ("backend", "approval.requested")}
     if not allowed:
         # Assignments, questions, publications and cancellations have no producer contract yet.
         raise HTTPException(409, "This Supervisor action is not bound yet")
@@ -464,7 +504,7 @@ async def release(team_id: UUID, member_id: UUID, db: Scope) -> dict[str, Any]:
         if tool is None:
             raise HTTPException(409, "A tool this agent version was approved with is no longer in the catalogue")
         if tool["effect"] == "read":
-            descriptors.append({"name": granted["name"].replace(".", "__", 1), "description": tool["description"],
+            descriptors.append({"name": granted["name"].replace(".", "__"), "description": tool["description"],
                                 "parameters": tool["input_schema"]})
     return {"tenant_id": str(team["tenant_id"]), "workspace_id": str(team["workspace_id"]),
             "ticket_id": str(team["ticket_id"]), "ticket_generation": team["ticket_generation"],
@@ -666,7 +706,7 @@ async def propose_plan(team_id: UUID, body: PlanDraft, db: Scope) -> dict[str, A
         from tickets where id=:id for update
     """), {"id": team["ticket_id"]})).mappings().one())
     stored = (await db.execute(text(f"""
-        select id,request_hash from vh_ticket_plans where tenant_id={TENANT} and ticket_id=:ticket
+        select id,request_hash,proposal from vh_ticket_plans where tenant_id={TENANT} and ticket_id=:ticket
           and idempotency_key=:key
     """), {"ticket": team["ticket_id"], "key": body.request_id})).mappings().first()
     if stored is None:
@@ -685,7 +725,19 @@ async def propose_plan(team_id: UUID, body: PlanDraft, db: Scope) -> dict[str, A
         # visit by one technician, so they are one work order; `proposal` keeps them as written.
         work = "\n".join(f"{n}. {step}" for n, step in enumerate(body.plan.steps, 1))[:2000]
         steps = [{"category_id": str(team["category_id"]), "description": work}]
+        prior = (await db.execute(text(f"""
+            select id,proposal from vh_ticket_plans where tenant_id={TENANT} and ticket_id=:ticket
+              and proposed_by_agent_id=:agent and created_at>=(select created_at from agent_teams where id=:team)
+            order by created_at desc limit 1
+        """), {"ticket": team["ticket_id"], "agent": team["supervisor_agent_id"], "team": team_id})).mappings().first()
+        expected = int(prior["proposal"]["plan_version"]) + 1 if prior else 1
+        if body.target_plan_version != expected:
+            raise HTTPException(409, "The proposed plan revision is out of order")
         proposal = {**body.plan.model_dump(mode="json"), "plan_version": body.target_plan_version}
+        if prior:
+            # The coordination core versions one plan aggregate. The ordinary UI keeps a row per
+            # proposal so rejected text and both human decisions remain available for audit.
+            proposal["root_plan_id"] = prior["proposal"].get("root_plan_id", str(prior["id"]))
         plan_id = (await db.execute(text(f"""
             insert into vh_ticket_plans(tenant_id,ticket_id,proposed_by_agent_id,title,steps,estimated_amount,status,
               idempotency_key,request_hash,proposal)
@@ -713,21 +765,229 @@ async def propose_plan(team_id: UUID, body: PlanDraft, db: Scope) -> dict[str, A
     else:
         if stored["request_hash"] != body.payload_hash:
             raise HTTPException(409, "This request id was used for another plan")
+        if stored["proposal"]["plan_version"] != body.target_plan_version:
+            raise HTTPException(409, "This request id was used for another revision")
+        proposal = stored["proposal"]
         plan_id, version = stored["id"], team["ticket_version"]
     return {"request_id": body.request_id, "status": "accepted", "payload_hash": body.payload_hash,
-            "canonical_id": str(plan_id), "ticket_version": str(version), "plan_version": body.target_plan_version}
+            "canonical_id": proposal.get("root_plan_id", str(plan_id)),
+            "ticket_version": str(version), "plan_version": body.target_plan_version}
+
+
+class ApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    approval_id: str = Field(min_length=1, max_length=256)
+    plan_version: int = Field(ge=1)
 
 
 @router.post("/teams/{team_id}/plans/{plan_id}/approval-request",
              summary="Confirm that the proposed plan is waiting for management's decision")
-async def plan_approval_request(team_id: UUID, plan_id: UUID, db: Scope) -> dict[str, Any]:
-    team = await team_authority(db, team_id)
-    status = (await db.execute(text(f"""
-        select status from vh_ticket_plans where tenant_id={TENANT} and id=:plan and ticket_id=:ticket
-          and proposed_by_agent_id=:agent
-    """), {"plan": plan_id, "ticket": team["ticket_id"], "agent": team["supervisor_agent_id"]})).scalar_one_or_none()
-    if status is None:
+async def plan_approval_request(team_id: UUID, plan_id: UUID, body: ApprovalRequest, db: Scope) -> dict[str, Any]:
+    """The plan keeps the id the runtime gave its request, so management's decision can answer that request."""
+    team = await team_authority(db, team_id, lock=True)
+    plan = (await db.execute(text(f"""
+        select id,status,proposal->>'management_approval_id' as approval,proposal->>'plan_version' as plan_version
+        from vh_ticket_plans
+        where tenant_id={TENANT} and (id=:plan or proposal->>'root_plan_id'=:root) and ticket_id=:ticket
+          and proposed_by_agent_id=:agent order by created_at desc limit 1 for update
+    """), {"plan": plan_id, "root": str(plan_id),
+           "ticket": team["ticket_id"], "agent": team["supervisor_agent_id"]})).mappings().first()
+    if plan is None:
         raise HTTPException(404, "No such plan of this session")
-    if status != "management_pending":
-        raise HTTPException(409, "This plan is no longer waiting for management")
+    if str(body.plan_version) != plan["plan_version"]:
+        raise HTTPException(409, "The plan version does not match this request")
+    if plan["approval"] != body.approval_id:
+        if plan["approval"] is not None or plan["status"] != "management_pending":
+            raise HTTPException(409, "This plan is no longer waiting for this request")
+        await db.execute(text("update vh_ticket_plans set proposal=proposal||cast(:request as jsonb) where id=:plan"), {
+            "plan": plan["id"], "request": json.dumps({"management_approval_id": body.approval_id,
+                                                    "plan_version": body.plan_version})})
     return {"status": "accepted", "plan_id": str(plan_id)}
+
+
+@router.get("/events", summary="Management's decisions on Supervisor plans, not yet taken by the runtime")
+async def events(db: Scope) -> dict[str, Any]:
+    rows = (await db.execute(text(f"""
+        select p.id,p.status,p.management_note,p.management_at,p.resident_at,p.proposal,tm.id as team_id
+        from vh_ticket_plans p
+        join agent_teams tm on tm.tenant_id=p.tenant_id and tm.ticket_id=p.ticket_id
+          and tm.supervisor_agent_id=p.proposed_by_agent_id and tm.created_at<=p.created_at
+          and tm.status not in ('completed','failed','cancelled')
+        where p.tenant_id={TENANT} and p.management_at is not null
+          and p.proposal ? 'management_approval_id' and not (p.proposal ? 'management_decision_delivered')
+        order by p.management_at limit 50
+    """))).mappings().all()
+    items = []
+    for row in rows:
+        try:
+            team = await team_authority(db, row["team_id"])
+        except HTTPException:
+            continue  # the team is no longer current: nothing waits for this decision
+        context = await session_context(db, team, create=False)
+        if context is None:
+            continue
+        # A plan the resident later refused was still approved by management.
+        decision = "reject" if row["status"] == "rejected" and row["resident_at"] is None else "approve"
+        items.append({"team_id": str(row["team_id"]), "plan_id": str(row["id"]), "context": context, "event": {
+            "event_id": f"plan-management-decision:{row['id']}", "event_type": "approval.responded",
+            "schema_version": "1", "tenant_id": context["tenant_id"], "aggregate_id": str(row["id"]),
+            "aggregate_version": 1, "occurred_at": row["management_at"].isoformat(),
+            "correlation_id": str(row["team_id"]), "causation_id": row["proposal"]["management_approval_id"],
+            "payload": {"approval_id": row["proposal"]["management_approval_id"],
+                        "plan_id": row["proposal"].get("root_plan_id", str(row["id"])),
+                        "plan_version": row["proposal"]["plan_version"], "stage": "management_plan",
+                        "decision": decision, "comment": row["management_note"]}}})
+    return {"items": items}
+
+
+@router.get("/teams/{team_id}/plans/{plan_id}/management-event",
+            summary="Verify a committed management decision, including after delivery")
+async def management_event(team_id: UUID, plan_id: UUID, db: Scope) -> dict[str, Any]:
+    team = await team_authority(db, team_id)
+    row = (await db.execute(text(f"""
+        select id,status,management_note,management_at,resident_at,proposal from vh_ticket_plans
+        where tenant_id={TENANT} and id=:plan and ticket_id=:ticket and proposed_by_agent_id=:agent
+          and created_at>=(select created_at from agent_teams where id=:team)
+    """), {"plan": plan_id, "ticket": team["ticket_id"], "agent": team["supervisor_agent_id"],
+           "team": team_id})).mappings().first()
+    if row is None or row["management_at"] is None or "management_approval_id" not in row["proposal"]:
+        raise HTTPException(404, "No committed management decision for this request")
+    context = await session_context(db, team, create=False)
+    if context is None:
+        raise HTTPException(409, "The session has no runtime binding")
+    decision = "reject" if row["status"] == "rejected" and row["resident_at"] is None else "approve"
+    return {"context": context, "event": {
+        "event_id": f"plan-management-decision:{row['id']}", "event_type": "approval.responded",
+        "schema_version": "1", "tenant_id": context["tenant_id"], "aggregate_id": str(row["id"]),
+        "aggregate_version": 1, "occurred_at": row["management_at"].isoformat(),
+        "correlation_id": str(team_id), "causation_id": row["proposal"]["management_approval_id"],
+        "payload": {"approval_id": row["proposal"]["management_approval_id"],
+                    "plan_id": row["proposal"].get("root_plan_id", str(row["id"])),
+                    "plan_version": row["proposal"]["plan_version"], "stage": "management_plan",
+                    "decision": decision, "comment": row["management_note"]}}}
+
+
+@router.post("/teams/{team_id}/plans/{plan_id}/decision-delivered",
+             summary="The runtime holds management's decision on this plan; stop listing it")
+async def plan_decision_delivered(team_id: UUID, plan_id: UUID, db: Scope) -> dict[str, Any]:
+    team = await team_authority(db, team_id)
+    marked = await db.execute(text(f"""
+        update vh_ticket_plans set proposal=proposal||cast(:delivered as jsonb)
+        where tenant_id={TENANT} and id=:plan and ticket_id=:ticket and proposed_by_agent_id=:agent
+          and management_at is not null
+    """), {"plan": plan_id, "ticket": team["ticket_id"], "agent": team["supervisor_agent_id"],
+           "delivered": json.dumps({"management_decision_delivered": True})})
+    if marked.rowcount != 1:
+        raise HTTPException(404, "No decided plan of this session")
+    return {"ok": True}
+
+
+class QuestionDraft(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    request_id: str = Field(min_length=1, max_length=160)
+    payload_hash: str = Field(min_length=1, max_length=128)
+    ticket_version: str = Field(pattern=r"^[0-9]+$", max_length=30)
+    question: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/teams/{team_id}/questions", summary="Store and version a question before Reception asks the resident")
+async def propose_question(team_id: UUID, body: QuestionDraft, db: Scope) -> dict[str, Any]:
+    team = await team_authority(db, team_id, lock=True)
+    requests = team["shared_state"].get("residentRequests", {})
+    old = requests.get(body.request_id)
+    if old:
+        if old["payload_hash"] != body.payload_hash or old["message"] != body.question:
+            raise HTTPException(409, "This request id was used for another question")
+        return {"request_id": body.request_id, "status": "accepted", "payload_hash": body.payload_hash,
+                "canonical_id": body.request_id, "ticket_version": old["ticket_version"]}
+    ticket = (await db.execute(text("select version,status,last_event_seq from tickets where id=:id for update"),
+                              {"id": team["ticket_id"]})).mappings().one()
+    if (body.ticket_version != str(ticket["version"]) or ticket["status"] in ('closed','cancelled','resolved')
+            or team["status"] in FINAL or any(not q.get("resolved") for q in requests.values())):
+        raise HTTPException(409, "The ticket changed or a resident question is already pending")
+    if (await db.execute(text(f"""select 1 from vh_ticket_plans where tenant_id={TENANT}
+        and ticket_id=:ticket and status in ('management_pending','resident_pending')"""),
+        {"ticket": team["ticket_id"]})).first():
+        raise HTTPException(409, "Decide the pending plan before asking another question")
+    version = str(ticket["version"] + 1)
+    requests[body.request_id] = {"payload_hash": body.payload_hash, "message": body.question,
+                                "ticket_version": version, "resolved": False}
+    await db.execute(text("""update agent_teams set shared_state=shared_state||
+        jsonb_build_object('residentRequests',cast(:requests as jsonb)) where id=:team"""),
+        {"team": team_id, "requests": json.dumps(requests, ensure_ascii=False)})
+    await db.execute(text(f"""insert into ticket_events(tenant_id,ticket_id,seq,event_type,actor_kind,
+        actor_agent_id,idempotency_key,correlation_id,payload,occurred_at)
+        values({TENANT},:ticket,:seq,'supervisor.information_requested','agent',:agent,:key,:correlation,
+        cast(:payload as jsonb),now())"""), {"ticket": team["ticket_id"], "seq": ticket["last_event_seq"] + 1,
+        "agent": team["supervisor_agent_id"], "key": body.request_id, "correlation": uuid4(),
+        "payload": json.dumps({"requestId": body.request_id})})
+    await db.execute(text("update tickets set version=version+1,last_event_seq=last_event_seq+1,updated_at=now() where id=:id"),
+                     {"id": team["ticket_id"]})
+    return {"request_id": body.request_id, "status": "accepted", "payload_hash": body.payload_hash,
+            "canonical_id": body.request_id, "ticket_version": version}
+
+
+@router.get('/controls', summary='Management session controls waiting for the runtime')
+async def pending_controls(db: Scope):
+    rows = (await db.execute(text(f"""select id,shared_state->'controlRequests' as controls from agent_teams
+        where tenant_id={TENANT} and status not in ('completed','failed','cancelled')
+        and shared_state ? 'controlRequests' order by created_at"""))).mappings().all()
+    items = []
+    for row in rows:
+        for command in row['controls'].values():
+            if command['status'] != 'queued':
+                continue
+            try:
+                team = await team_authority(db, row['id'])
+                context = await session_context(db, team, create=False)
+            except HTTPException:
+                continue
+            if context:
+                items.append({'team_id': str(row['id']), 'context': context, 'command': command})
+                if len(items) >= 50:
+                    return {'items': items}
+    return {'items': items}
+
+
+@router.get('/teams/{team_id}/controls/{request_id}')
+async def verify_control(team_id: UUID, request_id: str, db: Scope):
+    team = await team_authority(db, team_id)
+    command = team['shared_state'].get('controlRequests', {}).get(request_id)
+    if command is None:
+        raise HTTPException(404, 'No such committed management control')
+    # Check the requester's current room and ticket authority as well as the service identity.
+    from .v3_team_board import access
+    await access((db, command['actor']), team_id)
+    return {'context': await session_context(db, team, create=False), 'command': command}
+
+
+class ControlOutcome(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    status: Literal['applied','refused']
+    reason: str | None = Field(default=None, max_length=200)
+    phase: str = Field(max_length=64)
+    state_version: int = Field(ge=0)
+
+
+@router.post('/teams/{team_id}/controls/{request_id}')
+async def finish_control(team_id: UUID, request_id: str, body: ControlOutcome, db: Scope):
+    team = await team_authority(db, team_id, lock=True)
+    controls = team['shared_state'].get('controlRequests', {})
+    command = controls.get(request_id)
+    if command is None:
+        raise HTTPException(404, 'No such management control')
+    result = body.model_dump()
+    if command['status'] != 'queued':
+        if command.get('result') != result:
+            raise HTTPException(409, 'A different control outcome was already recorded')
+        return {'ok': True}
+    command['status'], command['result'] = body.status, result
+    await db.execute(text("""update agent_teams set shared_state=shared_state||
+        jsonb_build_object('controlRequests',cast(:controls as jsonb),'runtime',cast(:runtime as jsonb)),
+        status=case when :stopped then 'cancelled' else status end,
+        finished_at=case when :stopped then now() else finished_at end,updated_at=now() where id=:team"""), {
+        'team': team_id, 'controls': json.dumps(controls),
+        'runtime': json.dumps({'phase': body.phase, 'pauseReason': body.reason, 'stateVersion': body.state_version}),
+        'stopped': body.status == 'applied' and command['operation'] == 'stop'})
+    return {'ok': True}

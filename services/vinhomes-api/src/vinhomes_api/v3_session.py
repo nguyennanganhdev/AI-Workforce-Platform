@@ -47,7 +47,9 @@ async def session_destination(db: AsyncConnection, management_unit_id: object) -
         left join lateral (select id from agent_versions where agent_id=a.id and tenant_id=a.tenant_id
           order by version_no desc limit 1) v on true
         where a.workspace_id=:workspace and a.tenant_id={TENANT} and a.status='active'
-          and a.purpose='supervisor' and ca.channel_id=:channel order by a.id limit 2
+          and a.purpose='supervisor' and ca.channel_id=:channel
+          and not exists(select 1 from agent_releases sr where sr.version_id=v.id and sr.tenant_id=a.tenant_id
+            and (sr.status<>'published' or sr.revoked_at is not null)) order by a.id limit 2
     """), {"workspace": workspaces[0], "channel": channels[0]["id"]})).mappings().all()
     if len(supervisors) != 1 or supervisors[0]["version_id"] is None:
         return {"missing": "supervisor"}

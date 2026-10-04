@@ -24,6 +24,7 @@ from .resident_api import router as resident_contract_router
 from .resident_contract import ResidentBoundary, http_error, is_contract, validation_error
 from .v3_accounts import router as accounts_router
 from .v3_agent_reviews import router as agent_reviews_router
+from .v3_agent_builder import router as agent_builder_router
 from .v3_billing import router as billing_router
 from .v3_config import V3Settings
 from .v3_coordination import router as coordination_router
@@ -169,6 +170,7 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(technical_router)
     app.include_router(conversation_images_router)
     app.include_router(agent_reviews_router)
+    app.include_router(agent_builder_router)
     app.include_router(report_jobs_router)
     app.include_router(reception_router)
     app.include_router(reception_operations_router)
@@ -181,6 +183,12 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(supervisor_operations_router)
     app.include_router(session_router)
     app.include_router(coordination_router)
+    from .v3_room_runtime import router as room_runtime_router
+    app.include_router(room_runtime_router)
+    from .v3_resident_interactions import router as resident_interactions_router
+    app.include_router(resident_interactions_router)
+    from .v3_tool_gateway import router as tool_gateway_router
+    app.include_router(tool_gateway_router)
     app.include_router(learning_router)
     from .resident_api import ticket_intake_router
     app.include_router(ticket_intake_router)

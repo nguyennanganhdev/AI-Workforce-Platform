@@ -15,8 +15,8 @@ router = APIRouter(tags=["Vinhomes V3 room agents"])
 Scope = Annotated[tuple[AsyncConnection, str], Depends(resident_connection)]
 
 
-async def managed_room(scope: Scope, room_id: str) -> dict[str, object]:
-    await _room(scope, room_id, lock=True)
+async def managed_room(scope: Scope, room_id: str, *, lock: bool = True) -> dict[str, object]:
+    await _room(scope, room_id, lock=lock)
     result = await scope[0].execute(
         text("""
         select c.workspace_id,w.management_unit_id from channels c
@@ -37,12 +37,15 @@ async def managed_room(scope: Scope, room_id: str) -> dict[str, object]:
     return dict(room)
 
 
-@router.get("/rooms/{room_id}/agents")
 async def room_agents(room_id: str, scope: Scope) -> dict[str, object]:
     await _room(scope, room_id)
     result = await scope[0].execute(
         text("""
-        select a.id,a.name,a.purpose,a.type,a.status,a.workspace_id from channel_agents ca
+        select a.id,a.name,a.purpose,a.type,a.status,a.workspace_id,
+          exists(select 1 from agent_releases rel join agent_versions v on v.id=rel.version_id and v.tenant_id=rel.tenant_id
+            where rel.agent_id=a.id and rel.status='published' and rel.revoked_at is null
+              and v.version_no=(select max(v2.version_no) from agent_versions v2 where v2.agent_id=a.id)) as published
+        from channel_agents ca
         join agents a on a.id=ca.agent_id and a.tenant_id=ca.tenant_id
         where ca.channel_id=:room order by a.name
     """),

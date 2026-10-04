@@ -11,7 +11,9 @@ $receptionFile = @('.local-connected/reception.env', '.local-v3-faker/reception.
 # Optional: coordination.env lets the Supervisor runtime (agent-coordination) call this API.
 $coordinationFile = Join-Path $serviceRoot '.local-connected/coordination.env'
 if (!(Test-Path -LiteralPath $coordinationFile)) { $coordinationFile = $null }
-@($receptionFile, $coordinationFile, $ConfigFile) | Where-Object { $_ } | ForEach-Object { Get-Content -LiteralPath $_ } | ForEach-Object {
+$factoryFile = Join-Path $serviceRoot '.local-connected/factory.env'
+if (!(Test-Path -LiteralPath $factoryFile)) { $factoryFile = $null }
+@($receptionFile, $coordinationFile, $factoryFile, $ConfigFile) | Where-Object { $_ } | ForEach-Object { Get-Content -LiteralPath $_ } | ForEach-Object {
     if ($_ -and !$_.StartsWith('#') -and $_.Contains('=')) {
         $pair = $_ -split '=', 2
         $settings[$pair[0].Trim()] = $pair[1].Trim()
@@ -34,6 +36,12 @@ try {
 }
 }
 foreach ($key in $settings.Keys) { [Environment]::SetEnvironmentVariable($key,$settings[$key],'Process') }
+$env:VINHOMES_API_COORDINATION_URL = 'http://127.0.0.1:4300'
+$toolsFile = Join-Path $serviceRoot '.local-connected/technical-api.env'
+if (Test-Path -LiteralPath $toolsFile) {
+    $env:VINHOMES_API_TECHNICAL_TOOLS_URL = 'http://127.0.0.1:8788/internal/technical/v1'
+    $env:VINHOMES_API_TECHNICAL_TOOLS_TOKEN = (Get-Content -LiteralPath $toolsFile | Where-Object { $_.StartsWith('TECHNICAL_TOOLS_SERVICE_TOKEN=') }) -replace '^TECHNICAL_TOOLS_SERVICE_TOKEN=', ''
+}
 $env:VINHOMES_API_DEMO_MODE = '0'
 $env:VINHOMES_API_DEV_USER_ID = ''
 $env:VINHOMES_API_TENANT_KEY = ''

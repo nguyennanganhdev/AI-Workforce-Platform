@@ -18,13 +18,13 @@ Admin = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection)]
 TENANT = "nullif(current_setting('app.tenant_id',true),'')::uuid"
 
 
-async def room_agent(scope: Member, room_id: str, agent_id: str):
-    room = await managed_room(scope, room_id)
+async def room_agent(scope: Member, room_id: str, agent_id: str, *, lock: bool = True):
+    room = await managed_room(scope, room_id, lock=lock)
     agent = (
         (
             await scope[0].execute(
                 text(
-                    "select a.* from agents a join channel_agents ca on ca.agent_id=a.id and ca.tenant_id=a.tenant_id where a.id=:id and a.workspace_id=:workspace and ca.channel_id=:room for update of a"
+                    "select a.* from agents a join channel_agents ca on ca.agent_id=a.id and ca.tenant_id=a.tenant_id where a.id=:id and a.workspace_id=:workspace and ca.channel_id=:room" + (" for update of a" if lock else "")
                 ),
                 {"id": agent_id, "workspace": room["workspace_id"], "room": room_id},
             )
@@ -43,12 +43,13 @@ class ToolReference(BaseModel):
 
 
 class AgentConfiguration(BaseModel):
-    instructions: str = Field(min_length=1, max_length=10000)
+    instructions: str = Field(min_length=1, max_length=50000)
     description: str = Field(min_length=1, max_length=2000)
     mcp_tools: list[ToolReference] = Field(default_factory=list, max_length=50)
     knowledge_namespace_ids: list[UUID] = Field(default_factory=list, max_length=20)
     # Ticket categories this agent serves. A Supervisor is offered it only for those tickets.
     service_categories: list[str] = Field(default_factory=list, max_length=10)
+    revision_of: UUID | None = None
     framework_version: str = Field(
         default="demo-record-only", min_length=1, max_length=120
     )
@@ -59,8 +60,13 @@ async def configure(
     room_id: str, agent_id: str, body: AgentConfiguration, scope: Member
 ):
     agent = await room_agent(scope, room_id, agent_id)
-    if agent["status"] != "draft":
+    if agent["status"] != "draft" and not (agent["status"] == "active" and body.revision_of):
         raise HTTPException(409, "Only draft agents can be configured")
+    if body.revision_of:
+        latest = (await scope[0].execute(text("select id from agent_versions where agent_id=:id order by version_no desc limit 1"),
+                                        {"id": agent_id})).scalar_one_or_none()
+        if latest != body.revision_of:
+            raise HTTPException(409, "Revision must be based on the latest version of this agent")
     pending = await scope[0].execute(
         text("select 1 from vh_agent_reviews where agent_id=:id and status='pending'"),
         {"id": agent_id},
@@ -69,11 +75,11 @@ async def configure(
         raise HTTPException(409, "Wait for the current admin review")
     for tool in body.mcp_tools:
         available = await scope[0].execute(
-            text("select 1 from mcp_tools where server_id=:server and name=:name"),
+            text("select 1 from mcp_tools where server_id=:server and name=:name and effect='read' and not destructive"),
             {"server": tool.server_id, "name": tool.name},
         )
         if available.first() is None:
-            raise HTTPException(422, "Unknown tenant MCP tool")
+            raise HTTPException(422, "A registered read tool is required; actions require separate human approval")
     for nid in body.knowledge_namespace_ids:
         available = await scope[0].execute(
             text(
@@ -125,10 +131,14 @@ class EvaluationRecord(BaseModel):
 @router.post("/rooms/{room_id}/agents/{agent_id}/review-submissions", status_code=201)
 async def submit(room_id: str, agent_id: str, body: EvaluationRecord, scope: Member):
     agent = await room_agent(scope, room_id, agent_id)
-    if agent["status"] != "draft":
+    if agent["status"] != "draft" and not (agent["status"] == "active" and agent["configuration"].get("revision_of")):
         raise HTTPException(409, "Draft agent required")
     if digest(agent["configuration"]) != body.configuration_hash:
         raise HTTPException(409, "Evaluation belongs to a different configuration")
+    if agent['status'] == 'active':
+        latest = (await scope[0].execute(text('select id,config_hash from agent_versions where agent_id=:id order by version_no desc limit 1'), {'id': agent_id})).mappings().one()
+        if str(latest['id']) != agent['configuration'].get('revision_of') or latest['config_hash'] == body.configuration_hash:
+            raise HTTPException(409, 'Start a new revision from the current published version')
     if not all(c.passed for c in body.cases):
         raise HTTPException(
             409, "All evaluation cases must pass before admin submission"
@@ -149,7 +159,8 @@ async def submit(room_id: str, agent_id: str, body: EvaluationRecord, scope: Mem
         .first()
     )
     if old:
-        if old["evaluation"] != data or old["submitted_by"] != scope[1]:
+        evidence = {k: v for k, v in old['evaluation'].items() if not k.startswith('_')}
+        if evidence != data or old["submitted_by"] != scope[1]:
             raise HTTPException(409, "Another submission is pending")
         return dict(old)
     row = await scope[0].execute(
@@ -237,7 +248,7 @@ async def decide(review_id: UUID, body: ReviewDecision, scope: Admin):
     if row["status"] != "pending" or row["version"] != body.version:
         raise HTTPException(409, "Review already decided")
     if (
-        agent["status"] != "draft"
+        agent["status"] not in ("draft", "active")
         or digest(agent["configuration"]) != row["config_hash"]
     ):
         raise HTTPException(409, "Agent configuration changed")
@@ -295,7 +306,7 @@ async def decide(review_id: UUID, body: ReviewDecision, scope: Admin):
     )
     return {
         **dict(result.mappings().one()),
-        "agentStatus": "active" if status == "approved" else "draft",
+        "agentStatus": "active" if status == "approved" else agent["status"],
         "versionId": version_id,
         "execution": "not performed by this API",
     }
@@ -343,6 +354,9 @@ async def revoke(agent_id: str, body: Revocation, scope: Admin):
     )
     if release is None:
         raise HTTPException(404, "No published version of this agent")
+    # Withdrawing an agent also stops pre-governance system Supervisor pins.
+    # A later approved revision reactivates the agent in decide().
+    await scope[0].execute(text("update agents set status='draft',updated_at=now() where id=:id"), {'id': agent_id})
     await audit(
         scope[0],
         scope[1],
@@ -364,3 +378,40 @@ async def versions(room_id: str, agent_id: str, scope: Member):
         {"id": agent_id},
     )
     return {"items": [dict(r) for r in rows.mappings()]}
+
+
+@router.get('/rooms/{room_id}/agent-management')
+async def management_agents(room_id: str, scope: Member):
+    room = await managed_room(scope, room_id)
+    rows = await scope[0].execute(text("""select a.id,a.name,a.purpose,a.status,a.configuration,
+        (select jsonb_build_object('id',v.id,'number',v.version_no,'hash',v.config_hash)
+          from agent_versions v where v.agent_id=a.id order by v.version_no desc limit 1) as latest_version,
+        (select row_to_json(rv) from vh_agent_reviews rv where rv.agent_id=a.id order by rv.created_at desc limit 1) as review,
+        exists(select 1 from agent_releases rel join agent_versions v on v.id=rel.version_id
+          where rel.agent_id=a.id and rel.status='published' and rel.revoked_at is null
+          and v.version_no=(select max(last.version_no) from agent_versions last where last.agent_id=a.id)) as published
+        from agents a join channel_agents ca on ca.agent_id=a.id and ca.tenant_id=a.tenant_id
+        where ca.channel_id=:room and a.workspace_id=:workspace order by a.name"""), {'room': room_id, 'workspace': room['workspace_id']})
+    tools = await scope[0].execute(text("select server_id,name,description,input_schema,effect from mcp_tools where effect='read' and not destructive order by name"))
+    categories = await scope[0].execute(text('select code,name from service_categories where enabled order by name'))
+    return {'canManage': True, 'items': [{**dict(r), 'configurationHash': digest(r['configuration'])} for r in rows.mappings()], 'tools': [dict(t) for t in tools.mappings()],
+            'categories': [dict(c) for c in categories.mappings()]}
+
+
+@router.post('/rooms/{room_id}/agent-reviews/{review_id}/decision')
+async def management_decide(room_id: str, review_id: UUID, body: ReviewDecision, scope: Member):
+    agent_id = (await scope[0].execute(text('select agent_id from vh_agent_reviews where id=:id'), {'id': review_id})).scalar_one_or_none()
+    if agent_id is None:
+        raise HTTPException(404, 'Review not found')
+    await room_agent(scope, room_id, agent_id)
+    evidence = (await scope[0].execute(text('select evaluation from vh_agent_reviews where id=:id'), {'id': review_id})).scalar_one()
+    is_admin = (await scope[0].execute(text('select 1 from platform_admins where user_id=:actor'), {'actor': scope[1]})).first() is not None
+    if body.decision == 'approve' and not is_admin and evidence.get('_runtime_verified') is not True:
+        raise HTTPException(409, 'Run the server evaluation before BQL publication')
+    return await decide(review_id, body, (scope[0], scope[1], True))
+
+
+@router.post('/rooms/{room_id}/agents/{agent_id}/release/revoke')
+async def management_revoke(room_id: str, agent_id: str, body: Revocation, scope: Member):
+    await room_agent(scope, room_id, agent_id)
+    return await revoke(agent_id, body, (scope[0], scope[1], True))
