@@ -9,13 +9,13 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 from .v3_agent_results import AgentBusinessResponse, agent_result
 from .v3_auth import resident_connection
 from .v3_resident import _owned_chat
+from . import storage as object_storage
 from .v3_files import local_only, FILE_ROOT, EXT, MAGIC, MAX_FILE_BYTES
 from .v3_security import digest
 from .v3_mutations import visible_ticket, record_event
@@ -84,8 +84,8 @@ async def initiate(
         (
             await scope[0].execute(
                 text(
-                    "select id,tenant_prefix from storage_locations where provider='local_fs' and purpose='evidence' and status='active' order by created_at limit 1"
-                )
+                    "select id,tenant_prefix from storage_locations where provider=:provider and purpose='evidence' and status='active' order by created_at limit 1"
+                ), {"provider": object_storage.provider()}
             )
         )
         .mappings()
@@ -111,9 +111,10 @@ async def initiate(
         ).scalar_one()
     fid = uuid4()
     key = f"{storage['tenant_prefix']}{fid.hex}{EXT[body.mime_type]}"
-    path = (FILE_ROOT / key).resolve()
-    if not path.is_relative_to(FILE_ROOT.resolve()):
-        raise HTTPException(503, "Invalid storage prefix")
+    try:
+        object_storage.at(FILE_ROOT, key)
+    except ValueError:
+        raise HTTPException(503, "Invalid storage prefix") from None
     await scope[0].execute(
         text(
             f"insert into files(id,tenant_id,uploaded_by,original_name,owner_principal_id,scope_kind,channel_id,status,declared_mime_type) values(:id,{TENANT},:actor,:name,:principal,'channel',:channel,'staged',:mime)"
@@ -180,10 +181,10 @@ async def upload_session(scope: Scope, upload_id: UUID):
 
 
 def object_path(row):
-    path = (FILE_ROOT / row["object_key"]).resolve()
-    if not path.is_relative_to(FILE_ROOT.resolve()):
-        raise HTTPException(503, "Invalid object path")
-    return path
+    try:
+        return object_storage.at(FILE_ROOT, row["object_key"])
+    except ValueError:
+        raise HTTPException(503, "Invalid object path") from None
 
 
 @router.put("/image-uploads/{upload_id}/content", response_model=AgentBusinessResponse)
@@ -439,7 +440,7 @@ async def read_image(file_id: UUID, request: Request, scope: Scope):
     path = object_path(row)
     if not path.is_file():
         raise HTTPException(404, "Image object is missing")
-    return FileResponse(
+    return object_storage.respond(
         path, media_type=row["mime_type"], filename=row["original_name"]
     )
 

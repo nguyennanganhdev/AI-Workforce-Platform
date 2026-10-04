@@ -7,12 +7,12 @@ from typing import Annotated, Literal
 from uuid import UUID, uuid4, uuid5, NAMESPACE_URL
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import FileResponse
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from . import storage as object_storage
 from .v3_auth import resident_connection
 from .v3_resident import _owned_chat
 
@@ -94,13 +94,14 @@ async def upload_photo(channel_id: str, request: Request, scope: Scope,
         if old["sha256"] != digest or old["original_name"] != filename or old["declared_mime_type"] != mime_type:
             raise HTTPException(409, "Idempotency-Key already used for a different file")
         return {"id": file_id, "name": filename, "url": f"/api/business/resident/photos/{file_id}"}
-    storage = (await db.execute(text("select id,tenant_prefix from storage_locations where provider='local_fs' and purpose='evidence' and status='active' order by created_at limit 1"))).mappings().first()
+    storage = (await db.execute(text("select id,tenant_prefix from storage_locations where provider=:provider and purpose='evidence' and status='active' order by created_at limit 1"), {"provider": object_storage.provider()})).mappings().first()
     if not storage:
         raise HTTPException(503, "Private evidence storage has not been configured")
     object_key = f"{storage['tenant_prefix']}{file_id.hex}"
-    path = (FILE_ROOT / object_key).resolve()
-    if not path.is_relative_to(FILE_ROOT):
-        raise HTTPException(503, "Invalid storage prefix")
+    try:
+        path = object_storage.at(FILE_ROOT, object_key)
+    except ValueError:
+        raise HTTPException(503, "Invalid storage prefix") from None
     path.parent.mkdir(parents=True, exist_ok=True)
     # Deterministic key also recovers a file left by a rolled-back database transaction.
     if path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() != digest:
@@ -135,7 +136,10 @@ async def photo_content(file_id: UUID, scope: Scope):
     file = result.mappings().first()
     if file is None:
         raise HTTPException(404, "Photo not found")
-    path = (FILE_ROOT / file["object_key"]).resolve()
-    if not path.is_relative_to(FILE_ROOT) or not path.is_file():
+    try:
+        path = object_storage.at(FILE_ROOT, file["object_key"])
+    except ValueError:
+        raise HTTPException(404, "Photo not found") from None
+    if not path.is_file():
         raise HTTPException(404, "Photo not found")
-    return FileResponse(path, media_type=file["mime_type"], headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+    return object_storage.respond(path, media_type=file["mime_type"], headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})

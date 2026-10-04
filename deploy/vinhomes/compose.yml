@@ -26,20 +26,35 @@ services:
       VINHOMES_API_TECHNICAL_TOOLS_URL: http://technical-tools:8788/internal/technical/v1
       VINHOMES_API_TECHNICAL_TOOLS_TOKEN: ${TECHNICAL_TOOLS_SERVICE_TOKEN:?tool token required}
       VINHOMES_API_REPAIR_CATEGORY_CODES: ${REPAIR_CATEGORY_CODES:-}
-      # Photos of requests and of the work go to the api-files volume. One host only; back the volume up.
-      VINHOMES_API_VOLUME_FILE_STORAGE: '1'
+      # Photos and files are stored in a private bucket: the bundled MinIO, or any S3 service named by
+      # S3_ENDPOINT. Content always leaves through the API, which checks who is asking.
+      VINHOMES_API_S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      VINHOMES_API_S3_ACCESS_KEY: ${S3_ACCESS_KEY:?object storage access key required}
+      VINHOMES_API_S3_SECRET_KEY: ${S3_SECRET_KEY:?object storage secret key required}
+      VINHOMES_API_S3_BUCKET: ${S3_BUCKET:-vinhomes-files}
       FACTORY_SERVICE_URL: http://factory:4010
       FACTORY_SERVICE_TOKEN: ${FACTORY_SERVICE_TOKEN:?Factory token required}
       # Two settings, one list: browser sign-in and writes check the first, the resident app's CORS the second.
       VINHOMES_API_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
       VINHOMES_API_RESIDENT_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
-    volumes:
-      - api-files:/var/lib/vinhomes/files
     ports:
       - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${VINHOMES_API_PORT:-8000}:8000'
     healthcheck:
       <<: *python-health
       test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/ready", timeout=5)']
+  minio:
+    # The official minio/minio image is no longer published on Docker Hub; this one is. Another
+    # S3 service works as well: name it in S3_ENDPOINT and this container is simply not used.
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}
+    command: ['server', '/data']
+    # The image runs as an unprivileged user that cannot write a fresh named volume.
+    user: '0:0'
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?object storage access key required}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?object storage secret key required}
+    volumes:
+      - minio-data:/data
   reception:
     image: vinhomes-reception:${VINHOMES_IMAGE_TAG:-latest}
     build:
@@ -252,7 +267,28 @@ services:
     environment:
       DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
       VINHOMES_API_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
+  storage:
+    # Run by hand once, and again after restoring a database: creates the bucket, records it as the
+    # place files are stored, and moves the photos an earlier release kept in the api-files volume.
+    #   docker compose --env-file deployment.env --profile upgrade run --rm storage
+    profiles: [upgrade]
+    image: vinhomes-api:${VINHOMES_IMAGE_TAG:-latest}
+    command: ['python', '-m', 'vinhomes_api.storage_setup']
+    restart: 'no'
+    environment:
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+      VINHOMES_API_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
+      VINHOMES_API_S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      VINHOMES_API_S3_ACCESS_KEY: ${S3_ACCESS_KEY:?object storage access key required}
+      VINHOMES_API_S3_SECRET_KEY: ${S3_SECRET_KEY:?object storage secret key required}
+      VINHOMES_API_S3_BUCKET: ${S3_BUCKET:-vinhomes-files}
+    volumes:
+      # Read only by this job: the photos of a release that stored them on disk.
+      - api-files:/var/lib/vinhomes/files
+    depends_on:
+      - minio
 
 volumes:
   reception-state:
   api-files:
+  minio-data:

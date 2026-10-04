@@ -19,6 +19,8 @@ Người đọc: người dựng hoặc vận hành stack trên một máy chủ
 | `resident` | Ứng dụng cư dân (file tĩnh sau nginx), chuyển tiếp `/api/business` | 3011, mở ra máy chủ |
 | `upgrade` | Job chạy tay: migration, cấp lại quyền cho hai role giới hạn, đăng ký tool kỹ thuật | không có |
 | `catalogue` | Job chạy tay sau `upgrade`: đăng ký tool của cổng tool API (báo cáo, an ninh) | không có |
+| `minio` | Nơi lưu ảnh và tệp (bucket riêng tư, giao thức S3); dữ liệu nằm trong volume `minio-data` | 9000, không mở ra máy chủ |
+| `storage` | Job chạy tay: tạo bucket, ghi nhận nơi lưu, chuyển ảnh của bản cũ từ volume `api-files` sang bucket | không có |
 
 Không nằm trong stack: PostgreSQL (dùng cơ sở dữ liệu đã có sẵn role giới hạn quyền và tổ chức đầu tiên), TLS và
 reverse proxy, và đăng nhập thống nhất với tài khoản OpenBot.
@@ -51,6 +53,7 @@ cd deploy/vinhomes
 docker compose --env-file deployment.env --profile upgrade build
 docker compose --env-file deployment.env --profile upgrade run --rm upgrade
 docker compose --env-file deployment.env --profile upgrade run --rm catalogue
+docker compose --env-file deployment.env --profile upgrade run --rm storage
 docker compose --env-file deployment.env up -d
 docker compose --env-file deployment.env ps
 ```
@@ -87,9 +90,22 @@ Kết nối ngoài cho agent của BQL (máy chủ MCP theo địa chỉ https, 
 MCP, nên container này cần đi được ra internet tới các địa chỉ đó. Để trống `CONNECTIONS_KEY` thì màn hình báo chưa
 cấu hình, các phần khác không đổi. Đổi `CONNECTIONS_KEY` thì mọi khóa đã lưu không mở được nữa: phải nhập lại từng kết nối.
 
-Ảnh cư dân gửi và ảnh thi công nằm trong volume `api-files` (gắn vào `/var/lib/vinhomes/files` của `api`). API chỉ
-lưu file ra đĩa khi đang nghe trên loopback; trong container quy tắc đó được mở bằng cài đặt riêng
-`VINHOMES_API_VOLUME_FILE_STORAGE=1`, compose đã đặt sẵn. Cách lưu này chỉ dùng cho một máy chủ và một bản `api`.
+### Ảnh và tệp trên MinIO/S3
+
+Ảnh cư dân gửi và ảnh thi công nằm trong một bucket riêng tư. Cơ sở dữ liệu giữ khóa object (`file_objects.object_key`)
+và nơi lưu (`storage_locations`: provider `s3`, tên bucket). Nội dung ảnh luôn đi qua `api`, nơi kiểm quyền của người
+hỏi; bucket không mở ra ngoài và hai giao diện không gọi thẳng MinIO.
+
+- Đặt `S3_ACCESS_KEY` và `S3_SECRET_KEY`. Mặc định dùng MinIO đi kèm; muốn dùng dịch vụ S3 khác thì đặt `S3_ENDPOINT`
+  (khi đó container `minio` không được dùng tới). Với MinIO đi kèm, hai giá trị này là tài khoản gốc của nó; môi trường
+  thật nên tạo một khóa riêng chỉ có quyền trên bucket.
+- Chạy job `storage` một lần sau `upgrade`, và chạy lại sau khi khôi phục cơ sở dữ liệu. Job in `object-storage-ready`
+  kèm số file đã chuyển. Lên từ bản lưu ảnh trong volume `api-files`: job chép từng file vào bucket với cùng khóa rồi
+  đổi bản ghi nơi lưu sang bucket; bản ghi của từng ảnh không đổi. Thiếu một file trên đĩa thì job dừng và không đổi gì
+  (`--allow-missing` để chuyển phần còn lại). File trong volume không bị xóa: xóa volume sau khi đã kiểm.
+- Image `minio/minio` chính thức không còn trên Docker Hub; compose dùng `cgr.dev/chainguard/minio` và cho đổi bằng
+  `MINIO_IMAGE`. Container này chưa có kiểm tra sức khỏe.
+- Chạy không có `VINHOMES_API_S3_ENDPOINT` (ví dụ chạy local) thì API vẫn lưu ra đĩa như trước.
 
 Chín dịch vụ phải ở trạng thái `healthy` (`agents-net` không có kiểm tra sức khỏe). Lần chạy thử, cả stack sẵn sàng
 sau khoảng 30 giây. Operations ở `http://<máy chủ>:3020/operations`, ứng dụng cư dân ở `http://<máy chủ>:3011`;
@@ -114,8 +130,8 @@ sau khoảng 30 giây. Operations ở `http://<máy chủ>:3020/operations`, ứ
   mới với tag mới trước khi chạy.
 - Migration chỉ đi tới. Sao lưu cơ sở dữ liệu trước khi migrate
   (`docs/teams/chien/DATABASE_BACKUP_AND_ENV_2026-10-04.md`); quay lui dữ liệu là restore bản sao lưu đó.
-- Trạng thái của Lễ tân nằm trong volume `reception-state`, ảnh nằm trong volume `api-files`; `down -v` xóa cả
-  hai. Sao lưu cơ sở dữ liệu mà không sao lưu `api-files` thì bản ghi ảnh còn nhưng file mất.
+- Trạng thái của Lễ tân nằm trong volume `reception-state`, ảnh nằm trong volume `minio-data`; `down -v` xóa cả
+  hai. Sao lưu cơ sở dữ liệu mà không sao lưu bucket thì bản ghi ảnh còn nhưng file mất.
 
 ## Đã kiểm chứng và chưa kiểm chứng
 

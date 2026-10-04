@@ -1,4 +1,4 @@
-"""Private local evidence storage, explicitly enabled for loopback deployments."""
+"""Evidence images of a ticket. Stored on a private disk root or in a bucket (see storage.py)."""
 
 import hashlib
 import io
@@ -9,10 +9,11 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from PIL import Image, UnidentifiedImageError
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from . import storage as object_storage
 from .v3_auth import scoped_connection
 from .v3_mutations import record_event, visible_ticket
 
@@ -27,6 +28,9 @@ EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 
 def local_only(request: Request) -> None:
     settings = request.app.state.settings
+    # The rule below is about this host's disk. A bucket is reached with its own credentials.
+    if object_storage.provider() == 's3':
+        return
     # Disk storage is refused off loopback so a development setting cannot end up serving a public
     # host by accident. A container listens on every interface of its own network by design; there
     # the operator states, with a setting of its own, that the file root is a volume it looks after.
@@ -69,10 +73,10 @@ async def upload_ticket_file(
         data.extend(chunk)
     validate_image(data, mime_type)
     location = await scope[0].execute(text("""
-        select id, tenant_prefix from storage_locations where provider='local_fs'
+        select id, tenant_prefix from storage_locations where provider=:provider
           and purpose='evidence' and status='active'
         order by created_at limit 1
-    """))
+    """), {"provider": object_storage.provider()})
     storage = location.mappings().first()
     if storage is None:
         raise HTTPException(503, "Local V3 evidence storage is not configured")
@@ -80,9 +84,10 @@ async def upload_ticket_file(
     file_id = uuid4()
     object_id = uuid4()
     object_key = f"{storage['tenant_prefix']}{file_id.hex}{EXT[mime_type]}"
-    file_path = (FILE_ROOT / object_key).resolve()
-    if not file_path.is_relative_to(FILE_ROOT.resolve()) or Path(object_key).is_absolute():
-        raise HTTPException(503, "Invalid local evidence storage prefix")
+    try:
+        file_path = object_storage.at(FILE_ROOT, object_key)
+    except ValueError:
+        raise HTTPException(503, "Invalid local evidence storage prefix") from None
     file_path.parent.mkdir(parents=True, exist_ok=True)
     size = len(data)
     header = data[:12]
@@ -150,7 +155,7 @@ async def upload_ticket_file(
 
 
 @router.get("/files/{file_id}/content", summary="Download an authorized evidence image")
-async def download_file(file_id: UUID, request: Request, scope: Scope, inline: bool = False) -> FileResponse:
+async def download_file(file_id: UUID, request: Request, scope: Scope, inline: bool = False) -> Response:
     local_only(request)
     found = await scope[0].execute(text("""
         select coalesce(f.ticket_id,tf.ticket_id) as ticket_id, f.channel_id, f.original_name, o.object_key, o.sha256, o.mime_type
@@ -158,8 +163,8 @@ async def download_file(file_id: UUID, request: Request, scope: Scope, inline: b
         left join ticket_files tf on tf.file_id=f.id and tf.tenant_id=f.tenant_id
         where f.id=:id and f.status='ready' and o.status='ready'
           and o.location_id in (select id from storage_locations
-                                where provider='local_fs' and purpose='evidence')
-    """), {"id": file_id})
+                                where provider=:provider and purpose='evidence')
+    """), {"id": file_id, "provider": object_storage.provider()})
     file = found.mappings().first()
     if file is None:
         raise HTTPException(404, "Local evidence image not found")
@@ -170,14 +175,15 @@ async def download_file(file_id: UUID, request: Request, scope: Scope, inline: b
         raise HTTPException(404, 'Local evidence image not found')
     await visible_ticket(scope, file["ticket_id"])
     object_key = file["object_key"]
-    if Path(object_key).is_absolute():
-        raise HTTPException(503, "Invalid local evidence object key")
-    file_path = (FILE_ROOT / object_key).resolve()
-    if not file_path.is_relative_to(FILE_ROOT.resolve()) or not file_path.is_file():
+    try:
+        file_path = object_storage.at(FILE_ROOT, object_key)
+    except ValueError:
+        raise HTTPException(503, "Invalid local evidence object key") from None
+    if not file_path.is_file():
         raise HTTPException(404, "Local evidence image is missing")
     if inline and file['mime_type'] not in EXT:
         raise HTTPException(415, 'Only verified image types support inline preview')
-    return FileResponse(file_path, media_type=file['mime_type'] if inline else "application/octet-stream",
+    return object_storage.respond(file_path, media_type=file['mime_type'] if inline else "application/octet-stream",
                         filename=file["original_name"], content_disposition_type="inline" if inline else "attachment",
                         headers={'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store'})
 

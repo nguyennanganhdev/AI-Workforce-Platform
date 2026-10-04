@@ -6,17 +6,16 @@ import io
 import time
 import warnings
 from datetime import datetime, timezone
-from pathlib import Path
 from uuid import UUID, uuid4
 
 from fastapi import Request, UploadFile
-from fastapi.responses import FileResponse
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
 
 from .resident_contract import BASE, OPERATIONS_BASE, TENANT, PHOTO_LIMIT, PHOTO_TYPES, UploadedPhoto, digest, fail
 from .resident_cases import MANAGEMENT, OWNER, case_row, receipt, residence, save_receipt
+from . import storage as object_storage
 from .v3_files import FILE_ROOT, EXT, local_only
 
 MAX_PIXELS = 20_000_000
@@ -57,11 +56,11 @@ def verify_image(data: bytes, declared: str) -> tuple[bytes, int, int]:
         fail(422, "VALIDATION_ERROR", "Ảnh bị hỏng hoặc vượt giới hạn pixel.")
 
 
-def object_path(key: str) -> Path:
-    path = (FILE_ROOT / key).resolve()
-    if Path(key).is_absolute() or not path.is_relative_to(FILE_ROOT.resolve()):
+def object_path(key: str):
+    try:
+        return object_storage.at(FILE_ROOT, key)
+    except ValueError:
         fail(503, "SERVICE_UNAVAILABLE", "Cấu hình lưu trữ ảnh không hợp lệ.")
-    return path
 
 
 async def accessible_photo(scope, file_id: UUID, *, operations: bool = False):
@@ -93,7 +92,7 @@ async def accessible_photo(scope, file_id: UUID, *, operations: bool = False):
       from files f join file_objects o on o.id=f.accepted_object_id and o.tenant_id=f.tenant_id
       join storage_locations s on s.id=o.location_id and s.tenant_id=o.tenant_id
       where f.id=:file and f.tenant_id={TENANT} and f.status='ready' and f.deleted_at is null
-        and o.status='ready' and o.scan_status='clean' and o.verified_at is not null and s.provider='local_fs' and s.status!='disabled'"""), params)).mappings().first()
+        and o.status='ready' and o.scan_status='clean' and o.verified_at is not null and s.provider='{object_storage.provider()}' and s.status!='disabled'"""), params)).mappings().first()
     if row is None or row['mime_type'] not in PHOTO_TYPES:
         fail(404, "PHOTO_NOT_FOUND", "Không tìm thấy ảnh đã xác minh.")
     return dict(row)
@@ -117,7 +116,7 @@ async def upload(scope, apartment_id: UUID, file: UploadFile, request: Request, 
     await residence(db, actor, apartment_id)
     data, width, height = await run_in_threadpool(verify_image, raw, file.content_type or "")
     storage = (await db.execute(text(f"""select id,tenant_prefix from storage_locations
-      where tenant_id={TENANT} and provider='local_fs' and purpose='evidence' and status='active' order by created_at limit 1"""))).mappings().first()
+      where tenant_id={TENANT} and provider='{object_storage.provider()}' and purpose='evidence' and status='active' order by created_at limit 1"""))).mappings().first()
     if storage is None:
         fail(503, "SERVICE_UNAVAILABLE", "Chưa cấu hình nơi lưu ảnh.")
     await db.execute(text("select pg_advisory_xact_lock(:lock)"), {"lock": int(digest([actor, "file-principal"])[:16], 16) - (1 << 63)})
@@ -173,5 +172,5 @@ async def content(scope, file_id: UUID, request: Request, access: str, *, operat
     path = object_path(row["object_key"])
     if not path.is_file():
         fail(404, "PHOTO_NOT_FOUND", "Không tìm thấy nội dung ảnh.")
-    return FileResponse(path, media_type=row["mime_type"], filename=row["original_name"], content_disposition_type="inline",
+    return object_storage.respond(path, media_type=row["mime_type"], filename=row["original_name"], content_disposition_type="inline",
                         headers={"X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"})
