@@ -171,6 +171,55 @@ services:
       timeout: 8s
       retries: 5
       test: ['CMD', 'bun', '-e', 'process.exit((await fetch("http://127.0.0.1:4200/health")).ok ? 0 : 1)']
+  operations:
+    image: vinhomes-operations:${VINHOMES_IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: deploy/vinhomes/Dockerfile.operations
+    restart: unless-stopped
+    environment:
+      VINHOMES_API_URL: http://api:8000
+      APP_PORT: '3020'
+    ports:
+      - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${OPERATIONS_PORT:-3020}:3020'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      test: ['CMD', 'bun', '-e', 'process.exit((await fetch("http://127.0.0.1:3020/operations/login")).ok ? 0 : 1)']
+  resident:
+    image: vinhomes-resident:${VINHOMES_IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: deploy/vinhomes/Dockerfile.resident
+    restart: unless-stopped
+    environment:
+      VINHOMES_API_URL: http://api:8000
+    ports:
+      - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${RESIDENT_PORT:-3011}:3011'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3011/']
+  upgrade:
+    # Run by hand before starting a new release:
+    #   docker compose --env-file deployment.env --profile upgrade run --rm upgrade
+    # It needs the database owner, which no running service is given.
+    profiles: [upgrade]
+    image: vinhomes-technical-tools:${VINHOMES_IMAGE_TAG:-latest}
+    command: ['bun', 'server/scripts/vinhomes-upgrade.ts']
+    restart: 'no'
+    environment:
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+      VINHOMES_API_DATABASE_URL: ${VINHOMES_API_DATABASE_URL:?restricted business database URL required}
+      TECHNICAL_API_DATABASE_URL: ${TECHNICAL_API_DATABASE_URL:?restricted tools database URL required}
 
 volumes:
   reception-state:

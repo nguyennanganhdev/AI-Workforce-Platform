@@ -15,9 +15,12 @@ Người đọc: người dựng hoặc vận hành stack trên một máy chủ
 | `knowledge` | Tra cứu tri thức cho Lễ tân | 8787 |
 | `technical-tools` | Tool đọc kỹ thuật | 8788 |
 | `factory` | Agent Factory | 4010 |
+| `operations` | Giao diện Operations (bản build), chuyển tiếp `/api/business` kèm cookie | 3020, mở ra máy chủ |
+| `resident` | Ứng dụng cư dân (file tĩnh sau nginx), chuyển tiếp `/api/business` | 3011, mở ra máy chủ |
+| `upgrade` | Job chạy tay: migration và cấp lại quyền cho hai role giới hạn | không có |
 
-Không nằm trong stack: PostgreSQL (dùng cơ sở dữ liệu đã migrate, có sẵn role giới hạn quyền), hai giao diện
-(Operations và ứng dụng cư dân), và đăng nhập thống nhất với tài khoản OpenBot.
+Không nằm trong stack: PostgreSQL (dùng cơ sở dữ liệu đã có sẵn role giới hạn quyền và tổ chức đầu tiên), TLS và
+reverse proxy, và đăng nhập thống nhất với tài khoản OpenBot.
 
 `coordination` và `openbot` dùng chung một không gian mạng. Lõi Supervisor chỉ gửi token của agent tới OpenBot qua
 HTTPS hoặc loopback, nên hai dịch vụ gặp nhau trên loopback và không dịch vụ nào khác gọi được OpenBot.
@@ -25,8 +28,10 @@ HTTPS hoặc loopback, nên hai dịch vụ gặp nhau trên loopback và không
 
 ## Chuẩn bị
 
-1. PostgreSQL 17 có pgvector, đã chạy `server/scripts/migrate.ts` tới migration mới nhất và cấp quyền bằng
-   `services/vinhomes-api/scripts/grant_v3_api_role.sql`, `server/scripts/grant_technical_api_role.sql`.
+1. PostgreSQL 17 có pgvector, đã có hai role giới hạn quyền (API và tool) và tổ chức đầu tiên: dựng mới bằng các
+   script trong `services/vinhomes-api/scripts/`, hoặc restore bản sao lưu theo
+   `docs/teams/chien/DATABASE_BACKUP_AND_ENV_2026-10-04.md`. Migration và quyền của từng bản phát hành do job
+   `upgrade` lo (xem "Chạy").
 2. Một cơ sở dữ liệu riêng cho checkpoint của Supervisor, chủ sở hữu là role không phải superuser. Bảng được tạo
    khi `coordination` khởi động lần đầu.
 3. Kho tri thức đã phát hành (`KNOWLEDGE_BASE_ID`) và ít nhất một agent chuyên môn đã phát hành trong phòng BQL.
@@ -40,16 +45,19 @@ HTTPS hoặc loopback, nên hai dịch vụ gặp nhau trên loopback và không
 
 ```powershell
 cd deploy/vinhomes
-docker compose --env-file deployment.env build
+docker compose --env-file deployment.env --profile upgrade build
+docker compose --env-file deployment.env --profile upgrade run --rm upgrade
 docker compose --env-file deployment.env up -d
 docker compose --env-file deployment.env ps
 ```
 
-Bảy dịch vụ phải ở trạng thái `healthy` (`agents-net` không có kiểm tra sức khỏe). Lần chạy thử, cả stack sẵn sàng
-sau khoảng 30 giây.
+Job `upgrade` cần `MIGRATION_DATABASE_URL` (chủ sở hữu cơ sở dữ liệu); không dịch vụ đang chạy nào được cấp URL này.
+Nó in `migrations-applied` rồi `grants-applied` kèm tên hai role, lấy từ chính URL kết nối của `api` và
+`technical-tools`. Chạy lại job mỗi lần lên bản mới, trước `up -d`.
 
-Giao diện Operations bản build: `cd app; bun run build`, rồi chạy `bun serve.ts` với `VINHOMES_API_URL` trỏ tới
-`api`. Đường `/api/business` được chuyển tiếp kèm cookie đăng nhập.
+Chín dịch vụ phải ở trạng thái `healthy` (`agents-net` không có kiểm tra sức khỏe). Lần chạy thử, cả stack sẵn sàng
+sau khoảng 30 giây. Operations ở `http://<máy chủ>:3020/operations`, ứng dụng cư dân ở `http://<máy chủ>:3011`;
+đổi cổng bằng `OPERATIONS_PORT`, `RESIDENT_PORT`, và origin tương ứng phải có trong `VINHOMES_ALLOWED_ORIGINS`.
 
 ## Kiểm tra sau khi chạy
 
@@ -74,9 +82,11 @@ Giao diện Operations bản build: `cd app; bun run build`, rồi chạy `bun s
 
 ## Đã kiểm chứng và chưa kiểm chứng
 
-Đã chạy trên bản sao cơ sở dữ liệu đăng nhập thật, model thật: build 7 image, cả 7 dịch vụ `healthy`, năm bước kiểm
-tra ở trên, khởi động lại riêng từng dịch vụ `openbot` và `coordination`, đăng nhập qua `app/serve.ts` với cookie thật.
+Đã chạy trên bản sao cơ sở dữ liệu đăng nhập thật, model thật: build 9 image, job `upgrade`, cả 9 dịch vụ `healthy`,
+năm bước kiểm tra ở trên, khởi động lại riêng từng dịch vụ `openbot` và `coordination`. Qua hai giao diện trong
+container, bằng trình duyệt và tài khoản thật: cư dân gửi yêu cầu trong chat, trả lời hai câu hỏi của Supervisor,
+BQL duyệt phương án, cư dân đồng ý, đúng một phiếu thi công được tạo.
 
-Chưa kiểm chứng: `factory` mới qua kiểm tra sức khỏe, chưa tạo agent trong container; chưa đóng gói hai giao diện;
-chưa có TLS, reverse proxy, giới hạn tài nguyên, thu thập log tập trung hay cảnh báo; chưa thử khởi động lại cả máy
-chủ; chưa chạy hai bản `coordination` song song.
+Chưa kiểm chứng: `factory` mới qua kiểm tra sức khỏe, chưa tạo agent trong container; chưa có TLS, reverse proxy,
+giới hạn tài nguyên, thu thập log tập trung hay cảnh báo; chưa thử khởi động lại cả máy chủ; chưa chạy hai bản
+`coordination` song song; job `upgrade` mới chạy trên cơ sở dữ liệu đã ở migration mới nhất (chỉ cấp lại quyền).

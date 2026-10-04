@@ -1,0 +1,30 @@
+# Operations (the OpenBot app) built for real sign-in and served by its own server, which forwards
+# /api/business to the business API with the sign-in cookie.
+FROM oven/bun:1.3.14 AS build
+WORKDIR /opt/workforce
+COPY package.json bun.lock tsconfig.base.json bunfig.toml ./
+COPY app/package.json ./app/package.json
+COPY server/package.json ./server/package.json
+COPY worker/package.json ./worker/package.json
+COPY resident-app/package.json ./resident-app/package.json
+RUN bun install --frozen-lockfile
+# The build first writes the app's configuration from the tenant package, which needs these.
+COPY scripts ./scripts
+COPY server ./server
+COPY examples ./examples
+COPY shared ./shared
+COPY app ./app
+# No demo backend and no preview data in the bundle.
+ENV VITE_ALLOW_DEMO_BACKEND=false VITE_ENABLE_UI_PREVIEW=false
+RUN cd app && bun run build
+
+# The server needs the built files and nothing it was built with.
+FROM oven/bun:1.3.14
+WORKDIR /opt/workforce
+COPY --from=build /opt/workforce/app/dist ./app/dist
+COPY app/serve.ts ./app/serve.ts
+COPY shared ./shared
+ENV APP_PORT=3020
+EXPOSE 3020
+USER bun
+CMD ["bun", "app/serve.ts"]

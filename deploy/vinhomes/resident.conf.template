@@ -1,0 +1,20 @@
+server {
+  listen 3011;
+  root /usr/share/nginx/html;
+  index index.html;
+  # Photos of an incident are uploaded through this path.
+  client_max_body_size 25m;
+
+  location /api/business/ {
+    # The trailing slash drops the /api/business prefix, as the development proxy does.
+    proxy_pass ${VINHOMES_API_URL}/;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    # A chat message is answered by the Reception agent before the reply returns.
+    proxy_read_timeout 180s;
+  }
+
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}

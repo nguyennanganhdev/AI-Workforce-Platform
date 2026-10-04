@@ -29,6 +29,29 @@ Ticket B4 được chuẩn bị bằng operation API có đăng nhập và một
 
 Bằng chứng máy local nằm trong `.codex-artifacts/` (được ignore): `bql-agent-ui-evidence.json`, `bql-room-ui-evidence.json`, `bql-plan-ui-evidence.json`, `bql-security-ui-evidence.json`, `bql-runtime-acceptance.json` và ảnh UI. Bằng chứng giữ cả lượt thất bại và lượt sửa đạt; không chứa khóa provider/tài khoản trong báo cáo.
 
+## Kiểm chứng bổ sung trên giao diện (04/10, tối)
+
+Chạy bằng Playwright với tài khoản thật và model thật trên stack local, sau commit `4ded116`:
+
+- **Ba nút điều khiển phiên (B2):** tạm dừng → Supervisor xác nhận `management_pause`, nút đổi thành "Chạy tiếp";
+  chạy tiếp → phiên về đúng `waiting_management`; dừng phiên → hỏi xác nhận trước, sau đó phiên `cancelled` và
+  không còn nút. 6/6 bước.
+- **Vòng phiên bản agent (B3):** tạo nháp → 6 ca → phát hành bản 1 → sửa và bị từ chối (bản 1 vẫn chạy) → sửa và
+  phát hành bản 2 → phòng nhóm trả lời bằng bản 2 → thu hồi, agent biến khỏi ô `@Nhắc agent`. 15/15 bước.
+- **Tiếp nhận từ giao diện Lễ tân và cư dân từ chối (B4):** cư dân gửi yêu cầu trong chat của ứng dụng cư dân → ticket
+  → phương án → BQL duyệt → cư dân bấm "Từ chối phương án". Lần đầu lộ lỗi: Supervisor lập lại gần đúng phương án
+  cũ. Đã sửa hướng dẫn lập phương án (`e454d32`): nay phiên dừng với lý do của cư dân để BQL quyết định; "Yêu cầu sửa
+  phương án" vẫn cho phương án mới theo ý cư dân. 7/7 bước cho mỗi nhánh.
+- **Ticket an ninh trọn phiên (B5):** Lễ tân phân loại an ninh, Supervisor mời agent an ninh, hai tool trả `OK` với
+  dữ liệu rỗng và agent nói rõ, hai lần duyệt, đúng 1 phiếu thi công. 7/7 bước.
+- **Tool kỹ thuật (B1):** cổng tool báo `INTERNAL_ERROR` cho agent mỗi khi tool host trả "không có SOP hiệu lực" (HTTP
+  404). Đã sửa (`2093608`): agent nhận đúng `NOT_FOUND` kèm thông báo của tool host; có test.
+- **Triển khai:** compose thêm Operations, ứng dụng cư dân và job `upgrade`; luồng hai lần duyệt đã chạy qua hai giao
+  diện trong container.
+
+Chưa làm trong đợt này: admin ghi đè và màn admin cấp phạm vi BQL; đối soát các loại báo cáo còn lại (B6); phân công,
+thi công, QC và đóng ticket sau khi có phiếu thi công; dữ liệu team Quang.
+
 ## Thứ tự hoàn thiện tiếp
 
 1. Kiểm UI các nút điều khiển phiên; vòng agent v1→v2, BQL từ chối/thu hồi và admin ghi đè. Hoàn thiện cấp scope/workspace BQL trên màn admin.
