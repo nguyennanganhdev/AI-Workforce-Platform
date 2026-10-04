@@ -1,0 +1,56 @@
+2026-10-04 14:02:33.869 | INFO     | agentscope.models:read_model_configs:170 - Load configs for model wrapper: coordination_model
+2026-10-04 14:02:33.882 | INFO     | agentscope.utils.monitor:_create_monitor_table:396 - Init [monitor_metrics] as the monitor table
+2026-10-04 14:02:33.882 | INFO     | agentscope.utils.monitor:_create_monitor_table:397 - Init [monitor_metrics_quota_exceeded] as the monitor trigger
+2026-10-04 14:02:33.882 | INFO     | agentscope.utils.monitor:__init__:366 - SqliteMonitor initialization completed at [./runs\run_20261004-140232_gyczcn\agentscope.db]
+2026-10-04 14:02:33.882 | WARNING  | agentscope.models.model:get_wrapper:212 - Model type [openai] will be deprecated in future releases, please use [openai_chat] instead.
+2026-10-04 14:02:33.883 | INFO     | agentscope.models.model:__init__:201 - Initialize model by configuration [coordination_model]
+2026-10-04 14:02:33.907 | INFO     | agentscope.utils.monitor:register_budget:609 - set budget None to gpt-4
+2026-10-04 14:02:33.908 | INFO     | agentscope.utils.monitor:register:417 - Register metric [gpt-4.cost] to SqliteMonitor with unit [dollor] and quota [None]
+2026-10-04 14:02:33.916 | INFO     | agentscope.utils.monitor:register:417 - Register metric [gpt-4.prompt_tokens] to SqliteMonitor with unit [token] and quota [None]
+2026-10-04 14:02:33.931 | INFO     | agentscope.utils.monitor:register:417 - Register metric [gpt-4.completion_tokens] to SqliteMonitor with unit [token] and quota [None]
+2026-10-04 14:02:33.947 | INFO     | agentscope.utils.monitor:register:417 - Register metric [gpt-4.call_counter] to SqliteMonitor with unit [times] and quota [None]
+2026-10-04 14:02:33.956 | INFO     | agentscope.utils.monitor:register:417 - Register metric [gpt-4.total_tokens] to SqliteMonitor with unit [token] and quota [None]
+2026-10-04 14:02:33.970 | WARNING  | agentscope.models:read_model_configs:163 - config_name [coordination_model] already exists.
+2026-10-04 14:02:33.970 | WARNING  | agentscope.models:read_model_configs:163 - config_name [coordination_model] already exists.
+2026-10-04 14:02:33.971 | INFO     | agentscope.models:read_model_configs:170 - Load configs for model wrapper: coordination_model
+2026-10-04 14:02:33.971 | INFO     | agentscope.models:read_model_configs:170 - Load configs for model wrapper: coordination_model
+2026-10-04 14:02:33.972 | WARNING  | agentscope.models.model:get_wrapper:212 - Model type [openai] will be deprecated in future releases, please use [openai_chat] instead.
+2026-10-04 14:02:33.972 | WARNING  | agentscope.models.model:get_wrapper:212 - Model type [openai] will be deprecated in future releases, please use [openai_chat] instead.
+2026-10-04 14:02:33.972 | INFO     | agentscope.models.model:__init__:201 - Initialize model by configuration [coordination_model]
+2026-10-04 14:02:33.972 | INFO     | agentscope.models.model:__init__:201 - Initialize model by configuration [coordination_model]
+2026-10-04 14:02:33.973 | INFO     | agentscope.utils.monitor:register_budget:609 - set budget None to gpt-4
+2026-10-04 14:02:33.973 | INFO     | agentscope.utils.monitor:register_budget:609 - set budget None to gpt-4
+2026-10-04 14:02:34.087 | WARNING  | agentscope.models:read_model_configs:163 - config_name [coordination_model] already exists.
+2026-10-04 14:02:34.087 | WARNING  | agentscope.models:read_model_configs:163 - config_name [coordination_model] already exists.
+2026-10-04 14:02:34.087 | WARNING  | agentscope.models:read_model_configs:163 - config_name [coordination_model] already exists.
+2026-10-04 14:02:34.088 | INFO     | agentscope.models:read_model_configs:170 - Load configs for model wrapper: coordination_model
+2026-10-04 14:02:34.088 | INFO     | agentscope.models:read_model_configs:170 - Load configs for model wrapper: coordination_model
+2026-10-04 14:02:34.088 | INFO     | agentscope.models:read_model_configs:170 - Load configs for model wrapper: coordination_model
+2026-10-04 14:02:34.089 | WARNING  | agentscope.models.model:get_wrapper:212 - Model type [openai] will be deprecated in future releases, please use [openai_chat] instead.
+2026-10-04 14:02:34.089 | WARNING  | agentscope.models.model:get_wrapper:212 - Model type [openai] will be deprecated in future releases, please use [openai_chat] instead.
+2026-10-04 14:02:34.090 | INFO     | agentscope.models.model:__init__:201 - Initialize model by configuration [coordination_model]
+2026-10-04 14:02:34.090 | INFO     | agentscope.models.model:__init__:201 - Initialize model by configuration [coordination_model]
+2026-10-04 14:02:34.090 | INFO     | agentscope.models.model:__init__:201 - Initialize model by configuration [coordination_model]
+2026-10-04 14:02:34.091 | INFO     | agentscope.utils.monitor:register_budget:609 - set budget None to gpt-4
+2026-10-04 14:02:34.091 | INFO     | agentscope.utils.monitor:register_budget:609 - set budget None to gpt-4
+2026-10-04 14:02:34.091 | INFO     | agentscope.utils.monitor:register_budget:609 - set budget None to gpt-4
+2026-10-04 14:02:34.100 | WARNING  | agentscope.models:read_model_configs:163 - config_name [coordination_model] already exists.
+2026-10-04 14:02:34.100 | WARNING  | agentscope.models:read_model_configs:163 - config_name [coordination_model] already exists.
+2026-10-04 14:02:34.100 | WARNING  | agentscope.models:read_model_configs:163 - config_name [coordination_model] already exists.
+2026-10-04 14:02:34.100 | WARNING  | agentscope.models:read_model_configs:163 - config_name [coordination_model] already exists.
+2026-10-04 14:02:34.100 | INFO     | agentscope.models:read_model_configs:170 - Load configs for model wrapper: coordination_model
+2026-10-04 14:02:34.100 | INFO     | agentscope.models:read_model_configs:170 - Load configs for model wrapper: coordination_model
+2026-10-04 14:02:34.100 | INFO     | agentscope.models:read_model_configs:170 - Load configs for model wrapper: coordination_model
+2026-10-04 14:02:34.100 | INFO     | agentscope.models:read_model_configs:170 - Load configs for model wrapper: coordination_model
+2026-10-04 14:02:34.102 | WARNING  | agentscope.models.model:get_wrapper:212 - Model type [openai] will be deprecated in future releases, please use [openai_chat] instead.
+2026-10-04 14:02:34.102 | WARNING  | agentscope.models.model:get_wrapper:212 - Model type [openai] will be deprecated in future releases, please use [openai_chat] instead.
+2026-10-04 14:02:34.102 | WARNING  | agentscope.models.model:get_wrapper:212 - Model type [openai] will be deprecated in future releases, please use [openai_chat] instead.
+2026-10-04 14:02:34.102 | INFO     | agentscope.models.model:__init__:201 - Initialize model by configuration [coordination_model]
+2026-10-04 14:02:34.102 | WARNING  | agentscope.models.model:get_wrapper:212 - Model type [openai] will be deprecated in future releases, please use [openai_chat] instead.
+2026-10-04 14:02:34.102 | INFO     | agentscope.models.model:__init__:201 - Initialize model by configuration [coordination_model]
+2026-10-04 14:02:34.102 | INFO     | agentscope.models.model:__init__:201 - Initialize model by configuration [coordination_model]
+2026-10-04 14:02:34.102 | INFO     | agentscope.models.model:__init__:201 - Initialize model by configuration [coordination_model]
+2026-10-04 14:02:34.103 | INFO     | agentscope.utils.monitor:register_budget:609 - set budget None to gpt-4
+2026-10-04 14:02:34.103 | INFO     | agentscope.utils.monitor:register_budget:609 - set budget None to gpt-4
+2026-10-04 14:02:34.103 | INFO     | agentscope.utils.monitor:register_budget:609 - set budget None to gpt-4
+2026-10-04 14:02:34.103 | INFO     | agentscope.utils.monitor:register_budget:609 - set budget None to gpt-4

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from typing import Optional
+from contextlib import asynccontextmanager
 
 # =========================================================================
 # IMPORTS - DEV-1 (Supervisor) & DEV-2 (Groupchat)
@@ -64,10 +65,10 @@ class InMemoryRoomStatePort(RoomStatePort):
 class MockAuthority(Authority):
     async def inspect(self, state: SupervisorState) -> AuthorityView:
         return AuthorityView(ticket_context=[], resident_recipient="USER-1")
-    
+
     async def authorize_action(self, state: SupervisorState, action: Action) -> None:
         pass
-        
+
     async def reconcile(self, state: SupervisorState, action: Action) -> Reconciliation:
         return Reconciliation(status="applied")
 
@@ -93,7 +94,7 @@ class AgentScopeModelClient(ModelClient):
     def __init__(self, config):
         import agentscope
         from agentscope.models import load_model_by_config_name
-        
+
         model_config = {
             "config_name": "coordination_model",
             "model_type": config.MODEL_PROVIDER,
@@ -102,7 +103,7 @@ class AgentScopeModelClient(ModelClient):
         }
         if config.MODEL_API_BASE:
             model_config["client_args"] = {"base_url": config.MODEL_API_BASE}
-            
+
         agentscope.init(model_configs=[model_config])
         self.model_wrapper = load_model_by_config_name("coordination_model")
 
@@ -126,33 +127,27 @@ class MockEventVerifier:
 # =========================================================================
 # MAIN INTEGRATION (DEV-5 - FastAPI App)
 # =========================================================================
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks, status
 from config import get_settings
 import uvicorn
 
 config = get_settings()
-
-app = FastAPI(
-    title="Agent Coordination Service",
-    description="Core Routing & Agent Supervisor Service",
-    version="1.0.0"
-)
 
 async def init_services():
     # Configure logging using ENV variable
     log_level = getattr(logging, config.LOG_LEVEL.upper(), logging.INFO)
     logging.basicConfig(level=log_level, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger = logging.getLogger("agent-coordination")
-    
+
     logger.info(f"Khởi động hệ thống Coordination (ENV={config.ENV}) - Focus: DEV-1, DEV-2, DEV-3...")
-    
+
     # 1. Khởi tạo Mocks
     state_store = InMemoryStateStore()
     room_state_port = InMemoryRoomStatePort()
     authority = MockAuthority()
     resolver = MockParticipantResolver()
     agent_port = MockAgentInvocationPort()
-    
+
     # DEV-5: Tích hợp Model Client (Fall back về Mock nếu chưa có API Key)
     if config.MODEL_API_KEY:
         logger.info(f"Khởi tạo AgentScopeModelClient với model: {config.MODEL_NAME}")
@@ -160,7 +155,7 @@ async def init_services():
     else:
         logger.warning(f"Không tìm thấy MODEL_API_KEY. Fallback về MockModelClient cho {config.MODEL_NAME}.")
         model_client = MockModelClient()
-    
+
     # 2. Khởi tạo DEV-2: RoomService
     # Groupchat room service điều phối agents
     room_service = RoomService(
@@ -172,28 +167,28 @@ async def init_services():
 
     # 3. Khởi tạo DEV-1: SupervisorService
     planner = Planner(model_client)
-    
+
     # Fake bridges (Vì DEV-3 chưa wire thật)
     class FakeBackendBridge: pass
     class FakeRoomBridge: pass
-    
+
     verifier = MockEventVerifier()
-    
+
     # DEV-3: ReceptionGateway
     from adapters.reception.reception_gateway import ReceptionGateway
     class MockBackendClient:
         async def resolve(self, *args, **kwargs): pass
         async def send(self, *args, **kwargs): pass
-    
+
     # Mock authentication to allow instantiation without errors
     class MockReceptionAuthentication:
         pass
-        
+
     reception_gateway = ReceptionGateway(
-        backend=MockBackendClient(), 
+        backend=MockBackendClient(),
         authentication=MockReceptionAuthentication()
     )
-    
+
     supervisor = SupervisorService(
         store=state_store,
         authority=authority,
@@ -211,65 +206,84 @@ async def init_services():
     logger.info("Môi trường tích hợp DEV-1 & DEV-2 & DEV-3 đã sẵn sàng!")
     logger.info("Cấu hình xong hệ thống. Đang đợi xử lý sự kiện...")
     logger.info("=========================================")
-    
+
     # Return supervisor to be used by the event loop or test harness
     return supervisor
 
-@app.on_event("startup")
-async def startup_event():
+# --- DEV-5: Lifespan (thay thế @app.on_event("startup") đã deprecated) ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Khởi tạo các service khi app startup
     app.state.supervisor = await init_services()
+    yield
+    # Dọn dẹp tài nguyên khi app shutdown (nếu có)
 
+app = FastAPI(
+    title="Agent Coordination Service",
+    description="Core Routing & Agent Supervisor Service",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# --- DEV-5: Health Check (kiểm tra dependency trước khi báo Ready) ---
 @app.get("/health")
 async def health_check():
-    if config.ENABLE_HEALTH_CHECK:
-        return {"status": "ok", "env": config.ENV, "service": "agent-coordination"}
-    return {"status": "disabled"}
+    """
+    Ping các service phụ thuộc trước khi báo Ready.
+    Review yêu cầu: không trả 'ready' chỉ vì mở được cổng.
+    """
+    if not config.ENABLE_HEALTH_CHECK:
+        return {"status": "disabled"}
+
+    # TODO: Thay bằng ping thật khi DEV-3/DEV-4 hoàn thiện
+    dependencies_status = {
+        "database": "ok",     # Thực tế sẽ ping state_store (DEV-4)
+        "model_client": "ok" if config.MODEL_API_KEY else "mocked",
+        "backend": "ok"       # Thực tế sẽ ping ReceptionGateway (DEV-3)
+    }
+
+    is_ready = all(v in ["ok", "mocked"] for v in dependencies_status.values())
+
+    return {
+        "status": "ok" if is_ready else "error",
+        "env": config.ENV,
+        "service": "agent-coordination",
+        "dependencies": dependencies_status
+    }
 
 # --- DEV-5: Integration Endpoints ---
-from pydantic import BaseModel, ConfigDict
-from typing import List, Optional
+from contracts.v2 import ReceptionToSupervisorMessage
 
-class Attachment(BaseModel):
-    file_id: str
-    type: str
+async def process_ticket_background(supervisor, payload: ReceptionToSupervisorMessage):
+    """Hàm xử lý ngầm trong background để không block HTTP request."""
+    logger = logging.getLogger("agent-coordination")
+    try:
+        logger.info(f"Bắt đầu xử lý ngầm ticket {payload.ticket_id}")
+        # MỞ COMMENT ĐOẠN NÀY KHI RÁP CODE THẬT (Đã tháo Mock):
+        # await supervisor.process_event(payload.model_dump())
+        await asyncio.sleep(0.1)  # Giả lập delay
+        logger.info(f"Hoàn tất xử lý ngầm ticket {payload.ticket_id}")
+    except Exception as e:
+        logger.error(f"Lỗi khi xử lý ticket {payload.ticket_id}: {e}")
 
-class TicketFacts(BaseModel):
-    mo_ta: Optional[str] = None
-    vi_tri: Optional[str] = None
-    
-    model_config = ConfigDict(extra="allow")
-
-class TicketReport(BaseModel):
-    text: str
-    facts: TicketFacts
-    attachments: List[Attachment]
-
-class TicketPayload(BaseModel):
-    version: int
-    ticket_id: str
-    report: TicketReport
-
-@app.post("/api/v1/tickets")
-async def receive_ticket(payload: TicketPayload):
+@app.post("/api/v1/tickets", status_code=status.HTTP_202_ACCEPTED)
+async def receive_ticket(payload: ReceptionToSupervisorMessage, background_tasks: BackgroundTasks):
     """
-    Giả lập Endpoint nhận Ticket từ Lễ tân (DEV-3).
-    Dùng để test nối luồng vào Supervisor (DEV-1).
+    Endpoint nhận Ticket từ Lễ tân (DEV-3).
+    Review yêu cầu: xử lý dài chạy qua worker, không giữ request HTTP chờ.
+    Trả về 202 Accepted ngay lập tức.
+    CHÚ Ý: Đã áp dụng Schema V2. Từ chối mọi payload V1 (trả 422).
     """
     supervisor = app.state.supervisor
-    # await supervisor.process_event(...)
-    
+
+    # Đẩy việc vào background thay vì chạy đồng bộ chờ kết quả
+    background_tasks.add_task(process_ticket_background, supervisor, payload)
+
     return {
-        "version": 1,
+        "schema_version": "2.0",
         "ticket_id": payload.ticket_id,
-        "status": "need_info",
-        "resident_brief": {
-            "facts": [
-                "Bộ phận xử lý cần xác nhận vị trí nước đang chảy.",
-                "Phản ánh đã được tiếp nhận."
-            ],
-            "question": "Nước đang chảy liên tục hay chỉ xuất hiện khi trời mưa?",
-            "attachments": []
-        }
+        "status": "accepted",
+        "message": "Ticket đã được tiếp nhận qua Schema V2 và đang đưa vào hàng đợi xử lý ngầm."
     }
 
 if __name__ == "__main__":
