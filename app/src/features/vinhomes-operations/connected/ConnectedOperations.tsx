@@ -639,7 +639,9 @@ export function ConnectedOperations() {
                           {session.session ? (
                             <>
                               <p>Supervisor: {session.session.supervisor_name}</p>
-                              <SessionControls teamId={session.session.id} />
+                              {management && (
+                                <SessionControls teamId={session.session.id} />
+                              )}
                               {session.session.supervisor?.acceptedAt && (
                                 <p>
                                   Supervisor đã tiếp nhận lúc{" "}

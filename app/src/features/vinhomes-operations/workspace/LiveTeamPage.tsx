@@ -9,6 +9,14 @@ import { SessionControls } from "@/features/vinhomes-operations/connected/Sessio
 import { ManagedAgents } from "@/features/vinhomes-operations/connected/ManagedAgents";
 
 const sessionStatus: Record<string, string> = {queued: 'chờ Supervisor', running: 'đang điều phối', waiting: 'chờ phản hồi', completed: 'đã đóng', failed: 'lỗi điều phối', cancelled: 'đã hủy'};
+// What a running session is waiting for, so management sees at a glance which ones need them.
+const sessionPhase: Record<string, string> = {
+  planning: 'Supervisor đang điều phối',
+  waiting_information: 'chờ cư dân trả lời câu hỏi',
+  waiting_management: 'chờ BQL duyệt phương án',
+  waiting_resident_plan: 'chờ cư dân đồng ý phương án',
+  execution_ready: 'đủ hai lần duyệt, chờ phân công và thi công',
+};
 const sessionPause: Record<string, string> = {
   'planner:analysis_ready': 'agent đã phân tích xong, chờ BQL lập phương án',
   'planner:no_specialist_available': 'chưa có agent chuyên môn, BQL xử lý',
@@ -57,7 +65,8 @@ export function LiveTeamPage({userId, tickets}: {userId: string; tickets: (Pick<
     {!!sessions.length && <section aria-label="Phiên điều phối của nhóm">
       <h3>Phiên điều phối ({sessions.length})</h3>
       <ul>{sessions.slice(0, 20).map(s => <li key={s.id}>
-        {s.ticket_code} · {s.ticket_title} · {sessionStatus[s.status] || s.status}
+        <a href={`/operations/kanban?ticket=${encodeURIComponent(s.ticket_id)}`}>{s.ticket_code}</a> · {s.ticket_title} · {
+          (!['completed', 'failed', 'cancelled'].includes(s.status) && sessionPhase[s.runtime?.phase || '']) || sessionStatus[s.status] || s.status}
         {s.runtime?.phase === 'paused' && ` · ${sessionPause[s.runtime.pauseReason || ''] || 'Supervisor tạm dừng, BQL xử lý tiếp'}`}
         <SessionControls teamId={s.id} />
       </li>)}</ul>

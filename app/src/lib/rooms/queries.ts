@@ -3,7 +3,7 @@ import { client } from "@/lib/client";
 import { businessHeaders } from "@/lib/coordination/queries";
 
 export type ManagementRoom = {id: string; name: string};
-export type RoomSession = {id: string; ticket_code: string; ticket_title: string; status: string;
+export type RoomSession = {id: string; ticket_id: string; ticket_code: string; ticket_title: string; status: string;
   runtime?: {phase: string; pauseReason?: string | null} | null};
 export type RoomMessage = {id: string; seq: number; sender_user_id: string | null; sender_name?: string;
   sender_agent_id: string | null; body: {text?: string; mentionAgentId?: string}; created_at: string;
