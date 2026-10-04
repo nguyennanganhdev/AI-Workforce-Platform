@@ -96,20 +96,39 @@ cấu hình, các phần khác không đổi. Đổi `CONNECTIONS_KEY` thì mọ
 và nơi lưu (`storage_locations`: provider `s3`, tên bucket). Nội dung ảnh luôn đi qua `api`, nơi kiểm quyền của người
 hỏi; bucket không mở ra ngoài và hai giao diện không gọi thẳng MinIO.
 
-- Đặt `S3_ACCESS_KEY` và `S3_SECRET_KEY`. Mặc định dùng MinIO đi kèm; muốn dùng dịch vụ S3 khác thì đặt `S3_ENDPOINT`
-  (khi đó container `minio` không được dùng tới). Với MinIO đi kèm, hai giá trị này là tài khoản gốc của nó; môi trường
-  thật nên tạo một khóa riêng chỉ có quyền trên bucket.
+- `S3_ACCESS_KEY` và `S3_SECRET_KEY` là khóa của riêng API. Với MinIO đi kèm, đặt thêm tài khoản quản trị của MinIO ở
+  `S3_ADMIN_ACCESS_KEY` và `S3_ADMIN_SECRET_KEY`: job `storage` dùng nó để tạo bucket và cấp cho khóa của API quyền
+  đọc, ghi, xóa trên đúng bucket đó, không hơn (job in `"scopedKey": true`). API không bao giờ cầm tài khoản quản trị.
+  Muốn dùng dịch vụ S3 khác thì đặt `S3_ENDPOINT`, để trống `S3_ADMIN_*` và dùng khóa đã được cấp quyền sẵn.
 - Chạy job `storage` một lần sau `upgrade`, và chạy lại sau khi khôi phục cơ sở dữ liệu. Job in `object-storage-ready`
   kèm số file đã chuyển. Lên từ bản lưu ảnh trong volume `api-files`: job chép từng file vào bucket với cùng khóa rồi
   đổi bản ghi nơi lưu sang bucket; bản ghi của từng ảnh không đổi. Thiếu một file trên đĩa thì job dừng và không đổi gì
   (`--allow-missing` để chuyển phần còn lại). File trong volume không bị xóa: xóa volume sau khi đã kiểm.
 - Image `minio/minio` chính thức không còn trên Docker Hub; compose dùng `cgr.dev/chainguard/minio` và cho đổi bằng
-  `MINIO_IMAGE`. Container này chưa có kiểm tra sức khỏe.
+  `MINIO_IMAGE`. Kiểm tra sức khỏe dùng lệnh `mc` có sẵn trong image này; đổi sang image không có `mc` thì phải đổi
+  lệnh kiểm tra.
 - Chạy không có `VINHOMES_API_S3_ENDPOINT` (ví dụ chạy local) thì API vẫn lưu ra đĩa như trước.
 
 Chín dịch vụ phải ở trạng thái `healthy` (`agents-net` không có kiểm tra sức khỏe). Lần chạy thử, cả stack sẵn sàng
 sau khoảng 30 giây. Operations ở `http://<máy chủ>:3020/operations`, ứng dụng cư dân ở `http://<máy chủ>:3011`;
 đổi cổng bằng `OPERATIONS_PORT`, `RESIDENT_PORT`, và origin tương ứng phải có trong `VINHOMES_ALLOWED_ORIGINS`.
+
+### HTTPS
+
+Hai giao diện mặc định chỉ nghe trên `VINHOMES_BIND_ADDRESS` bằng http. Để mở ra ngoài, chạy thêm dịch vụ `proxy`
+(Caddy, cấu hình ở `Caddyfile`):
+
+```bash
+docker compose --env-file deployment.env --profile tls up -d
+```
+
+- Đặt `OPERATIONS_DOMAIN` và `RESIDENT_DOMAIN` là tên miền của từng giao diện, trỏ về máy chủ; cổng 80 và 443 phải tới
+  được máy chủ để Caddy tự xin và gia hạn chứng chỉ. Chứng chỉ nằm trong volume `caddy-data`.
+- Đặt `SECURE_COOKIES=1` để cookie phiên chỉ được gửi qua https, và ghi hai địa chỉ `https://…` vào
+  `VINHOMES_ALLOWED_ORIGINS`. Khi đã bật, đăng nhập qua cổng http 3020/3011 không còn dùng được.
+- `PROXY_TLS=tls internal` để thử trên tên không công khai (trình duyệt sẽ cảnh báo chứng chỉ);
+  `PROXY_TLS=tls /certs/site.pem /certs/site.key` để dùng chứng chỉ có sẵn (gắn thư mục vào dịch vụ `proxy`).
+- API (cổng 8000) không đi qua proxy: hai giao diện gọi nó trong mạng nội bộ. Giữ `VINHOMES_BIND_ADDRESS=127.0.0.1`.
 
 ## Kiểm tra sau khi chạy
 
@@ -119,6 +138,18 @@ sau khoảng 30 giây. Operations ở `http://<máy chủ>:3020/operations`, ứ
    `waiting_management` kèm phương án.
 4. BQL duyệt phương án: cư dân nhận câu hỏi đồng ý phương án trong hội thoại.
 5. Cư dân hỏi một câu về quy định: câu trả lời có dòng nguồn.
+
+## Sao lưu
+
+Ba thứ phải sao lưu cùng lúc; thiếu một thứ thì bản sao lưu không dùng được trọn vẹn:
+
+1. Hai cơ sở dữ liệu (nghiệp vụ và checkpoint của Supervisor), bằng `pg_dump -Fc` với tài khoản chủ.
+2. Ảnh và tệp: volume `minio-data` (hoặc bucket trên dịch vụ S3 đang dùng). Ví dụ, khi `minio` đã dừng:
+   `docker run --rm -v vinhomes_minio-data:/data:ro -v "$PWD":/backup alpine tar czf /backup/minio-data.tgz -C /data .`
+3. File `deployment.env`. `CONNECTIONS_KEY` mở các khóa kết nối đã lưu; mất nó thì phải nhập lại từng kết nối.
+
+Trạng thái của Lễ tân (volume `reception-state`) là bộ nhớ hội thoại đang dở; mất nó thì cư dân bắt đầu lại cuộc trò
+chuyện, yêu cầu đã ghi nhận không mất. Chưa có lịch sao lưu tự động: đặt lịch bằng công cụ của máy chủ.
 
 ## Khôi phục và quay lui
 
@@ -134,6 +165,19 @@ sau khoảng 30 giây. Operations ở `http://<máy chủ>:3020/operations`, ứ
   hai. Sao lưu cơ sở dữ liệu mà không sao lưu bucket thì bản ghi ảnh còn nhưng file mất.
 
 ## Đã kiểm chứng và chưa kiểm chứng
+
+Lần chạy 05/10/2026, build lại cả 9 image, trên bản sao cơ sở dữ liệu đăng nhập thật, có `proxy` với chứng chỉ nội bộ:
+
+- Job `storage`: tạo bucket, cấp khóa riêng cho API (`"scopedKey": true`), chuyển 6 ảnh cũ từ đĩa sang bucket; chạy lại
+  không chuyển gì thêm. 10 dịch vụ `healthy` (9 dịch vụ cũ và `minio`).
+- Qua https: đăng nhập được, cookie phiên có cờ Secure và HttpOnly; năm màn quản trị mở được; ảnh cũ tải được từ bucket;
+  ảnh mới tải lên rồi tải về đúng nội dung; ứng dụng cư dân và đường `/api/business` của nó trả 200.
+- Lễ tân đặt `deepseek`, Supervisor đặt `google` với khóa không dùng được: các dịch vụ vẫn khởi động và màn Model báo
+  đúng nhà cung cấp từng vai trò. Chưa có hội thoại thật với các nhà cung cấp này.
+- Lệnh nén volume `minio-data` trong mục Sao lưu chạy được.
+
+Chưa kiểm ở lần này: tên miền thật với chứng chỉ Let's Encrypt, khôi phục từ bản sao lưu, và mọi bước cần model.
+Trên Docker Desktop cho Windows, truy cập cổng đã mở qua `::1` bị treo; dùng `127.0.0.1`.
 
 Lần chạy 04/10/2026 (đêm), build lại cả 9 image từ mã hiện tại, trên bản sao cơ sở dữ liệu đăng nhập thật:
 

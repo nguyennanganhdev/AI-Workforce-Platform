@@ -188,26 +188,55 @@ Theo `docs/teams/chien/MULTI_MODEL_REPO_AUDIT_2026-10-04.md`, bốn vấn đề 
       (cấu hình ở `docs/teams/hoang/agent/`). `publish_agent.ps1` mới đọc được tool kỹ thuật.
 - [ ] Agent báo cáo không khai danh mục nên Supervisor không mời vào phiên; chủ dự án chưa nói có cần hay không.
 
-## Giao diện còn phải hoàn thiện
-
-Nhân viên kỹ thuật: luồng nhận việc → báo giá → ảnh trước/sau → gửi kết quả chạy được (đã kiểm 14/14 bước), nhưng giao
-diện chưa được làm lại như bên BQL.
+## Giao diện nhân viên kỹ thuật và phần BQL còn sót (làm ngày 05/10/2026, đợt 2)
 
 - [x] Mục "Công việc đã hoàn thành" đưa nhân viên về trang đăng nhập (đã sửa).
-- [ ] Ba mục menu cùng mở một danh sách: gộp còn "Việc của tôi" với hai thẻ Đang mở / Lịch sử.
-- [ ] Trang chi tiết: ảnh hiện dạng tên file thay vì hình; còn mã `VH-…`, "phiên bản 19", ô ghi chú trên việc đã xong;
-      trên điện thoại nút quay lại và mã bị dồn một hàng.
-- [ ] Chuông thông báo việc mới được giao; menu chưa có biểu tượng.
-
-Ban quản lý:
-
-- [ ] Trang chi tiết công việc còn khối "Phiên điều phối" cũ; danh sách công việc còn mã `VH-…`.
+- [x] Một mục menu "Việc của tôi" với hai thẻ Đang mở / Lịch sử, có biểu tượng.
+- [x] Ảnh hiện thành hình, theo thứ tự phản ánh → trước → sau; bỏ mã `VH-…`, "phiên bản", mã phiếu; ô ghi chú chỉ hiện
+      khi còn thao tác được.
+- [x] Chuông, số trên menu và tiêu đề tab báo việc mới được mời nhận.
+- [x] BQL: bỏ khối "Phiên điều phối" cũ ở trang chi tiết (thay bằng liên kết sang phiên), bỏ mã `VH-…` ở danh sách.
+- [ ] Trang chi tiết công việc vẫn là bố cục cũ (thẻ `ws-card`), chưa theo kiểu màn Điều phối; chưa thử lại trọn luồng
+      nhận việc → gửi kết quả sau khi sửa giao diện, vì tạo yêu cầu mới cần model.
 - [ ] Hộp đánh giá agent bắt nhập tay 6 tình huống.
+
+## Chuẩn bị triển khai thật (làm ngày 05/10/2026, đợt 2)
+
+- [x] HTTPS: dịch vụ `proxy` (Caddy, profile `tls`) trước hai giao diện; cookie phiên có cờ Secure khi `SECURE_COOKIES=1`.
+      Đã kiểm trong container với chứng chỉ nội bộ: đăng nhập, 13 bước kiểm đều đạt qua https.
+- [x] MinIO: API dùng khóa riêng chỉ có quyền trên bucket (job `storage` tạo), có kiểm tra sức khỏe.
+- [x] Sao lưu: hướng dẫn trong `deploy/vinhomes/README.md`; đã thử lệnh nén volume ảnh.
+- [ ] Chưa chạy với tên miền thật và chứng chỉ Let's Encrypt; chưa có lịch sao lưu tự động, chưa thử khôi phục trọn vẹn.
+- [ ] Chưa có giới hạn tài nguyên, thu thập log tập trung, cảnh báo; chưa thử khởi động lại cả máy chủ.
+- [ ] CI vẫn tắt; PR #31 chưa gộp.
+
+## Việc chưa làm vì cần chủ dự án quyết
+
+- [ ] Admin tạo đơn vị quản lý từ giao diện: phải quyết hai đơn vị có được phụ trách chung một tòa không, và chấp nhận
+      cấp cho API quyền ghi vào khoảng mười bảng cấu trúc (đơn vị, phạm vi, nhóm, phòng, Supervisor).
+- [ ] Agent báo cáo có vào phiên của Supervisor hay chỉ trả lời trong phòng nhóm.
+- [ ] Dùng dữ liệu của Team Quang vào đâu (loại sự cố, ca đánh giá, tri thức tham khảo nội bộ).
+
+## Tính năng OpenBot đã có sẵn mà phần Vinhomes chưa dùng (rà ngày 05/10/2026)
+
+Xếp theo lợi ích cho BQL; mỗi mục là một hạng mục riêng, chưa làm.
+
+- [ ] Routines (`server/src/routines`): chạy agent theo lịch. Dùng cho báo cáo tuần tự động trong phòng nhóm, nhắc yêu
+      cầu quá hạn.
+- [ ] Playground của admin: thử agent trực tiếp. Dùng thay cho việc nhập tay 6 ca đánh giá.
+- [ ] Skills: gói chỉ dẫn dùng lại giữa các agent (quy trình chuẩn của BQL).
+- [ ] Tệp đính kèm, tóm tắt và tiêu đề luồng trong kênh (`server/src/channels`): phòng nhóm hiện chỉ có chữ.
+- [ ] Kết nối theo tài khoản từng người (Google Drive, ứng dụng qua Composio) và nhà cung cấp đăng nhập (SSO): cần
+      thống nhất đăng nhập với OpenBot trước.
+- [ ] Kho tri thức cho agent của BQL: cấu hình agent đã có chỗ khai namespace tri thức, giao diện chưa mở.
+- [ ] Chọn model theo từng agent (`server/src/routing`): hiện mọi agent chuyên môn dùng chung một model.
+- [ ] Giữ và xuất nhật ký audit theo thời hạn (`audit-retention`).
 
 ## Chờ khóa model dùng được
 
-Khóa trong `agent-reception/.env` bị `api.openai.com` trả 401 `invalid_api_key` (kiểm ngày 04/10, 23:10).
+Khóa trong `agent-reception/.env` bị `api.openai.com` trả 401 `invalid_api_key` (kiểm lại ngày 05/10, 01:17).
 
 - [ ] Đánh giá và phát hành "Agent Sổ tay" (bản nháp đang có ở local), hỏi agent trong phòng nhóm bằng công cụ của kết
       nối MCP (K6).
 - [ ] Chạy lại luồng trọn vẹn trên giao diện mới và các bước cần model trong container.
+- [ ] Chạy thử một nhà cung cấp thứ hai (Gemini hoặc DeepSeek) bằng khóa thật.

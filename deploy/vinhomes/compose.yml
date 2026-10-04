@@ -26,6 +26,8 @@ services:
       VINHOMES_API_TECHNICAL_TOOLS_URL: http://technical-tools:8788/internal/technical/v1
       VINHOMES_API_TECHNICAL_TOOLS_TOKEN: ${TECHNICAL_TOOLS_SERVICE_TOKEN:?tool token required}
       VINHOMES_API_REPAIR_CATEGORY_CODES: ${REPAIR_CATEGORY_CODES:-}
+      # 1 once the web apps are only reached over https (the proxy): the session cookie is then never sent in clear.
+      VINHOMES_API_SECURE_COOKIES: ${SECURE_COOKIES:-0}
       # Photos and files are stored in a private bucket: the bundled MinIO, or any S3 service named by
       # S3_ENDPOINT. Content always leaves through the API, which checks who is asking.
       VINHOMES_API_S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
@@ -51,10 +53,17 @@ services:
     user: '0:0'
     restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?object storage access key required}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?object storage secret key required}
+      # The server's administrator account. The API never uses it: the `storage` job makes the API
+      # a key of its own (S3_ACCESS_KEY) that reaches the files bucket and nothing else.
+      MINIO_ROOT_USER: ${S3_ADMIN_ACCESS_KEY:-}
+      MINIO_ROOT_PASSWORD: ${S3_ADMIN_SECRET_KEY:-}
     volumes:
       - minio-data:/data
+    healthcheck:
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      test: ['CMD-SHELL', 'mc alias set self http://127.0.0.1:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null && mc ready self']
   reception:
     image: vinhomes-reception:${VINHOMES_IMAGE_TAG:-latest}
     build:
@@ -282,13 +291,35 @@ services:
       VINHOMES_API_S3_ACCESS_KEY: ${S3_ACCESS_KEY:?object storage access key required}
       VINHOMES_API_S3_SECRET_KEY: ${S3_SECRET_KEY:?object storage secret key required}
       VINHOMES_API_S3_BUCKET: ${S3_BUCKET:-vinhomes-files}
+      VINHOMES_API_S3_ADMIN_ACCESS_KEY: ${S3_ADMIN_ACCESS_KEY:-}
+      VINHOMES_API_S3_ADMIN_SECRET_KEY: ${S3_ADMIN_SECRET_KEY:-}
     volumes:
       # Read only by this job: the photos of a release that stored them on disk.
       - api-files:/var/lib/vinhomes/files
     depends_on:
       - minio
+  proxy:
+    # TLS in front of the two web apps; see Caddyfile. Not started unless asked for:
+    #   docker compose --env-file deployment.env --profile tls up -d
+    profiles: [tls]
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      OPERATIONS_DOMAIN: ${OPERATIONS_DOMAIN:-operations.localhost}
+      RESIDENT_DOMAIN: ${RESIDENT_DOMAIN:-resident.localhost}
+      PROXY_TLS: ${PROXY_TLS:-}
+    ports:
+      - '${PROXY_HTTP_PORT:-80}:80'
+      - '${PROXY_HTTPS_PORT:-443}:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - operations
+      - resident
 
 volumes:
+  caddy-data:
   reception-state:
   api-files:
   minio-data:

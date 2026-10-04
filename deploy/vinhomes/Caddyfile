@@ -1,0 +1,19 @@
+# TLS in front of the two web apps (compose profile `tls`). The API is reached through them
+# (`/api/business`), never directly.
+#
+# With public domain names Caddy obtains and renews the certificates itself (ports 80 and 443 must
+# reach this host). PROXY_TLS=`tls internal` uses Caddy's own authority instead, for a trial on a
+# name that is not public; PROXY_TLS=`tls /certs/site.pem /certs/site.key` uses certificates you
+# mount.
+
+{$OPERATIONS_DOMAIN} {
+	{$PROXY_TLS}
+	encode gzip
+	reverse_proxy operations:3020
+}
+
+{$RESIDENT_DOMAIN} {
+	{$PROXY_TLS}
+	encode gzip
+	reverse_proxy resident:3011
+}

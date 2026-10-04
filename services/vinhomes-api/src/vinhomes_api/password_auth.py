@@ -6,6 +6,7 @@ Only hashes of passwords and opaque session tokens are stored in PostgreSQL.
 import asyncio
 import hashlib
 import hmac
+import os
 import secrets
 import time
 from collections import OrderedDict
@@ -139,7 +140,7 @@ async def login(body: Credentials, request: Request, response: Response):
             await db.execute(text("delete from sessions where token=:token"), {"token":session_hash(old)})
         await db.execute(text("insert into sessions(id,user_id,token,expires_at) values(:id,:user,:token,now()+interval '8 hours')"),
                          {"id":str(uuid4()),"user":user["id"],"token":session_hash(token)})
-    response.set_cookie(COOKIE,token,max_age=TTL,httponly=True,secure=request.url.scheme=="https",samesite="lax",path="/")
+    response.set_cookie(COOKIE,token,max_age=TTL,httponly=True,secure=request.url.scheme=="https" or os.getenv("VINHOMES_API_SECURE_COOKIES")=="1",samesite="lax",path="/")
     response.headers["Cache-Control"] = "no-store"
     return {"user":{"id":user["id"],"name":user["name"],"email":user["email"]}}
 

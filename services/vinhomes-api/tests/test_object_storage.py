@@ -130,3 +130,40 @@ def test_a_bucket_object_behaves_as_the_file_routes_expect_a_path_to(monkeypatch
     with pytest.raises(FileNotFoundError):
         stored.unlink()
     storage.client().remove_bucket(bucket)
+
+
+@pytest.mark.skipif(not ENDPOINT, reason='VINHOMES_TEST_S3_ENDPOINT names no S3 server')
+def test_the_api_gets_a_key_of_its_own_that_only_reaches_its_bucket(monkeypatch):
+    from minio.error import S3Error
+    from vinhomes_api.storage_setup import service_key
+    bucket, other = 'test-' + uuid4().hex[:12], 'test-' + uuid4().hex[:12]
+    access, secret = 'api' + uuid4().hex[:10], uuid4().hex + uuid4().hex[:8]
+    root = {'VINHOMES_API_S3_ENDPOINT': ENDPOINT, 'VINHOMES_API_S3_BUCKET': bucket,
+            'VINHOMES_API_S3_ACCESS_KEY': os.environ['VINHOMES_TEST_S3_ACCESS_KEY'],
+            'VINHOMES_API_S3_SECRET_KEY': os.environ['VINHOMES_TEST_S3_SECRET_KEY']}
+    for name, value in root.items():
+        monkeypatch.setenv(name, value)
+    # The administrator's own key as the API's key: nothing to scope, as with any other S3 service.
+    assert service_key(bucket) is False
+    administrator = storage.client()
+    administrator.make_bucket(other)
+    administrator.put_object(other, 'secret.txt', __import__('io').BytesIO(b'x'), 1)
+    for name, value in {'VINHOMES_API_S3_ADMIN_ACCESS_KEY': root['VINHOMES_API_S3_ACCESS_KEY'],
+                        'VINHOMES_API_S3_ADMIN_SECRET_KEY': root['VINHOMES_API_S3_SECRET_KEY'],
+                        'VINHOMES_API_S3_ACCESS_KEY': access, 'VINHOMES_API_S3_SECRET_KEY': secret}.items():
+        monkeypatch.setenv(name, value)
+    assert service_key(bucket) is True and service_key(bucket) is True  # repeatable
+    api = storage.client()
+    assert api.bucket_exists(bucket)
+    stored = storage.BucketObject('evidence/a.png')
+    stored.write_bytes(b'photo')
+    assert stored.read_bytes() == b'photo'
+    stored.unlink()
+    for refused in (lambda: api.get_object(other, 'secret.txt'), lambda: api.put_object(other, 'b.txt', __import__('io').BytesIO(b'x'), 1),
+                    lambda: api.make_bucket('test-' + uuid4().hex[:12]), lambda: api.remove_bucket(bucket)):
+        with pytest.raises(S3Error) as denied:
+            refused()
+        assert denied.value.code == 'AccessDenied'
+    administrator.remove_object(other, 'secret.txt')
+    administrator.remove_bucket(other)
+    administrator.remove_bucket(bucket)
