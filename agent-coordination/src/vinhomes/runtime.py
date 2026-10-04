@@ -10,7 +10,9 @@ continue, and report what the session is now waiting for.
 
 When a planner model and an OpenBot are configured, the Supervisor opens a room with the
 specialists the backend offers for the ticket, gives them tasks and runs their turns. What the
-room holds is mirrored to the backend after every step so management can read it.
+room holds is mirrored to the backend after every step so management can read it. When every
+task is done the Supervisor proposes a plan, the backend stores it with the Supervisor as its
+author, and the session waits for management's decision.
 
 Storage is team Đông's development store (a SQLite file on this host). It keeps checkpoints,
 rooms, the inbox and the cursor across restarts, and it is not shared between hosts.
@@ -37,14 +39,15 @@ from groupchat.models import RoomData
 from groupchat.room import RoomService
 from persistence.budget import ScopedBudgets
 from persistence.sqlite import DevelopmentStore
+from runtime.publication import DraftPublisher
 from supervisor.models import SupervisorError, SupervisorState
 from supervisor.planner import Planner
 from supervisor.room_bridge import RoomBridge
 from supervisor.service import SupervisorService
 
 from .backend import Backend, Refused
-from .ports import (Authority, OpenBot, PlannerModel, Reception, Releases, Resolver, Specialists, ToolGateway,
-                    UnboundBackendActions, UnboundEvents, UnboundInvocation)
+from .ports import (Authority, BackendActions, OpenBot, PlannerModel, Plans, Reception, Releases, Resolver,
+                    Specialists, ToolGateway, UnboundEvents, UnboundInvocation)
 
 log = logging.getLogger("coordination.vinhomes")
 LEASE_SECONDS = 60
@@ -159,7 +162,8 @@ class Runtime:
             store=store, authority=authority, verifier=UnboundEvents("backend_events"), event_types={},
             planner=Planner(model), reception=Reception(backend),
             room=RoomBridge(self.rooms),
-            backend=UnboundBackendActions("backend_actions"), groupchat_version_id="vinhomes-supervisor",
+            backend=BackendActions(backend, self.teams), publisher=DraftPublisher(Plans(backend, self.teams)),
+            groupchat_version_id="vinhomes-supervisor",
             groupchat_resolver=group_pin, max_steps=MAX_STEPS, turn_policy=TURNS)
 
     async def poll(self) -> int:

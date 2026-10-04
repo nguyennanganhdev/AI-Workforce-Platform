@@ -80,6 +80,12 @@ class Backend:
     async def room(self, team_id: str, mirror: dict) -> dict:
         return await self._call("POST", f"/teams/{team_id}/room", mirror)
 
+    async def plan(self, team_id: str, draft: dict) -> dict:
+        return await self._call("POST", f"/teams/{team_id}/plans", draft)
+
+    async def approval_request(self, team_id: str, plan_id: str) -> dict:
+        return await self._call("POST", f"/teams/{team_id}/plans/{plan_id}/approval-request")
+
     async def mentions(self) -> dict:
         return await self._call("GET", "/mentions")
 

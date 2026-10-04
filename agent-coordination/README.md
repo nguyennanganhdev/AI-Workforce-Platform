@@ -141,15 +141,19 @@ session binding and agent run, the Supervisor creates a durable checkpoint and s
 `accepted`. It then opens a room with the specialists the backend offers for the ticket's
 category (published, in the management room), gives them tasks, runs their turns on OpenBot
 with the agent's published instructions, and mirrors tasks and replies to the backend for
-management to read. When every task is done the session pauses with `planner:analysis_ready`.
+management to read. When every task is done the planner is asked for a plan only (`PLAN_GUIDE`);
+the backend stores it in its plan table with the Supervisor as author (`Plans`), the Supervisor
+confirms it waits for management (`BackendActions`), and the session stays in `waiting_management`.
+A model that writes no plan leaves the session paused with `planner:analysis_ready`.
 
 A specialist's tool call goes through `ToolGateway` to the technical tool host
 (`server/src/technical-api/serve.ts`, port 8788; `COORDINATION_TOOLS_URL`, `COORDINATION_TOOLS_TOKEN`).
 The host decides from the agent run of the turn what the call may do; only read tools are open.
 
-Not bound: plans, resident questions, approvals, backend actions, backend events, and tools
-that write. Their ports refuse (`dependency_unavailable:*`). Storage is
-`persistence.sqlite.DevelopmentStore` (one host). Tests: `tests/vinhomes` (19). On Windows run
+Not bound: what follows management's decision (backend events, the resident's approval through
+Reception), resident questions, summaries, assignments, and tools that write. Their ports refuse
+(`dependency_unavailable:*` or `operation_not_configured`). Storage is
+`persistence.sqlite.DevelopmentStore` (one host). Tests: `tests/vinhomes` (24). On Windows run
 pytest with `PYTHONUTF8=1`.
 
 `scripts/publish_agent.ps1` takes an agent definition through the platform's flow: draft,
@@ -159,9 +163,12 @@ What this composition wraps instead of changing in the cores, for Team Đông to
 `ProviderModel` cannot call `gpt-5.4-mini` (`max_tokens`, exact model-name match), so
 `vinhomes.ports.PlannerModel` is used; `OpenbotAdapter` sends no agent instructions and reads
 only a JSON reply, so `InstructedClient` adds the instructions and builds the reply object from
-the Bot's plain text; one specialist may take consecutive turns (`TURNS`).
+the Bot's plain text and lets the stream stay quiet while a reasoning model thinks (the shared
+client's 5 s read timeout cut `gpt-5.5` turns short); one specialist may take consecutive turns
+(`TURNS`); the plan's `result_refs` are filled from the session, not taken from the model.
 
 Contract tables, acceptance matrix and open questions:
 `docs/teams/chien/SUPERVISOR_SESSION_V2_M0_M1_2026-10-03.md`,
-`docs/teams/chien/SUPERVISOR_SESSION_V2_M2_2026-10-04.md` and, for tools,
-`docs/teams/chien/TOOL_GATEWAY_VA_KHAO_SAT_NHANH_2026-10-04.md`.
+`docs/teams/chien/SUPERVISOR_SESSION_V2_M2_2026-10-04.md`, for tools
+`docs/teams/chien/TOOL_GATEWAY_VA_KHAO_SAT_NHANH_2026-10-04.md`, and for plans
+`docs/teams/chien/SUPERVISOR_PHUONG_AN_M3A_2026-10-04.md`.

@@ -41,6 +41,9 @@ class FakeBackend:
         self.tool_descriptors = []  # the read tools the member's version was approved with
         self.questions, self.answered = [], []  # asked by management inside a session; outcomes reported
         self.lose_outcome = False  # the next outcome report gets no answer
+        # The plan table: one plan per team, kept under the request id that stored it.
+        self.plans, self.plan_requests, self.approval_requests = {}, [], []
+        self.lose_plan = self.refuse_plan = False
 
     def _check(self):
         if self.unreachable:
@@ -83,8 +86,32 @@ class FakeBackend:
         self._check()
         if self.revoked:
             raise Refused(409)
-        return {"context": self.context(team_id), "ticket_version": "1", "supervisor_version_id": "supervisor-v1",
-                "specialists": self.specialists}
+        plan = self.plans.get(team_id)
+        return {"context": self.context(team_id), "ticket_version": "2" if plan else "1",
+                "supervisor_version_id": "supervisor-v1", "specialists": self.specialists,
+                "plan": plan and {"plan_id": "plan-" + team_id, "status": plan["status"],
+                                  "management_recipient": "management-unit:m1",
+                                  "approval_expires_at": "2999-01-01T00:00:00+00:00"}}
+
+    async def plan(self, team_id, draft):
+        self._check()
+        self.plan_requests.append(draft)
+        if self.refuse_plan:
+            raise Refused(409)
+        stored = self.plans.setdefault(team_id, {**draft, "status": "management_pending"})
+        if (stored["request_id"], stored["payload_hash"]) != (draft["request_id"], draft["payload_hash"]):
+            raise Refused(409)
+        if self.lose_plan:
+            self.lose_plan = False
+            raise AdapterError("backend_outcome_unknown", retryable=True, outcome_unknown=True)
+        return {"request_id": draft["request_id"], "status": "accepted", "payload_hash": draft["payload_hash"],
+                "canonical_id": "plan-" + team_id, "ticket_version": "2", "plan_version": draft["target_plan_version"]}
+
+    async def approval_request(self, team_id, plan_id):
+        if self.plans[team_id]["status"] != "management_pending":
+            raise Refused(409)
+        self.approval_requests.append(plan_id)
+        return {"status": "accepted", "plan_id": plan_id}
 
     async def admit(self, team_id, agent_version_id):
         offered = next((s for s in self.specialists if s["agent_version_id"] == agent_version_id), None)
@@ -306,8 +333,12 @@ TECHNICAL = dict(agent_version_id="technical-v1", agent_id="technical", name="K�
 ANALYSIS = "Khả năng cao gioăng vòi bếp hỏng. Cần khóa van nhánh và thay gioăng, khoảng 30 phút."
 
 
-def decide(prompt):
-    """A planner that follows the Supervisor's guide: give a task, run it, accept its answer."""
+PLAN = dict(summary="Thay gioăng vòi bếp", steps=["Khóa van nhánh", "Thay gioăng vòi bếp"],
+            performer_role="Kỹ thuật viên nước", expected_duration="30 phút", conditions="Cư dân có mặt", cost=None)
+
+
+def decide(prompt, plans=True):
+    """A planner that follows the Supervisor's guide: give a task, run it, accept its answer, propose a plan."""
     state, catalog = prompt["state"], prompt["catalog"]
     room, agent = state["room"], next(iter(catalog))
     if not room["tasks"]:
@@ -315,6 +346,10 @@ def decide(prompt):
                                             "assignee_agent_version_id": agent}]}
     replies = [m["message_id"] for r in state["terminal_results"].values() if r["turn_status"] == "success"
                for m in r["messages"] if m["task_id"] == "t1" and m["sender"] == r["speaker_agent_version_id"]]
+    if room["tasks"][0]["status"] == "completed" and plans:
+        # Asked for a plan only, and it names a reply that does not exist: the references are not the model's to give.
+        assert sorted(ref["$ref"].rsplit("/", 1)[1] for ref in prompt["schema"]["anyOf"]) == ["PauseDecision", "PlanDecision"]
+        return {"kind": "plan", "plan": {**PLAN, "result_refs": ["made-up"]}}
     if replies:
         return {"kind": "complete_task", "task_id": "t1", "result_refs": replies, "assessment": "Đủ căn cứ."}
     return {"kind": "run", "task_id": "t1", "agent_version_id": agent,
@@ -324,7 +359,8 @@ def decide(prompt):
 class Providers:
     """The model provider and the OpenBot, as one HTTP transport that records what it was asked."""
 
-    def __init__(self, *replies, tool_call=None, tools_down=False):
+    def __init__(self, *replies, tool_call=None, tools_down=False, plans=True):
+        self.plans = plans  # False: a model that goes round its finished task instead of planning
         # What the Bot answers, turn by turn; the last answer repeats.
         self.replies = list(replies) or [ANALYSIS]
         self.decisions, self.bot = [], []
@@ -335,7 +371,7 @@ class Providers:
         body = json.loads(request.content)
         if request.url.path == "/v1/chat/completions":
             assert request.headers["authorization"] == "Bearer model-key" and body["max_completion_tokens"] > 0
-            decision = decide(json.loads(body["messages"][1]["content"]))
+            decision = decide(json.loads(body["messages"][1]["content"]), self.plans)
             self.decisions.append(decision["kind"])
             return httpx.Response(200, json={"model": body["model"] + "-2026-03-17", "usage": {"total_tokens": 900},
                                              "choices": [{"message": {"content": json.dumps(decision)}}]})
@@ -346,6 +382,8 @@ class Providers:
                 return httpx.Response(503, text="down")
             return httpx.Response(200, json={"status": "OK", "data": {"outages": [OUTAGE]}, "errors": []})
         assert request.url.path == "/ag-ui" and request.headers["x-openbot-agent-token"] == "bot-token"
+        # A model that thinks for a while before its first token is not a lost stream.
+        assert request.extensions["timeout"]["read"] is None
         self.bot.append(body)
         run = {"threadId": body["threadId"], "runId": body["runId"]}
         if self.tool_call and not any(m["role"] == "tool" for m in body["messages"]):
@@ -396,8 +434,8 @@ async def test_the_supervisor_brings_the_category_specialist_into_the_room_and_g
     await runtime.round()
     assert [m["message_type"] for m in backend.sent] == ["accepted"]
     assert list(backend.members) == ["technical-v1"] and backend.turns == ["member-technical"]
-    # Opening the room and stopping when every task is done need no model: the rules leave no choice.
-    assert providers.decisions == ["tasks", "run", "complete_task"]
+    # Opening the room needs no model: the rules leave no choice.
+    assert providers.decisions == ["tasks", "run", "complete_task", "plan"]
     # The Bot was given the agent's published instructions and the reply format, and no tool.
     [asked] = providers.bot
     assert [c["value"] for c in asked["context"]][0] == "Bạn là agent kỹ thuật của Ban quản lý."
@@ -412,10 +450,52 @@ async def test_the_supervisor_brings_the_category_specialist_into_the_room_and_g
     assert [(m["sender_agent_version_id"], m["content"], m["task_id"]) for m in mirror["messages"]] == [
         ("technical-v1", ANALYSIS, "t1")]
     assert mirror["runs"] == [{"run_id": "run-turn-1", "status": "succeeded"}]
+    # The plan is stored by the backend, relying on the agent's reply, and waits for management.
+    [draft] = backend.plan_requests
+    reply = mirror["messages"][0]["message_id"]
+    assert draft["plan"] == {**PLAN, "result_refs": [reply], "attachment_ids": []} and draft["ticket_version"] == "1"
+    assert draft["target_plan_version"] == 1 and len(draft["payload_hash"]) == 64
+    assert backend.approval_requests == ["plan-team-1"]
     state = session(runtime)
-    assert (state["phase"], state["pause_reason"], state["action_in_flight"]) == ("paused", "planner:analysis_ready", None)
-    assert backend.reports[-1] == ("team-1", "paused", "planner:analysis_ready")
+    assert (state["phase"], state["pause_reason"], state["action_in_flight"]) == ("waiting_management", None, None)
+    assert state["actions_done"][-2:] == ["plan", "approval.requested"]
+    assert backend.reports[-1] == ("team-1", "waiting_management", None)
     assert not await runtime.work()
+
+
+async def test_a_plan_whose_receipt_was_lost_is_stored_once(staffed):
+    backend, providers = FakeBackend(message()), Providers()
+    runtime = staffed(backend, providers)
+    backend.lose_plan = True
+    await runtime.round()
+    assert session(runtime)["action_in_flight"] == "unknown" and backend.approval_requests == []
+    runtime.store.clock.now += 6
+    await runtime.round()
+    # The unchanged request goes again under its id; the backend answers with the plan it already holds.
+    first, second = backend.plan_requests
+    assert first == second and len(backend.plans) == 1 and providers.decisions.count("plan") == 1
+    assert session(runtime)["phase"] == "waiting_management" and backend.approval_requests == ["plan-team-1"]
+
+
+async def test_a_plan_the_backend_refuses_stops_the_session_for_a_person(staffed):
+    backend, providers = FakeBackend(message()), Providers()
+    runtime = staffed(backend, providers)
+    backend.refuse_plan = True  # for example: the ticket already has a plan waiting for a decision
+    await runtime.round()
+    state = session(runtime)
+    assert (state["phase"], state["pause_reason"], state["action_in_flight"]) == ("paused", "backend_rejected:409", None)
+    assert backend.plans == {} and backend.approval_requests == []
+    assert not await runtime.work()
+
+
+async def test_a_model_that_does_not_plan_leaves_the_analysis_to_management(staffed):
+    backend, providers = FakeBackend(message()), Providers(plans=False)
+    runtime = staffed(backend, providers)
+    await runtime.round()
+    # Every task is done and the model answered with something other than a plan: no second round.
+    assert providers.decisions == ["tasks", "run", "complete_task", "complete_task"]
+    state = session(runtime)
+    assert (state["phase"], state["pause_reason"]) == ("paused", "planner:analysis_ready") and backend.plan_requests == []
 
 
 async def test_an_empty_reply_is_a_failed_turn_and_the_task_is_run_again(staffed):
@@ -426,7 +506,7 @@ async def test_an_empty_reply_is_a_failed_turn_and_the_task_is_run_again(staffed
     mirror = backend.mirrors[-1]
     assert mirror["runs"] == [{"run_id": "run-turn-1", "status": "failed"}, {"run_id": "run-turn-2", "status": "succeeded"}]
     assert [m["content"] for m in mirror["messages"]] == [ANALYSIS]
-    assert session(runtime)["pause_reason"] == "planner:analysis_ready"
+    assert session(runtime)["phase"] == "waiting_management"
 
 
 async def test_an_agent_that_keeps_failing_stops_the_session_for_a_person(staffed):
@@ -473,7 +553,7 @@ async def test_a_specialist_looks_something_up_with_a_granted_tool_before_it_ans
     assert assistant["content"] == "Tôi kiểm tra sự cố đang diễn ra." and assistant["toolCalls"][0]["id"] == "call-1"
     assert json.loads(result["content"])["result"]["data"] == {"outages": [OUTAGE]}
     assert [m["content"] for m in backend.mirrors[-1]["messages"]] == [ANALYSIS]
-    assert session(runtime)["pause_reason"] == "planner:analysis_ready"
+    assert session(runtime)["phase"] == "waiting_management"
 
 
 async def test_a_tool_host_that_does_not_answer_is_told_to_the_agent_not_held_as_unknown(staffed):
@@ -485,7 +565,7 @@ async def test_a_tool_host_that_does_not_answer_is_told_to_the_agent_not_held_as
     told = json.loads(providers.bot[1]["messages"][-1]["content"])["result"]
     assert told["status"] == "INTERNAL_ERROR" and told["errors"][0]["code"] == "TOOL_UNAVAILABLE"
     state = session(runtime)
-    assert (state["pause_reason"], state["action_in_flight"]) == ("planner:analysis_ready", None)
+    assert (state["phase"], state["action_in_flight"]) == ("waiting_management", None)
 
 
 async def test_a_tool_the_version_was_not_granted_is_a_failed_turn(staffed):
@@ -501,7 +581,7 @@ async def test_management_asks_the_agent_a_follow_up_inside_the_session(staffed)
     backend, providers = FakeBackend(message()), Providers(ANALYSIS, "Không cần khóa van tổng; khóa van góc dưới chậu là đủ.")
     runtime = staffed(backend, providers)
     await runtime.round()
-    assert session(runtime)["pause_reason"] == "planner:analysis_ready"
+    assert session(runtime)["phase"] == "waiting_management"
 
     backend.questions = [{"message_id": "question-1", "team_id": "team-1", "agent_id": "technical",
                           "agent_version_id": "technical-v1", "text": "Có cần khóa van tổng không?"}]
@@ -513,7 +593,7 @@ async def test_management_asks_the_agent_a_follow_up_inside_the_session(staffed)
     await runtime.round()
     # One more turn of the same agent in the same room, under a run of its own; the Supervisor's
     # session is not resumed and no planner decision is spent on it.
-    assert providers.decisions == ["tasks", "run", "complete_task"] and len(providers.bot) == 2
+    assert providers.decisions == ["tasks", "run", "complete_task", "plan"] and len(providers.bot) == 2
     asked = json.loads(providers.bot[1]["messages"][0]["content"])
     assert asked["instruction"] == "Có cần khóa van tổng không?"
     assert ANALYSIS in json.dumps(asked["messages"], ensure_ascii=False)  # it sees what it said before
