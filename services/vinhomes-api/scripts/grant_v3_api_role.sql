@@ -26,6 +26,10 @@ GRANT DELETE ON channel_memberships TO vinhomes_v3_api;
 GRANT INSERT, UPDATE ON invoices,invoice_lines,payment_intents TO vinhomes_v3_api;
 GRANT INSERT ON payments,payment_allocations,ticket_reviews TO vinhomes_v3_api;
 GRANT INSERT ON agent_versions TO vinhomes_v3_api;
+-- External MCP connections an administrator sets up for agents: the server, the tools it allowed,
+-- and the sealed token (the tool host holds the key; this role only stores the sealed form).
+GRANT INSERT, UPDATE, DELETE ON mcp_servers, mcp_tools TO vinhomes_v3_api;
+GRANT INSERT, UPDATE ON credentials TO vinhomes_v3_api;
 -- Admin approval publishes a version; an admin can revoke it.
 GRANT INSERT,UPDATE ON agent_releases TO vinhomes_v3_api;
 GRANT INSERT,UPDATE ON agent_teams,team_members,team_tasks TO vinhomes_v3_api;

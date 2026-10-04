@@ -75,8 +75,11 @@ async def configure(
         raise HTTPException(409, "Wait for the current admin review")
     for tool in body.mcp_tools:
         available = await scope[0].execute(
-            text("select 1 from mcp_tools where server_id=:server and name=:name and effect='read' and not destructive"),
-            {"server": tool.server_id, "name": tool.name},
+            # A connection set up for one group is not offered to another group's agents.
+            text("select 1 from mcp_tools t join mcp_servers s on s.id=t.server_id and s.tenant_id=t.tenant_id "
+                 "where t.server_id=:server and t.name=:name and t.effect='read' and not t.destructive "
+                 "and (s.workspace_id is null or s.workspace_id=:workspace)"),
+            {"server": tool.server_id, "name": tool.name, "workspace": agent["workspace_id"]},
         )
         if available.first() is None:
             raise HTTPException(422, "A registered read tool is required; actions require separate human approval")
@@ -392,7 +395,9 @@ async def management_agents(room_id: str, scope: Member):
           and v.version_no=(select max(last.version_no) from agent_versions last where last.agent_id=a.id)) as published
         from agents a join channel_agents ca on ca.agent_id=a.id and ca.tenant_id=a.tenant_id
         where ca.channel_id=:room and a.workspace_id=:workspace order by a.name"""), {'room': room_id, 'workspace': room['workspace_id']})
-    tools = await scope[0].execute(text("select server_id,name,description,input_schema,effect from mcp_tools where effect='read' and not destructive order by name"))
+    tools = await scope[0].execute(text("select t.server_id,s.title as server_title,s.provenance='custom' as external,t.name,t.description,t.input_schema,t.effect "
+        "from mcp_tools t join mcp_servers s on s.id=t.server_id and s.tenant_id=t.tenant_id "
+        "where t.effect='read' and not t.destructive and (s.workspace_id is null or s.workspace_id=:workspace) order by t.name"), {'workspace': room['workspace_id']})
     categories = await scope[0].execute(text('select code,name from service_categories where enabled order by name'))
     return {'canManage': True, 'items': [{**dict(r), 'configurationHash': digest(r['configuration'])} for r in rows.mappings()], 'tools': [dict(t) for t in tools.mappings()],
             'categories': [dict(c) for c in categories.mappings()]}

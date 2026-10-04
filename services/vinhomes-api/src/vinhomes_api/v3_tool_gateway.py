@@ -21,6 +21,7 @@ from .v3_agent_results import AgentBusinessResponse, agent_result
 from .v3_billing import invoice_detail
 from .v3_operations import catalogs
 from .v3_security import cameras, contacts
+from .v3_connections import connection, host
 from ._vendor.reporting.application.client import exact_decimal, invalid_constant, json_safe_numbers, unique_object
 from ._vendor.reporting.tools.catalog import tool_descriptors
 from ._vendor.reporting.tools.facade import ReportTools
@@ -168,7 +169,9 @@ async def call(body: Call, db: Scope):
         grant = grants[0]
         if not (await db.execute(text("select 1 from mcp_tools where server_id=:server and name=:name and effect='read' and not destructive"), {'server': grant['server_id'], 'name': body.tool})).first():
             raise HTTPException(403, 'Actions require separate human approval')
-        building = body.arguments.get('building_id')
+        custom = (await db.execute(text("select 1 from mcp_servers where id=:server and provenance='custom'"), {'server': grant['server_id']})).first() is not None
+        # An external server's arguments are its own: a field it happens to call building_id is not ours to read.
+        building = None if custom else body.arguments.get('building_id')
         if building is not None and str(UUID(building)) not in run['buildings']:
             raise HTTPException(403, 'Building outside workspace coverage')
         if run['actor_user_id'] and building:
@@ -194,6 +197,19 @@ async def call(body: Call, db: Scope):
                 result = reply.json() if reply.status_code < 500 else None
                 if not isinstance(result, dict) or 'status' not in result:
                     raise HTTPException(503, 'Technical tool host unavailable')
+        elif custom:
+            server = await connection(db, grant['server_id'])
+            if server['workspace_id'] not in (None, run['workspace_id']):
+                raise HTTPException(403, 'Connection belongs to another group')
+            if server['credential_id'] and not server['sealed']:
+                raise HTTPException(403, 'Connection credential was withdrawn')
+            answer = await host('/call', {'url': server['url'], 'sealed': server['sealed'],
+                'tool': body.tool.removeprefix(grant['server_id'] + '.'), 'arguments': body.arguments})
+            # What the server said is data for the agent to read, never an instruction to this platform.
+            result = {'outcome': 'failure' if answer['isError'] else 'success',
+                      'data': {'text': answer['text'], 'truncated': answer['truncated']}}
+            if answer['isError']:
+                result['errors'] = [{'code': 'TOOL_ERROR', 'message': answer['text'][:2000], 'retryable': False}]
         else:
             raise HTTPException(403, 'Tool server not bound to this gateway')
         status = 'OK' if result.get('outcome') != 'failure' else 'TOOL_ERROR'

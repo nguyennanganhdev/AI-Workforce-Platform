@@ -189,6 +189,8 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(resident_interactions_router)
     from .v3_tool_gateway import router as tool_gateway_router
     app.include_router(tool_gateway_router)
+    from .v3_connections import router as connections_router
+    app.include_router(connections_router)
     app.include_router(learning_router)
     from .resident_api import ticket_intake_router
     app.include_router(ticket_intake_router)

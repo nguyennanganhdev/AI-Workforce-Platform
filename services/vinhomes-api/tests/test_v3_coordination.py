@@ -633,3 +633,95 @@ def test_the_tool_host_answer_reaches_the_agent_when_it_is_not_a_success(databas
     audited = sql(database, "select payload->>'status' as status from audit_events where event_type='agent.tool_called' "
                             "and target_id=$1 order by created_at", run)
     assert [a['status'] for a in audited] == ['NOT_FOUND', 'INTERNAL_ERROR']
+
+
+def test_an_external_connection_is_allowed_by_the_admin_granted_to_an_agent_and_called_through_the_gateway(database, monkeypatch):
+    """An administrator connects an MCP server for one group and allows a tool; management grants it to an
+    agent; the call leaves through the tool host with the sealed token. The token is never returned."""
+    import httpx
+    from vinhomes_api import v3_connections
+    seen, answers = [], []
+    offered = [{'name': 'search', 'description': 'Search the handbook.', 'inputSchema': {'type': 'object', 'properties': {'building_id': {'type': 'string'}}}},
+               {'name': 'wipe', 'description': 'Delete everything.', 'inputSchema': {'type': 'object'}, 'destructive': True}]
+
+    class Host:
+        def __init__(self, **options): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *error): return False
+        async def post(self, url, headers, json):
+            assert headers == {'Authorization': 'Bearer ' + 'h' * 40}
+            path = url.removeprefix('http://tools.test/internal/technical/v1/connections')
+            seen.append((path, json))
+            if path == '/check':
+                return httpx.Response(422, json={'error': 'An MCP server must be reached over https.'}) if json['url'].startswith('http:') else httpx.Response(200, json={'ok': True})
+            if path == '/seal':
+                return httpx.Response(200, json={'sealed': 'sealed:' + json['token'][::-1]})
+            if path == '/tools':
+                return httpx.Response(200, json={'tools': offered})
+            return answers.pop(0)
+
+    monkeypatch.setenv('VINHOMES_API_TECHNICAL_TOOLS_URL', 'http://tools.test/internal/technical/v1')
+    monkeypatch.setenv('VINHOMES_API_TECHNICAL_TOOLS_TOKEN', 'h' * 40)
+    monkeypatch.setattr(v3_connections.httpx, 'AsyncClient', Host)
+    workspace = sql(database, "select workspace_id from channels where id='management-room'")[0]['workspace_id']
+    with demo_client(database, 'management') as management:
+        assert management.get('/admin/connections').status_code == 403
+    with demo_client(database, 'admin') as admin:
+        plain = admin.post('/admin/connections', json={'title': 'Sổ tay', 'url': 'http://handbook.example/mcp'})
+        assert plain.status_code == 422 and 'https' in plain.json()['detail']
+        made = admin.post('/admin/connections', json={'title': 'Sổ tay vận hành Đông', 'url': 'https://handbook.example/mcp',
+                                                      'token': 'secret-token-value', 'workspace_id': str(workspace)})
+        assert made.status_code == 201, made.text
+        code = made.json()['id']
+        assert code == 'sotayvanhanhdong'
+        listing = admin.get('/admin/connections')
+        assert 'secret-token-value' not in listing.text and 'sealed' not in listing.text
+        row = next(i for i in listing.json()['items'] if i['id'] == code)
+        assert row['has_token'] and row['tools'] == [] and str(row['workspace_id']) == str(workspace)
+        checked = admin.post(f'/admin/connections/{code}/check').json()
+        assert checked['ok'] and [(t['tool'], t['destructive'], t['allowed']) for t in checked['tools']] == [('search', False, False), ('wipe', True, False)]
+        assert admin.put(f'/admin/connections/{code}/tools', json={'names': [code + '.wipe']}).status_code == 422
+        assert admin.put(f'/admin/connections/{code}/tools', json={'names': [code + '.missing']}).status_code == 422
+        assert admin.put(f'/admin/connections/{code}/tools', json={'names': [code + '.search']}).status_code == 200
+    stored = sql(database, "select c.encrypted_value,c.kind::text,c.scope_kind from credentials c join mcp_servers s on s.credential_id=c.id where s.id=$1", code)[0]
+    assert stored['encrypted_value'] == 'sealed:' + 'secret-token-value'[::-1] and (stored['kind'], stored['scope_kind']) == ('mcp', 'workspace')
+    with demo_client(database, 'management') as management:
+        catalogue = management.get('/rooms/management-room/agent-management').json()['tools']
+        assert [(t['server_title'], t['external']) for t in catalogue if t['name'] == code + '.search'] == [('Sổ tay vận hành Đông', True)]
+    agent, _ = publish_specialist(database, 'Room handbook ' + uuid4().hex[:8], [], tools=({'server_id': code, 'name': code + '.search'},))
+    settings = V3Settings('127.0.0.1', 8000, database['runtime'], TENANT, None, None, demo_mode=True, coordination_service_token=TOKEN)
+    with TestClient(create_app(settings), client=('127.0.0.1', 50000), headers={'X-Demo-Actor': 'management'}) as c:
+        message = c.post('/rooms/management-room/messages', json={'text': 'What does the handbook say?', 'mention_agent_id': agent,
+                                                                  'client_message_id': str(uuid4())}).json()['id']
+        turn = c.post(BASE + f'/room-mentions/{message}/{agent}/turn', headers=SERVICE).json()
+        assert [t['name'] for t in turn['tools']] == [code + '__search']
+        # The server's own argument names are passed as they are, also one that looks like ours.
+        call = {'run_id': turn['run_id'], 'tool': code + '.search', 'arguments': {'building_id': 'tower-a', 'q': 'thang máy'}}
+        answers.append(httpx.Response(200, json={'text': 'Bảo trì thang máy mỗi quý.', 'isError': False, 'truncated': False}))
+        good = c.post(BASE + '/tools/call', headers=SERVICE, json=call).json()
+        assert good['status'] == 'OK' and good['data']['data']['text'] == 'Bảo trì thang máy mỗi quý.'
+        assert seen[-1] == ('/call', {'url': 'https://handbook.example/mcp', 'sealed': stored['encrypted_value'],
+                                      'tool': 'search', 'arguments': call['arguments']})
+        answers.append(httpx.Response(200, json={'text': 'Query too short.', 'isError': True, 'truncated': False}))
+        bad = c.post(BASE + '/tools/call', headers=SERVICE, json=call).json()
+        assert bad['status'] == 'TOOL_ERROR' and bad['errors'][0]['message'] == 'Query too short.'
+        answers.append(httpx.Response(502, json={'error': 'The vendor answered 500.'}))
+        assert c.post(BASE + '/tools/call', headers=SERVICE, json=call).json()['status'] == 'INTERNAL_ERROR'
+        # A withdrawn credential: the call is refused before anything leaves.
+        calls = len(seen)
+        sql(database, "update credentials set revoked_at=now() where id=(select credential_id from mcp_servers where id=$1) returning id", code)
+        assert c.post(BASE + '/tools/call', headers=SERVICE, json=call).json()['status'] == 'FORBIDDEN' and len(seen) == calls
+        sql(database, "update credentials set revoked_at=null where id=(select credential_id from mcp_servers where id=$1) returning id", code)
+    audited = sql(database, "select payload->>'status' as status from audit_events where event_type='agent.tool_called' "
+                            "and target_id=$1 order by created_at", turn['run_id'])
+    assert [a['status'] for a in audited] == ['OK', 'TOOL_ERROR', 'INTERNAL_ERROR', 'FORBIDDEN']
+    with demo_client(database, 'admin') as admin:
+        kept = admin.put(f'/admin/connections/{code}/tools', json={'names': []})
+        assert kept.status_code == 409 and kept.json()['detail']['agents'][0].startswith('Room handbook')
+        assert admin.delete(f'/admin/connections/{code}').status_code == 409
+        assert admin.post(f'/admin/agents/{agent}/release/revoke', json={'note': 'Ngừng dùng sổ tay'}).status_code == 200
+        assert admin.delete(f'/admin/connections/{code}').status_code == 200
+    assert sql(database, "select 1 from mcp_servers where id=$1", code) == []
+    assert sql(database, "select revoked_at is not null as revoked from credentials where provider=$1", code)[0]['revoked']
+    events = sql(database, "select event_type from audit_events where target_type='mcp_server' and target_id=$1 order by created_at", code)
+    assert [e['event_type'] for e in events] == ['connection.created', 'connection.tools_allowed', 'connection.removed']

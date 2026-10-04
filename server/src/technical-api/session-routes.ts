@@ -19,7 +19,7 @@ export type SessionToolDependencies = {
   ): Promise<ResponseEnvelope>;
 };
 
-function sameToken(expected: string, offered: string): boolean {
+export function sameToken(expected: string, offered: string): boolean {
   const a = Buffer.from(expected);
   const b = Buffer.from(offered);
   return a.length === b.length && timingSafeEqual(a, b);
