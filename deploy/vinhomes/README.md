@@ -206,10 +206,12 @@ Ba thứ phải sao lưu cùng lúc; thiếu một thứ thì bản sao lưu kh�
 Trạng thái của Lễ tân (volume `reception-state`) là bộ nhớ hội thoại đang dở; mất nó thì cư dân bắt đầu lại cuộc trò
 chuyện, yêu cầu đã ghi nhận không mất. Chưa có lịch sao lưu tự động: đặt lịch bằng công cụ của máy chủ.
 
-## Dọn nhật ký theo thời hạn
+## Dọn dẹp định kỳ: nhật ký và tệp chưa gửi
 
-Bảng nhật ký (`audit_events`) chỉ thêm, không sửa; mặc định giữ mãi. Đặt `AUDIT_RETENTION_DAYS` (số ngày, từ 1) rồi
-chạy job dưới đây mỗi ngày bằng bộ hẹn giờ của máy chủ; để trống thì job không xóa gì:
+Hai job chạy một lần rồi thoát; chạy lại bao nhiêu lần cũng được. Không dịch vụ nào tự gọi chúng: máy chủ hẹn giờ.
+
+**Nhật ký.** Bảng nhật ký (`audit_events`) chỉ thêm, không sửa; mặc định giữ mãi. Đặt `AUDIT_RETENTION_DAYS` (số
+ngày, từ 1); để trống thì job không xóa gì:
 
 ```bash
 docker compose --env-file deployment.env --profile upgrade run --rm audit-retention
@@ -217,6 +219,37 @@ docker compose --env-file deployment.env --profile upgrade run --rm audit-retent
 
 Job in một dòng `audit-retention-swept` kèm số dòng đã xóa. Cơ sở dữ liệu tự từ chối xóa dòng còn trong thời hạn đã
 khai. Job chạy bằng tài khoản chủ như các job `upgrade`, nên không dịch vụ đang chạy nào có quyền xóa nhật ký.
+Trước khi dọn, quản trị viên lấy bản sao ở màn Nhật ký ("Xuất tệp CSV": chọn khoảng ngày, tối đa 50.000 sự kiện một
+tệp; mỗi lần xuất cũng được ghi vào nhật ký).
+
+**Tệp chưa gửi.** Tệp được tải lên phòng nhóm trước khi tin nhắn được gửi; tin không gửi thì tệp nằm lại. Job dưới
+đây xóa tệp đã tải lên hơn một ngày mà không gắn vào tin nào (xóa nội dung trong bucket, rồi ghi tệp là đã xóa), và in
+`room-files-cleaned` kèm số tệp. Nó chỉ dùng role và khóa lưu trữ của chính `api`:
+
+```bash
+docker compose --env-file deployment.env --profile upgrade run --rm room-file-cleanup
+```
+
+**Hẹn giờ.** Mỗi ngày một lần, vào giờ ít người dùng. `-T` để lệnh chạy được khi không có màn hình điều khiển. Trên
+Linux, thêm vào `crontab -e` của tài khoản được chạy Docker (đổi đường dẫn cho đúng nơi đặt mã):
+
+```cron
+15 2 * * * cd /opt/vinhomes/deploy/vinhomes && docker compose --env-file deployment.env --profile upgrade run --rm -T audit-retention >> /var/log/vinhomes-jobs.log 2>&1
+30 2 * * * cd /opt/vinhomes/deploy/vinhomes && docker compose --env-file deployment.env --profile upgrade run --rm -T room-file-cleanup >> /var/log/vinhomes-jobs.log 2>&1
+```
+
+Trên Windows, tạo hai tác vụ bằng Task Scheduler (chạy PowerShell với quyền của tài khoản dùng Docker Desktop):
+
+```powershell
+$run = 'cd /d C:\vinhomes\deploy\vinhomes && docker compose --env-file deployment.env --profile upgrade run --rm -T {0} >> C:\vinhomes\jobs.log 2>&1'
+schtasks /Create /TN "Vinhomes audit retention" /SC DAILY /ST 02:15 /TR ("cmd /c " + ($run -f 'audit-retention'))
+schtasks /Create /TN "Vinhomes room file cleanup" /SC DAILY /ST 02:30 /TR ("cmd /c " + ($run -f 'room-file-cleanup'))
+```
+
+Các dòng hẹn giờ trên là mẫu, chưa chạy thử trên máy chủ thật. Chạy thử một tác vụ ngay bằng
+`schtasks /Run /TN "Vinhomes audit retention"` (Windows) hoặc dán lệnh sau dấu sao vào terminal (Linux).
+Kiểm tra sau lần chạy đầu: tệp log có dòng `audit-retention-swept` và `room-files-cleaned`. Job thoát với mã khác 0
+khi không tới được cơ sở dữ liệu hoặc bucket; lần chạy sau làm lại từ đầu, không mất gì.
 
 ## Khôi phục và quay lui
 

@@ -3,14 +3,18 @@
 Accounts are managed by the password-login module and external connections by v3_connections.
 """
 import asyncio
+import csv
 import hashlib
+import io
+import json
 import os
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 from uuid import UUID, uuid4
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 from pydantic import BaseModel, Field, field_validator
@@ -198,3 +202,45 @@ async def audit_events(scope: Admin, kind: str = Query('', max_length=60, patter
         order by e.created_at desc limit :limit'''), {'kind': kind, 'prefix': kind.replace('_', r'\_') + '%', 'before': before, 'limit': limit})
     kinds = await scope[0].execute(text("select distinct split_part(event_type,'.',1) from audit_events order by 1"))
     return {'items': [dict(r) for r in rows.mappings()], 'kinds': list(kinds.scalars())}
+
+
+# More than this is not a file somebody reads: a shorter span is asked for, rather than a cut one handed over.
+EXPORT_ROWS = 50_000
+
+
+def cell(value) -> str:
+    """A spreadsheet runs a cell that starts with = + - or @ as a formula; such a cell is written as text."""
+    written = '' if value is None else str(value)
+    return "'" + written if written[:1] in ('=', '+', '-', '@') else written
+
+
+@router.get('/audit-events/export')
+async def audit_export(scope: Admin, first: date = Query(..., alias='from'), last: date = Query(..., alias='to'),
+                       kind: str = Query('', max_length=60, pattern=r'^[a-z_.]*$')):
+    """The trail of a span of days (Việt Nam time, both days included) as a CSV file, oldest first.
+    Taking a copy of the trail is itself recorded in it."""
+    admin(scope)
+    if last < first:
+        raise HTTPException(422, 'Ngày kết thúc phải từ ngày bắt đầu trở đi.')
+    # Midnight in Việt Nam, as a moment: the date is read as a local time there, not as one of the database's own zone.
+    span = """e.created_at>=(cast(cast(:first as date) as timestamp) at time zone 'Asia/Ho_Chi_Minh')
+        and e.created_at<(cast(cast(:last as date)+1 as timestamp) at time zone 'Asia/Ho_Chi_Minh') and (:kind='' or e.event_type like :prefix)"""
+    asked = {'first': first, 'last': last, 'kind': kind, 'prefix': kind.replace('_', r'\_') + '%'}
+    count = (await scope[0].execute(text('select count(*) from audit_events e where ' + span), asked)).scalar_one()
+    if count > EXPORT_ROWS:
+        raise HTTPException(413, f'Khoảng này có {count} sự kiện, nhiều hơn mức {EXPORT_ROWS} của một tệp. Chọn khoảng ngắn hơn.')
+    rows = await scope[0].execute(text("""select to_char(e.created_at at time zone 'Asia/Ho_Chi_Minh','YYYY-MM-DD HH24:MI:SS') as at,
+          e.event_type,e.initiator_kind,e.target_type,e.target_id,e.payload,
+          coalesce(u.name, case when e.initiator_kind='agent' then (select a.name from agents a where a.id=e.initiator_id and a.tenant_id=e.tenant_id) end,
+            e.initiator_id) as actor
+        from audit_events e left join users u on u.id=e.actor_user_id where """ + span + ' order by e.created_at,e.id'), asked)
+    out = io.StringIO()
+    sheet = csv.writer(out)
+    sheet.writerow(['Thời điểm (giờ Việt Nam)', 'Sự kiện', 'Người hoặc agent', 'Loại người thực hiện', 'Loại đối tượng', 'Đối tượng', 'Chi tiết'])
+    for row in rows.mappings():
+        sheet.writerow([cell(value) for value in (row['at'], row['event_type'], row['actor'], row['initiator_kind'], row['target_type'],
+                                                  row['target_id'], json.dumps(row['payload'], ensure_ascii=False))])
+    await audit(scope[0], scope[1], 'audit.exported', 'audit_events', f'{first}..{last}', {'kind': kind, 'rows': count})
+    # The byte order mark is what makes a spreadsheet read the Vietnamese text as UTF-8.
+    return Response('﻿' + out.getvalue(), media_type='text/csv; charset=utf-8', headers={
+        'Content-Disposition': f'attachment; filename="nhat-ky-{first}-{last}.csv"', 'Cache-Control': 'no-store'})

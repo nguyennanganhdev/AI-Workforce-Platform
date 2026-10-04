@@ -49,6 +49,23 @@ def test_only_an_administrator_reads_the_units_the_models_and_the_trail(database
             older = admin.get('/admin/audit-events', params={'before': trail['items'][-1]['created_at']}).json()['items']
             assert all(e['created_at'] < trail['items'][-1]['created_at'] for e in older)
         assert admin.get('/admin/audit-events?kind=Agent;drop').status_code == 422
+        # The trail of a span of days leaves as a file a spreadsheet opens, and taking it is itself recorded.
+        sql(database, """insert into audit_events(tenant_id,initiator_kind,initiator_id,event_type,target_type,target_id,payload,created_at)
+            values($1,'system','=cmd|calc','export.test','test','t','{"ghi chú": "Đạt"}',timestamptz '2026-03-02 10:00:00+07') returning id""", TENANT)
+        assert admin.get('/admin/audit-events/export?from=2026-03-03&to=2026-03-02').status_code == 422
+        assert admin.get('/admin/audit-events/export?to=2026-03-02').status_code == 422
+        sheet = admin.get('/admin/audit-events/export?from=2026-03-02&to=2026-03-02&kind=export')
+        assert sheet.status_code == 200 and sheet.headers['content-type'] == 'text/csv; charset=utf-8'
+        assert sheet.headers['content-disposition'] == 'attachment; filename="nhat-ky-2026-03-02-2026-03-02.csv"'
+        lines = sheet.content.decode('utf-8-sig').splitlines()
+        assert lines[0].startswith('Thời điểm (giờ Việt Nam),Sự kiện,Người hoặc agent') and len(lines) == 2
+        # Việt Nam time, the text as it is, and a name that looks like a formula written as text.
+        assert lines[1] == '2026-03-02 10:00:00,export.test,\'=cmd|calc,system,test,t,"{""ghi chú"": ""Đạt""}"'
+        assert len(admin.get('/admin/audit-events/export?from=2026-03-03&to=2026-03-03&kind=export').content.decode('utf-8-sig').splitlines()) == 1
+        taken = sql(database, "select target_id,payload::text from audit_events where event_type='audit.exported' order by created_at")
+        assert taken[0]['target_id'] == '2026-03-02..2026-03-02' and '"rows": 1' in taken[0]['payload']
+    with demo_client(database, 'management') as management:
+        assert management.get('/admin/audit-events/export?from=2026-03-02&to=2026-03-02').status_code == 403
 
 
 def test_admin_creates_unit_room_and_supervisor_atomically(database):

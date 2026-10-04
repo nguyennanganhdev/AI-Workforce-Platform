@@ -60,6 +60,17 @@ export function modelsQueryOptions() {
   return queryOptions({ queryKey: adminKeys.models, queryFn: async (): Promise<RoleModel[]> =>
     (await (await ask("/admin/models", {}, "Không tải được trạng thái model.")).json()).items });
 }
+/** The trail of a span of days (both included) as a CSV file, which the browser saves. */
+export function exportAuditMutationOptions() {
+  return mutationOptions({ mutationFn: async ({ from, to, kind }: { from: string; to: string; kind: string }) => {
+    const response = await ask(`/admin/audit-events/export?${new URLSearchParams({ from, to, ...(kind ? { kind } : {}) })}`, {}, "Không xuất được nhật ký.", true);
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(await response.blob());
+    link.download = `nhat-ky-${from}-${to}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  } });
+}
 export function auditQueryOptions(kind: string) {
   return infiniteQueryOptions({ queryKey: adminKeys.audit(kind), initialPageParam: "",
     queryFn: async ({ pageParam }): Promise<{ items: AuditEvent[]; kinds: string[] }> => {

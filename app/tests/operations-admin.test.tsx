@@ -92,3 +92,33 @@ test("the audit page names events in plain words and asks the server for one kin
   fireEvent.change(view.getByLabelText("Loại sự kiện"), { target: { value: "connection" } });
   await waitFor(() => expect(asked.at(-1)).toBe("/api/business/admin/audit-events?limit=50&kind=connection"));
 });
+
+test("the audit page takes the trail of a span of days as a file, and says why when the span is too large", async () => {
+  const asked: string[] = [];
+  let tooMany = true;
+  const { view } = await mount("AuditPage", (url) => {
+    asked.push(url);
+    if (!url.includes("/export")) return Response.json({ kinds: ["agent"], items: [] });
+    if (tooMany) { tooMany = false; return Response.json({ detail: "Khoảng này có 60000 sự kiện, nhiều hơn mức 50000 của một tệp. Chọn khoảng ngắn hơn." }, { status: 413 }); }
+    return new Response("\ufeffThời điểm\n", { headers: { "content-type": "text/csv; charset=utf-8" } });
+  });
+  const saved: { name: string; href: string }[] = [];
+  const make = URL.createObjectURL, drop = URL.revokeObjectURL, click = HTMLAnchorElement.prototype.click;
+  URL.createObjectURL = () => "blob:trail";
+  URL.revokeObjectURL = () => {};
+  HTMLAnchorElement.prototype.click = function () { saved.push({ name: this.download, href: this.href }); };
+  try {
+    await view.findByText("Chưa có sự kiện nào.");
+    fireEvent.change(view.getByLabelText("Từ ngày"), { target: { value: "2026-09-01" } });
+    fireEvent.change(view.getByLabelText("Đến hết ngày"), { target: { value: "2026-09-30" } });
+    fireEvent.click(view.getByRole("button", { name: "Xuất tệp CSV" }));
+    expect((await view.findByRole("alert")).textContent).toContain("Chọn khoảng ngắn hơn");
+    expect(saved).toEqual([]);
+    fireEvent.change(view.getByLabelText("Đến hết ngày"), { target: { value: "2026-09-07" } });
+    fireEvent.click(view.getByRole("button", { name: "Xuất tệp CSV" }));
+    await waitFor(() => expect(saved).toEqual([{ name: "nhat-ky-2026-09-01-2026-09-07.csv", href: "blob:trail" }]));
+    expect(asked.at(-1)).toBe("/api/business/admin/audit-events/export?from=2026-09-01&to=2026-09-07");
+  } finally {
+    URL.createObjectURL = make; URL.revokeObjectURL = drop; HTMLAnchorElement.prototype.click = click;
+  }
+});

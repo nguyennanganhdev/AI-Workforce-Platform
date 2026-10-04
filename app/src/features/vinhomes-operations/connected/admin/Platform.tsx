@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { auditQueryOptions, createUnitMutationOptions, unitOptionsQueryOptions, modelsQueryOptions, unitsQueryOptions, type AuditEvent, type RoleModel } from "@/lib/admin/queries";
+import { auditQueryOptions, exportAuditMutationOptions, createUnitMutationOptions, unitOptionsQueryOptions, modelsQueryOptions, unitsQueryOptions, type AuditEvent, type RoleModel } from "@/lib/admin/queries";
 
 const select = "h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground";
 
@@ -145,7 +145,7 @@ export function ModelsPage() {
 }
 
 const KIND: Record<string, string> = { agent: "Agent", connection: "Kết nối ngoài", team: "Phiên điều phối", room: "Nhóm", reception: "Lễ tân",
-  reception_supervisor: "Lễ tân và Supervisor", account: "Tài khoản", ticket: "Yêu cầu" };
+  reception_supervisor: "Lễ tân và Supervisor", account: "Tài khoản", ticket: "Yêu cầu", routine: "Lịch chạy agent", audit: "Nhật ký" };
 const EVENT: Record<string, string> = {
   "agent.tool_called": "Agent gọi công cụ", "agent.configured": "Lưu cấu hình agent", "agent.evaluated": "Chạy đánh giá agent",
   "agent.review_submitted": "Gửi bản agent chờ phát hành", "agent.review_decided": "Quyết định phát hành agent",
@@ -153,6 +153,7 @@ const EVENT: Record<string, string> = {
   "room.agent_created": "Tạo agent", "room.agent_answered": "Agent trả lời trong nhóm",
   "team.created": "Mở phiên điều phối", "team.closure_approved": "Duyệt đóng phiên", "team.control_requested": "Điều khiển phiên", "team.agent_asked": "Hỏi agent trong phiên",
   "connection.created": "Thêm kết nối ngoài", "connection.tools_allowed": "Chọn công cụ được phép", "connection.removed": "Xóa kết nối ngoài",
+  "audit.exported": "Xuất nhật ký ra tệp",
   "routine.created": "Đặt lịch chạy agent", "routine.changed": "Sửa lịch chạy", "routine.switched": "Bật hoặc tắt lịch chạy", "routine.removed": "Xóa lịch chạy",
   "reception.delegation_issued": "Lễ tân nhận quyền thay cư dân", "reception_supervisor.input_received": "Supervisor nhận yêu cầu",
   "reception_supervisor.result_received": "Supervisor trả kết quả",
@@ -178,8 +179,14 @@ function EventRow({ event }: { event: AuditEvent }) {
 }
 
 /** The audit trail: who did what, newest first. */
+/** A local day as the date input writes it. */
+const day = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
 export function AuditPage() {
   const [kind, setKind] = useState("");
+  const [from, setFrom] = useState(() => { const now = new Date(); return day(new Date(now.getFullYear(), now.getMonth(), 1)); });
+  const [to, setTo] = useState(() => day(new Date()));
+  const exported = useMutation(exportAuditMutationOptions());
   const trail = useInfiniteQuery(auditQueryOptions(kind));
   const events = trail.data?.pages.flatMap((p) => p.items) || [];
   const kinds = trail.data?.pages[0]?.kinds || [];
@@ -189,7 +196,15 @@ export function AuditPage() {
         <option value="">Mọi loại</option>
         {kinds.map((k) => <option key={k} value={k}>{KIND[k] || k}</option>)}
       </select>}>
-      {trail.error && <p role="alert" className="mt-4 text-sm text-destructive">{trail.error.message}</p>}
+      <form className="mt-4 flex flex-wrap items-end gap-3" aria-label="Xuất nhật ký" onSubmit={(e) => { e.preventDefault(); exported.mutate({ from, to, kind }); }}>
+        <div className="space-y-1"><label htmlFor="audit-from" className="block text-xs text-muted-foreground">Từ ngày</label>
+          <Input id="audit-from" type="date" className="w-40" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></div>
+        <div className="space-y-1"><label htmlFor="audit-to" className="block text-xs text-muted-foreground">Đến hết ngày</label>
+          <Input id="audit-to" type="date" className="w-40" value={to} min={from} onChange={(e) => setTo(e.target.value)} /></div>
+        <Button type="submit" size="sm" variant="outline" disabled={!from || !to || exported.isPending}>{exported.isPending ? "Đang xuất…" : "Xuất tệp CSV"}</Button>
+        <p className="basis-full text-xs text-muted-foreground">Tệp gồm các sự kiện{kind ? ` loại ${KIND[kind] || kind}` : ""} trong khoảng ngày đã chọn, theo giờ Việt Nam. Mỗi lần xuất được ghi vào nhật ký.</p>
+      </form>
+      {(trail.error || exported.error) && <p role="alert" className="mt-4 text-sm text-destructive">{(trail.error || exported.error)!.message}</p>}
       {trail.isPending ? <Skeleton className="mt-6 h-40" /> : (
         <>
           <ul className="mt-6 divide-y divide-border rounded-lg border border-border bg-card">
