@@ -151,6 +151,18 @@ Ba thứ phải sao lưu cùng lúc; thiếu một thứ thì bản sao lưu kh�
 Trạng thái của Lễ tân (volume `reception-state`) là bộ nhớ hội thoại đang dở; mất nó thì cư dân bắt đầu lại cuộc trò
 chuyện, yêu cầu đã ghi nhận không mất. Chưa có lịch sao lưu tự động: đặt lịch bằng công cụ của máy chủ.
 
+## Dọn nhật ký theo thời hạn
+
+Bảng nhật ký (`audit_events`) chỉ thêm, không sửa; mặc định giữ mãi. Đặt `AUDIT_RETENTION_DAYS` (số ngày, từ 1) rồi
+chạy job dưới đây mỗi ngày bằng bộ hẹn giờ của máy chủ; để trống thì job không xóa gì:
+
+```bash
+docker compose --env-file deployment.env --profile upgrade run --rm audit-retention
+```
+
+Job in một dòng `audit-retention-swept` kèm số dòng đã xóa. Cơ sở dữ liệu tự từ chối xóa dòng còn trong thời hạn đã
+khai. Job chạy bằng tài khoản chủ như các job `upgrade`, nên không dịch vụ đang chạy nào có quyền xóa nhật ký.
+
 ## Khôi phục và quay lui
 
 - Khởi động lại `coordination` hoặc `openbot` riêng lẻ không làm mất phiên: checkpoint nằm trong PostgreSQL.

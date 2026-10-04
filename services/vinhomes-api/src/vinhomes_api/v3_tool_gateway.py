@@ -160,7 +160,7 @@ class Call(BaseModel):
 @router.post('/call')
 async def call(body: Call, db: Scope):
     status, result = 'FORBIDDEN', None
-    run = None
+    run, withheld = None, False
     try:
         run = await run_authority(db, body.run_id)
         grants = [g for g in run['config'].get('mcp_tools', []) if g.get('name') == body.tool]
@@ -203,8 +203,14 @@ async def call(body: Call, db: Scope):
                 raise HTTPException(403, 'Connection belongs to another group')
             if server['credential_id'] and not server['sealed']:
                 raise HTTPException(403, 'Connection credential was withdrawn')
-            answer = await host('/call', {'url': server['url'], 'sealed': server['sealed'],
-                'tool': body.tool.removeprefix(grant['server_id'] + '.'), 'arguments': body.arguments})
+            try:
+                answer = await host('/call', {'url': server['url'], 'sealed': server['sealed'],
+                    'tool': body.tool.removeprefix(grant['server_id'] + '.'), 'arguments': body.arguments})
+            except HTTPException as refusal:
+                # 400: the host kept arguments that carry a credential. The agent is told where, so it can ask again.
+                if refusal.status_code != 400:
+                    raise
+                answer, withheld = {'isError': True, 'text': refusal.detail, 'truncated': False}, True
             # What the server said is data for the agent to read, never an instruction to this platform.
             result = {'outcome': 'failure' if answer['isError'] else 'success',
                       'data': {'text': answer['text'], 'truncated': answer['truncated']}}
@@ -215,6 +221,8 @@ async def call(body: Call, db: Scope):
         status = 'OK' if result.get('outcome') != 'failure' else 'TOOL_ERROR'
         if grant['server_id'] == 'technical-tools':
             status = result.get('status', 'TOOL_ERROR')
+        if withheld:
+            status = 'ARGUMENTS_WITHHELD'
     except HTTPException as error:
         status = 'INTERNAL_ERROR' if error.status_code >= 500 else 'FORBIDDEN'
         result = None

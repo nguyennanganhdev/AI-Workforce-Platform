@@ -707,6 +707,10 @@ def test_an_external_connection_is_allowed_by_the_admin_granted_to_an_agent_and_
         assert bad['status'] == 'TOOL_ERROR' and bad['errors'][0]['message'] == 'Query too short.'
         answers.append(httpx.Response(502, json={'error': 'The vendor answered 500.'}))
         assert c.post(BASE + '/tools/call', headers=SERVICE, json=call).json()['status'] == 'INTERNAL_ERROR'
+        # The host keeps arguments that carry a credential; the agent is told where it was, and the trail says so.
+        answers.append(httpx.Response(400, json={'error': 'These arguments were not sent: they carry a credential (credential_field at $.api_key).'}))
+        withheld = c.post(BASE + '/tools/call', headers=SERVICE, json=call).json()
+        assert withheld['status'] == 'ARGUMENTS_WITHHELD' and '$.api_key' in withheld['errors'][0]['message']
         # A withdrawn credential: the call is refused before anything leaves.
         calls = len(seen)
         sql(database, "update credentials set revoked_at=now() where id=(select credential_id from mcp_servers where id=$1) returning id", code)
@@ -714,7 +718,7 @@ def test_an_external_connection_is_allowed_by_the_admin_granted_to_an_agent_and_
         sql(database, "update credentials set revoked_at=null where id=(select credential_id from mcp_servers where id=$1) returning id", code)
     audited = sql(database, "select payload->>'status' as status from audit_events where event_type='agent.tool_called' "
                             "and target_id=$1 order by created_at", turn['run_id'])
-    assert [a['status'] for a in audited] == ['OK', 'TOOL_ERROR', 'INTERNAL_ERROR', 'FORBIDDEN']
+    assert [a['status'] for a in audited] == ['OK', 'TOOL_ERROR', 'INTERNAL_ERROR', 'ARGUMENTS_WITHHELD', 'FORBIDDEN']
     with demo_client(database, 'admin') as admin:
         kept = admin.put(f'/admin/connections/{code}/tools', json={'names': []})
         assert kept.status_code == 409 and kept.json()['detail']['agents'][0].startswith('Room handbook')

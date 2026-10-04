@@ -68,6 +68,12 @@ test("a sealed token lists and calls the server's tools; the clear token never c
   expect(listed.tools.map((t) => [t.name, t.destructive ?? false])).toEqual([["lookup", false], ["wipe", true]]);
   const called = await post(app, "/call", { url: origin + "/mcp", sealed, tool: "lookup", arguments: { topic: "lifts" } });
   expect(await called.json()).toEqual({ text: "About lifts", isError: false, truncated: false });
+  // Arguments that carry a credential stay here: the answer says where, never what.
+  const leaking = await post(app, "/call", { url: origin + "/mcp", sealed, tool: "lookup", arguments: { topic: "lifts", api_key: "sk-live-0123456789abcdefghij" } });
+  expect(leaking.status).toBe(400);
+  const sentence = ((await leaking.json()) as { error: string }).error;
+  expect(sentence).toContain("credential_field at $.api_key");
+  expect(sentence).not.toContain("0123456789");
   // Without the token the vendor refuses, and the refusal arrives as one sentence, not as a crash.
   const refused = await post(app, "/tools", { url: origin + "/mcp" });
   expect(refused.status).toBe(502);

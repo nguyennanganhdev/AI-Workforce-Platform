@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { decryptSecret, encryptSecret } from "../credentials";
 import { customUrlRefusal } from "../plugins/catalogue";
+import { inspectToolArguments } from "../plugins/content-governance";
 import { callTool, listTools, McpServerError } from "../plugins/mcp";
 import { sameToken } from "./session-routes";
 
@@ -14,6 +15,10 @@ import { sameToken } from "./session-routes";
  *
  * A token arrives here in clear once, when an administrator saves it, and leaves sealed. After that
  * the API only ever holds and sends back the sealed form.
+ *
+ * Arguments an agent wrote are checked before they leave (plugins/content-governance.ts): a call that
+ * carries a credential is answered 400 and never reaches the vendor. The answer names where it was
+ * found, never what was found.
  */
 export function createConnectionRoutes(
   serviceToken: string,
@@ -90,6 +95,19 @@ export function createConnectionRoutes(
     const body = await c.req.json().catch(() => ({}));
     if (typeof body.tool !== "string" || !body.tool)
       return c.json({ error: "A tool name is required." }, 422);
+    const inspection = inspectToolArguments(body.arguments ?? {});
+    if (!inspection.safe)
+      return c.json(
+        {
+          error:
+            inspection.reason === "sensitive_content"
+              ? `These arguments were not sent: they carry a credential (${inspection.findings
+                  .map((finding) => `${finding.category} at ${finding.path}`)
+                  .join(", ")}). Call again without it.`
+              : "These arguments were not sent: they are too large or too deeply nested to check.",
+        },
+        400,
+      );
     return answer(async () =>
       Response.json(
         await callTool(await connection(body), body.tool, body.arguments ?? {}),

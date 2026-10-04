@@ -276,6 +276,18 @@ services:
     environment:
       DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
       VINHOMES_API_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
+  audit-retention:
+    # Removes audit rows older than AUDIT_RETENTION_DAYS; unset, it removes nothing. Run it from the
+    # host's scheduler, once a day:
+    #   docker compose --env-file deployment.env --profile upgrade run --rm audit-retention
+    profiles: [upgrade]
+    image: vinhomes-technical-tools:${VINHOMES_IMAGE_TAG:-latest}
+    command: ['bun', 'server/scripts/vinhomes-audit-retention.ts']
+    restart: 'no'
+    environment:
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+      VINHOMES_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-}
   storage:
     # Run by hand once, and again after restoring a database: creates the bucket, records it as the
     # place files are stored, and moves the photos an earlier release kept in the api-files volume.

@@ -44,7 +44,7 @@ async def host(path: str, payload: dict, *, timeout: float = 25) -> dict:
             body = reply.json()
     except (httpx.HTTPError, ValueError):
         raise HTTPException(503, 'The tool host did not answer') from None
-    if reply.status_code in (422, 502) and isinstance(body.get('error'), str):
+    if reply.status_code in (400, 422, 502) and isinstance(body.get('error'), str):
         raise HTTPException(reply.status_code, body['error'])
     if reply.status_code != 200:
         raise HTTPException(503, 'External connections are not configured on the tool host')
