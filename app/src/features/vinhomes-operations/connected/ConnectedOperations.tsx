@@ -12,7 +12,8 @@ import {
 } from "../layout/connected-operations-shell";
 import { WorkspaceFrame } from "../workspace/WorkspaceFrame";
 import { SessionControls } from "@/features/vinhomes-operations/connected/SessionControls";
-import { ConnectedAccounts } from "./ConnectedAccounts";
+import { AccountsPage } from "./admin/Accounts";
+import { AuditPage, ModelsPage, UnitsPage } from "./admin/Platform";
 import "./connected.css";
 import { OnsiteConsent, QuoteForm } from "./RepairQuote";
 import { Inquiries, LearnedAnswers, type Inquiry, type LearnedAnswer } from "./Inquiries";
@@ -393,6 +394,9 @@ export function ConnectedOperations() {
   const notices = (waiting.data || []).filter((s) => sessionState(s).group === "attention")
     .map((s) => ({ id: s.id, title: s.ticket_title, note: sessionState(s).label, to: `/operations/team?session=${encodeURIComponent(s.id)}` }));
   const coordinating = management && path === "team";
+  // The administrator's own pages: what it sets up for management to work with.
+  const adminPage = me?.role !== "admin" ? null : path === "accounts" ? <AccountsPage /> : path === "units" ? <UnitsPage />
+    : path === "connections" ? <ConnectionsPage /> : path === "models" ? <ModelsPage /> : path === "audit" ? <AuditPage /> : null;
   const plan = session?.room?.plan;
   const selected = detail?.ticket;
   const visible = tickets.filter((t) => {
@@ -429,7 +433,7 @@ export function ConnectedOperations() {
     <ConnectedOperationsShell name={me?.user.name} management={management} administrator={me?.role === "admin"} notices={notices} flush={coordinating}
       alerts={tickets.filter(t => t.priority === 'critical' && !['closed', 'cancelled'].includes(t.status)).map(t => ({id: t.id, title: t.title, location_json: {towerCode: catalog?.buildings.find(b => b.id === t.building_id)?.code}}))}>
       {coordinating ? <Coordination userId={me?.user.id || ""} /> : path === "agents" && management ? <AgentsPage />
-        : path === "connections" && me?.role === "admin" ? <ConnectionsPage /> :
+        : adminPage ? adminPage :
       <WorkspaceFrame
         contentOnly={!selected && !unavailable}
         title={connectedPages[path] || "Không gian làm việc"}
@@ -476,7 +480,7 @@ export function ConnectedOperations() {
             <button onClick={() => void run(load)}>Thử lại</button>
           </div>
         )}
-        {path === "accounts" && me?.role === "admin" ? <ConnectedAccounts/> : unavailable ? (
+        {unavailable ? (
           <section className="ws-card">
             <h2>Chức năng chưa được nối đầy đủ</h2>
             <p>

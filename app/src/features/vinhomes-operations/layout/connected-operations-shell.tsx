@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "@tanstack/react-router";
-import { IconBolt, IconChartBar, IconChecklist, IconMessages, IconPlugConnected, IconUsers } from "@tabler/icons-react";
+import { IconBolt, IconBuildingCommunity, IconChartBar, IconChecklist, IconCpu, IconHistory, IconMessages, IconPlugConnected, IconUsers } from "@tabler/icons-react";
 import { OperationsSidebarView } from "./operations-sidebar";
 import { OperationsHeaderView } from "./operations-header";
 import type { MenuId } from "../types/persona";
@@ -22,6 +22,9 @@ export const connectedPages: Record<string, string> = {
   approvals: "Phê duyệt",
   accounts: "Tài khoản",
   connections: "Kết nối ngoài",
+  units: "Đơn vị quản lý",
+  models: "Model",
+  audit: "Nhật ký",
   security: "An ninh hiện trường",
   sanitation: "Vệ sinh",
   contractor: "Nhà thầu",
@@ -38,7 +41,10 @@ const managementNav = [
 // What an administrator sets up for management to work with.
 const adminNav = [
   { page: "accounts", icon: <IconUsers className="size-4" stroke={1.75} /> },
+  { page: "units", icon: <IconBuildingCommunity className="size-4" stroke={1.75} /> },
   { page: "connections", icon: <IconPlugConnected className="size-4" stroke={1.75} /> },
+  { page: "models", icon: <IconCpu className="size-4" stroke={1.75} /> },
+  { page: "audit", icon: <IconHistory className="size-4" stroke={1.75} /> },
 ];
 
 export type ShellNotice = { id: string; title: string; note: string; to: string };
