@@ -403,9 +403,13 @@ def test_the_supervisor_proposes_a_plan_that_management_then_decides(database, r
         shown = management.get(f"/tickets/{ticket}/session").json()["room"]["plan"]
         assert shown["id"] == plan and shown["status"] == "management_pending"
         assert shown["proposal"]["expected_duration"] == "45 phút" and len(shown["proposal"]["steps"]) == 2
+        # The room's session list says who each session waits for, from the plan itself.
+        listed = lambda: next(s for s in management.get("/rooms/management-room/teams").json()["items"] if s["id"] == team)
+        assert (listed()["plan_status"], listed()["ticket_status"]) == ("management_pending", "open")
         decided = management.post(f"/plans/{plan}/management-decision",
                                   json={"decision": "approve", "version": shown["version"], "note": "Đồng ý phương án"})
         assert decided.status_code == 200 and decided.json()["status"] == "resident_pending", decided.text
+        assert listed()["plan_status"] == "resident_pending"
     with app(database) as c:
         # Management decided. The runtime reads the decision as an answer to the request it made.
         [decision] = [e for e in c.get(BASE + "/events", headers=SERVICE).json()["items"] if e["team_id"] == team]

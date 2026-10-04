@@ -207,7 +207,12 @@ async def teams(room_id: str, scope: Scope):
         text(
             # With the ticket's code and what the Supervisor runtime last reported, for the room's session list.
             "select tm.id,tm.ticket_id,tm.status,tm.state_version,tm.created_at,t.code as ticket_code,t.title as ticket_title,"
-            "tm.shared_state->'runtime' as runtime from agent_teams tm join tickets t on t.id=tm.ticket_id and t.tenant_id=tm.tenant_id "
+            "tm.shared_state->'runtime' as runtime,tm.updated_at,t.status as ticket_status,"
+            # The plan's own status says who the session waits for; the runtime's phase can lag behind it.
+            "(select p.status from vh_ticket_plans p where p.ticket_id=tm.ticket_id and p.tenant_id=tm.tenant_id"
+            " and p.proposed_by_agent_id=tm.supervisor_agent_id and p.created_at>=tm.created_at"
+            " order by p.created_at desc limit 1) as plan_status "
+            "from agent_teams tm join tickets t on t.id=tm.ticket_id and t.tenant_id=tm.tenant_id "
             "where tm.channel_id=:room order by tm.created_at desc limit 100"
         ),
         {"room": room_id},
