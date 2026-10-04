@@ -1,0 +1,433 @@
+{
+  "scope": "Reporting tools/application/metrics on dev_TeamHoang-HuyHoang; excludes external backend and runtime.",
+  "totals": {
+    "covered_lines": 601,
+    "num_statements": 659,
+    "percent_covered": 88.45726970033296,
+    "percent_covered_display": "88",
+    "missing_lines": 58,
+    "excluded_lines": 0,
+    "percent_statements_covered": 91.19878603945372,
+    "percent_statements_covered_display": "91",
+    "num_branches": 242,
+    "num_partial_branches": 44,
+    "covered_branches": 196,
+    "missing_branches": 46,
+    "percent_branches_covered": 80.99173553719008,
+    "percent_branches_covered_display": "81"
+  },
+  "files": {
+    "server/src/reporting/application/__init__.py": {
+      "summary": {
+        "covered_lines": 0,
+        "num_statements": 0,
+        "percent_covered": 100.0,
+        "percent_covered_display": "100",
+        "missing_lines": 0,
+        "excluded_lines": 0,
+        "percent_statements_covered": 100.0,
+        "percent_statements_covered_display": "100",
+        "num_branches": 0,
+        "num_partial_branches": 0,
+        "covered_branches": 0,
+        "missing_branches": 0,
+        "percent_branches_covered": 100.0,
+        "percent_branches_covered_display": "100"
+      },
+      "missing_lines": [],
+      "missing_branches": []
+    },
+    "server/src/reporting/application/client.py": {
+      "summary": {
+        "covered_lines": 83,
+        "num_statements": 94,
+        "percent_covered": 85.60606060606061,
+        "percent_covered_display": "86",
+        "missing_lines": 11,
+        "excluded_lines": 0,
+        "percent_statements_covered": 88.29787234042553,
+        "percent_statements_covered_display": "88",
+        "num_branches": 38,
+        "num_partial_branches": 6,
+        "covered_branches": 30,
+        "missing_branches": 8,
+        "percent_branches_covered": 78.94736842105263,
+        "percent_branches_covered_display": "79"
+      },
+      "missing_lines": [
+        25,
+        29,
+        33,
+        34,
+        57,
+        96,
+        120,
+        121,
+        125,
+        130,
+        177
+      ],
+      "missing_branches": [
+        [
+          24,
+          25
+        ],
+        [
+          28,
+          29
+        ],
+        [
+          56,
+          57
+        ],
+        [
+          84,
+          96
+        ],
+        [
+          120,
+          -119
+        ],
+        [
+          120,
+          121
+        ],
+        [
+          124,
+          125
+        ],
+        [
+          133,
+          177
+        ]
+      ]
+    },
+    "server/src/reporting/metrics/__init__.py": {
+      "summary": {
+        "covered_lines": 0,
+        "num_statements": 0,
+        "percent_covered": 100.0,
+        "percent_covered_display": "100",
+        "missing_lines": 0,
+        "excluded_lines": 0,
+        "percent_statements_covered": 100.0,
+        "percent_statements_covered_display": "100",
+        "num_branches": 0,
+        "num_partial_branches": 0,
+        "covered_branches": 0,
+        "missing_branches": 0,
+        "percent_branches_covered": 100.0,
+        "percent_branches_covered_display": "100"
+      },
+      "missing_lines": [],
+      "missing_branches": []
+    },
+    "server/src/reporting/metrics/normalize.py": {
+      "summary": {
+        "covered_lines": 87,
+        "num_statements": 100,
+        "percent_covered": 83.09859154929578,
+        "percent_covered_display": "83",
+        "missing_lines": 13,
+        "excluded_lines": 0,
+        "percent_statements_covered": 87.0,
+        "percent_statements_covered_display": "87",
+        "num_branches": 42,
+        "num_partial_branches": 11,
+        "covered_branches": 31,
+        "missing_branches": 11,
+        "percent_branches_covered": 73.80952380952381,
+        "percent_branches_covered_display": "74"
+      },
+      "missing_lines": [
+        21,
+        41,
+        42,
+        65,
+        71,
+        81,
+        84,
+        108,
+        119,
+        130,
+        156,
+        162,
+        168
+      ],
+      "missing_branches": [
+        [
+          20,
+          21
+        ],
+        [
+          64,
+          65
+        ],
+        [
+          70,
+          71
+        ],
+        [
+          76,
+          81
+        ],
+        [
+          83,
+          84
+        ],
+        [
+          107,
+          108
+        ],
+        [
+          118,
+          119
+        ],
+        [
+          129,
+          130
+        ],
+        [
+          155,
+          156
+        ],
+        [
+          161,
+          162
+        ],
+        [
+          167,
+          168
+        ]
+      ]
+    },
+    "server/src/reporting/tools/__init__.py": {
+      "summary": {
+        "covered_lines": 6,
+        "num_statements": 7,
+        "percent_covered": 77.77777777777777,
+        "percent_covered_display": "78",
+        "missing_lines": 1,
+        "excluded_lines": 0,
+        "percent_statements_covered": 85.71428571428571,
+        "percent_statements_covered_display": "86",
+        "num_branches": 2,
+        "num_partial_branches": 1,
+        "covered_branches": 1,
+        "missing_branches": 1,
+        "percent_branches_covered": 50.0,
+        "percent_branches_covered_display": "50"
+      },
+      "missing_lines": [
+        13
+      ],
+      "missing_branches": [
+        [
+          9,
+          13
+        ]
+      ]
+    },
+    "server/src/reporting/tools/catalog.py": {
+      "summary": {
+        "covered_lines": 7,
+        "num_statements": 7,
+        "percent_covered": 100.0,
+        "percent_covered_display": "100",
+        "missing_lines": 0,
+        "excluded_lines": 0,
+        "percent_statements_covered": 100.0,
+        "percent_statements_covered_display": "100",
+        "num_branches": 0,
+        "num_partial_branches": 0,
+        "covered_branches": 0,
+        "missing_branches": 0,
+        "percent_branches_covered": 100.0,
+        "percent_branches_covered_display": "100"
+      },
+      "missing_lines": [],
+      "missing_branches": []
+    },
+    "server/src/reporting/tools/contracts.py": {
+      "summary": {
+        "covered_lines": 164,
+        "num_statements": 177,
+        "percent_covered": 87.67772511848341,
+        "percent_covered_display": "88",
+        "missing_lines": 13,
+        "excluded_lines": 0,
+        "percent_statements_covered": 92.65536723163842,
+        "percent_statements_covered_display": "93",
+        "num_branches": 34,
+        "num_partial_branches": 13,
+        "covered_branches": 21,
+        "missing_branches": 13,
+        "percent_branches_covered": 61.76470588235294,
+        "percent_branches_covered_display": "62"
+      },
+      "missing_lines": [
+        31,
+        39,
+        45,
+        63,
+        69,
+        73,
+        131,
+        133,
+        135,
+        137,
+        140,
+        143,
+        146
+      ],
+      "missing_branches": [
+        [
+          30,
+          31
+        ],
+        [
+          38,
+          39
+        ],
+        [
+          44,
+          45
+        ],
+        [
+          62,
+          63
+        ],
+        [
+          68,
+          69
+        ],
+        [
+          70,
+          73
+        ],
+        [
+          130,
+          131
+        ],
+        [
+          132,
+          133
+        ],
+        [
+          134,
+          135
+        ],
+        [
+          136,
+          137
+        ],
+        [
+          139,
+          140
+        ],
+        [
+          142,
+          143
+        ],
+        [
+          145,
+          146
+        ]
+      ]
+    },
+    "server/src/reporting/tools/facade.py": {
+      "summary": {
+        "covered_lines": 254,
+        "num_statements": 274,
+        "percent_covered": 91.75,
+        "percent_covered_display": "92",
+        "missing_lines": 20,
+        "excluded_lines": 0,
+        "percent_statements_covered": 92.7007299270073,
+        "percent_statements_covered_display": "93",
+        "num_branches": 126,
+        "num_partial_branches": 13,
+        "covered_branches": 113,
+        "missing_branches": 13,
+        "percent_branches_covered": 89.68253968253968,
+        "percent_branches_covered_display": "90"
+      },
+      "missing_lines": [
+        59,
+        62,
+        63,
+        65,
+        86,
+        118,
+        144,
+        166,
+        253,
+        294,
+        331,
+        350,
+        351,
+        352,
+        354,
+        357,
+        362,
+        367,
+        495,
+        498
+      ],
+      "missing_branches": [
+        [
+          58,
+          59
+        ],
+        [
+          64,
+          65
+        ],
+        [
+          117,
+          118
+        ],
+        [
+          143,
+          144
+        ],
+        [
+          165,
+          166
+        ],
+        [
+          252,
+          253
+        ],
+        [
+          287,
+          294
+        ],
+        [
+          327,
+          331
+        ],
+        [
+          346,
+          350
+        ],
+        [
+          353,
+          354
+        ],
+        [
+          356,
+          357
+        ],
+        [
+          361,
+          362
+        ],
+        [
+          366,
+          367
+        ]
+      ]
+    }
+  }
+}
