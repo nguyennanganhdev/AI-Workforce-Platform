@@ -157,9 +157,49 @@ chưa có loại sự cố nên báo cáo ghi "Không phân loại".
 - Trình duyệt, tài khoản thật, model thật: một yêu cầu đi hết vòng đời (ticket `VH-17DF1C67A8EC` `closed`, phiên
   `completed`). Cư dân không còn thấy mã `VH-…` trong chat và danh sách yêu cầu.
 - Phiên của ticket `VH-B8F1E299CE24` (tạo sáng 04/10): backend ghi BQL đã duyệt, chờ cư dân, nhưng Supervisor vẫn ở
-  `waiting_management`, nên phòng nhóm ghi "chờ BQL duyệt phương án". Các phiên tạo từ chiều 04/10 không bị. Chưa
-  tìm nguyên nhân.
+  `waiting_management`. Các phiên tạo từ chiều 04/10 không bị; chưa tìm nguyên nhân của độ lệch. Màn Điều phối mới
+  đọc trạng thái phương án từ backend nên đã ghi đúng "Chờ cư dân đồng ý phương án".
 - Ảnh chụp màn hình BQL và admin: `.codex-artifacts/bql-ui-2026-10-04/` (thư mục không đưa vào git).
+
+## Giao diện Ban quản lý làm lại theo kiểu OpenBot (04/10, đêm muộn; chạy local)
+
+Menu của BQL trước đó có 9 mục, trong đó 6 mục là cùng một danh sách công việc với bộ lọc khác nhau, và phòng nhóm
+là một trang dài ghép agent, phiên, chat và bảng công việc. Nay:
+
+- **Menu 4 mục:** Điều phối, Công việc, Agent, Báo cáo (admin thêm Quản lý tài khoản). Đăng nhập BQL vào thẳng
+  Điều phối. Các trang cũ (`/operations/triage`, `incidents`, `work-orders`, `qc`, `completed-tasks`, trang tổng
+  quan) vẫn mở được bằng địa chỉ nhưng không còn trong menu. Câu hỏi của cư dân cần BQL trả lời và câu trả lời chờ
+  duyệt đưa vào tri thức, trước chỉ có ở "Tiếp nhận phản ánh", nay hiện ở Công việc.
+- **Điều phối** (`/operations/team`, mã ở `app/src/features/vinhomes-operations/connected/coordination/`): bên trái là
+  danh sách phiên xếp theo người phải làm ("Cần bạn xử lý", "Đang điều phối", "Đã xong"); bên phải là một hội thoại.
+  Hội thoại của phòng chỉ gồm trao đổi chung và câu hỏi cho agent (`@agent`). Hội thoại của một phiên gồm lời cư dân,
+  việc Supervisor và agent đã làm, thẻ phương án có nút Duyệt/Từ chối, ô hỏi agent trong phiên, nút tạm dừng/chạy
+  tiếp/dừng, và thẻ "Duyệt đóng phiên" khi cư dân đã xác nhận. Không hiện mã `VH-…`.
+- **Thông báo:** số phiên chờ BQL hiện ở mục Điều phối, ở chuông (mỗi dòng mở thẳng phiên đó) và trên tiêu đề tab.
+- **Agent** (`/operations/agents`): thẻ cho agent đang làm việc; bản nháp và agent đã thu hồi gập lại bên dưới. Hộp
+  cấu hình chia 4 thẻ: Cấu hình, Phạm vi và công cụ (tool gom theo Báo cáo/An ninh/Kỹ thuật), Đánh giá, Phát hành.
+  Nút "Chạy đánh giá" khóa khi còn sửa đổi chưa lưu, vì đánh giá chạy trên bản đã lưu ở máy chủ.
+- **API:** `GET /rooms/{room}/teams` trả thêm `plan_status`, `ticket_status`, `updated_at`. Trạng thái phiên trên màn
+  hình lấy từ trạng thái phương án do backend ghi, không lấy từ pha Supervisor báo lần cuối; nhờ đó hết kiểu phiên đã
+  duyệt mà vẫn ghi "chờ BQL duyệt" (ticket `VH-B8F1E299CE24`).
+
+Kiểm chứng:
+
+- Test giao diện mới `app/tests/operations-coordination.test.tsx` 4/4 (mỗi file test giao diện chạy riêng một tiến
+  trình, như các file cũ); typecheck đạt; backend 71 đạt, 7 bỏ qua.
+- Trình duyệt, tài khoản thật: BQL mở phiên từ chuông, duyệt phương án trong Điều phối (phương án sang
+  `resident_pending`, Supervisor sang `waiting_resident_plan`, chuông giảm 7 → 6); một yêu cầu đi từ phân công tới thi
+  công, nghiệm thu, cư dân xác nhận, rồi BQL duyệt đóng phiên trong Điều phối (14/14 bước, ticket `VH-8B066AD249B4`
+  `closed`, phiên `completed`). Đã chụp cả bản màn hình điện thoại (390px).
+- **Chưa kiểm bằng model thật trên màn mới:** hỏi agent trong phiên, và phiên mới do Supervisor lập phương án. Khóa
+  model của stack local trả `429 insufficient_quota` (hết số dư) từ khoảng 20:29 ngày 04/10; phiên tạo lúc đó dừng
+  với lý do `model_unavailable` và màn Điều phối ghi rõ lý do này. Chạy lại `flow_full.py` sau khi nạp lại.
+
+Giữ nguyên, chưa đổi: trang chi tiết công việc vẫn có khối "Phiên điều phối" kiểu cũ (kỹ thuật viên cũng đọc khối
+này) kèm liên kết sang Điều phối; danh sách Công việc vẫn hiện mã `VH-…` cho nhân viên đối chiếu; menu của kỹ thuật
+viên không đổi; đăng nhập OpenBot và tài khoản nghiệp vụ vẫn là hai hệ thống.
+
+Ảnh chụp: `.codex-artifacts/bql-ui-v2/` (không đưa vào git).
 
 ## Thứ tự hoàn thiện tiếp
 
