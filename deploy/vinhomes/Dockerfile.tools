@@ -10,7 +10,7 @@ COPY server/src ./server/src
 COPY shared ./shared
 # What the upgrade job needs: the migrations, the migrator and the grants of the two runtime roles.
 COPY server/drizzle ./server/drizzle
-COPY server/scripts/migrate.ts server/scripts/grant_technical_api_role.sql ./server/scripts/
+COPY server/scripts/migrate.ts server/scripts/grant_technical_api_role.sql server/scripts/grant_routines_role.sql ./server/scripts/
 COPY services/vinhomes-api/scripts/grant_v3_api_role.sql ./services/vinhomes-api/scripts/
 # Beside the server's scripts, so it resolves the server's packages as they do.
 COPY deploy/vinhomes/upgrade.ts ./server/scripts/vinhomes-upgrade.ts

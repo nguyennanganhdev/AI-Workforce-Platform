@@ -14,10 +14,12 @@ Người đọc: người dựng hoặc vận hành stack trên một máy chủ
 | `agents-net` | Giữ không gian mạng chung của `coordination` và `openbot` | không có |
 | `knowledge` | Tra cứu tri thức cho Lễ tân | 8787 |
 | `technical-tools` | Tool đọc kỹ thuật | 8788 |
+| `routines` | Lịch chạy agent của BQL: giữ lịch và, mỗi phút, giao lượt đến hạn cho `api` đăng vào phòng nhóm | 8789 |
 | `factory` | Agent Factory | 4010 |
 | `operations` | Giao diện Operations (bản build), chuyển tiếp `/api/business` kèm cookie | 3020, mở ra máy chủ |
 | `resident` | Ứng dụng cư dân (file tĩnh sau nginx), chuyển tiếp `/api/business` | 3011, mở ra máy chủ |
-| `upgrade` | Job chạy tay: migration, cấp lại quyền cho hai role giới hạn, đăng ký tool kỹ thuật | không có |
+| `upgrade` | Job chạy tay: migration, cấp lại quyền cho ba role giới hạn, đăng ký tool kỹ thuật | không có |
+| `audit-retention` | Job chạy theo lịch của máy chủ: xóa nhật ký cũ hơn `AUDIT_RETENTION_DAYS` | không có |
 | `catalogue` | Job chạy tay sau `upgrade`: đăng ký tool của cổng tool API (báo cáo, an ninh) | không có |
 | `minio` | Nơi lưu ảnh và tệp (bucket riêng tư, giao thức S3); dữ liệu nằm trong volume `minio-data` | 9000, không mở ra máy chủ |
 | `storage` | Job chạy tay: tạo bucket, ghi nhận nơi lưu, chuyển ảnh của bản cũ từ volume `api-files` sang bucket | không có |
@@ -35,6 +37,10 @@ HTTPS hoặc loopback, nên hai dịch vụ gặp nhau trên loopback và không
    script trong `services/vinhomes-api/scripts/`, hoặc restore bản sao lưu theo
    `docs/teams/chien/DATABASE_BACKUP_AND_ENV_2026-10-04.md`. Migration và quyền của từng bản phát hành do job
    `upgrade` lo (xem "Chạy").
+   Thêm role thứ ba cho dịch vụ lịch chạy (`ROUTINES_DATABASE_URL`), tạo một lần bằng tài khoản chủ:
+   `CREATE ROLE vinhomes_routines LOGIN PASSWORD '…' NOSUPERUSER NOBYPASSRLS;`. Không dùng chung role của
+   `technical-tools`: dịch vụ đó từ chối chạy nếu role của nó được sửa hoặc xóa dữ liệu, còn lịch thì phải cập nhật
+   mỗi lần chạy.
 2. Một cơ sở dữ liệu riêng cho checkpoint của Supervisor, chủ sở hữu là role không phải superuser. Bảng được tạo
    khi `coordination` khởi động lần đầu.
 3. Kho tri thức đã phát hành (`KNOWLEDGE_BASE_ID`) và ít nhất một agent chuyên môn đã phát hành trong phòng BQL.
@@ -59,10 +65,23 @@ docker compose --env-file deployment.env ps
 ```
 
 Job `upgrade` cần `MIGRATION_DATABASE_URL` (chủ sở hữu cơ sở dữ liệu); không dịch vụ đang chạy nào được cấp URL này.
-Nó in `migrations-applied`, `grants-applied` kèm tên hai role (lấy từ chính URL kết nối của `api` và
-`technical-tools`), rồi `technical-tools-registered`. Job `catalogue` in `gateway-tools-registered` kèm tên tool và xóa
+Nó in `migrations-applied`, `grants-applied` kèm tên ba role (lấy từ chính URL kết nối của `api`,
+`technical-tools` và `routines`), rồi `technical-tools-registered`. Job `catalogue` in `gateway-tools-registered` kèm tên tool và xóa
 tool mà cổng không còn phục vụ. Agent chỉ được cấp tool đã đăng ký, nên chạy lại cả hai job mỗi lần lên bản mới,
 trước `up -d`.
+
+### Lịch chạy agent
+
+Trong trang Agent, BQL đặt lịch cho một agent đã phát hành: chỉ dẫn, ngày lặp lại và giờ (múi giờ Việt Nam). Đến giờ,
+`routines` mở một lượt chạy và giao cho `api`; `api` đăng chỉ dẫn vào phòng nhóm dưới tên người đặt lịch, nhắc agent
+đó, và Supervisor trả lời như mọi câu hỏi khác trong phòng. Kết quả của câu hỏi (đã trả lời, lỗi) đóng lượt chạy.
+
+- Giới hạn có sẵn của nền tảng: mỗi lịch cách nhau ít nhất 15 phút, mỗi người tối đa 20 lịch đang bật, một lịch lỗi
+  10 lần liên tiếp thì tự tắt. Lượt đến hạn khi `routines` ngừng quá 10 phút thì bỏ qua, không chạy bù.
+- Trước mỗi lượt, `api` kiểm lại quyền của người đặt lịch và bản phát hành của agent; không còn thì lượt đó ghi lỗi
+  kèm lý do và không có gì được đăng.
+- Lượt mà agent không trả lời trong 10 phút được ghi "bỏ qua".
+- `ROUTINES_SERVICE_TOKEN` là token chung của `api` và `routines` (cả hai chiều).
 
 ### Model theo vai trò
 

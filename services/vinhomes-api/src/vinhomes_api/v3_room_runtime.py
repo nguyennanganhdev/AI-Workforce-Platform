@@ -11,6 +11,7 @@ from sqlalchemy import text
 from .v3_coordination import Scope, TENANT, RUNTIME_BACKEND, POLICY_VERSION
 from .v3_room_agents import managed_room
 from .v3_audit import audit
+from .v3_routines import run_closed
 
 router = APIRouter(prefix='/internal/coordination/v1', tags=['Room conversation runtime'])
 
@@ -58,6 +59,7 @@ async def turn(message_id: UUID, agent_id: str, db: Scope):
     if not version:
         # Commit a definite refusal; no canned agent answer is produced.
         await db.execute(text("update message_mentions set status='refused' where message_id=:message and agent_id=:agent"), {'message': message_id, 'agent': agent_id})
+        await run_closed(db, mention['body'], 'failed', 'Agent không còn bản phát hành đang dùng trong phòng này.')
         return {'refused': True, 'reason': 'No active published version in this room'}
     principal = (await db.execute(text(f'''insert into execution_principals(tenant_id,kind,user_id,status)
         values({TENANT},'user',:actor,'active') on conflict (tenant_id,user_id) where kind='user'
@@ -131,6 +133,8 @@ async def outcome(message_id: UUID, agent_id: str, body: Outcome, db: Scope):
             values({TENANT},:room,:seq,'agent',:agent,'room',cast(:body as jsonb),:reply,:run)'''),
             {'room': mention['channel_id'], 'seq': seq, 'agent': agent_id, 'body': json.dumps({'text': body.content, 'source': 'room-agent'}), 'reply': message_id, 'run': body.run_id})
     await db.execute(text("update message_mentions set status=:status where message_id=:message and agent_id=:agent"), {'message': message_id, 'agent': agent_id, 'status': body.status})
+    await run_closed(db, mention['body'], 'succeeded' if body.status == 'done' else 'failed',
+                     None if body.status == 'done' else 'Agent không trả lời được.')
     await db.execute(text("update agent_runs set status=:status,finished_at=now() where id=:run"), {'run': body.run_id, 'status': 'succeeded' if body.status == 'done' else 'failed'})
     await db.execute(text("update runtime_session_bindings set status='closed' where id=(select binding_id from agent_runs where id=:run) and audience_kind='personal'"), {'run': body.run_id})
     await audit(db, mention['requested_by'], 'room.agent_answered', 'agent_run', str(body.run_id), {'status': body.status})

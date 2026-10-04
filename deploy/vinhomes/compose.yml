@@ -25,6 +25,9 @@ services:
       VINHOMES_API_COORDINATION_URL: http://coordination:4300
       VINHOMES_API_TECHNICAL_TOOLS_URL: http://technical-tools:8788/internal/technical/v1
       VINHOMES_API_TECHNICAL_TOOLS_TOKEN: ${TECHNICAL_TOOLS_SERVICE_TOKEN:?tool token required}
+      # Schedules of management's agents: the `routines` service keeps them and hands back what is due.
+      VINHOMES_API_ROUTINES_URL: http://routines:8789/internal/routines/v1
+      VINHOMES_API_ROUTINES_TOKEN: ${ROUTINES_SERVICE_TOKEN:?schedule token required}
       VINHOMES_API_REPAIR_CATEGORY_CODES: ${REPAIR_CATEGORY_CODES:-}
       # 1 once the web apps are only reached over https (the proxy): the session cookie is then never sent in clear.
       VINHOMES_API_SECURE_COOKIES: ${SECURE_COOKIES:-0}
@@ -181,6 +184,23 @@ services:
       timeout: 8s
       retries: 5
       test: ['CMD', 'bun', '-e', 'process.exit((await fetch("http://127.0.0.1:8788/health")).ok ? 0 : 1)']
+  routines:
+    # Schedules of management's agents. Its own database role: the tool host's may not update or delete.
+    image: vinhomes-technical-tools:${VINHOMES_IMAGE_TAG:-latest}
+    command: ['bun', 'server/src/room-routines/serve.ts']
+    restart: unless-stopped
+    environment:
+      ROUTINES_HOST: 0.0.0.0
+      ROUTINES_PORT: '8789'
+      ROUTINES_DATABASE_URL: ${ROUTINES_DATABASE_URL:?restricted schedule database URL required}
+      ROUTINES_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
+      ROUTINES_SERVICE_TOKEN: ${ROUTINES_SERVICE_TOKEN:?schedule token required}
+      ROUTINES_API_URL: http://api:8000
+    healthcheck:
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      test: ['CMD', 'bun', '-e', 'process.exit((await fetch("http://127.0.0.1:8789/health")).ok ? 0 : 1)']
   factory:
     image: vinhomes-factory:${VINHOMES_IMAGE_TAG:-latest}
     build:
@@ -266,6 +286,7 @@ services:
       VINHOMES_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
       VINHOMES_API_DATABASE_URL: ${VINHOMES_API_DATABASE_URL:?restricted business database URL required}
       TECHNICAL_API_DATABASE_URL: ${TECHNICAL_API_DATABASE_URL:?restricted tools database URL required}
+      ROUTINES_DATABASE_URL: ${ROUTINES_DATABASE_URL:?restricted schedule database URL required}
   catalogue:
     # Run by hand after `upgrade`: registers the tools the API's gateway serves, so agents can be granted them.
     #   docker compose --env-file deployment.env --profile upgrade run --rm catalogue

@@ -42,6 +42,12 @@ if (Test-Path -LiteralPath $toolsFile) {
     $env:VINHOMES_API_TECHNICAL_TOOLS_URL = 'http://127.0.0.1:8788/internal/technical/v1'
     $env:VINHOMES_API_TECHNICAL_TOOLS_TOKEN = (Get-Content -LiteralPath $toolsFile | Where-Object { $_.StartsWith('TECHNICAL_TOOLS_SERVICE_TOKEN=') }) -replace '^TECHNICAL_TOOLS_SERVICE_TOKEN=', ''
 }
+# Optional: routines.env (scripts/setup_routines.py) turns on schedules for management's agents.
+$routinesFile = Join-Path $serviceRoot '.local-connected/routines.env'
+if (Test-Path -LiteralPath $routinesFile) {
+    $env:VINHOMES_API_ROUTINES_URL = 'http://127.0.0.1:8789/internal/routines/v1'
+    $env:VINHOMES_API_ROUTINES_TOKEN = (Get-Content -LiteralPath $routinesFile | Where-Object { $_.StartsWith('ROUTINES_SERVICE_TOKEN=') }) -replace '^ROUTINES_SERVICE_TOKEN=', ''
+}
 $env:VINHOMES_API_DEMO_MODE = '0'
 $env:VINHOMES_API_DEV_USER_ID = ''
 $env:VINHOMES_API_TENANT_KEY = ''

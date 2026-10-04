@@ -115,6 +115,12 @@ async def mention_status(room_id: str, message_id: UUID,
              summary="Post to my room, optionally requesting an agent mention")
 async def post_room_message(room_id: str, body: RoomMessage,
                             request: Request, scope: MemberScope) -> dict[str, object]:
+    return await post_message(room_id, body, request, scope)
+
+
+async def post_message(room_id: str, body: RoomMessage, request: Request, scope: MemberScope, *,
+                       routine_run_id: str | None = None) -> dict[str, object]:
+    """Post as the scope's actor. A schedule's firing (v3_routines) names its run, which the message then carries."""
     db, actor_id = scope
     await _room(scope, room_id, lock=True)
     previous = await db.execute(text("""
@@ -125,6 +131,8 @@ async def post_room_message(room_id: str, body: RoomMessage,
            "client_message_id": body.client_message_id})
     row = previous.mappings().first()
     content = {"text": body.text, "mentionAgentId": body.mention_agent_id}
+    if routine_run_id:
+        content["routineRunId"] = routine_run_id
     if row is not None:
         if row["body"] != content:
             raise HTTPException(409, "clientMessageId already used with different content")

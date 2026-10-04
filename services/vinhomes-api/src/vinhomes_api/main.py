@@ -193,6 +193,9 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(connections_router)
     from .v3_admin import router as admin_router
     app.include_router(admin_router)
+    from .v3_routines import internal as routine_firing_router, router as routines_router
+    app.include_router(routines_router)
+    app.include_router(routine_firing_router)
     app.include_router(learning_router)
     from .resident_api import ticket_intake_router
     app.include_router(ticket_intake_router)

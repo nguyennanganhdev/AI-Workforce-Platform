@@ -49,4 +49,6 @@ GRANT INSERT ON vh_resident_submissions,vh_resident_case_tickets,vh_resident_res
   vh_resident_command_receipts TO vinhomes_v3_api;
 -- SELECT FOR UPDATE serializes dispatch capacity checks on the staff row.
 GRANT UPDATE (availability) ON staff_profiles TO vinhomes_v3_api;
+-- A schedule's run is closed by what became of its mention in the room; the schedule service keeps the rest.
+GRANT UPDATE (status, finished_at, error) ON routine_runs TO vinhomes_v3_api;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO vinhomes_v3_api;

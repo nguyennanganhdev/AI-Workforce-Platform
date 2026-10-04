@@ -14,6 +14,7 @@ import { configureManagedAgentMutationOptions, constructManagedAgentMutationOpti
   decideManagedAgentMutationOptions, evaluateManagedAgentMutationOptions, revokeManagedAgentMutationOptions } from "@/lib/agent-management/mutations";
 import { roomsQueryOptions } from "@/lib/rooms/queries";
 import { queryClient } from "@/query-client";
+import { AgentSchedules } from "./AgentSchedules";
 
 const SERVERS: Record<string, string> = { reporting: "Báo cáo", "security-tools": "An ninh", "technical-tools": "Kỹ thuật" };
 
@@ -184,6 +185,7 @@ function AgentEditor({ roomId, agent, catalogue, onClose }: {roomId: string; age
           <TabsTrigger value="scope">Phạm vi và công cụ</TabsTrigger>
           <TabsTrigger value="evaluation">Đánh giá</TabsTrigger>
           <TabsTrigger value="release">Phát hành</TabsTrigger>
+          {agent.purpose !== "supervisor" && <TabsTrigger value="schedule">Lịch chạy</TabsTrigger>}
         </TabsList>
         <TabsContent value="configuration" className="space-y-4 pt-3">
           <div className="space-y-1.5"><label htmlFor="agent-description" className="text-sm font-medium">Nhiệm vụ</label>
@@ -250,6 +252,10 @@ function AgentEditor({ roomId, agent, catalogue, onClose }: {roomId: string; age
               }}>Thu hồi</Button>}
             </div>
           </> : <p className="text-sm text-muted-foreground">Chưa có bản nào để phát hành. Khi đánh giá đạt cả 6 ca, bạn phát hành ngay tại đây, không cần quản trị viên duyệt.</p>}
+        </TabsContent>
+        <TabsContent value="schedule" className="pt-3">
+          {agent.published ? <AgentSchedules roomId={roomId} agentId={agent.id} />
+            : <p className="text-sm text-muted-foreground">Phát hành agent trước khi đặt lịch: lịch chỉ chạy với bản đang phát hành.</p>}
         </TabsContent>
       </Tabs>
       {error && <p role="alert" className="text-sm text-destructive">{error.message}</p>}

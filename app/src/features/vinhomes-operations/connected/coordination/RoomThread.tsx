@@ -51,7 +51,7 @@ export function RoomThread({ roomId, name, messages, agents, userId, onBack }: {
           const asked = agents.find((a) => a.id === m.body.mentionAgentId);
           return (
             <Said key={m.id} at={m.created_at} mine={mine} agent={!!agent} who={mine ? "Bạn" : agent?.name || m.sender_name || "Thành viên"}
-              footer={asked ? `Hỏi @${asked.name}${m.mention_status ? ` · ${mentionStatus[m.mention_status] || m.mention_status}` : ""}` : undefined}>
+              footer={asked ? `${m.body.routineRunId ? "Theo lịch · " : ""}Hỏi @${asked.name}${m.mention_status ? ` · ${mentionStatus[m.mention_status] || m.mention_status}` : ""}` : undefined}>
               {m.body.text || ""}
             </Said>
           );

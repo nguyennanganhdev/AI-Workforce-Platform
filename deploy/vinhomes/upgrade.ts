@@ -1,5 +1,5 @@
 /**
- * Bring an existing database up to this release: the migrations, then the grants of the two
+ * Bring an existing database up to this release: the migrations, then the grants of the three
  * restricted roles the services connect with.
  *
  * A release that adds a table or a column also adds a line to the grant scripts, so the grants
@@ -31,6 +31,7 @@ function roleOf(setting: string): string {
 }
 const apiRole = roleOf("VINHOMES_API_DATABASE_URL");
 const toolsRole = roleOf("TECHNICAL_API_DATABASE_URL");
+const routinesRole = roleOf("ROUTINES_DATABASE_URL");
 
 const migrated = Bun.spawnSync(["bun", "server/scripts/migrate.ts"], {
   stdout: "inherit",
@@ -52,10 +53,17 @@ try {
   const tools = (
     await readFile("server/scripts/grant_technical_api_role.sql", "utf8")
   ).replaceAll("vinhomes_technical_api", toolsRole);
+  const routines = (
+    await readFile("server/scripts/grant_routines_role.sql", "utf8")
+  ).replaceAll("vinhomes_routines", routinesRole);
   await sql.unsafe(api);
   await sql.unsafe(tools);
+  await sql.unsafe(routines);
   console.log(
-    JSON.stringify({ type: "grants-applied", roles: [apiRole, toolsRole] }),
+    JSON.stringify({
+      type: "grants-applied",
+      roles: [apiRole, toolsRole, routinesRole],
+    }),
   );
   const tenant = process.env.VINHOMES_TENANT_ID;
   if (!tenant) throw new Error("VINHOMES_TENANT_ID is required");
