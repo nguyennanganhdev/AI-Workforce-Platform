@@ -34,8 +34,9 @@ const app = new Hono().route(
   "/internal/technical/v1",
   createSessionToolRoutes(deps, token),
 );
+app.get("/health", (c) => c.json({ status: "ok" }));
 const port = Number(process.env.TECHNICAL_TOOLS_PORT ?? 8788);
-Bun.serve({ hostname: "127.0.0.1", port, fetch: app.fetch });
+Bun.serve({ hostname: process.env.TECHNICAL_TOOLS_HOST ?? "127.0.0.1", port, fetch: app.fetch });
 console.log(
   `Technical tools for sessions on http://127.0.0.1:${port}/internal/technical/v1`,
 );

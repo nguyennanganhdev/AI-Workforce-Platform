@@ -58,13 +58,41 @@ export async function sessionRun(
         join agent_releases rel on rel.tenant_id=v.tenant_id and rel.version_id=v.id
           and rel.status='published' and rel.revoked_at is null
         join workspaces w on w.tenant_id=tm.tenant_id and w.id=tm.workspace_id and w.status='active'
-        where r.tenant_id=${tenantId} and r.id=${runId} and r.status='running'`,
+        join agents a on a.tenant_id=r.tenant_id and a.id=r.agent_id and a.status='active'
+        join execution_principals p on p.tenant_id=r.tenant_id and p.id=r.authority_principal_id
+          and p.status='active' and p.authz_version=r.authority_version
+        join runtime_session_bindings b on b.tenant_id=r.tenant_id and b.id=r.binding_id and b.status='active'
+        where r.tenant_id=${tenantId} and r.id=${runId} and r.status='running'
+        union all
+        select r.agent_id,r.authority_principal_id as principal_id,v.version_no,
+          v.config->'mcp_tools' as tools,a.workspace_id,w.management_unit_id
+        from agent_runs r
+        join agent_versions v on v.tenant_id=r.tenant_id and v.id=r.version_id
+        join agents a on a.tenant_id=r.tenant_id and a.id=r.agent_id and a.status='active'
+        join agent_releases rel on rel.tenant_id=v.tenant_id and rel.version_id=v.id
+          and rel.status='published' and rel.revoked_at is null
+        join execution_principals p on p.tenant_id=r.tenant_id and p.id=r.authority_principal_id
+          and p.kind='user' and p.user_id=r.actor_user_id and p.status='active' and p.authz_version=r.authority_version
+        join runtime_session_bindings binding on binding.tenant_id=r.tenant_id and binding.id=r.binding_id
+          and binding.audience_kind='personal' and binding.customer_user_id=r.actor_user_id and binding.status='active'
+        join channels c on c.tenant_id=r.tenant_id and c.id=r.channel_id and c.workspace_id=a.workspace_id
+          and c.kind='management' and c.deleted_at is null
+        join workspaces w on w.tenant_id=a.tenant_id and w.id=a.workspace_id and w.status='active'
+        join users u on u.id=r.actor_user_id and u.status='active'
+        join tenant_memberships membership on membership.tenant_id=r.tenant_id and membership.user_id=u.id and membership.status='active'
+        where r.tenant_id=${tenantId} and r.id=${runId} and r.status='running' and r.team_member_id is null
+          and (exists(select 1 from platform_admins where user_id=u.id)
+            or (exists(select 1 from channel_memberships cm where cm.tenant_id=r.tenant_id and cm.channel_id=c.id and cm.user_id=u.id)
+              and exists(select 1 from scoped_user_roles role join access_scopes scope on scope.id=role.scope_id and scope.tenant_id=role.tenant_id
+                where role.membership_id=membership.id and role.role_code='management' and role.valid_from<=now()
+                  and (role.valid_to is null or role.valid_to>now())
+                  and (scope.kind='tenant' or (scope.kind='management' and scope.management_unit_id=w.management_unit_id)))))`,
   );
   if (!run?.management_unit_id) return null;
   const configured: unknown =
     typeof run.tools === "string" ? JSON.parse(run.tools) : run.tools;
   const granted = new Set(
-    (Array.isArray(configured) ? configured : []).map(
+    (Array.isArray(configured) ? configured : []).filter((tool) => tool?.server_id === "technical-tools").map(
       (tool: { name?: unknown }) => String(tool?.name ?? ""),
     ),
   );

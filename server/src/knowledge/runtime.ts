@@ -17,10 +17,13 @@ const authority = z.object({
 
 export function createBackendKnowledgeAuthorization(options: {
   baseUrl: string; tenantId: string; knowledgeBaseId: string; fetch?: typeof fetch;
+  internalHttpHost?: string;
 }): AuthorizeKnowledgeSearch {
   const base = new URL(options.baseUrl);
   if (base.username || base.password || base.search || base.hash ||
-      !(base.protocol === "https:" || (base.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(base.hostname)))) {
+      !(base.protocol === "https:" || (base.protocol === "http:" &&
+        (["localhost", "127.0.0.1", "[::1]"].includes(base.hostname) ||
+          (options.internalHttpHost === "api" && base.hostname === "api"))))) {
     throw new Error("Knowledge authority requires HTTPS or loopback HTTP");
   }
   return async (request, ask) => {
@@ -56,7 +59,8 @@ export async function knowledgeRuntimeFromEnv(env: Record<string, string | undef
   const roles = await database.execute(sql`SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user`) as unknown as { rolsuper: boolean; rolbypassrls: boolean }[];
   if (roles[0]?.rolsuper !== false || roles[0]?.rolbypassrls !== false) throw new Error("Knowledge runtime requires NOSUPERUSER NOBYPASSRLS");
   return {
-    authorize: createBackendKnowledgeAuthorization({ baseUrl: required("RECEPTION_API_URL"), tenantId, knowledgeBaseId }),
+    authorize: createBackendKnowledgeAuthorization({ baseUrl: required("RECEPTION_API_URL"), tenantId, knowledgeBaseId,
+      internalHttpHost: env.KNOWLEDGE_INTERNAL_HTTP_HOST }),
     retrieval: {
       store: createRetrievalStore(database),
       embedder: createOpenAIEmbedder({ apiKey: required("OPENAI_API_KEY"), baseUrl: env.OPENAI_BASE_URL,
