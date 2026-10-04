@@ -16,9 +16,10 @@ Nội dung dưới đây là đúng bản đang phát hành ở môi trường l
 
 - **Tool:** đã đóng gói. Job `catalogue` của bản triển khai đăng ký 4 tool này; cổng tool của API chạy chúng trong phạm vi
   tòa nhà của đơn vị quản lý.
-- **Agent:** là dữ liệu của từng phòng nhóm, không nằm trong image. Một bản triển khai mới chưa có Agent Báo cáo: BQL tạo
-  agent ở trang Agent, dán chỉ dẫn trong [report-agent.md](report-agent.md), chọn 4 tool, chạy đánh giá rồi phát hành.
-  Chưa có lệnh tự tạo agent này khi cài đặt (`agent-coordination/scripts/publish_agent.ps1` mới đọc được tool kỹ thuật).
+- **Agent:** là dữ liệu của từng phòng nhóm. Job `report-bootstrap` đóng gói [report-agent.md](report-agent.md), tự cài
+  preset với 4 tool, chạy sáu ca bằng model đã cấu hình và chỉ phát hành khi đạt. Admin tạo đơn vị trên UI cũng có sẵn
+  preset nháp. Job không ghi đè agent đã chỉnh sửa/phát hành/thu hồi; gọi lại không tạo bản trùng. Khi model lỗi, preset
+  giữ nháp và job trả lỗi; không coi đó là đã nghiệm thu. Xem `deploy/vinhomes/run-local.ps1` và README triển khai.
 
 ## Cấu hình để tạo lại
 

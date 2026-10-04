@@ -8,6 +8,7 @@ COPY worker/package.json ./worker/package.json
 COPY resident-app/package.json ./resident-app/package.json
 RUN bun install --frozen-lockfile
 COPY resident-app ./resident-app
+COPY shared ./shared
 ENV VITE_ALLOW_DEMO_BACKEND=false VITE_ENABLE_UI_PREVIEW=false
 RUN cd resident-app && bun run build
 

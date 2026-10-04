@@ -2,6 +2,9 @@
 -- Keep the role subject to tenant row level security.
 GRANT CONNECT ON DATABASE vinhomes_v3 TO vinhomes_v3_api;
 GRANT USAGE ON SCHEMA public TO vinhomes_v3_api;
+-- Password/session APIs are part of every packaged deployment, not only the local setup script.
+GRANT INSERT,UPDATE,DELETE ON sessions TO vinhomes_v3_api;
+GRANT INSERT,UPDATE ON accounts,users,tenant_memberships,scoped_user_roles,access_scopes TO vinhomes_v3_api;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO vinhomes_v3_api;
 GRANT INSERT, UPDATE ON
   channels, channel_memberships, messages, message_mentions, channel_agents, agents,
@@ -23,6 +26,9 @@ TO vinhomes_v3_api;
 GRANT SELECT, INSERT ON vh_qc_redo_orders TO vinhomes_v3_api;
 -- An administrator moves a management account between units: it leaves the rooms of the old one.
 GRANT DELETE ON channel_memberships TO vinhomes_v3_api;
+-- Platform administrators provision a management unit and its room atomically.
+GRANT INSERT ON management_units,management_coverage,access_scopes,workspaces,workspace_members TO vinhomes_v3_api;
+GRANT INSERT,UPDATE ON file_uploads TO vinhomes_v3_api;
 GRANT INSERT, UPDATE ON invoices,invoice_lines,payment_intents TO vinhomes_v3_api;
 GRANT INSERT ON payments,payment_allocations,ticket_reviews TO vinhomes_v3_api;
 GRANT INSERT ON agent_versions TO vinhomes_v3_api;

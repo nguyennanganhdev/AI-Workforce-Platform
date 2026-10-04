@@ -46,6 +46,7 @@ export type SignInOptions = {
    * use this deployment, before they have signed in.
    */
   sso: boolean;
+  businessLogin?: string;
 };
 
 async function signInOptions(): Promise<SignInOptions> {
@@ -54,11 +55,12 @@ async function signInOptions(): Promise<SignInOptions> {
   // while the server was saying it has one.
   const body = (await (
     await client("/api/capabilities", { fallback: "Could not load sign-in" })
-  ).json()) as { authProviders?: AuthProviderId[]; ssoConfigured?: boolean };
+  ).json()) as { authProviders?: AuthProviderId[]; ssoConfigured?: boolean; businessLogin?: string };
 
   return {
     providers: body.authProviders ?? [],
     sso: body.ssoConfigured === true,
+    ...(body.businessLogin === "/operations/login" ? { businessLogin: body.businessLogin } : {}),
   };
 }
 
@@ -88,27 +90,12 @@ async function currentUser(): Promise<AuthenticatedUser | null> {
       return null;
     }
     if (!response.ok) {
-      // In dev or offline mode without backend server running, return fallback user instead of crashing with 500
-      return {
-        id: "dev-admin-vhm",
-        email: "admin@vinhomes.vn",
-        name: "Quản trị viên Vinhomes",
-        role: "admin",
-        onboarding: null,
-      };
+      throw new Error("Authentication service is unavailable");
     }
 
     const body = (await response.json()) as { user: AuthenticatedUser };
     return body.user;
-  } catch {
-    return {
-      id: "dev-admin-vhm",
-      email: "admin@vinhomes.vn",
-      name: "Quản trị viên Vinhomes",
-      role: "admin",
-      onboarding: null,
-    };
-  }
+  } catch (error) { throw error; }
 }
 
 export function currentUserQueryOptions() {

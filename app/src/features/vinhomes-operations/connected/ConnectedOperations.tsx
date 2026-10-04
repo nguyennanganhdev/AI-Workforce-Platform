@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { uploadImage } from "../../../../../shared/direct-image-upload";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { roomSessionsQueryOptions, roomsQueryOptions } from "@/lib/rooms/queries";
@@ -785,19 +786,9 @@ export function ConnectedOperations() {
                                     onClick={() =>
                                       void run(async () => {
                                         if (!file) return;
-                                        const p = await request<{
-                                          fileId: string;
-                                        }>(
+                                        const p = await uploadImage(request, `/tickets/${selected.id}/direct-uploads`,
                                           `/tickets/${selected.id}/files?filename=${encodeURIComponent(file.name)}&mimeType=${encodeURIComponent(file.type)}&purpose=${phase}`,
-                                          {
-                                            method: "POST",
-                                            headers: {
-                                              "Content-Type":
-                                                "application/octet-stream",
-                                            },
-                                            body: file,
-                                          },
-                                        );
+                                          file, file.name, crypto.randomUUID(), phase);
                                         await post(
                                           `/tickets/${selected.id}/evidence`,
                                           {

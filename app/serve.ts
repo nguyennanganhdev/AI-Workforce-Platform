@@ -27,7 +27,7 @@ if (!serverPort.ok) {
   throw new Error(serverPort.reason.replace(/^PORT /, "SERVER_PORT "));
 }
 const PORT = appPort.port;
-const SERVER = `http://127.0.0.1:${serverPort.port}`;
+const SERVER = process.env.OPENBOT_SERVER_URL?.replace(/\/$/, "") || `http://127.0.0.1:${serverPort.port}`;
 
 /** Business routes retain the signed-in cookie and use the deployment-owned API URL. */
 export function businessTarget(pathname: string, search: string, base = process.env.VINHOMES_API_URL): string | null {

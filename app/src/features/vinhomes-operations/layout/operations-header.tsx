@@ -78,7 +78,7 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
     avatarUrl={profile.avatarUrl} p1Incidents={p1Incidents} pendingApprovals={pendingApprovals} onReset={resetToDefaultMock} />;
 }
 
-export function OperationsHeaderView({ menuOpen, onToggleMenu, breadcrumb, name, roleTitle, avatarUrl, p1Incidents, pendingApprovals, notices = [], onReset }: {
+export function OperationsHeaderView({ menuOpen, onToggleMenu, breadcrumb, name, roleTitle, avatarUrl, p1Incidents, pendingApprovals, notices = [], onReset, personalAccountsUrl }: {
   menuOpen?: boolean; onToggleMenu?: () => void; breadcrumb: BreadcrumbConfig;
   name: string; roleTitle: string; avatarUrl?: string;
   p1Incidents: Pick<VhIncident, 'id' | 'title' | 'location_json'>[];
@@ -86,6 +86,7 @@ export function OperationsHeaderView({ menuOpen, onToggleMenu, breadcrumb, name,
   /** Things waiting for this person, each with where to act on it. */
   notices?: { id: string; title: string; note: string; to: string }[];
   onReset?: () => void;
+  personalAccountsUrl?: string;
 }) {
   const notificationCount = p1Incidents.length + pendingApprovals.length + notices.length;
   const [notificationOpen, setNotificationOpen] = useState(false);
@@ -201,6 +202,7 @@ export function OperationsHeaderView({ menuOpen, onToggleMenu, breadcrumb, name,
           )}
         </div>
 
+        {personalAccountsUrl && <a href={personalAccountsUrl} className="text-xs text-slate-600 hover:text-slate-900">Kết nối cá nhân</a>}
         <div className="flex items-center gap-2.5 pl-2 md:pl-3 md:border-l border-slate-200">
           {avatarUrl ? <img src={avatarUrl} alt="" className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover border border-slate-200" /> : <span className="flex w-9 h-9 items-center justify-center rounded-full bg-blue-50 text-blue-700" aria-hidden="true">{name.slice(0, 1)}</span>}
           <div className="hidden md:block text-left max-w-[220px]">

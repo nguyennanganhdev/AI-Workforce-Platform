@@ -42,6 +42,20 @@ export function unitsQueryOptions() {
   return queryOptions({ queryKey: adminKeys.units, queryFn: async (): Promise<Unit[]> =>
     (await (await ask("/admin/units", {}, "Không tải được danh sách đơn vị quản lý.")).json()).items });
 }
+export function unitOptionsQueryOptions() {
+  return queryOptions({ queryKey: ["admin", "unit-options"], queryFn: async (): Promise<{
+    buildings: { id: string; code: string; name: string }[]; categories: { id: string; code: string; name: string }[];
+  }> => (await ask("/admin/unit-options", {}, "Không tải được tòa nhà và dịch vụ.")).json() });
+}
+export function createUnitMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({ mutationFn: async (body: { code: string; name: string; building_ids: string[]; category_ids: string[] }) => {
+    return (await ask("/admin/units", { method: "POST", body }, "Không tạo được đơn vị quản lý.", true)).json();
+  }, onSuccess: async () => {
+    await Promise.all([queryClient.invalidateQueries({ queryKey: adminKeys.units }),
+      queryClient.invalidateQueries({ queryKey: adminKeys.accounts }),
+      queryClient.invalidateQueries({ queryKey: ["coordination"] })]);
+  } });
+}
 export function modelsQueryOptions() {
   return queryOptions({ queryKey: adminKeys.models, queryFn: async (): Promise<RoleModel[]> =>
     (await (await ask("/admin/models", {}, "Không tải được trạng thái model.")).json()).items });

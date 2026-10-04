@@ -13,6 +13,7 @@ both. The bucket is private: content always leaves through a route that checked 
 import io
 import os
 from functools import lru_cache
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import quote, urlsplit
@@ -40,6 +41,27 @@ def _client(endpoint: str, access: str, secret: str, region: str):
 def client():
     return _client(os.getenv('VINHOMES_API_S3_ENDPOINT', '').strip(), os.getenv('VINHOMES_API_S3_ACCESS_KEY', '').strip(),
                    os.getenv('VINHOMES_API_S3_SECRET_KEY', '').strip(), os.getenv('VINHOMES_API_S3_REGION', '').strip())
+
+
+def direct_enabled() -> bool:
+    return provider() == 's3' and bool(os.getenv('VINHOMES_API_S3_PUBLIC_ENDPOINT', '').strip())
+
+
+def signed_upload(key: str, size: int, mime: str, expires: datetime):
+    from minio.datatypes import PostPolicy
+    address = urlsplit(os.environ['VINHOMES_API_S3_PUBLIC_ENDPOINT'].strip())
+    if address.username or address.password or address.path not in ('', '/') or address.query or address.fragment:
+        raise RuntimeError('S3 public endpoint must be an HTTP(S) origin')
+    signer = _client(os.environ['VINHOMES_API_S3_PUBLIC_ENDPOINT'].strip(),
+                     os.environ['VINHOMES_API_S3_ACCESS_KEY'].strip(), os.environ['VINHOMES_API_S3_SECRET_KEY'].strip(),
+                     os.getenv('VINHOMES_API_S3_REGION', '').strip() or 'us-east-1')
+    policy = PostPolicy(bucket(), expires)
+    policy.add_equals_condition('key', key)
+    policy.add_equals_condition('Content-Type', mime)
+    policy.add_content_length_range_condition(size, size)
+    fields = signer.presigned_post_policy(policy)
+    fields.update({'key': key, 'Content-Type': mime})
+    return os.environ['VINHOMES_API_S3_PUBLIC_ENDPOINT'].rstrip('/') + '/' + bucket(), fields
 
 
 class BucketObject:

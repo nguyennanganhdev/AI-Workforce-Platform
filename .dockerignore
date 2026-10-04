@@ -23,3 +23,4 @@ assets/*.svg
 **/.coordination-state
 .codex-artifacts
 deploy/vinhomes/deployment.env
+!.env.example

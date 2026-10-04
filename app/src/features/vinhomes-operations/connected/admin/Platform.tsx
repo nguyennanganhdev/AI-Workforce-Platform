@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { IconRefresh } from "@tabler/icons-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { auditQueryOptions, modelsQueryOptions, unitsQueryOptions, type AuditEvent, type RoleModel } from "@/lib/admin/queries";
+import { Input } from "@/components/ui/input";
+import { auditQueryOptions, createUnitMutationOptions, unitOptionsQueryOptions, modelsQueryOptions, unitsQueryOptions, type AuditEvent, type RoleModel } from "@/lib/admin/queries";
 
 const select = "h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground";
 
@@ -26,8 +27,43 @@ function Page({ title, lead, action, children }: { title: string; lead: string; 
 /** The management units of this organisation: what each covers and who works in it. */
 export function UnitsPage() {
   const units = useQuery(unitsQueryOptions());
+  const queryClient = useQueryClient();
+  const [creating, setCreating] = useState(false);
+  const options = useQuery({ ...unitOptionsQueryOptions(), enabled: creating });
+  const create = useMutation(createUnitMutationOptions(queryClient));
+  const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [buildings, setBuildings] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const toggle = (id: string, selected: string[], set: (value: string[]) => void) =>
+    set(selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id]);
   return (
-    <Page title="Đơn vị quản lý" lead="Mỗi đơn vị phụ trách một số tòa nhà và có nhóm Ban quản lý riêng: phiên điều phối, agent và kết nối ngoài của nhóm đó.">
+    <Page title="Đơn vị quản lý" lead="Mỗi đơn vị phụ trách một số tòa nhà và có nhóm Ban quản lý riêng: phiên điều phối, agent và kết nối ngoài của nhóm đó."
+      action={<Button onClick={() => { create.reset(); setCreating(true); }}>Tạo đơn vị</Button>}>
+      {creating && <form className="mt-6 space-y-4 rounded-lg border border-border bg-card p-4" onSubmit={(event) => {
+        event.preventDefault();
+        create.mutate({ name: name.trim(), code, building_ids: buildings, category_ids: categories }, {
+          onSuccess: () => { setCreating(false); setName(""); setCode(""); setBuildings([]); setCategories([]); },
+        });
+      }}>
+        <h2 className="font-semibold">Tạo đơn vị quản lý</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1 text-sm">Tên đơn vị<Input aria-label="Tên đơn vị" required minLength={2} maxLength={160} value={name} onChange={(e) => setName(e.target.value)} /></label>
+          <label className="space-y-1 text-sm">Mã đơn vị<Input aria-label="Mã đơn vị" required minLength={2} maxLength={60} pattern="[a-z0-9][a-z0-9-]+" placeholder="bql-pavilion" value={code} onChange={(e) => setCode(e.target.value)} /><span className="text-xs text-muted-foreground">Chữ thường, số và dấu gạch ngang.</span></label>
+        </div>
+        {options.isPending ? <Skeleton className="h-24" /> : <div className="grid gap-4 sm:grid-cols-2">
+          <fieldset className="space-y-2"><legend className="mb-2 text-sm font-medium">Tòa nhà phụ trách</legend>
+            <div className="max-h-56 space-y-2 overflow-auto">{options.data?.buildings.map((b) => <label key={b.id} className="flex gap-2 text-sm"><input type="checkbox" checked={buildings.includes(b.id)} onChange={() => toggle(b.id, buildings, setBuildings)} />{b.name}</label>)}</div>
+          </fieldset>
+          <fieldset className="space-y-2"><legend className="mb-2 text-sm font-medium">Dịch vụ phụ trách</legend>
+            {options.data?.categories.map((c) => <label key={c.id} className="flex gap-2 text-sm"><input type="checkbox" checked={categories.includes(c.id)} onChange={() => toggle(c.id, categories, setCategories)} />{c.name}</label>)}
+          </fieldset>
+        </div>}
+        {(create.error || options.error) && <p role="alert" className="text-sm text-destructive">{create.error?.message || options.error?.message}</p>}
+        <p className="text-xs text-muted-foreground">Nhóm Ban quản lý và Supervisor được tạo cùng đơn vị. Sau đó cấp tài khoản Ban quản lý cho đơn vị ở trang Tài khoản.</p>
+        <div className="flex gap-2"><Button type="submit" disabled={create.isPending || !buildings.length || !categories.length}>{create.isPending ? "Đang tạo…" : "Tạo đơn vị và nhóm"}</Button>
+          <Button type="button" variant="outline" disabled={create.isPending} onClick={() => setCreating(false)}>Hủy</Button></div>
+      </form>}
       {units.error && <p role="alert" className="mt-4 text-sm text-destructive">{units.error.message}</p>}
       {units.isPending ? <Skeleton className="mt-6 h-40" /> : (
         <div className="mt-6 space-y-3">
@@ -54,7 +90,6 @@ export function UnitsPage() {
             </section>
           ))}
           {!units.error && !units.data?.length && <p className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">Chưa có đơn vị quản lý nào.</p>}
-          <p className="text-xs text-muted-foreground">Tạo đơn vị mới và giao tòa nhà hiện do đội triển khai thực hiện khi cài đặt.</p>
         </div>
       )}
     </Page>

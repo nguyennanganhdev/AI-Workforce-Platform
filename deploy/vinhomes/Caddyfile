@@ -17,3 +17,8 @@
 	encode gzip
 	reverse_proxy resident:3011
 }
+
+{$STORAGE_DOMAIN} {
+    {$PROXY_TLS}
+    reverse_proxy minio:9000
+}

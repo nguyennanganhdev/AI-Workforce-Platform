@@ -374,6 +374,7 @@ export function createApp(
        * build machine cannot offer a provider that machine had never heard of.
        */
       authProviders: configuredAuthProviders(config.auth),
+      ...(config.businessAuthUrl ? { businessLogin: "/operations/login" } : {}),
       /*
        * Whether any enterprise identity provider has been registered.
        *

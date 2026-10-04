@@ -2,6 +2,7 @@ FROM python:3.12-slim
 WORKDIR /opt/vinhomes-api
 COPY services/vinhomes-api/pyproject.toml ./
 COPY services/vinhomes-api/src ./src
+COPY docs/teams/hoang/agent/report-agent.md ./src/vinhomes_api/presets/report-agent.md
 RUN pip install --no-cache-dir . && useradd --uid 10001 --create-home app \
     && mkdir -p /var/lib/vinhomes/files && chown app /var/lib/vinhomes/files
 USER app

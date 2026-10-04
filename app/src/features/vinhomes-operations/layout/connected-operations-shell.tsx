@@ -100,6 +100,7 @@ export function ConnectedOperationsShell({
         managementItems={administrator ? adminNav.map(({page, icon}) => ({id: page as MenuId, label: connectedPages[page], to: `/operations/${page}`, icon, section: 'MANAGEMENT' as const})) : []} />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <OperationsHeaderView menuOpen={open} onToggleMenu={() => setOpen(!open)}
+          personalAccountsUrl="/settings/connected-accounts"
           breadcrumb={{section: 'Vận hành đô thị', page: connectedPages[path] || 'Không gian làm việc'}}
           name={name || 'Đang tải tài khoản…'} roleTitle={roleLabel} p1Incidents={alerts} pendingApprovals={[]} notices={notices} />
         {flush ? <main className="min-h-0 flex-1 overflow-hidden">{children}</main> : (

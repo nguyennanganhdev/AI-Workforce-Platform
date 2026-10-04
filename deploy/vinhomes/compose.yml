@@ -39,6 +39,8 @@ services:
       VINHOMES_API_S3_ACCESS_KEY: ${S3_ACCESS_KEY:?object storage access key required}
       VINHOMES_API_S3_SECRET_KEY: ${S3_SECRET_KEY:?object storage secret key required}
       VINHOMES_API_S3_BUCKET: ${S3_BUCKET:-vinhomes-files}
+      VINHOMES_API_S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      VINHOMES_API_S3_REGION: ${S3_REGION:-us-east-1}
       FACTORY_SERVICE_URL: http://factory:4010
       FACTORY_SERVICE_TOKEN: ${FACTORY_SERVICE_TOKEN:?Factory token required}
       # Two settings, one list: browser sign-in and writes check the first, the resident app's CORS the second.
@@ -62,6 +64,9 @@ services:
       # a key of its own (S3_ACCESS_KEY) that reaches the files bucket and nothing else.
       MINIO_ROOT_USER: ${S3_ADMIN_ACCESS_KEY:-}
       MINIO_ROOT_PASSWORD: ${S3_ADMIN_SECRET_KEY:-}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
+    ports:
+      - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${S3_PORT:-9000}:9000'
     volumes:
       - minio-data:/data
     healthcheck:
@@ -238,6 +243,30 @@ services:
       timeout: 8s
       retries: 5
       test: ['CMD', 'bun', '-e', 'process.exit((await fetch("http://127.0.0.1:4200/health")).ok ? 0 : 1)']
+  platform:
+    image: vinhomes-platform:${VINHOMES_IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: deploy/vinhomes/Dockerfile.platform
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${OPENBOT_DATABASE_URL:?restricted OpenBot database URL required}
+      KEY_ENCRYPTION_KEY: ${OPENBOT_KEY_ENCRYPTION_KEY:?OpenBot vault key required}
+      OPENBOT_BUSINESS_AUTH_URL: http://api:8000
+      OPENBOT_BUSINESS_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
+      OPENBOT_BUSINESS_WORKSPACE_ID: ${OPENBOT_WORKSPACE_ID:?existing workspace required}
+      OPENBOT_SINGLE_USER: 'false'
+      OPENBOT_PUBLIC_URL: ${OPERATIONS_PUBLIC_URL:-http://localhost:3020}
+      TRUSTED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      test: ['CMD', 'bun', '-e', 'process.exit((await fetch("http://127.0.0.1:3001/health")).ok ? 0 : 1)']
   operations:
     image: vinhomes-operations:${VINHOMES_IMAGE_TAG:-latest}
     build:
@@ -246,6 +275,7 @@ services:
     restart: unless-stopped
     environment:
       VINHOMES_API_URL: http://api:8000
+      OPENBOT_SERVER_URL: http://platform:3001
       APP_PORT: '3020'
     ports:
       - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${OPERATIONS_PORT:-3020}:3020'
@@ -286,6 +316,7 @@ services:
     environment:
       DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
       VINHOMES_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
+      OPENBOT_DATABASE_URL: ${OPENBOT_DATABASE_URL:?restricted account database URL required}
       VINHOMES_API_DATABASE_URL: ${VINHOMES_API_DATABASE_URL:?restricted business database URL required}
       TECHNICAL_API_DATABASE_URL: ${TECHNICAL_API_DATABASE_URL:?restricted tools database URL required}
       ROUTINES_DATABASE_URL: ${ROUTINES_DATABASE_URL:?restricted schedule database URL required}
@@ -311,6 +342,19 @@ services:
       DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
       VINHOMES_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
       AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-}
+  report-bootstrap:
+    profiles: [upgrade]
+    image: vinhomes-api:${VINHOMES_IMAGE_TAG:-latest}
+    command: ['python', '-m', 'vinhomes_api.report_bootstrap']
+    restart: 'no'
+    environment:
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+      VINHOMES_API_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
+      VINHOMES_API_COORDINATION_URL: http://coordination:4300
+      VINHOMES_API_COORDINATION_SERVICE_TOKEN: ${COORDINATION_SERVICE_TOKEN:?Coordination token required}
+    depends_on:
+      coordination:
+        condition: service_healthy
   storage:
     # Run by hand once, and again after restoring a database: creates the bucket, records it as the
     # place files are stored, and moves the photos an earlier release kept in the api-files volume.
@@ -333,6 +377,39 @@ services:
       - api-files:/var/lib/vinhomes/files
     depends_on:
       - minio
+  monitor:
+    image: python:3.12-slim
+    restart: unless-stopped
+    command: ['python', '/opt/monitor.py']
+    environment:
+      MONITOR_INTERVAL_SECONDS: ${MONITOR_INTERVAL_SECONDS:-15}
+      MONITOR_ALERT_WEBHOOK: ${MONITOR_ALERT_WEBHOOK:-}
+    volumes:
+      - ./monitor.py:/opt/monitor.py:ro
+    ports:
+      - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${MONITOR_PORT:-9099}:9099'
+    healthcheck:
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:9099/health", timeout=3)']
+  backup:
+    profiles: [maintenance]
+    image: vinhomes-backup:${VINHOMES_IMAGE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: deploy/vinhomes/Dockerfile.backup
+    environment:
+      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
+      COORDINATION_DATABASE_URL: ${COORDINATION_DATABASE_URL:-}
+      RESTORE_ADMIN_DATABASE_URL: ${RESTORE_ADMIN_DATABASE_URL:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_ADMIN_ACCESS_KEY: ${S3_ADMIN_ACCESS_KEY:-}
+      S3_ADMIN_SECRET_KEY: ${S3_ADMIN_SECRET_KEY:-}
+      S3_BUCKET: ${S3_BUCKET:-vinhomes-files}
+    volumes:
+      - backups:/backups
+      - ./deployment.env:/config/deployment.env:ro
   proxy:
     # TLS in front of the two web apps; see Caddyfile. Not started unless asked for:
     #   docker compose --env-file deployment.env --profile tls up -d
@@ -342,6 +419,7 @@ services:
     environment:
       OPERATIONS_DOMAIN: ${OPERATIONS_DOMAIN:-operations.localhost}
       RESIDENT_DOMAIN: ${RESIDENT_DOMAIN:-resident.localhost}
+      STORAGE_DOMAIN: ${STORAGE_DOMAIN:-storage.localhost}
       PROXY_TLS: ${PROXY_TLS:-}
     ports:
       - '${PROXY_HTTP_PORT:-80}:80'
@@ -354,6 +432,7 @@ services:
       - resident
 
 volumes:
+  backups:
   caddy-data:
   reception-state:
   api-files:

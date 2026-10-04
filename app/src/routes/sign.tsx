@@ -159,6 +159,8 @@ function SignScreen() {
                 </Button>
               ))}
             </div>
+          ) : options?.businessLogin ? (
+            <Button className="w-full" onClick={() => window.location.assign(options.businessLogin!)}>Đăng nhập tài khoản nghiệp vụ</Button>
           ) : options?.sso ? null : (
             <p className="text-center text-sm text-muted-foreground">
               No sign-in provider is configured for this deployment.

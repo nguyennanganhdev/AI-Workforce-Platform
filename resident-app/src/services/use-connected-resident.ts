@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { uploadImage } from "../../../shared/direct-image-upload";
 import {
   api,
   ApiError,
@@ -358,21 +359,10 @@ export function useConnectedResident() {
         const files = [];
         for (const photo of d.photos) {
           const blob = await (await fetch(photo.url)).blob();
-          files.push(
-            await api<{ id: string }>(
-              `/resident/chats/${active.current}/photos?filename=${encodeURIComponent(photo.name)}&mimeType=${encodeURIComponent(blob.type)}`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/octet-stream",
-                  "Idempotency-Key": keyFor(
-                    `${active.current}:photo:${photo.id}`,
-                  ),
-                },
-                body: blob,
-              },
-            ),
-          );
+          const stored = await uploadImage(api, `/resident/chats/${active.current}/direct-uploads`,
+            `/resident/chats/${active.current}/photos?filename=${encodeURIComponent(photo.name)}&mimeType=${encodeURIComponent(blob.type)}`,
+            blob, photo.name, keyFor(`${active.current}:photo:${photo.id}`));
+          files.push({ id: stored.fileId });
         }
         const body = JSON.stringify({
           domain_id: unit.domain_id,

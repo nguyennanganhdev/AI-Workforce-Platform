@@ -24,8 +24,29 @@ Người đọc: người dựng hoặc vận hành stack trên một máy chủ
 | `minio` | Nơi lưu ảnh và tệp (bucket riêng tư, giao thức S3); dữ liệu nằm trong volume `minio-data` | 9000, không mở ra máy chủ |
 | `storage` | Job chạy tay: tạo bucket, ghi nhận nơi lưu, chuyển ảnh của bản cũ từ volume `api-files` sang bucket | không có |
 
-Không nằm trong stack: PostgreSQL (dùng cơ sở dữ liệu đã có sẵn role giới hạn quyền và tổ chức đầu tiên), TLS và
-reverse proxy, và đăng nhập thống nhất với tài khoản OpenBot.
+PostgreSQL cần được chuẩn bị trước (trên máy này là container PostgreSQL 17 hiện có). Stack có thêm `platform`:
+dịch vụ tài khoản/kết nối OpenBot xác minh cookie nghiệp vụ trên mỗi request, cùng `users.id` và tenant. Agent nghiệp vụ
+vẫn chạy ở `coordination`/`openbot`; runtime OpenBot tổng quát cần cấu hình Intelligence riêng.
+
+## Bản hoàn thiện local ngày 05/10/2026
+
+- `run-local.ps1`: build, upgrade bốn role, storage, catalogue, khởi động dịch vụ, rồi `report-bootstrap`.
+- `report-bootstrap`: cài preset Agent Báo cáo idempotent, đánh giá sáu ca bằng runtime đã cấu hình, chỉ phát hành khi đạt.
+  Admin tạo đơn vị trên UI cũng tạo sẵn preset nháp; BQL không cần dán cấu hình. Chạy lại job để đánh giá/phát hành preset mới.
+- `platform`: sử dụng đăng nhập nghiệp vụ; trang `/settings/connected-accounts` có kết nối của người đang đăng nhập.
+  Tạo role LOGIN riêng `NOSUPERUSER NOBYPASSRLS`; `OPENBOT_DATABASE_URL` dùng cùng database nghiệp vụ. Không dùng role owner.
+  OAuth thật vẫn cần admin cấu hình client và người dùng đồng ý tại vendor.
+- Ảnh từ browser đi bằng signed POST tới `S3_PUBLIC_ENDPOINT`; API kiểm size/hash/image rồi chuyển sang key ready khác.
+  MinIO mở cổng 9000 trên loopback. Khi bật HTTPS, cấu hình `STORAGE_DOMAIN` và `S3_PUBLIC_ENDPOINT=https://...` cùng nhau.
+- `monitor`: cổng loopback 9099, `/metrics` và `/health`; mất dịch vụ ba lần liên tiếp phát alert trong log, hồi phục phát recovery.
+  Webhook là tùy chọn qua `MONITOR_ALERT_WEBHOOK`; chưa nghiệm thu gửi thông báo ra ngoài.
+- `backup-verify.ps1`: dừng writers, dump hai DB/copy object/cấu hình vào volume riêng, phục hồi sang DB/bucket mới,
+  đối chiếu toàn bộ số dòng/checksum, rồi khởi động writers trong `finally`. DB nguồn không bị thay thế. Volume backup chứa
+  cấu hình bí mật; chỉ cấp quyền cho người vận hành. Restore vào môi trường chạy cần chạy lại upgrade/storage để cấp role/key.
+
+Trên máy nghiệm thu: Operations `http://localhost:3022`, cư dân `http://localhost:3013`, API 8020, monitor 9099.
+Tên miền/chứng chỉ công khai được hoãn theo yêu cầu người dùng. Chi tiết và giới hạn ở
+[biên bản nghiệm thu](../../docs/teams/chien/COMPLETION_ACCEPTANCE_2026-10-05.md).
 
 `coordination` và `openbot` dùng chung một không gian mạng. Lõi Supervisor chỉ gửi token của agent tới OpenBot qua
 HTTPS hoặc loopback, nên hai dịch vụ gặp nhau trên loopback và không dịch vụ nào khác gọi được OpenBot.

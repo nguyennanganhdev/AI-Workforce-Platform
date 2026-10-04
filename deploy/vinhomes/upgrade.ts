@@ -32,6 +32,7 @@ function roleOf(setting: string): string {
 const apiRole = roleOf("VINHOMES_API_DATABASE_URL");
 const toolsRole = roleOf("TECHNICAL_API_DATABASE_URL");
 const routinesRole = roleOf("ROUTINES_DATABASE_URL");
+const connectionsRole = roleOf("OPENBOT_DATABASE_URL");
 
 const migrated = Bun.spawnSync(["bun", "server/scripts/migrate.ts"], {
   stdout: "inherit",
@@ -59,10 +60,13 @@ try {
   await sql.unsafe(api);
   await sql.unsafe(tools);
   await sql.unsafe(routines);
+  const connections = (await readFile("server/scripts/grant_business_connections_role.sql", "utf8"))
+    .replaceAll("vinhomes_business_connections", connectionsRole);
+  await sql.unsafe(connections);
   console.log(
     JSON.stringify({
       type: "grants-applied",
-      roles: [apiRole, toolsRole, routinesRole],
+      roles: [apiRole, toolsRole, routinesRole, connectionsRole],
     }),
   );
   const tenant = process.env.VINHOMES_TENANT_ID;

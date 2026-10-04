@@ -193,6 +193,8 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(connections_router)
     from .v3_admin import router as admin_router
     app.include_router(admin_router)
+    from .direct_uploads import router as direct_uploads_router
+    app.include_router(direct_uploads_router)
     from .v3_room_files import router as room_files_router
     app.include_router(room_files_router)
     from .v3_routines import internal as routine_firing_router, router as routines_router

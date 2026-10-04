@@ -1,19 +1,22 @@
 """What the platform administrator reads: the management units, the models at work, the audit trail.
 
-Read only. Accounts are managed by the password-login module and external connections by
-v3_connections; creating a management unit is still the provisioning script's job.
+Accounts are managed by the password-login module and external connections by v3_connections.
 """
 import asyncio
+import hashlib
 import os
 from datetime import datetime
 from typing import Annotated
+from uuid import UUID, uuid4
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
+from pydantic import BaseModel, Field, field_validator
 
 from .v3_auth import scoped_connection
+from .v3_audit import audit
 
 router = APIRouter(prefix='/admin', tags=['Platform administration'])
 Admin = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection)]
@@ -22,6 +25,96 @@ Admin = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection)]
 def admin(scope) -> None:
     if not scope[2]:
         raise HTTPException(403, 'Platform admin required')
+
+
+class UnitCreate(BaseModel):
+    code: str = Field(pattern=r'^[a-z0-9][a-z0-9-]{1,59}$')
+    name: str = Field(min_length=2, max_length=160)
+    building_ids: list[UUID] = Field(min_length=1, max_length=100)
+    category_ids: list[UUID] = Field(min_length=1, max_length=30)
+
+    @field_validator('name')
+    @classmethod
+    def clean_name(cls, value):
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError('Tên đơn vị phải có ít nhất 2 ký tự.')
+        return value
+
+    @field_validator('building_ids', 'category_ids')
+    @classmethod
+    def unique_ids(cls, value):
+        if len(value) != len(set(value)):
+            raise ValueError('Không được chọn trùng mục.')
+        return value
+
+
+@router.get('/unit-options')
+async def unit_options(scope: Admin):
+    admin(scope)
+    buildings = await scope[0].execute(text("select id,code,name from buildings where status='active' order by name"))
+    categories = await scope[0].execute(text("select id,code,name from service_categories where enabled order by name"))
+    return {'buildings': [dict(r) for r in buildings.mappings()],
+            'categories': [dict(r) for r in categories.mappings()]}
+
+
+@router.post('/units', status_code=201)
+async def create_unit(body: UnitCreate, scope: Admin):
+    admin(scope)
+    db, actor, _ = scope
+    # Serializes coverage allocation between administrators, including zone/site coverage.
+    await db.execute(text("select pg_advisory_xact_lock(hashtext(current_setting('app.tenant_id')||'-management-coverage'))"))
+    if (await db.execute(text('select 1 from management_units where code=:code'), {'code': body.code})).first():
+        raise HTTPException(409, 'Mã đơn vị đã được sử dụng.')
+    buildings = (await db.execute(text('select id from buildings where id=any(:ids) and status=\'active\''),
+                                 {'ids': body.building_ids})).scalars().all()
+    categories = (await db.execute(text('select id from service_categories where id=any(:ids) and enabled'),
+                                  {'ids': body.category_ids})).scalars().all()
+    if len(buildings) != len(body.building_ids) or len(categories) != len(body.category_ids):
+        raise HTTPException(422, 'Tòa nhà hoặc dịch vụ không thuộc tổ chức này hoặc đã ngừng hoạt động.')
+    covered = (await db.execute(text('''select b.name,mu.name as unit_name from buildings b
+        join access_scopes s on s.tenant_id=b.tenant_id and
+          (s.kind='tenant' or (s.kind='building' and s.building_id=b.id)
+            or (s.kind='site' and s.site_id=b.site_id) or (s.kind='zone' and s.zone_id=b.zone_id))
+        join management_coverage mc on mc.scope_id=s.id and mc.tenant_id=s.tenant_id
+        join management_units mu on mu.id=mc.management_unit_id and mu.tenant_id=mc.tenant_id
+        where b.id=any(:buildings) and mc.service_category_id=any(:categories)
+          and mu.status='active' and (mc.valid_to is null or mc.valid_to>now()) limit 1'''),
+        {'buildings': buildings, 'categories': categories})).mappings().first()
+    if covered:
+        raise HTTPException(409, f"{covered['name']} đã có {covered['unit_name']} phụ trách dịch vụ được chọn.")
+    unit, workspace = uuid4(), uuid4()
+    room, supervisor = 'bql-' + str(unit), 'supervisor-' + str(unit)
+    tenant = "nullif(current_setting('app.tenant_id',true),'')::uuid"
+    await db.execute(text(f"insert into management_units(id,tenant_id,code,name,status) values(:id,{tenant},:code,:name,'active')"),
+                     {'id': unit, 'code': body.code, 'name': body.name})
+    await db.execute(text(f"insert into access_scopes(tenant_id,kind,management_unit_id) values({tenant},'management',:id)"), {'id': unit})
+    for building in buildings:
+        scope_id = (await db.execute(text("select id from access_scopes where kind='building' and building_id=:id"), {'id': building})).scalar_one_or_none()
+        if scope_id is None:
+            scope_id = (await db.execute(text(f"insert into access_scopes(tenant_id,kind,building_id) values({tenant},'building',:id) returning id"), {'id': building})).scalar_one()
+        for category in categories:
+            await db.execute(text(f'''insert into management_coverage(tenant_id,management_unit_id,scope_id,service_category_id,valid_from)
+                values({tenant},:unit,:scope,:category,now())'''), {'unit': unit, 'scope': scope_id, 'category': category})
+    await db.execute(text(f"insert into workspaces(id,tenant_id,management_unit_id,code,name,status) values(:id,{tenant},:unit,:code,:name,'active')"),
+                     {'id': workspace, 'unit': unit, 'code': body.code, 'name': body.name})
+    await db.execute(text(f"insert into workspace_members(tenant_id,workspace_id,user_id,status,joined_at) values({tenant},:workspace,:actor,'active',now())"),
+                     {'workspace': workspace, 'actor': actor})
+    await db.execute(text(f"insert into channels(id,tenant_id,workspace_id,name,description,kind,created_by,is_dispatch_default) values(:id,{tenant},:workspace,:name,'Phòng điều phối yêu cầu của cư dân','management',:actor,true)"),
+                     {'id': room, 'workspace': workspace, 'name': body.name, 'actor': actor})
+    await db.execute(text(f"insert into channel_memberships(tenant_id,channel_id,user_id) values({tenant},:room,:actor)"), {'room': room, 'actor': actor})
+    await db.execute(text(f"insert into agents(id,tenant_id,workspace_id,name,type,configuration,purpose,status) values(:id,{tenant},:workspace,:name,'built_in','{{}}','supervisor','active')"),
+                     {'id': supervisor, 'workspace': workspace, 'name': 'Điều phối ' + body.name})
+    await db.execute(text(f"insert into channel_agents(tenant_id,channel_id,agent_id) values({tenant},:room,:agent)"), {'room': room, 'agent': supervisor})
+    await db.execute(text(f'''insert into agent_versions(tenant_id,agent_id,version_no,runtime,framework_version,instructions,config,config_hash,created_by)
+        values({tenant},:agent,1,'agentscope','2.0.9','Supervisor of the management room (agent-coordination)','{{}}',:hash,:actor)'''),
+        {'agent': supervisor, 'hash': hashlib.sha256(b'{}').hexdigest(), 'actor': actor})
+    await db.execute(text(f"insert into execution_principals(tenant_id,kind,workspace_id,status) values({tenant},'workspace_service',:workspace,'active')"), {'workspace': workspace})
+    from .report_bootstrap import install
+    await install(db, actor, workspace, room)
+    await audit(db, actor, 'management_unit.created', 'management_unit', str(unit),
+                {'code': body.code, 'buildings': buildings, 'categories': categories, 'room': room})
+    return {'id': unit, 'workspace_id': workspace, 'room_id': room}
 
 
 @router.get('/units')
