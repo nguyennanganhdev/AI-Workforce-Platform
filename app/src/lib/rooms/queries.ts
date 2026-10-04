@@ -9,7 +9,11 @@ export type RoomSession = {id: string; ticket_id: string; ticket_code: string; t
 // A message the Supervisor's room mirrored here carries its session and what kind of step it was.
 export type RoomMessage = {id: string; seq: number; sender_user_id: string | null; sender_name?: string;
   sender_agent_id: string | null; body: {text?: string; mentionAgentId?: string; sessionId?: string; kind?: string; routineRunId?: string}; created_at: string;
-  mention_status?: string | null};
+  mention_status?: string | null; files?: RoomFile[]};
+/** A photo or text file attached to a room message. Its bytes are read through the API, by members only. */
+export type RoomFile = {id: string; name: string; mime_type: string; size_bytes: number};
+export const roomFileUrl = (roomId: string, fileId: string, inline = false) =>
+  `/api/business/rooms/${encodeURIComponent(roomId)}/files/${encodeURIComponent(fileId)}/content${inline ? "?inline=true" : ""}`;
 export type SessionPlan = {id: string; title: string; status: string; version: number; management_note?: string | null;
   proposal: {steps: string[]; performer_role: string; expected_duration: string; conditions: string;
     cost?: {amount: number; currency: string} | null}};

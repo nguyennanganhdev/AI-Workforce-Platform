@@ -12,6 +12,7 @@ from .v3_coordination import Scope, TENANT, RUNTIME_BACKEND, POLICY_VERSION
 from .v3_room_agents import managed_room
 from .v3_audit import audit
 from .v3_routines import run_closed
+from .v3_room_files import for_agent
 
 router = APIRouter(prefix='/internal/coordination/v1', tags=['Room conversation runtime'])
 
@@ -102,8 +103,10 @@ async def turn(message_id: UUID, agent_id: str, db: Scope):
         tools.append({'name': grant['name'].replace('.', '__'), 'description': tool['description'], 'parameters': tool['input_schema']})
     history = (await db.execute(text("select body->>'text' as text,sender_kind from messages where channel_id=:channel and visibility='room' and seq<(select seq from messages where id=:message) order by seq desc limit 20"),
         {'channel': mention['channel_id'], 'message': message_id})).mappings().all()
+    attached = await for_agent(db, mention['channel_id'], message_id)
     return {'run_id': str(run), 'instructions': version['instructions'], 'tools': tools,
-        'instruction': mention['body']['text'], 'messages': [dict(r) for r in reversed(history)]}
+        'instruction': '\n\n'.join(part for part in (mention['body']['text'], attached) if part),
+        'messages': [dict(r) for r in reversed(history)]}
 
 
 class Outcome(BaseModel):
