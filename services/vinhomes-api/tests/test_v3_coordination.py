@@ -565,3 +565,43 @@ def test_free_room_mentions_pinned_runs_real_reports_scope_and_revocation(databa
         assert c.post(f'/rooms/management-room/agents/{agent}/release/revoke', json={'note': 'Revoked during the turn'}).status_code == 200
         assert c.post(BASE + '/tools/call', headers=SERVICE, json={'run_id': active, 'tool': 'security.camera.read', 'arguments': {'building_id': str(b)}}).json()['status'] == 'FORBIDDEN'
         assert c.post(next_path + '/outcome', headers=SERVICE, json={'run_id': active, 'status': 'done', 'content': 'Stale answer'}).status_code == 409
+
+
+def test_the_tool_host_answer_reaches_the_agent_when_it_is_not_a_success(database, monkeypatch):
+    """A tool host saying "nothing found" is an answer the agent must read; only a host that gives no answer is an outage."""
+    import httpx
+    from vinhomes_api import v3_tool_gateway
+    register_tools(database)
+    agent, _ = publish_specialist(database, 'Room SOP ' + uuid4().hex[:8], ['technical'], tools=(
+        {'server_id': 'technical-tools', 'name': 'technical.get_active_outage'},))
+    answers = []
+
+    class Host:
+        def __init__(self, **options): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *error): return False
+        async def post(self, url, headers, json):
+            assert url == 'http://tools.test/internal/technical/v1/call' and headers == {'Authorization': 'Bearer ' + 'h' * 40}
+            return answers.pop(0)
+
+    monkeypatch.setenv('VINHOMES_API_TECHNICAL_TOOLS_URL', 'http://tools.test/internal/technical/v1')
+    monkeypatch.setenv('VINHOMES_API_TECHNICAL_TOOLS_TOKEN', 'h' * 40)
+    monkeypatch.setattr(v3_tool_gateway.httpx, 'AsyncClient', Host)
+    settings = V3Settings('127.0.0.1', 8000, database['runtime'], TENANT, None, None,
+                          demo_mode=True, coordination_service_token=TOKEN)
+    with TestClient(create_app(settings), client=('127.0.0.1', 50000), headers={'X-Demo-Actor': 'management'}) as c:
+        message = c.post('/rooms/management-room/messages', json={'text': 'Is there an outage?', 'mention_agent_id': agent,
+                                                                  'client_message_id': str(uuid4())}).json()['id']
+        run = c.post(BASE + f'/room-mentions/{message}/{agent}/turn', headers=SERVICE).json()['run_id']
+        building = sql(database, 'select building_id from tickets where building_id is not null limit 1')[0]['building_id']
+        call = {'run_id': run, 'tool': 'technical.get_active_outage', 'arguments': {'building_id': str(building)}}
+        missing = {'code': 'NOT_FOUND', 'message': 'No outage is recorded for that building.'}
+        answers.append(httpx.Response(404, json={'status': 'NOT_FOUND', 'data': None, 'errors': [missing]}))
+        told = c.post(BASE + '/tools/call', headers=SERVICE, json=call).json()
+        assert told['status'] == 'NOT_FOUND' and told['errors'] == [missing]
+        answers.append(httpx.Response(502, text='bad gateway'))
+        down = c.post(BASE + '/tools/call', headers=SERVICE, json=call).json()
+        assert down['status'] == 'INTERNAL_ERROR' and down['errors'][0]['retryable'] is True
+    audited = sql(database, "select payload->>'status' as status from audit_events where event_type='agent.tool_called' "
+                            "and target_id=$1 order by created_at", run)
+    assert [a['status'] for a in audited] == ['NOT_FOUND', 'INTERNAL_ERROR']

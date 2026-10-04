@@ -165,9 +165,11 @@ async def call(body: Call, db: Scope):
                 raise HTTPException(503, 'Technical tool host unavailable')
             async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
                 reply = await client.post(url + '/call', headers={'Authorization': 'Bearer ' + token}, json=body.model_dump(mode='json'))
-                if reply.status_code != 200:
+                # The host answers every call it decided with its envelope and repeats the verdict in
+                # the HTTP status (404 for "nothing in force"). Only a reply without one is an outage.
+                result = reply.json() if reply.status_code < 500 else None
+                if not isinstance(result, dict) or 'status' not in result:
                     raise HTTPException(503, 'Technical tool host unavailable')
-                result = reply.json()
         else:
             raise HTTPException(403, 'Tool server not bound to this gateway')
         status = 'OK' if result.get('outcome') != 'failure' else 'TOOL_ERROR'
@@ -185,4 +187,5 @@ async def call(body: Call, db: Scope):
         values({TENANT},'agent',:agent,'agent.tool_called','agent_run',:run,cast(:payload as jsonb),:correlation)'''),
         {'agent': run['agent_id'] if run else 'refused-runtime-call', 'run': str(body.run_id),
          'payload': json.dumps({'tool': body.tool, 'status': status}), 'correlation': uuid4()})
-    return {'status': status, 'data': result, 'errors': [] if status == 'OK' else [{'code': status, 'message': 'Tool is unavailable or outside this run permission.', 'retryable': status == 'INTERNAL_ERROR'}]}
+    told = result.get('errors') if isinstance(result, dict) and status != 'OK' else None
+    return {'status': status, 'data': result, 'errors': [] if status == 'OK' else told or [{'code': status, 'message': 'Tool is unavailable or outside this run permission.', 'retryable': status == 'INTERNAL_ERROR'}]}
