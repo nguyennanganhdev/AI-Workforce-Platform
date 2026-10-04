@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { useLocation, useNavigate } from "@tanstack/react-router";
+import { roomSessionsQueryOptions, roomsQueryOptions } from "@/lib/rooms/queries";
+import { Coordination } from "./coordination/Coordination";
+import { sessionState } from "./coordination/model";
+import { AgentsPage } from "./ManagedAgents";
 import {
   ConnectedOperationsShell,
   connectedPages,
@@ -12,8 +17,6 @@ import "./connected.css";
 import { OnsiteConsent, QuoteForm } from "./RepairQuote";
 import { Inquiries, LearnedAnswers, type Inquiry, type LearnedAnswer } from "./Inquiries";
 import { OperationsDashboardView } from "../components/operations-dashboard";
-import { LiveTeamPage } from "../workspace/LiveTeamPage";
-import type { CaseStage } from "../workspace/model";
 import { LiveReportsPage } from "../workspace/LiveReportsPage";
 import { WorkListView } from "../workspace/WorkPage";
 import type { WorkItem } from "../workspace/work-items";
@@ -380,6 +383,16 @@ export function ConnectedOperations() {
     if (linkedTicket && me && ticketId.current !== linkedTicket) void open(linkedTicket);
   }, [linkedTicket, me?.user.id]);
   const management = me?.role === "management" || me?.role === "admin";
+  const navigate = useNavigate();
+  // Management lands on the coordination room: that is where requests wait for a decision.
+  useEffect(() => {
+    if (management && path === "") void navigate({ to: "/operations/team", replace: true });
+  }, [management, path, navigate]);
+  const rooms = useQuery({ ...roomsQueryOptions(), enabled: management });
+  const waiting = useQuery({ ...roomSessionsQueryOptions(rooms.data?.items[0]?.id || ""), enabled: management && !!rooms.data?.items.length });
+  const notices = (waiting.data || []).filter((s) => sessionState(s).group === "attention")
+    .map((s) => ({ id: s.id, title: s.ticket_title, note: sessionState(s).label, to: `/operations/team?session=${encodeURIComponent(s.id)}` }));
+  const coordinating = management && path === "team";
   const plan = session?.room?.plan;
   const selected = detail?.ticket;
   const visible = tickets.filter((t) => {
@@ -413,10 +426,11 @@ export function ConnectedOperations() {
       });
     });
   return (
-    <ConnectedOperationsShell name={me?.user.name} management={management} administrator={me?.role === "admin"}
+    <ConnectedOperationsShell name={me?.user.name} management={management} administrator={me?.role === "admin"} notices={notices} flush={coordinating}
       alerts={tickets.filter(t => t.priority === 'critical' && !['closed', 'cancelled'].includes(t.status)).map(t => ({id: t.id, title: t.title, location_json: {towerCode: catalog?.buildings.find(b => b.id === t.building_id)?.code}}))}>
+      {coordinating ? <Coordination userId={me?.user.id || ""} /> : path === "agents" && management ? <AgentsPage /> :
       <WorkspaceFrame
-        contentOnly={!selected && !unavailable && path !== "team"}
+        contentOnly={!selected && !unavailable}
         title={connectedPages[path] || "Không gian làm việc"}
         description={
           me?.dataMode === "local-database"
@@ -471,10 +485,6 @@ export function ConnectedOperations() {
           </section>
         ) : path === "reports" ? (
           <LiveReportsPage buildings={catalog?.buildings || []} categories={catalog?.serviceCategories || []} />
-        ) : path === "team" ? (
-          <LiveTeamPage userId={me?.user.id || ''} tickets={tickets.map(t => ({id: t.id, title: t.title, severity: SEVERITY[t.priority],
-            stage: ({open: 'queued', triaging: 'queued', assigned: 'assigned', in_progress: 'working', resolved: 'awaiting-confirmation', closed: 'completed', cancelled: 'cancelled'} as Record<string, CaseStage>)[t.status] || 'queued',
-          }))} />
         ) : (
           <>
             {path === "" && !selected ? (
@@ -493,7 +503,7 @@ export function ConnectedOperations() {
                 zones={(catalog?.buildings || []).map(b => ({tower: b.name, note: `${tickets.filter(t => t.building_id === b.id && !['closed', 'cancelled'].includes(t.status)).length} phản ánh đang mở`}))} />
             ) : !selected && (
               <>
-              {path === "triage" && management && (
+              {(path === "triage" || path === "kanban") && management && (
                 <LearnedAnswers items={learned} disabled={busy}
                   onDecide={(item, decision) =>
                     void run(async () => {
@@ -501,7 +511,7 @@ export function ConnectedOperations() {
                     })
                   } />
               )}
-              {path === "triage" && management && (
+              {(path === "triage" || path === "kanban") && management && (
                 <Inquiries items={inquiries} disabled={busy}
                   onAnswer={(inquiry, text) =>
                     void run(async () => {
@@ -638,6 +648,9 @@ export function ConnectedOperations() {
                           <h3>Phiên điều phối</h3>
                           {session.session ? (
                             <>
+                              {management && (
+                                <p><a href={`/operations/team?session=${encodeURIComponent(session.session.id)}`}>Mở phiên trong Điều phối →</a></p>
+                              )}
                               <p>Supervisor: {session.session.supervisor_name}</p>
                               {management && (
                                 <SessionControls teamId={session.session.id} />
@@ -1142,7 +1155,7 @@ export function ConnectedOperations() {
             </div>
           </>
         )}
-      </WorkspaceFrame>
+      </WorkspaceFrame>}
     </ConnectedOperationsShell>
   );
 }

@@ -78,14 +78,16 @@ export function OperationsHeader({ menuOpen, onToggleMenu }: { menuOpen?: boolea
     avatarUrl={profile.avatarUrl} p1Incidents={p1Incidents} pendingApprovals={pendingApprovals} onReset={resetToDefaultMock} />;
 }
 
-export function OperationsHeaderView({ menuOpen, onToggleMenu, breadcrumb, name, roleTitle, avatarUrl, p1Incidents, pendingApprovals, onReset }: {
+export function OperationsHeaderView({ menuOpen, onToggleMenu, breadcrumb, name, roleTitle, avatarUrl, p1Incidents, pendingApprovals, notices = [], onReset }: {
   menuOpen?: boolean; onToggleMenu?: () => void; breadcrumb: BreadcrumbConfig;
   name: string; roleTitle: string; avatarUrl?: string;
   p1Incidents: Pick<VhIncident, 'id' | 'title' | 'location_json'>[];
   pendingApprovals: { id: string; estimated_cost_vnd?: number | null }[];
+  /** Things waiting for this person, each with where to act on it. */
+  notices?: { id: string; title: string; note: string; to: string }[];
   onReset?: () => void;
 }) {
-  const notificationCount = p1Incidents.length + pendingApprovals.length;
+  const notificationCount = p1Incidents.length + pendingApprovals.length + notices.length;
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -173,6 +175,14 @@ export function OperationsHeaderView({ menuOpen, onToggleMenu, breadcrumb, name,
                 <p className="px-4 py-8 text-center text-sm text-slate-500">Không có thông báo mới.</p>
               ) : (
                 <ul className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+                  {notices.map((notice) => (
+                    <li key={notice.id}>
+                      <a href={notice.to} className="block px-4 py-3 hover:bg-slate-50">
+                        <p className="text-sm text-slate-900 leading-snug">{notice.title}</p>
+                        <p className="mt-0.5 text-[13px] text-slate-500">{notice.note}</p>
+                      </a>
+                    </li>
+                  ))}
                   {p1Incidents.map((inc) => (
                     <li key={inc.id} className="px-4 py-3">
                       <p className="text-sm text-slate-900 leading-snug">{inc.title}</p>

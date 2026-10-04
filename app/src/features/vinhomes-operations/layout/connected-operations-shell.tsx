@@ -1,21 +1,23 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "@tanstack/react-router";
+import { IconBolt, IconChartBar, IconChecklist, IconMessages } from "@tabler/icons-react";
 import { OperationsSidebarView } from "./operations-sidebar";
 import { OperationsHeaderView } from "./operations-header";
 import type { MenuId } from "../types/persona";
 
 export const connectedPages: Record<string, string> = {
   "": "Tổng quan vận hành",
+  agents: "Agent",
   triage: "Tiếp nhận phản ánh",
   incidents: "Phản ánh & sự cố",
-  kanban: "Phân công công việc",
+  kanban: "Công việc",
   dispatch: "Ticket & hiện trường",
   "my-tasks": "Việc của tôi",
   "work-orders": "Hồ sơ công việc",
   "completed-tasks": "Công việc đã hoàn thành",
   qc: "Nghiệm thu chất lượng",
-  team: "Nhóm ban quản lý",
-  reports: "Báo cáo vận hành",
+  team: "Điều phối",
+  reports: "Báo cáo",
   evidence: "Hình ảnh bằng chứng",
   approvals: "Phê duyệt",
   accounts: "Quản lý tài khoản",
@@ -24,37 +26,43 @@ export const connectedPages: Record<string, string> = {
   contractor: "Nhà thầu",
 };
 
+// Management works from four places. The other pages still answer their address, without a menu entry.
+const managementNav = [
+  { page: "team", icon: <IconMessages className="size-4" stroke={1.75} /> },
+  { page: "kanban", icon: <IconChecklist className="size-4" stroke={1.75} /> },
+  { page: "agents", icon: <IconBolt className="size-4" stroke={1.75} /> },
+  { page: "reports", icon: <IconChartBar className="size-4" stroke={1.75} /> },
+];
+
+export type ShellNotice = { id: string; title: string; note: string; to: string };
+
 /** Uses the Operations shell and responsive navigation styles, with server identity. */
 export function ConnectedOperationsShell({
   name,
   management,
   administrator,
   alerts = [],
+  notices = [],
+  flush = false,
   children,
 }: {
   name?: string;
   management: boolean;
   administrator?: boolean;
   alerts?: {id: string; title: string; location_json: {towerCode?: string}}[];
+  /** Sessions waiting for management: the bell, the menu badge and the tab title count them. */
+  notices?: ShellNotice[];
+  /** The page fills the pane and scrolls inside itself, as a conversation does. */
+  flush?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const path = useLocation().pathname.split("/")[2] || "";
+  const path = useLocation().pathname.split("/")[2] || (management ? "team" : "");
   const roleLabel = administrator ? "Quản trị hệ thống" : management ? "Ban quản lý" : "Nhân viên hiện trường";
-  const pages = management
-    ? [
-        "",
-        "triage",
-        "incidents",
-        "kanban",
-        "work-orders",
-        "qc",
-        "completed-tasks",
-        "team",
-        "reports",
-      ]
-    : ["my-tasks", "work-orders", "completed-tasks"];
-  if (administrator) pages.unshift("accounts");
+  useEffect(() => {
+    document.title = `${notices.length ? `(${notices.length}) ` : ""}Vinhomes · Quản lý vận hành`;
+  }, [notices.length]);
+  const staffPages = ["my-tasks", "work-orders", "completed-tasks"];
   return (
     <div
       lang="vi"
@@ -69,19 +77,24 @@ export function ConnectedOperationsShell({
         />
       )}
       <OperationsSidebarView open={open} onNavigate={() => setOpen(false)}
-        account={{name: name || 'Đang tải tài khoản…', identifier: '', scope: 'Phạm vi được cấp', roleLabel}}
+        account={{name: name || 'Đang tải tài khoản…', identifier: '', scope: '', roleLabel}}
         workspaceItems={administrator ? [['accounts', 'Quản lý tài khoản']] : []}
-        operationItems={pages.filter(page => !['accounts', 'team', 'reports', 'qc'].includes(page)).map(page => ({id: (page || 'dashboard') as MenuId, label: connectedPages[page], to: `/operations${page ? `/${page}` : ''}`, section: 'OPERATIONS'}))}
-        managementItems={pages.filter(page => ['team', 'reports', 'qc'].includes(page)).map(page => ({id: page as MenuId, label: connectedPages[page], to: `/operations/${page}`, section: 'MANAGEMENT'}))} />
+        operationItems={management
+          ? managementNav.map(({page, icon}) => ({id: page as MenuId, label: connectedPages[page], to: `/operations/${page}`, icon, section: 'OPERATIONS' as const,
+              badgeCount: page === 'team' && notices.length ? notices.length : undefined}))
+          : staffPages.map(page => ({id: page as MenuId, label: connectedPages[page], to: `/operations/${page}`, section: 'OPERATIONS' as const}))}
+        managementItems={[]} />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <OperationsHeaderView menuOpen={open} onToggleMenu={() => setOpen(!open)}
           breadcrumb={{section: 'Vận hành đô thị', page: connectedPages[path] || 'Không gian làm việc'}}
-          name={name || 'Đang tải tài khoản…'} roleTitle={roleLabel} p1Incidents={alerts} pendingApprovals={[]} />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-6 xl:p-8">
-          <div className="operations-content w-full min-w-0 max-w-full">
-            {children}
-          </div>
-        </main>
+          name={name || 'Đang tải tài khoản…'} roleTitle={roleLabel} p1Incidents={alerts} pendingApprovals={[]} notices={notices} />
+        {flush ? <main className="min-h-0 flex-1 overflow-hidden">{children}</main> : (
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-6 xl:p-8">
+            <div className="operations-content w-full min-w-0 max-w-full">
+              {children}
+            </div>
+          </main>
+        )}
       </div>
     </div>
   );

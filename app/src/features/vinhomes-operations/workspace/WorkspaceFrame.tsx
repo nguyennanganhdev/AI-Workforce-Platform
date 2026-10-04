@@ -40,7 +40,8 @@ export function WorkspaceFrame({
           {a.role === "admin" ? "Toàn hệ thống" : `Phạm vi ${a.scope}`}
         </span>
       </header>
-      {(a.role === "manager" || a.role === "admin") && (
+      {/* The connected shell already has this navigation in its sidebar. */}
+      {!connectedAccount && (a.role === "manager" || a.role === "admin") && (
         <nav className="ws-tabs" aria-label="Không gian làm việc">
           {(a.role === "admin"
             ? [["accounts", "Tài khoản"]]
