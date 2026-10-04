@@ -35,6 +35,7 @@ import { Route as AuthedOperationsAccountsRouteImport } from './routes/_authed/o
 import { Route as AuthedOperationsAgentsRouteImport } from './routes/_authed/operations/agents'
 import { Route as AuthedOperationsApprovalsRouteImport } from './routes/_authed/operations/approvals'
 import { Route as AuthedOperationsCompletedTasksRouteImport } from './routes/_authed/operations/completed-tasks'
+import { Route as AuthedOperationsConnectionsRouteImport } from './routes/_authed/operations/connections'
 import { Route as AuthedOperationsContractorRouteImport } from './routes/_authed/operations/contractor'
 import { Route as AuthedOperationsDispatchRouteImport } from './routes/_authed/operations/dispatch'
 import { Route as AuthedOperationsEvidenceRouteImport } from './routes/_authed/operations/evidence'
@@ -194,6 +195,12 @@ const AuthedOperationsCompletedTasksRoute =
   AuthedOperationsCompletedTasksRouteImport.update({
     id: '/completed-tasks',
     path: '/completed-tasks',
+    getParentRoute: () => AuthedOperationsRouteRoute,
+  } as any)
+const AuthedOperationsConnectionsRoute =
+  AuthedOperationsConnectionsRouteImport.update({
+    id: '/connections',
+    path: '/connections',
     getParentRoute: () => AuthedOperationsRouteRoute,
   } as any)
 const AuthedOperationsContractorRoute =
@@ -377,6 +384,7 @@ export interface FileRoutesByFullPath {
   '/operations/agents': typeof AuthedOperationsAgentsRoute
   '/operations/approvals': typeof AuthedOperationsApprovalsRoute
   '/operations/completed-tasks': typeof AuthedOperationsCompletedTasksRoute
+  '/operations/connections': typeof AuthedOperationsConnectionsRoute
   '/operations/contractor': typeof AuthedOperationsContractorRoute
   '/operations/dispatch': typeof AuthedOperationsDispatchRoute
   '/operations/evidence': typeof AuthedOperationsEvidenceRoute
@@ -428,6 +436,7 @@ export interface FileRoutesByTo {
   '/operations/agents': typeof AuthedOperationsAgentsRoute
   '/operations/approvals': typeof AuthedOperationsApprovalsRoute
   '/operations/completed-tasks': typeof AuthedOperationsCompletedTasksRoute
+  '/operations/connections': typeof AuthedOperationsConnectionsRoute
   '/operations/contractor': typeof AuthedOperationsContractorRoute
   '/operations/dispatch': typeof AuthedOperationsDispatchRoute
   '/operations/evidence': typeof AuthedOperationsEvidenceRoute
@@ -484,6 +493,7 @@ export interface FileRoutesById {
   '/_authed/operations/agents': typeof AuthedOperationsAgentsRoute
   '/_authed/operations/approvals': typeof AuthedOperationsApprovalsRoute
   '/_authed/operations/completed-tasks': typeof AuthedOperationsCompletedTasksRoute
+  '/_authed/operations/connections': typeof AuthedOperationsConnectionsRoute
   '/_authed/operations/contractor': typeof AuthedOperationsContractorRoute
   '/_authed/operations/dispatch': typeof AuthedOperationsDispatchRoute
   '/_authed/operations/evidence': typeof AuthedOperationsEvidenceRoute
@@ -541,6 +551,7 @@ export interface FileRouteTypes {
     | '/operations/agents'
     | '/operations/approvals'
     | '/operations/completed-tasks'
+    | '/operations/connections'
     | '/operations/contractor'
     | '/operations/dispatch'
     | '/operations/evidence'
@@ -592,6 +603,7 @@ export interface FileRouteTypes {
     | '/operations/agents'
     | '/operations/approvals'
     | '/operations/completed-tasks'
+    | '/operations/connections'
     | '/operations/contractor'
     | '/operations/dispatch'
     | '/operations/evidence'
@@ -647,6 +659,7 @@ export interface FileRouteTypes {
     | '/_authed/operations/agents'
     | '/_authed/operations/approvals'
     | '/_authed/operations/completed-tasks'
+    | '/_authed/operations/connections'
     | '/_authed/operations/contractor'
     | '/_authed/operations/dispatch'
     | '/_authed/operations/evidence'
@@ -868,6 +881,13 @@ declare module '@tanstack/react-router' {
       path: '/completed-tasks'
       fullPath: '/operations/completed-tasks'
       preLoaderRoute: typeof AuthedOperationsCompletedTasksRouteImport
+      parentRoute: typeof AuthedOperationsRouteRoute
+    }
+    '/_authed/operations/connections': {
+      id: '/_authed/operations/connections'
+      path: '/connections'
+      fullPath: '/operations/connections'
+      preLoaderRoute: typeof AuthedOperationsConnectionsRouteImport
       parentRoute: typeof AuthedOperationsRouteRoute
     }
     '/_authed/operations/contractor': {
@@ -1115,6 +1135,7 @@ interface AuthedOperationsRouteRouteChildren {
   AuthedOperationsAgentsRoute: typeof AuthedOperationsAgentsRoute
   AuthedOperationsApprovalsRoute: typeof AuthedOperationsApprovalsRoute
   AuthedOperationsCompletedTasksRoute: typeof AuthedOperationsCompletedTasksRoute
+  AuthedOperationsConnectionsRoute: typeof AuthedOperationsConnectionsRoute
   AuthedOperationsContractorRoute: typeof AuthedOperationsContractorRoute
   AuthedOperationsDispatchRoute: typeof AuthedOperationsDispatchRoute
   AuthedOperationsEvidenceRoute: typeof AuthedOperationsEvidenceRoute
@@ -1136,6 +1157,7 @@ const AuthedOperationsRouteRouteChildren: AuthedOperationsRouteRouteChildren = {
   AuthedOperationsAgentsRoute: AuthedOperationsAgentsRoute,
   AuthedOperationsApprovalsRoute: AuthedOperationsApprovalsRoute,
   AuthedOperationsCompletedTasksRoute: AuthedOperationsCompletedTasksRoute,
+  AuthedOperationsConnectionsRoute: AuthedOperationsConnectionsRoute,
   AuthedOperationsContractorRoute: AuthedOperationsContractorRoute,
   AuthedOperationsDispatchRoute: AuthedOperationsDispatchRoute,
   AuthedOperationsEvidenceRoute: AuthedOperationsEvidenceRoute,

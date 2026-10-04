@@ -71,7 +71,7 @@ export function AgentsPage() {
         <div>
           <h1 className="text-xl font-semibold text-foreground">Agent</h1>
           <p className="mt-1 max-w-prose text-sm text-muted-foreground">
-            Agent của nhóm làm việc trong các phiên do Supervisor điều phối và trả lời khi được nhắc. Mỗi agent phải qua đánh giá trước khi phát hành.
+            Agent của nhóm làm việc trong các phiên do Supervisor điều phối và trả lời khi được nhắc. Bạn tự tạo và phát hành agent; mỗi bản phải đạt đánh giá trước khi phát hành.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -168,9 +168,12 @@ function AgentEditor({ roomId, agent, catalogue, onClose }: {roomId: string; age
       framework_version: "openbot-chat-completions", revision_of: baseVersion}}); } catch { /* visible mutation error */ }
   }
   const servers = [...new Set(catalogue.tools.map(t => t.server_id))];
+  // A connection the administrator set up is named by its title; its tools by the server's own names.
+  const serverLabel = (server: string) => { const tool = catalogue.tools.find(t => t.server_id === server);
+    return SERVERS[server] || (tool?.external ? `${tool.server_title} · kết nối ngoài` : tool?.server_title) || server; };
   return <Dialog open onOpenChange={open => {if (!open && !busy) onClose();}}><DialogContent className="max-w-2xl">
     <DialogHeader><DialogTitle>{agent.name}</DialogTitle><DialogDescription>
-      {pendingReview ? "Đánh giá đã đạt. Mở mục Phát hành để quyết định."
+      {pendingReview ? "Đánh giá đã đạt. Mở mục Phát hành để phát hành bản này."
         : baseVersion ? `Đang soạn bản ${Number(agent.latest_version?.number) + 1}. Phiên đang chạy vẫn dùng bản đã phát hành cho tới khi bản mới được phát hành.`
         : "Bản nháp: soạn cấu hình, chạy đánh giá, rồi phát hành."}
     </DialogDescription></DialogHeader>
@@ -208,10 +211,10 @@ function AgentEditor({ roomId, agent, catalogue, onClose }: {roomId: string; age
           <fieldset disabled={!edit}><legend className="text-sm font-medium">Tool đọc được cấp</legend>
             <p className="mb-2 text-xs text-muted-foreground">Agent chỉ đọc dữ liệu trong phạm vi của nhóm. Thao tác ghi luôn cần người duyệt.</p>
             {catalogue.tools.length ? servers.map(server => <div key={server} className="mb-3">
-              <p className="mb-1.5 text-xs font-medium text-muted-foreground">{SERVERS[server] || server}</p>
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">{serverLabel(server)}</p>
               {catalogue.tools.filter(t => t.server_id === server).map(t => <label key={`${t.server_id}/${t.name}`} className="mb-2 flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1"
                 checked={tools.some(g => g.server_id === t.server_id && g.name === t.name)} onChange={e => setTools(e.target.checked ? [...tools, {server_id: t.server_id, name: t.name}] : tools.filter(g => !(g.server_id === t.server_id && g.name === t.name)))} />
-                <span>{t.name}<span className="line-clamp-2 text-xs text-muted-foreground" title={t.description}>{t.description}</span></span></label>)}
+                <span>{t.external ? t.name.slice(server.length + 1) : t.name}<span className="line-clamp-2 text-xs text-muted-foreground" title={t.description}>{t.description}</span></span></label>)}
             </div>) : <p className="text-sm text-muted-foreground">Chưa có tool đọc được đăng ký.</p>}
           </fieldset>
         </TabsContent>
@@ -226,23 +229,27 @@ function AgentEditor({ roomId, agent, catalogue, onClose }: {roomId: string; age
               setEvaluationId(crypto.randomUUID()); } catch { /* visible mutation error */ }
           }}>{evaluate.isPending ? "Đang đánh giá…" : "Chạy đánh giá"}</Button>
           {dirty && <p className="mt-2 text-xs text-muted-foreground">Lưu cấu hình trước: đánh giá chạy trên bản đã lưu.</p>}
+          {/* The runtime could not get an answer from the model at all: that says nothing about the agent. */}
+          {!!results?.length && results.every(c => c.explanation === "openbot_run_error") && <p role="alert" className="mt-3 text-sm text-destructive">
+            Chưa đánh giá được: model không trả lời. Đây không phải lỗi của agent. Báo quản trị viên kiểm tra khóa model rồi chạy lại.</p>}
           {results?.map(c => <details key={c.name} className="mt-3 text-sm"><summary>{c.name}: {c.passed ? "Đạt" : "Chưa đạt"}</summary><p className="mt-1 whitespace-pre-wrap text-muted-foreground">{c.actual}</p><p className="text-muted-foreground">{c.explanation}</p></details>)}
         </TabsContent>
         <TabsContent value="release" className="space-y-3 pt-3">
           <p className="text-sm text-foreground">{agentStanding(agent).label}{pendingReview && agent.published ? " · có bản mới chờ quyết định" : ""}</p>
           {pendingReview || agent.published ? <>
-            <label htmlFor="agent-decision-note" className="text-sm font-medium">Lý do quyết định</label>
+            <label htmlFor="agent-decision-note" className="text-sm font-medium">Ghi chú</label>
+            <p className="text-xs text-muted-foreground">Cần ghi lý do khi từ chối hoặc thu hồi.</p>
             <Textarea id="agent-decision-note" rows={2} value={note} disabled={busy} onChange={e => setNote(e.target.value)} />
             <div className="flex flex-wrap gap-2">
               {pendingReview && ([['approve', 'Phát hành'], ['reject', 'Từ chối']] as const).map(([decision, label]) =>
-                <Button key={decision} size="sm" variant={decision === "approve" ? "default" : "outline"} disabled={busy || !note.trim()} onClick={async () => {
-                  try { await decide.mutateAsync({roomId, reviewId: agent.review!.id, decision, version: agent.review!.version, note}); setNote(""); } catch { /* visible mutation error */ }
+                <Button key={decision} size="sm" variant={decision === "approve" ? "default" : "outline"} disabled={busy || (decision === "reject" && !note.trim())} onClick={async () => {
+                  try { await decide.mutateAsync({roomId, reviewId: agent.review!.id, decision, version: agent.review!.version, note: note.trim() || "Phát hành sau khi đánh giá đạt."}); setNote(""); } catch { /* visible mutation error */ }
                 }}>{label}</Button>)}
               {agent.published && <Button size="sm" variant="destructive" disabled={busy || !note.trim()} onClick={async () => {
                 try { await revoke.mutateAsync({roomId, agentId: agent.id, note}); setNote(""); } catch { /* visible mutation error */ }
               }}>Thu hồi</Button>}
             </div>
-          </> : <p className="text-sm text-muted-foreground">Chưa có bản nào để quyết định. Chạy đánh giá đạt cả 6 ca thì mục này mở quyết định phát hành.</p>}
+          </> : <p className="text-sm text-muted-foreground">Chưa có bản nào để phát hành. Khi đánh giá đạt cả 6 ca, bạn phát hành ngay tại đây, không cần quản trị viên duyệt.</p>}
         </TabsContent>
       </Tabs>
       {error && <p role="alert" className="text-sm text-destructive">{error.message}</p>}

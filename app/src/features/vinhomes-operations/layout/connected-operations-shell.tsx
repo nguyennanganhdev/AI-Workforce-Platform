@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "@tanstack/react-router";
-import { IconBolt, IconChartBar, IconChecklist, IconMessages } from "@tabler/icons-react";
+import { IconBolt, IconChartBar, IconChecklist, IconMessages, IconPlugConnected, IconUsers } from "@tabler/icons-react";
 import { OperationsSidebarView } from "./operations-sidebar";
 import { OperationsHeaderView } from "./operations-header";
 import type { MenuId } from "../types/persona";
@@ -20,7 +20,8 @@ export const connectedPages: Record<string, string> = {
   reports: "Báo cáo",
   evidence: "Hình ảnh bằng chứng",
   approvals: "Phê duyệt",
-  accounts: "Quản lý tài khoản",
+  accounts: "Tài khoản",
+  connections: "Kết nối ngoài",
   security: "An ninh hiện trường",
   sanitation: "Vệ sinh",
   contractor: "Nhà thầu",
@@ -32,6 +33,12 @@ const managementNav = [
   { page: "kanban", icon: <IconChecklist className="size-4" stroke={1.75} /> },
   { page: "agents", icon: <IconBolt className="size-4" stroke={1.75} /> },
   { page: "reports", icon: <IconChartBar className="size-4" stroke={1.75} /> },
+];
+
+// What an administrator sets up for management to work with.
+const adminNav = [
+  { page: "accounts", icon: <IconUsers className="size-4" stroke={1.75} /> },
+  { page: "connections", icon: <IconPlugConnected className="size-4" stroke={1.75} /> },
 ];
 
 export type ShellNotice = { id: string; title: string; note: string; to: string };
@@ -78,12 +85,12 @@ export function ConnectedOperationsShell({
       )}
       <OperationsSidebarView open={open} onNavigate={() => setOpen(false)}
         account={{name: name || 'Đang tải tài khoản…', identifier: '', scope: '', roleLabel}}
-        workspaceItems={administrator ? [['accounts', 'Quản lý tài khoản']] : []}
+        workspaceItems={[]}
         operationItems={management
           ? managementNav.map(({page, icon}) => ({id: page as MenuId, label: connectedPages[page], to: `/operations/${page}`, icon, section: 'OPERATIONS' as const,
               badgeCount: page === 'team' && notices.length ? notices.length : undefined}))
           : staffPages.map(page => ({id: page as MenuId, label: connectedPages[page], to: `/operations/${page}`, section: 'OPERATIONS' as const}))}
-        managementItems={[]} />
+        managementItems={administrator ? adminNav.map(({page, icon}) => ({id: page as MenuId, label: connectedPages[page], to: `/operations/${page}`, icon, section: 'MANAGEMENT' as const})) : []} />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <OperationsHeaderView menuOpen={open} onToggleMenu={() => setOpen(!open)}
           breadcrumb={{section: 'Vận hành đô thị', page: connectedPages[path] || 'Không gian làm việc'}}

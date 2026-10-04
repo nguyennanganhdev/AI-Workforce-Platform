@@ -11,7 +11,7 @@ export type EvaluationInput = { name: string; instruction: string; expected: str
   must_not?: string[]; must_call?: string[]; must_not_call?: string[]; tool_results?: Record<string, unknown> };
 export type EvaluationResult = { name: string; expected: string; actual: string; passed: boolean; explanation: string };
 export type AgentManagement = { canManage: boolean; items: ManagedAgent[];
-  tools: { server_id: string; name: string; description: string }[]; categories: { code: string; name: string }[] };
+  tools: { server_id: string; server_title?: string; external?: boolean; name: string; description: string }[]; categories: { code: string; name: string }[] };
 export const managedAgentKeys = { all: ["managed-agents"] as const, room: (roomId: string) => ["managed-agents", "room", roomId] as const };
 export function managedAgentsQueryOptions(roomId: string) {
   return queryOptions({ queryKey: managedAgentKeys.room(roomId), enabled: !!roomId, refetchInterval: 5000,

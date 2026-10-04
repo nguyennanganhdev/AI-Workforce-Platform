@@ -5,12 +5,12 @@ import { roomSessionsQueryOptions, roomsQueryOptions } from "@/lib/rooms/queries
 import { Coordination } from "./coordination/Coordination";
 import { sessionState } from "./coordination/model";
 import { AgentsPage } from "./ManagedAgents";
+import { ConnectionsPage } from "./Connections";
 import {
   ConnectedOperationsShell,
   connectedPages,
 } from "../layout/connected-operations-shell";
 import { WorkspaceFrame } from "../workspace/WorkspaceFrame";
-import { AgentReviews } from "./AgentReviews";
 import { SessionControls } from "@/features/vinhomes-operations/connected/SessionControls";
 import { ConnectedAccounts } from "./ConnectedAccounts";
 import "./connected.css";
@@ -428,7 +428,8 @@ export function ConnectedOperations() {
   return (
     <ConnectedOperationsShell name={me?.user.name} management={management} administrator={me?.role === "admin"} notices={notices} flush={coordinating}
       alerts={tickets.filter(t => t.priority === 'critical' && !['closed', 'cancelled'].includes(t.status)).map(t => ({id: t.id, title: t.title, location_json: {towerCode: catalog?.buildings.find(b => b.id === t.building_id)?.code}}))}>
-      {coordinating ? <Coordination userId={me?.user.id || ""} /> : path === "agents" && management ? <AgentsPage /> :
+      {coordinating ? <Coordination userId={me?.user.id || ""} /> : path === "agents" && management ? <AgentsPage />
+        : path === "connections" && me?.role === "admin" ? <ConnectionsPage /> :
       <WorkspaceFrame
         contentOnly={!selected && !unavailable}
         title={connectedPages[path] || "Không gian làm việc"}
@@ -475,7 +476,7 @@ export function ConnectedOperations() {
             <button onClick={() => void run(load)}>Thử lại</button>
           </div>
         )}
-        {path === "accounts" && me?.role === "admin" ? <><ConnectedAccounts/><AgentReviews/></> : unavailable ? (
+        {path === "accounts" && me?.role === "admin" ? <ConnectedAccounts/> : unavailable ? (
           <section className="ws-card">
             <h2>Chức năng chưa được nối đầy đủ</h2>
             <p>
