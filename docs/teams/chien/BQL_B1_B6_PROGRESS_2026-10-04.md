@@ -52,6 +52,17 @@ Chạy bằng Playwright với tài khoản thật và model thật trên stack 
 Chưa làm trong đợt này: admin ghi đè và màn admin cấp phạm vi BQL; đối soát các loại báo cáo còn lại (B6); phân công,
 thi công, QC và đóng ticket sau khi có phiếu thi công; dữ liệu team Quang.
 
+Sau đợt này nhánh đã merge `develop` (`a01ae3a`: Agent Factory của Team Phái và tool báo cáo của Team Hoàng), PR #31
+hết xung đột. Ghi nhận từ lần merge:
+
+- `jose` được ghim `6.2.10` trong `server/package.json`. Với `^6.2.12` như trên `develop`, server không qua typecheck
+  (`src/auth/index.ts`) vì cài thêm một bản `@better-auth/core`.
+- Nguồn của `_vendor/reporting` trong API là `server/src/reporting` của Team Hoàng. Bản vendor là bản cũ hơn: 5 file
+  khác bản trên `develop` (`application/client.py`, `metrics/normalize.py`, `tools/catalog.py`, `tools/contracts.py`,
+  `tools/facade.py`). Cần đồng bộ lại trước khi đối soát báo cáo B6.
+- Test server cần cơ sở dữ liệu (`TEST_DATABASE_URL`) chưa chạy lại sau merge; các test kỹ thuật, tri thức, Factory,
+  giao diện và typecheck đã chạy lại và đạt.
+
 ## Thứ tự hoàn thiện tiếp
 
 1. Kiểm UI các nút điều khiển phiên; vòng agent v1→v2, BQL từ chối/thu hồi và admin ghi đè. Hoàn thiện cấp scope/workspace BQL trên màn admin.
