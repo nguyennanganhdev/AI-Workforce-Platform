@@ -1,0 +1,25 @@
+{
+  "name": "@workforce/agent-factory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.14",
+  "exports": {
+    ".": "./src/index.ts",
+    "./contracts": "./src/contracts.ts"
+  },
+  "scripts": {
+    "start": "bun --env-file=../.env src/server.ts",
+    "dev": "bun --env-file=../.env --watch src/server.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run typecheck && bun test"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.3",
+    "typescript": "5.9.3"
+  }
+}

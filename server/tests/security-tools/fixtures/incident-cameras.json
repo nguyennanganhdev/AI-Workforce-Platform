@@ -1,0 +1,172 @@
+[
+  {
+    "incident_id": "inc_01",
+    "camera": {
+      "camera_id": "cam_01",
+      "location": {
+        "location_id": "loc_01",
+        "building": "Tòa A",
+        "floor": "T1",
+        "zone": "Cổng chính"
+      },
+      "status": "ONLINE",
+      "camera_type": "FIXED",
+      "reference_id": "ref_cam_01",
+      "last_seen_at": "2026-09-29T04:29:58.000Z"
+    },
+    "relation": "AT_LOCATION"
+  },
+  {
+    "incident_id": "inc_01",
+    "camera": {
+      "camera_id": "cam_02",
+      "location": {
+        "location_id": "loc_01",
+        "building": "Tòa A",
+        "floor": "T1",
+        "zone": "Cổng chính"
+      },
+      "status": "ONLINE",
+      "camera_type": "PTZ",
+      "reference_id": "ref_cam_02",
+      "last_seen_at": "2026-09-29T04:29:59.000Z"
+    },
+    "relation": "AT_LOCATION"
+  },
+  {
+    "incident_id": "inc_02",
+    "camera": {
+      "camera_id": "cam_04",
+      "location": {
+        "location_id": "loc_03",
+        "building": "Tòa A",
+        "floor": "B1",
+        "zone": "Hầm xe"
+      },
+      "status": "ONLINE",
+      "camera_type": "PANORAMIC",
+      "reference_id": "ref_cam_04",
+      "last_seen_at": "2026-09-29T04:29:57.000Z"
+    },
+    "relation": "AT_LOCATION"
+  },
+  {
+    "incident_id": "inc_02",
+    "camera": {
+      "camera_id": "cam_05",
+      "location": {
+        "location_id": "loc_03",
+        "building": "Tòa A",
+        "floor": "B1",
+        "zone": "Hầm xe"
+      },
+      "status": "MAINTENANCE",
+      "camera_type": "OTHER",
+      "reference_id": null,
+      "last_seen_at": "2026-09-28T18:00:00.000Z"
+    },
+    "relation": "MANUALLY_LINKED"
+  },
+  {
+    "incident_id": "inc_03",
+    "camera": {
+      "camera_id": "cam_03",
+      "location": {
+        "location_id": "loc_02",
+        "building": "Tòa A",
+        "floor": "T1",
+        "zone": "Sảnh"
+      },
+      "status": "OFFLINE",
+      "camera_type": "FIXED",
+      "reference_id": "ref_cam_03",
+      "last_seen_at": "2026-09-29T03:15:00.000Z"
+    },
+    "relation": "AT_LOCATION"
+  },
+  {
+    "incident_id": "inc_04",
+    "camera": {
+      "camera_id": "cam_06",
+      "location": {
+        "location_id": "loc_04",
+        "building": "Tòa B",
+        "floor": "T1",
+        "zone": "Sảnh"
+      },
+      "status": "ONLINE",
+      "camera_type": "FIXED",
+      "reference_id": "ref_cam_06",
+      "last_seen_at": "2026-09-29T04:29:58.000Z"
+    },
+    "relation": "AT_LOCATION"
+  },
+  {
+    "incident_id": "inc_06",
+    "camera": {
+      "camera_id": "cam_01",
+      "location": {
+        "location_id": "loc_01",
+        "building": "Tòa A",
+        "floor": "T1",
+        "zone": "Cổng chính"
+      },
+      "status": "ONLINE",
+      "camera_type": "FIXED",
+      "reference_id": "ref_cam_01",
+      "last_seen_at": "2026-09-29T04:29:58.000Z"
+    },
+    "relation": "AT_LOCATION"
+  },
+  {
+    "incident_id": "inc_07",
+    "camera": {
+      "camera_id": "cam_06",
+      "location": {
+        "location_id": "loc_04",
+        "building": "Tòa B",
+        "floor": "T1",
+        "zone": "Sảnh"
+      },
+      "status": "ONLINE",
+      "camera_type": "FIXED",
+      "reference_id": "ref_cam_06",
+      "last_seen_at": "2026-09-29T04:29:58.000Z"
+    },
+    "relation": "AT_LOCATION"
+  },
+  {
+    "incident_id": "inc_08",
+    "camera": {
+      "camera_id": "cam_06",
+      "location": {
+        "location_id": "loc_04",
+        "building": "Tòa B",
+        "floor": "T1",
+        "zone": "Sảnh"
+      },
+      "status": "ONLINE",
+      "camera_type": "FIXED",
+      "reference_id": "ref_cam_06",
+      "last_seen_at": "2026-09-29T04:29:58.000Z"
+    },
+    "relation": "AT_LOCATION"
+  },
+  {
+    "incident_id": "inc_08",
+    "camera": {
+      "camera_id": "cam_07",
+      "location": {
+        "location_id": "loc_05",
+        "building": "Tòa B",
+        "floor": "T1",
+        "zone": "Thang máy"
+      },
+      "status": "UNKNOWN",
+      "camera_type": "UNKNOWN",
+      "reference_id": null,
+      "last_seen_at": null
+    },
+    "relation": "NEAR_LOCATION"
+  }
+]

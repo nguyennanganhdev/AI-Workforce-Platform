@@ -162,3 +162,123 @@ without `OPENBOT_LIVE_SCREEN=1` the files skip before importing anything, which 
 - Put sensitive behavior on the server, not only in the browser.
 - Update [configuration](configuration.md), [architecture](architecture.md), or the root [README](../README.md) when behavior changes.
 - Run the quality checks above and include the results in the pull request.
+
+## Meta-Agent P0 verification
+
+P0 is **BLOCKED**, not accepted. The [Step 9 report](plans/meta-agent-p0-implementation-plan.md#21-step-9-final-verification)
+is historical. The [latest acceptance closure report](plans/meta-agent-p0-implementation-plan.md#22-p0-acceptance-closure-verification--2026-10-01)
+records 20 PASS / 13 BLOCKED items, fresh-DB/CI/static results, the failed real-model diagnostic,
+exact command artifacts and remaining work. The plan and impact map are currently ignored
+local files; preserve them deliberately with the release evidence. No release-quality or
+browser success may be inferred from deterministic fixture results.
+
+Use the repository-pinned **Bun 1.3.14** (the host's default 1.4.2 is not the pinned
+verification runtime), Node and Python, Docker PostgreSQL with pgvector, and `rtk`.
+The Step 9 host used `PATH=/tmp/meta-agent-step1-toolchain/node_modules/.bin:$PATH`.
+Install the standalone packages too; root workspaces do not install them:
+
+```sh
+rtk bun install --frozen-lockfile
+rtk bun install --cwd agent-bot --frozen-lockfile
+rtk bun install --cwd agent-langgraph --frozen-lockfile
+rtk bun install --cwd agent-mastra
+rtk bun install --cwd desktop --frozen-lockfile
+rtk bun install --cwd agent-computer --frozen-lockfile
+rtk bun agent-computer/node_modules/playwright/cli.js install chromium
+```
+
+`agent-mastra` has no committed lockfile; its install can generate a local lockfile.
+Do not add dependency or lockfile changes to P0 merely to prepare verification. The
+previously proposed `bun --cwd agent-computer x playwright ...` failed on this host;
+the installed CLI path above uses the declared Playwright 1.62.1 dependency.
+
+Create a **dedicated** test database, never the application database. For this run an
+existing loopback test container (`meta-agent-step2-postgres`, port 55432) hosted a fresh
+`openbot_p0_final_test` database, with pgvector and all 51 existing migrations. Example
+for that verified local test container (replace only with your own isolated test target):
+
+```sh
+rtk docker exec meta-agent-step2-postgres createdb -U openbot openbot_p0_final_test
+rtk docker exec meta-agent-step2-postgres psql -U openbot -d openbot_p0_final_test -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+export TEST_DATABASE_URL=postgres://openbot:openbot@127.0.0.1:55432/openbot_p0_final_test
+cd server
+rtk env DATABASE_URL="$TEST_DATABASE_URL" bunx drizzle-kit migrate --config=drizzle.config.ts
+cd ..
+rtk bun run generate:app-config
+rtk bun test server/tests/agent-factory.test.ts server/tests/agent-factory.integration.test.ts server/tests/agent-factory-routes.test.ts server/tests/agent-factory-runtime.integration.test.ts server/tests/agent-factory-golden.test.ts app/tests/agent-factory-ui.test.tsx
+rtk bun run check
+rtk bun run lint
+rtk bun run format:check
+rtk bun run build
+rtk bun run test:ci
+```
+
+Do not recreate an existing database or use app `.env` migrations to bypass the explicit
+test target. Keep source backups outside the repository while running discovery-based
+checks; `.logs` is ignored by Git but is still traversed by Biome.
+
+### Configured-model quality gate
+
+`rtk bun run eval:factory-quality` runs the frozen 20 cases through the actual construction
+and review service without saving agents, granting access or calling business tools.
+It resolves `BOT_PROVIDER` / `BOT_MODEL` and the tenant package the same way as the server.
+Supply the selected provider's real `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` in the environment;
+this runner does not read a key stored in the application database. Keep provider URL
+settings consistent with the intended real deployment; do not point release evaluation
+at the replay fixture server or silently switch providers.
+
+`FACTORY_QUALITY_THRESHOLD_APPROVAL` must reference an actual owner decision, with approver
+and approved values preserved in release evidence. Proposed values remain: precision and
+recall 100%, forbidden selection and unsupported requirements 0%, positive construction
+success 100%, repair rate at most 10%, exact states for all 20 cases, at most two generation
+attempts/four model calls. A nonempty dummy string or test-fixture approval is not approval.
+
+Use `FACTORY_QUALITY_REPORT` for an explicit output path, or retain the timestamped report
+under `.logs/factory-quality/`. Preserve all failed runs, dataset/catalogue/prompt/compiler/model
+fingerprints, per-case outcomes, latency and exact usage coverage. Missing credentials,
+unapproved thresholds, unknown usage or failed gates are failures, not skips. The existing
+`factory-quality` workflow runs on tags/manual dispatch; required release-status enforcement
+must be configured and verified by the repository owner. Rerun on the final release candidate.
+
+### Mandatory browser gate (currently BLOCKED)
+
+`rtk bun run test:factory-e2e` currently exits 1 because the Step 8 script, process runner,
+E01–E04 browser suite and browser CI job do not exist. Installing/launching Chromium is only
+a prerequisite, not a passing application E2E result. Do not replace Intelligence or the
+built-in runtime with fake browser responses.
+
+Before implementing/running the approved Step 8 gate, provide dedicated test values:
+
+- `FACTORY_E2E_INTELLIGENCE_API_URL`
+- `FACTORY_E2E_INTELLIGENCE_GATEWAY_WS_URL`
+- `FACTORY_E2E_INTELLIGENCE_API_KEY`
+- An optional license token only if the selected Intelligence service requires it;
+  current application configuration does not always require one.
+- A dedicated migrated test DB, installed Chromium and available loopback ports for
+  `SERVER_PORT` / `APP_PORT` and LLMock/MCPMock fixtures.
+
+The runner must use explicit test-only configuration and `OPENBOT_SINGLE_USER=true` only
+with approved loopback isolation. Existing server bootstrap omits a hostname and Vite binds
+`::`; Step 8 stopped because this does not satisfy its loopback-only requirement. Vite needs no
+config change (`vite --host 127.0.0.1` binds loopback only); the server's `serve` call has no
+hostname option, so that half needs an approved change or an owner decision. Resolve
+that isolation/approved-change-surface discrepancy before launch; do not open an unauthenticated
+single-user deployment on the LAN. The future runner must reject missing prerequisites,
+fewer than four cases or any skip, and preserve sanitized traces/screenshots/provider and MCP
+counts for E01 create/run, E02 missing resource, E03 approve/run/revoke and E04 exhausted repair.
+
+The full CI suite has separate opt-in live-screen, Composio, supervisor and deployment-smoke
+skips. List them in the report; none supplies the missing Factory browser evidence.
+
+The 2026-10-01 closure audit found that Bun child tests can auto-load a local `.env` even
+when their fixture environment deliberately omits keys/model/port. Reproduce CI in a clean
+source snapshot/checkout without local `.env` or ignored diagnostic code; the closure report
+links the exact snapshot script and command manifest. Do not remove somebody's local config
+to make the gate green. Final clean CI: 5,366 pass, 27 existing
+opt-in skips, zero fail. One earlier unchanged voice-stream timeout is retained separately.
+The fifteen files that failed `format:check` at HEAD were formatted in a separately authorized,
+format-only cleanup; `format:check` now exits 0 on a clean checkout and still fails in a working
+directory that holds ignored `.logs` artifacts. One attachment event-loop timing test failed once
+under host load (40 ms against a strict under-40 ms limit) and passed on unchanged reruns.
+The configured-model diagnostic hit HTTP 429/402 and failed quality/usage/approval gates;
+it predates the corrected resource prompts and is not a final release report.

@@ -1,0 +1,2545 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Security v0.3 — common.schema.json",
+  "$comment": "Validate formats explicitly. See security_mcp_schema.md for runtime-only constraints and usage. Definition library: validate a named $defs entry, not the document root.",
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$(?![\\s\\S])"
+    },
+    "Timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$",
+      "minLength": 24,
+      "maxLength": 24
+    },
+    "Severity": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2", "P3"]
+    },
+    "IncidentType": {
+      "type": "string",
+      "enum": [
+        "INTRUSION",
+        "THEFT",
+        "VIOLENCE",
+        "SUSPICIOUS_ACTIVITY",
+        "ACCESS_CONTROL",
+        "DISTURBANCE",
+        "FIRE",
+        "MEDICAL",
+        "OTHER"
+      ]
+    },
+    "IncidentStatus": {
+      "type": "string",
+      "enum": ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"]
+    },
+    "GuardStatus": {
+      "type": "string",
+      "enum": ["AVAILABLE", "ASSIGNED", "UNAVAILABLE", "OFF_DUTY", "UNKNOWN"]
+    },
+    "CameraStatus": {
+      "type": "string",
+      "enum": ["ONLINE", "OFFLINE", "MAINTENANCE", "UNKNOWN"]
+    },
+    "CameraType": {
+      "type": "string",
+      "enum": ["FIXED", "PTZ", "PANORAMIC", "OTHER", "UNKNOWN"]
+    },
+    "CameraIncidentRelation": {
+      "type": "string",
+      "enum": ["AT_LOCATION", "NEAR_LOCATION", "MANUALLY_LINKED"]
+    },
+    "DispatchStatus": {
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "EN_ROUTE",
+        "ON_SITE",
+        "COMPLETED",
+        "CANCELLED",
+        "FAILED"
+      ]
+    },
+    "ContactRole": {
+      "type": "string",
+      "enum": [
+        "SECURITY_SUPERVISOR",
+        "PROPERTY_MANAGER",
+        "EMERGENCY_COORDINATOR"
+      ]
+    },
+    "ContactAvailability": {
+      "type": "string",
+      "enum": ["ON_DUTY", "OFF_DUTY", "UNKNOWN"]
+    },
+    "EscalationStatus": {
+      "type": "string",
+      "enum": ["PENDING", "NOTIFIED", "ACKNOWLEDGED", "FAILED", "ACK_TIMEOUT"]
+    },
+    "EvidenceType": {
+      "type": "string",
+      "enum": ["ACTION_RECEIPT", "OPERATOR_NOTE", "EXTERNAL_REFERENCE"]
+    },
+    "SkillStatus": {
+      "type": "string",
+      "enum": ["COMPLETED", "PROPOSED", "NEEDS_INPUT", "NEEDS_HUMAN", "FAILED"]
+    },
+    "CoverageStatus": {
+      "type": "string",
+      "enum": [
+        "PRESENT",
+        "EMPTY",
+        "MISSING",
+        "NOT_APPLICABLE",
+        "NOT_REQUESTED",
+        "PARTIAL"
+      ]
+    },
+    "SectionName": {
+      "type": "string",
+      "enum": [
+        "INCIDENT",
+        "TIMELINE",
+        "DISPATCH",
+        "ESCALATION",
+        "CAMERA",
+        "EVIDENCE",
+        "PROTOCOL",
+        "GUARD",
+        "CONTACT"
+      ]
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "VALIDATION_ERROR",
+        "AUTH_ERROR",
+        "SCOPE_MISMATCH",
+        "GRANT_MISSING",
+        "GRANT_EXPIRED",
+        "GRANT_INVALID",
+        "IDEMPOTENCY_CONFLICT",
+        "IDEMPOTENCY_IN_PROGRESS",
+        "IDEMPOTENCY_RESULT_EXPIRED",
+        "INVALID_STATE_TRANSITION",
+        "CONFLICT",
+        "NOT_FOUND",
+        "GUARD_NOT_AVAILABLE",
+        "CONTACT_NOT_AVAILABLE",
+        "EMERGENCY_NOT_ELIGIBLE",
+        "ACK_NOT_AUTHORIZED",
+        "PROVIDER_ERROR",
+        "PROVIDER_TIMEOUT",
+        "PROVIDER_INVALID_RESPONSE",
+        "RATE_LIMITED",
+        "INTERNAL_ERROR"
+      ]
+    },
+    "SecurityEventType": {
+      "type": "string",
+      "enum": [
+        "INCIDENT_CREATED",
+        "INCIDENT_UPDATED",
+        "DISPATCH_CREATED",
+        "DISPATCH_STATUS_CHANGED",
+        "ESCALATION_CREATED",
+        "ESCALATION_STATUS_CHANGED",
+        "EVIDENCE_ADDED"
+      ]
+    },
+    "Actor": {
+      "type": "object",
+      "properties": {
+        "actor_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "actor_type": {
+          "type": "string",
+          "enum": ["HUMAN", "SERVICE"]
+        }
+      },
+      "required": ["actor_id", "actor_type"],
+      "additionalProperties": false
+    },
+    "ReadContext": {
+      "type": "object",
+      "properties": {
+        "tenant_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "property_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "ticket_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "task_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "correlation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "principal_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "property_id",
+        "ticket_id",
+        "task_id",
+        "correlation_id",
+        "principal_id"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "task_id": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            },
+            "required": ["task_id"]
+          },
+          "then": {
+            "properties": {
+              "ticket_id": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "WriteContext": {
+      "type": "object",
+      "properties": {
+        "tenant_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "property_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "ticket_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "task_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "correlation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "principal_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "property_id",
+        "ticket_id",
+        "task_id",
+        "correlation_id",
+        "principal_id"
+      ],
+      "additionalProperties": false
+    },
+    "Location": {
+      "type": "object",
+      "properties": {
+        "location_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "building": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "floor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "zone": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["location_id", "building", "floor", "zone"],
+      "additionalProperties": false
+    },
+    "RelatedCounts": {
+      "type": "object",
+      "properties": {
+        "dispatches": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "escalations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "cameras": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "evidence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": ["dispatches", "escalations", "cameras", "evidence"],
+      "additionalProperties": false
+    },
+    "Incident": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "ticket_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "incident_type": {
+          "$ref": "#/$defs/IncidentType"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/IncidentStatus"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "location": {
+          "$ref": "#/$defs/Location"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "related_counts": {
+          "$ref": "#/$defs/RelatedCounts"
+        }
+      },
+      "required": [
+        "incident_id",
+        "ticket_id",
+        "incident_type",
+        "description",
+        "status",
+        "severity",
+        "location",
+        "version",
+        "created_at",
+        "updated_at",
+        "related_counts"
+      ],
+      "additionalProperties": false
+    },
+    "GuardSummary": {
+      "type": "object",
+      "properties": {
+        "guard_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "status": {
+          "$ref": "#/$defs/GuardStatus"
+        },
+        "current_location": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Location"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updated_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": ["guard_id", "status", "current_location", "updated_at"],
+      "additionalProperties": false
+    },
+    "CameraSummary": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "location": {
+          "$ref": "#/$defs/Location"
+        },
+        "status": {
+          "$ref": "#/$defs/CameraStatus"
+        },
+        "camera_type": {
+          "$ref": "#/$defs/CameraType"
+        },
+        "reference_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_seen_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "camera_id",
+        "location",
+        "status",
+        "camera_type",
+        "reference_id",
+        "last_seen_at"
+      ],
+      "additionalProperties": false
+    },
+    "IncidentCamera": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "camera": {
+          "$ref": "#/$defs/CameraSummary"
+        },
+        "relation": {
+          "$ref": "#/$defs/CameraIncidentRelation"
+        }
+      },
+      "required": ["incident_id", "camera", "relation"],
+      "additionalProperties": false
+    },
+    "Dispatch": {
+      "type": "object",
+      "properties": {
+        "dispatch_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "guard_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "location": {
+          "$ref": "#/$defs/Location"
+        },
+        "instruction": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/DispatchStatus"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "cancel_reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cancelled_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "GUARD_UNAVAILABLE",
+                "PROVIDER_REJECTED",
+                "DELIVERY_FAILED"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "dispatch_id",
+        "incident_id",
+        "guard_id",
+        "location",
+        "instruction",
+        "status",
+        "version",
+        "cancel_reason",
+        "cancelled_at",
+        "failure_code",
+        "created_at",
+        "updated_at"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "CANCELLED"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "cancel_reason": {
+                "not": {
+                  "type": "null"
+                }
+              },
+              "cancelled_at": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "FAILED"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "failure_code": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "DispatchSummary": {
+      "type": "object",
+      "properties": {
+        "dispatch_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "guard_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "status": {
+          "$ref": "#/$defs/DispatchStatus"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "dispatch_id",
+        "incident_id",
+        "guard_id",
+        "status",
+        "version",
+        "created_at",
+        "updated_at"
+      ],
+      "additionalProperties": false
+    },
+    "ProtocolStep": {
+      "type": "object",
+      "properties": {
+        "order": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "responsible_role": {
+          "$ref": "#/$defs/ContactRole"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "time_limit_minutes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1440
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "order",
+        "action",
+        "responsible_role",
+        "required",
+        "time_limit_minutes"
+      ],
+      "additionalProperties": false
+    },
+    "EmergencyProtocol": {
+      "type": "object",
+      "properties": {
+        "protocol_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "incident_type": {
+          "$ref": "#/$defs/IncidentType"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["P0", "P1"]
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProtocolStep"
+          },
+          "minItems": 1,
+          "maxItems": 100
+        },
+        "ack_timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400
+        }
+      },
+      "required": [
+        "protocol_id",
+        "version",
+        "incident_type",
+        "severity",
+        "steps",
+        "ack_timeout_seconds"
+      ],
+      "additionalProperties": false
+    },
+    "EscalationContact": {
+      "type": "object",
+      "properties": {
+        "contact_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "role": {
+          "$ref": "#/$defs/ContactRole"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "availability": {
+          "$ref": "#/$defs/ContactAvailability"
+        },
+        "supported_severities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["P0", "P1"]
+          },
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["PHONE", "SMS", "PUSH", "EMAIL"]
+          },
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "contact_id",
+        "role",
+        "priority",
+        "availability",
+        "supported_severities",
+        "channels"
+      ],
+      "additionalProperties": false
+    },
+    "EmergencyEscalation": {
+      "type": "object",
+      "properties": {
+        "escalation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["P0", "P1"]
+        },
+        "protocol_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "protocol_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "contact_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "status": {
+          "$ref": "#/$defs/EscalationStatus"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "notification_reference_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "notified_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ack_deadline_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "acknowledged_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "acknowledged_by": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Actor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ack_receipt_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["DELIVERY_FAILED", "PROVIDER_REJECTED"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "updated_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "escalation_id",
+        "incident_id",
+        "severity",
+        "protocol_id",
+        "protocol_version",
+        "contact_id",
+        "reason",
+        "status",
+        "version",
+        "notification_reference_id",
+        "notified_at",
+        "ack_deadline_at",
+        "acknowledged_at",
+        "acknowledged_by",
+        "ack_receipt_id",
+        "failure_code",
+        "created_at",
+        "updated_at"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "PENDING"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "notification_reference_id": {
+                "type": "null"
+              },
+              "notified_at": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": ["NOTIFIED", "ACKNOWLEDGED"]
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "notification_reference_id": {
+                "not": {
+                  "type": "null"
+                }
+              },
+              "notified_at": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "notification_reference_id": {
+                "type": "null"
+              }
+            },
+            "required": ["notification_reference_id"]
+          },
+          "then": {
+            "properties": {
+              "notified_at": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "notified_at": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ACKNOWLEDGED"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "acknowledged_at": {
+                "not": {
+                  "type": "null"
+                }
+              },
+              "acknowledged_by": {
+                "not": {
+                  "type": "null"
+                }
+              },
+              "ack_receipt_id": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "acknowledged_at": {
+                "type": "null"
+              },
+              "acknowledged_by": {
+                "type": "null"
+              },
+              "ack_receipt_id": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "FAILED"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "failure_code": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "WriteEvidence": {
+      "type": "object",
+      "properties": {
+        "evidence_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "provider": {
+          "$ref": "#/$defs/Id"
+        },
+        "provider_reference_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "committed_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "provider",
+        "provider_reference_id",
+        "committed_at"
+      ],
+      "additionalProperties": false
+    },
+    "EvidenceItem": {
+      "type": "object",
+      "properties": {
+        "evidence_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "evidence_type": {
+          "$ref": "#/$defs/EvidenceType"
+        },
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "provider": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider_reference_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "action": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "create_incident",
+                "update_incident",
+                "dispatch_guard",
+                "cancel_dispatch",
+                "escalate_emergency",
+                "acknowledge_emergency"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "idempotency_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "incident_id",
+        "evidence_type",
+        "actor",
+        "provider",
+        "provider_reference_id",
+        "action",
+        "idempotency_key",
+        "summary",
+        "created_at"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "evidence_type": {
+                "const": "ACTION_RECEIPT"
+              }
+            },
+            "required": ["evidence_type"]
+          },
+          "then": {
+            "properties": {
+              "action": {
+                "not": {
+                  "type": "null"
+                }
+              },
+              "idempotency_key": {
+                "not": {
+                  "type": "null"
+                }
+              },
+              "provider": {
+                "not": {
+                  "type": "null"
+                }
+              },
+              "provider_reference_id": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "SecurityEvent": {
+      "type": "object",
+      "properties": {
+        "event_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "event_type": {
+          "$ref": "#/$defs/SecurityEventType"
+        },
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "evidence_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "data": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "event_id",
+        "incident_id",
+        "event_type",
+        "actor",
+        "created_at",
+        "evidence_id",
+        "data"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "event_type": {
+              "const": "INCIDENT_CREATED"
+            },
+            "data": {
+              "$ref": "#/$defs/INCIDENT_CREATEDData"
+            }
+          }
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "INCIDENT_UPDATED"
+            },
+            "data": {
+              "$ref": "#/$defs/INCIDENT_UPDATEDData"
+            }
+          }
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "DISPATCH_CREATED"
+            },
+            "data": {
+              "$ref": "#/$defs/DISPATCH_CREATEDData"
+            }
+          }
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "DISPATCH_STATUS_CHANGED"
+            },
+            "data": {
+              "$ref": "#/$defs/DISPATCH_STATUS_CHANGEDData"
+            }
+          }
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "ESCALATION_CREATED"
+            },
+            "data": {
+              "$ref": "#/$defs/ESCALATION_CREATEDData"
+            }
+          }
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "ESCALATION_STATUS_CHANGED"
+            },
+            "data": {
+              "$ref": "#/$defs/ESCALATION_STATUS_CHANGEDData"
+            }
+          }
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "EVIDENCE_ADDED"
+            },
+            "data": {
+              "$ref": "#/$defs/EVIDENCE_ADDEDData"
+            }
+          }
+        }
+      ]
+    },
+    "INCIDENT_CREATEDData": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "OPEN"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        }
+      },
+      "required": ["status", "severity"],
+      "additionalProperties": false
+    },
+    "INCIDENT_UPDATEDData": {
+      "type": "object",
+      "properties": {
+        "previous_status": {
+          "$ref": "#/$defs/IncidentStatus"
+        },
+        "status": {
+          "$ref": "#/$defs/IncidentStatus"
+        },
+        "previous_severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "previous_status",
+        "status",
+        "previous_severity",
+        "severity",
+        "note"
+      ],
+      "additionalProperties": false
+    },
+    "DISPATCH_CREATEDData": {
+      "type": "object",
+      "properties": {
+        "dispatch_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "guard_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "status": {
+          "const": "PENDING"
+        }
+      },
+      "required": ["dispatch_id", "guard_id", "status"],
+      "additionalProperties": false
+    },
+    "DISPATCH_STATUS_CHANGEDData": {
+      "type": "object",
+      "properties": {
+        "dispatch_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "previous_status": {
+          "$ref": "#/$defs/DispatchStatus"
+        },
+        "status": {
+          "$ref": "#/$defs/DispatchStatus"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["dispatch_id", "previous_status", "status", "reason"],
+      "additionalProperties": false
+    },
+    "ESCALATION_CREATEDData": {
+      "type": "object",
+      "properties": {
+        "escalation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "contact_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "status": {
+          "const": "PENDING"
+        }
+      },
+      "required": ["escalation_id", "contact_id", "status"],
+      "additionalProperties": false
+    },
+    "ESCALATION_STATUS_CHANGEDData": {
+      "type": "object",
+      "properties": {
+        "escalation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "previous_status": {
+          "$ref": "#/$defs/EscalationStatus"
+        },
+        "status": {
+          "$ref": "#/$defs/EscalationStatus"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["escalation_id", "previous_status", "status", "reason"],
+      "additionalProperties": false
+    },
+    "EVIDENCE_ADDEDData": {
+      "type": "object",
+      "properties": {
+        "evidence_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "evidence_type": {
+          "$ref": "#/$defs/EvidenceType"
+        }
+      },
+      "required": ["evidence_id", "evidence_type"],
+      "additionalProperties": false
+    },
+    "ResponseMeta": {
+      "type": "object",
+      "properties": {
+        "correlation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "executed_at": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "replayed": {
+          "type": "boolean"
+        }
+      },
+      "required": ["correlation_id", "executed_at", "replayed"],
+      "additionalProperties": false
+    },
+    "ToolError": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "retry": {
+          "type": "string",
+          "enum": ["NEVER", "BACKOFF", "SAME_KEY", "RECONCILE"]
+        },
+        "retry_after_ms": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 60000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation_state": {
+          "type": "string",
+          "enum": ["NOT_STARTED", "IN_PROGRESS", "UNKNOWN", "FAILED"]
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retry",
+        "retry_after_ms",
+        "operation_state"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "code": {
+              "enum": [
+                "VALIDATION_ERROR",
+                "AUTH_ERROR",
+                "SCOPE_MISMATCH",
+                "GRANT_MISSING",
+                "GRANT_EXPIRED",
+                "GRANT_INVALID",
+                "IDEMPOTENCY_CONFLICT",
+                "NOT_FOUND"
+              ]
+            },
+            "retry": {
+              "const": "NEVER"
+            },
+            "operation_state": {
+              "const": "NOT_STARTED"
+            }
+          }
+        },
+        {
+          "properties": {
+            "code": {
+              "enum": [
+                "INVALID_STATE_TRANSITION",
+                "CONFLICT",
+                "GUARD_NOT_AVAILABLE",
+                "CONTACT_NOT_AVAILABLE",
+                "EMERGENCY_NOT_ELIGIBLE",
+                "ACK_NOT_AUTHORIZED"
+              ]
+            },
+            "retry": {
+              "const": "NEVER"
+            },
+            "operation_state": {
+              "const": "FAILED"
+            }
+          }
+        },
+        {
+          "properties": {
+            "code": {
+              "enum": ["IDEMPOTENCY_IN_PROGRESS"]
+            },
+            "retry": {
+              "const": "SAME_KEY"
+            },
+            "operation_state": {
+              "const": "IN_PROGRESS"
+            }
+          }
+        },
+        {
+          "properties": {
+            "code": {
+              "enum": ["IDEMPOTENCY_RESULT_EXPIRED"]
+            },
+            "retry": {
+              "const": "RECONCILE"
+            },
+            "operation_state": {
+              "const": "UNKNOWN"
+            }
+          }
+        },
+        {
+          "properties": {
+            "code": {
+              "enum": ["RATE_LIMITED"]
+            },
+            "retry": {
+              "const": "BACKOFF"
+            },
+            "operation_state": {
+              "const": "NOT_STARTED"
+            }
+          }
+        },
+        {
+          "properties": {
+            "code": {
+              "enum": ["PROVIDER_TIMEOUT", "PROVIDER_ERROR"]
+            },
+            "retry": {
+              "const": "BACKOFF"
+            },
+            "operation_state": {
+              "const": "NOT_STARTED"
+            }
+          }
+        },
+        {
+          "properties": {
+            "code": {
+              "enum": [
+                "PROVIDER_TIMEOUT",
+                "PROVIDER_ERROR",
+                "PROVIDER_INVALID_RESPONSE",
+                "INTERNAL_ERROR"
+              ]
+            },
+            "retry": {
+              "const": "RECONCILE"
+            },
+            "operation_state": {
+              "const": "UNKNOWN"
+            }
+          }
+        },
+        {
+          "properties": {
+            "code": {
+              "enum": ["PROVIDER_ERROR"]
+            },
+            "retry": {
+              "const": "NEVER"
+            },
+            "operation_state": {
+              "const": "FAILED"
+            }
+          }
+        },
+        {
+          "properties": {
+            "code": {
+              "enum": ["PROVIDER_INVALID_RESPONSE", "INTERNAL_ERROR"]
+            },
+            "retry": {
+              "const": "NEVER"
+            },
+            "operation_state": {
+              "const": "NOT_STARTED"
+            }
+          }
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "retry": {
+                "enum": ["NEVER", "RECONCILE"]
+              }
+            },
+            "required": ["retry"]
+          },
+          "then": {
+            "properties": {
+              "retry_after_ms": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "IDEMPOTENCY_IN_PROGRESS"
+              }
+            },
+            "required": ["code"]
+          },
+          "then": {
+            "properties": {
+              "retry_after_ms": {
+                "const": 1000
+              }
+            }
+          }
+        }
+      ]
+    },
+    "GetIncidentInput": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["incident_id"],
+      "additionalProperties": false
+    },
+    "SearchIncidentsInput": {
+      "type": "object",
+      "properties": {
+        "location_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "status": {
+          "$ref": "#/$defs/IncidentStatus"
+        },
+        "from": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "to": {
+          "$ref": "#/$defs/Timestamp"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "CreateIncidentInput": {
+      "type": "object",
+      "properties": {
+        "incident_type": {
+          "$ref": "#/$defs/IncidentType"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "location_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["incident_type", "description", "severity", "location_id"],
+      "additionalProperties": false
+    },
+    "UpdateIncidentInput": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "status": {
+          "$ref": "#/$defs/IncidentStatus"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "resolution_evidence_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["incident_id", "expected_version"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "required": ["status"]
+            },
+            {
+              "required": ["severity"]
+            },
+            {
+              "required": ["note"]
+            }
+          ]
+        },
+        {
+          "dependentRequired": {
+            "status": ["note"],
+            "severity": ["note"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "RESOLVED"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["resolution_evidence_id"]
+          }
+        }
+      ]
+    },
+    "GetAvailableGuardsInput": {
+      "type": "object",
+      "properties": {
+        "location_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": ["location_id"],
+      "additionalProperties": false
+    },
+    "GetGuardStatusInput": {
+      "type": "object",
+      "properties": {
+        "guard_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["guard_id"],
+      "additionalProperties": false
+    },
+    "DispatchGuardInput": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "incident_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "guard_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": ["incident_id", "incident_version", "guard_id"],
+      "additionalProperties": false
+    },
+    "GetDispatchInput": {
+      "type": "object",
+      "properties": {
+        "dispatch_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["dispatch_id"],
+      "additionalProperties": false
+    },
+    "CancelDispatchInput": {
+      "type": "object",
+      "properties": {
+        "dispatch_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": ["dispatch_id", "expected_version", "reason"],
+      "additionalProperties": false
+    },
+    "GetEmergencyProtocolInput": {
+      "type": "object",
+      "properties": {
+        "incident_type": {
+          "$ref": "#/$defs/IncidentType"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["P0", "P1"]
+        }
+      },
+      "required": ["incident_type", "severity"],
+      "additionalProperties": false
+    },
+    "GetEscalationContactsInput": {
+      "type": "object",
+      "properties": {
+        "severity": {
+          "type": "string",
+          "enum": ["P0", "P1"]
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": ["severity"],
+      "additionalProperties": false
+    },
+    "EscalateEmergencyInput": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "incident_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "protocol_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "protocol_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "contact_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "incident_id",
+        "incident_version",
+        "protocol_id",
+        "protocol_version",
+        "contact_id",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "AcknowledgeEmergencyInput": {
+      "type": "object",
+      "properties": {
+        "escalation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "expected_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "ack_receipt_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["escalation_id", "expected_version", "ack_receipt_id"],
+      "additionalProperties": false
+    },
+    "GetEmergencyEscalationInput": {
+      "type": "object",
+      "properties": {
+        "escalation_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["escalation_id"],
+      "additionalProperties": false
+    },
+    "GetIncidentEscalationsInput": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": ["incident_id"],
+      "additionalProperties": false
+    },
+    "GetCameraMetadataInput": {
+      "type": "object",
+      "properties": {
+        "camera_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["camera_id"],
+      "additionalProperties": false
+    },
+    "SearchCamerasInput": {
+      "type": "object",
+      "properties": {
+        "building": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "floor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "zone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "status": {
+          "$ref": "#/$defs/CameraStatus"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "GetCamerasByLocationInput": {
+      "type": "object",
+      "properties": {
+        "location_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": ["location_id"],
+      "additionalProperties": false
+    },
+    "GetIncidentCamerasInput": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": ["incident_id"],
+      "additionalProperties": false
+    },
+    "GetIncidentEvidenceInput": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": ["incident_id"],
+      "additionalProperties": false
+    },
+    "GetDispatchHistoryInput": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": ["incident_id"],
+      "additionalProperties": false
+    },
+    "GetSecurityEventTimelineInput": {
+      "type": "object",
+      "properties": {
+        "incident_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": ["incident_id"],
+      "additionalProperties": false
+    },
+    "ActionProposal": {
+      "type": "object",
+      "properties": {
+        "proposal_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "create_incident",
+            "update_incident",
+            "dispatch_guard",
+            "cancel_dispatch",
+            "escalate_emergency",
+            "acknowledge_emergency"
+          ]
+        },
+        "arguments": {
+          "type": "object"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "source_evidence_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "requires_approval": {
+          "const": true
+        }
+      },
+      "required": [
+        "proposal_id",
+        "action",
+        "arguments",
+        "rationale",
+        "source_evidence_ids",
+        "requires_approval"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "action": {
+              "const": "create_incident"
+            },
+            "arguments": {
+              "$ref": "#/$defs/CreateIncidentInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "update_incident"
+            },
+            "arguments": {
+              "$ref": "#/$defs/UpdateIncidentInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "dispatch_guard"
+            },
+            "arguments": {
+              "$ref": "#/$defs/DispatchGuardInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "cancel_dispatch"
+            },
+            "arguments": {
+              "$ref": "#/$defs/CancelDispatchInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "escalate_emergency"
+            },
+            "arguments": {
+              "$ref": "#/$defs/EscalateEmergencyInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "acknowledge_emergency"
+            },
+            "arguments": {
+              "$ref": "#/$defs/AcknowledgeEmergencyInput"
+            }
+          }
+        }
+      ]
+    },
+    "GrantClaims": {
+      "type": "object",
+      "properties": {
+        "iss": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "aud": {
+          "const": "security-mcp-write"
+        },
+        "sub": {
+          "$ref": "#/$defs/Id"
+        },
+        "jti": {
+          "$ref": "#/$defs/Id"
+        },
+        "iat": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "nbf": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "exp": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "contract_version": {
+          "const": "0.3"
+        },
+        "tenant_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "property_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "ticket_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "task_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "proposal_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "create_incident",
+            "update_incident",
+            "dispatch_guard",
+            "cancel_dispatch",
+            "escalate_emergency",
+            "acknowledge_emergency"
+          ]
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/Id"
+        },
+        "payload_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$(?![\\s\\S])"
+        }
+      },
+      "required": [
+        "iss",
+        "aud",
+        "sub",
+        "jti",
+        "iat",
+        "nbf",
+        "exp",
+        "contract_version",
+        "tenant_id",
+        "property_id",
+        "ticket_id",
+        "task_id",
+        "actor",
+        "proposal_id",
+        "action",
+        "idempotency_key",
+        "payload_hash"
+      ],
+      "additionalProperties": false
+    },
+    "WriteMetadata": {
+      "type": "object",
+      "properties": {
+        "execution_grant": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 8192,
+          "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$(?![\\s\\S])"
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["execution_grant", "idempotency_key"],
+      "additionalProperties": false
+    },
+    "ActionBinding": {
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "const": "0.3"
+        },
+        "proposal_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "tenant_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "property_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "ticket_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "task_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "create_incident",
+            "update_incident",
+            "dispatch_guard",
+            "cancel_dispatch",
+            "escalate_emergency",
+            "acknowledge_emergency"
+          ]
+        },
+        "idempotency_key": {
+          "$ref": "#/$defs/Id"
+        },
+        "arguments": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "contract_version",
+        "proposal_id",
+        "tenant_id",
+        "property_id",
+        "ticket_id",
+        "task_id",
+        "actor",
+        "action",
+        "idempotency_key",
+        "arguments"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "action": {
+              "const": "create_incident"
+            },
+            "arguments": {
+              "$ref": "#/$defs/CreateIncidentInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "update_incident"
+            },
+            "arguments": {
+              "$ref": "#/$defs/UpdateIncidentInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "dispatch_guard"
+            },
+            "arguments": {
+              "$ref": "#/$defs/DispatchGuardInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "cancel_dispatch"
+            },
+            "arguments": {
+              "$ref": "#/$defs/CancelDispatchInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "escalate_emergency"
+            },
+            "arguments": {
+              "$ref": "#/$defs/EscalateEmergencyInput"
+            }
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "const": "acknowledge_emergency"
+            },
+            "arguments": {
+              "$ref": "#/$defs/AcknowledgeEmergencyInput"
+            }
+          }
+        }
+      ]
+    },
+    "Failure": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "const": false
+        },
+        "data": {
+          "type": "null"
+        },
+        "evidence": {
+          "type": "null"
+        },
+        "error": {
+          "$ref": "#/$defs/ToolError"
+        },
+        "meta": {
+          "$ref": "#/$defs/ResponseMeta"
+        }
+      },
+      "required": ["success", "data", "evidence", "error", "meta"],
+      "additionalProperties": false
+    }
+  }
+}

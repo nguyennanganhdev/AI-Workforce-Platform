@@ -15,6 +15,7 @@ import {
   PROVENANCE_GUIDANCE,
 } from "../../shared/bot-prompt";
 import { sanitizeSeededHistory } from "./agents/history-sanitize";
+import { parseStoredFactoryConfiguration } from "../../agent-factory/src/index";
 import {
   PLAN_RUN_COMPLETED,
   PlanModel,
@@ -161,6 +162,12 @@ export type RuntimeModel = {
   provider: "openai" | "anthropic";
   defaultModel: string;
   plan?: PlanModelConfig;
+  /**
+   * The most a built-in Bot may write in one model step, from `BOT_MAX_OUTPUT_TOKENS`. Absent, the
+   * request carries no limit and the provider's own default applies, as it always has. A gateway
+   * that reserves the model's maximum for an unlimited request refuses it on a low balance.
+   */
+  outputTokenBudget?: number;
 };
 
 /** Optional desktop environment values may be present but blank; SDKs treat them as URLs. */
@@ -205,11 +212,16 @@ export function runtimeModelForEnvironment(
     provider === "anthropic" ||
     ((!selectedProvider || selectedProvider === "openai") &&
       !!environment.OPENAI_BASE_URL?.trim());
+  const budget = environment.BOT_MAX_OUTPUT_TOKENS?.trim();
+  // A limit somebody wrote and this ignored would be a run they believe is bounded and is not.
+  if (budget && !/^[1-9]\d{0,8}$/.test(budget))
+    throw new Error("BOT_MAX_OUTPUT_TOKENS must be a positive integer.");
   return {
     provider,
     plan: planModelForEnvironment(environment),
     defaultModel:
       selectedModelApplies && selectedModel ? selectedModel : defaultModel,
+    ...(budget ? { outputTokenBudget: Number(budget) } : {}),
   };
 }
 
@@ -229,6 +241,35 @@ export function registeredAgentFromRow(
     return null;
   }
   const configuration = row.configuration;
+  /*
+   * A Meta-Agent generated coworker, marked by any `factory` key, corrupt or not. It never falls
+   * through to the legacy branch below, which would run any non-empty prompt. Only an intact,
+   * persisted-ready built-in artifact normalizes; everything else is unavailable, so it stays visible
+   * for setup and history and every run is refused before a model or tool is contacted. Current
+   * access is not decided here: the loader's injected readiness reader checks it on every load.
+   */
+  if (Object.hasOwn(configuration, "factory")) {
+    const stored =
+      row.type === "built_in"
+        ? parseStoredFactoryConfiguration(configuration)
+        : null;
+    if (!stored?.ok || stored.value.state !== "ready") {
+      return {
+        id: row.id,
+        name: row.name,
+        type: "unavailable",
+        reason: stored?.ok
+          ? `${row.name} is waiting for its required resources and cannot run yet.`
+          : `${row.name} failed its integrity check and cannot run.`,
+      };
+    }
+    return {
+      id: row.id,
+      name: row.name,
+      type: "built_in",
+      systemPrompt: stored.value.systemPrompt.trim(),
+    };
+  }
   if (row.type === "built_in") {
     const systemPrompt = configuration?.systemPrompt;
     const trimmedSystemPrompt =
@@ -399,6 +440,10 @@ export function builtInAgentConfiguration(
       ...(computerGuidance ? [computerGuidance] : []),
     ].join("\n\n"),
     ...(planModel ? {} : { apiKey: apiKey ?? undefined }),
+    // Only when the deployment set one; otherwise the request is exactly what it was.
+    ...(model.outputTokenBudget
+      ? { maxOutputTokens: model.outputTokenBudget }
+      : {}),
     /*
      * A run stops after one step unless told otherwise, which for a Bot with tools means it calls
      * one and never speaks: the tool executes, the result arrives, and the run ends before the model

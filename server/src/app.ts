@@ -13,6 +13,8 @@ import {
 } from "./agents/callback-token";
 import type { BotAccessCheck } from "./agents/profile-policy";
 import type { AgentProfileStore } from "./agents/profile-store";
+import type { AgentFactoryService } from "./agents/factory";
+import { createAgentFactoryRoutes } from "./agents/factory-routes";
 import { createAgentRoutes } from "./agents/routes";
 import {
   type AuditEventType,
@@ -331,6 +333,11 @@ export function createApp(
   vinHomesDatabase?: { database: Database; tenantId: string },
   technicalApi?: TechnicalApiOptions,
   knowledge?: KnowledgeRouteDeps,
+  /**
+   * Meta-Agent construction, already wired to the model, plugin and profile stores by the caller.
+   * Appended last like everything above it. Absent leaves `/api/agent-factory` unmounted.
+   */
+  agentFactory?: AgentFactoryService,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
   if (knowledge) app.route("/internal/knowledge", createKnowledgeRoutes(knowledge));
@@ -1209,6 +1216,14 @@ export function createApp(
         ),
       );
     }
+  }
+
+  // Its own prefix, so no factory path can be captured by `/api/agents/:agentId`.
+  if (agentFactory) {
+    app.route(
+      "/api/agent-factory",
+      createAgentFactoryRoutes(agentFactory, requireUser),
+    );
   }
 
   if (channelStore) {

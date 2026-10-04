@@ -20,6 +20,7 @@ import {
   runtimeModelForEnvironment,
   standingRoleMessage,
 } from "../src/copilot";
+import { compileRecorded } from "../../agent-factory/tests/fixtures/factory-intent";
 import { grantedToolGuidance } from "../src/plugins/tools";
 import { loadTenantPackage } from "../src/tenant-package";
 import { testEnvironment } from "./support/environment";
@@ -145,6 +146,29 @@ describe("deployment model selection", () => {
     expect(request.model).toBe("selected-local-model");
   });
 
+  test("BOT_MAX_OUTPUT_TOKENS reaches the provider as the run's output limit, and no limit is sent without it", async () => {
+    const selected = {
+      OPENAI_BASE_URL: "http://127.0.0.1:11434/v1",
+      BOT_MODEL: "selected-local-model",
+    };
+    // The recorder lists every request field it knows, unset ones as undefined.
+    const limits = (body: object) =>
+      Object.entries(body).filter(
+        ([key, value]) => /^max_.*tokens$/.test(key) && value !== undefined,
+      );
+    expect(
+      limits(
+        await runGeneralAssistantWithEnvironment({
+          ...selected,
+          BOT_MAX_OUTPUT_TOKENS: "2048",
+        }),
+      ),
+    ).toEqual([["max_tokens", 2048]]);
+    expect(limits(await runGeneralAssistantWithEnvironment(selected))).toEqual(
+      [],
+    );
+  });
+
   test("explicit OpenAI provider still uses the OpenAI-compatible selected model", async () => {
     const request = await runGeneralAssistantWithEnvironment({
       BOT_PROVIDER: " openai ",
@@ -225,6 +249,137 @@ describe("registered Copilot agents", () => {
         configuration: { endpoint: "https://risk.internal:443/ag-ui" },
       }),
     ).toMatchObject({ endpoint: "https://risk.internal:443/ag-ui" });
+  });
+
+  /*
+   * U18: a generated row normalizes only as an intact, persisted-ready built-in artifact. Anything
+   * else is the existing unavailable representation, never the legacy "any non-empty prompt" branch.
+   */
+  test("U18 normalizes generated rows fail-closed and leaves legacy rows untouched", () => {
+    const source = {
+      kind: "request",
+      field: "description",
+      quote: "supplied notes",
+    } as const;
+    const compiled = compileRecorded(
+      {
+        name: "Notes",
+        role: "Note summarizer",
+        description: "Summarize supplied notes.",
+      },
+      {
+        goal: "Summarize supplied notes.",
+        responsibilities: [{ statement: "Summarize supplied notes.", source }],
+        constraints: [],
+        procedure: ["Return a concise summary."],
+        requirements: [
+          {
+            need: "Summarize supplied text.",
+            fulfillment: "model_on_input",
+            source,
+            proposedRefs: [],
+          },
+        ],
+        toolArguments: [],
+        inputFacts: [
+          { name: "notes", required: true, missingBehavior: "Ask for notes." },
+        ],
+        outputExpectations: ["A summary."],
+        acceptanceCriteria: ["Reflects the notes."],
+        unresolvedQuestions: [],
+        unsupportedRequirements: [],
+      },
+    );
+    if (!compiled.ok) throw new Error(JSON.stringify(compiled.issues));
+    const { spec, systemPrompt, specHash } = compiled.value;
+    const factory = (state: string) => ({
+      spec,
+      verification: {
+        specHash,
+        construction: "PASS",
+        attempts: 1,
+        issues: [],
+        warnings: [],
+        semanticReview: {
+          verdict: "PASS",
+          modelRef: "fixture",
+          criterionFindings: [],
+        },
+      },
+      state,
+      requestHash: "a".repeat(64),
+      creationKeyHash: "b".repeat(64),
+    });
+    const generated = (configuration: unknown, type = "built_in" as const) =>
+      registeredAgentFromRow({ ...assistantRow, type, configuration });
+
+    expect(generated({ systemPrompt, factory: factory("ready") })).toEqual({
+      id: "general-assistant",
+      name: "General Assistant",
+      type: "built_in",
+      systemPrompt: systemPrompt.trim(),
+    });
+    expect(
+      generated({ systemPrompt, factory: factory("pending_resources") }),
+    ).toMatchObject({
+      type: "unavailable",
+      reason: expect.stringContaining("waiting"),
+    });
+    const ready = factory("ready");
+    for (const configuration of [
+      { systemPrompt, factory: "corrupt" },
+      { systemPrompt, factory: null },
+      { systemPrompt: "Tampered prompt.", factory: ready },
+      { systemPrompt, factory: { ...ready, state: "running" } },
+      { systemPrompt, factory: { ...ready, extra: true } },
+      { systemPrompt, factory: ready, endpoint: "https://x.test/ag-ui" },
+      {
+        systemPrompt,
+        factory: {
+          ...ready,
+          spec: { ...spec, goal: "Changed after compilation." },
+        },
+      },
+      {
+        systemPrompt,
+        factory: {
+          ...ready,
+          verification: {
+            ...ready.verification,
+            semanticReview: {
+              ...ready.verification.semanticReview,
+              verdict: "FAIL",
+            },
+          },
+        },
+      },
+    ])
+      expect(generated(configuration)).toMatchObject({
+        type: "unavailable",
+        reason: expect.stringContaining("integrity"),
+      });
+    // A remote-typed row carrying a factory marker is refused rather than dialled.
+    expect(
+      registeredAgentFromRow({
+        ...riskRow,
+        configuration: {
+          endpoint: "http://risk.internal/ag-ui",
+          factory: ready,
+        },
+      }),
+    ).toMatchObject({ type: "unavailable" });
+    // Legacy built-in rows: exactly the previous normalization.
+    expect(
+      registeredAgentFromRow({
+        ...assistantRow,
+        configuration: { systemPrompt: "  Be helpful.  ", unrelated: 1 },
+      }),
+    ).toEqual({
+      id: "general-assistant",
+      name: "General Assistant",
+      type: "built_in",
+      systemPrompt: "Be helpful.",
+    });
   });
 
   test("configures an OpenAI built-in agent", () => {

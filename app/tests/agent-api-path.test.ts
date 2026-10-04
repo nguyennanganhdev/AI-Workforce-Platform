@@ -99,6 +99,15 @@ function boundary(id: string, refusal?: "unauthenticated" | "forbidden") {
     async agentForCallbackToken() {
       throw new Error("unexpected callback lookup");
     },
+    async createConstructed() {
+      throw new Error("unexpected construction");
+    },
+    async readConstruction() {
+      throw new Error("unexpected construction read");
+    },
+    async setConstructionReadiness() {
+      throw new Error("unexpected readiness write");
+    },
   };
   const auth: Parameters<typeof createAgentRoutes>[1] = async (
     context,

@@ -1,0 +1,32 @@
+[
+  {
+    "ack_receipt_id": "ack_7005",
+    "escalation_id": "esc_0005",
+    "contact_id": "ct_sup_day",
+    "actor": {
+      "actor_id": "usr_sup_day",
+      "actor_type": "HUMAN"
+    },
+    "received_at": "2026-09-29T04:24:00.000Z"
+  },
+  {
+    "ack_receipt_id": "ack_7101",
+    "escalation_id": "esc_0003",
+    "contact_id": "ct_sup_day",
+    "actor": {
+      "actor_id": "usr_sup_day",
+      "actor_type": "HUMAN"
+    },
+    "received_at": "2026-09-29T04:21:30.000Z"
+  },
+  {
+    "ack_receipt_id": "ack_7102",
+    "escalation_id": "esc_0003",
+    "contact_id": "ct_pm_01",
+    "actor": {
+      "actor_id": "usr_pm_01",
+      "actor_type": "HUMAN"
+    },
+    "received_at": "2026-09-29T04:21:40.000Z"
+  }
+]
