@@ -4,7 +4,7 @@ Contract input/output/quyền nằm tại [`../tools.md`](../tools.md). Bảng n
 
 | Tool | Nguồn cần có | Dữ liệu hiện có trong thư mục | Điều kiện trước khi chạy thật |
 | --- | --- | --- | --- |
-| `sop_kb.retrieve` | SOP published, document version, issue code, hiệu lực, ACL/scope, acceptance criteria | 16 profile `draft` ở `rag/mock/PROCEDURE_PROFILES.jsonl` và 16 Markdown giả lập; **không eligible** cho tool thật | Xin SOP BQL/manual đúng model, review/publish, ingest có citation/version |
+| `sop_kb.retrieve` | SOP published, document version, issue code, hiệu lực, ACL/scope, acceptance criteria | 16 profile `draft` ở `rag/mock/PROCEDURE_PROFILES.jsonl` và một Markdown mock có 16 phần; **không eligible** cho tool thật | Xin SOP BQL/manual đúng model, review/publish, ingest có citation/version |
 | `asset.read` | Asset ID/model/location/ownership/warranty/status theo building | 5 asset giả lập có ID/model/location trong `rag/mock/POC_LIFECYCLE.jsonl` | Export CMMS/asset thật và mapping building/scope |
 | `sensor.read` | Sensor ID, metric/unit, value, observed_at, quality, max age | 3 bản ghi giả lập fresh/stale/bad ở `rag/mock/TOOL_DATA_FIXTURES.jsonl` | Adapter BMS/IoT hoặc mock có timestamp/quality rõ |
 | `maintenance_history.read` | Asset events, work order, outcome, thời điểm và source refs | 3 event giả lập cho AC, gồm scheduled, pending và correction draft | Export lịch sử ẩn danh đúng asset/building |

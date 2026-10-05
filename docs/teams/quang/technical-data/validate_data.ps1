@@ -19,7 +19,7 @@ function Read-Jsonl([string]$name) {
 }
 
 $manifest = Read-Jsonl 'RAG_SOURCE_MANIFEST.jsonl'
-$documents = Read-Jsonl 'rag/RAG_DOCUMENTS.jsonl'
+$documents = @(Read-Jsonl 'rag/RAG_DOCUMENTS.jsonl')
 $evals = Read-Jsonl 'rag/RAG_EVAL.jsonl'
 $evalDataset = (Get-Content -LiteralPath (Join-Path $dataRoot 'rag/eval/technical-a2.v1.json') -Raw -Encoding utf8 | ConvertFrom-Json -ErrorAction Stop)
 $mockProfiles = Read-Jsonl 'rag/mock/PROCEDURE_PROFILES.jsonl'
@@ -83,7 +83,7 @@ foreach ($document in $documents) {
     $documentCodes[$code] = $document
     if ($documentKeys.ContainsKey($document.document_key)) { $errors.Add("duplicate document_key $($document.document_key)") }
     $documentKeys[$document.document_key] = $true
-    if (-not $issueIds.ContainsKey($document.issue_code)) { $errors.Add("document $code invalid issue") }
+    if (@($document.issue_codes).Count -ne $issueIds.Count -or @($document.issue_codes | Sort-Object -Unique).Count -ne $issueIds.Count -or @($document.issue_codes | Where-Object { -not $issueIds.ContainsKey($_) }).Count -gt 0) { $errors.Add("document $code invalid issue coverage") }
     if ($document.scope_key -ne '01-vinhomes' -or $document.knowledge_base_key -ne 'technical_reference_internal_poc') { $errors.Add("document $code invalid internal scope/KB") }
     if ($document.approval_status -ne 'not_published' -or $document.audience -ne 'internal_poc' -or $document.sop_available -ne $false -or $document.source_snapshot_required_before_production -ne $true) { $errors.Add("document $code unsafe publication metadata") }
     if ($document.relative_path -notmatch '^rag/corpus/01-vinhomes/[^/]+\.md$' -or $code -ne $document.relative_path.Substring('rag/corpus/'.Length)) { $errors.Add("document $code invalid corpus path") ; continue }
@@ -92,11 +92,10 @@ foreach ($document in $documents) {
     $markdown = Get-Content -LiteralPath $markdownPath -Raw -Encoding utf8
     if ($markdown -notmatch '(?s)^---\r?\n.*?\r?\n---\r?\n') { $errors.Add("document $code missing YAML front matter") }
     if (-not $markdown.Contains("# $($document.title)")) { $errors.Add("document $code title differs from manifest") }
-    if ($markdown -notmatch "(?m)^issue_code: $([regex]::Escape($document.issue_code))$") { $errors.Add("document $code issue_code differs from front matter") }
     if ($markdown -notmatch '(?m)^approval_status: not_published$' -or $markdown -notmatch '(?m)^trang_thai: tham-khao-noi-bo-chua-duyet$' -or $markdown -notmatch '(?m)^sop_available: false$' -or $markdown -notmatch '(?m)^source_snapshot_required_before_production: true$') { $errors.Add("document $code missing safety front matter") }
-    if ($markdown -notmatch '(?m)^## Ngu\S+n\s*$' -or -not $markdown.Contains([string]$document.text_vi)) { $errors.Add("document $code missing text or source section") }
-    $sourceList = @($document.source_ids) -join ', '
-    if (-not $markdown.Contains("source_ids: [$sourceList]")) { $errors.Add("document $code source IDs differ from front matter") }
+    $hasSourceHeading = $markdown.Contains('### Ngu')
+    $hasDocumentText = $markdown.Contains([string]$document.text_vi)
+    if ($hasSourceHeading -ne $true -or $hasDocumentText -ne $true) { $errors.Add("document $code missing text or source section") }
     if (@($document.source_ids).Count -eq 0 -or @($document.citation_fact_refs).Count -eq 0) { $errors.Add("document $code has no provenance") }
     foreach ($sourceId in @($document.source_ids)) {
         if (-not $sourceIds.ContainsKey($sourceId)) { $errors.Add("document $code missing source $sourceId") }
@@ -126,14 +125,16 @@ foreach ($profile in $mockProfiles) {
     if ($mockIssues.ContainsKey($profile.issue_code)) { $errors.Add("duplicate mock issue $($profile.issue_code)") }
     $mockIssues[$profile.issue_code] = $true
     if ($profile.fixture_only -ne $true -or $profile.publication_status -ne 'draft' -or $profile.audience -ne 'technician' -or $profile.version_no -ne 1) { $errors.Add("mock procedure $code unsafe status") }
-    if ($profile.document_code -notmatch '^01-vinhomes/quy-trinh-gia-lap-a2-\d{2}-[^/]+\.md$') { $errors.Add("mock procedure $code invalid document path") ; continue }
+    if ($profile.document_code -ne '01-vinhomes/quy-trinh-gia-lap-a2.md') { $errors.Add("mock procedure $code invalid collection path") ; continue }
     $path = Join-Path $dataRoot ("rag/mock-corpus/" + $profile.document_code)
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { $errors.Add("mock procedure $code missing Markdown") ; continue }
     $markdown = Get-Content -LiteralPath $path -Raw -Encoding utf8
     if ($markdown -notmatch '(?m)^fixture_only: true$' -or $markdown -notmatch '(?m)^approval_status: not_published$' -or $markdown -notmatch '(?m)^sop_available: false$' -or $markdown -notmatch '(?m)^audience: technician_test_only$' -or $markdown -notmatch '(?m)^version: mock-v1$' -or $markdown -notmatch '(?m)^trang_thai: du-lieu-gia-lap-khong-xuat-ban$') { $errors.Add("mock procedure $code unsafe Markdown status") }
-    if (-not $markdown.Contains("van_ban: ${code}-v1")) { $errors.Add("mock procedure $code version reference differs") }
-    if ($markdown -notmatch "(?m)^issue_code: $([regex]::Escape($profile.issue_code))$" -or -not $markdown.Contains("# $code ")) { $errors.Add("mock procedure $code metadata/title mismatch") }
-    if ($markdown -notmatch '(?m)^## Ngu\S+n\s*$' -or -not $markdown.Contains("- ${code}-v1:")) { $errors.Add("mock procedure $code missing fixture citation") }
+    $issueMarker = '**Issue code:** `' + $profile.issue_code + '`'
+    if (-not $markdown.Contains($issueMarker) -or -not $markdown.Contains("### $code ")) { $errors.Add("mock procedure $code metadata/title mismatch") }
+    $hasMockSourceHeading = $markdown.Contains('### Ngu')
+    $hasMockCitation = $markdown.Contains("- ${code}-v1:")
+    if ($hasMockSourceHeading -ne $true -or $hasMockCitation -ne $true) { $errors.Add("mock procedure $code missing fixture citation") }
     if (@($profile.preconditions).Count -eq 0 -or @($profile.contraindications).Count -eq 0 -or @($profile.stop_conditions).Count -eq 0 -or @($profile.acceptance_criteria).Count -eq 0) { $errors.Add("mock procedure $code missing structured rules") }
     $criterionIds = @{}
     foreach ($criterion in @($profile.acceptance_criteria)) {
@@ -144,7 +145,7 @@ foreach ($profile in $mockProfiles) {
     }
 }
 $mockCorpusFiles = @(Get-ChildItem -LiteralPath (Join-Path $dataRoot 'rag/mock-corpus') -Recurse -File)
-if ($mockCorpusFiles.Count -ne $mockProfiles.Count -or @($mockCorpusFiles | Where-Object { $_.Extension -ne '.md' }).Count -gt 0) { $errors.Add('mock corpus files do not match profiles') }
+if ($mockCorpusFiles.Count -ne 1 -or @($mockCorpusFiles | Where-Object { $_.Extension -ne '.md' }).Count -gt 0) { $errors.Add('mock corpus must contain one Markdown collection') }
 if ($mockProfiles.Count -ne $issueIds.Count -or $mockIssues.Count -ne $issueIds.Count) { $errors.Add('mock procedures do not cover all issue codes') }
 
 $pocIds = @{}
@@ -302,7 +303,8 @@ for ($i = 0; $i -lt $evals.Count; $i++) {
     if ($null -eq $runtime -or $runtime.id -ne $eval.id -or $runtime.scope -ne $eval.scope -or $runtime.query -ne $eval.query -or $runtime.expect -ne $eval.expect -or (@($runtime.contains) -join '|') -ne (@($eval.contains) -join '|') -or (@($runtime.tags) -join '|') -ne (@($eval.tags) -join '|')) { $errors.Add("eval $($eval.id) differs from runtime EvalDataset") }
     if ($eval.expect -eq 'answer' -and $documentCodes.ContainsKey($eval.expected_document_codes[0])) {
         $target = $documentCodes[$eval.expected_document_codes[0]]
-        if (@($eval.contains).Count -eq 0 -or -not $target.text_vi.Contains([string]$eval.contains[0])) { $errors.Add("eval $($eval.id) contains text absent from target") }
+        $targetText = (@($target.sections | ForEach-Object { $_.text_vi }) -join "`n")
+        if (@($eval.contains).Count -eq 0 -or -not $targetText.Contains([string]$eval.contains[0])) { $errors.Add("eval $($eval.id) contains text absent from target") }
     }
 }
 
@@ -318,8 +320,7 @@ foreach ($case in $cases) {
     if ($case.PSObject.Properties.Name -contains 'repair_verified') { $errors.Add("case $($case.case_id) still uses ambiguous repair_verified") }
 }
 
-if ($documents.Count -ne $issueIds.Count) { $errors.Add('RAG documents do not cover all issue codes') }
-if (($documents | ForEach-Object { $_.issue_code } | Sort-Object -Unique).Count -ne $issueIds.Count) { $errors.Add('RAG document issue codes are duplicated or missing') }
+if ($documents.Count -ne 1 -or @($documents[0].issue_codes).Count -ne $issueIds.Count) { $errors.Add('RAG collection does not cover all issue codes') }
 
 foreach ($fixture in $synthetic) {
     if (-not $issueIds.ContainsKey($fixture.issue_code)) { $errors.Add("fixture $($fixture.case_id) unknown issue") }

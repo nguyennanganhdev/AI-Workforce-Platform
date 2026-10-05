@@ -6,11 +6,11 @@ Cập nhật 2026-10-05. Bộ này là tri thức **triage tham khảo nội b�
 
 | Đường dẫn | Vai trò | Có được ingest vào answer index? |
 | --- | --- | --- |
-| `rag/corpus/` | 16 Markdown theo định dạng Q03: YAML front matter, một phần nội dung, mục `Nguồn` chứa URL/fact | Có, **chỉ** trong knowledge base `technical_reference_internal_poc` với grant nội bộ |
-| `rag/RAG_DOCUMENTS.jsonl` | Manifest biên tập: `document_code`, `scope_key`, issue code, fact/source refs, trạng thái | Không; ID `A2-DOC-*` không phải UUID `knowledge_documents.id` |
+| `rag/corpus/` | Một Markdown Q03 gồm 16 phần: YAML front matter, heading theo issue và mục `Nguồn` chứa URL/fact | Có, **chỉ** trong knowledge base `technical_reference_internal_poc` với grant nội bộ |
+| `rag/RAG_DOCUMENTS.jsonl` | Manifest collection: `document_code`, `scope_key`, 16 issue code/section, fact/source refs, trạng thái | Không; ID `A2-DOC-*` không phải UUID `knowledge_documents.id` |
 | `rag/RAG_EVAL.jsonl` | 24 test: các trường `id/scope/query/expect/contains/tags` theo Q06 và trường kiểm tra câu trả lời A2 | Không |
 | `rag/eval/technical-a2.v1.json` | `EvalDataset` JSON đúng shape của `server/src/knowledge/eval-metrics.ts` | Không |
-| `rag/mock-corpus/` | 16 quy trình giả lập với `fixture_only=true`, `approval_status=not_published`, `sop_available=false` | Chỉ KB/test tenant cô lập; **không** ingest chung `rag/corpus` |
+| `rag/mock-corpus/` | Một Markdown gồm 16 quy trình giả lập với `fixture_only=true`, `approval_status=not_published`, `sop_available=false` | Chỉ KB/test tenant cô lập; **không** ingest chung `rag/corpus` |
 | `rag/mock/PROCEDURE_PROFILES.jsonl` | 16 profile `draft` gồm precondition/contraindication/stop condition và acceptance criteria có cấu trúc | Không; fixture thiết kế Q07 và A2 |
 | `rag/mock/POC_LIFECYCLE.jsonl` | 5 chuỗi ticket → work order/evidence/result giả lập | Không; fixture adapter/test, không phải DB seed |
 | `rag/mock/Q07_LEARNING_FLOW.jsonl` | Candidate `draft`/`rejected` và eligibility test tự xử lý/giá | Không; fixture Q07/Q08 nhánh từ chối |
@@ -21,9 +21,9 @@ Cập nhật 2026-10-05. Bộ này là tri thức **triage tham khảo nội b�
 | `RAG_SOURCE_MANIFEST.jsonl` và `*_FACTS.jsonl` | Sổ URL, nguồn và fact gốc; không có snapshot nguồn | Không |
 | `VN_PUBLIC_CASES.jsonl`, `SYNTHETIC_CASES.jsonl`, `EDGE_CASES.jsonl` | Ca công khai ngoài Vinhomes và fixture giả lập | Không |
 
-Root ingest là **`rag/corpus`**, không phải cả `technical-data`: nếu chỉ định thư mục cha, Q03 sẽ index cả README, ma trận, gap list và tài liệu quản trị. Với root này, `source-directory.ts` đọc 16 Markdown dưới `01-vinhomes/`, `scopeKeyOf` trả `01-vinhomes`, `sourceMetadata` trả `don_vi=vinhomes`, `cap=don_vi`, `loai=faq`. Đây là tham khảo cấp đơn vị, không gắn nhầm một tòa cụ thể.
+Root ingest là **`rag/corpus`**, không phải cả `technical-data`: nếu chỉ định thư mục cha, Q03 sẽ index cả README, ma trận, gap list và tài liệu quản trị. Với root này, `source-directory.ts` đọc một Markdown tổng hợp dưới `01-vinhomes/`; chunker tách passage theo heading của 16 issue. `scopeKeyOf` trả `01-vinhomes`, `sourceMetadata` trả `don_vi=vinhomes`, `cap=don_vi`, `loai=faq`. Đây là tham khảo cấp đơn vị, không gắn nhầm một tòa cụ thể.
 
-Mock corpus là root **khác**: `rag/mock-corpus`. Nếu preview/ingest riêng, 16 file có `loai=quy_trinh`, `trang_thai=du-lieu-gia-lap-khong-xuat-ban` và `unverified=true`. Từ “Vinhomes” trong scope chỉ mô phỏng nhánh metadata, **không** biểu thị Vinhomes đã ban hành/duyệt. Q03 vẫn tự publish bản đã ingest trong DB, nên phải dùng test tenant/KB có grant test và không trộn với nguồn thật. `sop_kb.retrieve` chỉ phục vụ SOP eligible; 16 profile mock đang `draft`, không phải đầu vào hợp lệ của tool đó. Việc chuyển procedure từ work order thành tài liệu published có review/ACL/version là công việc Q07 và backend, không thể thực hiện bằng đổi nhãn JSONL.
+Mock corpus là root **khác**: `rag/mock-corpus`. Nếu preview/ingest riêng, một file tổng hợp chứa 16 phần có `loai=quy_trinh`, `trang_thai=du-lieu-gia-lap-khong-xuat-ban` và `unverified=true`. Từ “Vinhomes” trong scope chỉ mô phỏng nhánh metadata, **không** biểu thị Vinhomes đã ban hành/duyệt. Q03 vẫn tự publish bản đã ingest trong DB, nên phải dùng test tenant/KB có grant test và không trộn với nguồn thật. `sop_kb.retrieve` chỉ phục vụ SOP eligible; 16 profile mock đang `draft`, không phải đầu vào hợp lệ của tool đó. Việc chuyển procedure từ work order thành tài liệu published có review/ACL/version là công việc Q07 và backend, không thể thực hiện bằng đổi nhãn JSONL.
 
 Mục `## Nguồn` dùng bullet để chunker Q03 đưa URL vào `sources` của mỗi kết quả mà không nhúng URL vào văn bản embedding. Một tài liệu hiện tạo một chunk triage; `documentId/versionId/chunkId` thực tế do DB sinh. Khi sửa Markdown, Q03 tạo version mới theo content hash; manifest JSONL giữ khóa biên tập ổn định và validator đối chiếu nội dung.
 

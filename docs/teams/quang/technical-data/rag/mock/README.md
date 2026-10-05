@@ -6,7 +6,7 @@ Ngày tạo: 2026-10-05. Toàn bộ ID, model, số đo, event và kết quả �
 
 | Lớp | Đường dẫn | Dùng cho |
 | --- | --- | --- |
-| Passage RAG Q03/Q04 | `../mock-corpus/01-vinhomes/*.md` | 16 tài liệu Markdown, một issue một file; có thêm ca phân nhánh, hồ sơ tối thiểu và hậu kiểm riêng từng lỗi; chunker đọc heading/front matter/`Nguồn` |
+| Passage RAG Q03/Q04 | `../mock-corpus/01-vinhomes/quy-trinh-gia-lap-a2.md` | Một Markdown với 16 phần theo issue; có ca phân nhánh, hồ sơ tối thiểu và hậu kiểm riêng từng lỗi; chunker đọc heading/front matter/`Nguồn` |
 | Quy trình có cấu trúc Q07/A2 | `PROCEDURE_PROFILES.jsonl` | 16 profile `draft` với `preconditions`, `contraindications`, `stop_conditions`, `acceptance_criteria` theo `AcceptanceCriterion` của `server/src/technical-tools/domain/sop.ts` |
 | Luồng tác nghiệp A2 | `POC_LIFECYCLE.jsonl` | 5 fixture về ticket → assessment → asset → work order/assignment → evidence/measurement → expected outcome/negative variants |
 | Học procedure Q07 | `Q07_LEARNING_FLOW.jsonl` | 2 candidate từ work order mock (draft/rejected) và một eligibility test không tạo attempt, không bịa giá |
@@ -15,7 +15,7 @@ Ngày tạo: 2026-10-05. Toàn bộ ID, model, số đo, event và kết quả �
 | Hội thoại nhiều lượt | `MULTI_TURN_TRACES.jsonl` | 5 trace cho 5 POC, có người báo/assistant/tool/nhân viên và expected final; dùng kiểm thử điều phối, không nạp RAG |
 | Eval retrieval Q06 | `eval/technical-a2-mock.v1.json` | 18 ca theo `EvalDataset`; chạy độc lập khỏi eval nguồn tham khảo |
 
-`document_code` trong profile là đường dẫn tương đối từ root `../mock-corpus`. `source_work_order_id` của 5 profile POC trỏ tới `work_order.workorder_id` trong `POC_LIFECYCLE.jsonl`; 11 profile còn lại để `null` vì chưa có lifecycle chi tiết. Các UUID thuộc dải fixture, không phải ID trong DB dự án. `scope.building_key=SYN-B-01` chỉ là tòa giả lập; Markdown Q03 đang ở scope cấp đơn vị `01-vinhomes`, không mô phỏng ACL theo tòa. Khi cần test tòa cụ thể phải đưa tài liệu vào nhánh folder scope tòa và cấp grant tương ứng, không suy scope từ tên case.
+`document_code` của mọi profile cùng trỏ tới Markdown collection tương đối từ root `../mock-corpus`; section và `code` phân biệt từng quy trình. `source_work_order_id` của 5 profile POC trỏ tới `work_order.workorder_id` trong `POC_LIFECYCLE.jsonl`; 11 profile còn lại để `null` vì chưa có lifecycle chi tiết. Các UUID thuộc dải fixture, không phải ID trong DB dự án. `scope.building_key=SYN-B-01` chỉ là tòa giả lập; Markdown Q03 đang ở scope cấp đơn vị `01-vinhomes`, không mô phỏng ACL theo tòa. Khi cần test tòa cụ thể phải đưa tài liệu vào nhánh folder scope tòa và cấp grant tương ứng, không suy scope từ tên case.
 
 `scan_status=simulated_clean` mô tả nhánh adapter test mong muốn, **không** chứng minh có bytes/file/hash đã được scan. Bộ này không có object storage hay seed DB; muốn test thực `technical.submit_executor_result` phải tạo file fixture qua storage adapter, liên kết đúng ticket/work order, scan và cấp ACL trong test tenant. Measurement số trong POC chỉ để kiểm thử kiểu/đơn vị/provenance; không phải ngưỡng nghiệm thu. Các `acceptance_criteria` dạng `manual` buộc người có chuyên môn quyết định; profile `draft` không thể dùng để trả `VERIFIED` thật.
 
