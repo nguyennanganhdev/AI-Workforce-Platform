@@ -25,10 +25,17 @@ jobs:
       - run: bun run typecheck
       - run: bun test server/tests/business-auth.test.ts server/tests/config.test.ts server/tests/guards.test.ts app/tests/serve.test.ts
       - name: Connected role interfaces
-        run: >-
-          bun --no-env-file test app/tests/connected-operations-ui.test.tsx app/tests/operations-field-work.test.tsx
-          app/tests/operations-admin.test.tsx app/tests/operations-coordination.test.tsx app/tests/operations-agent-trial.test.tsx
-          app/tests/operations-room-files.test.tsx app/tests/operations-schedules.test.tsx app/tests/agent-factory-ui.test.tsx
+        # Each file owns and closes its Happy DOM window. React/portal modules retain the first
+        # window they import, so a separate process gives every file its own module graph as well.
+        run: |
+          for test_file in \
+            app/tests/connected-operations-ui.test.tsx app/tests/operations-field-work.test.tsx \
+            app/tests/operations-admin.test.tsx app/tests/operations-coordination.test.tsx \
+            app/tests/operations-agent-trial.test.tsx app/tests/operations-room-files.test.tsx \
+            app/tests/operations-schedules.test.tsx app/tests/agent-factory-ui.test.tsx
+          do
+            bun --no-env-file test "$test_file"
+          done
       - run: bun run test:resident
       - run: bun --no-env-file test
         working-directory: agent-factory

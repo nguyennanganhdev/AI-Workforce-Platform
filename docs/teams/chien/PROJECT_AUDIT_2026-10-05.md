@@ -20,6 +20,11 @@ tool host/báo cáo/an ninh/tri thức 1.251 đạt, 13 bỏ qua. Typecheck toà
 Đã sửa phép so đường dẫn trong test máy chủ giao diện để chạy cả Windows và Linux. Đây là kết quả local;
 trạng thái CI trên GitHub phải đối chiếu với từng commit được push.
 
+Kiểm chứng Linux khi publish: job tích hợp nghiệp vụ trên GitHub đạt 117 test, 7 bỏ qua; các job
+Lễ tân và Supervisor đạt. Bộ test giao diện phải chạy mỗi file trong một tiến trình vì mỗi file đóng
+cửa sổ Happy DOM của nó, còn React/portal giữ module đã nạp. Chạy đúng cách này trong container Linux
+sạch (Bun 1.3.14, cài theo lockfile, không dùng file `.env` local) đạt đủ 36 test của cả 8 file.
+
 Phạm vi UI chủ dự án chốt khi hoàn tác: Điều phối giữ navigation chính và danh sách phiên ở hai vùng riêng.
 Việc hoàn tác chỉ áp dụng lượt đổi bố cục Điều phối gần nhất; luồng Supervisor tự duyệt vẫn giữ nguyên.
 Playwright xác nhận danh sách phiên, thu/mở navigation và màn hình 390 px không tràn ngang, không lỗi JavaScript.
