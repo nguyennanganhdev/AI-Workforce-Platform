@@ -5,6 +5,7 @@ Every Reception prompt asks for one JSON object, so the request pins JSON output
 
 from __future__ import annotations
 
+import asyncio
 import os
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -12,6 +13,10 @@ from types import SimpleNamespace
 
 import httpx
 from langchain_core.messages import SystemMessage
+
+
+# Before the one second try of a model request.
+RETRY_SECONDS = 1.0
 
 
 class ModelUnavailable(Exception):
@@ -80,24 +85,35 @@ class ChatCompletionsModel:
     def __init__(self, config: ModelConfig, client: httpx.AsyncClient):
         self.config, self.client = config, client
 
+    async def _post(self, body: dict) -> httpx.Response:
+        """One request, sent again once after a rate limit, a server error or a dropped connection."""
+        for last in (False, True):
+            try:
+                response = await self.client.post(
+                    self.config.base_url.rstrip("/") + "/chat/completions",
+                    headers={"Authorization": "Bearer " + self.config.api_key},
+                    timeout=self.config.timeout_seconds, json=body)
+            except httpx.TransportError:
+                if last:
+                    raise
+            else:
+                if last or (response.status_code != 429 and response.status_code < 500):
+                    return response
+            await asyncio.sleep(RETRY_SECONDS)
+
     async def ainvoke(self, messages):
         try:
-            response = await self.client.post(
-                self.config.base_url.rstrip("/") + "/chat/completions",
-                headers={"Authorization": "Bearer " + self.config.api_key},
-                timeout=self.config.timeout_seconds,
-                json={
-                    "model": self.config.model,
-                    "response_format": {"type": "json_object"},
-                    "messages": [
-                        {
-                            "role": "system" if isinstance(message, SystemMessage) else "user",
-                            "content": message.content,
-                        }
-                        for message in messages
-                    ],
-                },
-            )
+            response = await self._post({
+                "model": self.config.model,
+                "response_format": {"type": "json_object"},
+                "messages": [
+                    {
+                        "role": "system" if isinstance(message, SystemMessage) else "user",
+                        "content": message.content,
+                    }
+                    for message in messages
+                ],
+            })
             response.raise_for_status()
             payload = response.json()
             _count(payload)
@@ -112,16 +128,12 @@ class ChatCompletionsModel:
     async def complete(self, messages: list[dict], tools: list[dict]) -> dict:
         """One step of a tool-calling conversation; returns the assistant message as the provider gave it."""
         try:
-            response = await self.client.post(
-                self.config.base_url.rstrip("/") + "/chat/completions",
-                headers={"Authorization": "Bearer " + self.config.api_key},
-                timeout=self.config.timeout_seconds,
-                json={"model": self.config.model, "messages": messages, "tools": tools,
-                      "response_format": {"type": "json_object"},
-                      # Luna only supports Chat Completions function calling without reasoning.
-                      **({"reasoning_effort": "none"}
-                         if self.config.provider == "openai" and self.config.model == "gpt-6-luna" else {})},
-            )
+            response = await self._post({
+                "model": self.config.model, "messages": messages, "tools": tools,
+                "response_format": {"type": "json_object"},
+                # Luna only supports Chat Completions function calling without reasoning.
+                **({"reasoning_effort": "none"}
+                   if self.config.provider == "openai" and self.config.model == "gpt-6-luna" else {})})
             response.raise_for_status()
             payload = response.json()
             _count(payload)

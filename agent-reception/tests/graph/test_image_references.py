@@ -65,7 +65,10 @@ async def test_image_survives_profile_clarification_and_is_linked_once():
 
 
 @async_test
-async def test_image_only_message_is_valid_and_reaches_ticket():
+async def test_the_photo_of_an_image_only_message_is_carried_to_the_backend():
+    # Only the graph's side: this fixture's backend accepts whatever it is given. The real backend
+    # records no words for a message without any and asks what happened before a request is handed
+    # over (services/vinhomes-api tests/test_reception_intake.py, tests/graph/test_intake_question.py).
     request = deepcopy(REQUEST)
     request["message"] = {
         "id": "message-image-only",

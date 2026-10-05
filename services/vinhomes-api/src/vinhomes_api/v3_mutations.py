@@ -34,12 +34,19 @@ UNRESOLVED_QC = """
 
 
 async def requires_plan(scope: Scope, ticket_id: object) -> bool:
-    """Tickets opened by the connected resident app carry no plan flag and keep the QC-first flow."""
+    """Tickets opened by the connected resident app carry no plan flag and keep the QC-first flow.
+
+    A ticket the Supervisor coordinates is planned too: the resident approved its plan, so the finished
+    work goes to the resident to confirm without waiting for management to inspect it.
+    """
     found = await scope[0].execute(text("""
         select 1 from ticket_events where ticket_id=:id
           and event_type='ticket.created' and payload->>'requiresPlan'='true' limit 1
     """), {"id": ticket_id})
-    return found.first() is not None
+    if found.first() is not None:
+        return True
+    from .supervised_flow import coordinated
+    return await coordinated(scope[0], ticket_id)
 
 
 def actor_params(scope: Scope) -> dict[str, object]:

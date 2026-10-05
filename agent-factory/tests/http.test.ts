@@ -218,6 +218,67 @@ describe("standalone construction HTTP API", () => {
     ).toBe(true);
   });
 
+  test("a draft with open questions is refused with each question, and without a repair", async () => {
+    const questions = [
+      "Agent lấy lịch vệ sinh từ đâu?",
+      "Agent trả về danh sách việc hay một câu trả lời cho cư dân?",
+    ];
+    let calls = 0;
+    const handler = createFactoryHandler({
+      token,
+      modelRef: "fixture",
+      complete: async () => {
+        calls++;
+        return JSON.stringify({
+          ...JSON.parse(generation),
+          intent: {...JSON.parse(generation).intent, confidence: "MEDIUM", missingInformation: questions},
+          unresolvedQuestions: questions,
+        });
+      },
+    });
+    const response = await handler(call());
+    expect(response.status).toBe(422);
+    expect(calls).toBe(1);
+    const refusal = await response.json();
+    expect(refusal.code).toBe("NEEDS_INPUT");
+    expect(
+      refusal.issues.map(
+        ({ code, path, message }: Record<string, string>) => [
+          code,
+          path,
+          message,
+        ],
+      ),
+    ).toEqual(
+      questions.map((question, index) => [
+        "NEEDS_INPUT",
+        `unresolvedQuestions.${index}`,
+        question,
+      ]),
+    );
+  });
+
+  test("a clear job that mistakenly asks for run-time input is repaired before asking its creator", async () => {
+    let generations = 0;
+    const prompts: string[] = [];
+    const handler = createFactoryHandler({
+      token, modelRef: "fixture",
+      complete: async (prompt) => {
+        prompts.push(prompt);
+        if (!prompt.startsWith("FACTORY_GENERATE:")) return review;
+        generations++;
+        return generations === 1 ? JSON.stringify({
+          ...JSON.parse(generation), unresolvedQuestions: ["What content will the user supply to summarize?"]
+        }) : generation;
+      },
+    });
+    const response = await handler(call());
+    expect(response.status).toBe(200);
+    expect(generations).toBe(2);
+    expect(prompts[1]).toContain("FACTORY_REPAIR:");
+    expect((await response.json()).verification.attempts).toBe(2);
+  });
+
   test("deadline covers a stalled review; provider details never reach the caller", async () => {
     let calls = 0;
     const stalled = createFactoryHandler({

@@ -97,6 +97,26 @@ Biến môi trường ở `.env.example` (`RECEPTION_SERVICE_TOKEN`, `RECEPTION_
   kết quả phẳng). Graph thấy draft dưới một `ticket_id` ổn định; từng operation được dịch sang
   `/internal/reception/v1/execute`. Backend tự suy ra cư dân, tenant, run từ token.
 - Policy (khẩn cấp, cần nhân viên) do backend quyết định ở `/internal/reception/policy/evaluate`; model chỉ đề xuất.
+  Từ khóa khẩn cấp bị phủ định ngay trước nó ("không có mùi khét", "chưa thấy khói") không tính. Model vẫn được đề
+  xuất khẩn cấp cho cách nói mà danh sách từ khóa không có; đề xuất đó được chấp nhận, không hạ được mức từ khóa đã thấy.
+- **Nội dung yêu cầu và điều kiện bàn giao do backend quyết định** (`services/vinhomes-api`, `reception_intake.py`),
+  dùng chung cho cả hai chế độ:
+  - Tiêu đề và mô tả là **nguyên văn tin nhắn của cư dân** mà các dữ kiện dẫn tới. Tiêu đề, mô tả do model viết không
+    được lưu.
+  - Một dữ kiện `customer_report` chỉ được giữ khi `value` tìm thấy trong đúng tin nhắn cư dân nó dẫn, và không bị
+    phủ định ngay trước đó ("không phải ống vỡ" không thành "ống vỡ"). Lời xác nhận trống ("ok", "vâng") không là dữ kiện.
+  - Sự cố thường chỉ được bàn giao khi có `symptom` và có `item` (thiết bị, vật hoặc điểm cụ thể, không chỉ là tên
+    phòng) hoặc `item_unknown` (cư dân nói họ không biết). Thiếu thì backend trả câu hỏi; câu hỏi tới cư dân nguyên
+    văn, được đánh dấu trong hội thoại để đếm. Hỏi hai lần mà chưa có thì yêu cầu được chuyển nguyên trạng cho người xem.
+  - Khẩn cấp không bị giữ lại để hỏi; mô tả vẫn là nguyên văn tin nhắn.
+  - Ảnh của mọi tin cư dân trong cuộc trò chuyện được gắn vào yêu cầu khi tạo.
+  - Runtime hỏi trước bằng `POST /internal/reception/chats/{id}/intake`; `update_ticket_incident` và `handoff_ticket`
+    kiểm lại, nên gọi thẳng cũng không vượt được. Phạm vi đợt này: mọi sự cố dùng chung một tiêu chí (hiện tượng + vật
+    hoặc điểm cụ thể); chưa có tiêu chí riêng theo từng loại sự cố.
+- Sau khi đã có yêu cầu: `POST /internal/reception/chats/{id}/follow-up` gắn ảnh của tin mới vào yêu cầu và, khi
+  Supervisor đang hỏi cư dân, chuyển nguyên văn tin đó thành câu trả lời (`information_provided`).
+- Model không nhận nội dung ảnh. Tin chỉ có ảnh được lưu không kèm chữ nào và model thấy nó là
+  "[Cư dân gửi N ảnh, không viết gì]".
 - Hướng dẫn an toàn khi khẩn cấp: policy trả thêm `safety_guidance` theo đúng hợp đồng graph đã có
   (`graph/assessment.parse_request_policy`: `approved`, `answer`, `retrievalRunId`, `citations`) khi Ban quản lý
   đã duyệt một câu cho loại khẩn cấp đó ở nơi cư dân ở. Câu trả lời là câu khẩn cấp cố định, rồi tới nguyên văn
@@ -111,15 +131,21 @@ Biến môi trường ở `.env.example` (`RECEPTION_SERVICE_TOKEN`, `RECEPTION_
   tòa nhà được chuyển thành session trong group chat của BQL qua `POST /internal/reception/chats/{id}/inquiries`,
   và backend đưa câu trả lời của BQL (sau này là Supervisor) về lại cuộc trò chuyện.
 - `runtime/voice.py` viết lại câu trả lời cố định của graph cho tự nhiên; không được thêm dữ kiện hay cam kết.
+  Câu hỏi của luật tiếp nhận không đi qua bước này.
 - Lớp chuyển đổi chỉ ghi vào yêu cầu các dữ kiện cư dân tự nêu (`customer_report`); dữ kiện model tự suy luận bị bỏ,
   vì backend từ chối loại này và cả yêu cầu sẽ bị rơi.
-- `runtime/model.py` gọi chat completions kiểu OpenAI với đầu ra JSON.
+- `runtime/model.py` gọi chat completions kiểu OpenAI với đầu ra JSON; lỗi 429, 5xx hoặc rớt kết nối được thử lại một lần.
+- Một lượt hỏng luôn để lại dòng log `Reception turn failed` kèm nguyên nhân; `loop` tự dừng sau 150 giây.
+- `graph`: khi rơi vào "cần người xem xét", tin của cư dân được chuyển thành phiên hỏi BQL
+  (`runtime/inquiry.to_management`); hội thoại còn giữ bởi phiên bản workflow cũ được báo mở cuộc trò chuyện mới.
 
 ### Hai chế độ agent (đồng chủ sở hữu: Team Hoàng và Team Chiến)
 
 `RECEPTION_AGENT` chọn bộ não của một lượt chat; cả hai dùng chung service, ủy quyền, backend và tri thức.
 
-| | `graph` (mặc định) | `loop` |
+Bản đóng gói (`deploy/vinhomes`) chạy `loop`; mã nguồn không đặt biến thì vẫn là `graph`.
+
+| | `graph` | `loop` (bản đóng gói) |
 |---|---|---|
 | Mã nguồn | `src/graph` (Team Hoàng) | `src/agent` |
 | Ai dẫn dắt hội thoại | Code: phân loại rồi đi nhánh cố định | Model: tự hỏi lại, tự chọn công cụ, tự viết câu trả lời |
@@ -131,8 +157,11 @@ Biến môi trường ở `.env.example` (`RECEPTION_SERVICE_TOKEN`, `RECEPTION_
 - `prompt.py`: vai trò, việc được làm và không được làm, định dạng trả lời `{reply, sources}`.
 - `tools.py`: sáu công cụ (`search_knowledge`, `file_request`, `report_emergency`, `request_status`,
   `cancel_request`, `ask_management`) và các luật code giữ: một hội thoại một yêu cầu đang mở; danh mục và mức ưu
-  tiên phải hợp lệ; khẩn cấp do policy backend xác nhận; `ask_management` chỉ sau khi đã tìm tri thức.
-  `file_request` gói cả chuỗi nháp → vị trí → mô tả → đánh giá → định tuyến → bàn giao của backend.
+  tiên phải hợp lệ; `ask_management` chỉ sau khi đã tìm tri thức.
+  `file_request` không nhận tiêu đề hay mô tả: model chép nguyên văn các cụm từ cư dân đã viết (`symptom`, `area`,
+  `item`, `item_unknown`), backend kiểm và quyết định. Khi backend trả câu hỏi, lượt đó kết thúc bằng đúng câu hỏi ấy
+  và mọi công cụ khác trong cùng lượt bị từ chối. Khẩn cấp chỉ được báo "đã chuyển" khi backend đã nhận; không nhận
+  được thì cư dân được bảo gọi ngay bảo vệ hoặc Ban quản lý. Cư dân có nhiều căn hộ vẫn báo khẩn cấp được.
 - `loop.py`: vòng gọi công cụ (tối đa 6 bước) và bước kiểm tra câu trả lời trước khi gửi. Câu trả lời bị trả lại
   cho model một lần, rồi thay bằng câu an toàn, nếu: nêu con số không có trong kết quả công cụ hay lời cư dân;
   nói "đã ghi nhận/đã chuyển" mà lượt đó không có hành động nào thành công; khẳng định đã xong khi backend chưa
@@ -176,7 +205,9 @@ python tests/evals/run_live.py --backend http://127.0.0.1:8011 --only emergency
 
 Kiểm thử đầu-cuối qua HTTP thật: `tests/runtime/test_resident_chat_e2e.py` (cần backend, runtime và
 `tests/runtime/fake_llm.py`; model trong test là stub xác định, không phải LLM thật). Chạy hai lần: một lần với
-runtime bật `RECEPTION_AGENT=graph`, một lần với `RECEPTION_AGENT=loop`; cả 7 test phải đạt ở cả hai.
+runtime bật `RECEPTION_AGENT=graph`, một lần với `RECEPTION_AGENT=loop`; cả 9 test phải đạt ở cả hai (ba test
+còn lại cần Supervisor, backend không có runtime, hoặc hướng dẫn an toàn đã duyệt). Model giả cố ý thêm một nguyên
+nhân cư dân không nói: test kiểm nó không vào yêu cầu.
 
 ## Internal contracts
 

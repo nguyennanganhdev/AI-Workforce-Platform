@@ -221,7 +221,8 @@ async def teams(room_id: str, scope: Scope):
     for row in rows.mappings():
         try:
             await visible_ticket(await ticket_scope(scope), row["ticket_id"])
-            items.append(dict(row))
+            from .supervised_flow import supervisor_approves
+            items.append({**dict(row), "supervisor_approves_plans": supervisor_approves()})
         except HTTPException as exc:
             if exc.status_code != 404:
                 raise

@@ -79,3 +79,36 @@ def test_luna_can_call_a_tool_with_chat_completions(monkeypatch):
             assert reply["tool_calls"][0]["function"]["name"] == "test_read"
 
     asyncio.run(turn())
+
+
+def test_a_rate_limit_or_a_server_error_is_tried_once_more_and_no_longer(monkeypatch):
+    import src.runtime.model as model_module
+    from src.runtime.model import ModelConfig, ModelUnavailable
+
+    monkeypatch.setattr(model_module, "RETRY_SECONDS", 0)
+    answer = {"choices": [{"message": {"role": "assistant", "content": "{}"}}]}
+
+    def scripted(*statuses):
+        left = list(statuses)
+
+        def handler(request):
+            status = left.pop(0)
+            return httpx.Response(status, json=answer if status == 200 else {"error": "x"})
+
+        return handler, left
+
+    async def complete(*statuses):
+        handler, left = scripted(*statuses)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            config = ModelConfig(model="m", api_key="k", base_url="https://model.test/v1")
+            try:
+                return await ChatCompletionsModel(config, client).complete([{"role": "user", "content": "x"}], []), left
+            except ModelUnavailable:
+                return None, left
+
+    assert asyncio.run(complete(429, 200)) == (answer["choices"][0]["message"], [])
+    assert asyncio.run(complete(503, 200))[0] is not None
+    # Twice in a row: the turn fails rather than keeping the resident waiting.
+    assert asyncio.run(complete(429, 429, 200)) == (None, [200])
+    # A refused key is not retried.
+    assert asyncio.run(complete(401, 200)) == (None, [200])

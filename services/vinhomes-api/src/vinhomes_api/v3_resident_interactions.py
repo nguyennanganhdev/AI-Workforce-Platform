@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from typing import Literal
-from .v3_reception_supervisor import RESIDENT, TENANT, ReceptionToSupervisorMessage, submit_reception_message
+from .v3_reception_supervisor import RESIDENT, TENANT, WIRE_TICKET, ReceptionToSupervisorMessage, current_wire, submit_reception_message
 from .v3_security import digest
 
 router = APIRouter(tags=['Resident Supervisor interactions'])
@@ -38,8 +38,8 @@ class Response(BaseModel):
 @router.post('/resident/tickets/{ticket_id}/supervisor-response')
 async def respond(ticket_id: UUID, body: Response, scope: RESIDENT):
     db, actor = scope
-    ticket = (await db.execute(text(f'''select id,channel_id,version,reopen_count from tickets
-        where id=:ticket and tenant_id={TENANT} and requester_user_id=:actor for update'''),
+    ticket = (await db.execute(text(f'''select t.id,t.channel_id,t.reopen_count,{WIRE_TICKET} from tickets t
+        where t.id=:ticket and t.tenant_id={TENANT} and t.requester_user_id=:actor for update'''),
         {'ticket': ticket_id, 'actor': actor})).mappings().first()
     if not ticket:
         raise HTTPException(404, 'Resident ticket not found')
@@ -65,9 +65,9 @@ async def respond(ticket_id: UUID, body: Response, scope: RESIDENT):
     if not original:
         raise HTTPException(409, 'Supervisor handoff is unavailable')
     kinds = {'information': 'information_provided', 'approve': 'plan_approved', 'reject': 'plan_rejected', 'request_changes': 'plan_change_requested'}
-    wire = {**original, 'message_id': str(message_id), 'message_type': kinds[body.decision],
+    wire = {**current_wire(original, ticket), 'message_id': str(message_id), 'message_type': kinds[body.decision],
         'message': body.note.strip(), 'sent_at': datetime.now(UTC).isoformat(), 'source_message_id': str(message_id),
-        'ticket_version': str(ticket['version']), 'facts': [], 'file_ids': []}
+        'facts': [], 'file_ids': []}
     parsed = ReceptionToSupervisorMessage.model_validate(wire)
     seq = (await db.execute(text('''update channels set next_message_seq=next_message_seq+1,
         last_message=:preview,last_message_at=now() where id=:channel returning next_message_seq-1'''),

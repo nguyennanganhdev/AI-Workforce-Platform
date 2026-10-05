@@ -8,7 +8,7 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -52,17 +52,25 @@ class CreateChat(BaseModel):
 
 
 class SendMessage(BaseModel):
-    text: str = Field(min_length=1, max_length=10000)
+    # Photos may be sent without a word: the message then says nothing the resident did not write.
+    text: str = Field(default="", max_length=10000)
     client_message_id: str = Field(min_length=1, max_length=120)
     file_ids: list[UUID] = Field(default_factory=list, max_length=20)
 
-    @field_validator("text", "client_message_id")
+    @field_validator("client_message_id")
     @classmethod
     def nonempty_text(cls, value: str) -> str:
         value = value.strip()
         if not value:
             raise ValueError("value must not be blank")
         return value
+
+    @model_validator(mode="after")
+    def text_or_photos(self):
+        self.text = self.text.strip()
+        if not self.text and not self.file_ids:
+            raise ValueError("a message needs text or photos")
+        return self
 
 
 class ResidentApprovalDecision(BaseModel):
@@ -180,7 +188,7 @@ async def send_message(channel_id: str, body: SendMessage, request: Request, sco
         update channels set next_message_seq=next_message_seq+1,
             last_message=:preview, last_message_at=now(), updated_at=now()
         where id=:channel_id returning next_message_seq-1
-    """), {"channel_id": channel_id, "preview": body.text[:200]})
+    """), {"channel_id": channel_id, "preview": body.text[:200] or "[Ảnh]"})
     result = await db.execute(text("""
         insert into messages (tenant_id, channel_id, seq, sender_kind, sender_user_id,
                               visibility, body, client_message_id)

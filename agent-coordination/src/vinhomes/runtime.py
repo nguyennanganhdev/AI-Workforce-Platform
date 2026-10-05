@@ -61,6 +61,11 @@ SETTLE_SECONDS = 5  # an action is in flight or unknown: reconcile it on the nex
 SETTLE_ATTEMPTS = 3  # after that an unknown outcome waits for a person instead of being asked again
 MAX_STEPS = 40  # decisions and dispatches per message: open, tasks, turns and a plan fit well inside
 TURN_RETRIES = 2  # a turn that failed for certain is planned again this many times before a person is needed
+# A session that stopped because the model could not be reached runs again on its own: after a
+# minute, then each time after as long as it has been failing so far, for two hours. After that
+# it waits for management to resume it, as it always did.
+MODEL_PAUSES = ("model_unavailable", "model_timeout")
+MODEL_RETRY_FIRST, MODEL_RETRY_LIMIT = 60, 7200
 # A category's room often has one specialist, so the same agent may speak several times in a row.
 TURNS = TurnPolicy(max_turns=8, max_consecutive_turns=8, timeout_seconds=150)
 
@@ -163,6 +168,8 @@ class Runtime:
         self.settings = settings
         authority = Authority(backend)
         self.teams: dict[tuple, str] = {}  # scope -> team, known once the backend verified a message
+        self.recovered = False  # sessions paused for the model before this start were queued for their retry
+        self.model_hold = 0.0  # no session asks the model again before this time: it has just failed one of them
 
         async def group_pin(context):
             return await authority.group_pin(context, self.teams[context.scope()])
@@ -227,6 +234,8 @@ class Runtime:
             return await self.control_session(claim.payload)
         if claim.payload['kind'] == 'room-mention':
             return await self.answer_room(claim.payload)
+        if claim.payload["kind"] == "model-retry":
+            return await self.retry_session(claim.payload)
         wire, team = claim.payload["wire"], claim.payload["team_id"]
         self.teams[(wire["tenant_id"], wire["ticket_id"], wire["ticket_generation"])] = team
         held = next((s for s in self.store.sessions() if s.get("ticket_id") == wire["ticket_id"]
@@ -260,6 +269,7 @@ class Runtime:
             state = await self.service.resume(state.context)
         log.info("session ticket=%s generation=%s phase=%s reason=%s checkpoint=%s", state.context.ticket_id,
                  state.context.ticket_generation, state.phase, state.pause_reason, state.version)
+        await self.retry_later(state, team)
         try:
             await self.backend.status(team, state.phase, state.pause_reason, state.version)
             if state.room is not None:
@@ -269,6 +279,94 @@ class Runtime:
         if state.action and state.action.status in ("sending", "unknown", "accepted"):
             return SETTLE_SECONDS
         return None
+
+    async def retry_later(self, state: SupervisorState, team: str, first: int | None = None) -> None:
+        """Queue one more run of a session the model failed. `first`: the checkpoint at which it first failed."""
+        if state.phase != "paused" or state.pause_reason not in MODEL_PAUSES:
+            return
+        # A provider that is down or rate-limiting fails every session alike: the others wait instead of
+        # each spending a call to find out.
+        self.model_hold = self.store.clock() + MODEL_RETRY_FIRST
+        await self.run_again(state, team, first)
+
+    async def run_again(self, state: SupervisorState, team: str, first: int | None = None) -> None:
+        context = state.context
+        key = json.dumps((context.tenant_id, "model-retry", context.ticket_id, context.ticket_generation, state.version),
+                         separators=(",", ":"))
+        try:
+            await self.store.accept(key, {"kind": "model-retry", "context": context.model_dump(mode="json"), "team_id": team,
+                                          "version": state.version, "first": first or state.version, "key": key})
+        except AdapterError as error:
+            if error.code != "conflict":
+                raise
+            # Already queued for this checkpoint, by the run that failed it: after a restart it is found again.
+
+    async def noted(self, namespace: str, key: str) -> float:
+        """The time this was first seen, kept across restarts."""
+        held = await self.store.get(namespace, key)
+        if held is None:
+            held = {"at": self.store.clock()}
+            await self.store.put_once(namespace, key, held)
+        return held["at"]
+
+    async def retry_session(self, item: dict) -> float | None:
+        """Run a session again: one paused for the model once its wait is over, or one left mid-work."""
+        context, team = Context.model_validate(item["context"]), item["team_id"]
+        self.teams[context.scope()] = team
+        state = await self.store.load(context)
+        if state is None:
+            return None
+        if await self.store.get("model_retry_started", item["key"]) is None:
+            if state.version != item["version"]:
+                return None  # management resumed or stopped it, or it moved on
+            if state.phase == "paused":
+                if state.pause_reason not in MODEL_PAUSES:
+                    return None
+                streak = json.dumps((context.tenant_id, context.ticket_id, context.ticket_generation, item["first"]),
+                                    separators=(",", ":"))
+                # When the model first failed this session, and when this attempt was queued.
+                since, seen = await self.noted("model_retry_since", streak), await self.noted("model_retry_seen", item["key"])
+                now = self.store.clock()
+                if now - since > MODEL_RETRY_LIMIT:
+                    log.warning("session ticket=%s still has no model after %s seconds: it waits for management",
+                                context.ticket_id, MODEL_RETRY_LIMIT)
+                    return None
+                if now < max(self.model_hold, seen + max(MODEL_RETRY_FIRST, seen - since)):
+                    return RETRY_SECONDS
+                previous = state.version
+                state.phase, state.pause_reason, state.resume_phase = state.resume_phase or "planning", None, None
+                state.version = previous + 1
+                if not await self.store.commit(state, previous):
+                    raise SupervisorError("state_conflict")
+            elif state.phase != "planning":
+                return None
+            # From here the session is this item's to finish: a restart or an action still in flight
+            # brings the item back, and it goes on instead of finding the checkpoint "moved on".
+            await self.store.put_once("model_retry_started", item["key"], {"at": self.store.clock()})
+        state = await self.service.resume(context)
+        log.info("session ticket=%s ran again: phase=%s reason=%s", context.ticket_id, state.phase, state.pause_reason)
+        await self.retry_later(state, team, item["first"])
+        await self.backend.status(team, state.phase, state.pause_reason, state.version)
+        if state.room is not None:
+            await self.mirror(team, state.room, state.terminal_results.values())
+        if state.action and state.action.status in ("sending", "unknown", "accepted"):
+            return SETTLE_SECONDS
+        return None
+
+    async def recover_sessions(self) -> None:
+        """What a stopped process left behind: sessions the model failed get their retry, and a session
+        that was mid-planning, with no message left to drive it, is taken up again."""
+        with self.store.connection() as db:
+            rows = db.execute("SELECT body FROM checkpoints WHERE kind='supervisor' ORDER BY rowid").fetchall()
+        for (body,) in rows:
+            state = SupervisorState.model_validate_json(body)
+            if state.reception is None:
+                continue
+            if state.phase == "planning" and state.pause_reason is None:
+                await self.run_again(state, state.reception.team_id)
+            else:
+                await self.retry_later(state, state.reception.team_id)
+        self.model_hold = 0.0  # nothing failed in this process yet
 
     async def answer_room(self, item: dict) -> None:
         message, agent = str(item['message_id']), item['agent_id']
@@ -521,6 +619,9 @@ class Runtime:
         return True
 
     async def round(self) -> None:
+        if not self.recovered:
+            self.recovered = True
+            await self.recover_sessions()
         try:
             await self.poll()
         except AdapterError as error:
@@ -576,7 +677,10 @@ def create_app(settings: Settings | None = None, *, transport: httpx.AsyncBaseTr
 
             async def loop():
                 while not stopping.is_set():
-                    await runtime.round()
+                    try:
+                        await runtime.round()
+                    except Exception:  # noqa: BLE001 - one bad round must not end the service while /health says ok
+                        log.exception("a round failed; the next one starts as usual")
                     try:
                         await asyncio.wait_for(stopping.wait(), settings.poll_seconds)
                     except TimeoutError:

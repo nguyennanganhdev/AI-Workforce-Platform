@@ -385,7 +385,12 @@ async def versions(room_id: str, agent_id: str, scope: Member):
 
 @router.get('/rooms/{room_id}/agent-management')
 async def management_agents(room_id: str, scope: Member):
-    room = await managed_room(scope, room_id)
+    return await room_catalogue(room_id, scope)
+
+
+async def room_catalogue(room_id: str, scope: Member, *, lock: bool = True):
+    """The room's agents, read tools and categories. `lock=False` for a caller that waits on another service."""
+    room = await managed_room(scope, room_id, lock=lock)
     rows = await scope[0].execute(text("""select a.id,a.name,a.purpose,a.status,a.configuration,
         (select jsonb_build_object('id',v.id,'number',v.version_no,'hash',v.config_hash)
           from agent_versions v where v.agent_id=a.id order by v.version_no desc limit 1) as latest_version,

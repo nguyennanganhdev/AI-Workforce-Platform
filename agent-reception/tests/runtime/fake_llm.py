@@ -8,6 +8,20 @@ app = FastAPI()
 INCIDENT_WORDS = ("hỏng", "rò", "không hoạt động", "không có điện", "sửa")
 
 
+def details(text):
+    """What a careful model quotes from "X bị Y": the thing before "bị", the symptom from it on.
+
+    Like a real model it also adds a cause the resident never gave; the backend must drop it.
+    """
+    thing, found, symptom = text.partition(" bị ")
+    quoted = {"symptom": ("bị " + symptom) if found else text, "cause": "ống âm tường bị vỡ từ sáng"}
+    if found:
+        quoted["item"] = thing
+    if "không biết" in text.lower():
+        quoted["item_unknown"] = text
+    return quoted
+
+
 def assessment(data):
     text, active = data["message"]["text"].lower(), data.get("active_ticket_id")
     incident = any(word in text for word in INCIDENT_WORDS)
@@ -31,11 +45,14 @@ def turn(data):
     if "hủy" in text.lower():
         return {"intent": "cancel", "facts": [], "answers": {}}
     source = (data.get("pending_incident_messages") or [message])[-1]["id"]
-    facts = [{"key": "reported", "value": text[:100], "source": "customer_report", "source_message_id": source}]
+    facts = [{"key": key, "value": value, "source": "customer_report", "source_message_id": source}
+             for key, value in details(text).items()]
     if "có vẻ" in text.lower():
         # Real models add their own guesses, labelled as such and citing the resident's message.
         facts.append({"key": "cause", "value": "chập điện", "source": "agent_inference", "source_message_id": source})
-    return {"intent": "information", "title": text[:60], "description": text, "facts": facts, "answers": {}}
+    # Title and description as a real model words them: not what the backend records.
+    return {"intent": "information", "title": "Sự cố kỹ thuật nghiêm trọng", "description": "Ống âm tường bị vỡ, nước ngập sàn.",
+            "facts": facts, "answers": {}}
 
 
 def proposal(data):
@@ -66,12 +83,24 @@ def agent_step(messages):
             return reply(result["passages"][0]["text"], [result["passages"][0]["rank"]])
         if "passages" in result:
             return tool("ask_management")
+        if result.get("error") == "conversation_has_open_request":
+            return reply("Mình đã ghi nhận thêm thông tin cho yêu cầu đang mở của bạn.")
         return reply("Mình chưa hỗ trợ được việc này.")
     text = last["content"]
     if "tiến độ" in text.lower():
         return tool("request_status")
-    if any(word in text.lower() for word in INCIDENT_WORDS):
-        return tool("file_request", title=text[:60], description=text, category_code="technical", priority="normal")
+    # Everything the resident said so far in this conversation, as a model reads it.
+    said = " ".join(m["content"] for m in messages if m["role"] == "user")
+    if any(word in said.lower() for word in INCIDENT_WORDS):
+        quoted = details(next(m["content"] for m in messages if m["role"] == "user" and " bị " in m["content"]) if " bị " in said else text)
+        if "không biết" in text.lower():
+            quoted["item_unknown"] = text
+        elif text != said and " bị " not in text:
+            # The answer to a question about the exact spot.
+            quoted["item"] = text
+        # The tool has no place for a cause; the invented detail goes where a model would put it.
+        quoted["area"] = quoted.pop("cause")
+        return tool("file_request", kind="incident", category_code="technical", priority="normal", **quoted)
     return tool("search_knowledge", query=text)
 
 

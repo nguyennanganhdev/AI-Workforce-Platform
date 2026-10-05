@@ -83,6 +83,22 @@ def test_reception_draft_handoff_and_durable_retry(database):
             "update_ticket_incident",
             {**target, "fields": {"request_kind": "incident"}},
         )
+        assessment = {"priority": "high", "severity": "major", "reason": "Resident-reported overflow"}
+        operation(c, "submit_ticket_assessment", {**target, "assessment": assessment})
+        # A title and a description written for the resident are not a report: nothing is handed over.
+        refused, _ = operation(c, "handoff_ticket", target)
+        assert refused["accepted"] is False and refused["missingFields"] == ["incident_symptom"]
+        assert sql(database, "select count(*) as n from tickets")[0]["n"] == before
+        source = message.json()["id"]
+        cited, _ = operation(c, "update_ticket_incident", {**target, "fields": {"facts": [
+            {"key": "symptom", "value": "is overflowing", "source": "customer_report", "source_message_id": source},
+            {"key": "item", "value": "Bathroom", "source": "customer_report", "source_message_id": source},
+            # Not in the message: dropped, and it cannot stand for a detail the resident gave.
+            {"key": "cause", "value": "a burst pipe in the wall", "source": "customer_report", "source_message_id": source},
+        ]}})
+        stored = cited["incidents"][0]["fields"]
+        assert stored["title"] == stored["description"] == "Bathroom is overflowing"
+        assert [fact["key"] for fact in stored["facts"]] == ["symptom", "item"]
         operation(
             c,
             "submit_ticket_assessment",
@@ -139,10 +155,12 @@ def test_handoff_without_supervisor_creates_a_direct_flow_ticket(database):
             message = c.post(f"/resident/chats/{channel}/messages",
                              json={"text": "Light is broken", "client_message_id": str(uuid4())}).json()
             draft, _ = operation(c, "create_ticket_draft", {
-                "channel_id": channel, "title": "Broken light", "description": "Hallway light does not turn on",
-                "domain_id": place["domain_id"], "building_id": place["building_id"], "unit_id": place["unit_id"],
-                "category_id": CATEGORY, "source_message_id": message["id"]})
+                "channel_id": channel, "domain_id": place["domain_id"], "building_id": place["building_id"],
+                "unit_id": place["unit_id"], "category_id": CATEGORY})
             target = {"channel_id": channel, "draft_id": draft["draftId"]}
+            operation(c, "update_ticket_incident", {**target, "fields": {"source_message_id": message["id"], "facts": [
+                {"key": "symptom", "value": "is broken", "source": "customer_report", "source_message_id": message["id"]},
+                {"key": "item", "value": "Light", "source": "customer_report", "source_message_id": message["id"]}]}})
             operation(c, "submit_ticket_assessment", {**target, "assessment": {
                 "priority": "normal", "severity": "minor", "reason": "Resident report"}})
             operation(c, "handoff_ticket", {**target, "plan_required": "no"}, expected=422)

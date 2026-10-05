@@ -23,7 +23,7 @@ from vinhomes.ports import OpenBot
 from vinhomes.runtime import Runtime, Settings, Store
 
 
-def test_management_decision_reaches_the_actual_resident_conversation(database, tmp_path, monkeypatch):
+def test_the_supervisors_own_approval_reaches_the_actual_resident_conversation(database, tmp_path, monkeypatch):
     monkeypatch.setenv('OPENAI_API_KEY', 'model-key')
     monkeypatch.setenv('MANAGED_AGENT_TOKEN', 'bot-token')
     publish_specialist(database, 'E2E technical ' + uuid4().hex[:8], ['technical'])
@@ -51,10 +51,9 @@ def test_management_decision_reaches_the_actual_resident_conversation(database, 
         state = asyncio.run(cycle())
         assert state['phase'] == 'waiting_management', state
         with demo_client(database, 'management') as management:
+            # Nothing for management to decide: the Supervisor approved its own plan when it asked.
             plan = management.get(f'/tickets/{ticket}/session').json()['room']['plan']
-            decision = management.post(f"/plans/{plan['id']}/management-decision", json={
-                'decision': 'approve', 'version': plan['version'], 'note': 'Đồng ý'})
-            assert decision.status_code == 200, decision.text
+            assert plan['status'] == 'resident_pending' and plan['management_note'].startswith('Supervisor duyệt')
         state = asyncio.run(cycle())  # a fresh Runtime reads the persisted checkpoint
         assert state['phase'] == 'waiting_resident_plan', state
         assert asyncio.run(cycle())['phase'] == 'waiting_resident_plan'

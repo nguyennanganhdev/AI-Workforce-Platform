@@ -318,6 +318,22 @@ def _check_snapshot(body: ReceptionToSupervisorMessage, row: dict[str, Any]) -> 
         raise HTTPException(409, "V2 ticket snapshot is stale or mismatched: created_at")
 
 
+WIRE_TICKET = "t.version,t.title,t.description,t.priority,t.severity,t.is_emergency,t.category_id,t.current_triage_decision_id"
+
+
+def current_wire(original: dict[str, Any], ticket: dict[str, Any]) -> dict[str, Any]:
+    """A later message about a ticket describes it as it is now, not as it was when handed over.
+
+    Management may have reclassified it since, and a stale copy is refused by `_check_snapshot`.
+    `ticket` holds the WIRE_TICKET columns.
+    """
+    triage = ticket["current_triage_decision_id"]
+    return {**original, "ticket_version": str(ticket["version"]), "request": {
+        **original["request"], "title": ticket["title"], "description": ticket["description"],
+        "priority": ticket["priority"], "severity": ticket["severity"], "is_emergency": ticket["is_emergency"],
+        "category_id": str(ticket["category_id"]), "triage_decision_id": str(triage) if triage else None}}
+
+
 async def _resident_ticket_snapshot(scope, body: ReceptionToSupervisorMessage) -> dict[str, Any]:
     db, actor = scope
     row = (

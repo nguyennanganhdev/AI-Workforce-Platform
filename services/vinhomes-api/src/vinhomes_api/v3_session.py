@@ -130,7 +130,9 @@ async def ticket_session(ticket_id: UUID, scope: Scope) -> dict[str, object]:
     if session is None:
         destination = await session_destination(scope[0], ticket["management_unit_id"])
         return {"session": None, "missing": destination.get("missing")}
+    from .supervised_flow import supervisor_approves
     return {"session": dict(session), "room": await _room(scope[0], session["id"]),
+            "supervisorApprovesPlans": supervisor_approves(),
             "awaitingManagementApproval": ticket["status"] == "closed" and session["status"] != "completed"}
 
 

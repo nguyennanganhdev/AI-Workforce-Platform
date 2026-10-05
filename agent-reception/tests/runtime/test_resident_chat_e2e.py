@@ -52,7 +52,9 @@ def test_incident_chat_creates_a_ticket_management_can_work_on():
     ticket_id = next(c for c in call("GET", "/resident/chats")["items"] if c["id"] == chat)["ticket_id"]
     detail = call("GET", f"/tickets/{ticket_id}", actor="management")
     ticket = detail["ticket"]
-    assert ticket["status"] == "open" and ticket["title"].startswith("Ổ điện phòng khách")
+    # The request is the resident's own sentence; the cause the model added is nowhere in it.
+    assert ticket["status"] == "open" and ticket["title"] == "Ổ điện phòng khách bị hỏng, không có điện từ sáng nay."
+    assert ticket["description"] == ticket["title"] and "ống âm tường" not in str(detail).lower()
     created = next(e for e in detail["events"] if e["event_type"] == "ticket.created")
     assert "requiresPlan" not in created["payload"] and created["payload"]["assessment"]["priority"] == "normal"
     # The seeded management unit has a Supervisor, so the handoff opened the coordination session.
@@ -72,6 +74,43 @@ def test_a_model_guess_among_the_facts_does_not_lose_the_request():
     chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
     say(chat, "Ổ điện bếp bị hỏng, có vẻ do chập.")
     assert next(c for c in call("GET", "/resident/chats")["items"] if c["id"] == chat)["ticket_id"]
+
+
+def ticket_of(chat):
+    ticket_id = next(c for c in call("GET", "/resident/chats")["items"] if c["id"] == chat)["ticket_id"]
+    return call("GET", f"/tickets/{ticket_id}", actor="management")["ticket"] if ticket_id else None
+
+
+def test_a_room_and_a_symptom_get_a_question_and_the_answer_completes_the_request():
+    chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
+    question, _ = say(chat, "Nhà tắm của tôi bị rò nước")
+    assert question.startswith("Bạn thấy nước rò ở đâu") and ticket_of(chat) is None
+    # "ok" names nothing: the same question again, still no request.
+    again, _ = say(chat, "ok")
+    assert again == question and ticket_of(chat) is None
+    reply, _ = say(chat, "chân vòi lavabo")
+    ticket = ticket_of(chat)
+    assert ticket and ticket["title"] == "Nhà tắm của tôi bị rò nước"
+    assert ticket["description"] == "Nhà tắm của tôi bị rò nước\nchân vòi lavabo"
+    assert "ghi nhận" in reply
+
+
+def test_a_resident_who_cannot_tell_is_not_asked_again():
+    chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
+    say(chat, "Nhà tắm của tôi bị rò nước")
+    say(chat, "Tôi không biết nguồn rò ở đâu")
+    ticket = ticket_of(chat)
+    assert ticket and ticket["description"] == "Nhà tắm của tôi bị rò nước\nTôi không biết nguồn rò ở đâu"
+
+
+def test_two_unanswered_questions_send_the_report_to_a_person_as_it_is():
+    chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
+    say(chat, "Nhà tắm của tôi bị rò nước")
+    say(chat, "ok")
+    say(chat, "ok")
+    ticket = ticket_of(chat)
+    # Only the report is on it: an acknowledgement is not part of what happened.
+    assert ticket and ticket["description"] == "Nhà tắm của tôi bị rò nước"
 
 
 def test_an_emergency_is_filed_at_emergency_level_with_the_fixed_reply():

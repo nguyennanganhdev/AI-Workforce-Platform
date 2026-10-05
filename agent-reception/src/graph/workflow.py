@@ -182,9 +182,10 @@ class ReceptionWorkflowGraph:
             "reply": "Yêu cầu cần người có thẩm quyền xem xét; chưa có xác nhận xử lý hoàn tất.",
         }
 
-    def _ask(self, data, questions):
+    def _ask(self, data, questions, repeat=False):
+        # `repeat`: a question of the backend's intake rules, which count how often they asked.
         fresh = [
-            q for q in dict.fromkeys(questions) if q not in data["asked_questions"]
+            q for q in dict.fromkeys(questions) if repeat or q not in data["asked_questions"]
         ]
         if not fresh or data["question_attempts"] >= self.options.max_question_attempts:
             return self._review(data, "UNANSWERED_FIELDS_REVIEW")
@@ -1041,6 +1042,9 @@ class ReceptionWorkflowGraph:
             )
             updated = self._consume_pending_files(updated, linked_file_ids)
             updated["pending_incident_messages"] = []
+            if strings(v.get("questions") or []) and not data.get("intake", {}).get("emergency"):
+                # The backend found a detail missing before this incident may be handed over.
+                return self._ask(updated, strings(v.get("questions")), repeat=True)
             missing = [
                 field
                 for field in strings(v.get("missing_fields"))

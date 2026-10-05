@@ -286,6 +286,11 @@ async def resident_decision(plan_id: UUID, body: PlanDecision, scope: Resident):
         json.dumps({"planId": str(plan_id), "status": status, "workOrderIds": work}),
         to_status="assigned" if work else None,
     )
+    if work and plan["proposed_by_agent_id"] and plan["management_by"] is None:
+        # A plan the Supervisor approved itself: it also hands the work to an available technician.
+        from .supervised_flow import offer_work
+        for work_id in work:
+            await offer_work(db, tid, UUID(work_id), plan["proposed_by_agent_id"])
     return {**dict(result.mappings().one()), "workOrderIds": work}
 
 

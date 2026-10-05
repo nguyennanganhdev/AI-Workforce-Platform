@@ -113,7 +113,8 @@ async def list_tickets(
                t.is_emergency, t.site_id, t.zone_id, t.building_id,
                t.management_unit_id, t.category_id, t.assigned_team_id,
                t.response_due_at, t.resolution_due_at, t.created_at,
-               t.updated_at, t.version
+               t.updated_at, t.version,
+               (select u.code from units u where u.id=t.unit_id and u.tenant_id=t.tenant_id) as unit_code
         from tickets t
         where {TICKET_VISIBILITY}
           and (cast(:status as text) is null or t.status=:status)
@@ -137,7 +138,8 @@ async def get_ticket(ticket_id: UUID, scope: Scope) -> dict[str, object]:
                t.is_emergency, t.site_id, t.zone_id, t.building_id,
                t.management_unit_id, t.category_id, t.assigned_team_id,
                t.response_due_at, t.resolution_due_at, t.created_at,
-               t.updated_at, t.version
+               t.updated_at, t.version,
+               (select u.code from units u where u.id=t.unit_id and u.tenant_id=t.tenant_id) as unit_code
         from tickets t where t.id=:ticket_id and {TICKET_VISIBILITY}
     """), params)
     row = ticket.mappings().first()

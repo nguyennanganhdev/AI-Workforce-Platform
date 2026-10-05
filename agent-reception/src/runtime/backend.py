@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -136,6 +135,7 @@ class BackendOperations:
     def __init__(self, backend: BackendClient, store: DraftStore, model):
         self.backend, self.store, self.model = backend, store, model
         self.handoffs: dict[str, str] = {}  # channel -> ticket code created in the current turn
+        self.questions: dict[str, dict] = {}  # channel -> the intake question asked in the current turn
 
     async def invoke(self, request: dict) -> dict:
         handler = getattr(self, "_" + request["operation"], None)
@@ -253,27 +253,30 @@ class BackendOperations:
     async def _update_ticket_incident(self, context, value, key):
         draft_id, record = await self._record(value)
         incident = value["incident"]
-        title, description = incident["title"].strip()[:300], incident["description"].strip()[:10000]
-        if not title and description:
-            # Models often give only the description; its first sentence is the resident's own words.
-            title = re.split(r"(?<=[.!?])\s|\n", description, maxsplit=1)[0][:120].strip()
-            incident = {**incident, "title": title}
         # The request records what the resident reported. A model's own guess is not evidence,
         # and the backend refuses one that cites a resident message, which would lose the request.
         reported = [fact for fact in incident["facts"] if fact.get("source") == "customer_report"]
-        fields = {"facts": reported, "file_ids": incident["file_ids"], "source_message_id": context["requestId"]}
-        if title:
-            fields["title"] = title
-        if description:
-            fields["description"] = description
+        result = await self.backend.execute(context, "update_ticket_incident", {
+            "channel_id": record["channel_id"], "draft_id": draft_id, "fields": {
+                "facts": reported, "file_ids": incident["file_ids"], "source_message_id": context["requestId"]}}, key)
+        # The backend writes title and description from the resident's messages the facts cite, and keeps
+        # only the facts found there: the model's own title and description are not used.
+        stored, intake = result["incidents"][0]["fields"], result.get("intake") or {}
+        title, description = stored.get("title") or "", stored.get("description") or ""
+        incident = {**incident, "title": title, "description": description, "facts": stored["facts"],
+                    "file_ids": list(dict.fromkeys(incident["file_ids"] + [str(file_id) for file_id in stored["file_ids"]]))}
         if title and description:
             record["proposal"] = await self._propose(context, {"title": title, "description": description})
-            fields["category_id"] = record["proposal"]["category_id"]
-        await self.backend.execute(context, "update_ticket_incident", {
-            "channel_id": record["channel_id"], "draft_id": draft_id, "fields": fields}, key)
+            await self.backend.execute(context, "update_ticket_incident", {
+                "channel_id": record["channel_id"], "draft_id": draft_id,
+                "fields": {"category_id": record["proposal"]["category_id"]}}, _key(key, "category"))
         await self.store.put(draft_id, record)
-        return {"ticket": self._ticket(draft_id, record), "incident": incident,
-                "missing_fields": [name for name, text in (("title", title), ("description", description)) if not text]}
+        question = None if intake.get("ready", True) or record.get("emergency") else intake.get("question")
+        if question:
+            self.questions[record["channel_id"]] = {"question": question, "field": intake.get("missing")}
+        return {"ticket": self._ticket(draft_id, record), "incident": incident, "questions": [question] if question else [],
+                "missing_fields": [name for name, text in (("title", title), ("description", description)) if not text]
+                if not question else []}
 
     async def _submit_ticket_assessment(self, context, value, key):
         draft_id, record = await self._record(value)
@@ -361,7 +364,9 @@ class BackendOperations:
             **submitted, "message_id": "reception:" + key[:48], "sent_at": _now(),
             "message_type": message_type, "message": text, "source_message_id": value["source_message_id"],
             "ticket_version": str(record["ticket"]["version"]),
-            "facts": value.get("facts", []), "file_ids": value.get("file_ids", [])}}, key)
+            # Only what the resident reported: a guess of the model citing their message is refused by the backend.
+            "facts": [fact for fact in value.get("facts", []) if fact.get("source") == "customer_report"],
+            "file_ids": value.get("file_ids", [])}}, key)
         return True
 
     async def _append_ticket_information(self, context, value, key):
@@ -377,8 +382,9 @@ class BackendOperations:
             # The Supervisor accepts information only while it is asking for it. What the
             # resident volunteers stays in the conversation attached to the ticket.
             delivered = False
+        # Photos count as linked only when the message that carried them was delivered.
         return {"ticket": self._ticket(draft_id, await self.store.get(draft_id)), "delivered": delivered,
-                "scope_changed": False, "linked_file_ids": value.get("file_ids", [])}
+                "scope_changed": False, "linked_file_ids": value.get("file_ids", []) if delivered else []}
 
     async def _request_ticket_cancellation(self, context, value, key):
         draft_id, record = await self._record(value)

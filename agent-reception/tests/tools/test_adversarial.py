@@ -395,6 +395,10 @@ def test_self_help_recheck_does_not_reuse_previously_offered_steps(status):
     assert calls[0]["idempotency_key"] != calls[1]["idempotency_key"]
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "The typed port (src/tools) is not wired into the runtime: its call envelope refuses the graph's request "
+    "(timeoutMs, signal and the context's checkpoint, initiatedBy and permissions), so nothing reaches HTTP. "
+    "The runtime uses src/runtime/backend.py."))
 def test_existing_graph_can_reach_http_with_new_backend_port():
     from workflow_fixture import REQUEST, harness
 

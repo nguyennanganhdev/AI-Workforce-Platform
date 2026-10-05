@@ -113,6 +113,16 @@ def decide_request(proposal, policy, active_ticket_id):
             and not proposal["missing_information"]
             else "continue_existing_ticket"
         )
+    elif (
+        proposal["proposed_action"] == "ask_clarification"
+        and proposal["missing_information"]
+        and not proposal["explicit_staff_request"]
+        and not proposal["self_help_declined"]
+        and not proposal["self_help_failed"]
+    ):
+        # Nothing to file yet: the backend calls every incident a matter for staff, which
+        # says who handles it, not that enough was said to open a request.
+        action = "ask_clarification"
     elif policy["staff_required"]:
         action = "start_ticket"
     elif (

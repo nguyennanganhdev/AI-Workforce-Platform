@@ -86,6 +86,11 @@ information = cư dân mô tả hoặc bổ sung thông tin cho sự cố; statu
 cancel = message hiện tại yêu cầu hủy.
 Chỉ trích nội dung cư dân đã nói. Không điền hồ sơ, scope, tenant, workspace, priority, severity, tool hoặc quyền.
 facts dùng {key,value,source:"customer_report"|"agent_inference",source_message_id:message.id}.
+Với customer_report, value là NGUYÊN VĂN cụm từ cư dân viết trong đúng tin nhắn đó (chép y nguyên, không diễn đạt lại);
+backend bỏ mọi fact không tìm thấy trong tin nhắn nguồn. Dùng các key: symptom (hiện tượng hoặc nhu cầu),
+area (khu vực cư dân nêu), item (thiết bị, vật hoặc điểm cụ thể bị ảnh hưởng), item_unknown (câu cư dân nói họ không biết
+hoặc chưa xác định được vật/điểm cụ thể). Chi tiết cư dân chưa nói thì không tạo fact. title và description do backend
+ghi từ lời cư dân; title/description bạn viết không được dùng.
 Không xác minh thông tin; không dùng staff_verified. Ảnh do graph lấy fileIds, không tự thêm file.
 Sự cố mới khác ticket đang xử lý dùng new_incident, không gộp vào mô tả hiện tại.
 pending_incident_messages là các lượt chưa được ghi vào ticket. Khi có trường này,

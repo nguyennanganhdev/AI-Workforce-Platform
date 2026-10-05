@@ -26,15 +26,16 @@ from ..graph import (
     create_reception_workflow_factory,
 )
 from ..persistence import open_sqlite_checkpointer
-from .backend import BackendClient, BackendOperations, DraftStore, RequestPolicy
+from .backend import BackendClient, BackendOperations, DraftStore, OperationRejected, OperationUnknown, RequestPolicy
 from .knowledge import KnowledgeSearch
 from .model import ChatCompletionsModel, ModelConfig, model_endpoint, turn_usage
+from ..agent.loop import EMERGENCY_FAILED_REPLY, FILED_REPLY
 from ..agent.loop import EMERGENCY_REPLY as AGENT_EMERGENCY_REPLY
 from ..agent.loop import run_agent
 from ..agent.prompt import system_prompt
 from ..agent.tools import Toolbox
 from .curator import judge
-from .inquiry import unanswered
+from .inquiry import to_management, unanswered
 from .voice import reword
 
 log = logging.getLogger("reception.runtime")
@@ -42,6 +43,10 @@ FAILED_REPLY = "Xin lỗi, tôi chưa xử lý được tin nhắn này. Bạn t
 # Said only when this turn filed the request under the backend's emergency policy.
 EMERGENCY_REPLY = "Mình đã chuyển yêu cầu của bạn đến Ban quản lý ở mức khẩn cấp."
 EMPTY_REPLY = "Tôi đã ghi nhận tin nhắn của bạn."
+ANSWER_DELIVERED_REPLY = "Mình đã chuyển câu trả lời của bạn tới Ban quản lý."
+STALE_REPLY = "Cuộc trò chuyện này không tiếp tục được nữa. Bạn bấm “Chat mới” để mình hỗ trợ tiếp nhé."
+# Below the backend's own wait for a turn (180 s): past that it has already told the resident and closed the run.
+TURN_SECONDS = 150
 
 
 def safety_line(policy: dict) -> str:
@@ -164,9 +169,9 @@ async def run_turn(graph, context: dict, message: dict) -> dict:
 
 async def agent_turn(backend: BackendClient, client: httpx.AsyncClient, model, knowledge_url: str | None,
                      context: dict, message: dict) -> tuple[str, str | None]:
-    """One turn of the model-led agent. Returns the reply and the code of a request filed in this turn."""
+    """One turn of the model-led agent. Returns the reply and, when it is a question of the intake rules, the detail asked for."""
     channel = context["channelId"]
-    turn = await backend.call("GET", f"/internal/reception/chats/{channel}/context", context)
+    turn = await backend.call("GET", f"/internal/reception/chats/{channel}/context?message_id={message['id']}", context)
     resident = await backend.execute(context, "get_verified_resident_context", {}, "agent-context:" + message["id"])
     categories = (await backend.call("GET", "/internal/reception/catalog", context))["categories"]
     policy = await backend.call("POST", "/internal/reception/policy/evaluate", context,
@@ -175,13 +180,32 @@ async def agent_turn(backend: BackendClient, client: httpx.AsyncClient, model, k
                       {"homes": resident["residences"]}, categories)
     if policy.get("emergency") is True:
         # The policy's keywords decide before any model runs.
-        outcome = await toolbox.emergency_request(message["text"])
-        reply = AGENT_EMERGENCY_REPLY + safety_line(policy) if "error" not in outcome else FAILED_REPLY
-    else:
+        outcome = await toolbox.emergency_request()
+        return (AGENT_EMERGENCY_REPLY + safety_line(policy) if "error" not in outcome else EMERGENCY_FAILED_REPLY), None
+    added = None
+    request = turn["open_request"]
+    if request and (message.get("fileIds") or request.get("pending") == "information"):
+        # Photos and an awaited answer go to the open request as the resident sent them; the model words only the reply.
+        try:
+            added = await backend.call("POST", f"/internal/reception/chats/{channel}/follow-up", context,
+                                       {"message_id": message["id"]})
+        except (OperationRejected, OperationUnknown):
+            log.warning("follow-up of a resident message was not stored")
+        if added and added.get("delivered") is True:
+            # The backend passed this message on as the awaited answer. That is what the resident is told:
+            # a model reading the same words as "another incident" would deny what just happened.
+            return ANSWER_DELIVERED_REPLY, None
+    try:
         reply = await run_agent(model, toolbox, system_prompt(
-            resident["resident"], resident["residences"], turn["open_request"], categories,
-            turn.get("past_requests", [])), turn["history"])
-    return reply, toolbox.filed_code
+            resident["resident"], resident["residences"], request, categories,
+            turn.get("past_requests", []), added), turn["history"])
+    except Exception:
+        if not toolbox.filed_code:
+            raise
+        # The request exists: the resident is told so, whatever went wrong with the wording.
+        log.exception("turn failed after the request was filed")
+        reply = FILED_REPLY
+    return reply, toolbox.clarification if reply == toolbox.question else None
 
 
 def create_app(settings: Settings | None = None, model=None) -> FastAPI:
@@ -255,35 +279,48 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
             if settings.agent == "loop":
                 try:
                     try:
-                        # The request code stays internal: the resident follows the request from its card.
-                        reply, _ = await agent_turn(backend, request.app.state.client, request.app.state.model,
-                                                    settings.knowledge_url, context, message)
+                        reply, asked = await asyncio.wait_for(agent_turn(
+                            backend, request.app.state.client, request.app.state.model,
+                            settings.knowledge_url, context, message), TURN_SECONDS)
                     except Exception:  # noqa: BLE001 - the resident still gets an answer
-                        reply = FAILED_REPLY
+                        # Why it failed is the only trace of it: the reply itself says nothing.
+                        log.exception("Reception turn failed")
+                        reply, asked = FAILED_REPLY, None
                     await backend.call(
                         "POST", f"/internal/reception/chats/{body.channel_id}/replies", context,
-                        {"text": reply[:10000], "reply_to_id": body.message.id})
+                        {"text": reply[:10000], "reply_to_id": body.message.id, **({"clarification": asked} if asked else {})})
                 finally:
                     backend.tokens.pop(body.channel_id, None)
                 return {"status": "completed", "reply": reply, "usage": measured()}
             try:
+                clarification = None
                 try:
                     result = await run_turn(request.app.state.graph, context, message)
-                except Exception:  # noqa: BLE001 - the resident still gets an answer
-                    result = {"status": "failed"}
+                except Exception as error:  # noqa: BLE001 - the resident still gets an answer
+                    log.exception("Reception turn failed")
+                    # A conversation kept by an older workflow cannot continue: "try again later" would never be true.
+                    result = {"status": "ok", "state": {"reply": STALE_REPLY}} \
+                        if getattr(error, "code", None) == "WORKFLOW_MIGRATION_REQUIRED" else {"status": "failed"}
                 reply = FAILED_REPLY if result["status"] in ("failed", "cancelled") else result["state"].get("reply") or EMPTY_REPLY
                 state = result.get("state") or {}
                 ok = result["status"] not in ("failed", "cancelled") and bool(state.get("reply"))
                 answered = (state.get("intake") or {}).get("kind") == "answer"
+                asked = tools.questions.pop(body.channel_id, None)
                 handed_over = None
                 if ok and not answered and (state.get("decision") or {}).get("next_action") == "retrieve_knowledge":
                     # No source answers the question: it goes to the management session, or it is out of scope.
                     handed_over = await unanswered(request.app.state.model, backend, context, body.channel_id, message)
-                if handed_over:
+                elif state.get("phase") == "review":
+                    # "A person will look at this" is only true once a person was told.
+                    handed_over = await to_management(backend, context, body.channel_id, message)
+                if asked and asked["question"] in reply:
+                    # The intake rules' own question goes out as it is: rewording may not add to it or soften it.
+                    reply, clarification = asked["question"], asked["field"] if asked["field"] in ("symptom", "item") else "symptom"
+                elif handed_over:
                     reply = handed_over
                 # Cited answers are already written from their sources, and an emergency
                 # must not wait for wording; everything else is reworded for the resident.
-                elif ok and not answered and state.get("handoff_reason") != "emergency":
+                elif ok and not answered and reply != STALE_REPLY and state.get("handoff_reason") != "emergency":
                     reply = await reword(request.app.state.model, body.message.text, reply)
                 code = tools.handoffs.pop(body.channel_id, None)
                 if code and state.get("handoff_reason") == "emergency":
@@ -291,7 +328,8 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                     reply = EMERGENCY_REPLY + ("\n" + state["safety_reply"] if state.get("safety_reply") else "")
                 await backend.call(
                     "POST", f"/internal/reception/chats/{body.channel_id}/replies", context,
-                    {"text": reply[:10000], "reply_to_id": body.message.id})
+                    {"text": reply[:10000], "reply_to_id": body.message.id,
+                     **({"clarification": clarification} if clarification else {})})
             finally:
                 backend.tokens.pop(body.channel_id, None)
         return {"status": result["status"], "reply": reply, "usage": measured()}

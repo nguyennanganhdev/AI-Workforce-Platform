@@ -764,7 +764,7 @@ async def propose_plan(team_id: UUID, body: PlanDraft, db: Scope) -> dict[str, A
         from .resident_cases import append_domain_event
         await append_domain_event(db, team["ticket_id"], "plan.proposed")
         await append_agent_message(db, team["channel_id"], team["supervisor_agent_id"], "room", {
-            "text": f"{team['ticket_code']}: Supervisor đề xuất phương án, chờ Ban quản lý duyệt: {body.plan.summary}",
+            "text": f"{team['ticket_code']}: Supervisor đề xuất phương án: {body.plan.summary}",
             "sessionId": str(team["id"]), "kind": "supervisor_plan", "planId": str(plan_id)})
         version = team["ticket_version"] + 1
     else:
@@ -808,6 +808,11 @@ async def plan_approval_request(team_id: UUID, plan_id: UUID, body: ApprovalRequ
         await db.execute(text("update vh_ticket_plans set proposal=proposal||cast(:request as jsonb) where id=:plan"), {
             "plan": plan["id"], "request": json.dumps({"management_approval_id": body.approval_id,
                                                     "plan_version": body.plan_version})})
+    from .supervised_flow import approve_for_management, supervisor_approves
+    if supervisor_approves():
+        # A retry also advances a pending plan created before automatic approval was enabled.
+        # The conditional update records the decision once, even after a lost response.
+        await approve_for_management(db, plan["id"], team["ticket_id"], team["supervisor_agent_id"])
     return {"status": "accepted", "plan_id": str(plan_id)}
 
 

@@ -36,11 +36,13 @@ def hand_over(c, title):
     channel = c.post("/resident/chats", json={"title": title}).json()["id"]
     message = c.post(f"/resident/chats/{channel}/messages", json={"text": title, "client_message_id": str(uuid4())}).json()
     draft, _ = operation(c, "create_ticket_draft", {
-        "channel_id": channel, "title": title, "description": "Vòi nước bếp bị rò từ sáng",
-        "domain_id": place["domain_id"], "building_id": place["building_id"], "unit_id": place["unit_id"],
-        "category_id": CATEGORY, "source_message_id": message["id"]})
+        "channel_id": channel, "domain_id": place["domain_id"], "building_id": place["building_id"],
+        "unit_id": place["unit_id"], "category_id": CATEGORY})
     target = {"channel_id": channel, "draft_id": draft["draftId"]}
-    operation(c, "update_ticket_incident", {**target, "fields": {"request_kind": "incident"}})
+    # The request is the resident's message; each detail cites it.
+    operation(c, "update_ticket_incident", {**target, "fields": {"source_message_id": message["id"], "facts": [
+        {"key": key, "value": title, "source": "customer_report", "source_message_id": message["id"]}
+        for key in ("symptom", "item")]}})
     operation(c, "submit_ticket_assessment", {**target, "assessment": {
         "priority": "normal", "severity": "minor", "reason": "Cư dân báo rò nước"}})
     assert operation(c, "resolve_management_destination", target)[0]["available"]
@@ -352,7 +354,9 @@ def test_a_published_specialist_enters_the_room_and_its_work_is_mirrored(databas
 
 
 @pytest.mark.parametrize('resident_decision', ['approve', 'reject', 'request_changes'])
-def test_the_supervisor_proposes_a_plan_that_management_then_decides(database, resident_decision):
+def test_the_supervisor_proposes_a_plan_that_management_then_decides(database, resident_decision, monkeypatch):
+    # The deployment where management keeps its own approval of each plan.
+    monkeypatch.setenv("VINHOMES_API_SUPERVISOR_APPROVES_PLANS", "0")
     with app(database) as c:
         handoff, resident_chat = hand_over(c, f"Vòi bếp rò {uuid4().hex[:6]}")
         team, ticket = handoff["team"]["id"], handoff["ticket"]["id"]
@@ -470,6 +474,77 @@ def test_the_supervisor_proposes_a_plan_that_management_then_decides(database, r
         assert current['version'] == pending['ticket_version'] + 1
     orders = sql(database, "select description from work_orders where ticket_id=$1", UUID(ticket))
     assert [o["description"] for o in orders] == (["1. Khóa van nước căn hộ\n2. Thay gioăng vòi bếp"] if resident_decision == 'approve' else [])
+
+
+@pytest.mark.parametrize('initially_automatic', [True, False])
+def test_the_supervisor_approves_its_plan_and_hands_the_work_to_a_technician(database, monkeypatch, initially_automatic):
+    """Management decides nothing on the way: the resident approves, a technician is offered the work,
+    and the finished work goes to the resident without an inspection by management."""
+    monkeypatch.setenv('VINHOMES_API_SUPERVISOR_APPROVES_PLANS', '1' if initially_automatic else '0')
+    # Each parameter leaves its own accepted work in the shared test database. Give this seeded
+    # technician capacity for both independent scenarios; the real capacity check stays enabled.
+    sql(database, "update staff_profiles set max_concurrent_jobs=5 where user_id='local-v3-technical'")
+    with app(database) as c:
+        handoff, _ = hand_over(c, f"Vòi bếp rò {uuid4().hex[:6]}")
+        team, ticket = handoff["team"]["id"], handoff["ticket"]["id"]
+        message = sql(database, "select message_id from vh_reception_supervisor_messages where team_id=$1", UUID(team))[0]["message_id"]
+        verified = c.post(BASE + "/reception/verify", headers=SERVICE, json={"team_id": team, "message_id": message}).json()
+        view = BASE + f"/teams/{team}/view"
+        draft = {"request_id": f"draft-{uuid4().hex}", "payload_hash": "c" * 64,
+                 "ticket_version": c.get(view, headers=SERVICE).json()["ticket_version"], "target_plan_version": 1,
+                 "plan": {"summary": "Thay gioăng vòi bếp", "steps": ["Khóa van nước căn hộ", "Thay gioăng vòi bếp"],
+                          "performer_role": "Kỹ thuật viên nước", "expected_duration": "45 phút",
+                          "conditions": "Cư dân có mặt tại căn hộ", "cost": None, "result_refs": ["task-1"], "attachment_ids": []}}
+        plan = c.post(BASE + f"/teams/{team}/plans", headers=SERVICE, json=draft).json()["canonical_id"]
+        assert sql(database, "select status from vh_ticket_plans where id=$1", UUID(plan))[0]["status"] == "management_pending"
+        request = BASE + f"/teams/{team}/plans/{plan}/approval-request"
+        asked = {"approval_id": "approval-auto", "plan_version": 1}
+        assert c.post(request, headers=SERVICE, json=asked).json() == {"status": "accepted", "plan_id": plan}
+        if not initially_automatic:
+            assert sql(database, "select status from vh_ticket_plans where id=$1", UUID(plan))[0]['status'] == 'management_pending'
+            monkeypatch.setenv('VINHOMES_API_SUPERVISOR_APPROVES_PLANS', '1')
+        assert c.post(request, headers=SERVICE, json=asked).status_code == 200            # the same request again
+        row = sql(database, "select status,management_by,management_note from vh_ticket_plans where id=$1", UUID(plan))[0]
+        assert row == {"status": "resident_pending", "management_by": None, "management_note": "Supervisor duyệt phương án thay Ban quản lý."}
+        decided = sql(database, "select actor_kind,actor_agent_id,payload->>'decidedBy' as by from ticket_events "
+                                "where ticket_id=$1 and event_type='plan.management_decided'", UUID(ticket))
+        assert decided == [{"actor_kind": "agent", "actor_agent_id": "demo-supervisor", "by": "supervisor"}]
+        with demo_client(database, 'management') as manager:
+            assert manager.get(f'/tickets/{ticket}/session').json()['supervisorApprovesPlans'] is True
+            listed = manager.get('/rooms/management-room/teams').json()['items']
+            assert next(s for s in listed if s['id'] == team)['supervisor_approves_plans'] is True
+        # The runtime reads its own approval as the decision it asked for.
+        [decision] = [e for e in c.get(BASE + "/events", headers=SERVICE).json()["items"] if e["team_id"] == team]
+        assert decision["event"]["payload"]["decision"] == "approve" and decision["event"]["payload"]["approval_id"] == "approval-auto"
+        seen = c.get(view, headers=SERVICE).json()
+        assert c.post(BASE + "/reception/send", headers=SERVICE, json={"message": result(
+            verified, "plan_approval_requested", seen["plan"]["resident_request_message"],
+            ticket_version=seen["ticket_version"])}).status_code == 200
+        pending = next(i for i in c.get('/resident/supervisor-interactions').json()['items'] if i['ticket_id'] == ticket)
+        agreed = c.post(f"/resident/tickets/{ticket}/supervisor-response", json={
+            'decision': 'approve', 'note': 'Tôi đồng ý', 'ticket_version': pending['ticket_version'], 'request_id': str(uuid4())})
+        assert agreed.status_code == 200, agreed.text
+    # The resident's approval made the work order and offered it to the unit's available technician.
+    [order] = sql(database, "select id,status from work_orders where ticket_id=$1", UUID(ticket))
+    assert order["status"] == "offered"
+    offers = sql(database, "select a.status,a.assigned_by_user_id,a.assigned_by_agent_id,sp.user_id,a.offer_expires_at>now() as open "
+                           "from work_assignments a join staff_profiles sp on sp.id=a.staff_id where a.work_order_id=$1", order["id"])
+    assert offers == [{"status": "offered", "assigned_by_user_id": None, "assigned_by_agent_id": "demo-supervisor",
+                       "user_id": "local-v3-technical", "open": True}]
+    offered = sql(database, "select actor_kind,actor_agent_id from ticket_events where ticket_id=$1 and event_type='work_order.offered'", UUID(ticket))
+    assert offered == [{"actor_kind": "agent", "actor_agent_id": "demo-supervisor"}]
+    with demo_client(database, "technical") as technician:
+        mine = technician.get("/my-work-orders?limit=100").json()["items"]
+        job = next(o for o in mine if o["id"] == str(order["id"]))
+        assignment = sql(database, "select id from work_assignments where work_order_id=$1", order["id"])[0]["id"]
+        assert technician.post(f"/assignments/{assignment}/response", json={
+            "status": "accepted", "eta_at": (datetime.now(UTC)).isoformat()}).status_code == 200
+        version = job["version"] + 1
+        # No separate consent to the repair: the resident already approved this plan.
+        for status in ("en_route", "arrived", "in_progress"):
+            moved = technician.patch(f"/work-orders/{order['id']}/status", json={"version": version, "status": status, "note": status})
+            assert moved.status_code == 200, (status, moved.text)
+            version = moved.json()["version"]
 
 
 def test_a_question_is_stored_and_versioned_before_the_resident_is_asked(database):

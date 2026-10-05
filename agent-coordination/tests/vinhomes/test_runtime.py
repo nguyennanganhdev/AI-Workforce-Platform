@@ -638,6 +638,106 @@ async def test_a_plan_the_backend_refuses_stops_the_session_for_a_person(staffed
     assert not await runtime.work()
 
 
+async def test_a_session_the_model_failed_runs_again_on_its_own(staffed):
+    class Outage(Providers):
+        """A model provider that answers 503 while `down`."""
+
+        down = True
+
+        def __call__(self, request):
+            if request.url.path == "/v1/chat/completions" and self.down:
+                return httpx.Response(503, text="overloaded")
+            return super().__call__(request)
+
+    backend, providers = FakeBackend(message()), Outage()
+    runtime = staffed(backend, providers)
+    clock = runtime.store.clock
+    await runtime.round()
+    assert (session(runtime)["phase"], session(runtime)["pause_reason"]) == ("paused", "model_unavailable")
+    # Not at once: the provider is asked again a minute later, then after as long as it has been failing.
+    await runtime.round()
+    assert providers.decisions == [] and session(runtime)["pause_reason"] == "model_unavailable"
+    clock.now += 61
+    await runtime.round()
+    assert session(runtime)["pause_reason"] == "model_unavailable"
+    clock.now += 30
+    await runtime.round()  # one minute has not passed since the last failure
+    before = session(runtime)["checkpoint_version"]
+    providers.down = False
+    await runtime.round()
+    assert session(runtime)["checkpoint_version"] == before
+    clock.now += 61
+    await runtime.round()
+    # The model is back: the session went on by itself to the plan that waits for management.
+    assert providers.decisions[-1] == "plan" and session(runtime)["phase"] == "waiting_management"
+    assert not await runtime.work()
+
+
+async def test_an_outage_longer_than_two_hours_leaves_the_session_for_management(staffed):
+    class Outage(Providers):
+        down = True
+
+        def __call__(self, request):
+            if request.url.path == "/v1/chat/completions" and self.down:
+                return httpx.Response(503, text="overloaded")
+            return super().__call__(request)
+
+    backend, providers = FakeBackend(message()), Outage()
+    runtime = staffed(backend, providers)
+    clock = runtime.store.clock
+    await runtime.round()
+    for _ in range(12):
+        clock.now += 1900
+        await runtime.round()
+    stopped = session(runtime)["checkpoint_version"]
+    providers.down = False
+    clock.now += 4000
+    await runtime.round()
+    assert session(runtime)["checkpoint_version"] == stopped and session(runtime)["pause_reason"] == "model_unavailable"
+
+
+async def test_a_session_paused_for_the_model_before_a_restart_is_tried_again_after_it(staffed):
+    class Outage(Providers):
+        down = True
+
+        def __call__(self, request):
+            if request.url.path == "/v1/chat/completions" and self.down:
+                return httpx.Response(503, text="overloaded")
+            return super().__call__(request)
+
+    backend, providers = FakeBackend(message()), Outage()
+    first = staffed(backend, providers)
+    await first.round()
+    assert session(first)["pause_reason"] == "model_unavailable"
+    # A retry that fails again queues the next one itself; a restart then finds that session already queued.
+    first.store.clock.now += 61
+    await first.round()
+    assert session(first)["pause_reason"] == "model_unavailable"
+    providers.down = False
+    restarted = staffed(backend, providers)  # the same state file: a new process
+    for _ in range(3):
+        restarted.store.clock.now += 200
+        await restarted.round()
+    assert session(restarted)["phase"] == "waiting_management"
+
+
+async def test_a_session_left_mid_planning_by_a_stopped_process_is_taken_up_again(staffed):
+    backend, providers = FakeBackend(message()), Providers()
+    first = staffed(backend, providers)
+    # The process stops after the session was opened and before the planner was asked anything.
+    await first.poll()
+    claim = await first.store.claim(first.owner, 60)
+    wire = claim.payload["wire"]
+    first.teams[(wire["tenant_id"], wire["ticket_id"], wire["ticket_generation"])] = claim.payload["team_id"]
+    with first.store.lease_scope(claim):
+        state = await first.service.handle_reception(wire, claim.payload["team_id"])
+    assert state.phase == "planning"
+    await first.store.ack(claim)
+    restarted = staffed(backend, providers)
+    await restarted.round()
+    assert providers.decisions[-1] == "plan" and session(restarted)["phase"] == "waiting_management"
+
+
 async def test_a_model_that_does_not_plan_leaves_the_analysis_to_management(staffed):
     backend, providers = FakeBackend(message()), Providers(plans=False)
     runtime = staffed(backend, providers)

@@ -3,7 +3,7 @@
 import asyncio
 import json
 
-from src.agent.loop import EMERGENCY_REPLY, SAFE_REPLY, run_agent, violations
+from src.agent.loop import EMERGENCY_FAILED_REPLY, EMERGENCY_REPLY, FILED_REPLY, SAFE_REPLY, run_agent, violations
 
 HISTORY = [{"role": "resident", "text": "Phí gửi xe máy tháng bao nhiêu?"}]
 
@@ -13,6 +13,7 @@ class Toolbox:
         self.results = results or {}
         self.calls, self.evidence, self.passages = [], [], {}
         self.status, self.emergency, self.acted, self.forwarded = None, False, False, False
+        self.emergency_failed, self.question, self.filed_code = False, None, None
 
     async def call(self, name, arguments):
         self.calls.append((name, arguments))
@@ -20,9 +21,12 @@ class Toolbox:
         if name == "search_knowledge":
             self.passages = {p["rank"]: p for p in result["passages"]}
         if name == "report_emergency":
-            self.emergency = True
+            # As the real toolbox: told to the resident only when management was reached.
+            self.emergency, self.emergency_failed = "error" not in result, "error" in result
         if result.get("filed") or result.get("forwarded"):
             self.acted = True
+        if result.get("filed"):
+            self.filed_code = "VH-1"
         self.forwarded = self.forwarded or bool(result.get("forwarded"))
         self.evidence.append(str(result))
         return result
@@ -88,7 +92,12 @@ def test_a_malformed_final_answer_never_reaches_the_resident():
 
 def test_emergency_is_acknowledged_with_the_fixed_sentence():
     toolbox = Toolbox({"report_emergency": {"emergency_reported": True}})
-    assert run(Model(tool_call("report_emergency", description="cháy bếp")), toolbox) == EMERGENCY_REPLY
+    assert run(Model(tool_call("report_emergency")), toolbox) == EMERGENCY_REPLY
+
+
+def test_an_emergency_that_did_not_reach_management_is_never_acknowledged():
+    toolbox = Toolbox({"report_emergency": {"error": "unavailable"}})
+    assert run(Model(tool_call("report_emergency"), final("Mình đã chuyển khẩn cấp.")), toolbox) == EMERGENCY_FAILED_REPLY
 
 
 def test_the_loop_stops_after_its_step_budget():
@@ -98,11 +107,18 @@ def test_the_loop_stops_after_its_step_budget():
     assert len(toolbox.calls) == 6
 
 
+def test_a_filed_request_is_confirmed_even_when_no_wording_of_the_model_can_be_sent():
+    toolbox = Toolbox({"file_request": {"filed": True}})
+    model = Model(tool_call("file_request", symptom="bị rò", kind="incident", category_code="technical", priority="normal"),
+                  final("Kỹ thuật sẽ đến trong 30 phút."), final("Thợ sẽ có mặt trong 15 phút."))
+    assert run(model, toolbox) == FILED_REPLY
+
+
 def test_claiming_to_have_passed_something_on_requires_a_tool_that_did():
     # The model says it forwarded the complaint but called nothing: it is sent back and then files it.
     toolbox = Toolbox({"file_request": {"filed": True}})
     model = Model(final("Mình đã ghi nhận và sẽ chuyển Ban quản lý nhắc nhở giúp bạn."),
-                  tool_call("file_request", title="Hàng xóm gây ồn", description="Khoan tường sau 22 giờ",
+                  tool_call("file_request", symptom="khoan tường sau 22 giờ", item="Hàng xóm", kind="incident",
                             category_code="security", priority="normal"),
                   final("Mình đã ghi nhận và chuyển Ban quản lý nhắc nhở giúp bạn."))
     assert run(model, toolbox) == "Mình đã ghi nhận và chuyển Ban quản lý nhắc nhở giúp bạn."

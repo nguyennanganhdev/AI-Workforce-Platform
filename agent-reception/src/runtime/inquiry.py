@@ -30,6 +30,19 @@ OUT_OF_SCOPE = ("Mình là lễ tân của Ban quản lý nên chỉ hỗ trợ 
                 "dịch vụ cư dân. Bạn cần hỗ trợ việc gì trong phạm vi đó, cứ nhắn mình nhé.")
 
 
+REVIEW = "Mình chưa tự xử lý được yêu cầu này nên đã chuyển tin nhắn của bạn tới Ban quản lý để được hỗ trợ trực tiếp."
+
+
+async def to_management(backend, context: dict, channel_id: str, message: dict) -> str | None:
+    """Hand the resident's message to the management session; the reply when that worked."""
+    try:
+        opened = await backend.call("POST", f"/internal/reception/chats/{channel_id}/inquiries", context,
+                                    {"message_id": message["id"]})
+    except (OperationRejected, OperationUnknown):
+        return None
+    return REVIEW if opened.get("accepted") is True else None
+
+
 async def unanswered(model, backend, context: dict, channel_id: str, message: dict) -> str | None:
     """The reply for an unanswered question, or None to keep the graph's own."""
     try:

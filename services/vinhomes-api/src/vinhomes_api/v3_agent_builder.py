@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
-from .v3_agent_reviews import Member, room_agent, management_agents, submit, EvaluationRecord
+from .v3_agent_reviews import Member, room_agent, room_catalogue, submit, EvaluationRecord
 from .v3_coordination import Scope as RuntimeScope
 from .v3_security import digest
 from .v3_audit import audit
@@ -20,6 +20,21 @@ router = APIRouter(tags=['BQL agent builder'])
 
 def re_safe_code(code: str) -> bool:
     return bool(re.fullmatch(r'[A-Z_]{1,80}', code))
+
+
+def factory_refusal(body: object) -> str:
+    """What management reads when the Factory refuses a description: its open questions, one per line."""
+    issues = body.get('issues', []) if isinstance(body, dict) else []
+    issues = [i for i in issues if isinstance(i, dict)] if isinstance(issues, list) else []
+    said = [' '.join(str(i.get('message', '')).split())[:300] for i in issues[:4]]
+    said = [m for m in said if m]
+    if any(i.get('code') == 'NEEDS_INPUT' for i in issues):
+        return '\n'.join(['Factory cần biết thêm trước khi soạn chỉ dẫn. Bổ sung vào ô Nhiệm vụ rồi tạo lại:',
+                          *('- ' + m for m in said)])
+    if any(i.get('code') == 'BLOCKED_RESOURCE' for i in issues):
+        return '\n'.join(['Nhóm chưa có công cụ cho một phần của nhiệm vụ này. Bỏ phần đó khỏi ô Nhiệm vụ, hoặc nhờ quản trị viên thêm công cụ rồi tạo lại:',
+                          *('- ' + m for m in said)])
+    return 'Factory chưa soạn được chỉ dẫn từ nhiệm vụ này: ' + ('; '.join(said) or 'đối chiếu nhiệm vụ với các công cụ của nhóm.')
 
 
 class EvaluationCaseInput(BaseModel):
@@ -153,7 +168,9 @@ class Construction(BaseModel):
 
 @router.post('/rooms/{room_id}/agents/{agent_id}/construct')
 async def construct(room_id: str, agent_id: str, body: Construction, scope: Member):
-    agent = await room_agent(scope, room_id, agent_id)
+    # The Factory takes up to a minute and a half. No row lock is held across that call: a locked
+    # room makes every other read of it wait. The agent is locked and checked again before the write.
+    agent = await room_agent(scope, room_id, agent_id, lock=False)
     configuration = agent['configuration']
     old = configuration.get('factory')
     if old and old.get('request_id') == body.request_id:
@@ -170,7 +187,7 @@ async def construct(room_id: str, agent_id: str, body: Construction, scope: Memb
             raise HTTPException(409, 'The base version changed')
     if (await scope[0].execute(text("select 1 from vh_agent_reviews where agent_id=:id and status='pending'"), {'id': agent_id})).first():
         raise HTTPException(409, 'Decide the pending review first')
-    catalogue = await management_agents(room_id, scope)
+    catalogue = await room_catalogue(room_id, scope, lock=False)
     codes = {c['code'] for c in catalogue['categories']}
     if not set(body.service_categories) <= codes:
         raise HTTPException(422, 'Unknown service category')
@@ -190,9 +207,15 @@ async def construct(room_id: str, agent_id: str, body: Construction, scope: Memb
         async with httpx.AsyncClient(timeout=95, follow_redirects=False) as client:
             reply = await client.post(url + '/v1/constructions', json=payload, headers=headers)
             if reply.status_code == 422:
-                issues = reply.json().get('issues', [])
-                reasons = '; '.join(str(i.get('message', ''))[:300] for i in issues[:4] if isinstance(i, dict))
-                raise HTTPException(422, 'Factory needs clarification: ' + (reasons or 'Check the requested task against the available tools'))
+                refusal = reply.json()
+                issues = refusal.get('issues', []) if isinstance(refusal, dict) else []
+                if (isinstance(issues, list) and issues
+                        and all(isinstance(i, dict) and i.get('code') == 'NEEDS_INPUT'
+                                and isinstance(i.get('message'), str) and i['message'].strip() for i in issues)):
+                    # Clarification is a normal step of construction, not a saved artifact.
+                    return {'needsInput': True, 'questions': [
+                        ' '.join(i['message'].split())[:300] for i in issues[:4]]}
+                raise HTTPException(422, factory_refusal(refusal))
             if reply.status_code != 200 or len(reply.content) > 1024 * 1024:
                 code = reply.json().get('code', '') if len(reply.content) < 4096 else ''
                 safe_code = code if isinstance(code, str) and re_safe_code(code) else 'UNAVAILABLE'
@@ -204,6 +227,11 @@ async def construct(room_id: str, agent_id: str, body: Construction, scope: Memb
             artifact = verified.json()
     except (httpx.HTTPError, ValueError):
         raise HTTPException(503, 'Factory is unavailable; no agent was published') from None
+    agent = await room_agent(scope, room_id, agent_id)
+    if digest(agent['configuration']) != body.configuration_hash:
+        raise HTTPException(409, 'Agent configuration changed; reload before construction')
+    if (await scope[0].execute(text("select 1 from vh_agent_reviews where agent_id=:id and status='pending'"), {'id': agent_id})).first():
+        raise HTTPException(409, 'Decide the pending review first')
     known = {t['ref']: t for t in tools}
     resources = artifact['spec']['resources']
     if any(r['kind'] != 'tool' or r['ref'] not in known for r in resources):

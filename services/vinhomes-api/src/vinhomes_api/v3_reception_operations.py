@@ -10,6 +10,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, model_validator
 from sqlalchemy import text
 
+from .reception_intake import assess, conversation
 from .resident_api import resident_scope
 from .v3_agent_results import agent_result
 from .v3_audit import audit
@@ -309,19 +310,33 @@ async def _update_incident(scope, call: OperationCall):
     incidents = list(value.get("incidents") or [])
     if index >= len(incidents):
         raise HTTPException(422, "Invalid incident index")
+    merged = {**incidents[index], **patch}
+    # What the request says is decided from the stored conversation, not taken from the caller:
+    # the resident's own words, and only the details found in the messages they cite.
+    reported = [fact for fact in merged.get("facts") or [] if isinstance(fact, dict) and fact.get("source") == "customer_report"]
+    other = [fact for fact in merged.get("facts") or [] if fact not in reported]
+    messages, asked = await conversation(scope[0], channel_id, scope[1])
+    verdict = assess(messages, reported, source_message_id=merged.get("source_message_id"),
+                     kind=merged.get("request_kind") or "incident", asked=asked)
+    merged.update(
+        title=verdict["title"] or None, description=verdict["description"] or None, facts=verdict["facts"] + other,
+        file_ids=list(dict.fromkeys([str(file_id) for file_id in merged.get("file_ids") or []] + verdict["file_ids"])))
     try:
-        incidents[index] = DraftFields.model_validate(
-            {**incidents[index], **patch}
-        ).model_dump(mode="json")
+        incidents[index] = DraftFields.model_validate(merged).model_dump(mode="json")
     except Exception as exc:
         raise HTTPException(422, "Invalid incident fields") from exc
     value["incidents"] = incidents
+    intake = list(value.get("intake") or [])
+    intake += [None] * (index + 1 - len(intake))
+    intake[index] = {name: verdict[name] for name in ("ready", "review", "missing", "question")}
+    value["intake"] = intake
     await _save_draft(scope, row, value)
     from .v3_reception import draft_result
 
     return agent_result(
         "update_ticket_incident",
-        draft_result({**row, "body": value}),
+        # With what is still missing before this incident may be handed over, and the question to ask for it.
+        {**draft_result({**row, "body": value}), "intake": intake[index]},
         {"channel_id": channel_id},
     )
 
@@ -550,6 +565,8 @@ async def _resolve_destination(scope, call: OperationCall):
             {"channel_id": channel_id},
         )
     management_channel_id = destination_channels[0]["id"]
+    # The Supervisor works as the workspace's service identity. Without one it could never verify the
+    # team it is handed, so such a workspace has no Supervisor here and management gets the request directly.
     supervisors = (
         (
             await db.execute(
@@ -564,7 +581,10 @@ async def _resolve_destination(scope, call: OperationCall):
                   and a.status='active' and a.purpose='supervisor'
                   and ca.channel_id=:channel_id
                   and not exists(select 1 from agent_releases sr where sr.version_id=v.id and sr.tenant_id=a.tenant_id
-                    and (sr.status<>'published' or sr.revoked_at is not null)) order by a.id limit 2
+                    and (sr.status<>'published' or sr.revoked_at is not null))
+                  and exists(select 1 from execution_principals p where p.tenant_id=a.tenant_id
+                    and p.kind='workspace_service' and p.workspace_id=a.workspace_id and p.status='active')
+                  order by a.id limit 2
             """),
                 {"workspace_id": workspace_id, "channel_id": management_channel_id},
             )
@@ -705,6 +725,34 @@ async def _escalate_emergency(scope, call: OperationCall):
             "source_message_id must identify a resident message in this conversation",
         )
     if ticket["is_emergency"]:
+        # A ticket created as an emergency has no escalation event. Management is still told once,
+        # on its creation event: a new event would move the version the Supervisor was handed.
+        event_id = (
+            await db.execute(
+                text(f"""
+            select id from ticket_events where ticket_id=:ticket_id and tenant_id={TENANT}
+              and event_type='ticket.created' order by seq limit 1
+        """),
+                {"ticket_id": ticket_id},
+            )
+        ).scalar_one_or_none()
+    else:
+        await db.execute(
+            text(f"""
+            update tickets set priority='critical',severity='critical',is_emergency=true
+            where id=:ticket_id and tenant_id={TENANT}
+        """),
+            {"ticket_id": ticket_id},
+        )
+        from .v3_mutations import record_event
+
+        event_id = await record_event(
+            (db, actor, False),
+            dict(ticket),
+            "ticket.emergency_escalated",
+            json.dumps({"reason": reason.strip(), "sourceMessageId": source_message_id}),
+        )
+    if event_id is None:
         return agent_result(
             "escalate_emergency",
             {
@@ -717,21 +765,6 @@ async def _escalate_emergency(scope, call: OperationCall):
                 "alreadyEscalated": True,
             },
         )
-    await db.execute(
-        text(f"""
-        update tickets set priority='critical',severity='critical',is_emergency=true
-        where id=:ticket_id and tenant_id={TENANT}
-    """),
-        {"ticket_id": ticket_id},
-    )
-    from .v3_mutations import record_event
-
-    event_id = await record_event(
-        (db, actor, False),
-        dict(ticket),
-        "ticket.emergency_escalated",
-        json.dumps({"reason": reason.strip(), "sourceMessageId": source_message_id}),
-    )
     deliveries = await db.execute(
         text(f"""
         insert into notification_deliveries
@@ -771,6 +804,7 @@ async def _escalate_emergency(scope, call: OperationCall):
             "priority": "critical",
             "severity": "critical",
             "isEmergency": True,
+            "alreadyEscalated": bool(ticket["is_emergency"]),
             "notificationQueued": deliveries.rowcount > 0,
             "notificationCount": max(deliveries.rowcount, 0),
             "deliveryStatus": "pending"
@@ -796,6 +830,22 @@ async def _send_supervisor_message(
         ) from exc
     if expected_type and body.message_type != expected_type:
         raise HTTPException(422, f"message_type must be {expected_type}")
+    if body.message_type == "information_provided":
+        # What the resident adds later is held to the same rule as the first report: their own
+        # words, and only the details found in the message they cite.
+        channel = (
+            await scope[0].execute(
+                text(f"select channel_id from tickets where id=:id and requester_user_id=:actor and tenant_id={TENANT}"),
+                {"id": body.ticket_id, "actor": scope[1]},
+            )
+        ).scalar_one_or_none()
+        messages, _ = await conversation(scope[0], channel, scope[1]) if channel else ([], 0)
+        reported = [fact.model_dump() for fact in body.facts if fact.source == "customer_report"]
+        kept = assess(messages, reported, source_message_id=body.source_message_id)["facts"]
+        said = next((m["text"].strip() for m in messages if m["id"] == body.source_message_id), "")
+        body = body.model_copy(update={
+            "facts": [Fact(**fact) for fact in kept] + [fact for fact in body.facts if fact.source != "customer_report"],
+            **({"message": said[:10000]} if said else {})})
     return await submit_reception_message(body, scope)
 
 
@@ -837,6 +887,31 @@ async def _handoff_draft(scope, call: OperationCall):
                 "draftId": str(draft_id),
                 "index": index,
                 "missingFields": required,
+            },
+            {"channel_id": channel_id},
+        )
+    handoff_reason = call.input.get("handoff_reason", "needs_staff")
+    if handoff_reason not in {
+        "needs_staff",
+        "self_help_declined",
+        "self_help_failed",
+        "emergency",
+    }:
+        raise HTTPException(422, "Invalid handoff_reason")
+    # An emergency is never held back for a question; every other request is handed over only
+    # when the intake rules found it complete. The caller cannot declare that itself.
+    intake = (draft_body.get("intake") or [None] * (index + 1))[index]
+    emergency = handoff_reason == "emergency" and assessment.get("is_emergency") is True
+    if intake is None or (not intake["ready"] and not emergency):
+        missing = (intake or {}).get("missing") or "report"
+        return agent_result(
+            "handoff_ticket",
+            {
+                "accepted": False,
+                "draftId": str(draft_id),
+                "index": index,
+                "missingFields": ["incident_" + missing],
+                "clarification": {"field": missing, "question": (intake or {}).get("question")},
             },
             {"channel_id": channel_id},
         )
@@ -883,14 +958,6 @@ async def _handoff_draft(scope, call: OperationCall):
     file_ids = [
         _uuid(file_id, "file_id") for file_id in (incident.get("file_ids") or [])
     ]
-    handoff_reason = call.input.get("handoff_reason", "needs_staff")
-    if handoff_reason not in {
-        "needs_staff",
-        "self_help_declined",
-        "self_help_failed",
-        "emergency",
-    }:
-        raise HTTPException(422, "Invalid handoff_reason")
 
     requires_plan = call.input.get("plan_required", True)
     if not isinstance(requires_plan, bool):

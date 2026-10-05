@@ -20,9 +20,9 @@ import type {
 } from "./contracts.js";
 
 export const FACTORY_LIMITS = {
-  name: 80,
-  role: 120,
-  description: 1000,
+  name: 160,
+  role: 500,
+  description: 2000,
   text: 4096,
   items: 32,
   draftBytes: 64 * 1024,
@@ -534,16 +534,13 @@ export function compileAgentSpec(
     };
   }
   if (value.unresolvedQuestions.length) {
+    // One issue per question, the question as its message: the person can only answer what they
+    // are shown, exactly as a LOW reading returns each missing point.
     return {
       ok: false,
-      issues: [
-        issue(
-          "NEEDS_INPUT",
-          "unresolvedQuestions",
-          "draft",
-          "Clarification is required before compilation.",
-        ),
-      ],
+      issues: value.unresolvedQuestions.map((question, index) =>
+        issue("NEEDS_INPUT", `unresolvedQuestions.${index}`, "draft", question),
+      ),
     };
   }
   const spec = parse(
@@ -895,7 +892,11 @@ export function resolveDraftResources(
       fail(
         "BLOCKED_RESOURCE",
         path,
-        "A required resource has no proposed reference.",
+        // The need is named: "no tool" alone leaves the person guessing which part to change.
+        `No catalogue tool covers this need: ${requirement.need}`.slice(
+          0,
+          FACTORY_LIMITS.text,
+        ),
       );
     for (const ref of requirement.proposedRefs) {
       const candidate = snapshot.tools.find((entry) => entry.ref === ref);

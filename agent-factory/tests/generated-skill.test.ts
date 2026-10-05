@@ -870,6 +870,18 @@ describe("tool-oriented agent: only catalogue tools, no invented action", () => 
     expect(
       codes(await construct(request, catalogue, scripted([proposed]))),
     ).toContain("UNKNOWN_RESOURCE");
+    // A need nothing covers is refused by name, so the person knows which part of the job it is.
+    const uncovered = draft();
+    uncovered.requirements.push({
+      need: "Escalate the incident.",
+      fulfillment: "tool",
+      source,
+      proposedRefs: [],
+    });
+    const refused = await construct(request, catalogue, scripted([uncovered]));
+    expect(refused.ok ? [] : refused.issues.map(({ message }) => message)).toContain(
+      "No catalogue tool covers this need: Escalate the incident.",
+    );
     const guided = draft();
     guided.generatedSkill.toolUsageGuidance.push({
       toolRef: "incidents/escalate",

@@ -9,6 +9,11 @@ from .tools import SPECS, Toolbox
 
 MAX_STEPS = 6
 EMERGENCY_REPLY = "Mình đã chuyển yêu cầu của bạn đến Ban quản lý ở mức khẩn cấp."
+# The report did not reach management: the resident must not wait for an answer here.
+EMERGENCY_FAILED_REPLY = ("Mình chưa chuyển được báo khẩn cấp này lên hệ thống. Bạn hãy gọi ngay bảo vệ hoặc Ban quản lý "
+                          "tòa nhà, và rời khỏi khu vực nguy hiểm.")
+# A request was filed in this turn but no wording of the model could be sent.
+FILED_REPLY = "Mình đã ghi nhận và gửi yêu cầu của bạn tới Ban quản lý."
 SAFE_REPLY = ("Mình chưa có thông tin chính thức về việc này. Bạn nhắn lại giúp mình nội dung cần hỗ trợ, "
               "hoặc mình có thể chuyển câu hỏi tới Ban quản lý.")
 INTERNAL = re.compile(r"\b(ticket|backend|supervisor|tool|system prompt)\b", re.IGNORECASE)
@@ -62,8 +67,10 @@ def _final(content: str | None) -> tuple[str, list[int]] | None:
 async def run_agent(model, toolbox: Toolbox, system: str, history: list[dict]) -> str:
     """The reply for the last resident message in `history`."""
     # Earlier replies are shown in the same JSON shape the model must answer in.
+    # A message of photos alone is shown as what it is: the model sees no picture and no words were written.
     messages = [{"role": "system", "content": system}] + [
-        {"role": "user", "content": item["text"]} if item["role"] == "resident"
+        {"role": "user", "content": item["text"] or f"[Cư dân gửi {item.get('photos') or 1} ảnh, không viết gì]"}
+        if item["role"] == "resident"
         else {"role": "assistant", "content": json.dumps({"reply": item["text"], "sources": []}, ensure_ascii=False)}
         for item in history]
     # What the reply may rely on besides tool results: the resident's words and the backend's facts.
@@ -85,6 +92,11 @@ async def run_agent(model, toolbox: Toolbox, system: str, history: list[dict]) -
             if toolbox.emergency:
                 # An emergency is acknowledged with the fixed sentence; it does not wait for wording.
                 return EMERGENCY_REPLY
+            if toolbox.emergency_failed:
+                return EMERGENCY_FAILED_REPLY
+            if toolbox.question:
+                # The intake rules ask the resident themselves: the model does not reword or replace the question.
+                return toolbox.question
             continue
         final = _final(answer.get("content"))
         problems = ["không đúng định dạng JSON {reply, sources}"] if final is None else violations(final[0], toolbox, conversation)
@@ -105,4 +117,5 @@ async def run_agent(model, toolbox: Toolbox, system: str, history: list[dict]) -
         messages.append({"role": "assistant", "content": answer.get("content") or ""})
         messages.append({"role": "user", "content": "[Hệ thống] Câu trả lời vừa rồi không gửi được vì: " + "; ".join(problems)
                          + ". Viết lại câu trả lời, chỉ dùng thông tin có trong kết quả công cụ và lời cư dân."})
-    return SAFE_REPLY
+    # What was done is said even when the model's own wording could not be sent.
+    return FILED_REPLY if toolbox.filed_code else SAFE_REPLY
