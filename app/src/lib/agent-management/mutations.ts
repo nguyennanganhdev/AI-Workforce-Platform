@@ -25,6 +25,14 @@ export function evaluateManagedAgentMutationOptions(queryClient: QueryClient) {
     (await client(`${base(roomId)}/agents/${encodeURIComponent(agentId)}/evaluate`, {method: "POST", body, headers: businessHeaders(), fallback: "Đánh giá chưa hoàn tất."})).json(),
     onSuccess: () => queryClient.invalidateQueries({queryKey: managedAgentKeys.all}) });
 }
+/** One question to the saved draft: how it replies. No evaluation is recorded and nothing changes, so nothing is refetched. */
+export function tryManagedAgentMutationOptions() {
+  return mutationOptions({ mutationFn: async ({roomId, agentId, ...body}: {roomId: string; agentId: string; configuration_hash: string; question: string}): Promise<{answer: string; called: string[]; question: string}> => {
+    const said = await (await client(`${base(roomId)}/agents/${encodeURIComponent(agentId)}/try`, {method: "POST", body, headers: businessHeaders(),
+      fallback: "Bản nháp chưa trả lời được. Nếu lặp lại, báo quản trị viên kiểm tra khóa model."})).json();
+    return {...said, question: body.question};
+  } });
+}
 export function decideManagedAgentMutationOptions(queryClient: QueryClient) {
   return mutationOptions({ mutationFn: async ({roomId, reviewId, ...body}: {roomId: string; reviewId: string; decision: "approve" | "reject"; version: number; note: string}): Promise<void> => {
     await client(`${base(roomId)}/agent-reviews/${encodeURIComponent(reviewId)}/decision`, {method: "POST", body, headers: businessHeaders(), fallback: "Không quyết định được bản agent này."});

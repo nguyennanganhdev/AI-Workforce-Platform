@@ -538,6 +538,14 @@ class EvaluationRequest(BaseModel):
     cases: list[EvaluationCase] = Field(min_length=6, max_length=12)
 
 
+class TrialRequest(BaseModel):
+    room_id: str = Field(min_length=1, max_length=160)
+    agent_id: str = Field(min_length=1, max_length=160)
+    actor: str = Field(min_length=1, max_length=160)
+    configuration_hash: str = Field(pattern='^[a-f0-9]{64}$')
+    question: str = Field(min_length=1, max_length=2000)
+
+
 def create_app(settings: Settings | None = None, *, transport: httpx.AsyncBaseTransport | None = None) -> Starlette:
     settings = settings or Settings.from_env()
     box: dict = {}
@@ -631,6 +639,30 @@ def create_app(settings: Settings | None = None, *, transport: httpx.AsyncBaseTr
         except (AdapterError, KeyError, ValueError, TimeoutError):
             return JSONResponse({'error': 'Evaluation could not be completed'}, status_code=503)
 
+    async def trial(request):
+        """One question to a saved draft, answered once and kept nowhere: how it replies, before any case is written.
+        It is no evaluation and attests nothing. Its tools answer that they found nothing, as in a case that is
+        silent about them, so the reply shows conduct and not data."""
+        if not settings.service_token or not hmac.compare_digest(request.headers.get('authorization', ''), 'Bearer ' + settings.service_token):
+            return JSONResponse({'error': 'Service authentication required'}, status_code=401)
+        try:
+            body = TrialRequest.model_validate_json(await request.body()).model_dump()
+            if not settings.openbot:
+                return JSONResponse({'error': 'Model unavailable'}, status_code=422)
+            runtime = box['runtime']
+            snapshot = await runtime.backend.evaluation_view({k: body[k] for k in ('room_id', 'agent_id', 'actor', 'configuration_hash')})
+            from .publish import answer
+            async with asyncio.timeout(120):
+                content, called = await answer(runtime.client, snapshot['instructions'],
+                    {'name': 'trial-' + uuid4().hex, 'instruction': body['question'], 'ticket': {}}, snapshot['tools'], {},
+                    endpoint=settings.openbot.endpoint, token=os.environ[settings.openbot.token_env])
+            return JSONResponse({'answer': content[:5000], 'called': called})
+        except ValidationError:
+            return JSONResponse({'error': 'Invalid trial request'}, status_code=422)
+        except (AdapterError, KeyError, ValueError, TimeoutError, httpx.HTTPError):
+            return JSONResponse({'error': 'The draft gave no answer'}, status_code=503)
+
     return Starlette(routes=[Route("/health", health), Route("/ready", ready), Route("/sessions", sessions),
-                            Route('/internal/evaluations', evaluate, methods=['POST'])],
+                            Route('/internal/evaluations', evaluate, methods=['POST']),
+                            Route('/internal/trials', trial, methods=['POST'])],
                      lifespan=lifespan)

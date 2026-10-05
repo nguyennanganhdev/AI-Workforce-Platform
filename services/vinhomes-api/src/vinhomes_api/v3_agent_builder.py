@@ -111,6 +111,37 @@ async def evaluate_agent(room_id: str, agent_id: str, body: Evaluate, scope: Mem
     return {'passed': passed, 'cases': records, 'review': review, 'toolsMode': 'case-fixtures-no-side-effects'}
 
 
+class Trial(BaseModel):
+    configuration_hash: str = Field(pattern='^[a-f0-9]{64}$')
+    question: str = Field(min_length=1, max_length=2000)
+
+
+@router.post('/rooms/{room_id}/agents/{agent_id}/try')
+async def try_agent(room_id: str, agent_id: str, body: Trial, scope: Member):
+    """One question to the saved draft, to read how it replies before writing evaluation cases.
+    Nothing is recorded as an evaluation and nothing is published; tools answer that they found nothing."""
+    agent = await room_agent(scope, room_id, agent_id, lock=False)
+    if digest(agent['configuration']) != body.configuration_hash:
+        raise HTTPException(409, 'Cấu hình đã đổi. Lưu cấu hình rồi hỏi thử lại.')
+    if agent['status'] != 'draft' and not agent['configuration'].get('revision_of'):
+        raise HTTPException(409, 'Chỉ hỏi thử được bản nháp. Sửa và lưu cấu hình để có bản nháp mới.')
+    url, token = os.getenv('VINHOMES_API_COORDINATION_URL', '').rstrip('/'), os.getenv('VINHOMES_API_COORDINATION_SERVICE_TOKEN', '')
+    if not url or len(token) < 32:
+        raise HTTPException(503, 'The evaluation runtime is not configured')
+    try:
+        async with httpx.AsyncClient(timeout=130, follow_redirects=False) as client:
+            reply = await client.post(url + '/internal/trials', headers={'Authorization': 'Bearer ' + token}, json={
+                'room_id': room_id, 'agent_id': agent_id, 'actor': scope[1], 'configuration_hash': body.configuration_hash,
+                'question': body.question})
+            said = reply.json() if reply.status_code == 200 else None
+    except (httpx.HTTPError, ValueError):
+        said = None
+    if not said or not isinstance(said.get('answer'), str):
+        raise HTTPException(503, 'Bản nháp chưa trả lời được. Nếu lặp lại, báo quản trị viên kiểm tra khóa model.')
+    await audit(scope[0], scope[1], 'agent.tried', 'agent', agent_id, {'tools': said.get('called', [])})
+    return {'answer': said['answer'], 'called': said.get('called', [])}
+
+
 class Construction(BaseModel):
     role: str = Field(min_length=1, max_length=500)
     description: str = Field(min_length=1, max_length=2000)

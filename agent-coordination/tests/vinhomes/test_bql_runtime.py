@@ -65,6 +65,30 @@ def test_evaluation_requires_service_and_replays_across_restart_without_model_ca
         assert replay.json() == result.json() and len(calls) == 6
 
 
+def test_a_trial_question_is_answered_once_and_is_no_evaluation(tmp_path, monkeypatch):
+    asked = []
+    async def answer(client, instructions, case, tools, defaults, **options):
+        asked.append((instructions, case['instruction'], case['name']))
+        if case['instruction'] == 'down':
+            raise httpx.ConnectError('no model')
+        return 'Tôi chỉ tra cứu.', ['reporting.filter_report_scope']
+    monkeypatch.setattr('vinhomes.publish.answer', answer)
+    monkeypatch.setenv('MANAGED_AGENT_TOKEN', 'test-bot-token')
+    settings = Settings('http://backend', TOKEN, str(tmp_path / 'state.sqlite'), openbot=OpenBot('http://bot/ag-ui', 'test-model'))
+    auth = {'Authorization': 'Bearer ' + TOKEN}
+    body = {'room_id': 'room', 'agent_id': 'agent', 'actor': 'manager', 'configuration_hash': 'a' * 64, 'question': 'Bạn làm được gì?'}
+    with TestClient(create_app(settings, transport=httpx.MockTransport(transport))) as c:
+        assert c.post('/internal/trials', json=body).status_code == 401
+        assert c.post('/internal/trials', json={**body, 'question': ''}, headers=auth).status_code == 422
+        first = c.post('/internal/trials', json=body, headers=auth)
+        assert first.status_code == 200 and first.json() == {'answer': 'Tôi chỉ tra cứu.', 'called': ['reporting.filter_report_scope']}
+        # The saved draft's own instructions, and a thread of its own each time: nothing is replayed, nothing is stored.
+        assert c.post('/internal/trials', json=body, headers=auth).status_code == 200
+        assert [a[:2] for a in asked] == [('Only read', 'Bạn làm được gì?')] * 2 and asked[0][2] != asked[1][2]
+        # A model that does not answer is said so; it is not an answer of the draft.
+        assert c.post('/internal/trials', json={**body, 'question': 'down'}, headers=auth).status_code == 503
+
+
 @pytest.mark.asyncio
 async def test_interrupted_room_turn_is_failed_without_a_second_generation(tmp_path, monkeypatch):
     class Backend:

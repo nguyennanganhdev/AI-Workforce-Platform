@@ -147,7 +147,7 @@ export function ModelsPage() {
 const KIND: Record<string, string> = { agent: "Agent", connection: "Kết nối ngoài", team: "Phiên điều phối", room: "Nhóm", reception: "Lễ tân",
   reception_supervisor: "Lễ tân và Supervisor", account: "Tài khoản", ticket: "Yêu cầu", routine: "Lịch chạy agent", audit: "Nhật ký" };
 const EVENT: Record<string, string> = {
-  "agent.tool_called": "Agent gọi công cụ", "agent.configured": "Lưu cấu hình agent", "agent.evaluated": "Chạy đánh giá agent",
+  "agent.tool_called": "Agent gọi công cụ", "agent.configured": "Lưu cấu hình agent", "agent.evaluated": "Chạy đánh giá agent", "agent.tried": "Hỏi thử bản nháp agent",
   "agent.review_submitted": "Gửi bản agent chờ phát hành", "agent.review_decided": "Quyết định phát hành agent",
   "agent.release_revoked": "Thu hồi agent", "agent.factory_constructed": "Factory soạn chỉ dẫn agent",
   "room.agent_created": "Tạo agent", "room.agent_answered": "Agent trả lời trong nhóm",

@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { managedAgentsQueryOptions, type AgentManagement, type ManagedAgent, type EvaluationInput } from "@/lib/agent-management/queries";
 import { configureManagedAgentMutationOptions, constructManagedAgentMutationOptions, createManagedAgentMutationOptions,
-  decideManagedAgentMutationOptions, evaluateManagedAgentMutationOptions, revokeManagedAgentMutationOptions } from "@/lib/agent-management/mutations";
+  decideManagedAgentMutationOptions, evaluateManagedAgentMutationOptions, revokeManagedAgentMutationOptions, tryManagedAgentMutationOptions } from "@/lib/agent-management/mutations";
 import { roomsQueryOptions } from "@/lib/rooms/queries";
 import { queryClient } from "@/query-client";
 import { AgentSchedules } from "./AgentSchedules";
@@ -136,6 +136,8 @@ function AgentEditor({ roomId, agent, catalogue, onClose }: {roomId: string; age
   const evaluate = useMutation(evaluateManagedAgentMutationOptions(queryClient));
   const decide = useMutation(decideManagedAgentMutationOptions(queryClient));
   const revoke = useMutation(revokeManagedAgentMutationOptions(queryClient));
+  const trial = useMutation(tryManagedAgentMutationOptions());
+  const [question, setQuestion] = useState("");
   const [instructions, setInstructions] = useState(agent?.configuration.instructions || "");
   const [description, setDescription] = useState(agent?.configuration.description || "");
   const [categories, setCategories] = useState(agent?.configuration.service_categories || []);
@@ -150,12 +152,15 @@ function AgentEditor({ roomId, agent, catalogue, onClose }: {roomId: string; age
     setInstructions(agent.configuration.instructions || ""); setDescription(agent.configuration.description || "");
     setCategories(agent.configuration.service_categories || []); setTools(agent.configuration.mcp_tools || []);
     evaluate.reset(); setEvaluationId(crypto.randomUUID());
+    // An answer of the older configuration says nothing about this one.
+    trial.reset();
   }, [agent?.configurationHash]);
-  const busy = save.isPending || construct.isPending || evaluate.isPending || decide.isPending || revoke.isPending;
+  const busy = save.isPending || construct.isPending || evaluate.isPending || decide.isPending || revoke.isPending || trial.isPending;
   if (!agent) return null;
   const baseVersion = agent.status === "active" ? agent.latest_version?.id : undefined;
   const pendingReview = agent.review?.status === "pending";
-  const error = save.error || construct.error || evaluate.error || decide.error || revoke.error;
+  const error = save.error || construct.error || evaluate.error || decide.error || revoke.error || trial.error;
+  const emptyCase = cases.findIndex((c) => !c.instruction.trim());
   const edit = !pendingReview && !busy;
   const results = evaluate.data?.cases || (agent.review?.config_hash === agent.configurationHash ? agent.review.evaluation.cases : undefined);
   // Evaluation runs on what the server holds, so unsaved edits would be evaluated as the old text.
@@ -221,6 +226,21 @@ function AgentEditor({ roomId, agent, catalogue, onClose }: {roomId: string; age
           </fieldset>
         </TabsContent>
         <TabsContent value="evaluation" className="pt-3">
+          <section aria-label="Hỏi thử bản nháp" className="mb-4 space-y-2 rounded-lg border border-border p-3">
+            <p className="text-sm font-medium">Hỏi thử bản nháp</p>
+            <p className="text-xs text-muted-foreground">Gửi một câu hỏi cho bản đã lưu để đọc cách agent trả lời trước khi viết ca đánh giá. Trong lần hỏi thử, công cụ trả về "không có dữ liệu", nên hãy đọc cách trả lời chứ đừng đọc số liệu. Hỏi thử không thay cho đánh giá.</p>
+            <label htmlFor="agent-trial" className="sr-only">Câu hỏi thử</label>
+            <Textarea id="agent-trial" rows={2} maxLength={2000} placeholder="Ví dụ: Xóa ticket này giúp tôi." value={question} disabled={!edit} onChange={e => setQuestion(e.target.value)} />
+            <Button size="sm" variant="outline" disabled={!edit || dirty || !question.trim()} onClick={() => trial.mutate({roomId, agentId: agent.id, configuration_hash: agent.configurationHash, question: question.trim()})}>
+              {trial.isPending ? "Đang hỏi…" : "Hỏi thử"}</Button>
+            {trial.data && <div role="status" className="space-y-2 rounded-md bg-muted px-3 py-2 text-sm">
+              <p className="whitespace-pre-wrap break-words text-foreground">{trial.data.answer}</p>
+              <p className="text-xs text-muted-foreground">{trial.data.called.length ? `Agent đã gọi công cụ: ${trial.data.called.join(", ")}` : "Agent không gọi công cụ nào."}</p>
+              <Button size="sm" variant="outline" disabled={emptyCase < 0 || cases.some(c => c.instruction === trial.data!.question)}
+                onClick={() => setCases(cases.map((c, i) => i === emptyCase ? {...c, instruction: trial.data!.question} : c))}>
+                {emptyCase < 0 ? "Đã đủ 6 ca đánh giá" : `Dùng câu hỏi này làm ${cases[emptyCase].name}`}</Button>
+            </div>}
+          </section>
           <p className="mb-3 text-xs text-muted-foreground">Nhập 6 tình huống. Câu trả lời phải chứa nguyên văn nội dung bắt buộc. Model chạy thật; tool trong đánh giá trả dữ liệu kiểm thử và không thực hiện hành động.</p>
           {cases.map((c, i) => <fieldset key={c.name} className="mb-3 grid gap-2 sm:grid-cols-[1fr_14rem]" disabled={!edit}><legend className="mb-1 text-xs font-medium text-muted-foreground">{c.name}</legend>
             <div><label htmlFor={`case-input-${i}`} className="sr-only">Yêu cầu</label><Textarea id={`case-input-${i}`} rows={2} placeholder="Yêu cầu gửi cho agent" value={c.instruction} onChange={e => setCases(cases.map((x, j) => j === i ? {...x, instruction: e.target.value} : x))} /></div>
