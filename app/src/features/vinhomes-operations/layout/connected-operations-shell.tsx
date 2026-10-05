@@ -3,6 +3,7 @@ import { useLocation } from "@tanstack/react-router";
 import { IconBolt, IconBuildingCommunity, IconChartBar, IconChecklist, IconCpu, IconHistory, IconMessages, IconPlugConnected, IconUsers } from "@tabler/icons-react";
 import { OperationsSidebarView } from "./operations-sidebar";
 import { OperationsHeaderView } from "./operations-header";
+import { FieldShell } from "./field-shell";
 import type { MenuId } from "../types/persona";
 
 export const connectedPages: Record<string, string> = {
@@ -54,6 +55,7 @@ export function ConnectedOperationsShell({
   name,
   management,
   administrator,
+  field = false,
   alerts = [],
   notices = [],
   flush = false,
@@ -62,6 +64,8 @@ export function ConnectedOperationsShell({
   name?: string;
   management: boolean;
   administrator?: boolean;
+  /** Someone who does the work on site: their own frame, without this menu and header. */
+  field?: boolean;
   alerts?: {id: string; title: string; location_json: {towerCode?: string}}[];
   /** Sessions waiting for management: the bell, the menu badge and the tab title count them. */
   notices?: ShellNotice[];
@@ -73,8 +77,9 @@ export function ConnectedOperationsShell({
   const path = useLocation().pathname.split("/")[2] || (management ? "team" : "");
   const roleLabel = administrator ? "Quản trị hệ thống" : management ? "Ban quản lý" : "Nhân viên hiện trường";
   useEffect(() => {
-    document.title = `${notices.length ? `(${notices.length}) ` : ""}Vinhomes · Quản lý vận hành`;
-  }, [notices.length]);
+    document.title = `${notices.length ? `(${notices.length}) ` : ""}Vinhomes · ${field ? "Việc của tôi" : "Quản lý vận hành"}`;
+  }, [notices.length, field]);
+  if (field) return <FieldShell name={name} notices={notices}>{children}</FieldShell>;
   return (
     <div
       lang="vi"

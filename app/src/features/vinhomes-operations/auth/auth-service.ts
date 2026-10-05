@@ -29,7 +29,15 @@ export const staffAuthService: StaffAuthService = {
       throw new Error(typeof data?.detail === "string" ? data.detail : "Không kết nối được dịch vụ đăng nhập.");
     }
     const me = await fetch("/api/business/operations/me", {credentials: "include"});
-    if (me.status === 403) throw new Error("Tài khoản chưa được cấp quyền nhân viên/BQL. Liên hệ quản trị viên để được hỗ trợ.");
+    if (me.status === 403) {
+      const refusal = (await me.json().catch(() => null))?.detail;
+      // This account signs in at the other staff address: it is told so, and no sign-in is left behind here.
+      if (refusal?.code === "WRONG_DOOR") {
+        await fetch("/api/business/auth/logout", {method: "POST", credentials: "include"}).catch(() => undefined);
+        throw new Error(refusal.message);
+      }
+      throw new Error("Tài khoản chưa được cấp quyền nhân viên/BQL. Liên hệ quản trị viên để được hỗ trợ.");
+    }
     if (!me.ok) throw new Error("Không tải được quyền truy cập. Vui lòng thử đăng nhập lại.");
     const identity = await me.json();
     if (identity.dataMode !== "database" || !["admin", "management", "staff"].includes(identity.role))

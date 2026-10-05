@@ -89,7 +89,9 @@ const serving = {
   port: appPort.port,
   strictPort: true,
   proxy: {
-    "/api/business": { target: process.env.VINHOMES_API_URL || "http://127.0.0.1:8000", rewrite: (path: string) => path.replace(/^\/api\/business/, "") },
+    "/api/business": { target: process.env.VINHOMES_API_URL || "http://127.0.0.1:8000", rewrite: (path: string) => path.replace(/^\/api\/business/, ""),
+      // Which front door this dev server stands in for (`operations` or `field`), as `serve.ts` does when deployed.
+      headers: process.env.VINHOMES_SURFACE ? { "X-Vinhomes-Surface": process.env.VINHOMES_SURFACE } : undefined },
     "/api": {
       target: `http://localhost:${apiPort.port}`,
     },

@@ -9,8 +9,11 @@ bun install --frozen-lockfile
 bun run dev:operations
 ```
 
-Giao diện nhân viên ở `http://localhost:3020`. Để chạy OpenBot ở cổng 3010,
-dùng `bun run dev:openbot`. Tránh chạy hai Vite server của `app` cùng lúc khi
+Giao diện nhân viên ở `http://localhost:3020`. Chạy thế này là một cổng cho mọi vai trò: Ban quản lý vào Điều phối,
+nhân viên hiện trường vào "Việc của tôi" trong khung riêng cho điện thoại. Bản triển khai tách hai nhóm ra hai địa chỉ
+với phiên đăng nhập riêng (`VINHOMES_SURFACE=operations` và `field`, xem `deploy/vinhomes/README.md`); muốn thử cổng
+nhân viên khi phát triển thì chạy thêm một server với `VINHOMES_SURFACE=field` và `--port 3023`. Để chạy OpenBot ở
+cổng 3010, dùng `bun run dev:openbot`. Tránh chạy hai Vite server của `app` cùng lúc khi
 đang tái tạo cache; cả hai dùng chung thư mục `app/node_modules/.vite`.
 
 ## Runtime cho Vite

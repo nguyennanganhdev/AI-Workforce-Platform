@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from .password_auth import surface
 from .v3_agent_results import AgentBusinessResponse, agent_result
 from .v3_auth import TICKET_VISIBILITY, scoped_connection
 from .v3_mutations import record_event, visible_ticket
@@ -25,6 +26,15 @@ def rows(result: object) -> list[dict[str, object]]:
     return [dict(row) for row in result.mappings().all()]
 
 
+def wrong_door(door: str, role: str) -> str | None:
+    """Why this role does not sign in at this front door. A door that names nothing serves every role."""
+    if door == "field" and role != "staff":
+        return "Địa chỉ này dành cho nhân viên hiện trường. Ban quản lý và quản trị đăng nhập ở địa chỉ của Ban quản lý."
+    if door == "operations" and role == "staff":
+        return "Địa chỉ này dành cho Ban quản lý. Nhân viên hiện trường đăng nhập ở địa chỉ dành cho nhân viên."
+    return None
+
+
 @router.get("/operations/me")
 async def operations_me(request: Request, scope: Scope):
     db, actor, admin = scope
@@ -36,7 +46,10 @@ async def operations_me(request: Request, scope: Scope):
           and (r.valid_to is null or r.valid_to>now())
     """), {"id": actor})
     roles = list(grants.scalars())
-    return {"user": dict(user), "role": "admin" if admin else "management" if "management" in roles else "staff",
+    role = "admin" if admin else "management" if "management" in roles else "staff"
+    if refusal := wrong_door(surface(request), role):
+        raise HTTPException(403, {"code": "WRONG_DOOR", "message": refusal})
+    return {"user": dict(user), "role": role,
             "dataMode": "local-database" if request.app.state.settings.demo_mode or request.app.state.settings.dev_user_id else "database"}
 
 

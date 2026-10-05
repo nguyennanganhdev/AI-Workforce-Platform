@@ -28,7 +28,8 @@ def clients():
     owner = PrivateURL(dict(line.split("=",1) for line in (ROOT/".local-connected/migration.env").read_text().splitlines() if "=" in line)["DATABASE_URL"])
     assert "@127.0.0.1:5544/vinhomes_connected" in owner
     admin = httpx.Client(base_url="http://127.0.0.1:3020/api/business",timeout=20)
-    user = httpx.Client(base_url="http://127.0.0.1:3011/api/business",timeout=20)
+    # Through the staff front as well: the resident front keeps its own sign-in cookie.
+    user = httpx.Client(base_url="http://127.0.0.1:3020/api/business",timeout=20)
     assert admin.get("/health").json()["authMode"] == "password"
     assert admin.post("/auth/login",json={"identifier":values["Login"],"password":values["Password"]}).status_code == 200
     assert admin.get("/auth/session").json()["administrator"] is True

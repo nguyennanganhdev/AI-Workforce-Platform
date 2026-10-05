@@ -1,4 +1,4 @@
-# TLS in front of the two web apps (compose profile `tls`). The API is reached through them
+# TLS in front of the three web apps (compose profile `tls`). The API is reached through them
 # (`/api/business`), never directly.
 #
 # With public domain names Caddy obtains and renews the certificates itself (ports 80 and 443 must
@@ -10,6 +10,12 @@
 	{$PROXY_TLS}
 	encode gzip
 	reverse_proxy operations:3020
+}
+
+{$FIELD_DOMAIN} {
+	{$PROXY_TLS}
+	encode gzip
+	reverse_proxy field:3023
 }
 
 {$RESIDENT_DOMAIN} {

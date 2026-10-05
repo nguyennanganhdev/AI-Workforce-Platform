@@ -255,13 +255,14 @@ export function WorkListView({ rows, manager, history, onHistory, onOpen, error 
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Nội dung, mã ticket, vị trí, nhân viên"
+            placeholder={manager ? "Nội dung, mã ticket, vị trí, nhân viên" : "Nội dung hoặc vị trí"}
           />
         </label>
-        <details className="work-filters">
-          <summary>Bộ lọc bộ phận và tiến độ</summary>
+        {/* Someone on site has their own work only: no departments to pick between, and history has no progress. */}
+        {(manager || !history) && <details className="work-filters">
+          <summary>{manager ? "Bộ lọc bộ phận và tiến độ" : "Lọc theo tiến độ"}</summary>
           <div className="ws-row">
-            <label>
+            {manager && <label>
               Bộ phận
               <select
                 value={department}
@@ -272,7 +273,7 @@ export function WorkListView({ rows, manager, history, onHistory, onOpen, error 
                   <option key={d}>{d}</option>
                 ))}
               </select>
-            </label>
+            </label>}
             {!history && (
               <label>
                 Tiến độ
@@ -292,7 +293,7 @@ export function WorkListView({ rows, manager, history, onHistory, onOpen, error 
               </label>
             )}
           </div>
-        </details>
+        </details>}
       </div>
       <p className="ws-helper">{visible.length} công việc phù hợp</p>
       {board ? (

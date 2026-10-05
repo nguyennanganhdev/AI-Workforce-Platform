@@ -311,3 +311,23 @@ Factory chạy `gpt-5.5`, embedding `text-embedding-3-large`.
 - [ ] Chưa chạy một nhà cung cấp thứ hai (Gemini, DeepSeek hoặc Claude) bằng khóa thật.
 - [ ] Chưa đi hết luồng sau khi BQL duyệt phương án (cư dân đồng ý, kỹ thuật viên làm, nghiệm thu) trên bản mới này.
 - [ ] `gpt-6-luna` chưa dùng được cho agent chuyên môn: Bot gọi công cụ qua chat-completions mà không tắt suy luận.
+
+## Nhân viên hiện trường có địa chỉ và phiên đăng nhập riêng (làm ngày 05/10/2026, chiều)
+
+Lỗi chủ dự án báo: giao diện nhân viên và Ban quản lý lẫn vào nhau. Nguyên nhân: cư dân, Ban quản lý và nhân viên dùng
+chung một cookie trên cùng máy chủ (cookie không phân biệt cổng), nên đăng nhập vai sau đè vai trước; nhân viên lại
+dùng chung khung và cổng với Ban quản lý.
+
+- [x] Mỗi giao diện tự ghi tên vào `X-Vinhomes-Surface` khi chuyển tiếp tới API; API giữ một cookie cho mỗi tên
+      (`operations` giữ `vinhomes_session` nên phần OpenBot đọc cookie không đổi; `field`; `resident`).
+- [x] Dịch vụ `field` trong compose (cổng 3023, `FIELD_PORT`, `FIELD_DOMAIN`): cùng image với `operations`, chỉ chuyển
+      tiếp `/api/business`, mọi địa chỉ trang khác đưa về "Việc của tôi". Monitor theo dõi thêm dịch vụ này.
+- [x] Đăng nhập sai địa chỉ bị từ chối kèm lời chỉ sang địa chỉ đúng, không để lại phiên.
+- [x] Khung riêng cho nhân viên: một cột cho điện thoại, tên, việc mới chờ nhận, nút Đăng xuất; không còn menu của
+      Ban quản lý, "Kết nối cá nhân" hay bộ lọc theo bộ phận.
+- [x] Kiểm trên stack Docker local bằng một trình duyệt: ba vai đăng nhập cùng lúc ở 3022, 3023, 3013, tải lại vẫn
+      đúng vai; cổng nhân viên trả 404 cho OpenBot; kho lưu trữ nhận origin của cổng nhân viên.
+- [ ] Chưa chạy lại một việc thật trên cổng nhân viên từ nhận việc đến chụp ảnh nghiệm thu (cần một yêu cầu mới được
+      Ban quản lý duyệt và giao).
+- [ ] Stack phát triển chạy ngoài Docker (`start_connected.ps1`) chưa có cổng nhân viên; ở đó cư dân đã có phiên
+      riêng, Ban quản lý và nhân viên vẫn chung cổng 3020.

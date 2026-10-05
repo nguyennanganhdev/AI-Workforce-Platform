@@ -40,6 +40,26 @@ export function businessTarget(pathname: string, search: string, base = process.
 }
 
 /**
+ * Which front door this server is: `operations` (management and administrators) or `field` (staff at
+ * work). The business API keeps one sign-in per door, so two doors on one host do not replace each
+ * other's. Unset, the API treats the call as it always has.
+ */
+const SURFACE = process.env.VINHOMES_SURFACE?.trim() || "";
+
+/** The door is named by this server alone: whatever the browser sent under that name is dropped. */
+export function businessHeaders(incoming: Headers, surface = SURFACE): Headers {
+  const headers = new Headers(incoming);
+  headers.delete("x-vinhomes-surface");
+  if (surface) headers.set("x-vinhomes-surface", surface);
+  return headers;
+}
+
+/** The field door has the work pages and the business API behind it, and nothing of OpenBot's. */
+export function reachesOpenBot(surface = SURFACE): boolean {
+  return surface !== "field";
+}
+
+/**
  * Which file answers a path, or `null` when the app's own router should.
  *
  * Anything under `/assets` is a built file and a miss there is a genuine 404: answering index.html
@@ -82,6 +102,15 @@ export function upstreamWebSocketHeaders(requestHeaders: Headers): Headers {
     if (value) headers.set(name, value);
   }
   return headers;
+}
+
+/**
+ * Where the field door sends a page address that is not one of its own. The same build holds
+ * OpenBot's pages; opened here they could only fail, since nothing of OpenBot answers this door.
+ */
+export function fieldRedirect(pathname: string, surface = SURFACE): string | null {
+  if (surface !== "field" || !isClientRoute(pathname)) return null;
+  return pathname === "/operations" || pathname.startsWith("/operations/") ? null : "/operations/my-tasks";
 }
 
 /**
@@ -229,9 +258,11 @@ if (import.meta.main) {
       const url = new URL(request.url);
 
       if (isApiCall(url.pathname)) {
-        let target: string;
-        try { target = businessTarget(url.pathname, url.search) ?? SERVER + url.pathname + url.search; }
+        let business: string | null;
+        try { business = businessTarget(url.pathname, url.search); }
         catch { return Response.json({ error: "Dịch vụ nghiệp vụ chưa được cấu hình." }, { status: 503 }); }
+        if (!business && !reachesOpenBot()) return new Response("not found", { status: 404 });
+        const target = business ?? SERVER + url.pathname + url.search;
         if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
           const upstream = new BunWebSocket(target.replace(/^http/, "ws"), {
             headers: upstreamWebSocketHeaders(request.headers),
@@ -254,13 +285,16 @@ if (import.meta.main) {
         // 302 from the server is not silently followed to a different origin.
         return fetch(target, {
           method: request.method,
-          headers: request.headers,
+          headers: business ? businessHeaders(request.headers) : request.headers,
           body: request.body,
           redirect: "manual",
           // @ts-expect-error duplex is required by fetch for a streamed body and is not yet typed.
           duplex: "half",
         });
       }
+
+      const away = fieldRedirect(url.pathname);
+      if (away) return new Response(null, { status: 302, headers: { location: away } });
 
       const wanted = fileFor(url.pathname);
       if (!wanted) return new Response("not found", { status: 404 });

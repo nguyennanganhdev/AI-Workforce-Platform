@@ -16,7 +16,8 @@ Người đọc: người dựng hoặc vận hành stack trên một máy chủ
 | `technical-tools` | Tool đọc kỹ thuật | 8788 |
 | `routines` | Lịch chạy agent của BQL: giữ lịch và, mỗi phút, giao lượt đến hạn cho `api` đăng vào phòng nhóm | 8789 |
 | `factory` | Agent Factory | 4010 |
-| `operations` | Giao diện Operations (bản build), chuyển tiếp `/api/business` kèm cookie | 3020, mở ra máy chủ |
+| `operations` | Giao diện của Ban quản lý và quản trị (bản build), chuyển tiếp `/api/business` kèm cookie | 3020, mở ra máy chủ |
+| `field` | Giao diện của nhân viên hiện trường: cùng image với `operations`, địa chỉ và phiên đăng nhập riêng, không nối tới OpenBot | 3023, mở ra máy chủ |
 | `resident` | Ứng dụng cư dân (file tĩnh sau nginx), chuyển tiếp `/api/business` | 3011, mở ra máy chủ |
 | `upgrade` | Job chạy tay: migration, cấp lại quyền cho ba role giới hạn, đăng ký tool kỹ thuật | không có |
 | `audit-retention` | Job chạy theo lịch của máy chủ: xóa nhật ký cũ hơn `AUDIT_RETENTION_DAYS` | không có |
@@ -70,8 +71,8 @@ HTTPS hoặc loopback, nên hai dịch vụ gặp nhau trên loopback và không
    máy chủ cơ sở dữ liệu phải là địa chỉ container nhìn thấy được (không phải `127.0.0.1`).
 5. `REPAIR_CATEGORY_CODES` là mã các nhóm dịch vụ có hóa đơn tính là sửa chữa (ví dụ `technical`). Để trống thì
    agent báo cáo không báo tổng hóa đơn sửa chữa.
-6. `VINHOMES_ALLOWED_ORIGINS` là danh sách origin của hai giao diện. Thiếu origin thì đăng nhập bị từ chối với
-   "Untrusted browser origin".
+6. `VINHOMES_ALLOWED_ORIGINS` là danh sách origin của ba giao diện (Ban quản lý, nhân viên, cư dân). Thiếu origin
+   thì đăng nhập bị từ chối với "Untrusted browser origin", và ảnh tải thẳng lên kho lưu trữ bị trình duyệt chặn.
 
 ## Chạy
 
@@ -189,25 +190,46 @@ hỏi và bucket để riêng tư. Ngoại lệ duy nhất gọi thẳng MinIO l
 - Chạy không có `VINHOMES_API_S3_ENDPOINT` (ví dụ chạy local) thì API vẫn lưu ra đĩa như trước.
 
 Chín dịch vụ phải ở trạng thái `healthy` (`agents-net` không có kiểm tra sức khỏe). Lần chạy thử, cả stack sẵn sàng
-sau khoảng 30 giây. Operations ở `http://<máy chủ>:3020/operations`, ứng dụng cư dân ở `http://<máy chủ>:3011`;
-đổi cổng bằng `OPERATIONS_PORT`, `RESIDENT_PORT`, và origin tương ứng phải có trong `VINHOMES_ALLOWED_ORIGINS`.
+sau khoảng 30 giây. Ban quản lý ở `http://<máy chủ>:3020/operations`, nhân viên hiện trường ở
+`http://<máy chủ>:3023/operations`, ứng dụng cư dân ở `http://<máy chủ>:3011`; đổi cổng bằng `OPERATIONS_PORT`,
+`FIELD_PORT`, `RESIDENT_PORT`, và origin tương ứng phải có trong `VINHOMES_ALLOWED_ORIGINS`.
+
+### Ba giao diện, ba phiên đăng nhập
+
+Trình duyệt giữ cookie theo máy chủ, không theo cổng. Ba giao diện chạy trên cùng một máy chủ vì vậy từng ghi đè phiên
+đăng nhập của nhau: đăng nhập cư dân làm hỏng tab của Ban quản lý. Nay mỗi giao diện tự ghi tên mình vào header
+`X-Vinhomes-Surface` khi chuyển tiếp tới API (trình duyệt gửi gì dưới tên đó cũng bị thay), và API giữ một cookie
+riêng cho từng tên:
+
+| Giao diện | `X-Vinhomes-Surface` | Cookie | Ai đăng nhập |
+|---|---|---|---|
+| `operations` (3020) | `operations` | `vinhomes_session` | Ban quản lý, quản trị |
+| `field` (3023) | `field` | `vinhomes_staff_session` | Nhân viên hiện trường |
+| `resident` (3011) | `resident` | `vinhomes_resident_session` | Cư dân |
+
+- Đăng nhập sai địa chỉ (Ban quản lý ở cổng nhân viên hoặc ngược lại) bị từ chối kèm lời chỉ sang địa chỉ đúng, và
+  không để lại phiên nào. Đây là quy tắc chia địa chỉ; quyền trên dữ liệu vẫn do vai trò của tài khoản quyết định.
+- Cổng nhân viên chỉ chuyển tiếp `/api/business`; mọi đường `/api` khác (OpenBot) trả 404.
+- OpenBot đọc `vinhomes_session`, tức phiên của cổng Ban quản lý, như trước.
+- Sau lần nâng cấp này cư dân và nhân viên phải đăng nhập lại một lần, vì phiên cũ của họ nằm ở cookie cũ.
+- Chạy không có header (stack phát triển một cổng) thì API dùng `vinhomes_session` và cổng đó nhận mọi vai trò.
 
 ### HTTPS
 
-Hai giao diện mặc định chỉ nghe trên `VINHOMES_BIND_ADDRESS` bằng http. Để mở ra ngoài, chạy thêm dịch vụ `proxy`
+Ba giao diện mặc định chỉ nghe trên `VINHOMES_BIND_ADDRESS` bằng http. Để mở ra ngoài, chạy thêm dịch vụ `proxy`
 (Caddy, cấu hình ở `Caddyfile`):
 
 ```bash
 docker compose --env-file deployment.env --profile tls up -d
 ```
 
-- Đặt `OPERATIONS_DOMAIN` và `RESIDENT_DOMAIN` là tên miền của từng giao diện, trỏ về máy chủ; cổng 80 và 443 phải tới
+- Đặt `OPERATIONS_DOMAIN`, `FIELD_DOMAIN` và `RESIDENT_DOMAIN` là tên miền của từng giao diện, trỏ về máy chủ; cổng 80 và 443 phải tới
   được máy chủ để Caddy tự xin và gia hạn chứng chỉ. Chứng chỉ nằm trong volume `caddy-data`.
-- Đặt `SECURE_COOKIES=1` để cookie phiên chỉ được gửi qua https, và ghi hai địa chỉ `https://…` vào
-  `VINHOMES_ALLOWED_ORIGINS`. Khi đã bật, đăng nhập qua cổng http 3020/3011 không còn dùng được.
+- Đặt `SECURE_COOKIES=1` để cookie phiên chỉ được gửi qua https, và ghi ba địa chỉ `https://…` vào
+  `VINHOMES_ALLOWED_ORIGINS`. Khi đã bật, đăng nhập qua cổng http 3020/3023/3011 không còn dùng được.
 - `PROXY_TLS=tls internal` để thử trên tên không công khai (trình duyệt sẽ cảnh báo chứng chỉ);
   `PROXY_TLS=tls /certs/site.pem /certs/site.key` để dùng chứng chỉ có sẵn (gắn thư mục vào dịch vụ `proxy`).
-- API (cổng 8000) không đi qua proxy: hai giao diện gọi nó trong mạng nội bộ. Giữ `VINHOMES_BIND_ADDRESS=127.0.0.1`.
+- API (cổng 8000) không đi qua proxy: ba giao diện gọi nó trong mạng nội bộ. Giữ `VINHOMES_BIND_ADDRESS=127.0.0.1`.
 
 ## Kiểm tra sau khi chạy
 

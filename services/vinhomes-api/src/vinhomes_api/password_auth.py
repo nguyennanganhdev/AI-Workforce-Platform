@@ -19,6 +19,11 @@ from sqlalchemy import text
 
 router = APIRouter(prefix="/auth", tags=["Password authentication"])
 COOKIE = "vinhomes_session"
+# One sign-in per front door. A browser keeps cookies per host, not per port, so on one host the web
+# apps would replace each other's sign-in. Each front door names itself in this header; the browser's
+# own value never reaches here, because the door overwrites it.
+SURFACE = "x-vinhomes-surface"
+COOKIES = {"": COOKIE, "operations": COOKIE, "field": "vinhomes_staff_session", "resident": "vinhomes_resident_session"}
 PROVIDER = "vinhomes-password-v1"
 TTL = 8 * 60 * 60
 _attempts: OrderedDict[str, list[float]] = OrderedDict()
@@ -67,6 +72,17 @@ def rate_limit(request: Request, identifier: str):
         _attempts.popitem(last=False)
 
 
+def surface(request: Request) -> str:
+    name = request.headers.get(SURFACE, "")
+    if name not in COOKIES:
+        raise HTTPException(400, "Cổng truy cập không hợp lệ.")
+    return name
+
+
+def cookie(request: Request) -> str:
+    return COOKIES[surface(request)]
+
+
 async def context(db, request: Request, actor: str = ""):
     await db.execute(text("select set_config('app.tenant_id',:tenant,true),set_config('app.user_id',:actor,true)"),
                      {"tenant":str(request.app.state.settings.tenant_id),"actor":actor})
@@ -74,7 +90,7 @@ async def context(db, request: Request, actor: str = ""):
 
 async def authenticated_user(request: Request) -> dict:
     engine = enabled(request)
-    token = request.cookies.get(COOKIE, "")
+    token = request.cookies.get(cookie(request), "")
     if not 32 <= len(token) <= 128:
         raise HTTPException(401, "Vui lòng đăng nhập.")
     async with engine.begin() as db:
@@ -110,7 +126,7 @@ class PasswordChange(BaseModel):
 
 @router.get("/config")
 async def config(request: Request):
-    return {"password":request.app.state.settings.password_auth}
+    return {"password":request.app.state.settings.password_auth,"surface":surface(request)}
 
 
 @router.post("/login")
@@ -135,12 +151,12 @@ async def login(body: Credentials, request: Request, response: Response):
         if not user or not valid:
             raise HTTPException(401, "Tên đăng nhập hoặc mật khẩu không đúng.")
         token = secrets.token_urlsafe(32)
-        old = request.cookies.get(COOKIE, "")
+        old = request.cookies.get(cookie(request), "")
         if old:
             await db.execute(text("delete from sessions where token=:token"), {"token":session_hash(old)})
         await db.execute(text("insert into sessions(id,user_id,token,expires_at) values(:id,:user,:token,now()+interval '8 hours')"),
                          {"id":str(uuid4()),"user":user["id"],"token":session_hash(token)})
-    response.set_cookie(COOKIE,token,max_age=TTL,httponly=True,secure=request.url.scheme=="https" or os.getenv("VINHOMES_API_SECURE_COOKIES")=="1",samesite="lax",path="/")
+    response.set_cookie(cookie(request),token,max_age=TTL,httponly=True,secure=request.url.scheme=="https" or os.getenv("VINHOMES_API_SECURE_COOKIES")=="1",samesite="lax",path="/")
     response.headers["Cache-Control"] = "no-store"
     return {"user":{"id":user["id"],"name":user["name"],"email":user["email"]}}
 
@@ -160,8 +176,8 @@ async def session(request: Request, response: Response):
 async def logout(request: Request, response: Response):
     engine = enabled(request)
     async with engine.begin() as db:
-        await db.execute(text("delete from sessions where token=:token"), {"token":session_hash(request.cookies.get(COOKIE,""))})
-    response.delete_cookie(COOKIE,path="/")
+        await db.execute(text("delete from sessions where token=:token"), {"token":session_hash(request.cookies.get(cookie(request),""))})
+    response.delete_cookie(cookie(request),path="/")
     return {"ok":True}
 
 
@@ -314,5 +330,6 @@ async def change_password(body: PasswordChange,request: Request,response: Respon
             hashed = await asyncio.to_thread(password_hash,body.new_password)
         await db.execute(text("update accounts set password=:password,updated_at=now() where id=:id"),{"id":row["id"],"password":hashed})
         await db.execute(text("delete from sessions where user_id=:id and token like 'vinhomes-v1:%'"),{"id":user["id"]})
-    response.delete_cookie(COOKIE,path="/")
+    # Every door's sign-in of this person ended above; the other doors' cookies are simply refused.
+    response.delete_cookie(cookie(request),path="/")
     return {"ok":True}

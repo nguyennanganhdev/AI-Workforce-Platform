@@ -389,7 +389,7 @@ export function ConnectedOperations() {
       });
     });
   return (
-    <ConnectedOperationsShell name={me?.user.name} management={management} administrator={me?.role === "admin"} notices={notices} flush={coordinating}
+    <ConnectedOperationsShell name={me?.user.name} management={management} administrator={me?.role === "admin"} field={me?.role === "staff"} notices={notices} flush={coordinating}
       alerts={tickets.filter(t => t.priority === 'critical' && !['closed', 'cancelled'].includes(t.status)).map(t => ({id: t.id, title: t.title, location_json: {towerCode: catalog?.buildings.find(b => b.id === t.building_id)?.code}}))}>
       {coordinating ? <Coordination userId={me?.user.id || ""} /> : path === "agents" && management ? <AgentsPage />
         : adminPage ? adminPage :
