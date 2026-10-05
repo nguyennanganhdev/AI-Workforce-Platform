@@ -126,7 +126,7 @@ Agent được nhắc trong tin có tệp nhận nội dung tệp văn bản (t�
 - Trong phiên điều phối, chuyên viên mới chỉ được báo tên ảnh. Phần này đi qua bộ chuyển của lõi Supervisor; đề nghị
   gửi Team Đông ở `docs/teams/dong/requests/2026-10-05-anh-trong-phien-dieu-phoi.md`.
 
-Tệp đã tải lên nhưng không gửi kèm tin nào được job `room-file-cleanup` xóa sau một ngày (xem "Dọn dẹp định kỳ").
+Tệp đã tải lên nhưng không gửi kèm tin nào được job `file-cleanup` xóa sau một ngày (xem "Dọn dẹp định kỳ").
 
 ### Model theo vai trò
 
@@ -240,12 +240,17 @@ khai. Job chạy bằng tài khoản chủ như các job `upgrade`, nên không 
 Trước khi dọn, quản trị viên lấy bản sao ở màn Nhật ký ("Xuất tệp CSV": chọn khoảng ngày, tối đa 50.000 sự kiện một
 tệp; mỗi lần xuất cũng được ghi vào nhật ký).
 
-**Tệp chưa gửi.** Tệp được tải lên phòng nhóm trước khi tin nhắn được gửi; tin không gửi thì tệp nằm lại. Job dưới
-đây xóa tệp đã tải lên hơn một ngày mà không gắn vào tin nào (xóa nội dung trong bucket, rồi ghi tệp là đã xóa), và in
-`room-files-cleaned` kèm số tệp. Nó chỉ dùng role và khóa lưu trữ của chính `api`:
+**Tệp không còn ai dùng.** Job dưới đây dọn hai loại và in `files-cleaned` kèm số tệp từng loại (`roomFiles`,
+`stagedUploads`). Nó chỉ dùng role và khóa lưu trữ của chính `api`:
+
+- Tệp tải lên phòng nhóm hơn một ngày mà không gắn vào tin nào (tin soạn rồi không gửi): xóa nội dung trong bucket,
+  rồi ghi tệp là đã xóa.
+- Bản tạm của ảnh trình duyệt tải thẳng lên bucket (thư mục `staging/`). Ảnh được nhận thì bản tạm của nó bị xóa
+  ngay; job dọn phần còn lại sau một giờ: phiên tải lên không ai hoàn tất, và những gì gửi tới địa chỉ tạm sau khi
+  phiên đã xong.
 
 ```bash
-docker compose --env-file deployment.env --profile upgrade run --rm room-file-cleanup
+docker compose --env-file deployment.env --profile upgrade run --rm file-cleanup
 ```
 
 **Hẹn giờ.** Mỗi ngày một lần, vào giờ ít người dùng. `-T` để lệnh chạy được khi không có màn hình điều khiển. Trên
@@ -253,7 +258,7 @@ Linux, thêm vào `crontab -e` của tài khoản được chạy Docker (đổi
 
 ```cron
 15 2 * * * cd /opt/vinhomes/deploy/vinhomes && docker compose --env-file deployment.env --profile upgrade run --rm -T audit-retention >> /var/log/vinhomes-jobs.log 2>&1
-30 2 * * * cd /opt/vinhomes/deploy/vinhomes && docker compose --env-file deployment.env --profile upgrade run --rm -T room-file-cleanup >> /var/log/vinhomes-jobs.log 2>&1
+30 2 * * * cd /opt/vinhomes/deploy/vinhomes && docker compose --env-file deployment.env --profile upgrade run --rm -T file-cleanup >> /var/log/vinhomes-jobs.log 2>&1
 ```
 
 Trên Windows, tạo hai tác vụ bằng Task Scheduler (chạy PowerShell với quyền của tài khoản dùng Docker Desktop):
@@ -261,12 +266,12 @@ Trên Windows, tạo hai tác vụ bằng Task Scheduler (chạy PowerShell vớ
 ```powershell
 $run = 'cd /d C:\vinhomes\deploy\vinhomes && docker compose --env-file deployment.env --profile upgrade run --rm -T {0} >> C:\vinhomes\jobs.log 2>&1'
 schtasks /Create /TN "Vinhomes audit retention" /SC DAILY /ST 02:15 /TR ("cmd /c " + ($run -f 'audit-retention'))
-schtasks /Create /TN "Vinhomes room file cleanup" /SC DAILY /ST 02:30 /TR ("cmd /c " + ($run -f 'room-file-cleanup'))
+schtasks /Create /TN "Vinhomes file cleanup" /SC DAILY /ST 02:30 /TR ("cmd /c " + ($run -f 'file-cleanup'))
 ```
 
 Các dòng hẹn giờ trên là mẫu, chưa chạy thử trên máy chủ thật. Chạy thử một tác vụ ngay bằng
 `schtasks /Run /TN "Vinhomes audit retention"` (Windows) hoặc dán lệnh sau dấu sao vào terminal (Linux).
-Kiểm tra sau lần chạy đầu: tệp log có dòng `audit-retention-swept` và `room-files-cleaned`. Job thoát với mã khác 0
+Kiểm tra sau lần chạy đầu: tệp log có dòng `audit-retention-swept` và `files-cleaned`. Job thoát với mã khác 0
 khi không tới được cơ sở dữ liệu hoặc bucket; lần chạy sau làm lại từ đầu, không mất gì.
 
 ## Khôi phục và quay lui

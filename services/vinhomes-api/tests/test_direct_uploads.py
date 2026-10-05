@@ -10,7 +10,10 @@ import pytest
 from test_resident_contract import TENANT, image, sql
 from test_resident_contract import database as database
 from test_v3_agent_database import demo_client
+from datetime import timedelta
+
 from vinhomes_api import storage
+from vinhomes_api.file_cleanup import clean_staging
 from vinhomes_api.storage_setup import setup
 from vinhomes_api.v3_files import FILE_ROOT
 
@@ -62,6 +65,9 @@ def test_direct_browser_upload_integrity_replay_and_no_ready_overwrite(database,
             assert c.get(f"/resident/photos/{ready.json()['fileId']}").content == data
             stored = sql(database, 'select object_key from file_objects where file_id=$1', UUID(ready.json()['fileId']))[0]['object_key']
             assert '/accepted/' in stored
+            # An accepted upload leaves no staging copy behind.
+            staged = lambda: sorted(o.object_name for o in storage.client().list_objects(bucket, prefix='evidence/staging/', recursive=True))
+            assert staged() == []
             with httpx.Client() as browser:
                 assert browser.post(upload['uploadUrl'], data=upload['fields'], files={'file': ('image.png', b'x' * len(data), 'image/png')}).status_code == 204
             assert c.get(f"/resident/photos/{ready.json()['fileId']}").content == data
@@ -71,6 +77,26 @@ def test_direct_browser_upload_integrity_replay_and_no_ready_overwrite(database,
             with httpx.Client() as browser:
                 assert browser.post(invalid['uploadUrl'], data=invalid['fields'], files={'file': ('image.png', invalid_data, 'image/png')}).status_code == 204
             assert c.post(f"/direct-uploads/{invalid['uploadId']}/complete").status_code == 422
+
+            def cleaned(settled):
+                """The job as it runs: under the API's own role."""
+                async def run():
+                    db = await asyncpg.connect(database['runtime'].replace('postgresql+asyncpg://', 'postgresql://'))
+                    try:
+                        return await clean_staging(db, str(TENANT), settled)
+                    finally:
+                        await db.close()
+                return asyncio.run(run())
+            # Two staging objects are there now: one sent after its upload was accepted, one of a session that still runs.
+            assert len(staged()) == 2
+            # Nothing is touched while it may still be on its way.
+            assert cleaned(timedelta(hours=1)) == 0 and len(staged()) == 2
+            # Once settled: what no session waits for goes; the running session keeps its object.
+            assert cleaned(timedelta(0)) == 1 and len(staged()) == 1
+            sql(database, "update file_uploads set expires_at=now()-interval '2 hours' where id=$1 returning id", UUID(invalid['uploadId']))
+            assert cleaned(timedelta(0)) == 1 and staged() == []
+            assert sql(database, 'select status from file_uploads where id=$1', UUID(invalid['uploadId']))[0]['status'] == 'expired'
+            assert c.get(f"/resident/photos/{ready.json()['fileId']}").content == data
     finally:
         client = storage.client()
         for obj in client.list_objects(bucket, recursive=True):

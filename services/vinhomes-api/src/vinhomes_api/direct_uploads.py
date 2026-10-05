@@ -142,6 +142,8 @@ async def complete(upload: UUID, scope: Resident):
          'mime': row['declared_mime_type'], 'size': row['expected_size_bytes'], 'sha': row['expected_sha256']})
     await db.execute(text("update files set status='ready',accepted_object_id=:object,updated_at=now() where id=:file"), {'object': obj, 'file': row['file_id']})
     await db.execute(text("update file_uploads set status='accepted',result_object_id=:object,finalized_at=now() where id=:id"), {'object': obj, 'id': upload})
+    # The verified bytes now live under the accepted key; the staging copy has no further use.
+    staged.unlink(missing_ok=True)
     if ticket:
         await record_event((db, actor, admin), ticket, 'ticket.file_uploaded', json.dumps({'fileId': str(row['file_id']), 'storage': 's3-direct'}))
     return {**upload_result({**row, 'status': 'accepted'}), 'mimeType': row['declared_mime_type'], 'sizeBytes': len(data)}

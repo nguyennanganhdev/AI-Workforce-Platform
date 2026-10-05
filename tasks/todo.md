@@ -253,12 +253,13 @@ các module tách chạy riêng được.
 - [x] Lưu bằng `message_files` và nơi lưu chung (MinIO/S3 hoặc đĩa khi chạy local); chỉ thành viên phòng đọc được.
 - [x] Agent được nhắc nhận nội dung tệp văn bản (tối đa 20.000 ký tự mỗi lượt) và tên ảnh.
 - [x] Đính kèm được trong câu hỏi của phiên điều phối (tệp tải lên phòng của phiên; trong phiên phải có chữ kèm theo).
-- [x] Job `room-file-cleanup` xóa tệp tải lên quá một ngày mà không gắn vào tin nào; chạy bằng role và khóa của API.
+- [x] Job `file-cleanup` xóa tệp tải lên quá một ngày mà không gắn vào tin nào; chạy bằng role và khóa của API.
 - [x] Agent xem được ảnh trong phòng nhóm và câu hỏi theo lịch: ảnh đi kèm tin nhắn dưới dạng hình, tối đa 10 MB mỗi
       lượt; tắt bằng `SPECIALIST_SEES_IMAGES=0`. Đã kiểm bằng một tiến trình Bot thật nối với nhà cung cấp giả.
 - [ ] Trong phiên điều phối chuyên viên mới được báo tên ảnh: chờ Team Đông trả lời
       `docs/teams/dong/requests/2026-10-05-anh-trong-phien-dieu-phoi.md`.
-- [ ] Bản tạm (`staging/`) của ảnh tải thẳng lên MinIO không được xóa sau khi ảnh được nhận.
+- [x] Bản tạm (`staging/`) của ảnh tải thẳng lên MinIO: xóa ngay khi ảnh được nhận; job `file-cleanup` dọn phần còn
+      lại sau một giờ và ghi phiên tải lên hết hạn là `expired`.
 - [ ] Tệp phòng nhóm đi qua API, chưa dùng đường tải thẳng lên MinIO.
 
 ### Hai việc nhỏ

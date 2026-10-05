@@ -53,7 +53,7 @@ class RoomMessage(BaseModel):
 async def attach_files(db, actor_id: str, room_id: str, message_id, file_ids: list[UUID]) -> None:
     """Attach files to a message of the room: only ones this person uploaded there (v3_room_files.py) and
     has not used yet. Anything else refuses the message. The files are locked while they are attached, so
-    the cleanup of unsent uploads (room_file_cleanup.py) cannot take one meanwhile."""
+    the cleanup of unsent uploads (file_cleanup.py) cannot take one meanwhile."""
     if not file_ids:
         return
     own = (await db.execute(text("""

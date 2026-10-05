@@ -349,13 +349,14 @@ services:
       DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
       VINHOMES_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
       AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-}
-  room-file-cleanup:
-    # Removes files uploaded to a management room and never sent with a message, a day after the
-    # upload. Run it from the host's scheduler, once a day:
-    #   docker compose --env-file deployment.env --profile upgrade run --rm room-file-cleanup
+  file-cleanup:
+    # Removes stored files nothing refers to: uploads to a management room never sent with a message
+    # (after a day), and staging copies of direct uploads (after an hour). Run it from the host's
+    # scheduler, once a day:
+    #   docker compose --env-file deployment.env --profile upgrade run --rm file-cleanup
     profiles: [upgrade]
     image: vinhomes-api:${VINHOMES_IMAGE_TAG:-latest}
-    command: ['python', '-m', 'vinhomes_api.room_file_cleanup']
+    command: ['python', '-m', 'vinhomes_api.file_cleanup']
     restart: 'no'
     environment:
       # The API's own role and storage key: this job needs no more than the API itself has.

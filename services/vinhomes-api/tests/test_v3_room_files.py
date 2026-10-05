@@ -13,7 +13,7 @@ from test_resident_contract import (
 from test_v3_agent_database import demo_client
 from test_v3_coordination import BASE, SERVICE, TOKEN, publish_specialist
 from vinhomes_api import v3_files, v3_room_files
-from vinhomes_api.room_file_cleanup import clean
+from vinhomes_api.file_cleanup import clean
 from vinhomes_api.main import create_app
 from vinhomes_api.v3_config import V3Settings
 
@@ -99,7 +99,7 @@ def test_an_upload_never_sent_is_removed_after_a_day_and_nothing_that_was_sent_i
         sent, unsent, fresh = (upload(management, name, 'text/plain', name.encode()).json()['fileId'] for name in ('gui.txt', 'bo.txt', 'moi.txt'))
         assert management.post(ROOM + '/messages', json={'client_message_id': str(uuid4()), 'text': 'x', 'file_ids': [sent]}).status_code == 201
         sql(database, "update files set created_at=now()-interval '2 days' where id=any($1::uuid[]) returning id", [sent, unsent])
-        assert cleaned()['removed'] >= 1
+        assert cleaned() >= 1
         # Only the old upload nobody sent: its bytes are gone and its record says so.
         assert (key(unsent)['stored'], key(unsent)['status']) == ('deleted', 'deleted') and key(unsent)['deleted_at'] is not None
         assert not (tmp_path / key(unsent)['object_key']).exists()
@@ -109,7 +109,7 @@ def test_an_upload_never_sent_is_removed_after_a_day_and_nothing_that_was_sent_i
         # What was removed can no longer be attached or read; running again removes nothing more.
         assert management.post(ROOM + '/messages', json={'client_message_id': str(uuid4()), 'text': 'x', 'file_ids': [unsent]}).status_code == 422
         assert management.get(f"{ROOM}/files/{unsent}/content").status_code == 404
-        assert cleaned()['removed'] == 0
+        assert cleaned() == 0
         assert management.post(ROOM + '/messages', json={'client_message_id': str(uuid4()), 'text': 'y', 'file_ids': [fresh]}).status_code == 201
 
 
