@@ -51,6 +51,14 @@ export function useConnectedResident() {
     if (!keys.current.has(value)) keys.current.set(value, crypto.randomUUID());
     return keys.current.get(value)!;
   };
+  /** Store a picked photo with its chat. The same photo stored again is the same file, not a second one. */
+  const store = async (chat: string, photo: Photo) => {
+    const blob = await (await fetch(photo.url)).blob();
+    const stored = await uploadImage(api, `/resident/chats/${chat}/direct-uploads`,
+      `/resident/chats/${chat}/photos?filename=${encodeURIComponent(photo.name)}&mimeType=${encodeURIComponent(blob.type)}`,
+      blob, photo.name, keyFor(`${chat}:photo:${photo.id}`));
+    return stored.fileId;
+  };
   const refresh = useCallback(async () => {
     const revision = ++generation.current;
     const [p, chats, tickets, a, pending] = await Promise.all([
@@ -122,6 +130,9 @@ export function useConnectedResident() {
             ? ("resident" as const)
             : ("assistant" as const),
         text: withoutRequestCode(m.body.text || ""),
+        ...(m.body.fileIds?.length
+          ? { photos: m.body.fileIds.map((id) => ({ id, name: "Ảnh đính kèm", url: `/api/business/resident/photos/${id}` })) }
+          : {}),
       }));
     // Reception answers within the backend's three-minute dispatch limit, or the backend
     // stores a fallback reply. Older unanswered messages predate the agent.
@@ -303,12 +314,17 @@ export function useConnectedResident() {
           id = await create();
         location.hash = `/chat/${id}`;
         const content = text.trim() || "Đính kèm ảnh phản ánh";
-        const retryKey = `${id}:message:${content}`;
+        // The photos go with the message: Reception files the request from the conversation, and a
+        // photo kept only in this browser would never reach the request it was taken for.
+        const fileIds: string[] = [];
+        for (const photo of photos) fileIds.push(await store(id, photo));
+        const retryKey = `${id}:message:${content}:${fileIds.join(",")}`;
         await api(`/resident/chats/${id}/messages`, {
           method: "POST",
           body: JSON.stringify({
             text: content,
             client_message_id: keyFor(retryKey),
+            ...(fileIds.length ? { file_ids: fileIds } : {}),
           }),
         });
         keys.current.delete(retryKey);
@@ -357,13 +373,7 @@ export function useConnectedResident() {
         if (!d.description.trim() || !d.location.trim())
           throw new Error("Vui lòng bổ sung mô tả và vị trí cụ thể.");
         const files = [];
-        for (const photo of d.photos) {
-          const blob = await (await fetch(photo.url)).blob();
-          const stored = await uploadImage(api, `/resident/chats/${active.current}/direct-uploads`,
-            `/resident/chats/${active.current}/photos?filename=${encodeURIComponent(photo.name)}&mimeType=${encodeURIComponent(blob.type)}`,
-            blob, photo.name, keyFor(`${active.current}:photo:${photo.id}`));
-          files.push({ id: stored.fileId });
-        }
+        for (const photo of d.photos) files.push({ id: await store(active.current, photo) });
         const body = JSON.stringify({
           domain_id: unit.domain_id,
           building_id: unit.building_id,

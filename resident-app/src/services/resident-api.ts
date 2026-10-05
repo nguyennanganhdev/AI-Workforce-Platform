@@ -70,7 +70,8 @@ export type Message = {
   id: string;
   seq: number;
   sender_kind: string;
-  body: { text?: string };
+  /** `fileIds`: photos the resident sent with this message, stored with the chat before it was posted. */
+  body: { text?: string; fileIds?: string[] };
   created_at: string;
 };
 export type Ticket = {
