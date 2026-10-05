@@ -24,7 +24,51 @@ jobs:
       - run: bun install --cwd agent-factory --frozen-lockfile
       - run: bun run typecheck
       - run: bun test server/tests/business-auth.test.ts server/tests/config.test.ts server/tests/guards.test.ts app/tests/serve.test.ts
+      - name: Connected role interfaces
+        run: >-
+          bun --no-env-file test app/tests/connected-operations-ui.test.tsx app/tests/operations-field-work.test.tsx
+          app/tests/operations-admin.test.tsx app/tests/operations-coordination.test.tsx app/tests/operations-agent-trial.test.tsx
+          app/tests/operations-room-files.test.tsx app/tests/operations-schedules.test.tsx app/tests/agent-factory-ui.test.tsx
       - run: bun run test:resident
+      - run: bun --no-env-file test
+        working-directory: agent-factory
+      # The tool host, the report tools, the security tools and the knowledge search behind the agents.
+      - run: >-
+          bun --no-env-file test server/tests/technical-api.routes.test.ts server/tests/technical-connections.routes.test.ts
+          server/tests/technical-session.routes.test.ts server/tests/technical-tools server/tests/reporting
+          server/tests/security-tools server/tests/knowledge
+  # Reception and the Supervisor: what a resident's message becomes before any person reads it.
+  # Two jobs: the two services pin different versions of the same libraries.
+  reception:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: agent-reception
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-test.txt
+      - run: python -m pytest tests -q --ignore=tests/evals
+  supervisor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: agent-coordination
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - run: pip install -e '.[test]'
+      - run: python -m pytest -q
   business-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 20
