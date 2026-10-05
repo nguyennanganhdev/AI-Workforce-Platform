@@ -118,22 +118,40 @@ async def test_expired_claim_counts_recovery_without_resetting_fence(tmp_path):
     await store.ack(second)
 
 
-async def test_worker_renews_lease_during_io_and_other_worker_cannot_claim(tmp_path):
-    import time
-    store=DevelopmentStore(tmp_path/'f.sqlite')
-    other=DevelopmentStore(store.path)
+async def test_worker_renews_lease_during_io_and_other_worker_cannot_claim(tmp_path, monkeypatch):
+    now=[100.]
+    store=DevelopmentStore(tmp_path/'f.sqlite',clock=lambda:now[0])
+    other=DevelopmentStore(store.path,clock=lambda:now[0])
     await store.accept('job',{'work':'bounded long I/O'})
     started=asyncio.Event();allow_return=asyncio.Event()
+    renewed_past_original_lease=asyncio.Event()
+    original_expiry=now[0]+.12
+    renew=store.renew
+    async def observed_renewal(claim, lease_seconds):
+        # Advance the database clock only when the real heartbeat runs. Slow CI scheduling cannot
+        # expire a 120 ms lease, but another worker must still be excluded past the original expiry.
+        now[0]+=lease_seconds/2
+        updated=await renew(claim,lease_seconds)
+        if now[0]>original_expiry:
+            renewed_past_original_lease.set()
+        return updated
+    monkeypatch.setattr(store,'renew',observed_renewal)
     async def handler(claim):
         started.set()
         await allow_return.wait()
         await store.put_once('result','job',{'fence':claim.fence})
     worker=Worker(store,handler,owner='first',lease_seconds=.12)
-    task=asyncio.create_task(worker.once());await started.wait()
-    await asyncio.sleep(.25) # exceeds original lease while renewal keeps ownership
-    assert await other.claim('second',.12) is None
-    allow_return.set();assert await task
-    assert await other.claim('second') is None
+    task=asyncio.create_task(worker.once())
+    try:
+        await asyncio.wait_for(started.wait(),5)
+        await asyncio.wait_for(renewed_past_original_lease.wait(),5)
+        assert now[0]>original_expiry
+        assert await other.claim('second',.12) is None
+        allow_return.set();assert await asyncio.wait_for(task,5)
+        assert await other.claim('second') is None
+    finally:
+        task.cancel()
+        await asyncio.gather(task,return_exceptions=True)
 
 
 async def test_lease_loss_cancels_local_io_and_prevents_late_result(tmp_path):
