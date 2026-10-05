@@ -21,7 +21,7 @@ Người đọc: người dựng hoặc vận hành stack trên một máy chủ
 | `upgrade` | Job chạy tay: migration, cấp lại quyền cho ba role giới hạn, đăng ký tool kỹ thuật | không có |
 | `audit-retention` | Job chạy theo lịch của máy chủ: xóa nhật ký cũ hơn `AUDIT_RETENTION_DAYS` | không có |
 | `catalogue` | Job chạy tay sau `upgrade`: đăng ký tool của cổng tool API (báo cáo, an ninh) | không có |
-| `minio` | Nơi lưu ảnh và tệp (bucket riêng tư, giao thức S3); dữ liệu nằm trong volume `minio-data` | 9000, không mở ra máy chủ |
+| `minio` | Nơi lưu ảnh và tệp (bucket riêng tư, giao thức S3); dữ liệu nằm trong volume `minio-data` | 9000 (S3 API) và 9001 (trang quản trị), mở trên `VINHOMES_BIND_ADDRESS` |
 | `storage` | Job chạy tay: tạo bucket, ghi nhận nơi lưu, chuyển ảnh của bản cũ từ volume `api-files` sang bucket | không có |
 
 PostgreSQL cần được chuẩn bị trước (trên máy này là container PostgreSQL 17 hiện có). Stack có thêm `platform`:
@@ -149,7 +149,16 @@ cấu hình, các phần khác không đổi. Đổi `CONNECTIONS_KEY` thì mọ
 
 Ảnh cư dân gửi và ảnh thi công nằm trong một bucket riêng tư. Cơ sở dữ liệu giữ khóa object (`file_objects.object_key`)
 và nơi lưu (`storage_locations`: provider `s3`, tên bucket). Nội dung ảnh luôn đi qua `api`, nơi kiểm quyền của người
-hỏi; bucket không mở ra ngoài và hai giao diện không gọi thẳng MinIO.
+hỏi và bucket để riêng tư. Ngoại lệ duy nhất gọi thẳng MinIO là trình duyệt tải ảnh lên bằng quyền ký sẵn 5 phút
+(`S3_PUBLIC_ENDPOINT`); đọc ảnh thì luôn qua `api`.
+
+- Cổng 9000 là S3 API, không có trang đăng nhập: mở bằng trình duyệt chỉ thấy `AccessDenied` (đường
+  `/minio/health/live` trả 200). Trang quản trị nằm ở cổng 9001: <http://localhost:9001>, đăng nhập bằng
+  `S3_ADMIN_ACCESS_KEY` / `S3_ADMIN_SECRET_KEY` trong `deployment.env`. Đổi tài khoản này: sửa hai biến đó rồi
+  `docker compose --env-file deployment.env up -d minio`.
+- Trong bản MinIO này trang quản trị chỉ duyệt bucket và tệp; không có màn hình tạo người dùng hay chính sách. Khóa
+  của API do job `storage` tạo; muốn tự quản lý người dùng thì dùng `mc admin` trong container:
+  `docker compose --env-file deployment.env exec minio sh -c 'mc alias set self http://127.0.0.1:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" && mc admin user list self'`.
 
 - `S3_ACCESS_KEY` và `S3_SECRET_KEY` là khóa của riêng API. Với MinIO đi kèm, đặt thêm tài khoản quản trị của MinIO ở
   `S3_ADMIN_ACCESS_KEY` và `S3_ADMIN_SECRET_KEY`: job `storage` dùng nó để tạo bucket và cấp cho khóa của API quyền

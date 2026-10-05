@@ -55,7 +55,9 @@ services:
     # The official minio/minio image is no longer published on Docker Hub; this one is. Another
     # S3 service works as well: name it in S3_ENDPOINT and this container is simply not used.
     image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}
-    command: ['server', '/data']
+    # A fixed port for the web console: left to itself MinIO picks a new one at every start, which
+    # cannot be published.
+    command: ['server', '/data', '--console-address', ':9001']
     # The image runs as an unprivileged user that cannot write a fresh named volume.
     user: '0:0'
     restart: unless-stopped
@@ -66,7 +68,10 @@ services:
       MINIO_ROOT_PASSWORD: ${S3_ADMIN_SECRET_KEY:-}
       MINIO_API_CORS_ALLOW_ORIGIN: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
     ports:
+      # 9000 is the S3 API (what the API and a browser's direct upload speak). It has no page to sign in on.
       - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${S3_PORT:-9000}:9000'
+      # 9001 is the web console: sign in with S3_ADMIN_ACCESS_KEY / S3_ADMIN_SECRET_KEY.
+      - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${S3_CONSOLE_PORT:-9001}:9001'
     volumes:
       - minio-data:/data
     healthcheck:
