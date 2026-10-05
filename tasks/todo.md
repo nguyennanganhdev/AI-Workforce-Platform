@@ -295,15 +295,19 @@ các module tách chạy riêng được.
 - [ ] Skills, rồi model theo từng agent: chỉ đáng làm khi BQL có nhiều agent.
 - [ ] SSO và kết nối theo tài khoản từng người: phụ thuộc việc thống nhất đăng nhập với OpenBot.
 
-## Chờ khóa model dùng được
+## Chạy bằng model thật (05/10/2026, trưa; stack Docker local)
 
-Khóa trong `agent-reception/.env` bị `api.openai.com` trả 401 `invalid_api_key` (kiểm lại ngày 05/10, 01:17).
+Khóa model được OpenAI chấp nhận trở lại (kiểm ngày 05/10, khoảng 11 giờ). Lễ tân và Supervisor chạy `gpt-6-luna`, agent chuyên môn và
+Factory chạy `gpt-5.5`, embedding `text-embedding-3-large`.
 
-- [ ] Đánh giá và phát hành "Agent Sổ tay" (bản nháp đang có ở local), hỏi agent trong phòng nhóm bằng công cụ của kết
-      nối MCP (K6).
-- [ ] Chạy lại luồng trọn vẹn trên giao diện mới và các bước cần model trong container.
-- [ ] Chạy thử một nhà cung cấp thứ hai (Gemini hoặc DeepSeek) bằng khóa thật.
-- [ ] Lịch chạy: một lượt mà agent trả lời được (đã thấy lượt chạy tới Supervisor và đóng "lỗi" vì model không trả lời).
-- [ ] Agent tra cứu kho tri thức bằng `knowledge.search` với embedding thật, và đánh giá, phát hành một agent có tool này.
-- [ ] Agent đọc tệp văn bản và xem ảnh đính kèm trong phòng nhóm rồi trả lời (đã kiểm tới nhà cung cấp giả).
-- [ ] Hỏi thử một bản nháp bằng model thật.
+- [x] Cư dân gửi phản ánh kèm ảnh trong ứng dụng cư dân: Lễ tân đọc, gọi công cụ và tạo yêu cầu có ảnh (ảnh nằm trong
+      MinIO). Supervisor mở phiên, mời chuyên viên và đưa phương án tới bước chờ BQL duyệt.
+- [x] Lịch chạy: một lượt đến hạn, agent trả lời trong phòng nhóm, lượt chạy đóng `succeeded`.
+- [x] Kho tri thức: tạo "Agent Tri thức" có tool `knowledge.search`, đánh giá đạt 6/6, phát hành, hỏi phí gửi xe của
+      một tòa: agent tra cứu (1 lượt, 5 đoạn) và trả lời kèm tên tài liệu nguồn. Hỏi không nêu tòa thì agent hỏi lại tòa.
+- [x] Agent xem ảnh: trong phòng nhóm trả lời đúng màu của ảnh thử; trong phiên điều phối cũng vậy.
+- [x] Hỏi thử một bản nháp: có câu trả lời.
+- [ ] "Agent Sổ tay" với công cụ của kết nối MCP (K6) chưa chạy lại: máy chủ MCP thử chỉ có ở stack chạy ngoài Docker.
+- [ ] Chưa chạy một nhà cung cấp thứ hai (Gemini, DeepSeek hoặc Claude) bằng khóa thật.
+- [ ] Chưa đi hết luồng sau khi BQL duyệt phương án (cư dân đồng ý, kỹ thuật viên làm, nghiệm thu) trên bản mới này.
+- [ ] `gpt-6-luna` chưa dùng được cho agent chuyên môn: Bot gọi công cụ qua chat-completions mà không tắt suy luận.
