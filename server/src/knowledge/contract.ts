@@ -106,7 +106,7 @@ export const knowledgeHit = z.object({
   unverified: z
     .boolean()
     .describe(
-      "True for all Masterise data until its review is closed: say it is unverified.",
+      "True for Masterise data, unpublished documents, or synthetic fixtures: say it is unverified; never present fixtures as real procedures.",
     ),
   sources: z.array(z.string()).describe("The document's citation lines."),
 });

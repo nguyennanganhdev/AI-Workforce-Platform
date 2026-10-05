@@ -213,7 +213,7 @@
             },
             "unverified": {
               "type": "boolean",
-              "description": "True for all Masterise data until its review is closed: say it is unverified."
+              "description": "True for Masterise data, unpublished documents, or synthetic fixtures: say it is unverified; never present fixtures as real procedures."
             },
             "sources": {
               "type": "array",

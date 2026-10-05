@@ -24,7 +24,7 @@ export type SourceMetadata = {
   cap_nhat: string | null;
   hieu_luc: string | null;
   van_ban: string | null;
-  /** Masterise data is not verified until its review file is closed (RA-SOAT-DU-LIEU.md). */
+  /** Masterise data, unpublished references, and synthetic fixtures require human confirmation. */
   chua_xac_minh: boolean;
   /** The human-readable scope line put in front of every chunk before it is embedded. */
   duong_dan: string;
@@ -144,7 +144,10 @@ export function sourceMetadata(
     cap_nhat: text(frontMatter.cap_nhat ?? frontMatter.cap_nhat_khung),
     hieu_luc: text(frontMatter.hieu_luc),
     van_ban: text(frontMatter.van_ban),
-    chua_xac_minh: operator.don_vi === "masterise",
+    chua_xac_minh:
+      operator.don_vi === "masterise" ||
+      frontMatter.approval_status === "not_published" ||
+      frontMatter.fixture_only === true,
     duong_dan: path.join(" > "),
   };
 }

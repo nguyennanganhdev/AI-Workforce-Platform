@@ -59,6 +59,37 @@ describe("sourceMetadata", () => {
     });
   });
 
+  test("an unpublished Vinhomes technical reference stays unverified", () => {
+    expect(
+      sourceMetadata(
+        "01-vinhomes/cau-hoi-thuong-gap-a2-01-cb-nhay-lap.md",
+        {
+          trang_thai: "tham-khao-noi-bo-chua-duyet",
+          approval_status: "not_published",
+        },
+      ),
+    ).toMatchObject({
+      don_vi: "vinhomes",
+      cap: "don_vi",
+      loai: "faq",
+      chua_xac_minh: true,
+    });
+  });
+
+  test("a synthetic fixture stays unverified even without an approval label", () => {
+    expect(
+      sourceMetadata("01-vinhomes/quy-trinh-gia-lap-a2-01.md", {
+        fixture_only: true,
+        trang_thai: "du-lieu-gia-lap-khong-xuat-ban",
+      }),
+    ).toMatchObject({
+      don_vi: "vinhomes",
+      loai: "quy_trinh",
+      chua_xac_minh: true,
+      trang_thai: "du-lieu-gia-lap-khong-xuat-ban",
+    });
+  });
+
   test("a folded document lists all its buildings", () => {
     const meta = sourceMetadata(
       "02-masterise/masteri-waterfront/miami/{M1,M2,M3}/so-do-ham-gui-xe.md",

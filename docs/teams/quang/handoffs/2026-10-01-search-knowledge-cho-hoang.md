@@ -73,7 +73,7 @@ Các trường Reception nên dùng khi viết câu trả lời:
 | `insufficientSources` | `true` thì **nói chưa có dữ liệu** và đưa đầu mối liên hệ. Không đoán. Backend bật cờ này khi không đoạn nào đạt độ giống 0.35 (đo trên bộ eval: chặn 13/14 câu lạc đề như "tôi tên gì", "giá vàng hôm nay"). Câu hỏi về thông tin cá nhân cư dân nên lấy từ tool hồ sơ cư dân, không gửi vào đây |
 | `text`, `title`, `section` | Nội dung để trả lời và trích dẫn |
 | `reliability` | Khác `van_ban_bql` thì nói "cần đối chiếu bảng niêm yết hoặc ứng dụng" |
-| `unverified` | `true` (toàn bộ Masterise) thì nói rõ là chưa xác minh |
+| `unverified` | `true` với dữ liệu Masterise, tài liệu chưa xuất bản hoặc fixture giả lập; nói rõ chưa xác minh, không trình bày fixture như quy trình thật |
 | `collectionStatus` = `chua-thu-thap` | Đoạn này chủ yếu ghi nhận dữ liệu còn thiếu |
 | `scope.operator` | Không bao giờ dùng đoạn `masterise` cho cư dân `vinhomes` và ngược lại (backend đã lọc; đây là kiểm tra thêm) |
 | `updatedAt`, `sources` | Ghi ngày và nguồn khi trích |
