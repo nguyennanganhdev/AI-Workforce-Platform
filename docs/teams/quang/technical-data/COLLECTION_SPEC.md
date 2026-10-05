@@ -63,6 +63,8 @@ Nếu chỉ thu được tài liệu công khai như `DV-01`, có thể xây tes
 
 Để **đóng tiêu chí dữ liệu mẫu** của A2, thu ít nhất một ví dụ đã được kỹ thuật viên xác minh cho mỗi 16 issue code, và cho năm POC cần một chuỗi end-to-end có ticket, work order, checklist, evidence và outcome. Đây là ngưỡng fixture tối thiểu của dự án, không phải cỡ mẫu thống kê cho tự động hóa hoặc giá. Nên bổ sung một ca missing facts, một ca emergency, một ca scope sai, một ca SOP hết hiệu lực và một ca evidence thiếu cho từng luồng.
 
+`rag/mock-corpus/` và `rag/mock/` cung cấp 16 procedure/profile và 5 lifecycle **giả lập** để phát triển schema, adapter và test nhánh lỗi. Chúng chưa đáp ứng tiêu chí “đã được kỹ thuật viên xác minh”, chưa có file evidence thật và chưa thay thế chuỗi end-to-end vận hành do BQL cung cấp. Phần kiểm thử trạng thái `VERIFIED` chỉ được seed vào tenant/KB test cô lập bằng SOP/evidence fixture có quyền phù hợp; không suy nó từ bản `draft` ở đây.
+
 Giá tham khảo có ngưỡng mẫu độc lập/freshness do policy và Domain Owner chốt; không suy ra ngưỡng từ fixture. Chưa có verified actual cost thì tool estimate phải trả `insufficient_data`, không dựng khoảng giá mặc định. Tương tự, một procedure từ work order chỉ là candidate cho đến khi người có quyền review/publish.
 
 ## 5. Quy tắc làm sạch và đối soát

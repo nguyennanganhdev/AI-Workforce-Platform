@@ -2,6 +2,8 @@
 
 Đây là fixture thiết kế, không phải nhật ký vận hành. `SYN-*` là ID giả lập; thời gian/số đo/ảnh bên dưới chỉ là loại bằng chứng phải cung cấp. Mọi SOP giả lập dùng trong test phải có `fixture_only=true`, scope và version. Không publish cho cư dân.
 
+Năm bản ghi có cấu trúc nằm ở `rag/mock/POC_LIFECYCLE.jsonl`; 16 quy trình Markdown và profile `draft` nằm ở `rag/mock-corpus/` và `rag/mock/PROCEDURE_PROFILES.jsonl`. JSONL mô tả dữ liệu đầu vào/expected result, chưa phải DB seed hay file evidence thực. `simulated_clean` chỉ được adapter trong test tenant cô lập hiểu là evidence đã sẵn sàng.
+
 ## POC 1 — CB nhảy lặp
 
 **Intake:** ticket `SYN-T-001`, căn giả lập trong building `SYN-B-01`, `TECH.ELEC.BREAKER_TRIP`; mô tả ba lần nhảy, chưa rõ khói/tia lửa/nước gần điện. Cần hỏi tất cả tín hiệu nguy hiểm trước khi gợi ý xử lý. `source_run_id` và actor lấy từ backend.

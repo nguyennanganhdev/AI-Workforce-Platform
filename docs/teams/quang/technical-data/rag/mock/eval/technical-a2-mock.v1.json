@@ -1,0 +1,23 @@
+{
+  "version": "technical-a2-mock-v1",
+  "cases": [
+    {"id":"MOCK-EVAL-01","scope":"01-vinhomes","query":"CB nhảy lặp có mùi khét; cần xử lý intake và dừng ở đâu?","expect":"answer","contains":["không yêu cầu cư dân đóng CB thử"],"tags":["mock","TECH.ELEC.BREAKER_TRIP","safety"]},
+    {"id":"MOCK-EVAL-02","scope":"01-vinhomes","query":"Đèn hành lang và cửa thoát hiểm tối; hồ sơ kiểm tra fixture gồm gì?","expect":"answer","contains":["đèn thoát hiểm"],"tags":["mock","TECH.ELEC.FIXTURE_FAILURE","egress"]},
+    {"id":"MOCK-EVAL-03","scope":"01-vinhomes","query":"Máy nước nóng rò gần ổ điện; phải kiểm tra model và hồ sơ nào?","expect":"answer","contains":["manual version"],"tags":["mock","TECH.PLUMB.WATER_HEATER","model"]},
+    {"id":"MOCK-EVAL-04","scope":"01-vinhomes","query":"Máy lọc nước chảy yếu; cách phân biệt nguồn cấp và lõi trong hồ sơ mẫu?","expect":"answer","contains":["không kết luận “phải thay lõi”"],"tags":["mock","TECH.PLUMB.WATER_FILTER_LOW_FLOW"]},
+    {"id":"MOCK-EVAL-05","scope":"01-vinhomes","query":"Điều hòa chảy nước; cần ảnh và phép đo drain_flow thế nào?","expect":"answer","contains":["Đo `drain_flow`"],"tags":["mock","TECH.HVAC.CONDENSATION","measurement"]},
+    {"id":"MOCK-EVAL-06","scope":"01-vinhomes","query":"Rò âm tường, nghi căn trên; quyền vào căn và số đo phải xử lý sao?","expect":"answer","contains":["Không quy trách nhiệm cho căn khác"],"tags":["mock","TECH.PLUMB.CONCEALED_LEAK","scope"]},
+    {"id":"MOCK-EVAL-07","scope":"01-vinhomes","query":"Vách tắm rò ở mép kính; cần kiểm chứng gì sau xử lý?","expect":"answer","contains":["Thử nước có kiểm soát"],"tags":["mock","TECH.PLUMB.SHOWER_SEAL"]},
+    {"id":"MOCK-EVAL-08","scope":"01-vinhomes","query":"Bồn cầu chảy liên tục và rò sàn; phải tách hai dấu hiệu thế nào?","expect":"answer","contains":["đạt một tiêu chí không chứng minh tiêu chí kia"],"tags":["mock","TECH.PLUMB.TOILET_LEAK"]},
+    {"id":"MOCK-EVAL-09","scope":"01-vinhomes","query":"Có mùi cống nhưng chưa rõ nguồn; khi nào dừng kết luận?","expect":"answer","contains":["Mùi chưa rõ nguồn không được mặc định là cống"],"tags":["mock","TECH.PLUMB.TRAP_ODOR"]},
+    {"id":"MOCK-EVAL-10","scope":"01-vinhomes","query":"Nước yếu và thoát chậm cùng lúc; assessment và work order tách ra sao?","expect":"answer","contains":["Ba nhóm triệu chứng này phải được tách"],"tags":["mock","TECH.PLUMB.SUPPLY_DRAIN_JOINT"]},
+    {"id":"MOCK-EVAL-11","scope":"01-vinhomes","query":"Cửa sổ lỏng có nguy cơ rơi; kiểm tra và nghiệm thu thế nào?","expect":"answer","contains":["cửa thoát hiểm"],"tags":["mock","TECH.ARCH.DOOR_WINDOW"]},
+    {"id":"MOCK-EVAL-12","scope":"01-vinhomes","query":"Tủ bếp xệ cả thân; vì sao không chỉ chỉnh cánh?","expect":"answer","contains":["không nghiệm thu bằng việc chỉ chỉnh cánh"],"tags":["mock","TECH.ARCH.CABINET_SAG"]},
+    {"id":"MOCK-EVAL-13","scope":"01-vinhomes","query":"Nứt trần tăng nhanh, thiếu đánh giá kết cấu; expected verification là gì?","expect":"answer","contains":["thiếu đánh giá chuyên môn bắt buộc"],"tags":["mock","TECH.ARCH.CRACK","human_review"]},
+    {"id":"MOCK-EVAL-14","scope":"01-vinhomes","query":"Sơn bong ẩm; có thể chỉ sơn che vết ố không?","expect":"answer","contains":["Không sơn che vết ố"],"tags":["mock","TECH.ARCH.PAINT_MOISTURE"]},
+    {"id":"MOCK-EVAL-15","scope":"01-vinhomes","query":"Sàn phồng trên lối đi, cần hồ sơ kiểm chứng gì?","expect":"answer","contains":["không tự tuyên bố đã chặn lối đi"],"tags":["mock","TECH.ARCH.FLOOR_DAMAGE"]},
+    {"id":"MOCK-EVAL-16","scope":"01-vinhomes","query":"Nước thải trào ngược; đường thoát thông nhưng chưa vệ sinh thì sao?","expect":"answer","contains":["thiếu checklist vệ sinh"],"tags":["mock","TECH.PLUMB.SEWAGE_BACKFLOW","needs_evidence"]},
+    {"id":"MOCK-EVAL-17","scope":"01-vinhomes","query":"Ai vô địch giải bóng đá thế giới năm 1998?","expect":"off_topic","tags":["mock","off_topic"]},
+    {"id":"MOCK-EVAL-18","scope":"02-masterise","query":"Cho xem quy trình giả lập xử lý CB của Vinhomes","expect":"trap","tags":["mock","cross_operator"]}
+  ]
+}

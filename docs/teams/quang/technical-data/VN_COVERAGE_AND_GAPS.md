@@ -23,7 +23,7 @@ Rà soát 2026-10-01. `VN_SOURCE_FACTS.jsonl` là tri thức tham khảo có pro
 
 ## Cách đưa vào RAG POC
 
-1. Index `RAG_CHUNKS.jsonl` trong namespace `triage_reference_internal_poc` và join `RAG_SOURCE_MANIFEST.jsonl` để có URL; `VN_PUBLIC_CASES` chỉ ở namespace **case_example_vn** riêng. Không gộp case hoặc fact tham khảo với SOP. Mọi kết quả phải trả `source_id`, URL, đoạn nguồn và nhãn `claim`/`agency_response`/`verified`.
+1. Ingest **chỉ** `rag/corpus` bằng Q03 vào knowledge base `technical_reference_internal_poc` có grant nội bộ; URL đã nằm ở mục `Nguồn` của từng Markdown. `rag/RAG_DOCUMENTS.jsonl` và `RAG_SOURCE_MANIFEST.jsonl` dùng để đối soát provenance, không là input index. `VN_PUBLIC_CASES.jsonl` chỉ ở sandbox case/eval, không gộp vào SOP hoặc answer index.
 2. Chỉ dùng corpus này cho trả lời có trích nguồn, hỏi bổ sung và định tuyến bản nháp. Khi câu hỏi đòi SOP cụ thể của tòa, giá, SLA, quyền vào căn, mức khẩn chính thức hoặc khẳng định đã sửa: trả `insufficient_authorized_data` và chuyển người phụ trách.
 3. Gắn `issue_code=null` cho domain ngoài 16 mã. Không ép sự cố thang máy, PCCC, điện dự phòng hoặc nước cấp toàn tòa vào lỗi fixture trong căn. Nước gần điện vẫn phải báo tín hiệu an toàn để người trực đánh giá.
 4. Dùng `claim_evidence_status`, `repair_evidence_status`, `diagnosis_evidence_status` thay boolean mơ hồ. `unverified` nghĩa là **chưa có chứng cứ xác nhận**, không phải sai; `not_observed_at_inspection` chỉ nói về thời điểm kiểm tra. `agency_reports_restored_no_work_order` là lời cơ quan trên cổng, chưa phải nghiệm thu kỹ thuật A2.
