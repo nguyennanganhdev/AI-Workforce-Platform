@@ -206,14 +206,23 @@ Theo `docs/teams/chien/MULTI_MODEL_REPO_AUDIT_2026-10-04.md`, bốn vấn đề 
       Đã kiểm trong container với chứng chỉ nội bộ: đăng nhập, 13 bước kiểm đều đạt qua https.
 - [x] MinIO: API dùng khóa riêng chỉ có quyền trên bucket (job `storage` tạo), có kiểm tra sức khỏe.
 - [x] Sao lưu: hướng dẫn trong `deploy/vinhomes/README.md`; đã thử lệnh nén volume ảnh.
-- [ ] Chưa chạy với tên miền thật và chứng chỉ Let's Encrypt; chưa có lịch sao lưu tự động, chưa thử khôi phục trọn vẹn.
-- [ ] Chưa có giới hạn tài nguyên, thu thập log tập trung, cảnh báo; chưa thử khởi động lại cả máy chủ.
-- [ ] CI vẫn tắt; PR #31 chưa gộp.
+- [x] CI đã bật lại và PR #31 đã gộp vào `develop` (05/10, commit `d5d5b2e`). Các commit sau đó trên
+      `dev_teamChien_HuyDo` / `dev_TeamChien` chưa có PR vào `develop`.
+- [x] Khôi phục: `deploy/vinhomes/backup-verify.ps1` khôi phục hai cơ sở dữ liệu và bucket sang chỗ mới rồi đối chiếu số
+      dòng và checksum (theo `docs/teams/chien/COMPLETION_ACCEPTANCE_2026-10-05.md`). Chưa khởi động ứng dụng từ dữ
+      liệu đã khôi phục; chưa có lịch sao lưu tự động.
+- [x] Theo dõi: dịch vụ `monitor` (cổng 9099, `/health`, `/metrics`) báo dịch vụ ngừng và hồi phục. Cảnh báo qua
+      webhook thật chưa kiểm; chưa có giới hạn tài nguyên và thu thập log tập trung.
+- [x] MinIO: trang quản trị ở cổng 9001; bản tạm của ảnh tải thẳng được dọn (xem mục "Ảnh và tệp trong phòng nhóm").
+- [ ] Chưa chạy với tên miền thật và chứng chỉ Let's Encrypt (kể cả `STORAGE_DOMAIN` cho ảnh tải thẳng).
+- [ ] Khi Docker khởi động lại, PostgreSQL local không tự bật (container nằm ngoài stack, không có chính sách
+      restart): API trả 503 cho tới khi bật lại. Máy chủ thật cần PostgreSQL tự khởi động.
+- [ ] Image MinIO đang lấy theo thẻ `latest` (`cgr.dev/chainguard/minio:latest`), chưa ghim phiên bản.
 
 ## Việc chưa làm vì cần chủ dự án quyết
 
-- [ ] Admin tạo đơn vị quản lý từ giao diện: phải quyết hai đơn vị có được phụ trách chung một tòa không, và chấp nhận
-      cấp cho API quyền ghi vào khoảng mười bảng cấu trúc (đơn vị, phạm vi, nhóm, phòng, Supervisor).
+- [x] Admin tạo đơn vị quản lý từ giao diện: đã làm ở phiên khác ngày 05/10 (tạo đơn vị, phạm vi, phòng BQL,
+      Supervisor trong một giao dịch; không cho hai đơn vị trùng phạm vi).
 - [ ] Agent báo cáo có vào phiên của Supervisor hay chỉ trả lời trong phòng nhóm.
 - [ ] Dùng dữ liệu của Team Quang vào đâu (loại sự cố, ca đánh giá, tri thức tham khảo nội bộ).
 
