@@ -57,3 +57,25 @@ def test_the_tool_step_goes_to_the_configured_vendor_with_its_key(monkeypatch):
 
     asyncio.run(turn())
     assert seen == [(PROVIDERS["deepseek"] + "/chat/completions", "Bearer deepseek-key", "deepseek-flash")]
+
+
+def test_luna_can_call_a_tool_with_chat_completions(monkeypatch):
+    environment(monkeypatch, RECEPTION_MODEL="gpt-6-luna")
+
+    def provider(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        # Luna's Chat Completions API refuses function calling at its default reasoning effort.
+        if body.get("tools") and body.get("reasoning_effort") != "none":
+            return httpx.Response(400, json={"error": {"param": "reasoning_effort"}})
+        return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": None,
+            "tool_calls": [{"id": "read-1", "type": "function", "function": {"name": "test_read", "arguments": "{}"}}]}}]})
+
+    async def turn():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(provider)) as client:
+            reply = await ChatCompletionsModel(Settings.from_env().model, client).complete(
+                [{"role": "user", "content": "Read the test value."}],
+                [{"type": "function", "function": {"name": "test_read", "parameters": {"type": "object", "properties": {}}}}],
+            )
+            assert reply["tool_calls"][0]["function"]["name"] == "test_read"
+
+    asyncio.run(turn())

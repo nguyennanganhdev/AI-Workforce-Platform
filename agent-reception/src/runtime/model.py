@@ -117,7 +117,10 @@ class ChatCompletionsModel:
                 headers={"Authorization": "Bearer " + self.config.api_key},
                 timeout=self.config.timeout_seconds,
                 json={"model": self.config.model, "messages": messages, "tools": tools,
-                      "response_format": {"type": "json_object"}},
+                      "response_format": {"type": "json_object"},
+                      # Luna only supports Chat Completions function calling without reasoning.
+                      **({"reasoning_effort": "none"}
+                         if self.config.provider == "openai" and self.config.model == "gpt-6-luna" else {})},
             )
             response.raise_for_status()
             payload = response.json()

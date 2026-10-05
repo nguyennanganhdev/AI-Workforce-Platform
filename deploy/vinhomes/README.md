@@ -142,6 +142,10 @@ Mỗi vai trò có model, nhà cung cấp, khóa và địa chỉ riêng. Để 
 | Factory | `FACTORY_MODEL` | dùng `OPENAI_API_KEY` |
 | Embedding tri thức | cố định theo kho đã nhập | `EMBEDDING_API_KEY`, `EMBEDDING_BASE_URL` |
 
+Lễ tân mặc định dùng `gpt-6-luna` (chủ dự án chốt ngày 05/10/2026). Model này chỉ nhận gọi công cụ qua
+chat-completions khi tắt suy luận, nên Lễ tân gửi `reasoning_effort: none` cho riêng nó; đổi sang model khác không cần
+chỉnh gì thêm. Agent chuyên môn chạy trên Bot dùng chat-completions có công cụ: chưa hỗ trợ `gpt-6-luna` ở vai trò đó.
+
 `PROVIDER` nhận `openai`, `google`, `deepseek`, `groq`, `anthropic` hoặc `custom`; với `custom` phải đặt `BASE_URL`. Các
 nhà cung cấp này được gọi qua giao thức chat-completions tương thích OpenAI. `OPENAI_API_KEY` chỉ được gửi tới OpenAI:
 vai trò dùng nhà cung cấp khác mà thiếu khóa riêng thì dịch vụ không khởi động. Supervisor từ chối câu trả lời ghi tên

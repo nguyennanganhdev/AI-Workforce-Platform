@@ -91,7 +91,7 @@ services:
       RECEPTION_BACKEND_URL: http://api:8000
       RECEPTION_SERVICE_TOKEN: ${RECEPTION_SERVICE_TOKEN:?Reception token required}
       RECEPTION_KNOWLEDGE_URL: http://knowledge:8787
-      RECEPTION_MODEL: ${RECEPTION_MODEL:-gpt-5.4-mini}
+      RECEPTION_MODEL: ${RECEPTION_MODEL:-gpt-6-luna}
       RECEPTION_AGENT: ${RECEPTION_AGENT:-graph}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
       # Another vendor for this role: its provider name, its own key, and an address only for `custom`.
