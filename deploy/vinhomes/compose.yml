@@ -25,6 +25,8 @@ services:
       VINHOMES_API_COORDINATION_URL: http://coordination:4300
       VINHOMES_API_TECHNICAL_TOOLS_URL: http://technical-tools:8788/internal/technical/v1
       VINHOMES_API_TECHNICAL_TOOLS_TOKEN: ${TECHNICAL_TOOLS_SERVICE_TOKEN:?tool token required}
+      # 0 when the specialists' model reads no images: a photo on a question is then only named to the agent.
+      VINHOMES_API_SPECIALIST_SEES_IMAGES: ${SPECIALIST_SEES_IMAGES:-1}
       # The tool gateway reaches the knowledge search service here for management's agents.
       VINHOMES_API_KNOWLEDGE_URL: http://knowledge:8787
       # Schedules of management's agents: the `routines` service keeps them and hands back what is due.

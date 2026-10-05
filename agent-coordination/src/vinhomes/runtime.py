@@ -289,7 +289,7 @@ class Runtime:
                     async with asyncio.timeout(150):
                         content, _ = await answer(self.client, snapshot['instructions'], {
                             'name': key, 'instruction': snapshot['instruction'], 'ticket': {},
-                            'messages': snapshot['messages']}, snapshot['tools'], {},
+                            'messages': snapshot['messages'], 'images': snapshot.get('images', [])}, snapshot['tools'], {},
                             endpoint=self.settings.openbot.endpoint, token=os.environ[self.settings.openbot.token_env],
                             invoke_tool=tool)
                     result.update(status='done', content=content[:20000])

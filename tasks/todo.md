@@ -231,7 +231,8 @@ các module tách chạy riêng được.
 - [x] Trang Agent có thẻ "Lịch chạy": hằng ngày, Thứ Hai đến Thứ Sáu, hằng tuần; giờ Việt Nam; bật, tắt, xóa; kết quả
       lượt gần nhất bằng chữ. Câu hỏi theo lịch được ghi "Theo lịch" trong phòng nhóm.
 - [x] Đã thử trên trình duyệt với stack local: đặt lịch, đến hạn, tin vào phòng, Supervisor nhận, tắt, xóa.
-- [ ] Chưa sửa được lịch đã đặt (xóa rồi đặt lại). Chưa có trần số lịch theo đơn vị (trần 20 lịch là theo người).
+- [x] Sửa lịch đã đặt (chỉ dẫn, ngày, giờ; agent giữ nguyên): nút "Sửa" trong thẻ Lịch chạy.
+- [ ] Chưa có trần số lịch theo đơn vị (trần 20 lịch là theo người).
 - [ ] Chạy ở chế độ demo (không có Supervisor) thì lượt chạy không được đóng, 10 phút sau ghi "bỏ qua".
 
 ### Kho tri thức cho agent của BQL
@@ -251,8 +252,14 @@ các module tách chạy riêng được.
       tin: giới hạn của OpenBot (`shared/attachments.ts`). API kiểm nội dung khớp loại đã khai.
 - [x] Lưu bằng `message_files` và nơi lưu chung (MinIO/S3 hoặc đĩa khi chạy local); chỉ thành viên phòng đọc được.
 - [x] Agent được nhắc nhận nội dung tệp văn bản (tối đa 20.000 ký tự mỗi lượt) và tên ảnh.
-- [ ] Agent chưa xem được ảnh: cần bộ chuyển của lõi Supervisor (Team Đông) gửi phần ảnh.
-- [ ] Chưa dọn tệp đã tải lên mà không gắn vào tin nhắn nào. Chưa đính kèm được trong phiên điều phối.
+- [x] Đính kèm được trong câu hỏi của phiên điều phối (tệp tải lên phòng của phiên; trong phiên phải có chữ kèm theo).
+- [x] Job `room-file-cleanup` xóa tệp tải lên quá một ngày mà không gắn vào tin nào; chạy bằng role và khóa của API.
+- [x] Agent xem được ảnh trong phòng nhóm và câu hỏi theo lịch: ảnh đi kèm tin nhắn dưới dạng hình, tối đa 10 MB mỗi
+      lượt; tắt bằng `SPECIALIST_SEES_IMAGES=0`. Đã kiểm bằng một tiến trình Bot thật nối với nhà cung cấp giả.
+- [ ] Trong phiên điều phối chuyên viên mới được báo tên ảnh: chờ Team Đông trả lời
+      `docs/teams/dong/requests/2026-10-05-anh-trong-phien-dieu-phoi.md`.
+- [ ] Bản tạm (`staging/`) của ảnh tải thẳng lên MinIO không được xóa sau khi ảnh được nhận.
+- [ ] Tệp phòng nhóm đi qua API, chưa dùng đường tải thẳng lên MinIO.
 
 ### Hai việc nhỏ
 
@@ -260,7 +267,13 @@ các module tách chạy riêng được.
       `ARGUMENTS_WITHHELD`.
 - [x] Job `audit-retention` dọn nhật ký cũ hơn `AUDIT_RETENTION_DAYS`. Phải khai tenant trên kết nối: đã thử, không
       khai thì xóa 0 dòng.
-- [ ] Chưa có lịch tự chạy job dọn nhật ký (đặt bằng bộ hẹn giờ của máy chủ). Chưa có xuất nhật ký ra tệp.
+- [x] Xuất nhật ký ra tệp CSV theo khoảng ngày (giờ Việt Nam), tối đa 50.000 sự kiện một tệp; mỗi lần xuất được ghi
+      lại.
+- [x] Hướng dẫn hẹn giờ cho hai job dọn dẹp (crontab, Task Scheduler) trong `deploy/vinhomes/README.md`. Các dòng hẹn
+      giờ là mẫu, chưa chạy thử trên máy chủ thật.
+- [x] Thẻ Đánh giá có ô "Hỏi thử bản nháp": hỏi một câu, đọc câu trả lời và công cụ agent định gọi, rồi dùng câu hỏi
+      đó làm ca đánh giá. Vẫn cần đủ 6 ca và nội dung bắt buộc của từng ca để phát hành.
+- [x] Trang quản trị MinIO có cổng cố định 9001 (trước đó là cổng ngẫu nhiên không mở ra máy chủ).
 
 ### Chưa làm, xếp theo thứ tự đề xuất của tài liệu nghiên cứu
 
@@ -278,4 +291,5 @@ Khóa trong `agent-reception/.env` bị `api.openai.com` trả 401 `invalid_api_
 - [ ] Chạy thử một nhà cung cấp thứ hai (Gemini hoặc DeepSeek) bằng khóa thật.
 - [ ] Lịch chạy: một lượt mà agent trả lời được (đã thấy lượt chạy tới Supervisor và đóng "lỗi" vì model không trả lời).
 - [ ] Agent tra cứu kho tri thức bằng `knowledge.search` với embedding thật, và đánh giá, phát hành một agent có tool này.
-- [ ] Agent đọc tệp văn bản đính kèm trong phòng nhóm và trả lời.
+- [ ] Agent đọc tệp văn bản và xem ảnh đính kèm trong phòng nhóm rồi trả lời (đã kiểm tới nhà cung cấp giả).
+- [ ] Hỏi thử một bản nháp bằng model thật.

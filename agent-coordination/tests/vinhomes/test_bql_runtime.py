@@ -90,6 +90,45 @@ def test_a_trial_question_is_answered_once_and_is_no_evaluation(tmp_path, monkey
 
 
 @pytest.mark.asyncio
+async def test_photos_on_a_room_question_reach_the_bot_as_pictures_beside_the_text(tmp_path, monkeypatch):
+    import json
+    wires = []
+    def bot(req):
+        body = json.loads(req.content)
+        wires.append(body)
+        run = {'threadId': body['threadId'], 'runId': body['runId']}
+        events = [{'type': 'RUN_STARTED', **run}, {'type': 'TEXT_MESSAGE_START', 'messageId': 'm', 'role': 'assistant'},
+                  {'type': 'TEXT_MESSAGE_CONTENT', 'messageId': 'm', 'delta': 'Vết rò ở chân vòi.'},
+                  {'type': 'TEXT_MESSAGE_END', 'messageId': 'm'}, {'type': 'RUN_FINISHED', **run}]
+        return httpx.Response(200, headers={'content-type': 'text/event-stream'},
+                              content=''.join(f'data: {json.dumps(e)}\n\n' for e in events).encode())
+
+    class Backend:
+        outcomes = []
+        def __init__(self, images): self.images = images
+        async def room_turn(self, message, agent):
+            return {'run_id': 'run-' + message, 'instructions': 'Read only', 'tools': [], 'instruction': 'Ảnh này rò ở đâu?', 'messages': [],
+                    **({'images': self.images} if self.images is not None else {})}
+        async def room_outcome(self, message, agent, result):
+            self.outcomes.append(result)
+
+    monkeypatch.setenv('MANAGED_AGENT_TOKEN', 'test-bot-token')
+    settings = Settings('http://backend', TOKEN, openbot=OpenBot('http://bot/ag-ui', 'model'))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(bot)) as client:
+        for message, images in (('with', [{'name': 'vet-ro.png', 'mimeType': 'image/png', 'data': 'aGVsbG8='}]), ('without', None)):
+            backend = Backend(images)
+            runtime = Runtime(backend, Store(tmp_path / f'{message}.sqlite'), client=client, settings=settings)
+            await runtime.answer_room({'tenant_id': 'tenant', 'message_id': message, 'agent_id': 'agent'})
+            assert backend.outcomes[-1]['status'] == 'done' and backend.outcomes[-1]['content'] == 'Vết rò ở chân vòi.'
+    shown, plain = (wire['messages'][0]['content'] for wire in wires)
+    # The question as text, then each photo as the part the Bot turns into a picture for the model.
+    assert [part['type'] for part in shown] == ['text', 'image'] and json.loads(shown[0]['text'])['instruction'] == 'Ảnh này rò ở đâu?'
+    assert shown[1] == {'type': 'image', 'source': {'type': 'data', 'value': 'aGVsbG8=', 'mimeType': 'image/png'}}
+    # A question with no photo is sent exactly as before: one string.
+    assert isinstance(plain, str) and json.loads(plain)['instruction'] == 'Ảnh này rò ở đâu?'
+
+
+@pytest.mark.asyncio
 async def test_interrupted_room_turn_is_failed_without_a_second_generation(tmp_path, monkeypatch):
     class Backend:
         outcomes = []

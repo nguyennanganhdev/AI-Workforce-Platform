@@ -103,10 +103,10 @@ async def turn(message_id: UUID, agent_id: str, db: Scope):
         tools.append({'name': grant['name'].replace('.', '__'), 'description': tool['description'], 'parameters': tool['input_schema']})
     history = (await db.execute(text("select body->>'text' as text,sender_kind from messages where channel_id=:channel and visibility='room' and seq<(select seq from messages where id=:message) order by seq desc limit 20"),
         {'channel': mention['channel_id'], 'message': message_id})).mappings().all()
-    attached = await for_agent(db, mention['channel_id'], message_id)
+    attached, images = await for_agent(db, mention['channel_id'], message_id, pictures=True)
     return {'run_id': str(run), 'instructions': version['instructions'], 'tools': tools,
         'instruction': '\n\n'.join(part for part in (mention['body']['text'], attached) if part),
-        'messages': [dict(r) for r in reversed(history)]}
+        'messages': [dict(r) for r in reversed(history)], 'images': images}
 
 
 class Outcome(BaseModel):

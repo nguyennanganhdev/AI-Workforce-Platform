@@ -632,8 +632,9 @@ async def mentions(db: Scope, limit: int = Query(default=20, ge=1, le=50)) -> di
                   and agent_id=:agent and status='queued'
             """), {"message": row["message_id"], "agent": row["agent_id"]})
             continue
-        # What was attached to the question: the text of text files, and the names of photos the agent cannot see.
-        attached = await for_agent(db, row["channel_id"], row["message_id"])
+        # What was attached to the question: the text of text files, and the names of photos. Inside a
+        # session the specialist is reached through the Supervisor core's adapter, which sends text only.
+        attached, _ = await for_agent(db, row["channel_id"], row["message_id"])
         items.append({"message_id": str(row["message_id"]), "team_id": str(row["team_id"]),
                       "agent_id": row["agent_id"], "agent_version_id": str(row["version_id"]),
                       "text": "\n\n".join(part for part in (row["text"], attached) if part), "context": context})

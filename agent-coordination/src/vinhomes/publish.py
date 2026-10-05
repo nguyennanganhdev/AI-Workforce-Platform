@@ -58,7 +58,12 @@ async def answer(client: httpx.AsyncClient, instructions: str, case: dict, tools
     # earlier answer for a follow-up question.
     asked = {"instruction": case["instruction"], "tasks": [], "messages": case.get("messages", []),
              "context": [{"item_id": "reception-v2-ticket", "content": json.dumps(case["ticket"], ensure_ascii=False)}]}
-    messages = [{"id": "context", "role": "user", "content": json.dumps(asked, ensure_ascii=False)}]
+    said = json.dumps(asked, ensure_ascii=False)
+    # Photos attached to the question go beside the text as image parts; the Bot hands them to the
+    # model as pictures (shared/user-content.ts). Without photos the message stays the plain text it was.
+    messages = [{"id": "context", "role": "user", "content": said if not case.get("images") else [
+        {"type": "text", "text": said}, *({"type": "image", "source": {"type": "data", "value": image["data"],
+                                           "mimeType": image["mimeType"]}} for image in case["images"])]}]
     headers = {"x-openbot-agent-token": token or os.environ["MANAGED_AGENT_TOKEN"], "Accept": "text/event-stream"}
     # The same client the room's adapter sends through: same instructions, same reply handling.
     room, called = InstructedClient(client, {thread: instructions}), []

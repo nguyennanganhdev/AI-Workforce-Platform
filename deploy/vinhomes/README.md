@@ -116,8 +116,17 @@ phát hành cho phạm vi của đơn vị quản lý (áp dụng cho cấp dư�
 
 Thành viên phòng nhóm đính kèm ảnh (PNG, JPEG, GIF, WebP, tới 8 MB) và tệp văn bản (txt, md, csv, json, tới 1 MB),
 tối đa 8 tệp một tin. Tệp nằm cùng bucket với ảnh của yêu cầu và chỉ được đọc qua `api` bởi thành viên của phòng.
-Agent được nhắc trong tin có tệp nhận nội dung tệp văn bản (tối đa 20.000 ký tự) và tên ảnh; agent chưa xem được ảnh.
-Tệp đã tải lên nhưng không gửi kèm tin nào vẫn nằm trong bucket, chưa có bước dọn.
+Câu hỏi gửi chuyên viên trong một phiên điều phối cũng đính kèm được, theo cùng cách.
+
+Agent được nhắc trong tin có tệp nhận nội dung tệp văn bản (tối đa 20.000 ký tự mỗi lượt). Với ảnh:
+
+- Trong phòng nhóm (kể cả câu hỏi theo lịch), ảnh được gửi cho model dưới dạng hình, tối đa 10 MB ảnh mỗi lượt; ảnh
+  vượt mức chỉ được báo tên. Model của chuyên viên phải đọc được ảnh: dùng model chỉ đọc chữ thì đặt
+  `SPECIALIST_SEES_IMAGES=0`, nếu không mọi câu hỏi có ảnh sẽ lỗi ở model.
+- Trong phiên điều phối, chuyên viên mới chỉ được báo tên ảnh. Phần này đi qua bộ chuyển của lõi Supervisor; đề nghị
+  gửi Team Đông ở `docs/teams/dong/requests/2026-10-05-anh-trong-phien-dieu-phoi.md`.
+
+Tệp đã tải lên nhưng không gửi kèm tin nào được job `room-file-cleanup` xóa sau một ngày (xem "Dọn dẹp định kỳ").
 
 ### Model theo vai trò
 
