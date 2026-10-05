@@ -5,8 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { askSessionAgentMutationOptions, closeSessionMutationOptions, decidePlanMutationOptions } from "@/lib/rooms/mutations";
-import { ticketSessionQueryOptions, type RoomMessage, type RoomSession, type SessionPlan } from "@/lib/rooms/queries";
+import { askSessionAgentMutationOptions, closeSessionMutationOptions, decidePlanMutationOptions, ROOM_FILE_ACCEPT, roomFilesRefusal } from "@/lib/rooms/mutations";
+import { roomFileUrl, ticketSessionQueryOptions, type RoomMessage, type RoomSession, type SessionPlan } from "@/lib/rooms/queries";
 import { queryClient } from "@/query-client";
 import { SessionControls } from "../SessionControls";
 import { mentionStatus, pauseText, planStatus, sessionFeed, sessionState } from "./model";
@@ -56,8 +56,8 @@ function PlanCard({ plan }: { plan: SessionPlan }) {
   );
 }
 
-export function SessionThread({ session, messages, agents, userId, onBack }: {
-  session: RoomSession; messages: RoomMessage[]; agents: { id: string; name: string; published: boolean; status: string }[]; userId: string; onBack: () => void;
+export function SessionThread({ roomId, session, messages, agents, userId, onBack }: {
+  roomId: string; session: RoomSession; messages: RoomMessage[]; agents: { id: string; name: string; published: boolean; status: string }[]; userId: string; onBack: () => void;
 }) {
   const detail = useQuery(ticketSessionQueryOptions(session.ticket_id));
   const ask = useMutation(askSessionAgentMutationOptions(queryClient));
@@ -69,11 +69,11 @@ export function SessionThread({ session, messages, agents, userId, onBack }: {
   const members = agents.filter((a) => a.published && a.status === "active" && detail.data?.room?.members.includes(a.name));
   const finished = state.group === "done";
   const waiting = feed.some((item) => item.type === "asked" && ["queued", "running"].includes(item.status));
-  async function send(text: string, agentId: string) {
-    const signature = JSON.stringify([session.id, text, agentId]);
+  async function send(text: string, agentId: string, files: File[]) {
+    const signature = JSON.stringify([session.id, text, agentId, files.map((file) => [file.name, file.size, file.lastModified])]);
     if (request.current?.signature !== signature) request.current = { signature, id: crypto.randomUUID() };
     try {
-      await ask.mutateAsync({ ticketId: session.ticket_id, text, agentId: agentId || (members.length > 1 ? members[0].id : undefined), requestId: request.current.id });
+      await ask.mutateAsync({ ticketId: session.ticket_id, roomId, text, agentId: agentId || (members.length > 1 ? members[0].id : undefined), requestId: request.current.id, files });
       request.current = null;
       return true;
     } catch { return false; }
@@ -103,7 +103,9 @@ export function SessionThread({ session, messages, agents, userId, onBack }: {
           : item.type === "resident" ? <Said key={item.id} who="Cư dân" at={item.at}>{item.text}</Said>
           : item.type === "supervisor" ? <Said key={item.id} who="Supervisor hỏi cư dân" at={item.at} agent tone="accent">{item.text}</Said>
           : item.type === "agent" ? <Said key={item.id} who={item.author} at={item.at} agent>{item.text}</Said>
-          : <Said key={item.id} who={item.author} at={item.at} mine footer={`Hỏi @${item.agent} · ${mentionStatus[item.status] || "Đã gửi"}`}>{item.text}</Said>)}
+          : <Said key={item.id} who={item.author} at={item.at} mine footer={`Hỏi @${item.agent} · ${mentionStatus[item.status] || "Đã gửi"}`}
+              files={item.files.map((file) => ({ id: file.id, name: file.name, bytes: file.size_bytes, href: roomFileUrl(roomId, file.id),
+                image: file.mime_type.startsWith("image/") ? roomFileUrl(roomId, file.id, true) : undefined }))}>{item.text}</Said>)}
         {session.runtime?.phase === "paused" && !finished && (
           <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{pauseText(session.runtime.pauseReason)}</p>
         )}
@@ -120,6 +122,7 @@ export function SessionThread({ session, messages, agents, userId, onBack }: {
       </Transcript>
       {!finished && (
         <Composer agents={members} disabled={!members.length || waiting} error={ask.error?.message} onSend={send}
+          attach={{ accept: ROOM_FILE_ACCEPT, refusal: roomFilesRefusal, withText: true }}
           placeholder={members.length ? `Hỏi ${members.length === 1 ? `@${members[0].name}` : "agent"} về yêu cầu này…` : "Phiên chưa có agent để hỏi"}
           hint={waiting ? "Đang chờ agent trả lời câu hỏi trước." : "Agent trả lời trong phiên, dựa trên yêu cầu và phần đã trao đổi."} />
       )}

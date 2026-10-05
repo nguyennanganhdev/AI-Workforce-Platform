@@ -61,9 +61,13 @@ export function decidePlanMutationOptions(queryClient: QueryClient) {
       body: {decision, version, note}, fallback: "Không ghi được quyết định."}));
 }
 export function askSessionAgentMutationOptions(queryClient: QueryClient) {
-  return sessionAction(queryClient, ({ticketId, text, agentId, requestId}: {ticketId: string; text: string; agentId?: string; requestId: string}) =>
-    client(`/api/business/tickets/${encodeURIComponent(ticketId)}/session/questions`, {method: "POST", headers: businessHeaders(),
-      body: {text, client_message_id: requestId, ...(agentId ? {agent_id: agentId} : {})}, fallback: "Không gửi được câu hỏi cho agent."}));
+  // A session's messages live in its management room, so its files are uploaded there too.
+  return sessionAction(queryClient, async ({ticketId, roomId, text, agentId, requestId, files = []}: {ticketId: string; roomId: string; text: string; agentId?: string; requestId: string; files?: File[]}) => {
+    const fileIds: string[] = [];
+    for (const file of files) fileIds.push(await uploadRoomFile(roomId, file));
+    return client(`/api/business/tickets/${encodeURIComponent(ticketId)}/session/questions`, {method: "POST", headers: businessHeaders(),
+      body: {text, client_message_id: requestId, file_ids: fileIds, ...(agentId ? {agent_id: agentId} : {})}, fallback: "Không gửi được câu hỏi cho agent."});
+  });
 }
 export function closeSessionMutationOptions(queryClient: QueryClient) {
   return sessionAction(queryClient, ({ticketId, version}: {ticketId: string; version: number}) =>

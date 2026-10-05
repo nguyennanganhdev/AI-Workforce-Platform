@@ -50,6 +50,27 @@ class RoomMessage(BaseModel):
         return self
 
 
+async def attach_files(db, actor_id: str, room_id: str, message_id, file_ids: list[UUID]) -> None:
+    """Attach files to a message of the room: only ones this person uploaded there (v3_room_files.py) and
+    has not used yet. Anything else refuses the message. The files are locked while they are attached, so
+    the cleanup of unsent uploads (room_file_cleanup.py) cannot take one meanwhile."""
+    if not file_ids:
+        return
+    own = (await db.execute(text("""
+        select f.id from files f where f.id=any(:ids) and f.scope_kind='channel' and f.channel_id=:room_id
+          and f.uploaded_by=:actor_id and f.status='ready'
+          and not exists(select 1 from message_files mf where mf.file_id=f.id and mf.tenant_id=f.tenant_id)
+        for share of f
+    """), {"ids": file_ids, "room_id": room_id, "actor_id": actor_id})).scalars().all()
+    if len(own) != len(file_ids):
+        raise HTTPException(422, "Tệp đính kèm không hợp lệ hoặc đã được dùng cho tin nhắn khác.")
+    for ordinal, file_id in enumerate(file_ids):
+        await db.execute(text("""
+            insert into message_files (tenant_id, message_id, file_id, ordinal)
+            values (nullif(current_setting('app.tenant_id', true), '')::uuid, :message_id, :file_id, :ordinal)
+        """), {"message_id": message_id, "file_id": file_id, "ordinal": ordinal})
+
+
 @router.get("/rooms", summary="List my management rooms")
 async def list_rooms(scope: MemberScope, limit: int = Query(50, ge=1, le=100)) -> dict[str, object]:
     db, actor_id = scope
@@ -173,22 +194,7 @@ async def post_message(room_id: str, body: RoomMessage, request: Request, scope:
     """), {"room_id": room_id, "seq": sequence.scalar_one(), "actor_id": actor_id,
            "content": json.dumps(content), "client_message_id": body.client_message_id})
     created = dict(message.mappings().one())
-    if body.file_ids:
-        # Only files this person uploaded to this room and has not used yet. Anything else refuses the message.
-        # Locked while they are attached, so the cleanup of unsent uploads (room_file_cleanup.py) cannot take one meanwhile.
-        own = (await db.execute(text("""
-            select f.id from files f where f.id=any(:ids) and f.scope_kind='channel' and f.channel_id=:room_id
-              and f.uploaded_by=:actor_id and f.status='ready'
-              and not exists(select 1 from message_files mf where mf.file_id=f.id and mf.tenant_id=f.tenant_id)
-            for share of f
-        """), {"ids": body.file_ids, "room_id": room_id, "actor_id": actor_id})).scalars().all()
-        if len(own) != len(body.file_ids):
-            raise HTTPException(422, "Tệp đính kèm không hợp lệ hoặc đã được dùng cho tin nhắn khác.")
-        for ordinal, file_id in enumerate(body.file_ids):
-            await db.execute(text("""
-                insert into message_files (tenant_id, message_id, file_id, ordinal)
-                values (nullif(current_setting('app.tenant_id', true), '')::uuid, :message_id, :file_id, :ordinal)
-            """), {"message_id": created["id"], "file_id": file_id, "ordinal": ordinal})
+    await attach_files(db, actor_id, room_id, created["id"], body.file_ids)
     if body.mention_agent_id:
         await db.execute(text("""
             insert into message_mentions (tenant_id, message_id, agent_id, requested_by, status)

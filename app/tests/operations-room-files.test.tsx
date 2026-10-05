@@ -88,3 +88,45 @@ test("the room shows a photo as a picture and a text file as a download, and sen
   // The same message, sent again under the same id.
   expect(posts[0]!.client_message_id).toBe(posts[1]!.client_message_id);
 });
+
+test("inside a session a question carries its files, and files alone are not a question", async () => {
+  const { QueryClientProvider, QueryClient } = await import("@tanstack/react-query");
+  const { SessionThread } = await import("../src/features/vinhomes-operations/connected/coordination/SessionThread");
+  const messages: RoomMessage[] = [{ id: "q1", seq: 3, sender_user_id: "me", sender_agent_id: null, created_at: "2026-10-05T02:00:00Z", mention_status: "done",
+    body: { text: "VH-AAAAAAAAAAAA: Ảnh này là rò ở đâu?", sessionId: "s1", kind: "session_question", mentionAgentId: "tech" },
+    files: [{ id: "f9", name: "vet-ro.png", mime_type: "image/png", size_bytes: 1024 }] }];
+  const sent: { url: string; body: unknown }[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input), "http://localhost");
+    if ((init?.method || "GET") === "GET") {
+      if (url.pathname.endsWith("/session")) return Response.json({ session: { id: "s1", status: "running", state_version: 1, supervisor_name: "Supervisor" },
+        room: { members: ["Agent Kỹ thuật"], tasks: [], plan: null }, awaitingManagementApproval: false });
+      return Response.json({ items: [], allowed: [], pending: null });
+    }
+    const json = new Headers(init?.headers).get("content-type") === "application/json";
+    sent.push({ url: url.pathname + url.search, body: json ? JSON.parse(String(init!.body)) : (init!.body as File).name });
+    return Response.json(url.pathname.endsWith("/files") ? { fileId: "stored-1" } : { id: "q2", status: "queued" }, { status: 201 });
+  }) as typeof fetch;
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const view = render(<QueryClientProvider client={client}>
+    <SessionThread roomId="room-1" userId="me" onBack={() => {}} messages={messages}
+      session={{ id: "s1", ticket_id: "t1", ticket_code: "VH-AAAAAAAAAAAA", ticket_title: "Vòi bếp rò nước", status: "running",
+        created_at: "2026-10-05T01:00:00Z", updated_at: "2026-10-05T02:00:00Z", ticket_status: "open", plan_status: null, runtime: { phase: "planning" } }}
+      agents={[{ id: "tech", name: "Agent Kỹ thuật", published: true, status: "active" }]} />
+  </QueryClientProvider>);
+
+  // What was asked before shows its photo, read through the session's room.
+  expect((view.getByRole("img", { name: "vet-ro.png" }) as HTMLImageElement).getAttribute("src")).toBe("/api/business/rooms/room-1/files/f9/content?inline=true");
+  const send = view.getByRole("button", { name: "Gửi tin nhắn" }) as HTMLButtonElement;
+  await waitFor(() => expect((view.getByLabelText("Nội dung") as HTMLTextAreaElement).disabled).toBe(false));
+  fireEvent.change(view.getByLabelText("Chọn ảnh hoặc tệp"), { target: { files: [new File(["a,b"], "so-lieu.csv", { type: "text/csv" })] } });
+  expect(view.getByRole("list", { name: "Tệp sẽ gửi" }).textContent).toContain("so-lieu.csv");
+  expect(send.disabled).toBe(true);
+  fireEvent.change(view.getByLabelText("Nội dung"), { target: { value: "Số liệu này có bất thường không?" } });
+  expect(send.disabled).toBe(false);
+  fireEvent.click(send);
+  await waitFor(() => expect(sent.length).toBe(2));
+  expect(sent[0]).toEqual({ url: "/api/business/rooms/room-1/files?filename=so-lieu.csv&mimeType=text%2Fcsv", body: "so-lieu.csv" });
+  expect(sent[1]!.url).toBe("/api/business/tickets/t1/session/questions");
+  expect(sent[1]!.body).toMatchObject({ text: "Số liệu này có bất thường không?", file_ids: ["stored-1"] });
+});

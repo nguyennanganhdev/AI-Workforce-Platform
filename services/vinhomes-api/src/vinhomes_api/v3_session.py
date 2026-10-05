@@ -10,7 +10,7 @@ from typing import Annotated
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -20,6 +20,7 @@ from .v3_auth import TICKET_VISIBILITY, scoped_connection
 from .v3_learning import curate, propose_from_answer
 from .v3_mutations import management_access, visible_ticket
 from .v3_reception_runtime import append_agent_message
+from .v3_rooms import attach_files
 
 router = APIRouter(tags=["Vinhomes V3 coordination session"])
 Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
@@ -181,6 +182,15 @@ class SessionQuestion(BaseModel):
     client_message_id: str = Field(min_length=1, max_length=160)
     # Needed only when the session has more than one specialist.
     agent_id: str | None = Field(default=None, max_length=160)
+    # Photos and text files uploaded to the session's room beforehand (v3_room_files.py), at most 8.
+    file_ids: list[UUID] = Field(default_factory=list, max_length=8)
+
+    @field_validator("file_ids")
+    @classmethod
+    def once(cls, value: list[UUID]) -> list[UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("a file is attached once")
+        return value
 
 
 @router.post("/tickets/{ticket_id}/session/questions", status_code=201,
@@ -233,6 +243,7 @@ async def ask_session_agent(ticket_id: UUID, body: SessionQuestion, scope: Scope
         values({TENANT},:room,:seq,'user',:actor,'room',cast(:body as jsonb),:client) returning id
     """), {"room": session["channel_id"], "seq": seq, "actor": actor, "body": json.dumps(content, ensure_ascii=False),
            "client": body.client_message_id})).scalar_one()
+    await attach_files(db, actor, session["channel_id"], message, body.file_ids)
     await db.execute(text(f"""
         insert into message_mentions(tenant_id,message_id,agent_id,requested_by,status)
         values({TENANT},:message,:agent,:actor,'queued')

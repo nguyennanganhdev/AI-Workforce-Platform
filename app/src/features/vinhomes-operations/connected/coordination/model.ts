@@ -1,4 +1,4 @@
-import type { RoomMessage, RoomSession, TicketSession } from "@/lib/rooms/queries";
+import type { RoomFile, RoomMessage, RoomSession, TicketSession } from "@/lib/rooms/queries";
 
 export type SessionGroup = "attention" | "running" | "done";
 export type SessionState = { group: SessionGroup; label: string };
@@ -65,7 +65,7 @@ export type FeedItem =
   | { type: "resident"; id: string; at: string; text: string }
   | { type: "supervisor"; id: string; at: string; text: string }
   | { type: "agent"; id: string; at: string; author: string; text: string }
-  | { type: "asked"; id: string; at: string; author: string; agent: string; text: string; status: string }
+  | { type: "asked"; id: string; at: string; author: string; agent: string; text: string; status: string; files: RoomFile[] }
   | { type: "plan"; id: string; at: string };
 
 /**
@@ -97,7 +97,7 @@ export function sessionFeed(
     else if (kind === "inquiry") items.push({ ...base, type: "resident", text });
     else if (kind === "session_question")
       items.push({ ...base, type: "asked", author: m.sender_user_id === userId ? "Bạn" : m.sender_name || "Ban quản lý",
-        agent: name(m.body.mentionAgentId), text, status: m.mention_status || "" });
+        agent: name(m.body.mentionAgentId), text, status: m.mention_status || "", files: m.files || [] });
     else if (m.sender_agent_id && kind.startsWith("supervisor")) items.push({ ...base, type: "note", text });
     else if (m.sender_agent_id) items.push({ ...base, type: "agent", author: name(m.sender_agent_id), text });
   }

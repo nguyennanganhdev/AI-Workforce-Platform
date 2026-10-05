@@ -97,12 +97,12 @@ export function Transcript({ label, count, children }: { label: string; count: n
 
 /**
  * Where management writes. Enter sends, Shift+Enter breaks the line; a failed send keeps the text and the files.
- * With `attach`, photos and text files can go on the message: `accept` is what the file dialog offers and
- * `refusal` says why a choice cannot be sent.
+ * With `attach`, photos and text files can go on the message: `accept` is what the file dialog offers,
+ * `refusal` says why a choice cannot be sent, and `withText` is for a place where files alone say nothing.
  */
 export function Composer({ agents, agentLabel, placeholder, disabled, hint, error, attach, onSend }: {
   agents: { id: string; name: string }[]; agentLabel?: string; placeholder: string; disabled?: boolean; hint?: string; error?: string;
-  attach?: { accept: string; refusal: (files: File[]) => string | null };
+  attach?: { accept: string; refusal: (files: File[]) => string | null; withText?: boolean };
   onSend: (text: string, agentId: string, files: File[]) => Promise<boolean>;
 }) {
   const [text, setText] = useState("");
@@ -111,8 +111,9 @@ export function Composer({ agents, agentLabel, placeholder, disabled, hint, erro
   const [files, setFiles] = useState<File[]>([]);
   const [refused, setRefused] = useState("");
   const picker = useRef<HTMLInputElement>(null);
+  const sendable = !!text.trim() || (!!files.length && !attach?.withText);
   async function send() {
-    if ((!text.trim() && !files.length) || sending || disabled) return;
+    if (!sendable || sending || disabled) return;
     setSending(true);
     if (await onSend(text.trim(), agentId, files)) { setText(""); setFiles([]); }
     setSending(false);
@@ -157,7 +158,7 @@ export function Composer({ agents, agentLabel, placeholder, disabled, hint, erro
           className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-1 py-2 text-sm leading-snug text-foreground outline-none placeholder:text-muted-foreground"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
-        <Button type="submit" size="icon" aria-label="Gửi tin nhắn" disabled={disabled || sending || (!text.trim() && !files.length)}><IconSend /></Button>
+        <Button type="submit" size="icon" aria-label="Gửi tin nhắn" disabled={disabled || sending || !sendable}><IconSend /></Button>
       </div>
       {hint && <p className="mt-1.5 text-xs text-muted-foreground">{hint}</p>}
     </form>

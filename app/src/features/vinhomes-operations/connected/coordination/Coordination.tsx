@@ -103,7 +103,7 @@ export function Coordination({ userId }: { userId: string }) {
             <p className="text-sm">Chọn một phiên để xem diễn biến.</p>
           </div>
         ) : current ? (
-          <SessionThread key={current.id} session={current} messages={room.data.messages} agents={room.data.agents} userId={userId} onBack={() => setReading(false)} />
+          <SessionThread key={current.id} roomId={roomId} session={current} messages={room.data.messages} agents={room.data.agents} userId={userId} onBack={() => setReading(false)} />
         ) : (
           <RoomThread key={roomId} roomId={roomId} name={rooms.find((r) => r.id === roomId)?.name || "Phòng nhóm"}
             messages={room.data.messages} agents={room.data.agents} userId={userId} onBack={() => setReading(false)} />

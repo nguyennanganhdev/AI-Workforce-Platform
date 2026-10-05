@@ -39,6 +39,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .v3_reception_runtime import append_agent_message
+from .v3_room_files import for_agent
 from .v3_reception_supervisor import (
     SupervisorToReceptionResult,
     _decode_cursor,
@@ -608,7 +609,7 @@ async def room(team_id: UUID, body: Room, db: Scope) -> dict[str, Any]:
 async def mentions(db: Scope, limit: int = Query(default=20, ge=1, le=50)) -> dict[str, Any]:
     """Queued questions only. One whose session is no longer current is refused here and not listed."""
     rows = (await db.execute(text(f"""
-        select m.id as message_id,cast(m.body->>'sessionId' as uuid) as team_id,mm.agent_id,
+        select m.id as message_id,m.channel_id,cast(m.body->>'sessionId' as uuid) as team_id,mm.agent_id,
           substr(m.body->>'text',position(': ' in m.body->>'text')+2) as text,
           (select tm.version_id from team_members tm where tm.tenant_id=mm.tenant_id and tm.agent_id=mm.agent_id
              and tm.team_id=cast(m.body->>'sessionId' as uuid) and tm.member_kind='specialist' and tm.status='active'
@@ -631,9 +632,11 @@ async def mentions(db: Scope, limit: int = Query(default=20, ge=1, le=50)) -> di
                   and agent_id=:agent and status='queued'
             """), {"message": row["message_id"], "agent": row["agent_id"]})
             continue
+        # What was attached to the question: the text of text files, and the names of photos the agent cannot see.
+        attached = await for_agent(db, row["channel_id"], row["message_id"])
         items.append({"message_id": str(row["message_id"]), "team_id": str(row["team_id"]),
                       "agent_id": row["agent_id"], "agent_version_id": str(row["version_id"]),
-                      "text": row["text"], "context": context})
+                      "text": "\n\n".join(part for part in (row["text"], attached) if part), "context": context})
     return {"items": items}
 
 
