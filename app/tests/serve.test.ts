@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import {
   BunWebSocket,
   fileFor,
@@ -41,7 +41,7 @@ Bun.serve = (options) => {
         preload,
         "serve.ts",
       ],
-      cwd: import.meta.dir.replace(/\/tests$/, ""),
+      cwd: import.meta.dir.replace(/[\\/]tests$/, ""),
       env,
       stdout: "pipe",
       stderr: "pipe",
@@ -149,22 +149,22 @@ describe("what answers a request", () => {
 
 describe("which file a path names", () => {
   test("the root and any directory are the page", () => {
-    expect(fileFor("/")).toEndWith("/dist/index.html");
-    expect(fileFor("/channel/")).toEndWith("/dist/index.html");
+    expect(fileFor("/")).toEndWith(`${sep}${join("dist", "index.html")}`);
+    expect(fileFor("/channel/")).toEndWith(`${sep}${join("dist", "index.html")}`);
   });
 
   test("a built asset is itself", () => {
     expect(fileFor("/assets/index-abc.js")).toEndWith(
-      "/dist/assets/index-abc.js",
+      `${sep}${join("dist", "assets", "index-abc.js")}`,
     );
   });
 
   test("an encoded asset remains inside the static directory", () => {
     expect(fileFor("/assets/hello%20world.js")).toEndWith(
-      "/dist/assets/hello world.js",
+      `${sep}${join("dist", "assets", "hello world.js")}`,
     );
     expect(fileFor("/assets/caf%C3%A9%25.js")).toEndWith(
-      "/dist/assets/café%.js",
+      `${sep}${join("dist", "assets", "café%.js")}`,
     );
   });
 
@@ -196,12 +196,12 @@ describe("which file a path names", () => {
   });
 
   test("only decoded NUL is refused by the invalid-path guard", () => {
-    expect(fileFor("/assets/a%1Fb.js")).toEndWith("/dist/assets/ab.js");
+    expect(fileFor("/assets/a%1Fb.js")).toEndWith(`${sep}${join("dist", "assets", "ab.js")}`);
   });
 
   test("a client route remains available for the router", () => {
     expect(fileFor("/channel/channel_1ed78a89")).toEndWith(
-      "/dist/channel/channel_1ed78a89",
+      `${sep}${join("dist", "channel", "channel_1ed78a89")}`,
     );
   });
 
@@ -309,12 +309,12 @@ async function waitForProxy(port: number) {
   throw new Error("proxy did not start");
 }
 
-async function startProxy(upstreamPort: number) {
+async function startProxy(upstreamPort: number, extraEnv: Record<string, string> = {}) {
   const port = await unusedPort();
   const child = Bun.spawn({
     cmd: [process.execPath, "--no-env-file", "serve.ts"],
-    cwd: import.meta.dir.replace(/\/tests$/, ""),
-    env: { APP_PORT: String(port), SERVER_PORT: String(upstreamPort) },
+    cwd: import.meta.dir.replace(/[\\/]tests$/, ""),
+    env: { APP_PORT: String(port), SERVER_PORT: String(upstreamPort), ...extraEnv },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -414,6 +414,21 @@ async function waitForHandshake(
 }
 
 describe("api proxy", () => {
+  test("returns a readable gateway error when the business API closes a connection", async () => {
+    const upstream = createServer((socket) => socket.destroy());
+    const upstreamPort = await unusedPort();
+    await new Promise<void>((resolve) => upstream.listen(upstreamPort, "127.0.0.1", resolve));
+    const proxy = await startProxy(upstreamPort, { VINHOMES_API_URL: `http://127.0.0.1:${upstreamPort}` });
+    try {
+      const response = await fetch(`http://127.0.0.1:${proxy.port}/api/business/rooms/bql-sapphire/teams`);
+      expect(response.status).toBe(502);
+      expect((await response.json()).detail).toContain("kết nối");
+    } finally {
+      await proxy.stop();
+      upstream.close();
+    }
+  });
+
   test("keeps upstream websocket forwarding to session and origin headers", () => {
     const headers = upstreamWebSocketHeaders(
       new Headers({

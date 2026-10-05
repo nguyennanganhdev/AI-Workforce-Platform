@@ -60,6 +60,21 @@ export function plain(text: string): string {
     .trim();
 }
 
+/**
+ * An agent's reply without the signature its instructions make it end with ("— Agent Tri thức"):
+ * the conversation already names who wrote each message.
+ */
+export function unsigned(text: string, author: string): string {
+  const lines = text.trimEnd().split("\n");
+  const last = lines.at(-1)!.trim().replace(/^[—–-]+\s*/, "");
+  return lines.length > 1 && /^[—–-]/.test(lines.at(-1)!.trim()) && last === author.trim() ? lines.slice(0, -1).join("\n").trimEnd() : text;
+}
+
+/** Who a question went to. Its progress is said only while there is something to wait for or redo. */
+export function askedLine(agent: string, status?: string | null): string {
+  return `Hỏi @${agent}${status && status !== "done" ? ` · ${mentionStatus[status] || status}` : ""}`;
+}
+
 export type FeedItem =
   | { type: "note"; id: string; at: string; text: string }
   | { type: "resident"; id: string; at: string; text: string }
@@ -99,7 +114,7 @@ export function sessionFeed(
       items.push({ ...base, type: "asked", author: m.sender_user_id === userId ? "Bạn" : m.sender_name || "Ban quản lý",
         agent: name(m.body.mentionAgentId), text, status: m.mention_status || "", files: m.files || [] });
     else if (m.sender_agent_id && kind.startsWith("supervisor")) items.push({ ...base, type: "note", text });
-    else if (m.sender_agent_id) items.push({ ...base, type: "agent", author: name(m.sender_agent_id), text });
+    else if (m.sender_agent_id) items.push({ ...base, type: "agent", author: name(m.sender_agent_id), text: unsigned(text, name(m.sender_agent_id)) });
   }
   // The backend stores a plan a moment before it mirrors the reply the plan was built from.
   const when = (item: FeedItem) => new Date(item.at).getTime() + (item.type === "plan" || (item.type === "note" && item.text.includes("phương án trước đó")) ? 5000 : 0);

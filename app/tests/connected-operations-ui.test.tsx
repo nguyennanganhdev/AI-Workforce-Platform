@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { typeInto } from "./type-into";
 let cleanup: typeof import('@testing-library/react')['cleanup'];
 let fireEvent: typeof import('@testing-library/react')['fireEvent'];
 let render: typeof import('@testing-library/react')['render'];
@@ -19,7 +20,7 @@ beforeAll(async () => {
 afterEach(() => {cleanup(); globalThis.fetch = originalFetch; localStorage.clear();});
 afterAll(() => GlobalRegistrator.unregister());
 
-test("original work list renders server rows without needing the preview provider", () => {
+test("original work list renders server rows without needing the preview provider", async () => {
   localStorage.setItem("vinhomes.frontend-workspace.v1", "invalid-preview-data");
   let opened = "";
   const page = render(<WorkListView manager history={false} onHistory={() => {}} connectedAccount={{role: "manager", scope: "assigned"}}
@@ -28,7 +29,7 @@ test("original work list renders server rows without needing the preview provide
   fireEvent.click(page.getByRole("button", {name: /Server repair/}));
   expect(opened).toBe("server-ticket");
   expect(page.queryByText(/Dữ liệu và hành động mô phỏng/)).toBeNull();
-  fireEvent.change(page.getByPlaceholderText("Nội dung, mã ticket, vị trí, nhân viên"), {target: {value: "not found"}});
+  await typeInto(page.getByPlaceholderText("Nội dung, mã ticket, vị trí, nhân viên"), "not found");
   expect(page.queryByRole("button", {name: /Server repair/}) === null).toBe(true);
 });
 
@@ -38,7 +39,7 @@ test("original team composer preserves failed messages and does not expose simul
     connectedAccount={{role: "manager", scope: "assigned"}} onSend={async () => succeed} />);
   expect(page.queryByText("Tạo agent")).toBeNull();
   const input = page.getByLabelText("Nội dung") as HTMLTextAreaElement;
-  fireEvent.change(input, {target: {value: "Keep on failure"}});
+  await typeInto(input, "Keep on failure");
   fireEvent.click(page.getByRole("button", {name: "Gửi tin nhắn"}));
   await waitFor(() => expect(page.getByRole("button", {name: "Gửi tin nhắn"}).hasAttribute("disabled")).toBe(false));
   expect(input.value).toBe("Keep on failure");
@@ -55,8 +56,8 @@ test("original report form requests persisted report data with an inclusive fina
   }) as typeof fetch;
   const page = render(<LiveReportsPage buildings={[{id: "building-real", name: "Tower A"}]} categories={[]} />);
   fireEvent.change(page.getByLabelText("Tòa nhà"), {target: {value: "building-real"}});
-  fireEvent.change(page.getByLabelText("Từ ngày"), {target: {value: "2026-10-01"}});
-  fireEvent.change(page.getByLabelText("Đến ngày"), {target: {value: "2026-10-02"}});
+  await typeInto(page.getByLabelText("Từ ngày"), "2026-10-01");
+  await typeInto(page.getByLabelText("Đến ngày"), "2026-10-02");
   fireEvent.click(page.getByRole("button", {name: "Xem báo cáo"}));
   await waitFor(() => expect(page.getByText("Electrical")).toBeTruthy());
   const url = new URL(requested, "http://localhost");
@@ -78,10 +79,10 @@ test("original resident registration submits real contract and shows pending wit
   expect(page.container.textContent?.includes('M? ?ng d?ng')).toBe(false);
   expect(page.container.querySelector('.resident-auth-story') !== null).toBe(true);
   expect(page.queryByText(/Khám phá bản trải nghiệm/) === null).toBe(true);
-  fireEvent.change(page.getByLabelText('Họ và tên'), {target: {value: 'Resident Name'}});
-  fireEvent.change(page.getByLabelText('Email'), {target: {value: 'resident@example.test'}});
-  fireEvent.change(page.getByLabelText('Mật khẩu', {exact: true}), {target: {value: 'secure-password-123'}});
-  fireEvent.change(page.getByLabelText('Nhập lại mật khẩu', {exact: true}), {target: {value: 'secure-password-123'}});
+  await typeInto(page.getByLabelText('Họ và tên'), 'Resident Name');
+  await typeInto(page.getByLabelText('Email'), 'resident@example.test');
+  await typeInto(page.getByLabelText('Mật khẩu', {exact: true}), 'secure-password-123');
+  await typeInto(page.getByLabelText('Nhập lại mật khẩu', {exact: true}), 'secure-password-123');
   fireEvent.submit(page.container.querySelector('form')!);
   await waitFor(() => expect(page.queryByText('Chờ liên kết căn hộ') !== null).toBe(true));
   expect(payload.email).toBe('resident@example.test');
@@ -96,8 +97,8 @@ test("original staff login shows backend permission denial without reading previ
   const page = render(<StaffLoginPage />);
   expect(page.container.querySelector('.staff-auth-brand') !== null).toBe(true);
   expect(page.queryByText(/Xem bản trải nghiệm/) === null).toBe(true);
-  fireEvent.change(page.getByLabelText('Tài khoản được cấp'), {target: {value: 'resident@example.test'}});
-  fireEvent.change(page.getByLabelText('Mật khẩu', {exact: true}), {target: {value: 'secure-password-123'}});
+  await typeInto(page.getByLabelText('Tài khoản được cấp'), 'resident@example.test');
+  await typeInto(page.getByLabelText('Mật khẩu', {exact: true}), 'secure-password-123');
   fireEvent.submit(page.container.querySelector('form')!);
   await waitFor(() => expect(page.queryByText(/Tài khoản chưa được cấp quyền nhân viên/) !== null).toBe(true));
 });

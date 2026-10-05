@@ -1,10 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "@tanstack/react-router";
 import { IconBolt, IconBuildingCommunity, IconChartBar, IconChecklist, IconCpu, IconHistory, IconMessages, IconPlugConnected, IconUsers } from "@tabler/icons-react";
-import { OperationsSidebarView } from "./operations-sidebar";
-import { OperationsHeaderView } from "./operations-header";
+import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { ConnectedNavigation, type NavigationPage } from './connected-navigation';
 import { FieldShell } from "./field-shell";
-import type { MenuId } from "../types/persona";
+import { OperationsHeaderView } from './operations-header';
 
 export const connectedPages: Record<string, string> = {
   "": "Tổng quan vận hành",
@@ -32,7 +32,7 @@ export const connectedPages: Record<string, string> = {
 };
 
 // Management works from four places. The other pages still answer their address, without a menu entry.
-const managementNav = [
+const managementNav: {page:NavigationPage; icon:ReactNode}[] = [
   { page: "team", icon: <IconMessages className="size-4" stroke={1.75} /> },
   { page: "kanban", icon: <IconChecklist className="size-4" stroke={1.75} /> },
   { page: "agents", icon: <IconBolt className="size-4" stroke={1.75} /> },
@@ -40,7 +40,7 @@ const managementNav = [
 ];
 
 // What an administrator sets up for management to work with.
-const adminNav = [
+const adminNav: {page:NavigationPage; icon:ReactNode}[] = [
   { page: "accounts", icon: <IconUsers className="size-4" stroke={1.75} /> },
   { page: "units", icon: <IconBuildingCommunity className="size-4" stroke={1.75} /> },
   { page: "connections", icon: <IconPlugConnected className="size-4" stroke={1.75} /> },
@@ -59,6 +59,7 @@ export function ConnectedOperationsShell({
   alerts = [],
   notices = [],
   flush = false,
+  banner,
   children,
 }: {
   name?: string;
@@ -71,43 +72,33 @@ export function ConnectedOperationsShell({
   notices?: ShellNotice[];
   /** The page fills the pane and scrolls inside itself, as a conversation does. */
   flush?: boolean;
+  /** What the field frame announces above the page, when that is not every notice. */
+  banner?: ShellNotice[];
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem('operations.navigation') !== 'closed'; } catch { return true; } });
+  const toggle = (value: boolean) => { setOpen(value); try { localStorage.setItem('operations.navigation', value ? 'open' : 'closed'); } catch { /* Navigation still works without storage. */ } };
   const path = useLocation().pathname.split("/")[2] || (management ? "team" : "");
   const roleLabel = administrator ? "Quản trị hệ thống" : management ? "Ban quản lý" : "Nhân viên hiện trường";
   useEffect(() => {
     document.title = `${notices.length ? `(${notices.length}) ` : ""}Vinhomes · ${field ? "Việc của tôi" : "Quản lý vận hành"}`;
   }, [notices.length, field]);
-  if (field) return <FieldShell name={name} notices={notices}>{children}</FieldShell>;
+  if (field) return <FieldShell name={name} notices={banner ?? notices}>{children}</FieldShell>;
   return (
-    <div
+    <SidebarProvider open={open} onOpenChange={toggle}
       lang="vi"
       translate="no"
-      className="operations-app notranslate flex h-[100dvh] w-full overflow-hidden font-sans"
+      className="operations-app connected-shell notranslate flex h-[100dvh] min-h-0 w-full overflow-hidden font-sans"
     >
-      {open && (
-        <div
-          className="operations-sidebar-backdrop"
-          onClick={() => setOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-      <OperationsSidebarView open={open} onNavigate={() => setOpen(false)}
-        account={{name: name || 'Đang tải tài khoản…', identifier: '', scope: '', roleLabel}}
-        workspaceItems={[]}
-        operationItems={management
-          ? managementNav.map(({page, icon}) => ({id: page as MenuId, label: connectedPages[page], to: `/operations/${page}`, icon, section: 'OPERATIONS' as const,
-              badgeCount: page === 'team' && notices.length ? notices.length : undefined}))
-          // A technician has one list: what is open and, on its second tab, what is done.
-          : [{id: 'my-tasks' as MenuId, label: connectedPages['my-tasks'], to: '/operations/my-tasks', section: 'OPERATIONS' as const,
-              icon: <IconChecklist className="size-4" stroke={1.75} />, badgeCount: notices.length || undefined}]}
-        managementItems={administrator ? adminNav.map(({page, icon}) => ({id: page as MenuId, label: connectedPages[page], to: `/operations/${page}`, icon, section: 'MANAGEMENT' as const})) : []} />
+      <ConnectedNavigation name={name || 'Đang tải tài khoản…'} role={roleLabel} page={path}
+        work={(management ? managementNav : []).map(({page,icon}) => ({page,icon,label:connectedPages[page],count:page === 'team' ? notices.length : undefined}))}
+        setup={administrator ? adminNav.map(({page,icon}) => ({page,icon,label:connectedPages[page]})) : []} />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <OperationsHeaderView menuOpen={open} onToggleMenu={() => setOpen(!open)}
-          personalAccountsUrl="/settings/connected-accounts"
-          breadcrumb={{section: 'Vận hành đô thị', page: connectedPages[path] || 'Không gian làm việc'}}
-          name={name || 'Đang tải tài khoản…'} roleTitle={roleLabel} p1Incidents={alerts} pendingApprovals={[]} notices={notices} />
+        <div className="connected-header"><SidebarTrigger aria-label={open ? 'Ẩn thanh điều hướng' : 'Hiện thanh điều hướng'} />
+          <OperationsHeaderView menuOpen={open} onToggleMenu={() => toggle(!open)} personalAccountsUrl="/settings/connected-accounts"
+            breadcrumb={{section:'Vận hành đô thị',page:connectedPages[path] || 'Không gian làm việc'}}
+            name={name || 'Đang tải tài khoản…'} roleTitle={roleLabel} p1Incidents={alerts} pendingApprovals={[]} notices={notices} />
+        </div>
         {flush ? <main className="min-h-0 flex-1 overflow-hidden">{children}</main> : (
           <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-6 xl:p-8">
             <div className="operations-content w-full min-w-0 max-w-full">
@@ -116,6 +107,6 @@ export function ConnectedOperationsShell({
           </main>
         )}
       </div>
-    </div>
+    </SidebarProvider>
   );
 }

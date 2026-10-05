@@ -23,6 +23,8 @@ import {
 } from "@tabler/icons-react";
 import { Neighborhood } from "../../components/Illustrations";
 import { resident } from "../../mocks/seed";
+import { formOffered } from "../../services/chat-turn";
+import { QuestionCard } from "./QuestionCard";
 import { MAX_PHOTOS, readPhotos } from "../../services/resident-service";
 import type { Draft, Photo, ResidentState } from "../../services/types";
 import { RequestCard } from "../requests/Requests";
@@ -37,6 +39,9 @@ type AssistantProps = {
   conversation: boolean;
   onResume: () => void;
   onSend: (text: string, photos?: Photo[]) => boolean | Promise<boolean>;
+  onForm?: () => void;
+  /** What management is asking in this conversation right now, if anything. */
+  question?: string;
   onOpen: (id: string) => void;
   onRequests: () => void;
   onSubmit: () => void;
@@ -54,6 +59,8 @@ export function Assistant({
   conversation,
   onResume,
   onSend,
+  onForm,
+  question,
   onOpen,
   onRequests,
   onSubmit,
@@ -77,6 +84,7 @@ export function Assistant({
     state.requests.find((r) => r.status === "confirmation") ??
     state.requests.find((r) => r.status !== "completed");
   const started = conversation;
+  const offerForm = !!onForm && formOffered(state.messages);
   return (
     <div className={`assistant-content ${started ? "started" : ""}`}>
       {!started && (
@@ -215,7 +223,10 @@ export function Assistant({
             aria-live="polite"
             aria-relevant="additions text"
           >
-            {state.messages.map((message) => (
+            {state.messages
+              // The open question is drawn below as a card to answer, not twice.
+              .filter((message) => !(question && message.role === "assistant" && message.text === question))
+              .map((message) => (
               <div key={message.id} className={`message ${message.role}`}>
                 {message.role === "assistant" && (
                   <span className="assistant-avatar small-avatar">
@@ -271,6 +282,9 @@ export function Assistant({
           </div>
         </>
       )}
+      {started && question && !state.awaitingReply && (
+        <QuestionCard key={question} question={question} busy={busy} onAnswer={(text) => onSend(text)} />
+      )}
       {started && connected && state.draft && state.draft.step !== "review" && (
         <p className="edit-draft-note" role="status">
           {state.draft.step === "description"
@@ -316,14 +330,22 @@ export function Assistant({
       )}
       {started && !state.draft && (
         <div className="suggestion-row">
-          <button onClick={() => onSend("Báo sự cố")}>
-            <IconPlus size={15} />
-            Báo sự cố
-          </button>
+          {!connected && (
+            <button onClick={() => onSend("Báo sự cố")}>
+              <IconPlus size={15} />
+              Báo sự cố
+            </button>
+          )}
           <button onClick={() => onSend("Xem yêu cầu của tôi")}>
             <IconClipboardList size={15} />
             Xem tiến độ
           </button>
+          {offerForm && (
+            <button onClick={onForm}>
+              <IconClipboardList size={15} />
+              Gửi bằng biểu mẫu
+            </button>
+          )}
         </div>
       )}
       <div ref={end} className="scroll-end" />

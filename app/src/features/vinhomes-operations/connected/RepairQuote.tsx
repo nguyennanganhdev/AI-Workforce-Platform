@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { IconTrash } from "@tabler/icons-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { MATERIAL_CATALOG, formatVnd } from "../lib/field-flow";
 
 export type QuoteInput = {
@@ -14,6 +17,7 @@ type QuoteDetail = {
   total?: number;
 };
 type Line = QuoteInput["lines"][number];
+const caption = "text-xs font-medium text-muted-foreground";
 
 /** Danh mục vật tư + tiền công nhân viên lập tại hiện trường; tổng tiền do backend tính lại. */
 export function QuoteForm({
@@ -35,82 +39,67 @@ export function QuoteForm({
     lines.reduce((sum, l) => sum + Math.round(Number(l.quantity) * l.unit_price), 0) +
     Number(labor);
   return (
-    <div className="ws-stack">
-      <div className="ws-row">
-        <select
-          value=""
-          onChange={(e) => {
-            const item = MATERIAL_CATALOG.find((m) => m.code === e.target.value);
-            setLines((all) => [
-              ...all,
-              item
-                ? { name: item.name, quantity: "1", unit: item.unit, unit_price: item.unit_price }
-                : { name: "", quantity: "1", unit: "cái", unit_price: 0 },
-            ]);
-          }}
-        >
-          <option value="" disabled>
-            Thêm vật tư…
-          </option>
-          {MATERIAL_CATALOG.map((m) => (
-            <option key={m.code} value={m.code}>
-              {m.name} ({formatVnd(m.unit_price)}/{m.unit})
-            </option>
-          ))}
-          <option value="manual">Vật tư khác (nhập tay)</option>
-        </select>
-      </div>
+    <div className="flex flex-col gap-3">
+      <p className="text-sm font-semibold text-foreground">Vật tư và chi phí</p>
       {lines.map((line, index) => (
-        <div className="ws-row" key={index}>
-          <input
-            aria-label="Tên vật tư"
-            placeholder="Tên vật tư"
-            value={line.name}
-            onChange={(e) => update(index, { name: e.target.value })}
-          />
-          <input
-            aria-label="Số lượng"
-            type="number"
-            min="0.001"
-            step="any"
-            value={line.quantity}
-            onChange={(e) => update(index, { quantity: e.target.value })}
-          />
-          <input
-            aria-label="Đơn vị"
-            value={line.unit}
-            onChange={(e) => update(index, { unit: e.target.value })}
-          />
-          <input
-            aria-label="Đơn giá"
-            type="number"
-            min="0"
-            value={line.unit_price}
-            onChange={(e) => update(index, { unit_price: Number(e.target.value) })}
-          />
-          <button type="button" onClick={() => setLines((all) => all.filter((_, i) => i !== index))}>
-            Xóa
-          </button>
+        <div className="flex flex-col gap-2 rounded-lg border border-border p-3" key={index}>
+          <div className="flex items-center gap-2">
+            <Input aria-label="Tên vật tư" placeholder="Tên vật tư" className="h-11 flex-1" value={line.name}
+              onChange={(e) => update(index, { name: e.target.value })} />
+            <Button type="button" size="icon" variant="ghost" aria-label={`Xóa ${line.name || "vật tư"}`} className="size-11 shrink-0"
+              onClick={() => setLines((all) => all.filter((_, i) => i !== index))}><IconTrash /></Button>
+          </div>
+          <div className="grid grid-cols-[1fr_1fr_1.5fr] gap-2">
+            <label className={caption}>Số lượng
+              <Input aria-label="Số lượng" type="number" inputMode="decimal" min="0.001" step="any" className="mt-1 h-11" value={line.quantity}
+                onChange={(e) => update(index, { quantity: e.target.value })} /></label>
+            <label className={caption}>Đơn vị
+              <Input aria-label="Đơn vị" className="mt-1 h-11" value={line.unit} onChange={(e) => update(index, { unit: e.target.value })} /></label>
+            <label className={caption}>Đơn giá (đ)
+              <Input aria-label="Đơn giá" type="number" inputMode="numeric" min="0" className="mt-1 h-11" value={line.unit_price}
+                onChange={(e) => update(index, { unit_price: Number(e.target.value) })} /></label>
+          </div>
         </div>
       ))}
-      <div className="ws-row">
-        <label>
+      <select
+        aria-label="Thêm vật tư"
+        className="h-11 w-full rounded-lg border border-dashed border-input bg-background px-3 text-sm text-foreground"
+        value=""
+        onChange={(e) => {
+          const item = MATERIAL_CATALOG.find((m) => m.code === e.target.value);
+          setLines((all) => [
+            ...all,
+            item
+              ? { name: item.name, quantity: "1", unit: item.unit, unit_price: item.unit_price }
+              : { name: "", quantity: "1", unit: "cái", unit_price: 0 },
+          ]);
+        }}
+      >
+        <option value="" disabled>
+          Thêm vật tư…
+        </option>
+        {MATERIAL_CATALOG.map((m) => (
+          <option key={m.code} value={m.code}>
+            {m.name} ({formatVnd(m.unit_price)}/{m.unit})
+          </option>
+        ))}
+        <option value="manual">Vật tư khác (nhập tay)</option>
+      </select>
+      <div className="grid grid-cols-2 gap-3">
+        <label className={caption}>
           Tiền công (đ)
-          <input type="number" min="0" value={labor} onChange={(e) => setLabor(e.target.value)} />
+          <Input type="number" inputMode="numeric" min="0" className="mt-1 h-11" value={labor} onChange={(e) => setLabor(e.target.value)} />
         </label>
-        <label>
+        <label className={caption}>
           Bảo hành (tháng)
-          <input
-            type="number"
-            min="0"
-            max="120"
-            value={warranty}
-            onChange={(e) => setWarranty(e.target.value)}
-          />
+          <Input type="number" inputMode="numeric" min="0" max="120" className="mt-1 h-11" value={warranty} onChange={(e) => setWarranty(e.target.value)} />
         </label>
-        <strong>Tổng tạm tính: {formatVnd(total)}</strong>
       </div>
-      <button
+      <p className="flex items-baseline justify-between border-t border-border pt-3 text-sm text-muted-foreground">
+        Tổng tạm tính<strong className="text-lg font-semibold tabular-nums text-foreground">{formatVnd(total)}</strong>
+      </p>
+      <Button
+        className="h-12 w-full text-base"
         disabled={disabled || !valid}
         onClick={() =>
           onSubmit({
@@ -121,7 +110,7 @@ export function QuoteForm({
         }
       >
         Gửi phương án cho cư dân
-      </button>
+      </Button>
     </div>
   );
 }
@@ -156,40 +145,46 @@ export function OnsiteConsent({
     };
   }, [orderId, request]);
   return (
-    <div className="ws-stack">
-      <strong>Phương án đang chờ cư dân đồng ý</strong>
-      {quote?.note && <p>{quote.note}</p>}
-      {quote?.lines?.map((line, index) => (
-        <div className="ws-row between" key={index}>
-          <span>
-            {line.name} × {line.quantity} {line.unit}
-          </span>
-          <span>{formatVnd(line.amount)}</span>
-        </div>
-      ))}
-      {quote?.total !== undefined && (
-        <>
-          <div className="ws-row between">
-            <span>Tiền công</span>
-            <span>{formatVnd(quote.labor_cost ?? 0)}</span>
-          </div>
-          <div className="ws-row between">
-            <strong>Tổng cộng</strong>
-            <strong>{formatVnd(quote.total)}</strong>
-          </div>
-          {!!quote.warranty_months && <span>Bảo hành: {quote.warranty_months} tháng</span>}
-        </>
-      )}
-      <small>
+    <div className="flex flex-col gap-3">
+      <div className="rounded-lg border border-border p-4">
+        <p className="text-sm font-semibold text-foreground">Phương án gửi cư dân</p>
+        {quote?.note && <p className="mt-1.5 whitespace-pre-line text-sm text-muted-foreground">{quote.note}</p>}
+        {!!quote?.lines?.length && (
+          <ul className="mt-3 flex flex-col gap-1.5 text-sm text-foreground">
+            {quote.lines.map((line, index) => (
+              <li className="flex justify-between gap-3" key={index}>
+                <span>
+                  {line.name} × {line.quantity} {line.unit}
+                </span>
+                <span className="shrink-0 tabular-nums">{formatVnd(line.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {quote?.total !== undefined && (
+          <dl className="mt-3 flex flex-col gap-1.5 border-t border-border pt-3 text-sm">
+            <div className="flex justify-between gap-3 text-muted-foreground">
+              <dt>Tiền công</dt>
+              <dd className="tabular-nums">{formatVnd(quote.labor_cost ?? 0)}</dd>
+            </div>
+            <div className="flex justify-between gap-3 text-base font-semibold text-foreground">
+              <dt>Tổng cộng</dt>
+              <dd className="tabular-nums">{formatVnd(quote.total)}</dd>
+            </div>
+            {!!quote.warranty_months && <div className="flex justify-between gap-3 text-muted-foreground"><dt>Bảo hành</dt><dd>{quote.warranty_months} tháng</dd></div>}
+          </dl>
+        )}
+      </div>
+      <p className="text-sm text-muted-foreground">
         Cư dân có thể đồng ý trên ứng dụng cư dân, hoặc đọc và trả lời ngay trên máy này.
-      </small>
-      <div className="live-actions">
-        <button disabled={disabled} onClick={() => onDecide(true)}>
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Button variant="outline" className="h-12 text-base" disabled={disabled} onClick={() => onDecide(true)}>
           Cư dân đồng ý tại chỗ
-        </button>
-        <button disabled={disabled} onClick={() => onDecide(false)}>
-          Cư dân chưa đồng ý, lập lại phương án
-        </button>
+        </Button>
+        <Button variant="ghost" className="h-12 text-base" disabled={disabled} onClick={() => onDecide(false)}>
+          Chưa đồng ý, lập lại
+        </Button>
       </div>
     </div>
   );

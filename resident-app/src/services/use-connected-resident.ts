@@ -1,3 +1,4 @@
+import { chatTurn } from "./chat-turn";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { uploadImage } from "../../../shared/direct-image-upload";
 import {
@@ -122,7 +123,7 @@ export function useConnectedResident() {
       ),
     );
     const chatMessages = messages
-      .filter((m) => m.body.text)
+      .filter((m) => m.body.text || m.body.fileIds?.length)
       .map((m) => ({
         id: m.id,
         role:
@@ -267,6 +268,19 @@ export function useConnectedResident() {
     setError,
     refresh: () => run(async () => {}, false),
     interaction: (id: string) => interactions.find(i => i.ticket_id === id),
+    /** The question management asks in the open conversation, to answer right there. */
+    question: () => {
+      const ticket = state.conversations?.find((c) => c.id === state.activeConversationId)?.requestId;
+      const pending = interactions.find((i) => i.ticket_id === ticket && i.pending_kind === "information");
+      return pending?.question;
+    },
+    openChatOf: (ticketId: string) => {
+      const chat = state.conversations?.find((c) => c.requestId === ticketId);
+      if (!chat) return;
+      active.current = chat.id;
+      location.hash = `/chat/${chat.id}`;
+      void run(async () => {});
+    },
     respondSupervisor: (item: SupervisorInteraction, decision: 'information' | 'approve' | 'reject' | 'request_changes', note: string) =>
       run(async () => {
         const body = {decision, note: note.trim(), ticket_version: item.ticket_version};
@@ -313,7 +327,13 @@ export function useConnectedResident() {
         )
           id = await create();
         location.hash = `/chat/${id}`;
-        const content = text.trim() || "Đính kèm ảnh phản ánh";
+        const turn = chatTurn(text, photos, drafts.current.get(id) ?? null);
+        if (turn.kind === "open") return;
+        if (turn.kind === "form") {
+          changeDraft(turn.draft);
+          return;
+        }
+        const content = turn.text;
         // The photos go with the message: Reception files the request from the conversation, and a
         // photo kept only in this browser would never reach the request it was taken for.
         const fileIds: string[] = [];
@@ -328,35 +348,10 @@ export function useConnectedResident() {
           }),
         });
         keys.current.delete(retryKey);
-        const previous = drafts.current.get(id);
-        if (text === "Báo sự cố")
-          changeDraft({
-            step: "description",
-            description: "",
-            location: "",
-            photos,
-          });
-        else if (previous) {
-          const next = {
-            ...previous,
-            photos: [...previous.photos, ...photos].slice(0, 3),
-          };
-          if (previous.step === "description") {
-            next.description = text.trim();
-            next.step = "location";
-          } else if (previous.step === "location") {
-            next.location = text.trim();
-            next.step = "review";
-          }
-          changeDraft(next);
-        } else if (photos.length)
-          changeDraft({
-            step: "location",
-            description: text.trim(),
-            location: "",
-            photos,
-          });
       }),
+    // Reception leads the conversation. The form is the way around it when it could not answer.
+    startForm: () =>
+      changeDraft({ step: "description", description: "", location: "", photos: [] }),
     editDraft: () => {
       const d = drafts.current.get(active.current);
       if (d) changeDraft({ ...d, step: "description" });

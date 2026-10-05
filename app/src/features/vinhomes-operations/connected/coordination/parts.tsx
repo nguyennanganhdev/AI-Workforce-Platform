@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { IconFile, IconPaperclip, IconSend, IconX } from "@tabler/icons-react";
-import { AbstractAvatar } from "@/components/agents/abstract-avatar";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
-const LONG = 700;
+const LONG = 420;
 const size = (bytes: number) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 /** What is attached to a message: a photo is shown, any other file is a link that downloads it. */
@@ -38,33 +37,27 @@ export function Said({ who, at, mine = false, agent = false, tone = "plain", foo
 }) {
   const [open, setOpen] = useState(false);
   const long = children.length > LONG;
+  // What the reader wrote sits on the right in a bubble; everybody else is a name over plain text.
   return (
-    <article className={cn("flex gap-3", mine && "flex-row-reverse")}>
-      {agent ? <AbstractAvatar name={who} seed={who} size={32} /> : (
-        <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
-          {who.trim().charAt(0).toUpperCase()}
-        </span>
+    <article className={cn("coord-message flex flex-col gap-1.5", mine ? "items-end" : "items-start")} data-agent={agent || undefined}>
+      <p className="flex items-baseline gap-2 text-xs text-muted-foreground">
+        <strong className={cn("text-[13px] font-semibold text-foreground", mine && "sr-only")}>{who}</strong>
+        <time dateTime={at}>{clock(at)}</time>
+      </p>
+      {/* A message may be only its files. */}
+      {!!children && (
+        <div className={cn("whitespace-pre-wrap break-words text-[15px] leading-relaxed text-foreground",
+          mine ? "max-w-[85%] rounded-2xl bg-muted px-4 py-2.5" : tone === "accent" ? "border-l-2 border-primary/50 pl-3" : "")}>
+          {long && !open ? `${children.slice(0, LONG).trimEnd()}…` : children}
+        </div>
       )}
-      <div className={cn("flex min-w-0 max-w-[min(42rem,85%)] flex-col gap-1", mine && "items-end")}>
-        <p className="flex items-baseline gap-2 text-xs text-muted-foreground">
-          <strong className="font-medium text-foreground">{who}</strong>
-          <time dateTime={at}>{clock(at)}</time>
-        </p>
-        {/* A message may be only its files. */}
-        {!!children && (
-          <div className={cn("whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm leading-relaxed",
-            mine ? "bg-primary text-primary-foreground" : tone === "accent" ? "border border-primary/20 bg-primary/5 text-foreground" : "bg-muted text-foreground")}>
-            {long && !open ? `${children.slice(0, LONG).trimEnd()}…` : children}
-          </div>
-        )}
-        {!!files?.length && <Files files={files} />}
-        {long && (
-          <button type="button" className="text-xs font-medium text-primary hover:underline" aria-expanded={open} onClick={() => setOpen(!open)}>
-            {open ? "Thu gọn" : "Xem đầy đủ"}
-          </button>
-        )}
-        {footer && <p className="text-xs text-muted-foreground">{footer}</p>}
-      </div>
+      {!!files?.length && <Files files={files} />}
+      {long && (
+        <button type="button" className="text-xs font-medium text-primary hover:underline" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? "Thu gọn" : "Xem đầy đủ"}
+        </button>
+      )}
+      {footer && <p className="text-xs text-muted-foreground">{footer}</p>}
     </article>
   );
 }
@@ -88,9 +81,9 @@ export function Transcript({ label, count, children }: { label: string; count: n
     if (pinned.current && box.current) box.current.scrollTop = box.current.scrollHeight;
   }, [count]);
   return (
-    <div ref={box} role="log" aria-label={label} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 md:px-6"
+    <div ref={box} role="log" aria-label={label} className="coord-transcript min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-6"
       onScroll={(e) => { const el = e.currentTarget; pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
-      {children}
+      <div className="mx-auto max-w-3xl space-y-7">{children}</div>
     </div>
   );
 }
@@ -115,8 +108,8 @@ export function Composer({ agents, agentLabel, placeholder, disabled, hint, erro
   async function send() {
     if (!sendable || sending || disabled) return;
     setSending(true);
-    if (await onSend(text.trim(), agentId, files)) { setText(""); setFiles([]); }
-    setSending(false);
+    try { if (await onSend(text.trim(), agentId, files)) { setText(""); setFiles([]); } }
+    finally { setSending(false); }
   }
   function pick(picked: File[]) {
     const next = [...files, ...picked];
@@ -125,7 +118,8 @@ export function Composer({ agents, agentLabel, placeholder, disabled, hint, erro
     if (!refusal) setFiles(next);
   }
   return (
-    <form className="border-t border-border bg-background px-4 py-3 md:px-6" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+    <form className="coord-composer bg-background px-4 pb-4 pt-2 md:px-6" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+      <div className="mx-auto max-w-3xl">
       {(refused || error) && <p role="alert" className="mb-2 text-sm text-destructive">{refused || error}</p>}
       {!!files.length && (
         <ul aria-label="Tệp sẽ gửi" className="mb-2 flex flex-wrap gap-2">
@@ -139,7 +133,7 @@ export function Composer({ agents, agentLabel, placeholder, disabled, hint, erro
           ))}
         </ul>
       )}
-      <div className="flex items-end gap-2 rounded-lg border border-input bg-background p-2 focus-within:border-ring">
+      <div className="coord-composer-box flex flex-wrap items-center gap-1 rounded-2xl border border-input bg-background p-2 shadow-sm focus-within:border-ring">
         {attach && (
           <>
             <input ref={picker} type="file" multiple hidden accept={attach.accept} aria-label="Chọn ảnh hoặc tệp"
@@ -149,18 +143,19 @@ export function Composer({ agents, agentLabel, placeholder, disabled, hint, erro
         )}
         {(agentLabel || agents.length > 1) && (
           <select aria-label="@Nhắc agent" value={agentId} disabled={disabled} onChange={(e) => setAgentId(e.target.value)}
-            className="h-9 max-w-44 shrink-0 rounded-md border border-input bg-background px-2 text-sm text-foreground">
+            className="h-9 max-w-44 shrink-0 rounded-md border-0 bg-transparent px-2 text-sm text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
             {agentLabel && <option value="">{agentLabel}</option>}
             {agents.map((a) => <option key={a.id} value={a.id}>@{a.name}</option>)}
           </select>
         )}
         <textarea aria-label="Nội dung" rows={1} value={text} maxLength={2000} disabled={disabled} placeholder={placeholder}
-          className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-1 py-2 text-sm leading-snug text-foreground outline-none placeholder:text-muted-foreground"
+          className="coord-compose-text max-h-40 min-h-12 w-full resize-none bg-transparent px-2 py-2 text-[15px] leading-snug text-foreground outline-none placeholder:text-muted-foreground"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />
         <Button type="submit" size="icon" aria-label="Gửi tin nhắn" disabled={disabled || sending || !sendable}><IconSend /></Button>
       </div>
-      {hint && <p className="mt-1.5 text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p role="status" className="mt-1.5 px-2 text-xs text-muted-foreground">{hint}</p>}
+      </div>
     </form>
   );
 }

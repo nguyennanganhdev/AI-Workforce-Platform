@@ -235,6 +235,8 @@ if (import.meta.main) {
     // Both loopbacks, which is what `::` gets you: a dual-stack socket answers on 127.0.0.1 and
     // ::1 alike. Bound to one, whoever is told the URL has no way to know which they were given.
     hostname: "::",
+    // Construction, trial and evaluation requests legitimately wait on model calls.
+    idleTimeout: 255,
     // `ws: true` on the old proxy was required for the live screen, so the upgrade is forwarded
     // rather than answered with the app's HTML, which failed with an opaque socket error.
     websocket: {
@@ -283,14 +285,20 @@ if (import.meta.main) {
         }
         // The body is streamed rather than buffered, and redirects are left to the caller so a
         // 302 from the server is not silently followed to a different origin.
-        return fetch(target, {
-          method: request.method,
-          headers: business ? businessHeaders(request.headers) : request.headers,
-          body: request.body,
-          redirect: "manual",
-          // @ts-expect-error duplex is required by fetch for a streamed body and is not yet typed.
-          duplex: "half",
-        });
+        try {
+          return await fetch(target, {
+            method: request.method,
+            headers: business ? businessHeaders(request.headers) : request.headers,
+            body: request.body,
+            redirect: "manual",
+            signal: request.signal,
+            // @ts-expect-error duplex is required by fetch for a streamed body and is not yet typed.
+            duplex: "half",
+          });
+        } catch {
+          const message = "Không kết nối được dịch vụ. Vui lòng thử lại sau.";
+          return Response.json({ error: message, detail: message }, { status: 502 });
+        }
       }
 
       const away = fieldRedirect(url.pathname);

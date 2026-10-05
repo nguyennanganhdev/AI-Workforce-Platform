@@ -1,5 +1,5 @@
 import { mutationOptions, type QueryClient } from "@tanstack/react-query";
-import { client } from "@/lib/client";
+import { client, tryClient } from "@/lib/client";
 import { businessHeaders } from "@/lib/coordination/queries";
 import { managedAgentKeys, type AgentConfiguration, type EvaluationInput, type EvaluationResult } from "@/lib/agent-management/queries";
 import { roomKeys } from "@/lib/rooms/queries";
@@ -16,9 +16,23 @@ export function configureManagedAgentMutationOptions(queryClient: QueryClient) {
   }, onSuccess: () => queryClient.invalidateQueries({queryKey: managedAgentKeys.all}) });
 }
 export function constructManagedAgentMutationOptions(queryClient: QueryClient) {
-  return mutationOptions({ mutationFn: async ({roomId, agentId, ...body}: {roomId: string; agentId: string; role: string; description: string; service_categories: string[]; configuration_hash: string; revision_of?: string | null; request_id: string}): Promise<void> => {
-    await client(`${base(roomId)}/agents/${encodeURIComponent(agentId)}/construct`, {method: "POST", body, headers: businessHeaders(), fallback: "Factory chưa tạo được cấu hình agent."});
-  }, onSuccess: () => queryClient.invalidateQueries({queryKey: managedAgentKeys.all}) });
+  return mutationOptions({ mutationFn: async ({roomId, agentId, ...body}: {roomId: string; agentId: string; role: string; description: string; service_categories: string[]; configuration_hash: string; revision_of?: string | null; request_id: string}): Promise<{needsInput: boolean; questions: string[]}> => {
+    const fallback = "Factory chưa tạo được cấu hình agent.";
+    const response = await tryClient(`${base(roomId)}/agents/${encodeURIComponent(agentId)}/construct`, {method: "POST", body, headers: businessHeaders()});
+    if (response.ok) {
+      const result = await response.json();
+      if (result.needsInput === true && Array.isArray(result.questions) && result.questions.length
+        && result.questions.every((q: unknown) => typeof q === "string" && q.trim())) {
+        return {needsInput: true, questions: result.questions};
+      }
+      if (typeof result.configurationHash === "string" && result.configuration) return {needsInput: false, questions: []};
+      throw new Error(fallback);
+    }
+    // A refused description comes back with what to add to it, so it is shown as it came.
+    const detail = (await response.json().catch(() => ({}))).detail;
+    if (typeof detail !== "string") throw new Error(fallback);
+    throw new Error(response.status === 422 ? detail : [409, 502, 503].includes(response.status) ? `${fallback} Máy chủ trả lời: ${detail}` : fallback);
+  }, onSuccess: (result) => { if (!result.needsInput) return queryClient.invalidateQueries({queryKey: managedAgentKeys.all}); } });
 }
 export function evaluateManagedAgentMutationOptions(queryClient: QueryClient) {
   return mutationOptions({ mutationFn: async ({roomId, agentId, ...body}: {roomId: string; agentId: string; configuration_hash: string; request_id: string; cases: EvaluationInput[]}): Promise<{passed: boolean; cases: EvaluationResult[]}> =>

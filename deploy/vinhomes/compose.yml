@@ -33,6 +33,9 @@ services:
       VINHOMES_API_ROUTINES_URL: http://routines:8789/internal/routines/v1
       VINHOMES_API_ROUTINES_TOKEN: ${ROUTINES_SERVICE_TOKEN:?schedule token required}
       VINHOMES_API_REPAIR_CATEGORY_CODES: ${REPAIR_CATEGORY_CODES:-}
+      # 1: the Supervisor approves its own plan and hands the work to an available technician; management
+      # only closes the session. 0: management approves each plan and assigns the technician.
+      VINHOMES_API_SUPERVISOR_APPROVES_PLANS: ${SUPERVISOR_APPROVES_PLANS:-1}
       # 1 once the web apps are only reached over https (the proxy): the session cookie is then never sent in clear.
       VINHOMES_API_SECURE_COOKIES: ${SECURE_COOKIES:-0}
       # Photos and files are stored in a private bucket: the bundled MinIO, or any S3 service named by
@@ -92,7 +95,7 @@ services:
       RECEPTION_SERVICE_TOKEN: ${RECEPTION_SERVICE_TOKEN:?Reception token required}
       RECEPTION_KNOWLEDGE_URL: http://knowledge:8787
       RECEPTION_MODEL: ${RECEPTION_MODEL:-gpt-6-luna}
-      RECEPTION_AGENT: ${RECEPTION_AGENT:-graph}
+      RECEPTION_AGENT: ${RECEPTION_AGENT:-loop}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
       # Another vendor for this role: its provider name, its own key, and an address only for `custom`.
       RECEPTION_MODEL_PROVIDER: ${RECEPTION_MODEL_PROVIDER:-}

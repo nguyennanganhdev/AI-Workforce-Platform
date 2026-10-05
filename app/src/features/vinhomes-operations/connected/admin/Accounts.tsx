@@ -64,6 +64,7 @@ export function AccountsPage() {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-foreground">{a.name}</span>
                     <span className="block truncate text-xs text-muted-foreground">{a.email}</span>
+                    <span className="mt-1 block text-xs text-muted-foreground sm:hidden">{roleOf(a)}{a.role === 'management' && !a.administrator ? ` · ${units.find(u => u.id === a.management_unit_id)?.name || 'Toàn khu'}` : ''}</span>
                   </span>
                   <span className="hidden text-right text-xs text-muted-foreground sm:block">
                     {roleOf(a)}{a.role === "management" && !a.administrator ? ` · ${units.find((u) => u.id === a.management_unit_id)?.name || "Toàn khu"}` : ""}

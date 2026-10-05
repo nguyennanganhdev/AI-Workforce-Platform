@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { IconArrowLeft, IconExternalLink } from "@tabler/icons-react";
+import { IconAdjustmentsHorizontal, IconExternalLink, IconArrowLeft } from "@tabler/icons-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,7 +9,7 @@ import { askSessionAgentMutationOptions, closeSessionMutationOptions, decidePlan
 import { roomFileUrl, ticketSessionQueryOptions, type RoomMessage, type RoomSession, type SessionPlan } from "@/lib/rooms/queries";
 import { queryClient } from "@/query-client";
 import { SessionControls } from "../SessionControls";
-import { mentionStatus, pauseText, planStatus, sessionFeed, sessionState } from "./model";
+import { askedLine, pauseText, planStatus, sessionFeed, sessionState } from "./model";
 import { Composer, Note, Said, Transcript } from "./parts";
 
 /** The plan the Supervisor proposed. Management approves it or sends it back with a reason. */
@@ -26,7 +26,7 @@ function PlanCard({ plan }: { plan: SessionPlan }) {
     ["Chi phí dự kiến", plan.proposal.cost ? `${plan.proposal.cost.amount.toLocaleString("vi-VN")} ${plan.proposal.cost.currency}` : "Chưa có"],
   ];
   return (
-    <section aria-label="Phương án xử lý" className="rounded-lg border border-border bg-card p-4">
+    <section aria-label="Phương án xử lý" className="rounded-xl border border-border bg-card p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">Phương án xử lý</h3>
         <Badge variant={pending ? "default" : "secondary"}>{planStatus[plan.status] || plan.status}</Badge>
@@ -35,19 +35,19 @@ function PlanCard({ plan }: { plan: SessionPlan }) {
       <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm leading-relaxed text-foreground">
         {plan.proposal.steps.map((step) => <li key={step}>{step}</li>)}
       </ol>
-      <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+      <details className="mt-3"><summary className="cursor-pointer text-xs font-medium text-muted-foreground">Thông tin thực hiện và chi phí</summary><dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
         {facts.map(([label, value]) => (
           <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="text-foreground">{value}</dd></div>
         ))}
-      </dl>
+      </dl></details>
       {plan.management_note && !pending && <p className="mt-3 text-sm text-muted-foreground">Ghi chú của Ban quản lý: {plan.management_note}</p>}
       {pending && (
         <div className="mt-4 space-y-2 border-t border-border pt-3">
-          <label htmlFor={`plan-note-${plan.id}`} className="text-xs text-muted-foreground">Ghi chú cho Supervisor và cư dân (bắt buộc khi từ chối)</label>
+          <label htmlFor={`plan-note-${plan.id}`} className="text-xs font-medium text-foreground">Ghi chú cho Supervisor và cư dân <span className="font-normal text-muted-foreground">(bắt buộc khi từ chối)</span></label>
           <Textarea id={`plan-note-${plan.id}`} rows={2} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" disabled={decide.isPending} onClick={() => send("approve")}>Duyệt phương án</Button>
-            <Button size="sm" variant="outline" disabled={decide.isPending || !note.trim()} onClick={() => send("reject")}>Từ chối</Button>
+            <Button disabled={decide.isPending} onClick={() => send("approve")}>Duyệt phương án</Button>
+            <Button variant="outline" disabled={decide.isPending || !note.trim()} onClick={() => send("reject")}>Từ chối</Button>
           </div>
           {decide.error && <p role="alert" className="text-sm text-destructive">{decide.error.message}</p>}
         </div>
@@ -57,13 +57,15 @@ function PlanCard({ plan }: { plan: SessionPlan }) {
 }
 
 export function SessionThread({ roomId, session, messages, agents, userId, onBack }: {
-  roomId: string; session: RoomSession; messages: RoomMessage[]; agents: { id: string; name: string; published: boolean; status: string }[]; userId: string; onBack: () => void;
+  roomId: string; session: RoomSession; messages: RoomMessage[]; agents: { id: string; name: string; published: boolean; status: string }[]; userId: string; onBack?: () => void;
 }) {
   const detail = useQuery(ticketSessionQueryOptions(session.ticket_id));
   const ask = useMutation(askSessionAgentMutationOptions(queryClient));
   const close = useMutation(closeSessionMutationOptions(queryClient));
   const request = useRef<{ signature: string; id: string } | null>(null);
   const state = sessionState(session);
+  const [showLog, setShowLog] = useState(false);
+  const [options, setOptions] = useState(false);
   const feed = sessionFeed(session.id, messages, detail.data, agents, userId);
   // Names repeat when an agent was revoked and made again; only the one at work can be asked.
   const members = agents.filter((a) => a.published && a.status === "active" && detail.data?.room?.members.includes(a.name));
@@ -80,30 +82,37 @@ export function SessionThread({ roomId, session, messages, agents, userId, onBac
   }
   return (
     <>
-      <header className="flex flex-wrap items-start gap-3 border-b border-border px-4 py-3 md:px-6">
-        <Button size="icon" variant="ghost" className="md:hidden" aria-label="Về danh sách phiên" onClick={onBack}><IconArrowLeft /></Button>
+      <header className="coord-header">
+        {onBack && <Button size="icon" variant="ghost" className="md:hidden" aria-label="Về danh sách phiên" onClick={onBack}><IconArrowLeft /></Button>}
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-base font-semibold text-foreground">{session.ticket_title}</h2>
-          <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant={state.group === "attention" ? "default" : "secondary"}>{state.label}</Badge>
-            {!!detail.data?.room?.members.length && <span>Agent tham gia: {detail.data.room.members.join(", ")}</span>}
-          </p>
+          <h2 className="line-clamp-2 text-[15px] font-semibold leading-snug text-foreground" title={session.ticket_title}>{session.ticket_title}</h2>
+          <p className={state.group === "attention" ? "mt-0.5 text-xs font-medium text-primary" : "mt-0.5 text-xs text-muted-foreground"}>{state.label}</p>
         </div>
-        <Button size="sm" variant="outline" render={<a href={`/operations/kanban?ticket=${encodeURIComponent(session.ticket_id)}`} />}>
-          <IconExternalLink />Mở công việc
+        <Button size="sm" variant="ghost" render={<a href={`/operations/kanban?ticket=${encodeURIComponent(session.ticket_id)}`} />}>
+          <IconExternalLink /><span className="hidden sm:inline">Mở công việc</span><span className="sr-only sm:hidden">Mở công việc</span>
         </Button>
-        {!finished && <div className="basis-full [&>div]:mt-0"><SessionControls teamId={session.id} /></div>}
+        <Button size="icon" variant="ghost" aria-label="Tùy chọn phiên" aria-expanded={options} aria-controls={`session-options-${session.id}`} onClick={() => setOptions(!options)}>
+          <IconAdjustmentsHorizontal />
+        </Button>
+        {/* What is rarely needed while reading: who took part, the Supervisor's own steps, and stopping the session. */}
+        {options && (
+          <div id={`session-options-${session.id}`} className="basis-full space-y-2 border-t border-border pt-3 text-sm text-muted-foreground">
+            {!!detail.data?.room?.members.length && <p>Agent tham gia: <span className="text-foreground">{detail.data.room.members.join(", ")}</span></p>}
+            <label className="flex w-fit cursor-pointer items-center gap-2"><input type="checkbox" checked={showLog} onChange={(e) => setShowLog(e.target.checked)} />Hiện các bước của Supervisor</label>
+            {!finished && <SessionControls teamId={session.id} />}
+          </div>
+        )}
       </header>
       <Transcript label="Diễn biến phiên" count={feed.length}>
         {detail.isPending && <Skeleton className="h-24" />}
         {detail.error && <p role="alert" className="text-sm text-destructive">{detail.error.message}</p>}
         {feed.map((item) =>
-          item.type === "note" ? <Note key={item.id} at={item.at}>{item.text}</Note>
+          item.type === "note" ? showLog && <Note key={item.id} at={item.at}>{item.text}</Note>
           : item.type === "plan" ? <PlanCard key={item.id} plan={detail.data!.room!.plan!} />
           : item.type === "resident" ? <Said key={item.id} who="Cư dân" at={item.at}>{item.text}</Said>
           : item.type === "supervisor" ? <Said key={item.id} who="Supervisor hỏi cư dân" at={item.at} agent tone="accent">{item.text}</Said>
           : item.type === "agent" ? <Said key={item.id} who={item.author} at={item.at} agent>{item.text}</Said>
-          : <Said key={item.id} who={item.author} at={item.at} mine footer={`Hỏi @${item.agent} · ${mentionStatus[item.status] || "Đã gửi"}`}
+          : <Said key={item.id} who={item.author} at={item.at} mine footer={askedLine(item.agent, item.status)}
               files={item.files.map((file) => ({ id: file.id, name: file.name, bytes: file.size_bytes, href: roomFileUrl(roomId, file.id),
                 image: file.mime_type.startsWith("image/") ? roomFileUrl(roomId, file.id, true) : undefined }))}>{item.text}</Said>)}
         {session.runtime?.phase === "paused" && !finished && (
@@ -124,7 +133,7 @@ export function SessionThread({ roomId, session, messages, agents, userId, onBac
         <Composer agents={members} disabled={!members.length || waiting} error={ask.error?.message} onSend={send}
           attach={{ accept: ROOM_FILE_ACCEPT, refusal: roomFilesRefusal, withText: true }}
           placeholder={members.length ? `Hỏi ${members.length === 1 ? `@${members[0].name}` : "agent"} về yêu cầu này…` : "Phiên chưa có agent để hỏi"}
-          hint={waiting ? "Đang chờ agent trả lời câu hỏi trước." : "Agent trả lời trong phiên, dựa trên yêu cầu và phần đã trao đổi."} />
+          hint={waiting ? "Đang chờ agent trả lời câu hỏi trước." : undefined} />
       )}
     </>
   );

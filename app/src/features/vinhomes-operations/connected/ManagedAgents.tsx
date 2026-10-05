@@ -72,7 +72,7 @@ export function AgentsPage() {
         <div>
           <h1 className="text-xl font-semibold text-foreground">Agent</h1>
           <p className="mt-1 max-w-prose text-sm text-muted-foreground">
-            Agent của nhóm làm việc trong các phiên do Supervisor điều phối và trả lời khi được nhắc. Bạn tự tạo và phát hành agent; mỗi bản phải đạt đánh giá trước khi phát hành.
+            Chọn agent để xem nhiệm vụ, cấu hình hoặc lịch chạy của nhóm.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -143,6 +143,8 @@ function AgentEditor({ roomId, agent, catalogue, onClose }: {roomId: string; age
   const [categories, setCategories] = useState(agent?.configuration.service_categories || []);
   const [tools, setTools] = useState(agent?.configuration.mcp_tools || []);
   const [role, setRole] = useState("Chuyên viên hỗ trợ Ban quản lý");
+  const [factoryQuestions, setFactoryQuestions] = useState<string[]>([]);
+  const [factoryAnswer, setFactoryAnswer] = useState("");
   const [note, setNote] = useState("");
   const [cases, setCases] = useState<EvaluationInput[]>(Array.from({length: 6}, (_, i) => ({name: `Ca ${i + 1}`, instruction: "", expected: ""})));
   const [evaluationId, setEvaluationId] = useState(() => crypto.randomUUID());
@@ -154,6 +156,7 @@ function AgentEditor({ roomId, agent, catalogue, onClose }: {roomId: string; age
     evaluate.reset(); setEvaluationId(crypto.randomUUID());
     // An answer of the older configuration says nothing about this one.
     trial.reset();
+    setFactoryQuestions([]); setFactoryAnswer("");
   }, [agent?.configurationHash]);
   const busy = save.isPending || construct.isPending || evaluate.isPending || decide.isPending || revoke.isPending || trial.isPending;
   if (!agent) return null;
@@ -162,6 +165,7 @@ function AgentEditor({ roomId, agent, catalogue, onClose }: {roomId: string; age
   const error = save.error || construct.error || evaluate.error || decide.error || revoke.error || trial.error;
   const emptyCase = cases.findIndex((c) => !c.instruction.trim());
   const edit = !pendingReview && !busy;
+  const factoryDescription = description.trim() + (factoryAnswer.trim() ? `\n\nThông tin bổ sung:\n${factoryAnswer.trim()}` : "");
   const results = evaluate.data?.cases || (agent.review?.config_hash === agent.configurationHash ? agent.review.evaluation.cases : undefined);
   // Evaluation runs on what the server holds, so unsaved edits would be evaluated as the old text.
   const dirty = instructions !== (agent.configuration.instructions || "") || description !== (agent.configuration.description || "")
@@ -174,24 +178,45 @@ function AgentEditor({ roomId, agent, catalogue, onClose }: {roomId: string; age
       framework_version: "openbot-chat-completions", revision_of: baseVersion}}); } catch { /* visible mutation error */ }
   }
   const servers = [...new Set(catalogue.tools.map(t => t.server_id))];
+  const standing = agentStanding(agent);
+  const serves = (agent.configuration.service_categories || []).map(code => catalogue.categories.find(c => c.code === code)?.name || code);
+  const granted = agent.configuration.mcp_tools || [];
   // A connection the administrator set up is named by its title; its tools by the server's own names.
   const serverLabel = (server: string) => { const tool = catalogue.tools.find(t => t.server_id === server);
     return SERVERS[server] || (tool?.external ? `${tool.server_title} · kết nối ngoài` : tool?.server_title) || server; };
   return <Dialog open onOpenChange={open => {if (!open && !busy) onClose();}}><DialogContent className="max-w-2xl">
     <DialogHeader><DialogTitle>{agent.name}</DialogTitle><DialogDescription>
       {pendingReview ? "Đánh giá đã đạt. Mở mục Phát hành để phát hành bản này."
+        : baseVersion && standing.live && !dirty ? `${standing.label}. Thay đổi cấu hình sẽ tạo bản ${Number(agent.latest_version?.number) + 1}; các phiên vẫn dùng bản này cho tới khi bản mới được phát hành.`
         : baseVersion ? `Đang soạn bản ${Number(agent.latest_version?.number) + 1}. Phiên đang chạy vẫn dùng bản đã phát hành cho tới khi bản mới được phát hành.`
         : "Bản nháp: soạn cấu hình, chạy đánh giá, rồi phát hành."}
     </DialogDescription></DialogHeader>
     <DialogBody>
-      <Tabs defaultValue={pendingReview ? "release" : "configuration"}>
-        <TabsList className="w-full">
+      <Tabs defaultValue={pendingReview ? "release" : standing.live ? "overview" : "configuration"}>
+        <TabsList className="w-full justify-start overflow-x-auto">
+          {standing.live && <TabsTrigger value="overview">Tổng quan</TabsTrigger>}
           <TabsTrigger value="configuration">Cấu hình</TabsTrigger>
           <TabsTrigger value="scope">Phạm vi và công cụ</TabsTrigger>
           <TabsTrigger value="evaluation">Đánh giá</TabsTrigger>
           <TabsTrigger value="release">Phát hành</TabsTrigger>
           {agent.purpose !== "supervisor" && <TabsTrigger value="schedule">Lịch chạy</TabsTrigger>}
         </TabsList>
+        {/* An agent at work is read before it is changed: what it does, when it is called, what it may read. */}
+        {standing.live && <TabsContent value="overview" className="pt-3">
+          <dl className="grid gap-x-6 gap-y-4 text-sm sm:grid-cols-[9rem_1fr]">
+            <dt className="text-muted-foreground">Nhiệm vụ</dt>
+            <dd className="whitespace-pre-line text-foreground">{agent.configuration.description || "Chưa có mô tả nhiệm vụ."}</dd>
+            <dt className="text-muted-foreground">Khi nào làm việc</dt>
+            <dd className="text-foreground">{agent.purpose === "supervisor" ? "Điều phối mọi phiên của nhóm: tiếp nhận yêu cầu, mời agent chuyên môn và đề xuất phương án."
+              : serves.length ? `Supervisor mời vào phiên của yêu cầu thuộc ${serves.join(", ")}. Cũng trả lời khi được nhắc tên trong nhóm.` : "Trả lời khi được nhắc tên trong nhóm. Không được mời vào phiên."}</dd>
+            <dt className="text-muted-foreground">Dữ liệu được đọc</dt>
+            <dd className="text-foreground">{granted.length ? [...new Set(granted.map(t => t.server_id))].map(server => `${serverLabel(server)} (${granted.filter(t => t.server_id === server).length} công cụ)`).join(", ")
+              : "Chưa được cấp công cụ nào."}</dd>
+            <dt className="text-muted-foreground">Trạng thái</dt>
+            <dd className="text-foreground">{standing.label}</dd>
+          </dl>
+          <p className="mt-5 border-t border-border pt-3 text-xs text-muted-foreground">Sửa ở mục Cấu hình hoặc Phạm vi và công cụ. Bản mới chỉ thay bản đang chạy sau khi đạt đánh giá và được phát hành.</p>
+        </TabsContent>}
         <TabsContent value="configuration" className="space-y-4 pt-3">
           <div className="space-y-1.5"><label htmlFor="agent-description" className="text-sm font-medium">Nhiệm vụ</label>
             <Textarea id="agent-description" rows={2} value={description} maxLength={2000} disabled={!edit} onChange={e => setDescription(e.target.value)} /></div>
@@ -200,14 +225,26 @@ function AgentEditor({ roomId, agent, catalogue, onClose }: {roomId: string; age
           <div className="space-y-2 rounded-lg border border-border p-3">
             <p className="text-sm font-medium">Soạn chỉ dẫn bằng Factory</p>
             <p className="text-xs text-muted-foreground">Factory viết chỉ dẫn từ nhiệm vụ và vai trò bên dưới, rồi lưu thành bản nháp. Đọc lại trước khi đánh giá.</p>
+            <p className="text-xs text-muted-foreground">Trong ô Nhiệm vụ, nói rõ ba điều: agent làm việc gì, lấy thông tin từ đâu (người hỏi cung cấp hay công cụ của nhóm), và trả về gì. Thiếu một điều, Factory sẽ hỏi lại thay vì đoán.</p>
             <label htmlFor="agent-role" className="text-xs text-muted-foreground">Vai trò</label>
-            <Input id="agent-role" value={role} disabled={!edit} onChange={e => setRole(e.target.value)} />
-            <Button size="sm" variant="outline" disabled={!edit || !description.trim() || !role.trim()} onClick={async () => {
-              try { await construct.mutateAsync({roomId, agentId: agent.id, role, description, service_categories: categories,
+            <Input id="agent-role" value={role} maxLength={500} disabled={!edit} onChange={e => setRole(e.target.value)} />
+            {!!factoryQuestions.length && <div role="status" className="space-y-2 text-sm">
+              <p>Factory cần thêm thông tin để soạn chỉ dẫn:</p>
+              <ul className="list-disc space-y-1 pl-5">{factoryQuestions.map((q, i) => <li key={i}>{q}</li>)}</ul>
+              <label htmlFor="factory-answer" className="block text-xs font-medium">Thông tin bổ sung</label>
+              <Textarea id="factory-answer" rows={3} maxLength={2000} value={factoryAnswer} disabled={!edit}
+                onChange={e => setFactoryAnswer(e.target.value)} />
+              <p className="text-xs text-muted-foreground">Trả lời các câu hỏi rồi bấm Tạo bằng Factory để tiếp tục.</p>
+            </div>}
+            {factoryDescription.length > 2000 && <p role="alert" className="text-xs text-destructive">Nhiệm vụ và thông tin bổ sung tối đa 2.000 ký tự. Rút gọn trước khi tạo lại.</p>}
+            <Button size="sm" variant="outline" disabled={!edit || !description.trim() || !role.trim() || factoryDescription.length > 2000} onClick={async () => {
+              try { const result = await construct.mutateAsync({roomId, agentId: agent.id, role: role.trim(), description: factoryDescription, service_categories: categories,
                 configuration_hash: agent.configurationHash, revision_of: baseVersion, request_id: constructionId});
+                if (result.needsInput) setFactoryQuestions(result.questions);
+                else { setFactoryQuestions([]); setFactoryAnswer(""); }
                 setConstructionId(crypto.randomUUID()); } catch { /* visible mutation error */ }
             }}>{construct.isPending ? "Factory đang tạo…" : "Tạo bằng Factory"}</Button>
-            {construct.isSuccess && <p role="status" className="text-xs text-muted-foreground">Factory đã lưu nháp trên máy chủ. Kiểm tra chỉ dẫn trước khi đánh giá.</p>}
+            {construct.isSuccess && !construct.data.needsInput && <p role="status" className="text-xs text-muted-foreground">Factory đã lưu nháp trên máy chủ. Kiểm tra chỉ dẫn trước khi đánh giá.</p>}
           </div>
         </TabsContent>
         <TabsContent value="scope" className="space-y-5 pt-3">
@@ -278,7 +315,7 @@ function AgentEditor({ roomId, agent, catalogue, onClose }: {roomId: string; age
             : <p className="text-sm text-muted-foreground">Phát hành agent trước khi đặt lịch: lịch chỉ chạy với bản đang phát hành.</p>}
         </TabsContent>
       </Tabs>
-      {error && <p role="alert" className="text-sm text-destructive">{error.message}</p>}
+      {error && <p role="alert" className="whitespace-pre-line text-sm text-destructive">{error.message}</p>}
     </DialogBody>
     <DialogFooter>
       {save.isSuccess && !dirty && <p role="status" className="mr-auto text-xs text-muted-foreground">Đã lưu cấu hình.</p>}

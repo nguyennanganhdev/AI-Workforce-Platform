@@ -38,7 +38,7 @@ export function UnitsPage() {
   const toggle = (id: string, selected: string[], set: (value: string[]) => void) =>
     set(selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id]);
   return (
-    <Page title="Đơn vị quản lý" lead="Mỗi đơn vị phụ trách một số tòa nhà và có nhóm Ban quản lý riêng: phiên điều phối, agent và kết nối ngoài của nhóm đó."
+    <Page title="Đơn vị quản lý" lead="Quản lý tòa nhà phụ trách, nhân sự và nhóm Ban quản lý của từng đơn vị."
       action={<Button onClick={() => { create.reset(); setCreating(true); }}>Tạo đơn vị</Button>}>
       {creating && <form className="mt-6 space-y-4 rounded-lg border border-border bg-card p-4" onSubmit={(event) => {
         event.preventDefault();
@@ -73,7 +73,9 @@ export function UnitsPage() {
                 <h2 className="text-base font-semibold text-foreground">{u.name}</h2>
                 <Badge variant={u.status === "active" ? "secondary" : "destructive"}>{u.status === "active" ? "Đang hoạt động" : "Ngừng"}</Badge>
               </div>
-              <dl className="mt-3 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-[10rem_1fr]">
+              <p className="mt-2 text-sm text-muted-foreground">{u.buildings.length ? u.buildings.join(', ') : 'Chưa được giao tòa nào'}</p>
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground"><span><strong className="text-foreground">{u.staff}</strong> nhân viên</span><span><strong className="text-foreground">{u.open_tickets}</strong> yêu cầu đang mở</span><span><strong className="text-foreground">{u.groups.length}</strong> nhóm Ban quản lý</span></div>
+              <details className="mt-3"><summary className="cursor-pointer text-xs font-medium text-muted-foreground">Chi tiết đơn vị</summary><dl className="mt-3 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-[10rem_1fr]">
                 <dt className="text-muted-foreground">Tòa nhà phụ trách</dt>
                 <dd className="text-foreground">{u.buildings.length ? u.buildings.join(", ") : "Chưa được giao tòa nào"}</dd>
                 <dt className="text-muted-foreground">Nhóm Ban quản lý</dt>
@@ -86,7 +88,7 @@ export function UnitsPage() {
                 <dd className="text-foreground">{u.staff}</dd>
                 <dt className="text-muted-foreground">Yêu cầu đang mở</dt>
                 <dd className="text-foreground">{u.open_tickets}</dd>
-              </dl>
+              </dl></details>
             </section>
           ))}
           {!units.error && !units.data?.length && <p className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">Chưa có đơn vị quản lý nào.</p>}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   IconArrowUpRight,
   IconCheck,
@@ -22,10 +22,13 @@ export function RequestCard({
   request,
   onOpen,
   compact = false,
+  waiting = false,
 }: {
   request: ResidentRequest;
   onOpen: (id: string) => void;
   compact?: boolean;
+  /** Ban quản lý asked something or sent a plan: the request stands still until the resident answers. */
+  waiting?: boolean;
 }) {
   return (
     <button
@@ -37,9 +40,9 @@ export function RequestCard({
       </span>
       <span className="request-copy">
         <strong>{request.title}</strong>
-        <span className={`status ${request.status}`}>
+        <span className={`status ${waiting ? "confirmation" : request.status}`}>
           <i />
-          {statusLabels[request.status]}
+          {waiting ? "Cần bạn phản hồi" : statusLabels[request.status]}
         </span>
       </span>
       <IconChevronRight size={18} className="muted shrink" />
@@ -51,10 +54,13 @@ export function Requests({
   requests,
   onOpen,
   onReport,
+  waiting = () => false,
 }: {
   requests: ResidentRequest[];
   onOpen: (id: string) => void;
   onReport: () => void;
+  /** Whether a request waits for the resident's answer; those are listed first. */
+  waiting?: (id: string) => boolean;
 }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -67,7 +73,7 @@ export function Requests({
       `${r.id} ${r.title}`
         .toLocaleLowerCase("vi")
         .includes(search.toLocaleLowerCase("vi")),
-  );
+  ).sort((a, b) => Number(waiting(b.id)) - Number(waiting(a.id)));
   return (
     <div className="page-section">
       <p className="page-description">
@@ -77,7 +83,7 @@ export function Requests({
         <IconSearch size={20} />
         <input
           aria-label="Tìm yêu cầu"
-          placeholder="Tìm theo nội dung hoặc mã yêu cầu"
+          placeholder="Tìm theo nội dung phản ánh"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -100,7 +106,7 @@ export function Requests({
       </div>
       <div className="stack">
         {filtered.map((r) => (
-          <RequestCard key={r.id} request={r} onOpen={onOpen} />
+          <RequestCard key={r.id} request={r} onOpen={onOpen} waiting={waiting(r.id)} />
         ))}
       </div>
       {!filtered.length && (
@@ -121,27 +127,32 @@ export function RequestDetail({
   request,
   onResolve,
   connected = false,
+  children,
 }: {
   request: ResidentRequest;
   connected?: boolean;
+  /** What waits for the resident's answer: read first, above the record of the request. */
+  children?: ReactNode;
   onResolve: (accepted: boolean, reason?: string) => boolean | Promise<boolean>;
 }) {
   const [redo, setRedo] = useState(false);
   const [reason, setReason] = useState("");
+  const [allEvents, setAllEvents] = useState(false);
+  const visibleEvents = allEvents ? request.events : request.events.slice(-3);
   return (
-    <div className="page-section stack">
+    <div className="page-section stack request-detail">
       <div className="detail-heading">
         <span className={`status ${request.status}`}>
           <i />
           {statusLabels[request.status]}
         </span>
-        <span className="eyebrow">{request.code ?? request.id}</span>
         <h2>{request.title}</h2>
         <p>
           <IconMapPin size={16} />
           {request.location}
         </p>
       </div>
+      {children}
       <section className="white-card">
         <h3>Nội dung phản ánh</h3>
         <p className="preserve">{request.description}</p>
@@ -167,12 +178,12 @@ export function RequestDetail({
       <section className="white-card">
         <h3>Tiến độ xử lý</h3>
         <ol className="timeline">
-          {request.events.map((event, index) => (
+          {visibleEvents.map((event, index) => (
             <li key={`${index}-${event.at}`}>
               <span
-                className={`timeline-dot ${index === request.events.length - 1 ? "current" : ""}`}
+                className={`timeline-dot ${index === visibleEvents.length - 1 ? "current" : ""}`}
               >
-                {index === request.events.length - 1 ? (
+                {index === visibleEvents.length - 1 ? (
                   <IconClock size={14} />
                 ) : (
                   <IconCheck size={14} />
@@ -186,6 +197,7 @@ export function RequestDetail({
             </li>
           ))}
         </ol>
+        {request.events.length > 3 && <button type="button" className="text-button" aria-expanded={allEvents} onClick={() => setAllEvents(!allEvents)}>{allEvents ? 'Thu gọn tiến độ' : `Xem toàn bộ tiến độ (${request.events.length})`}</button>}
       </section>
       {request.status === "confirmation" && (
         <section className="confirmation-card">

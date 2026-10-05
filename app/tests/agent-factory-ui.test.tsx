@@ -609,7 +609,9 @@ describe("creating", () => {
     expect(
       view.getByText("Check the name, role and description, then try again."),
     ).toBeTruthy();
-  });
+    // Seven forms are typed into, key by key. That alone takes longer than the default five seconds
+    // on a slower machine, and a test cut off there leaves its dialog behind for the next one.
+  }, 30_000);
 
   test("C06 a lost answer is retried with the same key and makes one coworker; changed input gets a new key", async () => {
     const made = new Map<string, string>();

@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { typeInto } from "./type-into";
 
 let cleanup: typeof import("@testing-library/react")["cleanup"];
 let render: typeof import("@testing-library/react")["render"];
@@ -50,10 +51,10 @@ test("management reads an agent's schedules in plain words, sets a weekly one, a
 
   const submit = view.getByRole("button", { name: "Đặt lịch" }) as HTMLButtonElement;
   expect(submit.disabled).toBe(true);
-  fireEvent.change(view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy"), { target: { value: " Báo cáo tuần. " } });
+  await typeInto(view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy"), " Báo cáo tuần. ");
   fireEvent.change(view.getByLabelText("Lặp lại"), { target: { value: "weekly" } });
   fireEvent.change(view.getByLabelText("Vào"), { target: { value: "5" } });
-  fireEvent.change(view.getByLabelText("Lúc"), { target: { value: "16:30" } });
+  await typeInto(view.getByLabelText("Lúc"), "16:30");
   fireEvent.click(submit);
   expect((await view.findByRole("alert")).textContent).toContain("đã có 20 lịch đang bật");
   // The refused instruction is still there to send again.
@@ -67,9 +68,9 @@ test("management reads an agent's schedules in plain words, sets a weekly one, a
   expect((view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy") as HTMLTextAreaElement).value).toBe("Tóm tắt yêu cầu hôm qua.");
   expect((view.getByLabelText("Lặp lại") as HTMLSelectElement).value).toBe("working");
   expect((view.getByLabelText("Lúc") as HTMLInputElement).value).toBe("08:00");
-  fireEvent.change(view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy"), { target: { value: "Tóm tắt yêu cầu hôm qua, kèm số quá hạn." } });
+  await typeInto(view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy"), "Tóm tắt yêu cầu hôm qua, kèm số quá hạn.");
   fireEvent.change(view.getByLabelText("Lặp lại"), { target: { value: "daily" } });
-  fireEvent.change(view.getByLabelText("Lúc"), { target: { value: "09:15" } });
+  await typeInto(view.getByLabelText("Lúc"), "09:15");
   fireEvent.click(view.getByRole("button", { name: "Lưu thay đổi" }));
   await waitFor(() => expect(view.getByRole("list", { name: "Lịch đã đặt" }).textContent).toContain("Hằng ngày lúc 09:15"));
   expect(sent.at(-1)).toEqual({ method: "PUT", url: "/api/business/rooms/room-1/routines/routine_1",

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { IconMessages } from "@tabler/icons-react";
+import { IconMessages, IconLayoutSidebar } from "@tabler/icons-react";
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from "@/components/ui/skeleton";
 import { roomQueryOptions, roomsQueryOptions, type RoomSession } from "@/lib/rooms/queries";
 import { cn } from "@/lib/utils";
@@ -43,6 +45,8 @@ export function Coordination({ userId }: { userId: string }) {
   const [open, setOpen] = useState(() => new URLSearchParams(location.search).get("session") || "");
   const [reading, setReading] = useState(() => new URLSearchParams(location.search).has("session"));
   const [all, setAll] = useState(false);
+  const [query, setQuery] = useState('');
+  const [listOpen, setListOpen] = useState(true);
   const sessions = room.data?.sessions || [];
   const current = sessions.find((s) => s.id === open);
   function show(id: string) {
@@ -51,19 +55,20 @@ export function Coordination({ userId }: { userId: string }) {
     history.replaceState(null, "", id ? `?session=${encodeURIComponent(id)}` : location.pathname);
   }
   const grouped = (group: SessionGroup): RoomSession[] =>
-    sessions.filter((s) => sessionState(s).group === group).sort((a, b) => changed(b).localeCompare(changed(a)));
+    sessions.filter((s) => sessionState(s).group === group && `${s.ticket_title} ${sessionState(s).label}`.toLocaleLowerCase('vi').includes(query.trim().toLocaleLowerCase('vi'))).sort((a, b) => changed(b).localeCompare(changed(a)));
   const error = listed.error || room.error;
   return (
     <div className="flex h-full min-h-0 bg-background">
-      <aside aria-label="Phiên điều phối" className={cn("flex w-full shrink-0 flex-col border-r border-border md:w-80", reading && "hidden md:flex")}>
+      <aside aria-label="Phiên điều phối" className={cn("flex w-full shrink-0 flex-col border-r border-border md:w-72", reading && "hidden md:flex", !listOpen && 'md:!hidden')}>
         <div className="border-b border-border px-4 py-3">
-          <h1 className="text-base font-semibold text-foreground">Điều phối</h1>
+          <div className="flex items-center justify-between"><h1 className="text-base font-semibold text-foreground">Điều phối</h1><Button size="icon" variant="ghost" className="hidden md:flex" aria-label="Ẩn danh sách phiên" onClick={() => setListOpen(false)}><IconLayoutSidebar /></Button></div>
           {rooms.length > 1 ? (
             <select aria-label="Nhóm điều phối" value={roomId} onChange={(e) => { setRoom(e.target.value); show(""); }}
               className="mt-2 h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground">
               {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
-          ) : <p className="mt-0.5 text-xs text-muted-foreground">Supervisor điều phối từng yêu cầu của cư dân</p>}
+          ) : null}
+          <Input className="mt-3" aria-label="Tìm phiên" placeholder="Tìm yêu cầu…" value={query} onChange={e => {setQuery(e.target.value);setAll(false);}} />
         </div>
         <nav aria-label="Hội thoại" className="min-h-0 flex-1 space-y-4 overflow-y-auto p-2">
           {error && <p role="alert" className="px-3 text-sm text-destructive">{error.message}</p>}
@@ -75,7 +80,7 @@ export function Coordination({ userId }: { userId: string }) {
               {GROUPS.map(([group, label]) => {
                 const items = grouped(group);
                 if (!items.length) return null;
-                const shown = group === "done" && !all ? items.slice(0, FOLDED) : items;
+                const shown = !all && !query ? items.slice(0, group === 'done' ? FOLDED : 8) : items;
                 return (
                   <section key={group} aria-label={label}>
                     <h2 className="px-3 pb-1 text-xs font-medium text-muted-foreground">{label} · {items.length}</h2>
@@ -97,6 +102,7 @@ export function Coordination({ userId }: { userId: string }) {
         </nav>
       </aside>
       <section className={cn("min-w-0 flex-1 flex-col", reading ? "flex" : "hidden md:flex")}>
+        {!listOpen && <div className="hidden border-b border-border px-3 py-1 md:flex"><Button size="sm" variant="ghost" onClick={() => setListOpen(true)}><IconLayoutSidebar />Hiện danh sách phiên</Button></div>}
         {!roomId || !room.data ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
             <IconMessages className="size-8" stroke={1.5} />

@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { typeInto } from "./type-into";
 import type { RoomMessage } from "../src/lib/rooms/queries";
 
 let cleanup: typeof import("@testing-library/react")["cleanup"];
@@ -50,7 +51,7 @@ test("the room shows a photo as a picture and a text file as a download, and sen
     return Response.json({ id: "m3" }, { status: 201 });
   }) as typeof fetch;
   const view = render(<QueryClientProvider client={queryClient}>
-    <RoomThread roomId="room-1" name="Ban quản lý Sapphire" messages={messages} userId="me" onBack={() => {}}
+    <RoomThread roomId="room-1" name="Ban quản lý Sapphire" messages={messages} userId="me"
       agents={[{ id: "report", name: "Agent Báo cáo", published: true, status: "active" }]} />
   </QueryClientProvider>);
 
@@ -109,7 +110,7 @@ test("inside a session a question carries its files, and files alone are not a q
   }) as typeof fetch;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const view = render(<QueryClientProvider client={client}>
-    <SessionThread roomId="room-1" userId="me" onBack={() => {}} messages={messages}
+    <SessionThread roomId="room-1" userId="me" messages={messages}
       session={{ id: "s1", ticket_id: "t1", ticket_code: "VH-AAAAAAAAAAAA", ticket_title: "Vòi bếp rò nước", status: "running",
         created_at: "2026-10-05T01:00:00Z", updated_at: "2026-10-05T02:00:00Z", ticket_status: "open", plan_status: null, runtime: { phase: "planning" } }}
       agents={[{ id: "tech", name: "Agent Kỹ thuật", published: true, status: "active" }]} />
@@ -122,7 +123,7 @@ test("inside a session a question carries its files, and files alone are not a q
   fireEvent.change(view.getByLabelText("Chọn ảnh hoặc tệp"), { target: { files: [new File(["a,b"], "so-lieu.csv", { type: "text/csv" })] } });
   expect(view.getByRole("list", { name: "Tệp sẽ gửi" }).textContent).toContain("so-lieu.csv");
   expect(send.disabled).toBe(true);
-  fireEvent.change(view.getByLabelText("Nội dung"), { target: { value: "Số liệu này có bất thường không?" } });
+  await typeInto(view.getByLabelText("Nội dung"), "Số liệu này có bất thường không?");
   expect(send.disabled).toBe(false);
   fireEvent.click(send);
   await waitFor(() => expect(sent.length).toBe(2));

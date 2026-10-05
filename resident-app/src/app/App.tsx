@@ -469,6 +469,8 @@ export function App({ live }: { live?: ConnectedResident }) {
               conversation={!!route.conversation}
               onResume={openConversation}
               onSend={send}
+              onForm={live?.startForm}
+              question={live?.question()}
               onOpen={openRequest}
               onRequests={() => navigate("requests")}
               onSubmit={() => {
@@ -510,6 +512,7 @@ export function App({ live }: { live?: ConnectedResident }) {
               requests={state.requests}
               onOpen={openRequest}
               onReport={report}
+              waiting={(id) => !!live?.interaction(id) || !!live?.consent(id)}
             />
           )}
           {route.page === "detail" &&
@@ -526,9 +529,16 @@ export function App({ live }: { live?: ConnectedResident }) {
                           resolveRequest(s, detail.id, accepted, reason),
                         )
                   }
-                />
-                {live?.interaction(detail.id) && <SupervisorResponse key={`${detail.id}:${live.interaction(detail.id)!.ticket_version}`}
+                >
+                {live?.interaction(detail.id)?.pending_kind === "plan_approval" && <SupervisorResponse key={`${detail.id}:${live.interaction(detail.id)!.ticket_version}`}
                   item={live.interaction(detail.id)!} busy={live.busy} onRespond={(decision, note) => live.respondSupervisor(live.interaction(detail.id)!, decision, note)} />}
+                {live?.interaction(detail.id)?.pending_kind === "information" && (
+                  // Questions are asked and answered in the conversation, in one place.
+                  <section className="white-card resident-consent">
+                    <h3>Ban quản lý đang chờ bạn trả lời</h3>
+                    <button className="primary-button" onClick={() => live.openChatOf(detail.id)}>Trả lời trong cuộc trò chuyện</button>
+                  </section>
+                )}
                 {live?.consent(detail.id) && !live.interaction(detail.id) && (
                   <section className="white-card resident-consent">
                     <h3>Phương án sửa chữa cần bạn xác nhận</h3>
@@ -568,6 +578,7 @@ export function App({ live }: { live?: ConnectedResident }) {
                     </div>
                   </section>
                 )}
+                </RequestDetail>
                 {!live && (
                   <section className="resident-ticket-event">
                     <strong>Sự kiện ticket · bản mô phỏng</strong>

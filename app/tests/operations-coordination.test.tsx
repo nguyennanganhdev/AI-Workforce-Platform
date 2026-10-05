@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type { RoomMessage, RoomSession } from "../src/lib/rooms/queries";
-import { ago, pauseText, plain, sessionFeed, sessionState } from "../src/features/vinhomes-operations/connected/coordination/model";
+import { ago, askedLine, pauseText, plain, sessionFeed, sessionState, unsigned } from "../src/features/vinhomes-operations/connected/coordination/model";
 
 let cleanup: typeof import("@testing-library/react")["cleanup"];
 let render: typeof import("@testing-library/react")["render"];
@@ -41,6 +41,15 @@ test("a conversation never shows the internal request code", () => {
   expect(plain("phương án cho yêu cầu VH-43B4AE165EE9: Cử kỹ thuật viên")).toBe("phương án cho yêu cầu: Cử kỹ thuật viên");
 });
 
+test("a message shows what the reader does not already see: no signature under a named reply, no progress once a question is answered", () => {
+  expect(unsigned("Phí gửi xe là 45.000 đồng.\n\n— Agent Tri thức", "Agent Tri thức")).toBe("Phí gửi xe là 45.000 đồng.");
+  // A last line that is not the author's name is part of the answer.
+  expect(unsigned("Liên hệ:\n- Lễ tân tòa S1.01", "Agent Tri thức")).toBe("Liên hệ:\n- Lễ tân tòa S1.01");
+  expect(unsigned("— Agent Tri thức", "Agent Tri thức")).toBe("— Agent Tri thức");
+  expect(askedLine("Agent Tri thức", "done")).toBe("Hỏi @Agent Tri thức");
+  expect(askedLine("Agent Tri thức", "queued")).toBe("Hỏi @Agent Tri thức · Đang chờ agent trả lời");
+});
+
 test("a session reads as one conversation in time order, with only its newest plan as a card", () => {
   const messages = [
     message({ id: "m1", body: { text: "VH-AAAAAAAAAAAA: Yêu cầu đã được tiếp nhận.", sessionId: "s1", kind: "supervisor_accepted" }, created_at: "2026-10-04T10:01:00Z" }),
@@ -68,9 +77,10 @@ test("a session reads as one conversation in time order, with only its newest pl
   expect(late.map((i) => i.type)).toEqual(["resident", "agent", "plan"]);
 });
 
-test("the coordination room lists what waits for management first and lets it approve the plan", async () => {
+test('the coordination room lists sessions and management approves the plan', async () => {
   const { QueryClientProvider } = await import("@tanstack/react-query");
   const { queryClient } = await import("../src/query-client");
+  queryClient.clear();
   const { Coordination } = await import("../src/features/vinhomes-operations/connected/coordination/Coordination");
   const sent: { url: string; body: unknown }[] = [];
   const plan = { id: "plan-1", title: "Thay gioăng vòi bếp", status: "management_pending", version: 3,
@@ -93,7 +103,7 @@ test("the coordination room lists what waits for management first and lets it ap
     return Response.json({ detail: "not found" }, { status: 404 });
   }) as typeof fetch;
   const page = render(<QueryClientProvider client={queryClient}><Coordination userId="me" /></QueryClientProvider>);
-  const attention = await waitFor(() => page.getByRole("region", { name: "Cần bạn xử lý" }));
+  const attention = await waitFor(() => page.getByRole("region", { name: 'Cần bạn xử lý' }));
   expect(attention.textContent).toContain("Vòi bếp rò nước");
   expect(attention.textContent).toContain("Chờ bạn duyệt phương án");
   // The room's own conversation holds only what was said to the room, not the sessions' steps.
@@ -106,4 +116,5 @@ test("the coordination room lists what waits for management first and lets it ap
   fireEvent.click(page.getByRole("button", { name: "Duyệt phương án" }));
   await waitFor(() => expect(sent).toEqual([{ url: "/api/business/plans/plan-1/management-decision",
     body: { decision: "approve", version: 3, note: "Đồng ý phương án." } }]));
+  queryClient.clear();
 });
