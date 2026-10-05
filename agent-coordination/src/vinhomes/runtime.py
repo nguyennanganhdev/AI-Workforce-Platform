@@ -169,8 +169,9 @@ class Runtime:
 
         budget = ScopedBudgets(store, token_limit=settings.token_limit if settings else Settings.token_limit)
         tools = ToolGateway(client, settings.tools_url, settings.tools_token) if settings and settings.tools_url else None
-        specialists = (Specialists(Releases(backend, self.teams, settings.openbot), store, budget, client, tools=tools)
-                       if settings and settings.openbot else UnboundInvocation("agent_invocation"))
+        self.releases = Releases(backend, self.teams, settings.openbot) if settings and settings.openbot else None
+        specialists = (Specialists(self.releases, store, budget, client, tools=tools)
+                       if self.releases else UnboundInvocation("agent_invocation"))
         async def instructions(context):
             return (await backend.view(self.teams[context.scope()])).get('supervisor_instructions', '')
         model = PlannerModel(budget, client, model=settings.model if settings else None,
@@ -422,10 +423,21 @@ class Runtime:
                 # Asked under the agent's latest task, so it reads what it answered there.
                 task = next((t.task_id for t in reversed(room.tasks)
                              if t.assignee_agent_version_id == item["agent_version_id"]), None)
-                result = await self.rooms.execute(Command(
-                    request_id=key, trace_id=key, idempotency_key=key, context=context,
-                    payload=MentionAgent(room_id=room.room_id, expected_room_version=room.room_version,
-                                         mentioned_agent_id=item["agent_id"], instruction=item["text"], task_id=task)))
+                # Photos on the question reach the model beside its text, for this one turn only.
+                pictures = [{"type": "image", "source": {"type": "data", "value": image["data"], "mimeType": image["mimeType"]}}
+                            for image in item.get("images") or []]
+                if pictures and self.releases:
+                    self.releases.attached[context.scope()] = pictures
+                try:
+                    result = await self.rooms.execute(Command(
+                        request_id=key, trace_id=key, idempotency_key=key, context=context,
+                        payload=MentionAgent(room_id=room.room_id, expected_room_version=room.room_version,
+                                             mentioned_agent_id=item["agent_id"], instruction=item["text"], task_id=task)))
+                finally:
+                    if pictures and self.releases:
+                        self.releases.attached.pop(context.scope(), None)
+                        for thread in [t for t, held in self.releases.pictures.items() if held is pictures]:
+                            del self.releases.pictures[thread]
                 if isinstance(result, Success):
                     turn = result.data
                 else:

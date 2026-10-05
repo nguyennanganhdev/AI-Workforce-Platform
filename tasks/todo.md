@@ -265,8 +265,12 @@ các module tách chạy riêng được.
 - [x] Job `file-cleanup` xóa tệp tải lên quá một ngày mà không gắn vào tin nào; chạy bằng role và khóa của API.
 - [x] Agent xem được ảnh trong phòng nhóm và câu hỏi theo lịch: ảnh đi kèm tin nhắn dưới dạng hình, tối đa 10 MB mỗi
       lượt; tắt bằng `SPECIALIST_SEES_IMAGES=0`. Đã kiểm bằng một tiến trình Bot thật nối với nhà cung cấp giả.
-- [ ] Trong phiên điều phối chuyên viên mới được báo tên ảnh: chờ Team Đông trả lời
+- [x] Trong phiên điều phối: ảnh trên câu hỏi BQL gửi chuyên viên tới model dưới dạng hình. Làm ở lớp bọc
+      (`InstructedClient`), không sửa lõi của Team Đông; ghi chú gửi họ ở
       `docs/teams/dong/requests/2026-10-05-anh-trong-phien-dieu-phoi.md`.
+- [x] Ứng dụng cư dân: ảnh đính kèm trong khung chat được lưu và gửi kèm tin nhắn, nên yêu cầu Lễ tân tạo có ảnh
+      (trước đó ảnh chỉ nằm trong trình duyệt và bị mất).
+- [ ] Việc Supervisor giao cho chuyên viên chưa kèm ảnh cư dân gửi theo yêu cầu; ngân sách lượt gọi chưa tính ảnh.
 - [x] Bản tạm (`staging/`) của ảnh tải thẳng lên MinIO: xóa ngay khi ảnh được nhận; job `file-cleanup` dọn phần còn
       lại sau một giờ và ghi phiên tải lên hết hạn là `expired`.
 - [ ] Tệp phòng nhóm đi qua API, chưa dùng đường tải thẳng lên MinIO.

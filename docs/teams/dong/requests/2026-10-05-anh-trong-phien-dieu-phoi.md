@@ -1,46 +1,43 @@
-# Đề nghị gửi Team Đông: cho chuyên viên trong phiên điều phối xem ảnh đính kèm
+# Gửi Team Đông: chuyên viên trong phiên điều phối đã xem được ảnh đính kèm, không sửa mã lõi
 
-Ngày 05/10/2026. Người đề nghị: Team Chiến. Trạng thái: chờ Team Đông trả lời. Team Chiến chưa sửa gì trong mã lõi.
+Ngày 05/10/2026. Người gửi: Team Chiến. Trạng thái: đã làm ở lớp bọc; ba điểm dưới đây cần Team Đông biết và cho ý
+kiến. Không có dòng nào trong `agent-coordination/src/adapters` hay các gói lõi khác bị sửa.
 
-## Việc cần
+## Đã làm gì
 
-BQL đính kèm được ảnh vào câu hỏi gửi chuyên viên trong một phiên điều phối. Hiện chuyên viên chỉ được báo tên ảnh và
-câu "Bạn chưa xem được nội dung ảnh", vì bộ chuyển của lõi gửi sang Bot một tin nhắn dạng chữ. Team Chiến đề nghị
-bộ chuyển gửi kèm ảnh dưới dạng phần ảnh, để model của chuyên viên xem được.
+BQL đính kèm ảnh vào câu hỏi gửi chuyên viên trong một phiên điều phối; ảnh tới model của chuyên viên dưới dạng hình.
 
-## Đã có sẵn ở các phần khác
+- API trả ảnh cùng câu hỏi: `GET /internal/coordination/v1/mentions` có thêm `images` (`name`, `mimeType`, `data`
+  base64), tối đa 10 MB ảnh mỗi câu hỏi.
+- Lớp bọc giữ ảnh cho đúng một lượt: `Runtime.answer` (`agent-coordination/src/vinhomes/runtime.py`) đặt ảnh vào
+  `Releases.attached` trước khi gọi `MentionAgent` và gỡ ra ngay sau đó; `Releases.resolve_released_session` gắn ảnh
+  với thread của lượt gọi.
+- Ảnh được thêm ở lớp HTTP mà bộ chuyển gửi qua: `InstructedClient.stream` (`agent-coordination/src/vinhomes/ports.py`)
+  đổi `content` của tin nhắn đầu từ chuỗi thành mảng gồm phần chữ (nguyên chuỗi JSON của bộ chuyển) và các phần ảnh
+  `{"type":"image","source":{"type":"data","value":…,"mimeType":…}}`. Bot đổi phần ảnh thành `image_url` cho nhà cung
+  cấp (`shared/user-content.ts`). Câu hỏi không có ảnh vẫn gửi đúng một chuỗi như trước.
 
-- **Bot (`agent-bot`) đã nhận phần ảnh.** Nội dung tin nhắn người dùng có thể là một mảng: `{"type":"text","text":…}`
-  và `{"type":"image","source":{"type":"data","value":"<base64>","mimeType":"image/png"}}`. Bot đổi phần ảnh thành
-  `image_url` cho nhà cung cấp và chỉ nhận PNG, JPEG, GIF, WebP (`shared/user-content.ts`, `agent-bot/src/history.ts:62`).
-- **Phòng nhóm (không qua lõi) đã chạy theo cách này.** Lượt trả lời trong phòng nhóm đi qua lớp bọc của Team Chiến
-  (`agent-coordination/src/vinhomes/publish.py`, hàm `answer`). Đã kiểm bằng một tiến trình Bot thật nối với nhà cung
-  cấp giả: phần ảnh tới nhà cung cấp đúng dạng `image_url`.
-- **API đã có ảnh để đưa.** `for_agent` trong `services/vinhomes-api/src/vinhomes_api/v3_room_files.py` trả phần chữ và
-  danh sách ảnh (`name`, `mimeType`, `data` base64), tối đa 10 MB ảnh mỗi lượt. Với câu hỏi trong phiên, API hiện chỉ
-  dùng phần chữ (`GET /internal/coordination/v1/mentions`, trường `text`).
+Đây là cùng chỗ lớp bọc đã thêm chỉ dẫn của agent vào `context`, nên bộ chuyển `OpenbotAdapter` không biết và không
+cần biết về ảnh.
 
-## Chỗ cần Team Đông quyết và sửa
+## Ba điểm cần Team Đông biết
 
-`agent-coordination/src/adapters/openbot.py`, khoảng dòng 143 đến 147: `messages` được dựng thành một tin nhắn có
-`content` là chuỗi JSON. Để gửi ảnh, `content` phải thành mảng gồm một phần chữ (chuỗi JSON hiện có) và các phần ảnh.
-Việc này kéo theo ba điều thuộc về lõi, nên Team Chiến không tự làm:
-
-1. **Dữ liệu ảnh đi đường nào tới bộ chuyển.** `invocation` hiện không có trường cho ảnh. Cần thêm trường vào mô hình
-   của lượt gọi (ví dụ danh sách `{mimeType, data}`), và lớp bọc của Team Chiến sẽ điền từ câu trả lời của API.
-2. **Dự trữ ngân sách.** Dòng `reserve = len(json.dumps(wire…).encode()) + release.output_tokens` tính theo số byte
-   của gói gửi. Ảnh base64 làm số này tăng hàng triệu, trong khi chi phí thật của ảnh do nhà cung cấp tính theo kích
-   thước ảnh. Cần một cách tính riêng cho phần ảnh, nếu không lượt nào có ảnh cũng chạm trần ngân sách.
-3. **Ghi lại và phát lại.** `remote_intent` và các bản ghi của lượt gọi không nên chứa byte ảnh. Lượt chạy tiếp
-   (`max_continuations`) gửi lại `messages`, tức gửi lại ảnh; cần xác nhận đó là hành vi mong muốn.
-
-## Điều Team Chiến sẽ làm sau khi có trả lời
-
-- Trả thêm `images` trong `GET /internal/coordination/v1/mentions` cho câu hỏi có ảnh, cùng dạng đã dùng ở phòng nhóm.
-- Điền trường ảnh của lượt gọi trong lớp bọc (`agent-coordination/src/vinhomes`).
-- Thêm ca kiểm: câu hỏi trong phiên có ảnh tới Bot với phần ảnh, và câu hỏi không có ảnh vẫn gửi đúng một chuỗi như hiện nay.
+1. **Ngân sách không tính ảnh.** `reserve = len(json.dumps(wire…).encode()) + release.output_tokens` trong
+   `adapters/openbot.py` tính trên gói của bộ chuyển, tức chưa có ảnh. Chi phí ảnh do nhà cung cấp tính thêm và hiện
+   không nằm trong số dự trữ. Nếu lõi cần tính, đề nghị thêm một cách khai chi phí phụ cho lượt gọi.
+2. **Bản ghi của lượt gọi không chứa ảnh.** `remote_intent` và các bản ghi khác vẫn như cũ. Lượt chạy tiếp
+   (`max_continuations`) gửi lại ảnh cùng tin nhắn đầu, vì lớp bọc thêm ảnh ở mỗi lần gửi của thread đó.
+3. **Mới áp dụng cho câu hỏi BQL hỏi trong phiên.** Việc Supervisor giao (task) chưa mang ảnh của yêu cầu (ảnh cư dân
+   gửi). Muốn chuyên viên xem ảnh của yêu cầu khi phân tích thì nên có trường ảnh trong dữ liệu của lượt gọi; phần đó
+   thuộc mô hình của lõi và Team Chiến chưa làm.
 
 ## Lưu ý vận hành
 
 Model của chuyên viên phải đọc được ảnh. Triển khai dùng model chỉ đọc chữ đặt `SPECIALIST_SEES_IMAGES=0`; khi đó API
-không đưa ảnh và chuyên viên chỉ được báo tên ảnh, như hiện nay.
+không đưa ảnh và chuyên viên chỉ được báo tên ảnh.
+
+## Đã kiểm
+
+- Test của lớp bọc: câu hỏi có ảnh tới Bot gồm phần chữ và phần ảnh; sau lượt đó không còn ảnh nào được giữ; câu hỏi
+  kế tiếp không có ảnh là một chuỗi (`tests/vinhomes/test_runtime.py`).
+- Test của API: câu hỏi trong phiên kèm tệp văn bản và ảnh trả đúng `text` và `images`.

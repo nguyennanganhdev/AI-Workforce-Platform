@@ -756,6 +756,26 @@ async def test_management_asks_the_agent_a_follow_up_inside_the_session(staffed)
     assert not await runtime.work()
 
 
+async def test_a_photo_on_a_question_in_a_session_reaches_the_bot_as_a_picture_for_that_turn_only(staffed):
+    backend, providers = FakeBackend(message()), Providers(ANALYSIS, "Vết rò ở chân vòi.", "Không cần thay vòi.")
+    runtime = staffed(backend, providers)
+    await runtime.round()
+    backend.questions = [{"message_id": "question-1", "team_id": "team-1", "agent_id": "technical", "agent_version_id": "technical-v1",
+                          "text": "Ảnh này rò ở đâu?", "images": [{"name": "vet-ro.png", "mimeType": "image/png", "data": "aGVsbG8="}]}]
+    await runtime.round()
+    shown = providers.bot[1]["messages"][0]["content"]
+    # The adapter's text, unchanged, then the photo as the part the Bot turns into a picture for the model.
+    assert [part["type"] for part in shown] == ["text", "image"] and json.loads(shown[0]["text"])["instruction"] == "Ảnh này rò ở đâu?"
+    assert shown[1] == {"type": "image", "source": {"type": "data", "value": "aGVsbG8=", "mimeType": "image/png"}}
+    assert backend.answered == [("question-1", "done", "run-turn-2")]
+    # Nothing is kept after the turn: the next question, with no photo, is one string again.
+    assert runtime.releases.attached == {} and runtime.releases.pictures == {}
+    backend.questions = [{"message_id": "question-2", "team_id": "team-1", "agent_id": "technical", "agent_version_id": "technical-v1",
+                          "text": "Có cần thay vòi không?"}]
+    await runtime.round()
+    assert isinstance(providers.bot[2]["messages"][0]["content"], str)
+
+
 async def test_a_question_for_a_session_without_a_room_is_reported_as_failed(staffed):
     backend, providers = FakeBackend(message()), Providers()
     runtime = staffed(backend, providers)

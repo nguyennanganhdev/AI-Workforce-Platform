@@ -123,8 +123,10 @@ Agent được nhắc trong tin có tệp nhận nội dung tệp văn bản (t�
 - Trong phòng nhóm (kể cả câu hỏi theo lịch), ảnh được gửi cho model dưới dạng hình, tối đa 10 MB ảnh mỗi lượt; ảnh
   vượt mức chỉ được báo tên. Model của chuyên viên phải đọc được ảnh: dùng model chỉ đọc chữ thì đặt
   `SPECIALIST_SEES_IMAGES=0`, nếu không mọi câu hỏi có ảnh sẽ lỗi ở model.
-- Trong phiên điều phối, chuyên viên mới chỉ được báo tên ảnh. Phần này đi qua bộ chuyển của lõi Supervisor; đề nghị
-  gửi Team Đông ở `docs/teams/dong/requests/2026-10-05-anh-trong-phien-dieu-phoi.md`.
+- Trong phiên điều phối, ảnh trên câu hỏi BQL gửi chuyên viên cũng tới model dưới dạng hình, theo cùng giới hạn. Ảnh
+  được thêm ở lớp bọc của Team Chiến, không sửa bộ chuyển của lõi Supervisor; ghi chú gửi Team Đông ở
+  `docs/teams/dong/requests/2026-10-05-anh-trong-phien-dieu-phoi.md`. Việc Supervisor tự giao cho chuyên viên chưa
+  kèm ảnh cư dân gửi theo yêu cầu.
 
 Tệp đã tải lên nhưng không gửi kèm tin nào được job `file-cleanup` xóa sau một ngày (xem "Dọn dẹp định kỳ").
 
