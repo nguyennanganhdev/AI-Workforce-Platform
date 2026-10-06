@@ -48,6 +48,20 @@ services:
       VINHOMES_API_S3_REGION: ${S3_REGION:-us-east-1}
       FACTORY_SERVICE_URL: http://factory:4010
       FACTORY_SERVICE_TOKEN: ${FACTORY_SERVICE_TOKEN:?Factory token required}
+      # Registry rows reference deployment-owned variables; provider secrets never reach the browser.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      COORDINATION_MODEL: ${COORDINATION_MODEL:-gpt-5.4-mini}
+      RECEPTION_MODEL_API_KEY: ${RECEPTION_MODEL_API_KEY:-}
+      RECEPTION_MODEL_BASE_URL: ${RECEPTION_MODEL_BASE_URL:-}
+      COORDINATION_MODEL_API_KEY: ${COORDINATION_MODEL_API_KEY:-}
+      COORDINATION_MODEL_BASE_URL: ${COORDINATION_MODEL_BASE_URL:-}
+      SPECIALIST_MODEL_API_KEY: ${SPECIALIST_MODEL_API_KEY:-}
+      SPECIALIST_MODEL_BASE_URL: ${SPECIALIST_MODEL_BASE_URL:-}
+      FACTORY_MODEL_API_KEY: ${FACTORY_MODEL_API_KEY:-${OPENAI_API_KEY}}
+      FACTORY_MODEL_BASE_URL: ${FACTORY_MODEL_BASE_URL:-https://api.openai.com/v1}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-${OPENAI_API_KEY}}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.openai.com/v1}
       # Two settings, one list: browser sign-in and writes check the first, the resident app's CORS the second.
       VINHOMES_API_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011,http://localhost:3023}
       VINHOMES_API_RESIDENT_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011,http://localhost:3023}
@@ -172,6 +186,8 @@ services:
       # The embedding model's own key and address, when OPENAI_API_KEY is not the one that made the vectors.
       KNOWLEDGE_EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       KNOWLEDGE_EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-${OPENAI_API_KEY}}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.openai.com/v1}
     depends_on:
       api:
         condition: service_healthy
@@ -348,6 +364,7 @@ services:
       DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
       VINHOMES_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
       OPENBOT_DATABASE_URL: ${OPENBOT_DATABASE_URL:?restricted account database URL required}
+      KNOWLEDGE_DATABASE_URL: ${KNOWLEDGE_DATABASE_URL:?restricted knowledge database URL required}
       VINHOMES_API_DATABASE_URL: ${VINHOMES_API_DATABASE_URL:?restricted business database URL required}
       TECHNICAL_API_DATABASE_URL: ${TECHNICAL_API_DATABASE_URL:?restricted tools database URL required}
       ROUTINES_DATABASE_URL: ${ROUTINES_DATABASE_URL:?restricted schedule database URL required}

@@ -106,6 +106,34 @@
       "when": 1791082501732,
       "tag": "0014_pinned_agent_releases",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1791282501733,
+      "tag": "0015_private_agent_chats",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791282501734,
+      "tag": "0016_ops_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791282501735,
+      "tag": "0017_admin_model_registry",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791282501736,
+      "tag": "0018_session_external_sources",
+      "breakpoints": true
     }
   ]
 }

@@ -13,7 +13,7 @@ beforeAll(async () => {
   ({ cleanup, render, waitFor, fireEvent } = await import("@testing-library/react/pure"));
 });
 afterEach(() => { cleanup(); globalThis.fetch = originalFetch; });
-afterAll(() => GlobalRegistrator.unregister());
+afterAll(async () => { await new Promise(done=>setTimeout(done,50)); GlobalRegistrator.unregister(); });
 
 const session = (over: Partial<RoomSession>): RoomSession => ({
   id: "s1", ticket_id: "t1", ticket_code: "VH-AAAAAAAAAAAA", ticket_title: "Vòi bếp rò nước", status: "running",
@@ -22,11 +22,11 @@ const message = (over: Partial<RoomMessage> & { body: RoomMessage["body"] }): Ro
   id: crypto.randomUUID(), seq: 1, sender_user_id: null, sender_agent_id: "supervisor", created_at: "2026-10-04T10:01:00Z", ...over });
 
 test("a session says who it waits for, and the plan's status wins over a lagging runtime phase", () => {
-  expect(sessionState(session({}))).toEqual({ group: "running", label: "Supervisor đang điều phối" });
+  expect(sessionState(session({}))).toEqual({ group: "running", label: "Agent đang lập phương án" });
   expect(sessionState(session({ plan_status: "management_pending" })).group).toBe("attention");
   // The runtime still reports that it waits for management; the backend already recorded the decision.
   expect(sessionState(session({ plan_status: "resident_pending", runtime: { phase: "waiting_management" } })))
-    .toEqual({ group: "running", label: "Chờ cư dân đồng ý phương án" });
+    .toEqual({ group: "running", label: "Chờ cư dân đồng ý" });
   expect(sessionState(session({ runtime: { phase: "paused", pauseReason: "planner:analysis_ready" } })).group).toBe("attention");
   expect(sessionState(session({ ticket_status: "closed", plan_status: "approved" })).label).toBe("Cư dân đã xác nhận, chờ bạn duyệt đóng");
   expect(sessionState(session({ status: "completed", ticket_status: "closed" }))).toEqual({ group: "done", label: "Đã đóng" });
@@ -68,7 +68,7 @@ test("a session reads as one conversation in time order, with only its newest pl
       proposal: { steps: ["Khóa van", "Thay gioăng"], performer_role: "Kỹ thuật viên", expected_duration: "45 phút", conditions: "Cư dân có mặt" } } } };
   const feed = sessionFeed("s1", messages, detail, [{ id: "tech", name: "Agent Kỹ thuật" }], "me");
   expect(feed.map((i) => i.type)).toEqual(["resident", "note", "agent", "note", "plan", "asked"]);
-  expect(feed[1]).toMatchObject({ text: "Supervisor đã tiếp nhận và mời Agent Kỹ thuật" });
+  expect(feed[1]).toMatchObject({ text: "Supervisor nhận điều phối yêu cầu" });
   expect(feed[2]).toMatchObject({ author: "Agent Kỹ thuật", text: "Cần thay gioăng." });
   expect(feed[5]).toMatchObject({ author: "Bạn", agent: "Agent Kỹ thuật", status: "queued", text: "Có cần khóa van không?" });
   expect(JSON.stringify(feed)).not.toContain("VH-");
@@ -102,18 +102,17 @@ test('the coordination room lists sessions and management approves the plan', as
     if (url === "/api/business/teams/s1/controls") return Response.json({ canControl: true, runtime: { phase: "waiting_management", stateVersion: 4 }, items: [] });
     return Response.json({ detail: "not found" }, { status: 404 });
   }) as typeof fetch;
-  const page = render(<QueryClientProvider client={queryClient}><Coordination userId="me" /></QueryClientProvider>);
+  const page = render(<QueryClientProvider client={queryClient}><Coordination userId="me" tickets={[]} /></QueryClientProvider>);
   const attention = await waitFor(() => page.getByRole("region", { name: 'Cần bạn xử lý' }));
   expect(attention.textContent).toContain("Vòi bếp rò nước");
   expect(attention.textContent).toContain("Chờ bạn duyệt phương án");
-  // The room's own conversation holds only what was said to the room, not the sessions' steps.
-  expect(page.getByRole("log", { name: "Tin nhắn nhóm" }).textContent).toContain("Chào cả nhóm");
-  expect(page.getByRole("log", { name: "Tin nhắn nhóm" }).textContent).not.toContain("đề xuất phương án");
+  // Requests opens the session directly; shared room chatter stays outside the request list.
+  expect(page.container.textContent).not.toContain("Chào cả nhóm");
   fireEvent.click(page.getByRole("button", { name: /Vòi bếp rò nước/ }));
   const card = await waitFor(() => page.getByRole("region", { name: "Phương án xử lý" }));
   expect(card.textContent).toContain("Thay gioăng vòi bếp");
   expect(page.container.textContent).not.toContain("VH-");
-  fireEvent.click(page.getByRole("button", { name: "Duyệt phương án" }));
+  fireEvent.click(page.getByRole("button", { name: "Duyệt và gửi cư dân" }));
   await waitFor(() => expect(sent).toEqual([{ url: "/api/business/plans/plan-1/management-decision",
     body: { decision: "approve", version: 3, note: "Đồng ý phương án." } }]));
   queryClient.clear();

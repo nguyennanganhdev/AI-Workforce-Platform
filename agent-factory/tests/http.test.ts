@@ -39,6 +39,27 @@ const call = (value: unknown = body, headers: Record<string, string> = {}) =>
     body: JSON.stringify(value),
   });
 
+test("service-selected model is used for construction without exposing its credential", async () => {
+  let calls = 0;
+  const provider = Bun.serve({ port: 0, fetch: async (request) => {
+    const asked = await request.json() as { model: string; messages: { content: string }[]; reasoning_effort?:string; max_tokens?:number };
+    expect(request.headers.get("Authorization")).toBe("Bearer registry-test-key");
+    expect(asked.model).toBe("selected-model");
+    expect(asked.reasoning_effort).toBe('low');
+    expect(asked.max_tokens).toBe(4096);
+    calls++;
+    return Response.json({ choices: [{ message: { content: await successfulCompletion(asked.messages[0]!.content) } }] });
+  } });
+  try {
+    const handler = createFactoryHandler({ token, modelRef: "deployment", reasoningEffort:'low', maxCompletionTokens:4096, complete: async () => { throw new Error("Fallback must not run"); } });
+    const response = await handler(call({ ...body, model_config: { model_name: "selected-model", api_key: "registry-test-key", base_url: provider.url.href.replace(/\/$/, "") + "/v1", provider: "custom" } }));
+    const result = await response.text();
+    expect(response.status).toBe(200);
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(result.includes("registry-test-key")).toBe(false);
+  } finally { provider.stop(true); }
+});
+
 describe("standalone construction HTTP API", () => {
   test("health, unknown route and method; refuses an empty service secret", async () => {
     expect(() =>

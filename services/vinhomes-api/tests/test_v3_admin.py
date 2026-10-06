@@ -105,3 +105,32 @@ def test_admin_creates_unit_room_and_supervisor_atomically(database):
         assert len(configuration['mcp_tools']) == 4
         assert len(sql(database, 'select id from management_coverage where management_unit_id=$1', UUID(unit['id']))) == 1
         assert sql(database, "select id from audit_events where event_type='management_unit.created' and target_id=$1", unit['id'])
+
+
+def test_external_event_filters_and_timestamp_tie_pagination(database):
+    marker=uuid4().hex
+    for event in ('external-source-used','external-write-requested','external-write-decided'):
+        sql(database, """insert into audit_events(tenant_id,initiator_kind,initiator_id,event_type,target_type,target_id,payload,created_at)
+            values($1,'person','local-v3-management',$2,'mcp_server',$3,'{}',timestamptz '2026-03-04 10:00:00+07') returning id""",TENANT,event,marker)
+    sql(database, """insert into audit_events(tenant_id,initiator_kind,initiator_id,event_type,target_type,target_id,payload,created_at)
+        select $1,'system','cursor-test','pagination.checked','test',$2,'{}',timestamptz '2026-03-04 12:00:00+07' from generate_series(1,55) returning id""",TENANT,marker)
+    with demo_client(database,'admin') as admin:
+        for event in ('external-source-used','external-write-requested','external-write-decided'):
+            filters={'kind':event,'search':marker,'from':'2026-03-04','to':'2026-03-04'}
+            response=admin.get('/admin/audit-events',params=filters)
+            assert response.status_code==200,response.text
+            assert [item['event_type'] for item in response.json()['items']]==[event]
+            exported=admin.get('/admin/audit-events/export',params=filters)
+            assert exported.status_code==200,exported.text
+            assert len(exported.content.decode('utf-8-sig').splitlines())==2
+        filters={'kind':'pagination','search':marker,'limit':50}
+        first=admin.get('/admin/audit-events',params=filters).json()['items']
+        assert len(first)==50
+        cursor={'before':first[-1]['created_at'],'before_id':first[-1]['id']}
+        next_page=admin.get('/admin/audit-events',params={**filters,**cursor})
+        assert next_page.status_code==200,next_page.text
+        remaining=next_page.json()['items']
+        assert len(remaining)==5 and len({item['id'] for item in first+remaining})==55
+        # Old clients retain the strictly earlier timestamp behavior.
+        assert admin.get('/admin/audit-events',params={**filters,'before':cursor['before']}).json()['items']==[]
+        assert admin.get('/admin/audit-events',params={'before_id':cursor['before_id']}).status_code==422

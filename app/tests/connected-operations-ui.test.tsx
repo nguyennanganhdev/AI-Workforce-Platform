@@ -18,7 +18,7 @@ beforeAll(async () => {
   ({LiveReportsPage} = await import('../src/features/vinhomes-operations/workspace/LiveReportsPage'));
 });
 afterEach(() => {cleanup(); globalThis.fetch = originalFetch; localStorage.clear();});
-afterAll(() => GlobalRegistrator.unregister());
+afterAll(async () => {await new Promise(done=>setTimeout(done,50));GlobalRegistrator.unregister();});
 
 test("original work list renders server rows without needing the preview provider", async () => {
   localStorage.setItem("vinhomes.frontend-workspace.v1", "invalid-preview-data");
@@ -55,7 +55,8 @@ test("original report form requests persisted report data with an inclusive fina
     return Response.json({items: [{month: "2026-10-01", incident_type: "Electrical", incident_count: 3}]});
   }) as typeof fetch;
   const page = render(<LiveReportsPage buildings={[{id: "building-real", name: "Tower A"}]} categories={[]} />);
-  fireEvent.change(page.getByLabelText("Tòa nhà"), {target: {value: "building-real"}});
+  const {selectOption} = await import('./type-into');
+  await selectOption(page.getByRole('combobox',{name:'Tòa nhà'}),'Tower A');
   await typeInto(page.getByLabelText("Từ ngày"), "2026-10-01");
   await typeInto(page.getByLabelText("Đến ngày"), "2026-10-02");
   fireEvent.click(page.getByRole("button", {name: "Xem báo cáo"}));

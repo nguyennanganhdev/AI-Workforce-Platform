@@ -149,3 +149,37 @@ async def test_interrupted_room_turn_is_failed_without_a_second_generation(tmp_p
     await runtime.answer_room(item)
     await runtime.answer_room(item)
     assert [r['status'] for r in backend.outcomes] == ['failed', 'failed']
+
+@pytest.mark.asyncio
+async def test_explicit_session_question_uses_actor_bound_turn_and_preserves_ticket_context(tmp_path, monkeypatch):
+    generated = []
+    class Backend:
+        outcomes = []
+        async def session_turn(self, team, message):
+            assert (team, message) == ('team', 'question')
+            return {'run_id': 'actor-run', 'instructions': 'Wait for each external write confirmation',
+                    'tools': [{'name': 'calendar__create_event'}], 'instruction': 'Tạo lịch kiểm tra',
+                    'ticket': {'title': 'Máy nước nóng không nóng', 'unit_code': '1201'}, 'messages': []}
+        async def room_tool(self, run, tool, arguments):
+            assert run == 'actor-run'
+            return {'status': 'AWAITING_CONFIRMATION', 'data': {'confirmation': {'arguments': arguments}}}
+        async def session_outcome(self, team, message, result):
+            assert (team, message) == ('team', 'question')
+            self.outcomes.append(result)
+        async def room_turn(self, *args):
+            raise AssertionError('Request question must not use the unbound room turn')
+    async def answer(client, instructions, payload, tools, context, **kwargs):
+        generated.append(payload)
+        assert payload['ticket'] == {'title': 'Máy nước nóng không nóng', 'unit_code': '1201'}
+        pending = await kwargs['invoke_tool']('calendar.create_event', {'title': 'Kiểm tra'})
+        assert pending['status'] == 'AWAITING_CONFIRMATION'
+        return 'Thao tác đang chờ bạn cho phép.', []
+    monkeypatch.setattr('vinhomes.publish.answer', answer)
+    monkeypatch.setenv('MANAGED_AGENT_TOKEN', 'test-token')
+    backend = Backend()
+    runtime = Runtime(backend, Store(tmp_path / 'session.sqlite'), settings=Settings('http://backend', TOKEN, openbot=OpenBot('http://bot', 'model')))
+    item = {'kind': 'session-mention', 'tenant_id': 'tenant', 'team_id': 'team', 'message_id': 'question', 'agent_id': 'specialist'}
+    await runtime.answer_room(item)
+    await runtime.answer_room(item)
+    assert len(generated) == 1
+    assert backend.outcomes[-1] == {'run_id': 'actor-run', 'status': 'done', 'content': 'Thao tác đang chờ bạn cho phép.'}

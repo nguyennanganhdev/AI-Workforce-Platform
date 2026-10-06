@@ -6,14 +6,15 @@ import { roomSessionsQueryOptions, roomsQueryOptions } from "@/lib/rooms/queries
 import { Coordination } from "./coordination/Coordination";
 import { sessionState } from "./coordination/model";
 import { AgentsPage } from "./ManagedAgents";
-import { ConnectionsPage } from "./Connections";
 import {
-  ConnectedOperationsShell,
   connectedPages,
 } from "../layout/connected-operations-shell";
+import { UrbanOperationsShell as ConnectedOperationsShell } from '../layout/urban-operations-shell';
 import { WorkspaceFrame } from "../workspace/WorkspaceFrame";
 import { AccountsPage } from "./admin/Accounts";
-import { AuditPage, ModelsPage, UnitsPage } from "./admin/Platform";
+import { AdminOverviewPage, AdminConnectionsPage, AuditPage, ModelsPage, UnitsPage } from "./admin/Platform";
+import { overviewOptions } from './admin/queries';
+import { modelsQueryOptions } from '@/lib/admin/queries';
 import "./connected.css";
 import { FieldJob, type FieldActions } from "./field/FieldJob";
 import { FieldWorkList } from "./field/FieldWorkList";
@@ -22,6 +23,7 @@ import { Inquiries, LearnedAnswers, type Inquiry, type LearnedAnswer } from "./I
 import { OperationsDashboardView } from "../components/operations-dashboard";
 import { LiveReportsPage } from "../workspace/LiveReportsPage";
 import { WorkListView } from "../workspace/WorkPage";
+import { AskAgent } from './AskAgent';
 import type { WorkItem } from "../workspace/work-items";
 
 type Ticket = {
@@ -38,6 +40,7 @@ type Ticket = {
   unit_code?: string | null;
   resolution_due_at: string | null;
   updated_at: string;
+  created_at?: string;
 };
 type Order = {
   id: string;
@@ -94,7 +97,7 @@ type Session = {
 const PHOTO_ORDER = ["", "issue", "before", "after", "other"];
 const PHOTO_PURPOSE: Record<string, string> = { issue: "Phản ánh", before: "Trước khi sửa", after: "Sau khi sửa" };
 type Me = {
-  user: { id: string; name: string };
+  user: { id: string; name: string; email?: string };
   role: string;
   dataMode: string;
 };
@@ -342,8 +345,8 @@ export function ConnectedOperations() {
   const navigate = useNavigate();
   // Management lands on the coordination room: that is where requests wait for a decision.
   useEffect(() => {
-    if (management && path === "") void navigate({ to: "/operations/team", replace: true });
-  }, [management, path, navigate]);
+    if (me?.role === 'management' && path === "") void navigate({ to: "/operations/team", replace: true });
+  }, [me?.role, path, navigate]);
   // An administrator's page opened by someone else used to draw the work list under that page's
   // title ("Nhật ký" over a list of jobs). It goes to the account's own start page instead.
   const adminOnly = ["units", "connections", "models", "audit"].includes(path);
@@ -354,16 +357,21 @@ export function ConnectedOperations() {
   const rooms = useQuery({ ...roomsQueryOptions(), enabled: management });
   const roomId = rooms.data?.items[0]?.id || "";
   const waiting = useQuery({ ...roomSessionsQueryOptions(roomId), enabled: management && !!roomId });
-  const notices = management
+  const adminSummary = useQuery({...overviewOptions(), enabled:me?.role === 'admin',refetchInterval:30_000});
+  const roleModels = useQuery({...modelsQueryOptions(),enabled:me?.role === 'admin',refetchInterval:30_000});
+  const workNotices = management
     ? (waiting.data || []).filter((s) => sessionState(s).group === "attention")
       .map((s) => ({ id: s.id, title: s.ticket_title, note: sessionState(s).label, to: `/operations/team?session=${encodeURIComponent(s.id)}` }))
     // A technician is told about the work offered to it until it accepts.
     : jobs.filter((j) => stateOf(j) === "offered").map((j) => ({ id: j.id, title: tickets.find((t) => t.id === j.ticket_id)?.title || "Công việc mới",
         note: "Việc mới chờ bạn nhận", to: `/operations/my-tasks?ticket=${encodeURIComponent(j.ticket_id)}` }));
-  const coordinating = management && path === "team";
+  const notices = [...workNotices,
+    ...(adminSummary.data?.pending_accounts ? [{id:'accounts-pending',title:`${adminSummary.data.pending_accounts} tài khoản chờ duyệt`,note:'Xem hồ sơ đăng ký để quyết định.',to:'/operations/accounts',count:adminSummary.data.pending_accounts}] : []),
+    ...((roleModels.data || []).filter(m=>!m.configured).map(m=>({id:`model-${m.role}`,title:`Cấu hình model cho ${m.role === 'factory' ? 'Factory' : m.role === 'embedding' ? 'Tìm kiếm tri thức' : m.role === 'reception' ? 'Lễ tân' : m.role === 'supervisor' ? 'Supervisor' : 'Agent chuyên môn'}`,note:'Vai trò chưa có model được cấu hình.',to:'/operations/models'})))];
+  const coordinating = management && ['team', 'kanban', 'incidents', 'triage', 'dispatch', 'work-orders', 'qc'].includes(path);
   // The administrator's own pages: what it sets up for management to work with.
-  const adminPage = me?.role !== "admin" ? null : path === "accounts" ? <AccountsPage /> : path === "units" ? <UnitsPage />
-    : path === "connections" ? <ConnectionsPage /> : path === "models" ? <ModelsPage /> : path === "audit" ? <AuditPage /> : null;
+  const adminPage = me?.role !== "admin" ? null : path === '' ? <AdminOverviewPage /> : path === "accounts" ? <AccountsPage /> : path === "units" ? <UnitsPage />
+    : path === "connections" ? <AdminConnectionsPage /> : path === "models" ? <ModelsPage /> : path === "audit" ? <AuditPage /> : null;
   const plan = session?.room?.plan;
   const selected = detail?.ticket;
   const visible = tickets.filter((t) => {
@@ -450,11 +458,14 @@ export function ConnectedOperations() {
     </>
   );
   return (
-    <ConnectedOperationsShell name={me?.user.name} management={management} administrator={me?.role === "admin"} field={me?.role === "staff"} notices={notices} flush={coordinating}
+    <ConnectedOperationsShell name={me?.user.name} email={me?.user.email} management={management} administrator={me?.role === "admin"} field={me?.role === "staff"} notices={notices} flush={coordinating || path === 'ask' || path === 'agents'}
+      unit={rooms.data?.items[0]?.name} buildingCount={catalog?.buildings.length}
+      searchItems={tickets.map(t => ({id:t.id,title:t.title,location:[t.unit_code ? `Căn ${t.unit_code}` : '', catalog?.buildings.find(b => b.id === t.building_id)?.code].filter(Boolean).join(', '),to:`/operations/team?ticket=${encodeURIComponent(t.id)}`}))}
       // The list already opens on what is newly offered; inside a job, another offer is announced above it.
       banner={me?.role === "staff" ? (selected ? notices.filter((n) => !n.to.endsWith(encodeURIComponent(selected.id))) : []) : undefined}
       alerts={tickets.filter(t => t.priority === 'critical' && !['closed', 'cancelled'].includes(t.status)).map(t => ({id: t.id, title: t.title, location_json: {towerCode: catalog?.buildings.find(b => b.id === t.building_id)?.code}}))}>
-      {coordinating ? <Coordination userId={me?.user.id || ""} /> : path === "agents" && management ? <AgentsPage />
+      {coordinating ? <Coordination userId={me?.user.id || ""} tickets={tickets} catalog={catalog} /> : path === 'ask' && management ? <AskAgent userId={me?.user.id || ''} /> : path === "agents" && management ? <AgentsPage />
+        : path === 'reports' && management ? <LiveReportsPage buildings={catalog?.buildings || []} categories={catalog?.serviceCategories || []} />
         : adminPage ? adminPage : me?.role === "staff" ? (
           <div className="flex flex-col gap-4">
             {banners}

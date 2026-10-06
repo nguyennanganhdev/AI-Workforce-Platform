@@ -12,15 +12,19 @@ export type SessionState = { group: SessionGroup; label: string };
 export function sessionState(s: RoomSession): SessionState {
   if (s.status === "completed") return { group: "done", label: "Đã đóng" };
   if (s.status === "cancelled") return { group: "done", label: "Đã dừng" };
-  if (s.status === "failed") return { group: "done", label: "Lỗi điều phối" };
+  if (s.status === "failed") return { group: "attention", label: "Agent chưa xử lý được yêu cầu" };
   if (s.ticket_status === "closed") return { group: "attention", label: "Cư dân đã xác nhận, chờ bạn duyệt đóng" };
+  if (s.manual) return ["in_progress", "assigned"].includes(s.ticket_status) ? { group: "running", label: "Đang thi công" } : s.ticket_status === "resolved" ? { group: "running", label: "Chờ cư dân xác nhận" } : { group: "attention", label: "Mới tiếp nhận" };
+  if (s.work_status === "completed" && !["resolved", "closed"].includes(s.ticket_status)) return { group: "attention", label: "Chờ nghiệm thu" };
   if (s.runtime?.phase === "paused")
-    return { group: "attention", label: s.runtime.pauseReason === "management_pause" ? "Bạn đã tạm dừng phiên" : "Supervisor dừng lại, cần bạn xử lý" };
+    return { group: "attention", label: s.runtime.pauseReason === "management_pause" ? "Bạn đã tạm dừng phiên" : handbackReason(s.runtime.pauseReason) };
   if (s.plan_status === "management_pending") return { group: "attention", label: "Chờ bạn duyệt phương án" };
-  if (s.plan_status === "resident_pending") return { group: "running", label: "Chờ cư dân đồng ý phương án" };
-  if (s.plan_status === "approved") return { group: "running", label: "Đã duyệt, đang thi công" };
+  if (s.plan_status === "rejected") return { group: "attention", label: s.plan_resident_rejected ? "Cư dân từ chối phương án" : "Phương án cần sửa" };
+  if (s.plan_status === "resident_pending") return { group: "running", label: "Chờ cư dân đồng ý" };
+  if (s.plan_status === "approved" && s.work_status === "queued") return { group: "attention", label: "Chưa tìm được thợ rảnh" };
+  if (s.plan_status === "approved") return { group: "running", label: "Đang thi công" };
   if (s.runtime?.phase === "waiting_information") return { group: "running", label: "Chờ cư dân trả lời" };
-  return { group: "running", label: "Supervisor đang điều phối" };
+  return { group: "running", label: s.status === "queued" ? "Mới tiếp nhận" : "Agent đang lập phương án" };
 }
 
 const AGO = new Intl.RelativeTimeFormat("vi", { numeric: "auto", style: "narrow" });
@@ -36,11 +40,11 @@ export function ago(iso: string, now = Date.now()): string {
 
 /** Why the Supervisor stopped and left the next step to management. */
 const PAUSES: Record<string, string> = {
-  "planner:no_specialist_available": "Phòng chưa có agent chuyên môn cho loại yêu cầu này. Bạn xử lý trực tiếp ở mục Công việc.",
+  "planner:no_specialist_available": "Phòng chưa có agent chuyên môn cho loại yêu cầu này. Bạn xử lý trực tiếp trong yêu cầu này.",
   "planner:analysis_ready": "Agent đã phân tích xong nhưng Supervisor chưa lập được phương án. Bạn lập phương án từ phân tích bên dưới.",
-  "planner:planner_model_not_configured": "Supervisor chưa được cấu hình model. Bạn xử lý trực tiếp ở mục Công việc.",
-  AGENT_FAILURE: "Agent không trả lời được sau nhiều lần thử. Bạn xử lý trực tiếp ở mục Công việc.",
-  model_unavailable: "Supervisor không gọi được model (hết hạn mức hoặc mất kết nối). Bấm Chạy tiếp khi model hoạt động lại, hoặc xử lý trực tiếp ở mục Công việc.",
+  "planner:planner_model_not_configured": "Supervisor chưa được cấu hình model. Bạn xử lý trực tiếp trong yêu cầu này.",
+  AGENT_FAILURE: "Agent không trả lời được sau nhiều lần thử. Bạn xử lý trực tiếp trong yêu cầu này.",
+  model_unavailable: "Supervisor không gọi được model (hết hạn mức hoặc mất kết nối). Bấm Chạy tiếp khi model hoạt động lại, hoặc xử lý trực tiếp trong yêu cầu này.",
   model_timeout: "Model trả lời quá chậm nên Supervisor dừng lại. Bấm Chạy tiếp để thử lại.",
   outcome_unknown: "Một bước của phiên chưa rõ kết quả nên Supervisor dừng lại.",
   management_pause: "Bạn đã tạm dừng phiên. Bấm Chạy tiếp để Supervisor làm tiếp.",
@@ -97,16 +101,16 @@ export function sessionFeed(
   const name = (id?: string | null) => agents.find((a) => a.id === id)?.name || "Agent";
   const own = messages.filter((m) => m.body.sessionId === sessionId);
   const lastPlan = own.findLast((m) => m.body.kind === "supervisor_plan")?.id;
-  const invited = detail?.room?.members.join(", ");
   const items: FeedItem[] = (detail?.conversation || [])
     .filter((m) => m.sender_kind === "user")
     .map((m) => ({ type: "resident", id: m.id, at: m.created_at, text: plain(m.text) }));
   for (const m of own) {
     const base = { id: m.id, at: m.created_at }, text = plain(m.body.text || "");
     const kind = m.body.kind || "";
-    if (kind === "supervisor_accepted") items.push({ ...base, type: "note", text: invited ? `Supervisor đã tiếp nhận và mời ${invited}` : "Supervisor đã tiếp nhận yêu cầu" });
+    if (kind === "supervisor_accepted") items.push({ ...base, type: "note", text: "Supervisor nhận điều phối yêu cầu" });
+    else if (kind === "agent_joined_session" || kind === "agent_left_session") items.push({ ...base, type: "note", text });
     else if (kind === "supervisor_plan")
-      items.push(m.id === lastPlan && detail?.room?.plan ? { ...base, type: "plan" } : { ...base, type: "note", text: "Supervisor đã đề xuất một phương án trước đó" });
+      items.push(m.id === lastPlan && detail?.room?.plan ? { ...base, type: "plan" } : { ...base, type: "note", text: "Supervisor đã soạn phương án và chuyển cho bạn duyệt" });
     else if (kind === "supervisor_plan_approval_requested") items.push({ ...base, type: "note", text: "Đã gửi phương án cho cư dân" });
     else if (kind === "supervisor_information_requested") items.push({ ...base, type: "supervisor", text });
     else if (kind === "inquiry") items.push({ ...base, type: "resident", text });
@@ -117,7 +121,7 @@ export function sessionFeed(
     else if (m.sender_agent_id) items.push({ ...base, type: "agent", author: name(m.sender_agent_id), text: unsigned(text, name(m.sender_agent_id)) });
   }
   // The backend stores a plan a moment before it mirrors the reply the plan was built from.
-  const when = (item: FeedItem) => new Date(item.at).getTime() + (item.type === "plan" || (item.type === "note" && item.text.includes("phương án trước đó")) ? 5000 : 0);
+  const when = (item: FeedItem) => new Date(item.at).getTime() + (item.type === "plan" || (item.type === "note" && item.text.includes("đã soạn phương án")) ? 5000 : 0);
   return items.sort((a, b) => when(a) - when(b));
 }
 
@@ -135,3 +139,45 @@ export const planStatus: Record<string, string> = {
   approved: "Cư dân đã đồng ý",
   rejected: "Đã bị từ chối",
 };
+
+/** A concrete hand-back reason; internal runtime keys never become visible copy. */
+export function handbackReason(reason?: string | null): string {
+  const reasons: Record<string, string> = {
+    "planner:no_specialist_available": "Chưa có agent chuyên môn phù hợp",
+    "planner:analysis_ready": "Cần hoàn thiện phương án xử lý",
+    "planner:planner_model_not_configured": "Chưa cấu hình model điều phối",
+    AGENT_FAILURE: "Agent chưa trả lời được", model_unavailable: "Model điều phối mất kết nối",
+    model_timeout: "Model điều phối trả lời quá chậm", outcome_unknown: "Cần kiểm tra kết quả xử lý",
+    management_pause: "Bạn đã tạm dừng phiên",
+  };
+  if (!reason) return "Cần bạn kiểm tra yêu cầu";
+  if (reasons[reason]) return reasons[reason];
+  const text = reason.replace(/^planner:/, "").trim();
+  return /^[\p{L}\p{N}\s.,():!?–-]+$/u.test(text) && !text.includes("_") ? plain(text) : "Cần bạn kiểm tra yêu cầu";
+}
+export const LIFECYCLE = ["Tiếp nhận", "Phương án", "Bạn duyệt", "Cư dân đồng ý", "Thi công", "Nghiệm thu"];
+export function lifecycleStep(s: RoomSession): number {
+  if (s.manual && !["assigned", "in_progress", "resolved", "closed"].includes(s.ticket_status)) return 0;
+  if (s.status === "completed" || s.ticket_status === "closed" || s.ticket_status === "resolved" || s.work_status === "completed") return 5;
+  if (s.plan_status === "rejected" || s.plan_status === "management_pending" || s.runtime?.phase === "paused") return 2;
+  if (s.plan_status === "resident_pending") return 3;
+  if (s.plan_status === "approved" || s.ticket_status === "in_progress" || s.ticket_status === "assigned") return 4;
+  return s.status === "queued" ? 0 : 1;
+}
+export function stateTone(s: RoomSession): "ok" | "wait" | "danger" | "neutral" | "agent" {
+  const state = sessionState(s);
+  if (s.status === "failed" || s.status === "cancelled") return "danger";
+  if (state.group === "done") return "neutral";
+  if (state.group === "attention" || s.plan_status === "resident_pending") return "wait";
+  return s.plan_status === "approved" ? "ok" : "agent";
+}
+/** Due time uses full Vietnamese units and is omitted when the API has no deadline. */
+export function dueText(iso?: string | null, now = Date.now()): { label: string; tone: "danger" | "wait" | "neutral" } | null {
+  if (!iso) return null;
+  const difference = Date.parse(iso) - now;
+  if (!Number.isFinite(difference)) return null;
+  const total = Math.max(1, Math.ceil(Math.abs(difference) / 60000));
+  const days = Math.floor(total / 1440), hours = Math.floor((total % 1440) / 60), minutes = total % 60;
+  const time = [days ? `${days} ngày` : "", hours ? `${hours} giờ` : "", !days && minutes ? `${minutes} phút` : ""].filter(Boolean).join(" ");
+  return { label: `${difference < 0 ? "Quá hạn" : "Còn"} ${time}`, tone: difference < 0 ? "danger" : difference < 4 * 3600000 ? "wait" : "neutral" };
+}

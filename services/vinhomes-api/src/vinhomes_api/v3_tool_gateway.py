@@ -21,7 +21,8 @@ from .v3_agent_results import AgentBusinessResponse, agent_result
 from .v3_billing import invoice_detail
 from .v3_operations import catalogs
 from .v3_security import cameras, contacts
-from .v3_connections import connection, host
+from .v3_connections import connection, host, prepare_external_call
+from .v3_audit import audit
 from . import v3_agent_knowledge as agent_knowledge
 from ._vendor.reporting.application.client import exact_decimal, invalid_constant, json_safe_numbers, unique_object
 from ._vendor.reporting.tools.catalog import tool_descriptors
@@ -162,16 +163,32 @@ class Call(BaseModel):
 @router.post('/call')
 async def call(body: Call, request: Request, db: Scope):
     status, result = 'FORBIDDEN', None
-    run, withheld = None, False
+    run, withheld, grant, session_context = None, False, None, None
     try:
         run = await run_authority(db, body.run_id)
         grants = [g for g in run['config'].get('mcp_tools', []) if g.get('name') == body.tool]
         if len(grants) != 1:
             raise HTTPException(403, 'Tool not granted to this pinned version')
         grant = grants[0]
-        if not (await db.execute(text("select 1 from mcp_tools where server_id=:server and name=:name and effect='read' and not destructive"), {'server': grant['server_id'], 'name': body.tool})).first():
-            raise HTTPException(403, 'Actions require separate human approval')
-        custom = (await db.execute(text("select 1 from mcp_servers where id=:server and provenance='custom'"), {'server': grant['server_id']})).first() is not None
+        registered = (await db.execute(text("select t.effect,t.destructive,s.provenance,s.status from mcp_tools t join mcp_servers s on s.id=t.server_id where t.server_id=:server and t.name=:name"), {'server': grant['server_id'], 'name': body.tool})).mappings().first()
+        if not registered or registered['destructive'] or registered['status'] != 'active':
+            raise HTTPException(403, 'Tool or connection is unavailable')
+        custom = registered['provenance'] == 'custom'
+        if custom and run['team_id'] and run['actor_user_id']:
+            from .v3_session_sources import session_call_context, session_source_enabled
+            session_context = await session_call_context(db, run['actor_user_id'], run['channel_id'], run['agent_id'], body.run_id)
+            if not await session_source_enabled(db, run['actor_user_id'], session_context['team_id'], grant['server_id']):
+                raise HTTPException(403, 'External source is disabled for this session question')
+        if custom:
+            personal = (await db.execute(text("select 1 from channels where id=:room and kind='personal'"), {'room': run['channel_id']})).first()
+            if personal and (await db.execute(text('select enabled from vh_private_chat_sources where channel_id=:room and server_id=:server'), {'room': run['channel_id'], 'server': grant['server_id']})).scalar_one_or_none() is not True:
+                raise HTTPException(403, 'External source is disabled in this conversation')
+        if registered['effect'] != 'read':
+            if not custom or not run['actor_user_id']:
+                raise HTTPException(403, 'Actions require an authenticated management confirmation')
+            prepared = await prepare_external_call(db, run['actor_user_id'], run['channel_id'], run['agent_id'], grant['server_id'], body.tool, body.arguments, **({'session_id': session_context['team_id'], 'request_message_id': session_context['message_id']} if session_context else {}))
+            await audit(db, run['actor_user_id'], 'agent.tool_called', 'agent_run', str(body.run_id), {'tool':body.tool,'status':'AWAITING_CONFIRMATION','connectionId':grant['server_id'],'channelId':run['channel_id']})
+            return {'status': 'AWAITING_CONFIRMATION', 'data': prepared, 'errors': []}
         # An external server's arguments are its own: a field it happens to call building_id is not ours to read.
         building = None if custom else body.arguments.get('building_id')
         if building is not None and str(UUID(building)) not in run['buildings']:
@@ -202,7 +219,13 @@ async def call(body: Call, request: Request, db: Scope):
                 if not isinstance(result, dict) or 'status' not in result:
                     raise HTTPException(503, 'Technical tool host unavailable')
         elif custom:
-            server = await connection(db, grant['server_id'])
+            server = await connection(db, grant['server_id'], lock=True)
+            if server['status'] != 'active':
+                raise HTTPException(403, 'Connection was suspended or is awaiting approval')
+            if personal and (await db.execute(text('select enabled from vh_private_chat_sources where channel_id=:room and server_id=:server for share'), {'room': run['channel_id'], 'server': grant['server_id']})).scalar_one_or_none() is not True:
+                raise HTTPException(403, 'External source is disabled in this conversation')
+            if session_context and not await session_source_enabled(db, run['actor_user_id'], session_context['team_id'], grant['server_id']):
+                raise HTTPException(403, 'External source is disabled for this session question')
             if server['workspace_id'] not in (None, run['workspace_id']):
                 raise HTTPException(403, 'Connection belongs to another group')
             if server['credential_id'] and not server['sealed']:
@@ -238,6 +261,6 @@ async def call(body: Call, request: Request, db: Scope):
     await db.execute(text(f'''insert into audit_events(tenant_id,initiator_kind,initiator_id,event_type,target_type,target_id,payload,correlation_id)
         values({TENANT},'agent',:agent,'agent.tool_called','agent_run',:run,cast(:payload as jsonb),:correlation)'''),
         {'agent': run['agent_id'] if run else 'refused-runtime-call', 'run': str(body.run_id),
-         'payload': json.dumps({'tool': body.tool, 'status': status}), 'correlation': uuid4()})
+         'payload': json.dumps({'tool': body.tool, 'status': status, 'connectionId': grant['server_id'] if grant else None, 'actorUserId': run['actor_user_id'] if run else None, 'channelId': run['channel_id'] if run else None}), 'correlation': uuid4()})
     told = result.get('errors') if isinstance(result, dict) and status != 'OK' else None
     return {'status': status, 'data': result, 'errors': [] if status == 'OK' else told or [{'code': status, 'message': 'Tool is unavailable or outside this run permission.', 'retryable': status == 'INTERNAL_ERROR'}]}

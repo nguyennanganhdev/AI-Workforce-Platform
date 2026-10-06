@@ -211,7 +211,13 @@ async def teams(room_id: str, scope: Scope):
             # The plan's own status says who the session waits for; the runtime's phase can lag behind it.
             "(select p.status from vh_ticket_plans p where p.ticket_id=tm.ticket_id and p.tenant_id=tm.tenant_id"
             " and p.proposed_by_agent_id=tm.supervisor_agent_id and p.created_at>=tm.created_at"
-            " order by p.created_at desc limit 1) as plan_status "
+            " order by p.created_at desc limit 1) as plan_status, "
+            "(select p.status='rejected' and p.resident_at is not null from vh_ticket_plans p "
+            " where p.ticket_id=tm.ticket_id and p.tenant_id=tm.tenant_id "
+            " and p.proposed_by_agent_id=tm.supervisor_agent_id and p.created_at>=tm.created_at "
+            " order by p.created_at desc limit 1) as plan_resident_rejected, "
+            "(select w.status from work_orders w where w.ticket_id=t.id and w.tenant_id=t.tenant_id "
+            " order by w.created_at desc limit 1) as work_status "
             "from agent_teams tm join tickets t on t.id=tm.ticket_id and t.tenant_id=tm.tenant_id "
             "where tm.channel_id=:room order by tm.created_at desc limit 100"
         ),

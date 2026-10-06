@@ -1,164 +1,40 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { IconPlugConnected, IconPlus } from "@tabler/icons-react";
-import { Badge } from "@/components/ui/badge";
+import { Plug, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { connectionsQueryOptions, type Connection, type Connections } from "@/lib/connections/queries";
-import { allowConnectionToolsMutationOptions, checkConnectionMutationOptions, createConnectionMutationOptions,
-  removeConnectionMutationOptions } from "@/lib/connections/mutations";
+import { connectionsQueryOptions, type Connection, type Connections, type OfferedTool } from "@/lib/connections/queries";
+import { allowConnectionToolsMutationOptions, checkConnectionMutationOptions, removeConnectionMutationOptions } from "@/lib/connections/mutations";
+import { client } from "@/lib/client";
+import { businessHeaders } from "@/lib/coordination/queries";
+import { managedAgentKeys } from "@/lib/agent-management/queries";
 import { queryClient } from "@/query-client";
-
-const host = (url: string) => { try { return new URL(url).host; } catch { return url; } };
-const select = "h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground";
-
-function standing(c: Connection): { label: string; live: boolean } {
-  if (c.last_error) return { label: "Lỗi kết nối", live: false };
-  return c.tools.length ? { label: `${c.tools.length} công cụ được phép`, live: true } : { label: "Chưa chọn công cụ", live: false };
-}
-
-/** The administrator's side of external tools: which servers exist, for which group, and which of their tools agents may be given. */
+import { AdminConfirm, AdminDrawer, AdminSelect } from "./admin/AdminUI";
+import { AgentBadge } from "./agent-display";
+import "./agents.css";
 export function ConnectionsPage() {
-  const connections = useQuery(connectionsQueryOptions());
-  const [creating, setCreating] = useState(false);
-  const [selected, setSelected] = useState("");
-  const items = connections.data?.items || [];
-  const open = items.find((c) => c.id === selected);
-  return (
-    <div className="mx-auto w-full max-w-5xl">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Kết nối ngoài</h1>
-          <p className="mt-1 max-w-prose text-sm text-muted-foreground">
-            Máy chủ MCP mà agent của Ban quản lý được dùng. Bạn thêm kết nối và chọn công cụ được phép; Ban quản lý cấp các công cụ đó cho agent của mình.
-          </p>
-        </div>
-        <Button onClick={() => setCreating(true)}><IconPlus />Thêm kết nối</Button>
-      </header>
-      {connections.error && <p role="alert" className="mt-4 text-sm text-destructive">{connections.error.message}</p>}
-      {connections.isPending ? <Skeleton className="mt-6 h-32" /> : items.length ? (
-        <div className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-3">
-          {items.map((c) => (
-            <button key={c.id} type="button" onClick={() => setSelected(c.id)}
-              className="flex flex-col items-stretch gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-primary/40 focus-visible:border-ring focus-visible:outline-none">
-              <span className="flex items-center gap-3">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground"><IconPlugConnected className="size-5" stroke={1.75} /></span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-foreground">{c.title}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{host(c.url)}</span>
-                </span>
-              </span>
-              <span className="text-sm text-muted-foreground">{c.workspace ? `Dành cho ${c.workspace}` : "Dành cho mọi nhóm"}</span>
-              <span><Badge variant={standing(c).live ? "default" : "secondary"}>{standing(c).label}</Badge></span>
-            </button>
-          ))}
-        </div>
-      ) : !connections.error && (
-        <p className="mt-6 rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-          Chưa có kết nối nào. Agent của Ban quản lý hiện chỉ dùng công cụ sẵn có của hệ thống: báo cáo, an ninh, kỹ thuật.
-        </p>
-      )}
-      {creating && <NewConnection workspaces={connections.data?.workspaces || []} onClose={(id) => { setCreating(false); if (id) setSelected(id); }} />}
-      {open && <ConnectionEditor key={open.id} connection={open} onClose={() => setSelected("")} />}
-    </div>
-  );
+ const data = useQuery(connectionsQueryOptions()); const [creating,setCreating] = useState(false); const [selected,setSelected] = useState(""); const open = data.data?.items.find(c => c.id === selected);
+ return <div className="agents-page"><header className="agents-toolbar"><h1>Kết nối</h1><Button className="ml-auto" onClick={() => setCreating(true)}><Plus />Thêm kết nối</Button></header><div className="agents-content">{data.isPending ? <Skeleton className="h-40" /> : data.error ? <div role="alert" className="agent-error">{data.error.message}<Button variant="outline" onClick={() => void data.refetch()}>Thử lại</Button></div> : <div className="agent-table-wrap"><table className="agent-table"><thead><tr><th>Tên</th><th>Thuộc về</th><th>Công cụ</th><th>Trạng thái</th></tr></thead><tbody>{data.data?.items.map(c => <tr key={c.id}><td><button className="agent-row-name" onClick={() => setSelected(c.id)}><span className="agent-icon-tile"><Plug size={16} /></span>{c.title}</button></td><td>{c.workspace || "Nền tảng"}</td><td>{c.tools.length} công cụ được phép</td><td><AgentBadge label={c.status === "suspended" ? "Tạm ngưng" : c.last_error ? "Mất kết nối" : c.tools_refreshed_at ? "Đã kết nối" : "Chưa kiểm tra"} tone={c.status === "suspended" || c.last_error ? "danger" : c.tools_refreshed_at ? "ok" : "neutral"} /></td></tr>)}</tbody></table>{!data.data?.items.length && <p className="agent-empty">Chưa có kết nối. Thêm kết nối để cấp nguồn ngoài cho agent.</p>}</div>}</div>{creating && <NewConnection workspaces={data.data?.workspaces || []} onClose={id => {setCreating(false);if(id) setSelected(id);}} />}{open && <ConnectionEditor key={open.id} connection={open} onClose={() => setSelected("")} />}</div>;
 }
-
-function NewConnection({ workspaces, onClose }: { workspaces: Connections["workspaces"]; onClose: (id?: string) => void }) {
-  const create = useMutation(createConnectionMutationOptions(queryClient));
-  const [form, setForm] = useState({ title: "", url: "", token: "", workspace: "" });
-  const ready = form.title.trim().length >= 2 && form.url.trim().length >= 8;
-  return (
-    <Dialog open onOpenChange={(o) => { if (!o && !create.isPending) onClose(); }}><DialogContent>
-      <DialogHeader><DialogTitle>Thêm kết nối</DialogTitle>
-        <DialogDescription>Kết nối tới một máy chủ MCP qua địa chỉ https. Khóa truy cập được mã hóa khi lưu và không hiện lại.</DialogDescription></DialogHeader>
-      <DialogBody className="space-y-4">
-        <div className="space-y-1.5"><label htmlFor="connection-title" className="text-sm font-medium">Tên kết nối</label>
-          <Input id="connection-title" value={form.title} maxLength={80} placeholder="Ví dụ: Sổ tay vận hành" onChange={(e) => setForm({ ...form, title: e.target.value })} /></div>
-        <div className="space-y-1.5"><label htmlFor="connection-url" className="text-sm font-medium">Địa chỉ máy chủ MCP</label>
-          <Input id="connection-url" type="url" value={form.url} maxLength={500} placeholder="https://…/mcp" onChange={(e) => setForm({ ...form, url: e.target.value })} /></div>
-        <div className="space-y-1.5"><label htmlFor="connection-token" className="text-sm font-medium">Khóa truy cập</label>
-          <Input id="connection-token" type="password" autoComplete="off" value={form.token} maxLength={4000} onChange={(e) => setForm({ ...form, token: e.target.value })} />
-          <p className="text-xs text-muted-foreground">Dùng chung cho mọi agent của nhóm được chọn. Để trống nếu máy chủ không cần khóa.</p></div>
-        <div className="space-y-1.5"><label htmlFor="connection-workspace" className="text-sm font-medium">Nhóm được dùng</label>
-          <select id="connection-workspace" className={select} value={form.workspace} onChange={(e) => setForm({ ...form, workspace: e.target.value })}>
-            <option value="">Mọi nhóm</option>
-            {workspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-          </select></div>
-        {create.error && <p role="alert" className="text-sm text-destructive">{create.error.message}</p>}
-      </DialogBody>
-      <DialogFooter>
-        <Button size="sm" variant="outline" disabled={create.isPending} onClick={() => onClose()}>Hủy</Button>
-        <Button size="sm" disabled={!ready || create.isPending} onClick={async () => {
-          try { onClose((await create.mutateAsync({ title: form.title.trim(), url: form.url.trim(),
-            ...(form.token.trim() ? { token: form.token.trim() } : {}), ...(form.workspace ? { workspace_id: form.workspace } : {}) })).id);
-          } catch { /* visible mutation error */ }
-        }}>{create.isPending ? "Đang thêm…" : "Thêm kết nối"}</Button>
-      </DialogFooter>
-    </DialogContent></Dialog>
-  );
+type DiscoverTool = Pick<OfferedTool,"tool"|"description"|"destructive"|"usable"|"effect">;
+export function NewConnection({workspaces,onClose,roomId}: {workspaces:Connections["workspaces"];onClose:(id?:string)=>void;roomId?:string}) {
+ const [step,setStep] = useState(0); const [form,setForm] = useState({title:"",url:"",token:"",workspace:""}); const [offered,setOffered] = useState<DiscoverTool[]>([]); const [allowed,setAllowed] = useState<string[]>([]);
+ const base = roomId ? `/api/business/rooms/${encodeURIComponent(roomId)}/connections` : "/api/business/admin/connections";
+ const discover = useMutation({mutationFn:async () => (await client(`${base}/discover`,{method:"POST",headers:businessHeaders(),body:{title:form.title.trim() || "Kết nối mới",url:form.url.trim(),...(form.token.trim() ? {token:form.token.trim()} : {})},fallback:"Không kiểm tra được kết nối. Kiểm tra địa chỉ và khóa rồi thử lại."})).json() as Promise<{tools:DiscoverTool[]}>});
+ const create = useMutation({mutationFn:async () => (await client(base,{method:"POST",headers:businessHeaders(),body:{title:form.title.trim(),url:form.url.trim(),...(form.token.trim() ? {token:form.token.trim()} : {}),...(!roomId && form.workspace ? {workspace_id:form.workspace} : {}),allowed_tools:allowed},fallback:"Không thêm được kết nối."})).json() as Promise<{id:string}>,onSuccess:async () => {await queryClient.invalidateQueries({queryKey:["connections"]});await queryClient.invalidateQueries({queryKey:managedAgentKeys.all});await queryClient.invalidateQueries({queryKey:["unit-connections"]});}});
+ const busy = discover.isPending || create.isPending; const error = discover.error || create.error;
+ return <AdminDrawer title="Thêm kết nối" description={`Bước ${step+1}/3, ${["Địa chỉ và đăng nhập","Chọn công cụ","Đặt tên và lưu"][step]}`} onClose={() => onClose()} busy={busy} footer={<><Button variant="outline" disabled={busy} onClick={() => step ? setStep(step-1) : onClose()}>{step ? "Quay lại" : "Hủy"}</Button><Button disabled={busy || (step === 0 && form.url.trim().length < 8) || (step === 2 && form.title.trim().length < 2)} onClick={async () => {try {if(step === 0) {const result = await discover.mutateAsync();setOffered(result.tools);setAllowed([]);setStep(1);} else if(step === 1) setStep(2); else onClose((await create.mutateAsync()).id);} catch {}}}>{busy ? "Đang xử lý…" : step === 2 ? "Thêm kết nối" : "Tiếp"}</Button></>}>
+ {step === 0 && <div className="space-y-4"><div><label htmlFor="connection-url">Địa chỉ máy chủ MCP</label><Input id="connection-url" type="url" placeholder="https://…/mcp" maxLength={500} value={form.url} onChange={e => setForm({...form,url:e.target.value})} /></div><div><label htmlFor="connection-token">Khóa truy cập</label><Input id="connection-token" type="password" autoComplete="off" maxLength={4000} value={form.token} onChange={e => setForm({...form,token:e.target.value})} /><p className="agent-hint">Khóa được mã hóa khi lưu và không hiện lại.</p></div>{!roomId && <div><label htmlFor="connection-workspace">Đơn vị được dùng</label><AdminSelect id="connection-workspace" label="Đơn vị được dùng" value={form.workspace} onChange={workspace => setForm({...form,workspace})} options={[{value:"",label:"Mọi đơn vị"},...workspaces.map(w => ({value:w.id,label:w.name}))]} /></div>}</div>}
+ {step === 1 && <div><p className="agent-hint">Chọn công cụ được phép. Công cụ ghi luôn cần xác nhận riêng trước mỗi lần thực hiện.</p>{offered.map(t => <label key={t.tool} className="agent-capability-row"><Checkbox aria-label={t.tool} disabled={t.destructive || !t.usable} checked={allowed.includes(t.tool)} onCheckedChange={checked => setAllowed(checked ? [...allowed,t.tool] : allowed.filter(n => n !== t.tool))} /><span className="agent-capability-text"><strong>{t.tool}</strong><small>{t.destructive ? "Công cụ phá hủy dữ liệu không được cấp." : !t.usable ? "Tên công cụ không được hỗ trợ." : t.description}</small></span><AgentBadge label={t.effect === "read" ? "Đọc" : "Ghi"} tone={t.effect === "read" ? "neutral" : "wait"} /></label>)}{!offered.length && <p>Máy chủ chưa có công cụ.</p>}</div>}
+ {step === 2 && <div><label htmlFor="connection-title">Tên kết nối</label><Input id="connection-title" placeholder="Ví dụ: Sổ tay vận hành" maxLength={80} value={form.title} onChange={e => setForm({...form,title:e.target.value})} /><p className="agent-hint">{allowed.length} công cụ được phép. Kết nối mới sẽ tắt trên mọi agent cho đến khi bạn bật trong trang soạn.</p></div>}{error && <p role="alert" className="text-destructive">{error.message}</p>}
+ </AdminDrawer>;
 }
-
-function ConnectionEditor({ connection, onClose }: { connection: Connection; onClose: () => void }) {
-  const check = useMutation(checkConnectionMutationOptions(queryClient));
-  const allow = useMutation(allowConnectionToolsMutationOptions(queryClient));
-  const remove = useMutation(removeConnectionMutationOptions(queryClient));
-  const saved = connection.tools.map((t) => t.name);
-  const [names, setNames] = useState(saved);
-  const [confirming, setConfirming] = useState(false);
-  // Opening a connection asks the server what it offers now: the list is never shown from memory.
-  useEffect(() => { check.mutate(connection.id); }, [connection.id]);
-  const busy = check.isPending || allow.isPending || remove.isPending;
-  const offered = check.data?.tools || [];
-  const dirty = names.length !== saved.length || names.some((n) => !saved.includes(n));
-  const error = check.error || allow.error || remove.error;
-  return (
-    <Dialog open onOpenChange={(o) => { if (!o && !busy) onClose(); }}><DialogContent className="max-w-2xl">
-      <DialogHeader><DialogTitle>{connection.title}</DialogTitle>
-        <DialogDescription>{host(connection.url)} · {connection.workspace ? `dành cho ${connection.workspace}` : "dành cho mọi nhóm"} · {connection.has_token ? "có khóa truy cập" : "không dùng khóa"}</DialogDescription></DialogHeader>
-      <DialogBody className="space-y-4">
-        {check.isPending ? <Skeleton className="h-24" /> : check.data && !check.data.ok ? (
-          <div role="alert" className="rounded-lg border border-destructive/40 p-3 text-sm">
-            <p className="font-medium text-destructive">Không kết nối được tới máy chủ.</p>
-            <p className="mt-1 text-muted-foreground">{check.data.error}</p>
-          </div>
-        ) : check.data && (
-          <fieldset disabled={busy}>
-            <legend className="text-sm font-medium">Công cụ được phép</legend>
-            <p className="mb-3 text-xs text-muted-foreground">
-              Chỉ chọn công cụ đọc dữ liệu. Agent gọi công cụ được chọn mà không cần người duyệt, và nội dung câu hỏi của agent được gửi tới máy chủ này.
-            </p>
-            {offered.length ? offered.map((t) => {
-              const closed = t.destructive ? "Máy chủ đánh dấu công cụ này là phá hủy dữ liệu." : !t.usable ? "Tên công cụ không gọi được từ agent." : "";
-              return (
-                <label key={t.name} className="mb-2.5 flex items-start gap-2 text-sm">
-                  <input type="checkbox" className="mt-1" disabled={!!closed} checked={names.includes(t.name)}
-                    onChange={(e) => setNames(e.target.checked ? [...names, t.name] : names.filter((n) => n !== t.name))} />
-                  <span className="min-w-0"><span className="font-medium text-foreground">{t.tool}</span>
-                    <span className="line-clamp-2 text-xs text-muted-foreground" title={t.description}>{closed || t.description || "Máy chủ không mô tả công cụ này."}</span></span>
-                </label>
-              );
-            }) : <p className="text-sm text-muted-foreground">Máy chủ không có công cụ nào.</p>}
-          </fieldset>
-        )}
-        {error && <p role="alert" className="text-sm text-destructive">{error.message}</p>}
-        {allow.isSuccess && !dirty && <p role="status" className="text-xs text-muted-foreground">Đã lưu. Ban quản lý thấy các công cụ này trong mục Phạm vi và công cụ của agent.</p>}
-      </DialogBody>
-      <DialogFooter>
-        {confirming ? <>
-          <p className="mr-auto text-xs text-muted-foreground">Xóa kết nối và khóa truy cập của nó?</p>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(false)}>Giữ lại</Button>
-          <Button size="sm" variant="destructive" disabled={busy} onClick={async () => {
-            try { await remove.mutateAsync(connection.id); onClose(); } catch { setConfirming(false); }
-          }}>{remove.isPending ? "Đang xóa…" : "Xóa kết nối"}</Button>
-        </> : <>
-          <Button size="sm" variant="ghost" className="mr-auto text-destructive" disabled={busy} onClick={() => setConfirming(true)}>Xóa kết nối</Button>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => check.mutate(connection.id)}>Kiểm tra lại</Button>
-          <Button size="sm" disabled={busy || !dirty || !check.data?.ok} onClick={() => allow.mutate({ id: connection.id, names })}>{allow.isPending ? "Đang lưu…" : "Lưu công cụ được phép"}</Button>
-        </>}
-      </DialogFooter>
-    </DialogContent></Dialog>
-  );
+export function ConnectionEditor({connection,onClose}: {connection:Connection;onClose:()=>void}) {
+ const check = useMutation(checkConnectionMutationOptions(queryClient)); const allow = useMutation(allowConnectionToolsMutationOptions(queryClient)); const remove = useMutation(removeConnectionMutationOptions(queryClient)); const saved = connection.tools.map(t => t.name); const [names,setNames] = useState(saved); const [reads,setReads] = useState(connection.tools.filter(t => t.effect === "read").map(t => t.name)); const [confirm,setConfirm] = useState(false);
+ useEffect(() => {check.mutate(connection.id);},[connection.id]); const busy = check.isPending || allow.isPending || remove.isPending;
+ const savedReads = connection.tools.filter(t => t.effect === "read").map(t => t.name); const selectedReads = reads.filter(n => names.includes(n));
+ const dirty = names.length !== saved.length || names.some(n => !saved.includes(n)) || selectedReads.length !== savedReads.length || selectedReads.some(n => !savedReads.includes(n)); const error = check.error || allow.error || remove.error;
+ return <><AdminDrawer title={connection.title} description={connection.workspace || "Nguồn dùng chung của nền tảng"} onClose={onClose} busy={busy} footer={<><Button variant="ghost" className="text-destructive mr-auto" disabled={busy} onClick={() => setConfirm(true)}>Xóa kết nối</Button><Button variant="outline" disabled={busy} onClick={() => check.mutate(connection.id)}>Kiểm tra lại</Button><Button disabled={busy || !dirty || !check.data?.ok} onClick={() => allow.mutate({id:connection.id,names,read_names:reads.filter(n => names.includes(n))})}>{allow.isPending ? "Đang lưu…" : "Lưu công cụ được phép"}</Button></>}><p className="agent-hint">Địa chỉ máy chủ</p><p className="break-all">{connection.url}</p>{connection.suspension_reason && <p className="agent-hint">Tạm ngưng: {connection.suspension_reason}</p>}<h3>Công cụ được phép</h3><p className="agent-hint">Nguồn ngoài gửi dữ liệu ra máy chủ kết nối. Công cụ ghi cần người dùng xác nhận từng lần.</p>{check.isPending ? <Skeleton className="h-24" /> : check.data && !check.data.ok ? <p role="alert">Không kết nối được tới máy chủ. {check.data.error}</p> : check.data?.tools.map(t => <div key={t.name} className="agent-capability-row"><Checkbox aria-label={t.tool} checked={names.includes(t.name)} disabled={busy || t.destructive || !t.usable} onCheckedChange={on => setNames(on ? [...names,t.name] : names.filter(n => n !== t.name))} /><span className="agent-capability-text"><strong>{t.tool}</strong><small>{t.destructive ? "Máy chủ đánh dấu công cụ này là phá hủy dữ liệu." : t.description}</small></span><span className="agent-tool-classification"><Checkbox aria-label={`Đánh dấu ${t.tool} chỉ đọc`} checked={reads.includes(t.name)} disabled={busy || t.destructive || !names.includes(t.name)} onCheckedChange={on=>setReads(on ? [...reads,t.name] : reads.filter(n=>n!==t.name))} /><small>Chỉ đọc</small><AgentBadge label={reads.includes(t.name) ? "Đọc" : "Ghi"} tone={reads.includes(t.name) ? "neutral" : "wait"} /></span></div>)}{error && <p role="alert" className="text-destructive">{error.message}</p>}{allow.isSuccess && !dirty && <p role="status" className="agent-hint">Đã lưu công cụ được phép.</p>}</AdminDrawer>{confirm && <AdminConfirm title="Xóa kết nối?" consequence="Kết nối và khóa truy cập sẽ bị xóa. Agent còn dùng kết nối phải được thu hồi hoặc phát hành lại trước." confirm="Xóa kết nối" busy={busy} onCancel={() => setConfirm(false)} onConfirm={async () => {try {await remove.mutateAsync(connection.id);onClose();} catch {setConfirm(false);}}} />}</>;
 }

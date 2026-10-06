@@ -241,7 +241,14 @@ async def list_accounts(request:Request):
     async with enabled(request).begin() as db:
         await context(db,request,actor["id"])
         result=await db.execute(text("""
-            select u.id,u.name,u.email,m.status,
+            select u.id,u.name,u.email,m.status,u.created_at,
+              greatest((select max(a.created_at) from audit_events a where a.actor_user_id=u.id),
+                       (select max(s.updated_at) from sessions s where s.user_id=u.id)) as last_activity_at,
+              (select string_agg('Căn '||ap.code||coalesce(', tòa '||b.code,''),'; ' order by ap.code)
+                from unit_residents ur join units ap on ap.id=ur.unit_id and ap.tenant_id=ur.tenant_id
+                left join buildings b on b.id=ap.building_id and b.tenant_id=ap.tenant_id
+                where ur.user_id=u.id and ur.tenant_id=m.tenant_id and ur.verification_status='verified'
+                  and ur.valid_from<=now() and (ur.valid_to is null or ur.valid_to>now())) as apartment_scope,
               exists(select 1 from platform_admins pa where pa.user_id=u.id) as administrator,
               coalesce((select r.role_code from scoped_user_roles r where r.membership_id=m.id
                 and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now()) order by r.valid_from desc limit 1),'customer') as role,

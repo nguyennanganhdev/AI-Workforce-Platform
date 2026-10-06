@@ -75,11 +75,13 @@ test("the room shows a photo as a picture and a text file as a download, and sen
   expect(view.getByRole("list", { name: "Tệp sẽ gửi" }).textContent).toContain("bien-ban.png");
   // A message may be only its files.
   expect(send.disabled).toBe(false);
-  fireEvent.click(send);
+  const {default:userEvent} = await import('@testing-library/user-event');
+  const user = userEvent.setup({document});
+  await user.click(send);
   // The send failed after the files were stored: they are still on the composer, and sending again stores nothing twice.
   expect((await view.findByRole("alert")).textContent).toContain("Không gửi được tin nhắn nhóm");
   expect(view.getByRole("list", { name: "Tệp sẽ gửi" }).textContent).toContain("ghi-chu.md");
-  fireEvent.click(view.getByRole("button", { name: "Gửi tin nhắn" }));
+  await user.click(view.getByRole("button", { name: "Gửi tin nhắn" }));
   await waitFor(() => expect(view.queryByRole("list", { name: "Tệp sẽ gửi" })).toBeNull());
   expect(sent.filter((s) => s.url.includes("/files?")).map((s) => [s.url, s.type, s.body])).toEqual([
     ["/api/business/rooms/room-1/files?filename=bien-ban.png&mimeType=image%2Fpng", "application/octet-stream", "bien-ban.png"],

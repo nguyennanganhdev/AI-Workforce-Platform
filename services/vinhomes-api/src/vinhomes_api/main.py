@@ -47,6 +47,10 @@ from .v3_resident import router as resident_router
 from .v3_resident_support import router as resident_support_router
 from .v3_room_agents import router as room_agents_router
 from .v3_rooms import router as rooms_router
+from .v3_private_chats import router as private_chats_router
+from .v3_models import router as model_registry_router
+from .v3_request_presentation import router as request_presentation_router
+from .v3_session_sources import router as session_sources_router, runtime_router as session_question_router
 from .v3_routes import router as v3_router
 from .v3_security import router as security_router
 from .v3_learning import router as learning_router
@@ -140,6 +144,13 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
                            and to_regclass('public.vh_resident_photos') is not null
                            and to_regclass('public.vh_reception_supervisor_messages') is not null
                            and to_regclass('public.vh_reception_supervisor_pending') is not null
+                           and to_regclass('public.vh_private_chats') is not null
+                           and to_regclass('public.vh_private_chat_sources') is not null
+                           and to_regclass('public.vh_session_sources') is not null
+                           and to_regclass('public.vh_external_call_confirmations') is not null
+                           and to_regclass('public.vh_agent_skills') is not null
+                           and to_regclass('public.admin_model_registry') is not null
+                           and to_regclass('public.admin_role_models') is not null
                     """)
                 )
                 if not result.scalar_one():
@@ -158,6 +169,11 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(resident_router)
     app.include_router(resident_support_router)
     app.include_router(rooms_router)
+    app.include_router(private_chats_router)
+    app.include_router(model_registry_router)
+    app.include_router(request_presentation_router)
+    app.include_router(session_sources_router)
+    app.include_router(session_question_router)
     app.include_router(knowledge_router)
     app.include_router(memory_router)
     app.include_router(reports_router)
@@ -189,8 +205,11 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(resident_interactions_router)
     from .v3_tool_gateway import router as tool_gateway_router
     app.include_router(tool_gateway_router)
-    from .v3_connections import router as connections_router
+    from .v3_connections import router as connections_router, room_router as room_connections_router
     app.include_router(connections_router)
+    app.include_router(room_connections_router)
+    from .v3_agent_library import router as agent_library_router
+    app.include_router(agent_library_router)
     from .v3_admin import router as admin_router
     app.include_router(admin_router)
     from .direct_uploads import router as direct_uploads_router

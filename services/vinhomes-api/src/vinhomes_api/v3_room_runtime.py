@@ -13,6 +13,8 @@ from .v3_room_agents import managed_room
 from .v3_audit import audit
 from .v3_routines import run_closed
 from .v3_room_files import for_agent
+from .v3_agent_builder import instructions_with_skills
+from .v3_models import resolve_model
 
 router = APIRouter(prefix='/internal/coordination/v1', tags=['Room conversation runtime'])
 
@@ -26,6 +28,9 @@ async def mention_authority(db, message: UUID, agent: str, *, lock=False):
     if not row:
         raise HTTPException(404, 'Mention not found')
     await managed_room((db, row['requested_by']), row['channel_id'], lock=lock)
+    personal = (await db.execute(text("select parent_channel_id from vh_private_chats where channel_id=:channel and owner_user_id=:actor"), {'channel': row['channel_id'], 'actor': row['requested_by']})).scalar_one_or_none()
+    if personal and not (await db.execute(text('select 1 from channel_agents where channel_id=:parent and agent_id=:agent'), {'parent': personal, 'agent': agent})).first():
+        raise HTTPException(403, 'Agent no longer belongs to this unit')
     active = (await db.execute(text('''select 1 from users u join tenant_memberships m on m.user_id=u.id
         where u.id=:actor and u.status='active' and m.status='active'
         and m.tenant_id=nullif(current_setting('app.tenant_id',true),'')::uuid'''), {'actor': row['requested_by']})).first()
@@ -96,15 +101,20 @@ async def turn(message_id: UUID, agent_id: str, db: Scope):
         {'run': run, 'message': message_id, 'agent': agent_id})
     tools = []
     for grant in version['config'].get('mcp_tools', []):
-        tool = (await db.execute(text("select description,input_schema from mcp_tools where server_id=:server and name=:name and effect='read' and not destructive"),
+        tool = (await db.execute(text("select t.description,t.input_schema,t.effect,s.provenance from mcp_tools t join mcp_servers s on s.id=t.server_id and s.tenant_id=t.tenant_id where t.server_id=:server and t.name=:name and (t.effect='read' or s.provenance='custom') and not t.destructive and s.status='active'"),
             {'server': grant['server_id'], 'name': grant['name']})).mappings().first()
         if not tool:
             raise HTTPException(409, 'Published tool no longer available')
+        personal = (await db.execute(text("select 1 from channels where id=:channel and kind='personal'"), {'channel': mention['channel_id']})).first()
+        if personal and tool['provenance'] == 'custom' and (await db.execute(text('select enabled from vh_private_chat_sources where channel_id=:channel and server_id=:server'), {'channel': mention['channel_id'], 'server': grant['server_id']})).scalar_one_or_none() is not True:
+            continue
         tools.append({'name': grant['name'].replace('.', '__'), 'description': tool['description'], 'parameters': tool['input_schema']})
     history = (await db.execute(text("select body->>'text' as text,sender_kind from messages where channel_id=:channel and visibility='room' and seq<(select seq from messages where id=:message) order by seq desc limit 20"),
         {'channel': mention['channel_id'], 'message': message_id})).mappings().all()
     attached, images = await for_agent(db, mention['channel_id'], message_id, pictures=True)
-    return {'run_id': str(run), 'instructions': version['instructions'], 'tools': tools,
+    instructions = await instructions_with_skills(db, version['config'], mention['workspace_id'])
+    model = await resolve_model(db, 'specialist', version['config'].get('model_id'))
+    return {'run_id': str(run), 'instructions': instructions, 'tools': tools, 'model_config': model,
         'instruction': '\n\n'.join(part for part in (mention['body']['text'], attached) if part),
         'messages': [dict(r) for r in reversed(history)], 'images': images}
 

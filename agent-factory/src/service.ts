@@ -108,6 +108,7 @@ INTENT is your reading of the request, written first and from its name, role and
 Intent rule: every other field follows from INTENT. requirements cover each explicit and inferred requirement and nothing else. The SOURCE of every such requirement has kind "request" and quotes the request words that state it or that it was inferred from, also when a catalogue tool fulfils it. Decide what each requirement needs from the meaning of INTENT, not from the wording or the language of the request: a capability that needs information or an action outside the supplied input is a resource need, and one that only reasons over supplied content is model_on_input. Whatever missingInformation lists is never filled with a guess: it gets no requirement, no tool and no SKILL step. For LOW return only {"intent":INTENT} and no other field: code asks the person for missingInformation and builds nothing.
 SOURCE is one provenance object, identical everywhere it appears and for every requirement fulfillment: exactly {kind:"request",field:"name"|"role"|"description",quote:literal substring of that field} or {kind:"resource",ref:exact catalogue ref}, with no other keys. It is never a string, null or omitted, and never a toolArguments sourceKind such as "user_input". Its kind is only "request" or "resource": a catalogue entry's own kind, "tool", is never a SOURCE kind, and a tool is cited as {kind:"resource",ref:that entry's ref}. quote is copied character for character from that request field: one contiguous run with nothing added, dropped, reworded or re-punctuated.
 TOOL_ARGUMENT is one flat object of five strings: exactly {ref,argument,sourceKind:"user_input"|"runtime_context"|"tool_result",sourceRef,missingBehavior}, with no other keys. ref is the exact catalogue ref of a tool in a requirement's proposedRefs. argument is the NAME of one required argument, copied from the "required" list of that tool's inputSchema: a plain string, never a value, an object or a name-to-value mapping. sourceRef for "user_input" is the name of one inputFacts entry, copied character for character. missingBehavior says what to do when that input is absent. Emit exactly one TOOL_ARGUMENT for every name in "required" of every proposed tool, and none for optional arguments or for tools not proposed; a proposed tool with required arguments and no TOOL_ARGUMENT is refused. Example for a proposed tool whose inputSchema.required is ["query"]: {"ref":"<that tool's exact ref>","argument":"query","sourceKind":"user_input","sourceRef":"<name of one inputFacts entry>","missingBehavior":"Ask what to search for."}.
+Argument scope rule: a catalogue enum describes what the tool supports, not what this agent is permitted to request. Narrow inputFacts, missingBehavior and SKILL guidance to the modes stated or plainly implied by the original request; never copy all enum choices into runtime inputs. A request for reports in one building fixes the report mode to building even when the building ID is a missing runtime value: do not ask the user to choose building or zone. Translating the user's stated mode to an exact documented enum value is allowed, such as "tòa nhà" to "building"; this does not permit adding a literal sourceKind or any extra TOOL_ARGUMENT field. If a required discriminator needs a named user_input fact, bound that fact and its missingBehavior to the request's fixed mode rather than offering other catalogue modes.
 SKILL is the procedural knowledge this agent works by. You write it for this request; it is never chosen from a catalogue, and it is declarative text, never code: exactly {name,objective,procedure:nonempty string[],toolUsageGuidance:[{toolRef,whenToUse,purpose,guidance}],constraints:string[],completionCriteria:nonempty string[]}, with no other keys. name is a short label for the method. objective is one sentence saying what following the skill achieves for this request. procedure is the ordered steps of this specific work, each saying what is done and with what; a step that would fit any agent, such as "use tools when necessary" or "complete the task carefully", is refused. toolUsageGuidance has exactly one entry for every ref in any requirement's proposedRefs, and none for any other ref except a default tool this work needs: toolRef is that exact catalogue ref, whenToUse is the situation that calls for the tool, purpose is what it is used for in this work, and guidance is how to call it and what to do with its output, including when to call it again. No SKILL text names a catalogue tool that has no toolUsageGuidance entry, or a tool, system or permission the catalogue does not provide: a skill grants nothing, and the agent can call only what it is given. constraints are the limits the method keeps. completionCriteria say when the work is done and can be checked from the answer. SKILL carries no code, commands, credentials or keys.
 Default tool rule: every ref in catalogue.defaultToolRefs is attached to the agent by code and needs no requirement. Available does not mean required: give a default tool a toolUsageGuidance entry only when this work needs what its description provides, and never because it is there. When INTENT cannot be fulfilled without it, such as answering from knowledge the request says is held internally, also write a "tool" requirement proposing it, exactly as for any other tool.
 Only built-in text messages with prompt_only output are supported. Declare unsupported demands; do not hide them. Every important user responsibility and constraint must be covered without scope expansion. Model-on-input needs use no refs. External writes/actions and explicitly required tools or APIs also require a resource, even when all input is supplied. Never classify those needs as model_on_input; if the catalogue lacks the required resource, report BLOCKED_RESOURCE. For truly missing required resources keep the need with empty proposedRefs; never drop it. Cover every required top-level tool argument with a named input fact or documented runtime context (none is exposed for construction in P0). Tool-result evidence is unavailable in P0; ask for input instead. Include missing-input behavior. unresolvedQuestions are shown to the person who wrote the request and are answered by them: write each one in the language of the request's description, as one question they can answer by adding to that description. Each list has at most ${FACTORY_LIMITS.items} items; individual text at most ${FACTORY_LIMITS.text} characters. Do not emit identity, grants, credentials, endpoints, contracts, provider settings or systemPrompt.
@@ -133,8 +134,28 @@ function repairExpectations(
     const schema = draftFieldSchema(field);
     if (schema) schemas[field] = schema;
   }
+  function schemaAtPath(schema: unknown, parts: readonly string[]): unknown {
+    if (!parts.length) return schema;
+    if (!schema || typeof schema !== "object" || Array.isArray(schema)) return undefined;
+    const node = schema as Record<string, unknown>;
+    const [key, ...rest] = parts;
+    if (node.type === "array" && /^\d+$/.test(key!)) return schemaAtPath(node.items, rest);
+    if (node.properties && typeof node.properties === "object")
+      return schemaAtPath((node.properties as Record<string, unknown>)[key!], rest);
+    const variants = node.oneOf || node.anyOf;
+    if (Array.isArray(variants)) {
+      const choices = variants.map(candidate => schemaAtPath(candidate, parts)).filter(candidate => candidate !== undefined);
+      return choices.length ? {anyOf: choices} : undefined;
+    }
+    return undefined;
+  }
+  const replacementSchemas = Object.fromEntries(repair.paths.map(path => {
+    const [field, ...parts] = path.split(".");
+    return [path, schemaAtPath(draftFieldSchema(field!), parts)];
+  }).filter(([, schema]) => schema !== undefined));
   return {
     schemas,
+    replacementSchemas,
     requiredToolArguments: Object.hasOwn(schemas, "toolArguments")
       ? Object.fromEntries(
           snapshot.tools.map(({ ref, inputSchema: { required } }) => [
@@ -146,6 +167,48 @@ function repairExpectations(
   };
 }
 
+/** Apply only code-owned replacement paths, keeping every untouched value in the saved draft.
+ * Values remain untrusted: schema/static checks and required-need invariants run after this merge. */
+function mergeRepairPatch(
+  value: unknown,
+  draft: AgentDraft,
+  paths: readonly string[],
+): FactoryResult<unknown> {
+  const refuse = (code: string, path: string, message: string): FactoryResult<never> => ({
+    ok: false, issues: [factoryIssue(code, path, "draft", message)],
+  });
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+      Object.keys(value).length !== 1 || !Object.hasOwn(value, "repairs"))
+    return refuse("INVALID_SCHEMA", "repairs", "A bounded repair contains only a repairs array.");
+  const patches = (value as {repairs: unknown}).repairs;
+  if (!Array.isArray(patches) || !patches.length || patches.length > FACTORY_LIMITS.items)
+    return refuse("INVALID_SCHEMA", "repairs", "A bounded repair requires a nonempty, bounded repairs array.");
+  const result = structuredClone(draft) as unknown as Record<string, unknown>;
+  const applied: string[] = [];
+  for (const [index, patch] of patches.entries()) {
+    if (!patch || typeof patch !== "object" || Array.isArray(patch) ||
+        Object.keys(patch).length !== 2 || !Object.hasOwn(patch, "path") || !Object.hasOwn(patch, "value") ||
+        typeof patch.path !== "string")
+      return refuse("INVALID_SCHEMA", `repairs.${index}`, "Each repair has exactly a path string and a value.");
+    const path: string = patch.path;
+    if (!paths.includes(path) || applied.some(existing => existing === path || existing.startsWith(path + ".") || path.startsWith(existing + ".")))
+      return refuse("REPAIR_SCOPE_VIOLATION", `repairs.${index}.path`, "Repair paths must be allowed, unique and nonoverlapping.");
+    const parts = path.split(".");
+    let parent = result;
+    for (const part of parts.slice(0, -1)) {
+      if (!Object.hasOwn(parent, part) || !parent[part] || typeof parent[part] !== "object")
+        return refuse("REPAIR_SCOPE_VIOLATION", `repairs.${index}.path`, "Repair path must exist in the original draft.");
+      parent = parent[part] as Record<string, unknown>;
+    }
+    const key = parts.at(-1)!;
+    if (!Object.hasOwn(parent, key))
+      return refuse("REPAIR_SCOPE_VIOLATION", `repairs.${index}.path`, "Repair path must exist in the original draft.");
+    parent[key] = structuredClone(patch.value);
+    applied.push(path);
+  }
+  return {ok: true, value: result};
+}
+
 export async function generateDraft(
   request: AgentCreationRequest,
   snapshot: FactoryCatalogue,
@@ -153,6 +216,7 @@ export async function generateDraft(
   signal?: AbortSignal,
   repair?: {
     draft?: AgentDraft;
+    intent?: IntentNormalizationResult;
     issues: readonly FactoryIssue[];
     paths: readonly string[];
   },
@@ -167,9 +231,9 @@ export async function generateDraft(
 FACTORY_REPAIR: ${
         // A rejected draft is never kept, so there is nothing to preserve and the scope is whole.
         repair.draft
-          ? "Return a replacement draft fixing only the findings at allowed paths. Preserve all other fields, every existing requirement need/source/fulfillment, and all user constraints. Every field outside REPAIR_DATA_JSON paths is copied from REPAIR_DATA_JSON draft unchanged, character for character."
+          ? "For this bounded repair, the full-generation output format above is superseded: return exactly {\"repairs\":[{\"path\":\"<one exact allowed path>\",\"value\":<replacement JSON value>}]} and no other top-level keys. Do not return a full draft or intent. Replace only paths in REPAIR_DATA_JSON paths; use each path once and never overlap a parent and child. Code keeps all other fields and the original intent unchanged. Preserve every requirement need/source/fulfillment and all user constraints. A changed binding may require patches for other listed dependent fields."
           : "The previous output was rejected whole and is not kept: return one complete new draft that does not repeat the findings, keeping every user responsibility and constraint."
-      } The field contract above is unchanged and binds the replacement, SOURCE included; a finding whose path ends in .source means that value broke the SOURCE contract. REPAIR_EXPECTED_JSON is built by code from the validator: schemas holds the exact JSON Schema the replacement must satisfy at each field a finding names, and requiredToolArguments lists, per tool ref, the argument names that each need exactly one toolArguments entry whose argument is that name as a plain string. Use the SAME catalogue. No new requirement may replace or erase a missing need.
+      } The field contract above is unchanged and binds the replacement, SOURCE included; a finding whose path ends in .source means that value broke the SOURCE contract. REPAIR_EXPECTED_JSON is built by code from the validator: schemas holds the top-level field JSON Schemas; replacementSchemas holds the exact value schema at each allowed patch path (an indexed item is an object, not the whole list). requiredToolArguments lists, per tool ref, the argument names that each need exactly one toolArguments entry whose argument is that name as a plain string. Use the SAME catalogue. No new requirement may replace or erase a missing need.
 REPAIR_EXPECTED_JSON=${JSON.stringify(repairExpectations(repair, snapshot))}
 REPAIR_DATA_JSON=${JSON.stringify(repair)}`
     : factoryGenerationPrompt(request, snapshot);
@@ -201,6 +265,12 @@ REPAIR_DATA_JSON=${JSON.stringify(repair)}`
         ),
       ],
     };
+  }
+  if (repair?.draft && repair.intent && value && typeof value === "object" && Object.hasOwn(value, "repairs")) {
+    const merged = mergeRepairPatch(value, repair.draft, repair.paths);
+    if (!merged.ok) return merged;
+    const draft = parseAgentDraft(merged.value, request, snapshot.tools.map(({ref}) => ref));
+    return draft.ok ? {ok: true, value: {draft: draft.value, intent: repair.intent}} : draft;
   }
   // The reading is judged before any draft field: a LOW one ends here, with nothing resolved,
   // whatever else the completion carries. Every other reading goes on to the unchanged checks.
@@ -296,6 +366,7 @@ export async function constructAgentSpec(
     const input = normalized.value;
     const catalogue = bounded.value;
     let previous: AgentDraft | undefined;
+    let previousIntent: IntentNormalizationResult | undefined;
     let issues: readonly FactoryIssue[] = [];
     let paths: readonly string[] = [];
     for (const attempt of [1, 2] as const) {
@@ -341,14 +412,16 @@ export async function constructAgentSpec(
         call(attempt === 1 ? "generate" : "repair"),
         signal,
         attempt === 2
-          ? { ...(previous ? { draft: previous } : {}), issues, paths }
+          ? { ...(previous ? { draft: previous } : {}), ...(previousIntent ? {intent: previousIntent} : {}), issues, paths }
           : undefined,
       );
+      const changedPaths: string[] = [];
       if (
         generated.ok &&
         previous &&
-        !repairPreservesScope(previous, generated.value.draft, paths)
-      )
+        !repairPreservesScope(previous, generated.value.draft, paths, path => changedPaths.push(path))
+      ) {
+        console.warn(JSON.stringify({event: "factory.repair_scope_violation", allowedPaths: paths, changedPaths, originalIssues: issues.map(({code,path}) => ({code,path}))}));
         return {
           ok: false,
           issues: [
@@ -360,6 +433,7 @@ export async function constructAgentSpec(
             ),
           ],
         };
+      }
       const verified = generated.ok
         ? verifyStaticSpec(
             input,
@@ -414,7 +488,9 @@ export async function constructAgentSpec(
         issues = review.value.criterionFindings;
       }
       previous = generated.ok ? generated.value.draft : undefined;
+      previousIntent = generated.ok ? generated.value.intent : undefined;
       paths = repairScopeFor(issues, previous);
+      console.warn(JSON.stringify({event: "factory.repair_findings", attempt, issues: issues.map(({code,path}) => ({code,path})), allowedPaths: paths}));
       if (!paths.length) return { ok: false, issues };
       if (attempt === 2)
         return {

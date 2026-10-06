@@ -52,8 +52,9 @@ test("management reads an agent's schedules in plain words, sets a weekly one, a
   const submit = view.getByRole("button", { name: "Đặt lịch" }) as HTMLButtonElement;
   expect(submit.disabled).toBe(true);
   await typeInto(view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy"), " Báo cáo tuần. ");
-  fireEvent.change(view.getByLabelText("Lặp lại"), { target: { value: "weekly" } });
-  fireEvent.change(view.getByLabelText("Vào"), { target: { value: "5" } });
+  const {selectOption} = await import('./type-into');
+  await selectOption(view.getByRole('combobox',{name:'Lặp lại'}),'Hằng tuần');
+  await selectOption(view.getByRole('combobox',{name:'Vào'}),'Thứ Sáu');
   await typeInto(view.getByLabelText("Lúc"), "16:30");
   fireEvent.click(submit);
   expect((await view.findByRole("alert")).textContent).toContain("đã có 20 lịch đang bật");
@@ -66,10 +67,10 @@ test("management reads an agent's schedules in plain words, sets a weekly one, a
   // Changing a schedule fills the form with what it holds; saving sends the new timing and never another agent.
   fireEvent.click(view.getByRole("button", { name: /Sửa lịch/ }));
   expect((view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy") as HTMLTextAreaElement).value).toBe("Tóm tắt yêu cầu hôm qua.");
-  expect((view.getByLabelText("Lặp lại") as HTMLSelectElement).value).toBe("working");
+  expect(view.getByRole('combobox',{name:'Lặp lại'}).textContent).toContain('Thứ Hai đến Thứ Sáu');
   expect((view.getByLabelText("Lúc") as HTMLInputElement).value).toBe("08:00");
   await typeInto(view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy"), "Tóm tắt yêu cầu hôm qua, kèm số quá hạn.");
-  fireEvent.change(view.getByLabelText("Lặp lại"), { target: { value: "daily" } });
+  await selectOption(view.getByRole('combobox',{name:'Lặp lại'}),'Hằng ngày');
   await typeInto(view.getByLabelText("Lúc"), "09:15");
   fireEvent.click(view.getByRole("button", { name: "Lưu thay đổi" }));
   await waitFor(() => expect(view.getByRole("list", { name: "Lịch đã đặt" }).textContent).toContain("Hằng ngày lúc 09:15"));
@@ -83,6 +84,7 @@ test("management reads an agent's schedules in plain words, sets a weekly one, a
   expect(sent.at(-1)).toEqual({ method: "PUT", url: "/api/business/rooms/room-1/routines/routine_1/enabled", body: { enabled: false } });
   expect(view.getByRole("list", { name: "Lịch đã đặt" }).textContent).not.toContain("Lần tới");
   fireEvent.click(view.getByRole("button", { name: /Xóa lịch/ }));
+  fireEvent.click(await view.findByRole('button',{name:'Xóa lịch'}));
   await view.findByText("Agent này chưa có lịch nào.");
   expect(sent.at(-1)).toEqual({ method: "DELETE", url: "/api/business/rooms/room-1/routines/routine_1", body: undefined });
 });

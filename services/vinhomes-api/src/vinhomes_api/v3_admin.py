@@ -190,18 +190,41 @@ async def models(request: Request, scope: Admin):
 
 
 @router.get('/audit-events')
-async def audit_events(scope: Admin, kind: str = Query('', max_length=60, pattern=r'^[a-z_.]*$'),
-                       before: datetime | None = None, limit: int = Query(50, ge=1, le=100)):
-    """The trail, newest first. `kind` is the first part of an event type (agent, connection, team, ...)."""
+async def audit_events(scope: Admin, kind: str = Query('', max_length=60, pattern=r'^[a-z_.-]*$'),
+                       before: datetime | None = None, before_id: UUID | None = None, limit: int = Query(50, ge=1, le=100),
+                       first: date | None = Query(None, alias='from'), last: date | None = Query(None, alias='to'),
+                       actor: str = Query('',max_length=160), action: str = Query('',max_length=120),
+                       search: str = Query('',max_length=160), result: str = Query('',pattern=r'^(|success|failed|recorded)$')):
     admin(scope)
-    rows = await scope[0].execute(text('''select e.id,e.created_at,e.event_type,e.initiator_kind,e.target_type,e.target_id,e.payload,
-          coalesce(u.name, case when e.initiator_kind='agent' then (select a.name from agents a where a.id=e.initiator_id and a.tenant_id=e.tenant_id) end,
-            e.initiator_id) as actor
+    if first and last and last<first: raise HTTPException(422,'Ngày kết thúc phải từ ngày bắt đầu trở đi.')
+    if before_id and not before: raise HTTPException(422,'Mốc sự kiện cần đi cùng thời gian phân trang.')
+    rows = await scope[0].execute(text("""select e.id,e.created_at,e.event_type,e.initiator_kind,e.target_type,e.target_id,e.payload,
+          coalesce(u.name,case when e.initiator_kind='agent' then (select a.name from agents a where a.id=e.initiator_id and a.tenant_id=e.tenant_id) end,
+            case when e.initiator_kind='system' then 'Hệ thống' when e.initiator_kind='agent' then 'Agent' else 'Người dùng' end) as actor,
+          coalesce(e.payload->>'title',e.payload->>'name',e.payload->>'connection_title',
+            (select a.name from agents a where e.target_type='agent' and a.id=e.target_id and a.tenant_id=e.tenant_id),
+            (select t.title from tickets t where e.target_type='ticket' and t.id::text=e.target_id and t.tenant_id=e.tenant_id),
+            (select c.title from mcp_servers c where e.target_type in ('connection','mcp_server') and c.id=e.target_id and c.tenant_id=e.tenant_id),
+            (select v.name from users v where e.target_type='account' and v.id=e.target_id),
+            (select mu.name from management_units mu where e.target_type='management_unit' and mu.id::text=e.target_id and mu.tenant_id=e.tenant_id),e.target_type) as target_label,
+          case when e.payload->>'ok'='false' or e.payload->>'success'='false' or e.payload->>'status'='failed' or e.event_type like '%.failed' then 'failed'
+            when e.payload->>'ok'='true' or e.payload->>'success'='true' then 'success' else 'recorded' end as result
         from audit_events e left join users u on u.id=e.actor_user_id
-        where (:kind='' or e.event_type like :prefix) and (cast(:before as timestamptz) is null or e.created_at<cast(:before as timestamptz))
-        order by e.created_at desc limit :limit'''), {'kind': kind, 'prefix': kind.replace('_', r'\_') + '%', 'before': before, 'limit': limit})
+        where (:kind='' or e.event_type like :prefix)
+          and (cast(:before as timestamptz) is null or e.created_at<cast(:before as timestamptz)
+            or (e.created_at=cast(:before as timestamptz) and cast(:before_id as uuid) is not null and e.id<cast(:before_id as uuid)))
+          and (cast(:first as date) is null or e.created_at>=(cast(cast(:first as date) as timestamp) at time zone 'Asia/Ho_Chi_Minh'))
+          and (cast(:last as date) is null or e.created_at<(cast(cast(:last as date)+1 as timestamp) at time zone 'Asia/Ho_Chi_Minh'))
+          and (:actor='' or coalesce(u.name,e.initiator_id,'') ilike :actor_match or exists(select 1 from agents actor_agent where actor_agent.id=e.initiator_id and actor_agent.tenant_id=e.tenant_id and actor_agent.name ilike :actor_match))
+          and (:action='' or e.event_type=:action)
+          and (:search='' or e.payload::text ilike :search_match or e.target_id ilike :search_match or e.event_type ilike :search_match)
+          and (:result='' or (case when e.payload->>'ok'='false' or e.payload->>'success'='false' or e.payload->>'status'='failed' or e.event_type like '%.failed' then 'failed' when e.payload->>'ok'='true' or e.payload->>'success'='true' then 'success' else 'recorded' end)=:result)
+        order by e.created_at desc,e.id desc limit :limit"""),
+        {'kind':kind,'prefix':kind.replace('_',r'\_')+'%','before':before,'before_id':before_id,'limit':limit,'first':first,'last':last,
+         'actor':actor,'actor_match':'%'+actor+'%','action':action,'search':search,'search_match':'%'+search+'%','result':result})
     kinds = await scope[0].execute(text("select distinct split_part(event_type,'.',1) from audit_events order by 1"))
-    return {'items': [dict(r) for r in rows.mappings()], 'kinds': list(kinds.scalars())}
+    actions = await scope[0].execute(text('select distinct event_type from audit_events order by 1'))
+    return {'items':[dict(r) for r in rows.mappings()],'kinds':list(kinds.scalars()),'actions':list(actions.scalars())}
 
 
 # More than this is not a file somebody reads: a shorter span is asked for, rather than a cut one handed over.
@@ -216,7 +239,9 @@ def cell(value) -> str:
 
 @router.get('/audit-events/export')
 async def audit_export(scope: Admin, first: date = Query(..., alias='from'), last: date = Query(..., alias='to'),
-                       kind: str = Query('', max_length=60, pattern=r'^[a-z_.]*$')):
+                       kind: str = Query('', max_length=60, pattern=r'^[a-z_.-]*$'),
+                       actor: str = Query('',max_length=160), action: str = Query('',max_length=120),
+                       search: str = Query('',max_length=160), result: str = Query('',pattern=r'^(|success|failed|recorded)$')):
     """The trail of a span of days (Việt Nam time, both days included) as a CSV file, oldest first.
     Taking a copy of the trail is itself recorded in it."""
     admin(scope)
@@ -224,8 +249,12 @@ async def audit_export(scope: Admin, first: date = Query(..., alias='from'), las
         raise HTTPException(422, 'Ngày kết thúc phải từ ngày bắt đầu trở đi.')
     # Midnight in Việt Nam, as a moment: the date is read as a local time there, not as one of the database's own zone.
     span = """e.created_at>=(cast(cast(:first as date) as timestamp) at time zone 'Asia/Ho_Chi_Minh')
-        and e.created_at<(cast(cast(:last as date)+1 as timestamp) at time zone 'Asia/Ho_Chi_Minh') and (:kind='' or e.event_type like :prefix)"""
-    asked = {'first': first, 'last': last, 'kind': kind, 'prefix': kind.replace('_', r'\_') + '%'}
+        and e.created_at<(cast(cast(:last as date)+1 as timestamp) at time zone 'Asia/Ho_Chi_Minh') and (:kind='' or e.event_type like :prefix)
+        and (:actor='' or e.initiator_id ilike :actor_match or exists(select 1 from users actor_user where actor_user.id=e.actor_user_id and actor_user.name ilike :actor_match) or exists(select 1 from agents actor_agent where actor_agent.id=e.initiator_id and actor_agent.tenant_id=e.tenant_id and actor_agent.name ilike :actor_match))
+        and (:action='' or e.event_type=:action)
+        and (:search='' or e.payload::text ilike :search_match or e.target_id ilike :search_match or e.event_type ilike :search_match)
+        and (:result='' or (case when e.payload->>'ok'='false' or e.payload->>'success'='false' or e.payload->>'status'='failed' or e.event_type like '%.failed' then 'failed' when e.payload->>'ok'='true' or e.payload->>'success'='true' then 'success' else 'recorded' end)=:result)"""
+    asked = {'first':first,'last':last,'kind':kind,'prefix':kind.replace('_',r'\_')+'%','actor':actor,'actor_match':'%'+actor+'%','action':action,'search':search,'search_match':'%'+search+'%','result':result}
     count = (await scope[0].execute(text('select count(*) from audit_events e where ' + span), asked)).scalar_one()
     if count > EXPORT_ROWS:
         raise HTTPException(413, f'Khoảng này có {count} sự kiện, nhiều hơn mức {EXPORT_ROWS} của một tệp. Chọn khoảng ngắn hơn.')
@@ -244,3 +273,24 @@ async def audit_export(scope: Admin, first: date = Query(..., alias='from'), las
     # The byte order mark is what makes a spreadsheet read the Vietnamese text as UTF-8.
     return Response('﻿' + out.getvalue(), media_type='text/csv; charset=utf-8', headers={
         'Content-Disposition': f'attachment; filename="nhat-ky-{first}-{last}.csv"', 'Cache-Control': 'no-store'})
+
+
+@router.get('/overview')
+async def overview(scope: Admin):
+    """Tenant-wide figures, including empty dates rather than inventing chart activity."""
+    admin(scope)
+    db = scope[0]
+    counts = (await db.execute(text("""select
+        (select count(*) from tickets where status not in ('closed','cancelled')) as open_tickets,
+        (select count(*) from tickets where status not in ('closed','cancelled') and resolution_due_at<now()) as overdue_tickets,
+        (select count(*) from tenant_memberships where status='pending') as pending_accounts,
+        (select count(*) from mcp_servers where provenance='custom' and created_at>=now()-interval '24 hours') as new_connections"""))).mappings().one()
+    chart = await db.execute(text("""select d::date as date,count(t.id) as count
+        from generate_series((now() at time zone 'Asia/Ho_Chi_Minh')::date-13,
+          (now() at time zone 'Asia/Ho_Chi_Minh')::date,interval '1 day') d
+        left join tickets t on (t.created_at at time zone 'Asia/Ho_Chi_Minh')::date=d::date
+        group by d order by d"""))
+    pending = await db.execute(text("""select u.name,u.email from tenant_memberships m join users u on u.id=m.user_id
+        where m.status='pending' order by m.created_at limit 5"""))
+    return {**dict(counts),'requests_per_day':[dict(r) for r in chart.mappings()],
+            'pending_accounts_preview':[dict(r) for r in pending.mappings()]}

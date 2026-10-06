@@ -51,7 +51,7 @@ def dotted(name: str) -> str:
 
 async def answer(client: httpx.AsyncClient, instructions: str, case: dict, tools: list[dict],
                  defaults: dict, *, endpoint: str | None = None, token: str | None = None,
-                 invoke_tool=None) -> tuple[str, list[str]]:
+                 invoke_tool=None, model_config=None) -> tuple[str, list[str]]:
     """One room turn for an evaluation case: the agent's `content` and the tools it called."""
     thread = f"evaluation:{case['name']}"
     # `messages` is what the room already holds for the agent: empty for a first task, the agent's
@@ -64,15 +64,15 @@ async def answer(client: httpx.AsyncClient, instructions: str, case: dict, tools
     messages = [{"id": "context", "role": "user", "content": said if not case.get("images") else [
         {"type": "text", "text": said}, *({"type": "image", "source": {"type": "data", "value": image["data"],
                                            "mimeType": image["mimeType"]}} for image in case["images"])]}]
-    headers = {"x-openbot-agent-token": token or os.environ["MANAGED_AGENT_TOKEN"], "Accept": "text/event-stream"}
+    headers = {"x-openbot-agent-token": token or ('registered-model' if model_config else os.environ["MANAGED_AGENT_TOKEN"]), "Accept": "text/event-stream"}
     # The same client the room's adapter sends through: same instructions, same reply handling.
-    room, called = InstructedClient(client, {thread: instructions}), []
+    room, called = InstructedClient(client, {thread: instructions}, model_configs={thread: model_config}), []
     for _ in range(TOOL_ROUNDS):
         run = str(uuid4())
         wire = {"threadId": thread, "runId": run, "state": {}, "tools": tools, "forwardedProps": {}, "context": [],
                 "messages": messages}
         stream, decoder = RunStream(thread, run), SSEDecoder()
-        async with room.stream("POST", endpoint or os.environ["COORDINATION_OPENBOT_URL"], headers=headers, json=wire) as response:
+        async with room.stream("POST", endpoint or (model_config['base_url'] if model_config else os.environ["COORDINATION_OPENBOT_URL"]), headers=headers, json=wire) as response:
             if response.status_code != 200:
                 raise AdapterError(f"openbot_status_{response.status_code}")
             async for chunk in response.aiter_bytes():
@@ -95,6 +95,8 @@ async def answer(client: httpx.AsyncClient, instructions: str, case: dict, tools
             # definition's default for it (found nothing).
             result = (await invoke_tool(name, json.loads(call['args'])) if invoke_tool else
                       case.get("tool_results", {}).get(name) or defaults.get(name, {"status": "OK", "data": {}, "errors": []}))
+            if result.get('status') == 'AWAITING_CONFIRMATION':
+                return 'Thao tác ghi đang chờ bạn cho phép. Kiểm tra nội dung và dữ liệu trong thẻ xác nhận trước khi tiếp tục.', called
             messages.append({"id": f"result-{call_id}", "role": "tool", "toolCallId": call_id,
                              "content": json.dumps({"tool": call["name"], "result": result}, ensure_ascii=False)})
     raise AdapterError("continuation_limit")

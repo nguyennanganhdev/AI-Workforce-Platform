@@ -90,7 +90,7 @@ async def ensure_session(db: AsyncConnection, actor: str, ticket_id: UUID) -> No
 
 async def _session(db: AsyncConnection, ticket_id: UUID, *, lock: bool = False):
     row = await db.execute(text(f"""
-        select tm.id,tm.status,tm.state_version,tm.channel_id,tm.created_at,tm.finished_at,
+        select tm.id,tm.status,tm.state_version,tm.channel_id,tm.workspace_id,tm.created_at,tm.finished_at,
           tm.shared_state->'closure' as closure,a.name as supervisor_name,
           tm.shared_state->'supervisor' as supervisor,tm.shared_state->'runtime' as runtime
         from agent_teams tm join agents a on a.id=tm.supervisor_agent_id and a.tenant_id=tm.tenant_id
@@ -207,6 +207,9 @@ async def ask_session_agent(ticket_id: UUID, body: SessionQuestion, scope: Scope
     ticket = await visible_ticket(scope, ticket_id, lock=True)
     if not await management_access(scope, ticket):
         raise HTTPException(403, "Management grant for this ticket is required")
+    # An explicit external-source question carries an actual manager's grant, never an admin override.
+    if not await management_access((db, actor, False), ticket):
+        raise HTTPException(403, "Current management membership for this request is required")
     session = await _session(db, ticket_id, lock=True)
     if session is None:
         raise HTTPException(404, "This ticket has no coordination session")
@@ -221,7 +224,7 @@ async def ask_session_agent(ticket_id: UUID, body: SessionQuestion, scope: Scope
         raise HTTPException(422, "Name a specialist that takes part in this session")
     code = (await db.execute(text("select code from tickets where id=:id"), {"id": ticket_id})).scalar_one()
     content = {"text": f"{code}: {body.text}", "sessionId": str(session["id"]),
-               "kind": "session_question", "mentionAgentId": agent}
+               "kind": "session_question", "mentionAgentId": agent, "sourceConsentScope": "actor_session"}
     previous = (await db.execute(text("""
         select id,body from messages where channel_id=:room and sender_user_id=:actor and client_message_id=:client
     """), {"room": session["channel_id"], "actor": actor, "client": body.client_message_id})).mappings().first()

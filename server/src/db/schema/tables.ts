@@ -6241,11 +6241,11 @@ export const channels = pgTable(
       .where(sql`is_dispatch_default AND deleted_at IS NULL`),
     check(
       "channels_check_0",
-      sql`(kind='reception' AND workspace_id IS NULL) OR (kind IN ('management','agent_builder') AND workspace_id IS NOT NULL)`,
+      sql`(kind='reception' AND workspace_id IS NULL) OR (kind IN ('management','agent_builder','personal') AND workspace_id IS NOT NULL)`,
     ),
     check(
       "channels_check_1",
-      sql`kind IN ('reception','management','agent_builder')`,
+      sql`kind IN ('reception','management','agent_builder','personal')`,
     ),
     index("channels_workspace_id_idx").on(t.tenantId, t.workspaceId),
   ],

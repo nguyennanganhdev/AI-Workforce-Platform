@@ -17,3 +17,12 @@ export async function typeInto(field: Element, value: string) {
   // Emptying a field sends no key event of its own; the key press is what the key-watching React notices.
   await user.type(field, value || "{Backspace}");
 }
+
+/** Select through the accessible popup, including the pointer events Base UI needs. */
+export async function selectOption(trigger: Element, name: string) {
+  const { default: userEvent } = await import('@testing-library/user-event');
+  const { findByRole } = await import('@testing-library/dom');
+  const user = userEvent.setup({document:trigger.ownerDocument});
+  await user.click(trigger);
+  await user.click(await findByRole(trigger.ownerDocument.body,'option',{name}));
+}

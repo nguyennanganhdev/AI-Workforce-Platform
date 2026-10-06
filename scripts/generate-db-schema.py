@@ -62,7 +62,7 @@ checks={
 'execution_principals':["(kind='user' AND user_id IS NOT NULL AND workspace_id IS NULL) OR (kind='workspace_service' AND user_id IS NULL AND workspace_id IS NOT NULL)"],
 'credentials':["(scope_kind='platform' AND tenant_id IS NULL AND workspace_id IS NULL) OR (scope_kind='tenant' AND tenant_id IS NOT NULL AND workspace_id IS NULL) OR (scope_kind='workspace' AND tenant_id IS NOT NULL AND workspace_id IS NOT NULL)"],
 'agents':["(purpose='reception' AND workspace_id IS NULL) OR (purpose IN ('supervisor','specialist') AND workspace_id IS NOT NULL)"],
-'channels':["(kind='reception' AND workspace_id IS NULL) OR (kind IN ('management','agent_builder') AND workspace_id IS NOT NULL)"],
+'channels':["(kind='reception' AND workspace_id IS NULL) OR (kind IN ('management','agent_builder','personal') AND workspace_id IS NOT NULL)"],
 'agent_teams':["num_nonnulls(ticket_id,request_message_id)=1"],
 'memory_namespaces':["(kind='personal' AND workspace_id IS NULL AND team_id IS NULL) OR (kind='workspace' AND workspace_id IS NOT NULL AND team_id IS NULL) OR (kind='team' AND workspace_id IS NOT NULL AND team_id IS NOT NULL)"],
 'runtime_session_bindings':["(audience_kind='personal' AND customer_user_id IS NOT NULL AND team_member_id IS NULL) OR (audience_kind='team' AND customer_user_id IS NULL AND team_member_id IS NOT NULL)","generation>0"],

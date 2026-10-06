@@ -33,6 +33,7 @@ const apiRole = roleOf("VINHOMES_API_DATABASE_URL");
 const toolsRole = roleOf("TECHNICAL_API_DATABASE_URL");
 const routinesRole = roleOf("ROUTINES_DATABASE_URL");
 const connectionsRole = roleOf("OPENBOT_DATABASE_URL");
+const knowledgeRole = roleOf("KNOWLEDGE_DATABASE_URL");
 
 const migrated = Bun.spawnSync(["bun", "server/scripts/migrate.ts"], {
   stdout: "inherit",
@@ -63,6 +64,7 @@ try {
   const connections = (await readFile("server/scripts/grant_business_connections_role.sql", "utf8"))
     .replaceAll("vinhomes_business_connections", connectionsRole);
   await sql.unsafe(connections);
+  await sql.unsafe(`GRANT SELECT ON admin_model_registry,admin_role_models TO "${knowledgeRole}"`);
   console.log(
     JSON.stringify({
       type: "grants-applied",
