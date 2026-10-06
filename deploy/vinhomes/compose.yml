@@ -49,8 +49,8 @@ services:
       FACTORY_SERVICE_URL: http://factory:4010
       FACTORY_SERVICE_TOKEN: ${FACTORY_SERVICE_TOKEN:?Factory token required}
       # Two settings, one list: browser sign-in and writes check the first, the resident app's CORS the second.
-      VINHOMES_API_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011,http://localhost:3023}
-      VINHOMES_API_RESIDENT_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011,http://localhost:3023}
+      VINHOMES_API_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
+      VINHOMES_API_RESIDENT_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
     ports:
       - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${VINHOMES_API_PORT:-8000}:8000'
     healthcheck:
@@ -71,7 +71,7 @@ services:
       # a key of its own (S3_ACCESS_KEY) that reaches the files bucket and nothing else.
       MINIO_ROOT_USER: ${S3_ADMIN_ACCESS_KEY:-}
       MINIO_ROOT_PASSWORD: ${S3_ADMIN_SECRET_KEY:-}
-      MINIO_API_CORS_ALLOW_ORIGIN: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011,http://localhost:3023}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
     ports:
       # 9000 is the S3 API (what the API and a browser's direct upload speak). It has no page to sign in on.
       - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${S3_PORT:-9000}:9000'
@@ -287,8 +287,8 @@ services:
       VINHOMES_API_URL: http://api:8000
       OPENBOT_SERVER_URL: http://platform:3001
       APP_PORT: '3020'
-      # Management and administrators sign in here; the API keeps this door's sign-in apart from the others.
-      VINHOMES_SURFACE: operations
+      # One staff sign-in for management, administrators and field staff; the API enforces RBAC.
+      VINHOMES_SURFACE: ''
     ports:
       - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${OPERATIONS_PORT:-3020}:3020'
     depends_on:
@@ -299,25 +299,6 @@ services:
       timeout: 8s
       retries: 5
       test: ['CMD', 'bun', '-e', 'process.exit((await fetch("http://127.0.0.1:3020/operations/login")).ok ? 0 : 1)']
-  field:
-    # The same app for staff who do the work on site: its own address and sign-in, the work pages only,
-    # and no way through to OpenBot.
-    image: vinhomes-operations:${VINHOMES_IMAGE_TAG:-latest}
-    restart: unless-stopped
-    environment:
-      VINHOMES_API_URL: http://api:8000
-      APP_PORT: '3023'
-      VINHOMES_SURFACE: field
-    ports:
-      - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${FIELD_PORT:-3023}:3023'
-    depends_on:
-      api:
-        condition: service_healthy
-    healthcheck:
-      interval: 15s
-      timeout: 8s
-      retries: 5
-      test: ['CMD', 'bun', '-e', 'process.exit((await fetch("http://127.0.0.1:3023/operations/login")).ok ? 0 : 1)']
   resident:
     image: vinhomes-resident:${VINHOMES_IMAGE_TAG:-latest}
     build:
@@ -460,14 +441,13 @@ services:
       - backups:/backups
       - ./deployment.env:/config/deployment.env:ro
   proxy:
-    # TLS in front of the three web apps; see Caddyfile. Not started unless asked for:
+    # TLS in front of the staff and resident apps; see Caddyfile. Not started unless asked for:
     #   docker compose --env-file deployment.env --profile tls up -d
     profiles: [tls]
     image: caddy:2
     restart: unless-stopped
     environment:
       OPERATIONS_DOMAIN: ${OPERATIONS_DOMAIN:-operations.localhost}
-      FIELD_DOMAIN: ${FIELD_DOMAIN:-field.localhost}
       RESIDENT_DOMAIN: ${RESIDENT_DOMAIN:-resident.localhost}
       STORAGE_DOMAIN: ${STORAGE_DOMAIN:-storage.localhost}
       PROXY_TLS: ${PROXY_TLS:-}
@@ -479,7 +459,6 @@ services:
       - caddy-data:/data
     depends_on:
       - operations
-      - field
       - resident
 
 volumes:
