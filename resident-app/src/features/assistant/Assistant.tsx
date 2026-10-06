@@ -10,13 +10,10 @@ import {
   IconCheck,
   IconChevronRight,
   IconClipboardList,
-  IconHome,
   IconMapPin,
   IconPaperclip,
   IconPlus,
-  IconSparkles,
-  IconSwimming,
-  IconTool,
+  IconMessageCircle,
   IconX,
 } from "@tabler/icons-react";
 import "./assistant-home.css";
@@ -92,7 +89,7 @@ export function Assistant({
           </div>
           {state.messages.length > 0 && (
             <button className="resume-conversation" onClick={onResume}>
-              <IconSparkles size={20} />
+              <IconMessageCircle size={20} />
               <span>
                 <strong>Tiếp tục cuộc trò chuyện</strong>
                 <small>
@@ -106,13 +103,12 @@ export function Assistant({
           )}
           <nav className="assistant-prompt-chips" aria-label="Gợi ý trò chuyện">
             {[
-              { icon: IconTool, text: "Tôi muốn báo sự cố" },
-              { icon: IconClipboardList, text: "Yêu cầu của tôi đến đâu?" },
-              { icon: IconSwimming, text: "Hồ bơi mở cửa lúc nào?" },
-              { icon: IconHome, text: "Liên hệ ban quản lý thế nào?" },
-            ].map(({ icon: Icon, text }) => (
+              "Tôi muốn báo sự cố",
+              "Yêu cầu của tôi đến đâu?",
+              "Hồ bơi mở cửa lúc nào?",
+              "Liên hệ ban quản lý thế nào?",
+            ].map((text) => (
               <button type="button" key={text} disabled={busy} onClick={() => onSend(text)}>
-                <Icon size={18} aria-hidden="true" />
                 <span>{text}</span>
               </button>
             ))}
@@ -132,7 +128,7 @@ export function Assistant({
           </div>
           <div className="chat-intro">
             <span className="assistant-avatar">
-              <IconSparkles size={21} />
+              <IconMessageCircle size={21} />
             </span>
             <div>
               <strong>Nhà — Trợ lý cư dân</strong>
@@ -153,7 +149,7 @@ export function Assistant({
               <div key={message.id} className={`message ${message.role}`}>
                 {message.role === "assistant" && (
                   <span className="assistant-avatar small-avatar">
-                    <IconSparkles size={15} />
+                    <IconMessageCircle size={15} />
                   </span>
                 )}
                 <div className="message-body">
@@ -193,7 +189,7 @@ export function Assistant({
             {state.awaitingReply && (
               <div className="message assistant">
                 <span className="assistant-avatar small-avatar">
-                  <IconSparkles size={15} />
+                  <IconMessageCircle size={15} />
                 </span>
                 <div className="message-body">
                   <div className="message-bubble message-waiting">

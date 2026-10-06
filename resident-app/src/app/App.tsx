@@ -310,7 +310,7 @@ export function App({ live }: { live?: ConnectedResident }) {
         </div>
       </aside>
       <div className="main-shell">
-        <header className="app-header">
+        <header className={`app-header ${route.page === "assistant" ? "chat-header" : ""}`}>
           <div className="header-location">
             <span className="location-icon">
               <img src="/images/vinhomes-logo.png" alt="Vinhomes" width={40} height={40} />
@@ -324,6 +324,28 @@ export function App({ live }: { live?: ConnectedResident }) {
             </button>
           </div>
           <div className="header-actions">
+        {route.page === "assistant" && (
+          <ConversationList compact
+            state={state}
+            onNew={() => {
+              if (live) {
+                void live.newChat();
+                return;
+              }
+              if (commit(newConversation))
+                location.hash = `/chat/${stateRef.current.activeConversationId}`;
+            }}
+            onSelect={(id) => {
+              if (live) {
+                live.select(id);
+                return;
+              }
+              if (commit((s) => selectConversation(s, id)))
+                location.hash = `/chat/${id}`;
+            }}
+          />
+        )}
+
             <span className="demo-chip">
               {live
                 ? live.profile?.dataMode === "local-database"
@@ -350,27 +372,6 @@ export function App({ live }: { live?: ConnectedResident }) {
             </button>
           </div>
         </header>
-        {route.page === "assistant" && (
-          <ConversationList
-            state={state}
-            onNew={() => {
-              if (live) {
-                void live.newChat();
-                return;
-              }
-              if (commit(newConversation))
-                location.hash = `/chat/${stateRef.current.activeConversationId}`;
-            }}
-            onSelect={(id) => {
-              if (live) {
-                live.select(id);
-                return;
-              }
-              if (commit((s) => selectConversation(s, id)))
-                location.hash = `/chat/${id}`;
-            }}
-          />
-        )}
         {route.page === "assistant" && route.conversation && (
           <div className="conversation-toolbar">
             <button
@@ -427,7 +428,7 @@ export function App({ live }: { live?: ConnectedResident }) {
             <button onClick={() => void live.refresh()}>Thử lại</button>
           </div>
         )}
-        <main className="main-scroll" ref={scroll} id="main-content">
+        <main className={`main-scroll${route.page === "assistant" && !route.conversation ? " assistant-welcome-background" : ""}`} ref={scroll} id="main-content">
           {route.page === "assistant" && (
             <Assistant
               key={state.activeConversationId}

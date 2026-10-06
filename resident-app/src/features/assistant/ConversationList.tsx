@@ -18,10 +18,12 @@ function when(iso: string) {
 }
 export function ConversationList({
   state,
+  compact = false,
   onSelect,
   onNew,
 }: {
   state: ResidentState;
+  compact?: boolean;
   onSelect: (id: string) => void;
   onNew: () => void;
 }) {
@@ -44,14 +46,14 @@ export function ConversationList({
       .includes(search.toLocaleLowerCase());
   const unread = rooms.reduce((n, c) => n + c.unread, 0);
   return (
-    <section className="resident-rooms" aria-label="Hội thoại của bạn">
+    <section className={`resident-rooms${compact ? " resident-rooms-compact" : ""}`} aria-label="Hội thoại của bạn">
       <div className="resident-rooms-bar">
-        <button onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-          <IconMessageCircle size={19} /> Hội thoại{" "}
+        <button onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={`Hội thoại${unread ? `, ${unread} tin chưa đọc` : ""}`} title="Hội thoại">
+          <IconMessageCircle size={19} aria-hidden="true" /> {!compact && "Hội thoại"}
           {unread > 0 && <b>{unread}</b>}
         </button>
-        <button onClick={onNew}>
-          <IconPlus size={18} /> Chat mới
+        <button onClick={onNew} aria-label="Chat mới" title="Chat mới">
+          <IconPlus size={18} aria-hidden="true" /> {!compact && "Chat mới"}
         </button>
       </div>
       {open && (
