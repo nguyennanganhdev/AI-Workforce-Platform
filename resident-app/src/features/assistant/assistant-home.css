@@ -1,0 +1,69 @@
+/* Welcome screen only: keep conversation, forms and other resident pages unchanged. */
+.assistant-content.assistant-home {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 20px;
+  padding-top: 32px;
+  padding-bottom: 16px;
+}
+.assistant-home .assistant-welcome {
+  align-self: flex-start;
+  margin-bottom: auto;
+  text-align: left;
+}
+.assistant-welcome h1 {
+  max-width: 480px;
+  font-size: clamp(22px, 4vw, 30px);
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.025em;
+}
+.assistant-prompt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.assistant-prompt-chips button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #e1e4e9;
+  border-radius: 999px;
+  background: #fff;
+  color: #38465b;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.assistant-prompt-chips svg { flex-shrink: 0; color: var(--blue); }
+.assistant-prompt-chips button:disabled { opacity: .5; cursor: wait; }
+.assistant-prompt-chips button:focus-visible,
+.assistant-recent-link:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+.assistant-recent-link {
+  display: flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  min-height: 44px;
+  color: var(--blue);
+  font-size: 13px;
+}
+.assistant-home .resume-conversation { margin: 0; }
+.assistant-home .scroll-end { display: none; }
+@media (hover: hover) {
+  .assistant-prompt-chips button:not(:disabled):hover {
+    border-color: #a5b6f8;
+    background: #f0f4ff;
+  }
+}
+@media (max-width: 600px) {
+  .assistant-content.assistant-home { gap: 12px; padding-top: 16px; }
+}

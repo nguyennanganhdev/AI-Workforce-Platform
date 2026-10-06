@@ -7,7 +7,6 @@ import {
 } from "react";
 import {
   IconArrowUp,
-  IconArrowUpRight,
   IconCheck,
   IconChevronRight,
   IconClipboardList,
@@ -15,13 +14,12 @@ import {
   IconMapPin,
   IconPaperclip,
   IconPlus,
-  IconShieldCheck,
   IconSparkles,
   IconSwimming,
   IconTool,
   IconX,
 } from "@tabler/icons-react";
-import { Neighborhood } from "../../components/Illustrations";
+import "./assistant-home.css";
 import { resident } from "../../mocks/seed";
 import { formOffered } from "../../services/chat-turn";
 import { QuestionCard } from "./QuestionCard";
@@ -86,19 +84,11 @@ export function Assistant({
   const started = conversation;
   const offerForm = !!onForm && formOffered(state.messages);
   return (
-    <div className={`assistant-content ${started ? "started" : ""}`}>
+    <div className={`assistant-content ${started ? "started" : "assistant-home"}`}>
       {!started && (
         <>
-          <div className="greeting">
-            <span className="eyebrow">KHÔNG GIAN CƯ DÂN</span>
-            <h1>
-              Chào {residentName.split(" ").at(-1)}, hôm nay
-              <br /> bạn cần hỗ trợ gì?{" "}
-              <span className="greeting-sun" aria-hidden="true">
-                ✳
-              </span>
-            </h1>
-            <p>Mình ở đây để cuộc sống ở nhà dễ dàng hơn.</p>
+          <div className="assistant-welcome">
+            <h1>Chào {residentName.split(" ").at(-1)}, mình có thể giúp gì?</h1>
           </div>
           {state.messages.length > 0 && (
             <button className="resume-conversation" onClick={onResume}>
@@ -114,92 +104,25 @@ export function Assistant({
               <IconChevronRight size={18} />
             </button>
           )}
-          <section className="hero-card">
-            <div className="hero-copy">
-              <span className="hero-tag">
-                <span />
-                TRỢ LÝ CỦA RIÊNG BẠN
-              </span>
-              <h2>
-                Chuyện ở nhà,
-                <br />
-                cứ để mình lo.
-              </h2>
-              <p>
-                Hỏi thông tin, báo sự cố.
-                <br />
-                Chỉ cần một tin nhắn.
-              </p>
-              <button onClick={() => onSend("Báo sự cố")}>
-                Bắt đầu trò chuyện <IconArrowUpRight size={17} />
-              </button>
-            </div>
-            <Neighborhood />
-          </section>
-          <div className="section-heading">
-            <h3>Bạn muốn làm gì?</h3>
-            <span className="small muted">Mình giúp nhé</span>
-          </div>
-          <div className="quick-actions">
+          <nav className="assistant-prompt-chips" aria-label="Gợi ý trò chuyện">
             {[
-              {
-                icon: IconTool,
-                label: "Báo sự cố",
-                description: "Có mình hỗ trợ",
-                color: "coral",
-                text: "Báo sự cố",
-              },
-              {
-                icon: IconClipboardList,
-                label: "Yêu cầu của tôi",
-                description: "Theo dõi tiến độ",
-                color: "blue",
-                text: "Xem yêu cầu của tôi",
-              },
-              {
-                icon: IconSwimming,
-                label: "Hỏi về tiện ích",
-                description: "Khám phá quanh nhà",
-                color: "teal",
-                text: "Hỏi về tiện ích",
-              },
-              {
-                icon: IconHome,
-                label: "Thông tin tòa nhà",
-                description: "Những điều cần biết",
-                color: "orange",
-                text: "Thông tin tòa nhà",
-              },
-            ].map(({ icon: Icon, label, description, color, text }) => (
-              <button key={label} onClick={() => onSend(text)}>
-                <span className={`icon-tile ${color}`}>
-                  <Icon size={23} stroke={1.65} />
-                </span>
-                <span>
-                  <strong>{label}</strong>
-                  <small>{description}</small>
-                </span>
-                <IconArrowUpRight size={15} className="action-arrow" />
+              { icon: IconTool, text: "Tôi muốn báo sự cố" },
+              { icon: IconClipboardList, text: "Yêu cầu của tôi đến đâu?" },
+              { icon: IconSwimming, text: "Hồ bơi mở cửa lúc nào?" },
+              { icon: IconHome, text: "Liên hệ ban quản lý thế nào?" },
+            ].map(({ icon: Icon, text }) => (
+              <button type="button" key={text} disabled={busy} onClick={() => onSend(text)}>
+                <Icon size={18} aria-hidden="true" />
+                <span>{text}</span>
               </button>
             ))}
-          </div>
+          </nav>
           {current && (
-            <section className="recent-section">
-              <div className="section-heading">
-                <h3>
-                  Yêu cầu gần đây <span className="section-dot" />
-                </h3>
-                <button className="inline-link" onClick={onRequests}>
-                  Xem tất cả <IconChevronRight size={14} />
-                </button>
-              </div>
-              <RequestCard request={current} onOpen={onOpen} compact />
-            </section>
+            <button type="button" className="assistant-recent-link" onClick={onRequests}>
+              <IconClipboardList size={17} aria-hidden="true" />
+              Xem yêu cầu gần đây <IconChevronRight size={16} aria-hidden="true" />
+            </button>
           )}
-          <p className="welcome-footnote">
-            <IconShieldCheck size={16} />
-            Được lắng nghe. Được quan tâm. Ngay tại nhà.
-          </p>
         </>
       )}
       {started && (
@@ -535,7 +458,7 @@ export function Composer({
           placeholder={
             draft?.step === "location"
               ? "Nhập vị trí xảy ra sự cố…"
-              : "Nhắn điều bạn cần, mình ở đây…"
+              : "Nhập tin nhắn…"
           }
           value={text}
           maxLength={2000}
@@ -561,15 +484,11 @@ export function Composer({
           <IconArrowUp size={21} stroke={2} />
         </button>
       </form>
-      <p className="composer-caption">
-        {reading
-          ? "Đang đọc ảnh…"
-          : busy
-            ? "Đang gửi…"
-            : connected
-              ? "Tin nhắn được lưu vào cuộc trò chuyện của bạn"
-              : "Bản trải nghiệm · Chưa gửi thông tin đến Ban quản lý"}
-      </p>
+      {(reading || busy || !connected) && (
+        <p className="composer-caption" role="status">
+          {reading ? "Đang đọc ảnh…" : busy ? "Đang gửi…" : "Bản trải nghiệm · Chưa gửi thông tin đến Ban quản lý"}
+        </p>
+      )}
     </div>
   );
 }
