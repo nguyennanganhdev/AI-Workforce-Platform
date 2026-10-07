@@ -13,6 +13,9 @@ Cập nhật 2026-10-05. Bộ này là tri thức **triage tham khảo nội b�
 | `rag/mock-corpus/` | Một Markdown gồm 16 quy trình giả lập với `fixture_only=true`, `approval_status=not_published`, `sop_available=false` | Chỉ KB/test tenant cô lập; **không** ingest chung `rag/corpus` |
 | `rag/mock/PROCEDURE_PROFILES.jsonl` | 16 profile `draft` gồm precondition/contraindication/stop condition và acceptance criteria có cấu trúc | Không; fixture thiết kế Q07 và A2 |
 | `rag/mock/POC_LIFECYCLE.jsonl` | 5 chuỗi ticket → work order/evidence/result giả lập | Không; fixture adapter/test, không phải DB seed |
+| `rag/mock/ISSUE_LIFECYCLE_EXTENSION.jsonl` | 11 hồ sơ còn lại, ghép 5 POC thành coverage 16 issue | Không; fixture intake/assessment và adapter test |
+| `rag/mock/TOOL_BEHAVIOR_MOCKUP.jsonl` | 14 ca hành vi tool và biến thể lỗi | Không; behavioral mockup, không phải payload API trực tiếp |
+| `rag/mock/VERIFICATION_BRANCH_MOCKUP.jsonl` | 6 nhánh xác minh result/SOP/evidence/checklist, gồm một ca `VERIFIED` chỉ với SOP seed riêng ở test tenant | Không; fixture logic, không phải kết quả nghiệm thu thật |
 | `rag/mock/Q07_LEARNING_FLOW.jsonl` | Candidate `draft`/`rejected` và eligibility test tự xử lý/giá | Không; fixture Q07/Q08 nhánh từ chối |
 | `rag/mock/TOOL_DATA_FIXTURES.jsonl` | 16 bản ghi mẫu cho sensor/history/outage/schedule/approval/vendor/cost draft | Không; fixture adapter A2/Q08, không phải DB seed |
 | `rag/mock/SUPERVISION_CASES.jsonl` | 80 ca có nhãn train/dev/test cho intake, hazard, thiếu dữ kiện, mâu thuẫn, closeout | Không; dữ liệu thử agent/triage, không phải passage RAG |
@@ -25,7 +28,7 @@ Root ingest là **`rag/corpus`**, không phải cả `technical-data`: nếu ch�
 
 Mock corpus là root **khác**: `rag/mock-corpus`. Nếu preview/ingest riêng, một file tổng hợp chứa 16 phần có `loai=quy_trinh`, `trang_thai=du-lieu-gia-lap-khong-xuat-ban` và `unverified=true`. Từ “Vinhomes” trong scope chỉ mô phỏng nhánh metadata, **không** biểu thị Vinhomes đã ban hành/duyệt. Q03 vẫn tự publish bản đã ingest trong DB, nên phải dùng test tenant/KB có grant test và không trộn với nguồn thật. `sop_kb.retrieve` chỉ phục vụ SOP eligible; 16 profile mock đang `draft`, không phải đầu vào hợp lệ của tool đó. Việc chuyển procedure từ work order thành tài liệu published có review/ACL/version là công việc Q07 và backend, không thể thực hiện bằng đổi nhãn JSONL.
 
-Mục `## Nguồn` dùng bullet để chunker Q03 đưa URL vào `sources` của mỗi kết quả mà không nhúng URL vào văn bản embedding. Một tài liệu hiện tạo một chunk triage; `documentId/versionId/chunkId` thực tế do DB sinh. Khi sửa Markdown, Q03 tạo version mới theo content hash; manifest JSONL giữ khóa biên tập ổn định và validator đối chiếu nội dung.
+Mục `### Nguồn` trong từng issue dùng bullet để chunker Q03 thu citation, không nhúng URL vào văn bản embedding. **Lưu ý giới hạn hiện tại:** `chunkDocument` gom `sources` ở cấp **toàn tài liệu**, nên với một Markdown chứa 16 issue, URL của nhiều issue có thể cùng đi theo một kết quả truy xuất; không được trình bày toàn bộ danh sách đó như thể mọi nguồn đều chứng minh passage vừa trả lời. `RAG_DOCUMENTS.jsonl.sections` giữ ánh xạ source/fact theo issue để adapter lọc citation bằng heading/issue code; cần kiểm thử việc lọc này ở runtime trước khi hiển thị citation cho người dùng. Q03 tạo nhiều chunk theo heading/kích thước, không phải một chunk triage cho cả tài liệu. `documentId/versionId/chunkId` thực tế do DB sinh; khi sửa Markdown, Q03 tạo version mới theo content hash và manifest JSONL giữ khóa biên tập ổn định.
 
 ## 2. Điều kiện ingest và retrieval
 

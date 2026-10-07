@@ -12,9 +12,9 @@ version: mock-v1
 
 Bộ fixture phục vụ thử RAG và luồng A2. Đây không phải SOP Vinhomes, không được dùng để hướng dẫn cư dân thao tác hay vận hành thật. Mỗi phần có mã sự cố, nhánh xử lý, yêu cầu chứng cứ và hậu kiểm riêng.
 
-**Issue code:** `TECH.ELEC.BREAKER_TRIP`
+## MOCK-PROC-01 — Quy trình mẫu: CB nhảy lặp
 
-### MOCK-PROC-01 — Quy trình mẫu: CB nhảy lặp
+**Issue code:** `TECH.ELEC.BREAKER_TRIP`
 
 MẪU GIẢ LẬP để thử RAG và luồng A2; không phải SOP Vinhomes, không được hướng dẫn cư dân thao tác điện. Chỉ mô tả điểm quyết định và hồ sơ mà kỹ thuật viên có thẩm quyền cần ghi.
 
@@ -40,9 +40,9 @@ Ticket cần nguồn của từng dữ kiện, thời điểm, phạm vi, trạn
 
 ---
 
-**Issue code:** `TECH.ELEC.FIXTURE_FAILURE`
+## MOCK-PROC-02 — Quy trình mẫu: đèn, ổ cắm, công tắc không hoạt động
 
-### MOCK-PROC-02 — Quy trình mẫu: đèn, ổ cắm, công tắc không hoạt động
+**Issue code:** `TECH.ELEC.FIXTURE_FAILURE`
 
 MẪU GIẢ LẬP chỉ cho kiểm thử nội bộ; không phải SOP Vinhomes hay hướng dẫn cư dân sửa điện.
 
@@ -68,9 +68,9 @@ Ghi nhãn/vị trí asset, triệu chứng cụ thể, có người bị điện
 
 ---
 
-**Issue code:** `TECH.PLUMB.WATER_HEATER`
+## MOCK-PROC-03 — Quy trình mẫu: máy nước nóng không nóng hoặc rò
 
-### MOCK-PROC-03 — Quy trình mẫu: máy nước nóng không nóng hoặc rò
+**Issue code:** `TECH.PLUMB.WATER_HEATER`
 
 MẪU GIẢ LẬP cho kỹ thuật viên kiểm thử; không phải SOP Vinhomes. Không hướng dẫn cư dân mở nắp, thử điện, thử gas hoặc tự sửa thiết bị.
 
@@ -96,9 +96,9 @@ Lưu model/serial nếu có thể cung cấp an toàn, vị trí lắp đặt, d
 
 ---
 
-**Issue code:** `TECH.PLUMB.WATER_FILTER_LOW_FLOW`
+## MOCK-PROC-04 — Quy trình mẫu: máy lọc nước chảy yếu
 
-### MOCK-PROC-04 — Quy trình mẫu: máy lọc nước chảy yếu
+**Issue code:** `TECH.PLUMB.WATER_FILTER_LOW_FLOW`
 
 MẪU GIẢ LẬP cho kiểm thử nội bộ, không phải SOP Vinhomes hoặc khuyến nghị chất lượng nước uống.
 
@@ -124,9 +124,9 @@ Ghi model/serial, điểm cấp nước, mùi/màu/vị, thời điểm và ản
 
 ---
 
-**Issue code:** `TECH.HVAC.CONDENSATION`
+## MOCK-PROC-05 — Quy trình mẫu: điều hòa chảy nước
 
-### MOCK-PROC-05 — Quy trình mẫu: điều hòa chảy nước
+**Issue code:** `TECH.HVAC.CONDENSATION`
 
 MẪU GIẢ LẬP để chạy POC A2; không phải SOP Vinhomes hay hướng dẫn cư dân tự sửa.
 
@@ -152,9 +152,9 @@ Ticket cần vị trí, phạm vi ướt, dấu hiệu điện/trần và ảnh;
 
 ---
 
-**Issue code:** `TECH.PLUMB.CONCEALED_LEAK`
+## MOCK-PROC-06 — Quy trình mẫu: rò âm tường hoặc thấm trần
 
-### MOCK-PROC-06 — Quy trình mẫu: rò âm tường hoặc thấm trần
+**Issue code:** `TECH.PLUMB.CONCEALED_LEAK`
 
 MẪU GIẢ LẬP cho POC A2, không phải SOP Vinhomes. Không quy trách nhiệm cho căn khác từ vị trí vết ố.
 
@@ -180,9 +180,9 @@ Ghi sơ đồ vệt, hướng lan, ảnh từng thời điểm và người quan
 
 ---
 
-**Issue code:** `TECH.PLUMB.SHOWER_SEAL`
+## MOCK-PROC-07 — Quy trình mẫu: vách tắm hở hoặc rò
 
-### MOCK-PROC-07 — Quy trình mẫu: vách tắm hở hoặc rò
+**Issue code:** `TECH.PLUMB.SHOWER_SEAL`
 
 MẪU GIẢ LẬP để thử luồng kỹ thuật; không phải SOP Vinhomes hay hướng dẫn cư dân tự trám khe.
 
@@ -208,9 +208,9 @@ Ghi model/cấu tạo, vị trí cửa, khe nghi rò, ảnh, phạm vi ướt v�
 
 ---
 
-**Issue code:** `TECH.PLUMB.TOILET_LEAK`
+## MOCK-PROC-08 — Quy trình mẫu: bồn cầu rỉ hoặc chảy liên tục
 
-### MOCK-PROC-08 — Quy trình mẫu: bồn cầu rỉ hoặc chảy liên tục
+**Issue code:** `TECH.PLUMB.TOILET_LEAK`
 
 MẪU GIẢ LẬP cho kiểm thử A2, không phải SOP Vinhomes.
 
@@ -236,9 +236,9 @@ Ticket lưu vị trí rò, màu/mùi nước, thời điểm và ảnh. Xác min
 
 ---
 
-**Issue code:** `TECH.PLUMB.TRAP_ODOR`
+## MOCK-PROC-09 — Quy trình mẫu: mùi cống hoặc bẫy nước
 
-### MOCK-PROC-09 — Quy trình mẫu: mùi cống hoặc bẫy nước
+**Issue code:** `TECH.PLUMB.TRAP_ODOR`
 
 MẪU GIẢ LẬP cho kiểm thử nội bộ; không phải SOP Vinhomes. Mùi chưa rõ nguồn không được mặc định là cống.
 
@@ -264,9 +264,9 @@ Ghi khu vực phát mùi, thời điểm, tần suất, ảnh/ghi chú nếu có
 
 ---
 
-**Issue code:** `TECH.PLUMB.SUPPLY_DRAIN_JOINT`
+## MOCK-PROC-10 — Quy trình mẫu: nước yếu, thoát chậm hoặc rò đầu nối
 
-### MOCK-PROC-10 — Quy trình mẫu: nước yếu, thoát chậm hoặc rò đầu nối
+**Issue code:** `TECH.PLUMB.SUPPLY_DRAIN_JOINT`
 
 MẪU GIẢ LẬP cho POC; không phải SOP Vinhomes. Ba nhóm triệu chứng này phải được tách trong assessment dù cùng một issue code.
 
@@ -292,9 +292,9 @@ Ba triệu chứng phải là ba nhánh chẩn đoán riêng trong ticket dù c�
 
 ---
 
-**Issue code:** `TECH.ARCH.DOOR_WINDOW`
+## MOCK-PROC-11 — Quy trình mẫu: cửa hoặc cửa sổ lỏng, hở
 
-### MOCK-PROC-11 — Quy trình mẫu: cửa hoặc cửa sổ lỏng, hở
+**Issue code:** `TECH.ARCH.DOOR_WINDOW`
 
 MẪU GIẢ LẬP cho kiểm thử nội bộ; không phải SOP Vinhomes.
 
@@ -320,9 +320,9 @@ Asset record cần model, cấu hình, tầng/vị trí và owner, đặc biệt
 
 ---
 
-**Issue code:** `TECH.ARCH.CABINET_SAG`
+## MOCK-PROC-12 — Quy trình mẫu: tủ bếp xệ hoặc cánh lệch
 
-### MOCK-PROC-12 — Quy trình mẫu: tủ bếp xệ hoặc cánh lệch
+**Issue code:** `TECH.ARCH.CABINET_SAG`
 
 MẪU GIẢ LẬP cho kiểm thử A2; không phải SOP Vinhomes hoặc hướng dẫn cư dân tháo tủ.
 
@@ -348,9 +348,9 @@ Ghi vị trí, dạng tủ, ảnh mối nối/cánh/khung, mốc phát hiện v�
 
 ---
 
-**Issue code:** `TECH.ARCH.CRACK`
+## MOCK-PROC-13 — Quy trình mẫu: nứt tường hoặc trần
 
-### MOCK-PROC-13 — Quy trình mẫu: nứt tường hoặc trần
+**Issue code:** `TECH.ARCH.CRACK`
 
 MẪU GIẢ LẬP cho POC A2; không phải SOP Vinhomes và không chứng nhận an toàn kết cấu.
 
@@ -376,9 +376,9 @@ Ghi sơ đồ vị trí, tầng, các mốc ảnh, biến đổi theo thời gia
 
 ---
 
-**Issue code:** `TECH.ARCH.PAINT_MOISTURE`
+## MOCK-PROC-14 — Quy trình mẫu: sơn bong, vết ố hoặc ẩm mốc
 
-### MOCK-PROC-14 — Quy trình mẫu: sơn bong, vết ố hoặc ẩm mốc
+**Issue code:** `TECH.ARCH.PAINT_MOISTURE`
 
 MẪU GIẢ LẬP, không phải SOP Vinhomes hoặc lời khuyên y tế. Không sơn che vết ố khi nguồn ẩm chưa được xử lý.
 
@@ -404,9 +404,9 @@ Ticket phân biệt triệu chứng bề mặt với nguồn ẩm tiềm ẩn, c
 
 ---
 
-**Issue code:** `TECH.ARCH.FLOOR_DAMAGE`
+## MOCK-PROC-15 — Quy trình mẫu: sàn trầy, phồng hoặc bong
 
-### MOCK-PROC-15 — Quy trình mẫu: sàn trầy, phồng hoặc bong
+**Issue code:** `TECH.ARCH.FLOOR_DAMAGE`
 
 MẪU GIẢ LẬP cho kiểm thử; không phải SOP Vinhomes.
 
@@ -432,9 +432,9 @@ Ghi vật liệu hoàn thiện, vị trí, diện tích, mức cản lối đi, 
 
 ---
 
-**Issue code:** `TECH.PLUMB.SEWAGE_BACKFLOW`
+## MOCK-PROC-16 — Quy trình mẫu: nước thải trào ngược
 
-### MOCK-PROC-16 — Quy trình mẫu: nước thải trào ngược
+**Issue code:** `TECH.PLUMB.SEWAGE_BACKFLOW`
 
 MẪU GIẢ LẬP cho POC A2; không phải SOP Vinhomes hay hướng dẫn cư dân xử lý nước thải.
 

@@ -12,9 +12,9 @@ source_snapshot_required_before_production: true
 
 Tài liệu tổng hợp tham khảo nội bộ. Mỗi phần dưới đây là triage có nguồn, không phải SOP Vinhomes hay hướng dẫn cư dân tự sửa chữa. Khi có dấu hiệu nguy hiểm, thiếu dữ kiện, thiếu quyền hoặc nguồn mâu thuẫn, cần chuyển người có thẩm quyền.
 
-**Issue code:** `TECH.ELEC.BREAKER_TRIP`
+## Tham khảo kỹ thuật A2: CB nhảy lặp
 
-### Tham khảo kỹ thuật A2: CB nhảy lặp
+**Issue code:** `TECH.ELEC.BREAKER_TRIP`
 
 ### Nhận diện và làm rõ
 CB nhảy lặp là triệu chứng, không đủ để kết luận quá tải hay lỗi đường dây. Cần xác định CB của căn hay hệ chung, số lần và thời điểm, thiết bị liên quan, dấu cháy/khói, nước gần điện và sự cố nhiều căn.
@@ -28,9 +28,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.ELEC.FIXTURE_FAILURE`
+## Tham khảo kỹ thuật A2: Ổ cắm, công tắc hoặc đèn không hoạt động
 
-### Tham khảo kỹ thuật A2: Ổ cắm, công tắc hoặc đèn không hoạt động
+**Issue code:** `TECH.ELEC.FIXTURE_FAILURE`
 
 ### Nhận diện và làm rõ
 Ổ cắm, công tắc và đèn không hoạt động cần phân biệt một điểm với cả nhánh hoặc đèn thoát hiểm. Vỏ nóng, cháy xém, tia lửa hoặc ẩm gần điện là tín hiệu cần chuyển người đánh giá; không suy nguyên nhân từ việc đèn tắt.
@@ -44,9 +44,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.PLUMB.WATER_HEATER`
+## Tham khảo kỹ thuật A2: Máy nước nóng không nóng hoặc rò
 
-### Tham khảo kỹ thuật A2: Máy nước nóng không nóng hoặc rò
+**Issue code:** `TECH.PLUMB.WATER_HEATER`
 
 ### Nhận diện và làm rõ
 Không có nước nóng, nóng yếu và rò từ máy là các triệu chứng khác nhau. Cần loại máy, model, vị trí rò, nguồn cấp và quan hệ với điện; manual đúng model mới hỗ trợ kiểm tra kỹ thuật.
@@ -59,9 +59,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.PLUMB.WATER_FILTER_LOW_FLOW`
+## Tham khảo kỹ thuật A2: Máy lọc nước chảy yếu
 
-### Tham khảo kỹ thuật A2: Máy lọc nước chảy yếu
+**Issue code:** `TECH.PLUMB.WATER_FILTER_LOW_FLOW`
 
 ### Nhận diện và làm rõ
 Dòng nước lọc yếu cần so với vòi nước thường, model/lõi, lần thay lõi và tình trạng nguồn cấp. Bảo dưỡng hãng có bước xác nhận lỗi, kiểm tra máy, đo chất lượng nước và nghiệm thu; chỉ số TDS đơn lẻ không chứng minh nước uống an toàn.
@@ -74,9 +74,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.HVAC.CONDENSATION`
+## Tham khảo kỹ thuật A2: Điều hòa đọng hoặc chảy nước
 
-### Tham khảo kỹ thuật A2: Điều hòa đọng hoặc chảy nước
+**Issue code:** `TECH.HVAC.CONDENSATION`
 
 ### Nhận diện và làm rõ
 Nước gần dàn lạnh có thể liên quan đường thoát nước ngưng, lắp đặt hoặc bộ lọc, nhưng nước từ trần cũng có thể do nguồn khác. Ghi vị trí, thời điểm máy chạy, vùng lan và nước gần điện; không chốt lỗi điều hòa khi chưa kiểm tra.
@@ -89,9 +89,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.PLUMB.CONCEALED_LEAK`
+## Tham khảo kỹ thuật A2: Rò âm tường hoặc thấm trần
 
-### Tham khảo kỹ thuật A2: Rò âm tường hoặc thấm trần
+**Issue code:** `TECH.PLUMB.CONCEALED_LEAK`
 
 ### Nhận diện và làm rõ
 Vết ố/thấm trần chỉ là dấu hiệu, chưa chỉ ra nguồn ống nước, chống thấm hay nước từ ngoài. Ghi diễn tiến theo thời gian, vùng điện và căn bị ảnh hưởng; kiểm tra cả lớp chống thấm khu ướt khi có liên hệ phòng tắm.
@@ -104,9 +104,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.PLUMB.SHOWER_SEAL`
+## Tham khảo kỹ thuật A2: Vách tắm hở hoặc rò
 
-### Tham khảo kỹ thuật A2: Vách tắm hở hoặc rò
+**Issue code:** `TECH.PLUMB.SHOWER_SEAL`
 
 ### Nhận diện và làm rõ
 Nước ra ngoài vách tắm có thể ở mép cửa/ngưỡng/khe tiếp giáp, nhưng cũng có thể do thoát sàn chậm hoặc lớp chống thấm bên dưới. Cần vị trí xuất hiện nước, thời điểm tắm, tình trạng kính/khung và nước lan sang căn dưới.
@@ -119,9 +119,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.PLUMB.TOILET_LEAK`
+## Tham khảo kỹ thuật A2: Bồn cầu rò hoặc chảy liên tục
 
-### Tham khảo kỹ thuật A2: Bồn cầu rò hoặc chảy liên tục
+**Issue code:** `TECH.PLUMB.TOILET_LEAK`
 
 ### Nhận diện và làm rõ
 Nước liên tục chảy trong lòng bồn khác với nước rò ra sàn hoặc nước thải tràn. Hãng nêu nhiều khả năng ở phao, van cấp và bộ xả; chỉ dùng để hỏi triệu chứng và tra đúng model, không hướng dẫn tháo lắp qua RAG.
@@ -134,9 +134,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.PLUMB.TRAP_ODOR`
+## Tham khảo kỹ thuật A2: Mùi cống hoặc bẫy nước
 
-### Tham khảo kỹ thuật A2: Mùi cống hoặc bẫy nước
+**Issue code:** `TECH.PLUMB.TRAP_ODOR`
 
 ### Nhận diện và làm rõ
 Mùi ở nhà vệ sinh không đồng nghĩa bẫy nước khô. Cần vị trí, thời điểm, nhiều căn hay một căn, có nước thải lộ ra hoặc nghi khí nguy hiểm; FAQ thiết bị cho thấy cả cấu hình đường xả và cấp bù có thể liên quan mùi ở bồn cầu.
@@ -150,9 +150,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.PLUMB.SUPPLY_DRAIN_JOINT`
+## Tham khảo kỹ thuật A2: Nước yếu, thoát chậm hoặc rò đầu nối
 
-### Tham khảo kỹ thuật A2: Nước yếu, thoát chậm hoặc rò đầu nối
+**Issue code:** `TECH.PLUMB.SUPPLY_DRAIN_JOINT`
 
 ### Nhận diện và làm rõ
 Nước cấp yếu, thoát chậm và rò mối nối là ba symptom cần tách. Hỏi phạm vi một vòi/một căn/nhiều căn, điểm rò và nước có gần điện; hệ bơm/bồn/trục đứng/nhánh cấp giúp phân biệt lỗi cục bộ với gián đoạn hệ chung.
@@ -165,9 +165,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.ARCH.DOOR_WINDOW`
+## Tham khảo kỹ thuật A2: Cửa hoặc cửa sổ lỏng, hở
 
-### Tham khảo kỹ thuật A2: Cửa hoặc cửa sổ lỏng, hở
+**Issue code:** `TECH.ARCH.DOOR_WINDOW`
 
 ### Nhận diện và làm rõ
 Cửa/cửa sổ lỏng phải tách cánh, kính, bản lề, khóa và chức năng thoát hiểm. Phụ kiện có nguy cơ rơi hoặc cửa thoát hiểm không vận hành là tín hiệu đánh giá tại chỗ; không kết luận bằng ảnh đơn lẻ.
@@ -180,9 +180,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.ARCH.CABINET_SAG`
+## Tham khảo kỹ thuật A2: Tủ bếp xệ hoặc cánh lệch
 
-### Tham khảo kỹ thuật A2: Tủ bếp xệ hoặc cánh lệch
+**Issue code:** `TECH.ARCH.CABINET_SAG`
 
 ### Nhận diện và làm rõ
 Cánh tủ lệch có thể liên quan bản lề/đế; cả thân tủ treo xệ hoặc neo bung là nhóm nguy cơ khác. Cần ảnh toàn thân tủ và điểm neo, người/vật dưới tủ, loại phụ kiện và vật liệu tường; không coi điều chỉnh bản lề là giải pháp cho neo hỏng.
@@ -195,9 +195,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.ARCH.CRACK`
+## Tham khảo kỹ thuật A2: Nứt tường hoặc trần
 
-### Tham khảo kỹ thuật A2: Nứt tường hoặc trần
+**Issue code:** `TECH.ARCH.CRACK`
 
 ### Nhận diện và làm rõ
 Vết nứt tường/trần cần ghi vị trí, thay đổi theo thời gian, ảnh có mốc kích thước và dấu vật liệu rơi/võng. Ảnh không đủ kết luận nứt hoàn thiện hay kết cấu; một ví dụ kiểm định chung cư ở Việt Nam cho thấy cần đánh giá cấu kiện và theo dõi vết nứt/độ lún trước khi kết luận. Dấu mất ổn định phải chuyển người có chuyên môn kiểm tra.
@@ -211,9 +211,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.ARCH.PAINT_MOISTURE`
+## Tham khảo kỹ thuật A2: Sơn bong, ẩm hoặc mốc
 
-### Tham khảo kỹ thuật A2: Sơn bong, ẩm hoặc mốc
+**Issue code:** `TECH.ARCH.PAINT_MOISTURE`
 
 ### Nhận diện và làm rõ
 Sơn bong, ố hoặc nghi mốc có thể đi kèm rò ống, thấm khu ướt hoặc ngưng tụ. Cần tìm và xử lý nguồn ẩm trước khi xem lớp phủ là hoàn tất; ảnh màu/vết ố một mình không chứng minh nguồn đã hết.
@@ -226,9 +226,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.ARCH.FLOOR_DAMAGE`
+## Tham khảo kỹ thuật A2: Sàn phồng, bong hoặc hư
 
-### Tham khảo kỹ thuật A2: Sàn phồng, bong hoặc hư
+**Issue code:** `TECH.ARCH.FLOOR_DAMAGE`
 
 ### Nhận diện và làm rõ
 Sàn trầy, phồng, bong hoặc vênh trên lối đi cần tách lỗi thẩm mỹ khỏi nguy cơ vấp và ẩm dưới sàn. Ghi loại vật liệu, diện tích, nguồn nước trước đó và phép đo do người có chuyên môn thực hiện; vật liệu sàn gỗ công nghiệp có nhiều cấu tạo nên cần xác minh loại lắp thực tế trước khi dùng tài liệu hãng. Không suy sàn đã khô từ ảnh bề mặt.
@@ -242,9 +242,9 @@ Tài liệu tổng hợp từ nguồn web công khai cho thử nghiệm nội b�
 
 ---
 
-**Issue code:** `TECH.PLUMB.SEWAGE_BACKFLOW`
+## Tham khảo kỹ thuật A2: Nước thải trào ngược
 
-### Tham khảo kỹ thuật A2: Nước thải trào ngược
+**Issue code:** `TECH.PLUMB.SEWAGE_BACKFLOW`
 
 ### Nhận diện và làm rõ
 Nước thải trào ngược phải phân biệt với rò nước sạch và thoát chậm thông thường. Ghi vị trí thoát, mức lan, nhiều căn/khu chung, người tiếp xúc và điện trong vùng ướt; xử lý nguồn trào và phần vệ sinh cần bằng chứng riêng.

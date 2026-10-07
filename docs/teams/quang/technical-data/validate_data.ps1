@@ -24,6 +24,9 @@ $evals = Read-Jsonl 'rag/RAG_EVAL.jsonl'
 $evalDataset = (Get-Content -LiteralPath (Join-Path $dataRoot 'rag/eval/technical-a2.v1.json') -Raw -Encoding utf8 | ConvertFrom-Json -ErrorAction Stop)
 $mockProfiles = Read-Jsonl 'rag/mock/PROCEDURE_PROFILES.jsonl'
 $mockPocs = Read-Jsonl 'rag/mock/POC_LIFECYCLE.jsonl'
+$issueLifecycle = Read-Jsonl 'rag/mock/ISSUE_LIFECYCLE_EXTENSION.jsonl'
+$toolBehavior = Read-Jsonl 'rag/mock/TOOL_BEHAVIOR_MOCKUP.jsonl'
+$verificationBranches = Read-Jsonl 'rag/mock/VERIFICATION_BRANCH_MOCKUP.jsonl'
 $mockLearning = Read-Jsonl 'rag/mock/Q07_LEARNING_FLOW.jsonl'
 $mockToolData = Read-Jsonl 'rag/mock/TOOL_DATA_FIXTURES.jsonl'
 $supervision = Read-Jsonl 'rag/mock/SUPERVISION_CASES.jsonl'
@@ -91,12 +94,25 @@ foreach ($document in $documents) {
     if (-not (Test-Path -LiteralPath $markdownPath -PathType Leaf)) { $errors.Add("document $code missing Markdown") ; continue }
     $markdown = Get-Content -LiteralPath $markdownPath -Raw -Encoding utf8
     if ($markdown -notmatch '(?s)^---\r?\n.*?\r?\n---\r?\n') { $errors.Add("document $code missing YAML front matter") }
+    if ([regex]::Matches($markdown, '(?m)^## Tham kh').Count -ne $issueIds.Count -or @($document.sections).Count -ne $issueIds.Count) { $errors.Add("document $code lacks issue-level headings/sections") }
     if (-not $markdown.Contains("# $($document.title)")) { $errors.Add("document $code title differs from manifest") }
     if ($markdown -notmatch '(?m)^approval_status: not_published$' -or $markdown -notmatch '(?m)^trang_thai: tham-khao-noi-bo-chua-duyet$' -or $markdown -notmatch '(?m)^sop_available: false$' -or $markdown -notmatch '(?m)^source_snapshot_required_before_production: true$') { $errors.Add("document $code missing safety front matter") }
     $hasSourceHeading = $markdown.Contains('### Ngu')
     $hasDocumentText = $markdown.Contains([string]$document.text_vi)
     if ($hasSourceHeading -ne $true -or $hasDocumentText -ne $true) { $errors.Add("document $code missing text or source section") }
     if (@($document.source_ids).Count -eq 0 -or @($document.citation_fact_refs).Count -eq 0) { $errors.Add("document $code has no provenance") }
+    foreach ($section in @($document.sections)) {
+        $issueMarker = '**Issue code:** `' + $section.issue_code + '`'
+        if (-not $issueIds.ContainsKey($section.issue_code) -or -not $markdown.Contains($issueMarker) -or -not $markdown.Contains([string]$section.title) -or -not $markdown.Contains([string]$section.text_vi)) { $errors.Add("document $code section $($section.issue_code) differs from Markdown") }
+        if (@($section.source_ids).Count -eq 0 -or @($section.citation_fact_refs).Count -eq 0) { $errors.Add("document $code section $($section.issue_code) lacks provenance") }
+        foreach ($sourceId in @($section.source_ids)) {
+            if ($sourceId -notin @($document.source_ids)) { $errors.Add("document $code section $($section.issue_code) source $sourceId absent from document") }
+        }
+        foreach ($ref in @($section.citation_fact_refs)) {
+            if ($ref.source_id -notin @($section.source_ids) -or -not $factIds.ContainsKey($ref.fact_id)) { $errors.Add("document $code section $($section.issue_code) invalid fact ref $($ref.fact_id)") ; continue }
+            if ($factIds[$ref.fact_id].source_id -ne $ref.source_id -or $factIds[$ref.fact_id].source_location -ne $ref.source_location) { $errors.Add("document $code section $($section.issue_code) fact ref $($ref.fact_id) provenance mismatch") }
+        }
+    }
     foreach ($sourceId in @($document.source_ids)) {
         if (-not $sourceIds.ContainsKey($sourceId)) { $errors.Add("document $code missing source $sourceId") }
     }
@@ -129,9 +145,10 @@ foreach ($profile in $mockProfiles) {
     $path = Join-Path $dataRoot ("rag/mock-corpus/" + $profile.document_code)
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { $errors.Add("mock procedure $code missing Markdown") ; continue }
     $markdown = Get-Content -LiteralPath $path -Raw -Encoding utf8
+    if ([regex]::Matches($markdown, '(?m)^## MOCK-PROC-\d{2}').Count -ne $issueIds.Count) { $errors.Add("mock corpus lacks issue-level headings") }
     if ($markdown -notmatch '(?m)^fixture_only: true$' -or $markdown -notmatch '(?m)^approval_status: not_published$' -or $markdown -notmatch '(?m)^sop_available: false$' -or $markdown -notmatch '(?m)^audience: technician_test_only$' -or $markdown -notmatch '(?m)^version: mock-v1$' -or $markdown -notmatch '(?m)^trang_thai: du-lieu-gia-lap-khong-xuat-ban$') { $errors.Add("mock procedure $code unsafe Markdown status") }
     $issueMarker = '**Issue code:** `' + $profile.issue_code + '`'
-    if (-not $markdown.Contains($issueMarker) -or -not $markdown.Contains("### $code ")) { $errors.Add("mock procedure $code metadata/title mismatch") }
+    if (-not $markdown.Contains($issueMarker) -or -not $markdown.Contains("## $code ")) { $errors.Add("mock procedure $code metadata/title mismatch") }
     $hasMockSourceHeading = $markdown.Contains('### Ngu')
     $hasMockCitation = $markdown.Contains("- ${code}-v1:")
     if ($hasMockSourceHeading -ne $true -or $hasMockCitation -ne $true) { $errors.Add("mock procedure $code missing fixture citation") }
@@ -170,6 +187,33 @@ foreach ($profile in $mockProfiles) {
     if ($profile.source_work_order_id -and -not $pocWorkOrders.ContainsKey($profile.source_work_order_id)) { $errors.Add("mock procedure $($profile.code) missing POC work order") }
 }
 if ($mockPocs.Count -ne 5) { $errors.Add('expected five POC lifecycle cases') }
+
+$lifecycleIssueCodes = @{}
+foreach ($poc in $mockPocs) { $lifecycleIssueCodes[$poc.issue_code] = $true }
+foreach ($case in $issueLifecycle) {
+    if ($pocIds.ContainsKey($case.case_id)) { $errors.Add("duplicate lifecycle case $($case.case_id)") }
+    $pocIds[$case.case_id] = $true
+    if ($lifecycleIssueCodes.ContainsKey($case.issue_code)) { $errors.Add("duplicate lifecycle issue $($case.issue_code)") }
+    $lifecycleIssueCodes[$case.issue_code] = $true
+    if ($case.data_kind -ne 'synthetic_fixture' -or $case.fixture_only -ne $true -or $case.scope.tenant_id -ne '91000000-0000-4000-8000-000000000001' -or $case.scope.building_key -ne 'SYN-B-01') { $errors.Add("lifecycle $($case.case_id) unsafe scope") }
+    $location = [string]$case.asset.location
+    if ($location.StartsWith('SYN-B-01/')) {
+        if ($null -ne $case.scope.unit_key -or $case.work_order.scope -ne $location) { $errors.Add("lifecycle $($case.case_id) common-area scope mismatch") }
+    } elseif (-not $location.StartsWith("$($case.scope.unit_key)/") -or $case.work_order.scope -ne "SYN-B-01/$location") {
+        $errors.Add("lifecycle $($case.case_id) unit/asset/work-order scope mismatch")
+    }
+    if (-not $mockCodes.ContainsKey($case.procedure_code) -or $mockCodes[$case.procedure_code].issue_code -ne $case.issue_code -or $case.sop_lookup.eligible_for_sop_kb_retrieve -ne $false) { $errors.Add("lifecycle $($case.case_id) invalid SOP mapping") }
+    if ($case.ticket.ticket_id -ne $case.work_order.ticket_id -or $case.assessment.issue_code -ne $case.issue_code -or $case.work_order.assignment_status -ne 'not_assigned') { $errors.Add("lifecycle $($case.case_id) mismatched ticket/assessment/assignment") }
+    if ($pocWorkOrders.ContainsKey($case.work_order.workorder_id)) { $errors.Add("duplicate lifecycle work order $($case.work_order.workorder_id)") }
+    $pocWorkOrders[$case.work_order.workorder_id] = $true
+    if (@($case.ticket.facts).Count -lt 3 -or @($case.ticket.unknown_fields).Count -lt 2 -or @($case.diagnostic_hypotheses).Count -lt 3 -or @($case.evidence_plan).Count -lt 3 -or @($case.negative_variants).Count -lt 3) { $errors.Add("lifecycle $($case.case_id) insufficient detail") }
+    foreach ($fact in @($case.ticket.facts)) { if (-not $fact.source -or -not $fact.observed_at) { $errors.Add("lifecycle $($case.case_id) fact lacks provenance") } }
+    foreach ($hypothesis in @($case.diagnostic_hypotheses)) { if ($hypothesis.status -ne 'unconfirmed' -or $hypothesis.confirmed_by) { $errors.Add("lifecycle $($case.case_id) hypothesis falsely confirmed") } }
+    foreach ($evidence in @($case.evidence)) { if ($evidence.ticket_id -ne $case.ticket.ticket_id -or $evidence.workorder_id -ne $case.work_order.workorder_id -or $evidence.scan_status -ne 'not_uploaded' -or $evidence.file_id) { $errors.Add("lifecycle $($case.case_id) evidence falsely ready") } }
+    if ($case.executor_result.status -ne 'not_submitted' -or $case.expected.verification -ne 'NOT_RUN_MISSING_RESULT' -or $case.expected.ticket_closed -ne $false -or $case.assessment.applied_priority -or $case.assessment.policy_version) { $errors.Add("lifecycle $($case.case_id) premature resolution/policy") }
+    if (-not $case.measurement_plan.metric -or -not $case.measurement_plan.unit -or $null -ne $case.measurement_plan.value -or $null -ne $case.measurement_plan.measured_by) { $errors.Add("lifecycle $($case.case_id) measurement invented") }
+}
+if ($issueLifecycle.Count -ne 11 -or $lifecycleIssueCodes.Count -ne $issueIds.Count) { $errors.Add('lifecycle cases must cover exactly 16 issues (5 POC + 11 extension)') }
 
 $pocTicketIds = @{}
 $pocAssetIds = @{}
@@ -210,6 +254,28 @@ foreach ($fixture in $mockToolData) {
     }
 }
 if ($mockToolData.Count -ne 16) { $errors.Add('expected 16 mock tool-data records') }
+
+$expectedToolNames = @('sop_kb.retrieve', 'asset.read', 'sensor.read', 'maintenance_history.read', 'technical.get_active_outage', 'utility_schedule.read', 'technical.record_measurement', 'technical.submit_executor_result', 'technical.verify_resolution', 'maintenance_history.append', 'utility_isolation.request', 'area_restriction.request', 'apartment_entry.request', 'vendor_dispatch.request')
+$toolBehaviorNames = @{}
+foreach ($behavior in $toolBehavior) {
+    if ($toolBehaviorNames.ContainsKey($behavior.tool)) { $errors.Add("duplicate tool mockup $($behavior.tool)") }
+    $toolBehaviorNames[$behavior.tool] = $true
+    if ($behavior.fixture_only -ne $true -or $behavior.data_kind -ne 'synthetic_fixture' -or $behavior.tool -notin $expectedToolNames -or -not $pocIds.ContainsKey($behavior.case_id)) { $errors.Add("tool mockup $($behavior.fixture_id) invalid scope/tool/case") }
+    if ($behavior.expected.status -notin @('OK', 'NEEDS_INPUT', 'NOT_FOUND', 'FORBIDDEN', 'STALE_DATA', 'CONFLICT', 'PENDING_APPROVAL') -or $behavior.expected.ticket_closed -ne $false -or @($behavior.negative_variants).Count -lt 2 -or @($behavior.source_fixture_refs).Count -eq 0) { $errors.Add("tool mockup $($behavior.fixture_id) incomplete or unsafe outcome") }
+    if ($behavior.request_mock.identity_source -ne 'authenticated_runtime_context_not_model') { $errors.Add("tool mockup $($behavior.fixture_id) trusts model identity") }
+}
+if ($toolBehavior.Count -ne 14 -or $toolBehaviorNames.Count -ne $expectedToolNames.Count) { $errors.Add('tool behavior mockup does not cover all 14 tools') }
+
+$verificationScenarios = @{}
+foreach ($branch in $verificationBranches) {
+    if ($verificationScenarios.ContainsKey($branch.scenario)) { $errors.Add("duplicate verification scenario $($branch.scenario)") }
+    $verificationScenarios[$branch.scenario] = $true
+    if ($branch.data_kind -ne 'synthetic_fixture' -or $branch.fixture_only -ne $true -or $branch.test_tenant_only -ne $true -or $branch.reference_case_id -ne 'SYN-T-002' -or $branch.tool -ne 'technical.verify_resolution') { $errors.Add("verification branch $($branch.id) unsafe scope") }
+    if ($branch.real_ticket_closed -ne $false -or $branch.expected.envelope_status -notin @('OK', 'NOT_FOUND') -or $branch.expected.verification_status -notin @($null, 'NEEDS_EVIDENCE', 'HUMAN_REVIEW', 'VERIFIED') -or @($branch.seed_requirements).Count -eq 0 -or @($branch.forbidden).Count -lt 2) { $errors.Add("verification branch $($branch.id) invalid outcome") }
+    if ($branch.expected.verification_status -eq 'VERIFIED' -and ($branch.expected.envelope_status -ne 'OK' -or $branch.input_state.sop -notlike 'TEST-SOP-* published_in_isolated_test_tenant_only')) { $errors.Add("verification branch $($branch.id) falsely verifies a draft SOP") }
+    if ($branch.scenario -eq 'submitted_result_no_published_sop' -and ($branch.input_state.sop -ne 'none_eligible' -or $branch.expected.verification_status -ne 'HUMAN_REVIEW')) { $errors.Add("verification branch $($branch.id) must escalate without eligible SOP") }
+}
+if ($verificationBranches.Count -ne 6 -or $verificationScenarios.Count -ne 6) { $errors.Add('expected six distinct verification branches') }
 
 $supervisionIds = @{}
 $supervisionCoverage = @{}
@@ -332,7 +398,7 @@ foreach ($fixture in $synthetic) {
     }
 }
 
-Write-Output "issues=$($issueIds.Count) sources=$($manifest.Count) facts=$($facts.Count) rag_documents=$($documents.Count) mock_procedures=$($mockProfiles.Count) mock_pocs=$($mockPocs.Count) mock_traces=$($mockTraces.Count) mock_q07=$($mockLearning.Count) mock_tools=$($mockToolData.Count) supervision=$($supervision.Count) mock_evals=$(@($mockEval.cases).Count) public_cases=$($cases.Count) synthetic=$($synthetic.Count) evals=$($evals.Count)"
+Write-Output "issues=$($issueIds.Count) sources=$($manifest.Count) facts=$($facts.Count) rag_documents=$($documents.Count) mock_procedures=$($mockProfiles.Count) mock_pocs=$($mockPocs.Count) lifecycle_extensions=$($issueLifecycle.Count) lifecycle_issues=$($lifecycleIssueCodes.Count) tool_behaviors=$($toolBehavior.Count) verification_branches=$($verificationBranches.Count) mock_traces=$($mockTraces.Count) mock_q07=$($mockLearning.Count) mock_tools=$($mockToolData.Count) supervision=$($supervision.Count) mock_evals=$(@($mockEval.cases).Count) public_cases=$($cases.Count) synthetic=$($synthetic.Count) evals=$($evals.Count)"
 if ($errors.Count -gt 0) {
     $errors | ForEach-Object { Write-Output "ERROR: $_" }
     exit 1
