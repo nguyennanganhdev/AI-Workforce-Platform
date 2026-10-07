@@ -35,6 +35,8 @@ export const BQL_DOCUMENT_PREFIX = "bql/";
 const TOPICS: Record<string, string> = {
   "ve-sinh": "Tài liệu BQL > Vệ sinh & cảnh quan",
   "ke-toan": "Tài liệu BQL > Kế toán vận hành",
+  // Team Quang's triage reference (docs/teams/quang/agent/bql-knowledge): internal, not an approved SOP.
+  "ky-thuat": "Tài liệu BQL > Kỹ thuật (tham khảo nội bộ)",
 };
 
 function argument(name: string): string {
