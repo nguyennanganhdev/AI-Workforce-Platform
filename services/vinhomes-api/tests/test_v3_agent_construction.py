@@ -112,7 +112,7 @@ def test_factory_persists_selected_model_and_frozen_skills(construction_client, 
             return SimpleNamespace(mappings=lambda: SimpleNamespace(first=lambda: {'id': UUID(skill_id), 'name': 'Unit skill', 'instructions': 'Always cite the source.'}))
         return prior_result
     db.execute.side_effect = execute
-    monkeypatch.setattr(builder, 'resolve_model', AsyncMock(side_effect=lambda db, role, model_id=None: {'model_name': 'selected'} if model_id == 'allowed-model' else None))
+    monkeypatch.setattr(builder, 'resolve_model', AsyncMock(side_effect=lambda db, role, model_id=None, workspace_id=None: {'model_name': 'selected'} if model_id == 'allowed-model' else None))
     monkeypatch.setattr(builder, 'audit', AsyncMock())
     artifact = {'specHash': 'a' * 64, 'systemPrompt': 'Read and summarize.', 'spec': {'resources': []}}
     replies.extend([(200, artifact), (200, artifact)])

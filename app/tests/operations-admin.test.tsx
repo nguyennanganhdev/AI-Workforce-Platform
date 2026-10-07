@@ -168,6 +168,26 @@ test("the administrator finds an account, approves it and moves a manager to ano
   );
 });
 
+test("the administrator sets a new password for a person who lost theirs, never for an administrator", async () => {
+  const { view, sent } = await mount("AccountsPage", (url, init) => {
+    if (init?.method === "POST") return Response.json({ ok: true });
+    if (url.endsWith("/auth/management-units")) return Response.json({ items: [] });
+    return Response.json({ items: accounts });
+  });
+  fireEvent.click(await view.findByRole("button", { name: /admin@example.com/ }));
+  expect(view.queryByRole("form", { name: "Đặt lại mật khẩu" })).toBeNull();
+  fireEvent.click(view.getByRole("button", { name: "Hủy" }));
+  fireEvent.click(await view.findByRole("button", { name: /Nguyễn Văn An an@example.com/ }));
+  const submit = view.getByRole("button", { name: "Đặt lại mật khẩu" }) as HTMLButtonElement;
+  expect(submit.disabled).toBe(true);
+  fireEvent.click(view.getByRole("button", { name: "Tạo mật khẩu" }));
+  const password = (view.getByLabelText("Mật khẩu mới") as HTMLInputElement).value;
+  expect(password).toMatch(/^[A-HJ-NP-Za-km-z2-9]{16}$/);
+  fireEvent.click(submit);
+  expect(await view.findByText(/Đã đặt lại mật khẩu/)).toBeTruthy();
+  expect(sent).toEqual([{ method: "POST", url: "/api/business/auth/accounts/u1/password", body: { new_password: password } }]);
+});
+
 test("the model page says which model each role runs on and which service does not answer", async () => {
   const { view } = await mount("ModelsPage", (url) =>
     url.endsWith("/model-registry")

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import {
   accountsQueryOptions,
   createAccountMutationOptions,
+  resetPasswordMutationOptions,
   updateAccountMutationOptions,
   type Account,
 } from "@/lib/admin/queries";
@@ -584,6 +585,11 @@ function NewAccount({ units, onClose }: { units: Units; onClose: () => void }) {
     </AdminDrawer>
   );
 }
+/** 16 characters without look-alikes (0/O, 1/l/I), to read out or type from a message. */
+function newPassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  return Array.from(crypto.getRandomValues(new Uint32Array(16)), (n) => alphabet[n % alphabet.length]).join("");
+}
 function AccountEditor({
   account,
   units,
@@ -595,6 +601,8 @@ function AccountEditor({
 }) {
   const queryClient = useQueryClient();
   const update = useMutation(updateAccountMutationOptions(queryClient));
+  const reset = useMutation(resetPasswordMutationOptions());
+  const [password, setPassword] = useState("");
   const [role, setRole] = useState(account.role);
   const [unit, setUnit] = useState(account.management_unit_id || "");
   const [confirming, setConfirming] = useState(false);
@@ -697,6 +705,66 @@ function AccountEditor({
           <p role="alert" className="ops-admin-error">
             {update.error.message}
           </p>
+        )}
+        {!account.administrator && (
+          <form
+            className="ops-admin-form"
+            aria-label="Đặt lại mật khẩu"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (password.length >= 12)
+                reset.mutate({ id: account.id, password });
+            }}
+          >
+            <label>
+              Đặt lại mật khẩu
+              <Input
+                aria-label="Mật khẩu mới"
+                autoComplete="off"
+                spellCheck={false}
+                value={password}
+                maxLength={128}
+                disabled={reset.isPending}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  reset.reset();
+                }}
+              />
+              <small>
+                Ít nhất 12 ký tự. Người dùng bị đăng xuất khỏi mọi thiết bị.
+              </small>
+            </label>
+            <div className="ops-admin-actions">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={reset.isPending}
+                onClick={() => {
+                  setPassword(newPassword());
+                  reset.reset();
+                }}
+              >
+                Tạo mật khẩu
+              </Button>
+              <Button
+                type="submit"
+                disabled={password.length < 12 || reset.isPending}
+              >
+                {reset.isPending ? "Đang đặt lại…" : "Đặt lại mật khẩu"}
+              </Button>
+            </div>
+            {reset.isSuccess && (
+              <p role="status" className="ops-admin-success">
+                Đã đặt lại mật khẩu. Gửi mật khẩu mới cho người dùng qua kênh
+                riêng; các phiên đăng nhập cũ đã kết thúc.
+              </p>
+            )}
+            {reset.error && (
+              <p role="alert" className="ops-admin-error">
+                {reset.error.message}
+              </p>
+            )}
+          </form>
         )}
       </div>
       {confirming && (

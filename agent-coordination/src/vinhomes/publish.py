@@ -58,6 +58,9 @@ async def answer(client: httpx.AsyncClient, instructions: str, case: dict, tools
     # earlier answer for a follow-up question.
     asked = {"instruction": case["instruction"], "tasks": [], "messages": case.get("messages", []),
              "context": [{"item_id": "reception-v2-ticket", "content": json.dumps(case["ticket"], ensure_ascii=False)}]}
+    if case.get("workspace"):
+        # The current time and the unit's building ids: what a tool taking building_id or a time needs.
+        asked["context"].append({"item_id": "workspace", "content": json.dumps(case["workspace"], ensure_ascii=False)})
     said = json.dumps(asked, ensure_ascii=False)
     # Photos attached to the question go beside the text as image parts; the Bot hands them to the
     # model as pictures (shared/user-content.ts). Without photos the message stays the plain text it was.

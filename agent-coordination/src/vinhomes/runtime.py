@@ -398,7 +398,8 @@ class Runtime:
                     async with asyncio.timeout(150):
                         content, _ = await answer(self.client, snapshot['instructions'], {
                             'name': key, 'instruction': snapshot['instruction'], 'ticket': snapshot.get('ticket', {}),
-                            'messages': snapshot['messages'], 'images': snapshot.get('images', [])}, snapshot['tools'], {},
+                            'messages': snapshot['messages'], 'images': snapshot.get('images', []),
+                            'workspace': snapshot.get('workspace')}, snapshot['tools'], {},
                             endpoint=self.settings.openbot.endpoint, token=os.environ[self.settings.openbot.token_env],
                             invoke_tool=tool, model_config=snapshot.get('model_config'))
                     result.update(status='done', content=content[:20000])
@@ -749,7 +750,7 @@ def create_app(settings: Settings | None = None, *, transport: httpx.AsyncBaseTr
             async with asyncio.timeout(240):
                 for case in cases:
                     try:
-                        content, called = await answer(runtime.client, snapshot['instructions'], case, snapshot['tools'], {},
+                        content, called = await answer(runtime.client, snapshot['instructions'], {**case, 'workspace': snapshot.get('workspace')}, snapshot['tools'], {},
                             endpoint=settings.openbot.endpoint, token=os.environ[settings.openbot.token_env], model_config=snapshot.get('model_config'))
                         problems = judge(case, content, called)
                     except (AdapterError, ValueError, httpx.HTTPError) as error:
@@ -780,7 +781,7 @@ def create_app(settings: Settings | None = None, *, transport: httpx.AsyncBaseTr
             from .publish import answer
             async with asyncio.timeout(120):
                 content, called = await answer(runtime.client, snapshot['instructions'],
-                    {'name': 'trial-' + uuid4().hex, 'instruction': body['question'], 'ticket': {}}, snapshot['tools'], {},
+                    {'name': 'trial-' + uuid4().hex, 'instruction': body['question'], 'ticket': {}, 'workspace': snapshot.get('workspace')}, snapshot['tools'], {},
                     endpoint=settings.openbot.endpoint, token=os.environ[settings.openbot.token_env], model_config=snapshot.get('model_config'))
             return JSONResponse({'answer': content[:5000], 'called': called})
         except ValidationError:

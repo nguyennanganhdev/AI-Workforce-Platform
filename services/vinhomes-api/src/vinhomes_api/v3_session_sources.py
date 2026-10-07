@@ -230,6 +230,7 @@ async def turn(team_id: UUID, message_id: UUID, db: RuntimeScope):
         tools.append({'name': grant['name'].replace('.', '__'), 'description': tool['description'], 'parameters': tool['input_schema']})
     from .v3_agent_builder import instructions_with_skills
     from .v3_models import resolve_model
+    from .v3_tool_gateway import agent_workspace
     instructions = await instructions_with_skills(db, member['config'], team['workspace_id'])
     instructions += '\nThao tác ghi vào nguồn ngoài luôn dừng chờ Ban quản lý cho phép từng lần. Khi công cụ trả AWAITING_CONFIRMATION, nói rõ đang chờ xác nhận; chưa khẳng định thao tác đã được thực hiện.'
     history = (await db.execute(text("""select body->>'text' as text,sender_kind from messages
@@ -238,9 +239,10 @@ async def turn(team_id: UUID, message_id: UUID, db: RuntimeScope):
     attached, images = await for_agent(db, team['channel_id'], message_id, pictures=True)
     ticket = (await db.execute(text('select t.title,t.description,u.code as unit_code,t.priority from tickets t left join units u on u.id=t.unit_id and u.tenant_id=t.tenant_id where t.id=:id'), {'id': team['ticket_id']})).mappings().one()
     return {'run_id': str(run), 'instructions': instructions, 'tools': tools,
-            'model_config': await resolve_model(db, 'specialist', member['config'].get('model_id')),
+            'model_config': await resolve_model(db, 'specialist', member['config'].get('model_id'), team['workspace_id']),
             'instruction': '\n\n'.join(p for p in (question['body']['text'].split(': ', 1)[-1], attached) if p),
-            'ticket': dict(ticket), 'messages': [dict(m) for m in reversed(history)], 'images': images}
+            'ticket': dict(ticket), 'messages': [dict(m) for m in reversed(history)], 'images': images,
+            'workspace': await agent_workspace(db, team['workspace_id'])}
 
 
 class Outcome(BaseModel):

@@ -303,6 +303,33 @@ async def change_access(user_id:str,body:AccountAccess,request:Request):
     return {"ok":True}
 
 
+class PasswordReset(BaseModel):
+    new_password: str = Field(min_length=12,max_length=128)
+
+
+@router.post("/accounts/{user_id}/password")
+async def reset_password(user_id:str,body:PasswordReset,request:Request):
+    """The administrator sets a new password for someone who lost theirs; every sign-in of that person ends."""
+    actor=await administrator(request)
+    async with _hash_slots:
+        hashed=await asyncio.to_thread(password_hash,body.new_password)
+    async with enabled(request).begin() as db:
+        await context(db,request,actor["id"])
+        if user_id == actor["id"] or (await db.execute(text("select 1 from platform_admins where user_id=:id"),{"id":user_id})).first():
+            raise HTTPException(409,"Không thể đặt lại mật khẩu tài khoản quản trị qua màn hình này.")
+        if not (await db.execute(text("select 1 from tenant_memberships where user_id=:id and tenant_id=cast(:tenant as uuid)"),
+                                 {"id":user_id,"tenant":str(request.app.state.settings.tenant_id)})).first():
+            raise HTTPException(404,"Tài khoản không thuộc tenant này.")
+        changed=(await db.execute(text("update accounts set password=:password,updated_at=now() where user_id=:id and provider_id=:provider returning id"),
+                                  {"id":user_id,"provider":PROVIDER,"password":hashed})).first()
+        if not changed:
+            raise HTTPException(409,"Tài khoản này không đăng nhập bằng mật khẩu.")
+        await db.execute(text("delete from sessions where user_id=:id and token like 'vinhomes-v1:%'"),{"id":user_id})
+        from .v3_audit import audit
+        await audit(db,actor["id"],"account.password_reset","user",user_id,{})
+    return {"ok":True}
+
+
 @router.post("/register",status_code=201)
 async def register(body: Registration,request: Request):
     engine = enabled(request)

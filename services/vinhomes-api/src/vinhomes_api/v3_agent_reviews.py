@@ -105,7 +105,7 @@ async def configure(
             raise HTTPException(422, "Unknown service category")
     if body.model_id:
         from .v3_models import resolve_model
-        if not await resolve_model(scope[0], 'specialist', body.model_id):
+        if not await resolve_model(scope[0], 'specialist', body.model_id, agent['workspace_id']):
             raise HTTPException(422, 'Model is not available for this unit')
     skill_snapshots = []
     for skill_id in body.skill_ids:

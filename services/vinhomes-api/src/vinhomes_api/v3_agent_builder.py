@@ -78,9 +78,10 @@ async def evaluation_view(body: EvaluationView, db: RuntimeScope):
             raise HTTPException(409, 'A configured tool is not available for evaluation')
         descriptors.append({'name': granted['name'].replace('.', '__'), 'description': tool['description'], 'parameters': tool['input_schema']})
     from .v3_models import resolve_model
-    model_config = await resolve_model(db, 'specialist', agent['configuration'].get('model_id'))
+    model_config = await resolve_model(db, 'specialist', agent['configuration'].get('model_id'), agent['workspace_id'])
+    from .v3_tool_gateway import agent_workspace
     return {'model_config': model_config, 'instructions': await instructions_with_skills(db, agent['configuration'], agent['workspace_id']), 'model_id': agent['configuration'].get('model_id'), 'tools': descriptors,
-            'configuration_hash': body.configuration_hash}
+            'configuration_hash': body.configuration_hash, 'workspace': await agent_workspace(db, agent['workspace_id'])}
 
 
 @router.post('/rooms/{room_id}/agents/{agent_id}/evaluate')
@@ -201,7 +202,7 @@ async def construct(room_id: str, agent_id: str, body: Construction, scope: Memb
     # Freeze selected capabilities before asking the Factory; later edits to shared skills
     # do not silently change the draft that this request constructs.
     model_id = body.model_id if 'model_id' in body.model_fields_set else configuration.get('model_id')
-    if model_id and not await resolve_model(scope[0], 'specialist', model_id):
+    if model_id and not await resolve_model(scope[0], 'specialist', model_id, agent['workspace_id']):
         raise HTTPException(422, 'Model is not available for this unit')
     skill_ids = [str(s) for s in body.skill_ids] if body.skill_ids is not None else configuration.get('skill_ids', [])
     skill_snapshots = []

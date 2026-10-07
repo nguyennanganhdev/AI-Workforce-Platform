@@ -134,6 +134,13 @@
       "when": 1791282501736,
       "tag": "0018_session_external_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791282501737,
+      "tag": "0019_model_credentials",
+      "breakpoints": true
     }
   ]
 }

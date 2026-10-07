@@ -94,6 +94,75 @@ def test_embedding_dimension_guard(database,monkeypatch):
         assert admin.patch('/admin/model-registry/'+identity,json={'allowed':True}).status_code==422
 
 
+
+def test_a_key_entered_in_the_app_is_sealed_and_a_unit_model_serves_only_its_unit(database,monkeypatch):
+    import base64,os
+    from vinhomes_api import v3_models
+    unit_key,new_key='gsk_unit_secret_1234','gsk_new_secret_5678'
+    monkeypatch.delenv('VINHOMES_API_MODEL_CREDENTIALS_KEY',raising=False)
+    sent=[]
+    class Provider:
+        def __init__(self,**kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self,*args): return False
+        async def post(self,url,headers,json):
+            sent.append((url,headers['Authorization']))
+            if headers['Authorization']=='Bearer gsk_refused_0000': return httpx.Response(401,json={'error':'invalid key'})
+            return httpx.Response(200,json={'choices':[{'message':{'content':'OK'}}]})
+    monkeypatch.setattr(v3_models.httpx,'AsyncClient',Provider)
+    body={'name':'llama-'+uuid4().hex[:8],'provider':'groq','api_key':unit_key}
+    with demo_client(database,'management') as manager:
+        # Without the deployment's own key nothing is kept: the key is not stored in clear instead.
+        assert manager.post('/rooms/management-room/models',json=body).status_code==503
+        monkeypatch.setenv('VINHOMES_API_MODEL_CREDENTIALS_KEY',base64.b64encode(os.urandom(32)).decode())
+        added=manager.post('/rooms/management-room/models',json=body)
+        assert added.status_code==201,added.text
+        identity=added.json()['id']
+        assert manager.post('/rooms/management-room/models',json=body).status_code==409
+        # Only an address the provider owns: a key cannot be pointed at an arbitrary host.
+        assert manager.post('/rooms/management-room/models',json={**body,'provider':'custom'}).status_code==422
+        stored=sql(database,'select credential_env,credential_sealed,credential_hint,workspace_id from admin_model_registry where id=$1',UUID(identity))[0]
+        assert stored['credential_env'] is None and unit_key not in stored['credential_sealed'] and stored['credential_hint']=='…1234'
+        assert stored['workspace_id'] is not None
+        checked=manager.post(f'/rooms/management-room/models/{identity}/check')
+        assert checked.status_code==200 and checked.json()['ok'] and sent[-1]==('https://api.groq.com/openai/v1/chat/completions','Bearer '+unit_key)
+        listed=manager.get('/rooms/management-room/models')
+        assert listed.status_code==200 and listed.json()['canManage']
+        assert any(r['id']==identity and r['own'] and r['credential_hint']=='…1234' for r in listed.json()['items'])
+        assert unit_key not in listed.text and 'credential_sealed' not in listed.text
+        # A refused new key leaves the old one in place.
+        assert manager.put(f'/rooms/management-room/models/{identity}/credential',json={'api_key':'gsk_refused_0000'}).status_code==422
+        assert manager.post(f'/rooms/management-room/models/{identity}/check').json()['ok'] and sent[-1][1]=='Bearer '+unit_key
+        assert manager.put(f'/rooms/management-room/models/{identity}/credential',json={'api_key':new_key}).status_code==200
+        assert sql(database,'select credential_hint from admin_model_registry where id=$1',UUID(identity))[0]['credential_hint']=='…5678'
+        assert manager.delete(f'/admin/model-registry/{identity}').status_code==403
+    with demo_client(database,'admin') as admin:
+        assert admin.patch(f'/admin/model-registry/{identity}',json={'allowed':True}).status_code==422
+        assert admin.put('/admin/model-defaults/specialist',json={'model_id':identity}).status_code==422
+        assert new_key not in admin.get('/admin/model-registry').text
+    # The unit's own agents resolve it; no other unit and no other role does.
+    workspace=stored['workspace_id']
+    class Rows:
+        def __init__(self,row): self.row=row
+        def mappings(self): return self
+        def first(self): return self.row
+    row={**sql(database,'select * from admin_model_registry where id=$1',UUID(identity))[0]}
+    class DB:
+        async def execute(self,*args,**kwargs): return Rows(row)
+    config=asyncio.run(v3_models.resolve_model(DB(),'specialist',identity,workspace))
+    assert config['api_key']==new_key and config['base_url']=='https://api.groq.com/openai/v1'
+    for role,unit in (('specialist',uuid4()),('specialist',None),('supervisor',workspace)):
+        with pytest.raises(HTTPException): asyncio.run(v3_models.resolve_model(DB(),role,identity,unit))
+    # A model an agent still names is not removed.
+    agent=sql(database,"select a.id from agents a join channel_agents ca on ca.agent_id=a.id where ca.channel_id='management-room' and a.purpose<>'supervisor' limit 1")[0]['id']
+    before=sql(database,'select configuration from agents where id=$1',agent)[0]['configuration']
+    sql(database,"update agents set configuration=configuration||jsonb_build_object('model_id',$2::text) where id=$1",agent,identity)
+    with demo_client(database,'management') as manager:
+        assert manager.delete(f'/rooms/management-room/models/{identity}').status_code==409
+        sql(database,'update agents set configuration=$2::jsonb where id=$1',agent,before)
+        assert manager.delete(f'/rooms/management-room/models/{identity}').status_code==200
+        assert not any(r['id']==identity for r in manager.get('/rooms/management-room/models').json()['items'])
+
 def test_admin_overview_and_audit_filter_export_agree(database):
     with demo_client(database,'management') as manager:
         assert manager.get('/admin/overview').status_code==403

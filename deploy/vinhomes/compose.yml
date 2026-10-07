@@ -38,6 +38,9 @@ services:
       VINHOMES_API_SUPERVISOR_APPROVES_PLANS: ${SUPERVISOR_APPROVES_PLANS:-1}
       # 1 once the web apps are only reached over https (the proxy): the session cookie is then never sent in clear.
       VINHOMES_API_SECURE_COOKIES: ${SECURE_COOKIES:-0}
+      # Seals the model API keys that the administrator or a management unit types in the app.
+      # Without it only keys named by environment variables can be used.
+      VINHOMES_API_MODEL_CREDENTIALS_KEY: ${MODEL_CREDENTIALS_KEY:-}
       # Photos and files are stored in a private bucket: the bundled MinIO, or any S3 service named by
       # S3_ENDPOINT. Content always leaves through the API, which checks who is asking.
       VINHOMES_API_S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}

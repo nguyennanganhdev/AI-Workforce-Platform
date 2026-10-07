@@ -28,7 +28,7 @@ test("management asks a saved draft a question, reads the answer and turns the q
       return Response.json({ answer: "Tôi chỉ tra cứu sổ tay vận hành.", called: ["sotay.tra_cuu"] });
     }
     if (url.endsWith("/rooms")) return Response.json({ items: [{ id: "room-1", name: "Ban quản lý Sapphire" }] });
-    if (url.endsWith('/connections') || url.endsWith('/models/allowed')) return Response.json({items:[]});
+    if (url.endsWith('/connections') || url.endsWith('/models')) return Response.json({items:[],canManage:true});
     if (url.endsWith("/routines")) return Response.json({ items: [], timezone: "Asia/Ho_Chi_Minh" });
     return Response.json({ canManage: true, tools: [], categories: [], items: [{ id: "a1", name: "Agent Sổ tay", purpose: "specialist", status: "draft",
       configuration: { instructions: "Chỉ tra cứu.", description: "Tra cứu sổ tay", service_categories: [], mcp_tools: [] },
@@ -76,7 +76,7 @@ test("a description the Factory refuses comes back with its questions, and the n
         : Response.json({ configurationHash: "d".repeat(64), configuration: {} });
     }
     if (url.endsWith("/rooms")) return Response.json({ items: [{ id: "room-1", name: "Ban quản lý Sapphire" }] });
-    if (url.endsWith('/connections') || url.endsWith('/models/allowed')) return Response.json({items:[]});
+    if (url.endsWith('/connections') || url.endsWith('/models')) return Response.json({items:[],canManage:true});
     if (url.endsWith("/routines")) return Response.json({ items: [], timezone: "Asia/Ho_Chi_Minh" });
     return Response.json({ canManage: true, tools: [], categories: [], items: [{ id: "a1", name: "Agent vệ sinh", purpose: "specialist", status: "draft",
       configuration: { instructions: "Chưa cấu hình.", description: "", service_categories: [], mcp_tools: [] },
@@ -123,7 +123,7 @@ test("Factory preserves newly selected model and skills without publishing", asy
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost").pathname;
     if (init?.method === "POST") { sent.push({url,body:JSON.parse(String(init.body))}); return Response.json({configurationHash:"d".repeat(64),configuration:{}}); }
-    if (url.endsWith("/models/allowed")) return Response.json({items:[{id:"model-2",name:"Model được phép",provider:"Provider"}]});
+    if (url.endsWith("/rooms/room-1/models")) return Response.json({canManage:true,items:[{id:"model-2",name:"Model được phép",provider:"openai",check_status:"ok",own:false}]});
     return Response.json({items:[]});
   }) as typeof fetch;
   const configuration = {instructions:"Chỉ tra cứu.",description:"Tra cứu sổ tay",service_categories:[],mcp_tools:[]};
@@ -208,5 +208,34 @@ test("an unchanged Factory prompt has a human summary and the expanded editor pr
   expect((view.getByRole("button",{name:"Lưu nháp"}) as HTMLButtonElement).disabled).toBe(false);
   expect(configuration).toEqual(original);
   expect(writes).toEqual([]);
+  client.clear();
+});
+
+test("management adds a model with the unit's own key: it is checked at once and the key is never shown again", async () => {
+  const { QueryClientProvider, QueryClient } = await import("@tanstack/react-query");
+  const { UnitModels } = await import("../src/features/vinhomes-operations/connected/ModelKeys");
+  const sent: { method: string; url: string; body?: unknown }[] = [];
+  let own: { id: string; name: string; provider: string; check_status: string; own: boolean; credential_hint: string }[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input), "http://localhost").pathname;
+    if (init?.method === "POST") {
+      sent.push({ method: "POST", url, body: init.body ? JSON.parse(String(init.body)) : undefined });
+      if (url.endsWith("/check")) { own = [{ id: "m-1", name: "llama-3.3", provider: "groq", check_status: "ok", own: true, credential_hint: "…1234" }]; return Response.json({ ok: true, message: "Đã kiểm tra model" }); }
+      return Response.json({ id: "m-1" }, { status: 201 });
+    }
+    return Response.json({ canManage: true, items: [{ id: "shared", name: "gpt-5.5", provider: "openai", check_status: "ok", own: false }, ...own] });
+  }) as typeof fetch;
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  let adding = true;
+  const view = render(<QueryClientProvider client={client}><UnitModels roomId="room-1" adding={adding} onAddingChange={(open) => { adding = open; }} /></QueryClientProvider>);
+  expect((await view.findByText("gpt-5.5")).closest("tr")!.textContent).toContain("Quản trị viên cấp");
+  await typeInto(view.getByLabelText("Tên model") as HTMLInputElement, "llama-3.3");
+  await typeInto(view.getByLabelText("Khóa API") as HTMLInputElement, "gsk_unit_secret_1234");
+  fireEvent.click(view.getByRole("button", { name: "Thêm model" }));
+  expect(await view.findByText(/Đã thêm và kiểm tra model/)).toBeTruthy();
+  expect(sent.map(s => s.url)).toEqual(["/api/business/rooms/room-1/models", "/api/business/rooms/room-1/models/m-1/check"]);
+  expect(sent[0].body).toEqual({ name: "llama-3.3", provider: "openai", api_key: "gsk_unit_secret_1234" });
+  expect((await view.findByText("llama-3.3")).closest("tr")!.textContent).toContain("Khóa của đơn vị …1234");
+  expect(view.container.textContent).not.toContain("gsk_unit_secret_1234");
   client.clear();
 });
