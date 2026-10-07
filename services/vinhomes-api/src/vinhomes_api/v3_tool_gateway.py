@@ -279,5 +279,7 @@ async def call(body: Call, request: Request, db: Scope):
         values({TENANT},'agent',:agent,'agent.tool_called','agent_run',:run,cast(:payload as jsonb),:correlation)'''),
         {'agent': run['agent_id'] if run else 'refused-runtime-call', 'run': str(body.run_id),
          'payload': json.dumps({'tool': body.tool, 'status': status, 'connectionId': grant['server_id'] if grant else None, 'actorUserId': run['actor_user_id'] if run else None, 'channelId': run['channel_id'] if run else None}), 'correlation': uuid4()})
+    from .v3_agent_eval_sandbox import record_tool_trace
+    await record_tool_trace(db, run, body.run_id, grant['server_id'] if grant else None, body.tool, body.arguments, status, result)
     told = result.get('errors') if isinstance(result, dict) and status != 'OK' else None
     return {'status': status, 'data': result, 'errors': [] if status == 'OK' else told or [{'code': status, 'message': 'Tool is unavailable or outside this run permission.', 'retryable': status == 'INTERNAL_ERROR'}]}

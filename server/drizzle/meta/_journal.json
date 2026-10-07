@@ -141,6 +141,13 @@
       "when": 1791282501737,
       "tag": "0019_model_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791282501738,
+      "tag": "0020_agent_evaluations",
+      "breakpoints": true
     }
   ]
 }

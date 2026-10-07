@@ -67,3 +67,8 @@ GRANT DELETE ON admin_role_models,admin_model_registry TO vinhomes_v3_api;
 -- A schedule's run is closed by what became of its mention in the room; the schedule service keeps the rest.
 GRANT UPDATE (status, finished_at, error) ON routine_runs TO vinhomes_v3_api;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO vinhomes_v3_api;
+-- Agent evaluation: suites of four cases, runs and results (source side); the sandbox's fixture
+-- profiles and tool traces (sandbox side). Draft cases are replaced, so DELETE on cases only.
+GRANT INSERT,UPDATE ON vh_agent_eval_environments,vh_agent_eval_suites,vh_agent_eval_runs,vh_agent_eval_case_results TO vinhomes_v3_api;
+GRANT INSERT,DELETE ON vh_agent_eval_cases TO vinhomes_v3_api;
+GRANT INSERT ON vh_agent_eval_events,vh_agent_eval_tool_traces TO vinhomes_v3_api;

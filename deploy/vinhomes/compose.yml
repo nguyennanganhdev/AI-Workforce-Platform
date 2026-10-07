@@ -38,6 +38,12 @@ services:
       VINHOMES_API_SUPERVISOR_APPROVES_PLANS: ${SUPERVISOR_APPROVES_PLANS:-1}
       # 1 once the web apps are only reached over https (the proxy): the session cookie is then never sent in clear.
       VINHOMES_API_SECURE_COOKIES: ${SECURE_COOKIES:-0}
+      # Agent evaluation (docs/teams/dong/eval_agent.md). The evaluator service of profile `eval` generates cases and
+      # plays runs; EVAL_SANDBOX_TOKEN is set only in the sandbox stack's own env file (a database of its own).
+      VINHOMES_API_EVALUATOR_URL: ${EVALUATOR_URL:-http://evaluator:4400}
+      VINHOMES_API_EVAL_SERVICE_TOKEN: ${EVAL_SERVICE_TOKEN:-}
+      VINHOMES_API_EVAL_SANDBOX_TOKEN: ${EVAL_SANDBOX_TOKEN:-}
+      VINHOMES_API_EVAL_METRIC_PROFILE: ${EVAL_METRIC_PROFILE:-none}
       # Seals the model API keys that the administrator or a management unit types in the app.
       # Without it only keys named by environment variables can be used.
       VINHOMES_API_MODEL_CREDENTIALS_KEY: ${MODEL_CREDENTIALS_KEY:-}
@@ -171,6 +177,32 @@ services:
     healthcheck:
       <<: *python-health
       test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:4300/ready", timeout=5)']
+  evaluator:
+    # Generates evaluation cases and plays approved runs in the sandbox stack (a second compose project on the
+    # sandbox database, see docs/teams/dong/eval_agent.md section 6). It never connects to a database.
+    image: vinhomes-coordination:${VINHOMES_IMAGE_TAG:-latest}
+    profiles: [eval]
+    restart: unless-stopped
+    command: ['python', '-m', 'agent_eval']
+    environment:
+      EVAL_HOST: 0.0.0.0
+      EVAL_BACKEND_URL: http://api:8000
+      EVAL_SERVICE_TOKEN: ${EVAL_SERVICE_TOKEN:?evaluation worker token required}
+      EVAL_SANDBOX_URL: ${EVAL_SANDBOX_URL:?sandbox API address required}
+      EVAL_SANDBOX_TOKEN: ${EVAL_SANDBOX_TOKEN_FOR_WORKER:?sandbox token required}
+      # Fallback judge and case-generator model when the administrator set no `evaluator` role model.
+      EVAL_MODEL: ${EVAL_MODEL:-gpt-5.5}
+      EVAL_MODEL_PROVIDER: ${EVAL_MODEL_PROVIDER:-}
+      EVAL_MODEL_API_KEY: ${EVAL_MODEL_API_KEY:-}
+      EVAL_MODEL_BASE_URL: ${EVAL_MODEL_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
+    extra_hosts: ['host.docker.internal:host-gateway']
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      <<: *python-health
+      test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:4400/health", timeout=5)']
   knowledge:
     image: vinhomes-knowledge:${VINHOMES_IMAGE_TAG:-latest}
     build:

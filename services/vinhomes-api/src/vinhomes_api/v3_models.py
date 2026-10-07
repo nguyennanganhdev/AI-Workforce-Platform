@@ -21,7 +21,7 @@ from .v3_audit import audit
 router = APIRouter(tags=['Model registry'])
 Scope = Annotated[tuple, Depends(scoped_connection)]
 TENANT = "nullif(current_setting('app.tenant_id',true),'')::uuid"
-ROLES = {'reception','supervisor','specialist','factory','embedding'}
+ROLES = {'reception','supervisor','specialist','factory','embedding','evaluator'}
 KEY_ENV = re.compile(r'^(?:OPENAI|RECEPTION|COORDINATION|SPECIALIST|FACTORY|EMBEDDING|GOOGLE|GEMINI|DEEPSEEK|GROQ|CUSTOM)(?:_[A-Z0-9]+)*_API_KEY$')
 URL_ENV = re.compile(r'^(?:OPENAI|RECEPTION|COORDINATION|SPECIALIST|FACTORY|EMBEDDING|GOOGLE|GEMINI|DEEPSEEK|GROQ|CUSTOM)(?:_[A-Z0-9]+)*_BASE_URL$')
 DEFAULT_URLS = {'openai':'https://api.openai.com/v1','deepseek':'https://api.deepseek.com/v1','groq':'https://api.groq.com/openai/v1','google':'https://generativelanguage.googleapis.com/v1beta/openai'}

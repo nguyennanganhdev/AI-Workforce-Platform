@@ -205,6 +205,11 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(resident_interactions_router)
     from .v3_tool_gateway import router as tool_gateway_router
     app.include_router(tool_gateway_router)
+    from .v3_agent_evals import internal as agent_eval_worker_router, router as agent_evals_router
+    from .v3_agent_eval_sandbox import router as agent_eval_sandbox_router
+    app.include_router(agent_evals_router)
+    app.include_router(agent_eval_worker_router)
+    app.include_router(agent_eval_sandbox_router)
     from .v3_connections import router as connections_router, room_router as room_connections_router
     app.include_router(connections_router)
     app.include_router(room_connections_router)
