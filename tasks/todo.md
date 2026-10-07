@@ -184,7 +184,9 @@ Theo `docs/teams/chien/MULTI_MODEL_REPO_AUDIT_2026-10-04.md`, bốn vấn đề 
 - [x] Đơn vị quản lý (chỉ xem), Model (chỉ xem), Nhật ký (lọc theo loại, xem sự kiện cũ hơn).
 - [x] Tạo đơn vị quản lý, nhóm BQL và giao tòa nhà từ giao diện (trang Đơn vị quản lý → Tạo đơn vị; đã có từ 06/10).
 - [x] Đặt lại mật khẩu cho tài khoản (07/10: Admin nhập hoặc tạo mật khẩu 16 ký tự, mọi phiên cũ kết thúc, ghi nhật ký).
-- [ ] Xóa tài khoản; người dùng tự đổi mật khẩu trên giao diện (API `/auth/change-password` có, chưa có màn).
+- [x] Người dùng tự đổi mật khẩu (menu tài khoản của BQL/quản trị viên, đầu trang của nhân viên hiện trường) và quản trị
+      viên xóa tài khoản chưa có lịch sử (07/10). Tài khoản đã có yêu cầu, tin nhắn hoặc công việc bị từ chối (409): dùng
+      Khóa truy cập. Đã thử trên Docker: đổi mật khẩu qua giao diện, xóa tài khoản tạm, cư dân có lịch sử bị từ chối.
 - [ ] Nhật ký chưa tìm theo người hoặc theo khoảng thời gian, chưa xuất file.
 
 ## Agent báo cáo trong phòng nhóm (rà ngày 05/10/2026)
@@ -229,8 +231,11 @@ Theo `docs/teams/chien/MULTI_MODEL_REPO_AUDIT_2026-10-04.md`, bốn vấn đề 
 
 - [x] Admin tạo đơn vị quản lý từ giao diện: đã làm ở phiên khác ngày 05/10 (tạo đơn vị, phạm vi, phòng BQL,
       Supervisor trong một giao dịch; không cho hai đơn vị trùng phạm vi).
-- [ ] Agent báo cáo có vào phiên của Supervisor hay chỉ trả lời trong phòng nhóm.
-- [ ] Dùng dữ liệu của Team Quang vào đâu (loại sự cố, ca đánh giá, tri thức tham khảo nội bộ).
+- [x] Agent báo cáo không vào phiên của Supervisor, chỉ trả lời khi được hỏi (chủ dự án chốt 07/10/2026).
+- [x] Dữ liệu của Team Quang (chủ dự án chốt 07/10/2026): 32 ca thành bộ đánh giá thêm của agent kỹ thuật
+      (`docs/teams/quang/agent/technical-agent-quang.json`, lần đầu 30/32) và tài liệu triage thành kho tham khảo nội bộ
+      của BQL (`bql/ky-thuat/…`, 17 đoạn, đã phát hành trên DB Docker). Chi tiết: `docs/teams/quang/agent/README.md`.
+- [ ] Team Quang xem hai ca trượt (`quang-a2-007`, `quang-e-007`); agent kỹ thuật chưa có `knowledge.search` để đọc kho đó.
 
 ## Tính năng OpenBot đưa vào cho BQL (làm ngày 05/10/2026, đợt 3)
 
@@ -337,3 +342,18 @@ dùng chung khung và cổng với Ban quản lý.
       Ban quản lý duyệt và giao).
 - [ ] Stack phát triển chạy ngoài Docker (`start_connected.ps1`) chưa có cổng nhân viên; ở đó cư dân đã có phiên
       riêng, Ban quản lý và nhân viên vẫn chung cổng 3020.
+
+## Đợt 07/10/2026: Custom Agent, tài khoản, model, CI
+
+- [x] Trang Agent cuộn được; agent do Factory tạo biết giờ hiện tại và id tòa nhà của đơn vị nên gọi được công cụ.
+- [x] "Hỏi agent" (hội thoại riêng): tool host nhận lượt hỏi ở kênh `personal`; trước đó mọi công cụ kỹ thuật bị từ chối.
+      Đã thử bằng model thật: hỏi riêng và hỏi trong phiên đều gọi công cụ và trả lời đúng tòa.
+- [x] CI của `dev_TeamChien` xanh lại (thiếu `@testing-library/dom`, test đếm bảng cố định 193, Factory trả 503 thay vì
+      504 khi hết hạn chung).
+- [x] Build image trên mạng không ổn định: cache gói của bun giữ giữa các lần build, cài thử lại tối đa ba lần.
+- [ ] Một lượt hỏi agent hỏng vì lỗi nhất thời của model (`openbot_run_error`, khoảng 1/6 lần trên máy này ngày 07/10)
+      không tự thử lại: người hỏi phải hỏi lại. Chưa quyết có thử lại một lần hay không (tốn thêm một lượt model).
+- [ ] Bộ đánh giá trên giao diện cũ (6 ca, một chuỗi bắt buộc) dễ đạt: agent không gọi công cụ vẫn 6/6. Agent Eval
+      (bộ 4 ca trong sandbox) thay thế khi đơn vị có sandbox.
+- [ ] Chưa chạy thật: khóa model của Groq, DeepSeek, Google; tên miền và chứng chỉ công khai (Caddy với `tls internal`
+      đã phục vụ được hai giao diện); khôi phục bản sao lưu trên máy khác.
