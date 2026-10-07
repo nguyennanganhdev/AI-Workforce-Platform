@@ -22,7 +22,9 @@ INTERNAL_PATTERNS = (
     re.compile(r'\bVH-[A-Z0-9]{6,}\b'),
     re.compile(r'\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b'),
 )
-SUCCESS = 'OK'
+# The gateway's verdicts that mean the tool ran and answered. NOT_FOUND is the tool host saying nothing is on
+# record for what was asked: a definite answer the agent must then report, not a failed call.
+SUCCESS = ('OK', 'NOT_FOUND')
 
 
 @dataclass(frozen=True)
@@ -82,7 +84,7 @@ def why_not(requirement: ToolRequirement, call: ToolCall, ctx: CheckContext) -> 
     agent = ctx.source(call.agent_id)
     if requirement.key not in ctx.grants.get(agent, frozenset()):
         return f'{agent} không được cấp tool này'
-    if call.status != SUCCESS:
+    if call.status not in SUCCESS:
         return f'tool trả {call.status}'
     # Compared as text: a case written or generated as JSON says "5" where the agent sent 5.
     wrong = [k for k, v in requirement.arguments.items()

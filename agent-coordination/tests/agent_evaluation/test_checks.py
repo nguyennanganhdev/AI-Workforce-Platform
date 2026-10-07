@@ -110,3 +110,10 @@ def test_required_arguments_compare_as_text_and_missing_ones_do_not_match():
     call = {'id': 't1', 'agent_id': 'copy-target', 'server_id': TOOL[0], 'name': TOOL[1], 'status': 'OK'}
     assert run_checks(wanted, trace(tool_calls=[{**call, 'arguments': {'limit': 5, 'building_id': 'bld-1'}}]), CTX)['required_tools'].passed
     assert not run_checks(wanted, trace(tool_calls=[{**call, 'arguments': {'building_id': 'bld-1'}}]), CTX)['required_tools'].passed
+
+
+def test_a_tool_that_found_nothing_still_answered():
+    empty = [{'id': 't1', 'agent_id': 'copy-target', 'server_id': TOOL[0], 'name': TOOL[1], 'arguments': {'building_id': 'bld-1'}, 'status': 'NOT_FOUND'}]
+    assert run_checks(case(), trace(tool_calls=empty), CTX)['required_tools'].passed
+    refused = [{**empty[0], 'status': 'FORBIDDEN'}]
+    assert not run_checks(case(), trace(tool_calls=refused), CTX)['required_tools'].passed
