@@ -239,3 +239,12 @@ test("management adds a model with the unit's own key: it is checked at once and
   expect(view.container.textContent).not.toContain("gsk_unit_secret_1234");
   client.clear();
 });
+
+test("each of the cleaning department's read tools has a label of its own", async () => {
+  const { toolLabel } = await import("../src/features/vinhomes-operations/connected/agent-display");
+  const names = ["retrieve_sop", "verify_resolution", "get_active_outage", "read_utility_schedule", "read_asset", "read_maintenance_history", "read_sensor"];
+  const labels = names.map(name => toolLabel({ server_id: "cleaning-tools", name: `cleaning.${name}`, description: "" }));
+  expect(new Set(labels).size).toBe(names.length);
+  expect(labels).not.toContain("Tra cứu vệ sinh");
+});
+
