@@ -9,17 +9,25 @@ Ngày tạo: 2026-10-05. Toàn bộ ID, model, số đo, event và kết quả �
 | Passage RAG Q03/Q04 | `../mock-corpus/01-vinhomes/quy-trinh-gia-lap-a2.md` | Một Markdown với 16 phần theo issue; có ca phân nhánh, hồ sơ tối thiểu và hậu kiểm riêng từng lỗi; chunker đọc heading/front matter/`Nguồn` |
 | Quy trình có cấu trúc Q07/A2 | `PROCEDURE_PROFILES.jsonl` | 16 profile `draft` với `preconditions`, `contraindications`, `stop_conditions`, `acceptance_criteria` theo `AcceptanceCriterion` của `server/src/technical-tools/domain/sop.ts` |
 | Luồng tác nghiệp A2 | `POC_LIFECYCLE.jsonl` | 5 fixture về ticket → assessment → asset → work order/assignment → evidence/measurement → expected outcome/negative variants |
+| Mở rộng 16 mã sự cố | `ISSUE_LIFECYCLE_EXTENSION.jsonl` | 11 hồ sơ còn lại: ticket/fact provenance, unknown, asset, work order nháp, giả thuyết, evidence và measurement plan, handoff, biến thể lỗi; ghép với 5 POC thành 16/16 |
 | Học procedure Q07 | `Q07_LEARNING_FLOW.jsonl` | 2 candidate từ work order mock (draft/rejected) và một eligibility test không tạo attempt, không bịa giá |
 | Dữ liệu tool A2/Q08 | `TOOL_DATA_FIXTURES.jsonl` | 16 bản ghi bổ trợ: 3 sensor (fresh/stale/bad), 3 maintenance, 4 interruption/schedule (proposed/notified/cancelled/active khác building), 4 request pending, 1 vendor chưa booking, 1 cost draft |
+| Hành vi 14 tool | `TOOL_BEHAVIOR_MOCKUP.jsonl` | Một ca chính và tối thiểu hai ca lỗi mỗi tool; behavioral mockup, không phải API payload trực tiếp |
+| Nhánh xác minh | `VERIFICATION_BRANCH_MOCKUP.jsonl` | 6 ca `technical.verify_resolution` phân biệt status envelope với trạng thái kiểm chứng; nhánh `VERIFIED` cần SOP seed riêng trong test tenant cô lập |
 | Tình huống có nhãn | `SUPERVISION_CASES.jsonl` và `SUPERVISION_DATASET.md` | 80 ca intake/triage: 5 biến thể × 16 issue, split 48/16/16; không index hoặc fine-tune production trực tiếp |
 | Hội thoại nhiều lượt | `MULTI_TURN_TRACES.jsonl` | 5 trace cho 5 POC, có người báo/assistant/tool/nhân viên và expected final; dùng kiểm thử điều phối, không nạp RAG |
 | Eval retrieval Q06 | `eval/technical-a2-mock.v1.json` | 18 ca theo `EvalDataset`; chạy độc lập khỏi eval nguồn tham khảo |
+| Mockup hồ sơ/màn hình | `TECHNICAL_DATA_MOCKUP.md` | Sơ đồ liên kết, coverage 16 mã, ba màn hình intake/điều phối/xác minh và cách dùng dữ liệu |
 
 `document_code` của mọi profile cùng trỏ tới Markdown collection tương đối từ root `../mock-corpus`; section và `code` phân biệt từng quy trình. `source_work_order_id` của 5 profile POC trỏ tới `work_order.workorder_id` trong `POC_LIFECYCLE.jsonl`; 11 profile còn lại để `null` vì chưa có lifecycle chi tiết. Các UUID thuộc dải fixture, không phải ID trong DB dự án. `scope.building_key=SYN-B-01` chỉ là tòa giả lập; Markdown Q03 đang ở scope cấp đơn vị `01-vinhomes`, không mô phỏng ACL theo tòa. Khi cần test tòa cụ thể phải đưa tài liệu vào nhánh folder scope tòa và cấp grant tương ứng, không suy scope từ tên case.
 
 `scan_status=simulated_clean` mô tả nhánh adapter test mong muốn, **không** chứng minh có bytes/file/hash đã được scan. Bộ này không có object storage hay seed DB; muốn test thực `technical.submit_executor_result` phải tạo file fixture qua storage adapter, liên kết đúng ticket/work order, scan và cấp ACL trong test tenant. Measurement số trong POC chỉ để kiểm thử kiểu/đơn vị/provenance; không phải ngưỡng nghiệm thu. Các `acceptance_criteria` dạng `manual` buộc người có chuyên môn quyết định; profile `draft` không thể dùng để trả `VERIFIED` thật.
 
 `TOOL_DATA_FIXTURES.jsonl` là dữ liệu nguồn để viết adapter/seed test, không phải response envelope của tool. Dùng `test_now=2026-09-30T09:00:00Z` khi chấm freshness; sensor `quality=bad` dù fresh cũng không chứng minh an toàn. `proposed` và `cancelled` phải bị loại khỏi `technical.get_active_outage`/`utility_schedule.read`; `active` của building khác không lộ sang `SYN-B-01`. Bốn request pending chưa gây hành động ngoài hiện trường. Một cost observation `draft` có số tiền **hoàn toàn giả lập**, phải loại khỏi tập mẫu giá và trả `insufficient_data`.
+
+`ISSUE_LIFECYCLE_EXTENSION.jsonl` chỉ mô tả 11 hồ sơ đang ở pha intake/assessment; evidence có `file_id=null`, measurement chưa có value và executor result chưa nộp. Cùng với 5 POC đã có, bộ này phủ 16 mã ở mức **mẫu vòng đời**, chưa phải 16 ca sửa xong. `TOOL_BEHAVIOR_MOCKUP.jsonl` mô tả kỳ vọng nghiệp vụ, không được gửi trực tiếp như JSON request/response theo contract tool.
+
+`VERIFICATION_BRANCH_MOCKUP.jsonl` là bảng nhánh kiểm thử, không phải lịch sử xác minh thực. `expected.envelope_status=OK` chỉ nói tool chạy được; `expected.verification_status` mới là khuyến nghị nghiệp vụ. Nhánh `VERIFIED` duy nhất cần SOP tự động đã published và ACL hợp lệ **chỉ trong test tenant cô lập**, file evidence test và đủ kết quả kiểm tra; nó không áp dụng cho 16 profile `draft` hiện có và không tự đóng ticket.
 
 ## Quy tắc an toàn khi tích hợp
 
