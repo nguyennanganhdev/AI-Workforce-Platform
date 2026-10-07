@@ -32,7 +32,6 @@ def test_empty_expectations_add_no_requirement_but_keep_every_key():
     ({'participants': [{'id': 'p1', 'agent_id': 'copy-target', 'status': 'failed'}]}, 'required_agents'),
     ({'participants': [{'id': 'p1', 'agent_id': 'copy-target', 'run_id': 'run-1', 'status': 'completed'},
                        {'id': 'p2', 'agent_id': 'copy-other', 'status': 'refused'}]}, 'forbidden_agents'),
-    ({'routing': [{'id': 'r1', 'selected_agent_ids': ['copy-target', 'copy-other']}]}, 'forbidden_agents'),
     ({'tool_calls': []}, 'required_tools'),
     ({'tool_calls': [{'id': 't9', 'agent_id': 'copy-target', 'server_id': 'reporting', 'name': 'reporting.revenue',
                       'status': 'FORBIDDEN'}]}, 'forbidden_tools'),
@@ -117,3 +116,8 @@ def test_a_tool_that_found_nothing_still_answered():
     assert run_checks(case(), trace(tool_calls=empty), CTX)['required_tools'].passed
     refused = [{**empty[0], 'status': 'FORBIDDEN'}]
     assert not run_checks(case(), trace(tool_calls=refused), CTX)['required_tools'].passed
+
+
+def test_an_agent_only_invited_into_the_room_did_not_take_part():
+    invited = trace(routing=[{'id': 'r1', 'selected_agent_ids': ['copy-target', 'copy-other']}])
+    assert run_checks(case(), invited, CTX)['forbidden_agents'].passed

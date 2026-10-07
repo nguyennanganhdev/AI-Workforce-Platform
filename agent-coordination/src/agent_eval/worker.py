@@ -222,6 +222,14 @@ class Worker:
         started = datetime.now(UTC)
         attestation = await self.safety(snapshot['environment']['execution_tenant_id'])
         played = await self.converse(run_id, raw['id'], case)
+        attempts = 1
+        if played.error is not None or (played.trace or {}).get('terminal_state') is None:
+            # A model call cut off or a service refusing mid-way leaves the conversation nowhere. That is the stack's
+            # trouble, not the agent's answer: the case is played once more, in a new conversation.
+            await self.events(run_id, [{'case_id': raw['id'], 'kind': 'lifecycle', 'payload': {'step': 'retry', 'reason': (played.error or {}).get('code', 'no_terminal_state')}}])
+            first, played, attempts = played, await self.converse(run_id, raw['id'], case, attempt=2), 2
+            played.refs['first_attempt'] = {'error': first.error, 'channel_id': first.refs.get('channel_id')}
+        played.refs['attempts'] = attempts
         source_of = {copy: source for source, copy in mapping.items()}
         trace, checks, judgement, metrics, usage = None, None, None, [], dict(played.usage)
         error = played.error
@@ -245,7 +253,8 @@ class Worker:
                                      *(played.refs.get('ticket_ids') or [])}))
             results = run_checks(case, trace, ctx)
             checks = {k: r.model_dump() for k, r in results.items()}
-            judged, judge_usage = await judge(self.client, judge_model, case, trace, results, timeout=self.settings.judge_seconds)
+            judged, judge_usage = await judge(self.client, judge_model, case, trace, results, timeout=self.settings.judge_seconds,
+                                              target=snapshot['target']['agent_id'])
             judgement = judged.model_dump()
             usage.update(judge_input_tokens=judge_usage.input_tokens, judge_output_tokens=judge_usage.output_tokens)
             metrics = [m.model_dump() for m in await score_metrics(case, trace, snapshot['evaluator'], judge_model)]
@@ -257,7 +266,7 @@ class Worker:
             'checks': checks, 'judge': judgement, 'metrics': metrics, 'environment': attestation.model_dump(), 'usage': usage,
             'error': error, 'started_at': started.isoformat(), 'finished_at': datetime.now(UTC).isoformat()})
 
-    async def converse(self, run_id: str, case_id: str, case: EvalCase) -> Played:
+    async def converse(self, run_id: str, case_id: str, case: EvalCase, attempt: int = 1) -> Played:
         """Speak as the fixture resident until the recorded state settles, then close the conversation's work."""
         base = '/internal/agent-eval/sandbox/v1/conversations'
         opened = await self.sandbox.json('POST', base, json={'fixture_profile_id': case.input.fixture_profile_id, 'title': case.name[:160]})
@@ -266,7 +275,7 @@ class Worker:
         deadline = self.clock() + self.settings.case_seconds
         read, error, last_seen = None, None, None
         try:
-            await self.sandbox.json('POST', f'{base}/{channel}/messages', json={'text': case.input.message, 'client_message_id': f'{run_id}:{case_id}:0'})
+            await self.sandbox.json('POST', f'{base}/{channel}/messages', json={'text': case.input.message, 'client_message_id': f'{run_id}:{case_id}:{attempt}:0'})
             await self.events(run_id, [{'case_id': case_id, 'kind': 'message', 'payload': {'role': 'resident', 'turn': 0}}])
             while True:
                 if self.cancelled:
@@ -280,7 +289,7 @@ class Worker:
                 last_seen = seen
                 if settled and trace['terminal_state'] == 'information_requested' and follow_ups:
                     text, route = follow_ups.pop(0), ('answers' if 'information' in progress['pending'] else 'messages')
-                    await self.sandbox.json('POST', f'{base}/{channel}/{route}', json={'text': text, 'client_message_id': f'{run_id}:{case_id}:{sent}'})
+                    await self.sandbox.json('POST', f'{base}/{channel}/{route}', json={'text': text, 'client_message_id': f'{run_id}:{case_id}:{attempt}:{sent}'})
                     await self.events(run_id, [{'case_id': case_id, 'kind': 'message', 'payload': {'role': 'resident', 'turn': sent}}])
                     sent, last_seen = sent + 1, None
                     continue

@@ -64,14 +64,15 @@ def required_agents(case: EvalCase, trace: Trace, ctx: CheckContext) -> CheckRes
 
 def forbidden_agents(case: EvalCase, trace: Trace, ctx: CheckContext) -> CheckResult:
     banned = set(case.expectations.forbidden_agents)
+    # Taking part is running a turn. The Supervisor invites every agent of the ticket's category into the room,
+    # so an invitation alone says nothing about who was given the work.
     seen = [(ctx.source(p.agent_id), p.id) for p in trace.participants if ctx.source(p.agent_id) in banned]
-    seen += [(ctx.source(a), r.id) for r in trace.routing for a in r.selected_agent_ids if ctx.source(a) in banned]
     if not banned:
         return result(True, 'Ca không cấm agent nào; không phát hiện vi phạm.')
     if seen:
-        return result(False, f'Agent bị cấm đã được chọn hoặc tham gia: {listed(sorted({a for a, _ in seen}))}.',
+        return result(False, f'Agent bị cấm đã chạy lượt: {listed(sorted({a for a, _ in seen}))}.',
                       [ref for _, ref in seen])
-    return result(True, f'Không agent bị cấm nào được chọn hay tham gia ({listed(sorted(banned))}).')
+    return result(True, f'Không agent bị cấm nào chạy lượt ({listed(sorted(banned))}).')
 
 
 def wanted_value(value, ctx: CheckContext):

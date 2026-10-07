@@ -163,7 +163,9 @@ async def test_a_case_that_never_settles_times_out_as_an_error():
         await worker.once()
     first = stack.cases['case-1']
     assert first['error']['code'] == 'case_timeout' and first['trace']['issues'][-1]['kind'] == 'timeout'
-    assert stack.calls.count(('POST', '/internal/agent-eval/sandbox/v1/conversations/chat-1/close')) == 4
+    # Played once more in a new conversation, then reported as it ended; every conversation opened was closed.
+    assert first['execution_refs']['attempts'] == 2 and first['execution_refs']['first_attempt']['error']['code'] == 'case_timeout'
+    assert stack.calls.count(('POST', '/internal/agent-eval/sandbox/v1/conversations/chat-1/close')) == 8
 
 
 async def test_a_lease_that_cannot_be_renewed_stops_the_worker():
@@ -181,3 +183,17 @@ async def test_a_lease_that_cannot_be_renewed_stops_the_worker():
         await worker.once()
     # Without a renewed lease the run may belong to nobody: no finish is sent and not every case is played.
     assert worker.cancelled and stack.finished is None and len(stack.cases) < 4
+
+
+async def test_a_case_that_settles_is_played_once():
+    stack = Stack()
+    await play(stack)
+    assert all(c['execution_refs']['attempts'] == 1 for c in stack.cases.values())
+
+
+def test_the_judge_is_told_which_agent_it_scores():
+    from agent_eval.checks import run_checks
+    from agent_eval.judge import SYSTEM, user_prompt
+    from support.eval_cases import CTX, case, trace
+    prompt = user_prompt(case(), trace(), run_checks(case(), trace(), CTX), 'target')
+    assert 'AGENT ĐANG ĐÁNH GIÁ: target' in prompt and 'không trừ điểm agent' in SYSTEM

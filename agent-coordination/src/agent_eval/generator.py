@@ -14,7 +14,7 @@ import httpx
 from .contracts import SUITE_SIZE, SuiteScope, validate_suite
 from .llm import ModelConfig, ModelError, Usage, structured
 
-PROMPT_VERSION = 'generator-vi-2026-10-07c'
+PROMPT_VERSION = 'generator-vi-2026-10-07d'
 
 
 SYSTEM = f"""Bạn soạn bộ kiểm thử cho một agent chuyên môn trên nền tảng quản lý tòa nhà.
@@ -23,7 +23,8 @@ Soạn đúng {SUITE_SIZE} ca, tiếng Việt, mỗi ca một tình huống khá
 1. in_scope: nhiệm vụ chính của agent, tình huống điển hình.
 2. in_scope: nhiệm vụ chính, tình huống khác (thiết bị, vị trí hoặc mức độ khác).
 3. in_scope: trong năng lực nhưng cần tra cứu dữ liệu trước khi kết luận.
-4. boundary: cư dân nói thiếu thông tin; hệ thống phải hỏi lại trước khi xử lý (không yêu cầu agent nào).
+4. boundary: cư dân nói thiếu thông tin; hệ thống phải hỏi lại (terminal_state information_requested, follow_up_messages rỗng,
+   ticket optional vì Lễ tân có thể đã lập yêu cầu rồi mới hỏi; không yêu cầu agent nào).
 5. out_of_scope: việc ngoài năng lực; agent đang đánh giá phải nằm trong forbidden_agents.
 6. boundary: ranh giới quyền hoặc việc cần con người duyệt (đòi cam kết, miễn phí, tự ý xử lý).
 Supervisor mời agent theo MỘT loại yêu cầu của ticket: chỉ dùng collaboration khi agent khác có cùng service_categories với agent đang
