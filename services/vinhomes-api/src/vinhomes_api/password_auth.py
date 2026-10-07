@@ -16,6 +16,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 router = APIRouter(prefix="/auth", tags=["Password authentication"])
 COOKIE = "vinhomes_session"
@@ -300,6 +301,62 @@ async def change_access(user_id:str,body:AccountAccess,request:Request):
         if user_id == actor["id"] or (await db.execute(text("select 1 from platform_admins where user_id=:id"),{"id":user_id})).first():
             raise HTTPException(409,"Không thể sửa quyền tài khoản quản trị qua màn hình này.")
         await grant_access(db,request,user_id,actor["id"],body.role,body.status,body.management_unit_id)
+    return {"ok":True}
+
+
+class PasswordReset(BaseModel):
+    new_password: str = Field(min_length=12,max_length=128)
+
+
+@router.post("/accounts/{user_id}/password")
+async def reset_password(user_id:str,body:PasswordReset,request:Request):
+    """The administrator sets a new password for someone who lost theirs; every sign-in of that person ends."""
+    actor=await administrator(request)
+    async with _hash_slots:
+        hashed=await asyncio.to_thread(password_hash,body.new_password)
+    async with enabled(request).begin() as db:
+        await context(db,request,actor["id"])
+        if user_id == actor["id"] or (await db.execute(text("select 1 from platform_admins where user_id=:id"),{"id":user_id})).first():
+            raise HTTPException(409,"Không thể đặt lại mật khẩu tài khoản quản trị qua màn hình này.")
+        if not (await db.execute(text("select 1 from tenant_memberships where user_id=:id and tenant_id=cast(:tenant as uuid)"),
+                                 {"id":user_id,"tenant":str(request.app.state.settings.tenant_id)})).first():
+            raise HTTPException(404,"Tài khoản không thuộc tenant này.")
+        changed=(await db.execute(text("update accounts set password=:password,updated_at=now() where user_id=:id and provider_id=:provider returning id"),
+                                  {"id":user_id,"provider":PROVIDER,"password":hashed})).first()
+        if not changed:
+            raise HTTPException(409,"Tài khoản này không đăng nhập bằng mật khẩu.")
+        await db.execute(text("delete from sessions where user_id=:id and token like 'vinhomes-v1:%'"),{"id":user_id})
+        from .v3_audit import audit
+        await audit(db,actor["id"],"account.password_reset","user",user_id,{})
+    return {"ok":True}
+
+
+@router.delete("/accounts/{user_id}")
+async def delete_account(user_id:str,request:Request):
+    """Removes an account that has no history, one made by mistake or twice. The database refuses the delete
+    as soon as anything refers to the person (a request, a message, a job, a role they granted), and such an
+    account is suspended instead, so what it did keeps its author."""
+    actor=await administrator(request)
+    async with enabled(request).begin() as db:
+        await context(db,request,actor["id"])
+        if user_id == actor["id"] or (await db.execute(text("select 1 from platform_admins where user_id=:id"),{"id":user_id})).first():
+            raise HTTPException(409,"Không thể xóa tài khoản quản trị qua màn hình này.")
+        email=(await db.execute(text("""select u.email from users u join tenant_memberships m on m.user_id=u.id
+            where u.id=:id and m.tenant_id=cast(:tenant as uuid)"""),{"id":user_id,"tenant":str(request.app.state.settings.tenant_id)})).scalar_one_or_none()
+        if email is None:
+            raise HTTPException(404,"Tài khoản không thuộc tenant này.")
+        try:
+            async with db.begin_nested():
+                for statement in ("delete from sessions where user_id=:id","delete from channel_memberships where user_id=:id",
+                                  "delete from workspace_members where user_id=:id",
+                                  "delete from scoped_user_roles where membership_id in (select id from tenant_memberships where user_id=:id)",
+                                  "delete from tenant_memberships where user_id=:id","delete from accounts where user_id=:id",
+                                  "delete from users where id=:id"):
+                    await db.execute(text(statement),{"id":user_id})
+        except IntegrityError:
+            raise HTTPException(409,"Tài khoản đã có lịch sử trên hệ thống (yêu cầu, tin nhắn hoặc công việc). Dùng Khóa truy cập để giữ lịch sử.") from None
+        from .v3_audit import audit
+        await audit(db,actor["id"],"account.deleted","user",user_id,{"email":email})
     return {"ok":True}
 
 

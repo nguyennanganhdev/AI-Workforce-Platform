@@ -57,15 +57,30 @@ async def run_authority(db, run_id: UUID):
             raise HTTPException(403, 'Requesting user is inactive')
     else:
         raise HTTPException(403, 'Run has no authorized conversation or session')
-    buildings = (await db.execute(text('''select distinct b.id from buildings b
+    run['buildings'] = tuple(str(b['id']) for b in await covered_buildings(db, run['management_unit_id']))
+    return run
+
+
+async def covered_buildings(db, management_unit_id):
+    """The active buildings a management unit covers today: the only buildings its agents' tools may read."""
+    return (await db.execute(text('''select distinct b.id,b.code,b.name from buildings b
         join management_coverage mc on mc.tenant_id=b.tenant_id and mc.management_unit_id=:management
           and mc.valid_from<=now() and (mc.valid_to is null or mc.valid_to>now())
         join access_scopes s on s.id=mc.scope_id and s.tenant_id=mc.tenant_id
           and (s.kind='tenant' or (s.kind='building' and s.building_id=b.id)
             or (s.kind='site' and s.site_id=b.site_id) or (s.kind='zone' and s.zone_id=b.zone_id))
-        where b.status='active' '''), {'management': run['management_unit_id']})).scalars().all()
-    run['buildings'] = tuple(str(b) for b in buildings)
-    return run
+        where b.status='active' order by b.code'''), {'management': management_unit_id})).mappings().all()
+
+
+async def agent_workspace(db, workspace_id):
+    """What an agent of this unit needs to call its tools: the current time and the ids of the buildings it may read.
+    Without them a tool that takes building_id or a time cannot be called, and the agent asks people for ids."""
+    management = (await db.execute(text('select management_unit_id from workspaces where id=:id'), {'id': workspace_id})).scalar_one_or_none()
+    now = (await db.execute(text('''select to_char(now() at time zone 'Asia/Ho_Chi_Minh','YYYY-MM-DD"T"HH24:MI:SS"+07:00"')'''))).scalar_one()
+    buildings = await covered_buildings(db, management) if management else []
+    return {'now': now, 'timezone': 'Asia/Ho_Chi_Minh',
+            'buildings': [{'id': str(b['id']), 'code': b['code'], 'name': b['name']} for b in buildings],
+            'note': 'id chỉ dùng để gọi công cụ; khi trả lời, gọi tòa nhà bằng mã hoặc tên, không hiển thị id.'}
 
 
 class BuildingRead(BaseModel):
@@ -77,6 +92,8 @@ SECURITY = {
     'security.camera.read': ('Tra cứu danh mục camera; không mở luồng hình ảnh hay điều khiển thiết bị.', cameras),
     'security.contact.read': ('Tra cứu đầu mối khẩn cấp trong tòa nhà được giao; không gửi cảnh báo.', contacts),
 }
+# Served by the Bun tool host: Team Quang's technical tools and Team Hoàng's cleaning counterparts of them.
+TOOL_HOST_SERVERS = ('technical-tools', 'cleaning-tools')
 
 
 def catalogue():
@@ -207,7 +224,7 @@ async def call(body: Call, request: Request, db: Scope):
             result = {'outcome': 'success', 'data': jsonable_encoder(payload), 'limitations': ['Camera catalogue only; live device feeds are not connected.']}
         elif grant['server_id'] == 'knowledge' and body.tool == agent_knowledge.NAME:
             result = await agent_knowledge.search(db, run, body.arguments, request.app.state.settings.coordination_service_token or '')
-        elif grant['server_id'] == 'technical-tools':
+        elif grant['server_id'] in TOOL_HOST_SERVERS:
             url, token = os.getenv('VINHOMES_API_TECHNICAL_TOOLS_URL', '').rstrip('/'), os.getenv('VINHOMES_API_TECHNICAL_TOOLS_TOKEN', '')
             if not url or len(token) < 32:
                 raise HTTPException(503, 'Technical tool host unavailable')
@@ -246,7 +263,7 @@ async def call(body: Call, request: Request, db: Scope):
         else:
             raise HTTPException(403, 'Tool server not bound to this gateway')
         status = 'OK' if result.get('outcome') != 'failure' else 'TOOL_ERROR'
-        if grant['server_id'] == 'technical-tools':
+        if grant['server_id'] in TOOL_HOST_SERVERS:
             status = result.get('status', 'TOOL_ERROR')
         if withheld:
             status = 'ARGUMENTS_WITHHELD'
@@ -262,5 +279,7 @@ async def call(body: Call, request: Request, db: Scope):
         values({TENANT},'agent',:agent,'agent.tool_called','agent_run',:run,cast(:payload as jsonb),:correlation)'''),
         {'agent': run['agent_id'] if run else 'refused-runtime-call', 'run': str(body.run_id),
          'payload': json.dumps({'tool': body.tool, 'status': status, 'connectionId': grant['server_id'] if grant else None, 'actorUserId': run['actor_user_id'] if run else None, 'channelId': run['channel_id'] if run else None}), 'correlation': uuid4()})
+    from .v3_agent_eval_sandbox import record_tool_trace
+    await record_tool_trace(db, run, body.run_id, grant['server_id'] if grant else None, body.tool, body.arguments, status, result)
     told = result.get('errors') if isinstance(result, dict) and status != 'OK' else None
     return {'status': status, 'data': result, 'errors': [] if status == 'OK' else told or [{'code': status, 'message': 'Tool is unavailable or outside this run permission.', 'retryable': status == 'INTERNAL_ERROR'}]}

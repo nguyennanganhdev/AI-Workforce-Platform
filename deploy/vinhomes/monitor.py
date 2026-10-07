@@ -10,7 +10,6 @@ TARGETS = {'api': 'http://api:8000/ready', 'reception': 'http://reception:4202/h
            'coordination': 'http://coordination:4300/health', 'platform': 'http://platform:3001/health',
            'knowledge': 'http://knowledge:8787/health', 'technical-tools': 'http://technical-tools:8788/health',
            'factory': 'http://factory:4010/health', 'operations': 'http://operations:3020/operations/login',
-           'field': 'http://field:3023/operations/login',
            'resident': 'http://resident:3011/', 'minio': 'http://minio:9000/minio/health/live',
            'routines': 'http://routines:8789/health'}
 STATE = {name: {'up': False, 'failures': 0, 'alerting': False} for name in TARGETS}

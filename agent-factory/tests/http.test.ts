@@ -325,6 +325,26 @@ describe("standalone construction HTTP API", () => {
     expect(await response.text()).not.toContain("provider-secret");
   });
 
+  test("a call that is cut off by what was left of the deadline is a deadline, not an unavailable model", async () => {
+    // The clock says 30 of the 50 ms are gone once work starts, so the review call gets a 20 ms timer of
+    // its own, which fires before the construction's 50 ms timer does.
+    let asked = 0;
+    let calls = 0;
+    const stalled = createFactoryHandler({
+      token,
+      modelRef: "fixture",
+      timeoutMs: 50,
+      now: () => (asked++ ? 30 : 0),
+      complete: async () => {
+        calls++;
+        return calls === 1 ? generation : new Promise<string>(() => {});
+      },
+    });
+    const response = await stalled(call());
+    expect(response.status).toBe(504);
+    expect((await response.json()).code).toBe("DEADLINE_EXCEEDED");
+  });
+
   test("client cancellation prevents model work", async () => {
     let calls = 0;
     const handler = createFactoryHandler({

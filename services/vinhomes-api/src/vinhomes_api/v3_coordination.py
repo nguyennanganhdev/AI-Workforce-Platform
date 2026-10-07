@@ -507,7 +507,7 @@ async def release(team_id: UUID, member_id: UUID, db: Scope) -> dict[str, Any]:
     config = member["config"]
     from .v3_models import resolve_model
     from .v3_agent_builder import instructions_with_skills
-    model_config = await resolve_model(db, 'specialist', config.get('model_id'))
+    model_config = await resolve_model(db, 'specialist', config.get('model_id'), team['workspace_id'])
     instructions = await instructions_with_skills(db, config, team['workspace_id'])
     # The tools this version was approved with, as the tenant's catalogue describes them now.
     # A model tool name cannot contain a dot, so `sop_kb.retrieve` is offered as `sop_kb__retrieve`.

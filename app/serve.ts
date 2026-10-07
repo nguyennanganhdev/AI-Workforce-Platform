@@ -303,6 +303,8 @@ if (import.meta.main) {
 
       const away = fieldRedirect(url.pathname);
       if (away) return new Response(null, { status: 302, headers: { location: away } });
+      if (url.pathname === "/" && process.env.VINHOMES_API_URL)
+        return new Response(null, { status: 302, headers: { location: "/operations" } });
 
       const wanted = fileFor(url.pathname);
       if (!wanted) return new Response("not found", { status: 404 });

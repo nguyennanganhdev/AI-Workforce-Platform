@@ -61,6 +61,16 @@ GRANT INSERT ON message_files TO vinhomes_v3_api;
 GRANT INSERT,UPDATE ON vh_private_chats,vh_private_chat_sources,vh_session_sources,vh_connection_policy,
   vh_external_call_confirmations,vh_agent_skills,admin_model_registry,admin_role_models
 TO vinhomes_v3_api;
+-- Removing a role's default model (back to the deployment's own setting) deletes its row, and an
+-- unused model whose key was entered in the app can be removed.
+GRANT DELETE ON admin_role_models,admin_model_registry TO vinhomes_v3_api;
+-- An account with no history can be removed; the database refuses it once anything refers to the person.
+GRANT DELETE ON users,accounts,tenant_memberships,scoped_user_roles,workspace_members TO vinhomes_v3_api;
 -- A schedule's run is closed by what became of its mention in the room; the schedule service keeps the rest.
 GRANT UPDATE (status, finished_at, error) ON routine_runs TO vinhomes_v3_api;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO vinhomes_v3_api;
+-- Agent evaluation: suites of four cases, runs and results (source side); the sandbox's fixture
+-- profiles and tool traces (sandbox side). Draft cases are replaced, so DELETE on cases only.
+GRANT INSERT,UPDATE ON vh_agent_eval_environments,vh_agent_eval_suites,vh_agent_eval_runs,vh_agent_eval_case_results TO vinhomes_v3_api;
+GRANT INSERT,DELETE ON vh_agent_eval_cases TO vinhomes_v3_api;
+GRANT INSERT ON vh_agent_eval_events,vh_agent_eval_tool_traces TO vinhomes_v3_api;

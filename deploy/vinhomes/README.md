@@ -16,8 +16,7 @@ Người đọc: người dựng hoặc vận hành stack trên một máy chủ
 | `technical-tools` | Tool đọc kỹ thuật | 8788 |
 | `routines` | Lịch chạy agent của BQL: giữ lịch và, mỗi phút, giao lượt đến hạn cho `api` đăng vào phòng nhóm | 8789 |
 | `factory` | Agent Factory | 4010 |
-| `operations` | Giao diện của Ban quản lý và quản trị (bản build), chuyển tiếp `/api/business` kèm cookie | 3020, mở ra máy chủ |
-| `field` | Giao diện của nhân viên hiện trường: cùng image với `operations`, địa chỉ và phiên đăng nhập riêng, không nối tới OpenBot | 3023, mở ra máy chủ |
+| `operations` | Cổng chung của BQL, quản trị và nhân viên; giao diện và API theo RBAC | 3020, mở ra máy chủ (local hiện tại: 3022) |
 | `resident` | Ứng dụng cư dân (file tĩnh sau nginx), chuyển tiếp `/api/business` | 3011, mở ra máy chủ |
 | `upgrade` | Job chạy tay: migration, cấp lại quyền cho ba role giới hạn, đăng ký tool kỹ thuật | không có |
 | `audit-retention` | Job chạy theo lịch của máy chủ: xóa nhật ký cũ hơn `AUDIT_RETENTION_DAYS` | không có |
@@ -75,6 +74,22 @@ HTTPS hoặc loopback, nên hai dịch vụ gặp nhau trên loopback và không
    thì đăng nhập bị từ chối với "Untrusted browser origin", và ảnh tải thẳng lên kho lưu trữ bị trình duyệt chặn.
 
 ## Chạy
+
+Với stack local đã có dữ liệu trên máy này, chạy từ thư mục gốc repo:
+
+```powershell
+.\deploy\vinhomes\resume-local.ps1
+```
+
+Script dùng thêm `compose.postgres.local.yml` để đưa PostgreSQL vào cùng nhóm
+`vinhomes`, mở `127.0.0.1:5544` và gắn lại volume có sẵn
+`vinhomes-faker-v3_faker-v3-data`. Các URL trong `deployment.env` vẫn kết nối qua
+`host.docker.internal:5544`. Script chỉ khởi động lại container có sẵn, không build,
+seed hay chạy migration. Cần Docker Desktop đang chạy, `deployment.env` và file
+`services/vinhomes-api/.local-v3-faker/postgres.env` có sẵn. Override này dành cho
+máy local; không dùng volume local này cho triển khai máy mới.
+
+Các lệnh dưới đây dành cho build/upgrade triển khai:
 
 ```powershell
 cd deploy/vinhomes
@@ -156,6 +171,12 @@ Giới hạn đã biết: `anthropic` đi qua lớp tương thích của Anthrop
 thử. Chưa vai trò nào được chạy thử với khóa thật của Google, DeepSeek, Groq hay Anthropic; phần đã kiểm là dịch vụ
 gửi đúng khóa, đúng địa chỉ và đúng tham số cho từng nhà cung cấp. Quản trị viên xem model đang chạy ở màn "Model".
 
+Khóa model nhập trên giao diện (từ 07/10/2026): quản trị viên thêm model kèm khóa ở màn "Model"; một đơn vị quản lý
+thêm model bằng khóa riêng ở Agent → Thư viện → Model, chỉ agent của đơn vị đó dùng được. Khóa được mã hóa bằng
+`MODEL_CREDENTIALS_KEY` (base64 của 32 byte) trước khi lưu, không bao giờ trả lại; chỉ gửi tới địa chỉ chính thức của
+OpenAI, DeepSeek, Groq hoặc Google. Máy chủ riêng và embedding vẫn khai bằng biến môi trường như bảng trên. Để trống
+`MODEL_CREDENTIALS_KEY` thì giao diện báo chưa cấu hình khi thêm khóa; model khai bằng biến môi trường không đổi.
+
 Kết nối ngoài cho agent của BQL (máy chủ MCP theo địa chỉ https, do quản trị viên thêm ở màn "Kết nối ngoài"):
 `technical-tools` giữ khóa `CONNECTIONS_KEY` để mã hóa khóa truy cập của từng kết nối và là nơi duy nhất gọi ra máy chủ
 MCP, nên container này cần đi được ra internet tới các địa chỉ đó. Để trống `CONNECTIONS_KEY` thì màn hình báo chưa
@@ -189,47 +210,41 @@ hỏi và bucket để riêng tư. Ngoại lệ duy nhất gọi thẳng MinIO l
   lệnh kiểm tra.
 - Chạy không có `VINHOMES_API_S3_ENDPOINT` (ví dụ chạy local) thì API vẫn lưu ra đĩa như trước.
 
-Chín dịch vụ phải ở trạng thái `healthy` (`agents-net` không có kiểm tra sức khỏe). Lần chạy thử, cả stack sẵn sàng
-sau khoảng 30 giây. Ban quản lý ở `http://<máy chủ>:3020/operations`, nhân viên hiện trường ở
-`http://<máy chủ>:3023/operations`, ứng dụng cư dân ở `http://<máy chủ>:3011`; đổi cổng bằng `OPERATIONS_PORT`,
-`FIELD_PORT`, `RESIDENT_PORT`, và origin tương ứng phải có trong `VINHOMES_ALLOWED_ORIGINS`.
+Các dịch vụ có healthcheck phải ở trạng thái `healthy` (`agents-net` không có kiểm tra sức khỏe).
+BQL và nhân viên dùng chung `http://<máy chủ>:3020/operations`, ứng dụng cư dân ở
+`http://<máy chủ>:3011`; đổi cổng bằng `OPERATIONS_PORT`,
+`RESIDENT_PORT`, và origin tương ứng phải có trong `VINHOMES_ALLOWED_ORIGINS`.
 
-### Ba giao diện, ba phiên đăng nhập
+### BQL và nhân viên dùng chung một cổng
 
-Trình duyệt giữ cookie theo máy chủ, không theo cổng. Ba giao diện chạy trên cùng một máy chủ vì vậy từng ghi đè phiên
-đăng nhập của nhau: đăng nhập cư dân làm hỏng tab của Ban quản lý. Nay mỗi giao diện tự ghi tên mình vào header
-`X-Vinhomes-Surface` khi chuyển tiếp tới API (trình duyệt gửi gì dưới tên đó cũng bị thay), và API giữ một cookie
-riêng cho từng tên:
+BQL, quản trị và nhân viên đăng nhập cùng /operations/login qua dịch vụ operations.
+Ở máy local hiện tại, dùng http://localhost:3022/operations/login (OPERATIONS_PORT=3022).
+Không chạy frontend field hay mở cổng 3023 riêng nữa.
 
-| Giao diện | `X-Vinhomes-Surface` | Cookie | Ai đăng nhập |
-|---|---|---|---|
-| `operations` (3020) | `operations` | `vinhomes_session` | Ban quản lý, quản trị |
-| `field` (3023) | `field` | `vinhomes_staff_session` | Nhân viên hiện trường |
-| `resident` (3011) | `resident` | `vinhomes_resident_session` | Cư dân |
-
-- Đăng nhập sai địa chỉ (Ban quản lý ở cổng nhân viên hoặc ngược lại) bị từ chối kèm lời chỉ sang địa chỉ đúng, và
-  không để lại phiên nào. Đây là quy tắc chia địa chỉ; quyền trên dữ liệu vẫn do vai trò của tài khoản quyết định.
-- Cổng nhân viên chỉ chuyển tiếp `/api/business`; mọi đường `/api` khác (OpenBot) trả 404.
-- OpenBot đọc `vinhomes_session`, tức phiên của cổng Ban quản lý, như trước.
-- Sau lần nâng cấp này cư dân và nhân viên phải đăng nhập lại một lần, vì phiên cũ của họ nằm ở cookie cũ.
-- Chạy không có header (stack phát triển một cổng) thì API dùng `vinhomes_session` và cổng đó nhận mọi vai trò.
+- Server không gửi X-Vinhomes-Surface cho cổng chung và bỏ header do trình duyệt tự gửi.
+- BQL/nhân viên dùng cookie vinhomes_session; cư dân vẫn dùng vinhomes_resident_session riêng.
+- Đăng nhập lấy vai trò thật từ API: nhân viên vào /operations/my-tasks, BQL vào /operations,
+  quản trị vào /operations/accounts. Menu và truy cập dữ liệu vẫn theo RBAC/phạm vi của API.
+- OpenBot kiểm tra lại vai trò ở /operations/me trên từng request: chỉ management/admin được truy cập.
+  Phiên nhân viên hợp lệ vẫn không được quyền OpenBot.
+- Nhân viên từng đăng nhập qua cổng 3023 phải đăng nhập lại tại cổng chung; cookie cổng cũ không được dùng làm phiên chung.
 
 ### HTTPS
 
-Ba giao diện mặc định chỉ nghe trên `VINHOMES_BIND_ADDRESS` bằng http. Để mở ra ngoài, chạy thêm dịch vụ `proxy`
+Hai giao diện mặc định chỉ nghe trên `VINHOMES_BIND_ADDRESS` bằng http. Để mở ra ngoài, chạy thêm dịch vụ `proxy`
 (Caddy, cấu hình ở `Caddyfile`):
 
 ```bash
 docker compose --env-file deployment.env --profile tls up -d
 ```
 
-- Đặt `OPERATIONS_DOMAIN`, `FIELD_DOMAIN` và `RESIDENT_DOMAIN` là tên miền của từng giao diện, trỏ về máy chủ; cổng 80 và 443 phải tới
+- Đặt `OPERATIONS_DOMAIN` và `RESIDENT_DOMAIN` là tên miền của từng giao diện, trỏ về máy chủ; cổng 80 và 443 phải tới
   được máy chủ để Caddy tự xin và gia hạn chứng chỉ. Chứng chỉ nằm trong volume `caddy-data`.
-- Đặt `SECURE_COOKIES=1` để cookie phiên chỉ được gửi qua https, và ghi ba địa chỉ `https://…` vào
-  `VINHOMES_ALLOWED_ORIGINS`. Khi đã bật, đăng nhập qua cổng http 3020/3023/3011 không còn dùng được.
+- Đặt `SECURE_COOKIES=1` để cookie phiên chỉ được gửi qua https, và ghi hai địa chỉ `https://…` vào
+  `VINHOMES_ALLOWED_ORIGINS`. Khi đã bật, đăng nhập qua cổng http 3020/3011 không còn dùng được.
 - `PROXY_TLS=tls internal` để thử trên tên không công khai (trình duyệt sẽ cảnh báo chứng chỉ);
   `PROXY_TLS=tls /certs/site.pem /certs/site.key` để dùng chứng chỉ có sẵn (gắn thư mục vào dịch vụ `proxy`).
-- API (cổng 8000) không đi qua proxy: ba giao diện gọi nó trong mạng nội bộ. Giữ `VINHOMES_BIND_ADDRESS=127.0.0.1`.
+- API (cổng 8000) không đi qua proxy: hai giao diện gọi nó trong mạng nội bộ. Giữ `VINHOMES_BIND_ADDRESS=127.0.0.1`.
 
 ## Kiểm tra sau khi chạy
 
@@ -247,7 +262,8 @@ Ba thứ phải sao lưu cùng lúc; thiếu một thứ thì bản sao lưu kh�
 1. Hai cơ sở dữ liệu (nghiệp vụ và checkpoint của Supervisor), bằng `pg_dump -Fc` với tài khoản chủ.
 2. Ảnh và tệp: volume `minio-data` (hoặc bucket trên dịch vụ S3 đang dùng). Ví dụ, khi `minio` đã dừng:
    `docker run --rm -v vinhomes_minio-data:/data:ro -v "$PWD":/backup alpine tar czf /backup/minio-data.tgz -C /data .`
-3. File `deployment.env`. `CONNECTIONS_KEY` mở các khóa kết nối đã lưu; mất nó thì phải nhập lại từng kết nối.
+3. File `deployment.env`. `CONNECTIONS_KEY` mở các khóa kết nối đã lưu, `MODEL_CREDENTIALS_KEY` mở các khóa model nhập
+   trên giao diện; mất một trong hai thì phải nhập lại từng khóa tương ứng.
 
 Trạng thái của Lễ tân (volume `reception-state`) là bộ nhớ hội thoại đang dở; mất nó thì cư dân bắt đầu lại cuộc trò
 chuyện, yêu cầu đã ghi nhận không mất. Chưa có lịch sao lưu tự động: đặt lịch bằng công cụ của máy chủ.

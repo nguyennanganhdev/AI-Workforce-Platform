@@ -105,7 +105,7 @@ async def configure(
             raise HTTPException(422, "Unknown service category")
     if body.model_id:
         from .v3_models import resolve_model
-        if not await resolve_model(scope[0], 'specialist', body.model_id):
+        if not await resolve_model(scope[0], 'specialist', body.model_id, agent['workspace_id']):
             raise HTTPException(422, 'Model is not available for this unit')
     skill_snapshots = []
     for skill_id in body.skill_ids:
@@ -432,8 +432,14 @@ async def management_decide(room_id: str, review_id: UUID, body: ReviewDecision,
     await room_agent(scope, room_id, agent_id)
     evidence = (await scope[0].execute(text('select evaluation from vh_agent_reviews where id=:id'), {'id': review_id})).scalar_one()
     is_admin = (await scope[0].execute(text('select 1 from platform_admins where user_id=:actor'), {'actor': scope[1]})).first() is not None
-    if body.decision == 'approve' and not is_admin and evidence.get('_runtime_verified') is not True:
-        raise HTTPException(409, 'Run the server evaluation before BQL publication')
+    if body.decision == 'approve' and not is_admin:
+        from .v3_agent_evals import evaluation_gate, run_evidence_problem
+        if await evaluation_gate(scope[0]):
+            problem = await run_evidence_problem(scope[0], review_id)
+            if problem:
+                raise HTTPException(409, problem)
+        elif evidence.get('_runtime_verified') is not True:
+            raise HTTPException(409, 'Run the server evaluation before BQL publication')
     return await decide(review_id, body, (scope[0], scope[1], True))
 
 

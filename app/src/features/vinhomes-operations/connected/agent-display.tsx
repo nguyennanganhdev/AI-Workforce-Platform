@@ -1,5 +1,5 @@
 import type { AgentConfiguration, AgentManagement, ManagedAgent } from "@/lib/agent-management/queries";
-export const SERVER_LABELS: Record<string, string> = { reporting: "Báo cáo", "security-tools": "An ninh", "technical-tools": "Kỹ thuật", knowledge: "Tri thức" };
+export const SERVER_LABELS: Record<string, string> = { reporting: "Báo cáo", "security-tools": "An ninh", "technical-tools": "Kỹ thuật", "cleaning-tools": "Vệ sinh", knowledge: "Tri thức" };
 const TOOL_LABELS: Record<string, string> = {
   "asset.read": "Xem hồ sơ thiết bị", "maintenance_history.read": "Xem lịch sử bảo trì", "sensor.read": "Đọc cảm biến tòa nhà", "sop_kb.retrieve": "Tra quy trình xử lý", "utility_schedule.read": "Tra lịch cắt điện nước", "technical.get_active_outage": "Tra sự cố điện nước đang diễn ra", "technical.verify_resolution": "Kiểm tra kết quả xử lý", "camera.read": "Tra danh mục camera", "security.camera.read": "Tra danh mục camera", "security.contact.read": "Tra đầu mối khẩn cấp", "reporting.filter_report_scope": "Chọn phạm vi báo cáo", "reporting.get_repair_bill_summary": "Báo cáo hóa đơn sửa chữa", "reporting.get_ticket_frequency_summary": "Báo cáo tần suất yêu cầu", "reporting.get_employee_star_summary": "Báo cáo đánh giá nhân viên", "knowledge.search": "Tìm trong kho tri thức"
 };

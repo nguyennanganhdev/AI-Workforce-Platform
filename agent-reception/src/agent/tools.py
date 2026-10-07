@@ -37,7 +37,8 @@ SPECS = [
               "và tự hỏi lại cư dân khi còn thiếu chi tiết. Không dùng cho câu hỏi thông tin hay lời chào.",
               {"symptom": {"type": "string", "description": "Hiện tượng hoặc nhu cầu, nguyên văn. Cư dân viết 'vòi bếp bị rò nước' thì ghi 'bị rò nước'."},
                "area": {"type": "string", "description": "Khu vực cư dân nêu, nguyên văn, ví dụ 'nhà tắm'. Bỏ trống nếu chưa nêu."},
-               "item": {"type": "string", "description": "Thiết bị, vật hoặc điểm cụ thể bị ảnh hưởng, nguyên văn, ví dụ 'chân vòi lavabo'. "
+               "item": {"type": "string", "description": "Thiết bị, vật hoặc điểm cụ thể bị ảnh hưởng, nguyên văn, ví dụ 'chân vòi lavabo'; "
+                                                         "ở khu vực chung là chỗ hoặc vật cụ thể, ví dụ 'phòng rác tầng 12', 'thùng rác ở sảnh', 'bồn hoa trước tòa'. "
                                                          "Bỏ trống nếu cư dân chưa nêu; không tự suy ra."},
                "item_unknown": {"type": "string", "description": "Chỉ khi cư dân nói họ không biết hoặc chưa xác định được vật hay điểm cụ thể: "
                                                                  "chép nguyên văn câu đó."},

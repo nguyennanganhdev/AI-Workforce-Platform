@@ -74,3 +74,29 @@ chép lại bản phân tích trước).
   không khớp với `null`; nhật ký tra cứu ghi không có người. Agent chuyên môn đọc kho tri thức qua tool
   `knowledge.search` của cổng tool API, với vai trò `management`. Tài liệu SOP muốn agent kỹ thuật đọc được qua tool
   này thì phát hành vào kho tri thức với phạm vi tòa nhà hoặc phạm vi của đơn vị quản lý.
+
+## Dữ liệu của Team Quang đưa vào dùng (07/10/2026)
+
+Thư mục `../technical-data` lấy nguyên từ nhánh `dev_TeamQuang_ddhung04` (commit `186e121`). Hai cách dùng, theo
+đúng giới hạn trong README của bộ dữ liệu (tham khảo nội bộ, chưa phát hành, không dùng cho cư dân):
+
+- **Bộ đánh giá thêm cho agent kỹ thuật.** `build_quang_cases.py` chuyển 16 ca giả lập (`SYNTHETIC_CASES.jsonl`) và
+  16 ca biên (`EDGE_CASES.jsonl`) thành `technical-agent-quang.json` (cùng chỉ dẫn và tool với
+  `technical-agent.json`). Chỉ những gì nhãn nói được kiểm bằng mẫu: nhãn chuyển ngay (escalate_now…, kính hoặc vật
+  rơi, safety_escalation…) phải có Level 1 và dòng `LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY`; nhãn hỏi trước (ask_,
+  request_, check_, clarify_, split_, differentiate_) không được Level 1 và phải có câu hỏi bổ sung; còn lại kiểm mã
+  vấn đề. Điều cấm diễn đạt bằng lời nằm trong `expected` để người đọc xét. Chạy không lưu gì:
+  `python -m vinhomes.publish docs/teams/quang/agent/technical-agent-quang.json --check`.
+  Lần chạy 07/10 (gpt-5.5, Docker local): **30/32 đạt**. Hai ca trượt cần Team Quang xem:
+  - `quang-a2-007` (khung kính vách tắm có vẻ lỏng): agent xếp Level 3, nhãn là nguy cơ kính rơi (Level 1). Chỉ dẫn
+    có nêu kính có nguy cơ rơi là điều kiện nâng Level 1, nhưng agent không áp cho "khung kính có vẻ lỏng".
+  - `quang-e-007` (thoát chậm rồi tràn qua cửa kính, ron còn nguyên): agent chọn `TECH.PLUMB.SUPPLY_DRAIN_JOINT` và
+    nâng Level 1, nhãn là `TECH.PLUMB.SHOWER_SEAL` và cần phân biệt thoát nước với ron trước. Có thể là chỉ dẫn
+    thiếu ví dụ, có thể là nhãn cần xem lại.
+  Bộ này không thay 11 ca của `technical-agent.json` khi phát hành: đánh giá trên máy chủ nhận tối đa 12 ca một lượt.
+- **Kho tham khảo nội bộ của BQL.** `bql-knowledge/ky-thuat/tham-khao-triage-a2.md` là bản của
+  `technical-data/rag/corpus/01-vinhomes/cau-hoi-thuong-gap-a2.md` có thêm `title` (tiêu đề nói rõ chưa được duyệt,
+  không phải SOP). Phát hành bằng `server/src/knowledge/publish-bql.ts ../docs/teams/quang/agent/bql-knowledge
+  --site ocean-park-1 --user <quản trị viên>` vào phạm vi các đơn vị quản lý: agent của BQL có `knowledge.search`
+  đọc được, Lễ tân và cư dân không. Agent kỹ thuật hiện chưa có `knowledge.search`; thêm tool này là một phiên bản
+  mới, cần chạy lại đánh giá.

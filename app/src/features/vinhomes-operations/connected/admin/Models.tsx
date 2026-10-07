@@ -4,9 +4,11 @@ import { Plus as IconPlus, RefreshCw as IconRefresh } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { ModelKeyDialog } from "../ModelKeys";
 import { modelsQueryOptions, type RoleModel } from "@/lib/admin/queries";
 import {
   AdminBadge,
+  AdminConfirm,
   AdminDrawer,
   AdminPage,
   AdminSelect,
@@ -51,9 +53,11 @@ export function ModelsPage() {
   const registry = useQuery(registryOptions());
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState("");
+  const [replacing, setReplacing] = useState<RegisteredModel>();
+  const [removing, setRemoving] = useState<RegisteredModel>();
   const mutation = useMutation({
     mutationFn: async (action: {
-      kind: "check" | "allow" | "default";
+      kind: "check" | "allow" | "default" | "remove";
       id: string;
       value?: boolean;
       role?: string;
@@ -63,6 +67,10 @@ export function ModelsPage() {
           `/admin/model-registry/${action.id}/check`,
           { method: "POST" },
         );
+      if (action.kind === "remove")
+        return adminRequest(`/admin/model-registry/${action.id}`, {
+          method: "DELETE",
+        });
       if (action.kind === "allow")
         return adminRequest(`/admin/model-registry/${action.id}`, {
           method: "PATCH",
@@ -77,7 +85,9 @@ export function ModelsPage() {
       setNotice(
         action.kind === "check"
           ? (result as { message: string }).message
-          : action.kind === "allow"
+          : action.kind === "remove"
+            ? "Đã xóa model"
+            : action.kind === "allow"
             ? "Đã lưu quyền sử dụng model"
             : action.id
               ? "Đã lưu model cho vai trò"
@@ -86,6 +96,7 @@ export function ModelsPage() {
       await queryClient.invalidateQueries({ queryKey: registryKey });
       await queryClient.invalidateQueries({ queryKey: ["allowed-models"] });
       await models.refetch();
+      setRemoving(undefined);
     },
   });
   const items = registry.data?.items || [];
@@ -155,6 +166,14 @@ export function ModelsPage() {
                   <tr key={model.id}>
                     <td>
                       <strong>{model.name}</strong>
+                      <small className="block ops-admin-muted">
+                        {model.credential_source === "key"
+                          ? `Khóa nhập trên giao diện ${model.credential_hint || ""}`
+                          : `Biến ${model.credential_env}`}
+                        {model.workspace_name
+                          ? `, riêng của ${model.workspace_name}`
+                          : ""}
+                      </small>
                       {model.kind === "embedding" && (
                         <small className="block ops-admin-muted">
                           Tìm kiếm tri thức
@@ -170,6 +189,7 @@ export function ModelsPage() {
                         disabled={
                           model.kind !== "chat" ||
                           model.check_status !== "ok" ||
+                          !!model.workspace_id ||
                           mutation.isPending
                         }
                         onCheckedChange={(allowed) =>
@@ -224,6 +244,23 @@ export function ModelsPage() {
                       >
                         Kiểm tra
                       </Button>
+                      {model.credential_source === "key" && (
+                        <Button
+                          variant="ghost"
+                          disabled={mutation.isPending}
+                          onClick={() => setReplacing(model)}
+                        >
+                          Thay khóa
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        className="ops-admin-danger"
+                        disabled={mutation.isPending}
+                        onClick={() => setRemoving(model)}
+                      >
+                        Xóa
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -266,6 +303,7 @@ export function ModelsPage() {
                       item.kind ===
                         (model.role === "embedding" ? "embedding" : "chat") &&
                       item.check_status === "ok" &&
+                      !item.workspace_id &&
                       (model.role !== "specialist" || item.allowed),
                   );
                   return (
@@ -323,6 +361,27 @@ export function ModelsPage() {
         )}
       </section>
       {creating && <RegisterModel onClose={() => setCreating(false)} />}
+      {replacing && (
+        <ModelKeyDialog
+          title={`Thay khóa của ${replacing.name}`}
+          path={`/admin/model-registry/${replacing.id}/credential`}
+          onClose={() => setReplacing(undefined)}
+          onDone={async () => {
+            setNotice("Đã thay khóa API. Khóa mới đã trả lời được.");
+            await queryClient.invalidateQueries({ queryKey: registryKey });
+          }}
+        />
+      )}
+      {removing && (
+        <AdminConfirm
+          title={`Xóa ${removing.name}?`}
+          consequence="Chỉ xóa được model không còn vai trò hoặc agent nào dùng. Khóa đã lưu bị xóa theo."
+          confirm="Xóa model"
+          busy={mutation.isPending}
+          onCancel={() => setRemoving(undefined)}
+          onConfirm={() => mutation.mutate({ kind: "remove", id: removing.id })}
+        />
+      )}
     </AdminPage>
   );
 }
@@ -332,10 +391,13 @@ function RegisterModel({ onClose }: { onClose: () => void }) {
     name: "",
     provider: "openai",
     kind: "chat",
+    source: "key",
+    api_key: "",
     credential_env: "OPENAI_API_KEY",
     base_url_env: "",
     dimension: "",
   });
+  const entered = form.source === "key";
   const create = useMutation({
     mutationFn: () =>
       adminRequest("/admin/model-registry", {
@@ -343,10 +405,14 @@ function RegisterModel({ onClose }: { onClose: () => void }) {
         body: {
           name: form.name.trim(),
           provider: form.provider,
-          kind: form.kind,
-          credential_env: form.credential_env.trim(),
-          base_url_env: form.base_url_env.trim() || null,
-          ...(form.kind === "embedding" && form.dimension
+          kind: entered ? "chat" : form.kind,
+          ...(entered
+            ? { api_key: form.api_key.trim() }
+            : {
+                credential_env: form.credential_env.trim(),
+                base_url_env: form.base_url_env.trim() || null,
+              }),
+          ...(!entered && form.kind === "embedding" && form.dimension
             ? { dimension: Number(form.dimension) }
             : {}),
         },
@@ -359,7 +425,7 @@ function RegisterModel({ onClose }: { onClose: () => void }) {
   return (
     <AdminDrawer
       title="Thêm model"
-      description="Chọn biến cấu hình đã có trên bản triển khai. Khóa API không hiển thị hoặc lưu trong trình duyệt."
+      description="Khóa API được mã hóa trên máy chủ và không hiển thị lại. Sau khi thêm, bấm Kiểm tra rồi cho phép đơn vị dùng."
       onClose={onClose}
       busy={create.isPending}
       footer={
@@ -374,7 +440,9 @@ function RegisterModel({ onClose }: { onClose: () => void }) {
           <Button
             disabled={
               !form.name.trim() ||
-              !form.credential_env.trim() ||
+              (entered
+                ? form.api_key.trim().length < 8
+                : !form.credential_env.trim()) ||
               create.isPending
             }
             onClick={() => create.mutate()}
@@ -395,17 +463,59 @@ function RegisterModel({ onClose }: { onClose: () => void }) {
           />
         </label>
         <label>
+          Cách lấy khóa
+          <AdminSelect
+            label="Cách lấy khóa API"
+            value={form.source}
+            onChange={(source) =>
+              setForm({
+                ...form,
+                source,
+                provider:
+                  source === "key" && form.provider === "custom"
+                    ? "openai"
+                    : form.provider,
+              })
+            }
+            options={[
+              { value: "key", label: "Nhập khóa API" },
+              { value: "env", label: "Biến môi trường của bản triển khai" },
+            ]}
+          />
+        </label>
+        <label>
           Nhà cung cấp
           <AdminSelect
             label="Nhà cung cấp"
             value={form.provider}
             onChange={(provider) => setForm({ ...form, provider })}
-            options={Object.entries(PROVIDER).map(([value, label]) => ({
-              value,
-              label,
-            }))}
+            options={Object.entries(PROVIDER)
+              .filter(([value]) => !entered || value !== "custom")
+              .map(([value, label]) => ({
+                value,
+                label,
+              }))}
           />
         </label>
+        {entered ? (
+          <label>
+            Khóa API
+            <Input
+              aria-label="Khóa API"
+              type="password"
+              autoComplete="off"
+              value={form.api_key}
+              onChange={(event) =>
+                setForm({ ...form, api_key: event.target.value })
+              }
+            />
+            <small>
+              Dùng địa chỉ chính thức của nhà cung cấp. Máy chủ riêng cần khai
+              báo bằng biến môi trường.
+            </small>
+          </label>
+        ) : (
+        <>
         <label>
           Loại model
           <AdminSelect
@@ -453,6 +563,8 @@ function RegisterModel({ onClose }: { onClose: () => void }) {
             />
             <small>Kho tri thức hiện tại dùng 1536 chiều.</small>
           </label>
+        )}
+        </>
         )}
         {create.error && (
           <p role="alert" className="ops-admin-error">

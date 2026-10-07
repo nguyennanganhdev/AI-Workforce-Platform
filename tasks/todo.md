@@ -134,7 +134,9 @@ quyền và ghi audit.
 
 - [x] BQL tự phát hành agent sau khi đánh giá trên máy chủ đạt cả 6 ca; không còn bước quản trị viên duyệt trên giao
       diện. Quản trị viên cấu hình nền tảng (tài khoản, kết nối ngoài) và vẫn thu hồi được agent ở trang Agent.
-- [ ] Chạy lại vòng tạo → đánh giá → phát hành trên giao diện khi khóa model dùng được.
+- [x] Chạy lại vòng tạo → đánh giá → phát hành trên giao diện khi khóa model dùng được (07/10/2026, Docker 3022, model
+      thật: Factory soạn, hỏi thử, 6/6 đạt, phát hành bản 1, thu hồi). Hai sửa từ lần chạy này: trang Agent không cuộn
+      được; agent không biết giờ hiện tại và id tòa nhà nên đòi BQL nhập UUID thay vì gọi công cụ.
 
 ## Lưu ảnh và tệp trên MinIO/S3 (làm ngày 05/10/2026)
 
@@ -170,15 +172,19 @@ Theo `docs/teams/chien/MULTI_MODEL_REPO_AUDIT_2026-10-04.md`, bốn vấn đề 
 - [ ] Agent chuyên môn (agent-bot) và Factory chưa được kiểm tham số riêng với nhà cung cấp khác OpenAI.
 - [ ] Eval của Lễ tân còn dùng chung model với Lễ tân làm giám khảo; cần giám khảo cố định khi so sánh model.
 - [ ] Embedding Google/Voyage/BGE: chưa làm (cần model space riêng, nhập lại tri thức, chỉnh lại ngưỡng).
-- [ ] Màn "Model" chỉ xem; chưa có nút gọi thử model và chưa đổi model từ giao diện.
+- [x] Màn "Model" có Kiểm tra, cho phép đơn vị, mặc định theo vai trò (06/10). 07/10: Admin nhập khóa API trên giao diện
+      (OpenAI, DeepSeek, Groq, Google; mã hóa AES-GCM bằng `MODEL_CREDENTIALS_KEY`, chỉ hiện 4 ký tự cuối), thay khóa (thử
+      với nhà cung cấp trước khi lưu), xóa model không còn dùng. BQL thêm model bằng khóa riêng của đơn vị ở Agent → Thư
+      viện → Model; chỉ agent của đơn vị đó dùng được. Máy chủ riêng (URL tùy ý) vẫn chỉ qua biến môi trường.
 
 ## Giao diện quản trị viên (làm ngày 05/10/2026)
 
 - [x] Menu riêng: Tài khoản, Đơn vị quản lý, Kết nối ngoài, Model, Nhật ký.
 - [x] Tài khoản làm lại: tìm kiếm, lọc vai trò, tạo, đổi vai trò và đơn vị, duyệt, khóa.
 - [x] Đơn vị quản lý (chỉ xem), Model (chỉ xem), Nhật ký (lọc theo loại, xem sự kiện cũ hơn).
-- [ ] Tạo đơn vị quản lý, nhóm BQL và giao tòa nhà từ giao diện (hiện bằng script `provision_connected.py`).
-- [ ] Đặt lại mật khẩu cho tài khoản; xóa tài khoản.
+- [x] Tạo đơn vị quản lý, nhóm BQL và giao tòa nhà từ giao diện (trang Đơn vị quản lý → Tạo đơn vị; đã có từ 06/10).
+- [x] Đặt lại mật khẩu cho tài khoản (07/10: Admin nhập hoặc tạo mật khẩu 16 ký tự, mọi phiên cũ kết thúc, ghi nhật ký).
+- [ ] Xóa tài khoản; người dùng tự đổi mật khẩu trên giao diện (API `/auth/change-password` có, chưa có màn).
 - [ ] Nhật ký chưa tìm theo người hoặc theo khoảng thời gian, chưa xuất file.
 
 ## Agent báo cáo trong phòng nhóm (rà ngày 05/10/2026)

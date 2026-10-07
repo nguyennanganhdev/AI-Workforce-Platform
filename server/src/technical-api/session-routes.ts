@@ -1,5 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
+import {
+  cleaningNames,
+  describeCleaningTools,
+  findCleaningTool,
+  type CleaningTool,
+} from "../cleaning-tools";
 import type { ResponseEnvelope } from "../technical-tools";
 import { describeTechnicalTools, findTechnicalTool } from "../technical-tools";
 import type { TechnicalTool } from "../technical-tools/tool";
@@ -14,10 +20,24 @@ export type SessionToolDependencies = {
   sessionCaller(runId: string): Promise<VerifiedTechnicalCaller | null>;
   call(
     caller: VerifiedTechnicalCaller,
-    tool: TechnicalTool,
+    tool: TechnicalTool | CleaningTool,
     args: Record<string, unknown>,
   ): Promise<ResponseEnvelope>;
 };
+
+/**
+ * Team Hoàng's cleaning counterparts of the technical tools. Their five work-order entries are
+ * not served here: they need a bridge to the business API that sessions do not have yet.
+ */
+const cleaningCounterparts = new Set(Object.values(cleaningNames));
+
+function findSessionTool(name: string): TechnicalTool | CleaningTool | undefined {
+  const cleaning = findCleaningTool(name);
+  return (
+    findTechnicalTool(name) ??
+    (cleaning && cleaningCounterparts.has(cleaning.name) ? cleaning : undefined)
+  );
+}
 
 export function sameToken(expected: string, offered: string): boolean {
   const a = Buffer.from(expected);
@@ -55,7 +75,16 @@ export function createSessionToolRoutes(
       );
     await next();
   });
-  app.get("/tools", (c) => c.json({ tools: describeTechnicalTools() }));
+  app.get("/tools", (c) =>
+    c.json({
+      tools: [
+        ...describeTechnicalTools(),
+        ...describeCleaningTools().filter((tool) =>
+          cleaningCounterparts.has(tool.name),
+        ),
+      ],
+    }),
+  );
   app.post("/call", async (c) => {
     let body: unknown;
     try {
@@ -84,7 +113,7 @@ export function createSessionToolRoutes(
         ),
         400,
       );
-    const tool = findTechnicalTool(request.tool);
+    const tool = findSessionTool(request.tool);
     if (!tool)
       return c.json(technicalEnvelope("NOT_FOUND", "No such tool."), 404);
     if (tool.effect !== "read")

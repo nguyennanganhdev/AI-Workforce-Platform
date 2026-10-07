@@ -325,6 +325,7 @@ export async function constructAgentSpec(
     Math.floor(Math.min(options.timeoutMs ?? 90_000, 90_000)),
   );
   const started = now();
+  let callTimerHitDeadline = false;
   const deadline = operationDeadline(timeoutMs, options.signal);
   const { signal } = deadline;
   try {
@@ -380,7 +381,9 @@ export async function constructAgentSpec(
               "TimeoutError",
             );
           const callStarted = now();
-          const callDeadline = operationDeadline(Math.min(options.callTimeoutMs ?? 20_000, timeoutMs - (now() - started)), signal);
+          const remaining = timeoutMs - (now() - started);
+          const callBudget = options.callTimeoutMs ?? 20_000;
+          const callDeadline = operationDeadline(Math.min(callBudget, remaining), signal);
           const callSignal = callDeadline.signal;
           let status: FactoryObservation["status"] = "failure";
           try {
@@ -396,6 +399,11 @@ export async function constructAgentSpec(
               );
             status = "success";
             return result;
+          } catch (error) {
+            // This call had only what was left of the construction, and its own timer ended it: the
+            // construction ran out of time, whichever of the two timers fired first.
+            callTimerHitDeadline = remaining <= callBudget && callSignal.aborted && callSignal.reason?.name === "TimeoutError";
+            throw error;
           } finally {
             callDeadline.dispose();
             options.observe?.({
@@ -508,7 +516,7 @@ export async function constructAgentSpec(
     }
     throw new Error("unreachable");
   } catch (error) {
-    if (!signal.aborted && now() - started >= timeoutMs)
+    if (!signal.aborted && (now() - started >= timeoutMs || callTimerHitDeadline))
       return {
         ok: false,
         issues: [

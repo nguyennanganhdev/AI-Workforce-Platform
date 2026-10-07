@@ -183,3 +183,42 @@ async def test_explicit_session_question_uses_actor_bound_turn_and_preserves_tic
     await runtime.answer_room(item)
     assert len(generated) == 1
     assert backend.outcomes[-1] == {'run_id': 'actor-run', 'status': 'done', 'content': 'Thao tác đang chờ bạn cho phép.'}
+
+
+@pytest.mark.asyncio
+async def test_a_room_question_carries_the_time_and_building_ids_its_tools_need(tmp_path, monkeypatch):
+    import json
+    wires = []
+    def bot(req):
+        body = json.loads(req.content)
+        wires.append(body)
+        run = {'threadId': body['threadId'], 'runId': body['runId']}
+        events = [{'type': 'RUN_STARTED', **run}, {'type': 'TEXT_MESSAGE_START', 'messageId': 'm', 'role': 'assistant'},
+                  {'type': 'TEXT_MESSAGE_CONTENT', 'messageId': 'm', 'delta': 'Không có lịch cắt nước.'},
+                  {'type': 'TEXT_MESSAGE_END', 'messageId': 'm'}, {'type': 'RUN_FINISHED', **run}]
+        return httpx.Response(200, headers={'content-type': 'text/event-stream'},
+                              content=''.join(f'data: {json.dumps(e)}\n\n' for e in events).encode())
+    workspace = {'now': '2026-10-07T09:00:00+07:00', 'buildings': [{'id': 'b-1', 'code': 'S1.01', 'name': 'Sapphire 1'}]}
+
+    class Backend:
+        outcomes = []
+        def __init__(self, workspace): self.workspace = workspace
+        async def room_turn(self, message, agent):
+            return {'run_id': 'run-' + message, 'instructions': 'Read only', 'tools': [], 'instruction': 'S1.01 có cắt nước không?',
+                    'messages': [], **({'workspace': self.workspace} if self.workspace else {})}
+        async def room_outcome(self, message, agent, result):
+            self.outcomes.append(result)
+
+    monkeypatch.setenv('MANAGED_AGENT_TOKEN', 'test-bot-token')
+    settings = Settings('http://backend', TOKEN, openbot=OpenBot('http://bot/ag-ui', 'model'))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(bot)) as client:
+        for message, given in (('with', workspace), ('without', None)):
+            backend = Backend(given)
+            await Runtime(backend, Store(tmp_path / f'{message}.sqlite'), client=client, settings=settings).answer_room(
+                {'tenant_id': 'tenant', 'message_id': message, 'agent_id': 'agent'})
+            assert backend.outcomes[-1]['status'] == 'done'
+    shown, plain = (json.loads(wire['messages'][0]['content'])['context'] for wire in wires)
+    assert [item['item_id'] for item in shown] == ['reception-v2-ticket', 'workspace']
+    assert json.loads(shown[1]['content']) == workspace
+    # An older backend that sends no workspace leaves the context as it was.
+    assert [item['item_id'] for item in plain] == ['reception-v2-ticket']

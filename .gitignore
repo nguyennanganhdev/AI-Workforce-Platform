@@ -71,6 +71,7 @@ services/vinhomes-api/.local-v3-postgres/
 services/vinhomes-api/.local-v3-files/
 services/vinhomes-api/.local-v3-faker/
 services/vinhomes-api/.local-connected/
+services/vinhomes-api/.local-eval/
 
 # `cli.ts --dump-chunks` output: chunks of the resident knowledge base, regenerated from the data repo.
 server/chunks.json

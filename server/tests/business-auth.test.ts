@@ -5,8 +5,9 @@ describe("business authentication authority", () => {
   test("uses the same verified identity, rechecks revocation and never forwards unrelated secrets", async () => {
     const requests: RequestInit[] = [];
     let active = true;
-    const request = (async (_url: string | URL | Request, init?: RequestInit) => {
+    const request = (async (url: string | URL | Request, init?: RequestInit) => {
       requests.push(init!);
+      if (String(url).endsWith('/operations/me')) return Response.json({ role: 'management' });
       return active ? Response.json({ user: { id: "canonical-user", email: "user@example.test", name: "User" }, membershipStatus: "active" })
         : new Response(null, { status: 401 });
     }) as typeof fetch;
@@ -17,9 +18,35 @@ describe("business authentication authority", () => {
     expect(new Headers(requests[0]!.headers).get("authorization")).toBeNull();
     active = false;
     expect(await auth.api.getSession({ headers })).toBeNull();
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(3);
     expect(await auth.api.getSession({ headers: new Headers({ cookie: "vinhomes_session=forged" }) })).toBeNull();
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(3);
+  });
+
+  test("a shared sign-in grants OpenBot only to current management and administrators", async () => {
+    let role = 'staff';
+    let roleStatus = 200;
+    const sent: Headers[] = [];
+    const auth = createBusinessAuth('http://api:8000', [], (async (url, init) => {
+      sent.push(new Headers(init?.headers));
+      if (String(url).endsWith('/operations/me'))
+        return roleStatus === 200 ? Response.json({ role }) : new Response(null, { status: roleStatus });
+      return Response.json({ user: { id: 'user', email: 'user@example.test' }, membershipStatus: 'active' });
+    }) as typeof fetch);
+    const headers = new Headers({ cookie: `vinhomes_session=${'a'.repeat(43)}; other=secret`, authorization: 'Bearer secret' });
+    expect(await auth.api.getSession({ headers })).toBeNull();
+    for (role of ['management', 'admin']) expect((await auth.api.getSession({ headers }))?.user.id).toBe('user');
+    // A role revoked while the session is still active must lose OpenBot immediately.
+    role = 'staff';
+    expect(await auth.api.getSession({ headers })).toBeNull();
+    roleStatus = 403;
+    expect(await auth.api.getSession({ headers })).toBeNull();
+    roleStatus = 503;
+    expect(auth.api.getSession({ headers })).rejects.toThrow('unavailable');
+    for (const forwarded of sent) {
+      expect(forwarded.get('cookie')).toBe(`vinhomes_session=${'a'.repeat(43)}`);
+      expect(forwarded.has('authorization')).toBe(false);
+    }
   });
 
   test("pending memberships and an unavailable authority fail closed", async () => {

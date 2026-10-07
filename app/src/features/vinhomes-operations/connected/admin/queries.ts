@@ -7,7 +7,13 @@ export type RegisteredModel = {
   name: string;
   provider: string;
   kind: "chat" | "embedding";
-  credential_env: string;
+  credential_env: string | null;
+  /** "key": typed in the app and kept sealed; only `credential_hint` (last four characters) is ever shown. */
+  credential_source: "env" | "key";
+  credential_hint: string | null;
+  /** Set for a unit's own model: only that unit's agents use it. */
+  workspace_id: string | null;
+  workspace_name: string | null;
   base_url_env: string | null;
   allowed: boolean;
   dimension: number | null;

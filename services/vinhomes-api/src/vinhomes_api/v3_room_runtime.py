@@ -113,10 +113,11 @@ async def turn(message_id: UUID, agent_id: str, db: Scope):
         {'channel': mention['channel_id'], 'message': message_id})).mappings().all()
     attached, images = await for_agent(db, mention['channel_id'], message_id, pictures=True)
     instructions = await instructions_with_skills(db, version['config'], mention['workspace_id'])
-    model = await resolve_model(db, 'specialist', version['config'].get('model_id'))
+    model = await resolve_model(db, 'specialist', version['config'].get('model_id'), mention['workspace_id'])
+    from .v3_tool_gateway import agent_workspace
     return {'run_id': str(run), 'instructions': instructions, 'tools': tools, 'model_config': model,
         'instruction': '\n\n'.join(part for part in (mention['body']['text'], attached) if part),
-        'messages': [dict(r) for r in reversed(history)], 'images': images}
+        'messages': [dict(r) for r in reversed(history)], 'images': images, 'workspace': await agent_workspace(db, mention['workspace_id'])}
 
 
 class Outcome(BaseModel):
