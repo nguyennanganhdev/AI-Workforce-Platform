@@ -223,3 +223,10 @@ def test_the_judge_sees_what_was_said_not_the_script():
     scripted = case()
     scripted.input.follow_up_messages.append('Sự cố lúc 14:20.')
     assert '14:20' not in user_prompt(scripted, trace(), run_checks(scripted, trace(), CTX), 'target')
+
+
+def test_a_reception_that_could_not_answer_is_the_stack_failing():
+    from agent_eval.worker import reception_down
+    assert reception_down({'messages': [{'role': 'reception', 'text': 'Xin lỗi, tôi chưa xử lý được tin nhắn này. Bạn thử lại sau ít phút.'}]})
+    assert not reception_down({'messages': [{'role': 'resident', 'text': 'chưa xử lý được tin nhắn này'}, {'role': 'reception', 'text': 'Mình đã ghi nhận.'}]})
+    assert not reception_down(None)

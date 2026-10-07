@@ -88,6 +88,17 @@ class Api:
         return reply.json()
 
 
+JUDGE_TRIES = 3
+TRANSIENT = ('model_unavailable', 'model_timeout')
+# What Reception says when its own model call failed; the resident app keys on the same sentences.
+RECEPTION_DOWN = ('chưa xử lý được tin nhắn này', 'tạm thời chưa phản hồi được')
+
+
+def reception_down(trace: dict | None) -> bool:
+    return any(m.get('role') == 'reception' and any(mark in (m.get('text') or '') for mark in RECEPTION_DOWN)
+               for m in (trace or {}).get('messages') or [])
+
+
 def attest(facts: dict, execution_tenant_id: str) -> EnvironmentAttestation:
     """Whether the sandbox is isolated from the source, from facts its own database reported."""
     problems = []
@@ -223,10 +234,10 @@ class Worker:
         attestation = await self.safety(snapshot['environment']['execution_tenant_id'])
         played = await self.converse(run_id, raw['id'], case)
         attempts = 1
-        if played.error is not None or (played.trace or {}).get('terminal_state') is None:
+        if played.error is not None or (played.trace or {}).get('terminal_state') is None or reception_down(played.trace):
             # A model call cut off or a service refusing mid-way leaves the conversation nowhere. That is the stack's
             # trouble, not the agent's answer: the case is played once more, in a new conversation.
-            await self.events(run_id, [{'case_id': raw['id'], 'kind': 'lifecycle', 'payload': {'step': 'retry', 'reason': (played.error or {}).get('code', 'no_terminal_state')}}])
+            await self.events(run_id, [{'case_id': raw['id'], 'kind': 'lifecycle', 'payload': {'step': 'retry', 'reason': (played.error or {}).get('code', 'reception_down' if reception_down(played.trace) else 'no_terminal_state')}}])
             first, played, attempts = played, await self.converse(run_id, raw['id'], case, attempt=2), 2
             played.refs['first_attempt'] = {'error': first.error, 'channel_id': first.refs.get('channel_id')}
         played.refs['attempts'] = attempts
@@ -253,8 +264,11 @@ class Worker:
                                      *(played.refs.get('ticket_ids') or [])}))
             results = run_checks(case, trace, ctx)
             checks = {k: r.model_dump() for k, r in results.items()}
-            judged, judge_usage = await judge(self.client, judge_model, case, trace, results, timeout=self.settings.judge_seconds,
-                                              target=snapshot['target']['agent_id'])
+            for _ in range(JUDGE_TRIES):  # a judge call cut off is asked again; a judgement, even a bad one, is kept
+                judged, judge_usage = await judge(self.client, judge_model, case, trace, results, timeout=self.settings.judge_seconds,
+                                                  target=snapshot['target']['agent_id'])
+                if judged.status != 'error' or (judged.error or {}).get('code') not in TRANSIENT:
+                    break
             judgement = judged.model_dump()
             usage.update(judge_input_tokens=judge_usage.input_tokens, judge_output_tokens=judge_usage.output_tokens)
             metrics = [m.model_dump() for m in await score_metrics(case, trace, snapshot['evaluator'], judge_model)]
