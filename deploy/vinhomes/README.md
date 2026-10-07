@@ -171,6 +171,12 @@ Giới hạn đã biết: `anthropic` đi qua lớp tương thích của Anthrop
 thử. Chưa vai trò nào được chạy thử với khóa thật của Google, DeepSeek, Groq hay Anthropic; phần đã kiểm là dịch vụ
 gửi đúng khóa, đúng địa chỉ và đúng tham số cho từng nhà cung cấp. Quản trị viên xem model đang chạy ở màn "Model".
 
+Khóa model nhập trên giao diện (từ 07/10/2026): quản trị viên thêm model kèm khóa ở màn "Model"; một đơn vị quản lý
+thêm model bằng khóa riêng ở Agent → Thư viện → Model, chỉ agent của đơn vị đó dùng được. Khóa được mã hóa bằng
+`MODEL_CREDENTIALS_KEY` (base64 của 32 byte) trước khi lưu, không bao giờ trả lại; chỉ gửi tới địa chỉ chính thức của
+OpenAI, DeepSeek, Groq hoặc Google. Máy chủ riêng và embedding vẫn khai bằng biến môi trường như bảng trên. Để trống
+`MODEL_CREDENTIALS_KEY` thì giao diện báo chưa cấu hình khi thêm khóa; model khai bằng biến môi trường không đổi.
+
 Kết nối ngoài cho agent của BQL (máy chủ MCP theo địa chỉ https, do quản trị viên thêm ở màn "Kết nối ngoài"):
 `technical-tools` giữ khóa `CONNECTIONS_KEY` để mã hóa khóa truy cập của từng kết nối và là nơi duy nhất gọi ra máy chủ
 MCP, nên container này cần đi được ra internet tới các địa chỉ đó. Để trống `CONNECTIONS_KEY` thì màn hình báo chưa
@@ -256,7 +262,8 @@ Ba thứ phải sao lưu cùng lúc; thiếu một thứ thì bản sao lưu kh�
 1. Hai cơ sở dữ liệu (nghiệp vụ và checkpoint của Supervisor), bằng `pg_dump -Fc` với tài khoản chủ.
 2. Ảnh và tệp: volume `minio-data` (hoặc bucket trên dịch vụ S3 đang dùng). Ví dụ, khi `minio` đã dừng:
    `docker run --rm -v vinhomes_minio-data:/data:ro -v "$PWD":/backup alpine tar czf /backup/minio-data.tgz -C /data .`
-3. File `deployment.env`. `CONNECTIONS_KEY` mở các khóa kết nối đã lưu; mất nó thì phải nhập lại từng kết nối.
+3. File `deployment.env`. `CONNECTIONS_KEY` mở các khóa kết nối đã lưu, `MODEL_CREDENTIALS_KEY` mở các khóa model nhập
+   trên giao diện; mất một trong hai thì phải nhập lại từng khóa tương ứng.
 
 Trạng thái của Lễ tân (volume `reception-state`) là bộ nhớ hội thoại đang dở; mất nó thì cư dân bắt đầu lại cuộc trò
 chuyện, yêu cầu đã ghi nhận không mất. Chưa có lịch sao lưu tự động: đặt lịch bằng công cụ của máy chủ.
