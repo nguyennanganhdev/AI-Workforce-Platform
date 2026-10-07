@@ -197,3 +197,29 @@ def test_the_judge_is_told_which_agent_it_scores():
     from support.eval_cases import CTX, case, trace
     prompt = user_prompt(case(), trace(), run_checks(case(), trace(), CTX), 'target')
     assert 'AGENT ĐANG ĐÁNH GIÁ: target' in prompt and 'không trừ điểm agent' in SYSTEM
+
+
+async def test_declared_answers_go_out_together_when_the_system_asks():
+    stack = Stack()
+    several = {**CLAIM, 'cases': [{**CLAIM['cases'][0], 'input': {**CLAIM['cases'][0]['input'], 'follow_up_messages': ['Căn A-1203.', 'Từ 9 giờ sáng.']}}]}
+    original = Stack.__call__
+
+    def claim_once(self, request):
+        if request.url.path.endswith('/claim'):
+            return httpx.Response(200, json=several)
+        return original(self, request)
+    Stack.__call__ = claim_once
+    try:
+        await play(stack)
+    finally:
+        Stack.__call__ = original
+    assert stack.said == [('messages', 'Nhà tôi mất nước'), ('messages', 'Căn A-1203. Từ 9 giờ sáng.')]
+
+
+def test_the_judge_sees_what_was_said_not_the_script():
+    from agent_eval.checks import run_checks
+    from agent_eval.judge import user_prompt
+    from support.eval_cases import CTX, case, trace
+    scripted = case()
+    scripted.input.follow_up_messages.append('Sự cố lúc 14:20.')
+    assert '14:20' not in user_prompt(scripted, trace(), run_checks(scripted, trace(), CTX), 'target')

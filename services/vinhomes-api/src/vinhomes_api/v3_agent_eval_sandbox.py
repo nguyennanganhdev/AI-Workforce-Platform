@@ -344,6 +344,11 @@ async def build_trace(db, chat: dict) -> dict:
         if kind == 'specialist_reply' or kind.startswith('supervisor_'):
             messages.append({'id': f"room-{m['seq']}", 'role': 'agent' if kind == 'specialist_reply' else 'supervisor',
                              'agent_id': m['sender_agent_id'], 'text': clip(message_text(m['body'])), 'visible_to_resident': False})
+    for t in teams:
+        if ((t['shared_state'] or {}).get('request') or {}).get('kind') == 'inquiry':
+            # On record for the judge: Reception's "passed to management" is a fact, not a promise.
+            messages.append({'id': f"handover-{t['id']}", 'role': 'system', 'agent_id': None, 'visible_to_resident': False,
+                             'text': 'Câu hỏi của cư dân đã được ghi vào phòng Ban quản lý và đang chờ người trả lời (không mở ticket, không gọi agent).'})
     run_agent = {r['id']: r['agent_id'] for r in runs}
     tool_calls = [{'id': f"t-{c['id']}", 'agent_id': c['agent_id'], 'server_id': c['server_id'] or 'unknown', 'name': c['tool'],
                    'arguments': c['arguments'] or {}, 'status': c['status'], 'result': c['result']}

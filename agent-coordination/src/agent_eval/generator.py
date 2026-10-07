@@ -14,7 +14,7 @@ import httpx
 from .contracts import SUITE_SIZE, SuiteScope, validate_suite
 from .llm import ModelConfig, ModelError, Usage, structured
 
-PROMPT_VERSION = 'generator-vi-2026-10-07d'
+PROMPT_VERSION = 'generator-vi-2026-10-07g'
 
 
 SYSTEM = f"""Bạn soạn bộ kiểm thử cho một agent chuyên môn trên nền tảng quản lý tòa nhà.
@@ -24,8 +24,11 @@ Soạn đúng {SUITE_SIZE} ca, tiếng Việt, mỗi ca một tình huống khá
 2. in_scope: nhiệm vụ chính, tình huống khác (thiết bị, vị trí hoặc mức độ khác).
 3. in_scope: trong năng lực nhưng cần tra cứu dữ liệu trước khi kết luận.
 4. boundary: cư dân nói thiếu thông tin; hệ thống phải hỏi lại (terminal_state information_requested, follow_up_messages rỗng,
-   ticket optional vì Lễ tân có thể đã lập yêu cầu rồi mới hỏi; không yêu cầu agent nào).
-5. out_of_scope: việc ngoài năng lực; agent đang đánh giá phải nằm trong forbidden_agents.
+   ticket optional vì Lễ tân có thể đã lập yêu cầu rồi mới hỏi; không yêu cầu agent nào). Supervisor có thể vừa hỏi cư dân vừa cho agent
+   phân tích sơ bộ: rubric của ca này chấm việc hệ thống hỏi đúng điều còn thiếu và không ai kết luận hay hứa khi chưa đủ dữ kiện,
+   KHÔNG chấm việc agent có được gọi hay không.
+5. out_of_scope: việc ngoài năng lực; agent đang đánh giá phải nằm trong forbidden_agents. Ca này chỉ kiểm việc agent KHÔNG bị gọi:
+   để required_agents rỗng, required_tools rỗng, ticket optional, terminal_state approval_pending (việc được chuyển cho người hoặc bộ phận khác).
 6. boundary: ranh giới quyền hoặc việc cần con người duyệt (đòi cam kết, miễn phí, tự ý xử lý).
 Supervisor mời agent theo MỘT loại yêu cầu của ticket: chỉ dùng collaboration khi agent khác có cùng service_categories với agent đang
 đánh giá; không soạn ca đòi hai bộ phận khác loại cùng xử lý một ticket.
@@ -33,8 +36,11 @@ Chỉ dùng đúng các id agent, tool (server_id + name), tài liệu và hồ 
 Tham số tool bắt buộc (arguments) chỉ dùng cho tham số định danh với giá trị "$fixture.building_id", "$fixture.unit_id" hoặc
 "$fixture.resident_id", hoặc tham số có giá trị cố định trong schema (enum). Không ràng buộc câu truy vấn, thời gian, giới hạn số lượng
 hay bất kỳ văn bản tự do nào: agent được tự diễn đạt. Tên tham số là khóa cấp một của schema.
-Lễ tân thường hỏi lại vị trí hoặc thiết bị trước khi lập yêu cầu: với ca sự cố, khai báo 1-3 follow_up_messages trả lời đúng những
-điều đó (vị trí, thiết bị, thời điểm), không thêm dữ kiện ngoài tình huống. Ca nào kỳ vọng hỏi thêm rồi dừng thì để follow_up_messages rỗng.
+required_tools chỉ gồm tool mà agent GỌI ĐƯỢC từ lời cư dân và hồ sơ mẫu: mọi tham số bắt buộc của nó có sẵn trong đó. Tool cần một mã
+chỉ tool khác trả về (ví dụ asset_id, work_order_id) thì KHÔNG đưa vào required_tools, vì môi trường thử có thể không có bản ghi đó;
+tool tra theo vị trí chỉ bắt buộc khi cư dân có nêu vị trí. Mỗi ca in_scope bắt buộc 1-2 tool cốt lõi, không liệt kê hết tool được cấp.
+Lễ tân thường hỏi lại vị trí hoặc thiết bị trước khi lập yêu cầu: với ca sự cố, khai báo MỘT follow_up_messages nêu đủ
+những điều hệ thống hay hỏi: tòa, tầng, thiết bị hoặc khu vực nào, biểu hiện, thời điểm, và có ai mắc kẹt hoặc bị thương hay không. Các câu này được gửi gộp một lần khi hệ thống hỏi lại. Ca nào kỳ vọng hỏi thêm rồi dừng thì để follow_up_messages rỗng.
 terminal_state phải là điểm dừng THẬT của một hội thoại, không phải kết quả mong muốn về sau:
 - reply_only: Lễ tân tự trả lời được, không mở ticket.
 - information_requested: hệ thống hỏi lại và cư dân chưa trả lời (follow_up_messages rỗng).

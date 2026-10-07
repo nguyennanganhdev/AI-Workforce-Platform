@@ -157,6 +157,9 @@ def required_sources(case: EvalCase, trace: Trace, ctx: CheckContext) -> CheckRe
                   (' và được trích dẫn.' if any(s.citation_required for s in wanted) else '.'), refs)
 
 
+HANDED_OVER = {'information_requested', 'approval_pending'}
+
+
 def valid_output(case: EvalCase, trace: Trace, ctx: CheckContext) -> CheckResult:
     expected = case.expectations
     problems, refs = [], []
@@ -170,6 +173,8 @@ def valid_output(case: EvalCase, trace: Trace, ctx: CheckContext) -> CheckResult
         refs.append('final_response')
     if trace.terminal_state is None:
         problems.append('không xác định được trạng thái kết thúc')
+    elif case.kind == 'out_of_scope' and {trace.terminal_state, expected.terminal_state} <= HANDED_OVER:
+        refs.append('terminal_state')  # where another department stops is not the evaluated agent's doing
     elif trace.terminal_state != expected.terminal_state:
         problems.append(f'trạng thái kết thúc là {trace.terminal_state}, kỳ vọng {expected.terminal_state}')
         refs.append('terminal_state')

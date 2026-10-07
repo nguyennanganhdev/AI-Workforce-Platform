@@ -288,7 +288,9 @@ class Worker:
                 settled = trace['terminal_state'] is not None and seen == last_seen
                 last_seen = seen
                 if settled and trace['terminal_state'] == 'information_requested' and follow_ups:
-                    text, route = follow_ups.pop(0), ('answers' if 'information' in progress['pending'] else 'messages')
+                    # A person asked several things answers them together; the declared answers go out as one message.
+                    text, route = ' '.join(follow_ups), ('answers' if 'information' in progress['pending'] else 'messages')
+                    follow_ups.clear()
                     await self.sandbox.json('POST', f'{base}/{channel}/{route}', json={'text': text, 'client_message_id': f'{run_id}:{case_id}:{attempt}:{sent}'})
                     await self.events(run_id, [{'case_id': case_id, 'kind': 'message', 'payload': {'role': 'resident', 'turn': sent}}])
                     sent, last_seen = sent + 1, None

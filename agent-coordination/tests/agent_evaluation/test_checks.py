@@ -121,3 +121,14 @@ def test_a_tool_that_found_nothing_still_answered():
 def test_an_agent_only_invited_into_the_room_did_not_take_part():
     invited = trace(routing=[{'id': 'r1', 'selected_agent_ids': ['copy-target', 'copy-other']}])
     assert run_checks(case(), invited, CTX)['forbidden_agents'].passed
+
+
+def test_an_out_of_scope_case_may_stop_wherever_the_other_department_stops():
+    elsewhere = case()
+    elsewhere.kind = 'out_of_scope'
+    elsewhere.expectations.terminal_state = 'approval_pending'
+    assert run_checks(elsewhere, trace(terminal_state='information_requested'), CTX)['valid_output'].passed
+    assert not run_checks(elsewhere, trace(terminal_state='reply_only'), CTX)['valid_output'].passed
+    own = case()
+    own.expectations.terminal_state = 'approval_pending'
+    assert not run_checks(own, trace(terminal_state='information_requested'), CTX)['valid_output'].passed

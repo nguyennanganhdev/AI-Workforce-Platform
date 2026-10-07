@@ -2,12 +2,12 @@
 
 Cập nhật 07/10/2026. Bản này thay bản kế hoạch ban đầu. Mục 1 ghi những chỗ đã sửa và lý do. Mục 2–5 mô tả hệ thống đã viết. Mục 6 là cách vận hành. Mục 7 nêu những gì chưa kiểm chứng.
 
-Các quyết định đã chốt vẫn giữ nguyên, trừ điểm cô lập ở mục 1.1:
+Các quyết định đã chốt vẫn giữ nguyên, trừ điểm cô lập ở mục 1.1 và quy tắc đạt (người phụ trách đổi ngày 07/10/2026: 6 ca tự sinh, đạt từ 4 ca):
 
-- Mỗi bộ có đúng 4 ca.
+- Mỗi bộ có đúng 6 ca, mặc định do model sinh; BQL bấm một nút để sinh, duyệt và chạy.
 - Đánh giá có ba lớp: 9 nhóm kiểm tra bằng code, LLM-as-judge với 4 tiêu chí chấm từ 1 đến 5, và metric thư viện.
 - Một ca đạt khi đạt đồng thời cả ba lớp. Lớp này không bù được cho lớp kia.
-- Bộ đạt khi cả 4 ca đạt.
+- Bộ đạt khi cả 6 ca đều có kết quả và ít nhất 4 ca đạt (`contracts.SUITE_SIZE`, `PASS_MINIMUM`).
 - Eval đạt không tự phát hành agent.
 
 ## 1. Những chỗ đã sửa so với bản kế hoạch
@@ -60,7 +60,7 @@ Ngưỡng Ragas chưa được hiệu chỉnh cho tiếng Việt. Nếu bắt bu
 Khi tenant đã có môi trường eval ở trạng thái `ready`, BQL chỉ phát hành được review gắn với một run V1 thỏa cả ba điều kiện:
 
 - run đã hoàn tất;
-- đạt 4/4;
+- đạt ít nhất 4/6;
 - `configuration_hash` khớp cấu hình đang xét.
 
 Trước khi có sandbox, luồng 6 câu cũ vẫn là bằng chứng hợp lệ, để không đơn vị nào bị khóa phát hành. Admin vẫn duyệt và thu hồi như hiện nay.
@@ -74,7 +74,7 @@ Trước khi có sandbox, luồng 6 câu cũ vẫn là bằng chứng hợp lệ
 
 ### 1.8. Rủi ro cần ghi rõ
 
-- **4 ca chạy một lần là một mẫu.** Agent kỹ thuật từng đạt bộ 10 ca chỉ 4/7 lần chạy trên `gpt-5.4-mini`. Một lần "rớt" có thể do model dao động. Báo cáo độ ổn định (chạy lặp) để ở mục phát triển thêm.
+- **6 ca chạy một lần là một mẫu.** Agent kỹ thuật từng đạt bộ 10 ca chỉ 4/7 lần chạy trên `gpt-5.4-mini`. Một lần "rớt" có thể do model dao động. Báo cáo độ ổn định (chạy lặp) để ở mục phát triển thêm.
 - **Trạng thái kết thúc dựa trên dữ liệu ghi lại.** Có hai heuristic, được ghi trong `v3_agent_eval_sandbox.build_trace`:
   - Lễ tân trả lời kết thúc bằng dấu "?" được tính là `information_requested`.
   - Phiên Supervisor đang chờ BQL được tính là `approval_pending`.
@@ -82,14 +82,14 @@ Trước khi có sandbox, luồng 6 câu cũ vẫn là bằng chứng hợp lệ
 
 ## 2. Luồng
 
-1. **BQL soạn bộ ca** ở bước "Thử" trong trang Agent: sinh 4 ca (`POST /eval-suites mode=generate`) hoặc tự soạn.
+1. **BQL soạn bộ ca** ở bước "Thử" trong trang Agent: sinh 6 ca (`POST /eval-suites mode=generate`) hoặc tự soạn.
    - Ngữ cảnh sinh ca gồm nhiệm vụ, tool được cấp, các agent đã phát hành cùng phòng, tài liệu và hồ sơ mẫu của sandbox. **Ngữ cảnh này không chứa chỉ dẫn chi tiết của agent**, và dịch vụ sinh ca từ chối nếu có.
 2. **API kiểm bộ ca.** Bộ ca phải có:
-   - đúng 4 ca, tên khác nhau;
+   - đúng 6 ca, tên khác nhau;
    - id agent, tool, tài liệu và hồ sơ đều có thật trong phạm vi;
    - không có kỳ vọng vừa bắt buộc vừa cấm;
    - ca `in_scope` yêu cầu agent đang đánh giá, ca `out_of_scope` cấm agent đó, ca `collaboration` yêu cầu ít nhất 2 agent;
-   - có ít nhất một ca `in_scope` và một ca `out_of_scope`. Thiếu một trong hai thì bộ 4 ca có thể đạt mà không chứng minh agent làm được việc của mình, cũng như không nhận việc của người khác.
+   - có ít nhất một ca `in_scope` và một ca `out_of_scope`. Thiếu một trong hai thì bộ ca có thể đạt mà không chứng minh agent làm được việc của mình, cũng như không nhận việc của người khác.
 
    Lỗi được lưu vào `problems`. Id do model bịa ra bị báo lỗi, không bị thay thế âm thầm.
 3. **Duyệt bộ ca.** Bộ đã duyệt không sửa được, nhờ cả API lẫn trigger trong database. Muốn đổi thì tạo bản mới.
@@ -103,13 +103,13 @@ Trước khi có sandbox, luồng 6 câu cũ vẫn là bằng chứng hợp lệ
    2. Kiểm cô lập môi trường trước khi cài và trước mỗi ca.
    3. Cài bản sao agent làm specialist duy nhất được phát hành trong phòng sandbox.
    4. Mở hội thoại bằng hồ sơ cư dân mẫu, qua chính hàm route resident của production. Lễ tân, Supervisor và specialist chạy như production.
-   5. Chỉ gửi câu trả lời bổ sung đã khai báo, và chỉ khi hệ thống hỏi lại.
-   6. Chờ trạng thái ổn định qua hai lần đọc liên tiếp, hoặc tới timeout 5 phút.
+   5. Chỉ gửi câu trả lời bổ sung đã khai báo, và chỉ khi hệ thống hỏi lại. Các câu đã khai báo được gửi gộp trong một tin, như một người trả lời đủ các điều được hỏi.
+   6. Chờ trạng thái ổn định qua hai lần đọc liên tiếp, hoặc tới timeout 5 phút. Ca gặp lỗi hạ tầng hoặc không có trạng thái kết thúc được chơi lại một lần trong hội thoại mới; lần đầu vẫn lưu trong `execution_refs.first_attempt`.
    7. Đóng phần việc của hội thoại: hủy ticket, phiên và mục chờ.
    8. Chạy 9 kiểm tra, judge và metric, rồi gửi kết quả.
 6. **API tự tính đạt/rớt** bằng chính `contracts.case_verdict`. Worker và trình duyệt không gửi được cờ `passed` (hợp đồng từ chối với `422`).
    - Bằng chứng judge trích phải tồn tại trong trace.
-   - Run đạt 4/4 sẽ tạo hoặc cập nhật review `pending` có `evaluation_run_id`. BQL phát hành ở bước 4.
+   - Run đạt từ 4/6 sẽ tạo hoặc cập nhật review `pending` có `evaluation_run_id`. BQL phát hành ở bước 4.
 7. **Lease hết hạn** thì run chuyển `interrupted` và không tự chạy lại. **Hủy** thì worker dừng ở nhịp heartbeat kế tiếp.
 
 ## 3. Ba lớp chấm
@@ -221,7 +221,24 @@ Sau khi đổi khóa model, ba lần chạy tiếp theo (5, 6 và lần của ag
 - Ở hai ca sự cố, Supervisor mời Agent Thang máy cùng Agent Kỹ thuật A2 và giao việc cho Agent Thang máy. Các ca này rớt vì lỗi của chính agent: một lần gọi `asset.read` sai tham số bắt buộc, và không gọi `sop_kb.retrieve`.
 - Ca "cửa thang bị cạy" được xếp vào danh mục an ninh, nên Agent Thang máy không được gọi.
 
-Cổng phát hành V1 đã được **tắt tạm** trên stack này (môi trường đặt về `disabled`, 07/10/2026 11:42) theo quyết định của người phụ trách: BQL phát hành bằng luồng 6 câu hỏi. Bật lại bằng cách đặt `vh_agent_eval_environments.status` về `ready`. Khi môi trường `disabled`, màn "Bộ 4 ca đánh giá" cũng ẩn và không khởi chạy được run.
+**Quy tắc 6 ca, đạt từ 4 (chiều 07/10/2026).** Sáu lượt chạy một chạm cho "Agent Thang máy" (sinh 6 ca, duyệt, chạy):
+
+| Lượt | Kết quả | Điều lộ ra và cách sửa |
+|---|---|---|
+| 1 | 0/6 | Agent gọi `asset.read` sai tham số; BQL bổ sung chỉ dẫn cho agent |
+| 2 | 1/6 | Giám khảo trừ điểm agent vì dữ kiện nằm trong kịch bản mà agent chưa từng nhận: giám khảo nay chỉ thấy điều thật sự được nói |
+| 3 | Hủy | Supervisor tạm dừng với lý do dài hơn 200 ký tự, API từ chối nên phiên treo (`ebaf343` sửa; sandbox phải chạy bản có commit này) |
+| 4 | 2/6 | Ca bắt buộc `maintenance_history.read`, tool cần `asset_id` mà nền tảng chưa có bảng thiết bị nên không bao giờ gọi được: bộ sinh ca nay chỉ bắt buộc tool gọi được từ lời cư dân và hồ sơ mẫu |
+| 5 | 3/6 | Ca ngoài năng lực rớt vì bộ phận khác dừng ở bước hỏi lại; ca thiếu thông tin rớt vì rubric đòi "chưa gọi agent" trái cách Supervisor vận hành. Cả hai đã sửa. Ca còn lại là thiếu sót thật của agent, BQL bổ sung chỉ dẫn |
+| 6 | **4/6, đạt** | Run `5ea84090…` tạo review `pending`; BQL phát hành ở bước 4. Hai ca rớt vì dừng ở bước hỏi lại thay vì chờ duyệt (bộ ca lần này không khai báo câu trả lời bổ sung) |
+
+Những điều còn đúng sau lượt 6:
+
+- Nền tảng chưa có bảng thiết bị và lịch sử bảo trì: `asset.read` luôn trả "không tìm thấy". Kho SOP của sandbox rỗng. Agent đạt nhờ nói đúng là chưa có dữ liệu, không phải nhờ tra được dữ liệu.
+- Ở vài ca, bản phân tích của agent viết "chưa rõ có ai mắc kẹt" dù cư dân đã trả lời Supervisor. Cần đội Supervisor kiểm tra câu trả lời của cư dân có tới agent hay không.
+- Kết quả dao động theo bộ ca model sinh ra; một lượt là một mẫu.
+
+Cổng phát hành V1 đang **bật** trên stack này (môi trường `ready`) để BQL phát hành từ run đạt. Tắt bằng cách đặt `vh_agent_eval_environments.status` về `disabled`; khi đó màn đánh giá ẩn và BQL phát hành bằng luồng 6 câu hỏi cũ.
 
 ## 6. Vận hành
 
@@ -253,11 +270,11 @@ Cổng phát hành V1 đã được **tắt tạm** trên stack này (môi trư�
    - `EVAL_SANDBOX_URL=http://host.docker.internal:<cổng API sandbox>`
    - `EVAL_SANDBOX_TOKEN_FOR_WORKER`
    - `EVAL_MODEL`, hoặc đặt model mặc định cho vai trò `evaluator`.
-4. **Xác nhận:** worker tự đăng ký môi trường. Bước "Thử" trong trang Agent hiện "Bộ 4 ca đánh giá" thay cho 6 câu cũ.
+4. **Xác nhận:** worker tự đăng ký môi trường. Bước "Thử" trong trang Agent hiện nút "Tự sinh và chạy đánh giá" thay cho 6 câu cũ.
 
 ## 7. Chưa làm hoặc chưa kiểm chứng
 
-- **Chưa có lần chạy live nào đạt 4/4**, và bản sửa cuối chưa được xác nhận live. Xem mục 5.1.
+- **Mới có một lần chạy live đạt (4/6)**, sau sáu lượt. Độ ổn định qua nhiều lượt chưa đo. Xem mục 5.1.
 - **Chưa cài Ragas.** Chữ ký hàm đã đối chiếu với mã nguồn wheel 0.4.3, và đường gọi đã có test bằng scorer giả.
 - **Kho tri thức chưa tự đồng bộ vào sandbox.** Catalog tài liệu rỗng cho tới khi phát hành tri thức vào database sandbox.
 - **Trang Model của admin chưa có nhãn cho vai trò `evaluator`.** API đã nhận vai trò này; trong lúc chờ, dùng `EVAL_MODEL` của worker.
