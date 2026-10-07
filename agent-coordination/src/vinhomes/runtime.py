@@ -403,8 +403,10 @@ class Runtime:
                             endpoint=self.settings.openbot.endpoint, token=os.environ[self.settings.openbot.token_env],
                             invoke_tool=tool, model_config=snapshot.get('model_config'))
                     result.update(status='done', content=content[:20000])
-                except (AdapterError, ValueError, httpx.HTTPError, TimeoutError):
-                    log.warning('room agent turn failed: message=%s', message)
+                except (AdapterError, ValueError, httpx.HTTPError, TimeoutError) as error:
+                    # The reason, never the content: which step gave up decides what to fix.
+                    log.warning('room agent turn failed: message=%s reason=%s', message,
+                                getattr(error, 'code', None) or type(error).__name__)
             await self.store.put_once('room_mention_result', key, result)
         try:
             await outcome(result)

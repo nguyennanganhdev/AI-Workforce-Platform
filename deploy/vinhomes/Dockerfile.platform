@@ -5,7 +5,9 @@ COPY app/package.json ./app/package.json
 COPY server/package.json ./server/package.json
 COPY worker/package.json ./worker/package.json
 COPY resident-app/package.json ./resident-app/package.json
-RUN bun install --frozen-lockfile --production
+# A tarball that arrives damaged fails the whole install. The package cache is kept between builds and the
+# install is repeated, so each try only fetches what is still missing.
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile --production || bun install --frozen-lockfile --production || bun install --frozen-lockfile --production
 COPY agent-factory/package.json agent-factory/bun.lock ./agent-factory/
 RUN cd agent-factory && bun install --frozen-lockfile --production --ignore-scripts
 COPY server/src ./server/src

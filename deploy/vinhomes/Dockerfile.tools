@@ -5,7 +5,9 @@ COPY app/package.json ./app/package.json
 COPY server/package.json ./server/package.json
 COPY worker/package.json ./worker/package.json
 COPY resident-app/package.json ./resident-app/package.json
-RUN bun install --frozen-lockfile --production
+# A tarball that arrives damaged fails the whole install. The package cache is kept between builds and the
+# install is repeated, so each try only fetches what is still missing.
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile --production || bun install --frozen-lockfile --production || bun install --frozen-lockfile --production
 COPY server/src ./server/src
 COPY shared ./shared
 # What the upgrade job needs: the migrations, the migrator and the grants of the two runtime roles.

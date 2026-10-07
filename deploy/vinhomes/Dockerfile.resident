@@ -6,7 +6,9 @@ COPY app/package.json ./app/package.json
 COPY server/package.json ./server/package.json
 COPY worker/package.json ./worker/package.json
 COPY resident-app/package.json ./resident-app/package.json
-RUN bun install --frozen-lockfile
+# A tarball that arrives damaged fails the whole install. The package cache is kept between builds and the
+# install is repeated, so each try only fetches what is still missing.
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lockfile || bun install --frozen-lockfile || bun install --frozen-lockfile
 COPY resident-app ./resident-app
 COPY shared ./shared
 ENV VITE_ALLOW_DEMO_BACKEND=false VITE_ENABLE_UI_PREVIEW=false
