@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { ResolvedIdentity, TenantTransaction } from "../technical-tools";
+import { cleaningTechnicalTools } from "../cleaning-tools";
 import { technicalTools } from "../technical-tools";
 import { rows } from "./database";
 
@@ -91,16 +92,24 @@ export async function sessionRun(
   if (!run?.management_unit_id) return null;
   const configured: unknown =
     typeof run.tools === "string" ? JSON.parse(run.tools) : run.tools;
+  // A tool counts only under the server it is registered with: Team Quang's technical tools,
+  // or Team Hoàng's cleaning counterparts of them.
   const granted = new Set(
-    (Array.isArray(configured) ? configured : []).filter((tool) => tool?.server_id === "technical-tools").map(
-      (tool: { name?: unknown }) => String(tool?.name ?? ""),
+    (Array.isArray(configured) ? configured : []).map(
+      (tool: { server_id?: unknown; name?: unknown }) =>
+        `${String(tool?.server_id ?? "")}/${String(tool?.name ?? "")}`,
     ),
   );
   const capabilities = [
     ...new Set(
-      technicalTools
-        .filter((tool) => granted.has(tool.name))
-        .map((tool) => tool.capability),
+      [
+        ...technicalTools.filter((tool) =>
+          granted.has(`technical-tools/${tool.name}`),
+        ),
+        ...cleaningTechnicalTools.filter((tool) =>
+          granted.has(`cleaning-tools/${tool.name}`),
+        ),
+      ].map((tool) => tool.capability),
     ),
   ];
   if (!capabilities.length) return null;

@@ -92,6 +92,8 @@ SECURITY = {
     'security.camera.read': ('Tra cứu danh mục camera; không mở luồng hình ảnh hay điều khiển thiết bị.', cameras),
     'security.contact.read': ('Tra cứu đầu mối khẩn cấp trong tòa nhà được giao; không gửi cảnh báo.', contacts),
 }
+# Served by the Bun tool host: Team Quang's technical tools and Team Hoàng's cleaning counterparts of them.
+TOOL_HOST_SERVERS = ('technical-tools', 'cleaning-tools')
 
 
 def catalogue():
@@ -222,7 +224,7 @@ async def call(body: Call, request: Request, db: Scope):
             result = {'outcome': 'success', 'data': jsonable_encoder(payload), 'limitations': ['Camera catalogue only; live device feeds are not connected.']}
         elif grant['server_id'] == 'knowledge' and body.tool == agent_knowledge.NAME:
             result = await agent_knowledge.search(db, run, body.arguments, request.app.state.settings.coordination_service_token or '')
-        elif grant['server_id'] == 'technical-tools':
+        elif grant['server_id'] in TOOL_HOST_SERVERS:
             url, token = os.getenv('VINHOMES_API_TECHNICAL_TOOLS_URL', '').rstrip('/'), os.getenv('VINHOMES_API_TECHNICAL_TOOLS_TOKEN', '')
             if not url or len(token) < 32:
                 raise HTTPException(503, 'Technical tool host unavailable')
@@ -261,7 +263,7 @@ async def call(body: Call, request: Request, db: Scope):
         else:
             raise HTTPException(403, 'Tool server not bound to this gateway')
         status = 'OK' if result.get('outcome') != 'failure' else 'TOOL_ERROR'
-        if grant['server_id'] == 'technical-tools':
+        if grant['server_id'] in TOOL_HOST_SERVERS:
             status = result.get('status', 'TOOL_ERROR')
         if withheld:
             status = 'ARGUMENTS_WITHHELD'

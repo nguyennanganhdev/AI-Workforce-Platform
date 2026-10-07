@@ -1,8 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { authoriseAgentCall, readRunAssertion } from "../agents/callback-token";
+import {
+  type CleaningDependencies,
+  type CleaningTool,
+  cleaningTechnicalTools,
+  createDbCleaningWorkOrderCheck,
+} from "../cleaning-tools";
 import type { Database } from "../db/client";
 import { createTechnicalToolHost } from "../technical-tools";
+import type { TechnicalTool, ToolDependencies } from "../technical-tools/tool";
+import { forbidden } from "../technical-tools/tools/outcomes";
 import { responseEnvelopeSchema } from "../technical-tools/contracts/envelope";
 import type {
   ResolvedIdentity,
@@ -30,6 +38,11 @@ export function createTechnicalApiDependencies(
   options: TechnicalApiOptions,
 ): TechnicalApiDependencies & {
   sessionCaller(runId: string): Promise<VerifiedTechnicalCaller | null>;
+  call(
+    caller: VerifiedTechnicalCaller,
+    tool: TechnicalTool | CleaningTool,
+    args: Record<string, unknown>,
+  ): Promise<ResponseEnvelope>;
 } {
   const { database, tenantId } = options;
   async function scoped<T>(
@@ -124,6 +137,33 @@ export function createTechnicalApiDependencies(
         capability: g.capability,
         scope_ids: [g.scope_id],
       })),
+    };
+  }
+  /**
+   * What Team Hoàng's cleaning counterparts need besides the technical ports. A work order counts
+   * as cleaning by its category in this database. No vendor specialty is trusted as cleaning yet,
+   * and their work-order operations are not served to sessions, so both stay closed.
+   */
+  function cleaningDependencies(
+    tx: TenantTransaction,
+    dependencies: ToolDependencies,
+  ): CleaningDependencies {
+    const inThisTransaction = <T>(
+      tenant: string,
+      work: (tx: TenantTransaction) => Promise<T>,
+    ) => {
+      if (tenant !== tenantId) throw new Error("Tenant mismatch");
+      return work(tx);
+    };
+    return {
+      ...dependencies,
+      isCleaningWorkOrder: createDbCleaningWorkOrderCheck({
+        kind: "tenant-session",
+        read: inThisTransaction,
+        write: inThisTransaction,
+      }),
+      isCleaningSpecialty: async () => false,
+      operations: { execute: async () => forbidden() },
     };
   }
   async function audit(tx: TenantTransaction, metadata: unknown) {
@@ -247,10 +287,19 @@ export function createTechnicalApiDependencies(
               },
             },
           });
-          const tracked = {
+          const cleaning = cleaningTechnicalTools.includes(tool as CleaningTool)
+            ? (tool as CleaningTool)
+            : null;
+          const tracked: TechnicalTool = {
             ...tool,
-            run: (...params: Parameters<typeof tool.run>) => {
-              const work = tool.run(...params);
+            run: (context, input, dependencies) => {
+              const work = cleaning
+                ? cleaning.run(
+                    context,
+                    input,
+                    cleaningDependencies(tx, dependencies),
+                  )
+                : (tool as TechnicalTool).run(context, input, dependencies);
               running = work;
               return work;
             },
