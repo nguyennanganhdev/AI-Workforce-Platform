@@ -4,8 +4,8 @@ The source API runs on the module's migrated database; the sandbox API on a seco
 scripts/provision_eval_sandbox.py's own seed, with a role of its own. Only the judge model is stood in for,
 and Reception is the demo route's canned reply (no Reception or Supervisor runs here): the cases expect a
 plain reply. The first run finds the sandbox role able to reach the source database and ends unsafe; once
-CONNECT is revoked from PUBLIC on the source, the second run plays all four cases: three pass, and the in-scope
-case fails because no Supervisor routes to the agent here, so the run is no pass and nothing can be published.
+CONNECT is revoked from PUBLIC on the source, the second run plays all six cases: five pass, and the in-scope
+case fails because no Supervisor routes to the agent here. Four of six is the bar, so the run passes and BQL publishes.
 """
 import asyncio
 import importlib.util
@@ -152,7 +152,7 @@ def test_the_worker_runs_a_suite_end_to_end_and_only_an_isolated_sandbox_passes(
         listed = m.get(f'{ROOM}/{agent}/eval-suites').json()['environment']
         assert listed['ready'] and [f['fixture_profile_id'] for f in listed['fixtures']] == ['resident-a', 'resident-b', 'resident-c']
         cases = [case('Hỏi tiện ích', 'in_scope', agent), case('Hỏi lại', 'boundary', agent), case('Hỏi phí', 'boundary', agent),
-                 case('Ngoài phạm vi', 'out_of_scope', agent)]
+                 case('Ngoài phạm vi', 'out_of_scope', agent), case('Hỏi giờ', 'boundary', agent), case('Hỏi chỗ', 'boundary', agent)]
         suite = m.post(f'{ROOM}/{agent}/eval-suites', json={'configuration_hash': configuration, 'mode': 'manual', 'cases': cases}).json()
         assert suite['problems'] == [], suite
         suite = m.post(f"{ROOM}/{agent}/eval-suites/{suite['id']}/approve", json={'version': suite['version']}).json()
@@ -172,14 +172,18 @@ def test_the_worker_runs_a_suite_end_to_end_and_only_an_isolated_sandbox_passes(
         report = evaluate('e2e-2')
         assert report['status'] == 'completed', report
         # No Supervisor runs here, so the in-scope case never sees the agent take part: it fails on the code check,
-        # however well the judge scored the reply. The other three pass.
-        assert [c['status'] for c in report['cases']] == ['failed', 'passed', 'passed', 'passed'],             [(c['status'], c['failure_layers'], c['error']) for c in report['cases']]
+        # however well the judge scored the reply. The other five pass.
+        statuses = [(c['status'], c['failure_layers'], c['error']) for c in report['cases']]
+        assert [s[0] for s in statuses] == ['failed', 'passed', 'passed', 'passed', 'passed', 'passed'], statuses
         first = report['cases'][0]
         assert first['checks']['required_agents']['passed'] is False and first['judge']['status'] == 'scored'
         assert first['failure_layers'] == [{'layer': 'code', 'kind': 'failed', 'detail': 'required_agents'}]
         assert first['terminal_state'] == 'reply_only' and first['environment']['safe'] is True
         assert first['trace']['context']['tenant_id'] == str(sandbox_db['tenant'])
-        assert report['passed'] is False and report['summary']['passed'] == 3
+        # Five of six passed: the run passes although one case failed, and that failure stays in the report.
+        assert report['passed'] is True and report['summary']['passed'] == 5 and report['summary']['failed'] == 1
         assert sql(database, 'select count(*) as n from vh_agent_eval_events where run_id=$1', UUID(report['id']))[0]['n'] > 0
-        # 3/4 is not a pass: no review is opened, so there is nothing BQL could publish.
-        assert sql(database, "select id from vh_agent_reviews where agent_id=$1", agent) == []
+        review = sql(database, "select id,version from vh_agent_reviews where agent_id=$1 and status='pending'", agent)[0]
+        published = m.post(f"/rooms/management-room/agent-reviews/{review['id']}/decision",
+                           json={'decision': 'approve', 'version': review['version'], 'note': 'Đạt 5/6 trong sandbox'})
+        assert published.status_code == 200, published.text

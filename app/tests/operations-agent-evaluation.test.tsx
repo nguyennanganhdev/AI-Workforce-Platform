@@ -25,7 +25,14 @@ const CHECKS = Object.fromEntries(["required_agents", "forbidden_agents", "requi
 function backend(ready: boolean, sent: { url: string; body: unknown }[]) {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost").pathname;
-    if (init?.method === "POST") { sent.push({ url, body: JSON.parse(String(init.body ?? "null")) }); return Response.json({ runId: "run-1", status: "queued" }, { status: 202 }); }
+    if (init?.method === "POST") {
+      sent.push({ url, body: JSON.parse(String(init.body ?? "null")) });
+      const suite = { id: "suite-9", revision: 3, version: url.endsWith("/approve") ? 1 : 0, problems: [], configuration_hash: HASH,
+        suite_hash: null, created_at: "2026-10-07T00:00:00Z", cases: [1, 2, 3, 4, 5, 6].map(kase) };
+      if (url.endsWith("/eval-suites")) return Response.json({ ...suite, status: "draft" }, { status: 201 });
+      if (url.endsWith("/approve")) return Response.json({ ...suite, status: "approved" });
+      return Response.json({ runId: "run-1", status: "queued" }, { status: 202 });
+    }
     if (url.endsWith("/rooms")) return Response.json({ items: [{ id: "room-1", name: "Ban quản lý Sapphire" }] });
     if (url.endsWith("/connections") || url.endsWith("/models")) return Response.json({ items: [], canManage: true });
     if (url.endsWith("/routines")) return Response.json({ items: [], timezone: "Asia/Ho_Chi_Minh" });
@@ -62,16 +69,16 @@ async function open(ready: boolean, sent: { url: string; body: unknown }[]) {
   return view;
 }
 
-test("with a sandbox, management runs the approved four cases and reads the report summary first", async () => {
+test("with a sandbox, management runs the approved cases and reads the report summary first", async () => {
   const sent: { url: string; body: unknown }[] = [];
   const view = await open(true, sent);
-  expect(await view.findByText("Bộ 4 ca đánh giá")).toBeTruthy();
+  expect(await view.findByText("Bộ 6 ca đánh giá")).toBeTruthy();
   expect(view.queryByText("Bộ câu hỏi thử")).toBeNull();
   fireEvent.click(view.getByRole("button", { name: "Chạy đánh giá" }));
   await waitFor(() => expect(sent.at(-1)?.url).toBe("/api/business/rooms/room-1/agents/a1/eval-runs"));
   expect(sent.at(-1)?.body).toMatchObject({ suite_id: "suite-1", configuration_hash: HASH });
   expect(await view.findByText("Kết quả đánh giá")).toBeTruthy();
-  expect(await view.findByText(/3\/4 ca đạt/)).toBeTruthy();
+  expect(await view.findByText(/3\/6 ca đạt \(cần 4\)/)).toBeTruthy();
   expect(view.getByText("Chưa đạt")).toBeTruthy();
   expect(view.getByText(/Lỗi chính: Kiểm tra bằng code/)).toBeTruthy();
   expect(view.getAllByText("Không lộ thông tin nội bộ").length).toBeGreaterThan(0);
@@ -88,5 +95,16 @@ test("with a sandbox, management runs the approved four cases and reads the repo
 test("without a sandbox the earlier six-question evaluation is still offered", async () => {
   const view = await open(false, []);
   expect(await view.findByText("Bộ câu hỏi thử")).toBeTruthy();
-  expect(view.queryByText("Bộ 4 ca đánh giá")).toBeNull();
+  expect(view.queryByText("Bộ 6 ca đánh giá")).toBeNull();
+});
+
+test("one touch writes the six cases, approves them and starts the run", async () => {
+  const sent: { url: string; body: unknown }[] = [];
+  const view = await open(true, sent);
+  fireEvent.click(await view.findByRole("button", { name: "Tự sinh và chạy đánh giá" }));
+  await waitFor(() => expect(sent.map(s => s.url.split("/a1/")[1])).toEqual(["eval-suites", "eval-suites/suite-9/approve", "eval-runs"]));
+  expect(sent[0]!.body).toEqual({ configuration_hash: HASH, mode: "generate" });
+  expect(sent[1]!.body).toEqual({ version: 0 });
+  expect(sent[2]!.body).toMatchObject({ suite_id: "suite-9", configuration_hash: HASH });
+  expect(await view.findByText("Kết quả đánh giá")).toBeTruthy();
 });

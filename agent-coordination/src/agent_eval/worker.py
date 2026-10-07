@@ -1,4 +1,4 @@
-"""The evaluation worker: claims a run from the business API and plays its four cases in the sandbox stack.
+"""The evaluation worker: claims a run from the business API and plays its six cases in the sandbox stack.
 
 One run at a time, under the API's lease (heartbeat every 15 s). Before the first case and before every
 case the sandbox attests whose database it is; a sandbox that can reach the source database, or answers

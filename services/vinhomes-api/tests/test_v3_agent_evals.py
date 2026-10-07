@@ -41,7 +41,8 @@ def case(name, kind='in_scope', **expectations):
 def suite_for(agent):
     return [case('Chính', required_agents=[agent], required_tools=[TOOL]), case('Thiếu tin', required_agents=[agent]),
             case('Ngoài phạm vi', 'out_of_scope', forbidden_agents=[agent], terminal_state='reply_only'),
-            case('Ranh giới', 'boundary', forbidden_tools=[])]
+            case('Ranh giới', 'boundary', forbidden_tools=[]), case('Hỏi lại', 'boundary', terminal_state='information_requested'),
+            case('Đòi cam kết', 'boundary')]
 
 
 def draft(management, name):
@@ -105,9 +106,9 @@ def test_suite_run_verdict_and_publication(database, monkeypatch):
         # A draft of three cases is kept, with the reason it cannot be approved yet.
         short = m.post(f'{ROOM}/{agent}/eval-suites', json={'configuration_hash': configuration, 'mode': 'manual',
                                                             'cases': suite_for(agent)[:3]}).json()
-        assert any('4 ca' in p for p in short['problems'])
+        assert any('6 ca' in p for p in short['problems'])
         assert m.post(f"{ROOM}/{agent}/eval-suites/{short['id']}/approve", json={'version': short['version']}).status_code == 422
-        wrong = [*suite_for(agent)[:3], case('Bịa', required_agents=['ghost-agent'])]
+        wrong = [*suite_for(agent)[:5], case('Bịa', required_agents=['ghost-agent'])]
         edited = m.put(f"{ROOM}/{agent}/eval-suites/{short['id']}", json={'version': short['version'], 'cases': wrong}).json()
         assert any('ghost-agent' in p for p in edited['problems'])
         assert m.put(f"{ROOM}/{agent}/eval-suites/{short['id']}", json={'version': short['version'], 'cases': suite_for(agent)}).status_code == 409
@@ -133,7 +134,7 @@ def test_suite_run_verdict_and_publication(database, monkeypatch):
 
         # The worker claims under a lease; another worker cannot write into it.
         claimed = m.post(INTERNAL + '/runs/claim', headers=WORKER, json={'worker': 'w1'}).json()
-        assert claimed['run']['id'] == run and len(claimed['cases']) == 4
+        assert claimed['run']['id'] == run and len(claimed['cases']) == 6
         assert m.post(INTERNAL + '/runs/claim', headers=WORKER, json={'worker': 'w2'}).json() == {'run': None}
         assert m.post(f'{INTERNAL}/runs/{run}/heartbeat', headers=WORKER, json={'worker': 'w2'}).status_code == 409
         assert m.post(f'{INTERNAL}/runs/{run}/heartbeat', headers=WORKER, json={'worker': 'w1'}).json() == {'status': 'running'}
@@ -151,19 +152,28 @@ def test_suite_run_verdict_and_publication(database, monkeypatch):
         invented = submit(m, run, ids[3], judge={**judge(), 'criteria': {**judge()['criteria'], 'bam_nguon': {
             'score': 5, 'reason': 'ok', 'evidence_refs': ['m-404']}}}).json()
         assert invented['status'] == 'error'
+        assert submit(m, run, ids[4], checks=checks(False)).json()['status'] == 'failed'
+        assert submit(m, run, ids[5], checks=checks(False)).json()['status'] == 'failed'
         finished = m.post(f'{INTERNAL}/runs/{run}/finish', headers=WORKER, json={'worker': 'w1'}).json()
         assert finished == {'status': 'completed', 'passed': False, 'reviewId': None}
         report = m.get(f'{ROOM}/{agent}/eval-runs/{run}').json()
-        assert [c['status'] for c in report['cases']] == ['passed', 'failed', 'error', 'error'] and report['passed'] is False
+        assert [c['status'] for c in report['cases']] == ['passed', 'failed', 'error', 'error', 'failed', 'failed'] and report['passed'] is False
         assert report['summary']['failure_layers'] == ['code', 'execution']
         assert report['cases'][3]['error']['code'] == 'unknown_evidence'
 
-        # A second run passes all four: it becomes the pending review's evidence, and only then can BQL publish.
-        second = m.post(f'{ROOM}/{agent}/eval-runs', json={**start, 'request_id': 'r3'}).json()['runId']
+        # Four passes with two cases not played yet is no result at all.
+        early = m.post(f'{ROOM}/{agent}/eval-runs', json={**start, 'request_id': 'r3'}).json()['runId']
         claimed = m.post(INTERNAL + '/runs/claim', headers=WORKER, json={'worker': 'w1'}).json()
-        for c in claimed['cases']:
-            assert submit(m, second, c['id']).json()['status'] == 'passed'
+        for c in claimed['cases'][:4]:
+            assert submit(m, early, c['id']).json()['status'] == 'passed'
+        assert m.post(f'{INTERNAL}/runs/{early}/finish', headers=WORKER, json={'worker': 'w1'}).json() == {'status': 'failed', 'passed': None}
+        # Exactly four of six passed is a pass: it becomes the pending review's evidence, and only then can BQL publish.
+        second = m.post(f'{ROOM}/{agent}/eval-runs', json={**start, 'request_id': 'r4'}).json()['runId']
+        claimed = m.post(INTERNAL + '/runs/claim', headers=WORKER, json={'worker': 'w1'}).json()
+        for n, c in enumerate(claimed['cases']):
+            submit(m, second, c['id'], **({} if n < 4 else {'judge': judge(3)}))
         done = m.post(f'{INTERNAL}/runs/{second}/finish', headers=WORKER, json={'worker': 'w1'}).json()
+        assert m.get(f'{ROOM}/{agent}/eval-runs/{second}').json()['summary']['passed'] == 4
         assert done['passed'] is True and done['reviewId']
         review = sql(database, 'select id,version,evaluation_run_id from vh_agent_reviews where id=$1', UUID(done['reviewId']))[0]
         assert str(review['evaluation_run_id']) == second
@@ -204,7 +214,7 @@ def test_generation_sees_what_the_agent_may_do_never_its_instructions(database, 
         agent, configuration = draft(m, 'Gen ' + uuid4().hex[:6])
         suite = m.post(f'{ROOM}/{agent}/eval-suites', json={'configuration_hash': configuration, 'mode': 'generate'})
         assert suite.status_code == 201, suite.text
-        assert [c['source'] for c in suite.json()['cases']] == ['generated'] * 4 and suite.json()['problems'] == []
+        assert [c['source'] for c in suite.json()['cases']] == ['generated'] * 6 and suite.json()['problems'] == []
     context = sent[0]['context']
     assert 'Chỉ dẫn bí mật' not in json.dumps(sent[0], ensure_ascii=False)
     assert context['fixtures'] == CATALOG['fixtures'] and context['agent']['tools'][0]['name'] == TOOL['name']
@@ -269,7 +279,7 @@ def test_a_published_agent_the_sandbox_cannot_reproduce_is_left_out_by_name_not_
         agent, configuration = draft(m, 'Beside stale ' + uuid4().hex[:6])
         # A case cannot name the agent that will not be in the sandbox.
         named = m.post(f'{ROOM}/{agent}/eval-suites', json={'configuration_hash': configuration, 'mode': 'manual', 'cases': [
-            *suite_for(agent)[:3], case('Phối hợp', 'collaboration', required_agents=[agent, stale])]}).json()
+            *suite_for(agent)[:5], case('Phối hợp', 'collaboration', required_agents=[agent, stale])]}).json()
         assert any(stale in p for p in named['problems'])
         suite = approved_suite(m, agent, configuration)
         run = m.post(f'{ROOM}/{agent}/eval-runs', json={'suite_id': suite['id'], 'configuration_hash': configuration, 'request_id': 'stale'})

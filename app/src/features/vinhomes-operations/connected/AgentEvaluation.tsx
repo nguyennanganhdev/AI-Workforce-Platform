@@ -18,6 +18,8 @@ export function useEvaluationSandbox(roomId: string, agentId: string) {
   return suites.data?.environment?.ready === true;
 }
 
+/** Six cases a run, four of them to pass: the server's rule (agent_eval/contracts.py), repeated here for the wording. */
+const SUITE_SIZE = 6, PASS_MINIMUM = 4;
 const KINDS = [{ value: "in_scope", label: "Trong năng lực" }, { value: "out_of_scope", label: "Ngoài năng lực" },
   { value: "collaboration", label: "Phối hợp" }, { value: "boundary", label: "Ranh giới quyền / cần duyệt" }];
 const TERMINALS: { value: Terminal; label: string }[] = [{ value: "reply_only", label: "Chỉ trả lời" }, { value: "information_requested", label: "Hỏi thêm cư dân" },
@@ -35,7 +37,7 @@ const CASE_STATUS: Record<CaseResult["status"], [string, "ok" | "wait" | "danger
   passed: ["Đạt", "ok"], failed: ["Rớt", "danger"], error: ["Lỗi", "danger"] };
 
 function blank(n: number, fixture: string): EvalCase {
-  return { name: `Ca ${n}`, kind: n === 3 ? "out_of_scope" : n === 4 ? "boundary" : "in_scope", source: "manual",
+  return { name: `Ca ${n}`, kind: n === 5 ? "out_of_scope" : n === 4 || n === 6 ? "boundary" : "in_scope", source: "manual",
     input: { message: "", follow_up_messages: [], fixture_profile_id: fixture },
     expectations: { required_agents: [], forbidden_agents: [], required_tools: [], forbidden_tools: [], required_sources: [], ticket: "optional", terminal_state: "reply_only" },
     rubric: { score1_description: "", score2_description: "", score3_description: "", score4_description: "", score5_description: "" } };
@@ -110,18 +112,31 @@ export function EvaluationSuite({ roomId, agent, catalogue, canEdit, onStarted }
     if (!suite) return;
     try { await start.mutateAsync({ suite_id: suite.id, configuration_hash: agent.configurationHash, request_id: requestId }); setRequestId(crypto.randomUUID()); onStarted(); } catch { /* shown below */ }
   }
+  /** One touch: the model writes the six cases, they are approved as written and the run starts.
+   * A suite the server finds a problem in stops here as a draft, for a person to correct. */
+  async function auto() {
+    try {
+      const made = await prepare.mutateAsync({ configuration_hash: agent.configurationHash, mode: "generate" });
+      if (made.problems.length > 0) return;
+      const approved = await approve.mutateAsync({ suiteId: made.id, version: made.version });
+      await start.mutateAsync({ suite_id: approved.id, configuration_hash: agent.configurationHash, request_id: requestId });
+      setRequestId(crypto.randomUUID()); onStarted();
+    } catch { /* shown below */ }
+  }
   return <div className="agent-evaluation-layout eval-suite"><section className="agent-panel">
-    <header className="eval-head"><div><h2>Bộ 4 ca đánh giá</h2>
-      <p>Chạy toàn tuyến trong sandbox: cư dân mẫu nhắn Lễ tân, Supervisor tự chọn agent, công cụ thật trên dữ liệu thử. Đạt khi cả 4 ca qua 9 kiểm tra, giám khảo và môi trường.</p></div>
+    <header className="eval-head"><div><h2>Bộ {SUITE_SIZE} ca đánh giá</h2>
+      <p>Chạy toàn tuyến trong sandbox: cư dân mẫu nhắn Lễ tân, Supervisor tự chọn agent, công cụ thật trên dữ liệu thử. Agent phát hành được khi ít nhất {PASS_MINIMUM}/{SUITE_SIZE} ca đạt.</p></div>
       {suite && <AgentBadge label={`Bản ${suite.revision}: ${draft ? "nháp" : "đã duyệt"}`} tone={draft ? "wait" : "ok"} />}</header>
     <div className="eval-actions">
+      <Button disabled={!canEdit || busy} onClick={() => void auto()}>
+        <Sparkles />{busy && prepare.variables?.mode === "generate" ? "Đang sinh ca và gửi chạy…" : "Tự sinh và chạy đánh giá"}</Button>
       <Button variant="outline" disabled={!canEdit || busy} onClick={() => prepare.mutate({ configuration_hash: agent.configurationHash, mode: "generate" })}>
-        <Sparkles />{prepare.isPending && prepare.variables?.mode === "generate" ? "Đang sinh ca…" : suite ? "Sinh bộ mới" : "Sinh 4 ca"}</Button>
+        {suite ? "Chỉ sinh bộ mới" : `Chỉ sinh ${SUITE_SIZE} ca`}</Button>
       <Button variant="ghost" disabled={!canEdit || busy} onClick={() => prepare.mutate({ configuration_hash: agent.configurationHash, mode: "manual",
-        cases: [1, 2, 3, 4].map(n => blank(n, fixtures[0]?.value ?? "")) })}>Tự soạn bộ mới</Button>
+        cases: Array.from({ length: SUITE_SIZE }, (_, i) => blank(i + 1, fixtures[0]?.value ?? "")) })}>Tự soạn bộ mới</Button>
       {draft && <Button variant="outline" disabled={!editable || !dirty} onClick={() => save.mutate({ suiteId: suite.id, version: suite.version, cases })}>{save.isPending ? "Đang lưu…" : "Lưu bộ ca"}</Button>}
       {draft && <Button disabled={!editable || dirty || suite.problems.length > 0} onClick={() => approve.mutate({ suiteId: suite.id, version: suite.version })}>Duyệt bộ ca</Button>}
-      {suite?.status === "approved" && <Button disabled={!canEdit || busy} onClick={() => void begin()}><Play />{start.isPending ? "Đang gửi…" : "Chạy đánh giá"}</Button>}
+      {suite?.status === "approved" && <Button variant="outline" disabled={!canEdit || busy} onClick={() => void begin()}><Play />{start.isPending ? "Đang gửi…" : "Chạy đánh giá"}</Button>}
     </div>
     {error && <p role="alert" className="eval-alert">{error.message}</p>}
     {stale && <p className="agent-hint">Bộ ca được chuẩn bị cho cấu hình trước. Vẫn chạy được nếu phạm vi agent không đổi; máy chủ kiểm lại khi bắt đầu.</p>}
@@ -136,7 +151,7 @@ function RunHistory({ roomId, agentId }: { roomId: string; agentId: string }) {
   const runs = useQuery(runsQueryOptions(roomId, agentId));
   return <aside className="agent-panel eval-history"><h2>Các lần đánh giá</h2>
     {runs.data?.items?.length ? <ol>{runs.data.items.map(r => <li key={r.id}><AgentBadge label={RUN_STATUS[r.status][0]} tone={r.passed === true ? "ok" : r.passed === false ? "danger" : RUN_STATUS[r.status][1]} />
-      <span>{r.summary.passed ?? 0}/4 đạt · bộ {r.suite_revision ?? "?"}</span><small>{new Date(r.created_at).toLocaleString("vi-VN")}</small></li>)}</ol>
+      <span>{r.summary.passed ?? 0}/{SUITE_SIZE} đạt · bộ {r.suite_revision ?? "?"}</span><small>{new Date(r.created_at).toLocaleString("vi-VN")}</small></li>)}</ol>
       : <p className="agent-hint">Chưa chạy lần nào.</p>}</aside>;
 }
 
@@ -189,19 +204,19 @@ export function EvaluationReport({ roomId, agentId, canEdit, catalogue }: { room
   const finished = run.data?.status === "completed";
   // A passing run opens a pending review on the server: the agent list shows it once refetched.
   useEffect(() => { if (finished) void queryClient.invalidateQueries({ queryKey: managedAgentKeys.all }); }, [finished]);
-  if (!latest) return <section className="agent-panel agent-evaluation-results"><h2>Kết quả đánh giá</h2><p>Chưa chạy đánh giá. Duyệt bộ 4 ca ở bước Thử rồi chạy.</p></section>;
+  if (!latest) return <section className="agent-panel agent-evaluation-results"><h2>Kết quả đánh giá</h2><p>Chưa chạy đánh giá. Ở bước Thử, bấm "Tự sinh và chạy đánh giá".</p></section>;
   const data = run.data ?? latest, [label, tone] = RUN_STATUS[data.status];
   const live = data.status === "queued" || data.status === "running";
   const seconds = data.started_at && data.finished_at ? Math.round((Date.parse(data.finished_at) - Date.parse(data.started_at)) / 1000) : null;
   return <section className="agent-panel agent-evaluation-results eval-report">
     <header className="eval-head"><div><h2>Kết quả đánh giá</h2>
-      <p>{data.status === "completed" ? `${data.summary.passed ?? 0}/4 ca đạt` : live ? "Đang chạy trong sandbox…" : data.error?.message || data.error?.code}
+      <p>{data.status === "completed" ? `${data.summary.passed ?? 0}/${SUITE_SIZE} ca đạt (cần ${PASS_MINIMUM})` : live ? "Đang chạy trong sandbox…" : data.error?.message || data.error?.code}
         {seconds !== null && ` · ${seconds} giây`}{data.judge_model && ` · giám khảo ${data.judge_model.model_name}`}{data.suite_revision && ` · bộ ca bản ${data.suite_revision}`}</p></div>
-      <AgentBadge label={data.status === "completed" ? (data.passed ? "Đạt 4/4" : "Chưa đạt") : label} tone={data.status === "completed" ? (data.passed ? "ok" : "danger") : tone} />
+      <AgentBadge label={data.status === "completed" ? (data.passed ? `Đạt ${data.summary.passed ?? PASS_MINIMUM}/${SUITE_SIZE}` : "Chưa đạt") : label} tone={data.status === "completed" ? (data.passed ? "ok" : "danger") : tone} />
       {live && canEdit && <Button variant="outline" size="sm" disabled={cancel.isPending} onClick={() => cancel.mutate(data.id)}><Square />Dừng</Button>}
       {!live && <Button variant="ghost" size="sm" onClick={() => void run.refetch()}><RotateCcw />Tải lại</Button>}</header>
     {(data.summary.failure_layers?.length ?? 0) > 0 && <p className="agent-hint">Lỗi chính: {data.summary.failure_layers!.map(l => LAYERS[l] ?? l).join(", ")}</p>}
-    {data.passed && <p className="agent-verdict">Bản cấu hình này có thể phát hành ở bước tiếp theo. Đạt bộ 4 ca không chứng minh mọi tình huống đều đúng.</p>}
+    {data.passed && <p className="agent-verdict">Bản cấu hình này có thể phát hành ở bước tiếp theo. Đạt bộ ca này không chứng minh mọi tình huống đều đúng.</p>}
     {data.cases?.map(c => <CaseReport key={c.case_id} result={c} catalogue={catalogue} />)}
   </section>;
 }

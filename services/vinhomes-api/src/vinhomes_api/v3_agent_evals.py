@@ -1,4 +1,4 @@
-"""Agent evaluation V1: four approved cases, run end to end in the evaluation sandbox, scored in three layers.
+"""Agent evaluation V1: six approved cases (four must pass), run end to end in the evaluation sandbox, scored in three layers.
 
 Management prepares a suite (generated or written by hand), approves it, starts a run and reads the report.
 A worker (agent-coordination, `python -m agent_eval`) claims the run under a lease, drives the sandbox stack
@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-from ._vendor.agent_eval.contracts import (CHECK_KEYS, SUITE_SIZE, EvalCase, RequiredMetric, SuiteScope, Trace, case_verdict,
+from ._vendor.agent_eval.contracts import (CHECK_KEYS, PASS_MINIMUM, SUITE_SIZE, EvalCase, RequiredMetric, SuiteScope, Trace, case_verdict,
                                            run_passed, validate_suite)
 from .v3_agent_reviews import Member, can_author_unit, room_agent, room_catalogue
 from .v3_audit import audit
@@ -331,7 +331,7 @@ async def start_run(room_id: str, agent_id: str, body: RunStart, scope: Member):
         raise HTTPException(409, 'Chỉ đánh giá bản nháp hoặc bản sửa của agent.')
     suite = await own_suite(scope, room_id, agent_id, body.suite_id)
     if suite['status'] != 'approved':
-        raise HTTPException(409, 'Duyệt bộ 4 ca trước khi chạy đánh giá.')
+        raise HTTPException(409, f'Duyệt bộ {SUITE_SIZE} ca trước khi chạy đánh giá.')
     view = await suite_view(db, body.suite_id)
     cases = [{k: v for k, v in c.items() if k not in ('id', 'ordinal')} for c in view['cases']]
     _, suite_scope, tools, others, excluded = await context_of(scope, room_id, agent)
@@ -363,7 +363,7 @@ async def start_run(room_id: str, agent_id: str, body: RunStart, scope: Member):
         'suite': {'id': str(body.suite_id), 'revision': suite['revision'], 'suite_hash': suite['suite_hash']},
         'environment': {'id': str(env['id']), 'execution_tenant_id': str(env['execution_tenant_id']),
                         'fixture_version': env['fixture_version']},
-        'evaluator': {'checks_version': CHECKS_VERSION, 'judge_model': public_profile(judge_model), 'judge_threshold': 4,
+        'evaluator': {'checks_version': CHECKS_VERSION, 'pass_rule': {'cases': SUITE_SIZE, 'minimum': PASS_MINIMUM}, 'judge_model': public_profile(judge_model), 'judge_threshold': 4,
                       'metric_profile': profile_name, 'required_metrics': [m.__dict__ for m in required],
                       'timeouts': {'case_seconds': 300, 'judge_seconds': 120, 'run_seconds': 1800}},
     }
@@ -666,7 +666,7 @@ async def finish(run_id: UUID, body: Finish, scope: Worker):
                'latency_ms': sum(r['latency_ms'] or 0 for r in results),
                'usage': {k: sum((r['usage'] or {}).get(k) or 0 for r in results) for k in ('input_tokens', 'output_tokens', 'judge_input_tokens', 'judge_output_tokens')}}
     if body.error or any(s not in FINAL for s in statuses) or len(statuses) != SUITE_SIZE:
-        error = body.error or {'code': 'incomplete_run', 'message': 'Không đủ kết quả của 4 ca'}
+        error = body.error or {'code': 'incomplete_run', 'message': f'Không đủ kết quả của {SUITE_SIZE} ca'}
         await db.execute(text("""update vh_agent_eval_runs set status='failed',summary=cast(:summary as jsonb),error=cast(:error as jsonb),
             finished_at=now(),updated_at=now(),lease_owner=null where id=:id"""), {'id': run_id, 'summary': json.dumps(summary), 'error': json.dumps(error)})
         await audit(db, run['requested_by'], 'agent.evaluation_finished', 'agent', run['agent_id'], {'runId': str(run_id), 'status': 'failed'})
@@ -708,10 +708,10 @@ async def evaluation_gate(db) -> bool:
 
 async def run_evidence_problem(db, review_id) -> str | None:
     """Why this review may not be published by management, or None: it needs a completed run
-    that passed all four cases on the configuration under review."""
+    that passed at least four of its six cases on the configuration under review."""
     row = (await db.execute(text("""select r.config_hash,r.evaluation_run_id,run.status,run.passed,run.configuration_hash
         from vh_agent_reviews r left join vh_agent_eval_runs run on run.id=r.evaluation_run_id and run.tenant_id=r.tenant_id
         where r.id=:id"""), {'id': review_id})).mappings().one()
     if row['evaluation_run_id'] is None or row['status'] != 'completed' or row['passed'] is not True or row['configuration_hash'] != row['config_hash']:
-        return 'Chạy đánh giá 4 ca trong sandbox và đạt cả 4 ca trước khi phát hành.'
+        return f'Chạy đánh giá {SUITE_SIZE} ca trong sandbox và đạt ít nhất {PASS_MINIMUM} ca trước khi phát hành.'
     return None

@@ -67,7 +67,7 @@ function refresh(queryClient: QueryClient, room: string, agent: string) {
 }
 export function prepareSuiteMutationOptions(queryClient: QueryClient, room: string, agent: string) {
   return mutationOptions({ mutationFn: async (body: { configuration_hash: string; mode: "generate" | "manual"; cases?: EvalCase[] }): Promise<Suite> =>
-    (await client(`${agentPath(room, agent)}/eval-suites`, { method: "POST", body, headers: businessHeaders(), fallback: "Không chuẩn bị được bộ 4 ca." })).json(),
+    (await client(`${agentPath(room, agent)}/eval-suites`, { method: "POST", body, headers: businessHeaders(), fallback: "Không chuẩn bị được bộ ca đánh giá." })).json(),
     onSuccess: () => refresh(queryClient, room, agent) });
 }
 export function saveSuiteMutationOptions(queryClient: QueryClient, room: string, agent: string) {

@@ -1,4 +1,4 @@
-"""Suites: exactly four valid cases in scope, whether a person or the model wrote them."""
+"""Suites: exactly six valid cases in scope, whether a person or the model wrote them."""
 import copy
 import json
 
@@ -31,20 +31,21 @@ def suite():
     return [stored('Chính', 'in_scope', ['target'], required_tools=[{'server_id': 'technical-tools', 'name': 'technical.asset.read'}]),
             stored('Thiếu tin', 'in_scope', ['target'], required_sources=[{'document_id': 'sop-1', 'version': '2'}]),
             stored('Ngoài phạm vi', 'out_of_scope', forbidden=['target']),
-            stored('Phối hợp', 'collaboration', ['target', 'cleaning'])]
+            stored('Phối hợp', 'collaboration', ['target', 'cleaning']),
+            stored('Hỏi lại', 'boundary'), stored('Đòi cam kết', 'boundary')]
 
 
 def test_a_valid_suite_has_no_problems():
     cases, problems = validate_suite(suite(), SCOPE)
-    assert problems == [] and len(cases) == 4
+    assert problems == [] and len(cases) == 6
 
 
-@pytest.mark.parametrize('size', [3, 5])
-def test_only_exactly_four_cases_form_a_suite(size):
+@pytest.mark.parametrize('size', [4, 5, 7])
+def test_only_exactly_six_cases_form_a_suite(size):
     cases = (suite() * 2)[:size]
     for i, c in enumerate(cases):
         c['name'] = f'Ca {i}'
-    assert any('đúng 4 ca' in p for p in validate_suite(cases, SCOPE)[1])
+    assert any('đúng 6 ca' in p for p in validate_suite(cases, SCOPE)[1])
 
 
 @pytest.mark.parametrize('mutate,needle', [
@@ -88,7 +89,7 @@ async def test_generated_cases_are_stored_as_generated_and_validated_like_manual
         return httpx.Response(200, json={'choices': [{'message': {'content': json.dumps(model_answer(suite()))}}]})
     async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as client:
         cases, problems, _ = await generate(client, ModelConfig('openai', 'gen', 'https://m.test/v1', 'k' * 40), CONTEXT)
-    assert problems == [] and [c['source'] for c in cases] == ['generated'] * 4
+    assert problems == [] and [c['source'] for c in cases] == ['generated'] * 6
     assert cases[0]['expectations']['required_tools'][0]['arguments'] == {'building_id': '$fixture.building_id'}
     assert 'instructions' not in sent[0]['messages'][1]['content']
 
@@ -110,6 +111,6 @@ async def test_the_agent_instructions_never_reach_the_generator():
             await generate(client, ModelConfig('openai', 'gen', 'https://m.test/v1', 'k' * 40), leaked)
 
 
-def test_four_cases_must_include_the_task_and_something_outside_it():
-    weak = [stored(f'Ranh giới {n}', 'boundary') for n in range(4)]
+def test_the_cases_must_include_the_task_and_something_outside_it():
+    weak = [stored(f'Ranh giới {n}', 'boundary') for n in range(6)]
     assert any('trong năng lực và một ca ngoài năng lực' in p for p in validate_suite(weak, SCOPE)[1])

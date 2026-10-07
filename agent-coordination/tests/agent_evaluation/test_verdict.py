@@ -80,8 +80,11 @@ def test_a_nan_metric_is_refused_as_broken():
     assert status == 'error' and layers[0]['layer'] == 'metric'
 
 
-def test_a_run_needs_four_passing_results():
-    assert run_passed(['passed'] * 4)
-    assert not run_passed(['passed'] * 3)
-    assert not run_passed(['passed', 'passed', 'passed', 'error'])
-    assert not run_passed(['passed'] * 5)
+def test_a_run_passes_on_four_of_six_and_never_on_fewer_than_six_results():
+    assert run_passed(['passed'] * 6)
+    assert run_passed(['passed'] * 4 + ['failed', 'error'])
+    assert not run_passed(['passed'] * 3 + ['failed'] * 3)
+    # Four passes among five results: the sixth case never ran, so nothing is proven about it.
+    assert not run_passed(['passed'] * 4 + ['failed'])
+    assert not run_passed(['passed'] * 4)
+    assert not run_passed(['passed'] * 7)

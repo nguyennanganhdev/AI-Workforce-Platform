@@ -7,7 +7,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError, field_validator, model_validator
 
-SUITE_SIZE = 4
+SUITE_SIZE = 6
+PASS_MINIMUM = 4  # cases of the six that must pass for the run to pass
 CHECK_KEYS = ('required_agents', 'forbidden_agents', 'required_tools', 'forbidden_tools', 'required_sources',
               'valid_output', 'runtime_guards', 'context_integrity', 'internal_leakage')
 CRITERIA = ('bam_nguon', 'dung_quy_trinh', 'dung_pham_vi', 'phan_hoi_nguoi_bao')
@@ -307,7 +308,7 @@ def validate_suite(raw_cases: list, scope: SuiteScope) -> tuple[list[EvalCase], 
             problems.append(f'Ca {number}: {".".join(str(p) for p in first["loc"])} {first["msg"]}.')
     kinds = {c.kind for c in cases}
     if len(cases) == SUITE_SIZE and not {'in_scope', 'out_of_scope'} <= kinds:
-        # Without both, four cases can pass without ever showing the agent does its task or stays out of others'.
+        # Without both, the cases can pass without ever showing the agent does its task or stays out of others'.
         problems.append('Bộ đánh giá cần ít nhất một ca trong năng lực và một ca ngoài năng lực.')
     names = [c.name.strip().casefold() for c in cases]
     if len(names) != len(set(names)):
@@ -415,5 +416,6 @@ def case_verdict(case: EvalCase, *, checks: dict | None, judge: dict | None, met
 
 
 def run_passed(statuses: list[str]) -> bool:
-    """A run passes on four case results that all passed; three passes and a missing case do not."""
-    return len(statuses) == SUITE_SIZE and all(s == 'passed' for s in statuses)
+    """A run passes when all six cases have a result and at least four of them passed.
+    Fewer than six results is no pass, however many of them passed."""
+    return len(statuses) == SUITE_SIZE and sum(s == 'passed' for s in statuses) >= PASS_MINIMUM

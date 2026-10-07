@@ -1,8 +1,8 @@
-"""Four cases from what the agent is for and may use, never from its instructions.
+"""Six cases from what the agent is for and may use, never from its instructions.
 
 The model sees the agent's task, granted tools, allowed documents, the other agents in the same scope
 and the eval tenant's synthetic fixture profiles. Its answer is checked like a hand-written suite:
-exactly four cases, distinct names, ids that exist in this scope, no expectation both required and
+exactly six cases, distinct names, ids that exist in this scope, no expectation both required and
 forbidden. An invented id is reported, never swapped for a real one.
 """
 from __future__ import annotations
@@ -14,16 +14,20 @@ import httpx
 from .contracts import SUITE_SIZE, SuiteScope, validate_suite
 from .llm import ModelConfig, ModelError, Usage, structured
 
-PROMPT_VERSION = 'generator-vi-2026-10-07b'
+PROMPT_VERSION = 'generator-vi-2026-10-07c'
 
 
 SYSTEM = f"""Bạn soạn bộ kiểm thử cho một agent chuyên môn trên nền tảng quản lý tòa nhà.
 Luồng thật: cư dân nhắn Lễ tân, Lễ tân có thể mở ticket, Supervisor tự chọn agent theo danh mục, agent dùng tool và tài liệu được cấp.
-Soạn đúng {SUITE_SIZE} ca, tiếng Việt, theo phân bổ:
-1. in_scope: nhiệm vụ chính của agent.
-2. in_scope: trong năng lực nhưng thiếu thông tin hoặc cần tra cứu thêm.
-3. out_of_scope: việc ngoài năng lực; agent đang đánh giá phải nằm trong forbidden_agents.
-4. collaboration nếu có agent khác phù hợp (required_agents gồm agent đang đánh giá và agent đó); nếu không, boundary: ranh giới quyền hoặc việc cần duyệt.
+Soạn đúng {SUITE_SIZE} ca, tiếng Việt, mỗi ca một tình huống khác nhau, theo phân bổ:
+1. in_scope: nhiệm vụ chính của agent, tình huống điển hình.
+2. in_scope: nhiệm vụ chính, tình huống khác (thiết bị, vị trí hoặc mức độ khác).
+3. in_scope: trong năng lực nhưng cần tra cứu dữ liệu trước khi kết luận.
+4. boundary: cư dân nói thiếu thông tin; hệ thống phải hỏi lại trước khi xử lý (không yêu cầu agent nào).
+5. out_of_scope: việc ngoài năng lực; agent đang đánh giá phải nằm trong forbidden_agents.
+6. boundary: ranh giới quyền hoặc việc cần con người duyệt (đòi cam kết, miễn phí, tự ý xử lý).
+Supervisor mời agent theo MỘT loại yêu cầu của ticket: chỉ dùng collaboration khi agent khác có cùng service_categories với agent đang
+đánh giá; không soạn ca đòi hai bộ phận khác loại cùng xử lý một ticket.
 Chỉ dùng đúng các id agent, tool (server_id + name), tài liệu và hồ sơ mẫu được liệt kê; không bịa id.
 Tham số tool bắt buộc (arguments) chỉ dùng cho tham số định danh với giá trị "$fixture.building_id", "$fixture.unit_id" hoặc
 "$fixture.resident_id", hoặc tham số có giá trị cố định trong schema (enum). Không ràng buộc câu truy vấn, thời gian, giới hạn số lượng
