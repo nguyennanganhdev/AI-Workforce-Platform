@@ -355,5 +355,6 @@ dùng chung khung và cổng với Ban quản lý.
       không tự thử lại: người hỏi phải hỏi lại. Chưa quyết có thử lại một lần hay không (tốn thêm một lượt model).
 - [ ] Bộ đánh giá trên giao diện cũ (6 ca, một chuỗi bắt buộc) dễ đạt: agent không gọi công cụ vẫn 6/6. Agent Eval
       (bộ 4 ca trong sandbox) thay thế khi đơn vị có sandbox.
-- [ ] Chưa chạy thật: khóa model của Groq, DeepSeek, Google; tên miền và chứng chỉ công khai (Caddy với `tls internal`
-      đã phục vụ được hai giao diện); khôi phục bản sao lưu trên máy khác.
+- [x] Sao lưu và khôi phục thử trên cùng máy (`backup-verify.ps1`, 07/10 11:09): 202 + 6 bảng, 67 tệp, khớp.
+- [ ] Tạm gác theo chủ dự án (07/10): chỉ dùng OpenAI, chưa thử khóa của Groq, DeepSeek, Google; chưa làm tên miền và
+      chứng chỉ công khai (Caddy với `tls internal` đã phục vụ được hai giao diện). Chưa khôi phục bản sao lưu trên máy khác.
