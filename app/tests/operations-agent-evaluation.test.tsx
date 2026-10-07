@@ -43,7 +43,8 @@ function backend(ready: boolean, sent: { url: string; body: unknown }[]) {
         phan_hoi_nguoi_bao: { score: 3, reason: "Lộ mã yêu cầu", evidence_refs: ["final_response"] } } },
       environment: { safe: true, reason: "Sandbox cô lập" }, failure_layers: n === 4 ? [{ layer: "code", kind: "failed", detail: "internal_leakage" }] : [],
       error: null, latency_ms: 30000, trace: { messages: [{ id: "m-1", role: "resident", text: "Hỏi giờ hồ bơi" }, { id: "m-2", role: "reception", text: "Hồ bơi mở 6h-21h.", visible_to_resident: true }],
-        routing: [], tool_calls: [], retrievals: [] } })) });
+        routing: [{ id: "r-1", selected_agent_ids: ["a1", "0db82e23-1dc9-54fa-99e0-4f7cb2269875"] }],
+        tool_calls: [{ id: "t-1", agent_id: "a1", server_id: "technical-tools", name: "asset.read", status: "NOT_FOUND" }], retrievals: [] } })) });
     return Response.json({ canManage: true, tools: [], categories: [], items: [{ id: "a1", name: "Agent Tiện ích", purpose: "specialist", status: "draft",
       configuration: { instructions: "x", description: "Tiện ích", service_categories: [], mcp_tools: [] }, configurationHash: HASH, latest_version: null, published: false, review: null }] });
   }) as typeof fetch;
@@ -75,6 +76,11 @@ test("with a sandbox, management runs the approved four cases and reads the repo
   expect(view.getByText(/Lỗi chính: Kiểm tra bằng code/)).toBeTruthy();
   expect(view.getAllByText("Không lộ thông tin nội bộ").length).toBeGreaterThan(0);
   expect(view.getAllByText("Phản hồi cư dân").length).toBeGreaterThan(0);
+  // Names, never ids: the agent by its name, an agent this screen does not know and a tool without a label by plain words.
+  expect(view.getAllByText("Supervisor chọn: Agent Tiện ích, agent khác").length).toBeGreaterThan(0);
+  expect(view.getAllByText("Agent Tiện ích dùng công cụ khác: không có dữ liệu").length).toBeGreaterThan(0);
+  expect(view.container.textContent).not.toContain("0db82e23");
+  expect(view.container.textContent).not.toContain("asset.read");
   // Publication stays closed: no review is pending for a run that did not pass.
   expect((view.getByRole("button", { name: /Tiếp: phát hành/ }) as HTMLButtonElement).disabled).toBe(true);
 });

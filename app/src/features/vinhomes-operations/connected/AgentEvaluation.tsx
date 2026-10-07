@@ -140,7 +140,24 @@ function RunHistory({ roomId, agentId }: { roomId: string; agentId: string }) {
       : <p className="agent-hint">Chưa chạy lần nào.</p>}</aside>;
 }
 
-function CaseReport({ result }: { result: CaseResult }) {
+const STATUS_WORDS: Record<string, string> = { OK: "có kết quả", NOT_FOUND: "không có dữ liệu", FORBIDDEN: "bị từ chối", INVALID_INPUT: "tham số sai",
+  TOOL_ERROR: "công cụ lỗi", INTERNAL_ERROR: "lỗi hệ thống", AWAITING_CONFIRMATION: "chờ xác nhận" };
+/** Management reads names, never ids: agent ids and tool names in a recorded text become what the screen calls them. */
+function useNames(catalogue: AgentManagement) {
+  return useMemo(() => {
+    const agents = new Map(catalogue.items.map(a => [a.id, a.name]));
+    const tools = new Map(catalogue.tools.flatMap(t => [[t.name, toolLabel(t)], [`${t.server_id}/${t.name}`, toolLabel(t)]] as [string, string][]));
+    const agent = (id: string) => agents.get(id) ?? "agent khác";
+    const tool = (name: string) => tools.get(name) ?? "công cụ khác";
+    const keys = [...agents.keys(), ...[...tools.keys()].sort((a, b) => b.length - a.length)];
+    const text = (value: string) => keys.reduce((out, key) => out.split(key).join(agents.get(key) ?? tools.get(key)!), value)
+      .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "(mã nội bộ)");
+    return { agent, tool, text };
+  }, [catalogue]);
+}
+
+function CaseReport({ result, catalogue }: { result: CaseResult; catalogue: AgentManagement }) {
+  const names = useNames(catalogue);
   const [label, tone] = CASE_STATUS[result.status];
   const visible = result.trace?.messages.filter(m => m.role === "resident" || m.visible_to_resident) ?? [];
   return <details className="eval-result" open={result.status !== "passed"}><summary><strong>{result.ordinal}. {result.name}</strong><AgentBadge label={label} tone={tone} />
@@ -149,13 +166,13 @@ function CaseReport({ result }: { result: CaseResult }) {
     {visible.length > 0 && <div className="eval-conversation">{visible.map(m => <p key={m.id} className={m.role === "resident" ? "is-resident" : ""}>{m.text}</p>)}</div>}
     {result.terminal_state && <p className="agent-hint">Kết thúc: {TERMINALS.find(t => t.value === result.terminal_state)?.label}</p>}
     {result.trace && (result.trace.routing.length > 0 || result.trace.tool_calls.length > 0) && <ul className="eval-trace">
-      {result.trace.routing.map(r => <li key={r.id}>Supervisor chọn: {r.selected_agent_ids.join(", ") || "không agent nào"}</li>)}
-      {result.trace.tool_calls.map(t => <li key={t.id}>{t.agent_id} gọi {t.name}: {t.status}</li>)}
+      {result.trace.routing.map(r => <li key={r.id}>Supervisor chọn: {r.selected_agent_ids.map(names.agent).join(", ") || "không agent nào"}</li>)}
+      {result.trace.tool_calls.map(t => <li key={t.id}>{names.agent(t.agent_id)} dùng {names.tool(`${t.server_id}/${t.name}`)}: {STATUS_WORDS[t.status] ?? "không rõ"}</li>)}
       {result.trace.retrievals.slice(0, 5).map(k => <li key={k.id}>Nguồn hạng {k.rank}: {k.content.slice(0, 140)}</li>)}</ul>}
     {result.checks && <table className="eval-table"><caption>9 kiểm tra bằng code</caption><tbody>{Object.entries(result.checks).map(([k, c]) =>
-      <tr key={k}><th>{CHECKS[k] ?? k}</th><td><AgentBadge label={c.passed ? "Đạt" : "Rớt"} tone={c.passed ? "ok" : "danger"} /></td><td>{c.reason}</td></tr>)}</tbody></table>}
+      <tr key={k}><th>{CHECKS[k] ?? k}</th><td><AgentBadge label={c.passed ? "Đạt" : "Rớt"} tone={c.passed ? "ok" : "danger"} /></td><td>{names.text(c.reason)}</td></tr>)}</tbody></table>}
     {result.judge?.criteria && <table className="eval-table"><caption>Giám khảo ({result.judge.model_profile}), cần ≥ 4/5 mỗi tiêu chí</caption><tbody>
-      {Object.entries(result.judge.criteria).map(([k, a]) => <tr key={k}><th>{CRITERIA[k] ?? k}</th><td><AgentBadge label={`${a.score}/5`} tone={a.score >= 4 ? "ok" : "danger"} /></td><td>{a.reason}</td></tr>)}</tbody></table>}
+      {Object.entries(result.judge.criteria).map(([k, a]) => <tr key={k}><th>{CRITERIA[k] ?? k}</th><td><AgentBadge label={`${a.score}/5`} tone={a.score >= 4 ? "ok" : "danger"} /></td><td>{names.text(a.reason)}</td></tr>)}</tbody></table>}
     {result.judge?.status === "error" && <p className="eval-alert">Giám khảo lỗi: {result.judge.error?.message || result.judge.error?.code}</p>}
     {result.metrics.length > 0 && <table className="eval-table"><caption>Metric thư viện</caption><tbody>{result.metrics.map(m =>
       <tr key={m.name}><th>{m.name}</th><td>{m.status === "scored" ? `${m.value?.toFixed(2)} / ${m.threshold}` : m.status === "not_applicable" ? "Không áp dụng" : "Lỗi"}</td><td>{m.reason || m.error}</td></tr>)}</tbody></table>}
@@ -164,7 +181,7 @@ function CaseReport({ result }: { result: CaseResult }) {
 }
 
 /** Step "Đánh giá": the latest run, its summary first, then each case. */
-export function EvaluationReport({ roomId, agentId, canEdit }: { roomId: string; agentId: string; canEdit: boolean }) {
+export function EvaluationReport({ roomId, agentId, canEdit, catalogue }: { roomId: string; agentId: string; canEdit: boolean; catalogue: AgentManagement }) {
   const runs = useQuery(runsQueryOptions(roomId, agentId));
   const latest = runs.data?.items?.[0];
   const run = useQuery({ ...runQueryOptions(roomId, agentId, latest?.id ?? ""), enabled: !!latest });
@@ -185,6 +202,6 @@ export function EvaluationReport({ roomId, agentId, canEdit }: { roomId: string;
       {!live && <Button variant="ghost" size="sm" onClick={() => void run.refetch()}><RotateCcw />Tải lại</Button>}</header>
     {(data.summary.failure_layers?.length ?? 0) > 0 && <p className="agent-hint">Lỗi chính: {data.summary.failure_layers!.map(l => LAYERS[l] ?? l).join(", ")}</p>}
     {data.passed && <p className="agent-verdict">Bản cấu hình này có thể phát hành ở bước tiếp theo. Đạt bộ 4 ca không chứng minh mọi tình huống đều đúng.</p>}
-    {data.cases?.map(c => <CaseReport key={c.case_id} result={c} />)}
+    {data.cases?.map(c => <CaseReport key={c.case_id} result={c} catalogue={catalogue} />)}
   </section>;
 }
