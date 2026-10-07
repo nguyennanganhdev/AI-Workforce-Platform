@@ -65,15 +65,19 @@ Ghi bởi Team Chiến khi nối bộ tool vệ sinh của Team Hoàng (`server/
   đọc/tạo việc, phân công, cập nhật trạng thái) **chưa** phục vụ: chúng cần cầu nối tới API mà phiên chưa có. Việc
   tạo việc và mời nhân viên do luồng Supervisor hiện có làm. Chuyên môn nhà thầu chưa có ánh xạ tin cậy sang vệ sinh,
   nên `cleaning.request_vendor_dispatch` luôn bị từ chối.
-- **Agent.** [cleaning-agent.md](cleaning-agent.md) (chỉ dẫn, 13 mã `CLEAN.*` do Team Chiến soạn bản đầu) và
+- **Agent.** [cleaning-agent.md](cleaning-agent.md) (chỉ dẫn, 14 mã `CLEAN.*`, đã rà ngày 07/10/2026) và
   [cleaning-agent.json](cleaning-agent.json) (4 tool: `cleaning.retrieve_sop`, `knowledge.search`,
-  `cleaning.get_active_outage`, `cleaning.read_utility_schedule`; 8 ca). Đạt 8/8 ca trên server, phát hành ở phòng
-  `bql-sapphire` của stack Docker local. Đã chạy thật một phản ánh "rác tràn phòng rác tầng 12" từ app cư dân đến
-  lúc việc được mời cho `VS-SAPPHIRE-01`.
+  `cleaning.get_active_outage`, `cleaning.read_utility_schedule`; 9 ca). Bản 2 đạt 9/9 ca trên server, phát hành ở
+  phòng `bql-sapphire` của stack Docker local. Đã chạy thật phản ánh từ app cư dân đến lúc việc được mời cho
+  `VS-SAPPHIRE-01`.
+- **SOP vệ sinh.** 7 SOP trong [../cleaning/sop/](../cleaning/sop/) phủ đủ 14 mã, do Team Chiến soạn và Ban quản lý
+  duyệt ngày 07/10/2026. `server/src/knowledge/publish-sop.ts` phát hành chúng vào kho riêng `<khu>-sop` (không phải kho
+  mà tìm kiếm tri thức phục vụ, nên cư dân và `knowledge.search` không thấy), cấp quyền đọc cho workspace của mọi đơn vị
+  quản lý và ghi hồ sơ `vh_technical_sop_profiles` (mã vấn đề, tóm tắt, tiêu chí nghiệm thu). Sửa SOP: sửa file rồi chạy
+  lại, bản mới thành phiên bản kế tiếp. Đơn vị tạo sau: `publish-sop.ts --rescope --site <khu>`.
 
-Việc cần Team Hoàng: rà bộ mã `CLEAN.*` và mức độ; nạp SOP vệ sinh thật (`vh_technical_sop_profiles` với mã
-`CLEAN.*` và tài liệu cấp cho workspace), vì hiện `cleaning.retrieve_sop` luôn trả `NOT_FOUND`; quyết định có cần nối
-năm tool điều phối cho phiên hay không.
+Việc cần Team Hoàng: thay SOP bằng quy trình vận hành thật của đơn vị khi có; quyết định có cần nối năm tool điều phối
+cho phiên hay không.
 
 # Tài liệu BQL trong kho tri thức (từ 07/10/2026)
 
