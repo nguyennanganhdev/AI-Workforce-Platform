@@ -12,7 +12,9 @@ they need from outside for the Reception V2 exchange, bound to the business API'
 
 Bound so far: a ticket handed over by Reception is verified, a durable session is created and
 `accepted` is sent back; with a planner model and an OpenBot configured, a room is opened with
-the published specialists of the ticket's category, they are given tasks and their replies are
+the published specialists of the ticket's category, and with those of another department when the
+planner judges the request needs it (a plan's steps then name their department and become one work
+order for each); they are given tasks and their replies are
 mirrored to the backend. Plans, resident questions, approvals, backend actions and tools have
 no producer contract yet; their ports refuse, and the session pauses with the reason.
 """

@@ -190,11 +190,19 @@ def plan_for_resident(proposal: dict[str, Any]) -> str:
 async def specialists(db, team: dict[str, Any]) -> list[dict[str, Any]]:
     """The agents a Supervisor may invite for this ticket.
 
-    An agent of the management room, active, whose published version declares the ticket's
-    service category. A ticket without a category is offered nobody: management handles it.
+    The agents of the management room, active, whose published version declares a service category.
+    Those declaring the ticket's own category are `primary`: the session is theirs. The others
+    are offered because a request can need a second department (a burst pipe that floods the rubbish
+    room); the Supervisor decides whether to bring one in. `role` is the category the agent would
+    work in and `department` its name, which the Supervisor's plan uses to say whose step each is.
+
+    A ticket without a category, or one whose category nobody is published for, is offered nobody:
+    management handles it.
     """
     if team["category_code"] is None:
         return []
+    names = {row["code"]: row["name"] for row in (await db.execute(text(
+        f"select code,name from service_categories where tenant_id={TENANT} and enabled"))).mappings()}
     rows = (await db.execute(text(f"""
         select v.id as version_id,a.id as agent_id,a.name,v.config->>'description' as description,
           v.config->'service_categories' as categories,v.config->'mcp_tools' as tools
@@ -203,14 +211,24 @@ async def specialists(db, team: dict[str, Any]) -> list[dict[str, Any]]:
         join agent_releases r on r.agent_id=a.id and r.tenant_id=a.tenant_id and r.status='published' and r.revoked_at is null
         join agent_versions v on v.id=r.version_id and v.tenant_id=r.tenant_id
         where ca.channel_id=:channel and ca.tenant_id={TENANT}
-          and v.config->'service_categories' ? :category
+          and jsonb_typeof(v.config->'service_categories')='array' and jsonb_array_length(v.config->'service_categories')>0
           and v.version_no=(select max(v2.version_no) from agent_versions v2 where v2.agent_id=a.id and v2.tenant_id=a.tenant_id)
         order by a.name
-    """), {"channel": team["channel_id"], "category": team["category_code"]})).mappings().all()
-    return [{"agent_version_id": str(row["version_id"]), "agent_id": row["agent_id"], "name": row["name"],
-             "role": team["category_code"], "description": row["description"],
-             "service_categories": row["categories"],
-             "tools": [tool["name"] for tool in row["tools"] or []]} for row in rows]
+    """), {"channel": team["channel_id"]})).mappings().all()
+    offered = []
+    for row in rows:
+        categories = [code for code in row["categories"] if code in names]
+        if not categories:
+            continue
+        primary = team["category_code"] in categories
+        role = team["category_code"] if primary else categories[0]
+        offered.append({"agent_version_id": str(row["version_id"]), "agent_id": row["agent_id"], "name": row["name"],
+                        "role": role, "department": names[role], "primary": primary, "description": row["description"],
+                        "service_categories": categories,
+                        "tools": [tool["name"] for tool in row["tools"] or []]})
+    if not any(agent["primary"] for agent in offered):
+        return []
+    return sorted(offered, key=lambda agent: (not agent["primary"], agent["name"]))
 
 
 @router.get("/inbox", summary="V2 messages from Reception waiting for the Supervisor, oldest first")
@@ -710,6 +728,39 @@ class PlanDraft(BaseModel):
     plan: ProposedPlan
 
 
+async def work_by_department(db, team: dict[str, Any], steps: list[str]) -> list[dict[str, str]]:
+    """The work orders a Supervisor's plan becomes once the resident agrees: one per department.
+
+    A plan is one visit by one crew, so one work order, unless the session has specialists of several
+    departments. Then the Supervisor starts each step with the department that does it
+    ("Vệ sinh & cảnh quan: thu gom rác ..."), and the steps of each department are that department's
+    work order, offered to its own staff. Only the ticket's department and those of the session's
+    members count: a step naming anything else stays with the ticket's department, as written.
+    `proposal` keeps the steps as the Supervisor wrote them.
+    """
+    departments = (await db.execute(text(f"""
+        select c.id,c.code,c.name from service_categories c where c.tenant_id={TENANT} and c.enabled
+          and (c.id=:ticket_category or exists (select 1 from team_members m
+            join agent_versions v on v.id=m.version_id and v.tenant_id=m.tenant_id
+            where m.team_id=:team and m.tenant_id=c.tenant_id and m.member_kind='specialist' and m.status='active'
+              and v.config->'service_categories' ? c.code))
+    """), {"ticket_category": team["category_id"], "team": team["id"]})).mappings().all()
+    aliases = {
+        "technical": ("kỹ thuật", "ky thuat"),
+        "cleaning": ("vệ sinh", "ve sinh", "cảnh quan", "canh quan"),
+        "security": ("an ninh", "bảo vệ", "bao ve"),
+    }
+    named = {label.strip().casefold(): row["id"] for row in departments
+             for label in (row["code"], row["name"], *aliases.get(row["code"], ()))}
+    work: dict[Any, list[str]] = {}
+    for step in steps:
+        label, colon, rest = step.partition(":")
+        department = named.get(label.strip().casefold()) if colon and rest.strip() else None
+        work.setdefault(department or team["category_id"], []).append(rest.strip() if department else step)
+    return [{"category_id": str(department), "description": "\n".join(f"{n}. {s}" for n, s in enumerate(mine, 1))[:2000]}
+            for department, mine in work.items()]
+
+
 @router.post("/teams/{team_id}/plans", summary="Store the plan the Supervisor proposes, for management to decide")
 async def propose_plan(team_id: UUID, body: PlanDraft, db: Scope) -> dict[str, Any]:
     """The plan enters the ordinary lifecycle as `management_pending`, with the Supervisor as its author.
@@ -743,10 +794,7 @@ async def propose_plan(team_id: UUID, body: PlanDraft, db: Scope) -> dict[str, A
               and status in ('management_pending','resident_pending')
         """), {"ticket": team["ticket_id"]})).first():
             raise HTTPException(409, "Decide the existing plan first")
-        # A plan step becomes a work order once the resident agrees. The Supervisor's steps are one
-        # visit by one technician, so they are one work order; `proposal` keeps them as written.
-        work = "\n".join(f"{n}. {step}" for n, step in enumerate(body.plan.steps, 1))[:2000]
-        steps = [{"category_id": str(team["category_id"]), "description": work}]
+        steps = await work_by_department(db, team, body.plan.steps)
         prior = (await db.execute(text(f"""
             select id,proposal from vh_ticket_plans where tenant_id={TENANT} and ticket_id=:ticket
               and proposed_by_agent_id=:agent and created_at>=(select created_at from agent_teams where id=:team)

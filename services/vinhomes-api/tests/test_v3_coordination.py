@@ -192,16 +192,22 @@ def test_a_supervisor_question_reaches_the_resident_and_a_stale_team_is_refused(
 
 def test_the_supervisor_is_offered_the_published_specialists_of_the_ticket_category(database):
     technical, version = publish_specialist(database, f"Kỹ thuật {uuid4().hex[:6]}", ["technical"])
-    publish_specialist(database, f"An ninh {uuid4().hex[:6]}", ["security"])
+    security, _ = publish_specialist(database, f"An ninh {uuid4().hex[:6]}", ["security"])
+    departments = {r["code"]: r["name"] for r in sql(database, "select code,name from service_categories")}
     with app(database) as c:
         team = verified_team(c, database, f"Rò nước {uuid4().hex[:6]}")
         seen = c.get(BASE + f"/teams/{team}/view", headers=SERVICE).json()
         assert seen["category"] == "technical"
         offered = [s for s in seen["specialists"] if s["agent_id"] == technical]
         assert offered == [{"agent_version_id": version, "agent_id": technical, "name": offered[0]["name"],
-                            "role": "technical", "description": offered[0]["name"], "service_categories": ["technical"], "tools": []}]
-        # Another category's agent is published in the same room and is not offered for this ticket.
-        assert all(s["service_categories"] == ["technical"] for s in seen["specialists"])
+                            "role": "technical", "department": departments["technical"], "primary": True,
+                            "description": offered[0]["name"], "service_categories": ["technical"], "tools": []}]
+        # Another department's agent of the same room is offered as a candidate, after the ticket's own:
+        # the Supervisor brings it in only when the request needs that department too.
+        [candidate] = [s for s in seen["specialists"] if s["agent_id"] == security]
+        assert (candidate["primary"], candidate["role"], candidate["department"]) == (False, "security", departments["security"])
+        flags = [s["primary"] for s in seen["specialists"]]
+        assert flags == sorted(flags, reverse=True) and all(s["primary"] == ("technical" in s["service_categories"]) for s in seen["specialists"])
 
         with demo_client(database, "management") as management:
             assert management.post(f"/admin/agents/{technical}/release/revoke", json={"note": "x"}).status_code == 403
@@ -256,8 +262,8 @@ def test_a_published_specialist_enters_the_room_and_its_work_is_mirrored(databas
         code = sql(database, "select t.code from agent_teams tm join tickets t on t.id=tm.ticket_id where tm.id=$1",
                    UUID(team))[0]["code"]
         members = BASE + f"/teams/{team}/members"
-        # Published, but for another category: the Supervisor cannot bring it into this room.
-        assert c.post(members, headers=SERVICE, json={"agent_version_id": security}).status_code == 409
+        # A version that is not offered to this session cannot be brought into its room.
+        assert c.post(members, headers=SERVICE, json={"agent_version_id": str(uuid4())}).status_code == 409
         member = c.post(members, headers=SERVICE, json={"agent_version_id": version}).json()
         assert (member["platform_agent_id"], member["role"], member["binding_generation"]) == (technical, "technical", 1)
         assert c.post(members, headers=SERVICE, json={"agent_version_id": version}).json() == member
@@ -504,13 +510,52 @@ def test_the_supervisor_proposes_a_plan_that_management_then_decides(database, r
     assert [o["description"] for o in orders] == (["1. Khóa van nước căn hộ\n2. Thay gioăng vòi bếp"] if resident_decision == 'approve' else [])
 
 
+def test_a_plan_of_two_departments_becomes_one_work_order_for_each(database):
+    """Steps that start with the department of a session member are that department's work order;
+    a department with no member in the session is not one the plan can hand work to."""
+    _, technical = publish_specialist(database, f"Kỹ thuật {uuid4().hex[:6]}", ["technical"])
+    _, security = publish_specialist(database, f"An ninh {uuid4().hex[:6]}", ["security"])
+    departments = {r["code"]: r for r in sql(database, "select id,code,name from service_categories")}
+    guard, repair = departments["security"], departments["technical"]
+    steps = [f"{repair['name']}: Khóa van nhánh tầng 8", f"{guard['name']}: Chặn lối vào hành lang ướt",
+             "Sửa đoạn ống vỡ", f"{guard['name'].upper()} : Mở lại lối đi khi sàn khô"]
+
+    def stored(c, invited):
+        team = verified_team(c, database, f"Ống vỡ {uuid4().hex[:6]}")
+        for version in invited:
+            assert c.post(BASE + f"/teams/{team}/members", headers=SERVICE,
+                          json={"agent_version_id": version, "reason": "cần giữ an toàn lối đi"}).status_code == 200
+        draft = {"request_id": f"draft-{uuid4().hex}", "payload_hash": "d" * 64,
+                 "ticket_version": c.get(BASE + f"/teams/{team}/view", headers=SERVICE).json()["ticket_version"],
+                 "target_plan_version": 1,
+                 "plan": {"summary": "Sửa ống vỡ và giữ an toàn hành lang", "steps": steps,
+                          "performer_role": "Kỹ thuật viên nước và bảo vệ", "expected_duration": "2 giờ",
+                          "conditions": "Khóa nước nhánh", "cost": None, "result_refs": [], "attachment_ids": []}}
+        plan = c.post(BASE + f"/teams/{team}/plans", headers=SERVICE, json=draft)
+        assert plan.status_code == 200, plan.text
+        row = sql(database, "select steps::text as work,(proposal->'steps')::text as written from vh_ticket_plans where id=$1",
+                  UUID(plan.json()["canonical_id"]))[0]
+        # The plan the resident reads keeps the steps as the Supervisor wrote them.
+        assert json.loads(row["written"]) == steps
+        return json.loads(row["work"])
+
+    with app(database) as c:
+        assert stored(c, [technical, security]) == [
+            {"category_id": str(repair["id"]), "description": "1. Khóa van nhánh tầng 8\n2. Sửa đoạn ống vỡ"},
+            {"category_id": str(guard["id"]), "description": "1. Chặn lối vào hành lang ướt\n2. Mở lại lối đi khi sàn khô"}]
+        # Security was not brought into this session: its label is only text, and the ticket's department does it all.
+        assert stored(c, [technical]) == [{"category_id": str(repair["id"]),
+                                           "description": "\n".join(f"{n}. {step}" for n, step in enumerate(
+                                               [steps[0].split(": ", 1)[1], steps[1], steps[2], steps[3]], 1))}]
+
+
 @pytest.mark.parametrize('initially_automatic', [True, False])
 def test_the_supervisor_approves_its_plan_and_hands_the_work_to_a_technician(database, monkeypatch, initially_automatic):
     """Management decides nothing on the way: the resident approves, a technician is offered the work,
     and the finished work goes to the resident without an inspection by management."""
     monkeypatch.setenv('VINHOMES_API_SUPERVISOR_APPROVES_PLANS', '1' if initially_automatic else '0')
-    # Each parameter leaves its own accepted work in the shared test database. Give this seeded
-    # technician capacity for both independent scenarios; the real capacity check stays enabled.
+    # The fixture shares its database with other dispatch scenarios; keep the queue capacity
+    # check enabled while this test completes its own active job before the next parameter.
     sql(database, "update staff_profiles set max_concurrent_jobs=5 where user_id='local-v3-technical'")
     with app(database) as c:
         handoff, _ = hand_over(c, f"Vòi bếp rò {uuid4().hex[:6]}")

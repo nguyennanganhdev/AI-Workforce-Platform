@@ -166,7 +166,6 @@ class Runtime:
         self.backend, self.store, self.owner = backend, store, owner or str(uuid4())
         self.client = client
         self.settings = settings
-        authority = Authority(backend)
         self.teams: dict[tuple, str] = {}  # scope -> team, known once the backend verified a message
         self.recovered = False  # sessions paused for the model before this start were queued for their retry
         self.model_hold = 0.0  # no session asks the model again before this time: it has just failed one of them
@@ -188,6 +187,8 @@ class Runtime:
                              answers_as=settings.model_answers_as if settings else None,
                              instruction_loader=instructions,
                              config_loader=backend.model_config if hasattr(backend, 'model_config') else None)
+        # The planner also judges, once per session, which other departments a request needs.
+        authority = Authority(backend, store=store, invite=model.invited)
         self.rooms = RoomService(Resolver(backend, self.teams), specialists, store)
         self.service = SupervisorService(
             store=store, authority=authority, verifier=BackendEvents(backend),

@@ -423,6 +423,8 @@ class Providers:
         # What the Bot answers, turn by turn; the last answer repeats.
         self.replies = list(replies) or [ANALYSIS]
         self.decisions, self.bot = [], []
+        # What the model answers when asked who else to invite, what it was asked, and the catalog of each later decision.
+        self.invite, self.invitations, self.catalogs = {"invite": []}, [], []
         # A Bot that asks for this tool before it answers, and the tool host it reaches.
         self.tool_call, self.tools_down, self.tool_calls = tool_call, tools_down, []
 
@@ -430,8 +432,16 @@ class Providers:
         body = json.loads(request.content)
         if request.url.path == "/v1/chat/completions":
             assert request.headers["authorization"] == "Bearer model-key" and body["max_completion_tokens"] > 0
-            decision = decide(json.loads(body["messages"][1]["content"]), self.plans)
-            self.decisions.append(decision["kind"])
+            asked = json.loads(body["messages"][1]["content"])
+            if "candidates" in asked:
+                # Before the room opens: which agents of other departments this request needs.
+                self.invitations.append(asked)
+                decision = self.invite
+                self.decisions.append("invite")
+            else:
+                self.catalogs.append(sorted(asked["catalog"]))
+                decision = decide(asked, self.plans)
+                self.decisions.append(decision["kind"])
             return httpx.Response(200, json={"model": body["model"] + "-2026-03-17", "usage": {"total_tokens": 900},
                                              "choices": [{"message": {"content": json.dumps(decision)}}]})
         if request.url.path == "/internal/technical/v1/call":
@@ -885,3 +895,36 @@ async def test_a_question_for_a_session_without_a_room_is_reported_as_failed(sta
                           "agent_version_id": "technical-v1", "text": "Còn rò không?"}]
     await runtime.round()
     assert providers.bot == [] and backend.answered == [("question-1", "failed", None)]
+
+
+CLEANING = dict(agent_version_id="cleaning-v1", agent_id="cleaning", name="Vệ sinh", role="cleaning",
+                department="Vệ sinh & cảnh quan", primary=False, description="Phân loại phản ánh vệ sinh, rác, cây xanh",
+                service_categories=["cleaning"], tools=[])
+
+
+async def test_the_supervisor_invites_another_department_only_when_the_request_needs_it(staffed):
+    backend, providers = FakeBackend(message()), Providers()
+    runtime = staffed(backend, providers)
+    backend.specialists = [{**TECHNICAL, "department": "Kỹ thuật", "primary": True}, CLEANING]
+    providers.invite = {"invite": ["cleaning-v1", "not-offered"]}
+    await runtime.round()
+    # Asked once, with the request and who is offered; an id that was never offered is not admitted.
+    [asked] = providers.invitations
+    assert list(asked["primary"]) == ["technical-v1"] and list(asked["candidates"]) == ["cleaning-v1"]
+    assert asked["candidates"]["cleaning-v1"]["department"] == "Vệ sinh & cảnh quan"
+    assert list(backend.members) == ["technical-v1", "cleaning-v1"]
+    assert providers.decisions[0] == "invite" and providers.decisions.count("invite") == 1
+    assert providers.catalogs[0] == ["cleaning-v1", "technical-v1"]
+
+
+@pytest.mark.parametrize("answer", [{"invite": []}, {"something": "else"}, {"invite": "cleaning-v1x"}])
+async def test_a_request_for_one_department_opens_the_room_with_that_department_only(staffed, answer):
+    backend, providers = FakeBackend(message()), Providers()
+    runtime = staffed(backend, providers)
+    backend.specialists = [{**TECHNICAL, "department": "Kỹ thuật", "primary": True}, CLEANING]
+    providers.invite = answer
+    await runtime.round()
+    assert list(backend.members) == ["technical-v1"]
+    # The agent that was offered and not invited is not in the room: no later decision is shown it.
+    assert providers.catalogs and all(catalog == ["technical-v1"] for catalog in providers.catalogs)
+    assert providers.decisions == ["invite", "tasks", "run", "complete_task", "plan"]
