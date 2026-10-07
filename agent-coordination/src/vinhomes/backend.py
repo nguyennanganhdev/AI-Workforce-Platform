@@ -89,6 +89,10 @@ class Backend:
         return await self._call("GET", f"/teams/{team_id}/results/{message_id}")
 
     async def status(self, team_id: str, phase: str, pause_reason: str | None, state_version: int) -> dict:
+        # The reason is the planner's own words and the backend keeps at most 200 characters of it.
+        # A longer one was refused whole (422), and the session stayed unreported.
+        if pause_reason and len(pause_reason) > 200:
+            pause_reason = pause_reason[:199] + "…"
         return await self._call("POST", f"/teams/{team_id}/status",
                                 {"phase": phase, "pause_reason": pause_reason, "state_version": state_version})
 

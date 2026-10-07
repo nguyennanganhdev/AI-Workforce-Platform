@@ -222,3 +222,21 @@ async def test_a_room_question_carries_the_time_and_building_ids_its_tools_need(
     assert json.loads(shown[1]['content']) == workspace
     # An older backend that sends no workspace leaves the context as it was.
     assert [item['item_id'] for item in plain] == ['reception-v2-ticket']
+
+
+@pytest.mark.asyncio
+async def test_a_long_pause_reason_is_cut_to_what_the_backend_keeps():
+    import json
+    from vinhomes.backend import Backend
+    sent = []
+    def api(req):
+        sent.append(json.loads(req.content))
+        return httpx.Response(200, json={})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(api)) as client:
+        backend = Backend('http://backend', TOKEN, client)
+        await backend.status('team', 'paused', 'Cư dân báo kẹt thang có người bên trong. ' * 12, 3)
+        await backend.status('team', 'paused', 'ngắn', 4)
+        await backend.status('team', 'planning', None, 5)
+    assert len(sent[0]['pause_reason']) == 200 and sent[0]['pause_reason'].endswith('…')
+    assert [body['pause_reason'] for body in sent[1:]] == ['ngắn', None]
+
