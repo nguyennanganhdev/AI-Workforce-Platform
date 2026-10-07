@@ -387,8 +387,11 @@ async def build_trace(db, chat: dict) -> dict:
         terminal = None
     elif any(t['status'] in ('resolved', 'closed') for t in tickets) or any(t['status'] == 'completed' for t in teams):
         terminal = 'resolved'
-    elif 'plan_approval' in pending or any(p in ('management_pending', 'resident_pending') for p in plans):
+    elif 'plan_approval' in pending or 'management_pending' in plans:
         terminal = 'approval_pending'
+    elif 'resident_pending' in plans:
+        # The plan exists but its request to the resident is not written yet: a moment later it is.
+        terminal = None
     elif 'information' in pending:
         terminal = 'information_requested'
     elif working:
