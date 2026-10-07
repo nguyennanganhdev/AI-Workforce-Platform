@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import {
   accountsQueryOptions,
   createAccountMutationOptions,
+  deleteAccountMutationOptions,
   resetPasswordMutationOptions,
   updateAccountMutationOptions,
   type Account,
@@ -602,6 +603,8 @@ function AccountEditor({
   const queryClient = useQueryClient();
   const update = useMutation(updateAccountMutationOptions(queryClient));
   const reset = useMutation(resetPasswordMutationOptions());
+  const remove = useMutation(deleteAccountMutationOptions(queryClient));
+  const [removing, setRemoving] = useState(false);
   const [password, setPassword] = useState("");
   const [role, setRole] = useState(account.role);
   const [unit, setUnit] = useState(account.management_unit_id || "");
@@ -640,6 +643,14 @@ function AccountEditor({
                 Khóa truy cập
               </Button>
             )}
+            <Button
+              variant="ghost"
+              className="ops-admin-danger"
+              disabled={update.isPending || remove.isPending}
+              onClick={() => setRemoving(true)}
+            >
+              Xóa tài khoản
+            </Button>
             <Button
               variant="outline"
               disabled={update.isPending}
@@ -706,6 +717,11 @@ function AccountEditor({
             {update.error.message}
           </p>
         )}
+        {remove.error && (
+          <p role="alert" className="ops-admin-error">
+            {remove.error.message}
+          </p>
+        )}
         {!account.administrator && (
           <form
             className="ops-admin-form"
@@ -767,6 +783,23 @@ function AccountEditor({
           </form>
         )}
       </div>
+      {removing && (
+        <AdminConfirm
+          title={`Xóa ${account.name}?`}
+          consequence="Chỉ xóa được tài khoản chưa có lịch sử (tạo nhầm hoặc trùng). Tài khoản đã có yêu cầu, tin nhắn hoặc công việc thì dùng Khóa truy cập."
+          confirm="Xóa tài khoản"
+          busy={remove.isPending}
+          onCancel={() => setRemoving(false)}
+          onConfirm={async () => {
+            try {
+              await remove.mutateAsync(account.id);
+              onClose();
+            } catch {
+              setRemoving(false);
+            }
+          }}
+        />
+      )}
       {confirming && (
         <AdminConfirm
           title={`Khóa ${account.name}?`}

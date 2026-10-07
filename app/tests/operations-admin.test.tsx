@@ -188,6 +188,40 @@ test("the administrator sets a new password for a person who lost theirs, never 
   expect(sent).toEqual([{ method: "POST", url: "/api/business/auth/accounts/u1/password", body: { new_password: password } }]);
 });
 
+test("an account with history cannot be removed and the refusal is shown as the server says it", async () => {
+  const { view, sent } = await mount("AccountsPage", (url, init) => {
+    if (init?.method === "DELETE") return Response.json({ detail: "Tài khoản đã có lịch sử trên hệ thống. Dùng Khóa truy cập để giữ lịch sử." }, { status: 409 });
+    if (url.endsWith("/auth/management-units")) return Response.json({ items: [] });
+    return Response.json({ items: accounts });
+  });
+  fireEvent.click(await view.findByRole("button", { name: /Nguyễn Văn An an@example.com/ }));
+  fireEvent.click(view.getByRole("button", { name: "Xóa tài khoản" }));
+  const { within } = await import("@testing-library/react/pure");
+  const confirm = await view.findByRole("dialog", { name: /Xóa Nguyễn Văn An/ });
+  fireEvent.click(within(confirm).getByRole("button", { name: "Xóa tài khoản" }));
+  expect(await view.findByText(/Dùng Khóa truy cập để giữ lịch sử/)).toBeTruthy();
+  expect(sent).toEqual([{ method: "DELETE", url: "/api/business/auth/accounts/u1", body: undefined }]);
+});
+
+test("a signed-in person changes their own password and is sent to sign in again", async () => {
+  const { ChangePasswordDialog } = await import("../src/features/vinhomes-operations/layout/change-password");
+  const sent: unknown[] = [];
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    sent.push(JSON.parse(String(init?.body)));
+    return Response.json({ detail: "Mật khẩu hiện tại không đúng." }, { status: 401 });
+  }) as typeof fetch;
+  const view = render(<ChangePasswordDialog onClose={() => {}} />);
+  await typeInto(view.getByLabelText("Mật khẩu hiện tại") as HTMLInputElement, "old-password-1");
+  await typeInto(view.getByLabelText("Mật khẩu mới") as HTMLInputElement, "new-password-12");
+  await typeInto(view.getByLabelText("Nhập lại mật khẩu mới") as HTMLInputElement, "new-password-1");
+  expect(view.getByText("Hai lần nhập mật khẩu mới chưa khớp.")).toBeTruthy();
+  expect((view.getByRole("button", { name: "Đổi mật khẩu" }) as HTMLButtonElement).disabled).toBe(true);
+  await typeInto(view.getByLabelText("Nhập lại mật khẩu mới") as HTMLInputElement, "new-password-12");
+  fireEvent.click(view.getByRole("button", { name: "Đổi mật khẩu" }));
+  expect(await view.findByText("Mật khẩu hiện tại không đúng.")).toBeTruthy();
+  expect(sent).toEqual([{ current_password: "old-password-1", new_password: "new-password-12" }]);
+});
+
 test("the model page says which model each role runs on and which service does not answer", async () => {
   const { view } = await mount("ModelsPage", (url) =>
     url.endsWith("/model-registry")

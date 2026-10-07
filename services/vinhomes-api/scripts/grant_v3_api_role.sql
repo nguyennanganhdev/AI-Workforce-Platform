@@ -64,6 +64,8 @@ TO vinhomes_v3_api;
 -- Removing a role's default model (back to the deployment's own setting) deletes its row, and an
 -- unused model whose key was entered in the app can be removed.
 GRANT DELETE ON admin_role_models,admin_model_registry TO vinhomes_v3_api;
+-- An account with no history can be removed; the database refuses it once anything refers to the person.
+GRANT DELETE ON users,accounts,tenant_memberships,scoped_user_roles,workspace_members TO vinhomes_v3_api;
 -- A schedule's run is closed by what became of its mention in the room; the schedule service keeps the rest.
 GRANT UPDATE (status, finished_at, error) ON routine_runs TO vinhomes_v3_api;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO vinhomes_v3_api;
