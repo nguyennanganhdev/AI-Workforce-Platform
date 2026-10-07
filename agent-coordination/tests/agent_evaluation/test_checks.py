@@ -103,3 +103,10 @@ def test_a_refused_call_whose_server_is_unknown_still_counts_as_a_forbidden_tool
 def test_short_tool_names_do_not_flag_ordinary_replies():
     ctx = CheckContext(expected=EXPECTED, tool_schemas={('x', 'get'): {}})
     assert run_checks(case(), trace(final_response='Tôi sẽ get thông tin giúp bạn.'), ctx)['internal_leakage'].passed
+
+
+def test_required_arguments_compare_as_text_and_missing_ones_do_not_match():
+    wanted = case(required_tools=[{'server_id': TOOL[0], 'name': TOOL[1], 'arguments': {'limit': '5'}}])
+    call = {'id': 't1', 'agent_id': 'copy-target', 'server_id': TOOL[0], 'name': TOOL[1], 'status': 'OK'}
+    assert run_checks(wanted, trace(tool_calls=[{**call, 'arguments': {'limit': 5, 'building_id': 'bld-1'}}]), CTX)['required_tools'].passed
+    assert not run_checks(wanted, trace(tool_calls=[{**call, 'arguments': {'building_id': 'bld-1'}}]), CTX)['required_tools'].passed

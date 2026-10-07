@@ -144,6 +144,7 @@ def copy_id(source_id: str) -> str:
 async def install(body: Install, db: Sandbox):
     """The run's agents become the only published specialists of the sandbox room, each a new version."""
     room = await management_room(db)
+    admin = (await db.execute(text('select user_id from platform_admins order by user_id limit 1'))).scalar_one()
     mapping, versions = {}, {}
     for copy in body.agents:
         configuration = {**copy.configuration, 'knowledge_namespace_ids': [], 'revision_of': None}
@@ -173,11 +174,16 @@ async def install(body: Install, db: Sandbox):
             values({TENANT},:agent,:number,'agentscope',:framework,:instructions,cast(:config as jsonb),:hash,:actor) returning id"""),
             {'agent': agent_id, 'number': number, 'framework': configuration.get('framework_version', 'eval-copy'),
              'instructions': configuration.get('instructions', ''), 'config': json.dumps(configuration), 'hash': digest(configuration),
-             'actor': (await db.execute(text('select user_id from platform_admins order by user_id limit 1'))).scalar_one()})).scalar_one()
+             'actor': admin})).scalar_one()
         await db.execute(text("update agent_releases set status='revoked',revoked_at=now(),updated_at=now() where agent_id=:id and status='published' and revoked_at is null"),
                          {'id': agent_id})
         await db.execute(text(f"""insert into agent_releases(tenant_id,agent_id,version_id,status,published_at) values({TENANT},:agent,:version,'published',now())"""),
                          {'agent': agent_id, 'version': version_id})
+        # A Supervisor session only runs a version with an approved review of that same configuration.
+        await db.execute(text(f"""insert into vh_agent_reviews(tenant_id,agent_id,submitted_by,config_hash,evaluation,status,decided_by,decision_note,decided_at)
+            select {TENANT},:agent,:actor,:hash,cast(:evidence as jsonb),'approved',:actor,'Bản sao cho lần đánh giá trong sandbox',now()
+            where not exists(select 1 from vh_agent_reviews where agent_id=:agent and config_hash=:hash and status='approved')"""),
+            {'agent': agent_id, 'actor': admin, 'hash': digest(configuration), 'evidence': json.dumps({'evaluator': 'sandbox-install', 'run_id': str(body.run_id)})})
         mapping[copy.source_id], versions[copy.source_id] = agent_id, str(version_id)
     # Nothing else may answer in this room: a specialist left from another run would change the routing.
     await db.execute(text("""update agent_releases r set status='revoked',revoked_at=now(),updated_at=now() from agents a
@@ -269,13 +275,14 @@ async def build_trace(db, chat: dict) -> dict:
     reception = (await db.execute(text("select id from agents where purpose='reception' order by created_at limit 1"))).scalar_one_or_none()
     rows = (await db.execute(text("""select id,seq,sender_kind,sender_user_id,sender_agent_id,visibility,body,reply_to_id from messages
         where channel_id=:channel order by seq"""), {'channel': channel})).mappings().all()
-    messages, last_resident, replied = [], None, set()
+    messages, last_resident, replied, asked = [], None, set(), set()
     for m in rows:
         body = m['body'] or {}
         if body.get('type') == 'ticket_draft':
             continue
         if m['sender_kind'] == 'user':
-            role, last_resident = 'resident', m['id']
+            # An answer to the Supervisor goes to the Supervisor: Reception writes no reply to it.
+            role, last_resident = 'resident', (None if 'supervisorResponse' in body else m['id'])
         elif body.get('source') == 'supervisor':
             role = 'supervisor'
         elif m['sender_kind'] == 'agent':
@@ -284,6 +291,8 @@ async def build_trace(db, chat: dict) -> dict:
             role = 'system'
         if m['reply_to_id']:
             replied.add(m['reply_to_id'])
+        if body.get('clarification'):
+            asked.add(f"m-{m['seq']}")
         messages.append({'id': f"m-{m['seq']}", 'role': role, 'agent_id': m['sender_agent_id'], 'text': clip(message_text(body)),
                          'visible_to_resident': m['visibility'] in ('customer', 'room')})
     tickets = (await db.execute(text('select id,status,unit_id,building_id from tickets where channel_id=:channel order by created_at'),
@@ -300,7 +309,8 @@ async def build_trace(db, chat: dict) -> dict:
         or r.idempotency_key = any(:supervisor_keys) order by r.created_at"""),
         {'members': [m['id'] for m in members], 'channel': channel,
          'supervisor_keys': [f'supervisor-session:{t}' for t in team_ids]})).mappings().all()
-    specialist_runs = [r for r in runs if r['team_member_id']]
+    specialists = {m['id'] for m in members}  # the Supervisor is a member of its own session too
+    specialist_runs = [r for r in runs if r['team_member_id'] in specialists]
     participants, outputs, issues = [], [], []
     for r in specialist_runs:
         state = {'succeeded': 'completed', 'queued': 'running', 'running': 'running'}.get(r['status'], 'failed')
@@ -312,7 +322,7 @@ async def build_trace(db, chat: dict) -> dict:
         elif r['status'] in ('failed', 'interrupted'):
             issues.append({'id': f"i-{r['id']}", 'kind': 'error', 'code': r['error_code'] or r['status'], 'message': f"lượt của {r['agent_id']}"})
     for r in runs:
-        if not r['team_member_id'] and r['status'] in ('failed', 'interrupted'):
+        if r['team_member_id'] not in specialists and r['status'] in ('failed', 'interrupted'):
             issues.append({'id': f"i-{r['id']}", 'kind': 'timeout' if 'timeout' in (r['error_code'] or '') else 'error',
                            'code': r['error_code'] or r['status'], 'message': f"lượt của {r['agent_id']}"})
     routing = [{'id': f"r-{t['id']}", 'selected_agent_ids': [m['agent_id'] for m in members if m['team_id'] == t['id']]} for t in teams]
@@ -368,7 +378,10 @@ async def build_trace(db, chat: dict) -> dict:
     awaiting_reception = last_resident is not None and last_resident not in replied
     # A ticket handed over but not yet taken by a Supervisor session is still work in progress, not a reply.
     unrouted = any(t['status'] not in ('resolved', 'closed', 'cancelled') for t in tickets) and not teams
-    working = (any(t['status'] in ('queued', 'running') for t in teams) or unrouted) and not pending
+    # A question Reception passed to management waits for a person: no Supervisor session works on it.
+    inquiry = lambda t: ((t['shared_state'] or {}).get('request') or {}).get('kind') == 'inquiry'
+    handed_over = any(inquiry(t) and t['status'] in ('queued', 'running', 'waiting') for t in teams)
+    working = (any(t['status'] in ('queued', 'running') and not inquiry(t) for t in teams) or unrouted) and not pending
     last_reply = next((m for m in reversed(said)), None)
     if awaiting_reception:
         terminal = None
@@ -382,8 +395,8 @@ async def build_trace(db, chat: dict) -> dict:
         terminal = None
     elif teams:
         # Handed to people (a session waiting for management, or no specialist offered): a human decides next.
-        terminal = 'approval_pending' if any(t['status'] == 'waiting' for t in teams) or paused else None
-    elif last_reply and (('clarification' in json.dumps(last_reply)) or last_reply['text'].rstrip().endswith('?')):
+        terminal = 'approval_pending' if any(t['status'] == 'waiting' for t in teams) or paused or handed_over else None
+    elif last_reply and (last_reply['id'] in asked or re.search(r'\?(\s|$)', last_reply['text'])):
         terminal = 'information_requested'
     else:
         terminal = 'reply_only' if last_reply else None

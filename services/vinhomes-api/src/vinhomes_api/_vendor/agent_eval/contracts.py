@@ -191,11 +191,8 @@ class Trace(Strict):
         found = {record.id for group in groups for record in group}
         if self.context is not None:
             found.add('context')
-        if self.final_response is not None:
-            found.add('final_response')
-        if self.terminal_state is not None:
-            found.add('terminal_state')
-        return found
+        # Their absence is evidence too: "no final reply" and "no terminal state" can be cited.
+        return found | {'final_response', 'terminal_state'}
 
     @model_validator(mode='after')
     def unique_ids(self):

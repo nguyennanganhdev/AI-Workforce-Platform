@@ -60,13 +60,31 @@ async def environment(db, *, lock: bool = False) -> dict | None:
                                   + (' for update' if lock else '')))).mappings().first()
 
 
-async def collaborators(room_id: str, agent_id: str, scope: Member) -> list[dict]:
-    """The specialists published beside the agent in its room: the only other agents a case may name."""
+async def collaborators(room_id: str, agent_id: str, scope: Member, catalog: dict) -> tuple[list[dict], list[dict]]:
+    """The specialists published beside the agent in its room: the only other agents a case may name.
+    One the sandbox cannot reproduce (a tool no longer registered, an external connection, a tool the sandbox
+    lacks) is left out and named with the reason, so the run's snapshot says who was not there."""
     catalogue = await room_catalogue(room_id, scope, lock=False)
-    return [{'agent_id': a['id'], 'name': a['name'], 'version_id': a['latest_version']['id'],
-             'configuration': a['latest_version']['config']}
-            for a in catalogue['items'] if a['id'] != agent_id and a['published'] and a['purpose'] == 'specialist'
-            and a.get('latest_version')]
+    offered = {(t['server_id'], t['name']) for t in catalog.get('tools', [])}
+    kept, excluded = [], []
+    for a in catalogue['items']:
+        if a['id'] == agent_id or not a['published'] or a['purpose'] != 'specialist' or not a.get('latest_version'):
+            continue
+        configuration, reason, tools = a['latest_version']['config'], None, []
+        try:
+            tools = await tool_descriptors(scope[0], configuration.get('mcp_tools', []))
+        except HTTPException:
+            reason = 'có công cụ không còn đăng ký'
+        if reason is None and any(t['provenance'] == 'custom' for t in tools):
+            reason = 'dùng kết nối ngoài (MCP) chưa có kết nối thử riêng'
+        if reason is None and any((t['server_id'], t['name']) not in offered for t in tools):
+            reason = 'sandbox chưa có công cụ của agent này'
+        if reason:
+            excluded.append({'agent_id': a['id'], 'name': a['name'], 'reason': reason})
+        else:
+            kept.append({'agent_id': a['id'], 'name': a['name'], 'version_id': a['latest_version']['id'],
+                         'configuration': configuration, 'tools': tools})
+    return kept, excluded
 
 
 async def tool_descriptors(db, grants: list[dict]) -> list[dict]:
@@ -89,7 +107,7 @@ def scope_of(agent_id: str, agent_tools: list[dict], others: list[dict], catalog
                       frozenset(f['fixture_profile_id'] for f in catalog.get('fixtures', [])))
 
 
-async def context_of(scope: Member, room_id: str, agent: dict) -> tuple[dict, SuiteScope, list[dict], list[dict]]:
+async def context_of(scope: Member, room_id: str, agent: dict) -> tuple[dict, SuiteScope, list[dict], list[dict], list[dict]]:
     """What the cases may use, and the generation context the model sees: never the instructions."""
     db = scope[0]
     env = await environment(db)
@@ -97,8 +115,8 @@ async def context_of(scope: Member, room_id: str, agent: dict) -> tuple[dict, Su
         raise HTTPException(503, 'Môi trường đánh giá chưa sẵn sàng. Báo quản trị viên khởi động sandbox đánh giá.')
     configuration = agent['configuration']
     tools = await tool_descriptors(db, configuration.get('mcp_tools', []))
-    others = await collaborators(room_id, agent['id'], scope)
     catalog = env['catalog'] or {}
+    others, excluded = await collaborators(room_id, agent['id'], scope, catalog)
     public = lambda t: {k: t[k] for k in ('server_id', 'name', 'description', 'input_schema')}
     context = {
         'agent': {'agent_id': agent['id'], 'name': agent['name'], 'description': configuration.get('description', ''),
@@ -110,7 +128,7 @@ async def context_of(scope: Member, room_id: str, agent: dict) -> tuple[dict, Su
         'sources': catalog.get('documents', []), 'fixtures': catalog.get('fixtures', []),
         'fixture_version': env['fixture_version'],
     }
-    return context, scope_of(agent['id'], tools, others, catalog), tools, others
+    return context, scope_of(agent['id'], tools, others, catalog), tools, others, excluded
 
 
 def stored_case(row) -> dict:
@@ -186,7 +204,7 @@ async def create_suite(room_id: str, agent_id: str, body: SuiteCreate, scope: Me
         raise HTTPException(403, 'Only management of this unit can prepare its evaluation')
     if digest(agent['configuration']) != body.configuration_hash:
         raise HTTPException(409, 'Cấu hình đã đổi. Tải lại rồi chuẩn bị bộ đánh giá.')
-    context, suite_scope, _, _ = await context_of(scope, room_id, agent)
+    context, suite_scope, *_ = await context_of(scope, room_id, agent)
     generator = None
     if body.mode == 'generate':
         url, token = evaluator()
@@ -251,7 +269,7 @@ async def edit_suite(room_id: str, agent_id: str, suite_id: UUID, body: SuiteEdi
     if suite['version'] != body.version:
         raise HTTPException(409, 'Bộ đánh giá vừa được sửa ở nơi khác. Tải lại.')
     cases = parsed([{**c, 'source': c.get('source', 'manual')} for c in body.cases])
-    _, suite_scope, _, _ = await context_of(scope, room_id, agent)
+    _, suite_scope, *_ = await context_of(scope, room_id, agent)
     _, problems = validate_suite([c.model_dump(mode='json') for c in cases], suite_scope)
     await write_cases(scope[0], suite_id, cases)
     await scope[0].execute(text('update vh_agent_eval_suites set problems=cast(:problems as jsonb),version=version+1,updated_at=now() where id=:id'),
@@ -273,7 +291,7 @@ async def approve_suite(room_id: str, agent_id: str, suite_id: UUID, body: Suite
         raise HTTPException(409, 'Bộ đánh giá đã đổi hoặc đã được duyệt. Tải lại.')
     view = await suite_view(scope[0], suite_id)
     cases = [{k: v for k, v in c.items() if k not in ('id', 'ordinal')} for c in view['cases']]
-    _, suite_scope, _, _ = await context_of(scope, room_id, agent)
+    _, suite_scope, *_ = await context_of(scope, room_id, agent)
     _, problems = validate_suite(cases, suite_scope)
     if problems:
         await scope[0].execute(text('update vh_agent_eval_suites set problems=cast(:p as jsonb),updated_at=now() where id=:id'),
@@ -316,18 +334,18 @@ async def start_run(room_id: str, agent_id: str, body: RunStart, scope: Member):
         raise HTTPException(409, 'Duyệt bộ 4 ca trước khi chạy đánh giá.')
     view = await suite_view(db, body.suite_id)
     cases = [{k: v for k, v in c.items() if k not in ('id', 'ordinal')} for c in view['cases']]
-    _, suite_scope, tools, others = await context_of(scope, room_id, agent)
+    _, suite_scope, tools, others, excluded = await context_of(scope, room_id, agent)
     _, problems = validate_suite(cases, suite_scope)
     if problems:
         raise HTTPException(409, 'Bộ đã duyệt không còn khớp phạm vi hiện tại của agent: ' + ' '.join(problems))
     env = await environment(db, lock=True)
-    every_tool = tools + [t for o in others for t in await tool_descriptors(db, o['configuration'].get('mcp_tools', []))]
-    if any(t['provenance'] == 'custom' for t in every_tool):
+    every_tool = tools + [t for o in others for t in o['tools']]
+    if any(t['provenance'] == 'custom' for t in tools):
         # A custom MCP server has no connection of its own in the sandbox: dropping its tools would
         # make a pass mean nothing, and calling the real server would leave the sandbox.
         raise HTTPException(409, 'Agent dùng kết nối ngoài (MCP) chưa có kết nối thử riêng trong sandbox; chưa đánh giá được.')
     offered = {(t['server_id'], t['name']) for t in (env['catalog'] or {}).get('tools', [])}
-    missing = sorted(f"{t['server_id']}/{t['name']}" for t in every_tool if (t['server_id'], t['name']) not in offered)
+    missing = sorted(f"{t['server_id']}/{t['name']}" for t in tools if (t['server_id'], t['name']) not in offered)
     if missing:
         raise HTTPException(409, 'Sandbox chưa có công cụ: ' + ', '.join(missing))
     judge_model = await resolve_model(db, 'evaluator')
@@ -340,6 +358,7 @@ async def start_run(room_id: str, agent_id: str, body: RunStart, scope: Member):
                            'configuration': o['configuration'], 'model': public_profile(await resolve_model(
                                db, 'specialist', o['configuration']['model_id'], agent['workspace_id']) if o['configuration'].get('model_id') else None)}
                           for o in others],
+        'excluded_collaborators': excluded,
         'tools': [{k: t[k] for k in ('server_id', 'name', 'description', 'input_schema', 'effect')} for t in every_tool],
         'suite': {'id': str(body.suite_id), 'revision': suite['revision'], 'suite_hash': suite['suite_hash']},
         'environment': {'id': str(env['id']), 'execution_tenant_id': str(env['execution_tenant_id']),

@@ -254,3 +254,27 @@ def test_production_keeps_no_tool_arguments_or_results(database):
         assert refused.json()['status'] == 'FORBIDDEN'
     assert sql(database, 'select 1 from vh_agent_eval_tool_traces') == []
     assert len(sql(database, "select 1 from audit_events where event_type='agent.tool_called' and target_id=$1", str(run))) == 1
+
+
+def test_a_published_agent_the_sandbox_cannot_reproduce_is_left_out_by_name_not_a_blocker(database):
+    from test_resident_contract import TENANT
+    from test_v3_coordination import publish_specialist
+    register_tools(database)
+    sql(database, "insert into mcp_tools(server_id,name,description,input_schema,effect,tenant_id) values('technical-tools','technical.retired_tool','x','{}','read',$1) "
+                  "on conflict do nothing returning name", TENANT)
+    stale, _ = publish_specialist(database, 'Stale ' + uuid4().hex[:6], ['technical'], ['technical.retired_tool'])
+    sql(database, "delete from mcp_tools where name='technical.retired_tool' returning name")
+    with demo_client(database, 'management') as m:
+        register_environment(m)
+        agent, configuration = draft(m, 'Beside stale ' + uuid4().hex[:6])
+        # A case cannot name the agent that will not be in the sandbox.
+        named = m.post(f'{ROOM}/{agent}/eval-suites', json={'configuration_hash': configuration, 'mode': 'manual', 'cases': [
+            *suite_for(agent)[:3], case('Phối hợp', 'collaboration', required_agents=[agent, stale])]}).json()
+        assert any(stale in p for p in named['problems'])
+        suite = approved_suite(m, agent, configuration)
+        run = m.post(f'{ROOM}/{agent}/eval-runs', json={'suite_id': suite['id'], 'configuration_hash': configuration, 'request_id': 'stale'})
+        assert run.status_code == 202, run.text
+        snapshot = json.loads(sql(database, 'select snapshot from vh_agent_eval_runs where id=$1', UUID(run.json()['runId']))[0]['snapshot'])
+        assert [e['agent_id'] for e in snapshot['excluded_collaborators']] == [stale] and 'không còn đăng ký' in snapshot['excluded_collaborators'][0]['reason']
+        assert stale not in [c['agent_id'] for c in snapshot['collaborators']]
+        m.post(f"{ROOM}/{agent}/eval-runs/{run.json()['runId']}/cancel")

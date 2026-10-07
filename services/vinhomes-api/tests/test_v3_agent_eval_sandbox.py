@@ -73,6 +73,10 @@ def test_install_makes_the_copies_the_only_published_specialists(marked):
     published = sql(database, "select a.id from agent_releases r join agents a on a.id=r.agent_id where r.status='published' and r.revoked_at is null "
                               "and a.purpose='specialist' and a.workspace_id=(select workspace_id from channels where id=$1)", first['room_id'])
     assert [p['id'] for p in published] == [copy]
+    # A Supervisor session runs a version only with an approved review of the same configuration.
+    approved = sql(database, "select 1 from vh_agent_reviews r join agent_versions v on v.agent_id=r.agent_id and v.config_hash=r.config_hash "
+                             "where r.agent_id=$1 and r.status='approved' and v.id=$2", copy, UUID(second['versions']['source-agent']))
+    assert len(approved) == 1
     stored = sql(database, 'select configuration from agents where id=$1', copy)[0]['configuration']
     assert 'not-in-this-database' not in stored
 
@@ -119,3 +123,24 @@ def test_a_copy_names_its_model_by_provider_and_name_and_an_unknown_one_is_unsup
         assert found.status_code == 200, found.text
     stored = sql(database, 'select configuration from agents where id=$1', found.json()['agents']['model-agent'])[0]['configuration']
     assert str(model) in stored
+
+
+def test_a_question_back_and_a_question_passed_to_management_are_where_the_conversation_stands(marked):
+    database = marked['database']
+    with sandbox(database) as c:
+        channel = c.post(SANDBOX + '/conversations', headers=AUTH, json={'fixture_profile_id': 'resident-a', 'title': 'Ca hỏi lại'}).json()['channel_id']
+        c.post(f'{SANDBOX}/conversations/{channel}/messages', headers=AUTH, json={'text': 'Nhà tôi mất điện', 'client_message_id': 'q1'})
+        # Reception's own question, marked the way its intake rules mark it (v3_reception_runtime.write_reply).
+        sql(database, """update messages set body=jsonb_build_object('text','Sự cố ở thiết bị nào? Chưa rõ thì cứ nói chưa rõ nhé.','clarification','item')
+            where channel_id=$1 and sender_kind='agent' returning id""", channel)
+        assert c.get(f'{SANDBOX}/conversations/{channel}/trace', headers=AUTH).json()['trace']['terminal_state'] == 'information_requested'
+        # The same conversation once Reception passed the question to management: a person answers, no Supervisor works on it.
+        sql(database, "update messages set body=jsonb_build_object('text','Mình đã chuyển câu hỏi của bạn đến Ban quản lý.') where channel_id=$1 and sender_kind='agent' returning id", channel)
+        asked = sql(database, "select id from messages where channel_id=$1 and sender_kind='user'", channel)[0]['id']
+        room = sql(database, "select c.id,c.workspace_id,(select id from agents where purpose='supervisor' and workspace_id=c.workspace_id limit 1) as supervisor "
+                             "from channels c where c.kind='management' and c.workspace_id is not null limit 1")[0]
+        sql(database, """insert into agent_teams(tenant_id,workspace_id,channel_id,request_message_id,supervisor_agent_id,status,shared_state)
+            values($1,$2,$3,$4,$5,'queued','{"request": {"kind": "inquiry"}}') returning id""", TENANT, room['workspace_id'], room['id'], asked, room['supervisor'])
+        read = c.get(f'{SANDBOX}/conversations/{channel}/trace', headers=AUTH).json()
+        assert read['trace']['terminal_state'] == 'approval_pending' and read['progress']['working'] is False
+        assert c.post(f'{SANDBOX}/conversations/{channel}/close', headers=AUTH).json()['teams'] != []

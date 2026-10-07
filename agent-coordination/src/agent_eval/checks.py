@@ -84,8 +84,9 @@ def why_not(requirement: ToolRequirement, call: ToolCall, ctx: CheckContext) -> 
         return f'{agent} không được cấp tool này'
     if call.status != SUCCESS:
         return f'tool trả {call.status}'
+    # Compared as text: a case written or generated as JSON says "5" where the agent sent 5.
     wrong = [k for k, v in requirement.arguments.items()
-             if wanted_value(v, ctx) is None or call.arguments.get(k) != wanted_value(v, ctx)]
+             if wanted_value(v, ctx) is None or k not in call.arguments or str(call.arguments[k]) != str(wanted_value(v, ctx))]
     if wrong:
         return f'tham số không khớp: {listed(wrong)}'
     return None

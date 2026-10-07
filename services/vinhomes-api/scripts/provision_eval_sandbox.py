@@ -151,12 +151,15 @@ async def seed(db: asyncpg.Connection, tenant: UUID) -> str:
     return room
 
 
-async def copy_catalogue(source: asyncpg.Connection, sandbox: asyncpg.Connection, tenant: UUID) -> tuple[int, int]:
+async def copy_catalogue(source: asyncpg.Connection, sandbox: asyncpg.Connection, tenant: UUID, source_tenant: str | None) -> tuple[int, int]:
     """First-party tools and env-referenced models, as production registers them. Never a custom connection or a sealed key."""
-    tenants = await source.fetch('select id from tenants')
-    if len(tenants) != 1:
-        raise SystemExit('The source database must hold exactly one tenant to copy its catalogue from')
-    await source.execute("select set_config('app.tenant_id',$1,false)", str(tenants[0]['id']))
+    tenants = [str(r['id']) for r in await source.fetch('select id from tenants')]
+    if source_tenant is None and len(tenants) != 1:
+        raise SystemExit('The source database holds several tenants: name the deployment tenant with --source-tenant')
+    source_tenant = source_tenant or tenants[0]
+    if source_tenant not in tenants:
+        raise SystemExit('--source-tenant is not a tenant of the source database')
+    await source.execute("select set_config('app.tenant_id',$1,false)", source_tenant)
     servers = await source.fetch("select id,title,vendor,url,provenance from mcp_servers where provenance<>'custom' and status='active'")
     tools = await source.fetch("""select t.server_id,t.name,t.description,t.input_schema,t.effect,t.version from mcp_tools t
         join mcp_servers s on s.id=t.server_id where s.provenance<>'custom' and s.status='active' and not t.destructive""")
@@ -175,7 +178,55 @@ async def copy_catalogue(source: asyncpg.Connection, sandbox: asyncpg.Connection
         await sandbox.execute("""insert into admin_model_registry(tenant_id,name,provider,kind,credential_env,base_url_env,allowed,dimension,check_status,created_by)
             select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10 where not exists(select 1 from admin_model_registry where name=$2 and provider=$3 and kind=$4 and workspace_id is null)""",
                               tenant, m['name'], m['provider'], m['kind'], m['credential_env'], m['base_url_env'], m['allowed'], m['dimension'], m['check_status'], admin)
+    # Which model each role runs on: without these the sandbox's agents would run on another model than production's.
+    defaults = await source.fetch("""select d.role,m.name,m.provider,m.kind from admin_role_models d
+        join admin_model_registry m on m.id=d.model_id and m.tenant_id=d.tenant_id where m.credential_env is not null and m.workspace_id is null""")
+    for d in defaults:
+        await sandbox.execute("""insert into admin_role_models(tenant_id,role,model_id,updated_by)
+            select $1,$2,m.id,$6 from admin_model_registry m where m.name=$3 and m.provider=$4 and m.kind=$5 and m.workspace_id is null
+            on conflict(tenant_id,role) do update set model_id=excluded.model_id,updated_at=now()""",
+                              tenant, d['role'], d['name'], d['provider'], d['kind'], admin)
     return len(tools), len(models)
+
+
+async def stack(owner_url: str, sandbox_database: str, tenant: UUID, existing: dict[str, str]) -> dict[str, str]:
+    """What the rest of the sandbox stack connects with: a tool host role (SELECT and INSERT only, as the tool
+    host demands), a checkpoint database of its own for the sandbox's Supervisor, and an empty knowledge base."""
+    tools_role, checkpoint = 'vinhomes_eval_technical', 'vinhomes_eval_coordination'
+    tools_password = existing.get('EVAL_TECHNICAL_ROLE_PASSWORD') or secrets.token_hex(24)
+    checkpoint_password = existing.get('EVAL_COORDINATION_ROLE_PASSWORD') or secrets.token_hex(24)
+    db = await asyncpg.connect(owner_url)
+    try:
+        for name, password in ((tools_role, tools_password), (checkpoint, checkpoint_password)):
+            verb = 'ALTER' if await db.fetchval('select 1 from pg_roles where rolname=$1', name) else 'CREATE'
+            await db.execute(f"{verb} ROLE {name} LOGIN PASSWORD '{password}' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE")
+        await db.execute(f'REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {tools_role}')
+        await db.execute((ROOT / 'server/scripts/grant_technical_api_role.sql').read_text(encoding='utf-8').replace('vinhomes_technical_api', tools_role))
+        await db.execute(f'GRANT CONNECT ON DATABASE "{sandbox_database}" TO {tools_role}')
+        if not await db.fetchval('select 1 from pg_database where datname=$1', checkpoint):
+            await db.execute(f'CREATE DATABASE {checkpoint} OWNER {checkpoint}')
+            await db.execute(f'REVOKE CONNECT ON DATABASE {checkpoint} FROM PUBLIC')
+        base = uuid5(NAMESPACE_URL, f'eval-sandbox:{tenant}:knowledge-base')
+        async with db.transaction():
+            await db.execute("select set_config('app.tenant_id',$1,true)", str(tenant))
+            domain = await db.fetchval("select id from domains where tenant_id=$1 and code='vinhomes'", tenant)
+            await db.execute("""insert into knowledge_bases(id,tenant_id,domain_id,code,name,description,status)
+                values($1,$2,$3,'eval-kb','Kho tri thức sandbox','Rỗng cho tới khi phát hành tài liệu vào sandbox','active') on conflict do nothing""",
+                             base, tenant, domain)
+            # Reception searches the knowledge base under its own grant; without it every question goes to management.
+            admin = await db.fetchval("select id from users where email='eval-admin@sandbox.local'")
+            await db.execute("""insert into agent_knowledge_grants(tenant_id,agent_id,knowledge_base_id,granted_by)
+                select $1,'system-reception',$2,$3 where not exists(select 1 from agent_knowledge_grants where agent_id='system-reception' and knowledge_base_id=$2)""",
+                             tenant, base, admin)
+    finally:
+        await db.close()
+
+    def url(name: str, password: str, database: str) -> str:
+        parts = urlsplit(owner_url)
+        return urlunsplit(parts._replace(netloc=f'{name}:{quote(password)}@{parts.hostname}:{parts.port or 5432}', path='/' + database))
+    return {'EVAL_TECHNICAL_DATABASE_URL': url(tools_role, tools_password, sandbox_database), 'EVAL_TECHNICAL_ROLE_PASSWORD': tools_password,
+            'EVAL_COORDINATION_DATABASE_URL': url(checkpoint, checkpoint_password, checkpoint), 'EVAL_COORDINATION_ROLE_PASSWORD': checkpoint_password,
+            'EVAL_KNOWLEDGE_BASE_ID': str(base)}
 
 
 async def main(args) -> None:
@@ -220,7 +271,7 @@ async def main(args) -> None:
                     await sandbox.execute('insert into vh_agent_eval_sandbox(tenant_id,source_database,fixture_version) values($1,$2,$3)', tenant, source_db, FIXTURE_VERSION)
                 room = await seed(sandbox, tenant)
                 await sandbox.execute('update vh_agent_eval_sandbox set fixture_version=$1 where tenant_id=$2', FIXTURE_VERSION, tenant)
-                tools, models = await copy_catalogue(source, sandbox, tenant)
+                tools, models = await copy_catalogue(source, sandbox, tenant, args.source_tenant)
         finally:
             await sandbox.close()
         if args.isolate_source:
@@ -242,6 +293,7 @@ async def main(args) -> None:
             has_database_privilege(current_user,$1,'CONNECT') as source_connect from pg_roles r where r.rolname=current_user""", source_db)
     finally:
         await probe.close()
+    extra = await stack(with_database(source_url, args.sandbox_database), args.sandbox_database, tenant, existing) if args.stack else {}
     output.parent.mkdir(parents=True, exist_ok=True)
     token = existing.get('VINHOMES_API_EVAL_SANDBOX_TOKEN') or secrets.token_urlsafe(32)
     output.write_text(
@@ -249,7 +301,7 @@ async def main(args) -> None:
         f"VINHOMES_API_DATABASE_URL={runtime.replace('postgresql://', 'postgresql+asyncpg://')}\n"
         f"VINHOMES_API_TENANT_ID={tenant}\nVINHOMES_API_EVAL_SANDBOX_TOKEN={token}\nEVAL_SANDBOX_ROLE_PASSWORD={password}\n"
         f"# Worker: EVAL_SANDBOX_TOKEN is the same value as VINHOMES_API_EVAL_SANDBOX_TOKEN.\n"
-        f"EVAL_SANDBOX_TOKEN={token}\n", encoding='utf-8')
+        f"EVAL_SANDBOX_TOKEN={token}\n" + ''.join(f'{k}={v}\n' for k, v in extra.items()), encoding='utf-8')
     safe = not facts['rolsuper'] and not facts['rolbypassrls'] and not facts['source_connect']
     print(json.dumps({'sandbox_database': args.sandbox_database, 'source_database': source_db, 'room': room, 'tools': tools,
                       'models': models, 'fixtures': [f[0] for f in FIXTURES], 'isolated_from_source': safe, 'settings': str(output)}, ensure_ascii=False))
@@ -262,7 +314,9 @@ if __name__ == '__main__':
     parser.add_argument('--source-url', required=True, help='owner URL of the production database (read only here, except --isolate-source)')
     parser.add_argument('--sandbox-database', default='vinhomes_eval')
     parser.add_argument('--role', default='vinhomes_eval_api')
+    parser.add_argument('--source-tenant', help="the deployment's tenant, when the source database holds several")
     parser.add_argument('--isolate-source', action='store_true')
+    parser.add_argument('--stack', action='store_true', help='also the tool host role, Supervisor checkpoint database and knowledge base')
     parser.add_argument('--allow-remote', action='store_true')
     parser.add_argument('--output', default=str(SERVICE / '.local-eval' / 'sandbox.env'))
     asyncio.run(main(parser.parse_args()))
