@@ -191,6 +191,30 @@ Ghi chú về các test còn lại:
 
 Một agent review độc lập đã soi code và tìm ra 2 lỗi mức cao (bản sao agent có model không cài được; mất heartbeat thì worker vẫn chạy khi không còn lease) cùng 4 lỗi mức trung bình và 3 lỗi mức thấp. Tất cả đã được sửa và có test, trừ một lỗi mức thấp: sinh ca vẫn giữ kết nối DB trong lúc chờ model, giống cách Factory đang làm.
 
+### 5.1. Chạy live trên stack Docker local (07/10/2026)
+
+Sandbox `vinhomes_eval` và compose project `vinhomes-eval` đã dựng; bốn lần chạy với model thật, agent là bản nháp sao y "Agent Kỹ thuật A2".
+
+| Lần | Kết quả | Ghi chú |
+|---|---|---|
+| 1 | 0/4, hoàn tất | Lộ ra các lỗi trace và cài bản sao (đã sửa ở `61669ec`) |
+| 2 | Hủy giữa chừng | Sandbox thiếu model mặc định theo vai trò; lệnh hủy hoạt động đúng |
+| 3 | 0/4, hoàn tất | Ca ngoài năng lực chạy trọn luồng tới "phương án chờ cư dân duyệt"; lộ lỗi chờ Lễ tân sau câu trả lời cho Supervisor (đã sửa) |
+| 4 | 0/4, không có giá trị | Khóa model hết tín dụng (`insufficient_quota`) |
+
+Đã chạy thật được: sinh 4 ca, duyệt, claim theo lease, kiểm cô lập, cài bản sao, Lễ tân, mở ticket, Supervisor chọn agent, agent gọi tool qua gateway (có ghi trace), Supervisor hỏi lại và worker trả lời, giám khảo chấm, API tính kết quả, hủy run.
+
+Chưa có lần chạy nào đạt 4/4. Lý do thuộc về sandbox và cách thử, không phải đường ống:
+
+- Bản nháp sao y trùng danh mục với agent đang phát hành, nên Supervisor chọn cả hai.
+- Kho tri thức sandbox rỗng; `sop_kb.retrieve` trả `NOT_FOUND`.
+- Supervisor chọn agent theo một danh mục của ticket, nên ca phối hợp giữa hai danh mục không xảy ra.
+- Giới hạn 5 phút mỗi ca ngắn khi hai agent chạy nối tiếp; một lần đứt mạng khi gọi model làm Supervisor dừng chờ đối soát.
+
+Bản sửa cuối (không chờ Lễ tân sau câu trả lời cho Supervisor) có test nhưng chưa được xác nhận bằng một lần chạy live, vì khóa model hết tín dụng.
+
+Cổng phát hành V1 đang bật trên stack này vì môi trường đã `ready`: BQL chưa phát hành được agent mới cho tới khi có run đạt 4/4, hoặc môi trường được đặt về `disabled`.
+
 ## 6. Vận hành
 
 1. **Dựng sandbox** (cần owner của database production):
@@ -225,7 +249,7 @@ Một agent review độc lập đã soi code và tìm ra 2 lỗi mức cao (b�
 
 ## 7. Chưa làm hoặc chưa kiểm chứng
 
-- **Chưa chạy live toàn tuyến với model thật** (Lễ tân, Supervisor, OpenBot và tool host trong sandbox). Lý do: cần người phụ trách duyệt việc thu hồi CONNECT của PUBLIC trên database đang dùng, việc tốn chi phí model, và việc chạy compose project thứ hai.
+- **Chưa có lần chạy live nào đạt 4/4**, và bản sửa cuối chưa được xác nhận live. Xem mục 5.1.
 - **Chưa cài Ragas.** Chữ ký hàm đã đối chiếu với mã nguồn wheel 0.4.3, và đường gọi đã có test bằng scorer giả.
 - **Kho tri thức chưa tự đồng bộ vào sandbox.** Catalog tài liệu rỗng cho tới khi phát hành tri thức vào database sandbox.
 - **Trang Model của admin chưa có nhãn cho vai trò `evaluator`.** API đã nhận vai trò này; trong lúc chờ, dùng `EVAL_MODEL` của worker.
