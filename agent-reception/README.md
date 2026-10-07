@@ -106,7 +106,8 @@ Biến môi trường ở `.env.example` (`RECEPTION_SERVICE_TOKEN`, `RECEPTION_
   - Một dữ kiện `customer_report` chỉ được giữ khi `value` tìm thấy trong đúng tin nhắn cư dân nó dẫn, và không bị
     phủ định ngay trước đó ("không phải ống vỡ" không thành "ống vỡ"). Lời xác nhận trống ("ok", "vâng") không là dữ kiện.
   - Sự cố thường chỉ được bàn giao khi có `symptom` và có `item` (thiết bị, vật hoặc điểm cụ thể, không chỉ là tên
-    phòng) hoặc `item_unknown` (cư dân nói họ không biết). Thiếu thì backend trả câu hỏi; câu hỏi tới cư dân nguyên
+    phòng; ở khu vực chung là chỗ cụ thể như "phòng rác tầng 12", từ 07/10/2026 nêu rõ trong mô tả tool để phản ánh
+    vệ sinh, cảnh quan không bị hỏi lại) hoặc `item_unknown` (cư dân nói họ không biết). Thiếu thì backend trả câu hỏi; câu hỏi tới cư dân nguyên
     văn, được đánh dấu trong hội thoại để đếm. Hỏi hai lần mà chưa có thì yêu cầu được chuyển nguyên trạng cho người xem.
   - Khẩn cấp không bị giữ lại để hỏi; mô tả vẫn là nguyên văn tin nhắn.
   - Ảnh của mọi tin cư dân trong cuộc trò chuyện được gắn vào yêu cầu khi tạo.

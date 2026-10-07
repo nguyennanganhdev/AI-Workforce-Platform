@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { IconFile, IconPaperclip, IconSend, IconX } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Streamdown } from "streamdown";
+import { Bot } from "lucide-react";
+import { OpsSelect } from "../ui";
 import { cn } from "@/lib/utils";
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
@@ -37,27 +41,16 @@ export function Said({ who, at, mine = false, agent = false, tone = "plain", foo
 }) {
   const [open, setOpen] = useState(false);
   const long = children.length > LONG;
-  // What the reader wrote sits on the right in a bubble; everybody else is a name over plain text.
   return (
-    <article className={cn("coord-message flex flex-col gap-1.5", mine ? "items-end" : "items-start")} data-agent={agent || undefined}>
-      <p className="flex items-baseline gap-2 text-xs text-muted-foreground">
-        <strong className={cn("text-[13px] font-semibold text-foreground", mine && "sr-only")}>{who}</strong>
-        <time dateTime={at}>{clock(at)}</time>
-      </p>
-      {/* A message may be only its files. */}
-      {!!children && (
-        <div className={cn("whitespace-pre-wrap break-words text-[15px] leading-relaxed text-foreground",
-          mine ? "max-w-[85%] rounded-2xl bg-muted px-4 py-2.5" : tone === "accent" ? "border-l-2 border-primary/50 pl-3" : "")}>
-          {long && !open ? `${children.slice(0, LONG).trimEnd()}…` : children}
-        </div>
-      )}
-      {!!files?.length && <Files files={files} />}
-      {long && (
-        <button type="button" className="text-xs font-medium text-primary hover:underline" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? "Thu gọn" : "Xem đầy đủ"}
-        </button>
-      )}
-      {footer && <p className="text-xs text-muted-foreground">{footer}</p>}
+    <article className={cn("coord-message ops-message", mine && "ops-message-mine")} data-agent={agent || undefined}>
+      <span className={agent ? "ops-agent-avatar" : "ops-person-avatar"} aria-hidden="true">{agent ? <Bot size={16} /> : who.split(" ").map(word => word[0]).slice(-2).join("")}</span>
+      <div className="ops-message-content">
+        <p className="ops-message-author"><strong>{who}</strong><time dateTime={at}>{clock(at)}</time></p>
+        {!!children && <div className="ops-message-bubble">{agent ? <Streamdown>{long && !open ? `${children.slice(0, LONG).trimEnd()}…` : children}</Streamdown> : <p>{long && !open ? `${children.slice(0, LONG).trimEnd()}…` : children}</p>}</div>}
+        {!!files?.length && <Files files={files} />}
+        {long && <button type="button" className="ops-text-action" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Thu gọn" : "Xem đầy đủ"}</button>}
+        {footer && <p className="ops-message-footer">{footer}</p>}
+      </div>
     </article>
   );
 }
@@ -142,13 +135,11 @@ export function Composer({ agents, agentLabel, placeholder, disabled, hint, erro
           </>
         )}
         {(agentLabel || agents.length > 1) && (
-          <select aria-label="@Nhắc agent" value={agentId} disabled={disabled} onChange={(e) => setAgentId(e.target.value)}
-            className="h-9 max-w-44 shrink-0 rounded-md border-0 bg-transparent px-2 text-sm text-muted-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
-            {agentLabel && <option value="">{agentLabel}</option>}
-            {agents.map((a) => <option key={a.id} value={a.id}>@{a.name}</option>)}
-          </select>
+          <OpsSelect label="@Nhắc agent" value={agentId || (!agentLabel ? agents[0]?.id || "" : "auto")} disabled={disabled}
+            onValueChange={value => setAgentId(value === "auto" ? "" : value)} options={[...(agentLabel ? [{ value: "auto", label: agentLabel }] : []), ...agents.map(agent => ({ value: agent.id, label: `@${agent.name}` }))]}
+            placeholder={agentLabel || "Chọn agent"} />
         )}
-        <textarea aria-label="Nội dung" rows={1} value={text} maxLength={2000} disabled={disabled} placeholder={placeholder}
+        <Textarea aria-label="Nội dung" rows={1} value={text} maxLength={2000} disabled={disabled} placeholder={placeholder}
           className="coord-compose-text max-h-40 min-h-12 w-full resize-none bg-transparent px-2 py-2 text-[15px] leading-snug text-foreground outline-none placeholder:text-muted-foreground"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }} />

@@ -48,6 +48,18 @@ class Backend:
     async def inbox(self, cursor: str | None, limit: int = 50) -> dict:
         return await self._call("GET", "/inbox", params={"limit": limit, **({"cursor": cursor} if cursor else {})})
 
+    async def model_config(self):
+        return (await self._call('GET', '/model-config/supervisor'))['config']
+
+    async def session_mentions(self) -> dict:
+        return await self._call('GET', '/session-mentions')
+
+    async def session_turn(self, team: str, message: str) -> dict:
+        return await self._call('POST', f'/teams/{team}/mentions/{message}/turn')
+
+    async def session_outcome(self, team: str, message: str, result: dict) -> dict:
+        return await self._call('POST', f'/teams/{team}/mentions/{message}/outcome', result)
+
     async def room_mentions(self) -> dict:
         return await self._call('GET', '/room-mentions')
 

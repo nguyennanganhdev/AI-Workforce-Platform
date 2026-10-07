@@ -7,7 +7,8 @@
  * Creating the roles and the first organisation is not done here.
  *
  * Last, the technical tool host's catalogue is registered for the tenant, so an agent's
- * configuration can name the tools this release serves. The API's own tools are registered by the
+ * configuration can name the tools this release serves: Team Quang's technical tools and Team
+ * Hoàng's cleaning counterparts of them, each under its own server. The API's own tools are registered by the
  * `catalogue` job, from the API image.
  */
 import { readFile } from "node:fs/promises";
@@ -33,6 +34,7 @@ const apiRole = roleOf("VINHOMES_API_DATABASE_URL");
 const toolsRole = roleOf("TECHNICAL_API_DATABASE_URL");
 const routinesRole = roleOf("ROUTINES_DATABASE_URL");
 const connectionsRole = roleOf("OPENBOT_DATABASE_URL");
+const knowledgeRole = roleOf("KNOWLEDGE_DATABASE_URL");
 
 const migrated = Bun.spawnSync(["bun", "server/scripts/migrate.ts"], {
   stdout: "inherit",
@@ -63,6 +65,7 @@ try {
   const connections = (await readFile("server/scripts/grant_business_connections_role.sql", "utf8"))
     .replaceAll("vinhomes_business_connections", connectionsRole);
   await sql.unsafe(connections);
+  await sql.unsafe(`GRANT SELECT ON admin_model_registry,admin_role_models TO "${knowledgeRole}"`);
   console.log(
     JSON.stringify({
       type: "grants-applied",
@@ -75,23 +78,39 @@ try {
   const { describeTechnicalTools } = await import(
     `${process.cwd()}/server/src/technical-tools`
   );
-  const described = describeTechnicalTools();
+  const { describeCleaningTools, cleaningNames } = await import(
+    `${process.cwd()}/server/src/cleaning-tools`
+  );
+  // The host serves the cleaning counterparts only, not the work-order entries of that module.
+  const counterparts = new Set(Object.values(cleaningNames));
+  const servers = [
+    ["technical-tools", "Công cụ kỹ thuật", "Team Quang", describeTechnicalTools()],
+    [
+      "cleaning-tools",
+      "Công cụ vệ sinh",
+      "Team Hoàng",
+      describeCleaningTools().filter((tool: { name: string }) => counterparts.has(tool.name)),
+    ],
+  ] as const;
   await sql.begin(async (tx) => {
     await tx`select set_config('app.tenant_id', ${tenant}, true)`;
-    await tx`
-      insert into mcp_servers(id,title,vendor,url,provenance,tenant_id)
-      values('technical-tools','Công cụ kỹ thuật','Team Quang','internal:/internal/technical/v1','first-party',${tenant})
-      on conflict (id) do update set title=excluded.title,updated_at=now()`;
-    for (const tool of described)
+    for (const [server, title, vendor, described] of servers) {
       await tx`
-        insert into mcp_tools(server_id,name,description,input_schema,effect,destructive,version,tenant_id)
-        values('technical-tools',${tool.name},${tool.description},${tx.json(tool.input_schema)},${tool.side_effect},false,${tool.version},${tenant})
-        on conflict (server_id,name) do update set description=excluded.description,
-          input_schema=excluded.input_schema,effect=excluded.effect,version=excluded.version`;
+        insert into mcp_servers(id,title,vendor,url,provenance,tenant_id)
+        values(${server},${title},${vendor},'internal:/internal/technical/v1','first-party',${tenant})
+        on conflict (id) do update set title=excluded.title,updated_at=now()`;
+      for (const tool of described)
+        await tx`
+          insert into mcp_tools(server_id,name,description,input_schema,effect,destructive,version,tenant_id)
+          values(${server},${tool.name},${tool.description},${tx.json(tool.input_schema)},${tool.side_effect},false,${tool.version},${tenant})
+          on conflict (server_id,name) do update set description=excluded.description,
+            input_schema=excluded.input_schema,effect=excluded.effect,version=excluded.version`;
+    }
   });
-  console.log(
-    JSON.stringify({ type: "technical-tools-registered", count: described.length }),
-  );
+  for (const [server, , , described] of servers)
+    console.log(
+      JSON.stringify({ type: `${server}-registered`, count: described.length }),
+    );
 } finally {
   await sql.end();
 }

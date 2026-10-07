@@ -1081,3 +1081,97 @@ describe("the compiled prompt and the stored artifact", () => {
     expect(parseAgentSpec({ ...legacy.spec, schemaVersion: 2 }).ok).toBe(false);
   });
 });
+
+describe("bounded repair patch protocol", () => {
+  const catalogue = catalogueOf([search]);
+  const generic = withSkill({procedure:["Use tools when necessary.","Complete the task carefully."]});
+  const inadequate = {verdict:"FAIL",findings:[{code:"INADEQUATE_SKILL",path:"generatedSkill.procedure",evidenceRefs:["request.description"],message:"Procedure does not describe the request's research work."}]};
+
+  test("only the repaired skill is replaced; original intent and scope are retained by code", async () => {
+    const model = scripted([generic,{repairs:[{path:"generatedSkill",value:researcher().generatedSkill}]}],[inadequate,pass]);
+    const result = accepted(await construct(researchRequest,catalogue,model));
+    expect(result.verification.attempts).toBe(2);
+    expect(result.spec.generatedSkill).toEqual(researcher().generatedSkill);
+    expect(result.spec.goal).toBe(generic.goal);
+    expect(result.spec.constraints).toEqual(generic.constraints);
+    expect(result.intent.explicitRequirements).toEqual(generic.intent.explicitRequirements);
+    expect(result.spec.requirements.map(({need,fulfillment,source})=>({need,fulfillment:String(fulfillment),source}))).toEqual(generic.requirements.map(({need,fulfillment,source})=>({need,fulfillment,source})));
+    expect(model.prompts[2]).toContain('Do not return a full draft or intent.');
+    expect(model.prompts).toHaveLength(4);
+  });
+
+  test("unlisted, duplicate, and overlapping repair paths are refused before review", async () => {
+    for (const repairs of [
+      [{path:"goal",value:"Also send the report."}],
+      [{path:"generatedSkill",value:researcher().generatedSkill},{path:"generatedSkill",value:researcher().generatedSkill}],
+      [{path:"generatedSkill",value:researcher().generatedSkill},{path:"generatedSkill.procedure",value:["Changed step."]}],
+      [{path:"__proto__",value:{polluted:true}}],
+    ]) {
+      const model = scripted([generic,{repairs}],[inadequate,pass]);
+      expect(codes(await construct(researchRequest,catalogue,model))).toEqual(["REPAIR_SCOPE_VIOLATION"]);
+      expect(model.prompts).toHaveLength(3);
+    }
+  });
+
+  test("a malformed patch or an invalid skill cannot produce an artifact", async () => {
+    for (const value of [
+      {repairs:[]},
+      {repairs:[{path:"generatedSkill",value:researcher().generatedSkill}],intent:researcher().intent},
+      {repairs:[{path:"generatedSkill",value:{name:"Incomplete skill"}}]},
+    ]) {
+      const model = scripted([generic,value],[inadequate,pass]);
+      const result = await construct(researchRequest,catalogue,model);
+      expect(result.ok).toBe(false);
+      expect(codes(result)).toContain("INVALID_SCHEMA");
+      expect(model.prompts).toHaveLength(3);
+    }
+  });
+
+  test("requirements repair cannot erase or change an original required need", async () => {
+    const finding = {verdict:"FAIL",findings:[{code:"INCORRECT_RESOURCE",path:"resources.0",evidenceRefs:["request.description"],message:"Check this binding."}]};
+    for (const requirements of [
+      researcher().requirements.slice(1),
+      researcher().requirements.map((r,i)=>i ? r : {...r,need:"A different purpose"}),
+      researcher().requirements.map((r,i)=>i ? r : {...r,fulfillment:"model_on_input",proposedRefs:[]}),
+    ]) {
+      const model=scripted([researcher(),{repairs:[{path:"requirements",value:requirements}]}],[finding,pass]);
+      const result=await construct(researchRequest,catalogue,model);
+      expect(result.ok).toBe(false);
+      expect(codes(result)).toContain("REPAIR_SCOPE_VIOLATION");
+      expect(model.prompts).toHaveLength(3);
+    }
+  });
+});
+
+test("an indexed binding patch uses its item schema and still passes resource verification", async () => {
+  const original = researcher();
+  original.requirements[0]!.proposedRefs = ["tavily/not_registered"];
+  const model = scripted([original,{repairs:[{path:"requirements.0",value:researcher().requirements[0]}]}]);
+  const result=accepted(await construct(researchRequest,catalogueOf([search]),model));
+  expect(result.spec.resources.map(r=>r.ref)).toEqual(["tavily/tavily_search"]);
+  expect(result.spec.requirements.map(r=>r.need)).toEqual(original.requirements.map(r=>r.need));
+  const expected=JSON.parse(model.prompts[1]!.split("REPAIR_EXPECTED_JSON=")[1]!.split("\nREPAIR_DATA_JSON=")[0]!);
+  expect(expected.replacementSchemas["requirements.0"].type).toBe("object");
+  expect(expected.replacementSchemas["requirements.0"].properties.proposedRefs.type).toBe("array");
+  expect(model.prompts).toHaveLength(3);
+});
+
+test("repairing an input scope also permits correcting its dependent argument-source guidance", async () => {
+  const original=researcher();
+  original.inputFacts[0]!.missingBehavior="Ask whether to search the internet or internal files.";
+  original.toolArguments[0]!.missingBehavior="Ask whether to search the internet or internal files.";
+  const finding={verdict:"FAIL",findings:[{code:"SCOPE_EXPANSION",path:"inputContract.inputFacts",evidenceRefs:["request.description"],message:"The request permits internet research only, not internal-file scope."}]};
+  const model=scripted([original,{repairs:[
+    {path:"inputFacts",value:researcher().inputFacts},
+    {path:"toolArguments",value:researcher().toolArguments},
+  ]}],[finding,pass]);
+  const result=accepted(await construct(researchRequest,catalogueOf([search]),model));
+  const repair=JSON.parse(model.prompts[2]!.split("REPAIR_DATA_JSON=")[1]!);
+  expect(repair.paths).toContain("inputFacts");
+  expect(repair.paths).toContain("toolArguments");
+  expect(result.spec.resources[0]!.argumentSources[0]!.missingBehavior).toBe(researcher().toolArguments[0]!.missingBehavior);
+  expect(result.spec.inputContract.inputFacts).toEqual(researcher().inputFacts);
+  expect(result.spec.constraints).toEqual(original.constraints);
+  expect(result.verification.attempts).toBe(2);
+  expect(model.prompts).toHaveLength(4);
+});

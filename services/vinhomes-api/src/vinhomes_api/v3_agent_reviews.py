@@ -49,6 +49,8 @@ class AgentConfiguration(BaseModel):
     knowledge_namespace_ids: list[UUID] = Field(default_factory=list, max_length=20)
     # Ticket categories this agent serves. A Supervisor is offered it only for those tickets.
     service_categories: list[str] = Field(default_factory=list, max_length=10)
+    model_id: str | None = Field(default=None, max_length=160)
+    skill_ids: list[UUID] = Field(default_factory=list, max_length=30)
     revision_of: UUID | None = None
     framework_version: str = Field(
         default="demo-record-only", min_length=1, max_length=120
@@ -60,6 +62,8 @@ async def configure(
     room_id: str, agent_id: str, body: AgentConfiguration, scope: Member
 ):
     agent = await room_agent(scope, room_id, agent_id)
+    if not await can_author_unit(scope[0], scope[1], agent["workspace_id"]):
+        raise HTTPException(403, "Only management of this unit can edit its agent")
     if agent["status"] != "draft" and not (agent["status"] == "active" and body.revision_of):
         raise HTTPException(409, "Only draft agents can be configured")
     if body.revision_of:
@@ -77,7 +81,7 @@ async def configure(
         available = await scope[0].execute(
             # A connection set up for one group is not offered to another group's agents.
             text("select 1 from mcp_tools t join mcp_servers s on s.id=t.server_id and s.tenant_id=t.tenant_id "
-                 "where t.server_id=:server and t.name=:name and t.effect='read' and not t.destructive "
+                 "where t.server_id=:server and t.name=:name and (t.effect='read' or (s.provenance='custom' and t.effect='write')) and not t.destructive and s.status='active' "
                  "and (s.workspace_id is null or s.workspace_id=:workspace)"),
             {"server": tool.server_id, "name": tool.name, "workspace": agent["workspace_id"]},
         )
@@ -99,7 +103,17 @@ async def configure(
         )
         if available.first() is None:
             raise HTTPException(422, "Unknown service category")
-    config = body.model_dump(mode="json")
+    if body.model_id:
+        from .v3_models import resolve_model
+        if not await resolve_model(scope[0], 'specialist', body.model_id, agent['workspace_id']):
+            raise HTTPException(422, 'Model is not available for this unit')
+    skill_snapshots = []
+    for skill_id in body.skill_ids:
+        skill = (await scope[0].execute(text('select id,name,instructions from vh_agent_skills where id=:id and (workspace_id is null or workspace_id=:workspace)'), {'id': skill_id, 'workspace': agent['workspace_id']})).mappings().first()
+        if not skill:
+            raise HTTPException(422, 'Skill outside this unit')
+        skill_snapshots.append({'id': str(skill['id']), 'name': skill['name'], 'instructions': skill['instructions']})
+    config = {**body.model_dump(mode="json"), "skill_snapshots": skill_snapshots}
     await scope[0].execute(
         text("update agents set configuration=cast(:config as jsonb) where id=:id"),
         {"config": json.dumps(config), "id": agent_id},
@@ -391,8 +405,8 @@ async def management_agents(room_id: str, scope: Member):
 async def room_catalogue(room_id: str, scope: Member, *, lock: bool = True):
     """The room's agents, read tools and categories. `lock=False` for a caller that waits on another service."""
     room = await managed_room(scope, room_id, lock=lock)
-    rows = await scope[0].execute(text("""select a.id,a.name,a.purpose,a.status,a.configuration,
-        (select jsonb_build_object('id',v.id,'number',v.version_no,'hash',v.config_hash)
+    rows = await scope[0].execute(text("""select a.id,a.name,a.purpose,a.status,a.configuration,a.updated_at,
+        (select jsonb_build_object('id',v.id,'number',v.version_no,'hash',v.config_hash,'config',v.config)
           from agent_versions v where v.agent_id=a.id order by v.version_no desc limit 1) as latest_version,
         (select row_to_json(rv) from vh_agent_reviews rv where rv.agent_id=a.id order by rv.created_at desc limit 1) as review,
         exists(select 1 from agent_releases rel join agent_versions v on v.id=rel.version_id
@@ -400,11 +414,13 @@ async def room_catalogue(room_id: str, scope: Member, *, lock: bool = True):
           and v.version_no=(select max(last.version_no) from agent_versions last where last.agent_id=a.id)) as published
         from agents a join channel_agents ca on ca.agent_id=a.id and ca.tenant_id=a.tenant_id
         where ca.channel_id=:room and a.workspace_id=:workspace order by a.name"""), {'room': room_id, 'workspace': room['workspace_id']})
-    tools = await scope[0].execute(text("select t.server_id,s.title as server_title,s.provenance='custom' as external,t.name,t.description,t.input_schema,t.effect "
+    tools = await scope[0].execute(text("select t.server_id,s.title as server_title,s.provenance='custom' as external,s.added_by,s.added_by=:actor as own,t.name,t.description,t.input_schema,t.effect "
         "from mcp_tools t join mcp_servers s on s.id=t.server_id and s.tenant_id=t.tenant_id "
-        "where t.effect='read' and not t.destructive and (s.workspace_id is null or s.workspace_id=:workspace) order by t.name"), {'workspace': room['workspace_id']})
+        "where (t.effect='read' or (s.provenance='custom' and t.effect='write')) and not t.destructive and s.status='active' and (s.workspace_id is null or s.workspace_id=:workspace) order by t.name"), {'workspace': room['workspace_id'], 'actor': scope[1]})
+    skills = await scope[0].execute(text('select id,name,description,instructions,workspace_id,created_by=:actor as own from vh_agent_skills where workspace_id is null or workspace_id=:workspace order by name'), {'workspace': room['workspace_id'], 'actor': scope[1]})
+    is_admin = (await scope[0].execute(text('select 1 from platform_admins where user_id=:actor'), {'actor': scope[1]})).first() is not None
     categories = await scope[0].execute(text('select code,name from service_categories where enabled order by name'))
-    return {'canManage': True, 'items': [{**dict(r), 'configurationHash': digest(r['configuration'])} for r in rows.mappings()], 'tools': [dict(t) for t in tools.mappings()],
+    return {'isAdmin': is_admin, 'canManage': await can_author_unit(scope[0], scope[1], room['workspace_id']), 'skills': [dict(s) for s in skills.mappings()], 'items': [{**dict(r), 'configurationHash': digest(r['configuration'])} for r in rows.mappings()], 'tools': [dict(t) for t in tools.mappings()],
             'categories': [dict(c) for c in categories.mappings()]}
 
 
@@ -416,8 +432,14 @@ async def management_decide(room_id: str, review_id: UUID, body: ReviewDecision,
     await room_agent(scope, room_id, agent_id)
     evidence = (await scope[0].execute(text('select evaluation from vh_agent_reviews where id=:id'), {'id': review_id})).scalar_one()
     is_admin = (await scope[0].execute(text('select 1 from platform_admins where user_id=:actor'), {'actor': scope[1]})).first() is not None
-    if body.decision == 'approve' and not is_admin and evidence.get('_runtime_verified') is not True:
-        raise HTTPException(409, 'Run the server evaluation before BQL publication')
+    if body.decision == 'approve' and not is_admin:
+        from .v3_agent_evals import evaluation_gate, run_evidence_problem
+        if await evaluation_gate(scope[0]):
+            problem = await run_evidence_problem(scope[0], review_id)
+            if problem:
+                raise HTTPException(409, problem)
+        elif evidence.get('_runtime_verified') is not True:
+            raise HTTPException(409, 'Run the server evaluation before BQL publication')
     return await decide(review_id, body, (scope[0], scope[1], True))
 
 
@@ -425,3 +447,7 @@ async def management_decide(room_id: str, review_id: UUID, body: ReviewDecision,
 async def management_revoke(room_id: str, agent_id: str, body: Revocation, scope: Member):
     await room_agent(scope, room_id, agent_id)
     return await revoke(agent_id, body, (scope[0], scope[1], True))
+
+
+async def can_author_unit(db, actor, workspace_id):
+    return (await db.execute(text("""select 1 from scoped_user_roles r join tenant_memberships m on m.id=r.membership_id and m.status='active' join access_scopes s on s.id=r.scope_id join workspaces w on w.id=:workspace where m.user_id=:actor and r.role_code='management' and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now()) and (s.kind='tenant' or (s.kind='management' and s.management_unit_id=w.management_unit_id)) limit 1"""), {'actor': actor, 'workspace': workspace_id})).first() is not None

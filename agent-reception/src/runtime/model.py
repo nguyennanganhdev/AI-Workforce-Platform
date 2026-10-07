@@ -26,6 +26,7 @@ class ModelUnavailable(Exception):
 # Token usage of the turn in progress. The model object is shared by concurrent turns, so the
 # count lives in the turn's own context rather than on the model.
 turn_usage: ContextVar[dict | None] = ContextVar("turn_usage", default=None)
+turn_model_config: ContextVar[object | None] = ContextVar('turn_model_config', default=None)
 
 
 def _count(payload: dict) -> None:
@@ -83,7 +84,11 @@ class ModelConfig:
 
 class ChatCompletionsModel:
     def __init__(self, config: ModelConfig, client: httpx.AsyncClient):
-        self.config, self.client = config, client
+        self._deployment_config, self.client = config, client
+
+    @property
+    def config(self):
+        return turn_model_config.get() or self._deployment_config
 
     async def _post(self, body: dict) -> httpx.Response:
         """One request, sent again once after a rate limit, a server error or a dropped connection."""

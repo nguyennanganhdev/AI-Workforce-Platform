@@ -38,6 +38,18 @@ export function updateAccountMutationOptions(queryClient: QueryClient) {
     await ask(`/auth/accounts/${encodeURIComponent(id)}`, { method: "PATCH", body }, "Không cập nhật được tài khoản.", true);
   }, onSuccess: () => queryClient.invalidateQueries({ queryKey: adminKeys.accounts }) });
 }
+/** The administrator sets a new password; every sign-in of that person ends. */
+export function resetPasswordMutationOptions() {
+  return mutationOptions({ mutationFn: async ({ id, password }: { id: string; password: string }) => {
+    await ask(`/auth/accounts/${encodeURIComponent(id)}/password`, { method: "POST", body: { new_password: password } }, "Không đặt lại được mật khẩu.", true);
+  } });
+}
+/** Removes an account with no history; the server refuses one that has any (it is suspended instead). */
+export function deleteAccountMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({ mutationFn: async (id: string) => {
+    await ask(`/auth/accounts/${encodeURIComponent(id)}`, { method: "DELETE" }, "Không xóa được tài khoản.", true);
+  }, onSuccess: () => queryClient.invalidateQueries({ queryKey: adminKeys.accounts }) });
+}
 export function unitsQueryOptions() {
   return queryOptions({ queryKey: adminKeys.units, queryFn: async (): Promise<Unit[]> =>
     (await (await ask("/admin/units", {}, "Không tải được danh sách đơn vị quản lý.")).json()).items });

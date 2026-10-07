@@ -38,6 +38,15 @@ services:
       VINHOMES_API_SUPERVISOR_APPROVES_PLANS: ${SUPERVISOR_APPROVES_PLANS:-1}
       # 1 once the web apps are only reached over https (the proxy): the session cookie is then never sent in clear.
       VINHOMES_API_SECURE_COOKIES: ${SECURE_COOKIES:-0}
+      # Agent evaluation (docs/teams/dong/eval_agent.md). The evaluator service of profile `eval` generates cases and
+      # plays runs; EVAL_SANDBOX_TOKEN is set only in the sandbox stack's own env file (a database of its own).
+      VINHOMES_API_EVALUATOR_URL: ${EVALUATOR_URL:-http://evaluator:4400}
+      VINHOMES_API_EVAL_SERVICE_TOKEN: ${EVAL_SERVICE_TOKEN:-}
+      VINHOMES_API_EVAL_SANDBOX_TOKEN: ${EVAL_SANDBOX_TOKEN:-}
+      VINHOMES_API_EVAL_METRIC_PROFILE: ${EVAL_METRIC_PROFILE:-none}
+      # Seals the model API keys that the administrator or a management unit types in the app.
+      # Without it only keys named by environment variables can be used.
+      VINHOMES_API_MODEL_CREDENTIALS_KEY: ${MODEL_CREDENTIALS_KEY:-}
       # Photos and files are stored in a private bucket: the bundled MinIO, or any S3 service named by
       # S3_ENDPOINT. Content always leaves through the API, which checks who is asking.
       VINHOMES_API_S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
@@ -48,6 +57,20 @@ services:
       VINHOMES_API_S3_REGION: ${S3_REGION:-us-east-1}
       FACTORY_SERVICE_URL: http://factory:4010
       FACTORY_SERVICE_TOKEN: ${FACTORY_SERVICE_TOKEN:?Factory token required}
+      # Registry rows reference deployment-owned variables; provider secrets never reach the browser.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      COORDINATION_MODEL: ${COORDINATION_MODEL:-gpt-5.4-mini}
+      RECEPTION_MODEL_API_KEY: ${RECEPTION_MODEL_API_KEY:-}
+      RECEPTION_MODEL_BASE_URL: ${RECEPTION_MODEL_BASE_URL:-}
+      COORDINATION_MODEL_API_KEY: ${COORDINATION_MODEL_API_KEY:-}
+      COORDINATION_MODEL_BASE_URL: ${COORDINATION_MODEL_BASE_URL:-}
+      SPECIALIST_MODEL_API_KEY: ${SPECIALIST_MODEL_API_KEY:-}
+      SPECIALIST_MODEL_BASE_URL: ${SPECIALIST_MODEL_BASE_URL:-}
+      FACTORY_MODEL_API_KEY: ${FACTORY_MODEL_API_KEY:-${OPENAI_API_KEY}}
+      FACTORY_MODEL_BASE_URL: ${FACTORY_MODEL_BASE_URL:-https://api.openai.com/v1}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-${OPENAI_API_KEY}}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.openai.com/v1}
       # Two settings, one list: browser sign-in and writes check the first, the resident app's CORS the second.
       VINHOMES_API_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
       VINHOMES_API_RESIDENT_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
@@ -154,6 +177,33 @@ services:
     healthcheck:
       <<: *python-health
       test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:4300/ready", timeout=5)']
+  evaluator:
+    # Generates evaluation cases and plays approved runs in the sandbox stack (a second compose project on the
+    # sandbox database, see docs/teams/dong/eval_agent.md section 6). It never connects to a database.
+    image: vinhomes-coordination:${VINHOMES_IMAGE_TAG:-latest}
+    profiles: [eval]
+    restart: unless-stopped
+    command: ['python', '-m', 'agent_eval']
+    environment:
+      EVAL_HOST: 0.0.0.0
+      EVAL_BACKEND_URL: http://api:8000
+      # Empty unless this deployment evaluates agents; the worker refuses to start without them.
+      EVAL_SERVICE_TOKEN: ${EVAL_SERVICE_TOKEN:-}
+      EVAL_SANDBOX_URL: ${EVAL_SANDBOX_URL:-}
+      EVAL_SANDBOX_TOKEN: ${EVAL_SANDBOX_TOKEN_FOR_WORKER:-}
+      # Fallback judge and case-generator model when the administrator set no `evaluator` role model.
+      EVAL_MODEL: ${EVAL_MODEL:-gpt-5.5}
+      EVAL_MODEL_PROVIDER: ${EVAL_MODEL_PROVIDER:-}
+      EVAL_MODEL_API_KEY: ${EVAL_MODEL_API_KEY:-}
+      EVAL_MODEL_BASE_URL: ${EVAL_MODEL_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    extra_hosts: ['host.docker.internal:host-gateway']
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      <<: *python-health
+      test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:4400/health", timeout=5)']
   knowledge:
     image: vinhomes-knowledge:${VINHOMES_IMAGE_TAG:-latest}
     build:
@@ -172,6 +222,8 @@ services:
       # The embedding model's own key and address, when OPENAI_API_KEY is not the one that made the vectors.
       KNOWLEDGE_EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       KNOWLEDGE_EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-${OPENAI_API_KEY}}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://api.openai.com/v1}
     depends_on:
       api:
         condition: service_healthy
@@ -329,6 +381,7 @@ services:
       DATABASE_URL: ${MIGRATION_DATABASE_URL:-}
       VINHOMES_TENANT_ID: ${VINHOMES_TENANT_ID:?tenant required}
       OPENBOT_DATABASE_URL: ${OPENBOT_DATABASE_URL:?restricted account database URL required}
+      KNOWLEDGE_DATABASE_URL: ${KNOWLEDGE_DATABASE_URL:?restricted knowledge database URL required}
       VINHOMES_API_DATABASE_URL: ${VINHOMES_API_DATABASE_URL:?restricted business database URL required}
       TECHNICAL_API_DATABASE_URL: ${TECHNICAL_API_DATABASE_URL:?restricted tools database URL required}
       ROUTINES_DATABASE_URL: ${ROUTINES_DATABASE_URL:?restricted schedule database URL required}

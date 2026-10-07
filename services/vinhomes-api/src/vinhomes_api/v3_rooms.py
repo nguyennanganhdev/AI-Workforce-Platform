@@ -21,8 +21,13 @@ async def _room(scope: MemberScope, room_id: str, *, lock: bool = False) -> None
     result = await db.execute(text("""
         select c.id from channels c
         left join channel_memberships m on m.channel_id=c.id and m.tenant_id=c.tenant_id and m.user_id=:actor_id
-        where c.id=:room_id and c.kind='management' and c.deleted_at is null
-          and (m.user_id=:actor_id or exists(select 1 from platform_admins where user_id=:actor_id))
+        where c.id=:room_id and c.deleted_at is null
+          and ((c.kind='management' and (m.user_id=:actor_id or exists(select 1 from platform_admins where user_id=:actor_id)))
+            or (c.kind='personal' and c.created_by=:actor_id and exists (
+              select 1 from vh_private_chats p join channels parent on parent.id=p.parent_channel_id and parent.tenant_id=p.tenant_id
+              where p.channel_id=c.id and p.owner_user_id=:actor_id and parent.deleted_at is null
+                and (exists(select 1 from channel_memberships pm where pm.channel_id=parent.id and pm.user_id=:actor_id)
+                  or exists(select 1 from platform_admins where user_id=:actor_id)))))
           and c.tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
     """ + (" for update of c" if lock else "")), {"room_id": room_id, "actor_id": actor_id})
     if result.first() is None:
@@ -92,7 +97,7 @@ async def room_messages(room_id: str, scope: MemberScope,
                         limit: int = Query(50, ge=1, le=100)) -> dict[str, object]:
     await _room(scope, room_id)
     result = await scope[0].execute(text("""
-        select id, seq, sender_kind, sender_user_id, sender_agent_id, body, created_at,
+        select id, seq, sender_kind, sender_user_id, sender_agent_id, body, created_at,reply_to_id,
                (select name from users where users.id=messages.sender_user_id) as sender_name,
                (select mm.status from message_mentions mm where mm.message_id=messages.id
                  and mm.tenant_id=messages.tenant_id order by mm.created_at limit 1) as mention_status,

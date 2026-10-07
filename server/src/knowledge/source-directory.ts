@@ -188,6 +188,8 @@ export type DirectoryIngestOptions = {
    * or folded into a combined building document). Only for a knowledge base this directory owns.
    */
   prune?: boolean;
+  /** Documents another publisher owns in the same knowledge base, which pruning leaves alone. */
+  keep?: (code: string) => boolean;
 };
 
 export type DirectoryIngestReport = {
@@ -263,7 +265,11 @@ export async function ingestDirectory(
       options.knowledgeBaseId,
     );
     for (const document of known) {
-      if (present.has(document.code) || document.status === "archived")
+      if (
+        present.has(document.code) ||
+        document.status === "archived" ||
+        options.keep?.(document.code)
+      )
         continue;
       await deps.store.tombstone(options.tenantId, document.id);
       report.retired++;

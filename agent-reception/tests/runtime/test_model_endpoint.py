@@ -59,6 +59,33 @@ def test_the_tool_step_goes_to_the_configured_vendor_with_its_key(monkeypatch):
     assert seen == [(PROVIDERS["deepseek"] + "/chat/completions", "Bearer deepseek-key", "deepseek-flash")]
 
 
+def test_registered_model_is_isolated_per_concurrent_turn_and_resets():
+    from src.runtime.model import ModelConfig, turn_model_config
+    seen = []
+    def provider(request):
+        seen.append((str(request.url), request.headers['authorization'], json.loads(request.content)['model']))
+        return httpx.Response(200, json={'choices': [{'message': {'content': '{}'}}]})
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(provider)) as client:
+            model = ChatCompletionsModel(ModelConfig(model='deployment',api_key='deployment-key'),client)
+            async def turn(name):
+                token = turn_model_config.set(ModelConfig(model=name,api_key=name+'-key',base_url='https://'+name+'.example/v1',provider='custom'))
+                try:
+                    await asyncio.sleep(0)
+                    await model.complete([{'role':'user','content':'hello'}],[])
+                finally:
+                    turn_model_config.reset(token)
+            await asyncio.gather(turn('first'),turn('second'))
+            await model.complete([{'role':'user','content':'hello'}],[])
+            assert turn_model_config.get() is None
+    asyncio.run(run())
+    assert sorted(seen) == sorted([
+        ('https://first.example/v1/chat/completions','Bearer first-key','first'),
+        ('https://second.example/v1/chat/completions','Bearer second-key','second'),
+        ('https://api.openai.com/v1/chat/completions','Bearer deployment-key','deployment'),
+    ])
+
+
 def test_luna_can_call_a_tool_with_chat_completions(monkeypatch):
     environment(monkeypatch, RECEPTION_MODEL="gpt-6-luna")
 

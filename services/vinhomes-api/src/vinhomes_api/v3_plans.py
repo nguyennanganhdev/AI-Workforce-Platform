@@ -1,6 +1,7 @@
 """Two human approvals before work dispatch; database is the workflow authority."""
 
 import json
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
@@ -253,12 +254,13 @@ async def resident_decision(plan_id: UUID, body: PlanDecision, scope: Resident):
                     409, "Plan category is no longer available; request a revised plan"
                 )
             order = await db.execute(
-                text(f"""insert into work_orders(tenant_id,ticket_id,category_id,required_specialty_id,description,status)
-                values({TENANT},:ticket,:category,:category,:description,'queued') returning id"""),
+                text(f"""insert into work_orders(tenant_id,ticket_id,category_id,required_specialty_id,description,status,scheduled_at)
+                values({TENANT},:ticket,:category,:category,:description,'queued',:scheduled) returning id"""),
                 {
                     "ticket": tid,
                     "category": UUID(step["category_id"]),
                     "description": step["description"],
+                    "scheduled": datetime.fromisoformat(plan["proposal"]["appointment_at"]) if (plan["proposal"] or {}).get("appointment_at") else None,
                 },
             )
             work_id = str(order.scalar_one())
@@ -286,7 +288,11 @@ async def resident_decision(plan_id: UUID, body: PlanDecision, scope: Resident):
         json.dumps({"planId": str(plan_id), "status": status, "workOrderIds": work}),
         to_status="assigned" if work else None,
     )
-    if work and plan["proposed_by_agent_id"] and plan["management_by"] is None:
+    if work and (plan["proposal"] or {}).get("performer_staff_id"):
+        from .v3_request_presentation import offer_planned_work
+        for work_id in work:
+            await offer_planned_work(db, tid, UUID(work_id), plan)
+    elif work and plan["proposed_by_agent_id"] and plan["management_by"] is None:
         # A plan the Supervisor approved itself: it also hands the work to an available technician.
         from .supervised_flow import offer_work
         for work_id in work:

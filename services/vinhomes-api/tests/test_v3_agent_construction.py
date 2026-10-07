@@ -20,7 +20,9 @@ def construction_client(monkeypatch):
     app.include_router(builder.router)
     app.dependency_overrides[resident_connection] = lambda: (db, 'manager')
     monkeypatch.setattr(builder, 'room_agent', AsyncMock(return_value={
-        'name': 'Agent vệ sinh', 'status': 'draft', 'configuration': configuration}))
+        'name': 'Agent vệ sinh', 'status': 'draft', 'configuration': configuration, 'workspace_id': 'workspace'}))
+    monkeypatch.setattr(builder, 'can_author_unit', AsyncMock(return_value=True))
+    monkeypatch.setattr(builder, 'resolve_model', AsyncMock(return_value=None))
     monkeypatch.setattr(builder, 'room_catalogue', AsyncMock(return_value={'categories': [], 'tools': []}))
     monkeypatch.setenv('FACTORY_SERVICE_URL', 'http://factory:4010')
     monkeypatch.setenv('FACTORY_SERVICE_TOKEN', 'test-service-token-' + 'x' * 32)
@@ -75,7 +77,7 @@ def test_clarification_can_be_answered_then_verified_and_saved(construction_clie
     assert client.post('/rooms/bql-sapphire/agents/draft/construct', json=payload).json()['needsInput']
     monkeypatch.setattr(builder, 'audit', AsyncMock())
     monkeypatch.setattr(builder, 'room_catalogue', AsyncMock(return_value={
-        'categories': [], 'tools': [{'server_id': 'reports', 'name': 'reports.read',
+        'categories': [], 'tools': [{'server_id': 'reports', 'name': 'reports.read', 'effect':'read',
                                   'description': 'Read report', 'input_schema': {'type': 'object'}}]}))
     artifact = {'specHash': 'a' * 64, 'systemPrompt': 'Read the approved report and summarize actual results.',
                 'spec': {'resources': [{'kind': 'tool', 'ref': 'reports/reports.read'}]}}
@@ -87,4 +89,39 @@ def test_clarification_can_be_answered_then_verified_and_saved(construction_clie
     assert configuration['instructions'] == artifact['systemPrompt']
     assert configuration['mcp_tools'] == [{'server_id': 'reports', 'name': 'reports.read'}]
     assert calls[-1].url.path == '/v1/verify'
+    assert sum('update agents' in str(call.args[0]) for call in db.execute.call_args_list) == 1
+
+
+def test_factory_rejects_unavailable_selected_model_before_contacting_provider(construction_client, monkeypatch):
+    client, payload, db, calls, _ = construction_client
+    response = client.post('/rooms/bql-sapphire/agents/draft/construct', json={**payload, 'model_id': 'not-allowed'})
+    assert response.status_code == 422
+    assert calls == []
+    assert all('update agents' not in str(call.args[0]) for call in db.execute.call_args_list)
+
+
+def test_factory_persists_selected_model_and_frozen_skills(construction_client, monkeypatch):
+    from types import SimpleNamespace
+    from uuid import UUID
+    client, payload, db, calls, replies = construction_client
+    skill_id = '9a37c407-45f3-4d10-8ee2-12878b7b5596'
+    prior_result = db.execute.return_value
+    async def execute(statement, params):
+        if 'from vh_agent_skills' in str(statement):
+            assert params == {'id': skill_id, 'workspace': 'workspace'}
+            return SimpleNamespace(mappings=lambda: SimpleNamespace(first=lambda: {'id': UUID(skill_id), 'name': 'Unit skill', 'instructions': 'Always cite the source.'}))
+        return prior_result
+    db.execute.side_effect = execute
+    monkeypatch.setattr(builder, 'resolve_model', AsyncMock(side_effect=lambda db, role, model_id=None, workspace_id=None: {'model_name': 'selected'} if model_id == 'allowed-model' else None))
+    monkeypatch.setattr(builder, 'audit', AsyncMock())
+    artifact = {'specHash': 'a' * 64, 'systemPrompt': 'Read and summarize.', 'spec': {'resources': []}}
+    replies.extend([(200, artifact), (200, artifact)])
+    response = client.post('/rooms/bql-sapphire/agents/draft/construct', json={**payload, 'model_id': 'allowed-model', 'skill_ids': [skill_id]})
+    assert response.status_code == 200, response.text
+    config = response.json()['configuration']
+    assert config['model_id'] == 'allowed-model'
+    assert config['skill_ids'] == [skill_id]
+    assert config['skill_snapshots'] == [{'id': skill_id, 'name': 'Unit skill', 'instructions': 'Always cite the source.'}]
+    assert config['instructions'] == 'Read and summarize.'
+    assert len(calls) == 2
     assert sum('update agents' in str(call.args[0]) for call in db.execute.call_args_list) == 1

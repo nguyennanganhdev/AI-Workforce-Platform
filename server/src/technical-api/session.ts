@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { ResolvedIdentity, TenantTransaction } from "../technical-tools";
+import { cleaningTechnicalTools } from "../cleaning-tools";
 import { technicalTools } from "../technical-tools";
 import { rows } from "./database";
 
@@ -29,6 +30,11 @@ export type SessionRun = {
  *
  * There is no user and no role: documents reach the agent only where they are granted to its
  * workspace, and tools reserved for a management role stay closed.
+ *
+ * The second branch is a question a manager asks an agent: in the unit's room, or in their own
+ * conversation with agents ("Hỏi agent", a `personal` channel of the same workspace that only its
+ * owner belongs to). The person must still be a member of that channel and hold the management role
+ * of the unit, and the agent's version must still be published.
  */
 export async function sessionRun(
   tx: TenantTransaction,
@@ -76,7 +82,7 @@ export async function sessionRun(
         join runtime_session_bindings binding on binding.tenant_id=r.tenant_id and binding.id=r.binding_id
           and binding.audience_kind='personal' and binding.customer_user_id=r.actor_user_id and binding.status='active'
         join channels c on c.tenant_id=r.tenant_id and c.id=r.channel_id and c.workspace_id=a.workspace_id
-          and c.kind='management' and c.deleted_at is null
+          and c.kind in ('management','personal') and c.deleted_at is null
         join workspaces w on w.tenant_id=a.tenant_id and w.id=a.workspace_id and w.status='active'
         join users u on u.id=r.actor_user_id and u.status='active'
         join tenant_memberships membership on membership.tenant_id=r.tenant_id and membership.user_id=u.id and membership.status='active'
@@ -91,16 +97,24 @@ export async function sessionRun(
   if (!run?.management_unit_id) return null;
   const configured: unknown =
     typeof run.tools === "string" ? JSON.parse(run.tools) : run.tools;
+  // A tool counts only under the server it is registered with: Team Quang's technical tools,
+  // or Team Hoàng's cleaning counterparts of them.
   const granted = new Set(
-    (Array.isArray(configured) ? configured : []).filter((tool) => tool?.server_id === "technical-tools").map(
-      (tool: { name?: unknown }) => String(tool?.name ?? ""),
+    (Array.isArray(configured) ? configured : []).map(
+      (tool: { server_id?: unknown; name?: unknown }) =>
+        `${String(tool?.server_id ?? "")}/${String(tool?.name ?? "")}`,
     ),
   );
   const capabilities = [
     ...new Set(
-      technicalTools
-        .filter((tool) => granted.has(tool.name))
-        .map((tool) => tool.capability),
+      [
+        ...technicalTools.filter((tool) =>
+          granted.has(`technical-tools/${tool.name}`),
+        ),
+        ...cleaningTechnicalTools.filter((tool) =>
+          granted.has(`cleaning-tools/${tool.name}`),
+        ),
+      ].map((tool) => tool.capability),
     ),
   ];
   if (!capabilities.length) return null;

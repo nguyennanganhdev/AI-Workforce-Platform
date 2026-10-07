@@ -10,10 +10,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
-from .v3_agent_reviews import Member, room_agent, room_catalogue, submit, EvaluationRecord
+from .v3_agent_reviews import Member, room_agent, room_catalogue, submit, EvaluationRecord, can_author_unit
 from .v3_coordination import Scope as RuntimeScope
 from .v3_security import digest
 from .v3_audit import audit
+from .v3_models import resolve_model
 
 router = APIRouter(tags=['BQL agent builder'])
 
@@ -71,13 +72,16 @@ async def evaluation_view(body: EvaluationView, db: RuntimeScope):
         raise HTTPException(409, 'Draft or draft revision required')
     descriptors = []
     for granted in agent['configuration'].get('mcp_tools', []):
-        tool = (await db.execute(text("select description,input_schema from mcp_tools where server_id=:server and name=:name and effect='read' and not destructive"),
+        tool = (await db.execute(text("select t.description,t.input_schema from mcp_tools t join mcp_servers s on s.id=t.server_id where t.server_id=:server and t.name=:name and (t.effect='read' or s.provenance='custom') and not t.destructive and s.status='active'"),
                                 {'server': granted['server_id'], 'name': granted['name']})).mappings().first()
         if tool is None:
             raise HTTPException(409, 'A configured tool is not available for evaluation')
         descriptors.append({'name': granted['name'].replace('.', '__'), 'description': tool['description'], 'parameters': tool['input_schema']})
-    return {'instructions': agent['configuration']['instructions'], 'tools': descriptors,
-            'configuration_hash': body.configuration_hash}
+    from .v3_models import resolve_model
+    model_config = await resolve_model(db, 'specialist', agent['configuration'].get('model_id'), agent['workspace_id'])
+    from .v3_tool_gateway import agent_workspace
+    return {'model_config': model_config, 'instructions': await instructions_with_skills(db, agent['configuration'], agent['workspace_id']), 'model_id': agent['configuration'].get('model_id'), 'tools': descriptors,
+            'configuration_hash': body.configuration_hash, 'workspace': await agent_workspace(db, agent['workspace_id'])}
 
 
 @router.post('/rooms/{room_id}/agents/{agent_id}/evaluate')
@@ -164,6 +168,8 @@ class Construction(BaseModel):
     configuration_hash: str = Field(pattern='^[a-f0-9]{64}$')
     request_id: str = Field(min_length=1, max_length=120)
     revision_of: UUID | None = None
+    model_id: str | None = Field(default=None, max_length=160)
+    skill_ids: list[UUID] | None = Field(default=None, max_length=30)
 
 
 @router.post('/rooms/{room_id}/agents/{agent_id}/construct')
@@ -171,6 +177,8 @@ async def construct(room_id: str, agent_id: str, body: Construction, scope: Memb
     # The Factory takes up to a minute and a half. No row lock is held across that call: a locked
     # room makes every other read of it wait. The agent is locked and checked again before the write.
     agent = await room_agent(scope, room_id, agent_id, lock=False)
+    if not await can_author_unit(scope[0], scope[1], agent['workspace_id']):
+        raise HTTPException(403, 'Only management of this unit can construct its agent')
     configuration = agent['configuration']
     old = configuration.get('factory')
     if old and old.get('request_id') == body.request_id:
@@ -191,9 +199,21 @@ async def construct(room_id: str, agent_id: str, body: Construction, scope: Memb
     codes = {c['code'] for c in catalogue['categories']}
     if not set(body.service_categories) <= codes:
         raise HTTPException(422, 'Unknown service category')
+    # Freeze selected capabilities before asking the Factory; later edits to shared skills
+    # do not silently change the draft that this request constructs.
+    model_id = body.model_id if 'model_id' in body.model_fields_set else configuration.get('model_id')
+    if model_id and not await resolve_model(scope[0], 'specialist', model_id, agent['workspace_id']):
+        raise HTTPException(422, 'Model is not available for this unit')
+    skill_ids = [str(s) for s in body.skill_ids] if body.skill_ids is not None else configuration.get('skill_ids', [])
+    skill_snapshots = []
+    for skill_id in skill_ids:
+        skill = (await scope[0].execute(text('select id,name,instructions from vh_agent_skills where id=cast(:id as uuid) and (workspace_id is null or workspace_id=:workspace)'), {'id': skill_id, 'workspace': agent['workspace_id']})).mappings().first()
+        if not skill:
+            raise HTTPException(422, 'Skill outside this unit')
+        skill_snapshots.append({'id': str(skill['id']), 'name': skill['name'], 'instructions': skill['instructions']})
     tools = [{'kind': 'tool', 'ref': f"{t['server_id']}/{t['name']}", 'name': t['name'], 'title': t['name'],
               'description': t['description'], 'inputSchema': t['input_schema'], 'outputSchema': None,
-              'effect': 'read', 'destructive': False} for t in catalogue['tools']]
+              'effect': t['effect'], 'destructive': False} for t in catalogue['tools']]
     request = {'name': agent['name'], 'role': body.role, 'description': body.description}
     url, token = os.getenv('FACTORY_SERVICE_URL', '').rstrip('/'), os.getenv('FACTORY_SERVICE_TOKEN', '')
     parsed = urlsplit(url)
@@ -203,9 +223,10 @@ async def construct(room_id: str, agent_id: str, body: Construction, scope: Memb
         raise HTTPException(503, 'Factory requires HTTPS or the private configured service host')
     headers = {'Authorization': 'Bearer ' + token}
     payload = {'request': request, 'catalogue': {'tools': tools, 'defaultToolRefs': []}}
+    factory_model = await resolve_model(scope[0], 'factory')
     try:
         async with httpx.AsyncClient(timeout=95, follow_redirects=False) as client:
-            reply = await client.post(url + '/v1/constructions', json=payload, headers=headers)
+            reply = await client.post(url + '/v1/constructions', json={**payload, **({'model_config': factory_model} if factory_model else {})}, headers=headers)
             if reply.status_code == 422:
                 refusal = reply.json()
                 issues = refusal.get('issues', []) if isinstance(refusal, dict) else []
@@ -242,8 +263,23 @@ async def construct(room_id: str, agent_id: str, body: Construction, scope: Memb
     configuration = {'instructions': instructions, 'description': body.description,
         'service_categories': body.service_categories, 'knowledge_namespace_ids': [], 'framework_version': 'factory-compiler-2',
         'revision_of': str(body.revision_of) if body.revision_of else None,
+        'model_id': model_id, 'skill_ids': skill_ids, 'skill_snapshots': skill_snapshots,
         'mcp_tools': [{'server_id': r['ref'].split('/', 1)[0], 'name': known[r['ref']]['name']} for r in resources],
         'factory': {'request_id': body.request_id, 'input': body.model_dump(mode='json'), 'artifact': artifact}}
     await scope[0].execute(text('update agents set configuration=cast(:config as jsonb) where id=:id'), {'id': agent_id, 'config': json.dumps(configuration)})
     await audit(scope[0], scope[1], 'agent.factory_constructed', 'agent', agent_id, {'specHash': artifact['specHash'], 'roomId': room_id})
     return {'configurationHash': digest(configuration), 'configuration': configuration}
+
+
+async def instructions_with_skills(db, configuration, workspace_id):
+    instruction = configuration.get('instructions', '')
+    if 'skill_snapshots' in configuration:
+        for skill in configuration['skill_snapshots']:
+            instruction += '\n\nKỹ năng: ' + skill['name'] + '\n' + skill['instructions']
+        return instruction
+    for skill_id in configuration.get('skill_ids', []):
+        skill = (await db.execute(text('select name,instructions from vh_agent_skills where id=cast(:id as uuid) and (workspace_id is null or workspace_id=:workspace)'), {'id': skill_id, 'workspace': workspace_id})).mappings().first()
+        if not skill:
+            raise HTTPException(409, 'A configured skill is no longer available')
+        instruction += '\n\nKỹ năng: ' + skill['name'] + '\n' + skill['instructions']
+    return instruction

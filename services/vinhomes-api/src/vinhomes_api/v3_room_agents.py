@@ -80,6 +80,11 @@ async def create_agent(
     room_id: str, body: AgentCreate, request: Request, scope: Scope
 ) -> dict[str, object]:
     room = await managed_room(scope, room_id)
+    from .v3_agent_reviews import can_author_unit
+    if not await can_author_unit(scope[0], scope[1], room['workspace_id']):
+        raise HTTPException(403, 'Only management of this unit can author its agent')
+    if (await scope[0].execute(text('select kind from channels where id=:id'), {'id': room_id})).scalar_one() != 'management':
+        raise HTTPException(403, 'Create agents in the management unit room')
     tenant = await scope[0].execute(text("select current_setting('app.tenant_id')"))
     agent_id = str(
         uuid5(

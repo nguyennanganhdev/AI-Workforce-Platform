@@ -7157,7 +7157,7 @@
         "Bộ đếm cấp thứ tự tin nhắn"
       ]
     ],
-    "rules": " kind reception/management/agent_builder. Reception workspace NULL; kênh còn lại phải có workspace. Một dispatch mặc định chưa deleted mỗi workspace bằng partial UNIQUE. Thêm UNIQUE(tenant_id,id). last_message* chỉ cache, messages là nguồn chuẩn.",
+    "rules": " kind reception/management/agent_builder/personal. Reception workspace NULL; kênh còn lại phải có workspace. Personal thuộc chủ hội thoại trong vh_private_chats và kế thừa quyền đơn vị từ parent_channel_id; chỉ chủ đang có quyền trong đơn vị được đọc. Một dispatch mặc định chưa deleted mỗi workspace bằng partial UNIQUE. Thêm UNIQUE(tenant_id,id). last_message* chỉ cache, messages là nguồn chuẩn.",
     "origin": "Kế thừa OpenBot — đã mở rộng theo schema đích",
     "purpose": "Cửa sổ Reception hoặc groupchat quản lý",
     "source": "server/src/db/schema/core.ts"

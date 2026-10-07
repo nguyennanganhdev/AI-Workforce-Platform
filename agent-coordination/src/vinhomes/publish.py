@@ -51,28 +51,31 @@ def dotted(name: str) -> str:
 
 async def answer(client: httpx.AsyncClient, instructions: str, case: dict, tools: list[dict],
                  defaults: dict, *, endpoint: str | None = None, token: str | None = None,
-                 invoke_tool=None) -> tuple[str, list[str]]:
+                 invoke_tool=None, model_config=None) -> tuple[str, list[str]]:
     """One room turn for an evaluation case: the agent's `content` and the tools it called."""
     thread = f"evaluation:{case['name']}"
     # `messages` is what the room already holds for the agent: empty for a first task, the agent's
     # earlier answer for a follow-up question.
     asked = {"instruction": case["instruction"], "tasks": [], "messages": case.get("messages", []),
              "context": [{"item_id": "reception-v2-ticket", "content": json.dumps(case["ticket"], ensure_ascii=False)}]}
+    if case.get("workspace"):
+        # The current time and the unit's building ids: what a tool taking building_id or a time needs.
+        asked["context"].append({"item_id": "workspace", "content": json.dumps(case["workspace"], ensure_ascii=False)})
     said = json.dumps(asked, ensure_ascii=False)
     # Photos attached to the question go beside the text as image parts; the Bot hands them to the
     # model as pictures (shared/user-content.ts). Without photos the message stays the plain text it was.
     messages = [{"id": "context", "role": "user", "content": said if not case.get("images") else [
         {"type": "text", "text": said}, *({"type": "image", "source": {"type": "data", "value": image["data"],
                                            "mimeType": image["mimeType"]}} for image in case["images"])]}]
-    headers = {"x-openbot-agent-token": token or os.environ["MANAGED_AGENT_TOKEN"], "Accept": "text/event-stream"}
+    headers = {"x-openbot-agent-token": token or ('registered-model' if model_config else os.environ["MANAGED_AGENT_TOKEN"]), "Accept": "text/event-stream"}
     # The same client the room's adapter sends through: same instructions, same reply handling.
-    room, called = InstructedClient(client, {thread: instructions}), []
+    room, called = InstructedClient(client, {thread: instructions}, model_configs={thread: model_config}), []
     for _ in range(TOOL_ROUNDS):
         run = str(uuid4())
         wire = {"threadId": thread, "runId": run, "state": {}, "tools": tools, "forwardedProps": {}, "context": [],
                 "messages": messages}
         stream, decoder = RunStream(thread, run), SSEDecoder()
-        async with room.stream("POST", endpoint or os.environ["COORDINATION_OPENBOT_URL"], headers=headers, json=wire) as response:
+        async with room.stream("POST", endpoint or (model_config['base_url'] if model_config else os.environ["COORDINATION_OPENBOT_URL"]), headers=headers, json=wire) as response:
             if response.status_code != 200:
                 raise AdapterError(f"openbot_status_{response.status_code}")
             async for chunk in response.aiter_bytes():
@@ -95,6 +98,8 @@ async def answer(client: httpx.AsyncClient, instructions: str, case: dict, tools
             # definition's default for it (found nothing).
             result = (await invoke_tool(name, json.loads(call['args'])) if invoke_tool else
                       case.get("tool_results", {}).get(name) or defaults.get(name, {"status": "OK", "data": {}, "errors": []}))
+            if result.get('status') == 'AWAITING_CONFIRMATION':
+                return 'Thao tác ghi đang chờ bạn cho phép. Kiểm tra nội dung và dữ liệu trong thẻ xác nhận trước khi tiếp tục.', called
             messages.append({"id": f"result-{call_id}", "role": "tool", "toolCallId": call_id,
                              "content": json.dumps({"tool": call["name"], "result": result}, ensure_ascii=False)})
     raise AdapterError("continuation_limit")

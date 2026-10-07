@@ -28,7 +28,7 @@ from ..graph import (
 from ..persistence import open_sqlite_checkpointer
 from .backend import BackendClient, BackendOperations, DraftStore, OperationRejected, OperationUnknown, RequestPolicy
 from .knowledge import KnowledgeSearch
-from .model import ChatCompletionsModel, ModelConfig, model_endpoint, turn_usage
+from .model import ChatCompletionsModel, ModelConfig, model_endpoint, turn_usage, turn_model_config
 from ..agent.loop import EMERGENCY_FAILED_REPLY, FILED_REPLY
 from ..agent.loop import EMERGENCY_REPLY as AGENT_EMERGENCY_REPLY
 from ..agent.loop import run_agent
@@ -276,9 +276,16 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
             tools, backend = request.app.state.tools, request.app.state.backend
             tools.handoffs.pop(body.channel_id, None)
             backend.tokens[body.channel_id] = body.delegation.token
+            async def configured_model():
+                if model is not None:
+                    return
+                chosen = (await backend.call('GET', '/internal/reception/v1/model-config', context)).get('config')
+                turn_model_config.set(ModelConfig(model=chosen['model_name'], api_key=chosen['api_key'],
+                    base_url=chosen['base_url'], provider=chosen['provider']) if chosen else None)
             if settings.agent == "loop":
                 try:
                     try:
+                        await configured_model()
                         reply, asked = await asyncio.wait_for(agent_turn(
                             backend, request.app.state.client, request.app.state.model,
                             settings.knowledge_url, context, message), TURN_SECONDS)
@@ -290,11 +297,13 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                         "POST", f"/internal/reception/chats/{body.channel_id}/replies", context,
                         {"text": reply[:10000], "reply_to_id": body.message.id, **({"clarification": asked} if asked else {})})
                 finally:
+                    turn_model_config.set(None)
                     backend.tokens.pop(body.channel_id, None)
                 return {"status": "completed", "reply": reply, "usage": measured()}
             try:
                 clarification = None
                 try:
+                    await configured_model()
                     result = await run_turn(request.app.state.graph, context, message)
                 except Exception as error:  # noqa: BLE001 - the resident still gets an answer
                     log.exception("Reception turn failed")
@@ -331,6 +340,7 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                     {"text": reply[:10000], "reply_to_id": body.message.id,
                      **({"clarification": clarification} if clarification else {})})
             finally:
+                turn_model_config.set(None)
                 backend.tokens.pop(body.channel_id, None)
         return {"status": result["status"], "reply": reply, "usage": measured()}
 

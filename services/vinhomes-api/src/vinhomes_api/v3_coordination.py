@@ -400,6 +400,7 @@ class Admit(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     agent_version_id: UUID
+    reason: str | None = Field(default=None, max_length=200)
 
 
 async def specialist_member(db, team: dict[str, Any], member_id: UUID) -> dict[str, Any]:
@@ -444,6 +445,17 @@ async def admit(team_id: UUID, body: Admit, db: Scope) -> dict[str, Any]:
             insert into team_members(tenant_id,team_id,agent_id,version_id,member_kind,status)
             values({TENANT},:team,:agent,:version,'specialist','active') returning id,version_id
         """), {"team": team["id"], "agent": offered["agent_id"], "version": body.agent_version_id})).mappings().one()
+        agent_name = (await db.execute(text("select name from agents where id=:agent"), {"agent": offered["agent_id"]})).scalar_one()
+        reason = body.reason.strip() if body.reason else None
+        await append_agent_message(db, team["channel_id"], team["supervisor_agent_id"], "room", {
+            "text": f"Supervisor thêm {agent_name} vào phiên" + (f" vì {reason}" if reason else ""),
+            "sessionId": str(team["id"]), "kind": "agent_joined_session", "agentName": agent_name,
+            **({"reason": reason} if reason else {})})
+        await db.execute(text(f"""
+            insert into audit_events(tenant_id,initiator_kind,initiator_id,event_type,target_type,target_id,payload,correlation_id)
+            values({TENANT},'agent',:actor,'agent.joined_session','agent_team',:team,cast(:payload as jsonb),:correlation)
+        """), {"actor": team["supervisor_agent_id"], "team": str(team["id"]), "correlation": uuid4(),
+               "payload": json.dumps({"agentId": offered["agent_id"], "agentName": agent_name, "reason": reason})})
     elif member["version_id"] != body.agent_version_id:
         # A session keeps the version it admitted; a newer one is for the next session.
         raise HTTPException(409, "This agent is already a member with another version")
@@ -493,6 +505,10 @@ async def release(team_id: UUID, member_id: UUID, db: Scope) -> dict[str, Any]:
         raise HTTPException(409, "This Supervisor team has finished")
     member = await specialist_member(db, team, member_id)
     config = member["config"]
+    from .v3_models import resolve_model
+    from .v3_agent_builder import instructions_with_skills
+    model_config = await resolve_model(db, 'specialist', config.get('model_id'), team['workspace_id'])
+    instructions = await instructions_with_skills(db, config, team['workspace_id'])
     # The tools this version was approved with, as the tenant's catalogue describes them now.
     # A model tool name cannot contain a dot, so `sop_kb.retrieve` is offered as `sop_kb__retrieve`.
     # Only read tools: the tool host keeps the others closed to sessions for now.
@@ -516,12 +532,12 @@ async def release(team_id: UUID, member_id: UUID, db: Scope) -> dict[str, Any]:
             # Both hold by construction: a version exists only from an approved review whose
             # evaluation passed every case, and specialist_member refused anything else.
             "evaluated": True, "admin_approved": True, "published": True, "revoked": False,
-            "prompt_hash": hashlib.sha256(member["instructions"].encode()).hexdigest(),
+            "prompt_hash": hashlib.sha256(instructions.encode()).hexdigest(),
             "config_hash": member["config_hash"],
             "knowledge_grants": [str(n) for n in config.get("knowledge_namespace_ids", [])],
             "capabilities": config.get("service_categories", []),
             "tool_descriptors": descriptors,
-            "name": member["name"], "instructions": member["instructions"]}
+            "name": member["name"], "instructions": instructions, "model_config": model_config}
 
 
 class RoomTask(BaseModel):
@@ -617,6 +633,7 @@ async def mentions(db: Scope, limit: int = Query(default=20, ge=1, le=50)) -> di
         from message_mentions mm
         join messages m on m.id=mm.message_id and m.tenant_id=mm.tenant_id
         where mm.tenant_id={TENANT} and mm.status='queued' and m.body->>'kind'='session_question'
+          and coalesce(m.body->>'sourceConsentScope','') <> 'actor_session'
         order by m.created_at,m.id limit :limit
     """), {"limit": limit})).mappings().all()
     items = []

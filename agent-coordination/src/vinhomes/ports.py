@@ -193,6 +193,7 @@ class Releases:
     # runtime sets it around that one turn; `pictures` then holds them for the thread of that turn.
     attached: dict = field(default_factory=dict)
     pictures: dict = field(default_factory=dict)
+    model_configs: dict = field(default_factory=dict)
 
     async def resolve_released_session(self, invocation) -> dict:
         team = self.teams.get(invocation.context.scope())
@@ -200,14 +201,16 @@ class Releases:
             raise AdapterError("release_session_scope_mismatch")
         attested = await self.backend.release(team, invocation.participant.member_id)
         instructions = attested.pop("instructions")
+        chosen_model = attested.pop('model_config', None)
         attested.pop("name")
         # One OpenBot thread per turn: the Bot keeps no history, and a thread belongs to one run.
         thread = f"{attested['thread_id']}:{invocation.source_run_id}"
         self.instructions[thread] = instructions
+        self.model_configs[thread] = chosen_model
         if invocation.context.scope() in self.attached:
             self.pictures[thread] = self.attached[invocation.context.scope()]
         return {**attested, "thread_id": thread, "source_run_id": invocation.source_run_id,
-                "model": self.openbot.model, "runtime": "openbot-chat-completions", "endpoint": self.openbot.endpoint,
+                "model": chosen_model['model_name'] if chosen_model else self.openbot.model, "runtime": "openbot-chat-completions", "endpoint": self.openbot.endpoint,
                 "credential_env": self.openbot.token_env, "output_tokens": self.openbot.output_tokens,
                 "development": self.openbot.development}
 
@@ -264,9 +267,10 @@ class InstructedClient:
     as pictures (shared/user-content.ts). The adapter's own wire, records and budget are untouched.
     """
 
-    def __init__(self, client: httpx.AsyncClient, instructions: dict, pictures: dict | None = None):
+    def __init__(self, client: httpx.AsyncClient, instructions: dict, pictures: dict | None = None, model_configs: dict | None = None):
         self.client, self.instructions = client, instructions
         self.pictures = {} if pictures is None else pictures  # the caller's own dict: it fills it turn by turn
+        self.model_configs = {} if model_configs is None else model_configs
 
     @asynccontextmanager
     async def stream(self, method, url, *, headers, json):
@@ -278,6 +282,11 @@ class InstructedClient:
         pictures, messages = self.pictures.get(json["threadId"]), json["messages"]
         if pictures and isinstance(messages[0].get("content"), str):
             messages = [{**messages[0], "content": [{"type": "text", "text": messages[0]["content"]}, *pictures]}, *messages[1:]]
+        chosen = self.model_configs.get(json['threadId'])
+        if chosen:
+            from .registered_model import registered_response
+            yield await registered_response(self.client, chosen, {**json, 'messages': messages}, instructions, REPLY_FORMAT)
+            return
         async with self.client.stream(method, url, headers=headers, timeout=httpx.Timeout(10, read=None),
                                       json={**json, "messages": messages, "context": room_context(instructions)}) as response:
             yield _RoomReply(response)
@@ -329,7 +338,7 @@ class Specialists:
     def __init__(self, releases: Releases, records, budget, client: httpx.AsyncClient, *, tools=None,
                  deadline: float = 120):
         self.remote = OpenbotAdapter(ReleaseConsumer(releases, records), records, tools or NoTools(), budget,
-                                     client=InstructedClient(client, releases.instructions, releases.pictures), deadline=deadline)
+                                     client=InstructedClient(client, releases.instructions, releases.pictures, releases.model_configs), deadline=deadline)
         self.port = AgentScopeRemoteAdapter(self.remote)
 
     async def prepare(self, invocation) -> None:
@@ -417,12 +426,13 @@ class PlannerModel:
 
     def __init__(self, budget, client: httpx.AsyncClient, *, model: str | None, base_url: str,
                  key_env: str = "OPENAI_API_KEY", output_tokens: int = 2048, timeout: float = 60,
-                 instruction_loader=None, key: str | None = None, provider: str = "openai", answers_as: str | None = None):
+                 instruction_loader=None, key: str | None = None, provider: str = "openai", answers_as: str | None = None, config_loader=None):
         self.budget, self.client, self.model, self.url = budget, client, model, base_url.rstrip("/") + "/chat/completions"
         self.key_env, self.output_tokens, self.timeout = key_env, output_tokens, timeout
         # The role's own key and provider (models.py); `key_env` remains for callers that pass none.
         self.key, self.provider, self.answers_as = key, provider, answers_as
         self.instruction_loader = instruction_loader
+        self.config_loader = config_loader
 
     @staticmethod
     def _pause(reason: str) -> str:
@@ -453,8 +463,13 @@ class PlannerModel:
         if not prompt["catalog"]:
             # Nobody is published for this ticket's category: management handles it by hand.
             return self._pause("no_specialist_available")
-        key = self.key or os.environ.get(self.key_env)
-        if not self.model or not key:
+        configured_model = await self.config_loader() if self.config_loader else None
+        key = configured_model['api_key'] if configured_model else self.key or os.environ.get(self.key_env)
+        model = configured_model['model_name'] if configured_model else self.model
+        provider = configured_model['provider'] if configured_model else self.provider
+        url = configured_model['base_url'].rstrip('/') + '/chat/completions' if configured_model else self.url
+        answers_as = model if configured_model else self.answers_as or model
+        if not model or not key:
             return self._pause("planner_model_not_configured")
         room = prompt["state"]["room"]
         if room is None:
@@ -481,9 +496,9 @@ class PlannerModel:
         call = str(uuid4())
         await budget.reserve(call, len(json.dumps(messages, ensure_ascii=False).encode()) + self.output_tokens)
         try:
-            response = await self.client.post(self.url, headers={"Authorization": "Bearer " + key}, timeout=self.timeout,
-                                              json={"model": self.model, "messages": messages,
-                                                    **output_limit(self.provider, self.output_tokens),
+            response = await self.client.post(url, headers={"Authorization": "Bearer " + key}, timeout=self.timeout,
+                                              json={"model": model, "messages": messages,
+                                                    **output_limit(provider, self.output_tokens),
                                                     "response_format": {"type": "json_object"}})
             if response.status_code != 200:
                 # The session only records "model unavailable"; why is told here. The provider's error
@@ -496,7 +511,7 @@ class PlannerModel:
                 raise AdapterError("model_provider_error")
             data = response.json()
             # A dated snapshot of the configured model is that model; anything else is a substitution.
-            if not str(data.get("model", "")).startswith(self.answers_as or self.model):
+            if not str(data.get("model", "")).startswith(answers_as):
                 log.warning("planner model answered as %r, not as the configured model", data.get("model"))
                 raise AdapterError("effective_model_mismatch")
             text = data["choices"][0]["message"]["content"]

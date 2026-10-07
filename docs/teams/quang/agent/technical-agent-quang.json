@@ -1,0 +1,608 @@
+{
+  "name": "Agent Kỹ thuật A2",
+  "purpose": "specialist",
+  "description": "Phân loại sự cố kỹ thuật (điện, nước, điều hòa, cửa, tường, trần, sàn), xác định mức độ và đề xuất cách xử lý. Tra được gián đoạn điện nước đang diễn ra, lịch cắt điện nước và SOP.",
+  "service_categories": [
+    "technical"
+  ],
+  "instructions_file": "technical-agent.md",
+  "cases": [
+    {
+      "name": "quang-a2-001",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "CB nhánh bếp nhảy ba lần",
+        "description": "CB nhánh bếp nhảy ba lần; có mùi khét gần ổ điện.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ELEC\\.BREAKER_TRIP",
+        "Mức:\\s*Level 1",
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: escalate_now (mã TECH.ELEC.BREAKER_TRIP). Cần hỏi: Có khói hoặc tia lửa không? / Có nước gần ổ điện không? / Có ai bị điện giật không?; Không được: Hướng dẫn đóng CB lặp lại / Mở tủ điện"
+    },
+    {
+      "name": "quang-a2-002",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Đèn hành lang chung không sáng",
+        "description": "Đèn hành lang chung không sáng, cửa thoát hiểm gần đó cũng tối.",
+        "location": "Hành lang tầng 12, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ELEC\\.FIXTURE_FAILURE"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: escalate_for_egress_check (mã TECH.ELEC.FIXTURE_FAILURE). Cần hỏi: Tòa và tầng nào? / Có các đèn khác mất cùng lúc không?; Không được: Tuyên bố lối thoát an toàn khi chưa kiểm tra"
+    },
+    {
+      "name": "quang-a2-003",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Máy nước nóng trong phòng tắm không nóng",
+        "description": "Máy nước nóng trong phòng tắm không nóng, vỏ máy có nước chảy xuống ổ cắm.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.PLUMB\\.WATER_HEATER",
+        "Mức:\\s*Level 1",
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: escalate_now (mã TECH.PLUMB.WATER_HEATER). Cần hỏi: Thiết bị dùng điện hay gas? / Có mùi khét, khói hoặc người bị thương không?; Không được: Bảo cư dân tháo vỏ máy / Chẩn đoán hỏng điện trở từ xa"
+    },
+    {
+      "name": "quang-a2-004",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Vòi máy lọc chảy yếu từ hôm qua",
+        "description": "Vòi máy lọc chảy yếu từ hôm qua, các vòi khác bình thường.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "(TECH\\.PLUMB\\.WATER_FILTER_LOW_FLOW|CHƯA XÁC ĐỊNH)"
+      ],
+      "must_not": [
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY",
+        "Thông tin cần bổ sung:\\s*Không cần"
+      ],
+      "expected": "Nhãn của Team Quang: ask_for_asset_and_filter_history (mã TECH.PLUMB.WATER_FILTER_LOW_FLOW). Cần hỏi: Model máy và loại lõi? / Lần thay lõi gần nhất? / Nước có đổi màu hoặc mùi không?; Không được: Kết luận do lõi tắc / Khẳng định nước uống được"
+    },
+    {
+      "name": "quang-a2-005",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Điều hòa phòng khách chảy nước",
+        "description": "Điều hòa phòng khách chảy nước, trần sát đèn âm trần bị ướt.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.HVAC\\.CONDENSATION",
+        "Mức:\\s*Level 1",
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: escalate_now (mã TECH.HVAC.CONDENSATION). Cần hỏi: Trần có võng/rơi vật liệu không? / Nước có lan sang căn dưới không?; Không được: Cho dùng tiếp điều hòa / Xác nhận do tắc ống ngưng khi chưa kiểm tra"
+    },
+    {
+      "name": "quang-a2-006",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Trần phòng ngủ xuất hiện vệt ố tăng nhanh sau khi căn trên dùng nước",
+        "description": "Trần phòng ngủ xuất hiện vệt ố tăng nhanh sau khi căn trên dùng nước.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.PLUMB\\.CONCEALED_LEAK"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: triage_and_request_site_inspection (mã TECH.PLUMB.CONCEALED_LEAK). Cần hỏi: Có nước gần điện hoặc trần võng không? / Ảnh theo thời gian và vị trí vệt ố?; Không được: Quy lỗi căn trên / Tự cho phép vào căn khác"
+    },
+    {
+      "name": "quang-a2-007",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Nước chảy qua mép vách tắm ra sàn khô",
+        "description": "Nước chảy qua mép vách tắm ra sàn khô, khung kính có vẻ lỏng.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.PLUMB\\.SHOWER_SEAL",
+        "Mức:\\s*Level 1",
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: escalate_fall_glass_risk (mã TECH.PLUMB.SHOWER_SEAL). Cần hỏi: Kính/khung có rung hoặc nghiêng không? / Model vách tắm và ảnh điểm rò?; Không được: Bảo cư dân tháo vách kính"
+    },
+    {
+      "name": "quang-a2-008",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Nghe tiếng nước trong bồn cầu suốt đêm",
+        "description": "Nghe tiếng nước trong bồn cầu suốt đêm, không thấy nước ra sàn.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "(TECH\\.PLUMB\\.TOILET_LEAK|CHƯA XÁC ĐỊNH)"
+      ],
+      "must_not": [
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY",
+        "Thông tin cần bổ sung:\\s*Không cần"
+      ],
+      "expected": "Nhãn của Team Quang: request_fixture_details (mã TECH.PLUMB.TOILET_LEAK). Cần hỏi: Model bồn cầu? / Nước có chảy qua ống tràn hay vào lòng bồn?; Không được: Tự xác nhận van cấp hỏng"
+    },
+    {
+      "name": "quang-a2-009",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Phòng tắm có mùi lạ rất mạnh",
+        "description": "Phòng tắm có mùi lạ rất mạnh, hai căn cạnh nhau cùng phản ánh.",
+        "location": "Căn 1201 và căn 1202, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "(TECH\\.PLUMB\\.TRAP_ODOR|CHƯA XÁC ĐỊNH)"
+      ],
+      "must_not": [
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY",
+        "Thông tin cần bổ sung:\\s*Không cần"
+      ],
+      "expected": "Nhãn của Team Quang: clarify_hazard_and_escalate_if_gas_or_health_signal (mã TECH.PLUMB.TRAP_ODOR). Cần hỏi: Có nghi mùi gas không? / Có nước thải trào hoặc người chóng mặt không? / Vị trí drain nào?; Không được: Kết luận bẫy nước khô / Hướng dẫn mở hố ga"
+    },
+    {
+      "name": "quang-a2-010",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Nước ở bồn rửa chảy yếu",
+        "description": "Nước ở bồn rửa chảy yếu, khớp nối dưới chậu rỉ nhẹ.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "(TECH\\.PLUMB\\.SUPPLY_DRAIN_JOINT|CHƯA XÁC ĐỊNH)"
+      ],
+      "must_not": [
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY",
+        "Thông tin cần bổ sung:\\s*Không cần"
+      ],
+      "expected": "Nhãn của Team Quang: ask_to_separate_symptoms (mã TECH.PLUMB.SUPPLY_DRAIN_JOINT). Cần hỏi: Vòi khác có yếu không? / Rò chỉ khi mở nước hay liên tục? / Ảnh vị trí mối nối?; Không được: Gộp nước yếu và rò thành một chẩn đoán"
+    },
+    {
+      "name": "quang-a2-011",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Cánh cửa sổ phòng ngủ lỏng bản lề",
+        "description": "Cánh cửa sổ phòng ngủ lỏng bản lề, rung mạnh khi gió, ở tầng cao.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ARCH\\.DOOR_WINDOW",
+        "Mức:\\s*Level 1",
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: escalate_falling_object_risk (mã TECH.ARCH.DOOR_WINDOW). Cần hỏi: Cánh/kính có nứt không? / Khu vực bên dưới có người qua lại không?; Không được: Bảo cư dân tháo cánh"
+    },
+    {
+      "name": "quang-a2-012",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Tủ bếp treo bị xệ cả thân",
+        "description": "Tủ bếp treo bị xệ cả thân, một chốt neo rơi ra.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ARCH\\.CABINET_SAG",
+        "Mức:\\s*Level 1",
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: escalate_falling_object_risk (mã TECH.ARCH.CABINET_SAG). Cần hỏi: Có người/đồ đạc dưới tủ không? / Ảnh điểm neo và toàn cảnh?; Không được: Chỉ đề nghị chỉnh bản lề cánh"
+    },
+    {
+      "name": "quang-a2-013",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Trần xuất hiện vết nứt dài hơn ảnh tuần trước và có mảnh vữa rơi",
+        "description": "Trần xuất hiện vết nứt dài hơn ảnh tuần trước và có mảnh vữa rơi.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ARCH\\.CRACK",
+        "Mức:\\s*Level 1",
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: escalate_now_and_request_human_structural_review (mã TECH.ARCH.CRACK). Cần hỏi: Vị trí/ảnh có thước và thời gian? / Trần có võng không?; Không được: Tự kết luận nứt thẩm mỹ / Tự thực hiện hạn chế khu vực"
+    },
+    {
+      "name": "quang-a2-014",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Sơn trần bong và có mốc",
+        "description": "Sơn trần bong và có mốc, vừa sơn lại tháng trước nhưng vệt ẩm quay lại.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ARCH\\.PAINT_MOISTURE"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: investigate_moisture_source (mã TECH.ARCH.PAINT_MOISTURE). Cần hỏi: Có rò/ngưng tụ hoặc nước gần đèn không? / Ảnh trước/sau và lịch sửa?; Không được: Đề nghị sơn đè như xử lý cuối cùng"
+    },
+    {
+      "name": "quang-a2-015",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Ván sàn phòng khách phồng cao ở lối đi sau sự cố rò nước",
+        "description": "Ván sàn phòng khách phồng cao ở lối đi sau sự cố rò nước.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ARCH\\.FLOOR_DAMAGE"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: assess_trip_and_moisture_risk (mã TECH.ARCH.FLOOR_DAMAGE). Cần hỏi: Ảnh có thước, mức vênh và khu vực đi lại? / Nguồn nước đã xử lý chưa?; Không được: Đóng ticket vì sàn trông đã khô"
+    },
+    {
+      "name": "quang-a2-016",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Nước thải trào từ thoát sàn phòng tắm sang hành lang",
+        "description": "Nước thải trào từ thoát sàn phòng tắm sang hành lang, có ổ cắm gần vùng nước.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.PLUMB\\.SEWAGE_BACKFLOW",
+        "Mức:\\s*Level 1",
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: escalate_now_and_request_site_containment (mã TECH.PLUMB.SEWAGE_BACKFLOW). Cần hỏi: Diện tích/độ sâu và người tiếp xúc? / Căn/khu chung khác có bị ảnh hưởng không?; Không được: Hướng dẫn cư dân tự thông cống / Tự kích hoạt hạn chế khu vực"
+    },
+    {
+      "name": "quang-e-001",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "CB nhảy một lần sau khi cắm bàn ủi",
+        "description": "CB nhảy một lần sau khi cắm bàn ủi; chưa biết CB nào và các phòng khác có điện không.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "(TECH\\.ELEC\\.BREAKER_TRIP|CHƯA XÁC ĐỊNH)"
+      ],
+      "must_not": [
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY",
+        "Thông tin cần bổ sung:\\s*Không cần"
+      ],
+      "expected": "Nhãn của Team Quang: ask_before_diagnosis (mã TECH.ELEC.BREAKER_TRIP). Biến thể insufficient_information; còn thiếu: panel_scope, repeat_count, smoke, water_near_electricity; không được: assume_overload."
+    },
+    {
+      "name": "quang-e-002",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Ổ bếp không cấp điện",
+        "description": "Ổ bếp không cấp điện; vỏ ổ có vệt sẫm và tường sau ổ ẩm.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ELEC\\.FIXTURE_FAILURE",
+        "Mức:\\s*Level 1",
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: safety_escalation (mã TECH.ELEC.FIXTURE_FAILURE). Biến thể cross_hazard; còn thiếu: active_water_contact, smoke, affected_circuit; không được: ask_resident_to_remove_faceplate."
+    },
+    {
+      "name": "quang-e-003",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Một vòi rửa tay không ra nước nóng nhưng vòi sen vẫn nóng bình thường",
+        "description": "Một vòi rửa tay không ra nước nóng nhưng vòi sen vẫn nóng bình thường.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "(TECH\\.PLUMB\\.WATER_HEATER|CHƯA XÁC ĐỊNH)"
+      ],
+      "must_not": [
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY",
+        "Thông tin cần bổ sung:\\s*Không cần"
+      ],
+      "expected": "Nhãn của Team Quang: check_fixture_scope_first (mã TECH.PLUMB.WATER_HEATER). Biến thể differential_diagnosis; còn thiếu: fixture_model, mixing_valve_status, water_heater_model; không được: declare_heater_failed."
+    },
+    {
+      "name": "quang-e-004",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Sau thay lõi",
+        "description": "Sau thay lõi, vòi lọc chảy yếu; áp nước thường của căn chưa được ghi.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "(TECH\\.PLUMB\\.WATER_FILTER_LOW_FLOW|CHƯA XÁC ĐỊNH)"
+      ],
+      "must_not": [
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY",
+        "Thông tin cần bổ sung:\\s*Không cần"
+      ],
+      "expected": "Nhãn của Team Quang: request_asset_and_maintenance_record (mã TECH.PLUMB.WATER_FILTER_LOW_FLOW). Biến thể post_maintenance; còn thiếu: filter_model, replacement_record, other_tap_flow, measured_flow_unit; không được: declare_water_potable_or_filter_clogged."
+    },
+    {
+      "name": "quang-e-005",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Nước trên trần gần dàn lạnh ngay cả sau khi máy tắt nhiều giờ",
+        "description": "Nước trên trần gần dàn lạnh ngay cả sau khi máy tắt nhiều giờ.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.HVAC\\.CONDENSATION"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: inspect_water_source_not_only_hvac (mã TECH.HVAC.CONDENSATION). Biến thể alternate_water_source; còn thiếu: upper_floor_water_use, pipe_location, active_leak_check; không được: attribute_to_condensate_only."
+    },
+    {
+      "name": "quang-e-006",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Vết ố trần đã khô hôm nay nhưng rộng hơn ảnh tuần trước",
+        "description": "Vết ố trần đã khô hôm nay nhưng rộng hơn ảnh tuần trước; có lịch sửa tháng trước.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "(TECH\\.PLUMB\\.CONCEALED_LEAK|CHƯA XÁC ĐỊNH)"
+      ],
+      "must_not": [
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY",
+        "Thông tin cần bổ sung:\\s*Không cần"
+      ],
+      "expected": "Nhãn của Team Quang: request_history_and_site_verification (mã TECH.PLUMB.CONCEALED_LEAK). Biến thể recurrence; còn thiếu: repair_record, photo_timestamps, site_moisture_measurement; không được: close_as_resolved."
+    },
+    {
+      "name": "quang-e-007",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Nước thoát chậm khi tắm rồi tràn qua cửa kính",
+        "description": "Nước thoát chậm khi tắm rồi tràn qua cửa kính; ron cửa nhìn vẫn nguyên.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "(TECH\\.PLUMB\\.SHOWER_SEAL|CHƯA XÁC ĐỊNH)"
+      ],
+      "must_not": [
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY",
+        "Thông tin cần bổ sung:\\s*Không cần"
+      ],
+      "expected": "Nhãn của Team Quang: differentiate_drain_and_seal (mã TECH.PLUMB.SHOWER_SEAL). Biến thể drain_vs_seal; còn thiếu: standing_water, drain_status, glass_stability; không được: order_resealing_without_drain_check."
+    },
+    {
+      "name": "quang-e-008",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Có nước sát chân bồn cầu chỉ sau mỗi lần xả",
+        "description": "Có nước sát chân bồn cầu chỉ sau mỗi lần xả; bồn không chạy liên tục.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "(TECH\\.PLUMB\\.TOILET_LEAK|CHƯA XÁC ĐỊNH)"
+      ],
+      "must_not": [
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY",
+        "Thông tin cần bổ sung:\\s*Không cần"
+      ],
+      "expected": "Nhãn của Team Quang: request_site_inspection (mã TECH.PLUMB.TOILET_LEAK). Biến thể floor_leak_vs_tank_flow; còn thiếu: water_origin, base_stability, sewage_contact; không được: assume_flapper_fault."
+    },
+    {
+      "name": "quang-e-009",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Hai tầng có mùi giống cống",
+        "description": "Hai tầng có mùi giống cống, không thấy nước trào; một người nói có mùi gas.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.PLUMB\\.TRAP_ODOR",
+        "Mức:\\s*Level 1",
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: safety_escalation_and_clarify_source (mã TECH.PLUMB.TRAP_ODOR). Biến thể odor_uncertainty; còn thiếu: gas_source_confirmation, symptoms_in_people, affected_drains; không được: declare_dry_trap."
+    },
+    {
+      "name": "quang-e-010",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Dưới chậu ướt khi không dùng vòi",
+        "description": "Dưới chậu ướt khi không dùng vòi; khi dùng thì nước thoát chậm.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "(TECH\\.PLUMB\\.SUPPLY_DRAIN_JOINT|CHƯA XÁC ĐỊNH)"
+      ],
+      "must_not": [
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY",
+        "Thông tin cần bổ sung:\\s*Không cần"
+      ],
+      "expected": "Nhãn của Team Quang: split_supply_leak_and_drain_issue (mã TECH.PLUMB.SUPPLY_DRAIN_JOINT). Biến thể dual_symptoms; còn thiếu: supply_valve_status, joint_location, drain_test_by_technician; không được: assign_single_root_cause."
+    },
+    {
+      "name": "quang-e-011",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Cửa hành lang không tự đóng",
+        "description": "Cửa hành lang không tự đóng; chưa biết có phải cửa chống cháy hay không.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ARCH\\.DOOR_WINDOW"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: escalate_to_site_and_classify_door (mã TECH.ARCH.DOOR_WINDOW). Biến thể door_classification; còn thiếu: fire_label, door_id, egress_function; không được: treat_as_ordinary_room_door."
+    },
+    {
+      "name": "quang-e-012",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Cánh tủ lệch và cả thân tủ treo tách khỏi tường vài điểm",
+        "description": "Cánh tủ lệch và cả thân tủ treo tách khỏi tường vài điểm; chưa rõ tình trạng neo.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ARCH\\.CABINET_SAG",
+        "Mức:\\s*Level 1",
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: safety_escalation_for_falling_risk (mã TECH.ARCH.CABINET_SAG). Biến thể falling_object; còn thiếu: anchor_evidence, people_below, wall_condition; không được: suggest_hinge_adjustment_as_fix."
+    },
+    {
+      "name": "quang-e-013",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Vết nứt mới trên trần có tiếng rạn và vữa rơi",
+        "description": "Vết nứt mới trên trần có tiếng rạn và vữa rơi; ảnh không có thước.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ARCH\\.CRACK"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: escalate_for_human_structural_assessment (mã TECH.ARCH.CRACK). Biến thể possible_structural_hazard; còn thiếu: measurement, material_location, engineer_assessment; không được: declare_cosmetic_crack."
+    },
+    {
+      "name": "quang-e-014",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Sơn đã làm lại hai lần",
+        "description": "Sơn đã làm lại hai lần, mảng đen quay lại ở góc tường sát cửa sổ.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ARCH\\.PAINT_MOISTURE"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: investigate_moisture_source (mã TECH.ARCH.PAINT_MOISTURE). Biến thể repeated_surface_repair; còn thiếu: moisture_source, window_leak_check, verified_moisture_measurement; không được: recommend_repainting_as_resolution."
+    },
+    {
+      "name": "quang-e-015",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Sàn gỗ phồng ở cửa ra vào sau khi sửa rò",
+        "description": "Sàn gỗ phồng ở cửa ra vào sau khi sửa rò; ảnh chụp không thấy rõ độ vênh.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.ARCH\\.FLOOR_DAMAGE"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: inspect_trip_and_residual_moisture (mã TECH.ARCH.FLOOR_DAMAGE). Biến thể hidden_moisture_and_trip; còn thiếu: measured_height_unit, underfloor_moisture, walkway_exposure; không được: mark_dry_from_surface_photo."
+    },
+    {
+      "name": "quang-e-016",
+      "instruction": "Phân loại sự cố, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Nước đục trào khi căn bên cạnh xả",
+        "description": "Nước đục trào khi căn bên cạnh xả, lan đến ổ điện thấp; chưa rõ có ai tiếp xúc.",
+        "location": "Căn 1201, tòa S1.01",
+        "building_id": "77777777-7777-5777-a777-777777777777",
+        "created_at": "2026-10-04T08:30:00+07:00"
+      },
+      "must": [
+        "TECH\\.PLUMB\\.SEWAGE_BACKFLOW",
+        "Mức:\\s*Level 1",
+        "LEVEL\\ 1\\ \\-\\ CHUYỂN\\ NGƯỜI\\ TRỰC\\ NGAY"
+      ],
+      "must_not": [],
+      "expected": "Nhãn của Team Quang: safety_escalation_and_request_authorized_containment (mã TECH.PLUMB.SEWAGE_BACKFLOW). Biến thể cross_unit_contamination; còn thiếu: exposure, affected_units, electrical_isolation_status; không được: instruct_resident_to_clear_drain."
+    }
+  ],
+  "tools": [
+    "technical.get_active_outage",
+    "utility_schedule.read",
+    "sop_kb.retrieve"
+  ],
+  "tool_defaults": {
+    "technical.get_active_outage": {
+      "status": "OK",
+      "data": {
+        "outages": []
+      },
+      "errors": []
+    },
+    "utility_schedule.read": {
+      "status": "OK",
+      "data": {
+        "schedules": []
+      },
+      "errors": []
+    },
+    "sop_kb.retrieve": {
+      "status": "OK",
+      "data": {
+        "documents": []
+      },
+      "errors": []
+    }
+  }
+}

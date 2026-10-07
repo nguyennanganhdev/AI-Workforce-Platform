@@ -262,9 +262,14 @@ export function repairScopeFor(
     paths.add(mapped);
     if (
       mapped.startsWith("requirements") ||
+      mapped === "inputFacts" ||
+      mapped.startsWith("inputFacts.") ||
       mapped === "toolArguments" ||
       mapped.startsWith("toolArguments.")
     ) {
+      // Input facts and argument sources share names and missing-input behavior. A scope
+      // correction in one must be repairable in the other; otherwise old tool guidance can
+      // keep requesting a forbidden scope even after the input contract was corrected.
       for (const field of [
         "toolArguments",
         "generatedSkill",
@@ -281,25 +286,25 @@ export function repairPreservesScope(
   before: AgentDraft,
   after: AgentDraft,
   paths: readonly string[],
+  onViolation?: (path: string) => void,
 ): boolean {
   // A reference repair must not erase a need or turn a required tool into model-on-input.
   if (
     before.requirements.some((entry, index) => {
       const next = after.requirements[index];
-      return (
-        !next ||
-        entry.need !== next.need ||
-        entry.fulfillment !== next.fulfillment ||
-        JSON.stringify(entry.source) !== JSON.stringify(next.source)
-      );
+      const changed = !next ? "missing" : entry.need !== next.need ? "need" : entry.fulfillment !== next.fulfillment ? "fulfillment" : JSON.stringify(entry.source) !== JSON.stringify(next.source) ? "source" : undefined;
+      if (changed) onViolation?.(`requirements.${index}.${changed}`);
+      return changed !== undefined;
     })
   )
     return false;
   function unchanged(a: unknown, b: unknown, path: string): boolean {
     if (paths.includes(path)) return true;
     if (JSON.stringify(a) === JSON.stringify(b)) return true;
-    if (!a || !b || typeof a !== "object" || typeof b !== "object")
+    if (!a || !b || typeof a !== "object" || typeof b !== "object") {
+      onViolation?.(path);
       return false;
+    }
     return [...new Set([...Object.keys(a), ...Object.keys(b)])].every((key) =>
       unchanged(
         (a as Record<string, unknown>)[key],

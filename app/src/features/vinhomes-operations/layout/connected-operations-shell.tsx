@@ -48,7 +48,7 @@ const adminNav: {page:NavigationPage; icon:ReactNode}[] = [
   { page: "audit", icon: <IconHistory className="size-4" stroke={1.75} /> },
 ];
 
-export type ShellNotice = { id: string; title: string; note: string; to: string };
+export type ShellNotice = { id: string; title: string; note: string; to: string; count?: number };
 
 /** Uses the Operations shell and responsive navigation styles, with server identity. */
 export function ConnectedOperationsShell({

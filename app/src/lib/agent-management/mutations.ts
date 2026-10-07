@@ -16,7 +16,7 @@ export function configureManagedAgentMutationOptions(queryClient: QueryClient) {
   }, onSuccess: () => queryClient.invalidateQueries({queryKey: managedAgentKeys.all}) });
 }
 export function constructManagedAgentMutationOptions(queryClient: QueryClient) {
-  return mutationOptions({ mutationFn: async ({roomId, agentId, ...body}: {roomId: string; agentId: string; role: string; description: string; service_categories: string[]; configuration_hash: string; revision_of?: string | null; request_id: string}): Promise<{needsInput: boolean; questions: string[]}> => {
+  return mutationOptions({ mutationFn: async ({roomId, agentId, ...body}: {roomId: string; agentId: string; role: string; description: string; service_categories: string[]; configuration_hash: string; revision_of?: string | null; model_id?: string | null; skill_ids?: string[]; request_id: string}): Promise<{needsInput: boolean; questions: string[]}> => {
     const fallback = "Factory chưa tạo được cấu hình agent.";
     const response = await tryClient(`${base(roomId)}/agents/${encodeURIComponent(agentId)}/construct`, {method: "POST", body, headers: businessHeaders()});
     if (response.ok) {

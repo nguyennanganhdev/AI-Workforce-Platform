@@ -2,7 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { readSourceDocuments } from "../../src/knowledge/source-directory";
+import {
+  ingestDirectory,
+  readSourceDocuments,
+} from "../../src/knowledge/source-directory";
+import { EMBEDDING_MODEL, type IngestStore } from "../../src/knowledge/types";
 
 let root: string;
 
@@ -71,5 +75,41 @@ describe("readSourceDocuments", () => {
     expect(codes).toContain(
       "01-vinhomes/sapphire/sapphire-1/S1.02/thong-tin.md",
     );
+  });
+});
+
+describe("ingestDirectory pruning", () => {
+  test("retires what the folder no longer has, except documents another publisher keeps", async () => {
+    const empty = await mkdtemp(join(tmpdir(), "kb-empty-"));
+    const retired: string[] = [];
+    const store = {
+      listDocuments: async () => [
+        { id: "resident-doc", code: "00-do-thi/cu.md", status: "published" },
+        { id: "bql-doc", code: "bql/ve-sinh/dieu-7.md", status: "published" },
+      ],
+      tombstone: async (_tenant: string, id: string) => {
+        retired.push(id);
+      },
+    } as unknown as IngestStore;
+    try {
+      const report = await ingestDirectory(
+        { store, embedder: { model: { ...EMBEDDING_MODEL }, embed: async () => [] } },
+        {
+          root: empty,
+          tenantId: "tenant",
+          knowledgeBaseId: "kb",
+          categoryId: "category",
+          submittedBy: "user",
+          resolveScopeId: async () => "scope",
+          registerFile: async () => "file",
+          prune: true,
+          keep: (code) => code.startsWith("bql/"),
+        },
+      );
+      expect(retired).toEqual(["resident-doc"]);
+      expect(report.retired).toBe(1);
+    } finally {
+      await rm(empty, { recursive: true, force: true });
+    }
   });
 });

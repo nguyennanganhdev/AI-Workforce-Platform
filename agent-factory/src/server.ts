@@ -37,6 +37,8 @@ const server = Bun.serve({
     token: config.FACTORY_SERVICE_TOKEN,
     modelRef: `${config.FACTORY_MODEL_PROVIDER}/${config.FACTORY_MODEL}`,
     callTimeoutMs: config.FACTORY_CALL_TIMEOUT_MS,
+    ...(config.FACTORY_REASONING_EFFORT ? { reasoningEffort: config.FACTORY_REASONING_EFFORT } : {}),
+    maxCompletionTokens: config.FACTORY_MAX_COMPLETION_TOKENS,
     observe: (event) => console.log(JSON.stringify({ event: "factory.stage", ...event })),
     complete: createHttpCompleter({
       provider: config.FACTORY_MODEL_PROVIDER,

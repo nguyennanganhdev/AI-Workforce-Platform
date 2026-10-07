@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { serviceInterruptions } from "../../src/db/schema";
 import {
@@ -56,12 +58,22 @@ async function keysFor(
   return records?.map(keyOf).sort() ?? null;
 }
 
+/** The tables the journal's migrations leave: each CREATE TABLE less each DROP TABLE, so a new migration needs no edit here. */
+function tablesInJournal(): number {
+  const drizzle = join(import.meta.dir, "..", "..", "drizzle");
+  const journal: { entries: { tag: string }[] } = JSON.parse(readFileSync(join(drizzle, "meta", "_journal.json"), "utf8"));
+  return journal.entries.reduce((total, { tag }) => {
+    const statements = readFileSync(join(drizzle, `${tag}.sql`), "utf8");
+    return total + (statements.match(/CREATE TABLE/gi)?.length ?? 0) - (statements.match(/DROP TABLE/gi)?.length ?? 0);
+  }, 0);
+}
+
 describe("the schema under test", () => {
-  test("loads the baseline and all V3 migrations through 0009", async () => {
+  test("loads the baseline and every migration of the journal", async () => {
     const rows = await db.rows<{ tables: number }>(
       "select count(*)::int as tables from pg_tables where schemaname = 'public'",
     );
-    expect(rows[0]?.tables).toBe(193);
+    expect(rows[0]?.tables).toBe(tablesInJournal());
   });
 
   test("is read as a role that row-level security applies to", async () => {

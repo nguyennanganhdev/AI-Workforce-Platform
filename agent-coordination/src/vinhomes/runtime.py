@@ -186,7 +186,8 @@ class Runtime:
                              key=settings.model_key if settings else None,
                              provider=settings.model_provider if settings else "openai",
                              answers_as=settings.model_answers_as if settings else None,
-                             instruction_loader=instructions)
+                             instruction_loader=instructions,
+                             config_loader=backend.model_config if hasattr(backend, 'model_config') else None)
         self.rooms = RoomService(Resolver(backend, self.teams), specialists, store)
         self.service = SupervisorService(
             store=store, authority=authority, verifier=BackendEvents(backend),
@@ -218,6 +219,10 @@ class Runtime:
         for item in (await self.backend.controls())["items"]:
             key = json.dumps((item["context"]["tenant_id"], "control", item["command"]["request_id"]), separators=(",", ":"))
             await self.store.accept(key, {"kind": "control", **item})
+        if hasattr(self.backend, 'session_mentions'):
+            for item in (await self.backend.session_mentions())['items']:
+                key = json.dumps((str(item['tenant_id']), 'session-mention', str(item['message_id']), item['agent_id']))
+                await self.store.accept(key, {'kind': 'session-mention', **item})
         if hasattr(self.backend, 'room_mentions'):
             for item in (await self.backend.room_mentions())['items']:
                 key = json.dumps((str(item['tenant_id']), 'room-mention', str(item['message_id']), item['agent_id']))
@@ -232,7 +237,7 @@ class Runtime:
             return await self.management_decision(claim.payload)
         if claim.payload["kind"] == "control":
             return await self.control_session(claim.payload)
-        if claim.payload['kind'] == 'room-mention':
+        if claim.payload['kind'] in ('room-mention', 'session-mention'):
             return await self.answer_room(claim.payload)
         if claim.payload["kind"] == "model-retry":
             return await self.retry_session(claim.payload)
@@ -371,9 +376,14 @@ class Runtime:
     async def answer_room(self, item: dict) -> None:
         message, agent = str(item['message_id']), item['agent_id']
         key = json.dumps((str(item['tenant_id']), message, agent))
+        session = item.get('kind') == 'session-mention'
+        async def outcome(result):
+            if session:
+                return await self.backend.session_outcome(str(item['team_id']), message, result)
+            return await self.backend.room_outcome(message, agent, result)
         result = await self.store.get('room_mention_result', key)
         if result is None:
-            snapshot = await self.backend.room_turn(message, agent)
+            snapshot = await self.backend.session_turn(str(item['team_id']), message) if session else await self.backend.room_turn(message, agent)
             if snapshot.get('refused'):
                 return None
             # Persist intent before billing. An interrupted generation is marked failed and
@@ -387,22 +397,25 @@ class Runtime:
                 try:
                     async with asyncio.timeout(150):
                         content, _ = await answer(self.client, snapshot['instructions'], {
-                            'name': key, 'instruction': snapshot['instruction'], 'ticket': {},
-                            'messages': snapshot['messages'], 'images': snapshot.get('images', [])}, snapshot['tools'], {},
+                            'name': key, 'instruction': snapshot['instruction'], 'ticket': snapshot.get('ticket', {}),
+                            'messages': snapshot['messages'], 'images': snapshot.get('images', []),
+                            'workspace': snapshot.get('workspace')}, snapshot['tools'], {},
                             endpoint=self.settings.openbot.endpoint, token=os.environ[self.settings.openbot.token_env],
-                            invoke_tool=tool)
+                            invoke_tool=tool, model_config=snapshot.get('model_config'))
                     result.update(status='done', content=content[:20000])
-                except (AdapterError, ValueError, httpx.HTTPError, TimeoutError):
-                    log.warning('room agent turn failed: message=%s', message)
+                except (AdapterError, ValueError, httpx.HTTPError, TimeoutError) as error:
+                    # The reason, never the content: which step gave up decides what to fix.
+                    log.warning('room agent turn failed: message=%s reason=%s', message,
+                                getattr(error, 'code', None) or type(error).__name__)
             await self.store.put_once('room_mention_result', key, result)
         try:
-            await self.backend.room_outcome(message, agent, result)
+            await outcome(result)
         except Refused as error:
-            if error.status != 409 or result['status'] != 'done':
+            if error.status not in (403, 404, 409) or result['status'] != 'done':
                 raise
             # A revocation during model execution refuses publication; close the run as
             # failed so later questions do not inherit an abandoned active binding.
-            await self.backend.room_outcome(message, agent, {**result, 'status': 'failed', 'content': ''})
+            await outcome({**result, 'status': 'failed', 'content': ''})
         return None
 
     async def management_decision(self, item: dict) -> float | None:
@@ -739,8 +752,8 @@ def create_app(settings: Settings | None = None, *, transport: httpx.AsyncBaseTr
             async with asyncio.timeout(240):
                 for case in cases:
                     try:
-                        content, called = await answer(runtime.client, snapshot['instructions'], case, snapshot['tools'], {},
-                            endpoint=settings.openbot.endpoint, token=os.environ[settings.openbot.token_env])
+                        content, called = await answer(runtime.client, snapshot['instructions'], {**case, 'workspace': snapshot.get('workspace')}, snapshot['tools'], {},
+                            endpoint=settings.openbot.endpoint, token=os.environ[settings.openbot.token_env], model_config=snapshot.get('model_config'))
                         problems = judge(case, content, called)
                     except (AdapterError, ValueError, httpx.HTTPError) as error:
                         content, problems = 'Không có câu trả lời hợp lệ.', [getattr(error, 'code', None) or type(error).__name__]
@@ -770,8 +783,8 @@ def create_app(settings: Settings | None = None, *, transport: httpx.AsyncBaseTr
             from .publish import answer
             async with asyncio.timeout(120):
                 content, called = await answer(runtime.client, snapshot['instructions'],
-                    {'name': 'trial-' + uuid4().hex, 'instruction': body['question'], 'ticket': {}}, snapshot['tools'], {},
-                    endpoint=settings.openbot.endpoint, token=os.environ[settings.openbot.token_env])
+                    {'name': 'trial-' + uuid4().hex, 'instruction': body['question'], 'ticket': {}, 'workspace': snapshot.get('workspace')}, snapshot['tools'], {},
+                    endpoint=settings.openbot.endpoint, token=os.environ[settings.openbot.token_env], model_config=snapshot.get('model_config'))
             return JSONResponse({'answer': content[:5000], 'called': called})
         except ValidationError:
             return JSONResponse({'error': 'Invalid trial request'}, status_code=422)

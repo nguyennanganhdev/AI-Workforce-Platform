@@ -5,6 +5,7 @@ import { businessHeaders } from "@/lib/coordination/queries";
 export type ManagementRoom = {id: string; name: string};
 export type RoomSession = {id: string; ticket_id: string; ticket_code: string; ticket_title: string; status: string;
   created_at: string; updated_at: string; ticket_status: string; plan_status: string | null;
+  plan_resident_rejected?: boolean | null; work_status?: string | null; manual?: boolean;
   runtime?: {phase: string; pauseReason?: string | null} | null};
 // A message the Supervisor's room mirrored here carries its session and what kind of step it was.
 export type RoomMessage = {id: string; seq: number; sender_user_id: string | null; sender_name?: string;

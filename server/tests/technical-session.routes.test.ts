@@ -72,19 +72,40 @@ describe("Technical tools for a Supervisor session", () => {
     ).toThrow();
   });
 
-  test("the catalogue is the fourteen tools, with the name a model may use", async () => {
+  test("the catalogue is the fourteen technical tools and their fourteen cleaning counterparts", async () => {
     const { app } = setup();
     const { tools } = await (
       await app.request("/tools", {
         headers: { authorization: `Bearer ${token}` },
       })
     ).json();
-    expect(tools).toHaveLength(14);
+    const names = tools.map((tool: { name: string }) => tool.name);
+    expect(tools).toHaveLength(28);
+    expect(names.filter((name: string) => name.startsWith("cleaning."))).toHaveLength(14);
+    // The work-order entries need a bridge to the business API that sessions do not have.
+    expect(names).not.toContain("cleaning.list_available_staff");
     expect(
       tools.find(
         (tool: { name: string }) => tool.name === "technical.get_active_outage",
       ).model_name,
     ).toBe("technical__get_active_outage");
+  });
+
+  test("a cleaning read tool runs for the current run, under either spelling of its name", async () => {
+    const { post, calls } = setup();
+    const answer = await post({
+      run_id: run,
+      tool: "cleaning__retrieve_sop",
+      arguments: { building_id: building, issue_code: "CLEAN.COMMON.TRASH" },
+    });
+    expect(answer.status).toBe(200);
+    expect(calls).toEqual([
+      {
+        name: "cleaning.retrieve_sop",
+        args: { building_id: building, issue_code: "CLEAN.COMMON.TRASH" },
+        run,
+      },
+    ]);
   });
 
   test("a read tool runs for the current run, under either spelling of its name", async () => {
@@ -122,6 +143,8 @@ describe("Technical tools for a Supervisor session", () => {
     for (const tool of [
       "technical.record_measurement",
       "apartment_entry.request",
+      "cleaning.record_measurement",
+      "cleaning.request_vendor_dispatch",
     ]) {
       const answer = await post({
         run_id: run,
@@ -138,6 +161,11 @@ describe("Technical tools for a Supervisor session", () => {
     expect(
       (await post({ run_id: run, tool: "shell.exec", arguments: {} })).status,
     ).toBe(404);
+    for (const tool of ["cleaning.list_available_staff", "cleaning.dispatch_staff"])
+      expect(
+        (await post({ run_id: run, tool, arguments: { building_id: building } }))
+          .status,
+      ).toBe(404);
     expect(
       (await post({ run_id: run, tool: "sop_kb.retrieve", arguments: [] }))
         .status,

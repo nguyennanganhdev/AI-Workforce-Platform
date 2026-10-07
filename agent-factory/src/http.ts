@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { FactoryIssue } from "./contracts.js";
 import { readBoundedText } from "./io.js";
+import { createHttpCompleter } from "./model.js";
 import {
   constructAgentSpec,
   type FactoryConstructionOptions,
@@ -12,6 +13,7 @@ export const MAX_REQUEST_BYTES = 128 * 1024;
 const bodySchema = z.strictObject({
   request: z.unknown(),
   catalogue: z.unknown(),
+  model_config: z.object({ model_name: z.string().min(1), api_key: z.string().min(1), base_url: z.url(), provider: z.string() }).optional(),
 });
 const digest = (value: string) => createHash("sha256").update(value).digest();
 
@@ -25,7 +27,7 @@ const failure = (
 
 /** The bearer belongs to BE/service callers; the original user never supplies a catalogue. */
 export function createFactoryHandler(
-  options: FactoryConstructionOptions & { token: string },
+  options: FactoryConstructionOptions & { token: string; reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh'; maxCompletionTokens?: number },
 ) {
   if (options.token.length < 32)
     throw new Error(
@@ -84,7 +86,7 @@ export function createFactoryHandler(
       return failure(
         400,
         "INVALID_BODY",
-        "Send exactly request and catalogue.",
+        "Send request and catalogue with optional service-owned model configuration.",
       );
     const input = parseAgentCreationRequest(body.data.request);
     if (!input.ok)
@@ -103,12 +105,22 @@ export function createFactoryHandler(
         catalogue.issues,
       );
     try {
+      const chosen = body.data.model_config;
+      const complete = chosen ? createHttpCompleter({
+        model: chosen.model_name, apiKey: chosen.api_key,
+        url: chosen.base_url.replace(/\/$/, "") + "/chat/completions",
+        provider: chosen.provider === "openai" ? "openai" : "openai-compatible",
+        maxCompletionTokens: options.maxCompletionTokens ?? 8192,
+        ...(chosen.model_name === 'gpt-6-luna' ? {reasoningEffort: 'none' as const} : options.reasoningEffort ? {reasoningEffort: options.reasoningEffort} : {}),
+      }) : options.complete;
       const result = await constructAgentSpec(input.value, catalogue.value, {
         ...options,
+        complete,
+        ...(chosen ? { modelRef: `${chosen.provider}/${chosen.model_name}` } : {}),
         signal: request.signal,
       });
       if (result.ok) return Response.json(result.value);
-      console.warn(JSON.stringify({event: 'factory.refused', issues: result.issues.map(i => ({code: i.code, message: i.message, sourceStage: i.sourceStage}))}));
+      console.warn(JSON.stringify({event: 'factory.refused', issues: result.issues.map(i => ({code: i.code, path: i.path, message: i.message, sourceStage: i.sourceStage}))}));
       const status = result.issues.some(
         ({ code }) => code === "DEADLINE_EXCEEDED",
       )

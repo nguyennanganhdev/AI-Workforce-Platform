@@ -61,14 +61,28 @@ export async function knowledgeRuntimeFromEnv(env: Record<string, string | undef
   // Embeddings keep their own key and address. Reception's chat model may move to another vendor;
   // the vectors stored here were made by this model and must be queried with it.
   const embeddingKey = env.KNOWLEDGE_EMBEDDING_API_KEY?.trim();
+  const deploymentEmbedder = createOpenAIEmbedder({ apiKey: embeddingKey || required("OPENAI_API_KEY"),
+    baseUrl: env.KNOWLEDGE_EMBEDDING_BASE_URL?.trim() || (embeddingKey ? undefined : env.OPENAI_BASE_URL),
+    model: z.enum(SUPPORTED_EMBEDDING_MODELS).parse(env.KNOWLEDGE_EMBEDDING_MODEL ?? "text-embedding-3-large") });
   return {
     authorize: createBackendKnowledgeAuthorization({ baseUrl: required("RECEPTION_API_URL"), tenantId, knowledgeBaseId,
       internalHttpHost: env.KNOWLEDGE_INTERNAL_HTTP_HOST }),
     retrieval: {
       store: createRetrievalStore(database),
-      embedder: createOpenAIEmbedder({ apiKey: embeddingKey || required("OPENAI_API_KEY"),
-        baseUrl: env.KNOWLEDGE_EMBEDDING_BASE_URL?.trim() || (embeddingKey ? undefined : env.OPENAI_BASE_URL),
-        model: z.enum(SUPPORTED_EMBEDDING_MODELS).parse(env.KNOWLEDGE_EMBEDDING_MODEL ?? "text-embedding-3-large") }),
+      embedder: { model: deploymentEmbedder.model, async embed(texts) {
+        const rows = await database.execute(sql`select m.name,m.provider,m.dimension,m.check_status,m.credential_env,m.base_url_env
+          from admin_role_models r join admin_model_registry m on m.id=r.model_id and m.tenant_id=r.tenant_id where r.role='embedding'`) as unknown as {
+            name:string;provider:string;dimension:number;check_status:string;credential_env:string;base_url_env:string|null }[];
+        const chosen = rows[0];
+        if (!chosen) return deploymentEmbedder.embed(texts);
+        // A different vector space requires a separate re-import; never mix or reshape stored vectors.
+        if (chosen.check_status !== 'ok' || chosen.name !== deploymentEmbedder.model.modelName || chosen.provider !== deploymentEmbedder.model.provider || chosen.dimension !== deploymentEmbedder.model.dimension)
+          throw new Error('Registered embedding model requires a separately imported knowledge space');
+        const key = env[chosen.credential_env]?.trim();
+        const baseUrl = chosen.base_url_env ? env[chosen.base_url_env]?.trim() : "https://api.openai.com/v1";
+        if (!key || !baseUrl) throw new Error('Registered embedding credential is unavailable');
+        return createOpenAIEmbedder({apiKey:key,baseUrl,model:z.enum(SUPPORTED_EMBEDDING_MODELS).parse(chosen.name)}).embed(texts);
+      } },
     },
   };
 }

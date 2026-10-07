@@ -1,0 +1,286 @@
+{
+  "name": "Agent Vệ sinh & Cảnh quan",
+  "purpose": "specialist",
+  "description": "Phân loại phản ánh về vệ sinh khu chung, rác, côn trùng, cây xanh và cảnh quan; xác định mức độ và đề xuất cách xử lý. Tra được SOP vệ sinh, quy định nhà chung cư và gián đoạn nước, điện.",
+  "service_categories": [
+    "cleaning"
+  ],
+  "instructions_file": "cleaning-agent.md",
+  "tools": [
+    {
+      "server_id": "cleaning-tools",
+      "name": "cleaning.retrieve_sop"
+    },
+    {
+      "server_id": "knowledge",
+      "name": "knowledge.search"
+    },
+    {
+      "server_id": "cleaning-tools",
+      "name": "cleaning.get_active_outage"
+    },
+    {
+      "server_id": "cleaning-tools",
+      "name": "cleaning.read_utility_schedule"
+    }
+  ],
+  "cases": [
+    {
+      "name": "rac-tran-phong-rac",
+      "instruction": "Phân loại phản ánh, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Phòng rác tràn ra hành lang",
+        "description": "Phòng rác tầng 12 rác tràn ra hành lang từ tối qua, chưa ai thu gom, bắt đầu bốc mùi.",
+        "location": "Tầng 12, tòa S1.01",
+        "building_id": "1fd0c678-c545-5efb-8713-35030eeb6c08",
+        "created_at": "2026-10-07T07:30:00+07:00"
+      },
+      "must": [
+        "CLEAN.WASTE.OVERFLOW"
+      ],
+      "must_not": [
+        "LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY"
+      ],
+      "expected": "Mã CLEAN.WASTE.OVERFLOW, Level 2 hoặc 3, có tra SOP vệ sinh.",
+      "must_call": [
+        "cleaning.retrieve_sop"
+      ],
+      "must_not_call": [
+        "cleaning.get_active_outage",
+        "cleaning.read_utility_schedule"
+      ]
+    },
+    {
+      "name": "canh-cay-gay-tren-loi-di",
+      "instruction": "Phân loại phản ánh, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Cành cây gãy treo trên lối đi",
+        "description": "Sau mưa bão, một cành cây lớn gãy đang treo lơ lửng ngay trên lối đi bộ trước sảnh, trẻ con vẫn đi qua.",
+        "location": "Lối đi trước sảnh tòa S1.02",
+        "building_id": "be6fa7cc-8a58-5984-a07d-bc8e48de1043",
+        "created_at": "2026-10-07T06:10:00+07:00"
+      },
+      "must": [
+        "LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY",
+        "CLEAN.LAND.TREE_HAZARD"
+      ],
+      "must_not": [],
+      "expected": "Dòng đầu yêu cầu chuyển người trực, mã CLEAN.LAND.TREE_HAZARD, không chờ tra cứu.",
+      "must_call": [],
+      "must_not_call": [
+        "cleaning.retrieve_sop",
+        "knowledge.search",
+        "cleaning.get_active_outage",
+        "cleaning.read_utility_schedule"
+      ]
+    },
+    {
+      "name": "gian-o-sanh",
+      "instruction": "Phân loại phản ánh, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Nhiều gián ở sảnh và thang máy",
+        "description": "Mấy ngày nay tối nào cũng thấy nhiều gián bò ở sảnh và trong thang máy.",
+        "location": "Sảnh tòa S2.01",
+        "building_id": "d9272030-5376-54ff-b30f-e08337ac2eda",
+        "created_at": "2026-10-06T21:00:00+07:00"
+      },
+      "must": [
+        "CLEAN.PEST.INFESTATION"
+      ],
+      "must_not": [
+        "LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY"
+      ],
+      "expected": "Mã CLEAN.PEST.INFESTATION, Level 2, có tra SOP.",
+      "must_call": [
+        "cleaning.retrieve_sop"
+      ],
+      "must_not_call": [
+        "cleaning.get_active_outage"
+      ]
+    },
+    {
+      "name": "mo-ta-khong-du",
+      "instruction": "Phân loại phản ánh, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Bẩn quá",
+        "description": "Chỗ này bẩn quá, xử lý đi.",
+        "location": "",
+        "building_id": "1fd0c678-c545-5efb-8713-35030eeb6c08",
+        "created_at": "2026-10-07T09:00:00+07:00"
+      },
+      "must": [
+        "CHƯA XÁC ĐỊNH"
+      ],
+      "must_not": [],
+      "expected": "Không đủ mô tả để phân loại: CHƯA XÁC ĐỊNH, hỏi vị trí và tình trạng, không gọi công cụ.",
+      "must_call": [],
+      "must_not_call": [
+        "cleaning.retrieve_sop",
+        "knowledge.search",
+        "cleaning.get_active_outage",
+        "cleaning.read_utility_schedule"
+      ]
+    },
+    {
+      "name": "ong-nuoc-vo-ngoai-pham-vi",
+      "instruction": "Phân loại phản ánh, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Ống nước vỡ ở hành lang",
+        "description": "Ống nước cấp ở hành lang tầng 5 bị vỡ, nước phun ra liên tục, sàn hành lang ướt hết.",
+        "location": "Hành lang tầng 5, tòa S1.01",
+        "building_id": "1fd0c678-c545-5efb-8713-35030eeb6c08",
+        "created_at": "2026-10-07T10:15:00+07:00"
+      },
+      "must": [
+        "Ngoài phạm vi vệ sinh",
+        "Kỹ thuật"
+      ],
+      "must_not": [],
+      "expected": "Nói rõ ngoài phạm vi vệ sinh, chuyển Kỹ thuật; chỉ nêu phần dọn nước đi kèm.",
+      "must_call": [],
+      "must_not_call": [
+        "cleaning.retrieve_sop",
+        "knowledge.search"
+      ]
+    },
+    {
+      "name": "sop-tra-ve-ma-tai-lieu",
+      "instruction": "Phân loại phản ánh, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Thùng rác sảnh đầy",
+        "description": "Thùng rác ở sảnh tầng 1 đầy từ trưa, rác rơi ra ngoài.",
+        "location": "Sảnh tầng 1, tòa S1.02",
+        "building_id": "be6fa7cc-8a58-5984-a07d-bc8e48de1043",
+        "created_at": "2026-10-07T13:00:00+07:00"
+      },
+      "tool_results": {
+        "cleaning.retrieve_sop": {
+          "status": "OK",
+          "data": {
+            "documents": [
+              {
+                "document_code": "SOP-CLEAN-WASTE-01",
+                "version_no": 3,
+                "title": "Thu gom rác khu vực chung",
+                "excerpt": "Thu gom thùng rác sảnh khi đầy quá 3/4; lau sạch khu vực quanh thùng; ghi sổ thu gom.",
+                "acceptance_criteria": [
+                  "Không còn rác quanh thùng",
+                  "Thùng được lót túi mới"
+                ]
+              }
+            ]
+          },
+          "errors": []
+        }
+      },
+      "must": [
+        "CLEAN.WASTE.OVERFLOW",
+        "SOP-CLEAN-WASTE-01"
+      ],
+      "must_not": [],
+      "expected": "Dẫn đúng mã SOP mà công cụ trả về.",
+      "must_call": [
+        "cleaning.retrieve_sop"
+      ],
+      "must_not_call": []
+    },
+    {
+      "name": "cu-dan-de-rac-ngoai-cua",
+      "instruction": "Phân loại phản ánh, nêu quy định liên quan và việc cần làm.",
+      "ticket": {
+        "title": "Hàng xóm để rác ngoài cửa",
+        "description": "Căn bên cạnh thường xuyên để túi rác ngoài cửa căn hộ qua đêm, hành lang bốc mùi. Theo quy định thì xử lý thế nào?",
+        "location": "Hành lang tầng 15, tòa S1.01",
+        "building_id": "1fd0c678-c545-5efb-8713-35030eeb6c08",
+        "created_at": "2026-10-07T08:00:00+07:00"
+      },
+      "tool_results": {
+        "knowledge.search": {
+          "outcome": "success",
+          "data": {
+            "insufficientSources": false,
+            "hits": [
+              {
+                "rank": 1,
+                "title": "Thông tư 05/2024/TT-BXD (bản gốc 2024, chưa hợp nhất sửa đổi), Quy chế quản lý, sử dụng nhà chung cư: Điều 45. Xử lý vi phạm",
+                "section": "Điều 45. Xử lý vi phạm",
+                "text": "Tổ chức, cá nhân có hành vi vi phạm các quy định của Quy chế này thì tùy theo tính chất, mức độ vi phạm mà bị xử lý theo quy định của pháp luật."
+              }
+            ]
+          }
+        }
+      },
+      "must": [
+        "CLEAN.WASTE.LITTERING",
+        "Điều 45"
+      ],
+      "must_not": [],
+      "expected": "Mã CLEAN.WASTE.LITTERING, dẫn Điều 45 từ kết quả tra cứu, việc nhắc nhở là của Ban quản lý.",
+      "must_call": [
+        "knowledge.search"
+      ],
+      "must_not_call": [
+        "cleaning.get_active_outage"
+      ]
+    },
+    {
+      "name": "cong-cu-bao-loi",
+      "instruction": "Phân loại phản ánh, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Bồn hoa khô héo",
+        "description": "Bồn hoa trước tòa nhà khô héo cả tuần nay, đầy lá rụng và vỏ chai.",
+        "location": "Bồn hoa trước tòa S2.01",
+        "building_id": "d9272030-5376-54ff-b30f-e08337ac2eda",
+        "created_at": "2026-10-07T09:30:00+07:00"
+      },
+      "tool_results": {
+        "cleaning.retrieve_sop": {
+          "status": "INTERNAL_ERROR",
+          "data": null,
+          "errors": [
+            {
+              "code": "INTERNAL_ERROR",
+              "message": "The request could not be completed.",
+              "retryable": true
+            }
+          ]
+        }
+      },
+      "must": [
+        "CLEAN.LAND.GREENERY",
+        "chưa tra được"
+      ],
+      "must_not": [],
+      "expected": "Ghi rõ chưa tra được SOP, không coi như không có quy trình.",
+      "must_call": [
+        "cleaning.retrieve_sop"
+      ],
+      "must_not_call": []
+    },
+    {
+      "name": "phan-nan-cat-co-som",
+      "instruction": "Phân loại phản ánh, xác định mức độ và nêu việc cần làm.",
+      "ticket": {
+        "title": "Cắt cỏ ồn từ 6 giờ sáng",
+        "description": "Sáng nay mới 6 giờ đội cảnh quan đã chạy máy cắt cỏ ngay dưới cửa sổ, cả nhà bị đánh thức. Tuần trước cũng vậy.",
+        "location": "Thảm cỏ trước tòa S2.01",
+        "building_id": "d9272030-5376-54ff-b30f-e08337ac2eda",
+        "created_at": "2026-10-07T06:20:00+07:00"
+      },
+      "must": [
+        "CLEAN.SERVICE.QUALITY"
+      ],
+      "must_not": [
+        "LEVEL 1 - CHUYỂN NGƯỜI TRỰC NGAY"
+      ],
+      "expected": "Mã CLEAN.SERVICE.QUALITY, Level 3, có tra SOP.",
+      "must_call": [
+        "cleaning.retrieve_sop"
+      ],
+      "must_not_call": [
+        "cleaning.get_active_outage",
+        "cleaning.read_utility_schedule"
+      ]
+    }
+  ]
+}
