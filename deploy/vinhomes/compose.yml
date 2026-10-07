@@ -187,15 +187,16 @@ services:
     environment:
       EVAL_HOST: 0.0.0.0
       EVAL_BACKEND_URL: http://api:8000
-      EVAL_SERVICE_TOKEN: ${EVAL_SERVICE_TOKEN:?evaluation worker token required}
-      EVAL_SANDBOX_URL: ${EVAL_SANDBOX_URL:?sandbox API address required}
-      EVAL_SANDBOX_TOKEN: ${EVAL_SANDBOX_TOKEN_FOR_WORKER:?sandbox token required}
+      # Empty unless this deployment evaluates agents; the worker refuses to start without them.
+      EVAL_SERVICE_TOKEN: ${EVAL_SERVICE_TOKEN:-}
+      EVAL_SANDBOX_URL: ${EVAL_SANDBOX_URL:-}
+      EVAL_SANDBOX_TOKEN: ${EVAL_SANDBOX_TOKEN_FOR_WORKER:-}
       # Fallback judge and case-generator model when the administrator set no `evaluator` role model.
       EVAL_MODEL: ${EVAL_MODEL:-gpt-5.5}
       EVAL_MODEL_PROVIDER: ${EVAL_MODEL_PROVIDER:-}
       EVAL_MODEL_API_KEY: ${EVAL_MODEL_API_KEY:-}
       EVAL_MODEL_BASE_URL: ${EVAL_MODEL_BASE_URL:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     extra_hosts: ['host.docker.internal:host-gateway']
     depends_on:
       api:

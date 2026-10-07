@@ -81,17 +81,19 @@ def sandbox_db(database):
             await db.close()
         return room
 
-    room = asyncio.run(setup())
-    parts = urlsplit(database_url(admin_url, name))
-    runtime = urlunsplit(parts._replace(netloc=f'{role}:{quote(password)}@{parts.hostname}:{parts.port}')).replace('postgresql:', 'postgresql+asyncpg:')
-    yield {'runtime': runtime, 'tenant': tenant, 'room': room, 'name': name}
-
     async def cleanup():
         admin = await asyncpg.connect(admin_url)
         await admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
         await admin.execute(f'DROP ROLE IF EXISTS {role}')
         await admin.close()
-    asyncio.run(cleanup())
+
+    try:  # a failed setup still drops what it created
+        room = asyncio.run(setup())
+        parts = urlsplit(database_url(admin_url, name))
+        runtime = urlunsplit(parts._replace(netloc=f'{role}:{quote(password)}@{parts.hostname}:{parts.port}')).replace('postgresql:', 'postgresql+asyncpg:')
+        yield {'runtime': runtime, 'tenant': tenant, 'room': room, 'name': name}
+    finally:
+        asyncio.run(cleanup())
 
 
 class Bridge(httpx.AsyncBaseTransport):
