@@ -29,6 +29,7 @@ import { createDatabase } from "../db/client";
 import { URBAN } from "./dev-fixture";
 import { createOpenAIEmbedder } from "./embedder";
 import { createIngestStore } from "./pg-store";
+import { BQL_DOCUMENT_PREFIX } from "./publish-bql";
 import { ingestDirectory } from "./source-directory";
 import { BUILDING_FOLDER } from "./source-metadata";
 
@@ -140,6 +141,8 @@ const report = await ingestDirectory(
     resolveScopeId,
     registerFile: async () => file,
     prune: true,
+    // Management's reference documents (publish-bql.ts) are not in this folder and stay published.
+    keep: (code) => code.startsWith(BQL_DOCUMENT_PREFIX),
   },
 );
 

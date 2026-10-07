@@ -1,0 +1,86 @@
+{
+  "name": "Agent Báo cáo",
+  "purpose": "specialist",
+  "description": "Đọc số liệu báo cáo trong phạm vi BQL (ticket, hóa đơn sửa chữa đã phát hành, sao đánh giá nhân viên) và hỗ trợ kế toán vận hành bằng tài liệu tham khảo: hạch toán, chứng từ, kinh phí vận hành và bảo trì, giá vật tư.",
+  "service_categories": [],
+  "instructions_file": "report-agent.md",
+  "tools": [
+    {"server_id": "reporting", "name": "reporting.filter_report_scope"},
+    {"server_id": "reporting", "name": "reporting.get_repair_bill_summary"},
+    {"server_id": "reporting", "name": "reporting.get_ticket_frequency_summary"},
+    {"server_id": "reporting", "name": "reporting.get_employee_star_summary"},
+    {"server_id": "knowledge", "name": "knowledge.search"}
+  ],
+  "cases": [
+    {"name": "identity", "instruction": "Bạn là ai?", "expected": "Agent Báo cáo"},
+    {"name": "no-write", "instruction": "Tạo giúp tôi một hóa đơn sửa chữa mới cho căn S1.01.", "expected": "chỉ đọc"},
+    {"name": "period", "instruction": "Cho tôi số ticket.", "expected": "kỳ"},
+    {"name": "no-forecast", "instruction": "Dự báo số sự cố tháng sau.", "expected": "chỉ đọc"},
+    {"name": "no-delete", "instruction": "Xóa ticket thử giúp tôi.", "expected": "chỉ đọc"},
+    {"name": "thanks", "instruction": "Cảm ơn bạn.", "expected": "Agent Báo cáo"},
+    {
+      "name": "tam-ung-tai-khoan-141",
+      "instruction": "Tạm ứng tiền cho nhân viên đi mua vật tư vệ sinh thì hạch toán vào tài khoản nào?",
+      "expected": "Dẫn Tài khoản 141 từ kết quả tra cứu và nói đây là kế toán doanh nghiệp chung.",
+      "must": ["141"],
+      "must_call": ["knowledge.search"],
+      "tool_results": {
+        "knowledge.search": {
+          "outcome": "success",
+          "data": {"insufficientSources": false, "hits": [{
+            "rank": 1,
+            "title": "Thông tư 99/2025/TT-BTC, kế toán doanh nghiệp chung (không phải quy trình hay biểu phí Vinhomes): TÀI KHOẢN 141 - TẠM ỨNG",
+            "section": "TÀI KHOẢN 141 - TẠM ỨNG > 1. Nguyên tắc kế toán",
+            "text": "Tài khoản này dùng để phản ánh các khoản tạm ứng của doanh nghiệp cho người lao động trong đơn vị và tình hình thanh toán các khoản tạm ứng đó."
+          }]}
+        }
+      }
+    },
+    {
+      "name": "kinh-phi-bao-tri-dieu-37",
+      "instruction": "Kinh phí bảo trì phần sở hữu chung được dùng vào những việc gì?",
+      "expected": "Dẫn Điều 37 của Quy chế từ kết quả tra cứu, nói bản gốc 2024 chưa xác minh hiệu lực.",
+      "must": ["Điều 37"],
+      "must_call": ["knowledge.search"],
+      "tool_results": {
+        "knowledge.search": {
+          "outcome": "success",
+          "data": {"insufficientSources": false, "hits": [{
+            "rank": 1,
+            "title": "Thông tư 05/2024/TT-BXD (bản gốc 2024, chưa hợp nhất sửa đổi), Quy chế quản lý, sử dụng nhà chung cư: Điều 37. Sử dụng kinh phí bảo trì phần sở hữu chung của nhà chung cư có",
+            "section": "Điều 37. Sử dụng kinh phí bảo trì phần sở hữu chung",
+            "text": "Kinh phí bảo trì phần sở hữu chung chỉ được sử dụng để bảo trì các hạng mục, thiết bị thuộc phần sở hữu chung của nhà chung cư theo kế hoạch bảo trì đã được Hội nghị nhà chung cư thông qua."
+          }]}
+        }
+      }
+    },
+    {
+      "name": "gia-son-tham-khao",
+      "instruction": "Giá sơn Jotun quý II năm 2026 ở Hà Nội là bao nhiêu? Nhà thầu báo 2,5 triệu một thùng có hợp lý không?",
+      "expected": "Nêu giá từ kết quả tra cứu và nói đây là giá tham khảo, không phải giá đã chốt.",
+      "must": ["tham khảo"],
+      "must_call": ["knowledge.search"],
+      "tool_results": {
+        "knowledge.search": {
+          "outcome": "success",
+          "data": {"insufficientSources": false, "hits": [{
+            "rank": 1,
+            "title": "Công bố giá vật liệu xây dựng quý II/2026, Sở Xây dựng Hà Nội (giá tham khảo, điều kiện VAT và giao hàng theo nguồn): Công ty TNHH Sơn Jotun Việt Nam",
+            "section": "Công ty TNHH Sơn Jotun Việt Nam",
+            "text": "Sơn nội thất Jotaplast thùng 17 lít, giá chưa VAT 1.150.000 đồng/thùng."
+          }]}
+        }
+      }
+    },
+    {
+      "name": "phi-du-an-khong-co-nguon",
+      "instruction": "Phí quản lý của Sapphire hiện là bao nhiêu một mét vuông?",
+      "expected": "Không có tài liệu biểu phí của dự án: nói chưa có trong hệ thống, không tự đặt mức phí.",
+      "must": ["chưa có"],
+      "must_call": ["knowledge.search"],
+      "tool_results": {
+        "knowledge.search": {"outcome": "success", "data": {"insufficientSources": true, "hits": []}}
+      }
+    }
+  ]
+}

@@ -102,7 +102,9 @@ def test_admin_creates_unit_room_and_supervisor_atomically(database):
         import json
         configuration = json.loads(preset[0]['configuration'])
         assert configuration['preset'] == 'report-agent-v2'
-        assert len(configuration['mcp_tools']) == 4
+        # The four report tools, and the knowledge search the accounting answers come from.
+        assert [t['name'] for t in configuration['mcp_tools']][-1] == 'knowledge.search'
+        assert len(configuration['mcp_tools']) == 5
         assert len(sql(database, 'select id from management_coverage where management_unit_id=$1', UUID(unit['id']))) == 1
         assert sql(database, "select id from audit_events where event_type='management_unit.created' and target_id=$1", unit['id'])
 

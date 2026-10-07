@@ -22,8 +22,11 @@ def configuration():
     packaged = Path(__file__).with_name('presets') / 'report-agent.md'
     source = packaged if packaged.exists() else Path(__file__).resolve().parents[4] / 'docs/teams/hoang/agent/report-agent.md'
     return {'instructions': source.read_text(encoding='utf-8').strip(),
-            'description': 'Đọc số liệu báo cáo trong phạm vi BQL: ticket, hóa đơn sửa chữa đã phát hành, sao đánh giá nhân viên.',
-            'mcp_tools': [{'server_id': 'reporting', 'name': 'reporting.' + name} for name in NAMES],
+            'description': 'Đọc số liệu báo cáo trong phạm vi BQL (ticket, hóa đơn sửa chữa đã phát hành, sao đánh giá nhân viên) '
+                           'và hỗ trợ kế toán vận hành bằng tài liệu tham khảo: hạch toán, chứng từ, kinh phí vận hành và bảo trì, giá vật tư.',
+            # Accounting answers come from management's reference documents (server/src/knowledge/publish-bql.ts).
+            'mcp_tools': [{'server_id': 'reporting', 'name': 'reporting.' + name} for name in NAMES]
+                         + [{'server_id': 'knowledge', 'name': 'knowledge.search'}],
             'service_categories': [], 'knowledge_namespace_ids': [],
             'framework_version': '2.0.9', 'preset': 'report-agent-v2'}
 
