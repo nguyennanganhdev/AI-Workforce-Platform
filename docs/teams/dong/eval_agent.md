@@ -213,7 +213,15 @@ Chưa có lần chạy nào đạt 4/4. Lý do thuộc về sandbox và cách th
 
 Bản sửa cuối (không chờ Lễ tân sau câu trả lời cho Supervisor) có test nhưng chưa được xác nhận bằng một lần chạy live, vì khóa model hết tín dụng.
 
-Cổng phát hành V1 đang bật trên stack này vì môi trường đã `ready`: BQL chưa phát hành được agent mới cho tới khi có run đạt 4/4, hoặc môi trường được đặt về `disabled`.
+Sau khi đổi khóa model, ba lần chạy tiếp theo (5, 6 và lần của agent mới) hoàn tất trong khoảng 4 phút mỗi lần, không còn ca hết giờ hay lỗi hệ thống.
+
+**Custom agent mới "Agent Thang máy"** (tạo nháp rồi nhờ Factory soạn; Factory tự chọn `asset.read`, `maintenance_history.read`, `technical.get_active_outage`, `sop_kb.retrieve`): model sinh 4 ca, người duyệt sửa 3 ca cho khớp cách platform vận hành, kết quả **1/4**.
+
+- Ca ngoài năng lực (đòi miễn phí dịch vụ) đạt cả ba lớp. Đây là ca đạt đầu tiên trên hệ thống thật.
+- Ở hai ca sự cố, Supervisor mời Agent Thang máy cùng Agent Kỹ thuật A2 và giao việc cho Agent Thang máy. Các ca này rớt vì lỗi của chính agent: một lần gọi `asset.read` sai tham số bắt buộc, và không gọi `sop_kb.retrieve`.
+- Ca "cửa thang bị cạy" được xếp vào danh mục an ninh, nên Agent Thang máy không được gọi.
+
+Cổng phát hành V1 đã được **tắt tạm** trên stack này (môi trường đặt về `disabled`, 07/10/2026 11:42) theo quyết định của người phụ trách: BQL phát hành bằng luồng 6 câu hỏi. Bật lại bằng cách đặt `vh_agent_eval_environments.status` về `ready`. Khi môi trường `disabled`, màn "Bộ 4 ca đánh giá" cũng ẩn và không khởi chạy được run.
 
 ## 6. Vận hành
 
