@@ -10,6 +10,7 @@ case fails because no Supervisor routes to the agent here, so the run is no pass
 import asyncio
 import importlib.util
 import json
+import os
 import secrets
 import sys
 from pathlib import Path
@@ -49,7 +50,9 @@ def provisioning():
 
 @pytest.fixture(scope='module')
 def sandbox_db(database):
-    admin_url = env_file('migration.env').get('DATABASE_URL')
+    admin_url = os.getenv('RESIDENT_TEST_ADMIN_URL') or env_file('migration.env').get('DATABASE_URL')
+    if not admin_url:
+        pytest.skip('Local PostgreSQL configuration is required for the evaluation sandbox database')
     suffix = uuid4().hex[:12]
     name, role, password = f'resident_contract_test_eval_{suffix}', f'evaltest_role_{suffix}', secrets.token_hex(16)
     tenant = uuid4()
