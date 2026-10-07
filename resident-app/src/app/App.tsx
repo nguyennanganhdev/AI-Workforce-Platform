@@ -132,6 +132,34 @@ export function App({ live }: { live?: ConnectedResident }) {
     if (previousPage.current !== route.page) title.current?.focus();
     previousPage.current = route.page;
   }, [route.page, route.id, route.conversation]);
+  // Keep the last message visible as the keyboard or composer changes height.
+  // Preserve the reading position when the resident has scrolled up.
+  useEffect(() => {
+    if (route.page !== "assistant") return;
+    const pane = scroll.current;
+    if (!pane) return;
+    let height = pane.clientHeight;
+    let top = pane.scrollTop;
+    let contentHeight = pane.scrollHeight;
+    const remember = () => {
+      top = pane.scrollTop;
+      contentHeight = pane.scrollHeight;
+    };
+    const observer = new ResizeObserver(() => {
+      const nextHeight = pane.clientHeight;
+      if (nextHeight !== height && contentHeight - top - height < 80) {
+        pane.scrollTop = pane.scrollHeight;
+      }
+      height = nextHeight;
+      remember();
+    });
+    pane.addEventListener("scroll", remember, { passive: true });
+    observer.observe(pane);
+    return () => {
+      observer.disconnect();
+      pane.removeEventListener("scroll", remember);
+    };
+  }, [route.page, state.activeConversationId]);
   useEffect(() => {
     const viewport = window.visualViewport;
     const update = () =>
@@ -282,10 +310,10 @@ export function App({ live }: { live?: ConnectedResident }) {
         </div>
       </aside>
       <div className="main-shell">
-        <header className="app-header">
+        <header className={`app-header ${route.page === "assistant" ? "chat-header" : ""}`}>
           <div className="header-location">
             <span className="location-icon">
-              <IconHome size={21} stroke={1.7} />
+              <img src="/images/vinhomes-logo.png" alt="Vinhomes" width={40} height={40} />
             </span>
             <button onClick={() => navigate("profile")}>
               <span className="eyebrow">CHÀO MỪNG VỀ NHÀ</span>
@@ -296,6 +324,28 @@ export function App({ live }: { live?: ConnectedResident }) {
             </button>
           </div>
           <div className="header-actions">
+        {route.page === "assistant" && (
+          <ConversationList compact
+            state={state}
+            onNew={() => {
+              if (live) {
+                void live.newChat();
+                return;
+              }
+              if (commit(newConversation))
+                location.hash = `/chat/${stateRef.current.activeConversationId}`;
+            }}
+            onSelect={(id) => {
+              if (live) {
+                live.select(id);
+                return;
+              }
+              if (commit((s) => selectConversation(s, id)))
+                location.hash = `/chat/${id}`;
+            }}
+          />
+        )}
+
             <span className="demo-chip">
               {live
                 ? live.profile?.dataMode === "local-database"
@@ -322,27 +372,6 @@ export function App({ live }: { live?: ConnectedResident }) {
             </button>
           </div>
         </header>
-        {route.page === "assistant" && (
-          <ConversationList
-            state={state}
-            onNew={() => {
-              if (live) {
-                void live.newChat();
-                return;
-              }
-              if (commit(newConversation))
-                location.hash = `/chat/${stateRef.current.activeConversationId}`;
-            }}
-            onSelect={(id) => {
-              if (live) {
-                live.select(id);
-                return;
-              }
-              if (commit((s) => selectConversation(s, id)))
-                location.hash = `/chat/${id}`;
-            }}
-          />
-        )}
         {route.page === "assistant" && route.conversation && (
           <div className="conversation-toolbar">
             <button
@@ -399,7 +428,7 @@ export function App({ live }: { live?: ConnectedResident }) {
             <button onClick={() => void live.refresh()}>Thử lại</button>
           </div>
         )}
-        <main className="main-scroll" ref={scroll} id="main-content">
+        <main className={`main-scroll${route.page === "assistant" && !route.conversation ? " assistant-welcome-background" : ""}`} ref={scroll} id="main-content">
           {route.page === "assistant" && (
             <Assistant
               key={state.activeConversationId}
