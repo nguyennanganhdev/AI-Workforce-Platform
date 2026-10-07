@@ -1,0 +1,25 @@
+# Local PostgreSQL for the existing Vinhomes deployment.
+# Reuse the preserved database volume; do not initialize or seed a new database.
+# Run together with compose.yml and deployment.env.
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    env_file:
+      - ../../services/vinhomes-api/.local-v3-faker/postgres.env
+    ports:
+      - '127.0.0.1:5544:5432'
+    volumes:
+      - local-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d postgres']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    stop_grace_period: 30s
+
+volumes:
+  local-postgres-data:
+    external: true
+    name: vinhomes-faker-v3_faker-v3-data

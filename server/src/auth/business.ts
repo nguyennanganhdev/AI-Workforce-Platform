@@ -25,6 +25,14 @@ export function createBusinessAuth(base: string, origins: string[], request = fe
     if (body.membershipStatus !== "active") return null;
     if (typeof body.user?.id !== "string" || !body.user.id || typeof body.user.email !== "string")
       throw new Error("Business authentication returned an invalid identity");
+    // Management and field staff share one sign-in. A valid staff session is enough for field
+    // work, but never for OpenBot. Recheck the API's current role on every request, including WS.
+    const operations = await request(`${authority}/operations/me`, { headers: { cookie: sessionCookie },
+      redirect: "error", signal: AbortSignal.timeout(5000) });
+    if ([401, 403].includes(operations.status)) return null;
+    if (!operations.ok) throw new Error("Business authorization is unavailable");
+    const identity = await operations.json() as { role?: string };
+    if (identity.role !== "management" && identity.role !== "admin") return null;
     return { user: { id: body.user.id, email: body.user.email,
       name: typeof body.user.name === "string" ? body.user.name : null } };
   };
