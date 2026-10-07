@@ -68,10 +68,11 @@ async def coordinated(db, ticket_id: object) -> bool:
 async def offer_work(db, ticket_id: UUID, work_order_id: UUID, agent_id: str) -> bool:
     """Offer the work to the least busy available technician of the ticket's unit with this specialty.
 
-    False when nobody can take it now: the work stays queued and management assigns it by hand.
+    False when nobody can take it now: the work stays queued until a slot is released or management dispatches it.
     """
     staff = (await db.execute(text(f"""
         select sp.id from staff_profiles sp
+        join users u on u.id=sp.user_id and u.status='active'
         join work_orders w on w.id=:work and w.tenant_id=sp.tenant_id
         join tickets t on t.id=w.ticket_id and t.tenant_id=w.tenant_id and t.id=:ticket
         cross join lateral (
@@ -85,7 +86,7 @@ async def offer_work(db, ticket_id: UUID, work_order_id: UUID, agent_id: str) ->
             and ss.category_id=w.category_id and ss.active)
           and exists (select 1 from staff_shifts sh where sh.staff_id=sp.id and sh.tenant_id=sp.tenant_id
             and sh.status='available' and sh.starts_at<=now() and sh.ends_at>now())
-        order by busy.load,sp.id limit 1 for update of sp
+        order by busy.load,sp.id limit 1 for update of sp skip locked
     """), {"work": work_order_id, "ticket": ticket_id})).scalar_one_or_none()
     if staff is None:
         return False
@@ -97,3 +98,50 @@ async def offer_work(db, ticket_id: UUID, work_order_id: UUID, agent_id: str) ->
                      {"id": work_order_id})
     await agent_event(db, ticket_id, agent_id, "work_order.offered", {"assignmentId": str(assignment), "offeredBy": "supervisor"})
     return True
+
+
+async def offer_queued_work(db, released_work_order_id: UUID) -> None:
+    """Use a released queue slot for approved Supervisor work of the same unit and specialty."""
+    staff = (await db.execute(text(f"""
+        select sp.id,sp.management_unit_id from work_assignments a
+        join staff_profiles sp on sp.id=a.staff_id and sp.tenant_id=a.tenant_id
+        where a.work_order_id=:work and a.tenant_id={TENANT} and sp.active
+        order by a.created_at desc limit 1
+    """), {"work": released_work_order_id})).mappings().first()
+    if staff is None:
+        return
+    # Skip tickets another transaction already holds; it will release its own slot.
+    # A rejected offer is not immediately sent back to the worker who refused it.
+    for _ in range(25):
+        queued = (await db.execute(text(f"""
+            select w.id,w.ticket_id,plan.proposed_by_agent_id,plan.proposal,plan.management_by from work_orders w
+            join tickets t on t.id=w.ticket_id and t.tenant_id=w.tenant_id
+            join lateral (
+                select p.proposed_by_agent_id,p.proposal,p.management_by from vh_ticket_plans p
+                where p.ticket_id=t.id and p.tenant_id=t.tenant_id and p.status='approved'
+                  and p.proposed_by_agent_id is not null and p.management_by is null
+                  and exists (select 1 from jsonb_array_elements(p.steps) step
+                    where step->>'work_order_id'=w.id::text)
+                order by p.created_at desc limit 1
+            ) plan on true
+            where w.tenant_id={TENANT} and w.status='queued' and w.id<>:released
+              and t.management_unit_id=:unit and t.status not in ('resolved','closed','cancelled')
+              and exists (select 1 from staff_specialties ss where ss.staff_id=:staff
+                and ss.tenant_id=w.tenant_id and ss.category_id=w.category_id and ss.active)
+              and (plan.proposal->>'performer_staff_id' is null
+                or plan.proposal->>'performer_staff_id'=cast(:staff as text))
+              and not exists (select 1 from work_assignments a
+                where a.work_order_id=w.id and a.tenant_id=w.tenant_id
+                  and (a.status='accepted' or (a.status='offered' and a.offer_expires_at>now())))
+            order by w.created_at,w.id limit 1 for update of t,w skip locked
+        """), {"released": released_work_order_id, "unit": staff["management_unit_id"],
+               "staff": staff["id"]})).mappings().first()
+        if queued is None:
+            return
+        if (queued["proposal"] or {}).get("performer_staff_id"):
+            from .v3_request_presentation import offer_planned_work
+            offered = await offer_planned_work(db, queued["ticket_id"], queued["id"], queued)
+        else:
+            offered = await offer_work(db, queued["ticket_id"], queued["id"], queued["proposed_by_agent_id"])
+        if not offered:
+            return

@@ -107,7 +107,13 @@ async def dashboard(scope: Scope) -> dict[str, object]:
 @router.get("/my-work-orders", summary="Work orders assigned to the current user")
 async def my_work_orders(scope: Scope, limit: int = Query(50, ge=1, le=100)) -> dict[str, object]:
     result = await scope[0].execute(text(f"""
-        select w.*, a.id as assignment_id, a.status as assignment_status,
+        select w.*, a.id as assignment_id,
+               case when a.status='offered' and a.offer_expires_at<=now()
+                 then 'expired' else a.status end as assignment_status,
+               (select approval.status from work_approvals approval
+                where approval.work_order_id=w.id and approval.tenant_id=w.tenant_id
+                  and approval.kind='customer_repair'
+                order by approval.created_at desc,approval.id desc limit 1) as repair_approval_status,
                t.code as ticket_code, t.title as ticket_title
         from work_assignments a
         join staff_profiles sp on sp.id=a.staff_id and sp.tenant_id=a.tenant_id

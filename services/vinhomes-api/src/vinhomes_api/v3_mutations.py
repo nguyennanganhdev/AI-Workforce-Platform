@@ -478,13 +478,32 @@ async def change_work_order_status(work_order_id: UUID, body: WorkOrderTransitio
         raise HTTPException(409, "Work order version changed; reload before updating")
     if body.status not in ALLOWED_TRANSITIONS.get(current["status"], set()):
         raise HTTPException(409, "Invalid work order status transition")
+    if body.status in {"en_route", "arrived", "in_progress"}:
+        # Acceptance reserves a place in the staff queue. Leaving for the site starts
+        # active work; serialize that decision across different tickets for one worker.
+        staff = (await scope[0].execute(text("""
+            select sp.id from staff_profiles sp
+            join work_assignments a on a.staff_id=sp.id and a.tenant_id=sp.tenant_id
+            where a.work_order_id=:work and a.status='accepted'
+            for update of sp
+        """), {"work": work_order_id})).scalar_one_or_none()
+        if staff is not None:
+            active = await scope[0].execute(text("""
+                select 1 from work_assignments a
+                join work_orders w on w.id=a.work_order_id and w.tenant_id=a.tenant_id
+                where a.staff_id=:staff and a.status='accepted' and w.id<>:work
+                  and w.status in ('en_route','arrived','awaiting_approval','in_progress') limit 1
+            """), {"staff": staff, "work": work_order_id})
+            if active.first() is not None:
+                raise HTTPException(409, "Finish the active work order before starting another; this work remains queued")
     planned = await requires_plan(scope, ticket["id"])
-    if body.status == "in_progress" and not planned:
+    if body.status == "in_progress":
         consent = await scope[0].execute(text("""
             select status from work_approvals where work_order_id=:id and kind='customer_repair'
             order by created_at desc,id desc limit 1
         """), {"id": work_order_id})
-        if consent.scalar_one_or_none() != "approved":
+        latest_consent = consent.scalar_one_or_none()
+        if (latest_consent is not None or not planned) and latest_consent != "approved":
             raise HTTPException(409, "Resident must approve the repair proposal before work starts")
     if body.status == 'cancelled':
         category = await scope[0].execute(text("select code from service_categories where id=:id"), {"id": current["category_id"]})
@@ -541,6 +560,9 @@ async def change_work_order_status(work_order_id: UUID, body: WorkOrderTransitio
             await scope[0].execute(text("update tickets set status='resolved',resolved_at=now() where id=:id"), {"id": ticket["id"]})
     elif body.status == "in_progress":
         await scope[0].execute(text("update tickets set status='in_progress' where id=:id"), {"id": ticket["id"]})
+    if body.status in {"completed", "cancelled"}:
+        from .supervised_flow import offer_queued_work
+        await offer_queued_work(scope[0], work_order_id)
     return dict(updated.mappings().one())
 
 
@@ -691,6 +713,9 @@ async def respond_assignment(assignment_id: UUID, body: AssignmentResponse,
     """), {"status": body.status, "work_order_id": assignment["work_order_id"]})
     await record_event(scope, ticket, "work_assignment.responded",
                        json.dumps({"assignmentId": str(assignment_id), "status": body.status}))
+    if body.status == "rejected":
+        from .supervised_flow import offer_queued_work
+        await offer_queued_work(scope[0], assignment["work_order_id"])
     return dict(updated.mappings().one())
 
 

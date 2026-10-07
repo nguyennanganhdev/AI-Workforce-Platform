@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { uploadImage } from "../../../../../shared/direct-image-upload";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "@tanstack/react-router";
@@ -18,7 +18,7 @@ import { modelsQueryOptions } from '@/lib/admin/queries';
 import "./connected.css";
 import { FieldJob, type FieldActions } from "./field/FieldJob";
 import { FieldWorkList } from "./field/FieldWorkList";
-import { placeOf, stateOf } from "./field/model";
+import { active, ownOrders, placeOf, stateOf, type FieldPhoto } from "./field/model";
 import { Inquiries, LearnedAnswers, type Inquiry, type LearnedAnswer } from "./Inquiries";
 import { OperationsDashboardView } from "../components/operations-dashboard";
 import { LiveReportsPage } from "../workspace/LiveReportsPage";
@@ -51,6 +51,7 @@ type Order = {
   category_id: string;
   assignment_id?: string;
   assignment_status?: string;
+  repair_approval_status?: string | null;
 };
 type Detail = {
   ticket: Ticket;
@@ -130,6 +131,8 @@ const SEVERITY: Record<string, string> = { critical: "P0", high: "P1", normal: "
 export function ConnectedOperations() {
   const path = useLocation().pathname.split("/")[2] || "";
   const linkedTicket = new URLSearchParams(useLocation().searchStr).get('ticket');
+  const linkedOrder = new URLSearchParams(useLocation().searchStr).get('order') || "";
+  const [selectedOrderId, setSelectedOrderId] = useState("");
   const [history, setHistory] = useState(path === "completed-tasks");
   const [stats, setStats] = useState<{approvals: {status: string; count: number}[]}>();
   useEffect(() => setHistory(path === "completed-tasks"), [path]);
@@ -141,6 +144,8 @@ export function ConnectedOperations() {
   const [catalog, setCatalog] = useState<Catalog>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [offline, setOffline] = useState(() => !navigator.onLine);
   // Unknown until the health check answers; nothing is loaded before that, so the first
   // request already carries the demo actor when the backend is a local demo.
   const [local, setLocal] = useState<boolean>();
@@ -153,6 +158,7 @@ export function ConnectedOperations() {
   const [photos, setPhotos] = useState<{ id: string; original_name: string; purpose?: string }[]>(
     [],
   );
+  const [evidence, setEvidence] = useState<{ id: string; file_id: string; original_name: string; purpose: string; work_order_id: string | null; status: string }[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   // Closed for the resident, but the coordination session still needs management.
   const [awaitingClosure, setAwaitingClosure] = useState<string[]>([]);
@@ -163,6 +169,11 @@ export function ConnectedOperations() {
   >([]);
   const locked = useRef(false);
   const ticketId = useRef("");
+  useEffect(() => {
+    const update = () => setOffline(!navigator.onLine);
+    window.addEventListener("online", update); window.addEventListener("offline", update);
+    return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); };
+  }, []);
   const request = useCallback(
     async <T,>(path: string, init: RequestInit = {}): Promise<T> => {
       const response = await fetch(`/api/business${path}`, {
@@ -235,6 +246,7 @@ export function ConnectedOperations() {
     setCatalog(cat);
     setJobs(mine.items);
     setOrders(allOrders);
+    setLoaded(true);
     if (ticketId.current) {
       const d = await request<Detail>(`/tickets/${ticketId.current}`);
       setDetail(d);
@@ -244,6 +256,7 @@ export function ConnectedOperations() {
         items: { id: string; original_name: string; purpose?: string }[];
       }>(`/tickets/${ticketId.current}/files`);
       setPhotos(p.items);
+      setEvidence((await request<{ items: typeof evidence }>(`/tickets/${ticketId.current}/evidence`)).items);
     }
   }, [request]);
   useEffect(() => {
@@ -292,6 +305,8 @@ export function ConnectedOperations() {
     setSession(undefined);
     setConversation([]);
     setPhotos([]);
+    setEvidence([]);
+    setSelectedOrderId("");
   }, [path]);
   async function run(action: () => Promise<void>) {
     if (locked.current) return;
@@ -312,12 +327,17 @@ export function ConnectedOperations() {
   }
   const post = (path: string, body: unknown) =>
     request(path, { method: "POST", body: JSON.stringify(body) });
-  async function open(id: string) {
+  async function open(id: string, orderId = "") {
+    if (locked.current) return;
+    setSelectedOrderId(orderId);
+    if (me?.role === "staff") void navigate({ to: `/operations/${path === "completed-tasks" ? "completed-tasks" : "my-tasks"}?ticket=${encodeURIComponent(id)}${orderId ? `&order=${encodeURIComponent(orderId)}` : ""}` });
+    if (ticketId.current === id && detail?.ticket.id === id) return;
     ticketId.current = id;
     setDetail(undefined);
     setSession(undefined);
     setConversation([]);
     setPhotos([]);
+    setEvidence([]);
     setStaff("");
     setAvailable([]);
     await run(async () => {
@@ -338,9 +358,12 @@ export function ConnectedOperations() {
       }
     });
   }
+  const openLinkedOrder = useEffectEvent((id: string, orderId: string) => {
+    if (ticketId.current !== id || selectedOrderId !== orderId) void open(id, orderId);
+  });
   useEffect(() => {
-    if (linkedTicket && me && ticketId.current !== linkedTicket) void open(linkedTicket);
-  }, [linkedTicket, me?.user.id]);
+    if (!busy && linkedTicket && me?.user.id) openLinkedOrder(linkedTicket, linkedOrder);
+  }, [linkedTicket, linkedOrder, me?.user.id, busy]);
   const management = me?.role === "management" || me?.role === "admin";
   const navigate = useNavigate();
   // Management lands on the coordination room: that is where requests wait for a decision.
@@ -359,12 +382,13 @@ export function ConnectedOperations() {
   const waiting = useQuery({ ...roomSessionsQueryOptions(roomId), enabled: management && !!roomId });
   const adminSummary = useQuery({...overviewOptions(), enabled:me?.role === 'admin',refetchInterval:30_000});
   const roleModels = useQuery({...modelsQueryOptions(),enabled:me?.role === 'admin',refetchInterval:30_000});
+  const ownJobs = ownOrders(jobs);
   const workNotices = management
     ? (waiting.data || []).filter((s) => sessionState(s).group === "attention")
       .map((s) => ({ id: s.id, title: s.ticket_title, note: sessionState(s).label, to: `/operations/team?session=${encodeURIComponent(s.id)}` }))
-    // A technician is told about the work offered to it until it accepts.
-    : jobs.filter((j) => stateOf(j) === "offered").map((j) => ({ id: j.id, title: tickets.find((t) => t.id === j.ticket_id)?.title || "Công việc mới",
-        note: "Việc mới chờ bạn nhận", to: `/operations/my-tasks?ticket=${encodeURIComponent(j.ticket_id)}` }));
+    // Offered work and accepted work waiting to start stay in the worker's queue.
+    : ownJobs.filter((j) => ["offered", "accepted"].includes(stateOf(j))).map((j) => ({ id: j.id, title: tickets.find((t) => t.id === j.ticket_id)?.title || "Công việc mới",
+        note: stateOf(j) === "accepted" ? "Đã nhận · Trong hàng đợi" : "Mới giao · Trong hàng đợi", to: `/operations/my-tasks?ticket=${encodeURIComponent(j.ticket_id)}&order=${encodeURIComponent(j.id)}` }));
   const notices = [...workNotices,
     ...(adminSummary.data?.pending_accounts ? [{id:'accounts-pending',title:`${adminSummary.data.pending_accounts} tài khoản chờ duyệt`,note:'Xem hồ sơ đăng ký để quyết định.',to:'/operations/accounts',count:adminSummary.data.pending_accounts}] : []),
     ...((roleModels.data || []).filter(m=>!m.configured).map(m=>({id:`model-${m.role}`,title:`Cấu hình model cho ${m.role === 'factory' ? 'Factory' : m.role === 'embedding' ? 'Tìm kiếm tri thức' : m.role === 'reception' ? 'Lễ tân' : m.role === 'supervisor' ? 'Supervisor' : 'Agent chuyên môn'}`,note:'Vai trò chưa có model được cấu hình.',to:'/operations/models'})))];
@@ -374,6 +398,17 @@ export function ConnectedOperations() {
     : path === "connections" ? <AdminConnectionsPage /> : path === "models" ? <ModelsPage /> : path === "audit" ? <AuditPage /> : null;
   const plan = session?.room?.plan;
   const selected = detail?.ticket;
+  const currentJob = ownJobs.find((j) => active(stateOf(j)));
+  const ownSelected = detail?.workOrders.flatMap((order) => {
+    const mine = ownJobs.find((j) => j.id === order.id);
+    return mine ? [{ ...order, ...mine }] : [];
+  }) || [];
+  const focusedOrder = ownSelected.find((order) => order.id === selectedOrderId) || ownSelected.find((order) => active(stateOf(order))) || ownSelected[0];
+  const imageSource = (id: string) => `/api/business/files/${id}/content?inline=true${local ? `&demoActor=${actor}` : ""}`;
+  const fieldPhotos: FieldPhoto[] = [
+    ...photos.filter((p) => !["before", "after"].includes(p.purpose || "")).map((p) => ({ id: p.id, name: p.original_name, purpose: p.purpose || "", src: imageSource(p.id) })),
+    ...evidence.filter((p) => p.status === "active" && ["before", "after"].includes(p.purpose)).map((p) => ({ id: p.id, name: p.original_name, purpose: p.purpose, work_order_id: p.work_order_id, src: imageSource(p.file_id) })),
+  ];
   const visible = tickets.filter((t) => {
     if (path === "triage" && !["open", "triaging"].includes(t.status))
       return false;
@@ -401,6 +436,8 @@ export function ConnectedOperations() {
       await post(`/assignments/${order.assignment_id}/response`, { status: "rejected", rejection_reason: reason });
       ticketId.current = "";
       setDetail(undefined);
+      setSelectedOrderId("");
+      void navigate({ to: "/operations/my-tasks" });
     }),
     advance: (order, status, text) => void run(async () => {
       await request(`/work-orders/${order.id}/status`, { method: "PATCH", body: JSON.stringify({ version: order.version, status, note: text || labels[status] }) });
@@ -422,6 +459,7 @@ export function ConnectedOperations() {
   // Shown above the page in either frame: the demo actor of a local database, and what went wrong.
   const banners = (
     <>
+        {offline && <p role="status" className="rounded-xl border border-border bg-background p-4 text-sm leading-relaxed text-muted-foreground">Bạn đang mất kết nối. Thông tin đang hiển thị có thể chưa cập nhật. Kết nối lại trước khi gửi thao tác.</p>}
         {local && (
           <label className="local-actor">
             Phiên kiểm thử database{" "}
@@ -439,6 +477,7 @@ export function ConnectedOperations() {
                 setTickets([]);
                 setJobs([]);
                 setOrders([]);
+                setLoaded(false);
                 setActor(e.target.value);
                 setError("");
               }}
@@ -452,7 +491,7 @@ export function ConnectedOperations() {
         {error && (
           <div role="alert" className="live-error">
             {error}
-            <button onClick={() => void run(load)}>Thử lại</button>
+            <button type="button" className="min-h-[44px] shrink-0 rounded-md border border-current px-3 text-sm" disabled={busy} onClick={() => void run(load)}>Thử lại</button>
           </div>
         )}
     </>
@@ -461,24 +500,25 @@ export function ConnectedOperations() {
     <ConnectedOperationsShell name={me?.user.name} email={me?.user.email} management={management} administrator={me?.role === "admin"} field={me?.role === "staff"} notices={notices} flush={coordinating || path === 'ask' || path === 'agents'}
       unit={rooms.data?.items[0]?.name} buildingCount={catalog?.buildings.length}
       searchItems={tickets.map(t => ({id:t.id,title:t.title,location:[t.unit_code ? `Căn ${t.unit_code}` : '', catalog?.buildings.find(b => b.id === t.building_id)?.code].filter(Boolean).join(', '),to:`/operations/team?ticket=${encodeURIComponent(t.id)}`}))}
-      // The list already opens on what is newly offered; inside a job, another offer is announced above it.
-      banner={me?.role === "staff" ? (selected ? notices.filter((n) => !n.to.endsWith(encodeURIComponent(selected.id))) : []) : undefined}
+      // The list keeps active work first; inside a job, incoming work is announced in the queue.
+      banner={me?.role === "staff" ? (selected ? notices.filter((n) => n.id !== focusedOrder?.id) : []) : undefined}
       alerts={tickets.filter(t => t.priority === 'critical' && !['closed', 'cancelled'].includes(t.status)).map(t => ({id: t.id, title: t.title, location_json: {towerCode: catalog?.buildings.find(b => b.id === t.building_id)?.code}}))}>
-      {coordinating ? <Coordination userId={me?.user.id || ""} tickets={tickets} catalog={catalog} /> : path === 'ask' && management ? <AskAgent userId={me?.user.id || ''} /> : path === "agents" && management ? <AgentsPage />
+      {!me ? <div className="flex flex-col gap-4">{banners}{!error && <p role="status" className="p-4 text-sm text-muted-foreground">Đang tải tài khoản và công việc…</p>}</div> : coordinating ? <Coordination userId={me?.user.id || ""} tickets={tickets} catalog={catalog} /> : path === 'ask' && management ? <AskAgent userId={me?.user.id || ''} /> : path === "agents" && management ? <AgentsPage />
         : path === 'reports' && management ? <LiveReportsPage buildings={catalog?.buildings || []} categories={catalog?.serviceCategories || []} />
         : adminPage ? adminPage : me?.role === "staff" ? (
           <div className="flex flex-col gap-4">
             {banners}
-            {selected && detail ? (
+            {!loaded || (busy && ticketId.current && !selected) ? <p role="status" className="rounded-xl border border-border bg-background p-4 text-sm text-muted-foreground">Đang tải công việc…</p> : selected && detail ? (
               <FieldJob key={selected.id} ticket={selected} place={placeOf(selected, catalog?.buildings || [])} busy={busy} request={request} actions={fieldActions}
-                orders={detail.workOrders.flatMap((order) => { const mine = jobs.find((j) => j.id === order.id); return mine ? [{ ...order, ...mine }] : []; })}
+                orders={focusedOrder ? [focusedOrder] : []}
                 plan={plan?.status === "approved" ? plan : undefined} conversation={conversation}
-                photos={photos.map((p) => ({ id: p.id, name: p.original_name, purpose: p.purpose || "", src: `/api/business/files/${p.id}/content?inline=true${local ? `&demoActor=${actor}` : ""}` }))}
-                onBack={() => { ticketId.current = ""; setDetail(undefined); }} />
+                photos={fieldPhotos}
+                currentWork={currentJob ? { orderId: currentJob.id, title: tickets.find((t) => t.id === currentJob.ticket_id)?.title || "Công việc hiện tại", onOpen: () => void open(currentJob.ticket_id, currentJob.id) } : undefined}
+                onBack={() => { ticketId.current = ""; setDetail(undefined); setSelectedOrderId(""); void navigate({ to: `/operations/${path === "completed-tasks" ? "completed-tasks" : "my-tasks"}` }); }} />
             ) : (
               // An offer that was refused or ran out is no longer this person's work.
-              <FieldWorkList tickets={tickets} orders={jobs.filter((j) => !["rejected", "expired"].includes(j.assignment_status || ""))}
-                buildings={catalog?.buildings || []} history={path === "completed-tasks"} onOpen={(id) => void open(id)} />
+              <FieldWorkList tickets={tickets} orders={ownJobs}
+                buildings={catalog?.buildings || []} history={path === "completed-tasks"} onOpen={(id, orderId) => void open(id, orderId)} />
             )}
           </div>
         ) :

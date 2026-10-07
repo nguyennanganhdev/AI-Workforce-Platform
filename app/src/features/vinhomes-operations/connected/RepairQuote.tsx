@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { IconTrash } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,13 +28,14 @@ export function QuoteForm({
   onSubmit: (quote: QuoteInput) => void;
 }) {
   const [lines, setLines] = useState<Line[]>([]);
+  const fieldId = useId();
   const [labor, setLabor] = useState("0");
   const [warranty, setWarranty] = useState("0");
   const update = (index: number, patch: Partial<Line>) =>
     setLines((all) => all.map((l, i) => (i === index ? { ...l, ...patch } : l)));
   const valid = lines.every(
-    (l) => l.name.trim() && l.unit.trim() && Number(l.quantity) > 0 && l.unit_price >= 0,
-  );
+    (l) => l.name.trim() && l.unit.trim() && Number.isFinite(Number(l.quantity)) && Number(l.quantity) > 0 && Number.isSafeInteger(l.unit_price) && l.unit_price >= 0,
+  ) && Number.isSafeInteger(Number(labor)) && Number(labor) >= 0 && Number.isInteger(Number(warranty)) && Number(warranty) >= 0 && Number(warranty) <= 120;
   const total =
     lines.reduce((sum, l) => sum + Math.round(Number(l.quantity) * l.unit_price), 0) +
     Number(labor);
@@ -44,26 +45,26 @@ export function QuoteForm({
       {lines.map((line, index) => (
         <div className="flex flex-col gap-2 rounded-lg border border-border p-3" key={index}>
           <div className="flex items-center gap-2">
-            <Input aria-label="Tên vật tư" placeholder="Tên vật tư" className="h-11 flex-1" value={line.name}
+            <Input aria-label="Tên vật tư" placeholder="Tên vật tư" className="h-[44px] flex-1 text-[16px]!" value={line.name}
               onChange={(e) => update(index, { name: e.target.value })} />
-            <Button type="button" size="icon" variant="ghost" aria-label={`Xóa ${line.name || "vật tư"}`} className="size-11 shrink-0"
+            <Button type="button" size="icon" variant="ghost" aria-label={`Xóa ${line.name || "vật tư"}`} className="size-[44px] shrink-0"
               onClick={() => setLines((all) => all.filter((_, i) => i !== index))}><IconTrash /></Button>
           </div>
-          <div className="grid grid-cols-[1fr_1fr_1.5fr] gap-2">
-            <label className={caption}>Số lượng
-              <Input aria-label="Số lượng" type="number" inputMode="decimal" min="0.001" step="any" className="mt-1 h-11" value={line.quantity}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_1fr_1.5fr]">
+            <label className={caption} htmlFor={`${fieldId}-${index}-quantity`}>Số lượng
+              <Input id={`${fieldId}-${index}-quantity`} aria-label="Số lượng" type="number" inputMode="decimal" min="0.001" step="any" className="mt-1 h-[44px]" value={line.quantity}
                 onChange={(e) => update(index, { quantity: e.target.value })} /></label>
-            <label className={caption}>Đơn vị
-              <Input aria-label="Đơn vị" className="mt-1 h-11" value={line.unit} onChange={(e) => update(index, { unit: e.target.value })} /></label>
-            <label className={caption}>Đơn giá (đ)
-              <Input aria-label="Đơn giá" type="number" inputMode="numeric" min="0" className="mt-1 h-11" value={line.unit_price}
+            <label className={caption} htmlFor={`${fieldId}-${index}-unit`}>Đơn vị
+              <Input id={`${fieldId}-${index}-unit`} aria-label="Đơn vị" className="mt-1 h-[44px]" value={line.unit} onChange={(e) => update(index, { unit: e.target.value })} /></label>
+            <label className={`${caption} col-span-2 sm:col-span-1`} htmlFor={`${fieldId}-${index}-price`}>Đơn giá (đ)
+              <Input id={`${fieldId}-${index}-price`} aria-label="Đơn giá" type="number" inputMode="numeric" min="0" className="mt-1 h-[44px]" value={line.unit_price}
                 onChange={(e) => update(index, { unit_price: Number(e.target.value) })} /></label>
           </div>
         </div>
       ))}
       <select
         aria-label="Thêm vật tư"
-        className="h-11 w-full rounded-lg border border-dashed border-input bg-background px-3 text-sm text-foreground"
+        className="h-[44px] w-full rounded-lg border border-dashed border-input bg-background px-3 text-base text-foreground"
         value=""
         onChange={(e) => {
           const item = MATERIAL_CATALOG.find((m) => m.code === e.target.value);
@@ -86,20 +87,20 @@ export function QuoteForm({
         <option value="manual">Vật tư khác (nhập tay)</option>
       </select>
       <div className="grid grid-cols-2 gap-3">
-        <label className={caption}>
+        <label className={caption} htmlFor={`${fieldId}-labor`}>
           Tiền công (đ)
-          <Input type="number" inputMode="numeric" min="0" className="mt-1 h-11" value={labor} onChange={(e) => setLabor(e.target.value)} />
+          <Input id={`${fieldId}-labor`} type="number" inputMode="numeric" min="0" className="mt-1 h-[44px]" value={labor} onChange={(e) => setLabor(e.target.value)} />
         </label>
-        <label className={caption}>
+        <label className={caption} htmlFor={`${fieldId}-warranty`}>
           Bảo hành (tháng)
-          <Input type="number" inputMode="numeric" min="0" max="120" className="mt-1 h-11" value={warranty} onChange={(e) => setWarranty(e.target.value)} />
+          <Input id={`${fieldId}-warranty`} type="number" inputMode="numeric" min="0" max="120" className="mt-1 h-[44px]" value={warranty} onChange={(e) => setWarranty(e.target.value)} />
         </label>
       </div>
-      <p className="flex items-baseline justify-between border-t border-border pt-3 text-sm text-muted-foreground">
+      <p className="flex flex-wrap items-baseline justify-between gap-2 border-t border-border pt-3 text-sm text-muted-foreground">
         Tổng tạm tính<strong className="text-lg font-semibold tabular-nums text-foreground">{formatVnd(total)}</strong>
       </p>
       <Button
-        className="h-12 w-full text-base"
+        className="min-h-12 h-auto w-full whitespace-normal px-3 py-3 text-base"
         disabled={disabled || !valid}
         onClick={() =>
           onSubmit({
@@ -121,33 +122,48 @@ export function OnsiteConsent({
   disabled,
   request,
   onDecide,
+  onApprovedChange,
 }: {
   orderId: string;
   disabled: boolean;
   request: <T>(path: string) => Promise<T>;
   onDecide: (approved: boolean) => void;
+  onApprovedChange?: (approved: boolean) => void;
 }) {
   const [quote, setQuote] = useState<QuoteDetail>();
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [retry, setRetry] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: retry deliberately restarts the approval fetch after an error.
   useEffect(() => {
     let current = true;
-    request<{ approvals: { kind: string; status: string; request_detail: QuoteDetail }[] }>(
-      `/work-orders/${orderId}`,
-    )
-      .then((d) => {
-        const pending = d.approvals.find(
-          (a) => a.kind === "customer_repair" && a.status === "pending",
-        );
-        if (current) setQuote(pending?.request_detail);
-      })
-      .catch(() => undefined);
+    const load = async () => {
+      try {
+        const data = await request<{ approvals: { kind: string; status: string; request_detail: QuoteDetail; created_at?: string }[] }>(`/work-orders/${orderId}`);
+        const latest = data.approvals.filter((a) => a.kind === "customer_repair").sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))[0];
+        if (current) {
+          setQuote(latest?.request_detail); setStatus(latest?.status || ""); setError(""); setLoading(false);
+          onApprovedChange?.(latest?.status === "approved");
+        }
+      } catch (e) {
+        if (current) { setError(e instanceof Error ? e.message : "Không tải được phương án. Thử lại."); setLoading(false); onApprovedChange?.(false); }
+      }
+    };
+    if (!disabled) void load();
+    const timer = setInterval(() => { if (!document.hidden && !disabled) void load(); }, 5000);
     return () => {
       current = false;
+      clearInterval(timer);
     };
-  }, [orderId, request]);
+  }, [orderId, request, disabled, retry, onApprovedChange]);
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-lg border border-border p-4">
         <p className="text-sm font-semibold text-foreground">Phương án gửi cư dân</p>
+        {loading && <p role="status" className="mt-2 text-sm text-muted-foreground">Đang tải phương án…</p>}
+        {error && <div role="alert" className="mt-2 flex flex-col gap-2 text-sm text-destructive"><p>{error}</p><Button variant="outline" className="min-h-[44px]" onClick={() => { setLoading(true); setRetry((value) => value + 1); }}>Thử lại tải phương án</Button></div>}
+        {status === "approved" && !error && <p role="status" className="mt-2 text-sm font-medium text-primary">Cư dân đã đồng ý. Bạn có thể bắt đầu xử lý.</p>}
         {quote?.note && <p className="mt-1.5 whitespace-pre-line text-sm text-muted-foreground">{quote.note}</p>}
         {!!quote?.lines?.length && (
           <ul className="mt-3 flex flex-col gap-1.5 text-sm text-foreground">
@@ -178,14 +194,14 @@ export function OnsiteConsent({
       <p className="text-sm text-muted-foreground">
         Cư dân có thể đồng ý trên ứng dụng cư dân, hoặc đọc và trả lời ngay trên máy này.
       </p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        <Button variant="outline" className="h-12 text-base" disabled={disabled} onClick={() => onDecide(true)}>
+      {status === "pending" && !error && <div className="grid gap-2 sm:grid-cols-2">
+        <Button variant="outline" className="min-h-12 h-auto whitespace-normal py-3 text-base" disabled={disabled || loading} onClick={() => onDecide(true)}>
           Cư dân đồng ý tại chỗ
         </Button>
-        <Button variant="ghost" className="h-12 text-base" disabled={disabled} onClick={() => onDecide(false)}>
+        <Button variant="ghost" className="min-h-12 h-auto whitespace-normal py-3 text-base" disabled={disabled || loading} onClick={() => onDecide(false)}>
           Chưa đồng ý, lập lại
         </Button>
-      </div>
+      </div>}
     </div>
   );
 }

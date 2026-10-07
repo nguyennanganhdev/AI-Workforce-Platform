@@ -618,6 +618,22 @@ def test_the_supervisor_approves_its_plan_and_hands_the_work_to_a_technician(dat
             moved = technician.patch(f"/work-orders/{order['id']}/status", json={"version": version, "status": status, "note": status})
             assert moved.status_code == 200, (status, moved.text)
             version = moved.json()["version"]
+        for purpose in ("before", "after"):
+            photo = technician.post(f"/tickets/{ticket}/files", content=image(),
+                                    headers={"Content-Type": "application/octet-stream"},
+                                    params={"filename": purpose + ".png", "mimeType": "image/png", "purpose": purpose})
+            assert photo.status_code == 201, photo.text
+            ticket_version = technician.get(f"/tickets/{ticket}").json()["ticket"]["version"]
+            evidence = technician.post(f"/tickets/{ticket}/evidence", json={
+                "file_id": photo.json()["fileId"], "work_order_id": str(order["id"]),
+                "assignment_id": str(assignment), "purpose": purpose, "version": ticket_version})
+            assert evidence.status_code == 201, evidence.text
+        completed = technician.patch(f"/work-orders/{order['id']}/status", json={
+            "version": version, "status": "completed", "note": "Repair complete with before and after evidence"})
+        assert completed.status_code == 200, completed.text
+        assert sql(database, "select status from tickets where id=$1", UUID(ticket)) == [{"status": "resolved"}]
+        assert sql(database, "select kind,status from work_approvals where work_order_id=$1", order["id"]) == [
+            {"kind": "customer_completion", "status": "pending"}]
 
 
 def test_a_question_is_stored_and_versioned_before_the_resident_is_asked(database):

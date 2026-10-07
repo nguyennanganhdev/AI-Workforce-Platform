@@ -3,10 +3,11 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 let cleanup: typeof import("@testing-library/react")["cleanup"];
 let render: typeof import("@testing-library/react")["render"];
+let fireEvent: typeof import("@testing-library/react")["fireEvent"];
 const originalFetch = globalThis.fetch;
 beforeAll(async () => {
-  GlobalRegistrator.register({ url: "http://localhost:3023/operations/my-tasks" });
-  ({ cleanup, render } = await import("@testing-library/react/pure"));
+  GlobalRegistrator.register({ url: "http://localhost:3022/operations/my-tasks" });
+  ({ cleanup, render, fireEvent } = await import("@testing-library/react/pure"));
 });
 afterEach(() => { cleanup(); globalThis.fetch = originalFetch; });
 afterAll(() => new Promise<void>((done) => setTimeout(() => { GlobalRegistrator.unregister(); done(); }, 50)));
@@ -20,8 +21,10 @@ test("someone on site gets their own frame: who they are, the work newly offered
   );
   expect(view.getByText("Kỹ thuật viên Sapphire")).toBeTruthy();
   expect(view.getByText("Vòi nước bếp bị rò").closest("a")?.getAttribute("href")).toBe("/operations/my-tasks?ticket=t1");
-  expect(view.getByRole("button", { name: "Đăng xuất" })).toBeTruthy();
-  for (const absent of ["Kết nối cá nhân", "Quản lý vận hành", "Điều phối", "Agent", "Tài khoản"]) expect(view.queryByText(absent)).toBeNull();
+  fireEvent.click(view.getByRole("button", { name: "Tài khoản nhân viên" }));
+  expect(view.getByRole("menuitem", { name: "Đăng xuất" })).toBeTruthy();
+  expect(view.getByRole("menuitem", { name: "Đổi mật khẩu" })).toBeTruthy();
+  for (const absent of ["Kết nối cá nhân", "Quản lý vận hành", "Điều phối", "Agent"]) expect(view.queryByText(absent)).toBeNull();
   expect(view.container.querySelector("aside")).toBeNull();
 });
 

@@ -40,6 +40,8 @@
 /* Field work: one column for a phone, on a quiet page. */
 .field-shell { background: var(--muted); color: var(--foreground); }
 .field-shell :focus-visible { outline-color: var(--ring); }
+.field-shell .live-error { align-items: start; flex-wrap: wrap; overflow-wrap: anywhere; background: color-mix(in oklch, var(--destructive) 10%, var(--background)); color: var(--foreground); }
+.field-shell input, .field-shell textarea, .field-shell select { font-size: 16px; }
 @media (max-width: 480px) {
   .coord-composer { padding: 8px 12px 12px; }
   .coord-header { padding: 8px 16px; }
