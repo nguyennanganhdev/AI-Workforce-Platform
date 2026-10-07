@@ -2,7 +2,9 @@
 
 Đây là fixture thiết kế, không phải nhật ký vận hành. `SYN-*` là ID giả lập; thời gian/số đo/ảnh bên dưới chỉ là loại bằng chứng phải cung cấp. Mọi SOP giả lập dùng trong test phải có `fixture_only=true`, scope và version. Không publish cho cư dân.
 
-Năm bản ghi có cấu trúc nằm ở `rag/mock/POC_LIFECYCLE.jsonl`; 16 quy trình Markdown và profile `draft` nằm ở `rag/mock-corpus/` và `rag/mock/PROCEDURE_PROFILES.jsonl`. JSONL mô tả dữ liệu đầu vào/expected result, chưa phải DB seed hay file evidence thực. `simulated_clean` chỉ được adapter trong test tenant cô lập hiểu là evidence đã sẵn sàng.
+Năm bản ghi có cấu trúc nằm ở `rag/mock/POC_LIFECYCLE.jsonl`; một Markdown tổng hợp 16 quy trình và 16 profile `draft` nằm ở `rag/mock-corpus/` và `rag/mock/PROCEDURE_PROFILES.jsonl`. JSONL mô tả dữ liệu đầu vào/expected result, chưa phải DB seed hay file evidence thực. `simulated_clean` chỉ được adapter trong test tenant cô lập hiểu là evidence đã sẵn sàng.
+
+Ngoài năm POC, `rag/mock/ISSUE_LIFECYCLE_EXTENSION.jsonl` thêm 11 hồ sơ intake/assessment theo các mã còn lại; tổng cộng có 16/16 issue code với ticket, asset, work order nháp và kế hoạch chứng cứ. Các hồ sơ mới chưa có assignment hoặc executor result; không dùng chúng để mô phỏng verification thành công. `rag/mock/TECHNICAL_DATA_MOCKUP.md` cho thấy cách hiển thị các trạng thái này.
 
 ## POC 1 — CB nhảy lặp
 
