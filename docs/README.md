@@ -4,6 +4,7 @@ Không cần đọc hết folder. Chọn tài liệu theo việc cần làm; cá
 
 ## Đọc trước
 
+0. **Thư mục nào là gì, code mới đặt ở đâu, tệp env nào dùng cho việc gì:** [Cấu trúc dự án](CAU_TRUC_DU_AN.md).
 1. **Hiểu hệ thống và các team nối với nhau:** [Luồng tổng thể](teams/chien/SYSTEM_FLOW_AND_MAINTENANCE_2026-10-04/README.md).
 2. **Biết dự án làm tới đâu:** [Báo cáo repo ngày 04/10](teams/chien/REPO_RESEARCH_2026-10-04/README.md).
 3. **Biết việc cần nối tiếp:** [Checklist tích hợp](teams/chien/SYSTEM_FLOW_AND_MAINTENANCE_2026-10-04/INTEGRATION_CHECKLIST.md).
