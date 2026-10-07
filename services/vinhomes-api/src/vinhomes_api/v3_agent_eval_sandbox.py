@@ -326,9 +326,11 @@ async def build_trace(db, chat: dict) -> dict:
             issues.append({'id': f"i-{r['id']}", 'kind': 'timeout' if 'timeout' in (r['error_code'] or '') else 'error',
                            'code': r['error_code'] or r['status'], 'message': f"lượt của {r['agent_id']}"})
     routing = [{'id': f"r-{t['id']}", 'selected_agent_ids': [m['agent_id'] for m in members if m['team_id'] == t['id']]} for t in teams]
-    paused = []
+    paused, halted = [], set()
     for t in teams:
         reason = ((t['shared_state'] or {}).get('runtime') or {}).get('pauseReason')
+        if reason:
+            halted.add(t['id'])  # the Supervisor stopped and waits for a person, whatever the row's status says
         if reason and FAULT_PAUSES.search(reason):
             kind = 'turn_limit' if re.search('turn|limit|budget', reason) else 'loop' if 'step' in reason else 'error'
             issues.append({'id': f"i-team-{t['id']}", 'kind': kind, 'code': reason[:200], 'message': 'phiên Supervisor dừng'})
@@ -381,7 +383,7 @@ async def build_trace(db, chat: dict) -> dict:
     # A question Reception passed to management waits for a person: no Supervisor session works on it.
     inquiry = lambda t: ((t['shared_state'] or {}).get('request') or {}).get('kind') == 'inquiry'
     handed_over = any(inquiry(t) and t['status'] in ('queued', 'running', 'waiting') for t in teams)
-    working = (any(t['status'] in ('queued', 'running') and not inquiry(t) for t in teams) or unrouted) and not pending
+    working = (any(t['status'] in ('queued', 'running') and not inquiry(t) and t['id'] not in halted for t in teams) or unrouted) and not pending
     last_reply = next((m for m in reversed(said)), None)
     if awaiting_reception:
         terminal = None

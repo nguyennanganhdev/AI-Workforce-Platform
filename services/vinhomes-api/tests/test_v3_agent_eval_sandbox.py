@@ -143,4 +143,9 @@ def test_a_question_back_and_a_question_passed_to_management_are_where_the_conve
             values($1,$2,$3,$4,$5,'queued','{"request": {"kind": "inquiry"}}') returning id""", TENANT, room['workspace_id'], room['id'], asked, room['supervisor'])
         read = c.get(f'{SANDBOX}/conversations/{channel}/trace', headers=AUTH).json()
         assert read['trace']['terminal_state'] == 'approval_pending' and read['progress']['working'] is False
+        # A Supervisor that paused to hand the request to people is not working on it, though its session row says running.
+        sql(database, "update agent_teams set status='running',shared_state='{\"runtime\": {\"phase\": \"paused\", \"pauseReason\": \"planner:cần người trực xử lý\"}}' "
+                      "where request_message_id=$1 returning id", asked)
+        handed = c.get(f'{SANDBOX}/conversations/{channel}/trace', headers=AUTH).json()
+        assert handed['trace']['terminal_state'] == 'approval_pending' and handed['progress']['working'] is False
         assert c.post(f'{SANDBOX}/conversations/{channel}/close', headers=AUTH).json()['teams'] != []
