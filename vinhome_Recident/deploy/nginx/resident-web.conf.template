@@ -1,0 +1,28 @@
+server {
+  listen 3011;
+  root /usr/share/nginx/html;
+  index index.html;
+  # Photos of an incident are uploaded through this path.
+  client_max_body_size 25m;
+
+  # Docker's own DNS, asked again every few seconds. A fixed upstream is resolved once at start, and the
+  # API has a new address every time its container is replaced: residents then get 502 until nginx restarts.
+  resolver 127.0.0.11 valid=10s ipv6=off;
+
+  location /api/business/ {
+    set $vinhomes_api ${VINHOMES_API_URL};
+    # Drops the /api/business prefix, as the development proxy does. The query string is kept.
+    rewrite ^/api/business/(.*)$ /$1 break;
+    proxy_pass $vinhomes_api;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    # The API keeps a resident's sign-in apart from the staff apps' on the same host.
+    proxy_set_header X-Vinhomes-Surface resident;
+    # A chat message is answered by the Reception agent before the reply returns.
+    proxy_read_timeout 180s;
+  }
+
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}

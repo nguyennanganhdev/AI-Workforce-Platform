@@ -2,7 +2,7 @@
 
 ## Demo mock
 
-Chạy `setup_demo_database.ps1`, rồi `start_demo.ps1` trong `scripts/` từ thư mục dự án, mở `http://localhost:8000/docs`. Xem [hướng dẫn demo database V3](HUONG_DAN_DEMO_DATABASE_V3.md). Demo dùng PostgreSQL với dữ liệu faker, không dùng RAM; chọn vai trò bằng `X-Demo-Actor`, quyền vẫn kiểm tra từ database.
+Chạy `setup_demo_database.ps1`, rồi `start_demo.ps1` trong `scripts/` từ thư mục dự án, mở `http://localhost:8000/docs`. Xem [hướng dẫn demo database V3](../../docs/backend/HUONG_DAN_DEMO_DATABASE_V3.md). Demo dùng PostgreSQL với dữ liệu faker, không dùng RAM; chọn vai trò bằng `X-Demo-Actor`, quyền vẫn kiểm tra từ database.
 
 Active HTTP routes query the canonical V3 PostgreSQL tables (`tickets`, `ticket_events`, `ticket_assessments`, `ticket_triage_decisions`, `work_orders`, `work_assignments`, `work_approvals`). The restored `vh_*` modules and Alembic migrations are retained as legacy reference and are not mounted by `main.py`. Do not run those migrations on a V3 database.
 
@@ -51,7 +51,7 @@ identity to FastAPI; no route accepts a client supplied user ID as authority.
 
 ## Giao diện chạy thử API V3
 
-Mở `services/CHAY_DEMO_API.cmd` hoặc chạy `scripts/start_demo.ps1`, rồi mở **http://localhost:8000/demo/ui**.
+Mở `services/vinhomes-api/launchers/CHAY_DEMO_API.cmd` hoặc chạy `scripts/start_demo.ps1`, rồi mở **http://localhost:8000/demo/ui**.
 Trang là giao diện nghiệp vụ: cư dân gửi yêu cầu, BQL điều phối/phê duyệt, nhân viên nhận việc,
 upload bằng chứng, an ninh, trao đổi phòng và báo cáo. Không cần nhập endpoint hoặc JSON.
 Hướng dẫn thao tác demo được gộp ngay bên dưới. Luồng sản phẩm và điểm cần tích hợp xem ở [tài liệu tổng thể](../../docs/teams/chien/SYSTEM_FLOW_AND_MAINTENANCE_2026-10-04/README.md).
@@ -60,7 +60,7 @@ Hướng dẫn thao tác demo được gộp ngay bên dưới. Luồng sản ph
 
 #### Mở hệ thống
 
-Double-click **`services/CHAY_DEMO_API.cmd`**.
+Double-click **`services/vinhomes-api/launchers/CHAY_DEMO_API.cmd`**.
 File khởi động Docker, PostgreSQL V3, FastAPI và mở **http://localhost:8000/demo/ui**.
 Giao diện chạy cùng API nên không cần frontend hoặc Hono riêng.
 

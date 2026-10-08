@@ -30,6 +30,9 @@ from test_v3_coordination import register_tools
 from vinhomes_api.main import create_app
 from vinhomes_api.v3_config import V3Settings
 
+# The evaluator worker belongs to the platform (agent-coordination), which this package does not carry.
+if not (PROJECT / 'agent-coordination/src/agent_eval').is_dir():
+    pytest.skip('needs agent-coordination/src/agent_eval from the platform', allow_module_level=True)
 sys.path.insert(0, str(PROJECT / 'agent-coordination/src'))
 from agent_eval.llm import ModelConfig  # noqa: E402
 from agent_eval.worker import Settings, Worker  # noqa: E402

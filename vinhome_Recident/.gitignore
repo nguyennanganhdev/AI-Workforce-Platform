@@ -1,0 +1,35 @@
+# Dependencies and build output
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# Secrets and local settings: only the *.example files are tracked
+.env
+.env.*
+!.env.example
+*.env
+!*.env.example
+
+# Local state of the services (databases, uploaded files, accounts, backups)
+.local-*/
+.logs/
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Deployment secrets
+deploy/deployment.env

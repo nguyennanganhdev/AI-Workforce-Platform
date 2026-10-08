@@ -1,0 +1,34 @@
+# One recipe for the three web fronts of the domain. Build it per app:
+#
+#   docker build -f deploy/Dockerfile.web --build-arg APP=resident-web -t vinhomes-domain-resident .
+#   docker build -f deploy/Dockerfile.web --build-arg APP=staff-web    -t vinhomes-domain-operations .
+#
+# The result is static files behind nginx. nginx also forwards /api/business to the business API
+# (see deploy/nginx), so there is no application server of our own in the image.
+ARG NODE_IMAGE=node:24-alpine
+ARG NGINX_IMAGE=nginx:1.27-alpine
+
+FROM ${NODE_IMAGE} AS build
+WORKDIR /opt/vinhome
+ARG APP=resident-web
+COPY package.json package-lock.json tsconfig.base.json ./
+COPY packages/shared/package.json ./packages/shared/package.json
+COPY apps/resident-web/package.json ./apps/resident-web/package.json
+COPY apps/staff-web/package.json ./apps/staff-web/package.json
+# A tarball that arrives damaged fails the install; the cache is kept between builds and the install is
+# repeated, so each try only fetches what is still missing.
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --no-audit --no-fund -w @vinhomes/${APP} --include-workspace-root \
+ || npm ci --no-audit --no-fund -w @vinhomes/${APP} --include-workspace-root \
+ || npm ci --no-audit --no-fund -w @vinhomes/${APP} --include-workspace-root
+COPY packages ./packages
+COPY apps/${APP} ./apps/${APP}
+# Real sign-in only: no demo backend and no preview data in the bundle.
+ENV VITE_ALLOW_DEMO_BACKEND=false VITE_ENABLE_UI_PREVIEW=false
+RUN npm run build -w @vinhomes/${APP}
+
+FROM ${NGINX_IMAGE}
+ARG APP=resident-web
+# nginx fills ${VINHOMES_API_URL} and ${VINHOMES_SURFACE} into the template when the container starts.
+COPY deploy/nginx/${APP}.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=build /opt/vinhome/apps/${APP}/dist /usr/share/nginx/html

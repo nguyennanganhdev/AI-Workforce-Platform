@@ -23,7 +23,7 @@ if (!$ready) { throw 'Backend is not ready. See services/vinhomes-api/.local-con
 foreach ($frontend in @(@{Port=3011;Script='dev:resident';Name='resident'},@{Port=3020;Script='dev:operations';Name='operations'})) {
     if (!(Get-NetTCPConnection -LocalPort $frontend.Port -State Listen -ErrorAction SilentlyContinue)) {
         # Script names are constants defined above; no config values are interpolated into shell code.
-        $command = '$env:VITE_ALLOW_DEMO_BACKEND="false"; $env:VITE_ENABLE_UI_PREVIEW="false"; bun run ' + $frontend.Script
+        $command = '$env:VITE_ALLOW_DEMO_BACKEND="false"; $env:VITE_ENABLE_UI_PREVIEW="false"; npm run ' + $frontend.Script
         Start-Process powershell.exe -ArgumentList @('-NoProfile','-Command',$command) -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logRoot ($frontend.Name+'.stdout.log')) -RedirectStandardError (Join-Path $logRoot ($frontend.Name+'.stderr.log')) | Out-Null
     }
 }

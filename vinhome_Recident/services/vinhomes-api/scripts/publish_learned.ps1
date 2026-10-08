@@ -10,7 +10,7 @@ $serviceRoot = Split-Path $PSScriptRoot -Parent
 $projectRoot = Split-Path (Split-Path $serviceRoot -Parent) -Parent
 $local = if ($Connected) { '.local-connected' } else { '.local-v3-faker' }
 $owner = (Get-Content -LiteralPath (Join-Path $serviceRoot "$local/migration.env") | Where-Object { $_.StartsWith('DATABASE_URL=') }) -replace '^DATABASE_URL=', ''
-$key = (Get-Content -LiteralPath (Join-Path $projectRoot 'agent-reception/.env') | Where-Object { $_.StartsWith('OPENAI_API_KEY=') }) -replace '^OPENAI_API_KEY=', ''
+$key = (Get-Content -LiteralPath (Join-Path $projectRoot 'agents/reception/.env') | Where-Object { $_.StartsWith('OPENAI_API_KEY=') }) -replace '^OPENAI_API_KEY=', ''
 $env:KNOWLEDGE_ADMIN_DATABASE_URL = $owner
 $env:OPENAI_API_KEY = $key
 Set-Location -LiteralPath (Join-Path $projectRoot 'server')

@@ -380,8 +380,8 @@ def test_complete_backend_journey_without_injected_workflow_state(database):
 
 def test_real_resident_frontend_adapter_against_http_and_postgres(database, tmp_path):
     """Execute the actual frontend adapter, without mocked fetch or browser storage."""
-    if not (PROJECT / 'resident-app/src/services/backend-adapter.ts').is_file() or not (
-        PROJECT / 'resident-app/src/services/resident-api.ts'
+    if not (PROJECT / 'apps/resident-web/src/services/backend-adapter.ts').is_file() or not (
+        PROJECT / 'apps/resident-web/src/services/resident-api.ts'
     ).is_file():
         pytest.skip('Frontend adapter is not included in the backend-only checkout')
     import uvicorn
@@ -401,8 +401,8 @@ def test_real_resident_frontend_adapter_against_http_and_postgres(database, tmp_
         while not server.started and thread.is_alive() and time.monotonic()<deadline:
             time.sleep(.05)
         assert server.started, 'Local contract HTTP server did not start'
-        adapter = (PROJECT/'resident-app/src/services/backend-adapter.ts').as_posix()
-        transport = (PROJECT/'resident-app/src/services/resident-api.ts').as_posix()
+        adapter = (PROJECT/'apps/resident-web/src/services/backend-adapter.ts').as_posix()
+        transport = (PROJECT/'apps/resident-web/src/services/resident-api.ts').as_posix()
         script = tmp_path/'resident-adapter-check.ts'
         script.write_text(f'''
 globalThis.location = {{origin: {json.dumps(origin)}}} as any;

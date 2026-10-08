@@ -56,7 +56,7 @@ try {
             Start-Sleep -Seconds 3
             $dockerReady = Get-DockerReady
         } until ($dockerReady -or (Get-Date) -gt $deadline)
-        if (!$dockerReady) { throw 'Docker did not become ready within 120 seconds. Check Docker Desktop and WSL, then reopen services/CHAY_DEMO_API.cmd.' }
+        if (!$dockerReady) { throw 'Docker did not become ready within 120 seconds. Check Docker Desktop and WSL, then reopen services/vinhomes-api/launchers/CHAY_DEMO_API.cmd.' }
     }
 
     Write-Host '[2/4] Starting PostgreSQL V3...'
