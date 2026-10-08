@@ -4,7 +4,6 @@ export {
   sessions,
   accounts,
   verifications,
-  userRoles,
   userInstructions,
   ssoProviders,
   revokedAccess,

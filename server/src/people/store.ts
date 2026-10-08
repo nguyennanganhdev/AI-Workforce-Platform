@@ -204,7 +204,7 @@ export function createPeopleStore(
         name: users.name,
         image: users.image,
         /*
-         * Aggregated rather than joined into duplicate rows. `user_roles` is a set and `accounts`
+         * Aggregated rather than joined into duplicate rows. Scoped roles are a set and `accounts`
          * has one row per provider, so a plain join would return the same person once per
          * combination and the screen would list them several times.
          */

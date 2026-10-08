@@ -1,0 +1,16 @@
+{
+  "case_id": "case-0100",
+  "model_calls": 9,
+  "input_tokens": 14200,
+  "cached_input_tokens": 7900,
+  "output_tokens": 2100,
+  "cost": 0.031,
+  "currency": "USD",
+  "duration_seconds": 74,
+  "findings_total": 5,
+  "findings_sourced": 4,
+  "entries_demoted": 1,
+  "plan_steps_blocked": 0,
+  "human_edits": 0,
+  "uses_sample_data": true
+}

@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "type",
+        "id",
+        "label"
+      ]
+    },
+    "status": {
+      "enum": [
+        "open",
+        "closed"
+      ]
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "entry_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "case_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "kind": {
+            "enum": [
+              "fact",
+              "finding",
+              "assumption",
+              "objection",
+              "agreement",
+              "question",
+              "plan_step",
+              "assignment",
+              "result"
+            ]
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1
+          },
+          "author": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "enum": [
+                  "agent",
+                  "human",
+                  "system",
+                  "tool"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "type",
+              "id",
+              "name"
+            ]
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "tool_result",
+                    "passage",
+                    "message",
+                    "file",
+                    "entry",
+                    "finding"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ]
+            }
+          },
+          "target_entry_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "supersedes_entry_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "plan_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "step_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "data_origin": {
+            "enum": [
+              "real",
+              "public",
+              "team_written",
+              "synthetic",
+              "test_run"
+            ]
+          },
+          "check": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "enum": [
+                  "accepted",
+                  "demoted",
+                  "blocked"
+                ]
+              },
+              "reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "status",
+              "reasons"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "entry_id",
+          "case_id",
+          "seq",
+          "kind",
+          "statement",
+          "author",
+          "sources",
+          "data_origin",
+          "check",
+          "created_at"
+        ],
+        "title": "HD-2 một mục của hồ sơ"
+      }
+    }
+  },
+  "required": [
+    "case_id",
+    "subject",
+    "status",
+    "entries"
+  ],
+  "title": "HD-2 hồ sơ vụ việc"
+}

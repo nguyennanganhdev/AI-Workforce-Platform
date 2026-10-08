@@ -913,69 +913,6 @@ export const workspaceMembers = pgTable(
   ],
 );
 
-/** Cấu hình model dùng chung có kiểm soát. See docs V2/V3 for operation-level invariants. */
-export const modelProfiles = pgTable(
-  "model_profiles",
-  {
-    /** Định danh bản ghi */
-    id: uuid("id").primaryKey().defaultRandom(),
-    /** Tenant sở hữu dữ liệu */
-    tenantId: uuid("tenant_id").notNull(),
-    /** Workspace của ban quản lý */
-    workspaceId: uuid("workspace_id"),
-    /** Mã định danh nghiệp vụ */
-    code: text("code").notNull(),
-    /** Nhà cung cấp dịch vụ */
-    provider: text("provider").notNull(),
-    /** Tên model */
-    modelName: text("model_name").notNull(),
-    /** Tham chiếu kho bí mật mã hóa */
-    credentialId: uuid("credential_id").notNull(),
-    /** Tham số cấu hình */
-    parameters: jsonb("parameters").notNull(),
-    /** Có được bật hay không */
-    enabled: boolean("enabled").notNull().default(true),
-    /** Thời điểm tạo */
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    /** Thời điểm cập nhật */
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow()
-      .$onUpdate(() => new Date()),
-  },
-  (t): PgTableExtraConfigValue[] => [
-    foreignKey({
-      name: "model_profiles_tenant_id_fk",
-      columns: [t.tenantId],
-      foreignColumns: [tenants.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "model_profiles_workspace_id_fk",
-      columns: [t.tenantId, t.workspaceId],
-      foreignColumns: [workspaces.tenantId, workspaces.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "model_profiles_credential_id_fk",
-      columns: [t.credentialId],
-      foreignColumns: [credentials.id],
-    }).onDelete("restrict"),
-    unique("model_profiles_tenant_key_uq").on(t.tenantId, t.id),
-    pgPolicy("model_profiles_tenant_policy", {
-      for: "all",
-      using: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    uniqueIndex("model_profiles_partial_0")
-      .on(t.tenantId, t.code)
-      .where(sql`workspace_id IS NULL`),
-    uniqueIndex("model_profiles_partial_1")
-      .on(t.workspaceId, t.code)
-      .where(sql`workspace_id IS NOT NULL`),
-    index("model_profiles_workspace_id_idx").on(t.tenantId, t.workspaceId),
-  ],
-);
 
 /** Snapshot cấu hình agent bất biến. See docs V2/V3 for operation-level invariants. */
 export const agentVersions = pgTable(
@@ -993,8 +930,6 @@ export const agentVersions = pgTable(
     runtime: text("runtime").notNull(),
     /** Phiên bản framework đã khóa */
     frameworkVersion: text("framework_version").notNull(),
-    /** Tham chiếu cấu hình model dùng chung có kiểm soát */
-    modelProfileId: uuid("model_profile_id"),
     /** Nội dung chỉ dẫn */
     instructions: text("instructions").notNull(),
     /** Cấu hình có schema version */
@@ -1018,11 +953,6 @@ export const agentVersions = pgTable(
       name: "agent_versions_agent_id_fk",
       columns: [t.tenantId, t.agentId],
       foreignColumns: [agents.tenantId, agents.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "agent_versions_model_profile_id_fk",
-      columns: [t.tenantId, t.modelProfileId],
-      foreignColumns: [modelProfiles.tenantId, modelProfiles.id],
     }).onDelete("restrict"),
     foreignKey({
       name: "agent_versions_created_by_fk",
@@ -1110,143 +1040,7 @@ export const agentReleases = pgTable(
   ],
 );
 
-/** Hội thoại bổ sung thông tin khi tạo agent. See docs V2/V3 for operation-level invariants. */
-export const agentBuildRequests = pgTable(
-  "agent_build_requests",
-  {
-    /** Định danh bản ghi */
-    id: uuid("id").primaryKey().defaultRandom(),
-    /** Tenant sở hữu dữ liệu */
-    tenantId: uuid("tenant_id").notNull(),
-    /** Workspace của ban quản lý */
-    workspaceId: uuid("workspace_id").notNull(),
-    /** Tham chiếu tài khoản người dùng chung của platform */
-    requestedBy: text("requested_by").notNull(),
-    /** Tham chiếu cửa sổ reception hoặc groupchat quản lý */
-    channelId: text("channel_id").notNull(),
-    /** Tên agent được đề xuất */
-    proposedName: text("proposed_name").notNull(),
-    /** Mô tả agent được đề xuất */
-    proposedDescription: text("proposed_description").notNull(),
-    /** Thông tin còn thiếu cần hỏi người dùng */
-    missingFields: jsonb("missing_fields").notNull(),
-    /** Cấu hình nháp */
-    draftConfig: jsonb("draft_config").notNull(),
-    /** Trạng thái; xem tập giá trị và quy tắc bên dưới */
-    status: text("status").notNull(),
-    /** Tham chiếu danh mục agent của platform */
-    resultAgentId: text("result_agent_id"),
-    /** Thời điểm tạo */
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    /** Thời điểm cập nhật */
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow()
-      .$onUpdate(() => new Date()),
-  },
-  (t): PgTableExtraConfigValue[] => [
-    foreignKey({
-      name: "agent_build_requests_tenant_id_fk",
-      columns: [t.tenantId],
-      foreignColumns: [tenants.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "agent_build_requests_workspace_id_fk",
-      columns: [t.tenantId, t.workspaceId],
-      foreignColumns: [workspaces.tenantId, workspaces.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "agent_build_requests_requested_by_fk",
-      columns: [t.requestedBy],
-      foreignColumns: [users.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "agent_build_requests_channel_id_fk",
-      columns: [t.tenantId, t.channelId],
-      foreignColumns: [channels.tenantId, channels.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "agent_build_requests_result_agent_id_fk",
-      columns: [t.tenantId, t.resultAgentId],
-      foreignColumns: [agents.tenantId, agents.id],
-    }).onDelete("restrict"),
-    unique("agent_build_requests_tenant_key_uq").on(t.tenantId, t.id),
-    pgPolicy("agent_build_requests_tenant_policy", {
-      for: "all",
-      using: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    check(
-      "agent_build_requests_check_0",
-      sql`status IN ('collecting','ready','confirmed','created','cancelled')`,
-    ),
-    index("agent_build_requests_workspace_id_idx").on(
-      t.tenantId,
-      t.workspaceId,
-    ),
-  ],
-);
 
-/** Câu hỏi và câu trả lời của builder. See docs V2/V3 for operation-level invariants. */
-export const agentBuildAnswers = pgTable(
-  "agent_build_answers",
-  {
-    /** Định danh bản ghi */
-    id: uuid("id").primaryKey().defaultRandom(),
-    /** Tenant sở hữu dữ liệu */
-    tenantId: uuid("tenant_id").notNull(),
-    /** Mã tương quan request trong audit */
-    requestId: uuid("request_id").notNull(),
-    /** Mã câu hỏi bổ sung */
-    questionKey: text("question_key").notNull(),
-    /** Câu hỏi */
-    question: text("question").notNull(),
-    /** Câu trả lời */
-    answer: jsonb("answer"),
-    /** Tham chiếu tài khoản người dùng chung của platform */
-    answeredBy: text("answered_by"),
-    /** Thời điểm trả lời */
-    answeredAt: timestamp("answered_at", { withTimezone: true }),
-    /** Thời điểm tạo */
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    /** Giá trị revision_no; ý nghĩa và phạm vi theo quy tắc bảng */
-    revisionNo: integer("revision_no").notNull(),
-    /** Giá trị confirmed; ý nghĩa và phạm vi theo quy tắc bảng */
-    confirmed: boolean("confirmed").notNull().default(false),
-  },
-  (t): PgTableExtraConfigValue[] => [
-    foreignKey({
-      name: "agent_build_answers_tenant_id_fk",
-      columns: [t.tenantId],
-      foreignColumns: [tenants.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "agent_build_answers_request_id_fk",
-      columns: [t.tenantId, t.requestId],
-      foreignColumns: [agentBuildRequests.tenantId, agentBuildRequests.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "agent_build_answers_answered_by_fk",
-      columns: [t.answeredBy],
-      foreignColumns: [users.id],
-    }).onDelete("restrict"),
-    unique("agent_build_answers_tenant_key_uq").on(t.tenantId, t.id),
-    pgPolicy("agent_build_answers_tenant_policy", {
-      for: "all",
-      using: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    unique("agent_build_answers_unique_0").on(
-      t.requestId,
-      t.questionKey,
-      t.revisionNo,
-    ),
-  ],
-);
 
 /** Knowledge base agent được phép dùng. See docs V2/V3 for operation-level invariants. */
 export const agentKnowledgeGrants = pgTable(
@@ -2128,172 +1922,7 @@ export const contextSnapshots = pgTable(
   ],
 );
 
-/** Một thread Reception mỗi cửa sổ cư dân. See docs V2/V3 for operation-level invariants. */
-export const receptionSessions = pgTable(
-  "reception_sessions",
-  {
-    /** Định danh bản ghi */
-    id: uuid("id").primaryKey().defaultRandom(),
-    /** Tenant sở hữu dữ liệu */
-    tenantId: uuid("tenant_id").notNull(),
-    /** Tham chiếu cửa sổ reception hoặc groupchat quản lý */
-    channelId: text("channel_id").notNull(),
-    /** Tham chiếu tài khoản người dùng chung của platform */
-    customerUserId: text("customer_user_id").notNull(),
-    /** Tham chiếu danh mục agent của platform */
-    systemAgentId: text("system_agent_id").notNull(),
-    /** Phiên bản graph/workflow */
-    workflowVersion: text("workflow_version").notNull(),
-    /** Trạng thái; xem tập giá trị và quy tắc bên dưới */
-    status: text("status").notNull(),
-    /** Event cuối đã được ghi hoặc xử lý theo phạm vi bảng */
-    lastEventSeq: bigint("last_event_seq", { mode: "number" })
-      .notNull()
-      .default(0),
-    /** Thời điểm tạo */
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    /** Thời điểm cập nhật */
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow()
-      .$onUpdate(() => new Date()),
-    /** Tham chiếu runtime_session_bindings */
-    bindingId: uuid("binding_id").notNull(),
-  },
-  (t): PgTableExtraConfigValue[] => [
-    foreignKey({
-      name: "reception_sessions_tenant_id_fk",
-      columns: [t.tenantId],
-      foreignColumns: [tenants.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "reception_sessions_channel_id_fk",
-      columns: [t.tenantId, t.channelId],
-      foreignColumns: [channels.tenantId, channels.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "reception_sessions_customer_user_id_fk",
-      columns: [t.customerUserId],
-      foreignColumns: [users.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "reception_sessions_system_agent_id_fk",
-      columns: [t.tenantId, t.systemAgentId],
-      foreignColumns: [agents.tenantId, agents.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "reception_sessions_binding_id_fk",
-      columns: [t.tenantId, t.bindingId],
-      foreignColumns: [
-        runtimeSessionBindings.tenantId,
-        runtimeSessionBindings.id,
-      ],
-    }).onDelete("restrict"),
-    unique("reception_sessions_tenant_key_uq").on(t.tenantId, t.id),
-    pgPolicy("reception_sessions_tenant_policy", {
-      for: "all",
-      using: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    unique("reception_sessions_unique_0").on(t.channelId),
-    unique("reception_sessions_unique_1").on(t.bindingId),
-    check(
-      "reception_sessions_check_0",
-      sql`status IN ('active','waiting','closed','failed')`,
-    ),
-  ],
-);
 
-/** Điểm chờ đúng ticket và interrupt. See docs V2/V3 for operation-level invariants. */
-export const receptionWaits = pgTable(
-  "reception_waits",
-  {
-    /** Định danh bản ghi */
-    id: uuid("id").primaryKey().defaultRandom(),
-    /** Tenant sở hữu dữ liệu */
-    tenantId: uuid("tenant_id").notNull(),
-    /** Tham chiếu một thread reception mỗi cửa sổ cư dân */
-    sessionId: uuid("session_id").notNull(),
-    /** Tham chiếu nguồn chuẩn của yêu cầu cư dân */
-    ticketId: uuid("ticket_id").notNull(),
-    /** ID điểm dừng của runtime */
-    interruptId: text("interrupt_id"),
-    /** Thế hệ điểm chờ để chống resume cũ */
-    generation: integer("generation").notNull(),
-    /** Những loại sự kiện có thể đánh thức điểm chờ */
-    expectedEventTypes: text("expected_event_types").array().notNull(),
-    /** Chỉ xét event có seq lớn hơn mốc này */
-    afterEventSeq: bigint("after_event_seq", { mode: "number" }).notNull(),
-    /** Trạng thái; xem tập giá trị và quy tắc bên dưới */
-    status: text("status").notNull(),
-    /** Tham chiếu lịch sử nghiệp vụ bất biến */
-    resumedEventId: uuid("resumed_event_id"),
-    /** Thời điểm hết hạn */
-    expiresAt: timestamp("expires_at", { withTimezone: true }),
-    /** Thời điểm tạo */
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    /** Thời điểm cập nhật */
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow()
-      .$onUpdate(() => new Date()),
-    /** Tham chiếu runtime_session_operations */
-    operationId: uuid("operation_id"),
-  },
-  (t): PgTableExtraConfigValue[] => [
-    foreignKey({
-      name: "reception_waits_tenant_id_fk",
-      columns: [t.tenantId],
-      foreignColumns: [tenants.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "reception_waits_session_id_fk",
-      columns: [t.tenantId, t.sessionId],
-      foreignColumns: [receptionSessions.tenantId, receptionSessions.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "reception_waits_ticket_id_fk",
-      columns: [t.tenantId, t.ticketId],
-      foreignColumns: [tickets.tenantId, tickets.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "reception_waits_resumed_event_id_fk",
-      columns: [t.tenantId, t.resumedEventId],
-      foreignColumns: [ticketEvents.tenantId, ticketEvents.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "reception_waits_operation_id_fk",
-      columns: [t.tenantId, t.operationId],
-      foreignColumns: [
-        runtimeSessionOperations.tenantId,
-        runtimeSessionOperations.id,
-      ],
-    }).onDelete("restrict"),
-    unique("reception_waits_tenant_key_uq").on(t.tenantId, t.id),
-    pgPolicy("reception_waits_tenant_policy", {
-      for: "all",
-      using: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    unique("reception_waits_unique_0").on(
-      t.sessionId,
-      t.interruptId,
-      t.generation,
-    ),
-    uniqueIndex("reception_waits_partial_0")
-      .on(t.sessionId)
-      .where(sql`status IN ('preparing','open','resuming')`),
-    check(
-      "reception_waits_check_0",
-      sql`status NOT IN ('open','resuming','consumed') OR interrupt_id IS NOT NULL`,
-    ),
-    index("reception_waits_ticket_id_idx").on(t.tenantId, t.ticketId),
-  ],
-);
 
 /** Phát sự kiện cùng transaction nghiệp vụ. See docs V2/V3 for operation-level invariants. */
 export const eventOutbox = pgTable(
@@ -4291,168 +3920,7 @@ export const refunds = pgTable(
   ],
 );
 
-/** Yêu cầu báo cáo DOCX. See docs V2/V3 for operation-level invariants. */
-export const reportRequests = pgTable(
-  "report_requests",
-  {
-    /** Định danh bản ghi */
-    id: uuid("id").primaryKey().defaultRandom(),
-    /** Tenant sở hữu dữ liệu */
-    tenantId: uuid("tenant_id").notNull(),
-    /** Workspace của ban quản lý */
-    workspaceId: uuid("workspace_id").notNull(),
-    /** Tham chiếu tài khoản người dùng chung của platform */
-    requestedBy: text("requested_by").notNull(),
-    /** Tham chiếu cửa sổ reception hoặc groupchat quản lý */
-    channelId: text("channel_id").notNull(),
-    /** Tham chiếu transcript chính của room */
-    sourceMessageId: uuid("source_message_id").notNull(),
-    /** Loại báo cáo */
-    reportType: text("report_type").notNull(),
-    /** Tham chiếu phạm vi quyền có kiểu rõ ràng */
-    scopeId: uuid("scope_id").notNull(),
-    /** Đầu kỳ báo cáo */
-    periodFrom: timestamp("period_from", { withTimezone: true }).notNull(),
-    /** Cuối kỳ loại trừ */
-    periodTo: timestamp("period_to", { withTimezone: true }).notNull(),
-    /** Bộ lọc đã xác thực scope */
-    filters: jsonb("filters").notNull(),
-    /** Phiên bản định nghĩa chỉ số */
-    metricVersion: text("metric_version").notNull(),
-    /** Mốc dữ liệu báo cáo */
-    asOf: timestamp("as_of", { withTimezone: true }).notNull(),
-    /** Trạng thái; xem tập giá trị và quy tắc bên dưới */
-    status: text("status").notNull(),
-    /** Tham chiếu theo dõi thực thi xuyên framework */
-    runId: uuid("run_id"),
-    /** Tham chiếu metadata file dùng chung */
-    resultFileId: uuid("result_file_id"),
-    /** Số dòng dữ liệu */
-    rowCount: bigint("row_count", { mode: "number" }),
-    /** Mã lỗi ổn định */
-    errorCode: text("error_code"),
-    /** Thời điểm tạo */
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    /** Thời điểm cập nhật */
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow()
-      .$onUpdate(() => new Date()),
-  },
-  (t): PgTableExtraConfigValue[] => [
-    foreignKey({
-      name: "report_requests_tenant_id_fk",
-      columns: [t.tenantId],
-      foreignColumns: [tenants.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "report_requests_workspace_id_fk",
-      columns: [t.tenantId, t.workspaceId],
-      foreignColumns: [workspaces.tenantId, workspaces.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "report_requests_requested_by_fk",
-      columns: [t.requestedBy],
-      foreignColumns: [users.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "report_requests_channel_id_fk",
-      columns: [t.tenantId, t.channelId],
-      foreignColumns: [channels.tenantId, channels.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "report_requests_source_message_id_fk",
-      columns: [t.tenantId, t.sourceMessageId],
-      foreignColumns: [messages.tenantId, messages.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "report_requests_scope_id_fk",
-      columns: [t.tenantId, t.scopeId],
-      foreignColumns: [accessScopes.tenantId, accessScopes.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "report_requests_run_id_fk",
-      columns: [t.tenantId, t.runId],
-      foreignColumns: [agentRuns.tenantId, agentRuns.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "report_requests_result_file_id_fk",
-      columns: [t.tenantId, t.resultFileId],
-      foreignColumns: [files.tenantId, files.id],
-    }).onDelete("restrict"),
-    unique("report_requests_tenant_key_uq").on(t.tenantId, t.id),
-    pgPolicy("report_requests_tenant_policy", {
-      for: "all",
-      using: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    check(
-      "report_requests_check_0",
-      sql`status IN ('queued','running','completed','failed','cancelled')`,
-    ),
-    index("report_requests_run_id_idx").on(t.tenantId, t.runId),
-    index("report_requests_workspace_id_idx").on(t.tenantId, t.workspaceId),
-  ],
-);
 
-/** Tái lập số liệu báo cáo. See docs V2/V3 for operation-level invariants. */
-export const reportSources = pgTable(
-  "report_sources",
-  {
-    /** Định danh bản ghi */
-    id: uuid("id").primaryKey().defaultRandom(),
-    /** Tenant sở hữu dữ liệu */
-    tenantId: uuid("tenant_id").notNull(),
-    /** Tham chiếu yêu cầu báo cáo docx */
-    reportId: uuid("report_id").notNull(),
-    /** Tên tập dữ liệu */
-    dataset: text("dataset").notNull(),
-    /** ID truy vấn allowlist, không phải SQL tùy ý */
-    queryTemplate: text("query_template").notNull(),
-    /** Tham số cấu hình */
-    parameters: jsonb("parameters").notNull(),
-    /** Mốc dữ liệu nguồn */
-    sourceWatermark: timestamp("source_watermark", {
-      withTimezone: true,
-    }).notNull(),
-    /** Số dòng dữ liệu */
-    rowCount: bigint("row_count", { mode: "number" }).notNull(),
-    /** Hash kết quả */
-    resultHash: text("result_hash").notNull(),
-    /** Tham chiếu metadata file dùng chung */
-    snapshotFileId: uuid("snapshot_file_id"),
-    /** Thời điểm tạo */
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (t): PgTableExtraConfigValue[] => [
-    foreignKey({
-      name: "report_sources_tenant_id_fk",
-      columns: [t.tenantId],
-      foreignColumns: [tenants.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "report_sources_report_id_fk",
-      columns: [t.tenantId, t.reportId],
-      foreignColumns: [reportRequests.tenantId, reportRequests.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "report_sources_snapshot_file_id_fk",
-      columns: [t.tenantId, t.snapshotFileId],
-      foreignColumns: [files.tenantId, files.id],
-    }).onDelete("restrict"),
-    unique("report_sources_tenant_key_uq").on(t.tenantId, t.id),
-    pgPolicy("report_sources_tenant_policy", {
-      for: "all",
-      using: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    unique("report_sources_unique_0").on(t.reportId, t.dataset),
-  ],
-);
 
 /** Metadata file dùng chung. See docs V2/V3 for operation-level invariants. */
 export const files = pgTable(
@@ -4491,8 +3959,6 @@ export const files = pgTable(
     channelId: text("channel_id"),
     /** Tham chiếu định danh tài liệu và chủ quản */
     documentId: uuid("document_id"),
-    /** Tham chiếu yêu cầu báo cáo docx */
-    reportId: uuid("report_id"),
     /** Trạng thái; xem tập giá trị và quy tắc bên dưới */
     status: text("status").notNull(),
     /** Tham chiếu file_objects */
@@ -4534,11 +4000,6 @@ export const files = pgTable(
       foreignColumns: [knowledgeDocuments.tenantId, knowledgeDocuments.id],
     }).onDelete("restrict"),
     foreignKey({
-      name: "files_report_id_fk",
-      columns: [t.tenantId, t.reportId],
-      foreignColumns: [reportRequests.tenantId, reportRequests.id],
-    }).onDelete("restrict"),
-    foreignKey({
       name: "files_accepted_object_id_fk",
       columns: [t.tenantId, t.acceptedObjectId],
       foreignColumns: [fileObjects.tenantId, fileObjects.id],
@@ -4556,11 +4017,11 @@ export const files = pgTable(
     }),
     check(
       "files_check_0",
-      sql`num_nonnulls(ticket_id,channel_id,document_id,report_id,unit_id)=1`,
+      sql`num_nonnulls(ticket_id,channel_id,document_id,unit_id)=1`,
     ),
     check(
       "files_check_1",
-      sql`(scope_kind='ticket' AND ticket_id IS NOT NULL) OR (scope_kind='channel' AND channel_id IS NOT NULL) OR (scope_kind='document' AND document_id IS NOT NULL) OR (scope_kind='report' AND report_id IS NOT NULL) OR (scope_kind='resident' AND unit_id IS NOT NULL)`,
+      sql`(scope_kind='ticket' AND ticket_id IS NOT NULL) OR (scope_kind='channel' AND channel_id IS NOT NULL) OR (scope_kind='document' AND document_id IS NOT NULL) OR (scope_kind='resident' AND unit_id IS NOT NULL)`,
     ),
     check(
       "files_check_2",
@@ -4568,7 +4029,7 @@ export const files = pgTable(
     ),
     check(
       "files_check_3",
-      sql`scope_kind IN ('ticket','channel','document','report','resident')`,
+      sql`scope_kind IN ('ticket','channel','document','resident')`,
     ),
     check(
       "files_check_4",
@@ -5933,28 +5394,6 @@ export const verifications = pgTable(
   (t): PgTableExtraConfigValue[] => [],
 );
 
-/** Role OpenBot cũ trong giai đoạn chuyển đổi. See docs V2/V3 for operation-level invariants. */
-export const userRoles = pgTable(
-  "user_roles",
-  {
-    /** Tài khoản liên quan */
-    userId: text("user_id").notNull(),
-    /** Role legacy của OpenBot */
-    role: role("role").notNull(),
-    /** Thời điểm tạo */
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (t): PgTableExtraConfigValue[] => [
-    foreignKey({
-      name: "user_roles_user_id_fk",
-      columns: [t.userId],
-      foreignColumns: [users.id],
-    }).onDelete("restrict"),
-    primaryKey({ columns: [t.userId, t.role] }),
-  ],
-);
 
 /** Chỉ dẫn cá nhân của người dùng. See docs V2/V3 for operation-level invariants. */
 export const userInstructions = pgTable(
@@ -7635,106 +7074,6 @@ export const runtimeSessionBindings = pgTable(
   ],
 );
 
-/** Nhật ký lệnh chạy resume và xóa có chống lặp. See docs V2/V3 for operation-level invariants. */
-export const runtimeSessionOperations = pgTable(
-  "runtime_session_operations",
-  {
-    /** Định danh bản ghi */
-    id: uuid("id").primaryKey().defaultRandom(),
-    /** Tenant sở hữu dữ liệu */
-    tenantId: uuid("tenant_id").notNull(),
-    /** Tham chiếu runtime_session_bindings */
-    bindingId: uuid("binding_id").notNull(),
-    /** Tham chiếu execution_principals */
-    actorPrincipalId: uuid("actor_principal_id").notNull(),
-    /** Tham chiếu tài khoản người dùng chung của platform */
-    initiatedByUserId: text("initiated_by_user_id"),
-    /** Lệnh runtime được cấp quyền và theo dõi */
-    operation: text("operation").notNull(),
-    /** Khóa chống xử lý lặp */
-    idempotencyKey: text("idempotency_key").notNull(),
-    /** Thế hệ binding mà lệnh được phép tác động */
-    expectedGeneration: integer("expected_generation").notNull(),
-    /** Fencing version lệnh phải đối chiếu khi thực thi */
-    expectedLockVersion: bigint("expected_lock_version", {
-      mode: "number",
-    }).notNull(),
-    /** Tham chiếu lịch sử nghiệp vụ bất biến */
-    triggerEventId: uuid("trigger_event_id"),
-    /** ID điểm dừng của runtime */
-    interruptId: text("interrupt_id"),
-    /** Trạng thái; xem tập giá trị và quy tắc bên dưới */
-    status: text("status").notNull(),
-    /** Tham chiếu theo dõi thực thi xuyên framework */
-    resultRunId: uuid("result_run_id"),
-    /** Mã lỗi đã loại thông tin nhạy cảm */
-    failureCode: text("failure_code"),
-    /** Thời điểm kết thúc */
-    finishedAt: timestamp("finished_at", { withTimezone: true }),
-    /** Thời điểm tạo */
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    /** Thời điểm cập nhật */
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow()
-      .$onUpdate(() => new Date()),
-  },
-  (t): PgTableExtraConfigValue[] => [
-    foreignKey({
-      name: "runtime_session_operations_tenant_id_fk",
-      columns: [t.tenantId],
-      foreignColumns: [tenants.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "runtime_session_operations_binding_id_fk",
-      columns: [t.tenantId, t.bindingId],
-      foreignColumns: [
-        runtimeSessionBindings.tenantId,
-        runtimeSessionBindings.id,
-      ],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "runtime_session_operations_actor_principal_id_fk",
-      columns: [t.tenantId, t.actorPrincipalId],
-      foreignColumns: [executionPrincipals.tenantId, executionPrincipals.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "runtime_session_operations_initiated_by_user_id_fk",
-      columns: [t.initiatedByUserId],
-      foreignColumns: [users.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "runtime_session_operations_trigger_event_id_fk",
-      columns: [t.tenantId, t.triggerEventId],
-      foreignColumns: [ticketEvents.tenantId, ticketEvents.id],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "runtime_session_operations_result_run_id_fk",
-      columns: [t.tenantId, t.resultRunId],
-      foreignColumns: [agentRuns.tenantId, agentRuns.id],
-    }).onDelete("restrict"),
-    unique("runtime_session_operations_tenant_key_uq").on(t.tenantId, t.id),
-    pgPolicy("runtime_session_operations_tenant_policy", {
-      for: "all",
-      using: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-      withCheck: sql`tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid`,
-    }),
-    unique("runtime_session_operations_unique_0").on(
-      t.bindingId,
-      t.idempotencyKey,
-    ),
-    check(
-      "runtime_session_operations_check_0",
-      sql`operation IN ('invoke','resume','read','export','purge')`,
-    ),
-    check(
-      "runtime_session_operations_check_1",
-      sql`status IN ('pending','running','succeeded','failed','cancelled')`,
-    ),
-  ],
-);
 
 /** Phạm vi đọc ghi memory xuyên thread. See docs V2/V3 for operation-level invariants. */
 export const memoryNamespaces = pgTable(

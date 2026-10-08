@@ -1,0 +1,65 @@
+{
+  "contract": "HD-1",
+  "version": 1,
+  "phase": "independent",
+  "agent": {
+    "agent_version_id": "av-tech-0001",
+    "name": "Agent Kỹ thuật",
+    "department": "Kỹ thuật",
+    "scope": "Chẩn đoán và đề xuất xử lý sự cố điện, nước, điều hòa, kết cấu trong căn hộ.",
+    "not_in_scope": [
+      "Báo giá",
+      "Vệ sinh",
+      "An ninh",
+      "Chọn nhân viên"
+    ]
+  },
+  "rules": "core/rules/v1",
+  "directory": [
+    {
+      "agent_version_id": "av-clean-0001",
+      "name": "Agent Vệ sinh",
+      "department": "Vệ sinh",
+      "handles": "Làm sạch, xử lý khu vực ướt, cảnh báo an toàn sàn.",
+      "tools": [
+        "cleaning.retrieve_sop",
+        "knowledge.search"
+      ]
+    }
+  ],
+  "memory": [
+    {
+      "memory_id": "mem-0007",
+      "subject": "unit:S1.01-1201",
+      "summary": "Ngày 12/09/2026 đã thay gioăng đầu nối dưới bồn rửa bếp.",
+      "source_case_id": "case-0031",
+      "data_origin": "synthetic"
+    }
+  ],
+  "case_file": {
+    "case_id": "case-0100",
+    "entries": [
+      {
+        "entry_id": "e-1",
+        "kind": "fact",
+        "author": "Tiếp nhận",
+        "statement": "Ống nước dưới bồn rửa đang rò, nước tràn ra sàn bếp.",
+        "sources": [
+          {
+            "type": "message",
+            "id": "msg:8f2a"
+          }
+        ],
+        "data_origin": "test_run"
+      }
+    ]
+  },
+  "task": {
+    "task_id": "t1",
+    "instruction": "Xác định việc cần làm để dừng rò và sửa đầu nối. Nêu rõ căn cứ."
+  },
+  "limits": {
+    "max_output_tokens": 4096,
+    "max_tool_rounds": 6
+  }
+}

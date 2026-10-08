@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "world_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "buildings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "demo_unit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "id_rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resident": {
+          "type": "string",
+          "minLength": 1
+        },
+        "staff": {
+          "type": "string",
+          "minLength": 1
+        },
+        "asset": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "unit",
+        "resident",
+        "staff",
+        "asset"
+      ]
+    }
+  },
+  "required": [
+    "world_version",
+    "buildings",
+    "demo_unit",
+    "id_rules"
+  ],
+  "title": "HD-7 thế giới demo"
+}

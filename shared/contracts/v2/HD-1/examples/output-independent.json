@@ -1,0 +1,71 @@
+{
+  "summary": "Cần khóa van cấp nước của căn hộ rồi thay đầu nối; nguyên nhân chưa xác định.",
+  "findings": [
+    {
+      "key": "f1",
+      "kind": "fact",
+      "statement": "Hôm nay tòa S1.01 không có lịch cắt nước.",
+      "sources": [
+        {
+          "type": "tool_result",
+          "id": "tool:3c9e1b7a"
+        }
+      ]
+    },
+    {
+      "key": "f2",
+      "kind": "assessment",
+      "statement": "Cần khóa van cấp nước của căn hộ trước khi tháo đầu nối.",
+      "sources": [
+        {
+          "type": "entry",
+          "id": "e-1"
+        },
+        {
+          "type": "passage",
+          "id": "doc:SOP-TECH-PLUMB-02@1#buoc-1"
+        }
+      ]
+    },
+    {
+      "key": "f3",
+      "kind": "assumption",
+      "statement": "Có thể gioăng đã lão hóa.",
+      "sources": []
+    }
+  ],
+  "proposals": [
+    {
+      "step": "Khóa van cấp nước của căn hộ.",
+      "department": "Kỹ thuật",
+      "after": [],
+      "based_on": [
+        {
+          "type": "finding",
+          "id": "f2"
+        }
+      ]
+    },
+    {
+      "step": "Thay đầu nối dưới bồn rửa và thử áp.",
+      "department": "Kỹ thuật",
+      "after": [
+        0
+      ],
+      "based_on": [
+        {
+          "type": "finding",
+          "id": "f2"
+        }
+      ]
+    }
+  ],
+  "objections": [],
+  "agreements": [],
+  "questions": [
+    {
+      "to": "customer",
+      "text": "Nước rò liên tục hay chỉ khi mở vòi?"
+    }
+  ]
+}

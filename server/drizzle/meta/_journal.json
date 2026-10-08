@@ -150,6 +150,13 @@
       "breakpoints": true
     },
     {
+      "idx": 21,
+      "version": "7",
+      "when": 1791282501739,
+      "tag": "0021_retire_unused_schema",
+      "breakpoints": true
+    },
+    {
       "idx": 22,
       "version": "7",
       "when": 1791282501740,

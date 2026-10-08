@@ -53,10 +53,6 @@ CREATE TRIGGER "workspaces_touch" BEFORE UPDATE ON "workspaces" FOR EACH ROW EXE
 --> statement-breakpoint
 ALTER TABLE "workspace_members" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
-ALTER TABLE "model_profiles" FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE TRIGGER "model_profiles_touch" BEFORE UPDATE ON "model_profiles" FOR EACH ROW EXECUTE FUNCTION app_touch_updated_at();
---> statement-breakpoint
 ALTER TABLE "agent_versions" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
 CREATE TRIGGER "agent_versions_immutable" BEFORE UPDATE OR DELETE ON "agent_versions" FOR EACH ROW EXECUTE FUNCTION app_append_only();
@@ -66,12 +62,6 @@ CREATE TRIGGER "agent_versions_no_truncate" BEFORE TRUNCATE ON "agent_versions" 
 ALTER TABLE "agent_releases" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
 CREATE TRIGGER "agent_releases_touch" BEFORE UPDATE ON "agent_releases" FOR EACH ROW EXECUTE FUNCTION app_touch_updated_at();
---> statement-breakpoint
-ALTER TABLE "agent_build_requests" FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE TRIGGER "agent_build_requests_touch" BEFORE UPDATE ON "agent_build_requests" FOR EACH ROW EXECUTE FUNCTION app_touch_updated_at();
---> statement-breakpoint
-ALTER TABLE "agent_build_answers" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE "agent_knowledge_grants" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
@@ -110,14 +100,6 @@ ALTER TABLE "context_snapshots" FORCE ROW LEVEL SECURITY;
 CREATE TRIGGER "context_snapshots_immutable" BEFORE UPDATE OR DELETE ON "context_snapshots" FOR EACH ROW EXECUTE FUNCTION app_append_only();
 --> statement-breakpoint
 CREATE TRIGGER "context_snapshots_no_truncate" BEFORE TRUNCATE ON "context_snapshots" FOR EACH STATEMENT EXECUTE FUNCTION app_append_only();
---> statement-breakpoint
-ALTER TABLE "reception_sessions" FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE TRIGGER "reception_sessions_touch" BEFORE UPDATE ON "reception_sessions" FOR EACH ROW EXECUTE FUNCTION app_touch_updated_at();
---> statement-breakpoint
-ALTER TABLE "reception_waits" FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE TRIGGER "reception_waits_touch" BEFORE UPDATE ON "reception_waits" FOR EACH ROW EXECUTE FUNCTION app_touch_updated_at();
 --> statement-breakpoint
 ALTER TABLE "event_outbox" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
@@ -210,12 +192,6 @@ ALTER TABLE "payments" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "refunds" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
 CREATE TRIGGER "refunds_touch" BEFORE UPDATE ON "refunds" FOR EACH ROW EXECUTE FUNCTION app_touch_updated_at();
---> statement-breakpoint
-ALTER TABLE "report_requests" FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE TRIGGER "report_requests_touch" BEFORE UPDATE ON "report_requests" FOR EACH ROW EXECUTE FUNCTION app_touch_updated_at();
---> statement-breakpoint
-ALTER TABLE "report_sources" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE "files" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
@@ -370,10 +346,6 @@ ALTER TABLE "runtime_identities" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "runtime_session_bindings" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
 CREATE TRIGGER "runtime_session_bindings_touch" BEFORE UPDATE ON "runtime_session_bindings" FOR EACH ROW EXECUTE FUNCTION app_touch_updated_at();
---> statement-breakpoint
-ALTER TABLE "runtime_session_operations" FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE TRIGGER "runtime_session_operations_touch" BEFORE UPDATE ON "runtime_session_operations" FOR EACH ROW EXECUTE FUNCTION app_touch_updated_at();
 --> statement-breakpoint
 ALTER TABLE "memory_namespaces" FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint

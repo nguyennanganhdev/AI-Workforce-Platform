@@ -57,7 +57,7 @@ export async function rolesForUser(
     );
   return [...new Set(rows.map((r) => r.role as OpenBotRole))];
 }
-/** Canonical writes only. user_roles remains read-only legacy data. */
+/** Canonical writes only through platform admins and scoped tenant roles. */
 export async function setRole(
   database: Database,
   userId: string,

@@ -20,6 +20,13 @@ M['work_approvals']['rules']=M['work_approvals']['rules'].replace(
 # Keep this overlay with the 0006 migration so regeneration preserves the extension.
 M['files']['rows'].insert(10, ['unit_id', 'UUID', 'NULL; FK \u2192 `units.id`', 'Verified resident apartment scope'])
 M['files']['rules']=M['files']['rules'].replace('scope_kind ticket/channel/document/report;', 'scope_kind ticket/channel/document/report/resident;')
+# Keep reviewed historical dictionaries intact; current schema applies explicit retirements.
+RETIRED=json.loads((OUT.parent/'design/retired-schema.json').read_text(encoding='utf8'))
+for table in RETIRED['tables']:
+ M.pop(table)
+for table,columns in RETIRED['columns'].items():
+ M[table]['rows']=[row for row in M[table]['rows'] if row[0] not in columns]
+M['files']['rules']=M['files']['rules'].replace('scope_kind ticket/channel/document/report/resident;', 'scope_kind ticket/channel/document/resident;')
 def camel(s):return re.sub(r'_([a-z])',lambda m:m[1].upper(),s)
 def ident(s):return s if len(s)<=63 else s[:50]+'_'+hashlib.sha256(s.encode()).hexdigest()[:12]
 names={n:camel(n) for n in M}
@@ -33,7 +40,6 @@ partial={
 'execution_principals':[("tenant_id,user_id","kind='user'"),("tenant_id,workspace_id","kind='workspace_service'")],
 'access_scopes':[("tenant_id","kind='tenant'")]+[(f'tenant_id,{c}',f"kind='{k}'") for k,c in [('management','management_unit_id'),('site','site_id'),('zone','zone_id'),('building','building_id')]],
 'units':[("building_id,code","building_id IS NOT NULL"),("zone_id,code","building_id IS NULL")],
-'model_profiles':[("tenant_id,code","workspace_id IS NULL"),("workspace_id,code","workspace_id IS NOT NULL")],
 'agent_releases':[("agent_id","status='published' AND revoked_at IS NULL")],
 'agents':[("tenant_id","purpose='reception' AND status='active'")],
 'channels':[("workspace_id","is_dispatch_default AND deleted_at IS NULL")],
@@ -41,7 +47,6 @@ partial={
 'memory_namespaces':[("owner_principal_id,kind,purpose","kind='personal'"),("team_id,purpose","kind='team'"),("workspace_id,purpose","kind='workspace'")],
 'file_uploads':[("file_id","status IN ('issued','uploading','uploaded','verifying')")],
 'file_deletion_requests':[("file_id","status IN ('pending','running','blocked')")],
-'reception_waits':[("session_id","status IN ('preparing','open','resuming')")],
 'work_assignments':[("work_order_id","status IN ('offered','accepted')")],
 'knowledge_reviews':[("document_version_id,subject_seq","document_version_id IS NOT NULL"),("memory_candidate_id,subject_seq","memory_candidate_id IS NOT NULL")],
 'memory_candidates':[("supersedes_candidate_id","supersedes_candidate_id IS NOT NULL")],
@@ -67,8 +72,7 @@ checks={
 'memory_namespaces':["(kind='personal' AND workspace_id IS NULL AND team_id IS NULL) OR (kind='workspace' AND workspace_id IS NOT NULL AND team_id IS NULL) OR (kind='team' AND workspace_id IS NOT NULL AND team_id IS NOT NULL)"],
 'runtime_session_bindings':["(audience_kind='personal' AND customer_user_id IS NOT NULL AND team_member_id IS NULL) OR (audience_kind='team' AND customer_user_id IS NULL AND team_member_id IS NOT NULL)","generation>0"],
 'knowledge_reviews':["num_nonnulls(document_version_id,memory_candidate_id)=1"],
-'reception_waits':["status NOT IN ('open','resuming','consumed') OR interrupt_id IS NOT NULL"],
-'files':["num_nonnulls(ticket_id,channel_id,document_id,report_id,unit_id)=1","(scope_kind='ticket' AND ticket_id IS NOT NULL) OR (scope_kind='channel' AND channel_id IS NOT NULL) OR (scope_kind='document' AND document_id IS NOT NULL) OR (scope_kind='report' AND report_id IS NOT NULL) OR (scope_kind='resident' AND unit_id IS NOT NULL)","status<>'ready' OR accepted_object_id IS NOT NULL"],
+'files':["num_nonnulls(ticket_id,channel_id,document_id,unit_id)=1","(scope_kind='ticket' AND ticket_id IS NOT NULL) OR (scope_kind='channel' AND channel_id IS NOT NULL) OR (scope_kind='document' AND document_id IS NOT NULL) OR (scope_kind='resident' AND unit_id IS NOT NULL)","status<>'ready' OR accepted_object_id IS NOT NULL"],
 'file_objects':["size_bytes>=0","sha256 ~ '^[0-9a-f]{64}$'","variant_revision>0","variant='original' OR source_object_id IS NOT NULL","status<>'ready' OR (scan_status='clean' AND verified_at IS NOT NULL)","version_id<>'' AND version_id<>'null'"],
 'file_uploads':["expected_size_bytes>0 AND expected_size_bytes<=max_size_bytes","upload_mode<>'multipart' OR multipart_upload_id IS NOT NULL"],
 'file_upload_parts':["part_number BETWEEN 1 AND 10000","size_bytes>0"],

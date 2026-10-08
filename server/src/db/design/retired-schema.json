@@ -1,0 +1,18 @@
+{
+  "migration": "0021_retire_unused_schema",
+  "tables": [
+    "user_roles",
+    "model_profiles",
+    "agent_build_requests",
+    "agent_build_answers",
+    "reception_sessions",
+    "reception_waits",
+    "runtime_session_operations",
+    "report_requests",
+    "report_sources"
+  ],
+  "columns": {
+    "agent_versions": ["model_profile_id"],
+    "files": ["report_id"]
+  }
+}

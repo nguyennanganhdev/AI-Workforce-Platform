@@ -1,0 +1,24 @@
+{
+  "dataset_id": "D-22",
+  "title": "Lịch sử bảo trì thiết bị tòa S1.01",
+  "owner_team": "Quang",
+  "world_version": "2026-10-12",
+  "origin": "synthetic",
+  "origin_detail": {
+    "generator_model": "ĐIỀN: tên model sinh",
+    "reviewer_model": "ĐIỀN: tên model rà, khác hãng",
+    "template": "templates/maintenance-event.md"
+  },
+  "files": [
+    {
+      "path": "data/D-22/maintenance.jsonl",
+      "format": "jsonl",
+      "records": 60
+    }
+  ],
+  "schema_ref": "data/D-22/record.schema.json",
+  "load_command": "python -m tools.data load D-22",
+  "reviewed_by": "ĐIỀN: tên người rà",
+  "reviewed_on": "2026-10-13",
+  "sample_checked": 6
+}
