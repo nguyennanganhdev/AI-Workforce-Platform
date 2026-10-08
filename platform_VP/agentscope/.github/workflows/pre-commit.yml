@@ -1,0 +1,29 @@
+name: Pre-commit
+
+on: [push, pull_request]
+
+jobs:
+  run:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: True
+      matrix:
+        os: [ubuntu-latest]
+    env:
+      OS: ${{ matrix.os }}
+      PYTHON: '3.11'
+    steps:
+    - uses: actions/checkout@master
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        python-version: '3.11'
+    - name: Install AgentScope
+      run: |
+        uv pip install -q -e .[dev]
+    - name: Install pre-commit
+      run: |
+        pre-commit install
+    - name: Pre-commit starts
+      run: |
+        pre-commit run --all-files
