@@ -1,0 +1,6 @@
+.git
+.husky
+node_modules
+**/node_modules
+**/dist
+*.log

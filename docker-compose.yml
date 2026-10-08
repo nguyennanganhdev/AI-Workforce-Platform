@@ -1,0 +1,62 @@
+name: agentscope
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+      - "8000:8000"
+    volumes:
+      - agentscope-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  agent-service:
+    build:
+      context: ./platform_VP/agentscope
+      dockerfile: docker/Dockerfile.agent-service
+    restart: unless-stopped
+    working_dir: /app/examples/agent_service
+    command: python main.py
+    environment:
+      AMAP_API_KEY: ${AMAP_API_KEY:-}
+      CLAWHUB_API_TOKEN: ${CLAWHUB_API_TOKEN:-}
+    network_mode: "service:redis"
+    volumes:
+      - ./platform_VP/agentscope:/app
+      - agentscope-workspaces:/app/examples/agent_service/workspaces
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  web-backend:
+    build:
+      context: ./platform_VP/agentscope/examples/web_ui
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    working_dir: /app
+    command: pnpm dev:backend
+    environment:
+      PORT: "3000"
+    ports:
+      - "5173:5173"
+
+  web-ui:
+    build:
+      context: ./platform_VP/agentscope/examples/web_ui
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    working_dir: /app
+    command: pnpm --filter frontend dev --host 0.0.0.0
+    network_mode: "service:web-backend"
+    depends_on:
+      - web-backend
+      - agent-service
+
+volumes:
+  agentscope-redis-data:
+  agentscope-workspaces:
