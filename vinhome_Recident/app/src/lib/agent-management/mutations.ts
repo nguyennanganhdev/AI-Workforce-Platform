@@ -1,0 +1,65 @@
+import { mutationOptions, type QueryClient } from "@tanstack/react-query";
+import { client, tryClient } from "@/lib/client";
+import { businessHeaders } from "@/lib/coordination/queries";
+import { managedAgentKeys, type AgentConfiguration, type EvaluationInput, type EvaluationResult } from "@/lib/agent-management/queries";
+import { roomKeys } from "@/lib/rooms/queries";
+
+const base = (room: string) => `/api/business/rooms/${encodeURIComponent(room)}`;
+export function createManagedAgentMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({ mutationFn: async ({roomId, name, purpose, requestId}: {roomId: string; name: string; purpose: "specialist" | "supervisor"; requestId: string}): Promise<{id: string}> =>
+    (await client(`${base(roomId)}/agents`, {method: "POST", body: {name, purpose, instructions: "Chưa cấu hình. Agent này chưa được phép chạy.", idempotency_key: requestId}, headers: businessHeaders(), fallback: "Không tạo được nháp agent."})).json(),
+    onSuccess: () => queryClient.invalidateQueries({queryKey: managedAgentKeys.all}) });
+}
+export function configureManagedAgentMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({ mutationFn: async ({roomId, agentId, configuration}: {roomId: string; agentId: string; configuration: AgentConfiguration}): Promise<void> => {
+    await client(`${base(roomId)}/agents/${encodeURIComponent(agentId)}/configuration`, {method: "PUT", body: configuration, headers: businessHeaders(), fallback: "Không lưu được cấu hình agent."});
+  }, onSuccess: () => queryClient.invalidateQueries({queryKey: managedAgentKeys.all}) });
+}
+export function constructManagedAgentMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({ mutationFn: async ({roomId, agentId, ...body}: {roomId: string; agentId: string; role: string; description: string; service_categories: string[]; configuration_hash: string; revision_of?: string | null; model_id?: string | null; skill_ids?: string[]; request_id: string}): Promise<{needsInput: boolean; questions: string[]}> => {
+    const fallback = "Factory chưa tạo được cấu hình agent.";
+    const response = await tryClient(`${base(roomId)}/agents/${encodeURIComponent(agentId)}/construct`, {method: "POST", body, headers: businessHeaders()});
+    if (response.ok) {
+      const result = await response.json();
+      if (result.needsInput === true && Array.isArray(result.questions) && result.questions.length
+        && result.questions.every((q: unknown) => typeof q === "string" && q.trim())) {
+        return {needsInput: true, questions: result.questions};
+      }
+      if (typeof result.configurationHash === "string" && result.configuration) return {needsInput: false, questions: []};
+      throw new Error(fallback);
+    }
+    // A refused description comes back with what to add to it, so it is shown as it came.
+    const detail = (await response.json().catch(() => ({}))).detail;
+    if (typeof detail !== "string") throw new Error(fallback);
+    throw new Error(response.status === 422 ? detail : [409, 502, 503].includes(response.status) ? `${fallback} Máy chủ trả lời: ${detail}` : fallback);
+  }, onSuccess: (result) => { if (!result.needsInput) return queryClient.invalidateQueries({queryKey: managedAgentKeys.all}); } });
+}
+export function evaluateManagedAgentMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({ mutationFn: async ({roomId, agentId, ...body}: {roomId: string; agentId: string; configuration_hash: string; request_id: string; cases: EvaluationInput[]}): Promise<{passed: boolean; cases: EvaluationResult[]}> =>
+    (await client(`${base(roomId)}/agents/${encodeURIComponent(agentId)}/evaluate`, {method: "POST", body, headers: businessHeaders(), fallback: "Đánh giá chưa hoàn tất."})).json(),
+    onSuccess: () => queryClient.invalidateQueries({queryKey: managedAgentKeys.all}) });
+}
+/** One question to the saved draft: how it replies. No evaluation is recorded and nothing changes, so nothing is refetched. */
+export function tryManagedAgentMutationOptions() {
+  return mutationOptions({ mutationFn: async ({roomId, agentId, ...body}: {roomId: string; agentId: string; configuration_hash: string; question: string}): Promise<{answer: string; called: string[]; question: string}> => {
+    const said = await (await client(`${base(roomId)}/agents/${encodeURIComponent(agentId)}/try`, {method: "POST", body, headers: businessHeaders(),
+      fallback: "Bản nháp chưa trả lời được. Nếu lặp lại, báo quản trị viên kiểm tra khóa model."})).json();
+    return {...said, question: body.question};
+  } });
+}
+export function decideManagedAgentMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({ mutationFn: async ({roomId, reviewId, ...body}: {roomId: string; reviewId: string; decision: "approve" | "reject"; version: number; note: string}): Promise<void> => {
+    await client(`${base(roomId)}/agent-reviews/${encodeURIComponent(reviewId)}/decision`, {method: "POST", body, headers: businessHeaders(), fallback: "Không quyết định được bản agent này."});
+  }, onSuccess: async () => {
+    await Promise.all([queryClient.invalidateQueries({queryKey: managedAgentKeys.all}),
+      queryClient.invalidateQueries({queryKey: roomKeys.all})]);
+  } });
+}
+export function revokeManagedAgentMutationOptions(queryClient: QueryClient) {
+  return mutationOptions({ mutationFn: async ({roomId, agentId, note}: {roomId: string; agentId: string; note: string}): Promise<void> => {
+    await client(`${base(roomId)}/agents/${encodeURIComponent(agentId)}/release/revoke`, {method: "POST", body: {note}, headers: businessHeaders(), fallback: "Không thu hồi được agent."});
+  }, onSuccess: async () => {
+    await Promise.all([queryClient.invalidateQueries({queryKey: managedAgentKeys.all}),
+      queryClient.invalidateQueries({queryKey: roomKeys.all})]);
+  } });
+}

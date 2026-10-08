@@ -1,0 +1,20 @@
+# Cùng nội dung với domain.vinhomes.json, ở dạng tệp thật của gói.
+domain:
+  id: vinhomes
+  name: Vận hành khu căn hộ
+vocabulary:
+  customer: cư dân
+  unit: căn hộ
+  operator: Ban quản lý
+  case: yêu cầu
+  location_levels: [khu, phân khu, tòa, căn hộ]
+service_categories:
+  - { code: technical, name: Kỹ thuật, department: Kỹ thuật }
+  - { code: cleaning, name: Vệ sinh và cảnh quan, department: Vệ sinh }
+  - { code: security, name: An ninh, department: An ninh }
+case_stages:
+  - { code: intake, name: Tiếp nhận, actor: agent }
+  - { code: plan, name: Phương án, actor: agent }
+  - { code: customer_approval, name: Cư dân đồng ý, actor: customer }
+  - { code: work, name: Thi công, actor: staff }
+  - { code: acceptance, name: Nghiệm thu, actor: customer }

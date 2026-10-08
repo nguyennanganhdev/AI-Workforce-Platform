@@ -1,0 +1,306 @@
+{
+  "case_id": "case-0031",
+  "subject": {
+    "type": "unit",
+    "id": "S1.01-1201",
+    "label": "Căn 1201, tòa S1.01"
+  },
+  "status": "closed",
+  "entries": [
+    {
+      "entry_id": "e-1",
+      "case_id": "case-0031",
+      "seq": 1,
+      "kind": "fact",
+      "statement": "Đầu nối dưới bồn rửa bếp nhỏ giọt, tủ bếp bị ẩm.",
+      "author": {
+        "type": "agent",
+        "id": "av-reception",
+        "name": "Tiếp nhận"
+      },
+      "sources": [
+        {
+          "type": "message",
+          "id": "msg:51aa"
+        }
+      ],
+      "data_origin": "synthetic",
+      "check": {
+        "status": "accepted",
+        "reasons": []
+      },
+      "created_at": "2026-09-12T08:07:00+07:00"
+    },
+    {
+      "entry_id": "e-2",
+      "case_id": "case-0031",
+      "seq": 2,
+      "kind": "fact",
+      "statement": "Ngày 12/09/2026 tòa S1.01 không có lịch cắt nước.",
+      "author": {
+        "type": "tool",
+        "id": "technical.get_active_outage",
+        "name": "Lịch cắt dịch vụ"
+      },
+      "sources": [
+        {
+          "type": "tool_result",
+          "id": "tool:a17d0c22"
+        }
+      ],
+      "data_origin": "synthetic",
+      "check": {
+        "status": "accepted",
+        "reasons": []
+      },
+      "created_at": "2026-09-12T08:14:00+07:00"
+    },
+    {
+      "entry_id": "e-3",
+      "case_id": "case-0031",
+      "seq": 3,
+      "kind": "finding",
+      "statement": "Cần khóa van cấp nước của căn hộ trước khi tháo đầu nối.",
+      "author": {
+        "type": "agent",
+        "id": "av-tech-0001",
+        "name": "Agent Kỹ thuật"
+      },
+      "sources": [
+        {
+          "type": "entry",
+          "id": "e-1"
+        },
+        {
+          "type": "passage",
+          "id": "doc:SOP-TECH-PLUMB-02@1#buoc-1"
+        }
+      ],
+      "data_origin": "synthetic",
+      "check": {
+        "status": "accepted",
+        "reasons": []
+      },
+      "created_at": "2026-09-12T08:21:00+07:00"
+    },
+    {
+      "entry_id": "e-4",
+      "case_id": "case-0031",
+      "seq": 4,
+      "kind": "assumption",
+      "statement": "Có thể gioăng đã lão hóa.",
+      "author": {
+        "type": "agent",
+        "id": "av-tech-0001",
+        "name": "Agent Kỹ thuật"
+      },
+      "sources": [],
+      "data_origin": "synthetic",
+      "check": {
+        "status": "demoted",
+        "reasons": [
+          "no_valid_source"
+        ]
+      },
+      "created_at": "2026-09-12T08:28:00+07:00"
+    },
+    {
+      "entry_id": "e-5",
+      "case_id": "case-0031",
+      "seq": 5,
+      "kind": "finding",
+      "statement": "Lau khô tủ bếp sau khi Kỹ thuật xác nhận hết rò.",
+      "author": {
+        "type": "agent",
+        "id": "av-clean-0001",
+        "name": "Agent Vệ sinh"
+      },
+      "sources": [
+        {
+          "type": "passage",
+          "id": "doc:SOP-CLEAN-COMMON-01@2#san-uot-do-ro-nuoc"
+        }
+      ],
+      "data_origin": "synthetic",
+      "check": {
+        "status": "accepted",
+        "reasons": []
+      },
+      "created_at": "2026-09-12T08:35:00+07:00"
+    },
+    {
+      "entry_id": "e-6",
+      "case_id": "case-0031",
+      "seq": 6,
+      "kind": "agreement",
+      "statement": "Đồng ý khóa van trước.",
+      "author": {
+        "type": "agent",
+        "id": "av-clean-0001",
+        "name": "Agent Vệ sinh"
+      },
+      "sources": [],
+      "data_origin": "synthetic",
+      "check": {
+        "status": "accepted",
+        "reasons": []
+      },
+      "created_at": "2026-09-12T09:42:00+07:00",
+      "target_entry_id": "e-3"
+    },
+    {
+      "entry_id": "e-7",
+      "case_id": "case-0031",
+      "seq": 7,
+      "kind": "plan_step",
+      "statement": "Kỹ thuật: khóa van cấp nước của căn hộ.",
+      "author": {
+        "type": "agent",
+        "id": "av-supervisor",
+        "name": "Supervisor"
+      },
+      "sources": [
+        {
+          "type": "entry",
+          "id": "e-3"
+        }
+      ],
+      "data_origin": "synthetic",
+      "check": {
+        "status": "accepted",
+        "reasons": []
+      },
+      "created_at": "2026-09-12T09:49:00+07:00",
+      "plan_version": 1,
+      "step_index": 0
+    },
+    {
+      "entry_id": "e-8",
+      "case_id": "case-0031",
+      "seq": 8,
+      "kind": "plan_step",
+      "statement": "Kỹ thuật: thay gioăng đầu nối và thử áp 15 phút.",
+      "author": {
+        "type": "agent",
+        "id": "av-supervisor",
+        "name": "Supervisor"
+      },
+      "sources": [
+        {
+          "type": "entry",
+          "id": "e-3"
+        }
+      ],
+      "data_origin": "synthetic",
+      "check": {
+        "status": "accepted",
+        "reasons": []
+      },
+      "created_at": "2026-09-12T09:56:00+07:00",
+      "plan_version": 1,
+      "step_index": 1
+    },
+    {
+      "entry_id": "e-9",
+      "case_id": "case-0031",
+      "seq": 9,
+      "kind": "plan_step",
+      "statement": "Vệ sinh: lau khô tủ bếp sau khi hết rò.",
+      "author": {
+        "type": "agent",
+        "id": "av-supervisor",
+        "name": "Supervisor"
+      },
+      "sources": [
+        {
+          "type": "entry",
+          "id": "e-5"
+        }
+      ],
+      "data_origin": "synthetic",
+      "check": {
+        "status": "accepted",
+        "reasons": []
+      },
+      "created_at": "2026-09-12T09:03:00+07:00",
+      "plan_version": 1,
+      "step_index": 2
+    },
+    {
+      "entry_id": "e-10",
+      "case_id": "case-0031",
+      "seq": 10,
+      "kind": "assignment",
+      "statement": "Giao lệnh việc kỹ thuật cho Kỹ thuật viên mẫu 04.",
+      "author": {
+        "type": "system",
+        "id": "dispatch",
+        "name": "Điều phối"
+      },
+      "sources": [
+        {
+          "type": "entry",
+          "id": "e-7"
+        }
+      ],
+      "data_origin": "synthetic",
+      "check": {
+        "status": "accepted",
+        "reasons": []
+      },
+      "created_at": "2026-09-12T09:10:00+07:00"
+    },
+    {
+      "entry_id": "e-11",
+      "case_id": "case-0031",
+      "seq": 11,
+      "kind": "result",
+      "statement": "Đã thay gioăng đầu nối, thử áp 15 phút không rò. Vật tư: 1 gioăng cao su. Chi phí 150.000 đồng. Thời gian 40 phút.",
+      "author": {
+        "type": "human",
+        "id": "staff-0004",
+        "name": "Kỹ thuật viên mẫu 04"
+      },
+      "sources": [
+        {
+          "type": "file",
+          "id": "file:before-0031"
+        },
+        {
+          "type": "file",
+          "id": "file:after-0031"
+        }
+      ],
+      "data_origin": "synthetic",
+      "check": {
+        "status": "accepted",
+        "reasons": []
+      },
+      "created_at": "2026-09-12T09:17:00+07:00"
+    },
+    {
+      "entry_id": "e-12",
+      "case_id": "case-0031",
+      "seq": 12,
+      "kind": "result",
+      "statement": "Cư dân xác nhận đã hết rò.",
+      "author": {
+        "type": "human",
+        "id": "resident-0001",
+        "name": "Cư dân mẫu 01"
+      },
+      "sources": [
+        {
+          "type": "message",
+          "id": "msg:51f3"
+        }
+      ],
+      "data_origin": "synthetic",
+      "check": {
+        "status": "accepted",
+        "reasons": []
+      },
+      "created_at": "2026-09-12T010:24:00+07:00"
+    }
+  ]
+}

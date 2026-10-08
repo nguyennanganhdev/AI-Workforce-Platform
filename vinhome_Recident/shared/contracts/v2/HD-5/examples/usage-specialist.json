@@ -1,0 +1,16 @@
+{
+  "usage_id": "run-77c1:t1:call-1",
+  "case_id": "case-0100",
+  "run_id": "run-77c1",
+  "agent_version_id": "av-tech-0001",
+  "role": "specialist",
+  "phase": "independent",
+  "provider": "openai",
+  "model": "gpt-5.5",
+  "input_tokens": 4100,
+  "cached_input_tokens": 2600,
+  "output_tokens": 610,
+  "started_at": "2026-10-22T09:02:05+07:00",
+  "duration_ms": 8400,
+  "status": "ok"
+}

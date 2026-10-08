@@ -1,0 +1,725 @@
+.ops-admin {
+  width: 100%;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 20px;
+}
+.ops-admin-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  min-height: 34px;
+}
+.ops-admin-heading > div {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+.ops-admin-heading h1 {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  margin: 0;
+}
+.ops-admin-heading span {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.ops-admin :is(button, input),
+.ops-admin-drawer :is(button, input),
+.ops-admin-confirm button {
+  border-radius: var(--r-control);
+  font-size: 13px;
+  line-height: 20px;
+}
+.ops-admin [data-slot="button"],
+.ops-admin-drawer [data-slot="button"] {
+  height: 34px;
+  box-shadow: none;
+  cursor: pointer;
+}
+.ops-admin [data-slot="input"],
+.ops-admin-drawer [data-slot="input"] {
+  height: 34px;
+  border-color: var(--line);
+  box-shadow: none;
+  background: var(--surface);
+  color: var(--ink);
+}
+.ops-admin :is(button, a, input):focus-visible,
+.ops-admin-drawer :is(button, a, input):focus-visible,
+.ops-admin-select:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+.ops-admin-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+.ops-admin-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.ops-admin-panel-title h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+.ops-admin-panel-title > span {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.ops-admin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.ops-admin-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: var(--r-control);
+  padding: 2px;
+  background: var(--sunken);
+}
+.ops-admin-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-weight: 500;
+  padding: 0 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ops-admin-tabs button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--ink);
+}
+.ops-admin-tabs button span {
+  font-weight: 400;
+  color: var(--ink-3);
+}
+.ops-admin-search {
+  display: flex;
+  align-items: center;
+  position: relative;
+  min-width: 180px;
+  flex: 1;
+  max-width: 340px;
+}
+.ops-admin-search > svg {
+  position: absolute;
+  left: 10px;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+.ops-admin-search input {
+  padding-left: 32px;
+  width: 100%;
+}
+.ops-admin-select {
+  height: 34px !important;
+  min-width: 110px;
+  background: var(--surface);
+  border-color: var(--line);
+  border-radius: var(--r-control) !important;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.ops-admin-menu {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-overlay);
+}
+.ops-admin-export {
+  margin-left: auto;
+  color: var(--ink-2);
+}
+.ops-admin-table-wrap {
+  overflow: auto;
+  max-width: 100%;
+  position: relative;
+}
+.ops-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.ops-admin-table th {
+  height: 40px;
+  padding: 0 16px;
+  background: var(--canvas);
+  color: var(--ink-3);
+  font-weight: 500;
+  border-bottom: 1px solid var(--line);
+}
+.ops-admin-table td {
+  padding: 10px 16px;
+  height: 56px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.ops-admin-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.ops-admin-table tbody tr:hover {
+  background: var(--canvas);
+}
+.ops-admin-table tbody tr[data-selected="true"] {
+  background: var(--action-soft);
+}
+.ops-admin-row-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 160px;
+}
+.ops-admin-row-title button {
+  display: block;
+  background: none;
+  border: 0;
+  text-align: left;
+  color: var(--ink);
+  font-weight: 500;
+  padding: 0;
+  cursor: pointer;
+  font-size: 13px;
+}
+.ops-admin-row-title button:hover {
+  color: var(--action);
+}
+.ops-admin-row-title small {
+  display: block;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 400;
+}
+.ops-admin-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-pill);
+  background: var(--sunken);
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.ops-admin-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--sunken);
+  color: var(--ink-2);
+}
+.ops-admin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.ops-admin-badge > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.ops-admin-badge-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.ops-admin-badge-wait {
+  background: var(--wait-soft);
+  color: var(--wait);
+}
+.ops-admin-badge-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.ops-admin-badge-neutral {
+  background: var(--sunken);
+  color: var(--ink-2);
+}
+.ops-admin-badge-agent {
+  background: var(--agent-soft);
+  color: var(--agent);
+}
+.ops-admin-table-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.ops-admin-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+  color: var(--ink-2);
+  padding: 32px 16px;
+}
+.ops-admin-state p {
+  margin: 0;
+}
+.ops-admin-loading {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+.ops-admin-pending {
+  border-color: var(--wait);
+  margin-bottom: 16px;
+}
+.ops-admin-pending > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--wait-soft);
+  color: var(--wait);
+  padding: 12px 16px;
+  font-weight: 500;
+}
+.ops-admin-pending-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-top: 1px solid var(--line);
+}
+.ops-admin-pending-row > div:first-of-type {
+  flex: 1;
+}
+.ops-admin-pending-row p {
+  margin: 0;
+  font-weight: 500;
+}
+.ops-admin-pending-row small {
+  color: var(--ink-3);
+}
+.ops-admin-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.ops-admin-danger {
+  color: var(--danger) !important;
+  background: var(--surface) !important;
+  border-color: var(--line-strong) !important;
+}
+.ops-admin-success {
+  color: var(--ok);
+  font-size: 13px;
+}
+.ops-admin-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+.ops-admin-muted {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.ops-admin-link {
+  color: var(--action);
+  font-size: 13px;
+  text-decoration: none;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+}
+.ops-admin-bulk {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--action-soft);
+  border-bottom: 1px solid var(--line);
+}
+.ops-admin-bulk > span {
+  margin-right: auto;
+}
+.ops-admin-drawer[data-slot="sheet-content"] {
+  width: 420px;
+  max-width: 100%;
+  gap: 0;
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+  box-shadow: var(--shadow-overlay);
+}
+.ops-admin-drawer [data-slot="sheet-header"] {
+  position: relative;
+  padding: 20px;
+  border-bottom: 1px solid var(--line);
+  padding-right: 52px;
+}
+.ops-admin-drawer-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+.ops-admin-drawer [data-slot="sheet-title"] {
+  font-size: 16px;
+  color: var(--ink);
+}
+.ops-admin-drawer [data-slot="sheet-description"] {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.ops-admin-drawer-body {
+  padding: 20px;
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+}
+.ops-admin-drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.ops-admin-drawer-footer > .ops-admin-danger {
+  margin-right: auto;
+}
+.ops-admin-form {
+  display: grid;
+  gap: 16px;
+}
+.ops-admin-form label {
+  display: grid;
+  gap: 6px;
+  font-weight: 500;
+  font-size: 13px;
+}
+.ops-admin-form label small {
+  font-weight: 400;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.ops-admin-form .ops-admin-select {
+  width: 100%;
+}
+.ops-admin-form p {
+  margin: 0;
+}
+.ops-admin-check-list {
+  display: grid;
+  gap: 12px;
+}
+.ops-admin-check-list label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-weight: 400;
+}
+.ops-admin-check-list label > span {
+  min-width: 0;
+}
+.ops-admin-check-list label small {
+  display: block;
+}
+.ops-admin-detail {
+  display: grid;
+  gap: 16px;
+}
+.ops-admin-detail dt {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-bottom: 4px;
+}
+.ops-admin-detail dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ops-admin-detail pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  background: var(--canvas);
+  border-radius: var(--r-control);
+  padding: 12px;
+}
+.ops-admin-confirm {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+  border-radius: var(--r-panel);
+  box-shadow: var(--shadow-overlay);
+}
+.ops-admin-confirm [data-slot="dialog-description"] {
+  color: var(--ink-2);
+}
+.ops-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.ops-admin-grid .ops-admin-panel {
+  margin: 0;
+}
+.ops-admin-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.ops-admin-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  text-decoration: none;
+  color: var(--ink);
+}
+.ops-admin-metric > span {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.ops-admin-metric strong {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+}
+.ops-admin-metric small {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.ops-admin-metric[data-tone="danger"] strong {
+  color: var(--danger);
+}
+.ops-admin-metric[data-tone="wait"] strong {
+  color: var(--wait);
+}
+.ops-admin-health-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.ops-admin-health-row:last-child {
+  border-bottom: 0;
+}
+.ops-admin-health-row > svg {
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+.ops-admin-health-row > strong {
+  font-weight: 500;
+}
+.ops-admin-health-row > .ops-admin-badge {
+  margin-left: auto;
+}
+.ops-admin-health-row > small {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.ops-admin-attention-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.ops-admin-attention-row:last-child {
+  border-bottom: 0;
+}
+.ops-admin-attention-row > div {
+  flex: 1;
+}
+.ops-admin-attention-row strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.ops-admin-attention-row p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.ops-admin-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 156px;
+  margin: 24px 16px 8px;
+}
+.ops-admin-chart > div {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+}
+.ops-admin-chart > div > span {
+  display: block;
+  width: 100%;
+  min-height: 2px;
+  background: var(--action-soft);
+  border-radius: 4px 4px 0 0;
+}
+.ops-admin-chart > div:last-child > span {
+  background: var(--action);
+}
+.ops-admin-chart-labels {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 16px 16px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.ops-admin-audit-table td {
+  height: 44px;
+  padding: 8px 16px;
+}
+.ops-admin-actor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ops-admin-actor > span {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--sunken);
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ops-admin-actor[data-kind="agent"] > span {
+  background: var(--agent-soft);
+  color: var(--agent);
+}
+.ops-admin-tabs-page {
+  display: flex;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  margin: 0 0 20px;
+}
+.ops-admin-tabs-page button {
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.ops-admin-tabs-page button[aria-pressed="true"] {
+  border-bottom-color: var(--action);
+  color: var(--ink);
+}
+@media (max-width: 1000px) {
+  .ops-admin-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ops-admin-grid {
+    grid-template-columns: 1fr;
+  }
+  .ops-admin-health-row {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 767px) {
+  .ops-admin-heading {
+    align-items: flex-start;
+  }
+  .ops-admin-heading > div {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .ops-admin-search {
+    flex-basis: 100%;
+    max-width: none;
+    order: 1;
+  }
+  .ops-admin-tabs {
+    max-width: 100%;
+    overflow: auto;
+  }
+  .ops-admin [data-slot="button"],
+  .ops-admin-drawer [data-slot="button"],
+  .ops-admin-tabs button,
+  .ops-admin-select {
+    min-height: 44px;
+  }
+  .ops-admin-pending-row {
+    flex-wrap: wrap;
+  }
+  .ops-admin-pending-row > .ops-admin-actions {
+    margin-left: 44px;
+  }
+  .ops-admin-metrics {
+    gap: 8px;
+  }
+  .ops-admin-metric {
+    padding: 12px;
+  }
+  .ops-admin-table th,
+  .ops-admin-table td {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .ops-admin-bulk {
+    flex-wrap: wrap;
+  }
+  .ops-admin-drawer[data-slot="sheet-content"] {
+    width: 100%;
+  }
+  .ops-admin-health-row > .ops-admin-badge {
+    margin-left: 0;
+  }
+  .ops-admin-health-row > strong {
+    flex: 1;
+  }
+}
+
+.ops-admin svg,
+.ops-admin-drawer svg {
+  stroke-width: 1.75;
+}
+
+.ops-ui .ops-admin-heading h1{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

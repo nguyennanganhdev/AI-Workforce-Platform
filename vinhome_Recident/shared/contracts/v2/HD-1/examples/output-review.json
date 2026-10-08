@@ -1,0 +1,53 @@
+{
+  "summary": "Đồng ý khóa van trước; phản đối lau sàn trước khi xác nhận hết rò.",
+  "findings": [
+    {
+      "key": "f1",
+      "kind": "assessment",
+      "statement": "Đặt biển cảnh báo sàn ướt ngay, chỉ lau sau khi Kỹ thuật xác nhận hết rò.",
+      "sources": [
+        {
+          "type": "passage",
+          "id": "doc:SOP-CLEAN-COMMON-01@2#san-uot-do-ro-nuoc"
+        }
+      ]
+    }
+  ],
+  "proposals": [
+    {
+      "step": "Đặt biển cảnh báo tại bếp và lối đi.",
+      "department": "Vệ sinh",
+      "after": [],
+      "based_on": [
+        {
+          "type": "finding",
+          "id": "f1"
+        }
+      ]
+    }
+  ],
+  "objections": [
+    {
+      "target_entry_id": "e-7",
+      "reason": "Bước lau phải xếp sau bước xác nhận hết rò.",
+      "sources": [
+        {
+          "type": "passage",
+          "id": "doc:SOP-CLEAN-COMMON-01@2#san-uot-do-ro-nuoc"
+        }
+      ]
+    }
+  ],
+  "agreements": [
+    {
+      "target_entry_id": "e-5"
+    }
+  ],
+  "questions": [
+    {
+      "to": "agent",
+      "agent_version_id": "av-tech-0001",
+      "text": "Sau khi thay đầu nối cần chờ bao lâu mới xác nhận hết rò?"
+    }
+  ]
+}

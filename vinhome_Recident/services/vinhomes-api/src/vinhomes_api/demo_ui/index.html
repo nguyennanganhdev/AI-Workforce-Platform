@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vinhomes · Chạy thử API V3</title>
+  <link rel="stylesheet" href="/demo/assets/style.css">
+  <script src="/demo/assets/app.js" defer></script>
+</head>
+<body>
+<header><h1>Chạy thử API V3</h1><p>Dữ liệu demo được lưu trong PostgreSQL. Mỗi lần gửi POST, PUT hoặc PATCH có thể thay đổi dữ liệu.</p></header>
+<main>
+  <section class="toolbar" aria-label="Kết nối">
+    <label>Vai trò <select id="actor"><option value="resident">Cư dân</option><option value="management">Ban quản lý</option><option value="technical">Kỹ thuật</option><option value="security">Bảo vệ</option><option value="admin">Quản trị viên</option></select></label>
+    <button id="fixtures" type="button">Lấy dữ liệu mẫu / ID</button><a href="/docs" target="_blank" rel="noopener">Swagger</a>
+    <span id="connection" role="status">Đang tải danh sách API…</span>
+  </section>
+  <details open><summary>Thứ tự chạy các luồng</summary><div id="flows"></div><p>Chọn từng bước để mở endpoint. Chuyển vai trò theo hướng dẫn, lấy ID từ phản hồi và dùng phiên bản mới nhất trước mỗi lần ghi. Các bước chỉ gửi khi bạn bấm nút.</p></details>
+  <div class="workspace">
+    <aside><label>Tìm endpoint <input id="search" type="search" placeholder="water, qc, tickets…"></label><label>Nhóm API <select id="group"><option value="">Tất cả</option></select></label><p id="count"></p><nav id="endpoints" aria-label="Danh sách API"></nav></aside>
+    <section aria-labelledby="operation-title">
+      <h2 id="operation-title">Chọn endpoint để bắt đầu</h2><p id="description"></p>
+      <form id="request-form">
+        <div id="parameters"></div>
+        <div id="json-body" hidden><label for="body">Nội dung JSON (mẫu gồm trường bắt buộc; thêm trường tùy chọn theo schema nếu luồng cần)</label><textarea id="body" rows="12" spellcheck="false"></textarea><button id="template" type="button">Điền lại mẫu theo schema</button></div>
+        <div id="file-body" hidden><label>Ảnh bằng chứng <input id="file" type="file" accept="image/png,image/jpeg,image/webp"></label></div>
+        <p id="body-note"></p><details><summary>Schema request</summary><pre id="schema"></pre></details>
+        <button id="send" type="submit" disabled>Gửi request</button>
+      </form>
+      <h2>Phản hồi</h2><p id="result-status" role="status" aria-live="polite">Chưa gửi request.</p>
+      <div id="download"></div><pre id="response" tabindex="0"></pre><div id="save-values"></div>
+    </section>
+  </div>
+  <details open><summary>ID dùng cho các bước tiếp theo</summary><p>Chọn “Dùng giá trị” ở phản hồi để điền ID vào trường tương ứng. Chỉ lưu trong bộ nhớ của trang, tải lại sẽ mất.</p><div id="variables"></div></details>
+  <section><h2>Lịch sử trong phiên</h2><p>Chọn một dòng để xem lại phản hồi. Khi gặp 409, đọc lại chi tiết tài nguyên để lấy version mới; không tự gửi lại thao tác ghi.</p><ol id="history"></ol></section>
+</main>
+</body></html>

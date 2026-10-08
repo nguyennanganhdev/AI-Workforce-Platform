@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "contract": {
+      "const": "HD-1"
+    },
+    "version": {
+      "const": 1
+    },
+    "phase": {
+      "enum": [
+        "independent",
+        "review"
+      ]
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "agent_version_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "department": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "not_in_scope": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "agent_version_id",
+        "name",
+        "department",
+        "scope",
+        "not_in_scope"
+      ]
+    },
+    "rules": {
+      "type": "string",
+      "minLength": 1
+    },
+    "directory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "agent_version_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "department": {
+            "type": "string",
+            "minLength": 1
+          },
+          "handles": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "agent_version_id",
+          "name",
+          "department",
+          "handles",
+          "tools"
+        ]
+      }
+    },
+    "memory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "memory_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_case_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "data_origin": {
+            "enum": [
+              "real",
+              "public",
+              "team_written",
+              "synthetic",
+              "test_run"
+            ]
+          }
+        },
+        "required": [
+          "memory_id",
+          "subject",
+          "summary",
+          "source_case_id",
+          "data_origin"
+        ]
+      }
+    },
+    "case_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "entry_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "enum": [
+                  "fact",
+                  "finding",
+                  "assumption",
+                  "objection",
+                  "agreement",
+                  "question",
+                  "plan_step",
+                  "assignment",
+                  "result"
+                ]
+              },
+              "author": {
+                "type": "string",
+                "minLength": 1
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "tool_result",
+                        "passage",
+                        "message",
+                        "file",
+                        "entry",
+                        "finding"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "id"
+                  ]
+                }
+              },
+              "data_origin": {
+                "enum": [
+                  "real",
+                  "public",
+                  "team_written",
+                  "synthetic",
+                  "test_run"
+                ]
+              }
+            },
+            "required": [
+              "entry_id",
+              "kind",
+              "author",
+              "statement",
+              "sources",
+              "data_origin"
+            ]
+          }
+        }
+      },
+      "required": [
+        "case_id",
+        "entries"
+      ]
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "task_id",
+        "instruction"
+      ]
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_tool_rounds": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "max_output_tokens",
+        "max_tool_rounds"
+      ]
+    }
+  },
+  "required": [
+    "contract",
+    "version",
+    "phase",
+    "agent",
+    "rules",
+    "directory",
+    "memory",
+    "case_file",
+    "task",
+    "limits"
+  ],
+  "title": "HD-1 đầu vào của một lượt agent"
+}

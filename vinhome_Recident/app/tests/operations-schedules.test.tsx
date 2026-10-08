@@ -1,0 +1,90 @@
+import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { typeInto } from "./type-into";
+
+let cleanup: typeof import("@testing-library/react")["cleanup"];
+let render: typeof import("@testing-library/react")["render"];
+let waitFor: typeof import("@testing-library/react")["waitFor"];
+let fireEvent: typeof import("@testing-library/react")["fireEvent"];
+const originalFetch = globalThis.fetch;
+beforeAll(async () => {
+  GlobalRegistrator.register({ url: "http://localhost:3020/operations/agents" });
+  ({ cleanup, render, waitFor, fireEvent } = await import("@testing-library/react/pure"));
+});
+afterEach(() => { cleanup(); globalThis.fetch = originalFetch; });
+// The last query's refetch timer would otherwise fire after the window is gone.
+afterAll(() => new Promise<void>((done) => setTimeout(() => { GlobalRegistrator.unregister(); done(); }, 50)));
+
+test("management reads an agent's schedules in plain words, sets a weekly one, and sees why one was refused", async () => {
+  const { QueryClientProvider } = await import("@tanstack/react-query");
+  const { queryClient } = await import("../src/query-client");
+  const { AgentSchedules } = await import("../src/features/vinhomes-operations/connected/AgentSchedules");
+  const sent: { method: string; url: string; body: unknown }[] = [];
+  const routine = { id: "routine_1", agent_id: "report", agent_name: "Agent Báo cáo", owner_name: "Trần Thị Bình", instruction: "Tóm tắt yêu cầu hôm qua.",
+    cron: "0 8 * * 1,2,3,4,5", enabled: true, next_run_at: "2026-10-06T01:00:00Z", schedule: { hour: 8, minute: 0, days: [1, 2, 3, 4, 5] },
+    last_status: "failed", last_run_at: "2026-10-05T01:00:00Z", last_error: "Agent không trả lời được." };
+  let items = [routine, { ...routine, id: "routine_other", agent_id: "security", instruction: "Của agent khác." }];
+  let full = true;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input), "http://localhost").pathname;
+    const method = init?.method || "GET";
+    if (method === "GET") return Response.json({ items, timezone: "Asia/Ho_Chi_Minh" });
+    sent.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    if (method === "POST" && full) { full = false; return Response.json({ detail: "Người đặt lịch đã có 20 lịch đang bật. Tắt bớt một lịch trước." }, { status: 409 }); }
+    if (method === "PUT" && url.endsWith("/enabled")) items = items.map((item) => item.id === "routine_1" ? { ...item, enabled: false } : item);
+    else if (method === "PUT") items = items.map((item) => item.id === "routine_1" ? { ...item, instruction: "Tóm tắt yêu cầu hôm qua, kèm số quá hạn.",
+      cron: "15 9 * * *", schedule: { hour: 9, minute: 15, days: [] } } : item);
+    if (method === "DELETE") items = items.filter((item) => item.id !== "routine_1");
+    return Response.json({ id: "routine_2" }, { status: method === "POST" ? 201 : 200 });
+  }) as typeof fetch;
+  const view = render(<QueryClientProvider client={queryClient}><AgentSchedules roomId="room-1" agentId="report" /></QueryClientProvider>);
+
+  const list = await view.findByRole("list", { name: "Lịch đã đặt" });
+  expect(list.textContent).toContain("Thứ Hai đến Thứ Sáu lúc 08:00");
+  // 01:00 UTC is read as 08:00 in Việt Nam whatever the browser's own zone.
+  expect(list.textContent).toContain("Lần tới: 08:00 Thứ Ba, 06/10");
+  expect(list.textContent).toContain("lỗi · Agent không trả lời được.");
+  expect(list.textContent).toContain("Đặt bởi Trần Thị Bình");
+  // Only this agent's schedules, and never the expression itself.
+  expect(list.textContent).not.toContain("Của agent khác");
+  expect(document.body.textContent).not.toContain("* *");
+
+  const submit = view.getByRole("button", { name: "Đặt lịch" }) as HTMLButtonElement;
+  expect(submit.disabled).toBe(true);
+  await typeInto(view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy"), " Báo cáo tuần. ");
+  const {selectOption} = await import('./type-into');
+  await selectOption(view.getByRole('combobox',{name:'Lặp lại'}),'Hằng tuần');
+  await selectOption(view.getByRole('combobox',{name:'Vào'}),'Thứ Sáu');
+  await typeInto(view.getByLabelText("Lúc"), "16:30");
+  fireEvent.click(submit);
+  expect((await view.findByRole("alert")).textContent).toContain("đã có 20 lịch đang bật");
+  // The refused instruction is still there to send again.
+  fireEvent.click(view.getByRole("button", { name: "Đặt lịch" }));
+  await waitFor(() => expect((view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy") as HTMLTextAreaElement).value).toBe(""));
+  expect(sent.at(-1)).toEqual({ method: "POST", url: "/api/business/rooms/room-1/routines",
+    body: { agent_id: "report", instruction: "Báo cáo tuần.", hour: 16, minute: 30, days: [5] } });
+
+  // Changing a schedule fills the form with what it holds; saving sends the new timing and never another agent.
+  fireEvent.click(view.getByRole("button", { name: /Sửa lịch/ }));
+  expect((view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy") as HTMLTextAreaElement).value).toBe("Tóm tắt yêu cầu hôm qua.");
+  expect(view.getByRole('combobox',{name:'Lặp lại'}).textContent).toContain('Thứ Hai đến Thứ Sáu');
+  expect((view.getByLabelText("Lúc") as HTMLInputElement).value).toBe("08:00");
+  await typeInto(view.getByLabelText("Chỉ dẫn gửi cho agent mỗi lần chạy"), "Tóm tắt yêu cầu hôm qua, kèm số quá hạn.");
+  await selectOption(view.getByRole('combobox',{name:'Lặp lại'}),'Hằng ngày');
+  await typeInto(view.getByLabelText("Lúc"), "09:15");
+  fireEvent.click(view.getByRole("button", { name: "Lưu thay đổi" }));
+  await waitFor(() => expect(view.getByRole("list", { name: "Lịch đã đặt" }).textContent).toContain("Hằng ngày lúc 09:15"));
+  expect(sent.at(-1)).toEqual({ method: "PUT", url: "/api/business/rooms/room-1/routines/routine_1",
+    body: { instruction: "Tóm tắt yêu cầu hôm qua, kèm số quá hạn.", hour: 9, minute: 15, days: [] } });
+  // The form is back to making a new one.
+  expect(view.getByRole("button", { name: "Đặt lịch" })).toBeTruthy();
+
+  fireEvent.click(view.getByRole("button", { name: "Tắt" }));
+  await view.findByRole("button", { name: "Bật" });
+  expect(sent.at(-1)).toEqual({ method: "PUT", url: "/api/business/rooms/room-1/routines/routine_1/enabled", body: { enabled: false } });
+  expect(view.getByRole("list", { name: "Lịch đã đặt" }).textContent).not.toContain("Lần tới");
+  fireEvent.click(view.getByRole("button", { name: /Xóa lịch/ }));
+  fireEvent.click(await view.findByRole('button',{name:'Xóa lịch'}));
+  await view.findByText("Agent này chưa có lịch nào.");
+  expect(sent.at(-1)).toEqual({ method: "DELETE", url: "/api/business/rooms/room-1/routines/routine_1", body: undefined });
+});

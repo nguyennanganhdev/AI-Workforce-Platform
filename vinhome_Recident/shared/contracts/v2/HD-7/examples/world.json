@@ -1,0 +1,15 @@
+{
+  "world_version": "2026-10-12",
+  "buildings": [
+    "S1.01",
+    "S1.02",
+    "S2.01"
+  ],
+  "demo_unit": "S1.01-1201",
+  "id_rules": {
+    "unit": "<tòa>-<số căn>, ví dụ S1.01-1201",
+    "resident": "resident-<4 số>",
+    "staff": "staff-<4 số>",
+    "asset": "asset-<tòa>-<loại>-<3 số>"
+  }
+}

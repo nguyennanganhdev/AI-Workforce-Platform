@@ -1,0 +1,262 @@
+[
+  {
+    "event_id": "ev-001",
+    "case_id": "case-0100",
+    "seq": 1,
+    "type": "session.started",
+    "at": "2026-10-22T09:02:03+07:00",
+    "actor": {
+      "type": "agent",
+      "id": "av-supervisor",
+      "name": "Supervisor"
+    },
+    "payload": {
+      "agents": [
+        "av-tech-0001",
+        "av-clean-0001"
+      ],
+      "subject": "Căn 1201, tòa S1.01"
+    }
+  },
+  {
+    "event_id": "ev-002",
+    "case_id": "case-0100",
+    "seq": 2,
+    "type": "phase.changed",
+    "at": "2026-10-22T09:02:06+07:00",
+    "actor": {
+      "type": "agent",
+      "id": "av-supervisor",
+      "name": "Supervisor"
+    },
+    "payload": {
+      "phase": "independent"
+    }
+  },
+  {
+    "event_id": "ev-003",
+    "case_id": "case-0100",
+    "seq": 3,
+    "type": "agent.started",
+    "at": "2026-10-22T09:02:09+07:00",
+    "actor": {
+      "type": "agent",
+      "id": "av-tech-0001",
+      "name": "Agent Kỹ thuật"
+    },
+    "payload": {
+      "task_id": "t1",
+      "activity": "Đang đọc hồ sơ"
+    }
+  },
+  {
+    "event_id": "ev-004",
+    "case_id": "case-0100",
+    "seq": 4,
+    "type": "agent.started",
+    "at": "2026-10-22T09:02:12+07:00",
+    "actor": {
+      "type": "agent",
+      "id": "av-clean-0001",
+      "name": "Agent Vệ sinh"
+    },
+    "payload": {
+      "task_id": "t2",
+      "activity": "Đang đọc hồ sơ"
+    }
+  },
+  {
+    "event_id": "ev-005",
+    "case_id": "case-0100",
+    "seq": 5,
+    "type": "agent.tool_call",
+    "at": "2026-10-22T09:02:15+07:00",
+    "actor": {
+      "type": "agent",
+      "id": "av-tech-0001",
+      "name": "Agent Kỹ thuật"
+    },
+    "payload": {
+      "tool": "technical.get_active_outage",
+      "status": "OK",
+      "source_id": "tool:3c9e1b7a"
+    }
+  },
+  {
+    "event_id": "ev-006",
+    "case_id": "case-0100",
+    "seq": 6,
+    "type": "entry.added",
+    "at": "2026-10-22T09:02:18+07:00",
+    "actor": {
+      "type": "agent",
+      "id": "av-tech-0001",
+      "name": "Agent Kỹ thuật"
+    },
+    "payload": {
+      "entry_id": "e-3",
+      "kind": "finding",
+      "statement": "Cần khóa van cấp nước của căn hộ trước khi tháo đầu nối."
+    }
+  },
+  {
+    "event_id": "ev-007",
+    "case_id": "case-0100",
+    "seq": 7,
+    "type": "entry.blocked",
+    "at": "2026-10-22T09:02:21+07:00",
+    "actor": {
+      "type": "agent",
+      "id": "av-tech-0001",
+      "name": "Agent Kỹ thuật"
+    },
+    "payload": {
+      "entry_id": "e-4",
+      "status": "demoted",
+      "reasons": [
+        "no_valid_source"
+      ],
+      "statement": "Có thể gioăng đã lão hóa."
+    }
+  },
+  {
+    "event_id": "ev-008",
+    "case_id": "case-0100",
+    "seq": 8,
+    "type": "agent.finished",
+    "at": "2026-10-22T09:02:24+07:00",
+    "actor": {
+      "type": "agent",
+      "id": "av-tech-0001",
+      "name": "Agent Kỹ thuật"
+    },
+    "payload": {
+      "task_id": "t1",
+      "summary": "Cần khóa van rồi thay đầu nối; nguyên nhân chưa xác định.",
+      "duration_ms": 8400,
+      "tokens": 5210
+    }
+  },
+  {
+    "event_id": "ev-009",
+    "case_id": "case-0100",
+    "seq": 9,
+    "type": "agent.finished",
+    "at": "2026-10-22T09:02:27+07:00",
+    "actor": {
+      "type": "agent",
+      "id": "av-clean-0001",
+      "name": "Agent Vệ sinh"
+    },
+    "payload": {
+      "task_id": "t2",
+      "summary": "Đặt biển cảnh báo, lau sau khi hết rò.",
+      "duration_ms": 6100,
+      "tokens": 3980
+    }
+  },
+  {
+    "event_id": "ev-010",
+    "case_id": "case-0100",
+    "seq": 10,
+    "type": "phase.changed",
+    "at": "2026-10-22T09:02:30+07:00",
+    "actor": {
+      "type": "agent",
+      "id": "av-supervisor",
+      "name": "Supervisor"
+    },
+    "payload": {
+      "phase": "review"
+    }
+  },
+  {
+    "event_id": "ev-011",
+    "case_id": "case-0100",
+    "seq": 11,
+    "type": "entry.added",
+    "at": "2026-10-22T09:02:33+07:00",
+    "actor": {
+      "type": "agent",
+      "id": "av-clean-0001",
+      "name": "Agent Vệ sinh"
+    },
+    "payload": {
+      "entry_id": "e-8",
+      "kind": "objection",
+      "target_entry_id": "e-7",
+      "statement": "Bước lau phải xếp sau bước xác nhận hết rò."
+    }
+  },
+  {
+    "event_id": "ev-012",
+    "case_id": "case-0100",
+    "seq": 12,
+    "type": "phase.changed",
+    "at": "2026-10-22T09:02:36+07:00",
+    "actor": {
+      "type": "agent",
+      "id": "av-supervisor",
+      "name": "Supervisor"
+    },
+    "payload": {
+      "phase": "merge"
+    }
+  },
+  {
+    "event_id": "ev-013",
+    "case_id": "case-0100",
+    "seq": 13,
+    "type": "entry.added",
+    "at": "2026-10-22T09:02:39+07:00",
+    "actor": {
+      "type": "agent",
+      "id": "av-supervisor",
+      "name": "Supervisor"
+    },
+    "payload": {
+      "entry_id": "e-9",
+      "kind": "plan_step",
+      "plan_version": 1,
+      "step_index": 0,
+      "statement": "Kỹ thuật: khóa van cấp nước của căn hộ."
+    }
+  },
+  {
+    "event_id": "ev-014",
+    "case_id": "case-0100",
+    "seq": 14,
+    "type": "metrics.updated",
+    "at": "2026-10-22T09:02:42+07:00",
+    "actor": {
+      "type": "system",
+      "id": "ledger",
+      "name": "Sổ chi phí"
+    },
+    "payload": {
+      "tokens_in": 14200,
+      "tokens_out": 2100,
+      "cost": 0.031,
+      "currency": "USD",
+      "findings_total": 5,
+      "findings_sourced": 4,
+      "entries_demoted": 1
+    }
+  },
+  {
+    "event_id": "ev-015",
+    "case_id": "case-0100",
+    "seq": 15,
+    "type": "session.waiting",
+    "at": "2026-10-22T09:02:45+07:00",
+    "actor": {
+      "type": "agent",
+      "id": "av-supervisor",
+      "name": "Supervisor"
+    },
+    "payload": {
+      "waiting_for": "customer",
+      "reason": "Chờ cư dân đồng ý phương án"
+    }
+  }
+]

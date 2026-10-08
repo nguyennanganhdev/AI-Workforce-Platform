@@ -1,0 +1,201 @@
+"""Evidence images of a ticket. Stored on a private disk root or in a bucket (see storage.py)."""
+
+import hashlib
+import io
+import os
+from pathlib import Path
+from typing import Annotated, Literal
+from uuid import UUID, uuid4
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from PIL import Image, UnidentifiedImageError
+from fastapi.responses import Response
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from . import storage as object_storage
+from .v3_auth import scoped_connection
+from .v3_mutations import record_event, visible_ticket
+
+router = APIRouter(tags=["Vinhomes V3 files"])
+Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
+FILE_ROOT = Path(os.getenv("VINHOMES_RESIDENT_FILE_ROOT", str(Path(__file__).resolve().parents[2] / ".local-v3-files"))).resolve()
+MAX_FILE_BYTES = 10 * 1024 * 1024
+MAGIC = {"image/jpeg": b"\xff\xd8\xff", "image/png": b"\x89PNG\r\n\x1a\n",
+         "image/webp": b"RIFF"}
+EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+
+
+def local_only(request: Request) -> None:
+    settings = request.app.state.settings
+    # The rule below is about this host's disk. A bucket is reached with its own credentials.
+    if object_storage.provider() == 's3':
+        return
+    # Disk storage is refused off loopback so a development setting cannot end up serving a public
+    # host by accident. A container listens on every interface of its own network by design; there
+    # the operator states, with a setting of its own, that the file root is a volume it looks after.
+    if settings.volume_file_storage:
+        return
+    if not (settings.local_file_storage or settings.resident_local_storage or settings.dev_user_id or settings.demo_mode) or settings.host not in {"127.0.0.1", "localhost", "::1"}:
+        raise HTTPException(503, "Private local storage must be explicitly enabled on a loopback host")
+
+
+def validate_image(data: bytes, mime_type: str) -> None:
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            if image.format != {"image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WEBP"}[mime_type]:
+                raise ValueError("Image type mismatch")
+            image.verify()
+        with Image.open(io.BytesIO(data)) as image:
+            image.load()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise HTTPException(422, "Invalid or oversized image") from exc
+
+
+@router.post("/tickets/{ticket_id}/files", status_code=201,
+             summary="Upload an authenticated ticket evidence image")
+async def upload_ticket_file(
+    ticket_id: UUID,
+    request: Request,
+    scope: Scope,
+    filename: str = Query(..., min_length=1, max_length=255),
+    mime_type: Literal["image/jpeg", "image/png", "image/webp"] = Query(..., alias="mimeType"),
+    purpose: Literal["issue", "before", "after", "other"] = "issue",
+) -> dict[str, object]:
+    local_only(request)
+    if filename != Path(filename).name or any(ord(ch) < 32 for ch in filename):
+        raise HTTPException(422, "filename must be a plain file name")
+    ticket = await visible_ticket(scope, ticket_id, lock=True)
+    data = bytearray()
+    async for chunk in request.stream():
+        if len(data) + len(chunk) > MAX_FILE_BYTES:
+            raise HTTPException(413, "Image exceeds the 10 MB local limit")
+        data.extend(chunk)
+    validate_image(data, mime_type)
+    location = await scope[0].execute(text("""
+        select id, tenant_prefix from storage_locations where provider=:provider
+          and purpose='evidence' and status='active'
+        order by created_at limit 1
+    """), {"provider": object_storage.provider()})
+    storage = location.mappings().first()
+    if storage is None:
+        raise HTTPException(503, "Local V3 evidence storage is not configured")
+    location_id = storage["id"]
+    file_id = uuid4()
+    object_id = uuid4()
+    object_key = f"{storage['tenant_prefix']}{file_id.hex}{EXT[mime_type]}"
+    try:
+        file_path = object_storage.at(FILE_ROOT, object_key)
+    except ValueError:
+        raise HTTPException(503, "Invalid local evidence storage prefix") from None
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    size = len(data)
+    header = data[:12]
+    if size > MAX_FILE_BYTES:
+        raise HTTPException(413, "Image exceeds the 10 MB local limit")
+    if size == 0 or not header.startswith(MAGIC[mime_type]):
+        raise HTTPException(422, "Image content does not match mimeType")
+    if mime_type == "image/webp" and header[8:12] != b"WEBP":
+        raise HTTPException(422, "Image content does not match mimeType")
+    digest = hashlib.sha256(data)
+    try:
+        with file_path.open("xb") as output:
+            output.write(data)
+    except BaseException:
+        file_path.unlink(missing_ok=True)
+        raise
+    principal = await scope[0].execute(text("""
+        select id from execution_principals
+        where kind='user' and user_id=:user_id and status='active' limit 1
+    """), {"user_id": scope[1]})
+    principal_id = principal.scalar_one_or_none()
+    if principal_id is None:
+        result = await scope[0].execute(text("""
+            insert into execution_principals
+              (tenant_id,kind,user_id,status)
+            values (nullif(current_setting('app.tenant_id',true),'')::uuid,
+              'user',:user_id,'active') returning id
+        """), {"user_id": scope[1]})
+        principal_id = result.scalar_one()
+    await scope[0].execute(text("""
+        insert into files
+          (id,tenant_id,uploaded_by,original_name,owner_principal_id,
+           scope_kind,ticket_id,status,declared_mime_type)
+        values (:id,nullif(current_setting('app.tenant_id',true),'')::uuid,
+          :user_id,:filename,:principal_id,'ticket',:ticket_id,'staged',:mime_type)
+    """), {"id": file_id, "user_id": scope[1], "filename": filename,
+           "principal_id": principal_id, "ticket_id": ticket_id,
+           "mime_type": mime_type})
+    await scope[0].execute(text("""
+        insert into file_objects
+          (id,tenant_id,file_id,location_id,object_key,version_id,variant,
+           mime_type,size_bytes,sha256,scan_status,verified_at,
+           encryption_mode,status)
+        values (:id,nullif(current_setting('app.tenant_id',true),'')::uuid,
+          :file_id,:location_id,:object_key,:version_id,'original',
+          :mime_type,:size_bytes,:sha256,'clean',now(),'none','ready')
+    """), {"id": object_id, "file_id": file_id, "location_id": location_id,
+           "object_key": object_key, "version_id": str(uuid4()),
+           "mime_type": mime_type, "size_bytes": size, "sha256": digest.hexdigest()})
+    await scope[0].execute(text("""
+        update files set status='ready',accepted_object_id=:object_id,
+          updated_at=now() where id=:file_id
+    """), {"object_id": object_id, "file_id": file_id})
+    await scope[0].execute(text("""
+        insert into ticket_files
+          (tenant_id,ticket_id,file_id,purpose,uploaded_by)
+        values (nullif(current_setting('app.tenant_id',true),'')::uuid,
+          :ticket_id,:file_id,:purpose,:user_id)
+    """), {"ticket_id": ticket_id, "file_id": file_id,
+           "purpose": purpose, "user_id": scope[1]})
+    await record_event(scope, ticket, "ticket.file_uploaded",
+                       __import__("json").dumps({"fileId": str(file_id), "purpose": purpose}))
+    return {"fileId": file_id, "ticketId": ticket_id, "sizeBytes": size,
+            "mimeType": mime_type, "status": "ready"}
+
+
+@router.get("/files/{file_id}/content", summary="Download an authorized evidence image")
+async def download_file(file_id: UUID, request: Request, scope: Scope, inline: bool = False) -> Response:
+    local_only(request)
+    found = await scope[0].execute(text("""
+        select coalesce(f.ticket_id,tf.ticket_id) as ticket_id, f.channel_id, f.original_name, o.object_key, o.sha256, o.mime_type
+        from files f join file_objects o on o.id=f.accepted_object_id and o.tenant_id=f.tenant_id
+        left join ticket_files tf on tf.file_id=f.id and tf.tenant_id=f.tenant_id
+        where f.id=:id and f.status='ready' and o.status='ready'
+          and o.location_id in (select id from storage_locations
+                                where provider=:provider and purpose='evidence')
+    """), {"id": file_id, "provider": object_storage.provider()})
+    file = found.mappings().first()
+    if file is None:
+        raise HTTPException(404, "Local evidence image not found")
+    if file['ticket_id'] is None and file['channel_id'] is not None:
+        from .v3_conversation_images import read_image
+        return await read_image(file_id,request,(scope[0],scope[1]))
+    if file['ticket_id'] is None:
+        raise HTTPException(404, 'Local evidence image not found')
+    await visible_ticket(scope, file["ticket_id"])
+    object_key = file["object_key"]
+    try:
+        file_path = object_storage.at(FILE_ROOT, object_key)
+    except ValueError:
+        raise HTTPException(503, "Invalid local evidence object key") from None
+    if not file_path.is_file():
+        raise HTTPException(404, "Local evidence image is missing")
+    if inline and file['mime_type'] not in EXT:
+        raise HTTPException(415, 'Only verified image types support inline preview')
+    return object_storage.respond(file_path, media_type=file['mime_type'] if inline else "application/octet-stream",
+                        filename=file["original_name"], content_disposition_type="inline" if inline else "attachment",
+                        headers={'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store'})
+
+
+@router.get("/tickets/{ticket_id}/files", summary="List files attached to a ticket")
+async def list_ticket_files(ticket_id: UUID, scope: Scope) -> dict[str, object]:
+    await visible_ticket(scope, ticket_id)
+    result = await scope[0].execute(text("""
+        select f.id, f.original_name, f.declared_mime_type, f.status,
+               tf.purpose, tf.created_at
+        from ticket_files tf
+        join files f on f.id=tf.file_id and f.tenant_id=tf.tenant_id
+        where tf.ticket_id=:ticket_id order by tf.created_at desc
+    """), {"ticket_id": ticket_id})
+    return {"items": [dict(row) for row in result.mappings().all()]}

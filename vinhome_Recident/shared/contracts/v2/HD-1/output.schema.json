@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^f[0-9]+$"
+          },
+          "kind": {
+            "enum": [
+              "fact",
+              "assessment",
+              "assumption",
+              "risk"
+            ]
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "tool_result",
+                    "passage",
+                    "message",
+                    "file",
+                    "entry",
+                    "finding"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ]
+            }
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "statement",
+          "sources"
+        ]
+      }
+    },
+    "proposals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "step": {
+            "type": "string",
+            "minLength": 1
+          },
+          "department": {
+            "type": "string",
+            "minLength": 1
+          },
+          "after": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "based_on": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "tool_result",
+                    "passage",
+                    "message",
+                    "file",
+                    "entry",
+                    "finding"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ]
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "step",
+          "department",
+          "after",
+          "based_on"
+        ]
+      }
+    },
+    "objections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "target_entry_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "enum": [
+                    "tool_result",
+                    "passage",
+                    "message",
+                    "file",
+                    "entry",
+                    "finding"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "type",
+                "id"
+              ]
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "target_entry_id",
+          "reason",
+          "sources"
+        ]
+      }
+    },
+    "agreements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "target_entry_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "target_entry_id"
+        ]
+      }
+    },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "to": {
+            "enum": [
+              "customer",
+              "agent"
+            ]
+          },
+          "agent_version_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "to",
+          "text"
+        ]
+      }
+    }
+  },
+  "required": [
+    "summary",
+    "findings",
+    "proposals",
+    "objections",
+    "agreements",
+    "questions"
+  ],
+  "title": "HD-1 đầu ra của một lượt agent"
+}

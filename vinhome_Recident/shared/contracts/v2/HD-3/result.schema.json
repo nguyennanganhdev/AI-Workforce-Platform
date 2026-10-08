@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "enum": [
+        "OK",
+        "INVALID_INPUT",
+        "NEEDS_INPUT",
+        "NOT_FOUND",
+        "FORBIDDEN",
+        "STALE_DATA",
+        "CONFLICT",
+        "PENDING_APPROVAL",
+        "INTERNAL_ERROR"
+      ]
+    },
+    "source_id": {
+      "type": "string",
+      "pattern": "^tool:[0-9a-f]{8,}$"
+    },
+    "tool": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trace_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "server_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "data": {
+      "type": [
+        "object",
+        "array",
+        "null"
+      ]
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "INVALID_INPUT",
+              "NEEDS_INPUT",
+              "NOT_FOUND",
+              "FORBIDDEN",
+              "STALE_DATA",
+              "CONFLICT",
+              "PENDING_APPROVAL",
+              "INTERNAL_ERROR"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "field": {
+            "type": "string",
+            "minLength": 1
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ]
+      }
+    },
+    "missing_fields": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "provenance": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source_system": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_record_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_version": {
+            "type": [
+              "string",
+              "integer",
+              "null"
+            ]
+          },
+          "retrieved_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "source_system",
+          "retrieved_at"
+        ]
+      }
+    },
+    "data_origin": {
+      "enum": [
+        "real",
+        "public",
+        "team_written",
+        "synthetic",
+        "test_run"
+      ]
+    }
+  },
+  "required": [
+    "status",
+    "source_id",
+    "tool",
+    "trace_id",
+    "server_time",
+    "data",
+    "errors",
+    "missing_fields",
+    "provenance",
+    "data_origin"
+  ],
+  "title": "HD-3 kết quả một lần gọi tool"
+}

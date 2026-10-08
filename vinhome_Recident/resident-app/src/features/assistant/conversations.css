@@ -1,0 +1,132 @@
+.resident-rooms {
+  position: relative;
+  flex-shrink: 0;
+  background: white;
+  border-bottom: 1px solid #edf0f4;
+  padding: 8px 20px;
+  z-index: 12;
+}
+.resident-rooms button {
+  font: inherit;
+  cursor: pointer;
+}
+.resident-rooms-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 920px;
+  margin: auto;
+}
+.resident-rooms-bar button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f5f7fb;
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  min-height: 44px;
+  font-size: 13px;
+  color: #465779;
+}
+.resident-rooms-bar button:last-child {
+  background: #fff0e8;
+  color: #914c30;
+}
+.resident-rooms b {
+  background: #4169f5;
+  color: white;
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: 20px;
+}
+.resident-rooms-list {
+  position: absolute;
+  top: 100%;
+  left: 20px;
+  right: 20px;
+  max-width: 520px;
+  max-height: 65dvh;
+  overflow: auto;
+  background: white;
+  border: 1px solid #e3e8f0;
+  border-radius: 0 0 16px 16px;
+  box-shadow: 0 12px 24px #20212418;
+  padding: 12px;
+}
+.resident-rooms-list > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  background: white;
+  border: 0;
+  border-radius: 12px;
+  padding: 13px;
+  color: #202124;
+}
+.resident-rooms-list > button.selected {
+  background: #eef2ff;
+}
+.resident-rooms-list span {
+  flex: 1;
+  min-width: 0;
+}
+.resident-rooms-list strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.resident-rooms-list small {
+  display: block;
+  color: #8796ad;
+  font-size: 11px;
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.resident-rooms-list time {
+  color: #8796ad;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.resident-rooms-search {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.resident-rooms-search input {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  font-size: 16px;
+  padding: 11px;
+  border: 1px solid #e4e8ef;
+  border-radius: 10px;
+}
+.resident-rooms-search button {
+  background: none;
+  border: 0;
+  min-width: 40px;
+  color: #65758d;
+}
+.resident-ticket-event {
+  padding: 14px;
+  background: #fff5e9;
+  border-radius: 14px;
+  margin: 16px 0;
+  font-size: 13px;
+}
+.resident-ticket-event button {
+  margin: 8px 8px 0 0;
+  padding: 10px;
+  border: 1px solid #f2d6b8;
+  border-radius: 9px;
+  background: white;
+  min-height: 44px;
+  cursor: pointer;
+}
