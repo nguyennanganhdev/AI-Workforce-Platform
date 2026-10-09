@@ -23,13 +23,13 @@ Các bổ sung này là kế hoạch cần triển khai, không phải xác nh�
 
 ## Bổ sung bắt buộc theo kế hoạch 1.4 — API và sự kiện
 
-Đọc mục 2.7, 5.3, 6.7 và toàn bộ mục 17 của [kế hoạch 1.4](../../KE_HOACH_TRIEN_KHAI.md). Giữ nguyên scope/mapping v1.3. POST nhận việc rồi kết thúc; workflow chờ bằng checkpoint trong DB, callback nối đúng job/ticket/chat, public event log hỗ trợ replay và outbox chịu retry thông báo. ACK hoặc ngắt SSE không đóng ticket.
+Đọc mục 2.6–2.7, 5.3, 6.7 và toàn bộ mục 17 của [kế hoạch 1.4.3](../../KE_HOACH_TRIEN_KHAI.md). Giữ nguyên scope/mapping v1.3 và contract hai ticket/hộp chat v1.4.3. Mọi response có `workflow_state` + `next_action`: response-only read-only có thể auto-close; interactive dùng reply/approval/explicit close; external-tracking và Provider Event/SSE chỉ dùng khi operation pending. `202` chỉ là HTTP timeout fallback. V1 không có HTTP sender từ platform sang endpoint đối tác.
 
 Owner Bùi Hữu Nghĩa bổ sung **BHN-12–BHN-14**: Builder hiểu yêu cầu theo dõi dài hạn, chọn năng lực async và tái sử dụng agent. Thực hiện cả task cũ còn thiếu và task mới; cập nhật STATUS.md, không đánh dấu hoàn thành từ scaffold.
 
-- [ ] **BHN-12 — Nhận diện nghiệp vụ chờ trạng thái:** builder/async_capabilities/ phân biệt chỉ tạo công việc với theo dõi tới hoàn tất/xác nhận đóng. Sinh requirement/AsyncHandlingPolicy qua structured output, hỏi phần thiếu theo nhu cầu; không nhét workflow/job/callback URL/roster cụ thể vào manifest.
-- [ ] **BHN-13 — Binding và reuse có async capability:** Dùng AsyncProtocolPort + RegistryPort + AgentReusePort kiểm tra create và receive-status/status-query, correlation, completion/timeout policy; không cam kết theo dõi nếu chỉ có tool create. Thiếu bắt buộc thì MISSING_REQUIRED_CAPABILITY; chỉ giảm phạm vi khi người dùng đồng ý. Agent cũ đủ thì reuse, thiếu khả năng theo dõi thì đề xuất revise cùng identity, không clone agent chờ webhook.
-- [ ] **BHN-14 — UI và test Builder async:** builder/async_capabilities/ ở frontend trình bày phạm vi theo dõi, callback/polling readiness, điều kiện hoàn tất/đóng và phần thiếu. tests/workforce/builder/async_capabilities/ kiểm tra create-only, hỗ trợ đầy đủ, query fallback, reuse/revise và batch không sinh group/job production. Làm bằng fake protocol ports; không viết webhook/runtime worker.
+- [ ] **BHN-12 — Nhận diện nghiệp vụ chờ trạng thái:** builder/async_capabilities/ phân biệt chỉ tạo công việc với theo dõi tới hoàn tất/xác nhận đóng. Sinh requirement/AsyncHandlingPolicy qua structured output, hỏi phần thiếu theo nhu cầu; không nhét workflow/job/URL bên ngoài/roster cụ thể vào manifest.
+- [ ] **BHN-13 — Binding và reuse có async capability:** Dùng AsyncProtocolPort + RegistryPort + AgentReusePort kiểm tra create và receive-status/status-query, correlation, completion/timeout policy; không cam kết theo dõi nếu chỉ có tool create. Thiếu bắt buộc thì MISSING_REQUIRED_CAPABILITY; chỉ giảm phạm vi khi người dùng đồng ý. Agent cũ đủ thì reuse, thiếu khả năng theo dõi thì đề xuất revise cùng identity, không clone agent chỉ để chờ event.
+- [ ] **BHN-14 — UI và test lifecycle capability:** trình bày response-only/interactive/external-tracking support, effect, completion/close policy và Event/status-query chỉ khi cần. Test tool tra cứu sync không bị đòi event channel, booking confirmed không bị ép polling, booking pending cần tracking, reuse/revise và batch không sinh production job. Không hardcode domain.
 
 Các thư mục v1.4 đã chuẩn bị cho bạn:
 

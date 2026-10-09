@@ -19,14 +19,14 @@ Các bổ sung này là kế hoạch cần triển khai, không phải xác nh�
 
 ## Bổ sung bắt buộc theo kế hoạch 1.4 — API và sự kiện
 
-Đọc mục 2.7, 5.3, 6.7 và toàn bộ mục 17 của [kế hoạch 1.4](../../../../../docs/workforce/KE_HOACH_TRIEN_KHAI.md). Giữ nguyên scope/mapping v1.3. POST nhận việc rồi kết thúc; workflow chờ bằng checkpoint trong DB, callback nối đúng job/ticket/chat, public event log hỗ trợ replay và outbox chịu retry thông báo. ACK hoặc ngắt SSE không đóng ticket.
+Đọc mục 2.6–2.7, 5.3, 6.7 và toàn bộ mục 17 của [kế hoạch 1.4.3](../../../../../docs/workforce/KE_HOACH_TRIEN_KHAI.md). Giữ nguyên scope/mapping v1.3 và binding nhiều ticket/hộp chat. Mọi response có `workflow_state` + `next_action`: response-only read-only có thể auto-close; interactive dùng reply/approval/explicit close; external-tracking và Provider Event/SSE chỉ dùng khi operation pending. `202` chỉ là HTTP timeout fallback. V1 không có HTTP sender từ platform sang endpoint đối tác.
 
 Owner Phan Huy Hoàng bổ sung **PHH-14–PHH-17**: workflow ticket, checkpoint/continuation, public event log, SSE/history và chat timeline. Task chi tiết và các folder con nằm trong mục 5.3 và phần mang tên bạn ở kế hoạch. Quyền của folder gốc không cho phép sửa folder có owner khác.
 
 Folder con mới thuộc phạm vi này:
 
 - [workflows/](workflows/README.md) — Workflow state/trigger/checkpoint/close/continuation; không lưu provider inbox.
-- [partner_events/](partner_events/README.md) — Public event log, SSE/history/snapshot, DeliveryPort enqueue; không sender outbound.
+- [partner_events/](partner_events/README.md) — Public event log, SSE/history/snapshot và notification signal sau commit; không sender outbound.
 
-Đây là phạm vi cần code/test. Chưa có webhook, worker, migration hoặc UI mới được triển khai bởi README này.
+Đây là phạm vi cần code/test. Chưa có Customer API, Provider Event API, SSE worker, migration hoặc UI mới được triển khai bởi README này.
 

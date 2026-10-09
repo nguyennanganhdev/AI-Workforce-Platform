@@ -23,12 +23,12 @@ Các bổ sung này là kế hoạch cần triển khai, không phải xác nh�
 
 ## Bổ sung bắt buộc theo kế hoạch 1.4 — API và sự kiện
 
-Đọc mục 2.7, 5.3, 6.7 và toàn bộ mục 17 của [kế hoạch 1.4](../../KE_HOACH_TRIEN_KHAI.md). Giữ nguyên scope/mapping v1.3. POST nhận việc rồi kết thúc; workflow chờ bằng checkpoint trong DB, callback nối đúng job/ticket/chat, public event log hỗ trợ replay và outbox chịu retry thông báo. ACK hoặc ngắt SSE không đóng ticket.
+Đọc mục 2.6–2.7, 5.3, 6.7 và toàn bộ mục 17 của [kế hoạch 1.4.3](../../KE_HOACH_TRIEN_KHAI.md). Giữ nguyên scope/mapping v1.3 và contract hai ticket/hộp chat v1.4.3. Mọi response có `workflow_state` + `next_action`: response-only read-only có thể auto-close; interactive dùng reply/approval/explicit close; external-tracking và Provider Event/SSE chỉ dùng khi operation pending. `202` chỉ là HTTP timeout fallback. V1 không có HTTP sender từ platform sang endpoint đối tác.
 
 Owner Phó Tiến Anh bổ sung **PTA-14–PTA-16**: validation/eval nhiều lượt sự kiện và giữ version cho workflow đang chờ. Thực hiện cả task cũ còn thiếu và task mới; cập nhật STATUS.md, không đánh dấu hoàn thành từ scaffold.
 
 - [ ] **PTA-14 — Validation và snapshot async:** lifecycle/async_evaluation/ validate AsyncHandlingPolicy và protocol/hash/coverage trên draft, đóng băng vào evaluation snapshot. Tái dùng gate/publish từng agent; không thêm team deployment hay đưa runtime ticket vào AgentDefinition.
-- [ ] **PTA-15 — Eval ca nhiều sự kiện:** Thêm suite multi-turn bằng EvaluationRunnerPort + fake clock/provider: assigned → sleep → on_the_way → completed → close; duplicate, out-of-order, unknown và HITL đang chờ. Assert zero LLM calls khi chờ không có event, zero create-job lặp, zero cross-audience thông báo; hard gates không được bỏ vì điểm trả lời cao. agents/async_evaluation/ hiển thị report từng event/turn, chi phí và blocker.
+- [ ] **PTA-15 — Eval lifecycle đa pattern:** suite response-only, interactive plan→selection→approval→booking→confirmation và external-tracking. Assert workflow_state/next_action đúng; ca sync không tạo tracking giả, ca async không gọi LLM khi chưa có trigger, không lặp side effect hoặc lẫn audience. UI report từng lượt/pattern, chi phí và blocker.
 - [ ] **PTA-16 — Version và retention khi chờ:** Giữ immutable version/protocol references mà workflow mở cần; publish/rollback không đổi pin đang chờ. Archive chỉ ngăn chọn mới; disable/revoke chặn continuation/tool theo policy, không hard-delete reference. Phối hợp usage/checkpoint qua port Huy Hoàng, không tự ghi wf_workflows. tests/workforce/lifecycle/async_evaluation/ kiểm tra restart/pin/drift/stale eval và availability trước resume.
 
 Các thư mục v1.4 đã chuẩn bị cho bạn:
