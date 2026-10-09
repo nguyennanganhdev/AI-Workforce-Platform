@@ -24,6 +24,17 @@ the corresponding `p1`–`p4` value.
 resident unit in an existing chat, resolves the active management coverage and
 notifies scoped managers. `POST /tickets/{ticket_id}/routing/ack` records BQL
 acceptance and notifies the requester.
+## Tích hợp với platform
+
+Domain là một đối tác độc lập; platform nối vào qua `/integration/v1` ([HOP_DONG_TICH_HOP.md](../../docs/domain/HOP_DONG_TICH_HOP.md)): danh mục công cụ, hộp thư hồ sơ và đề xuất phương án, nguồn sự kiện, gói tri thức. Mười hai kịch bản kiểm thu: [KICH_BAN_VANG.md](../../docs/domain/KICH_BAN_VANG.md), chạy bằng `python -m pytest tests/test_golden.py`.
+
+```powershell
+python -m vinhomes_api.database client --id platform --kind platform --accepts-cases   # in bí mật một lần
+python -m vinhomes_api.database mock --profile standard                                  # thế giới mẫu
+python -m vinhomes_api.database import --dir ./du-lieu --dry-run                          # dữ liệu thật: NAP_DU_LIEU.md
+python -m vinhomes_api.jobs sweep                                                        # hạn xử lý và hết hạn, chạy mỗi phút
+```
+
 ## Cơ sở dữ liệu
 
 Schema của domain nằm trong package, ở `src/vinhomes_api/schema/`: các migration đánh số (`migrations/0001…0005`), dữ liệu mẫu (`seed/`) và quyền của role chạy API (`roles.sql`). Không còn phụ thuộc `server/drizzle` hay công cụ của platform cũ.

@@ -22,8 +22,6 @@ export function UnitsPage() {
   const open = units.data?.find((unit) => unit.id === selected);
   const members = (unit: NonNullable<typeof units.data>[number]) =>
     unit.groups.reduce((sum, group) => sum + group.members, 0);
-  const agents = (unit: NonNullable<typeof units.data>[number]) =>
-    unit.groups.reduce((sum, group) => sum + group.agents, 0);
   return (
     <AdminPage
       title={open ? open.name : "Đơn vị quản lý"}
@@ -54,7 +52,7 @@ export function UnitsPage() {
             {[
               ["overview", "Tổng quan"],
               ["buildings", "Tòa phụ trách"],
-              ["groups", "Thành viên và agent"],
+              ["groups", "Nhóm làm việc"],
             ].map(([value, label]) => (
               <button
                 key={value}
@@ -72,11 +70,7 @@ export function UnitsPage() {
                 <span>Thành viên nhóm</span>
                 <strong>{members(open)}</strong>
               </div>
-              <div className="ops-admin-metric">
-                <span>Agent đang phát hành</span>
-                <strong>{agents(open)}</strong>
-              </div>
-              <a className="ops-admin-metric" href="/operations/team">
+              <a className="ops-admin-metric" href="/operations/kanban">
                 <span>Yêu cầu đang mở</span>
                 <strong>{open.open_tickets}</strong>
               </a>
@@ -108,8 +102,6 @@ export function UnitsPage() {
                     <tr>
                       <th>Nhóm</th>
                       <th>Thành viên</th>
-                      <th>Agent đang phát hành</th>
-                      <th>Kết nối ngoài</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -117,8 +109,6 @@ export function UnitsPage() {
                       <tr key={group.id}>
                         <td>{group.name}</td>
                         <td>{group.members}</td>
-                        <td>{group.agents}</td>
-                        <td>{group.connections}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -140,7 +130,6 @@ export function UnitsPage() {
                     <th>Đơn vị</th>
                     <th>Tòa phụ trách</th>
                     <th>Thành viên</th>
-                    <th>Agent</th>
                     <th>Yêu cầu đang mở</th>
                     <th>Trạng thái</th>
                   </tr>
@@ -166,7 +155,6 @@ export function UnitsPage() {
                       </td>
                       <td>{unit.buildings.join(", ")}</td>
                       <td>{members(unit)}</td>
-                      <td>{agents(unit)}</td>
                       <td>{unit.open_tickets}</td>
                       <td>
                         <AdminBadge
@@ -225,7 +213,7 @@ function CreateUnit({ onClose }: { onClose: () => void }) {
   return (
     <AdminDrawer
       title="Tạo đơn vị quản lý"
-      description="Nhóm Ban quản lý và Supervisor được tạo cùng đơn vị."
+      description="Nhóm điều phối của Ban quản lý được tạo cùng đơn vị."
       busy={create.isPending}
       onClose={onClose}
       footer={

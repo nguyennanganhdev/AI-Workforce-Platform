@@ -4,7 +4,7 @@ import { businessHeaders } from "@/lib/business-headers";
 
 export type Account = { id: string; name: string; email: string; role: string; status: string; administrator: boolean; management_unit_id: string | null };
 export type Unit = { id: string; code: string; name: string; status: string; buildings: string[]; staff: number; open_tickets: number;
-  groups: { id: string; name: string; members: number; agents: number; connections: number }[] };
+  groups: { id: string; name: string; members: number }[] };
 export type AuditEvent = { id: string; created_at: string; event_type: string; initiator_kind: string; actor: string | null;
   target_type: string; target_id: string; payload: Record<string, unknown> };
 

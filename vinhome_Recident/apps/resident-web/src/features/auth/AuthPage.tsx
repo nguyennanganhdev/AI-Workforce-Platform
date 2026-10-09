@@ -20,6 +20,7 @@ import {
 import { Neighborhood } from "../../components/Illustrations";
 import {
   normalizePhone,
+  operationsUrl,
   residentAuthService,
   validateAuth,
   type AuthMode,
@@ -28,6 +29,7 @@ import {
 } from "./auth-service";
 import "./auth.css";
 import { startResidentPreview } from "./demo-access";
+import { ChooseSpace } from "./ChooseSpace";
 import {
   ResidentAccountStatus,
   type ResidentPendingStatus,
@@ -73,6 +75,7 @@ export function AuthPage({
   const [notice, setNotice] = useState("");
   const [failed, setFailed] = useState(false);
   const [nextStep, setNextStep] = useState<ResidentPendingStatus | null>(null);
+  const [choice, setChoice] = useState<string | null>(null);
   const mounted = useRef(true);
   const submitting = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -134,13 +137,12 @@ export function AuthPage({
           confirmPassword: "",
         }));
         setTouched({});
-        if (result.nextStep === "administration") {
-          const destination = new URL(import.meta.env.VITE_OPERATIONS_URL || location.origin);
-          if (!import.meta.env.VITE_OPERATIONS_URL && ["localhost", "127.0.0.1", "[::1]"].includes(destination.hostname) && destination.port === "3011") destination.port = "3020";
-          destination.pathname = "/operations/accounts";
-          destination.search = "";
-          destination.hash = "";
-          location.assign(destination.toString());
+        if (result.nextStep === "administration" || result.nextStep === "operations") {
+          location.assign(operationsUrl(result.operationsPath ?? "/operations/accounts"));
+          return;
+        }
+        if (result.nextStep === "choose") {
+          setChoice(operationsUrl(result.operationsPath!));
           return;
         }
         if (result.nextStep !== "ready") {
@@ -187,6 +189,7 @@ export function AuthPage({
 
   const fields = { values, update, blur, errorFor, disabled: pending };
   if (nextStep) return <ResidentAccountStatus status={nextStep} />;
+  if (choice) return <ChooseSpace operationsHref={choice} />;
   return (
     <main className={`resident-auth resident-auth--${mode}`}>
       <aside

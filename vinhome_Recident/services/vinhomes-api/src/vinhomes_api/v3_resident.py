@@ -144,7 +144,7 @@ async def list_messages(channel_id: str, scope: ResidentScope,
                         limit: int = Query(50, ge=1, le=100)) -> dict[str, object]:
     await _owned_chat(scope, channel_id)
     result = await scope[0].execute(text("""
-        select id, seq, sender_kind, sender_user_id, sender_agent_id, body, created_at
+        select id, seq, sender_kind, sender_user_id, sender_client_id, body, created_at
         from messages where channel_id=:channel_id and seq>:after_seq
           and visibility in ('room','customer')
           and tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
@@ -209,7 +209,7 @@ async def send_message(channel_id: str, body: SendMessage, request: Request, sco
         response_text = "Reception demo đã tiếp nhận. Hãy tạo ticket trong chat để chuyển BQL."
         seq = await db.execute(text("update channels set next_message_seq=next_message_seq+1,last_message=:preview,last_message_at=now() where id=:id returning next_message_seq-1"), {"id": channel_id, "preview": response_text})
         response_message = await db.execute(text("""
-            insert into messages(tenant_id,channel_id,seq,sender_kind,sender_agent_id,visibility,body,reply_to_id)
+            insert into messages(tenant_id,channel_id,seq,sender_kind,sender_client_id,visibility,body,reply_to_id)
             values(nullif(current_setting('app.tenant_id',true),'')::uuid,:channel_id,:seq,'agent','demo-reception','customer',cast(:body as jsonb),:reply)
             returning id
         """), {"channel_id": channel_id, "seq": seq.scalar_one(), "body": json.dumps({"text": response_text, "mode": "faker"}), "reply": created["id"]})
@@ -234,7 +234,7 @@ async def create_resident_ticket(channel_id: str, body: ResidentTicketCreate,
                                  scope: ResidentScope, *, acting_user_id: str | None = None,
                                  assessment: dict[str, object] | None = None,
                                  receipt_key: str | None = None,
-                                 requires_plan: bool = True) -> dict[str, object]:
+                                 requires_plan: bool = True, link_case: bool = True) -> dict[str, object]:
     """Shared intake service; staff callers must authorize the Case before calling.
 
     Residence/chat ownership belong to the requester. Audit belongs to the actual
@@ -411,6 +411,10 @@ async def create_resident_ticket(channel_id: str, body: ResidentTicketCreate,
            "management_unit_id": selected["management_unit_id"],
            "site_id": place["site_id"], "zone_id": place["zone_id"],
            "building_id": body.building_id})
+    if link_case:
+        # The resident follows this request through its case; a case being materialized already has one.
+        from .resident_cases import ensure_case
+        await ensure_case(db, ticket_id)
     if len(set(body.file_ids)) != len(body.file_ids):
         raise HTTPException(422, "Duplicate file IDs")
     for file_id in body.file_ids:

@@ -1,6 +1,6 @@
 # Spec: Database riêng cho domain Vinhomes
 
-Trạng thái: **bước 1 đã làm** (database riêng chạy được với mã hiện tại); bước 2 (thay họ bảng agent) chờ bạn. Xem §8 và §9. Nghiệp vụ chi tiết: [NGHIEP_VU_VINHOMES.md](NGHIEP_VU_VINHOMES.md).
+Trạng thái: **bước 1 và bước 2 đã làm**: database riêng chạy được, và họ bảng hình agent đã được thay bằng bề mặt tích hợp của đối tác (xem §10). Hợp đồng với platform: [HOP_DONG_TICH_HOP.md](HOP_DONG_TICH_HOP.md); các kịch bản: [KICH_BAN_VANG.md](KICH_BAN_VANG.md). Nghiệp vụ chi tiết: [NGHIEP_VU_VINHOMES.md](NGHIEP_VU_VINHOMES.md).
 
 ## 1. Mục tiêu
 
@@ -112,9 +112,9 @@ Các quyết định đã áp dụng theo khuyến nghị của tôi sau khi b�
 |---|---|
 | D1 bỏ thế hệ A | Đã xóa 13 package, ORM, alembic và 2 dependency. Không thao tác API nào bị ảnh hưởng. |
 | D3 SQL đánh số thay alembic | `vinhomes_api.database` (`create / migrate / seed / role`), bảng `schema_migrations` có checksum, đọc `DATABASE_URL` từ môi trường. |
-| D4 đường nối cho platform | Bảng `event_outbox`, `event_inbox` đã có trong schema; **chưa có mã ghi vào**, đây là việc của lúc nối platform. |
+| D4 đường nối cho platform | `event_outbox` đã có mã ghi (`events.py`) và là nguồn sự kiện của hợp đồng tích hợp; `event_inbox` đã xóa ở migration `0008` (domain chỉ phát sự kiện, không nhận). |
 | D5 role | Role chủ chạy migration; role API tạo bằng `database role`, từ chối nếu là superuser hoặc `BYPASSRLS`. |
-| Q1 | Giữ SLA (4 bảng), `triage_rules`, `dispatch_*`, `payment_webhook_receipts`, `event_*`. Hoãn hoàn tiền, tệp mở rộng, dữ liệu kỹ thuật mở rộng. |
+| Q1 | Quyết định ban đầu: giữ SLA (4 bảng), `triage_rules`, `dispatch_*`, `payment_webhook_receipts`, `event_*`; hoãn hoàn tiền, tệp mở rộng, dữ liệu kỹ thuật mở rộng. **Thay đổi 09/10/2026** sau [kiểm kê bảng](KIEM_KE_BANG.md): migration `0008` xóa 8 bảng không mã nào dùng (`ticket_sla_cycles`, `ticket_sla_adjustments`, `ticket_escalations`, `triage_rules`, `dispatch_queue`, `dispatch_attempts`, `payment_webhook_receipts`, `event_inbox`). Giữ `sla_policies` (trigger gán hạn xử lý đang dùng) và `event_outbox`. |
 | Q2, Q4 | Dữ liệu kỹ thuật mở rộng không đưa vào; dữ liệu mẫu hiện có được dùng lại, bỏ phần `memory_*`. |
 | Q3 | Giữ nguyên hợp đồng `schema_v2` của kênh giao ticket (chưa đổi tên). |
 | D2 | **Chưa làm.** Cơ chế ủy quyền của Reception và việc tải tệp vẫn dùng 11 bảng hình platform. |
@@ -140,3 +140,10 @@ Rút từ phần 6 của [NGHIEP_VU_VINHOMES.md](NGHIEP_VU_VINHOMES.md) (24 quy 
 3. **Chưa có điểm vào cho agent bên ngoài**: đề xuất kế hoạch xử lý (hai test đang bỏ qua vì thiếu nó), cùng với bất kỳ thao tác nào platform sẽ gọi sau này.
 4. **Giao diện nối thật mới phủ một phần**: an ninh, vệ sinh, nhà thầu, phê duyệt, khóa nước, ngân sách, kế hoạch, phân loại, thanh toán có backend nhưng chưa có màn hình ở app nhân viên.
 5. **Không nhất quán đáng sửa**: trạng thái kế hoạch `revision_requested` bị response model từ chối (dự kiến lỗi 500); quản trị viên bị 403 ở vài thao tác mà các route khác cho qua; ba hạn đề nghị việc khác nhau (24 giờ, 30 phút, 1 giờ) cho cùng một khái niệm.
+
+## 10. Bước 2: bề mặt tích hợp và thực thể của các kịch bản (09/10/2026)
+
+- **D2 đã làm.** Migration `0006` bỏ 10 bảng hình agent và thay bằng `integration_clients`, `delegations`, `integration_cases`; các cột `*_agent_id` thành `*_client_id`, `*_run_id` thành `*_delegation_id`. Một database dựng theo kiểu cũ được nâng lên tại chỗ (đã thử). Đường `/internal/reception/*` và dây `schema_v2` giữ nguyên; Reception không đổi ngoài một tên trường.
+- **Thực thể mới** (migration `0007`, 17 bảng): thông báo phí, xe, thẻ, lượt qua cổng, đơn lễ tân, khách, tiện ích và đặt chỗ, quy định và đơn thi công, cẩm nang, văn bản quy định, thông báo chung, cùng bảng `state_transitions` giữ từ điển trạng thái (76 bước, lấy từ `domain_spec.json` của bạn) và một hàm chặn chuyển trạng thái ngoài từ điển. Đặt chỗ tiện ích không thể trùng nhau nhờ ràng buộc loại trừ ở cơ sở dữ liệu. Hạn xử lý của yêu cầu do trigger gán theo `sla_policies`.
+- **Các khoảng trống ở §9 nay:** (1) đường nạp dữ liệu nền: **có** (`import`, [NAP_DU_LIEU.md](NAP_DU_LIEU.md)); (2) SLA: hạn được **gán** và cảnh báo hạn được phát qua sự kiện; leo thang, bộ gửi thông báo thật, thanh toán thật, quét mã độc và tác dụng của việc cư dân hủy yêu cầu **vẫn chưa làm**; (3) điểm vào cho agent ngoài đề xuất phương án: **có**; (4) lớp xem thử ở app nhân viên còn dữ liệu giả về phòng và agent: **chưa dọn**; (5) `event_outbox` nay được ghi và đọc; `event_inbox` vẫn chưa dùng.
+- Còn lại: `execution_principals` chỉ phục vụ chủ sở hữu tệp (thay bằng `owner_user_id` là việc riêng); `test_password_database.py` có các test tùy chọn nhắc tới route phòng đã bỏ.

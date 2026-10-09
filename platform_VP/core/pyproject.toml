@@ -1,0 +1,28 @@
+[project]
+name = "awp"
+version = "0.1.0"
+description = "Domain-neutral core of the AI workforce platform, built on AgentScope"
+requires-python = ">=3.11"
+dependencies = [
+    "agentscope",
+    "fastapi",
+    "httpx",
+    "pydantic>=2",
+    "pyyaml",
+    "sqlalchemy[asyncio]>=2",
+    "aiosqlite",
+]
+
+[project.optional-dependencies]
+jev = ["agentscope[classifier-jev]"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

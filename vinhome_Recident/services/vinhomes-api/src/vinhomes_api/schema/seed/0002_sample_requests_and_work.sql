@@ -91,28 +91,11 @@ INSERT INTO channel_memberships(tenant_id,channel_id,user_id)
 VALUES ('11111111-1111-5111-a111-111111111111','management-room','local-v3-management')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO agents(id,tenant_id,workspace_id,name,type,configuration,purpose,status)
-VALUES ('demo-supervisor','11111111-1111-5111-a111-111111111111','ffffffff-ffff-5fff-afff-fffffffffff1',
- 'Supervisor demo','built_in','{}','supervisor','active'),
- ('demo-report','11111111-1111-5111-a111-111111111111','ffffffff-ffff-5fff-afff-fffffffffff1',
- 'Report demo','built_in','{}','specialist','active') ON CONFLICT(id) DO NOTHING;
-
-INSERT INTO agents(id,tenant_id,name,type,configuration,purpose,status)
-VALUES ('demo-reception','11111111-1111-5111-a111-111111111111','Reception demo','built_in','{}','reception','active')
-ON CONFLICT(id) DO NOTHING;
-
-INSERT INTO channel_agents(tenant_id,channel_id,agent_id)
-VALUES ('11111111-1111-5111-a111-111111111111','management-room','demo-supervisor'),
- ('11111111-1111-5111-a111-111111111111','management-room','demo-report') ON CONFLICT DO NOTHING;
-
--- The Reception-to-Supervisor demo handoff requires a versioned Supervisor member.
-INSERT INTO agent_versions(id,tenant_id,agent_id,version_no,runtime,framework_version,
- instructions,config,config_hash,created_by)
-VALUES ('dddddddd-dddd-5ddd-addd-ddddddddddd1',
- '11111111-1111-5111-a111-111111111111','demo-supervisor',1,'agentscope',
- 'demo-record-only','Supervisor demo record-only version','{}',repeat('0',64),
- 'local-v3-management')
-ON CONFLICT(id) DO NOTHING;
+INSERT INTO integration_clients(tenant_id,id,name,kind,status,accepts_cases,levels)
+VALUES ('11111111-1111-5111-a111-111111111111','demo-reception','Reception demo','reception','active',false,'{}'),
+ ('11111111-1111-5111-a111-111111111111','demo-platform','Platform demo','platform','active',true,
+  '{"resident":["read","draft","act_small"],"staff":["read","draft","propose"]}')
+ON CONFLICT DO NOTHING;
 
 UPDATE channels SET created_by='local-v3-resident' WHERE id='local-v3-reception';
 INSERT INTO channel_memberships(tenant_id,channel_id,user_id)

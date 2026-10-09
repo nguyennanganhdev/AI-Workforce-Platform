@@ -1,0 +1,40 @@
+# Copy to a path of your choice and point AWP_MODELS_FILE at it.
+# Prices are USD per 1M tokens. Leave a price out when you do not know it:
+# the ledger then marks those calls "unpriced" instead of counting them as free.
+# Provider keys come from the environment (OPENAI_API_KEY, ANTHROPIC_API_KEY,
+# DASHSCOPE_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY, MOONSHOT_API_KEY,
+# MINIMAX_API_KEY, VOLCENGINE_API_KEY, XAI_API_KEY). A model whose key is
+# missing is simply not offered. Ollama is offered only when OLLAMA_HOST is set.
+#
+# tier: cheap (specialists, classification), standard, strong (leaders).
+# Model names below are examples; use the names your provider account offers.
+models:
+  - id: strong-main
+    provider: anthropic
+    model: claude-sonnet-5-5
+    tier: strong
+    context_size: 200000
+  - id: cheap-main
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    tier: cheap
+    context_size: 200000
+  - id: cheap-openai
+    provider: openai
+    model: gpt-4.1-mini
+    tier: cheap
+  - id: standard-qwen
+    provider: dashscope
+    model: qwen-plus
+    tier: standard
+  - id: local-ollama
+    provider: ollama
+    model: qwen3:8b
+    tier: cheap
+  # Any OpenAI-compatible endpoint:
+  # - id: gateway
+  #   provider: openai_compatible
+  #   model: some-model
+  #   tier: standard
+  #   base_url: https://gateway.example.com/v1
+  #   api_key_env: GATEWAY_API_KEY

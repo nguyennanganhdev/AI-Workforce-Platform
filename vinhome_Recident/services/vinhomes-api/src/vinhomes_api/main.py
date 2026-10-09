@@ -46,6 +46,10 @@ from .v3_security import router as security_router
 from .v3_specialized import router as specialized_router
 from .v3_technical import router as technical_router
 from .v3_triage import router as triage_router
+from .integration import router as integration_router
+from .integration_cases import router as integration_cases_router
+from .operations_services import router as operations_services_router
+from .resident_services import router as resident_services_router
 from .v3_water import router as water_router
 
 
@@ -170,6 +174,10 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(resident_interactions_router)
     from .v3_admin import router as admin_router
     app.include_router(admin_router)
+    app.include_router(integration_router)
+    app.include_router(integration_cases_router)
+    app.include_router(resident_services_router)
+    app.include_router(operations_services_router)
     from .direct_uploads import router as direct_uploads_router
     app.include_router(direct_uploads_router)
     from .resident_api import ticket_intake_router

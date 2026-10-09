@@ -1,6 +1,6 @@
 # Giao diện nhân viên (Operations / Field)
 
-React + Vite cho Ban quản lý, quản trị viên và nhân viên hiện trường. Gọi backend nghiệp vụ `services/vinhomes-api` qua `/api/business`; đăng nhập tại `/operations/login` bằng tài khoản thật. Hướng dẫn chạy kết nối: [docs/resident-web/07-connected-runtime.md](../../docs/resident-web/07-connected-runtime.md). Chế độ trải nghiệm dùng dữ liệu mẫu riêng, không chứng minh quyền hoặc ghi dữ liệu backend.
+React + Vite cho Ban quản lý, quản trị viên và nhân viên hiện trường. Gọi backend nghiệp vụ `services/vinhomes-api` qua `/api/business`; đăng nhập ở trang chung `/login` (app cư dân) bằng tài khoản thật; `/operations/login` chuyển về đó (chỉ chế độ trải nghiệm còn dùng trang riêng). Hướng dẫn chạy kết nối: [docs/resident-web/07-connected-runtime.md](../../docs/resident-web/07-connected-runtime.md). Chế độ trải nghiệm dùng dữ liệu mẫu riêng, không chứng minh quyền hoặc ghi dữ liệu backend.
 
 ## Chạy
 
@@ -18,9 +18,10 @@ Một cổng cho mọi vai trò: Ban quản lý vào Điều phối, nhân viên
 | `APP_PORT` | Cổng lắng nghe (`--port` cũng được) | `3020` |
 | `VINHOMES_API_URL` | Nơi backend nghiệp vụ chạy | `http://127.0.0.1:8000` |
 | `VINHOMES_API_ORIGIN` | Origin gửi tới API, khi API chỉ nhận origin của bản triển khai riêng của nó | của trình duyệt |
-| `VINHOMES_SURFACE` | Cổng đăng nhập: `operations` hoặc `field` | không gửi |
+| `VINHOMES_SURFACE` | Tên một cổng đăng nhập; thường để trống để cả hai app dùng chung một phiên | không gửi |
+| `VITE_LOGIN_URL` | Địa chỉ trang đăng nhập chung | `/login` cùng host; khi dev ở cổng 3020 là cổng 3011 |
 
-Backend giữ một phiên đăng nhập riêng cho mỗi cổng, nên hai cổng cùng máy không ghi đè phiên của nhau. Triển khai dùng chung một image cho cả hai cổng, phân biệt bằng `VINHOMES_SURFACE` (xem [deploy/](../../deploy/)).
+Cư dân và nhân viên dùng chung một cookie đăng nhập: đăng nhập ở app cư dân (cổng 3011 khi dev) thì app này nhận luôn phiên đó. Triển khai chạy sau `gateway` của [deploy/](../../deploy/) với tài nguyên ở `/staff-assets/`.
 
 ## Lệnh
 
