@@ -5,3 +5,7 @@ __pycache__/
 .env
 awp_workspaces/
 models.yaml
+.venv/
+.ruff_cache/
+*.egg-info/
+.local/

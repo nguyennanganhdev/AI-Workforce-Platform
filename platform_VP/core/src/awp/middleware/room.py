@@ -58,7 +58,20 @@ class TierMiddleware(_Base):
     async def on_reply(self, agent, input_kwargs, next_handler) -> AsyncGenerator:
         spec = self.rt.catalog.pick(self.profile.model_tier) if self.profile else None
         original = agent.model
-        if spec is not None:
+        if self.b.fence:
+            from ..providers import ModelCatalog, ModelSpec
+            from ..workforce.execution import BudgetModel
+            wf = await self.b.fence.check(self.rt.workforce)
+            pinned = wf["snapshot"]["models"].get(self.profile.key)
+            if not pinned:
+                from ..workforce.service import Fault
+                raise Fault(503, "PINNED_MODEL_MISSING")
+            spec = ModelSpec(**pinned)
+            catalog = ModelCatalog([spec], env=self.rt.catalog._env)
+            agent.model = BudgetModel(self.rt.workforce, self.b.fence, self.b, spec, catalog.build(spec))
+            agent.model_config.fallback_model = None
+            agent.model_config.max_retries = 0
+        elif spec is not None:
             try:
                 agent.model = self.rt.catalog.build(spec)
             except Exception:  # missing SDK or bad config: keep the session's model
@@ -102,7 +115,7 @@ class DigestMiddleware(_Base):
             summary=(case or {}).get("intake", {}).get("summary", ""),
             viewer=self.b.agent_name, role=self.b.role, view=build_view(items),
             new_items=[i for i in items if i.id > cursor],
-            members=await cases.sessions_of_case(self.b.case_id),
+            members=await self.rt.active_sessions(self.b.case_id),
             max_chars=self.rt.settings.digest_max_chars,
             max_rounds=self.rt.settings.max_challenge_rounds)
         await cases.set_cursor(self.b.case_id, key, items[-1].id)
@@ -113,7 +126,8 @@ class EvidenceMiddleware(_Base):
     async def on_acting(self, agent, input_kwargs, next_handler) -> AsyncGenerator:
         call = input_kwargs["tool_call"]
         name = call.name
-        if name.startswith("Case") or name in ("TeamCreate", "AgentCreate", "AgentInvite", "TeamDelete"):
+        if name.startswith("Case") or name in ("TeamCreate", "AgentCreate", "AgentInvite", "TeamDelete",
+                                              "memory_recall", "memory_remember"):
             async for item in next_handler(**input_kwargs):
                 yield item
             return
@@ -139,8 +153,10 @@ class EvidenceMiddleware(_Base):
         async for item in next_handler(**input_kwargs):
             if isinstance(item, ToolResponse) and item.state == ToolResultState.SUCCESS:
                 if report_text is not None:
+                    execution = ({"job_id": self.b.fence.job_id, "generation": self.b.fence.generation}
+                                 if self.b.fence else {})
                     await self.rt.cases.add(self.b.case_id, "report", self.b.agent_name,
-                                            {"summary": report_text[:800]})
+                                            {"summary": report_text[:800], **execution})
                 elif name != "TeamSay":
                     text = "\n".join(b.text for b in item.content if isinstance(b, TextBlock))
                     ev = await self.rt.cases.add(
@@ -175,11 +191,24 @@ class ToolGateMiddleware(_Base):
         return list(LEADER_TOOLS if self.b.role == "leader" else WORKER_TOOLS)
 
     def allowed(self, name: str) -> bool:
+        if self.b.fence and name.startswith("Task"):
+            return False
+        if self.b.fence and name.startswith("mcp__"):
+            permitted = getattr(self, "workforce_integrations", set())
+            if name.split("__", 2)[1] not in permitted:
+                return False
+        if self.b.fence and name in {"Bash", "PowerShell", "Read", "Write", "Edit", "FileRead", "FileWrite",
+                                    "FileEdit", "Glob", "Grep", "Skill", "reset_tools", "AskUser",
+                                    "AgentInvite", "TeamDelete", "CaseRequest"}:
+            return False
+        if self.b.fence and name in {"search_knowledge", "memory_recall", "memory_remember"}:
+            return bool(self.profile and (name == "search_knowledge" or self.profile.memory.enabled))
         return any(fnmatch.fnmatchcase(name, p) for p in self._patterns())
 
     def creatable(self) -> list[str]:
         """Specialist types this leader may create: its own team, else its tenant's."""
-        mine = {k for k, t in self.rt.template_tenant.items() if t == self.tenant}
+        mine = set(self.scoped_templates) if hasattr(self, "scoped_templates") else {
+            k for k, t in self.rt.template_tenant.items() if t == self.tenant}
         if self.profile is not None and self.profile.team:
             return [k for k in self.profile.team if k in mine]
         return sorted(mine)
@@ -191,8 +220,9 @@ class ToolGateMiddleware(_Base):
             allowed = self.creatable()
             prop["enum"] = allowed
             # AgentScope lists every template in the description; show only ours.
-            lines = [f"- ``{k!r}`` - {self.rt.templates[k].description}"
-                     for k in allowed if k in self.rt.templates]
+            templates = getattr(self, "scoped_templates", self.rt.templates)
+            lines = [f"- ``{k!r}`` - {templates[k].description}"
+                     for k in allowed if k in templates]
             prop["description"] = ("The type of sub-agent to create. Available types:"
                                    + "\n\n" + "\n".join(lines))
         return schema
@@ -210,6 +240,16 @@ class ToolGateMiddleware(_Base):
         m["tool_chars_offered"] += len(json.dumps(offered))
         m["tool_chars_sent"] += len(json.dumps(tools))
         return await next_handler(**{**input_kwargs, "tools": tools})
+
+    async def on_reply(self, agent, input_kwargs, next_handler):
+        if self.b.role == "leader" and hasattr(self, "scoped_templates"):
+            from agentscope.app._tool._agent_create import AgentCreate
+            tool = AgentCreate(storage=self.rt.storage, message_bus=self.rt.bus,
+                workspace_manager=None, user_id=self.b.user_id, session_id=self.b.session_id,
+                agent_id=self.b.agent_id, sub_agent_templates=self.scoped_templates)
+            await agent.toolkit.add_tool(tool)
+        async for event in next_handler(**input_kwargs):
+            yield event
 
     async def on_check_permission(self, agent, input_kwargs, next_handler):
         name = input_kwargs["tool_call"].name
@@ -250,6 +290,8 @@ class LedgerMiddleware(_Base):
         await self._record(usage_chunk, model)
 
     async def _record(self, response: Any, model: Any) -> None:
+        if self.b.fence:
+            return  # BudgetModel accounts for normal and compression calls before/after the provider.
         usage = getattr(response, "usage", None)
         if usage is None:
             return
@@ -288,23 +330,33 @@ class LeaderWatchdog(_Base):
 
     async def _after(self, end: ReplyEndEvent) -> None:
         cases, cid = self.rt.cases, self.b.case_id
+        if self.rt.workforce is not None:
+            wf = await self.rt.workforce.workflow_of_case(cid)
+            if wf and wf["state"] not in ("accepted", "active"):
+                return
         case = await cases.get_case(cid)
         if case is None or case["status"] != "open":
             return
         if end.finished_reason == ReplyFinishedReason.ERROR:
-            await self.rt.fail(cid, "the leader stopped with an error")
+            await self.rt.fail(cid, "the leader stopped with an error", fence=self.b.fence)
             return
         view = build_view(await cases.items(cid))
-        workers = [s for s in await cases.sessions_of_case(cid) if s["role"] == "worker"]
-        waiting = [w for w in workers if w["agent_name"] not in view.reports]
+        workers = [s for s in await self.rt.active_sessions(cid) if s["role"] == "worker"]
+        reports = view.reports
+        if self.b.fence:
+            reports = {item.author for item in await cases.items(cid, kinds=("report",))
+                       if (item.data.get("job_id"), item.data.get("generation")) ==
+                       (self.b.fence.job_id, self.b.fence.generation)}
+        waiting = [w for w in workers if w["agent_name"] not in reports]
         if waiting or view.open_questions() or view.open_challenges() or view.open_requests():
             return  # members are still working; their report wakes the leader
         nudges = sum(1 for n in await cases.items(cid, kinds=("note",))
-                     if n.data.get("type") == "nudge")
+                     if n.data.get("type") == "nudge" and
+                     (not self.b.fence or n.data.get("session_id") == self.b.session_id))
         if nudges >= self.MAX_NUDGES:
-            await self.rt.fail(cid, "the leader did not finalize the case")
+            await self.rt.fail(cid, "the leader did not finalize the case", fence=self.b.fence)
             return
-        await cases.add(cid, "note", "platform", {"type": "nudge"})
+        await cases.add(cid, "note", "platform", {"type": "nudge", "session_id": self.b.session_id})
         await self.rt.deliver(
             cid, self.b.agent_name, 'ref="nudge"', "platform",
             "The case is not finalized. Call CaseFinalize now (outcome needs_human if anything is unverified).")

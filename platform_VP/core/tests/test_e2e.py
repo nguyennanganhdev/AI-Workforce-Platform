@@ -194,7 +194,9 @@ def test_memory_enabled_profile_still_runs_and_new_version_is_used(tmp_path):
         wait_for(client, case_id)
         # the specialist was built from version 2 (its prompt says memory notes are hints)
         assert any('key="tech" v="2"' in c["sys"] for c in CALLS)
-        assert (tmp_path / "ws" / "memory" / "t1" / "tech").is_dir()
+        import hashlib
+        parts = [hashlib.sha256(x.encode()).hexdigest()[:24] for x in ("t1", "tech", case_id)]
+        assert (tmp_path / "ws" / "memory" / parts[0] / parts[1] / parts[2]).is_dir()
 
 
 def test_stalled_case_is_failed_and_domain_is_told(tmp_path):

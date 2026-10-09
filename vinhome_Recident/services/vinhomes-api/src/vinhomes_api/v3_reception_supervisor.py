@@ -505,6 +505,10 @@ async def submit_reception_message(body: ReceptionToSupervisorMessage, scope: RE
     if owner.first() is None:
         raise HTTPException(404, "Resident ticket not found")
     await _lock_message_id(db, body.message_id)
+    from .workforce_config import enabled as workforce_enabled
+    if workforce_enabled():
+        from .workforce import enqueue_reception
+        return await enqueue_reception(body, scope, payload_hash)
     previous = await _previous_message(
         db, body.message_id, payload_hash, actor=actor, ticket_id=body.ticket_id,
         team_id=body.team_id, direction="reception_to_supervisor",

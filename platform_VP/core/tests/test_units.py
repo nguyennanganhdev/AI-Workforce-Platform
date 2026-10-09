@@ -110,11 +110,10 @@ def test_profile_versions_and_publish():
             raise AssertionError("a published version must not be editable")
         except ProfileError:
             pass
-        try:
-            await ps.create_draft("t2", p)
-            raise AssertionError("keys are unique across tenants")
-        except ProfileError:
-            pass
+        other = await ps.create_draft("t2", p)
+        assert other.version == 1
+        assert (await ps.get_published("t1", p.key)).version == 2
+        assert await ps.get_published("t2", p.key) is None
         await db.dispose()
 
     run(go())

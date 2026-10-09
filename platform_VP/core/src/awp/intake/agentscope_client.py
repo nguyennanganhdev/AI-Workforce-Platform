@@ -101,9 +101,9 @@ class AgentScopeClient:
         return sid
 
     async def say(self, tenant: str, agent_id: str, session_id: str, text: str,
-                  name: str = "intake") -> None:
+                  name: str = "intake", extra_content: list | None = None) -> None:
         r = await self._http.post("/chat/", headers=self._h(tenant), json={
             "agent_id": agent_id, "session_id": session_id,
-            "input": {"name": name, "role": "user", "content": [{"type": "text", "text": text}]}})
+            "input": {"name": name, "role": "user", "content": [{"type": "text", "text": text}, *(extra_content or [])]}})
         if r.status_code >= 300:
             raise RuntimeError(f"AgentScope /chat/ -> {r.status_code}: {r.text[:300]}")

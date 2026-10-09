@@ -103,7 +103,7 @@ def policy(msgs: list[dict], tools: list[dict]) -> list[tuple[str, dict]] | str:
             tries = _results(msgs, "CaseFinalize")
             if not tries:  # first attempt invents a figure on purpose
                 return [("CaseFinalize", {"answer": "Repair costs 2000000 VND.", "outcome": "resolved", "cites": cites})]
-            if "Not accepted" in tries[-1]:
+            if "Not accepted" in tries[-1] or "Not finalized" in tries[-1]:
                 return [("CaseFinalize", {
                     "answer": "Pipe repair costs 1500000 VND; ticket T-1001 is waiting for the plumber.",
                     "outcome": "resolved", "cites": cites})]

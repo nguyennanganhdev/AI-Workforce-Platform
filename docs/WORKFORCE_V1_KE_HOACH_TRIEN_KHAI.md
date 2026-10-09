@@ -1,6 +1,6 @@
 # Workforce v1 trên dev_platform: phạm vi và thứ tự triển khai
 
-Cập nhật: 10/10/2026. Đây là kế hoạch triển khai, chưa phải báo cáo tính năng đã hoàn thành.
+Cập nhật: 10/10/2026. Phần 1–6 lưu quyết định và hiện trạng tại thời điểm chốt kế hoạch; trạng thái sau triển khai nằm ở phần 7.
 
 ## 1. Quyết định và trạng thái
 
@@ -69,3 +69,20 @@ Không hạ durability sau demo theo một ngày chưa được người dùng x
 - Merge thành công không conflict; `platform_VP/core` khớp commit nguồn; vendor AgentScope không thay đổi so với trước merge.
 - Chưa chạy baseline tests: interpreter của backend `vp` cũ không import được AgentScope app vì thiếu `apscheduler`. Chưa cài thêm dependency vào môi trường cũ; cần môi trường riêng cho `awp` trước khi chạy tests.
 - Chưa push, chưa triển khai MinIO/Workforce API, chưa bật tool tự động giao việc.
+
+## 7. Trạng thái sau triển khai trên dev_platform
+
+| Bước | Kết quả hiện tại |
+|---|---|
+| P0 | Có OpenAPI xuất từ code và phụ lục triển khai MCP/assets/consent; contract gốc vẫn 1.3-draft, cần đối tác xác nhận khi onboarding |
+| P1 | Có client theo purpose, key rotation/revoke, route/residence/binding, profile version, knowledge ACL, memory riêng và migration |
+| P2 | Có PostgreSQL jobs, lease/heartbeat/generation, fencing session, idempotency, 200/202 và recovery khi lease hết hạn |
+| P3 | Supervisor tự tạo đội từ profile được cấp; shared case/provenance/question/report; model/giá pin; reservation theo workflow và trần tháng |
+| P4 | Có MinIO private upload/finalize/attach/vision derivative; MCP chính thức, consent trước write, uncertain outcome và đối soát có audit |
+| P5 | Có public history/snapshot/SSE, provider HMAC/inbox/receipt/order, retention và explicit close độc lập nghiệp vụ |
+| P6 | Có adapter Reception/outbox/poller, MCP nghiệp vụ Vinhomes, provider outbox, resident consent UI và console mới; đã kiểm thử tích hợp trong sandbox |
+| P7 | Đã kiểm thử 20 workflow/60 session AgentScope với model giả, PostgreSQL/Redis/MinIO thật, bus hai process và khởi tạo DB đồng thời. Luồng thi công/QC/xác nhận cư dân đã đạt qua API sandbox. Chưa nghiệm thu model thật, browser/mobile và diễn tập vận hành dài hạn |
+
+Sandbox riêng: console `http://127.0.0.1:8089/console`; không thay dịch vụ/database Vinhomes đang dùng. Feature flag domain và tự giao theo category vẫn tắt mặc định; JEV tắt. Tài khoản local nằm trong `platform_VP/core/.local/accounts.txt` ignored. Danh mục model local ban đầu rỗng; cần cấu hình provider/model và giá trước khi chạy agent thật.
+
+Xem [báo cáo kiểm chứng](WORKFORCE_V1_KIEM_CHUNG.md), [phụ lục contract](WORKFORCE_V1_CONTRACT_ADDENDUM.md), [onboarding Vinhomes](WORKFORCE_VINHOMES_ONBOARDING.md) và [OpenAPI](workforce-v1.openapi.json).

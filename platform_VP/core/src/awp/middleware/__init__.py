@@ -20,17 +20,38 @@ def middleware_factory(rt: Runtime):
         case = await rt.cases.get_case(b.case_id)
         tenant = case["tenant"] if case else ""
         profile, _ = await rt.profile_of(user_id, agent_id, tenant)
+        scoped = {}
+        wf = await rt.workforce.workflow_of_case(b.case_id) if rt.workforce else None
+        if wf:
+            from ..workforce.execution import current_fence, FenceMiddleware
+            b.fence = await current_fence(rt.workforce, b.case_id, session_id, user_id, agent_id)
+        from ..profiles import to_template
+        if b.role == "leader":
+            records = await rt.profiles.list(tenant, "published")
+            if wf:
+                records = [await rt.profiles.get(tenant, key, version)
+                           for key, version in wf["snapshot"]["profiles"].items()]
+            scoped = {rec.key: to_template(rec.profile, rec.version, rt.settings)
+                      for rec in records if rec and rec.profile.role == "specialist"}
+        gate = ToolGateMiddleware(rt, b, profile, tenant)
+        gate.scoped_templates = scoped
+        if wf:
+            gate.workforce_integrations = set(wf["snapshot"].get("integration_ids", []))
         mws: list = [
             TierMiddleware(rt, b, profile),
             DigestMiddleware(rt, b, profile),
             EvidenceMiddleware(rt, b, profile),
-            ToolGateMiddleware(rt, b, profile, tenant),
+            gate,
             LedgerMiddleware(rt, b, profile, tenant),
             LeaderWatchdog(rt, b, profile),
         ]
+        if wf:
+            mws.insert(0, FenceMiddleware(rt.workforce, b.fence))
         if profile is not None:
-            mws.extend(await knowledge_middlewares(rt, user_id, profile))
-            mws.extend(memory_middlewares(rt, tenant, profile))
+            if not wf:
+                mws.extend(await knowledge_middlewares(rt, user_id, profile))
+            if not wf:
+                mws.extend(memory_middlewares(rt, tenant, profile, b))
         return mws
 
     return factory
@@ -54,13 +75,17 @@ async def knowledge_middlewares(rt: Runtime, user_id: str, profile) -> list:
     return [RAGMiddleware(knowledge_bases=handles, parameters=RAGMiddleware.Parameters())]
 
 
-def memory_middlewares(rt: Runtime, tenant: str, profile) -> list:
-    """Private long-term memory: one folder per tenant and profile, kept across cases."""
+def memory_middlewares(rt: Runtime, tenant: str, profile, binding=None) -> list:
+    """Private runtime memory; reviewed reusable knowledge is attached separately."""
     if not profile.memory.enabled:
         return []
     from agentscope.middleware import AgenticMemoryMiddleware
 
-    path = Path(rt.settings.workspace_dir) / "memory" / tenant / profile.key
+    import hashlib
+    # Runtime cases are private by default; reusable team knowledge belongs in reviewed KBs.
+    scope = binding.case_id if binding is not None else "unbound"
+    parts = [hashlib.sha256(str(x).encode()).hexdigest()[:24] for x in (tenant, profile.key, scope)]
+    path = Path(rt.settings.workspace_dir) / "memory" / Path(*parts)
     path.mkdir(parents=True, exist_ok=True)
     return [AgenticMemoryMiddleware(workdir=str(path))]
 
@@ -73,6 +98,9 @@ def tool_factory(rt: Runtime):
         b = await rt.binding(user_id, agent_id, session_id)
         if b is None:
             return []
+        if rt.workforce is not None and await rt.workforce.workflow_of_case(b.case_id):
+            from ..workforce.execution import current_fence
+            b.fence = await current_fence(rt.workforce, b.case_id, session_id, user_id, agent_id)
         tools = [cls(rt, b) for cls in CASE_TOOLS] + [calc_sum()]
         case = await rt.cases.get_case(b.case_id)
         kinds = rt.request_kinds.get(case["domain"], {}) if case else {}
@@ -81,6 +109,15 @@ def tool_factory(rt: Runtime):
         for make in rt.tool_factories:
             extra = make(rt, b)
             tools.extend(await extra if inspect.isawaitable(extra) else extra)
+        if rt.workforce is not None and await rt.workforce.workflow_of_case(b.case_id):
+            from ..workforce.tools import CaseSay
+            from ..workforce.mcp import tools_for_case
+            tools.append(CaseSay(rt, b))
+            tools.extend(await tools_for_case(rt.workforce, b))
+            from ..workforce.knowledge import SearchKnowledge
+            tools.append(SearchKnowledge(rt.workforce, b))
+            from ..workforce.memory import MemoryRecall, MemoryRemember
+            tools.extend([MemoryRecall(rt.workforce, b), MemoryRemember(rt.workforce, b)])
         return tools
 
     return factory

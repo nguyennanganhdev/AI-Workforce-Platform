@@ -27,11 +27,6 @@ class ProfileStore:
 
     async def create_draft(self, tenant: str, profile: AgentProfile) -> ProfileRecord:
         async with self._db.engine.begin() as conn:
-            other = (await conn.execute(select(db.profiles.c.tenant).where(
-                db.profiles.c.key == profile.key, db.profiles.c.tenant != tenant,
-                db.profiles.c.status != "retired").limit(1))).first()
-            if other:
-                raise ProfileError(f"profile key {profile.key!r} is used by another tenant")
             latest = (await conn.execute(select(func.max(db.profiles.c.version)).where(
                 db.profiles.c.tenant == tenant, db.profiles.c.key == profile.key))).scalar()
             version = (latest or 0) + 1

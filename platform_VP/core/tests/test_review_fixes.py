@@ -63,6 +63,24 @@ def test_non_resolved_answers_are_grounded_too(tmp_path):
     run(go())
 
 
+def test_resolved_case_waits_for_peer_reports_and_unanswered_questions(tmp_path):
+    async def go():
+        rt = await make_rt(tmp_path)
+        cid, ev = await open_case(rt)
+        await rt.cases.bind_session(cid, "worker-session", "worker-agent", "tech", "worker")
+        final = CaseFinalize(rt, Binding(cid, "s1", "a1", "boss", "leader", "u"))
+        args = {"answer": "Repair costs 1500000 VND", "outcome": "resolved", "cites": [ev]}
+        assert "tech" in text_of(await final.call(**args))
+        await rt.cases.add(cid, "report", "tech", {"summary": "Costs verified."})
+        question = await rt.cases.add(cid, "question", "boss", {"text": "Is the cost verified?"}, addressee="tech")
+        assert question.ref in text_of(await final.call(**args))
+        assert (await rt.cases.get_case(cid))["status"] == "open"
+        await rt.cases.add(cid, "answer", "tech", {"to_ref": question.ref, "text": "Verified.", "evidence": [ev]})
+        assert "finalized as resolved" in text_of(await final.call(**args))
+        await rt.db.dispose()
+    run(go())
+
+
 def test_closed_case_accepts_no_more_work_and_closes_once(tmp_path):
     async def go():
         rt = await make_rt(tmp_path)

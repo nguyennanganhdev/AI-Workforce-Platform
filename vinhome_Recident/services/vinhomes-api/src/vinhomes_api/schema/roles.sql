@@ -25,3 +25,8 @@ GRANT UPDATE (availability) ON staff_profiles TO :role;
 GRANT INSERT ON message_files TO :role;
 GRANT DELETE ON users, accounts, tenant_memberships, scoped_user_roles, workspace_members TO :role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO :role;
+GRANT SELECT,INSERT,UPDATE ON vh_workforce_bindings, vh_workforce_outbox, vh_workforce_assets,
+  vh_workforce_provider_jobs TO :role;
+GRANT SELECT,INSERT ON vh_workforce_deliveries, vh_workforce_mcp_intents TO :role;
+-- Only database administrators provision MCP management grants; runtime can read them.
+GRANT SELECT ON vh_workforce_management_grants TO :role;

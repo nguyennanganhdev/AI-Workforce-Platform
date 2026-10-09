@@ -30,6 +30,9 @@ from .providers import ModelCatalog
 from .router import build_router
 from .runtime import Runtime
 from .security import SecurityMiddleware
+from .workforce.service import Workforce, Fault
+from .workforce.router import build_router as workforce_router
+from .workforce.boundary import WorkforceBoundary
 
 log = logging.getLogger("awp")
 
@@ -55,7 +58,12 @@ def build_app(
         storage = AsyncSQLAlchemyStorage(
             settings.agentscope_db_url,
             engine_kwargs={"connect_args": {"timeout": 30}} if sqlite else None)
-    bus = message_bus or InMemoryMessageBus()
+    if message_bus is None and settings.redis_url:
+        from agentscope.app.message_bus import RedisMessageBus
+        from redis.asyncio import ConnectionPool
+        bus = RedisMessageBus(connection_pool=ConnectionPool.from_url(settings.redis_url, decode_responses=True))
+    else:
+        bus = message_bus or InMemoryMessageBus()
     workspaces = workspace_manager or LocalWorkspaceManager(basedir=settings.workspace_dir)
     if judge is None:
         judge = build_judge(settings.jev_enabled, settings.jev_model)
@@ -68,7 +76,7 @@ def build_app(
     secret = secrets.token_urlsafe(24)
     kwargs = dict(
         enable_scheduler=False, title="AI Workforce Platform",
-        extra_middlewares=[Middleware(SecurityMiddleware, settings=settings,
+        extra_middlewares=[Middleware(WorkforceBoundary), Middleware(SecurityMiddleware, settings=settings,
                                       internal_secret=secret)],
         extra_agent_middlewares=middleware_factory(rt),
         extra_agent_tools=tool_factory(rt),
@@ -83,6 +91,31 @@ def build_app(
     intake = IntakeService(rt, client)
     app.include_router(build_router(rt, intake))
     app.state.awp = SimpleNamespace(rt=rt, intake=intake, settings=settings)
+    workforce = Workforce(rt, intake)
+    rt.workforce = workforce
+    app.state.awp.workforce = workforce
+    app.include_router(workforce_router(workforce))
+    from .workforce.console import build_console
+    app.include_router(build_console(workforce))
+
+    from fastapi.responses import JSONResponse
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.exception_handlers import request_validation_exception_handler
+
+    @app.exception_handler(Fault)
+    async def workforce_fault(request, exc):
+        details = {}
+        if exc.code == "EVENT_CURSOR_EXPIRED":
+            details["snapshot_url"] = request.url.path.rsplit("/", 1)[0]
+        headers = {"Retry-After": "5"} if exc.status == 429 else None
+        return JSONResponse({"error": {"code": exc.code, "message": exc.message, "details": details,
+            "request_id": None, "retryable": exc.status in (429, 503)}}, status_code=exc.status, headers=headers)
+
+    @app.exception_handler(RequestValidationError)
+    async def workforce_validation(request, exc):
+        if not request.url.path.startswith("/workforce/v1/"):
+            return await request_validation_exception_handler(request, exc)
+        return await workforce_fault(request, Fault(422, "INVALID_REQUEST", "Request schema validation failed"))
 
     inner = app.router.lifespan_context
 
@@ -91,12 +124,19 @@ def build_app(
         await database.create_all()
         await rt.sync_templates()
         stop = asyncio.Event()
+        from .workforce.worker import loop as worker_loop
+        worker_tasks = []
 
         async def sweep() -> None:
+            next_retention = 0
             while not stop.is_set():
                 try:
                     await intake.expire_stalled()
                     await intake.deliver_pending()
+                    if asyncio.get_running_loop().time() >= next_retention:
+                        from .workforce.retention import prune
+                        await prune(workforce)
+                        next_retention = asyncio.get_running_loop().time() + 300
                 except Exception:
                     log.exception("result delivery sweep failed")
                 with contextlib.suppress(asyncio.TimeoutError):
@@ -104,7 +144,21 @@ def build_app(
 
         task = None
         try:
-            async with inner(a):
+            async with contextlib.AsyncExitStack() as sdk_stack:
+                # AgentScope creates its own tables. Serialize that first-start DDL
+                # across API/worker processes without changing the vendor package.
+                if settings.agentscope_db_url.startswith("postgresql"):
+                    from sqlalchemy import text
+                    from sqlalchemy.ext.asyncio import create_async_engine
+                    bootstrap = create_async_engine(settings.agentscope_db_url)
+                    try:
+                        async with bootstrap.begin() as conn:
+                            await conn.execute(text("SELECT pg_advisory_xact_lock(724103820)"))
+                            await sdk_stack.enter_async_context(inner(a))
+                    finally:
+                        await bootstrap.dispose()
+                else:
+                    await sdk_stack.enter_async_context(inner(a))
                 # Packs start only once AgentScope is up: a connector may submit at once.
                 pairs = {(k.tenant, k.domain) for k in settings.service_keys.values()}
                 for pack in packs:
@@ -112,9 +166,14 @@ def build_app(
                         if domain == pack.domain:
                             await install_pack(rt, intake, pack, tenant)
                 task = asyncio.create_task(sweep())
+                worker_tasks = [asyncio.create_task(worker_loop(workforce, stop))
+                                for _ in range(settings.workforce_workers)]
                 yield
         finally:
             stop.set()
+            for worker_task in worker_tasks:
+                worker_task.cancel()
+            await asyncio.gather(*worker_tasks, return_exceptions=True)
             if task is not None:
                 await task
             for pack in packs:

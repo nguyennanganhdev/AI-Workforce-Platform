@@ -4,14 +4,25 @@ version = "0.1.0"
 description = "Domain-neutral core of the AI workforce platform, built on AgentScope"
 requires-python = ">=3.11"
 dependencies = [
-    "agentscope",
+    "agentscope[service,storage-sql,model-gemini,model-ollama]",
     "fastapi",
     "httpx",
     "pydantic>=2",
     "pyyaml",
     "sqlalchemy[asyncio]>=2",
     "aiosqlite",
+    "asyncpg",
+    "redis",
+    "cryptography",
+    "minio",
+    "pillow",
 ]
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio", "ruff"]
+
+[tool.uv.sources]
+agentscope = { path = "../agentscope", editable = true }
 
 [project.optional-dependencies]
 jev = ["agentscope[classifier-jev]"]
@@ -22,6 +33,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+awp = ["workforce/*.html", "workforce/migrations/*.sql"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

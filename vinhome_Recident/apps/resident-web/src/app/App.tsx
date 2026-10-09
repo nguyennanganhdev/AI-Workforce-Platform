@@ -23,6 +23,7 @@ import {
 
 import { RequestDetail, Requests } from "../features/requests/Requests";
 import { SupervisorResponse } from "../features/requests/SupervisorResponse";
+import { WorkforceStatus } from "../features/requests/WorkforceStatus";
 import {
   Amenities,
   Building,
@@ -559,6 +560,8 @@ export function App({ live }: { live?: ConnectedResident }) {
                         )
                   }
                 >
+                {live?.workforce?.ticket_id === detail.id && <WorkforceStatus item={live.workforce} busy={live.busy}
+                  onDecide={live.decideWorkforce} onClose={live.closeWorkforce} />}
                 {live?.interaction(detail.id)?.pending_kind === "plan_approval" && <SupervisorResponse key={`${detail.id}:${live.interaction(detail.id)!.ticket_version}`}
                   item={live.interaction(detail.id)!} busy={live.busy} onRespond={(decision, note) => live.respondSupervisor(live.interaction(detail.id)!, decision, note)} />}
                 {live?.interaction(detail.id)?.pending_kind === "information" && (

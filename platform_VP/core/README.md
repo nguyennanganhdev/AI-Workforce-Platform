@@ -1,5 +1,37 @@
 # awp: lõi platform trung lập
 
+## Workforce v1 hiện tại
+
+Luồng tích hợp mới dùng `/workforce/v1`. Reception thuộc Vinhomes; backend Vinhomes gọi Customer API. Supervisor được route chọn và tự mời chuyên viên từ profile đã công bố. Chạy độc lập với backend `vp`/console cũ; không sửa vendor AgentScope.
+
+Khởi động stack riêng từ thư mục này:
+
+```powershell
+uv sync --frozen
+.venv\Scripts\python scripts\init_local.py
+docker compose up -d --build
+```
+
+Console: `http://localhost:8089/console`. Tài khoản local được ghi trong file **ignored** `.local/accounts.txt`; script giữ nguyên credential đã tồn tại. PostgreSQL 5589, Redis 6389, MinIO 9090/9091 dùng volume riêng. API và 20 worker dùng chung PostgreSQL/Redis; schema của core và AgentScope được khóa khi khởi tạo đồng thời. Docker dùng dependency lock có hash. Không chạy `docker compose down -v` nếu cần giữ dữ liệu.
+
+`.env`/`models.yaml` chỉ ở local. `models.yaml` ban đầu rỗng: dịch vụ khởi động được, request có thể được ghi bền vững, nhưng thực thi chuyển sang needs_attention khi thiếu model. Điền provider key trong `.env`, chọn model trong `models.yaml`, **khai báo giá** và `supports_vision` nếu dùng ảnh. Dùng ID model trong profile để chọn cụ thể hoặc chọn tier; bản model/giá được pin khi bắt đầu workflow. Tái tạo API/worker sau khi thay cấu hình. Không đưa key máy vào trình duyệt.
+
+Trong console: công bố profile supervisor/chuyên viên → tạo customer/provider credential và MCP integration → tạo route → backend đối tác xác nhận revision, đồng bộ quyền cư trú → gửi request. Session không có form chọn thành viên. Profile quy định mission, chuyên môn, giới hạn, tool allowlist, memory, knowledge và model; supervisor chọn chuyên viên theo nhiệm vụ.
+
+Ngân sách mặc định route là 0,50 USD/100.000 token mỗi workflow, tối đa 20 workflow mở. `AWP_WORKFORCE_MONTHLY_BUDGET_USD=100` đặt trần tổng theo tenant/tháng UTC, có thể điều chỉnh. Mỗi lần gọi model giữ chỗ chi phí/token trong DB trước khi gửi; mất usage giữ nguyên khoản dự phòng. Không có giá thì chặn gọi. Hạn mức này là kiểm soát ứng dụng, không thay hạn mức thanh toán của provider.
+
+Knowledge được công bố có phiên bản và quyền theo giao của profile với route; tìm kiếm hiện tại theo từ khóa, không dùng embedding. Memory riêng theo workflow/profile, tối đa 32 ghi chú; không coi ghi chú là bằng chứng. Case file giữ bằng chứng, dữ kiện, câu hỏi/phản biện/báo cáo; digest ngắn và CaseRead tránh phát lại toàn bộ chat cho mọi agent. Khi chờ cư dân/công việc ngoài hệ thống, worker giải phóng lượt thực thi; không gọi model để poll tiến độ.
+
+MCP write phải được onboarding/allowlist và consent theo hash/quote/revision/expiry. Timeout sau dispatch chuyển unknown để đối soát; không gọi lại mù. Close workflow chỉ dừng theo dõi; công việc bên domain vẫn tiếp tục. Provider inbox/outbox, history/SSE/snapshot lưu bền vững trong PostgreSQL. JEV tắt mặc định.
+
+Tài liệu chi tiết: [phụ lục API/MCP/ảnh](../../docs/WORKFORCE_V1_CONTRACT_ADDENDUM.md), [OpenAPI](../../docs/workforce-v1.openapi.json), [onboarding Vinhomes](../../docs/WORKFORCE_VINHOMES_ONBOARDING.md), [bằng chứng và giới hạn nghiệm thu](../../docs/WORKFORCE_V1_KIEM_CHUNG.md). Export lại OpenAPI bằng `.venv\Scripts\python scripts\export_contract.py` khi thay schema. CI có job `workforce-core` riêng cho unit/contract/scripted AgentScope, lint và kiểm OpenAPI khớp source; test hạ tầng/đối tác chạy riêng trong sandbox.
+
+Kiểm thử core: `.venv\Scripts\python -m pytest -q`. Kiểm thử hạ tầng đặt `AWP_TEST_INFRA=1`, cần stack riêng trên các cổng ở trên. Test tạo/xóa database sandbox có tên được kiểm soát, dùng **Redis DB 15** để tách khỏi dịch vụ chạy DB 0; không trỏ test bus vào bus của checkout khác. Test nối Vinhomes cần `RESIDENT_TEST_ADMIN_URL` và `RESIDENT_TEST_RUNTIME_URL` của sandbox có runtime role không BYPASSRLS. Model giả chứng minh orchestration/contract, không chứng minh chất lượng trả lời hoặc giá API thật.
+
+## Tài liệu luồng legacy
+
+Các mục dưới đây mô tả `/platform/v1/intake` và domain pack cũ. Hạn chế/đếm test trong phần legacy là baseline trước Workforce v1; không dùng để suy ra trạng thái luồng mới.
+
 Chạy trên AgentScope 2.0 (không sửa `platform_VP/agentscope/src`). Lõi không chứa tên domain nào. Domain nối vào bằng một *gói* (`platform_VP/packs/<domain>`).
 
 ## Nó làm gì

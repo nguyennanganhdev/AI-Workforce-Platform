@@ -567,13 +567,16 @@ async def _resolve_destination(scope, call: OperationCall):
     management_channel_id = destination_channels[0]["id"]
     # A client that takes cases works the request through the management group chat. Without one the
     # request goes to management directly.
+    from .workforce_config import enabled as workforce_enabled, WorkforceConfig
+    workforce_client = WorkforceConfig.from_env().integration_client_id if workforce_enabled() else None
     taker = (
         (
             await db.execute(
                 text(f"""
                 select id,name from integration_clients
-                where tenant_id={TENANT} and status='active' and accepts_cases limit 1
-            """)
+                where tenant_id={TENANT} and status='active' and accepts_cases
+                  and (cast(:workforce_client as text) is null or id=:workforce_client) order by id limit 1
+            """), {"workforce_client": workforce_client}
             )
         )
         .mappings()
@@ -599,6 +602,7 @@ async def _resolve_destination(scope, call: OperationCall):
 
 
 async def _register_wait(scope, call: OperationCall):
+    from .workforce_config import enabled as workforce_enabled
     ticket_id = _uuid(call.input.get("ticket_id"), "ticket_id")
     db, actor = scope
     row = (
@@ -637,7 +641,9 @@ async def _register_wait(scope, call: OperationCall):
             "ticketGeneration": row["reopen_count"],
             "teamId": row["team_id"],
             "waitMode": "poll",
-            "resultsPath": f"/api/domains/vinhomes/resident/reception-supervisor/tickets/{ticket_id}/results",
+            "resultsPath": (f"/api/domains/vinhomes/resident/workforce/tickets/{ticket_id}"
+                            if workforce_enabled()
+                            else f"/api/domains/vinhomes/resident/reception-supervisor/tickets/{ticket_id}/results"),
             "cursor": call.input.get("cursor"),
         },
     )
@@ -651,7 +657,12 @@ async def _supervisor_event(scope, call: OperationCall):
         raise HTTPException(422, "cursor must be a string")
     if not isinstance(limit, int) or not 1 <= limit <= 100:
         raise HTTPException(422, "limit must be from 1 to 100")
-    result = await resident_results(ticket_id, scope, cursor=cursor, limit=limit)
+    from .workforce_config import enabled as workforce_enabled
+    if workforce_enabled():
+        from .workforce import resident_snapshot
+        result = await resident_snapshot(ticket_id, scope)
+    else:
+        result = await resident_results(ticket_id, scope, cursor=cursor, limit=limit)
     return agent_result("get_supervisor_event", result, {"ticket_id": ticket_id})
 
 

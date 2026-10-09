@@ -31,6 +31,9 @@ const empty: ResidentState = {
 export type SupervisorInteraction = {ticket_id: string; pending_kind: 'information' | 'plan_approval'; ticket_version: number;
   question: string; plan_id?: string; title?: string; proposal?: {steps: string[]; conditions: string; expected_duration: string;
     cost?: {amount: number; currency: string} | null}};
+export type WorkforceApproval = {id: string; workflow_id: string; revision: number; arguments_hash: string; quote_ref: string; summary: string; expires_at: string};
+export type WorkforceTracking = {ticket_id: string; workflow_id: string | null; state: string; attention: string | null;
+  snapshot: {workflows?: {workflow_id: string; revision: number; state: string}[]; pending_approvals?: WorkforceApproval[]}};
 
 export function useConnectedResident() {
   const [state, setState] = useState<ResidentState>(empty);
@@ -39,6 +42,7 @@ export function useConnectedResident() {
   const [busy, setBusy] = useState(false);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [interactions, setInteractions] = useState<SupervisorInteraction[]>([]);
+  const [workforce, setWorkforce] = useState<WorkforceTracking | null>(null);
   const [contact, setContact] = useState({ unit: "", category: "", phone: "" });
   const current = useRef(state);
   current.current = state;
@@ -89,6 +93,12 @@ export function useConnectedResident() {
     const detail = detailId
       ? await api<TicketDetail>(`/resident/tickets/${detailId}`)
       : undefined;
+    const trackedTicket = detailId || chats.find(c => c.id === selected)?.ticket_id;
+    let tracking: WorkforceTracking | null = null;
+    if (trackedTicket) {
+      try { tracking = await api<WorkforceTracking>(`/resident/workforce/tickets/${trackedTicket}`); }
+      catch (e) { if (!(e instanceof ApiError && e.status === 404)) throw e; }
+    }
     const messages: Message[] = [];
     if (selected) {
       let seq = 0;
@@ -108,6 +118,7 @@ export function useConnectedResident() {
     }
     if (selected !== active.current || revision !== generation.current) return;
     setProfile(p);
+    setWorkforce(tracking);
     setApprovals(a.items);
     const requests = tickets.map((t) =>
       requestView(
@@ -263,10 +274,26 @@ export function useConnectedResident() {
     profile,
     error,
     busy,
+    workforce,
     contact,
     setContact,
     setError,
     refresh: () => run(async () => {}, false),
+    decideWorkforce: (item: WorkforceApproval, decision: 'approve' | 'reject') => run(async () => {
+      if (!workforce) throw new Error('Không còn yêu cầu đang chờ xác nhận.');
+      const body = {decision, expected_revision: item.revision, arguments_hash: item.arguments_hash, quote_ref: item.quote_ref};
+      const signature = `workforce:${item.id}:${JSON.stringify(body)}`;
+      await api(`/resident/workforce/tickets/${workforce.ticket_id}/approvals/${item.id}/decision`, {
+        method: 'POST', body: JSON.stringify({...body, external_request_id: keyFor(signature)})});
+    }),
+    closeWorkforce: () => run(async () => {
+      const flow = workforce?.snapshot.workflows?.find(x => x.workflow_id === workforce.workflow_id);
+      if (!workforce || !flow) throw new Error('Trạng thái đang được đồng bộ. Hãy tải lại.');
+      const signature = `workforce:close:${flow.workflow_id}:${flow.revision}`;
+      await api(`/resident/workforce/tickets/${workforce.ticket_id}/close`, {method: 'POST', body: JSON.stringify({
+        external_request_id: keyFor(signature), expected_revision: flow.revision,
+        reason: 'resident_requested_stop_tracking', stop_tracking_only: true})});
+    }),
     interaction: (id: string) => interactions.find(i => i.ticket_id === id),
     /** The question management asks in the open conversation, to answer right there. */
     question: () => {

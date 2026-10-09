@@ -29,6 +29,7 @@ class Binding:
     agent_name: str
     role: str  # leader | worker
     user_id: str
+    fence: Any = None
 
 
 @dataclass
@@ -60,6 +61,7 @@ class Runtime:
     request_kinds: dict[str, dict] = field(default_factory=dict)
     template_tenant: dict[str, str] = field(default_factory=dict)
     _profile_cache: dict = field(default_factory=dict)
+    workforce: Any = None
 
     # ---- who is this agent? -------------------------------------------
     async def binding(self, user_id: str, agent_id: str, session_id: str) -> Binding | None:
@@ -106,10 +108,35 @@ class Runtime:
         return self.rules_for(case["domain"]) if case else self.rules
 
     async def leader_name(self, case_id: str) -> str | None:
-        for s in await self.cases.sessions_of_case(case_id):
+        for s in await self.active_sessions(case_id):
             if s["role"] == "leader":
                 return s["agent_name"]
         return None
+
+    async def active_sessions(self, case_id: str) -> list[dict]:
+        members = await self.cases.sessions_of_case(case_id)
+        wf = await self.workforce.workflow_of_case(case_id) if self.workforce else None
+        if not wf:
+            return members
+        # Register the SDK roster before members receive their first execution
+        # slot. Otherwise a fast leader can see zero workers and fail early.
+        case = await self.cases.get_case(case_id)
+        if case and case.get("leader_session_id"):
+            leader_session = await self.storage.get_session(case["user_id"], case["leader_agent_id"], case["leader_session_id"])
+            team = await self.storage.get_team(case["user_id"], leader_session.team_id) if leader_session and leader_session.team_id else None
+            if team:
+                from .workforce.execution import current_fence
+                for member in team.data.members:
+                    await self.binding(case["user_id"], member.agent_id, member.session_id)
+                    await current_fence(self.workforce, case_id, member.session_id, case["user_id"], member.agent_id)
+                members = await self.cases.sessions_of_case(case_id)
+        from sqlalchemy import select
+        from .workforce import schema as s
+        async with self.db.engine.connect() as conn:
+            ids = set((await conn.execute(select(s.session_fences.c.id).join(s.jobs,
+                s.jobs.c.id == s.session_fences.c.job_id).where(s.jobs.c.workflow_id == wf["id"],
+                s.jobs.c.status == "leased", s.jobs.c.generation == s.session_fences.c.generation))).scalars())
+        return [member for member in members if member["session_id"] in ids]
 
     # ---- talking to a teammate ----------------------------------------
     async def deliver(self, case_id: str, to_name: str, tag: str, sender: str, text: str) -> bool:
@@ -117,7 +144,7 @@ class Runtime:
         from agentscope.app._bus_ops import deliver_to_inbox
         from agentscope.message import HintBlock
 
-        target = next((s for s in await self.cases.sessions_of_case(case_id)
+        target = next((s for s in await self.active_sessions(case_id)
                        if s["agent_name"] == to_name), None)
         case = await self.cases.get_case(case_id)
         if target is None or case is None:
@@ -136,21 +163,33 @@ class Runtime:
         """Make the live template registry equal the published specialists."""
         published = [r for r in await self.profiles.all_published()
                      if r.profile.role == "specialist"]
-        keep = {r.key for r in published}
+        keep = {f"{r.tenant}:{r.key}" for r in published}
         for r in published:
-            self.templates[r.key] = to_template(r.profile, r.version, self.settings)
-            self.template_tenant[r.key] = r.tenant
+            key = f"{r.tenant}:{r.key}"
+            self.templates[key] = to_template(r.profile, r.version, self.settings)
+            self.template_tenant[key] = r.tenant
         for key in [k for k in self.templates if k not in keep and k != "default"]:
             del self.templates[key]
             self.template_tenant.pop(key, None)
         self._profile_cache.clear()
         return sorted(keep)
 
-    async def fail(self, case_id: str, reason: str) -> None:
+    async def fail(self, case_id: str, reason: str, fence=None) -> None:
+        if self.workforce is not None:
+            wf = await self.workforce.workflow_of_case(case_id)
+            if wf:
+                from .workforce.lifecycle import complete
+                await complete(self.workforce, wf["id"], "Yêu cầu cần người vận hành kiểm tra.",
+                    error={"code": "AGENT_FAILED", "retryable": False}, fence=fence)
+                return
         if self.fail_hook is not None:
             await self.fail_hook(case_id, reason)
 
-    async def close(self, case_id: str, status: str, result: dict) -> bool:
+    async def close(self, case_id: str, status: str, result: dict, fence=None) -> bool:
         """Close an open case with its result. False if it was already closed."""
+        if self.workforce is not None:
+            handled = await self.workforce.finalize_case(case_id, result, fence=fence)
+            if handled is not None:
+                return handled
         assert self.close_hook is not None, "no intake service is attached"
         return await self.close_hook(case_id, status, result)

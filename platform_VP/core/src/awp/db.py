@@ -12,6 +12,8 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    select,
+    insert,
 )
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
@@ -148,8 +150,15 @@ class Database:
         self.engine: AsyncEngine = create_async_engine(url, **kwargs)
 
     async def create_all(self) -> None:
+        from .workforce import schema  # registers the Workforce tables before migrations
+        from .workforce.migrate import migrate
         async with self.engine.begin() as conn:
-            await conn.run_sync(metadata.create_all)
+            if conn.dialect.name == "postgresql":
+                from sqlalchemy import text
+                await conn.execute(text("SELECT pg_advisory_xact_lock(724103818)"))
+            await conn.run_sync(lambda sync: metadata.create_all(sync, tables=[t for t in metadata.sorted_tables
+                if not t.name.startswith("awp_wf_")]))
+            await migrate(conn)
 
     async def dispose(self) -> None:
         await self.engine.dispose()

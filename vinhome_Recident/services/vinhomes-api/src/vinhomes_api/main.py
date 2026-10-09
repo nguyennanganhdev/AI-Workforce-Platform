@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 import os
+import asyncio
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException
@@ -65,9 +66,21 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
             create_async_engine(settings.database_url, pool_pre_ping=True)
             if settings.database_url else None
         )
+        from .workforce_config import enabled as workforce_enabled, WorkforceConfig
+        workforce_stop, workforce_task = asyncio.Event(), None
+        if workforce_enabled():
+            if app.state.engine is None or not settings.tenant_id:
+                raise ValueError("Workforce requires the Vinhomes database and tenant")
+            from .workforce import loop
+            config = WorkforceConfig.from_env()
+            workforce_task = asyncio.create_task(loop(app.state.engine, settings.tenant_id, workforce_stop, config))
         try:
             yield
         finally:
+            workforce_stop.set()
+            if workforce_task:
+                workforce_task.cancel()
+                await asyncio.gather(workforce_task, return_exceptions=True)
             if app.state.engine is not None:
                 await app.state.engine.dispose()
 
@@ -83,6 +96,8 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(reception_runtime_router)
+    from .workforce import router as workforce_router
+    app.include_router(workforce_router)
     app.add_exception_handler(StarletteHTTPException, http_error)
     app.add_exception_handler(RequestValidationError, validation_error)
     app.add_middleware(ResidentBoundary)

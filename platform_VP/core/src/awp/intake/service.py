@@ -271,6 +271,8 @@ class IntakeService:
             return 0
         closed = 0
         for cid in await self.rt.cases.stalled(idle):
+            if self.rt.workforce is not None and await self.rt.workforce.workflow_of_case(cid):
+                continue  # Workforce jobs have leases/deadlines; waiting for a resident is not a stalled agent.
             open_requests = build_view(await self.rt.cases.items(cid)).open_requests()
             if open_requests:
                 # Waiting for an outside reply is normal; give up only after the request timeout.

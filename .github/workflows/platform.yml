@@ -1,14 +1,34 @@
 name: Standalone agent platform
 on:
   pull_request:
-    paths: ["platform_VP/**", ".github/workflows/platform.yml"]
+    paths: ["platform_VP/**", "vinhome_Recident/**/workforce*", "vinhome_Recident/**/WorkforceStatus.tsx", "vinhome_Recident/**/0013_workforce.sql", "vinhome_Recident/**/resident-workforce-ui.test.tsx", ".github/workflows/platform.yml"]
   push:
     branches: [dev_platform]
-    paths: ["platform_VP/**", ".github/workflows/platform.yml"]
+    paths: ["platform_VP/**", "vinhome_Recident/**/workforce*", "vinhome_Recident/**/WorkforceStatus.tsx", "vinhome_Recident/**/0013_workforce.sql", "vinhome_Recident/**/resident-workforce-ui.test.tsx", ".github/workflows/platform.yml"]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
+  workforce-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: platform_VP/core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.0"
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - name: Workforce unit, contract and scripted AgentScope regression
+        run: uv run --frozen pytest -q
+      - name: Workforce lint and contract export
+        run: |
+          uv run --frozen ruff check src/awp/workforce scripts tests/test_workforce.py tests/test_workforce_bus.py tests/test_workforce_governance.py tests/test_vinhomes_workforce.py
+          uv run --frozen python scripts/export_contract.py
+          git diff --exit-code -- ../../docs/workforce-v1.openapi.json
   platform:
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -1,0 +1,72 @@
+name: awp-workforce
+services:
+  postgres:
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    environment:
+      POSTGRES_USER: awp
+      POSTGRES_DB: awp
+      POSTGRES_PASSWORD: ${AWP_POSTGRES_PASSWORD:?Set an isolated database password}
+    ports: ["127.0.0.1:5589:5432"]
+    volumes: ["postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U awp -d awp"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["127.0.0.1:6389:6379"]
+    volumes: ["redis:/data"]
+  minio:
+    image: cgr.dev/chainguard/minio@sha256:4cf4831a2bbcf13ddca09c1cbcc9faff716dd3c4247e0babc32864b8ee8e0034
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${AWP_MINIO_ACCESS_KEY:?Set MinIO user}
+      MINIO_ROOT_PASSWORD: ${AWP_MINIO_SECRET_KEY:?Set MinIO secret}
+    ports: ["127.0.0.1:9090:9000", "127.0.0.1:9091:9001"]
+    volumes: ["minio:/data"]
+  api:
+    env_file: .env
+    build:
+      context: ..
+      dockerfile: core/Dockerfile
+    environment: &core-env
+      AWP_DB_URL: postgresql+asyncpg://awp:${AWP_POSTGRES_PASSWORD}@postgres:5432/awp
+      AWP_AGENTSCOPE_DB_URL: postgresql+asyncpg://awp:${AWP_POSTGRES_PASSWORD}@postgres:5432/awp
+      AWP_REDIS_URL: redis://redis:6379/0
+      AWP_SECRET_KEY: ${AWP_SECRET_KEY:?Set Fernet storage key}
+      AWP_ADMIN_KEYS: ${AWP_ADMIN_KEYS:?Set admin key}
+      AWP_MINIO_ENDPOINT: minio:9000
+      AWP_MINIO_ACCESS_KEY: ${AWP_MINIO_ACCESS_KEY}
+      AWP_MINIO_SECRET_KEY: ${AWP_MINIO_SECRET_KEY}
+      AWP_MINIO_SECURE: "0"
+      AWP_WORKSPACE_DIR: /data/workspaces
+      AWP_MODELS_FILE: /config/models.yaml
+      AWP_HOST: 0.0.0.0
+      AWP_PORT: "8800"
+      AWP_WORKFORCE_WORKERS: "0"
+    ports: ["127.0.0.1:8089:8800"]
+    volumes: ["workspaces:/data/workspaces", "./models.yaml:/config/models.yaml:ro"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_started}
+      minio: {condition: service_started}
+  worker:
+    env_file: .env
+    build:
+      context: ..
+      dockerfile: core/Dockerfile
+    environment:
+      <<: *core-env
+      AWP_WORKFORCE_WORKERS: "20"
+    volumes: ["workspaces:/data/workspaces", "./models.yaml:/config/models.yaml:ro"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_started}
+      minio: {condition: service_started}
+volumes:
+  postgres:
+  redis:
+  minio:
+  workspaces:

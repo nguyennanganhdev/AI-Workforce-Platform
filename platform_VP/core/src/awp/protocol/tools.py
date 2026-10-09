@@ -47,6 +47,17 @@ class _CaseTool(ToolBase):
     async def _view(self) -> CaseView:
         return build_view(await self.rt.cases.items(self.b.case_id))
 
+    async def _pending_team(self, view: CaseView) -> list[str]:
+        pending = [q.ref for q in view.open_questions()]
+        reports = view.reports
+        if self.b.fence:
+            reports = {item.author for item in await self.rt.cases.items(self.b.case_id, kinds=("report",))
+                       if (item.data.get("job_id"), item.data.get("generation")) ==
+                       (self.b.fence.job_id, self.b.fence.generation)}
+        pending.extend(member["agent_name"] for member in await self.rt.active_sessions(self.b.case_id)
+                       if member["role"] == "worker" and member["agent_name"] not in reports)
+        return pending
+
     def _sources(self, view: CaseView, refs: list[str]) -> tuple[list[str], list[str], list[str]]:
         """(texts of the cited items, the subset that comes from tools, refs that
         cannot be cited). A fact brings its own evidence. What the requester typed
@@ -80,6 +91,8 @@ class _CaseTool(ToolBase):
         return texts, trusted, bad
 
     async def _closed(self) -> ToolChunk | None:
+        if self.b.fence is not None:
+            await self.b.fence.check(self.rt.workforce)
         case = await self.rt.cases.get_case(self.b.case_id)
         if case is None or case["status"] != "open":
             return _err("The case is closed. Stop working on it.")
@@ -189,7 +202,7 @@ class CaseAsk(_CaseTool):
     async def call(self, to: str, question: str) -> ToolChunk:
         if (closed := await self._closed()):
             return closed
-        members = {s["agent_name"] for s in await self.rt.cases.sessions_of_case(self.b.case_id)}
+        members = {s["agent_name"] for s in await self.rt.active_sessions(self.b.case_id)}
         if to == self.b.agent_name or to not in members:
             return _err(f"No such teammate. Members: {sorted(members - {self.b.agent_name})}.")
         item = await self.rt.cases.add(self.b.case_id, "question", self.b.agent_name,
@@ -398,6 +411,10 @@ class CaseFinalize(_CaseTool):
         if not problems:
             # every outcome is checked: the text reaches the domain either way
             problems += check_text(answer, sources, rules, trusted)
+        if outcome == "resolved" and not problems:
+            if pending := await self._pending_team(view):
+                return _err("Not finalized: wait for teammate answers/reports: " + ", ".join(pending) +
+                            ". End this turn; their reply will wake you. Use needs_human if they cannot answer.")
         judge = self.rt.judge
         if outcome == "resolved" and judge is not None and sources and not problems:
             p = await judge.support(answer, sources)
@@ -426,7 +443,7 @@ class CaseFinalize(_CaseTool):
                                         "unknowns": unknowns})
         result = {"answer": answer, "outcome": outcome, "cites": cites, "unknowns": unknowns,
                   "ref": item.ref}
-        if not await self.rt.close(self.b.case_id, "finalized", result):
+        if not await self.rt.close(self.b.case_id, "finalized", result, fence=self.b.fence):
             return _err("The case was closed meanwhile; nothing was recorded.")
         return _ok(f"{item.ref} recorded; the case is finalized as {outcome}.")
 

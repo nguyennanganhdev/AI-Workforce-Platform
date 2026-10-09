@@ -45,6 +45,7 @@ class AgentProfile(BaseModel):
     knowledge: KnowledgeRef = Field(default_factory=KnowledgeRef)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     model_tier: Literal["cheap", "standard", "strong"] = "standard"
+    model_id: str | None = None
     max_iters: int = Field(default=12, ge=2, le=40)
     # Shown to the leader when it chooses whom to bring in.
     invite_description: str = ""

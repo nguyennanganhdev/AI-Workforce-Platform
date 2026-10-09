@@ -8,6 +8,7 @@ named by AWP_MODELS_FILE (see `models.example.yaml`).
 from __future__ import annotations
 
 import os
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,8 @@ class ModelSpec:
     base_url: str | None = None
     api_key_env: str | None = None
     context_size: int = 128000
+    supports_vision: bool = False
+    vision_tokens_per_image: int = 16000
     price_in: float | None = None  # USD per 1M input tokens
     price_out: float | None = None
     price_cache_read: float | None = None
@@ -87,6 +90,13 @@ class ModelCatalog:
                 raise ValueError(f"unknown provider {s.provider!r} in model {s.id!r}")
             if s.tier not in TIERS:
                 raise ValueError(f"unknown tier {s.tier!r} in model {s.id!r}")
+            prices = (s.price_in, s.price_out, s.price_cache_read, s.price_cache_write)
+            if any(price is not None and (not math.isfinite(price) or price < 0) for price in prices):
+                raise ValueError(f"invalid price in model {s.id!r}")
+            if s.context_size < 1 or s.vision_tokens_per_image < 1:
+                raise ValueError(f"invalid token limits in model {s.id!r}")
+        if len({spec.id for spec in specs}) != len(specs):
+            raise ValueError("duplicate model IDs")
         self.specs = {s.id: s for s in specs}
         self._env = env
         self._built: dict[str, Any] = {}
@@ -140,6 +150,8 @@ class ModelCatalog:
             cred = self.credential(spec)
             model_cls = type(cred).get_chat_model_class()
             kwargs: dict[str, Any] = {"context_size": spec.context_size}
+            if spec.provider == "gemini":
+                kwargs["client_kwargs"] = {"http_options": {"retry_options": {"attempts": 1}, "timeout": 60000}}
             if spec.parameters:
                 kwargs["parameters"] = model_cls.Parameters(**spec.parameters)
             self._built[spec.id] = model_cls(credential=cred, model=spec.model, **kwargs)
