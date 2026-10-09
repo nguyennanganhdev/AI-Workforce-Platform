@@ -45,7 +45,7 @@ Test Python: `python -m pytest tests` trong `agents/reception/` và `services/vi
 
 ## Đóng gói
 
-Năm thành phần của domain đóng thành năm container: `api`, `reception`, `resident`, `operations`, `field`. Hai app web dùng chung một Dockerfile ([deploy/Dockerfile.web](deploy/Dockerfile.web)), chạy sau nginx; `operations` và `field` là cùng một image, khác nhau ở `VINHOMES_SURFACE`.
+Các thành phần của domain đóng thành container: `api`, `reception`, `resident`, `operations` và `gateway`, địa chỉ duy nhất phía trước. Hai app web dùng chung một Dockerfile ([deploy/Dockerfile.web](deploy/Dockerfile.web)); cư dân và nhân viên cùng đăng nhập ở `/login` rồi được chuyển sang đúng app.
 
 ```powershell
 cd deploy
@@ -59,7 +59,7 @@ Compose không khởi động PostgreSQL và kho S3; job `migrate` tự tạo sc
 
 Gói này đã bỏ toàn bộ phần Supervisor, quản lý agent (builder, đánh giá, model, kết nối MCP, lịch chạy, phòng chat của agent), học tri thức và tool gateway, cùng các màn hình tương ứng trong app nhân viên. Còn lại:
 
-- **Database đã thuộc gói** (`services/vinhomes-api/src/vinhomes_api/schema/`: 5 migration, dữ liệu mẫu, quyền role). Còn lại họ bảng `agents`, `agent_runs`, `execution_principals`, `runtime_*` mà cơ chế ủy quyền của Reception và việc tải tệp vẫn dùng; thay bằng mô hình nhỏ của domain là bước kế tiếp. Chi tiết: [docs/domain/SPEC_DATABASE_DOMAIN.md](docs/domain/SPEC_DATABASE_DOMAIN.md), nghiệp vụ: [docs/domain/NGHIEP_VU_VINHOMES.md](docs/domain/NGHIEP_VU_VINHOMES.md).
+- **Database đã thuộc gói** (`services/vinhomes-api/src/vinhomes_api/schema/`: 9 migration, dữ liệu mẫu, quyền role) và **bề mặt cho platform** (`/integration/v1`). Đọc theo thứ tự: nghiệp vụ [docs/domain/NGHIEP_VU_VINHOMES.md](docs/domain/NGHIEP_VU_VINHOMES.md) → 12 kịch bản kiểm thu [docs/domain/KICH_BAN_VANG.md](docs/domain/KICH_BAN_VANG.md) → hợp đồng với platform [docs/domain/HOP_DONG_TICH_HOP.md](docs/domain/HOP_DONG_TICH_HOP.md) → cách nạp dữ liệu [docs/domain/NAP_DU_LIEU.md](docs/domain/NAP_DU_LIEU.md) → quyết định về database [docs/domain/SPEC_DATABASE_DOMAIN.md](docs/domain/SPEC_DATABASE_DOMAIN.md) và kế hoạch [docs/domain/KE_HOACH_TRIEN_KHAI.md](docs/domain/KE_HOACH_TRIEN_KHAI.md).
 - **Đường nối Reception ⇄ "Supervisor".** Reception giao ticket bằng hợp đồng `schema_v2`: hộp thư, kết quả trả về và câu hỏi gửi lại cư dân (`v3_reception_supervisor`, `v3_resident_interactions`, `/resident/supervisor-interactions`). Chưa có ai đọc hộp thư này; tên gọi và hợp đồng sẽ đổi khi nối sang platform.
 - **Lớp xem thử dữ liệu mẫu trong app nhân viên** vẫn còn khái niệm phòng và agent (`hooks/use-operations-data.ts`, `mock/`, `workspace/`).
 - **Nội dung an toàn khẩn cấp và tri thức** hiện để trống: Reception không đưa lời khuyên tự xử lý và không có nguồn trả lời câu hỏi thông tin cho đến khi có gói tri thức (`RECEPTION_KNOWLEDGE_URL`).

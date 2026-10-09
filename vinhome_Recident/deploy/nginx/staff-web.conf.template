@@ -1,11 +1,5 @@
-# The staff app is served at two front doors from the same build; VINHOMES_SURFACE says which.
-#   operations  management and administrators (empty value works the same: one door for every role)
-#   field       staff on site: only the /operations pages, in their own sign-in
-map "${VINHOMES_SURFACE}" $field_door {
-  default 0;
-  field   1;
-}
-
+# The staff app: management, administrators and staff on site, in one build. What each role sees is decided by
+# the app from the signed-in person's role, and what they may read or change by the business API.
 server {
   listen 3020;
   # Redirects carry no host or port: the container's port (3020) is not the one the browser used.
@@ -23,15 +17,14 @@ server {
     proxy_pass $vinhomes_api;
     proxy_set_header Host $http_host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    # Named by this proxy alone: nginx sends no header at all when the value is empty, and never the
-    # one the browser sent under that name. The API keeps one sign-in per door.
-    proxy_set_header X-Vinhomes-Surface "${VINHOMES_SURFACE}";
+    # No front door is named: one sign-in serves every app of the host (see gateway.conf.template).
+    proxy_set_header X-Vinhomes-Surface "";
     # An agent's answer can wait on a model call.
     proxy_read_timeout 255s;
   }
 
-  # Built files: a miss is a real 404, never the app's HTML.
-  location /assets/ {
+  # Built files: a miss is a real 404, never the app's HTML. (Not /assets: the resident app has that one.)
+  location /staff-assets/ {
     try_files $uri =404;
     add_header Cache-Control "public, max-age=31536000, immutable";
   }
@@ -46,14 +39,6 @@ server {
 
   # Anything else is a file (favicon) or a page address this app does not have.
   location / {
-    try_files $uri @unknown_page;
-  }
-
-  location @unknown_page {
-    # The field door has no page outside /operations.
-    if ($field_door) {
-      return 302 /operations/my-tasks;
-    }
-    rewrite ^ /index.html break;
+    try_files $uri /index.html;
   }
 }

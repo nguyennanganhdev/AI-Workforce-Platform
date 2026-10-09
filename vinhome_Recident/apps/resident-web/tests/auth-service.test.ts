@@ -99,4 +99,30 @@ describe("Resident auth boundary", () => {
     expect(validateAuth('register', {...valid, phone: 'person@example.test', password: 'shortpass'}, 'email').password).toBeDefined();
     expect(validateAuth('login', {...valid, phone: 'invalid'}, 'email').phone).toBeDefined();
   });
+
+  async function signInAs(session: object, units: unknown[] = []) {
+    const original = globalThis.fetch;
+    const paths: string[] = [];
+    globalThis.fetch = (async (url: RequestInfo | URL) => {
+      paths.push(String(url));
+      return Response.json(String(url).endsWith("/session") ? { membershipStatus: "active", administrator: false, ...session } : { units });
+    }) as typeof fetch;
+    try { return { result: await residentAuthService.signIn(valid), paths }; } finally { globalThis.fetch = original; }
+  }
+  test("one sign-in page sends staff to the operations app on the page that fits their role", async () => {
+    const staff = await signInAs({ operationsRole: "staff", audiences: ["operations"] });
+    expect(staff.result).toEqual({ nextStep: "operations", operationsPath: "/operations/my-tasks" });
+    expect(staff.paths.includes("/api/business/resident/me")).toBe(false);
+    const manager = await signInAs({ operationsRole: "management", audiences: ["operations"] });
+    expect(manager.result).toEqual({ nextStep: "operations", operationsPath: "/operations/kanban" });
+  });
+  test("a resident stays in the resident app, and an account that is both is asked where to go", async () => {
+    expect((await signInAs({ operationsRole: null, audiences: ["resident"] }, [{ id: "u1" }])).result).toEqual({ nextStep: "ready" });
+    expect((await signInAs({ audiences: ["resident"] }, [])).result).toEqual({ nextStep: "verification-required" });
+    expect((await signInAs({ operationsRole: "staff", audiences: ["resident", "operations"] }, [{ id: "u1" }])).result)
+      .toEqual({ nextStep: "choose", operationsPath: "/operations/my-tasks" });
+    // Both, but no home linked yet: the resident side has nothing to open, so the staff side does.
+    expect((await signInAs({ operationsRole: "staff", audiences: ["resident", "operations"] }, [])).result)
+      .toEqual({ nextStep: "operations", operationsPath: "/operations/my-tasks" });
+  });
 });

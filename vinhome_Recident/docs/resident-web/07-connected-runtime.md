@@ -15,11 +15,11 @@ Chạy mỗi frontend trong một terminal. Chế độ đăng nhập thật dù
 
 | Bề mặt | Địa chỉ development |
 |---|---|
-| Resident | `http://127.0.0.1:3011/` |
+| Resident và đăng nhập chung | `http://127.0.0.1:3011/` (`/login`) |
 | Operations | `http://127.0.0.1:3020/operations` |
 | FastAPI / Swagger | `http://127.0.0.1:8000/docs` |
 
-Hai Vite frontend proxy `/api/business/*` tới FastAPI8000 và bỏ prefix. Production cần gateway cùng origin cho cookie/session; Vite proxy không tự tồn tại trong built app. Triển khai thật dùng nginx trong [deploy/](../../deploy/README.md).
+Đăng nhập một lần ở `http://127.0.0.1:3011/login`: cư dân vào app cư dân, nhân viên và Ban quản lý được chuyển sang `http://127.0.0.1:3020/operations` (cookie `localhost` dùng chung giữa các cổng). Hai Vite frontend proxy `/api/business/*` tới FastAPI8000 và bỏ prefix. Production cần gateway cùng origin cho cookie/session; Vite proxy không tự tồn tại trong built app. Triển khai thật dùng nginx trong [deploy/](../../deploy/README.md).
 
 ## Nguồn contract và cách kiểm
 

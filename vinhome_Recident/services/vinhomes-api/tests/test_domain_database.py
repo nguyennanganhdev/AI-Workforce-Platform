@@ -153,8 +153,8 @@ def test_reception_draft_handoff_and_durable_retry(database):
 
 
 def test_handoff_without_supervisor_creates_a_direct_flow_ticket(database):
-    """A management unit with no versioned Supervisor still receives the ticket."""
-    sql(database, "update agents set status='archived' where id='demo-supervisor'")
+    """A management unit with no client that takes cases still receives the ticket."""
+    sql(database, "update integration_clients set status='disabled' where id='demo-platform'")
     try:
         with client(database) as c:
             context, _ = operation(c, "get_verified_resident_context")
@@ -180,7 +180,7 @@ def test_handoff_without_supervisor_creates_a_direct_flow_ticket(database):
         payload = created["payload"] if isinstance(created["payload"], dict) else __import__("json").loads(created["payload"])
         assert "requiresPlan" not in payload
     finally:
-        sql(database, "update agents set status='active' where id='demo-supervisor'")
+        sql(database, "update integration_clients set status='active' where id='demo-platform'")
 
 
 def delegate(c, channel, message_id, actor="local-v3-resident"):
@@ -275,8 +275,8 @@ def test_reception_delegation_is_bound_to_one_running_turn(database, monkeypatch
         # The resident comes from the run; the response carries the canonical context.
         assert done.json()["result"]["resident"]["id"] == "local-v3-resident"
         assert done.json()["context"] == delegation["context"]
-        run = sql(database, "select status,actor_user_id,channel_id from agent_runs where id=$1", UUID(delegation["context"]["runId"]))[0]
-        assert run == {"status": "running", "actor_user_id": "local-v3-resident", "channel_id": channel}
+        run = sql(database, "select status,user_id,channel_id from delegations where id=$1", UUID(delegation["context"]["runId"]))[0]
+        assert run == {"status": "active", "user_id": "local-v3-resident", "channel_id": channel}
 
         # Neither the caller's context nor its input can widen the binding.
         assert c.post(v1, headers=bearer, json={**call, "context": {"runId": str(uuid4())}}).status_code == 403
@@ -343,16 +343,16 @@ def test_runs_record_usage_and_a_stale_run_is_closed(database, monkeypatch):
                 await finish_run(db, run, True, {"input_tokens": 1200, "output_tokens": 80})
 
         c.portal.call(finish)
-        row = sql(database, "select status,input_tokens,output_tokens from agent_runs where id=$1", UUID(run))[0]
-        assert row == {"status": "succeeded", "input_tokens": 1200, "output_tokens": 80}
+        row = sql(database, "select status,input_tokens,output_tokens from delegations where id=$1", UUID(run))[0]
+        assert row == {"status": "finished", "input_tokens": 1200, "output_tokens": 80}
 
-        # A run left running by a crash is closed when the conversation's next turn opens.
+        # A delegation left open by a crash is closed when the conversation's next turn opens.
         second = c.post(f"/resident/chats/{channel}/messages", json={"text": "Lượt hai", "client_message_id": str(uuid4())}).json()
         stale = delegate(c, channel, second["id"])
-        sql(database, "update agent_runs set started_at=now()-interval '20 minutes' where id=$1", UUID(stale["context"]["runId"]))
+        sql(database, "update delegations set created_at=now()-interval '20 minutes' where id=$1", UUID(stale["context"]["runId"]))
         third = c.post(f"/resident/chats/{channel}/messages", json={"text": "Lượt ba", "client_message_id": str(uuid4())}).json()
         delegate(c, channel, third["id"])
-        status = sql(database, "select status,error_code from agent_runs where id=$1", UUID(stale["context"]["runId"]))[0]
+        status = sql(database, "select status,error_code from delegations where id=$1", UUID(stale["context"]["runId"]))[0]
         assert status == {"status": "failed", "error_code": "abandoned"}
         assert c.get("/internal/reception/catalog", headers={"Authorization": "Bearer " + stale["token"]}).status_code == 403
 

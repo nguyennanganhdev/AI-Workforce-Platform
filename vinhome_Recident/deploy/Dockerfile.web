@@ -29,6 +29,6 @@ RUN npm run build -w @vinhomes/${APP}
 
 FROM ${NGINX_IMAGE}
 ARG APP=resident-web
-# nginx fills ${VINHOMES_API_URL} and ${VINHOMES_SURFACE} into the template when the container starts.
+# nginx fills ${VINHOMES_API_URL} into the template when the container starts.
 COPY deploy/nginx/${APP}.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /opt/vinhome/apps/${APP}/dist /usr/share/nginx/html

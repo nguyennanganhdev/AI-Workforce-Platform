@@ -122,7 +122,7 @@ def test_completed_work_releases_capacity_and_offers_the_next_supervisor_job(dat
     first, _ = approved_order(database)
     next_order, next_plan = approved_order(database)
     # The queued plan has the same persisted actor/approval shape as an automatic Supervisor plan.
-    sql(database, "update vh_ticket_plans set proposed_by=null,proposed_by_agent_id='demo-supervisor',management_by=null where id=$1 returning id",
+    sql(database, "update vh_ticket_plans set proposed_by=null,proposed_by_client_id='demo-platform',management_by=null where id=$1 returning id",
         UUID(next_plan))
     assignment = offer(database, first, staff)
     assert assignment.status_code == 201, assignment.text
@@ -215,7 +215,7 @@ def test_simultaneous_supervisor_offers_do_not_exceed_staff_capacity(database):
             try:
                 async with engine.begin() as connection:
                     await connection.execute(text("select set_config('app.tenant_id',:tenant,true)"), {"tenant": str(TENANT)})
-                    return await offer_work(connection, UUID(order["ticket_id"]), UUID(order["id"]), "demo-supervisor")
+                    return await offer_work(connection, UUID(order["ticket_id"]), UUID(order["id"]), "demo-platform")
             finally:
                 await engine.dispose()
         barrier.wait()

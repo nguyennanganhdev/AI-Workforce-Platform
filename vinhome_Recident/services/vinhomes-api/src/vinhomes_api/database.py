@@ -4,6 +4,10 @@
     python -m vinhomes_api.database migrate --url URL
     python -m vinhomes_api.database seed    --url URL
     python -m vinhomes_api.database role    --url URL --role vinhomes_api --password-env API_DB_PASSWORD
+    python -m vinhomes_api.database mock    --url URL [--profile test|standard] [--seed 42]
+    python -m vinhomes_api.database import  --url URL --dir DIR [--dry-run]
+    python -m vinhomes_api.database client  --url URL --id platform --kind platform [--accepts-cases]
+    python -m vinhomes_api.database reset   --url URL --confirm DATABASE_NAME
 
 The SQL lives next to this file in `schema/`. Migrations are numbered files, applied once each in
 order and recorded in `schema_migrations` with a checksum, so a file edited after it was applied is
@@ -17,6 +21,7 @@ security (a superuser or a BYPASSRLS role). `migrate` and `role` do not.
 import argparse
 import asyncio
 import hashlib
+import json
 import os
 import re
 import sys
@@ -126,6 +131,36 @@ async def role(url: str, name: str, password: str | None) -> None:
         await connection.close()
 
 
+async def reset(url: str, confirm: str) -> None:
+    """Drop everything in the schema and build it again, empty. The database name must be repeated to confirm."""
+    connection = await asyncpg.connect(_url(url))
+    try:
+        name = await connection.fetchval("select current_database()")
+        if confirm != name:
+            raise SystemExit(f"This would erase database {name}. Repeat its name with --confirm to go ahead.")
+        await connection.execute("drop schema public cascade; create schema public")
+    finally:
+        await connection.close()
+    await migrate(url)
+
+
+async def client(url: str, client_id: str, kind: str, accepts_cases: bool, levels: dict, tenant: str) -> str:
+    """Register an integration client, or rotate its secret, and return the secret (shown once, never stored)."""
+    from .integration import digest, new_secret
+    secret = new_secret()
+    connection = await asyncpg.connect(_url(url))
+    try:
+        await connection.execute("select set_config('app.tenant_id',$1,false)", tenant)
+        await connection.execute("""
+            insert into integration_clients(tenant_id,id,name,kind,status,accepts_cases,levels,secret_hash)
+            values($1::uuid,$2,$2,$3,'active',$4,$5::jsonb,$6)
+            on conflict (tenant_id,id) do update set secret_hash=excluded.secret_hash,levels=excluded.levels,accepts_cases=excluded.accepts_cases,status='active'
+        """, tenant, client_id, kind, accepts_cases, json.dumps(levels), digest(secret))
+    finally:
+        await connection.close()
+    return secret
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m vinhomes_api.database", description=__doc__.split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -135,6 +170,25 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--name", required=True)
     for name in ("migrate", "seed"):
         commands.add_parser(name).add_argument("--url", default=from_env, required=from_env is None)
+    k = commands.add_parser("mock")
+    k.add_argument("--url", default=from_env, required=from_env is None)
+    k.add_argument("--profile", default="standard", choices=["test", "standard"])
+    k.add_argument("--seed", type=int, default=42)
+    i = commands.add_parser("import")
+    i.add_argument("--url", default=from_env, required=from_env is None)
+    i.add_argument("--dir", required=True)
+    i.add_argument("--dry-run", action="store_true")
+    g = commands.add_parser("client")
+    g.add_argument("--url", default=from_env, required=from_env is None)
+    g.add_argument("--id", required=True)
+    g.add_argument("--kind", choices=["reception", "platform"], default="platform")
+    g.add_argument("--accepts-cases", action="store_true")
+    g.add_argument("--tenant", default="11111111-1111-5111-a111-111111111111")
+    g.add_argument("--resident-levels", default="read,draft,act_small")
+    g.add_argument("--staff-levels", default="read,draft,propose")
+    z = commands.add_parser("reset")
+    z.add_argument("--url", default=from_env, required=from_env is None)
+    z.add_argument("--confirm", required=True)
     r = commands.add_parser("role")
     r.add_argument("--url", default=from_env, required=from_env is None)
     r.add_argument("--role", required=True)
@@ -148,6 +202,24 @@ def main(argv: list[str] | None = None) -> int:
         print("applied: " + ", ".join(done) if done else "up to date")
     elif args.command == "seed":
         print("loaded: " + ", ".join(asyncio.run(seed(args.url))))
+    elif args.command == "mock":
+        from .mock_data import build
+        print("built: " + ", ".join(f"{k}={v}" for k, v in asyncio.run(build(args.url, args.profile, args.seed)).items()))
+    elif args.command == "import":
+        from .import_data import load
+        added, problems = asyncio.run(load(args.url, args.dir, args.dry_run))
+        for line in problems:
+            print("ERROR " + line)
+        if problems:
+            print(f"{len(problems)} problem(s); nothing was written.")
+            return 1
+        print(("would add: " if args.dry_run else "added: ") + ", ".join(f"{k}={v}" for k, v in added.items()))
+    elif args.command == "client":
+        levels = {"resident": [x for x in args.resident_levels.split(",") if x], "staff": [x for x in args.staff_levels.split(",") if x]}
+        print("client secret (shown once): " + asyncio.run(client(args.url, args.id, args.kind, args.accepts_cases, levels, args.tenant)))
+    elif args.command == "reset":
+        asyncio.run(reset(args.url, args.confirm))
+        print("schema rebuilt empty; run `role` again for the API's rights")
     else:
         password = os.environ.get(args.password_env) if args.password_env else None
         if args.password_env and not password:

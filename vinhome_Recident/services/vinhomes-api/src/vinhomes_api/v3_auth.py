@@ -1,5 +1,6 @@
 """Resolve identity server side and apply V3 tenant RLS for every business query."""
 
+import logging
 from collections.abc import AsyncIterator
 
 from fastapi import Header, HTTPException, Request
@@ -9,8 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from .v3_config import V3Settings
 
+log = logging.getLogger("vinhomes_api")
+
 
 async def _actor_id(request: Request, settings: V3Settings) -> str:
+    authorization = request.headers.get("authorization", "")
+    if authorization.startswith("Bearer dg1_"):
+        # A client acting for a person: accepted only for the operations in the integration catalog.
+        from .integration import resolve_delegation
+        return await resolve_delegation(request, authorization[7:])
     if settings.password_auth:
         from .password_auth import authenticated_user
         return (await authenticated_user(request))["id"]
@@ -73,6 +81,7 @@ async def scoped_connection(request: Request, x_demo_actor: str | None = Header(
     except IntegrityError as exc:
         raise HTTPException(409, "V3 constraint conflict; reload the resource and retry") from exc
     except (SQLAlchemyError, OSError) as exc:
+        log.warning("database error behind a 503: %s", exc)
         raise HTTPException(503, "V3 database is unavailable or missing required tables") from exc
 
 
@@ -101,6 +110,7 @@ async def resident_connection(request: Request, x_demo_actor: str | None = Heade
     except IntegrityError as exc:
         raise HTTPException(409, "V3 constraint conflict; reload the resource and retry") from exc
     except (SQLAlchemyError, OSError) as exc:
+        log.warning("database error behind a 503: %s", exc)
         raise HTTPException(503, "V3 database is unavailable or missing required tables") from exc
 
 

@@ -1,17 +1,6 @@
 -- Relational fixtures for the new V3 endpoints. Existing workflow state is preserved.
 BEGIN;
 SELECT set_config('app.tenant_id','11111111-1111-5111-a111-111111111111',true);
--- Existing demo installations also need a version for Reception handoff.
-INSERT INTO agent_versions(id,tenant_id,agent_id,version_no,runtime,framework_version,
- instructions,config,config_hash,created_by)
-SELECT 'dddddddd-dddd-5ddd-addd-ddddddddddd1',tenant_id,id,1,'agentscope',
- 'demo-record-only','Supervisor demo record-only version','{}',repeat('0',64),
- 'local-v3-management'
-FROM agents WHERE id='demo-supervisor'
- AND tenant_id='11111111-1111-5111-a111-111111111111'
- AND NOT EXISTS (SELECT 1 FROM agent_versions WHERE agent_id='demo-supervisor'
-   AND tenant_id='11111111-1111-5111-a111-111111111111' AND version_no=1)
-ON CONFLICT(id) DO NOTHING;
 INSERT INTO security_cameras(id,tenant_id,building_id,code,name,location,status)
 SELECT md5('demo-camera:'||n)::uuid,'11111111-1111-5111-a111-111111111111',
  '77777777-7777-5777-a777-777777777777','CAM-DEMO-'||n,'Camera demo '||n,
@@ -43,13 +32,6 @@ INSERT INTO vh_security_checkpoints(id,tenant_id,site_id,name,location,sort_orde
 VALUES (md5('demo-checkpoint')::uuid,'11111111-1111-5111-a111-111111111111','66666666-6666-5666-a666-666666666666','Sanh demo','Tang 1',1,'missed')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO agents(id,tenant_id,workspace_id,name,type,configuration,purpose,status)
-VALUES ('demo-room-unlinked','11111111-1111-5111-a111-111111111111','ffffffff-ffff-5fff-afff-fffffffffff1','Agent co san demo','built_in','{"demo":true}','specialist','active')
-ON CONFLICT DO NOTHING;
-
-INSERT INTO execution_principals(id,tenant_id,kind,workspace_id,status)
-VALUES (md5('demo-workspace-principal')::uuid,'11111111-1111-5111-a111-111111111111','workspace_service','ffffffff-ffff-5fff-afff-fffffffffff1','active')
-ON CONFLICT DO NOTHING;
 INSERT INTO users(id,name,email,status)
 VALUES ('demo-pending-account','Tai khoan cho duyet demo','pending-demo@example.test','active'),
  ('demo-suspended-account','Tai khoan bi khoa demo','suspended-demo@example.test','active')

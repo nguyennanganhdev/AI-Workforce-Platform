@@ -304,12 +304,12 @@ class BackendOperations:
             "channel_id": record["channel_id"], "draft_id": draft_id}, key)
         if not result.get("managementUnitId"):
             return {"kind": "unresolved"}
-        # Without a Supervisor the ticket still reaches management, who handle it manually.
+        # Without a client that takes cases the ticket still reaches management, who handle it manually.
         return {"kind": "resolved", "route": {
             "destination_id": str(result["managementUnitId"]),
             "workspace_id": str(result.get("workspaceId") or "none"),
             "team_id": str(result.get("channelId") or "none"),
-            "coordination_binding_id": str(result.get("supervisorVersionId") or "none"),
+            "coordination_binding_id": str(result.get("clientId") or "none"),
             "route_revision": 1,
             "building_id": str(result["buildingId"]),
             "domain_id": str(result["domainId"]),

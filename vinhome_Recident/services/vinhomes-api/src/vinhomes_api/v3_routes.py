@@ -105,6 +105,7 @@ async def list_tickets(
     status: str | None = None,
     building_id: UUID | None = Query(None, alias="buildingId"),
     priority: str | None = None,
+    overdue: bool = Query(False, description="Only requests still open whose resolution time has passed, oldest deadline first"),
 ) -> dict[str, object]:
     connection, _, _ = scope
     result = await connection.execute(text(f"""
@@ -120,10 +121,11 @@ async def list_tickets(
           and (cast(:status as text) is null or t.status=:status)
           and (cast(:building_id as uuid) is null or t.building_id=cast(:building_id as uuid))
           and (cast(:priority as text) is null or t.priority=:priority)
-        order by t.created_at desc, t.id desc
+          and (not :overdue or (t.status not in ('resolved','closed','cancelled') and t.resolution_due_at < now()))
+        order by case when :overdue then t.resolution_due_at end asc nulls last, t.created_at desc, t.id desc
         limit :limit offset :offset
     """), {**_params(scope), "limit": limit, "offset": offset,
-           "status": status, "building_id": building_id, "priority": priority})
+           "status": status, "building_id": building_id, "priority": priority, "overdue": overdue})
     items = _rows(result)
     return {"items": items, "nextOffset": offset + len(items) if len(items) == limit else None}
 

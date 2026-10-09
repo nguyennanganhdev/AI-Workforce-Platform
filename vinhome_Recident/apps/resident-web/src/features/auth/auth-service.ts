@@ -2,8 +2,22 @@
 export type LoginInput = { phone: string; password: string };
 export type RegisterInput = LoginInput & { fullName: string };
 export type ResidentAuthResult = {
-  nextStep: "verification-required" | "membership-pending" | "ready" | "administration";
+  nextStep: "verification-required" | "membership-pending" | "ready" | "administration" | "operations" | "choose";
+  /** Where the operations app opens for this person (`operations` and `choose`). */
+  operationsPath?: string;
 };
+/** One sign-in page serves residents and staff: the operations app opens on the page that fits the role. */
+const operationsHome: Record<string, string> = { management: "/operations/kanban", staff: "/operations/my-tasks" };
+
+/** Address of a page of the operations app: the same host in a deployment, VITE_OPERATIONS_URL or the next port in development. */
+export function operationsUrl(path: string): string {
+  const destination = new URL(import.meta.env.VITE_OPERATIONS_URL || location.origin);
+  if (!import.meta.env.VITE_OPERATIONS_URL && ["localhost", "127.0.0.1", "[::1]"].includes(destination.hostname) && destination.port === "3011") destination.port = "3020";
+  destination.pathname = path;
+  destination.search = "";
+  destination.hash = "";
+  return destination.toString();
+}
 export interface ResidentAuthService {
   identityMode?: "email";
   signIn(input: LoginInput): Promise<ResidentAuthResult>;
@@ -27,9 +41,13 @@ export const residentAuthService: ResidentAuthService = {
     await authRequest("/auth/login", {identifier: phone.trim(), password});
     const session = await authRequest("/auth/session");
     if (session.administrator === true && session.membershipStatus === "active") return {nextStep: "administration"};
+    const operationsPath = operationsHome[session.operationsRole];
+    const resident = (session.audiences ?? ["resident"]).includes("resident");
+    if (operationsPath && !resident) return {nextStep: "operations", operationsPath};
     if (session.membershipStatus === "pending") return {nextStep: "membership-pending"};
     const profile = await authRequest("/resident/me");
-    return {nextStep: profile.units.length ? "ready" : "verification-required"};
+    if (!profile.units.length) return operationsPath ? {nextStep: "operations", operationsPath} : {nextStep: "verification-required"};
+    return operationsPath ? {nextStep: "choose", operationsPath} : {nextStep: "ready"};
   },
   async register({fullName, phone, password}) {
     await authRequest("/auth/register", {name: fullName, email: phone.trim(), password});

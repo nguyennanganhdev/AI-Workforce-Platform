@@ -565,55 +565,34 @@ async def _resolve_destination(scope, call: OperationCall):
             {"channel_id": channel_id},
         )
     management_channel_id = destination_channels[0]["id"]
-    # The Supervisor works as the workspace's service identity. Without one it could never verify the
-    # team it is handed, so such a workspace has no Supervisor here and management gets the request directly.
-    supervisors = (
+    # A client that takes cases works the request through the management group chat. Without one the
+    # request goes to management directly.
+    taker = (
         (
             await db.execute(
                 text(f"""
-                select a.id,a.name,v.id as version_id from agents a
-                join channel_agents ca on ca.agent_id=a.id and ca.tenant_id=a.tenant_id
-                left join lateral (
-                  select id from agent_versions where agent_id=a.id and tenant_id=a.tenant_id
-                  order by version_no desc limit 1
-                ) v on true
-                where a.workspace_id=:workspace_id and a.tenant_id={TENANT}
-                  and a.status='active' and a.purpose='supervisor'
-                  and ca.channel_id=:channel_id
-                  and not exists(select 1 from agent_releases sr where sr.version_id=v.id and sr.tenant_id=a.tenant_id
-                    and (sr.status<>'published' or sr.revoked_at is not null))
-                  and exists(select 1 from execution_principals p where p.tenant_id=a.tenant_id
-                    and p.kind='workspace_service' and p.workspace_id=a.workspace_id and p.status='active')
-                  order by a.id limit 2
-            """),
-                {"workspace_id": workspace_id, "channel_id": management_channel_id},
+                select id,name from integration_clients
+                where tenant_id={TENANT} and status='active' and accepts_cases limit 1
+            """)
             )
         )
         .mappings()
-        .all()
+        .first()
     )
-    if len(supervisors) > 1:
-        raise HTTPException(
-            409, "Multiple active Supervisors are assigned to the management group"
-        )
-    supervisor = supervisors[0] if supervisors else None
     result = {
-        "available": bool(
-            supervisor is not None and supervisor["version_id"] is not None
-        ),
+        "available": taker is not None,
         "managementUnitId": management_unit["id"],
         "managementUnitName": management_unit["name"],
         "workspaceId": workspace_id,
         "channelId": management_channel_id,
-        "supervisorAgentId": supervisor["id"] if supervisor else None,
-        "supervisorName": supervisor["name"] if supervisor else None,
-        "supervisorVersionId": supervisor["version_id"] if supervisor else None,
+        "clientId": taker["id"] if taker else None,
+        "clientName": taker["name"] if taker else None,
         "buildingId": place["building_id"],
         "domainId": place["domain_id"],
         "serviceCategoryId": incident["category_id"],
     }
     if not result["available"]:
-        result["missingFields"] = ["active Supervisor and version"]
+        result["missingFields"] = ["an active client that takes cases"]
     return agent_result(
         "resolve_management_destination", result, {"channel_id": channel_id}
     )
@@ -627,7 +606,7 @@ async def _register_wait(scope, call: OperationCall):
             await db.execute(
                 text(f"""
             select t.id,t.code,t.reopen_count,tm.id as team_id,tm.ticket_generation
-            from tickets t left join agent_teams tm on tm.ticket_id=t.id and tm.tenant_id=t.tenant_id
+            from tickets t left join integration_cases tm on tm.ticket_id=t.id and tm.tenant_id=t.tenant_id
               and tm.ticket_generation=t.reopen_count and tm.status not in ('completed','failed','cancelled')
             where t.id=:ticket_id and t.requester_user_id=:actor and t.tenant_id={TENANT}
             order by tm.created_at desc limit 1
@@ -1015,8 +994,8 @@ async def _handoff_draft(scope, call: OperationCall):
         (
             await db.execute(
                 text(f"""
-            select id,workspace_id,channel_id,ticket_id,ticket_generation,supervisor_agent_id,status
-            from agent_teams where ticket_id=:ticket_id and tenant_id={TENANT}
+            select id,workspace_id,channel_id,ticket_id,ticket_generation,client_id,status
+            from integration_cases where ticket_id=:ticket_id and tenant_id={TENANT}
               and ticket_generation=:generation and status not in ('completed','failed','cancelled')
             order by created_at desc limit 1 for update
         """),
@@ -1026,8 +1005,7 @@ async def _handoff_draft(scope, call: OperationCall):
         .mappings()
         .first()
     )
-    supervisor_agent_id = destination["supervisorAgentId"]
-    supervisor_version_id = destination["supervisorVersionId"]
+    client_id = destination["clientId"]
     if team is not None:
         if str(team["workspace_id"]) != str(destination["workspaceId"]):
             raise HTTPException(
@@ -1039,7 +1017,7 @@ async def _handoff_draft(scope, call: OperationCall):
                 "An active Supervisor team already exists in a different group chat",
             )
         team_id = team["id"]
-        supervisor_agent_id = team["supervisor_agent_id"]
+        client_id = team["client_id"]
     else:
         team_id = uuid5(
             NAMESPACE_URL,
@@ -1047,11 +1025,11 @@ async def _handoff_draft(scope, call: OperationCall):
         )
         await db.execute(
             text(f"""
-            insert into agent_teams
+            insert into integration_cases
               (id,tenant_id,workspace_id,channel_id,ticket_id,ticket_generation,
-               supervisor_agent_id,status,shared_state,requested_by_user_id)
+               client_id,status,requested_by_user_id)
             values (:id,{TENANT},:workspace_id,:channel_id,:ticket_id,:generation,
-               :supervisor,'queued',cast(:state as jsonb),:actor)
+               :client,'queued',:actor)
         """),
             {
                 "id": team_id,
@@ -1059,36 +1037,15 @@ async def _handoff_draft(scope, call: OperationCall):
                 "channel_id": destination["channelId"],
                 "ticket_id": ticket_id,
                 "generation": snapshot["reopen_count"],
-                "supervisor": supervisor_agent_id,
-                "state": json.dumps(
-                    {
-                        "request": {
-                            "ticketId": str(ticket_id),
-                            "supervisorVersionId": str(supervisor_version_id),
-                            "source": "reception_handoff",
-                        }
-                    }
-                ),
+                "client": client_id,
                 "actor": actor,
-            },
-        )
-        await db.execute(
-            text(f"""
-            insert into team_members(tenant_id,team_id,agent_id,version_id,member_kind,status)
-            values ({TENANT},:team_id,:agent_id,:version_id,'supervisor','active')
-            on conflict do nothing
-        """),
-            {
-                "team_id": team_id,
-                "agent_id": supervisor_agent_id,
-                "version_id": supervisor_version_id,
             },
         )
         await audit(
             db,
             actor,
-            "team.created",
-            "agent_team",
+            "case.created",
+            "integration_case",
             str(team_id),
             {"ticketId": str(ticket_id), "source": "reception_handoff"},
         )
@@ -1158,7 +1115,7 @@ async def _handoff_draft(scope, call: OperationCall):
             "id": str(team_id),
             "workspaceId": str(destination["workspaceId"]),
             "channelId": str(destination["channelId"]),
-            "supervisorAgentId": str(supervisor_agent_id),
+            "clientId": str(client_id),
         },
         "handoff": handoff,
     }

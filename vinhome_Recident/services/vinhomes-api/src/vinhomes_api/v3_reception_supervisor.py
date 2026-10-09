@@ -258,7 +258,7 @@ async def _authorized_team(scope, team_id: UUID, *, lock: bool = False) -> dict[
     result = await scope[0].execute(text(f"""
         select tm.*,w.management_unit_id as workspace_management_unit_id,
           c.workspace_id as channel_workspace_id
-        from agent_teams tm
+        from integration_cases tm
         join workspaces w on w.id=tm.workspace_id and w.tenant_id=tm.tenant_id and w.status='active'
         join channels c on c.id=tm.channel_id and c.tenant_id=tm.tenant_id
           and c.kind='management'
@@ -357,7 +357,7 @@ async def _resident_ticket_snapshot(scope, body: ReceptionToSupervisorMessage) -
             join units u on u.id=t.unit_id and u.tenant_id=t.tenant_id
             join buildings b on b.id=t.building_id and b.tenant_id=t.tenant_id
             left join management_coverage mc on mc.id=t.coverage_id and mc.tenant_id=t.tenant_id
-            left join agent_teams tm on tm.id=:team_id and tm.tenant_id=t.tenant_id
+            left join integration_cases tm on tm.id=:team_id and tm.tenant_id=t.tenant_id
             left join workspaces w on w.id=tm.workspace_id and w.tenant_id=tm.tenant_id
             left join channels c on c.id=tm.channel_id and c.tenant_id=tm.tenant_id
               and c.kind='management'
@@ -415,7 +415,7 @@ async def _validate_source_message(db, ticket: dict[str, Any], actor: str,
     if message_id is None:
         return None
     result = await db.execute(text(f"""
-        select sender_kind,sender_user_id,sender_agent_id,created_at from messages
+        select sender_kind,sender_user_id,sender_client_id,created_at from messages
         where cast(id as text)=:message_id and channel_id=:channel_id and tenant_id={TENANT}
     """), {"message_id": message_id, "channel_id": ticket["channel_id"]})
     row = result.mappings().first()
@@ -665,7 +665,7 @@ async def accept_supervisor_result(db, body: SupervisorToReceptionResult, team: 
         await db.execute(text(f"""
             select t.id,t.tenant_id,t.code,t.version,t.reopen_count,t.status,t.last_event_seq,
               t.assigned_team_id,t.management_unit_id,tm.workspace_id,tm.ticket_generation
-            from tickets t join agent_teams tm on tm.ticket_id=t.id and tm.tenant_id=t.tenant_id
+            from tickets t join integration_cases tm on tm.ticket_id=t.id and tm.tenant_id=t.tenant_id
             where t.id=:ticket_id and tm.id=:team_id and t.tenant_id={TENANT}
             for update of t
         """), {"ticket_id": body.ticket_id, "team_id": body.team_id})
@@ -786,7 +786,7 @@ async def accept_supervisor_result(db, body: SupervisorToReceptionResult, team: 
     await db.execute(text(f"""
         insert into vh_reception_supervisor_messages
           (tenant_id,direction,message_id,correlation_id,ticket_id,team_id,ticket_generation,
-           message_type,payload,payload_hash,response_body,created_by,created_by_agent_id)
+           message_type,payload,payload_hash,response_body,created_by,created_by_client_id)
         values ({TENANT},'supervisor_to_reception',:message_id,:correlation_id,:ticket_id,
           :team_id,:generation,:message_type,cast(:payload as jsonb),:payload_hash,
           cast(:response as jsonb),:actor,:agent)

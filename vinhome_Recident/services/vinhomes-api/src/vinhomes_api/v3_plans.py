@@ -292,11 +292,11 @@ async def resident_decision(plan_id: UUID, body: PlanDecision, scope: Resident):
         from .v3_request_presentation import offer_planned_work
         for work_id in work:
             await offer_planned_work(db, tid, UUID(work_id), plan)
-    elif work and plan["proposed_by_agent_id"] and plan["management_by"] is None:
+    elif work and plan["proposed_by_client_id"] and plan["management_by"] is None:
         # A plan the Supervisor approved itself: it also hands the work to an available technician.
         from .work_offers import offer_work
         for work_id in work:
-            await offer_work(db, tid, UUID(work_id), plan["proposed_by_agent_id"])
+            await offer_work(db, tid, UUID(work_id), plan["proposed_by_client_id"])
     return {**dict(result.mappings().one()), "workOrderIds": work}
 
 

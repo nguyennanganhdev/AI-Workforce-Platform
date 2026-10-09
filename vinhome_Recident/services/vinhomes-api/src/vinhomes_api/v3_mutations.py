@@ -89,15 +89,18 @@ async def record_event(scope: Scope, ticket: dict[str, object], event_type: str,
                        payload: str, *, to_status: str | None = None, idempotency_key: str | None = None) -> UUID:
     seq = ticket["last_event_seq"] + 1
     event_id = uuid4()
+    from .integration import CURRENT
+    delegation = CURRENT.get()
     inserted = await scope[0].execute(text("""
         insert into ticket_events
-          (tenant_id, ticket_id, seq, event_type, actor_kind, actor_user_id,
+          (tenant_id, ticket_id, seq, event_type, actor_kind, actor_user_id, actor_client_id,
            idempotency_key, correlation_id, payload, occurred_at, from_status, to_status)
         values (nullif(current_setting('app.tenant_id', true), '')::uuid,
-          :ticket_id, :seq, :event_type, 'human', :user_id,
+          :ticket_id, :seq, :event_type, :actor_kind, :user_id, :client_id,
           :event_key, :correlation_id, cast(:payload as jsonb), now(), :from_status, :to_status)
         returning id
     """), {"ticket_id": ticket["id"], "seq": seq, "event_type": event_type,
+           "actor_kind": "agent" if delegation else "human", "client_id": delegation["client_id"] if delegation else None,
            "user_id": scope[1], "event_key": idempotency_key or str(event_id),
            "correlation_id": event_id, "payload": payload,
            "from_status": ticket["status"], "to_status": to_status})
@@ -106,6 +109,10 @@ async def record_event(scope: Scope, ticket: dict[str, object], event_type: str,
         where id=:ticket_id
     """), {"ticket_id": ticket["id"], "seq": seq})
     event_id = inserted.scalar_one()
+    from .events import emit, publishable
+    if publishable(event_type):
+        await emit(scope[0], event_type, {"ticketId": str(ticket["id"]), "ticketCode": ticket.get("code"),
+                                          "fromStatus": ticket["status"], "toStatus": to_status}, event_id=event_id)
     from .resident_cases import append_domain_event
     await append_domain_event(scope[0], ticket["id"], event_type, to_status)
     return event_id

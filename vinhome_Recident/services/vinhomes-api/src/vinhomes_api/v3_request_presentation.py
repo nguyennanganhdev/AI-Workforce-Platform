@@ -135,7 +135,7 @@ async def edit_plan(plan_id: UUID, body: PlanPresentation, scope: Scope):
     executable = [{"category_id": str(ticket["category_id"]), "description": "\n".join(f"{i}. {line}" for i, line in enumerate(body.steps, 1))}]
     if not ticket["category_id"]:
         raise HTTPException(422, "Yêu cầu cần được phân loại trước khi sửa phương án")
-    if not plan["proposed_by_agent_id"]:
+    if not plan["proposed_by_client_id"]:
         # Manual plans can carry distinct categories: do not collapse that execution model.
         if len(plan["steps"]) != len(body.steps):
             raise HTTPException(422, "Phương án nhiều chuyên môn cần giữ nguyên số bước")
@@ -182,11 +182,11 @@ async def offer_planned_work(db, ticket_id: UUID, work_order_id: UUID, plan) -> 
         return False
     appointment = datetime.fromisoformat(proposal["appointment_at"]) if proposal.get("appointment_at") else None
     assignment = (await db.execute(text(f"""
-        insert into work_assignments(tenant_id,work_order_id,staff_id,assigned_by_user_id,assigned_by_agent_id,
+        insert into work_assignments(tenant_id,work_order_id,staff_id,assigned_by_user_id,assigned_by_client_id,
           status,offered_at,offer_expires_at,eta_at)
         values({TENANT},:work,:staff,:person,:agent,'offered',now(),now()+interval '24 hours',:appointment) returning id
     """), {"work": work_order_id, "staff": staff, "person": plan["management_by"],
-           "agent": plan["proposed_by_agent_id"] if not plan["management_by"] else None, "appointment": appointment})).scalar_one()
+           "agent": plan["proposed_by_client_id"] if not plan["management_by"] else None, "appointment": appointment})).scalar_one()
     await db.execute(text("update work_orders set status='offered',version=version+1,updated_at=now() where id=:id"), {"id": work_order_id})
     payload = {"assignmentId": str(assignment), "performerStaffId": str(staff), "appointmentAt": proposal.get("appointment_at")}
     ticket = (await db.execute(text("select * from tickets where id=:id for update"), {"id": ticket_id})).mappings().one()
@@ -194,5 +194,5 @@ async def offer_planned_work(db, ticket_id: UUID, work_order_id: UUID, plan) -> 
         await record_event((db, plan["management_by"], False), dict(ticket), "work_order.offered", json.dumps(payload))
     else:
         from .work_offers import agent_event
-        await agent_event(db, ticket_id, plan["proposed_by_agent_id"], "work_order.offered", payload)
+        await agent_event(db, ticket_id, plan["proposed_by_client_id"], "work_order.offered", payload)
     return True
