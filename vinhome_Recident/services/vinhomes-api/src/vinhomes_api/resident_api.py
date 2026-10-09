@@ -303,7 +303,7 @@ async def materialize(case_id: UUID, body: MaterializeTicket, request: Request, 
         domain_id=row["domain_id"], building_id=row["building_id"], unit_id=row["unit_id"], category_id=body.categoryId,
         title=row["title"], description=row["description"], contact_name=person["name"], contact_phone=phone,
         request_kind=body.requestKind, idempotency_key=f"case:{case_id}:{body.categoryId}:{body.requestKind}"),
-        (scope[0], row["requester_user_id"]), acting_user_id=scope[1])
+        (scope[0], row["requester_user_id"]), acting_user_id=scope[1], link_case=False)
     await attach_ticket(scope, row, ticket["id"])
     result = await staff_detail(scope, await cases.case_row(scope, case_id, operations=True), request)
     result["ticketId"] = str(ticket["id"])

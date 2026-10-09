@@ -1,9 +1,9 @@
 name: vinhomes-domain
 
-# The Vinhomes domain: business API, Reception agent and the three web fronts.
+# The Vinhomes domain: business API, Reception agent, the resident and staff web apps and the one address in front of them.
 #
-# Object storage (any S3 service) and the database are not started here. The database must already hold
-# the domain schema: this package has no migration job yet.
+# Object storage (any S3 service) and the database server are not started here. The `migrate` job builds the
+# schema in the database you point it at.
 
 x-python-health: &python-health
   interval: 15s
@@ -52,8 +52,8 @@ services:
       VINHOMES_API_S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
       VINHOMES_API_S3_REGION: ${S3_REGION:-us-east-1}
       # Two settings, one list: browser sign-in and writes check the first, the resident app's CORS the second.
-      VINHOMES_API_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
-      VINHOMES_API_RESIDENT_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:3020,http://localhost:3011}
+      VINHOMES_API_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:8080}
+      VINHOMES_API_RESIDENT_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:8080}
     volumes:
       - api-files:/var/lib/vinhomes/files
     ports:
@@ -61,6 +61,18 @@ services:
     healthcheck:
       <<: *python-health
       test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/ready", timeout=5)']
+
+  # Deadlines and expiries, once a minute: warns before a request is late and says so when it is, lets unpaid
+  # bookings lapse and visits nobody came to end. Safe to run twice. Same restricted database role as the API.
+  scheduler:
+    image: vinhomes-domain-api:${VINHOMES_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: ${VINHOMES_API_DATABASE_URL:?restricted business database URL required}
+    command: ['sh', '-c', 'while true; do python -m vinhomes_api.jobs sweep || true; sleep 60; done']
 
   reception:
     image: vinhomes-domain-reception:${VINHOMES_IMAGE_TAG:-latest}
@@ -99,8 +111,6 @@ services:
     restart: unless-stopped
     environment:
       VINHOMES_API_URL: http://api:8000
-    ports:
-      - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${RESIDENT_PORT:-3011}:3011'
     depends_on:
       api:
         condition: service_healthy
@@ -110,7 +120,7 @@ services:
       retries: 5
       test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3011/']
 
-  # Management and administrators. The same image as `field`, told apart by VINHOMES_SURFACE.
+  # Management, administrators and staff on site: one app, each role sees its own pages.
   operations:
     image: vinhomes-domain-operations:${VINHOMES_IMAGE_TAG:-latest}
     build:
@@ -121,9 +131,6 @@ services:
     restart: unless-stopped
     environment:
       VINHOMES_API_URL: http://api:8000
-      VINHOMES_SURFACE: operations
-    ports:
-      - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${OPERATIONS_PORT:-3020}:3020'
     depends_on:
       api:
         condition: service_healthy
@@ -133,25 +140,27 @@ services:
       retries: 5
       test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3020/operations/login']
 
-  # Staff on site: only the work pages, in a separate sign-in.
-  field:
-    image: vinhomes-domain-operations:${VINHOMES_IMAGE_TAG:-latest}
+  # The one address people use: /login and the resident app on /, the staff app on /operations, the API on
+  # /api/business. See nginx/gateway.conf.template.
+  gateway:
+    image: nginx:1.27-alpine
     restart: unless-stopped
     environment:
       VINHOMES_API_URL: http://api:8000
-      VINHOMES_SURFACE: field
+    volumes:
+      - ./nginx/gateway.conf.template:/etc/nginx/templates/default.conf.template:ro
     ports:
-      - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${FIELD_PORT:-3023}:3020'
+      - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${GATEWAY_PORT:-8080}:8080'
     depends_on:
-      api:
+      resident:
         condition: service_healthy
       operations:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       interval: 15s
       timeout: 8s
       retries: 5
-      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3020/operations/login']
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/']
 
 volumes:
   api-files:

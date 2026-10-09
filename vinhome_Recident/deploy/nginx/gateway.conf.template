@@ -1,0 +1,55 @@
+# One address for every app of the domain. People sign in once, on /login (the resident app), and the
+# session cookie works for all of them:
+#
+#   /operations, /staff-assets   management, administrators and staff on site (the `operations` service)
+#   /api/business                the business API
+#   everything else              the resident app (the `resident` service)
+#
+# No front door is named towards the API, so it keeps a single session cookie. What a person may do is decided
+# by their roles in the API, never by the address they came in by.
+server {
+  listen 8080;
+  # Redirects carry no host or port: the container's port is not the one the browser used.
+  absolute_redirect off;
+  # Photos and files are uploaded through this path.
+  client_max_body_size 25m;
+
+  # Docker's own DNS, asked again every few seconds: containers get a new address when they are replaced.
+  resolver 127.0.0.11 valid=10s ipv6=off;
+
+  location /api/business/ {
+    set $gw_api ${VINHOMES_API_URL};
+    # Drops the /api/business prefix, as the development proxy does. The query string is kept.
+    rewrite ^/api/business/(.*)$ /$1 break;
+    proxy_pass $gw_api;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # An empty value sends no header at all, and never the one the browser sent under that name.
+    proxy_set_header X-Vinhomes-Surface "";
+    # A chat message is answered by the Reception agent before the reply returns; an agent's answer can wait on a model call.
+    proxy_read_timeout 255s;
+  }
+
+  location /operations {
+    set $gw_operations http://operations:3020;
+    proxy_pass $gw_operations;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+
+  location /staff-assets/ {
+    set $gw_operations http://operations:3020;
+    proxy_pass $gw_operations;
+    proxy_set_header Host $http_host;
+  }
+
+  location / {
+    set $gw_resident http://resident:3011;
+    proxy_pass $gw_resident;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}

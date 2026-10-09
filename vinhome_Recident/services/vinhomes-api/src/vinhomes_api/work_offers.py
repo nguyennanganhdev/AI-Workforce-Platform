@@ -20,13 +20,16 @@ async def agent_event(db, ticket_id: UUID, agent_id: str, event_type: str, paylo
                                {"id": ticket_id})).mappings().one()
     seq, event_id = ticket["last_event_seq"] + 1, uuid4()
     await db.execute(text(f"""
-        insert into ticket_events(id,tenant_id,ticket_id,seq,event_type,actor_kind,actor_agent_id,idempotency_key,
+        insert into ticket_events(id,tenant_id,ticket_id,seq,event_type,actor_kind,actor_client_id,idempotency_key,
           correlation_id,payload,occurred_at,from_status,to_status)
         values(:event,{TENANT},:ticket,:seq,:type,'agent',:agent,:key,:event,cast(:payload as jsonb),now(),:status,:to_status)
     """), {"event": event_id, "ticket": ticket_id, "seq": seq, "type": event_type, "agent": agent_id, "key": str(event_id),
            "payload": json.dumps(payload), "status": ticket["status"], "to_status": to_status})
     await db.execute(text("update tickets set last_event_seq=:seq,version=version+1,updated_at=now() where id=:id"),
                      {"seq": seq, "id": ticket_id})
+    from .events import emit, publishable
+    if publishable(event_type):
+        await emit(db, event_type, {"ticketId": str(ticket_id), "fromStatus": ticket["status"], "toStatus": to_status}, event_id=event_id)
     from .resident_cases import append_domain_event
     await append_domain_event(db, ticket_id, event_type, to_status)
     return event_id
@@ -58,7 +61,7 @@ async def offer_work(db, ticket_id: UUID, work_order_id: UUID, agent_id: str) ->
     if staff is None:
         return False
     assignment = (await db.execute(text(f"""
-        insert into work_assignments(tenant_id,work_order_id,staff_id,assigned_by_agent_id,status,offered_at,offer_expires_at)
+        insert into work_assignments(tenant_id,work_order_id,staff_id,assigned_by_client_id,status,offered_at,offer_expires_at)
         values({TENANT},:work,:staff,:agent,'offered',now(),now()+make_interval(hours => :hours)) returning id
     """), {"work": work_order_id, "staff": staff, "agent": agent_id, "hours": OFFER_HOURS})).scalar_one()
     await db.execute(text("update work_orders set status='offered',version=version+1,updated_at=now() where id=:id"),
@@ -81,12 +84,12 @@ async def offer_queued_work(db, released_work_order_id: UUID) -> None:
     # A rejected offer is not immediately sent back to the worker who refused it.
     for _ in range(25):
         queued = (await db.execute(text(f"""
-            select w.id,w.ticket_id,plan.proposed_by_agent_id,plan.proposal,plan.management_by from work_orders w
+            select w.id,w.ticket_id,plan.proposed_by_client_id,plan.proposal,plan.management_by from work_orders w
             join tickets t on t.id=w.ticket_id and t.tenant_id=w.tenant_id
             join lateral (
-                select p.proposed_by_agent_id,p.proposal,p.management_by from vh_ticket_plans p
+                select p.proposed_by_client_id,p.proposal,p.management_by from vh_ticket_plans p
                 where p.ticket_id=t.id and p.tenant_id=t.tenant_id and p.status='approved'
-                  and p.proposed_by_agent_id is not null and p.management_by is null
+                  and p.proposed_by_client_id is not null and p.management_by is null
                   and exists (select 1 from jsonb_array_elements(p.steps) step
                     where step->>'work_order_id'=w.id::text)
                 order by p.created_at desc limit 1
@@ -109,6 +112,6 @@ async def offer_queued_work(db, released_work_order_id: UUID) -> None:
             from .v3_request_presentation import offer_planned_work
             offered = await offer_planned_work(db, queued["ticket_id"], queued["id"], queued)
         else:
-            offered = await offer_work(db, queued["ticket_id"], queued["id"], queued["proposed_by_agent_id"])
+            offered = await offer_work(db, queued["ticket_id"], queued["id"], queued["proposed_by_client_id"])
         if not offered:
             return

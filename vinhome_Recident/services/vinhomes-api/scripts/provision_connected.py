@@ -190,16 +190,8 @@ async def main() -> None:
                              "on conflict do nothing", room, t, workspace, manager)
             await db.execute("insert into channel_memberships(tenant_id,channel_id,user_id) values($1,$2,$3) on conflict do nothing",
                              t, room, manager)
-            await db.execute("insert into agents(id,tenant_id,name,type,configuration,purpose,status) "
-                             "values('system-reception',$1,'Lễ tân','built_in','{}','reception','active') on conflict do nothing", t)
-            principal = key("workspace-principal")
-            await db.execute("insert into execution_principals(id,tenant_id,kind,workspace_id,status) "
-                             "values($1,$2,'workspace_service',$3,'active') on conflict do nothing", principal, t, workspace)
-            principal = await db.fetchval("select id from execution_principals where tenant_id=$1 and kind='workspace_service' "
-                                          "and workspace_id=$2", t, workspace)
-            await db.execute("insert into memory_namespaces(id,tenant_id,owner_principal_id,kind,workspace_id,namespace_key,purpose,status) "
-                             "values($1,$2,$3,'workspace',$4,'bql-sapphire-operations','operations','active') on conflict do nothing",
-                             key("memory-namespace"), t, principal, workspace)
+            await db.execute("insert into integration_clients(tenant_id,id,name,kind,status) "
+                             "values($1,'reception','Lễ tân','reception','active') on conflict do nothing", t)
     finally:
         await db.close()
     if created:

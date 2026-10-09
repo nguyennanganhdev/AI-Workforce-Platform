@@ -1,25 +1,47 @@
-﻿"""Plan editing is persisted, scoped, versioned and waits for resident consent."""
+"""Plan editing is persisted, scoped, versioned and waits for resident consent."""
 
 
 import json
-
-import pytest
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from test_resident_contract import sql
+from test_domain_database import app, demo_client, operation
+from test_integration_auth import CLIENT, bearer, outsider
+from test_resident_contract import CATEGORY, sql
 from test_resident_contract import database as database  # noqa: F401
-from test_domain_database import app, demo_client
+
+from vinhomes_api.integration import digest, new_secret
 
 
 def draft(c, database):
-    """A plan is proposed by an agent through an endpoint this package does not have yet."""
-    raise NotImplementedError
+    """The resident reports through Reception; the client that takes the case proposes a plan. Returns (ticket, plan)."""
+    context, _ = operation(c, "get_verified_resident_context")
+    place = context["residences"][0]
+    channel = c.post("/resident/chats", json={"title": "Rò nước"}).json()["id"]
+    message = c.post(f"/resident/chats/{channel}/messages", json={"text": "Vòi bếp rò nước", "client_message_id": str(uuid4())}).json()
+    created, _ = operation(c, "create_ticket_draft", {"channel_id": channel, "domain_id": place["domain_id"], "building_id": place["building_id"],
+                                                       "unit_id": place["unit_id"], "category_id": CATEGORY})
+    target = {"channel_id": channel, "draft_id": created["draftId"]}
+    operation(c, "update_ticket_incident", {**target, "fields": {"source_message_id": message["id"], "facts": [
+        {"key": "symptom", "value": "rò nước", "source": "customer_report", "source_message_id": message["id"]},
+        {"key": "item", "value": "vòi bếp", "source": "customer_report", "source_message_id": message["id"]}]}})
+    operation(c, "submit_ticket_assessment", {**target, "assessment": {"priority": "normal", "severity": "minor", "reason": "Cư dân báo"}})
+    operation(c, "resolve_management_destination", target)
+    handoff, _ = operation(c, "handoff_ticket", {**target, "plan_required": True})
+    ticket = handoff["ticket"]["id"]
+    secret = new_secret()
+    sql(database, "update integration_clients set secret_hash=$1 where id=$2 returning id", digest(secret), CLIENT)
+    headers = {"X-Client-Id": CLIENT, **bearer(secret)}
+    with outsider(database) as o:
+        version = o.get(f"/integration/v1/cases/{ticket}", headers=headers).json()["ticket"]["version"]
+        proposed = o.post(f"/integration/v1/cases/{ticket}/plans", headers={**headers, "Idempotency-Key": uuid4().hex},
+                          json={"ticket_version": version, "summary": "Thay gioăng vòi", "steps": ["Khóa van", "Thay gioăng"]})
+        assert proposed.status_code == 201, proposed.text
+    sql(database, "update integration_clients set secret_hash=null where id=$1 returning id", CLIENT)
+    return ticket, proposed.json()["id"]
 
 
-@pytest.mark.skip(reason="Needs an endpoint for an external agent to propose a plan; it comes with the platform connection")
-def test_management_edits_plan_and_schedule_without_bypassing_resident_consent(database, monkeypatch):
-    monkeypatch.setenv("VINHOMES_API_SUPERVISOR_APPROVES_PLANS", "0")
+def test_management_edits_plan_and_schedule_without_bypassing_resident_consent(database):
     with app(database) as resident:
         ticket, plan = draft(resident, database)
         staff = sql(database, """select sp.id from staff_profiles sp join staff_specialties ss on ss.staff_id=sp.id
@@ -60,9 +82,7 @@ def test_management_edits_plan_and_schedule_without_bypassing_resident_consent(d
         assert audit[0]["n"] == 1
 
 
-@pytest.mark.skip(reason="Needs an endpoint for an external agent to propose a plan; it comes with the platform connection")
-def test_appointment_requires_timezone_and_future_time(database, monkeypatch):
-    monkeypatch.setenv("VINHOMES_API_SUPERVISOR_APPROVES_PLANS", "0")
+def test_appointment_requires_timezone_and_future_time(database):
     with app(database) as resident:
         _, plan = draft(resident, database)
     with demo_client(database, "management") as manager:

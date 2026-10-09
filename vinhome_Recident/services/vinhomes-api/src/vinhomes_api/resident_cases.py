@@ -150,6 +150,11 @@ async def event(db, case_id, label, event_type, *, note=None, payload=None):
         {"case": case_id, "event": row_id, "type": event_type, "payload": json.dumps(payload or {"caseId": str(case_id)})})
 
 
+async def ensure_case(db, ticket_id):
+    """Give a request the resident started its resident case (see migration 0009). Safe to repeat."""
+    return (await db.execute(text("select app_ensure_case(:ticket)"), {"ticket": ticket_id})).scalar_one()
+
+
 async def append_domain_event(db, ticket_id, event_type, to_status=None):
     """Allowlisted public labels; internal notes, costs and actor data stay private."""
     labels = {"ticket.routing_accepted": "Ban quản lý đã tiếp nhận phản ánh",

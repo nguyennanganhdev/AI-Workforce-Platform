@@ -244,6 +244,9 @@ def error_response(request: Request, status: int, code: str, message: str,
 
 
 async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    if request.url.path.startswith("/integration/v1"):
+        from .integration import integration_error
+        return integration_error(request, exc.status_code, exc.detail if isinstance(exc.detail, str) else "Request failed", headers=exc.headers)
     if not is_contract(request.url.path):
         return JSONResponse({"detail": exc.detail}, exc.status_code, headers=exc.headers)
     default_codes = {400: "BAD_REQUEST", 401: "UNAUTHENTICATED", 403: "APARTMENT_ACCESS_DENIED",
@@ -257,6 +260,10 @@ async def http_error(request: Request, exc: StarletteHTTPException) -> JSONRespo
 
 
 async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    if request.url.path.startswith("/integration/v1"):
+        from .integration import integration_error
+        return integration_error(request, 422, "The request does not match the contract",
+                                 details=[{"loc": list(e["loc"]), "msg": e["msg"]} for e in exc.errors()])
     if request.url.path.startswith('/auth/'):
         # Invalid credential requests must not reflect passwords back into clients/logs.
         return JSONResponse(status_code=422, content={'detail': [

@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from .reception_delegation import DelegatedScope as Scope
-from .reception_delegation import finish_run, reception_agent, start_run
+from .reception_delegation import finish_run, reception_client, start_run
 from .reception_intake import assess, conversation, fold, negated
 from .v3_reception_supervisor import WIRE_TICKET, current_wire
 from .v3_resident import _owned_chat
@@ -111,7 +111,7 @@ async def append_agent_message(db: AsyncConnection, channel_id: str, agent: str,
         where id=:id returning next_message_seq-1
     """), {"id": channel_id, "preview": str(body.get("text", ""))[:200]})).scalar_one()
     created = await db.execute(text(f"""
-        insert into messages(tenant_id,channel_id,seq,sender_kind,sender_agent_id,visibility,body,reply_to_id)
+        insert into messages(tenant_id,channel_id,seq,sender_kind,sender_client_id,visibility,body,reply_to_id)
         values ({TENANT},:channel,:seq,'agent',:agent,:visibility,cast(:body as jsonb),:reply_to)
         returning id,seq
     """), {"channel": channel_id, "seq": seq, "agent": agent, "visibility": visibility,
@@ -122,11 +122,11 @@ async def append_agent_message(db: AsyncConnection, channel_id: str, agent: str,
 async def write_reply(db: AsyncConnection, channel_id: str, reply: str, reply_to: UUID,
                       clarification: str | None = None) -> dict[str, object]:
     """One agent reply per resident message; a retry returns the stored reply."""
-    agent = await reception_agent(db)
+    agent = await reception_client(db)
     # Serialized on the conversation row, so a retry sees the stored reply.
     await db.execute(text("select 1 from channels where id=:id for update"), {"id": channel_id})
     old = (await db.execute(text("""
-        select id,seq from messages where channel_id=:channel and reply_to_id=:reply_to and sender_agent_id=:agent
+        select id,seq from messages where channel_id=:channel and reply_to_id=:reply_to and sender_client_id=:agent
     """), {"channel": channel_id, "reply_to": reply_to, "agent": agent})).mappings().first()
     if old:
         return dict(old)

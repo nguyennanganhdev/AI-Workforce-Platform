@@ -14,7 +14,7 @@ import { defineConfig } from "vite";
  *
  *   APP_PORT          port to listen on                  (default 3020)
  *   VINHOMES_API_URL  where the business API runs        (default http://127.0.0.1:8000)
- *   VINHOMES_SURFACE  `operations` or `field`            (default: not sent)
+ *   VINHOMES_SURFACE  a front door to name              (default: not sent; one sign-in then serves every app)
  *   VINHOMES_API_ORIGIN  Origin sent to the API          (default: the browser's own)
  *                     Set it when the API only accepts the origins of its own deployment.
  */
@@ -46,6 +46,8 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
+  // The resident app is served from the same host and also has an /assets folder: keep ours apart.
+  build: { assetsDir: "staff-assets" },
   server: serving,
   preview: serving,
 });

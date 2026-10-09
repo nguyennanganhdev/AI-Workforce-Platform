@@ -14,7 +14,7 @@ from vinhomes_api import database as tool
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "vinhomes_api"
 # Identity tables shared by every tenant: a person signs in before any tenant is chosen.
-GLOBAL_TABLES = {"accounts", "platform_admins", "runtime_backends", "sessions", "tenants", "users", "schema_migrations"}
+GLOBAL_TABLES = {"accounts", "platform_admins", "sessions", "state_transitions", "tenants", "users", "schema_migrations"}
 # Tables of the platform that must never come back into this package's SQL.
 PLATFORM_TABLES = {
     "knowledge_bases", "knowledge_documents", "knowledge_chunks", "knowledge_embeddings", "knowledge_reviews",
@@ -23,6 +23,9 @@ PLATFORM_TABLES = {
     "memory_publications", "retrieval_runs", "retrieval_hits", "admin_model_registry", "admin_role_models", "credentials",
     "deployment_packages", "team_tasks", "team_mailbox", "composio_connections", "plugin_grants", "vh_agent_reviews",
     "vh_agent_skills", "vh_private_chats", "vh_session_sources",
+    # Agent-shaped tables replaced by integration_clients, delegations and integration_cases (migration 0006).
+    "agents", "agent_versions", "agent_releases", "agent_runs", "agent_teams", "team_members", "channel_agents",
+    "runtime_backends", "runtime_identities", "runtime_session_bindings",
 }
 
 

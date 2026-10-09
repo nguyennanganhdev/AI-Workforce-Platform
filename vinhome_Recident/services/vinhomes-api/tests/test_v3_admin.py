@@ -73,8 +73,6 @@ def test_admin_creates_a_unit_and_its_room_atomically(database):
         detail = next(u for u in c.get('/admin/units').json()['items'] if u['id'] == unit['id'])
         assert detail['buildings'] == ['New managed building']
         assert detail['groups'][0]['members'] == 1
-        # The domain opens the room only: no agent is created with it.
-        assert sql(database, 'select count(*) as n from agents where workspace_id=$1', UUID(unit['workspace_id']))[0]['n'] == 0
         assert len(sql(database, 'select id from management_coverage where management_unit_id=$1', UUID(unit['id']))) == 1
         assert sql(database, "select id from audit_events where event_type='management_unit.created' and target_id=$1", unit['id'])
 

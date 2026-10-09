@@ -169,8 +169,18 @@ async def session(request: Request, response: Response):
         await context(db, request, user["id"])
         membership_status = (await db.execute(text("select status from tenant_memberships where user_id=:id and tenant_id=cast(:tenant as uuid)"), {"id":user["id"], "tenant":str(request.app.state.settings.tenant_id)})).scalar_one()
         is_admin = bool((await db.execute(text("select exists(select 1 from platform_admins where user_id=:id)"), {"id":user["id"]})).scalar_one())
+        roles = set((await db.execute(text("""
+            select r.role_code from scoped_user_roles r join tenant_memberships m on m.id=r.membership_id and m.tenant_id=r.tenant_id
+            where m.user_id=:id and m.status='active' and r.tenant_id=cast(:tenant as uuid)
+              and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now())
+        """), {"id":user["id"], "tenant":str(request.app.state.settings.tenant_id)})).scalars())
+    # One sign-in page serves everyone; this says which app each person goes on to. Someone with no role yet
+    # (just registered, waiting to be linked to a home) belongs to the resident app.
+    operations_role = "admin" if is_admin else "management" if "management" in roles else "staff" if "staff" in roles else None
+    audiences = (["resident"] if "customer" in roles or operations_role is None else []) + (["operations"] if operations_role else [])
     response.headers["Cache-Control"] = "no-store"
-    return {"user":user, "membershipStatus":membership_status, "administrator":is_admin}
+    return {"user":user, "membershipStatus":membership_status, "administrator":is_admin,
+            "operationsRole":operations_role, "audiences":audiences}
 
 
 @router.post("/logout")

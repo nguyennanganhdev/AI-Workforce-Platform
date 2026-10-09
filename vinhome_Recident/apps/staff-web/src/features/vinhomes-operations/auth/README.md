@@ -3,7 +3,7 @@
 ## Quy tắc sản phẩm
 
 - Nhân viên chỉ đăng nhập bằng tài khoản admin cấp; không có đăng ký công khai.
-- `/operations/login` là route công khai, nằm ngoài layout và guard `_authed`.
+- `/operations/login` là route công khai, nằm ngoài layout và guard `_authed`. Ngoài chế độ trải nghiệm, nó chuyển về trang đăng nhập chung `/login` của app cư dân (`login-url.ts`); trang này chỉ còn hiện form khi bật `VITE_ENABLE_UI_PREVIEW`.
 - Form dùng nhãn “Tài khoản được cấp”; mã nhân viên/email chỉ là gợi ý UI, BE cần chốt định danh.
 - Quên mật khẩu/chưa được cấp tài khoản mở hướng dẫn liên hệ quản trị viên. Chưa gửi yêu cầu hoặc OTP.
 - Có validation, hiện/ẩn mật khẩu, pending, sai thông tin, bị khóa và lỗi kết nối.
