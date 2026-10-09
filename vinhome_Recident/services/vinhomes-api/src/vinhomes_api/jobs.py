@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from .events import emit
+from .resident_services import expire_unpaid
 
 TENANT = "nullif(current_setting('app.tenant_id',true),'')::uuid"
 WARN_AT = 0.8  # share of the resolution window after which a warning is due
@@ -35,7 +36,7 @@ async def sweep_tenant(db) -> dict[str, int]:
                                                     "dueAt": t["resolution_due_at"].isoformat()}, dedupe_key=f"sla:{kind}:{t['id']}")
         counts["sla_breaches" if kind == "breached" else "sla_warnings"] += int(queued)
     counts["visits_expired"] = (await db.execute(text(f"update visitor_passes set status='expired' where tenant_id={TENANT} and status='approved' and visit_to<now()"))).rowcount
-    counts["bookings_expired"] = (await db.execute(text(f"update amenity_bookings set status='expired' where tenant_id={TENANT} and status='pending_payment' and created_at<now()-interval '15 minutes'"))).rowcount
+    counts["bookings_expired"] = await expire_unpaid(db)
     counts["requests_cancelled"] = (await db.execute(text(f"""
         update service_requests set status='cancelled',cancelled_at=now(),cancel_reason='Quá 7 ngày không bổ sung hồ sơ'
         where tenant_id={TENANT} and status='need_more_info' and updated_at<now()-interval '7 days'

@@ -44,10 +44,6 @@
 .ops-status[data-tone=wait] { color: var(--wait); background: var(--wait-soft); }
 .ops-status[data-tone=danger] { color: var(--danger); background: var(--danger-soft); }
 .ops-status[data-tone=agent] { color: var(--agent); background: var(--agent-soft); }
-.ops-activity { display: inline-flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; padding: 5px 10px; border-radius: var(--r-pill); background: var(--agent-soft); color: var(--ink-2); font-size: 12px; }
-.ops-activity strong { color: var(--agent); font-weight: 600; }
-.ops-activity time { color: var(--ink-3); }
-.ops-activity-avatar { display: grid; place-items: center; width: 20px; height: 20px; color: var(--agent); }
 .ops-icon-tile { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 8px; background: var(--sunken); color: var(--ink-2); }
 .ops-icon-tile[data-agent] { color: var(--agent); background: var(--agent-soft); }
 .ops-topbar { display: flex; align-items: center; gap: 12px; height: 52px; flex: none; padding: 0 20px; border-bottom: 1px solid var(--line); background: var(--surface); }

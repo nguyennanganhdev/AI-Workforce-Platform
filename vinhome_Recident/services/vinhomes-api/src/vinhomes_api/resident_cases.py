@@ -155,18 +155,21 @@ async def ensure_case(db, ticket_id):
     return (await db.execute(text("select app_ensure_case(:ticket)"), {"ticket": ticket_id})).scalar_one()
 
 
+# Allowlisted public labels; internal notes, costs and actor data stay private.
+PUBLIC_LABELS = {"ticket.routing_accepted": "Ban quản lý đã tiếp nhận phản ánh",
+                 "work_order.offered": "Đã đề nghị nhân viên tiếp nhận công việc",
+                 "work_assignment.responded": "Đã cập nhật phân công xử lý",
+                 "work_order.status_changed": "Đã cập nhật tiến độ xử lý",
+                 "work_order.qc_recorded": "Đã cập nhật kết quả kiểm tra chất lượng",
+                 "work_order.redo_created": "Đã yêu cầu kiểm tra và xử lý lại",
+                 "ticket.status_changed": "Đã cập nhật tiến độ phản ánh",
+                 'plan.proposed': 'BQL đang chuẩn bị phương án xử lý',
+                 'plan.management_decided': 'Đã cập nhật phương án xử lý',
+                 'plan.resident_decided': 'Đã ghi nhận phản hồi phương án của cư dân'}
+
+
 async def append_domain_event(db, ticket_id, event_type, to_status=None):
-    """Allowlisted public labels; internal notes, costs and actor data stay private."""
-    labels = {"ticket.routing_accepted": "Ban quản lý đã tiếp nhận phản ánh",
-              "work_order.offered": "Đã đề nghị nhân viên tiếp nhận công việc",
-              "work_assignment.responded": "Đã cập nhật phân công xử lý",
-              "work_order.status_changed": "Đã cập nhật tiến độ xử lý",
-              "work_order.qc_recorded": "Đã cập nhật kết quả kiểm tra chất lượng",
-              "work_order.redo_created": "Đã yêu cầu kiểm tra và xử lý lại",
-              "ticket.status_changed": "Đã cập nhật tiến độ phản ánh"}
-    labels.update({'plan.proposed': 'BQL đang chuẩn bị phương án xử lý',
-                   'plan.management_decided': 'Đã cập nhật phương án xử lý',
-                   'plan.resident_decided': 'Đã ghi nhận phản hồi phương án của cư dân'})
+    labels = PUBLIC_LABELS
     if event_type not in labels:
         return
     # Older deployments may run the existing Operations routes before migration 0005.

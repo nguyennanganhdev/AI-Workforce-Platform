@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from .events import emit
 from .integration import Tool, register
 from .unit_access import ANSWERABLE, delegated, for_agent, my_units, resident_unit
+from .zone_rules import unit_rules
 from .v3_audit import audit
 from .v3_auth import resident_connection
 
@@ -26,12 +27,6 @@ router = APIRouter(tags=["Resident services"])
 Resident = Annotated[tuple[AsyncConnection, str], Depends(resident_connection)]
 Key = Annotated[str | None, Header(alias="Idempotency-Key", max_length=160)]
 TENANT = "nullif(current_setting('app.tenant_id',true),'')::uuid"
-ACTIVE_PASSES_PER_HOME = 10
-MAX_PASS_DAYS_AHEAD = 30
-MAX_PASS_HOURS = 72
-PENDING_PAYMENT_MINUTES = 15
-VISIT_EARLY_MINUTES = 15
-CARD_LIMITS = {"resident": 6, "vehicle": 4}
 REQUEST_HOURS = {"goods_move": 24, "card_issue": 48, "card_reissue": 48, "card_cancel": 48}
 
 
@@ -118,11 +113,13 @@ def pass_view(row: dict) -> dict:
 async def create_visitor_pass(unit_id: UUID, body: VisitorCreate, scope: Resident, key: Key = None):
     db, user = scope
     unit = await resident_unit(db, user, unit_id)
+    rules = await unit_rules(db, unit_id)
     now = datetime.now(timezone.utc)
     if body.visit_to <= body.visit_from or body.visit_to <= now:
         raise HTTPException(422, "The visit must end in the future and after it starts")
-    if body.visit_from > now + timedelta(days=MAX_PASS_DAYS_AHEAD) or body.visit_to - body.visit_from > timedelta(hours=MAX_PASS_HOURS):
-        raise HTTPException(422, f"A visit may be announced {MAX_PASS_DAYS_AHEAD} days ahead and last {MAX_PASS_HOURS} hours at most")
+    days_ahead, hours = rules["visit_max_days_ahead"], rules["visit_max_hours"]
+    if body.visit_from > now + timedelta(days=days_ahead) or body.visit_to - body.visit_from > timedelta(hours=hours):
+        raise HTTPException(422, f"A visit may be announced {days_ahead} days ahead and last {hours} hours at most")
     if key:
         old = (await db.execute(text(f"select {PASS_FIELDS},host_user_id from visitor_passes where tenant_id={TENANT} and idempotency_key=:key"), {"key": f"{user}:{key}"})).mappings().first()
         if old:
@@ -130,8 +127,8 @@ async def create_visitor_pass(unit_id: UUID, body: VisitorCreate, scope: Residen
                 raise HTTPException(409, "That Idempotency-Key was used for a different visitor")
             return pass_view(old)
     active = (await db.execute(text(f"select count(*) from visitor_passes where tenant_id={TENANT} and unit_id=:unit and status in ('pending_approval','approved','checked_in') and visit_to>now()"), {"unit": unit_id})).scalar_one()
-    if active >= ACTIVE_PASSES_PER_HOME:
-        raise HTTPException(409, f"This home already has {ACTIVE_PASSES_PER_HOME} visits waiting; cancel one first")
+    if active >= rules["visit_max_waiting"]:
+        raise HTTPException(409, f"This home already has {rules['visit_max_waiting']} visits waiting; cancel one first")
     d = delegated()
     row = (await db.execute(text(f"""
         insert into visitor_passes(tenant_id,code,unit_id,host_user_id,guest_name,guest_phone,guest_count,purpose,vehicle_plate_no,
@@ -141,8 +138,8 @@ async def create_visitor_pass(unit_id: UUID, body: VisitorCreate, scope: Residen
            "name": body.guest_name, "phone": body.guest_phone, "count": body.guest_count, "purpose": body.purpose,
            "plate": body.vehicle_plate_no, "from": body.visit_from, "to": body.visit_to,
            "client": d["client_id"] if d else None, "key": f"{user}:{key}" if key else None})).mappings().one()
-    # Default policy: family and delivery visits of a few people need no approval; everything else waits for the desk.
-    if body.purpose in ("family_visit", "delivery") and body.guest_count <= 5:
+    # The zone decides which visits need no approval (by purpose and number of people); the rest wait for the desk.
+    if body.purpose in rules["visit_auto_approve_purposes"] and body.guest_count <= rules["visit_auto_approve_max_guests"]:
         row = (await db.execute(text(f"update visitor_passes set status='approved',qr_token=:qr where id=:id returning {PASS_FIELDS}"),
                                 {"id": row["id"], "qr": secrets.token_urlsafe(24)})).mappings().one()
     await audit(db, user, "visitor_pass.created", "visitor_pass", str(row["id"]), {"code": row["code"], "status": row["status"], "unit": unit["code"]})
@@ -330,7 +327,13 @@ async def load_amenity(db, amenity_id):
 
 
 async def expire_unpaid(db):
-    await db.execute(text(f"update amenity_bookings set status='expired' where tenant_id={TENANT} and status='pending_payment' and created_at<now()-make_interval(mins=>:m)"), {"m": PENDING_PAYMENT_MINUTES})
+    """A booking that waits for payment is held for as long as its zone says."""
+    return (await db.execute(text(f"""
+        update amenity_bookings b set status='expired'
+        from amenities a cross join lateral app_zone_rules(a.tenant_id, a.zone_id) r
+        where b.tenant_id={TENANT} and b.status='pending_payment' and a.id=b.amenity_id and a.tenant_id=b.tenant_id
+          and b.created_at<now()-make_interval(mins=>r.amenity_payment_hold_minutes)
+    """))).rowcount
 
 
 @router.get("/resident/amenities/{amenity_id}/availability")
@@ -549,8 +552,22 @@ async def homes(scope: Resident):
     return {"items": await my_units(db, user)}
 
 
+@router.get("/resident/units/{unit_id}/rules")
+async def home_rules(unit_id: UUID, scope: Resident):
+    """The limits that apply to this home, from its zone: what to answer when asked how many cards or visits are allowed."""
+    db, user = scope
+    await resident_unit(db, user, unit_id)
+    r = await unit_rules(db, unit_id)
+    return {"visits": {"maxWaiting": r["visit_max_waiting"], "maxDaysAhead": r["visit_max_days_ahead"], "maxHours": r["visit_max_hours"],
+                       "noApprovalPurposes": r["visit_auto_approve_purposes"], "noApprovalMaxGuests": r["visit_auto_approve_max_guests"],
+                       "earlyEntryMinutes": r["visit_early_minutes"]},
+            "cards": {"resident": r["card_limit_resident"], "vehicle": r["card_limit_vehicle"]},
+            "amenities": {"paymentHoldMinutes": r["amenity_payment_hold_minutes"]}}
+
+
 register(
     Tool("resident.homes", "resident", "read", "GET", "/resident/homes", "The homes the resident is verified for"),
+    Tool("resident.home_rules", "resident", "read", "GET", "/resident/units/{unit_id}/rules", "Limits that apply to a home: cards, visits, booking payment hold"),
     Tool("resident.emergency.raise", "resident", "act_small", "POST", "/resident/tickets/{ticket_id}/emergency", "Make a request critical and tell management now"),
     Tool("resident.debit_notes.list", "resident", "read", "GET", "/resident/units/{unit_id}/debit-notes", "What a home owes, by statement"),
     Tool("resident.debit_notes.get", "resident", "read", "GET", "/resident/units/{unit_id}/debit-notes/{note_id}", "One statement with its lines"),

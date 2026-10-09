@@ -24,28 +24,6 @@ export type Account = {
   status: "pending" | "active" | "suspended";
   available: boolean;
 };
-export type Agent = {
-  id: string;
-  name: string;
-  specialty: "reception" | "technical" | "security" | "report";
-  scope: Scope;
-};
-export type RoomMessage = {
-  id: string;
-  at: string;
-  author: string;
-  text: string;
-  agentId?: string;
-  ticketId?: string;
-  context?: string;
-};
-export type Room = {
-  id: string;
-  scope: Scope;
-  name: string;
-  agentIds: string[];
-  messages: RoomMessage[];
-};
 export type Severity = "P0" | "P1" | "P2" | "P3";
 export type CaseStage =
   | "queued"
@@ -122,8 +100,6 @@ export type ReportJob = {
 export type WorkspaceState = {
   version: 1;
   accounts: Account[];
-  agents: Agent[];
-  rooms: Room[];
   cases: WorkflowCase[];
   reports: ReportJob[];
   audit: CaseEvent[];
@@ -132,26 +108,6 @@ export const newId = () => crypto.randomUUID();
 export function seedWorkspace(): WorkspaceState {
   const now = new Date();
   const at = now.toISOString();
-  const agents: Agent[] = [
-    {
-      id: "agent-reception",
-      name: "Lễ tân",
-      specialty: "reception",
-      scope: "S2.01",
-    },
-    {
-      id: "agent-technical",
-      name: "Kỹ thuật",
-      specialty: "technical",
-      scope: "S2.01",
-    },
-    {
-      id: "agent-report",
-      name: "Báo cáo",
-      specialty: "report",
-      scope: "S2.01",
-    },
-  ];
   return {
     version: 1,
     accounts: [
@@ -219,21 +175,6 @@ export function seedWorkspace(): WorkspaceState {
         available: false,
       },
     ],
-    agents,
-    rooms: scopes.map((scope) => ({
-      id: `room-${scope}`,
-      scope,
-      name: `Điều phối ${scope}`,
-      agentIds: agents.filter((a) => a.scope === scope).map((a) => a.id),
-      messages: [
-        {
-          id: newId(),
-          at,
-          author: "Hệ thống mẫu",
-          text: "Không gian trao đổi riêng theo phạm vi quản lý. Tin nhắn và phản hồi agent ở đây là mô phỏng UI.",
-        },
-      ],
-    })),
     cases: [
       {
         id: "DEMO-1001",

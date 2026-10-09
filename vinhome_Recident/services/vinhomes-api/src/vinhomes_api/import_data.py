@@ -17,8 +17,11 @@ import asyncpg
 
 from .mock_data import CAT_SEC, CAT_TECH, DOMAIN, MANAGEMENT, SITE, TENANT, uid
 
-ORDER = ["buildings", "units", "residents", "staff", "shifts", "vehicles", "cards", "debit_notes", "debit_note_lines",
+ORDER = ["buildings", "units", "zone_settings", "residents", "staff", "shifts", "vehicles", "cards", "debit_notes", "debit_note_lines",
          "amenities", "handbook", "policies", "announcements"]
+# The rules a zone may set (table zone_settings): whole numbers, except the purposes of visits that need no approval.
+ZONE_NUMBERS = ["visit_max_waiting", "visit_max_days_ahead", "visit_max_hours", "visit_auto_approve_max_guests", "visit_early_minutes",
+                "card_limit_resident", "card_limit_vehicle", "amenity_payment_hold_minutes"]
 CATEGORY = {"technical": CAT_TECH, "security": CAT_SEC}
 PATHS = {
     "paid": ["issued", "paid"], "partially_paid": ["issued", "partially_paid"], "overdue": ["issued", "overdue"],
@@ -213,6 +216,24 @@ class Loader:
                     extra = f",paid_amount={paid or 0}"
                 await self.c.execute(f"update debit_notes set status=$2{extra} where id=$1 and status=$3", note, step, previous)
                 previous = step
+
+    async def zone_settings(self, row):
+        """The row replaces the zone's rules (the whole tenant's when zone_code is empty); an empty cell inherits."""
+        zone = await self.one("zone", "select id from zones where site_id=$1 and code=$2", SITE, row["zone_code"]) if row.get("zone_code") else None
+        numbers = {name: int(row[name]) if str(row.get(name) or "").strip() else None for name in ZONE_NUMBERS}
+        purposes = [p for p in (row.get("visit_auto_approve_purposes") or "").split("|") if p] or None
+        values = {**numbers, "visit_auto_approve_purposes": purposes, "note": row.get("note") or None}
+        columns = list(values)
+        existing = await self.c.fetchval("select id from zone_settings where tenant_id=$1 and zone_id is not distinct from $2::uuid", TENANT, zone)
+        if existing is None:
+            await self.c.execute(f"insert into zone_settings(tenant_id,zone_id,{','.join(columns)}) values($1,$2,{','.join(f'${i + 3}' for i in range(len(columns)))})",
+                                 TENANT, zone, *values.values())
+            self.count("zone_settings")
+        else:
+            changed = await self.c.fetchval(f"""update zone_settings set {','.join(f'{c}=${i + 2}' for i, c in enumerate(columns))}
+                where id=$1 and ({' or '.join(f'{c} is distinct from ${i + 2}' for i, c in enumerate(columns))}) returning 1""", existing, *values.values())
+            if changed:
+                self.count("zone_settings")
 
     async def amenities(self, row):
         code, name, category, zone = self.need(row, "code", "name", "category_code", "zone_code")

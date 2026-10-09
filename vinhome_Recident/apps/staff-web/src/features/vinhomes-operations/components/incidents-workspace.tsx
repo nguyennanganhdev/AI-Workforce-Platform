@@ -10,10 +10,9 @@ import { IncidentList } from './incident-list';
 import { PanelTitle } from './ops-ui';
 import { Banner } from './technician/ui';
 import { BqlInbox, useBqlInboxItems } from './bql-inbox';
-import { IconSend, IconX, IconChevronLeft } from '@tabler/icons-react';
+import { IconSend, IconChevronLeft } from '@tabler/icons-react';
 import { useOperationsData } from '../hooks/use-operations-data';
 import type { IncidentStage } from '../types/incident';
-import type { VhSessionMessage } from '../types/session';
 import { MOCK_MESSAGES } from '../mock/messages';
 import { MOCK_BUSINESS_EVENTS } from '../mock/business-events';
 import { MOCK_INCIDENT_RELATIONS } from '../mock/incidents';
@@ -53,7 +52,7 @@ const OWNER_ITEMS: Record<string, string> = {
   'usr-mgr-01': 'Vũ Đức Thịnh (Trưởng BQL)',
 };
 
-type DetailTab = 'COORDINATION' | 'TASKS' | 'MESSAGES' | 'TIMELINE' | 'RELATIONS';
+type DetailTab = 'TASKS' | 'MESSAGES' | 'TIMELINE' | 'RELATIONS';
 
 const STAGES: IncidentStage[] = [
   'INTAKE',
@@ -118,26 +117,17 @@ export function IncidentsWorkspace() {
     transitionIncidentStage,
     resolveIncident,
     residentConfirmIncident,
-    coordinationSessions,
-    sessionMessages,
-    residentConfirmTicket,
-    managerApproveAndCloseSession,
-    sendSessionMessage,
-    createCoordinationSession,
     currentProfile,
     currentPersona,
   } = useOperationsData();
 
   const [selectedIncidentId, setSelectedIncidentId] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<DetailTab>('COORDINATION');
+  const [activeTab, setActiveTab] = useState<DetailTab>('TASKS');
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   const [newMessageText, setNewMessageText] = useState('');
   const [localMessages, setLocalMessages] = useState(MOCK_MESSAGES);
-  const [sessionChatInput, setSessionChatInput] = useState('');
-  const [bqlNoteInput, setBqlNoteInput] = useState('');
-  const [showBqlModal, setShowBqlModal] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const selectedIncident = incidents.find((i) => i.id === selectedIncidentId);
@@ -153,10 +143,7 @@ export function IncidentsWorkspace() {
     setActiveTab('TASKS');
     setResolveError(null);
     setActionSuccess(null);
-    setSessionChatInput('');
     setNewMessageText('');
-    setBqlNoteInput('');
-    setShowBqlModal(false);
   };
 
   const relatedTasks = selectedIncident
@@ -352,12 +339,6 @@ export function IncidentsWorkspace() {
               <div className="bg-white rounded-2xl border border-slate-200/80 p-3.5 sm:p-5 shadow-2xs flex flex-col gap-4">
                 <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as DetailTab)}>
                   <TabsList variant="line" aria-label="Thông tin sự cố" className="ops-scroll-tabs h-auto w-full justify-start border-b pb-1">
-                    <TabsTrigger value="COORDINATION" className="h-9 flex-none px-3 data-active:text-primary after:bg-primary">
-                      Điều phối
-                      {coordinationSessions.some((cs) => cs.incident_id === selectedIncident?.id) && (
-                        <span className="text-xs font-normal text-muted-foreground">(có phiên)</span>
-                      )}
-                    </TabsTrigger>
                     <TabsTrigger value="TASKS" className="h-9 flex-none px-3 data-active:text-primary after:bg-primary">
                       Công việc & phiếu thi công <span className="text-xs font-normal tabular-nums text-muted-foreground">{relatedTasks.length}</span>
                     </TabsTrigger>
@@ -372,425 +353,6 @@ export function IncidentsWorkspace() {
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
-
-                {/* Tab 0: Multi-Agent Coordination Session */}
-                {activeTab === 'COORDINATION' && (() => {
-                  const currentSession = coordinationSessions.find(
-                    (s) => s.incident_id === selectedIncident?.id || s.work_order_id === relatedWorkOrders[0]?.id,
-                  );
-                  const sessionMsgs = currentSession
-                    ? sessionMessages.filter((m) => m.session_id === currentSession.id)
-                    : [];
-
-                  if (!currentSession) {
-                    return (
-                      <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col gap-3">
-                        <div>
-                          <h4 className="font-bold text-slate-800 text-sm">Chưa có phiên điều phối</h4>
-                          <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                            Sự cố này chưa có phiên phối hợp giữa các trợ lý tự động và nhân viên kỹ thuật.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (selectedIncident) {
-                              const newSes = createCoordinationSession({
-                                incidentId: selectedIncident.id,
-                                title: selectedIncident.title,
-                              });
-                              setActionSuccess(`Đã khởi tạo phiên điều phối ${newSes.id}!`);
-                              setTimeout(() => setActionSuccess(null), 3000);
-                            }
-                          }}
-                          className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-bold shadow-2xs inline-flex items-center gap-2"
-                        >
-                          
-                          <span>Mở phiên điều phối</span>
-                        </button>
-                      </div>
-                    );
-                  }
-
-                  const quotation = currentSession.quotation;
-
-                  return (
-                    <div className="flex flex-col gap-5">
-                      {/* Session Info Bar */}
-                      <div className="p-4 rounded-xl border border-border flex flex-col md:flex-row md:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-xs text-slate-700 bg-white px-2 py-0.5 rounded border border-border">
-                                {currentSession.id}
-                              </span>
-                              <span className="text-xs font-bold text-slate-800">
-                                Phòng: {selectedIncident?.location_json.areaCode || 'P.1206'} (Tòa {selectedIncident?.location_json.towerCode || 'S2.01'})
-                              </span>
-                              <span
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                  currentSession.status === 'CLOSED'
-                                    ? 'bg-slate-200 text-slate-700'
-                                    : currentSession.status === 'RESIDENT_CONFIRMED'
-                                      ? 'bg-muted/60 text-slate-700'
-                                      : currentSession.status === 'EXECUTING'
-                                        ? 'bg-muted/60 text-foreground'
-                                        : 'bg-muted/60 text-slate-700'
-                                }`}
-                              >
-                                {currentSession.status === 'CLOSED'
-                                  ? 'Đã đóng phiên điều phối'
-                                  : currentSession.status === 'RESIDENT_CONFIRMED'
-                                    ? 'Chờ BQL duyệt đóng'
-                                    : currentSession.status === 'EXECUTING'
-                                      ? 'Đang thi công sửa chữa'
-                                      : 'Đang điều phối'}
-                              </span>
-                            </div>
-                            <p className="text-xs text-slate-500 mt-1">
-                              Cư dân: <strong>Nguyễn Thu Trang (0912.345.678)</strong> • KTV phụ trách: <strong>Nguyễn Văn Hùng (Kỹ sư MEP)</strong>
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Quick action simulation */}
-                        <div className="flex flex-wrap items-center gap-2">
-                          {currentSession.resident_ticket_status !== 'DONE' && currentSession.status !== 'CLOSED' && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                residentConfirmTicket(currentSession.id);
-                                setActionSuccess('Cư dân đã xác nhận hoàn thành yêu cầu! Cuộc trò chuyện với cư dân đã đóng.');
-                                setTimeout(() => setActionSuccess(null), 3500);
-                              }}
-                              className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors"
-                            >
-                              
-                              <span>[Mô phỏng] Cư dân xác nhận hoàn thành</span>
-                            </button>
-                          )}
-
-                          {currentSession.status !== 'CLOSED' && (
-                            <button
-                              type="button"
-                              onClick={() => setShowBqlModal(true)}
-                              className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors"
-                            >
-                              
-                              <span>Ban quản lý phê duyệt và đóng phiên</span>
-                            </button>
-                          )}
-
-                          {currentSession.status === 'CLOSED' && (
-                            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-white/80 px-3 py-1.5 rounded-lg border border-slate-200">
-                              
-                              <span>Đã lưu trữ hồ sơ ({currentSession.bql_approved_by})</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* 6-Step Visual Workflow */}
-                      <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200">
-                        <span className="text-[10px] font-bold text-slate-400 block mb-2">
-                          Tiến trình phối hợp xử lý
-                        </span>
-                        <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-center text-xs">
-                          <div className="p-2 rounded-lg bg-muted/60 border border-border text-slate-700">
-                            <span className="text-[10px] font-bold block text-slate-700">Bước 1</span>
-                            <span className="font-bold text-[11px] block mt-0.5">CSKH xác nhận</span>
-                            <span className="text-[10px] text-slate-700">Đã chốt P.1206</span>
-                          </div>
-
-                          <div className="p-2 rounded-lg bg-muted/60 border border-border text-slate-700">
-                            <span className="text-[10px] font-bold block text-slate-700">Bước 2</span>
-                            <span className="font-bold text-[11px] block mt-0.5">Giám sát mở phiên</span>
-                            <span className="text-[10px] text-slate-700">Đã mở phiên</span>
-                          </div>
-
-                          <div className="p-2 rounded-lg bg-muted/60 border border-border text-slate-700">
-                            <span className="text-[10px] font-bold block text-slate-700">Bước 3</span>
-                            <span className="font-bold text-[11px] block mt-0.5">Phối hợp kỹ thuật và báo cáo</span>
-                            <span className="text-[10px] text-slate-700">Đã giao KTV Hùng</span>
-                          </div>
-
-                          <div
-                            className={`p-2 rounded-lg border ${
-                              quotation?.resident_approved
-                                ? 'bg-muted/60 border-border text-slate-700'
-                                : 'bg-muted/60 border-border text-slate-700'
-                            }`}
-                          >
-                            <span className="text-[10px] font-bold block text-slate-400">Bước 4</span>
-                            <span className="font-bold text-[11px] block mt-0.5">Báo giá & Duyệt giá</span>
-                            <span className="text-[10px] font-semibold">
-                              {quotation ? `Đã duyệt ${quotation.total_amount.toLocaleString('vi-VN')}đ` : 'Chờ KTV gửi'}
-                            </span>
-                          </div>
-
-                          <div
-                            className={`p-2 rounded-lg border ${
-                              currentSession.resident_ticket_status === 'DONE'
-                                ? 'bg-muted/60 border-border text-slate-700'
-                                : 'bg-slate-100 border-slate-200 text-slate-600'
-                            }`}
-                          >
-                            <span className="text-[10px] font-bold block text-slate-400">Bước 5</span>
-                            <span className="font-bold text-[11px] block mt-0.5">Cư dân xác nhận hoàn thành</span>
-                            <span className="text-[10px] font-semibold">
-                              {currentSession.resident_ticket_status === 'DONE' ? 'Đã đóng trao đổi' : 'Đang xử lý'}
-                            </span>
-                          </div>
-
-                          <div
-                            className={`p-2 rounded-lg border ${
-                              currentSession.status === 'CLOSED'
-                                ? 'bg-muted/60 border-border text-slate-700'
-                                : 'bg-slate-100 border-slate-200 text-slate-600'
-                            }`}
-                          >
-                            <span className="text-[10px] font-bold block text-slate-400">Bước 6</span>
-                            <span className="font-bold text-[11px] block mt-0.5">Ban quản lý đóng phiên</span>
-                            <span className="text-[10px] font-semibold">
-                              {currentSession.status === 'CLOSED' ? 'Đã đóng' : 'Chờ duyệt'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Embedded Quotation Invoice Widget if available */}
-                      {quotation && (
-                        <div className="p-4 bg-white rounded-xl border border-border shadow-2xs flex flex-col gap-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <div>
-                                <span className="font-bold text-slate-900 text-xs">
-                                  Hóa Đơn Báo Giá Vật Tư (#{quotation.invoice_code})
-                                </span>
-                                <span className="text-[11px] text-slate-500 block">
-                                  Lập bởi: {quotation.created_by_agent} • Bảo hành: {quotation.warranty_months} tháng
-                                </span>
-                              </div>
-                            </div>
-                            <span className="text-xs font-bold px-2.5 py-1 bg-muted/60 text-slate-700 rounded-full flex items-center gap-1">
-                              Cư dân đã xem và đồng ý báo giá
-                            </span>
-                          </div>
-
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs">
-                              <thead className="bg-slate-50 text-slate-500 text-[11px]">
-                                <tr>
-                                  <th className="p-2">Hạng mục vật tư</th>
-                                  <th className="p-2 text-center">Số lượng</th>
-                                  <th className="p-2 text-center">ĐVT</th>
-                                  <th className="p-2 text-right">Đơn giá</th>
-                                  <th className="p-2 text-right">Thành tiền</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100">
-                                {quotation.items.map((it) => (
-                                  <tr key={it.id}>
-                                    <td className="p-2 font-medium text-slate-800">{it.part_name}</td>
-                                    <td className="p-2 text-center">{it.quantity}</td>
-                                    <td className="p-2 text-center text-slate-500">{it.unit}</td>
-                                    <td className="p-2 text-right">{it.unit_price.toLocaleString('vi-VN')} đ</td>
-                                    <td className="p-2 text-right font-semibold">{it.amount.toLocaleString('vi-VN')} đ</td>
-                                  </tr>
-                                ))}
-                                <tr>
-                                  <td colSpan={4} className="p-2 text-right text-slate-500 font-medium">
-                                    Tiền công kỹ thuật & kiểm tra áp lực:
-                                  </td>
-                                  <td className="p-2 text-right font-semibold">
-                                    {quotation.labor_cost.toLocaleString('vi-VN')} đ
-                                  </td>
-                                </tr>
-                                <tr className="bg-muted/60 font-bold text-foreground">
-                                  <td colSpan={4} className="p-2 text-right">
-                                    TỔNG CHI PHÍ HÓA ĐƠN:
-                                  </td>
-                                  <td className="p-2 text-right text-sm text-foreground">
-                                    {quotation.total_amount.toLocaleString('vi-VN')} đ
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Groupchat Multi-Agent Messages Stream */}
-                      <div className="flex flex-col gap-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5">
-                            
-                            Hội Thoại Group Chat Điều Phối Đa Tác Nhân ({sessionMsgs.length} tin nhắn)
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            Tự động đồng bộ các kênh CSKH, Kỹ thuật, Kế toán & Ban Quản Lý
-                          </span>
-                        </div>
-
-                        <div className="flex flex-col gap-2.5 max-h-[460px] overflow-y-auto p-3.5 bg-slate-50/60 rounded-xl border border-slate-200">
-                          {sessionMsgs.map((msg) => {
-                            const isAgent = msg.sender_type.startsWith('AGENT');
-                            const isCSKH = msg.sender_type === 'AGENT_CSKH';
-                            const isDispatcher = msg.sender_type === 'AGENT_DISPATCHER';
-                            const isTech = msg.sender_type === 'AGENT_TECHNICAL';
-                            const isBilling = msg.sender_type === 'AGENT_BILLING';
-                            const isManager = msg.sender_type === 'HUMAN_MANAGER';
-
-                            const badgeColor = isCSKH
-                              ? 'bg-muted/60 text-slate-700 border-border'
-                              : isDispatcher
-                                ? 'bg-muted/60 text-slate-700 border-border'
-                                : isTech
-                                  ? 'bg-muted/60 text-foreground border-border'
-                                  : isBilling
-                                    ? 'bg-muted/60 text-slate-700 border-border'
-                                    : isManager
-                                      ? 'bg-slate-100 text-white border-slate-700'
-                                      : 'bg-muted/60 text-slate-700 border-border';
-
-                            return (
-                              <div
-                                key={msg.id}
-                                className={`flex flex-col gap-1.5 p-3 rounded-xl border text-xs transition-all ${
-                                  isAgent ? 'bg-white border-slate-200/90 shadow-2xs' : 'bg-white border-border shadow-2xs'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <span
-                                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${badgeColor}`}
-                                    >
-                                      
-                                      
-                                      
-                                      
-                                      
-                                      
-                                      {msg.sender_name}
-                                    </span>
-
-                                    {msg.action_type && (
-                                      <span className="font-mono text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded font-semibold">
-                                        {msg.action_type}
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  <span className="text-[10px] text-slate-400">
-                                    {new Date(msg.created_at).toLocaleTimeString('vi-VN', {
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                    })}
-                                  </span>
-                                </div>
-
-                                <p className="text-slate-800 text-xs leading-relaxed whitespace-pre-wrap pl-1">
-                                  {msg.content}
-                                </p>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Send Message Input */}
-                        <form
-                          onSubmit={(e) => {
-                            e.preventDefault();
-                            if (!sessionChatInput.trim()) return;
-                            sendSessionMessage(currentSession.id, sessionChatInput.trim());
-                            setSessionChatInput('');
-                          }}
-                          className="flex items-center gap-2 pt-1"
-                        >
-                          <input
-                            type="text"
-                            value={sessionChatInput}
-                            onChange={(e) => setSessionChatInput(e.target.value)}
-                            placeholder={`Gửi phản hồi vào phiên điều phối (với tư cách ${currentProfile.name})...`}
-                            className="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-ring/40 focus:border-primary focus:outline-none"
-                          />
-                          <button
-                            type="submit"
-                            disabled={!sessionChatInput.trim()}
-                            className="px-4 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors shrink-0"
-                          >
-                            <IconSend className="w-3.5 h-3.5" />
-                            <span>Gửi</span>
-                          </button>
-                        </form>
-                      </div>
-
-                      {/* Modal Ban quản lý phê duyệt đóng phiên */}
-                      {showBqlModal && (
-                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50">
-                          <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 flex flex-col gap-4 shadow-2xl border border-slate-200">
-                            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                              <div className="flex items-center gap-2">
-                                <h4 className="font-bold text-slate-900 text-sm">Ban quản lý phê duyệt đóng phiên</h4>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => setShowBqlModal(false)}
-                                className="text-slate-400 hover:text-slate-600 p-1"
-                              >
-                                <IconX className="w-4 h-4" />
-                              </button>
-                            </div>
-
-                            <p className="text-xs text-slate-600 leading-relaxed">
-                              Ban Quản Lý xác nhận: KTV đã hoàn thành thi công, ảnh nghiệm thu đã đạt chuẩn, cư dân đã bấm <strong>Hoàn thành</strong> trên yêu cầu và cuộc trò chuyện cư dân đã đóng.
-                            </p>
-
-                            <div className="flex flex-col gap-1.5">
-                              <label className="text-xs font-bold text-slate-700 block">
-                                Ghi chú phê duyệt của Ban Quản Lý:
-                              </label>
-                              <textarea
-                                rows={3}
-                                value={bqlNoteInput}
-                                onChange={(e) => setBqlNoteInput(e.target.value)}
-                                placeholder="VD: Đã nghiệm thu hiện trường đạt tiêu chuẩn. Chi phí vật tư đúng định mức..."
-                                className="w-full p-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-ring/40"
-                              />
-                            </div>
-
-                            <div className="flex items-center justify-end gap-2 pt-2">
-                              <button
-                                type="button"
-                                onClick={() => setShowBqlModal(false)}
-                                className="px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50"
-                              >
-                                Hủy bỏ
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setShowBqlModal(false);
-                                  try {
-                                    managerApproveAndCloseSession(currentSession.id, bqlNoteInput);
-                                    setResolveError(null);
-                                    setActionSuccess(`Đã phê duyệt và đóng phiên điều phối ${currentSession.id} thành công!`);
-                                    setTimeout(() => setActionSuccess(null), 3500);
-                                  } catch (err) {
-                                    setResolveError(err instanceof Error ? err.message : 'Chưa đủ điều kiện đóng hồ sơ.');
-                                  }
-                                }}
-                                className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-bold shadow-2xs"
-                              >
-                                Xác nhận duyệt và đóng phiên
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
 
                 {/* Tab 1: Tasks & WorkOrders */}
                 {activeTab === 'TASKS' && (
