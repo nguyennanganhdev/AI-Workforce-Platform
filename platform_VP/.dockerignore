@@ -1,0 +1,16 @@
+**/.git
+**/.venv
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.env
+**/.local
+**/test-results
+agentscope/docs
+agentscope/tests
+agentscope/examples
+agentscope/.github
+docs
+services/platform-api/tests

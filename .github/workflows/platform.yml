@@ -1,0 +1,64 @@
+name: Standalone agent platform
+on:
+  pull_request:
+    paths: ["platform_VP/**", ".github/workflows/platform.yml"]
+  push:
+    branches: [dev_platform]
+    paths: ["platform_VP/**", ".github/workflows/platform.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  platform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vp_test
+          POSTGRES_PASSWORD: test-only-ci-password
+          POSTGRES_DB: vp_platform_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U vp_test -d vp_platform_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.0"
+          python-version: "3.12"
+      - name: Backend dependencies
+        working-directory: platform_VP/services/platform-api
+        run: uv sync --frozen
+      - name: Backend lint and PostgreSQL acceptance
+        working-directory: platform_VP/services/platform-api
+        env:
+          VP_TEST_DATABASE_URL: postgresql+asyncpg://vp_test:test-only-ci-password@localhost:5432/vp_platform_test
+        run: |
+          uv run ruff check vp tests
+          uv run ruff format --check vp tests
+          uv run pytest -q
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.33.2"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: platform_VP/apps/platform-web/pnpm-lock.yaml
+      - name: Frontend build and browser acceptance
+        working-directory: platform_VP/apps/platform-web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec prettier --check src tests playwright.config.ts vite*.ts
+          pnpm build
+          pnpm exec playwright install --with-deps chromium --only-shell
+          pnpm test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: platform-browser-evidence
+          path: platform_VP/apps/platform-web/test-results
+          if-no-files-found: ignore

@@ -1,0 +1,1 @@
+"""Standalone, governed AgentScope platform."""

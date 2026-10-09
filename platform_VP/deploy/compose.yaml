@@ -1,0 +1,76 @@
+name: vp-platform
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: vp_platform
+      POSTGRES_USER: vp_platform
+      POSTGRES_PASSWORD: ${VP_DB_PASSWORD:?Run init-local.ps1 first}
+    volumes: ["postgres:/var/lib/postgresql/data"]
+    ports: ["127.0.0.1:5588:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vp_platform -d vp_platform"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: ["redis:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  qdrant:
+    image: qdrant/qdrant:v1.13.6
+    volumes: ["qdrant:/qdrant/storage"]
+    restart: unless-stopped
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/api.Dockerfile
+    env_file: .env
+    environment:
+      VP_DATABASE_URL: postgresql+asyncpg://vp_platform:${VP_DB_PASSWORD}@postgres:5432/vp_platform
+      VP_REDIS_URL: redis://redis:6379/0
+      VP_QDRANT_URL: http://qdrant:6333
+    command: ["uv", "run", "--no-sync", "uvicorn", "vp.api:app", "--host", "0.0.0.0", "--port", "8088", "--no-access-log"]
+    ports: ["127.0.0.1:8088:8088"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "uv", "run", "--no-sync", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 40s
+    restart: unless-stopped
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/api.Dockerfile
+    env_file: .env
+    environment:
+      VP_DATABASE_URL: postgresql+asyncpg://vp_platform:${VP_DB_PASSWORD}@postgres:5432/vp_platform
+      VP_REDIS_URL: redis://redis:6379/0
+      VP_QDRANT_URL: http://qdrant:6333
+    command: ["uv", "run", "--no-sync", "python", "-m", "vp.worker"]
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+  web:
+    build:
+      context: ../apps/platform-web
+      dockerfile: ../../deploy/web.Dockerfile
+    ports: ["127.0.0.1:3080:80"]
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+volumes:
+  postgres:
+  redis:
+  qdrant:
