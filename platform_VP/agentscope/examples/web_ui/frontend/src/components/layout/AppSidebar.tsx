@@ -7,11 +7,12 @@ import {
 	KeyRound,
 	Languages,
 	LibraryBig,
-	UserRound,
+	LogOut,
 } from 'lucide-react';
 import { useOnborda } from 'onborda';
 import { useNavigate, useLocation } from 'react-router-dom';
 
+import { authApi } from '@/api';
 import AgentScope from '@/assets/images/agentscope_mono.svg?react';
 import MCPSvg from '@/assets/images/mcp.svg?react';
 import { CHAT_TOUR_NAME } from '@/components/tour/chatTourSteps';
@@ -49,6 +50,14 @@ export function AppSidebar() {
 	const handleToggleLanguage = () => {
 		const next = i18n.language.startsWith('zh') ? 'en' : 'zh';
 		i18n.changeLanguage(next);
+	};
+
+	const handleLogout = async () => {
+		try {
+			await authApi.logout();
+		} finally {
+			window.location.assign('/');
+		}
 	};
 
 	return (
@@ -176,12 +185,11 @@ export function AppSidebar() {
 					</SidebarMenuItem>
 					<SidebarMenuItem>
 						<SidebarMenuButton
-							tooltip={{ children: t('common.settings'), hidden: false }}
-							isActive={location.pathname === '/setup'}
-							onClick={() => navigate('/setup')}
+							tooltip={{ children: t('auth.logout'), hidden: false }}
+							onClick={handleLogout}
 							className="justify-center"
 						>
-							<UserRound />
+							<LogOut />
 						</SidebarMenuButton>
 					</SidebarMenuItem>
 				</SidebarMenu>

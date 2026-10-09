@@ -1,11 +1,14 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Onborda, OnbordaProvider } from 'onborda';
-import { useMemo, useState } from 'react';
-import { createBrowserRouter, Navigate, RouterProvider, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import { Toaster } from 'sonner';
 
 import { MCPHubPage } from './pages/mcp';
 import { SkillHubPage } from './pages/skill';
+import { authApi } from '@/api';
+import type { AuthUser } from '@/api';
+import { AUTH_EXPIRED_EVENT } from '@/api/client';
 import { RouteError } from '@/components/error/RouteError';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { buildChatTour } from '@/components/tour/chatTourSteps';
@@ -13,24 +16,12 @@ import { TourCard } from '@/components/tour/TourCard';
 import { UploadProvider } from '@/context/UploadContext';
 import { useTranslation } from '@/i18n/useI18n';
 import { queryClient } from '@/lib/query-client';
+import { AuthPage } from '@/pages/auth';
 import { ChannelPage } from '@/pages/channel';
 import { ChatPage } from '@/pages/chat';
 import { CredentialPage } from '@/pages/credential';
 import { KnowledgePage } from '@/pages/knowledge';
 import { SchedulePage } from '@/pages/schedule';
-import { SetupPage } from '@/pages/setup';
-
-function SetupPageRoute() {
-	const navigate = useNavigate();
-	return (
-		<>
-			<div className="h-screen">
-				<SetupPage onComplete={() => navigate('/')} />
-			</div>
-			<Toaster richColors position="top-right" />
-		</>
-	);
-}
 
 const router = createBrowserRouter([
 	{
@@ -62,16 +53,56 @@ const router = createBrowserRouter([
 			},
 		],
 	},
-	{ path: '/setup', element: <SetupPageRoute />, errorElement: <RouteError /> },
+	{ path: '/setup', element: <Navigate to="/" replace />, errorElement: <RouteError /> },
 ]);
 
 function App() {
 	const { t } = useTranslation();
-	const [setupComplete, setSetupComplete] = useState(() => !!localStorage.getItem('server_url'));
+	const [authStatus, setAuthStatus] = useState<'checking' | 'authenticated' | 'anonymous'>(
+		'checking',
+	);
+	const [, setCurrentUser] = useState<AuthUser | null>(null);
 	const tours = useMemo(() => [buildChatTour(t)], [t]);
 
-	if (!setupComplete) {
-		return <SetupPage onComplete={() => setSetupComplete(true)} />;
+	useEffect(() => {
+		let active = true;
+		authApi.restoreSession().then((user) => {
+			if (!active) return;
+			setCurrentUser(user);
+			setAuthStatus(user ? 'authenticated' : 'anonymous');
+		});
+		const handleExpired = () => {
+			setCurrentUser(null);
+			setAuthStatus('anonymous');
+			queryClient.clear();
+		};
+		window.addEventListener(AUTH_EXPIRED_EVENT, handleExpired);
+		return () => {
+			active = false;
+			window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpired);
+		};
+	}, []);
+
+	if (authStatus === 'checking') {
+		return (
+			<div className="flex min-h-screen items-center justify-center bg-canvas text-sm text-muted-foreground">
+				{t('common.loading')}
+			</div>
+		);
+	}
+
+	if (authStatus === 'anonymous') {
+		return (
+			<>
+				<AuthPage
+					onAuthenticated={(user) => {
+						setCurrentUser(user);
+						setAuthStatus('authenticated');
+					}}
+				/>
+				<Toaster richColors position="top-right" />
+			</>
+		);
 	}
 
 	return (

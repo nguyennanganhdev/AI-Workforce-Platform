@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """Shared FastAPI dependencies for the agentscope app."""
-from fastapi import Header, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, status
+
+from .auth import AuthPrincipal, AuthService, InvalidTokenError
+from .business import BusinessService
 
 from .workspace_manager import WorkspaceManagerBase
 from .channel import (
@@ -31,16 +34,76 @@ from .storage import StorageBase
 from ..rag import ChunkerBase, ParserBase
 
 
+async def get_auth_service(request: Request) -> AuthService:
+    """Return the configured authentication service."""
+    service = getattr(request.app.state, "auth_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication is not configured.",
+        )
+    return service
+
+
+async def get_business_service(request: Request) -> BusinessService:
+    """Return the configured area-platform business service."""
+    service = getattr(request.app.state, "business_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Area-platform business workflows are not configured.",
+        )
+    return service
+
+
+async def get_current_principal(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_user_id: str | None = Header(default=None),
+) -> AuthPrincipal:
+    """Authenticate a bearer token or use legacy identity in demo mode.
+
+    Once ``auth_service`` is configured, ``X-User-ID`` is never trusted.
+    The legacy header remains only for applications that did not opt into
+    authentication, preserving the existing local examples and tests.
+    """
+    service = getattr(request.app.state, "auth_service", None)
+    if service is None:
+        if not x_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="X-User-ID header is required.",
+            )
+        return AuthPrincipal(
+            user_id=x_user_id,
+            tenant_id="legacy",
+            session_id="legacy",
+            token_id="legacy",
+        )
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bearer access token is required.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        return service.verify_access_token(token)
+    except InvalidTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+
 async def get_current_user_id(
-    x_user_id: str = Header(
-        description="Caller's user ID. "
-        "Temporary header-based identity; will be replaced by JWT auth.",
-    ),
+    principal: AuthPrincipal = Depends(get_current_principal),
 ) -> str:
-    """Return the caller's user ID from the ``X-User-ID`` request header.
+    """Return the verified user ID (or legacy demo identity).
 
     Args:
-        x_user_id (`str`): Value of the ``X-User-ID`` header.
+        principal (`AuthPrincipal`): Verified request identity.
 
     Returns:
         `str`: The authenticated user ID.
@@ -48,12 +111,14 @@ async def get_current_user_id(
     Raises:
         `HTTPException`: 401 if the header is missing or empty.
     """
-    if not x_user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="X-User-ID header is required.",
-        )
-    return x_user_id
+    return principal.user_id
+
+
+async def get_current_tenant_id(
+    principal: AuthPrincipal = Depends(get_current_principal),
+) -> str:
+    """Return the verified tenant ID."""
+    return principal.tenant_id
 
 
 async def get_storage(request: Request) -> StorageBase:

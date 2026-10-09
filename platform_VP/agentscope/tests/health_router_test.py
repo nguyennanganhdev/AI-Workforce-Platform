@@ -71,11 +71,11 @@ class HealthRouterTest(IsolatedAsyncioTestCase):
         self.assertEqual(body["components"]["storage"], "ok")
         self.assertEqual(body["components"]["chat_service"], "ok")
 
-    def test_health_requires_user_id(self) -> None:
-        """The endpoint is not exempt from the X-User-ID requirement."""
+    def test_health_is_public_for_container_probes(self) -> None:
+        """Liveness probes remain usable after JWT authentication is enabled."""
         response = self._client.get("/health")
 
-        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.status_code, 200)
 
     def test_disabled_features_do_not_break_health(self) -> None:
         """An unconfigured optional feature reads as disabled, not down."""

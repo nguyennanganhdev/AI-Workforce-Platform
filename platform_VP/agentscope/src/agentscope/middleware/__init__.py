@@ -7,6 +7,9 @@ from ._budget import ReplyBudgetControlMiddleware
 from ._longterm_memory import (
     AgenticMemoryMiddleware,
     Mem0Middleware,
+    PostgresReMeMemoryStore,
+    ReMeMemory,
+    ReMeMemorySearchResult,
     ReMeMiddleware,
 )
 from ._tracing import TracingMiddleware
@@ -17,6 +20,9 @@ __all__ = [
     "MiddlewareBase",
     "AgenticMemoryMiddleware",
     "Mem0Middleware",
+    "PostgresReMeMemoryStore",
+    "ReMeMemory",
+    "ReMeMemorySearchResult",
     "ReMeMiddleware",
     "RAGMiddleware",
     "TracingMiddleware",

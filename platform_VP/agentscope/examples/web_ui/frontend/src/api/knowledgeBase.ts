@@ -1,4 +1,4 @@
-import { ApiError, client, getBaseUrl, getUserId } from './client';
+import { ApiError, client, getAccessToken, getBaseUrl } from './client';
 import type {
 	CreateKnowledgeBaseRequest,
 	CreateKnowledgeBaseResponse,
@@ -101,7 +101,9 @@ function uploadDocumentXhr(
 		const xhr = new XMLHttpRequest();
 		const url = new URL(`/knowledge_bases/${knowledgeBaseId}/documents`, getBaseUrl());
 		xhr.open('POST', url.toString(), true);
-		xhr.setRequestHeader('X-User-ID', getUserId());
+		xhr.withCredentials = true;
+		const token = getAccessToken();
+		if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
 		const onAbort = () => xhr.abort();
 		signal?.addEventListener('abort', onAbort, { once: true });
@@ -233,7 +235,7 @@ export const knowledgeBaseApi = {
 	/**
 	 * Mint a short-lived token so a browser-native fetch (`<iframe>`,
 	 * `<img>`, a download navigation) can retrieve the raw file
-	 * without the `X-User-ID` header.
+	 * without a bearer-token header.
 	 */
 	createDocumentDownloadToken: (knowledgeBaseId: string, documentId: string) =>
 		client.post<DocumentDownloadTokenResponse>(

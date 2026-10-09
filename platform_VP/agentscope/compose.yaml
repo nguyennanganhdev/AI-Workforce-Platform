@@ -1,0 +1,151 @@
+name: agentscope
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agentscope-local:latest
+    restart: unless-stopped
+    environment:
+      AGENTSCOPE_SQL_URL: ${AGENTSCOPE_SQL_URL:-postgresql+asyncpg://agentscope:agentscope@postgres:5432/agentscope}
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET must be set}
+      AUTH_REFRESH_PEPPER: ${AUTH_REFRESH_PEPPER:?AUTH_REFRESH_PEPPER must be set}
+      AUTH_JWT_ISSUER: ${AUTH_JWT_ISSUER:-agentscope}
+      AUTH_JWT_AUDIENCE: ${AUTH_JWT_AUDIENCE:-agentscope-api}
+      AUTH_DEFAULT_TENANT_ID: ${AUTH_DEFAULT_TENANT_ID:-default}
+      AUTH_ACCESS_TTL_MINUTES: ${AUTH_ACCESS_TTL_MINUTES:-15}
+      AUTH_REFRESH_TTL_DAYS: ${AUTH_REFRESH_TTL_DAYS:-30}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      PARTNER_API_KEY_PEPPER: ${PARTNER_API_KEY_PEPPER:?PARTNER_API_KEY_PEPPER must be set}
+      PARTNER_API_PROVISIONING_SECRET: ${PARTNER_API_PROVISIONING_SECRET:?PARTNER_API_PROVISIONING_SECRET must be set}
+      MEMORY_EMBEDDING_API_KEY: ${MEMORY_EMBEDDING_API_KEY:-}
+      MEMORY_EMBEDDING_BASE_URL: ${MEMORY_EMBEDDING_BASE_URL:-}
+      MEMORY_EMBEDDING_MODEL: ${MEMORY_EMBEDDING_MODEL:-text-embedding-3-small}
+      MEMORY_EMBEDDING_DIMENSIONS: ${MEMORY_EMBEDDING_DIMENSIONS:-1536}
+      MEMORY_EMBEDDING_PASS_DIMENSIONS: ${MEMORY_EMBEDDING_PASS_DIMENSIONS:-true}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DB: "0"
+      S3_ENABLED: "true"
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET:-agentscope}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      AMAP_API_KEY: ${AMAP_API_KEY:-}
+      CLAWHUB_API_TOKEN: ${CLAWHUB_API_TOKEN:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "${AGENTSCOPE_PORT:-8000}:8000"
+    volumes:
+      - agentscope_workspaces:/app/examples/agent_service/workspaces
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "--fail",
+          "--silent",
+          "http://localhost:8000/health",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agentscope}
+      POSTGRES_USER: ${POSTGRES_USER:-agentscope}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentscope}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "--fail",
+          "--silent",
+          "http://localhost:9000/minio/health/live",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio-init:
+    # The pinned MinIO server image also ships /usr/bin/mc. Reusing it keeps
+    # local bucket provisioning independent of the retired minio/mc registry.
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      S3_BUCKET: ${S3_BUCKET:-agentscope}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        mc mb --ignore-existing "local/$${S3_BUCKET}"
+
+volumes:
+  agentscope_workspaces:
+  postgres_data:
+  redis_data:
+  minio_data:
