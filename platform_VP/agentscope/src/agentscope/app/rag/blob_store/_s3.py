@@ -211,6 +211,60 @@ class S3BlobStore(BlobStoreBase):
             await s3.upload_fileobj(stream, self._bucket, key)
         return f"{_SCHEME}{self._bucket}/{key}"
 
+    async def write_stream_with_metadata(
+        self,
+        key: str,
+        stream: IO[bytes],
+        *,
+        content_type: str,
+        metadata: dict[str, str] | None = None,
+    ) -> str:
+        """Stream-write an object with HTTP content type and S3 metadata.
+
+        This is intentionally S3-specific rather than part of
+        :class:`BlobStoreBase`: local files do not have object metadata.
+        The method works unchanged with MinIO and AWS S3.
+        """
+        extra_args: dict[str, Any] = {"ContentType": content_type}
+        if metadata:
+            extra_args["Metadata"] = metadata
+        async with self._client() as s3:
+            await s3.upload_fileobj(
+                stream,
+                self._bucket,
+                key,
+                ExtraArgs=extra_args,
+            )
+        return f"{_SCHEME}{self._bucket}/{key}"
+
+    async def presign_get(
+        self,
+        uri: str,
+        *,
+        expires_in: int = 900,
+        download_name: str | None = None,
+    ) -> str:
+        """Create a temporary private-object download URL."""
+        if not 1 <= expires_in <= 604_800:
+            raise ValueError("expires_in must be between 1 and 604800 seconds")
+        bucket, key = self._parse_uri(uri)
+        params: dict[str, str] = {"Bucket": bucket, "Key": key}
+        if download_name:
+            safe_name = (
+                download_name.replace('"', "")
+                .replace("\r", "")
+                .replace("\n", "")
+            )
+            params["ResponseContentDisposition"] = (
+                f'attachment; filename="{safe_name}"'
+            )
+        async with self._client() as s3:
+            return await s3.generate_presigned_url(
+                "get_object",
+                Params=params,
+                ExpiresIn=expires_in,
+            )
+
     @asynccontextmanager
     async def open(  # type: ignore[override]
         self,

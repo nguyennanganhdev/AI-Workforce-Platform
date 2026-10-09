@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """The health router."""
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Request, Response, status
 
 from ._schema import ComponentStatus, HealthResponse
-from ..deps import get_current_user_id
 
 health_router = APIRouter(tags=["health"])
 
@@ -34,7 +33,6 @@ _OPTIONAL_HUBS = ("mcp_hubs", "skill_hubs")
 async def get_health(
     request: Request,
     response: Response,
-    _: str = Depends(get_current_user_id),
 ) -> HealthResponse:
     """Report whether the service is ready to serve requests.
 

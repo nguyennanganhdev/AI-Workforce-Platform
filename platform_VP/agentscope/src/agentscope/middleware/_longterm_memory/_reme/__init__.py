@@ -10,7 +10,15 @@ ReMe application in-process and exposes:
   :class:`Mem0Middleware` holds a native ``mem0`` client).
 """
 from ._middleware import ReMeMiddleware
+from ._postgres_store import (
+    PostgresReMeMemoryStore,
+    ReMeMemory,
+    ReMeMemorySearchResult,
+)
 
 __all__ = [
+    "PostgresReMeMemoryStore",
+    "ReMeMemory",
+    "ReMeMemorySearchResult",
     "ReMeMiddleware",
 ]

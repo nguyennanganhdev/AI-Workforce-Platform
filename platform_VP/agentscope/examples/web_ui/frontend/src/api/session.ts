@@ -99,7 +99,7 @@ export const sessionApi = {
 	 * generator.
 	 *
 	 * Uses fetch-based SSE (not native ``EventSource``) so the
-	 * ``X-User-ID`` custom header is sent.
+	 * the normal bearer-token header is sent.
 	 *
 	 * @param sessionId - The session to subscribe to.
 	 * @param agentId - The agent that owns the session.

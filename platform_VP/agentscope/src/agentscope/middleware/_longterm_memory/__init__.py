@@ -3,10 +3,18 @@
 
 from ._agentic_memory import AgenticMemoryMiddleware
 from ._mem0 import Mem0Middleware
-from ._reme import ReMeMiddleware
+from ._reme import (
+    PostgresReMeMemoryStore,
+    ReMeMemory,
+    ReMeMemorySearchResult,
+    ReMeMiddleware,
+)
 
 __all__ = [
     "AgenticMemoryMiddleware",
     "Mem0Middleware",
+    "PostgresReMeMemoryStore",
+    "ReMeMemory",
+    "ReMeMemorySearchResult",
     "ReMeMiddleware",
 ]

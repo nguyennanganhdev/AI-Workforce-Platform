@@ -77,6 +77,17 @@ storage-sql = [
     "sqlalchemy[asyncio]>=2.0",
     "alembic>=1.13",
 ]
+# PostgreSQL driver and pgvector-aware long-term-memory persistence.
+storage-postgres = [
+    "agentscope[storage-sql]",
+    "asyncpg>=0.29",
+    "pgvector>=0.3",
+]
+# Local account authentication: Argon2id password hashes and signed JWTs.
+auth = [
+    "argon2-cffi>=25.1",
+    "PyJWT>=2.10,<3",
+]
 # S3-compatible blob store
 storage-s3 = ["aioboto3"]
 # ------------ Channel ------------
@@ -176,6 +187,8 @@ full = [
     "agentscope[service]",
     "agentscope[storage-redis]",
     "agentscope[storage-sql]",
+    "agentscope[storage-postgres]",
+    "agentscope[auth]",
     "agentscope[storage-s3]",
     "agentscope[channel]",
     "agentscope[workspace]",

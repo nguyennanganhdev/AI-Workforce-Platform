@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """App routers."""
 from ._agent import agent_router
+from ._auth import auth_router
+from ._business import business_router
 from ._channel import channel_router
 from ._chat import chat_router
 from ._credential import credential_router
@@ -19,6 +21,8 @@ from ._workspace import workspace_router
 
 __all__ = [
     "agent_router",
+    "auth_router",
+    "business_router",
     "channel_router",
     "model_router",
     "embedding_model_router",
