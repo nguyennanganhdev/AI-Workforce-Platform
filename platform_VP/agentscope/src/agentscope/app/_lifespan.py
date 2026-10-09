@@ -54,11 +54,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     enable_channel_worker = app.state.enable_channel_worker
     enable_scheduler = app.state.enable_scheduler
     resource_access_policy = app.state.resource_access_policy
+    auth_service = app.state.auth_service
+    business_service = app.state.business_service
 
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(storage)
         await stack.enter_async_context(message_bus)
         await stack.enter_async_context(workspace_manager)
+        if auth_service is not None:
+            await stack.enter_async_context(auth_service)
+        if business_service is not None:
+            await stack.enter_async_context(business_service)
         if knowledge_base_manager is not None:
             # ``KnowledgeBaseManagerBase.__aenter__`` enters the bound
             # vector store too, so a single context covers both.

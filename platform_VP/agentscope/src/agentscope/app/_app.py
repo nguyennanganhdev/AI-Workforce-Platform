@@ -5,12 +5,16 @@ from typing import Type, TYPE_CHECKING, Any
 
 from ._lifespan import lifespan
 from .access import DenyAllResourceAccessPolicy, ResourceAccessPolicyBase
+from .auth import AuthService
+from .business import BusinessService
 from .hub import HubBase, HubError, MCPHubBase, SkillHubBase
 from .rag.blob_store import BlobStoreBase, LocalBlobStore
 from .rag.knowledge_base_manager import KnowledgeBaseManagerBase
 from .workspace_manager import WorkspaceManagerBase
 from ._router import (
     agent_router,
+    auth_router,
+    business_router,
     channel_router,
     chat_router,
     credential_router,
@@ -98,6 +102,8 @@ def create_app(
     custom_agent_cls: Type[Agent] | None = None,
     resource_access_policy: ResourceAccessPolicyBase | None = None,
     channels: list[Type[ChannelBase]] | None = None,
+    auth_service: AuthService | None = None,
+    business_service: BusinessService | None = None,
     download_secret: str | None = None,
     title: str = "AgentScope",
     version: str = __version__,
@@ -267,6 +273,13 @@ def create_app(
             to add a platform.  When ``None`` (default), no channel types
             are registered and the channel feature stays off until the
             caller opts in by passing at least one adapter class.
+        auth_service (`AuthService | None`, optional):
+            Local account and rotating-token service. ``None`` keeps the
+            legacy header-based demo identity behavior.
+        business_service (`BusinessService | None`, optional):
+            Area registration directory, domain partner API keys, ticket
+            queues, and reviewed-memory workflows. Pass it together with
+            ``auth_service`` for the area platform APIs.
         download_secret (`str | None`, optional):
             Signs the short-lived tokens that let a browser download a
             workspace file by navigation. Defaults to a value generated
@@ -293,6 +306,8 @@ def create_app(
 
     # Attach shared state that lifespan and dependencies read from app.state
     app.state.storage = storage
+    app.state.auth_service = auth_service
+    app.state.business_service = business_service
     app.state.message_bus = message_bus
     workspace_manager.bind_storage(storage)
     app.state.workspace_manager = workspace_manager
@@ -387,6 +402,8 @@ def create_app(
 
     # Built-in routers
     for router in (
+        auth_router,
+        business_router,
         agent_router,
         chat_router,
         credential_router,

@@ -5,8 +5,10 @@ components and a configurable FastAPI app factory.
 
 from ._app import create_app
 from ._types import SubAgentTemplate
+from .business import BusinessService
 
 __all__ = [
     "create_app",
     "SubAgentTemplate",
+    "BusinessService",
 ]

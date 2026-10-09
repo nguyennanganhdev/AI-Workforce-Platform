@@ -1,0 +1,26 @@
+{
+	"auth": {
+		"heroTitle": "Xây dựng và vận hành agent cho khu vực của bạn",
+		"heroDescription": "Tạo tài khoản Ban quản lý, quản lý agent và tiếp nhận các yêu cầu được định tuyến đúng domain, đúng khu vực.",
+		"securityHint": "Access token ngắn hạn và phiên đăng nhập được tự động luân chuyển",
+		"loginTitle": "Chào mừng bạn quay lại",
+		"loginDescription": "Đăng nhập bằng email hoặc tên đăng nhập.",
+		"registerTitle": "Tạo tài khoản",
+		"registerDescription": "Chọn domain và khu vực mà bạn chịu trách nhiệm.",
+		"login": "Đăng nhập",
+		"register": "Đăng ký",
+		"logout": "Đăng xuất",
+		"identity": "Email hoặc tên đăng nhập",
+		"email": "Email",
+		"username": "Tên đăng nhập",
+		"password": "Mật khẩu",
+		"passwordHint": "Sử dụng ít nhất 12 ký tự.",
+		"domain": "Domain",
+		"area": "Khu vực",
+		"selectDomain": "Chọn domain",
+		"selectArea": "Chọn khu vực",
+		"createAccount": "Tạo tài khoản",
+		"connectedTo": "Máy chủ:",
+		"authenticationDisabled": "Backend chưa bật xác thực. Hãy đặt AUTH_ENABLED=true rồi khởi động lại backend."
+	}
+}
