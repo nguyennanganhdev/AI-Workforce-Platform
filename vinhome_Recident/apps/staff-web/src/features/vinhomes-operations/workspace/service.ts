@@ -3,7 +3,6 @@ import {
   type Account,
   type Role,
   type Scope,
-  type Agent,
   type ReportJob,
   scopes,
   stageLabels,
@@ -20,7 +19,7 @@ export function readWorkspace(
   if (
     !s ||
     s.version !== 1 ||
-    ![s.accounts, s.agents, s.rooms, s.cases, s.reports, s.audit].every(
+    ![s.accounts, s.cases, s.reports, s.audit].every(
       Array.isArray,
     ) ||
     !s.accounts.every(
@@ -40,23 +39,6 @@ export function readWorkspace(
         typeof a.identifier === "string" &&
         scopes.includes(a.scope) &&
         typeof a.available === "boolean",
-    ) ||
-    !s.rooms.every(
-      (r) =>
-        r &&
-        typeof r.id === "string" &&
-        typeof r.name === "string" &&
-        scopes.includes(r.scope) &&
-        Array.isArray(r.messages) &&
-        Array.isArray(r.agentIds) &&
-        r.messages.every(
-          (m) =>
-            m &&
-            typeof m.id === "string" &&
-            typeof m.author === "string" &&
-            typeof m.text === "string" &&
-            Number.isFinite(Date.parse(m.at)),
-        ),
     ) ||
     !s.cases.every(
       (c) =>
@@ -88,13 +70,6 @@ export function readWorkspace(
             typeof p === "string" &&
             /^data:image\/(jpeg|png|webp);base64,/.test(p),
         ),
-    ) ||
-    !s.agents.every(
-      (a) =>
-        a &&
-        typeof a.id === "string" &&
-        typeof a.name === "string" &&
-        scopes.includes(a.scope),
     ) ||
     !s.reports.every(
       (r) =>
@@ -254,86 +229,7 @@ export function changeAccount(
   audit(s, a, `${action} · ${target.identifier}`);
   return s;
 }
-export function createAgent(
-  state: WorkspaceState,
-  actorId: string,
-  name: string,
-  specialty: Agent["specialty"],
-) {
-  const s = structuredClone(state);
-  const a = actorOf(s, actorId);
-  manager(s, actorId, a.scope);
-  if (name.trim().length < 2 || name.length > 50)
-    throw new Error("Tên agent cần từ 2 đến 50 ký tự.");
-  if (
-    s.agents.some(
-      (g) =>
-        g.scope === a.scope &&
-        g.name.toLocaleLowerCase() === name.trim().toLocaleLowerCase(),
-    )
-  )
-    throw new Error("Tên agent đã tồn tại trong nhóm.");
-  const agent = { id: newId(), name: name.trim(), scope: a.scope, specialty };
-  s.agents.push(agent);
-  const room = s.rooms.find((r) => r.scope === a.scope)!;
-  room.agentIds.push(agent.id);
-  room.messages.push({
-    id: newId(),
-    at: new Date().toISOString(),
-    author: "Hệ thống mẫu",
-    text: `Đã thêm @${agent.name} vào nhóm.`,
-  });
-  return s;
-}
-export function sendRoomMessage(
-  state: WorkspaceState,
-  actorId: string,
-  roomId: string,
-  text: string,
-  agentId?: string,
-  ticketId?: string,
-) {
-  const s = structuredClone(state);
-  const room = s.rooms.find((r) => r.id === roomId);
-  if (!room) throw new Error("Không tìm thấy phòng.");
-  const a = manager(s, actorId, room.scope);
-  if (!text.trim() || text.length > 2000)
-    throw new Error("Nội dung cần từ 1 đến 2.000 ký tự.");
-  const agent = agentId
-    ? s.agents.find((g) => g.id === agentId && room.agentIds.includes(g.id))
-    : undefined;
-  if (agentId && !agent) throw new Error("Agent không thuộc nhóm này.");
-  const ticket = ticketId
-    ? s.cases.find((c) => c.id === ticketId && c.scope === room.scope)
-    : undefined;
-  if (ticketId && !ticket) throw new Error("Ticket không thuộc phạm vi nhóm.");
-  const context = JSON.stringify({
-    roomId,
-    scope: room.scope,
-    recentMessageIds: room.messages.slice(-8).map((m) => m.id),
-    ticketId: ticket?.id,
-    stage: ticket?.stage,
-  });
-  room.messages.push({
-    id: newId(),
-    at: new Date().toISOString(),
-    author: a.name,
-    text: text.trim(),
-    agentId,
-    ticketId,
-    context,
-  });
-  if (agent)
-    room.messages.push({
-      id: newId(),
-      at: new Date().toISOString(),
-      author: `${agent.name} · mô phỏng`,
-      text: `Đã nhận lời nhắc trong phòng ${room.name}${ticket ? ` cùng ticket ${ticket.id}` : ""}. Backend sẽ chọn ngữ cảnh và trả kết quả thật tại đây.`,
-      agentId,
-      ticketId,
-    });
-  return s;
-}
+
 export function createReport(
   state: WorkspaceState,
   actorId: string,

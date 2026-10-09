@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { uploadImage } from "../../../../../../packages/shared/direct-image-upload";
 import { useQuery } from "@tanstack/react-query";
+import { shouldPoll } from "./polling";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import {
   connectedPages,
@@ -236,8 +237,10 @@ export function ConnectedOperations() {
       }
     };
     void poll();
+    let ticks = 0;
     const timer = setInterval(() => {
-      if (!document.hidden && !locked.current) void poll();
+      ticks += 1;
+      if (shouldPoll(ticks, document.hidden, locked.current)) void poll();
     }, 5000);
     return () => {
       stopped = true;

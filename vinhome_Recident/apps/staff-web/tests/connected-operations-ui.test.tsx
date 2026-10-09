@@ -6,7 +6,6 @@ let fireEvent: typeof import('@testing-library/react')['fireEvent'];
 let render: typeof import('@testing-library/react')['render'];
 let waitFor: typeof import('@testing-library/react')['waitFor'];
 let WorkListView: typeof import('../src/features/vinhomes-operations/workspace/WorkPage')['WorkListView'];
-let TeamView: typeof import('../src/features/vinhomes-operations/workspace/TeamPage')['TeamView'];
 let LiveReportsPage: typeof import('../src/features/vinhomes-operations/workspace/LiveReportsPage')['LiveReportsPage'];
 
 const originalFetch = globalThis.fetch;
@@ -14,7 +13,6 @@ beforeAll(async () => {
   GlobalRegistrator.register({ url: "http://localhost:3020/operations/kanban" });
   ({cleanup, fireEvent, render, waitFor} = await import('@testing-library/react/pure'));
   ({WorkListView} = await import('../src/features/vinhomes-operations/workspace/WorkPage'));
-  ({TeamView} = await import('../src/features/vinhomes-operations/workspace/TeamPage'));
   ({LiveReportsPage} = await import('../src/features/vinhomes-operations/workspace/LiveReportsPage'));
 });
 afterEach(() => {cleanup(); globalThis.fetch = originalFetch; localStorage.clear();});
@@ -31,21 +29,6 @@ test("original work list renders server rows without needing the preview provide
   expect(page.queryByText(/Dữ liệu và hành động mô phỏng/)).toBeNull();
   await typeInto(page.getByPlaceholderText("Nội dung, mã ticket, vị trí, nhân viên"), "not found");
   expect(page.queryByRole("button", {name: /Server repair/}) === null).toBe(true);
-});
-
-test("original team composer preserves failed messages and does not expose simulated agent creation", async () => {
-  let succeed = false;
-  const page = render(<TeamView room={{id: "room", name: "Assigned room", scope: "assigned", messages: []}} agents={[]} tickets={[]}
-    connectedAccount={{role: "manager", scope: "assigned"}} onSend={async () => succeed} />);
-  expect(page.queryByText("Tạo agent")).toBeNull();
-  const input = page.getByLabelText("Nội dung") as HTMLTextAreaElement;
-  await typeInto(input, "Keep on failure");
-  fireEvent.click(page.getByRole("button", {name: "Gửi tin nhắn"}));
-  await waitFor(() => expect(page.getByRole("button", {name: "Gửi tin nhắn"}).hasAttribute("disabled")).toBe(false));
-  expect(input.value).toBe("Keep on failure");
-  succeed = true;
-  fireEvent.click(page.getByRole("button", {name: "Gửi tin nhắn"}));
-  await waitFor(() => expect(input.value).toBe(""));
 });
 
 test("original report form requests persisted report data with an inclusive final day", async () => {

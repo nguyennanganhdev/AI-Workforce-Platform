@@ -119,6 +119,7 @@ Mã QR/token cổng (khách, tiện ích), số thẻ đầy đủ (chỉ 4 số
 | `resident.debit_notes.list` / `.get` / `.balance` | read | `GET /resident/units/{unit_id}/debit-notes`, `/{note_id}`, `/balance` | Công nợ (chủ và người thuê) |
 | `resident.visitors.list` / `.create` / `.cancel` | read / act_small | `/resident/units/{unit_id}/visitor-passes`, `POST /resident/visitor-passes/{pass_id}/cancel` | Khách đến thăm |
 | `resident.cards.list` | read | `GET /resident/units/{unit_id}/cards` | Thẻ của căn |
+| `resident.home_rules` | read | `GET /resident/units/{unit_id}/rules` | Hạn mức áp dụng cho căn theo phân khu: thẻ, khách, giữ chỗ thanh toán. Dùng để trả lời "được mấy thẻ?" thay vì đoán |
 | `resident.cards.report_lost` | act_small | `POST /resident/cards/{card_id}/report-lost` | Khóa thẻ mất ngay |
 | `resident.service_requests.list` / `.draft` | read / draft | `/resident/units/{unit_id}/service-requests` | Đơn lễ tân; cư dân tự gửi |
 | `resident.amenities.list` / `.availability` | read | `GET /resident/amenities`, `/{amenity_id}/availability?date=` | Tiện ích và khung giờ trống |

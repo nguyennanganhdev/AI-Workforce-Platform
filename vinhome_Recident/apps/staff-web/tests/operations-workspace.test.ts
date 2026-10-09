@@ -8,8 +8,6 @@ import {
   caseAction,
   createAccount,
   changeAccount,
-  createAgent,
-  sendRoomMessage,
   createReport,
   finishReport,
   reportRows,
@@ -57,25 +55,6 @@ test("admin provisions, approves, suspends and deletes; rejects self-lock and du
   expect(s.accounts[0].status).toBe("active");
   s = changeAccount(s, admin, id, "delete", "KT-NEW");
   expect(s.accounts.some((a) => a.id === id)).toBe(false);
-});
-test("agents join their scoped group; mentions cannot attach another building ticket", () => {
-  let s = createAgent(seedWorkspace(), manager, "An ninh tòa nhà", "security");
-  const agent = s.agents.at(-1)!;
-  expect(s.rooms[0].agentIds).toContain(agent.id);
-  expect(() => sendRoomMessage(s, manager, "room-S2.02", "hello")).toThrow();
-  expect(() =>
-    sendRoomMessage(s, manager, "room-S2.01", "hello", agent.id, "DEMO-2001"),
-  ).toThrow();
-  s = sendRoomMessage(
-    s,
-    manager,
-    "room-S2.01",
-    "Kiểm tra sự cố",
-    agent.id,
-    "DEMO-1003",
-  );
-  expect(s.rooms[0].messages.at(-2)!.context).toContain("DEMO-1003");
-  expect(s.rooms[0].messages.at(-1)!.author).toContain("mô phỏng");
 });
 test("busy employees queue tickets and staff cannot self-assign or act outside scope", () => {
   let s = caseAction(seedWorkspace(), manager, "DEMO-1001", "assign", tech);

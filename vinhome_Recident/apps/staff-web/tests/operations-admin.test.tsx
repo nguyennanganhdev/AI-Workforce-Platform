@@ -227,44 +227,42 @@ test("the audit page names events in plain words and asks the server for one kin
   const { view } = await mount("AuditPage", (url) => {
     asked.push(url);
     return Response.json({
-      kinds: ["agent", "connection"],
+      kinds: ["plan", "visitor_pass"],
       items: [
         {
           id: "e1",
           created_at: "2026-10-04T16:00:00Z",
-          event_type: "connection.created",
+          event_type: "visitor_pass.created",
           initiator_kind: "person",
           actor: "Quản trị",
-          target_type: "mcp_server",
-          target_id: "sotay",
-          payload: { hasToken: true },
+          target_type: "visitor_pass",
+          target_id: "pass-1",
+          payload: { code: "VP-261004-ABC" },
         },
         {
           id: "e2",
           created_at: "2026-10-04T15:00:00Z",
-          event_type: "agent.tool_called",
+          event_type: "plan.proposed",
           initiator_kind: "agent",
-          actor: "Agent Báo cáo",
-          target_type: "agent_run",
-          target_id: "run-1",
-          payload: { tool: "reporting.filter_report_scope", status: "OK" },
+          actor: "Agent",
+          target_type: "ticket_plan",
+          target_id: "plan-1",
+          payload: { tool: "integration.plans.propose", status: "OK" },
         },
       ],
     });
   });
   expect(
-    (await view.findByText("Thêm kết nối ngoài")).closest("tr")!.textContent,
+    (await view.findByText("Đăng ký khách")).closest("tr")!.textContent,
   ).toContain("Quản trị");
-  expect(view.getByText("Gọi công cụ").closest("tr")!.textContent).toContain(
-    "Agent Báo cáo",
+  expect(view.getByText("Đề xuất phương án").closest("tr")!.textContent).toContain(
+    "Agent",
   );
-  expect(view.container.textContent).not.toContain(
-    "reporting.filter_report_scope",
-  );
-  await choose(view, "Loại đối tượng", "Kết nối");
+  expect(view.container.textContent).not.toContain("integration.plans.propose");
+  await choose(view, "Loại đối tượng", "Khách đến thăm");
   await waitFor(() =>
     expect(asked.at(-1)).toBe(
-      "/api/business/admin/audit-events?limit=50&kind=connection",
+      "/api/business/admin/audit-events?limit=50&kind=visitor_pass",
     ),
   );
 });
@@ -275,7 +273,7 @@ test("the audit page takes the trail of a span of days as a file, and says why w
   const { view } = await mount("AuditPage", (url) => {
     asked.push(url);
     if (!url.includes("/export"))
-      return Response.json({ kinds: ["agent"], items: [] });
+      return Response.json({ kinds: ["plan"], items: [] });
     if (tooMany) {
       tooMany = false;
       return Response.json(
@@ -325,7 +323,7 @@ test("the audit page takes the trail of a span of days as a file, and says why w
   }
 });
 
-test("external audit events have readable names and cursor keeps the row id", async () => {
+test("audit events the domain records have readable names and cursor keeps the row id", async () => {
   const { eventLabel } = await import(
     "../src/features/vinhomes-operations/connected/admin/Audit"
   );
@@ -335,20 +333,18 @@ test("external audit events have readable names and cursor keeps the row id", as
   const items = Array.from({ length: 50 }, (_, i) => ({
     id: `event-${i}`,
     created_at: "2026-10-06T10:00:00Z",
-    event_type: "external-source-used",
+    event_type: "visitor_pass.created",
     initiator_kind: "person",
     actor: "BQL",
-    target_type: "mcp_server",
-    target_id: "calendar",
+    target_type: "visitor_pass",
+    target_id: "pass-1",
     payload: {},
   }));
-  expect(eventLabel(items[0])).toBe("Dùng nguồn ngoài");
-  expect(
-    eventLabel({ ...items[0], event_type: "external-write-requested" }),
-  ).toBe("Yêu cầu ghi nguồn ngoài");
-  expect(
-    eventLabel({ ...items[0], event_type: "external-write-decided" }),
-  ).toBe("Quyết định ghi nguồn ngoài");
+  expect(eventLabel(items[0])).toBe("Đăng ký khách");
+  expect(eventLabel({ ...items[0], event_type: "visitor_pass.rejected" })).toBe("Từ chối khách");
+  expect(eventLabel({ ...items[0], event_type: "access_card.reported_lost" })).toBe("Báo mất thẻ");
+  // An event nobody has named yet is still read as an update to the kind of thing it was about.
+  expect(eventLabel({ ...items[0], event_type: "ticket.something_new" })).toBe("Cập nhật yêu cầu");
   const options = filteredAuditOptions({
     kind: "",
     from: "",

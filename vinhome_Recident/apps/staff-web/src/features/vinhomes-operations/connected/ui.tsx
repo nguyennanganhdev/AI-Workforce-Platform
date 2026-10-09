@@ -1,13 +1,9 @@
 import type { ReactNode } from 'react';
-import { Bot } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export type StatusTone = 'ok' | 'wait' | 'danger' | 'neutral' | 'agent';
 export function StatusBadge({ tone = 'neutral', children, dot = true }: { tone?: StatusTone; children: ReactNode; dot?: boolean }) {
   return <span className="ops-status" data-tone={tone}>{dot && <span aria-hidden="true" className="ops-status-dot" />}{children}</span>;
-}
-export function ActivityLog({ agent = 'Supervisor', children, time }: { agent?: string; children: ReactNode; time?: string }) {
-  return <div className="ops-activity"><span className="ops-activity-avatar"><Bot aria-hidden="true" size={14} /></span><span><strong>{agent}</strong> {children}</span>{time && <time>{new Date(time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</time>}</div>;
 }
 export function OpsSelect({ value, onValueChange, options, label, disabled = false, placeholder, className = '' }: {
   value: string; onValueChange: (value: string) => void; options: { value: string; label: string }[]; label: string; disabled?: boolean; placeholder?: string; className?: string;

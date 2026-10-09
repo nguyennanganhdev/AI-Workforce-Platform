@@ -99,3 +99,40 @@ def test_audiences_and_unknown_values_are_refused(database, tmp_path):
     write(tmp_path, {"policies": [["code", "title", "kind", "version", "effective_from", "audience"], ["x", "X", "fee_table", "1", "2026-01-01", "everyone"], ["y", "Y", "nonsense", "1", "2026-01-01", "resident"]]})
     _, problems = asyncio.run(load(database["admin"], str(tmp_path), False))
     assert len(problems) == 2 and "audience" in problems[0] and "nonsense" in problems[1]
+
+
+ZONE_HEADER = ["zone_code", "visit_max_waiting", "visit_max_hours", "visit_auto_approve_purposes", "visit_auto_approve_max_guests", "card_limit_vehicle", "note"]
+
+
+def zone_rows(database):
+    return sql(database, """select z.code,s.visit_max_waiting,s.visit_max_hours,s.visit_auto_approve_purposes,s.card_limit_vehicle,s.card_limit_resident
+                            from zone_settings s left join zones z on z.id=s.zone_id and z.tenant_id=s.tenant_id
+                            where s.note like 'imp:%' order by z.code nulls first""")
+
+
+def test_zone_rules_are_loaded_replace_the_zone_row_and_an_empty_cell_inherits(database, tmp_path):
+    rows = [ZONE_HEADER, ["", "12", "", "family_visit|delivery|business", "", "5", "imp: toàn khu"],
+            ["hai-au", "30", "120", "", "9", "", "imp: villa"]]
+    write(tmp_path, {"zone_settings": rows})
+    added, problems = asyncio.run(load(database["admin"], str(tmp_path), False))
+    assert problems == [] and added["zone_settings"] == 2
+    assert zone_rows(database) == [
+        {"code": None, "visit_max_waiting": 12, "visit_max_hours": None, "visit_auto_approve_purposes": ["family_visit", "delivery", "business"], "card_limit_vehicle": 5, "card_limit_resident": None},
+        {"code": "hai-au", "visit_max_waiting": 30, "visit_max_hours": 120, "visit_auto_approve_purposes": None, "card_limit_vehicle": None, "card_limit_resident": None}]
+    again, _ = asyncio.run(load(database["admin"], str(tmp_path), False))
+    assert again.get("zone_settings", 0) == 0                                                                  # the same file changes nothing
+
+    rows[2] = ["hai-au", "40", "", "", "", "", "imp: villa"]                                                    # a new file replaces the zone's row: an empty cell inherits again
+    write(tmp_path, {"zone_settings": rows})
+    changed, problems = asyncio.run(load(database["admin"], str(tmp_path), False))
+    assert problems == [] and changed["zone_settings"] == 1
+    villa = next(r for r in zone_rows(database) if r["code"] == "hai-au")
+    assert (villa["visit_max_waiting"], villa["visit_max_hours"]) == (40, None)
+
+
+def test_a_zone_rule_that_makes_no_sense_or_names_no_zone_is_refused(database, tmp_path):
+    write(tmp_path, {"zone_settings": [ZONE_HEADER, ["hai-au", "0", "", "", "", "", "imp: bad"], ["khong-co", "5", "", "", "", "", "imp: bad"],
+                                       ["sapphire", "5", "", "nonsense", "", "", "imp: bad"], ["sapphire", "abc", "", "", "", "", "imp: bad"]]})
+    added, problems = asyncio.run(load(database["admin"], str(tmp_path), False))
+    assert added == {} and len(problems) == 4 and all(p.startswith("zone_settings.csv line") for p in problems), problems
+    assert not sql(database, "select 1 from zone_settings where note='imp: bad'")

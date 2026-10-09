@@ -259,11 +259,6 @@
   overflow-wrap: anywhere;
   margin: 6px 0;
 }
-.ws-transcript {
-  max-height: 460px;
-  overflow: auto;
-  padding-right: 10px;
-}
 .ws-agent {
   display: flex;
   align-items: center;
@@ -439,31 +434,9 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-.ws-team-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
-  gap: 20px;
-}
 .ops-workspace .ws-row > label {
   flex: 1;
   min-width: 160px;
-}
-.ws-transcript article {
-  padding: 14px 0;
-  border-bottom: 1px solid #edf0f5;
-  overflow-wrap: anywhere;
-}
-.ws-transcript time {
-  float: right;
-  font-size: 11px;
-  color: #76859b;
-}
-.ws-transcript p {
-  white-space: pre-wrap;
-}
-.ws-transcript code {
-  font-size: 11px;
-  overflow-wrap: anywhere;
 }
 .ws-dialog {
   border: 1px solid #dce3ec;
@@ -492,11 +465,6 @@
 .ws-metrics span {
   color: #76859b;
   font-size: 12px;
-}
-@media (max-width: 900px) {
-  .ws-team-grid {
-    grid-template-columns: 1fr;
-  }
 }
 .work-list {
   display: grid;

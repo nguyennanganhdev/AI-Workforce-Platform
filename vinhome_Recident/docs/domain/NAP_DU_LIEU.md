@@ -26,7 +26,7 @@ python -m vinhomes_api.database mock --profile standard --seed 42
 | Tài liệu tri thức | 56 | 70 |
 | Yêu cầu trong lịch sử | 40 | 900 |
 
-Mỗi yêu cầu lịch sử không bị hủy có một hồ sơ cư dân đi kèm (profile `standard`: 855 hồ sơ, trong đó 592 đã hoàn tất), để ứng dụng cư dân có lịch sử để hiện. Cùng `--seed` cho cùng nội dung. Chạy lại không thêm gì (đã đo: hai lần liên tiếp cùng số lượng, mỗi lần khoảng 15 giây). Đổi cấu hình (`test` rồi `standard`) trên cùng một database không được hỗ trợ: dùng `reset` rồi dựng lại. Nhân vật cố định `mock-an`, `mock-chau`, `mock-binh`, `mock-dung`, `mock-em`, `mock-hoa`, `mock-khoa`, `mock-giang`, `mock-minh` được mô tả ở [KICH_BAN_VANG.md §3](KICH_BAN_VANG.md). Mọi nội dung là **dữ liệu mẫu**, không phải quy định thật.
+**Lịch sử xử lý.** Mỗi yêu cầu lịch sử có đủ những gì đã xảy ra với nó: cuộc trò chuyện (lời cư dân và biên nhận của lễ tân), sự kiện theo thứ tự thời gian, việc tiếp nhận của Ban quản lý, phương án đã được hai bên duyệt, phiếu việc và phân công, và hồ sơ cư dân kèm dòng thời gian công khai. Profile `standard`: 900 yêu cầu, 10.767 sự kiện, 668 phiếu việc, 1.800 tin nhắn, 856 hồ sơ cư dân (497 đã hoàn tất, 102 chờ cư dân xác nhận, 257 đang xử lý). Việc chỉ đi tới đâu nhân viên gánh được: không ai quá 3 việc đang làm, nên yêu cầu nào không còn ai rảnh thì nằm ở hàng chờ (`triaging`: 122 yêu cầu), 69 yêu cầu đang giao hoặc đang làm. Không mốc nào sau thời điểm chạy. Chưa có ảnh bằng chứng, hóa đơn sửa chữa và kết quả kiểm tra chất lượng cho các phiếu việc mẫu. Cùng `--seed` cho cùng nội dung. Chạy lại không thêm gì (đã đo: hai lần liên tiếp cùng số lượng, mỗi lần 13 đến 24 giây). Đổi cấu hình (`test` rồi `standard`) trên cùng một database không được hỗ trợ: dùng `reset` rồi dựng lại. Nhân vật cố định `mock-an`, `mock-chau`, `mock-binh`, `mock-dung`, `mock-em`, `mock-hoa`, `mock-khoa`, `mock-giang`, `mock-minh` được mô tả ở [KICH_BAN_VANG.md §3](KICH_BAN_VANG.md). Mọi nội dung là **dữ liệu mẫu**, không phải quy định thật.
 
 ## 2. Dữ liệu thật
 
@@ -38,7 +38,7 @@ python -m vinhomes_api.database import --dir ./du-lieu               # ghi
 - Mỗi loại một tệp: `buildings.csv`, `units.csv`, … (hoặc `.json`: danh sách các đối tượng cùng tên cột). UTF-8, dòng đầu là tên cột. Tệp nào không có thì bỏ qua.
 - Các dòng tham chiếu nhau **bằng mã**, không bằng id. Thứ tự nạp cố định (bảng dưới từ trên xuống) nên mã nào được dùng phải có ở tệp trên hoặc đã có sẵn trong database.
 - **Một giao dịch.** Dòng nào sai (mã không tồn tại, giá trị lạ, thiếu cột) được báo kèm tên tệp và số dòng; có lỗi thì **không ghi gì**. `--dry-run` luôn không ghi.
-- **Chạy lại cùng tệp không thêm gì.** Lệnh chỉ thêm dòng mới; không sửa dòng đã có. Muốn sửa dữ liệu đã nạp, sửa qua ứng dụng quản trị hoặc `reset` rồi nạp lại.
+- **Chạy lại cùng tệp không thêm gì.** Lệnh chỉ thêm dòng mới; không sửa dòng đã có (trừ `zone_settings`, là cấu hình nên nạp lại thì cập nhật). Muốn sửa dữ liệu đã nạp, sửa qua ứng dụng quản trị hoặc `reset` rồi nạp lại.
 - Trạng thái (thẻ, thông báo phí) được đưa tới giá trị bạn ghi bằng các bước hợp lệ của chính cơ sở dữ liệu, nên dữ liệu nạp vào tuân theo mọi quy tắc nghiệp vụ.
 - Thời điểm có giờ phải kèm múi giờ, ví dụ `2026-10-10T08:00:00+07:00`.
 
@@ -53,12 +53,30 @@ python -m vinhomes_api.database import --dir ./du-lieu               # ghi
 | `cards` | `card_no`, `kind`, `unit_code` | `plate_no` (xe đã nạp), `holder_name`, `status` (`active` mặc định, `pending_issue`, `lost`, `suspended`, `expired`, `revoked`), `valid_from`, `valid_to`, `monthly_fee` | |
 | `debit_notes` | `doc_no`, `unit_code`, `issue_date`, `due_date` | `period_month`, `subtotal`, `vat_amount`, `status` (`issued` mặc định, `paid`, `partially_paid`, `overdue`, `cancelled`), `paid_amount` | Tổng các dòng phí phải bằng `subtotal` |
 | `debit_note_lines` | `doc_no`, `line_no`, `fee_kind`, `description`, `amount` | `quantity`, `unit_price` | `fee_kind`: `management`, `parking`, `water`, `electricity`, `service`, `deposit`, `penalty`, `other` |
+| `zone_settings` | | `zone_code` (để trống: cả khu), `visit_max_waiting`, `visit_max_days_ahead`, `visit_max_hours`, `visit_auto_approve_purposes` (cách nhau `\|`), `visit_auto_approve_max_guests`, `visit_early_minutes`, `card_limit_resident`, `card_limit_vehicle`, `amenity_payment_hold_minutes`, `note` | Hạn mức theo phân khu (xem dưới). **Dòng trong tệp thay cả dòng cấu hình của phân khu đó**; ô trống nghĩa là kế thừa. Khác các tệp còn lại, nạp lại với giá trị mới thì cập nhật |
 | `amenities` | `code`, `name`, `category_code`, `zone_code` | `areas` (cách nhau `\|`), `price`, `slot_minutes`, `open_time`, `close_time`, `max_advance_days`, `cancel_before_hours`, `weekly_quota`, `max_guests`, `rules_note` | |
 | `handbook` | `title`, `body_md` | `audience` (`resident`, `staff`, `management`, cách nhau `\|`; mặc định `resident`), `zone_code`, `seq`, `language` | Cẩm nang cho cư dân hoặc quy trình nội bộ |
 | `policies` | `code`, `title`, `kind`, `version`, `effective_from` | `body_md`, `audience`, `zone_code`, `unit_kind`, `language`, `effective_to` | `kind`: `terms_of_use`, `privacy_policy`, `building_rules`, `construction_rules`, `amenity_rules`, `fee_table`, `faq` |
 | `announcements` | `code`, `kind`, `title`, `body_md` | `summary`, `status` (`draft`/`published`), `building_codes` (cách nhau `\|`), `published_at` | `published` chỉ ghi nội dung và thời điểm phát hành, không gửi thông báo cho ai; muốn báo cho cư dân thì phát hành bằng ứng dụng |
 
 Tài liệu tri thức nạp ở `handbook`, `policies`, `announcements` chính là **gói tri thức** mà platform lấy qua `GET /integration/v1/knowledge/pack` ([HOP_DONG_TICH_HOP.md §7](HOP_DONG_TICH_HOP.md)). Tài liệu chỉ cho BQL chỉ được xếp vào gói của BQL.
+
+### Hạn mức theo phân khu
+
+Mỗi phân khu có thể đặt hạn mức riêng; ô nào để trống thì kế thừa: **phân khu, rồi dòng cho cả khu (`zone_code` trống), rồi giá trị mặc định** (cột "mặc định"). Không có dòng nào thì mọi nơi chạy theo mặc định.
+
+| Cột | Ý nghĩa | Mặc định |
+|---|---|---|
+| `visit_max_waiting` | Số lượt khách đang chờ tối đa của một căn | 10 |
+| `visit_max_days_ahead` | Báo khách trước tối đa bao nhiêu ngày | 30 |
+| `visit_max_hours` | Một lượt khách kéo dài tối đa bao nhiêu giờ | 72 |
+| `visit_auto_approve_purposes` | Mục đích được duyệt ngay (`family_visit`, `delivery`, `service_provider`, `business`, `other`) | `family_visit\|delivery` |
+| `visit_auto_approve_max_guests` | Số khách tối đa để được duyệt ngay; 0 là luôn qua lễ tân | 5 |
+| `visit_early_minutes` | Khách vào cổng sớm hơn giờ hẹn tối đa bao nhiêu phút | 15 |
+| `card_limit_resident`, `card_limit_vehicle` | Số thẻ cư dân và thẻ xe tối đa của một căn | 6 và 4 |
+| `amenity_payment_hold_minutes` | Giữ chỗ tiện ích có phí bao nhiêu phút chờ thanh toán | 15 |
+
+Hạn mức áp dụng cho một căn đọc được ở `GET /resident/units/{unit_id}/rules`. Thế giới mẫu đặt riêng cho khu villa (Hải Âu): 20 lượt chờ, 96 giờ, tự duyệt tới 8 khách, 8 thẻ cư dân và 6 thẻ xe.
 
 ## 3. Việc cần làm sau khi nạp
 

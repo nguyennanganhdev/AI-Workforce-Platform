@@ -36,7 +36,6 @@ export function MyTasksWorkspace() {
     tasks,
     incidents,
     evidence,
-    coordinationSessions,
     currentProfile,
     currentPersona,
     transitionWorkOrderStatus,

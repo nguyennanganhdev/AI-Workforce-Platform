@@ -17,7 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from .events import emit
 from .integration import Tool, register
-from .resident_services import CARD_LIMITS, VISIT_EARLY_MINUTES, request_event
+from .resident_services import request_event
+from .zone_rules import unit_rules
 from .unit_access import UNIT_VISIBILITY, delegated, require_management, staff_unit
 from .v3_audit import audit
 from .v3_auth import scoped_connection
@@ -50,7 +51,7 @@ async def gate_scan(body: Scan, scope: Staff):
     db, user, _ = scope
     row = (await db.execute(text(f"""
         select p.id,p.code,p.status,p.guest_name,p.guest_count,p.vehicle_plate_no,p.visit_from,p.visit_to,u.code as unit_code,
-               now() as now from visitor_passes p join units u on u.id=p.unit_id and u.tenant_id=p.tenant_id
+               p.unit_id,now() as now from visitor_passes p join units u on u.id=p.unit_id and u.tenant_id=p.tenant_id
         where p.tenant_id={TENANT} and p.qr_token=:qr for update of p
     """), {"qr": body.qr_token})).mappings().first()
     if row is None:
@@ -62,7 +63,7 @@ async def gate_scan(body: Scan, scope: Staff):
             if row["now"] > row["visit_to"]:
                 await db.execute(text("update visitor_passes set status='expired' where id=:id"), {"id": row["id"]})
                 reason = "expired"
-            elif (row["visit_from"] - row["now"]).total_seconds() > VISIT_EARLY_MINUTES * 60:
+            elif (row["visit_from"] - row["now"]).total_seconds() > (await unit_rules(db, row["unit_id"]))["visit_early_minutes"] * 60:
                 reason = "too_early"
             else:
                 await db.execute(text("update visitor_passes set status='checked_in' where id=:id"), {"id": row["id"]})
@@ -167,12 +168,13 @@ async def fulfil_card_request(db, request, staff_id, user):
         await db.execute(text("update access_cards set status='revoked' where id=:id"), {"id": old["id"]})
         return {"revoked_card_id": str(old["id"])}
     kind = old["kind"] if old else details.get("card_kind", "resident")
-    if kind not in CARD_LIMITS:
+    if kind not in ("resident", "vehicle"):
         raise HTTPException(409, "Only resident and vehicle cards are issued from a request")
+    limit = (await unit_rules(db, request["unit_id"]))[f"card_limit_{kind}"]
     live = (await db.execute(text(f"select count(*) from access_cards where tenant_id={TENANT} and unit_id=:unit and kind=:kind and status in ('pending_issue','active','suspended') and (cast(:old as uuid) is null or id<>cast(:old as uuid))"),
                              {"unit": request["unit_id"], "kind": kind, "old": str(old["id"]) if old else None})).scalar_one()
-    if live >= CARD_LIMITS[kind]:
-        raise HTTPException(409, f"This home already holds {CARD_LIMITS[kind]} {kind} cards")
+    if live >= limit:
+        raise HTTPException(409, f"This home already holds {limit} {kind} cards")
     number = "C-" + datetime.now(timezone.utc).strftime("%y%m%d") + "-" + secrets.token_hex(3).upper()
     created = (await db.execute(text(f"""
         insert into access_cards(tenant_id,card_no,kind,holder_user_id,holder_name,unit_id,vehicle_id,status,monthly_fee)

@@ -107,6 +107,7 @@ class World:
         self.residents: dict[str, list[tuple[str, str]]] = {}  # unit code -> [(user_id, relation)]
         self.users: dict[str, str] = {}        # user id -> display name
         self.counts: dict[str, int] = {}
+        self.workers: list[dict] = []          # staff who can take work: id, user, category, places left
         self.phones: set[str] = {"0901000001", "0901000002", "0901000003", "0901000004", "0901000005", "0902000001"}
 
     def count(self, name: str, n: int = 1):
@@ -184,6 +185,9 @@ class World:
                                  uid("unit", code), TENANT, SITE, self.zone[self.buildings[building]], self.building_id[building], code, kind, floor)
             self.units[code] = {"id": uid("unit", code), "building": building, "zone": self.zone[self.buildings[building]], "kind": kind, "area": area}
         self.count("units", len(rows))
+        # The villa zone sets its own rules; the towers keep the standard ones (table zone_settings).
+        await self.c.execute("""insert into zone_settings(tenant_id,zone_id,visit_max_waiting,visit_max_hours,visit_auto_approve_max_guests,card_limit_resident,card_limit_vehicle,note)
+            values($1,$2,20,96,8,8,6,'Khu villa có hạn mức rộng hơn khu căn hộ (dữ liệu mẫu)') on conflict do nothing""", TENANT, self.zone["PK2"])
 
     # ---------- people ----------
 
@@ -246,6 +250,7 @@ class World:
                 await self.c.execute("insert into scoped_user_roles(id,tenant_id,membership_id,scope_id,role_code,granted_by,valid_from) values($1,$2,$3,$4,'staff','local-v3-admin','2026-01-01T00:00:00Z') on conflict(id) do nothing",
                                      uid("role", user, building), TENANT, uid("membership", user), self.scope_id[building])
             if availability == "available":
+                self.workers.append({"id": staff_id, "user": user, "category": category, "left": 3})
                 night = key == "giang" or (category == CAT_SEC)
                 for d in range(-30, 31):
                     day = datetime.combine(self.today + timedelta(days=d), time(0), tzinfo=timezone.utc)
@@ -537,36 +542,161 @@ class World:
     # ---------- the history of requests ----------
 
     async def tickets(self):
+        """900 requests with the history each would have: the chat, the routing, the plan, the job and who did it.
+
+        A request moves only as far as the staff can carry it: nobody holds more than their capacity, so one that
+        would be handed to a person with no room waits in triage. Nothing is dated after now.
+        """
         owners = [(c, u) for c, u in self.units.items() if c in self.residents]
         channels: set[str] = set()
         states = [s for s, w in ISSUE_STATES for _ in range(w)]
+        manager = "mock-minh"
         n = 0
+        timeline: dict[uuid.UUID, list[tuple[str, datetime]]] = {}
         for k in range(self.p.history_tickets):
             code, unit = self.rng.choice(owners)
             user = self.holder(code)
             title, text_, category, priority = self.rng.choice(ISSUES)
             status = self.rng.choice(states)
             created = self.now - timedelta(days=self.rng.randint(0, 180), hours=self.rng.randint(0, 23))
+            # How long each step took, drawn in a fixed order so a seed gives the same history.
+            gaps = [timedelta(minutes=self.rng.randint(5, 300)), timedelta(minutes=self.rng.randint(30, 120)),
+                    timedelta(minutes=self.rng.randint(10, 60)), timedelta(minutes=self.rng.randint(5, 90)),
+                    timedelta(minutes=self.rng.randint(5, 60)), timedelta(hours=self.rng.randint(2, 24)),
+                    timedelta(minutes=self.rng.randint(10, 40)), timedelta(hours=self.rng.randint(1, 8))]
+            responded_gap, plan_gap, manager_gap, resident_gap, accept_gap, eta_gap, start_gap, work_gap = gaps
+            amount = self.rng.choice([0, 150000, 300000, 450000])
+            worker = None
+            if status in ("assigned", "in_progress"):
+                free = [w for w in self.workers if w["category"] == category and w["left"] > 0]
+                if free:
+                    worker = self.rng.choice(free)
+                    worker["left"] -= 1
+                else:
+                    status = "triaging"          # nobody has room: it waits for someone
+            elif status in ("resolved", "closed"):
+                worker = self.rng.choice([w for w in self.workers if w["category"] == category])
+            worked = worker is not None
+            responded = created + responded_gap
+            planned = responded + plan_gap
+            approved = planned + manager_gap
+            agreed = approved + resident_gap
+            accepted = agreed + timedelta(minutes=1) + accept_gap
+            started = accepted + start_gap
+            eta = accepted + eta_gap if status == "assigned" else started
+            completed = started + work_gap
+            last = {"open": created, "cancelled": created + timedelta(minutes=20), "triaging": responded, "assigned": accepted,
+                    "in_progress": started, "resolved": completed, "closed": completed + timedelta(hours=6)}[status]
+            if last > self.now - timedelta(hours=1):
+                # The story must end before now: it started earlier than first drawn.
+                shift = last - (self.now - timedelta(hours=1))
+                created, responded, planned, approved, agreed, accepted, started, completed = (
+                    t - shift for t in (created, responded, planned, approved, agreed, accepted, started, completed))
+                eta = accepted + eta_gap if status == "assigned" else started
+            done = status in ("resolved", "closed")
+            left, arrived = accepted + (started - accepted) / 3, accepted + (started - accepted) * 2 / 3    # set off, got there
             channel = f"mock-chat-{user}-{k}"
             if channel not in channels:
                 channels.add(channel)
                 await self.c.execute("insert into channels(id,tenant_id,name,description,kind,created_by) values($1,$2,'Hội thoại mẫu','Dữ liệu mẫu','reception',$3) on conflict(id) do nothing", channel, TENANT, user)
                 await self.c.execute("insert into channel_memberships(tenant_id,channel_id,user_id) values($1,$2,$3) on conflict do nothing", TENANT, channel, user)
             tid = uid("ticket", k)
-            done = status in ("closed", "resolved")
-            resolved = created + timedelta(hours=self.rng.randint(2, 200)) if done else None
             await self.c.execute("""insert into tickets(id,tenant_id,code,requester_user_id,channel_id,unit_id,site_id,zone_id,building_id,management_unit_id,domain_id,category_id,
                 title,description,priority,status,contact_name,contact_phone,address_snapshot,request_kind,created_at,first_response_at,resolved_at,closed_at)
                 values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'{}','incident',$19,$20,$21,$22) on conflict(id) do nothing""",
                                  tid, TENANT, f"MOCK-{k + 1:04d}", user, channel, unit["id"], SITE, unit["zone"], self.building_id[unit["building"]], MANAGEMENT, DOMAIN, category,
-                                 title, text_, priority, status, self.users[user], "0900000000", created, created + timedelta(minutes=self.rng.randint(5, 300)) if status != "open" else None,
-                                 resolved, resolved + timedelta(hours=6) if status == "closed" else None)
+                                 title, text_, priority, status, self.users[user], "0900000000", created, responded if status not in ("open", "cancelled") else None,
+                                 completed if done else None, completed + timedelta(hours=6) if status == "closed" else None)
             n += 1
+            wo, plan, assignment = uid("workorder", k), uid("plan", k), uid("assignment", k)
+            # What happened, in order. The status each step moves from is worked out from the steps before it.
+            steps: list[tuple[datetime, str, str | None, str | None, dict]] = [
+                (created, "ticket.created", user, "open", {"source": "resident_chat", "requiresPlan": True})]
+            if status == "cancelled":
+                steps.append((created + timedelta(minutes=20), "ticket.status_changed", user, "cancelled", {"reason": "Cư dân hủy yêu cầu"}))
+            elif status != "open":
+                steps.append((responded, "ticket.routing_accepted", manager, None, {"routingId": str(uid("routing", k))}))
+                steps.append((responded + timedelta(minutes=1), "ticket.status_changed", manager, "triaging", {"reason": "Đã tiếp nhận"}))
+            if worked:
+                crew = worker["user"]
+                steps += [(planned, "plan.proposed", manager, None, {"planId": str(plan)}),
+                          (approved, "plan.management_decided", manager, None, {"planId": str(plan), "decision": "approve"}),
+                          (agreed, "plan.resident_decided", user, None, {"planId": str(plan), "decision": "approve"}),
+                          (agreed + timedelta(minutes=1), "work_order.offered", manager, None, {"assignmentId": str(assignment), "offeredBy": "management"}),
+                          (accepted, "work_assignment.responded", crew, None, {"assignmentId": str(assignment), "status": "accepted"}),
+                          (accepted + timedelta(seconds=1), "ticket.status_changed", crew, "assigned", {"reason": "Nhân viên đã nhận việc"})]
+                if status in ("in_progress", "resolved", "closed"):
+                    steps += [(left, "work_order.status_changed", crew, None, {"workOrderId": str(wo), "status": "en_route"}),
+                              (arrived, "work_order.status_changed", crew, None, {"workOrderId": str(wo), "status": "arrived"}),
+                              (started, "work_order.status_changed", crew, None, {"workOrderId": str(wo), "status": "in_progress"}),
+                              (started + timedelta(seconds=1), "ticket.status_changed", crew, "in_progress", {"reason": "Bắt đầu xử lý"})]
+                if done:
+                    steps += [(completed, "work_order.status_changed", crew, None, {"workOrderId": str(wo), "status": "completed"}),
+                              (completed + timedelta(seconds=1), "ticket.status_changed", crew, "resolved", {"reason": "Đã xử lý xong"})]
+                if status == "closed":
+                    steps.append((completed + timedelta(hours=6), "ticket.status_changed", manager, "closed", {"reason": "Cư dân đã xác nhận"}))
+            steps.sort(key=lambda step: step[0])
+            current = None
+            rows, shown = [], []
+            for seq, (at, kind, actor, moves_to, payload) in enumerate(steps, 1):
+                rows.append((uid("event", k, seq), TENANT, tid, seq, kind, current, moves_to, "human", actor, f"mock:{k}:{seq}", uid("correlation", k, seq),
+                             json.dumps(payload), at))
+                current = moves_to or current
+                shown.append((kind, at))
+            await self.c.executemany("""insert into ticket_events(id,tenant_id,ticket_id,seq,event_type,from_status,to_status,actor_kind,actor_user_id,idempotency_key,correlation_id,payload,occurred_at)
+                values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,cast($12 as jsonb),$13) on conflict do nothing""", rows)
+            await self.c.execute("update tickets set last_event_seq=$2,version=$2 where id=$1", tid, len(rows))
+            self.count("ticket events", len(rows))
+            timeline[tid] = shown
+            if status != "cancelled":
+                routed = status != "open"
+                await self.c.execute("""insert into ticket_routing_history(id,tenant_id,ticket_id,to_management_id,status,reason,ack_event_id,requested_at,acknowledged_at)
+                    values($1,$2,$3,$4,$5,'initial_reception_handoff',$6,$7,$8) on conflict(id) do nothing""",
+                                     uid("routing", k), TENANT, tid, MANAGEMENT, "accepted" if routed else "requested",
+                                     uid("event", k, 2) if routed else None, created, responded if routed else None)
+            if worked:
+                await self.c.execute("""insert into vh_ticket_plans(id,tenant_id,ticket_id,proposed_by,title,steps,estimated_amount,status,version,idempotency_key,request_hash,
+                    management_by,management_note,management_at,resident_by,resident_note,resident_at,created_at,updated_at)
+                    values($1,$2,$3,$4,$5,cast($6 as jsonb),$7,'approved',2,$8,$9,$4,'Đồng ý phương án.',$10,$11,'Đồng ý',$12,$13,$12) on conflict(id) do nothing""",
+                                     plan, TENANT, tid, manager, f"Xử lý: {title}", json.dumps([{"category_id": str(category), "description": title, "work_order_id": str(wo)}]),
+                                     amount, f"mock-plan-{k}", uuid.uuid5(NS, f"plan-hash|{k}").hex, approved, user, agreed, planned)
+                await self.c.execute("""insert into work_orders(id,tenant_id,ticket_id,category_id,description,status,required_specialty_id,scheduled_at,arrived_at,started_at,completed_at,created_at)
+                    values($1,$2,$3,$4,$5,$6,$4,$7,$8,$9,$10,$11) on conflict(id) do nothing""",
+                                     wo, TENANT, tid, category, title,
+                                     {"assigned": "accepted", "in_progress": "in_progress", "resolved": "completed", "closed": "completed"}[status], eta,
+                                     arrived if status != "assigned" else None, started if status != "assigned" else None, completed if done else None, agreed)
+                await self.c.execute("""insert into work_assignments(id,tenant_id,work_order_id,staff_id,assigned_by_user_id,status,offered_at,accepted_at,eta_at,ended_at,offer_expires_at,created_at)
+                    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$7) on conflict(id) do nothing""",
+                                     assignment, TENANT, wo, worker["id"], manager, "completed" if done else "accepted", agreed + timedelta(minutes=1), accepted, eta,
+                                     completed if done else None, agreed + timedelta(days=1))
+                self.count("work orders")
+            # The chat the request came from: what the resident wrote and the receipt Reception gave.
+            first = uid("message", k, 1)
+            await self.c.executemany("""insert into messages(id,tenant_id,channel_id,seq,sender_kind,sender_user_id,sender_client_id,visibility,body,client_message_id,reply_to_id,created_at)
+                values($1,$2,$3,$4,$5,$6,$7,'customer',cast($8 as jsonb),$9,$10,$11) on conflict do nothing""",
+                                     [(first, TENANT, channel, 1, "user", user, None, json.dumps({"text": text_}), f"mock-{k}-1", None, created),
+                                      (uid("message", k, 2), TENANT, channel, 2, "agent", None, "demo-reception",
+                                       json.dumps({"text": "Em đã ghi nhận và chuyển yêu cầu của anh/chị tới Ban quản lý. Em sẽ báo khi có phương án xử lý."}), None, first,
+                                       created + timedelta(seconds=20))])
+            await self.c.execute("update channels set next_message_seq=3,last_message=$2,last_message_at=$3 where id=$1 and tenant_id=$4 and next_message_seq<3",
+                                 channel, "Em đã ghi nhận và chuyển yêu cầu của anh/chị tới Ban quản lý.", created + timedelta(seconds=20), TENANT)
+            self.count("messages", 2)
         self.count("tickets", n)
-        # The resident app follows a request through its case; the history gets the cases the app would have made.
-        self.count("resident cases", await self.c.fetchval(
-            "select count(app_ensure_case(id)) from tickets where code like 'MOCK-%'"))
-
+        # The resident app follows a request through its case; the history gets the cases the app would have made,
+        # with the public lines the app writes as the request moves (once: a second run adds nothing).
+        from .resident_cases import PUBLIC_LABELS
+        cases = 0
+        for tid, shown in timeline.items():
+            case = await self.c.fetchval("select app_ensure_case($1)", tid)
+            if case is None:
+                continue
+            cases += 1
+            if await self.c.fetchval("select exists(select 1 from vh_resident_public_events where case_id=$1 and label=any($2))", case, list(PUBLIC_LABELS.values())):
+                continue
+            for kind, at in shown:
+                if kind in PUBLIC_LABELS:
+                    await self.c.execute("select app_case_event($1,$2,$3,'resident.case.progress',$4)", TENANT, case, PUBLIC_LABELS[kind], at)
+        self.count("resident cases", cases)
 
 async def build(url: str, profile: str = "standard", seed: int = 42) -> dict[str, int]:
     if profile not in PROFILES:

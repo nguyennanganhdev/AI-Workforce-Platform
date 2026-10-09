@@ -133,7 +133,7 @@ Quy ước mỗi kịch bản: **Mục tiêu**, **Điều kiện** (dữ liệu 
 - **Diễn biến.** Cư dân tạo đăng ký khách (tên, số người, mục đích, biển số, khung giờ). Nếu không cần duyệt: `approved` ngay và có mã QR. Nếu cần duyệt: `pending_approval`, lễ tân duyệt. Tại cổng quét QR trong khung giờ: `checked_in`; khách ra: `checked_out`. Quá giờ chưa vào: `expired`.
 - **Ràng buộc.**
   - Khung giờ phải ở tương lai, tối đa một số ngày cấu hình, `visit_to > visit_from`.
-  - Giới hạn số đăng ký đang hiệu lực của một căn.
+  - Giới hạn số đăng ký đang hiệu lực của một căn, số ngày báo trước, độ dài một lượt, và việc khách nào được duyệt ngay: theo cấu hình của phân khu (bảng `zone_settings`; mặc định 10 lượt, 30 ngày, 72 giờ, khách gia đình hoặc giao hàng tới 5 người).
   - Hủy được khi chưa vào. Quét QR ngoài khung giờ hoặc đã hết hạn: từ chối, ghi lượt từ chối.
   - Thành viên hộ **được** đăng ký khách; người chờ xác minh không.
 - **Chấp nhận.**
@@ -143,6 +143,7 @@ Quy ước mỗi kịch bản: **Mục tiêu**, **Điều kiện** (dữ liệu 
   4. Quét QR đúng giờ: `checked_in`; quét lần hai khi đã `checked_in`: không nhập lại; quét ngoài giờ: từ chối.
   5. Cư dân hủy khi `approved`: `cancelled`; hủy khi `checked_in`: 409.
   6. Chuyển trạng thái ngoài từ điển (ví dụ `expired` về `approved`): bị cơ sở dữ liệu chặn.
+  7. Cùng một đăng ký 8 khách gia đình: chờ lễ tân duyệt ở khu tháp, duyệt ngay ở khu villa; lượt kéo dài 80 giờ bị từ chối ở tháp, nhận ở villa (`test_zone_rules.py`).
 
 ### G05 Mất thẻ xe, xin cấp lại
 
@@ -233,6 +234,8 @@ Quy ước mỗi kịch bản: **Mục tiêu**, **Điều kiện** (dữ liệu 
   2. Chuỗi trạng thái đi đúng thứ tự; nhảy bước: 409.
   3. Hoàn thành thiếu bằng chứng: bị từ chối.
   4. `khoa` (nghỉ phép) không nhận được việc mới.
+  5. Mỗi lần việc được chào cho một nhân viên (giao tay, phương án được duyệt hay việc trong hàng đợi) có đúng một thông báo chưa đọc cho người đó, đọc qua `GET /my/notifications`; người khác không có. Chào lại sau khi bị từ chối thì thông báo lại (`test_staff_notifications.py`, migration `0010`).
+  6. App nhân viên hỏi lại danh sách việc mỗi 5 giây khi hiện và mỗi 30 giây khi tab bị ẩn, và số việc mới hiện ở tiêu đề tab. Chưa có đẩy thông báo (push, SMS, email) khi không mở app: cần nhà cung cấp dịch vụ.
 
 ### G11 Quản lý hỏi tổng hợp
 
@@ -283,7 +286,7 @@ Quy ước mỗi kịch bản: **Mục tiêu**, **Điều kiện** (dữ liệu 
 | G07 | `test_G07_renovation_rules_and_permits` | tạo và xử lý đơn thi công |
 | G08 | `test_G08_a_planned_outage_is_drafted_by_an_agent…` | |
 | G09 | `test_G09_what_each_kind_of_resident_may_do` | |
-| G10 | `test_G10_field_staff_see_only_their_jobs…` (+ `test_staff_dispatch.py`) | |
+| G10 | `test_G10_field_staff_see_only_their_jobs…` (+ `test_staff_dispatch.py`, `test_staff_notifications.py`) | thông báo ngoài app (push, SMS, email) |
 | G11 | `test_G11_a_manager_asks_what_is_overdue…` | |
 | G12 | `test_G12_a_late_request_warns_once…` | nhắc nợ chủ động, nhắc người phụ trách |
 | G13 | `test_G13_a_request_reported_to_reception_shows_in_the_residents_list` | chưa có test cho bước nhân viên công bố kết quả và cư dân xác nhận trên hồ sơ tạo từ lễ tân (cùng bảng và cùng luồng với hồ sơ tạo từ biểu mẫu, nhưng chưa thử) |

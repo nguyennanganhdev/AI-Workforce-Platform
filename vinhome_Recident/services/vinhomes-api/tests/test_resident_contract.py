@@ -85,7 +85,16 @@ def database(tmp_path_factory):
             assert re.fullmatch(r"resident_contract_test_[a-f0-9]{32}",test_name)
             admin = await asyncpg.connect(admin_url)
             try:
-                await admin.execute(f'DROP DATABASE "{test_name}" WITH (FORCE)')
+                # FORCE ends the sessions still open, but this role may not end the API role's: one that is still
+                # closing refuses it for a moment. A session that is really kept open still fails after five seconds.
+                for attempt in range(10):
+                    try:
+                        await admin.execute(f'DROP DATABASE "{test_name}" WITH (FORCE)')
+                        break
+                    except asyncpg.InsufficientPrivilegeError:
+                        if attempt == 9:
+                            raise
+                        await asyncio.sleep(0.5)
             finally:
                 await admin.close()
 
