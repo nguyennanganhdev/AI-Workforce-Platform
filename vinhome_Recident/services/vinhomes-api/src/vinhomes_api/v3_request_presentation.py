@@ -15,11 +15,21 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from .v3_audit import audit
 from .v3_auth import TICKET_VISIBILITY, scoped_connection
 from .v3_mutations import management_access, record_event, visible_ticket
-from .v3_session import _session
 
 router = APIRouter(tags=["Vinhomes request presentation"])
 Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
 TENANT = "nullif(current_setting('app.tenant_id',true),'')::uuid"
+
+
+@router.get("/tickets/{ticket_id}/conversation", summary="What the resident and Reception said about a ticket")
+async def ticket_conversation(ticket_id: UUID, scope: Scope) -> dict[str, object]:
+    await visible_ticket(scope, ticket_id)
+    rows = await scope[0].execute(text(f"""
+        select m.id,m.seq,m.sender_kind,m.body->>'text' as text,m.created_at from messages m
+        where m.channel_id=(select channel_id from tickets where id=:ticket) and m.tenant_id={TENANT} and m.visibility in ('room','customer')
+          and m.body->>'text'<>'' order by m.seq desc limit 100
+    """), {"ticket": ticket_id})
+    return {"items": [dict(row) for row in rows.mappings()][::-1]}
 
 
 @router.get("/tickets/{ticket_id}/presentation")
@@ -33,26 +43,6 @@ async def presentation(ticket_id: UUID, scope: Scope):
         where t.id=:ticket and t.tenant_id={TENANT}
     """), {"ticket": ticket_id})).mappings().one()
     result = {"resident": {key: resident[key] for key in ("name", "phone") if resident[key]}, "participants": [], "events": []}
-    session = await _session(db, ticket_id)
-    if session:
-        participants = (await db.execute(text(f"""
-            select m.id,a.name,m.member_kind as kind,m.created_at as joined_at,
-              m.status<>'active' as ended,m.updated_at as changed_at,
-              m.status='active' and exists(select 1 from agent_runs r where r.team_member_id=m.id
-                and r.tenant_id=m.tenant_id and r.status='running') as active
-            from team_members m join agents a on a.id=m.agent_id and a.tenant_id=m.tenant_id
-            where m.team_id=:team and m.tenant_id={TENANT} order by m.created_at,m.id
-        """), {"team": session["id"]})).mappings().all()
-        result["participants"] = [{"id": str(row["id"]), "name": row["name"], "kind": row["kind"],
-            "joined_at": row["joined_at"], "active": row["active"], **({"left_at": row["changed_at"]} if row["ended"] else {})} for row in participants]
-        accepted_at = (session["supervisor"] or {}).get("acceptedAt")
-        if accepted_at:
-            result["events"].append({"id": f"accepted:{session['id']}", "kind": "accepted", "agent": "Supervisor", "at": accepted_at})
-        for row in participants:
-            if row["kind"] == "specialist":
-                result["events"].append({"id": f"joined:{row['id']}", "kind": "joined", "agent": row["name"], "at": row["joined_at"]})
-                if row["ended"]:
-                    result["events"].append({"id": f"left:{row['id']}", "kind": "left", "agent": row["name"], "at": row["changed_at"]})
     plan = (await db.execute(text(f"""
         select p.proposal,(select u.name from staff_profiles sp join users u on u.id=sp.user_id
           where sp.id::text=p.proposal->>'performer_staff_id' and sp.tenant_id=p.tenant_id) as performer_name
@@ -203,6 +193,6 @@ async def offer_planned_work(db, ticket_id: UUID, work_order_id: UUID, plan) -> 
     if plan["management_by"]:
         await record_event((db, plan["management_by"], False), dict(ticket), "work_order.offered", json.dumps(payload))
     else:
-        from .supervised_flow import agent_event
+        from .work_offers import agent_event
         await agent_event(db, ticket_id, plan["proposed_by_agent_id"], "work_order.offered", payload)
     return True

@@ -426,9 +426,6 @@ async def create_resident_ticket(channel_id: str, body: ResidentTicketCreate,
             values(nullif(current_setting('app.tenant_id',true),'')::uuid,:ticket,:file,'issue',:actor)
         """), {"ticket": ticket_id, "file": file_id, "actor": actor_id})
     if receipt_key is not None:
-        # Agent callers open the session in the Reception handoff instead.
-        from .v3_session import ensure_session
-        await ensure_session(db, acting_user_id or actor_id, ticket_id)
         created["version"] = 1
         return created
     from .v3_ticket_result import resident_ticket_result

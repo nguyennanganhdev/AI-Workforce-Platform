@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { tryClient } from "@/lib/client";
-import { businessHeaders } from "@/lib/coordination/queries";
+import { businessHeaders } from "@/lib/business-headers";
 import {
   AdminBadge,
   AdminDrawer,

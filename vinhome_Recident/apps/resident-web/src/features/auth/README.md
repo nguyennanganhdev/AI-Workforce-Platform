@@ -1,6 +1,6 @@
 # Resident auth UI
 
-Module chỉ dành cho app cư dân; không import staff UI/auth. CSS dùng prefix `resident-auth`. Hướng dẫn vận hành: [đăng nhập thật](../../../../docs/teams/chien/CHAY_DANG_NHAP_THAT.md).
+Module chỉ dành cho app cư dân; không import staff UI/auth. CSS dùng prefix `resident-auth`.
 
 ## Adapter hiện tại
 
@@ -16,4 +16,4 @@ Kết quả: `membership-pending`, `verification-required`, `ready` hoặc `admi
 - Membership/căn hộ verified và quyền tài nguyên do backend quyết định; cookie/session không thay nghiệp vụ authorization.
 - Production cần gateway/origin/cookie policy phù hợp và cơ chế reset/rate-limit được nghiệm thu.
 
-Đối chiếu implementation/tests trong thư mục này; [báo cáo frontend](../../../../docs/teams/chien/REPO_RESEARCH_2026-10-04/FRONTEND_RUNTIME.md) là snapshot ngày 04/10, không cập nhật tự động.
+Đối chiếu implementation và tests trong thư mục này.

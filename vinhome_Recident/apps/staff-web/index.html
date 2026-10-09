@@ -8,7 +8,7 @@
     <script>
       // localStorage throws in some privacy modes; a theme is not worth taking the app down for.
       try {
-        const dark = window.localStorage.getItem("openbot-theme") === "dark";
+        const dark = window.localStorage.getItem("vinhomes-theme") === "dark";
         document.documentElement.classList.toggle("dark", dark);
         document.documentElement.style.colorScheme = dark ? "dark" : "light";
       } catch {}

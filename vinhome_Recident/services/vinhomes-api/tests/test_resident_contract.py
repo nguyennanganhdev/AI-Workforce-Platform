@@ -1,20 +1,14 @@
 """Real PostgreSQL contract checks in an isolated, disposable database.
 
-Set RESIDENT_TEST_ADMIN_URL and RESIDENT_TEST_RUNTIME_URL to local PostgreSQL URLs,
-or use the existing ignored .local-v3-faker config. The live demo DB is untouched.
+Set RESIDENT_TEST_ADMIN_URL and RESIDENT_TEST_RUNTIME_URL to local PostgreSQL URLs: the first needs
+CREATEDB, CREATEROLE and BYPASSRLS (it loads the sample data), the second names the API's plain runtime role.
+Each module builds its own database from vinhomes_api/schema and drops it afterwards.
 """
 
 import asyncio
 import io
-import json
 import os
 import re
-import base64
-import shutil
-import socket
-import subprocess
-import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
@@ -26,6 +20,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from vinhomes_api import database as tool
 from vinhomes_api.main import create_app
 from vinhomes_api.v3_config import V3Settings
 
@@ -67,20 +62,14 @@ def database(tmp_path_factory):
 
     async def setup():
         nonlocal created
-        admin = await asyncpg.connect(admin_url, timeout=5)
+        await tool.create(admin_url, test_name)
+        created = True
+        owner_url = database_url(admin_url, test_name)
+        await tool.migrate(owner_url)
+        await tool.seed(owner_url)
+        await tool.role(owner_url, urlsplit(runtime_url).username, None)
+        db = await asyncpg.connect(owner_url)
         try:
-            await admin.execute(f'CREATE DATABASE "{test_name}"')
-            created = True
-        finally:
-            await admin.close()
-        db = await asyncpg.connect(database_url(admin_url,test_name))
-        try:
-            for entry in json.loads((PROJECT/"server/drizzle/meta/_journal.json").read_text())["entries"]:
-                await db.execute((PROJECT/"server/drizzle"/(entry["tag"]+".sql")).read_text(encoding="utf-8").replace("--> statement-breakpoint", ""))
-            for name in ("seed_v3_local.sql","seed_v3_faker.sql","seed_v3_demo_ui.sql","seed_v3_remaining.sql","seed_v3_ocean_park.sql"):
-                await db.execute((SERVICE/"scripts"/name).read_text(encoding="utf-8"))
-            grants = (SERVICE/"scripts/grant_v3_api_role.sql").read_text(encoding="utf-8").replace("GRANT CONNECT ON DATABASE vinhomes_v3",f'GRANT CONNECT ON DATABASE "{test_name}"')
-            await db.execute(grants)
             await db.execute("update users set phone_e164='+84901234567' where id='local-v3-resident'")
         finally:
             await db.close()
@@ -127,7 +116,7 @@ def sql(database, query, *args):
 
 @contextmanager
 def client(database, actor="resident", tenant=TENANT):
-    settings = V3Settings("127.0.0.1",8000,database["runtime"],tenant,None,"local-v3-"+actor,
+    settings = V3Settings("127.0.0.1",8000,database["runtime"],tenant,"local-v3-"+actor,
                           resident_allowed_origins=("http://testserver",))
     with TestClient(create_app(settings),client=("127.0.0.1",50000)) as result:
         yield result
@@ -376,65 +365,3 @@ def test_complete_backend_journey_without_injected_workflow_state(database):
     assert persisted["status"] == "completed" and str(persisted["current_resolution_id"]) == current["resolutionRevision"]
     assert sql(database,"select status from work_orders where id=$1",UUID(work["id"]))[0]["status"] == "completed"
     assert sql(database,"select status from tickets where id=$1",UUID(ticket_id))[0]["status"] == "resolved"
-
-
-def test_real_resident_frontend_adapter_against_http_and_postgres(database, tmp_path):
-    """Execute the actual frontend adapter, without mocked fetch or browser storage."""
-    if not (PROJECT / 'apps/resident-web/src/services/backend-adapter.ts').is_file() or not (
-        PROJECT / 'apps/resident-web/src/services/resident-api.ts'
-    ).is_file():
-        pytest.skip('Frontend adapter is not included in the backend-only checkout')
-    import uvicorn
-    bun = shutil.which('bun')
-    assert bun, 'Bun is required to verify the actual frontend adapter'
-    listener = socket.socket()
-    listener.bind(('127.0.0.1', 0))
-    port = listener.getsockname()[1]
-    origin = f'http://127.0.0.1:{port}'
-    settings = V3Settings('127.0.0.1', port, database['runtime'], TENANT, None, 'local-v3-resident',
-                          resident_allowed_origins=(origin,))
-    server = uvicorn.Server(uvicorn.Config(create_app(settings), log_level='error'))
-    thread = threading.Thread(target=server.run, kwargs={'sockets':[listener]}, daemon=True)
-    thread.start()
-    try:
-        deadline = time.monotonic()+10
-        while not server.started and thread.is_alive() and time.monotonic()<deadline:
-            time.sleep(.05)
-        assert server.started, 'Local contract HTTP server did not start'
-        adapter = (PROJECT/'apps/resident-web/src/services/backend-adapter.ts').as_posix()
-        transport = (PROJECT/'apps/resident-web/src/services/resident-api.ts').as_posix()
-        script = tmp_path/'resident-adapter-check.ts'
-        script.write_text(f'''
-globalThis.location = {{origin: {json.dumps(origin)}}} as any;
-globalThis.sessionStorage = {{getItem: () => null}} as any;
-Object.defineProperty(globalThis, 'localStorage', {{get() {{throw new Error('Business data accessed localStorage');}}}});
-const {{residentApi}} = await import({json.dumps(transport)});
-const adapter = await import({json.dumps(adapter)});
-const profile = await residentApi.me();
-const state = adapter.emptyBackendState();
-state.draft = {{step:'review',description:'Adapter HTTP repair {uuid4()}',location:'Kitchen sink',
-  photos:[{{id:crypto.randomUUID(),name:'leak.png',url:'data:image/png;base64,{base64.b64encode(image()).decode()}'}}]}};
-const created = await adapter.submitBackend(state);
-const repeated = await adapter.submitBackend(state);
-if (created.requests[0].id !== repeated.requests[0].id) throw new Error('Create retry duplicated a Case');
-const rows = await adapter.hydrateBackend();
-const row = rows.find(r=>r.id === created.requests[0].id);
-if (!row || row.status !== 'received' || row.photos.length !== 1 || !row.events.length) throw new Error('Adapter projection differs from backend');
-const detail = await residentApi.get(row.id);
-if (detail.apartmentId !== profile.apartments[0].id) throw new Error('Apartment binding differs');
-const imageResponse = await fetch(detail.photos[0].url);
-if (!imageResponse.ok || (await imageResponse.arrayBuffer()).byteLength === 0) throw new Error('Uploaded photo unavailable');
-console.log(JSON.stringify({{id:row.id,photoId:row.photos[0].id,apartmentId:detail.apartmentId}}));
-''', encoding='utf-8')
-        environment = {**os.environ, 'VITE_RESIDENT_MODE':'api', 'VITE_RESIDENT_API_BASE_URL':origin+BASE}
-        result = subprocess.run([bun, str(script)], cwd=PROJECT, env=environment, capture_output=True, text=True, timeout=60)
-        assert result.returncode == 0, result.stderr
-        output = json.loads(result.stdout.strip().splitlines()[-1])
-        persisted = sql(database,'select status,unit_id from vh_resident_cases where id=$1',UUID(output['id']))[0]
-        assert persisted['status'] == 'received' and str(persisted['unit_id']) == output['apartmentId']
-        assert sql(database,'select count(*) as n from vh_resident_photos where case_id=$1',UUID(output['id']))[0]['n'] == 1
-        assert sql(database,"select count(*) as n from vh_resident_command_receipts where result_id=$1 and operation='create'",UUID(output['id']))[0]['n'] == 1
-    finally:
-        server.should_exit = True
-        thread.join(timeout=10)
-        listener.close()

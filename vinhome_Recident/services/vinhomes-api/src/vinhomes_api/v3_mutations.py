@@ -36,17 +36,13 @@ UNRESOLVED_QC = """
 async def requires_plan(scope: Scope, ticket_id: object) -> bool:
     """Tickets opened by the connected resident app carry no plan flag and keep the QC-first flow.
 
-    A ticket the Supervisor coordinates is planned too: the resident approved its plan, so the finished
-    work goes to the resident to confirm without waiting for management to inspect it.
+    A ticket opened with a plan is confirmed by the resident once the work has passed QC.
     """
     found = await scope[0].execute(text("""
         select 1 from ticket_events where ticket_id=:id
           and event_type='ticket.created' and payload->>'requiresPlan'='true' limit 1
     """), {"id": ticket_id})
-    if found.first() is not None:
-        return True
-    from .supervised_flow import coordinated
-    return await coordinated(scope[0], ticket_id)
+    return found.first() is not None
 
 
 def actor_params(scope: Scope) -> dict[str, object]:
@@ -561,7 +557,7 @@ async def change_work_order_status(work_order_id: UUID, body: WorkOrderTransitio
     elif body.status == "in_progress":
         await scope[0].execute(text("update tickets set status='in_progress' where id=:id"), {"id": ticket["id"]})
     if body.status in {"completed", "cancelled"}:
-        from .supervised_flow import offer_queued_work
+        from .work_offers import offer_queued_work
         await offer_queued_work(scope[0], work_order_id)
     return dict(updated.mappings().one())
 
@@ -714,7 +710,7 @@ async def respond_assignment(assignment_id: UUID, body: AssignmentResponse,
     await record_event(scope, ticket, "work_assignment.responded",
                        json.dumps({"assignmentId": str(assignment_id), "status": body.status}))
     if body.status == "rejected":
-        from .supervised_flow import offer_queued_work
+        from .work_offers import offer_queued_work
         await offer_queued_work(scope[0], assignment["work_order_id"])
     return dict(updated.mappings().one())
 

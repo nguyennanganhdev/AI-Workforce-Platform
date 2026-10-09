@@ -13,7 +13,6 @@ dependencies = [
   "uvicorn>=0.30,<1",
   "SQLAlchemy[asyncio]>=2.0,<3",
   "asyncpg>=0.29,<1",
-  "alembic>=1.13,<2",
   "httpx>=0.27,<1",
   "python-multipart>=0.0.20,<1",
   "Pillow>=11,<13",
@@ -22,13 +21,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["httpx>=0.27,<1", "pytest>=8,<10", "aiosqlite>=0.20,<1"]
+test = ["httpx>=0.27,<1", "pytest>=8,<10"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-vinhomes_api = ["demo_ui/*.html", "demo_ui/*.css", "demo_ui/*.js", "presets/*.md"]
+vinhomes_api = ["demo_ui/*.html", "demo_ui/*.css", "demo_ui/*.js", "schema/roles.sql", "schema/migrations/*.sql", "schema/seed/*.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

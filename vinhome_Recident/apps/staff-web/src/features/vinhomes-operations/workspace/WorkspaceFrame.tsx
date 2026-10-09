@@ -47,7 +47,6 @@ export function WorkspaceFrame({
             ? [["accounts", "Tài khoản"]]
             : a.role === "manager"
               ? [
-                  ["team", "Nhóm điều phối"],
                   ["kanban", "Phân công công việc"],
                   ["reports", "Báo cáo"],
                 ]

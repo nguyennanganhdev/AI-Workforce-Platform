@@ -13,11 +13,11 @@ python -m venv ./services/vinhomes-api/.venv
 & ./services/vinhomes-api/scripts/start_demo.ps1
 ```
 
-Script setup tạo PostgreSQL Docker riêng trên `127.0.0.1:5544`, áp dụng migration gốc `server/drizzle` và seed dữ liệu vào bảng V3. Cần Docker Linux engine hoạt động và Bun đã cài. Không dùng database legacy `vh_*` độc lập; không chạy Alembic cũ.
+Script setup tạo PostgreSQL Docker riêng trên `127.0.0.1:5544`, áp dụng migration của gói (`python -m vinhomes_api.database migrate`) và nạp dữ liệu mẫu. Cần Docker Linux engine hoạt động.
 
 Thông tin kết nối được sinh trong `.local-v3-faker/*.env`, đã bỏ qua trong Git. Không cần gửi mật khẩu qua chat. Volume Docker giữ dữ liệu; chạy setup lại chỉ bổ sung fixture còn thiếu, không xóa trạng thái xử lý ticket. Không chạy `docker compose down -v` nếu muốn giữ dữ liệu.
 
-## Swagger và gateway
+## Swagger
 
 - Swagger: **http://localhost:8000/docs**.
 - `/health` phải trả `schema: v3`, `dataMode: faker-database`.
@@ -25,14 +25,7 @@ Thông tin kết nối được sinh trong `.local-v3-faker/*.env`, đã bỏ qu
 - Chọn header `X-Demo-Actor`: `resident`, `management`, `technical`, `security`, `admin`. Vai trò ánh xạ đến user fixture; quyền và scope vẫn truy vấn từ database. Cách chọn này chỉ bật trên loopback và tenant demo.
 - `/demo/fixtures` trả UUID thực tế trong database, danh mục và căn hộ của nhân vật đang chọn.
 
-Terminal thứ hai:
-
-```powershell
-cd server
-bun scripts/vinhomes-demo.ts
-```
-
-Base URL cho FE/client agent: `http://localhost:3001/api/vinhomes-demo`. Gateway chuyển tiếp method, path, query, body và vai trò demo; không chuyển ID chữ mẫu thành UUID tự động. Cần cổng 3001 trống. Gateway người dùng thật vẫn dùng cơ chế xác thực riêng.
+Giao diện cư dân và nhân viên gọi API qua proxy `/api/business` (xem [chạy Resident / Operations](../resident-web/07-connected-runtime.md)).
 
 ## Dữ liệu seed
 
@@ -69,7 +62,6 @@ Seed có 20 căn hộ/cư dân, 21 ticket mẫu, 20 hóa đơn `issued` và dòn
 ## Báo cáo và room
 
 - Báo cáo yêu cầu `buildingId`, `fromDate`, `toDate`; doanh thu thêm `categoryId`. Dùng `/reports/issued-revenue` hoặc `.docx`, `/reports/incident-frequency` hoặc `.docx`. Giá trị dựa trên hóa đơn đã seed trong database; chưa tự phát hành hóa đơn cho mọi việc mới.
-- BQL `/rooms`, `/rooms/management-room/messages`. Mention `demo-report` hoặc `demo-supervisor` với `text`, `client_message_id`, `mention_agent_id`. Kết quả mẫu được ghi database; trạng thái mention chuyển `done`. Không gọi LLM.
 - V3 còn có triage, QC, vệ sinh, nhà thầu, ngân sách, checkpoint/sự cố/bàn giao an ninh. Xem contract trong Swagger; dữ liệu các nhóm chưa seed sẽ rỗng đến khi tạo bằng API.
 
 ## Phạm vi hiện tại

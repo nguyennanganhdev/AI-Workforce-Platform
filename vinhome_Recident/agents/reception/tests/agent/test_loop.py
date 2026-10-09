@@ -12,7 +12,7 @@ class Toolbox:
     def __init__(self, results=None):
         self.results = results or {}
         self.calls, self.evidence, self.passages = [], [], {}
-        self.status, self.emergency, self.acted, self.forwarded = None, False, False, False
+        self.status, self.emergency, self.acted = None, False, False
         self.emergency_failed, self.question, self.filed_code = False, None, None
 
     async def call(self, name, arguments):
@@ -23,11 +23,10 @@ class Toolbox:
         if name == "report_emergency":
             # As the real toolbox: told to the resident only when management was reached.
             self.emergency, self.emergency_failed = "error" not in result, "error" in result
-        if result.get("filed") or result.get("forwarded"):
+        if result.get("filed"):
             self.acted = True
         if result.get("filed"):
             self.filed_code = "VH-1"
-        self.forwarded = self.forwarded or bool(result.get("forwarded"))
         self.evidence.append(str(result))
         return result
 

@@ -7,7 +7,6 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { IncidentList } from './incident-list';
-import { LiveTicketInbox } from './live-ticket-inbox';
 import { PanelTitle } from './ops-ui';
 import { Banner } from './technician/ui';
 import { BqlInbox, useBqlInboxItems } from './bql-inbox';
@@ -20,9 +19,8 @@ import { MOCK_BUSINESS_EVENTS } from '../mock/business-events';
 import { MOCK_INCIDENT_RELATIONS } from '../mock/incidents';
 import type { VhMessage } from '../types/message';
 
-type ListTab = 'TICKETS' | 'INBOX' | 'OPEN' | 'CLOSED';
+type ListTab = 'INBOX' | 'OPEN' | 'CLOSED';
 const LIST_TABS: Array<{ id: ListTab; label: string }> = [
-  { id: 'TICKETS', label: 'Yêu cầu hệ thống' },
   { id: 'INBOX', label: 'Cần BQL xử lý (minh họa)' },
   { id: 'OPEN', label: 'Đang xử lý (minh họa)' },
   { id: 'CLOSED', label: 'Đã đóng (minh họa)' },
@@ -145,7 +143,7 @@ export function IncidentsWorkspace() {
   const selectedIncident = incidents.find((i) => i.id === selectedIncidentId);
 
   // Gộp "Tiếp nhận phản ánh" + "Quản lý sự cố": hộp việc BQL + danh sách theo trạng thái
-  const [listTab, setListTab] = useState<ListTab>('TICKETS');
+  const [listTab, setListTab] = useState<ListTab>('INBOX');
   const inboxItems = useBqlInboxItems();
   const openIncidents = incidents.filter((i) => i.status !== 'CLOSED');
   const closedIncidents = incidents.filter((i) => i.status === 'CLOSED');
@@ -237,10 +235,10 @@ export function IncidentsWorkspace() {
       {resolveError && <Banner kind="error" onClose={() => setResolveError(null)}>{resolveError}</Banner>}
 
       {!selectedIncidentId && (
-        <Tabs value={listTab === 'TICKETS' && currentPersona !== 'MANAGER' ? 'INBOX' : listTab} onValueChange={(v) => setListTab(v as ListTab)} className="gap-4">
+        <Tabs value={listTab} onValueChange={(v) => setListTab(v as ListTab)} className="gap-4">
           <TabsList variant="line" aria-label="Nhóm sự cố" className="ops-scroll-tabs h-auto w-full justify-start border-b pb-1">
-            {LIST_TABS.filter((t) => t.id !== 'TICKETS' || currentPersona === 'MANAGER').map((t) => {
-              const count = t.id === 'TICKETS' ? null : t.id === 'INBOX' ? inboxItems.length : t.id === 'OPEN' ? openIncidents.length : closedIncidents.length;
+            {LIST_TABS.map((t) => {
+              const count = t.id === 'INBOX' ? inboxItems.length : t.id === 'OPEN' ? openIncidents.length : closedIncidents.length;
               return (
                 <TabsTrigger key={t.id} value={t.id} className="h-9 flex-none px-3 data-active:text-primary after:bg-primary">
                   {t.label}
@@ -249,7 +247,6 @@ export function IncidentsWorkspace() {
               );
             })}
           </TabsList>
-          <TabsContent value="TICKETS"><LiveTicketInbox /></TabsContent>
           <TabsContent value="INBOX"><BqlInbox onOpenIncident={openIncident} /></TabsContent>
           <TabsContent value="OPEN"><IncidentList incidents={openIncidents} onSelect={openIncident} /></TabsContent>
           <TabsContent value="CLOSED"><IncidentList incidents={closedIncidents} onSelect={openIncident} /></TabsContent>

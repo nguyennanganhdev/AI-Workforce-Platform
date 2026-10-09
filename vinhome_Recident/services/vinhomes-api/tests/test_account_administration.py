@@ -14,7 +14,7 @@ from vinhomes_api.v3_config import V3Settings
 
 @contextmanager
 def door(database):
-    settings = V3Settings("127.0.0.1", 8000, database["runtime"], TENANT, None, None, password_auth=True)
+    settings = V3Settings("127.0.0.1", 8000, database["runtime"], TENANT, None, password_auth=True)
     with TestClient(create_app(settings), client=("127.0.0.1", 50000)) as c:
         yield c
 

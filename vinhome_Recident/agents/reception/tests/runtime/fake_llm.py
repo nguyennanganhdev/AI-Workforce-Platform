@@ -75,14 +75,12 @@ def agent_step(messages):
         result = json.loads(last["content"])
         if result.get("filed"):
             return reply("Mình đã ghi nhận yêu cầu của bạn và chuyển tới Ban quản lý.")
-        if result.get("forwarded"):
-            return reply("Mình đã chuyển câu hỏi của bạn tới Ban quản lý.")
         if "status" in result:
             return reply(f"Yêu cầu của bạn {result['status']}.")
         if result.get("passages"):
             return reply(result["passages"][0]["text"], [result["passages"][0]["rank"]])
         if "passages" in result:
-            return tool("ask_management")
+            return reply("Mình chưa có thông tin chính thức về việc này. Bạn vui lòng liên hệ trực tiếp Ban quản lý nhé.")
         if result.get("error") == "conversation_has_open_request":
             return reply("Mình đã ghi nhận thêm thông tin cho yêu cầu đang mở của bạn.")
         return reply("Mình chưa hỗ trợ được việc này.")

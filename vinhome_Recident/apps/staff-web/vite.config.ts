@@ -10,11 +10,10 @@ import { defineConfig } from "vite";
  * The app talks to the business API under `/api/business`; the prefix is dropped on the way through,
  * as the production proxy does (see deploy/nginx). Which front door this server stands for
  * (`operations` or `field`) is sent as `X-Vinhomes-Surface`, because the API keeps one sign-in per
- * door. The one other call, the live ticket list, goes to the platform's API under `/api`.
+ * door.
  *
  *   APP_PORT          port to listen on                  (default 3020)
  *   VINHOMES_API_URL  where the business API runs        (default http://127.0.0.1:8000)
- *   PLATFORM_API_URL  where the platform API runs        (default http://127.0.0.1:3001)
  *   VINHOMES_SURFACE  `operations` or `field`            (default: not sent)
  *   VINHOMES_API_ORIGIN  Origin sent to the API          (default: the browser's own)
  *                     Set it when the API only accepts the origins of its own deployment.
@@ -37,7 +36,6 @@ const serving = {
         ...(apiOrigin ? { Origin: apiOrigin } : {}),
       },
     },
-    "/api": { target: process.env.PLATFORM_API_URL || "http://127.0.0.1:3001" },
   },
 };
 

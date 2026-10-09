@@ -72,7 +72,6 @@ try {
         }
         & $python -m pip install -e $serviceRoot
         if ($LASTEXITCODE -ne 0) { throw 'Could not install API dependencies. Check the network and Python version.' }
-        if (!(Get-Command bun -ErrorAction SilentlyContinue)) { throw 'Bun is required for the initial V3 database migrations.' }
         & (Join-Path $PSScriptRoot 'setup_demo_database.ps1')
     } else {
         # Ordinary launches preserve workflow data and do not reseed the database.

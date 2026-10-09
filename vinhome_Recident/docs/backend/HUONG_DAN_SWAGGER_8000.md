@@ -6,8 +6,7 @@ Chạy `& ./services/vinhomes-api/scripts/setup_demo_database.ps1`, rồi `& ./s
 
 ## Chạy service
 
-Áp dụng migration trong `server/drizzle`, chuẩn bị database V3 và role có quyền
-đọc/ghi các bảng nghiệp vụ. Không chạy Alembic `vh_*` cũ trên database V3.
+Dựng database bằng `python -m vinhomes_api.database create / migrate / role` (xem [HUONG_DAN_CHAY_API_BACKEND.md](HUONG_DAN_CHAY_API_BACKEND.md)).
 
 Trong PowerShell, tại `services/vinhomes-api`:
 
@@ -15,7 +14,7 @@ Trong PowerShell, tại `services/vinhomes-api`:
 python -m pip install -e .
 $env:VINHOMES_API_DATABASE_URL = "postgresql+asyncpg://USER:PASSWORD@HOST:PORT/DATABASE_V3"
 $env:VINHOMES_API_TENANT_ID = "UUID_TENANT_V3"
-$env:VINHOMES_API_AUTH_URL = "http://127.0.0.1:3001/api/me"
+$env:VINHOMES_API_PASSWORD_AUTH = "1"
 python -m vinhomes_api
 ```
 

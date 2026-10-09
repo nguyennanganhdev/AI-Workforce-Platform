@@ -5,7 +5,7 @@ import { ChangePasswordDialog } from './change-password';
 import { Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuBadge, useSidebar } from '@/components/ui/sidebar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
-export type UrbanNavItem = { page: '' | 'team' | 'ask' | 'agents' | 'reports' | 'accounts' | 'units' | 'connections' | 'models' | 'audit'; label: string; icon: ReactNode; count?: number };
+export type UrbanNavItem = { page: '' | 'kanban' | 'reports' | 'accounts' | 'units' | 'audit'; label: string; icon: ReactNode; count?: number };
 export function UrbanNavigation({ name, email, role, administrator, page, work, setup, unit, buildingCount, onLegacy }: {
   name: string; email?: string; role: string; administrator: boolean; page: string; work: UrbanNavItem[]; setup: UrbanNavItem[]; unit?: string; buildingCount?: number; onLegacy: () => void;
 }) {

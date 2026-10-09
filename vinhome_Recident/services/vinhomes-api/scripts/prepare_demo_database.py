@@ -7,6 +7,9 @@ from urllib.parse import quote
 
 import asyncpg
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from vinhomes_api import database as tool  # noqa: E402
+
 SERVICE = Path(__file__).resolve().parents[1]
 LOCAL = SERVICE / ".local-v3-faker"
 
@@ -41,19 +44,9 @@ async def seed() -> None:
             raise RuntimeError("Refusing to seed a database outside the local demo")
         if await db.fetchval("select count(*) from tenants where id <> '11111111-1111-5111-a111-111111111111'"):
             raise RuntimeError("Refusing to seed a database containing another tenant")
-        await db.execute((SERVICE / "scripts/seed_v3_local.sql").read_text(encoding="utf-8"))
-        await db.execute((SERVICE / "scripts/seed_v3_faker.sql").read_text(encoding="utf-8"))
-        await db.execute((SERVICE / "scripts/seed_v3_demo_ui.sql").read_text(encoding="utf-8"))
-        await db.execute((SERVICE / "scripts/seed_v3_remaining.sql").read_text(encoding="utf-8"))
-        await db.execute((SERVICE / "scripts/seed_v3_ocean_park.sql").read_text(encoding="utf-8"))
+        await tool.seed(read_env(LOCAL / "migration.env")["DATABASE_URL"])
         password = read_env(LOCAL / "runtime.env")["API_PASSWORD"]
-        # Password is locally generated; quote as a SQL literal for DDL (no bind parameters).
-        literal = "'" + password.replace("'", "''") + "'"
-        if not await db.fetchval("select 1 from pg_roles where rolname='vinhomes_v3_api'"):
-            await db.execute(f"CREATE ROLE vinhomes_v3_api LOGIN PASSWORD {literal} NOSUPERUSER NOBYPASSRLS")
-        else:
-            await db.execute(f"ALTER ROLE vinhomes_v3_api PASSWORD {literal} NOSUPERUSER NOBYPASSRLS")
-        await db.execute((SERVICE / "scripts/grant_v3_api_role.sql").read_text(encoding="utf-8"))
+        await tool.role(read_env(LOCAL / "migration.env")["DATABASE_URL"], "vinhomes_v3_api", password)
         print("V3 faker fixtures seeded and runtime role configured.")
     finally:
         await db.close()
@@ -66,11 +59,10 @@ async def prepare_ui_scope(upgrade: bool = False) -> None:
             raise RuntimeError("Refusing UI fixtures outside the local demo")
         if await db.fetchval("select count(*) from tenants where id <> '11111111-1111-5111-a111-111111111111'"):
             raise RuntimeError("Refusing UI fixtures with another tenant")
-        await db.execute((SERVICE / "scripts/seed_v3_demo_ui.sql").read_text(encoding="utf-8"))
+        await tool.seed(read_env(LOCAL / "migration.env")["DATABASE_URL"])
         if upgrade:
-            await db.execute((SERVICE / "scripts/seed_v3_remaining.sql").read_text(encoding="utf-8"))
-            await db.execute((SERVICE / "scripts/seed_v3_ocean_park.sql").read_text(encoding="utf-8"))
-            await db.execute((SERVICE / "scripts/grant_v3_api_role.sql").read_text(encoding="utf-8"))
+            password = read_env(LOCAL / "runtime.env")["API_PASSWORD"]
+            await tool.role(read_env(LOCAL / "migration.env")["DATABASE_URL"], "vinhomes_v3_api", password)
         print("Local demo UI site permissions ready; workflow data preserved.")
     finally:
         await db.close()

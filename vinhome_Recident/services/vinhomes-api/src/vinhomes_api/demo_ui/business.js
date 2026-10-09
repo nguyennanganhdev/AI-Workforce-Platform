@@ -129,9 +129,8 @@ const staff = () => ['technical', 'security'].includes(state.actor);
 function navigate(page, resource = null) { state.page = page; state.resource = resource; renderNavigation(); return loadPage(); }
 function renderNavigation() {
   const menus = [['tickets', 'Yêu cầu'], ['chats', 'Trao đổi với lễ tân'], ['approvals', 'Chờ xác nhận'], ['notifications', 'Thông báo']];
-  if (state.actor !== 'resident') menus.splice(1, 2, ['work', staff() ? 'Công việc của tôi' : 'Điều phối công việc'], ['approvals', 'Phê duyệt'], ['security', 'An ninh'], ['rooms', 'Phòng ban quản lý'], ['knowledge', 'Tra cứu tri thức']);
+  if (state.actor !== 'resident') menus.splice(1, 2, ['work', staff() ? 'Công việc của tôi' : 'Điều phối công việc'], ['approvals', 'Phê duyệt'], ['security', 'An ninh']);
   if (manager()) menus.push(['reports', 'Báo cáo']);
-  if (state.actor === 'admin') menus.push(['memory', 'Duyệt bộ nhớ']);
   byId('navigation').replaceChildren();
   for (const [page, title] of menus) {
     const item = button(byId('navigation'), title, () => navigate(page));
@@ -316,20 +315,14 @@ views.chats = async (generation) => {
   button(bar, 'Cuộc trao đổi mới', () => form('Trao đổi với lễ tân', [field('title', 'Chủ đề')], (v) => api('/resident/chats', 'POST', v), (r) => navigate('conversation', { id: r.id, name: r.name, resident: true })), true);
   table(screen, result.items || [], [['Chủ đề', (r) => r.name], ['Gần nhất', (r) => date(r.last_message_at || r.created_at)]], (group, row) => button(group, 'Mở trao đổi', () => navigate('conversation', { id: row.id, name: row.name, resident: true, ticketId: row.ticket_id })));
 };
-views.rooms = async (generation) => {
-  const result = await api('/rooms'); if (!current(generation)) return;
-  heading('Phòng ban quản lý', 'Trao đổi cùng các thành viên và agent trong phòng.');
-  table(screen, result.items || [], [['Phòng', (r) => r.name], ['Mô tả', (r) => r.description || '—']], (group, row) => button(group, 'Vào phòng', () => navigate('conversation', { id: row.id, name: row.name, resident: false })));
-};
 views.conversation = async (generation) => {
   const room = state.resource;
-  const path = room.resident ? `/resident/chats/${encodeURIComponent(room.id)}` : `/rooms/${encodeURIComponent(room.id)}`;
+  const path = `/resident/chats/${encodeURIComponent(room.id)}`;
   const result = await api(`${path}/messages?limit=100`); if (!current(generation)) return;
-  const bar = heading(room.name || 'Trao đổi'); button(bar, 'Danh sách', () => navigate(room.resident ? 'chats' : 'rooms'));
+  const bar = heading(room.name || 'Trao đổi'); button(bar, 'Danh sách', () => navigate('chats'));
   const group = actions();
-  button(group, 'Gửi tin nhắn', () => form('Gửi tin nhắn', [field('text', 'Nội dung', 'textarea'), ...(!room.resident ? [pick('mention_agent_id', 'Nhờ agent hỗ trợ (tùy chọn)', options((state.fixtures.roomAgents || []).filter((a) => a.channel_id === room.id)), { required: false })] : [])], async (v) => {
-    const message = await api(`${path}/messages`, 'POST', { text: v.text, client_message_id: crypto.randomUUID(), ...(!room.resident && v.mention_agent_id ? { mention_agent_id: v.mention_agent_id } : {}) });
-    if (v.mention_agent_id) { const mention = await api(`${path}/mentions/${message.id}`); notify(mention.items.some((m) => m.status === 'done') ? 'Agent demo đã phản hồi trong phòng.' : 'Đã gửi yêu cầu tới agent. Làm mới để xem phản hồi.'); }
+  button(group, 'Gửi tin nhắn', () => form('Gửi tin nhắn', [field('text', 'Nội dung', 'textarea')], async (v) => {
+    await api(`${path}/messages`, 'POST', { text: v.text, client_message_id: crypto.randomUUID() });
   }), true);
   if (room.resident && !room.ticketId) button(group, 'Tạo yêu cầu từ trao đổi', () => createResidentRequest(room.id));
   if (room.ticketId) button(group, 'Xem yêu cầu', () => navigate('ticket', room.ticketId));
@@ -379,14 +372,6 @@ function notificationLabel(payload) {
   return ({ 'water.shutdown': 'Thông báo khóa nước', 'water.restored': 'Đã mở lại nước', 'ticket.created': 'Yêu cầu mới được gửi đến ban quản lý', 'ticket.routing_accepted': 'Ban quản lý đã tiếp nhận yêu cầu' })[type] || payload?.title || payload?.message || 'Có cập nhật về yêu cầu của bạn';
 }
 
-views.knowledge = async (generation) => {
-  if (!current(generation)) return; heading('Tra cứu tri thức', 'Tìm nội dung đã xuất bản trong phạm vi của bạn.');
-  button(screen, 'Tìm tài liệu', () => form('Tra cứu tài liệu', [pick('domainId', 'Phạm vi dịch vụ', options(state.fixtures.domains)), field('query', 'Từ khóa')], (v) => api(`/knowledge/search?${new URLSearchParams(v)}`), (result) => {
-    heading('Kết quả tra cứu'); button(screen, 'Tìm tiếp', () => navigate('knowledge'));
-    for (const row of result.items || []) { node('h2', row.title, screen); node('p', row.text_content, screen).className = 'detail-text'; }
-    if (!result.items?.length) node('p', 'Không có tài liệu phù hợp trong phạm vi được phép.', screen).className = 'empty';
-  }), true);
-};
 async function download(path, filename) {
   const blob = await api(path); const url = URL.createObjectURL(blob);
   const link = node('a'); link.href = url; link.download = filename || 'bao-cao.docx'; document.body.append(link); link.click(); link.remove();
@@ -405,11 +390,6 @@ views.reports = async (generation) => {
       table(screen, rows, kind === 'issued-revenue' ? [['Tháng', (r) => r.month], ['Số hóa đơn', (r) => r.invoice_count], ['Trước thuế', (r) => Number(r.net_amount).toLocaleString('vi-VN')], ['Thuế', (r) => Number(r.tax_amount).toLocaleString('vi-VN')], ['Tổng', (r) => Number(r.billed_amount).toLocaleString('vi-VN') + ' ' + r.currency]] : [['Tháng', (r) => r.month], ['Loại sự cố', (r) => r.incident_type], ['Số sự cố', (r) => r.incident_count]]);
     }));
   }
-};
-views.memory = async (generation) => {
-  const result = await api('/admin/memory-candidates'); if (!current(generation)) return;
-  heading('Duyệt bộ nhớ', 'Xem nội dung đề xuất trước khi phê duyệt.');
-  table(screen, result.items || [], [['Nội dung đề xuất', (r) => r.proposed_text], ['Đã ẩn dữ liệu cá nhân', (r) => r.pii_redacted ? 'Có' : 'Chưa'], ['Ngày tạo', (r) => date(r.created_at)]], (group, row) => button(group, 'Duyệt đề xuất', () => form('Duyệt bộ nhớ', [pick('decision', 'Quyết định', [['approve', 'Đồng ý'], ['reject', 'Từ chối']]), field('reason', 'Lý do', 'textarea')], (v) => api(`/admin/memory-candidates/${row.id}/review`, 'POST', v))));
 };
 
 byId('close-dialog').onclick = byId('cancel-dialog').onclick = () => { if (!state.writing) byId('dialog').close(); };

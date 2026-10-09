@@ -1,4 +1,4 @@
-"""Validated HTTP tool port for the OpenBot backend.
+"""Validated HTTP tool port for the Vinhomes backend.
 
 The endpoint paths are configurable. Inputs/results follow the PH16 consumer
 proposal; the legacy V1 graph needs an explicit owner-reviewed migration.

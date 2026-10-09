@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useLocation } from '@tanstack/react-router';
-import { Bell, Bot, Building2, ChartColumn, Cpu, History, Inbox, LayoutGrid, MessageSquare, Plug, Search, Users } from 'lucide-react';
+import { Bell, Building2, ChartColumn, History, Inbox, LayoutGrid, Search, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
@@ -10,7 +10,7 @@ import { UrbanNavigation, type UrbanNavItem } from './urban-navigation';
 import { ConnectedOperationsShell as LegacyShell, type ShellNotice } from './connected-operations-shell';
 import '../connected/foundation.css';
 
-const titles: Record<string, string> = { '': 'Tổng quan', team: 'Yêu cầu', kanban: 'Yêu cầu', ask: 'Hỏi agent', agents: 'Agent', reports: 'Báo cáo', accounts: 'Tài khoản', units: 'Đơn vị quản lý', connections: 'Kết nối', models: 'Model', audit: 'Nhật ký' };
+const titles: Record<string, string> = { '': 'Tổng quan', kanban: 'Yêu cầu', reports: 'Báo cáo', accounts: 'Tài khoản', units: 'Đơn vị quản lý', audit: 'Nhật ký' };
 const icon = (Component: typeof Bell) => <Component size={16} strokeWidth={1.75} />;
 export function UrbanOperationsShell({ name, email, management, administrator = false, field = false, alerts = [], notices = [], flush = false, banner, children, unit, buildingCount, searchItems = [] }: {
   name?: string; email?: string; management: boolean; administrator?: boolean; field?: boolean;
@@ -18,7 +18,7 @@ export function UrbanOperationsShell({ name, email, management, administrator = 
   flush?: boolean; banner?: ShellNotice[]; children: ReactNode; unit?: string; buildingCount?: number;
   searchItems?: { id: string; title: string; location?: string; to: string }[];
 }) {
-  const path = useLocation().pathname.split('/')[2] || (administrator ? '' : 'team');
+  const path = useLocation().pathname.split('/')[2] || (administrator ? '' : 'kanban');
   const [modern, setModern] = useState(() => { try { return new URLSearchParams(location.search).get('ui') !== 'legacy' && localStorage.getItem('operations.ui') !== 'legacy'; } catch { return true; } });
   const [open, setOpen] = useState(() => window.innerWidth >= 1280);
   const [command, setCommand] = useState(false);
@@ -36,22 +36,20 @@ export function UrbanOperationsShell({ name, email, management, administrator = 
   if (field || !modern) return <><LegacyShell name={name} management={management} administrator={administrator} field={field} alerts={alerts} notices={notices} flush={flush} banner={banner}>{!field && <Button className="m-3" onClick={() => setVersion(true)}>Dùng giao diện mới</Button>}{children}</LegacyShell></>;
   const work: UrbanNavItem[] = [
     ...(administrator ? [{ page: '' as const, label: 'Tổng quan', icon: icon(LayoutGrid) }] : []),
-    { page: 'team', label: 'Yêu cầu', icon: icon(Inbox), count: countFor('team') },
-    ...(!administrator ? [{ page: 'ask' as const, label: 'Hỏi agent', icon: icon(MessageSquare) }] : []),
-    { page: 'agents', label: 'Agent', icon: icon(Bot) }, { page: 'reports', label: 'Báo cáo', icon: icon(ChartColumn) },
+    { page: 'kanban', label: 'Yêu cầu', icon: icon(Inbox), count: countFor('kanban') },
+    { page: 'reports', label: 'Báo cáo', icon: icon(ChartColumn) },
   ];
   const setup: UrbanNavItem[] = administrator ? [
     { page: 'accounts', label: 'Tài khoản', icon: icon(Users), count: countFor('accounts') },
-    { page: 'units', label: 'Đơn vị quản lý', icon: icon(Building2) }, { page: 'connections', label: 'Kết nối', icon: icon(Plug) },
-    { page: 'models', label: 'Model', icon: icon(Cpu), count: countFor('models') }, { page: 'audit', label: 'Nhật ký', icon: icon(History) },
+    { page: 'units', label: 'Đơn vị quản lý', icon: icon(Building2) }, { page: 'audit', label: 'Nhật ký', icon: icon(History) },
   ] : [];
   const needle = query.trim().toLocaleLowerCase('vi');
   const navResults = [...work, ...setup].filter(item => item.label.toLocaleLowerCase('vi').includes(needle));
   const ticketResults = needle ? searchItems.filter(item => `${item.title} ${item.location || ''}`.toLocaleLowerCase('vi').includes(needle)).slice(0, 12) : [];
   const unread = notices.filter(n => !read.includes(n.id));
   return <SidebarProvider open={open} onOpenChange={setOpen} lang="vi" translate="no" className="operations-app connected-shell ops-ui notranslate flex h-[100dvh] min-h-0 w-full overflow-hidden" style={{ '--sidebar-width': '208px', '--sidebar-width-icon': '56px' } as CSSProperties}>
-    <UrbanNavigation name={name || 'Đang tải tài khoản…'} email={email} role={role} administrator={administrator} page={path === 'kanban' ? 'team' : path} work={work} setup={setup} unit={unit} buildingCount={buildingCount} onLegacy={() => setVersion(false)} />
-    <div className="flex min-w-0 flex-1 flex-col overflow-hidden"><header className="ops-topbar"><SidebarTrigger aria-label="Mở hoặc thu gọn điều hướng" /><h1>{titles[path] || 'Vận hành'}</h1>{path === 'ask' && <span className="ops-topbar-subtitle">Riêng của bạn, người khác trong ban không thấy</span>}<div id="ops-page-controls" className="ops-page-controls" /><span className="ops-topbar-spacer" />
+    <UrbanNavigation name={name || 'Đang tải tài khoản…'} email={email} role={role} administrator={administrator} page={path} work={work} setup={setup} unit={unit} buildingCount={buildingCount} onLegacy={() => setVersion(false)} />
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden"><header className="ops-topbar"><SidebarTrigger aria-label="Mở hoặc thu gọn điều hướng" /><h1>{titles[path] || 'Vận hành'}</h1><div id="ops-page-controls" className="ops-page-controls" /><span className="ops-topbar-spacer" />
       <button className="ops-search-trigger" onClick={() => setCommand(true)} aria-label="Tìm nhanh"><Search size={16} /><span>Tìm nhanh</span><kbd>Ctrl K</kbd></button>
       <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="ops-bell" aria-label={`Thông báo, ${noticeCount} việc chờ xử lý`} />}><Bell size={18} />{noticeCount > 0 && <span className="ops-bell-count">{noticeCount}</span>}</DropdownMenuTrigger>
         <DropdownMenuContent className="ops-ui ops-notices" align="end"><div className="ops-notices-header"><strong>Cần bạn xử lý</strong><Button size="sm" variant="ghost" onClick={() => setRead(notices.map(n => n.id))}>Đánh dấu đã đọc tất cả</Button></div>{notices.length ? notices.map(n => <Link key={n.id} to={n.to} className="ops-notice"><Inbox size={16} /><span className="flex-1"><strong>{n.title}</strong><small>{n.note}</small></span>{unread.some(item => item.id === n.id) && <span className="ops-notice-unread" />}</Link>) : <p className="ops-empty">Không còn việc nào chờ bạn.</p>}</DropdownMenuContent>

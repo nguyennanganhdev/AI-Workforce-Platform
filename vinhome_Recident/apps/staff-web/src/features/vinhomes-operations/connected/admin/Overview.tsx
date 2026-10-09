@@ -1,19 +1,10 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import {
-  Cpu as IconCpu,
-  Plug as IconPlugConnected,
-  Users as IconUsers,
-} from "lucide-react";
-import { modelsQueryOptions } from "@/lib/admin/queries";
-import { connectionsQueryOptions } from "@/lib/connections/queries";
-import { AdminBadge, AdminPage, AdminState, relativeTime } from "./AdminUI";
+import { Users as IconUsers } from "lucide-react";
+import { AdminBadge, AdminPage, AdminState } from "./AdminUI";
 import { AuditActor, eventLabel, targetLabel } from "./Audit";
-import { modelStatus, ROLE } from "./Models";
 import { filteredAuditOptions, overviewOptions } from "./queries";
 export function AdminOverviewPage() {
   const summary = useQuery(overviewOptions());
-  const models = useQuery({ ...modelsQueryOptions(), refetchInterval: 30_000 });
-  const connections = useQuery(connectionsQueryOptions());
   const audit = useInfiniteQuery(
     filteredAuditOptions({
       kind: "",
@@ -28,10 +19,8 @@ export function AdminOverviewPage() {
   const figures = summary.data;
   const chart = figures?.requests_per_day || [];
   const highest = Math.max(1, ...chart.map((day) => day.count));
-  const unconfigured = models.data?.filter((model) => !model.configured) || [];
   const recent = audit.data?.pages[0]?.items.slice(0, 10) || [];
-  const connectionItems = connections.data?.items || [];
-  const attention = (figures?.pending_accounts || 0) + unconfigured.length;
+  const attention = figures?.pending_accounts || 0;
   return (
     <AdminPage
       title="Tổng quan"
@@ -55,14 +44,14 @@ export function AdminOverviewPage() {
               {
                 title: "Yêu cầu đang mở",
                 value: figures.open_tickets,
-                to: "/operations/team",
+                to: "/operations/kanban",
                 tone: "neutral",
                 note: "Trên toàn hệ thống",
               },
               {
                 title: "Quá hạn",
                 value: figures.overdue_tickets,
-                to: "/operations/team?overdue=true",
+                to: "/operations/kanban?overdue=true",
                 tone: "danger",
                 note: "Yêu cầu đã quá hạn xử lý",
               },
@@ -72,13 +61,6 @@ export function AdminOverviewPage() {
                 to: "/operations/accounts",
                 tone: "wait",
                 note: "Cần bạn quyết định",
-              },
-              {
-                title: "Kết nối mới",
-                value: figures.new_connections,
-                to: "/operations/connections",
-                tone: "neutral",
-                note: "Được thêm trong 24 giờ qua",
               },
             ].map((figure) => (
               <a
@@ -105,7 +87,7 @@ export function AdminOverviewPage() {
               )}
             </h2>
           </header>
-          {summary.isPending || models.isPending ? (
+          {summary.isPending ? (
             <AdminState loading />
           ) : (
             <>
@@ -123,100 +105,10 @@ export function AdminOverviewPage() {
                   </a>
                 </div>
               ))}
-              {unconfigured.map((model) => (
-                <div key={model.role} className="ops-admin-attention-row">
-                  <span className="ops-admin-tile">
-                    <IconCpu size={16} />
-                  </span>
-                  <div>
-                    <strong>Chọn model cho {ROLE[model.role][0]}</strong>
-                    <p>{ROLE[model.role][1]}</p>
-                  </div>
-                  <a className="ops-admin-link" href="/operations/models">
-                    Chọn
-                  </a>
-                </div>
-              ))}
-              {!attention && !summary.error && !models.error && (
+              {!attention && !summary.error && (
                 <AdminState empty="Không còn việc nào chờ bạn." />
               )}
             </>
-          )}
-        </section>
-        <section className="ops-admin-panel">
-          <header className="ops-admin-panel-title">
-            <h2>Sức khỏe hệ thống</h2>
-            <button
-              type="button"
-              className="ops-admin-link"
-              onClick={() => {
-                void models.refetch();
-                void connections.refetch();
-              }}
-            >
-              Kiểm tra lại
-            </button>
-          </header>
-          {models.isPending || models.error ? (
-            <AdminState
-              loading={models.isPending}
-              error={models.error}
-              onRetry={() => void models.refetch()}
-            />
-          ) : (
-            models.data?.map((model) => (
-              <div className="ops-admin-health-row" key={model.role}>
-                <IconCpu size={16} />
-                <strong>{ROLE[model.role][0]}</strong>
-                {model.model && <small>{model.model}</small>}
-                <AdminBadge tone={modelStatus(model).tone}>
-                  {modelStatus(model).label}
-                </AdminBadge>
-              </div>
-            ))
-          )}
-          {connections.isPending || connections.error ? (
-            <AdminState
-              loading={connections.isPending}
-              error={connections.error}
-              onRetry={() => void connections.refetch()}
-            />
-          ) : (
-            connectionItems.map((connection) => {
-              const status = (
-                connection as typeof connection & { status?: string }
-              ).status;
-              return (
-                <div className="ops-admin-health-row" key={connection.id}>
-                  <IconPlugConnected size={16} />
-                  <strong>{connection.title}</strong>
-                  <AdminBadge
-                    tone={
-                      status === "suspended" || connection.last_error
-                        ? "danger"
-                        : status === "pending"
-                          ? "wait"
-                          : connection.tools_refreshed_at
-                            ? "ok"
-                            : "neutral"
-                    }
-                  >
-                    {status === "suspended"
-                      ? "Đã dừng"
-                      : status === "pending"
-                        ? "Chờ duyệt"
-                        : connection.last_error
-                          ? "Mất kết nối"
-                          : connection.tools_refreshed_at
-                            ? "Đã kết nối"
-                            : "Chưa kiểm tra"}
-                  </AdminBadge>
-                  {connection.tools_refreshed_at && (
-                    <small>{relativeTime(connection.tools_refreshed_at)}</small>
-                  )}
-                </div>
-              );
-            })
           )}
         </section>
         <section className="ops-admin-panel">

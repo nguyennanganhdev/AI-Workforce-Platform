@@ -21,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from .reception_delegation import DelegatedScope as Scope
 from .reception_delegation import finish_run, reception_agent, start_run
 from .reception_intake import assess, conversation, fold, negated
-from .v3_learning import approved_guidance
 from .v3_reception_supervisor import WIRE_TICKET, current_wire
 from .v3_resident import _owned_chat
 
@@ -86,8 +85,9 @@ async def evaluate_policy(body: PolicyRequest, scope: Scope) -> dict[str, object
     # it can never lower one the keywords found.
     kind = emergency_kind(body.message_text)
     emergency = kind is not None or proposal.get("proposed_action") == "emergency_handoff"
-    # Safety advice is only ever the text management approved for this kind at the resident's home.
-    guidance = await approved_guidance(scope[0], scope[1]["user_id"], kind) if kind else None
+    # Safety advice is only ever text someone approved for this kind of emergency. This deployment holds
+    # none yet (the knowledge pack will), so the Reception agent offers no self-help procedure.
+    guidance = None
     declined, failed = proposal.get("self_help_declined") is True, proposal.get("self_help_failed") is True
     staff_required = emergency or declined or failed or proposal.get("explicit_staff_request") is True \
         or proposal.get("intent") in {"incident", "service_request"}

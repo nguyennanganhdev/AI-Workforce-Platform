@@ -7,7 +7,7 @@ import type { ShellNotice } from "./connected-operations-shell";
 
 /**
  * The frame of someone who does the work on site: one column sized for a phone, who is signed in,
- * what is newly offered, and the work. Nothing of management's menu and nothing of OpenBot's.
+ * what is newly offered, and the work. Nothing of management's menu.
  */
 export function FieldShell({ name, notices = [], children }: { name?: string; notices?: ShellNotice[]; children: ReactNode }) {
   const [changing, setChanging] = useState(false);

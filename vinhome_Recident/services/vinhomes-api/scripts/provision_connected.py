@@ -19,6 +19,7 @@ import os
 import secrets
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
@@ -58,8 +59,7 @@ async def main() -> None:
     tenant = envfile(SERVICE / ".env.connected")["VINHOMES_API_TENANT_ID"]
     if tenant == DEMO_TENANT:
         raise RuntimeError("The demo tenant is not a real deployment")
-    bun = shutil.which("bun.cmd") or shutil.which("bun")
-    subprocess.run([bun, "server/scripts/migrate.ts"], cwd=ROOT, env={**os.environ, "DATABASE_URL": owner_url}, check=True)
+    subprocess.run([sys.executable, "-m", "vinhomes_api.database", "migrate", "--url", owner_url], cwd=SERVICE, env={**os.environ, "PYTHONPATH": str(SERVICE / "src")}, check=True)
 
     def key(name: str) -> UUID:
         """Stable ids, so running again finds the same rows."""
@@ -190,17 +190,8 @@ async def main() -> None:
                              "on conflict do nothing", room, t, workspace, manager)
             await db.execute("insert into channel_memberships(tenant_id,channel_id,user_id) values($1,$2,$3) on conflict do nothing",
                              t, room, manager)
-            await db.execute("insert into agents(id,tenant_id,workspace_id,name,type,configuration,purpose,status) "
-                             "values('supervisor-sapphire',$1,$2,'Điều phối Sapphire','built_in','{}','supervisor','active') "
-                             "on conflict do nothing", t, workspace)
             await db.execute("insert into agents(id,tenant_id,name,type,configuration,purpose,status) "
                              "values('system-reception',$1,'Lễ tân','built_in','{}','reception','active') on conflict do nothing", t)
-            await db.execute("insert into channel_agents(tenant_id,channel_id,agent_id) values($1,$2,'supervisor-sapphire') "
-                             "on conflict do nothing", t, room)
-            await db.execute("""insert into agent_versions(id,tenant_id,agent_id,version_no,runtime,framework_version,instructions,
-                config,config_hash,created_by) values($1,$2,'supervisor-sapphire',1,'agentscope','2.0.9',
-                'Supervisor of the Sapphire management room (agent-coordination)','{}',$3,$4) on conflict do nothing""",
-                             key("supervisor-version"), t, hashlib.sha256(b"{}").hexdigest(), manager)
             principal = key("workspace-principal")
             await db.execute("insert into execution_principals(id,tenant_id,kind,workspace_id,status) "
                              "values($1,$2,'workspace_service',$3,'active') on conflict do nothing", principal, t, workspace)

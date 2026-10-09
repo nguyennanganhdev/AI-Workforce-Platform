@@ -57,16 +57,10 @@ const flows = [
     ['security', 'GET', '/security/handovers', '9. Xem bàn giao'],
     ['security', 'POST', '/security/handovers/{handover_id}/confirm', '10. Xác nhận bàn giao'],
   ]],
-  ['Phòng BQL / Tri thức / Báo cáo', [
-    ['management', 'GET', '/rooms', '1. Danh sách phòng'],
-    ['management', 'POST', '/rooms/{room_id}/messages', '2. Tin nhắn / mention'],
-    ['management', 'GET', '/rooms/{room_id}/mentions/{message_id}', '3. Trạng thái mention'],
-    ['management', 'GET', '/knowledge/search', '4. Tra tri thức'],
-    ['admin', 'GET', '/admin/memory-candidates', '5. Memory chờ duyệt'],
-    ['admin', 'POST', '/admin/memory-candidates/{candidate_id}/review', '6. Duyệt memory'],
-    ['management', 'GET', '/reports/incident-frequency', '7. Tần suất sự cố'],
-    ['management', 'GET', '/reports/issued-revenue', '8. Doanh thu hóa đơn'],
-    ['resident', 'GET', '/my/notifications', '9. Thông báo'],
+  ['Báo cáo / Thông báo', [
+    ['management', 'GET', '/reports/incident-frequency', '1. Tần suất sự cố'],
+    ['management', 'GET', '/reports/issued-revenue', '2. Doanh thu hóa đơn'],
+    ['resident', 'GET', '/my/notifications', '3. Thông báo'],
   ]],
 ];
 

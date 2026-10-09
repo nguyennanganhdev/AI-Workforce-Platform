@@ -3,7 +3,7 @@ import { IconBuildingCommunity, IconLogout } from '@tabler/icons-react';
 import { Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuBadge, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import type { ReactNode } from 'react';
 
-export type NavigationPage = 'team' | 'kanban' | 'agents' | 'reports' | 'accounts' | 'units' | 'connections' | 'models' | 'audit' | 'my-tasks';
+export type NavigationPage = 'kanban' | 'reports' | 'accounts' | 'units' | 'audit' | 'my-tasks';
 type Item = { page: NavigationPage; label: string; icon: ReactNode; count?: number };
 export function ConnectedNavigation({ name, role, page, work, setup }: { name: string; role: string; page: string; work: Item[]; setup: Item[] }) {
   const { setOpenMobile } = useSidebar();

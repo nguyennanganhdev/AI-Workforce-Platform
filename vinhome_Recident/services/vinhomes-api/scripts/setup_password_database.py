@@ -13,6 +13,7 @@ import sys
 from urllib.parse import urlsplit, urlunsplit, quote
 from uuid import uuid4
 import asyncpg
+from vinhomes_api import database as tool
 from vinhomes_api.password_auth import password_hash, PROVIDER
 
 SERVICE = Path(__file__).resolve().parents[1]
@@ -41,8 +42,7 @@ async def main():
     LOCAL.mkdir(exist_ok=True)
     (LOCAL / "migration.env").write_text("DATABASE_URL="+owner_url+"\n",encoding="utf-8")
     environment = {**os.environ,"DATABASE_URL":owner_url}
-    bun = shutil.which("bun.cmd") or shutil.which("bun")
-    subprocess.run([bun,"server/scripts/migrate.ts"],cwd=ROOT,env=environment,check=True)
+    subprocess.run([sys.executable,"-m","vinhomes_api.database","migrate","--url",environment["DATABASE_URL"]],cwd=SERVICE,env={**environment,"PYTHONPATH":str(SERVICE/"src")},check=True)
     tenant, user = str(uuid4()), str(uuid4())
     admin_email = sys.argv[1] if len(sys.argv)>1 else "admin@resident.local"
     password, runtime_password = secrets.token_urlsafe(20), secrets.token_hex(24)
@@ -57,11 +57,7 @@ async def main():
             await db.execute("insert into accounts(id,account_id,provider_id,user_id,password) values($1,$2,$3,$2,$4)",str(uuid4()),user,PROVIDER,password_hash(password))
         if await db.fetchval("select 1 from pg_roles where rolname='vinhomes_connected_api'"):
             raise RuntimeError("Runtime role already exists; refusing to overwrite it.")
-        await db.execute("CREATE ROLE vinhomes_connected_api LOGIN PASSWORD '"+runtime_password+"' NOSUPERUSER NOBYPASSRLS")
-        grants = (SERVICE / "scripts/grant_v3_api_role.sql").read_text().replace("vinhomes_v3_api","vinhomes_connected_api").replace("DATABASE vinhomes_v3","DATABASE vinhomes_connected")
-        await db.execute(grants)
-        await db.execute("GRANT INSERT, UPDATE, DELETE ON sessions TO vinhomes_connected_api")
-        await db.execute("GRANT INSERT, UPDATE ON accounts, users, tenant_memberships, scoped_user_roles, access_scopes TO vinhomes_connected_api")
+        await tool.role(owner_url, "vinhomes_connected_api", runtime_password)
     finally:
         await db.close()
     config.write_text(

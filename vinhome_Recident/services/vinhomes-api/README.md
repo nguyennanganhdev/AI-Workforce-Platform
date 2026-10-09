@@ -4,57 +4,50 @@
 
 Chạy `setup_demo_database.ps1`, rồi `start_demo.ps1` trong `scripts/` từ thư mục dự án, mở `http://localhost:8000/docs`. Xem [hướng dẫn demo database V3](../../docs/backend/HUONG_DAN_DEMO_DATABASE_V3.md). Demo dùng PostgreSQL với dữ liệu faker, không dùng RAM; chọn vai trò bằng `X-Demo-Actor`, quyền vẫn kiểm tra từ database.
 
-Active HTTP routes query the canonical V3 PostgreSQL tables (`tickets`, `ticket_events`, `ticket_assessments`, `ticket_triage_decisions`, `work_orders`, `work_assignments`, `work_approvals`). The restored `vh_*` modules and Alembic migrations are retained as legacy reference and are not mounted by `main.py`. Do not run those migrations on a V3 database.
+The API reads and writes the domain's own PostgreSQL schema (`tickets`, `ticket_events`, `ticket_assessments`, `ticket_triage_decisions`, `work_orders`, `work_assignments`, `work_approvals`, and the resident contract tables `vh_resident_*`). It is built from `src/vinhomes_api/schema/` and nothing else.
 
 Run `python -m vinhomes_api` from this directory. The default bind address is `127.0.0.1:8000`; Swagger is at `/docs` and the OpenAPI document at `/openapi.json`.
 
-Business endpoints require `VINHOMES_API_DATABASE_URL` (`postgresql+asyncpg://...`), a V3 tenant (`VINHOMES_API_TENANT_ID` or `VINHOMES_API_TENANT_KEY`), and server verified identity. Set `VINHOMES_API_AUTH_URL` to the platform's `/api/me` endpoint to forward the browser session cookie. For local loopback development, `VINHOMES_API_DEV_USER_ID` can select an existing active user; database grants are still checked. This development setting is rejected when binding to a non-loopback host.
+Business endpoints require `VINHOMES_API_DATABASE_URL` (`postgresql+asyncpg://...`), a tenant (`VINHOMES_API_TENANT_ID`) and a signed-in user: set `VINHOMES_API_PASSWORD_AUTH=1` for password sign-in. For local loopback development, `VINHOMES_API_DEV_USER_ID` can select an existing active user; database grants are still checked. This development setting is rejected when binding to a non-loopback host.
 
-`GET /health` checks the process. `GET /ready` checks required V3 tables. Business queries use a transaction with `SET LOCAL app.tenant_id` and `app.user_id`. Operations routes require active management/staff grants; `/resident/*` and `/my/notifications` require an active tenant membership and check ownership of each chat, ticket or notification. Room routes require room membership. Report, knowledge and admin routes apply additional management scope, document ACL or admin checks.
+`GET /health` checks the process. `GET /ready` checks required V3 tables. Business queries use a transaction with `SET LOCAL app.tenant_id` and `app.user_id`. Operations routes require active management/staff grants; `/resident/*` and `/my/notifications` require an active tenant membership and check ownership of each chat, ticket or notification. Report and admin routes apply additional management scope or admin checks.
 
 The API includes V3 read and write routes for tickets, assessment/review triage,
 work orders, assignments, approvals, evidence, QC, cleaning, security, contractor
 progress and budget requests. The complete route contract is visible at `/docs`.
 New endpoints also cover resident chat/ticket tracking, in-app notifications,
-management room messages, scoped knowledge search, available staff, water
-interruptions, admin memory review, and JSON/DOCX incident or issued-invoice
+available staff, water
+interruptions, and JSON/DOCX incident or issued-invoice
 reports. Security incident creation accepts `business_severity` P0–P3 and stores
 the corresponding `p1`–`p4` value.
 `POST /resident/chats/{channel_id}/tickets` creates one ticket for a verified
 resident unit in an existing chat, resolves the active management coverage and
 notifies scoped managers. `POST /tickets/{ticket_id}/routing/ack` records BQL
 acceptance and notifies the requester.
-The V3 extension tables for field operations are in
-`server/drizzle/0001_vinhomes_operations.sql` and
-`server/drizzle/0002_vinhomes_qc_redo.sql`; apply the server Drizzle migrations
-before starting this service. The old `vh_*` write routes remain unmounted.
+## Cơ sở dữ liệu
 
-For the local Docker fixture, `scripts/seed_v3_local.sql` creates a tenant, user,
-building, management coverage, published triage policy and local evidence storage
-location. The local file API accepts JPEG, PNG and WebP images of at most 10 MB and
-stores them in the ignored `.local-v3-files` directory. It is available only with
-`VINHOMES_API_DEV_USER_ID` on a loopback host. Deployments need a verified object
-store and malware scanning before enabling production uploads.
+Schema của domain nằm trong package, ở `src/vinhomes_api/schema/`: các migration đánh số (`migrations/0001…0005`), dữ liệu mẫu (`seed/`) và quyền của role chạy API (`roles.sql`). Không còn phụ thuộc `server/drizzle` hay công cụ của platform cũ.
 
-The runtime database role needs `SELECT` on V3 tables and `INSERT`/`UPDATE` on
-`channels`, `channel_memberships`, `messages`, `message_mentions`, `tickets`,
-`ticket_events`, `ticket_assessments`, `ticket_triage_decisions`,
-`ticket_triage_reviews`, `work_orders`, `work_assignments`, `work_approvals`,
-`service_interruptions`, `interruption_scopes`, `notification_deliveries`,
-`memory_candidates`, `knowledge_reviews`, `evidence_items`, `execution_principals`,
-`files`, `file_objects`, `ticket_files` and the seven `vh_*` extension tables.
-It must not have `BYPASSRLS`. Data changes run inside a tenant scoped transaction.
+```powershell
+$env:PYTHONPATH = 'src'
+python -m vinhomes_api.database create  --admin-url postgresql://owner:***@host/postgres --name vinhomes
+python -m vinhomes_api.database migrate --url postgresql://owner:***@host/vinhomes     # áp migration chưa áp, ghi checksum
+python -m vinhomes_api.database seed    --url …                                        # dữ liệu mẫu (cần role BYPASSRLS)
+python -m vinhomes_api.database role    --url … --role vinhomes_api --password-env API_DB_PASSWORD
+```
 
-An agent running without a browser session cannot yet call protected port 8000
-routes. The planned Hono delegation path must pass a verified requesting user
-identity to FastAPI; no route accepts a client supplied user ID as authority.
+`--url` có thể bỏ khi biến `DATABASE_URL` đã đặt, để mật khẩu không nằm trên dòng lệnh. Một migration đã áp mà file bị sửa thì bị từ chối; muốn đổi schema hãy thêm migration mới.
+
+Quy tắc của schema: mọi bảng nghiệp vụ có `tenant_id`, bật RLS và **bắt buộc** RLS (kể cả với chủ bảng). Chỉ sáu bảng danh tính dùng chung không có (`accounts`, `platform_admins`, `runtime_backends`, `sessions`, `tenants`, `users`). API chạy bằng role không phải superuser và không `BYPASSRLS`; mỗi truy vấn chạy trong transaction đã đặt `app.tenant_id` và `app.user_id`. Quyền ghi của role runtime được liệt kê tối thiểu trong `roles.sql`. Các trigger giữ bất biến nghiệp vụ (bản ghi chỉ thêm, sức chứa phân công, quyết định phân loại, kiểm tra tệp và bằng chứng) nằm ở `0003_functions.sql` và `0004_…`.
+
+Kiểm thử cần database: đặt `RESIDENT_TEST_ADMIN_URL` (role có CREATEDB, CREATEROLE, BYPASSRLS) và `RESIDENT_TEST_RUNTIME_URL` (role chạy API), rồi `python -m pytest tests`. Mỗi module test tự dựng một database sạch từ đúng các file trên và xóa nó sau đó.
 
 ## Giao diện chạy thử API V3
 
 Mở `services/vinhomes-api/launchers/CHAY_DEMO_API.cmd` hoặc chạy `scripts/start_demo.ps1`, rồi mở **http://localhost:8000/demo/ui**.
 Trang là giao diện nghiệp vụ: cư dân gửi yêu cầu, BQL điều phối/phê duyệt, nhân viên nhận việc,
-upload bằng chứng, an ninh, trao đổi phòng và báo cáo. Không cần nhập endpoint hoặc JSON.
-Hướng dẫn thao tác demo được gộp ngay bên dưới. Luồng sản phẩm và điểm cần tích hợp xem ở [tài liệu tổng thể](../../docs/teams/chien/SYSTEM_FLOW_AND_MAINTENANCE_2026-10-04/README.md).
+upload bằng chứng, an ninh và báo cáo. Không cần nhập endpoint hoặc JSON.
+Hướng dẫn thao tác demo được gộp ngay bên dưới. Nghiệp vụ của domain: [NGHIEP_VU_VINHOMES.md](../../docs/domain/NGHIEP_VU_VINHOMES.md).
 
 ### Hướng dẫn giao diện demo V3
 
@@ -62,7 +55,7 @@ Hướng dẫn thao tác demo được gộp ngay bên dưới. Luồng sản ph
 
 Double-click **`services/vinhomes-api/launchers/CHAY_DEMO_API.cmd`**.
 File khởi động Docker, PostgreSQL V3, FastAPI và mở **http://localhost:8000/demo/ui**.
-Giao diện chạy cùng API nên không cần frontend hoặc Hono riêng.
+Giao diện chạy cùng API nên không cần frontend riêng.
 
 Launcher bổ sung scope site demo cho BQL/bảo vệ để chạy màn hình An ninh trên database faker đã có; không seed lại hoặc reset nghiệp vụ. Bước này chỉ chấp nhận database cục bộ `vinhomes_v3` chứa tenant demo duy nhất.
 
@@ -121,12 +114,9 @@ Có thể vào **Trao đổi với lễ tân**, tạo cuộc trao đổi, gửi 
 - **Cập nhật xử lý** sự cố. Chuyển cấp chỉ ghi nhận trạng thái demo, không gọi hoặc gửi tin cho hệ thống bên ngoài.
 - **Bàn giao ca** cho người nhận; người nhận hoặc admin **Nhận bàn giao**.
 
-##### 7. Phòng, tri thức, báo cáo và bộ nhớ
+##### 7. Báo cáo và thông báo
 
-- **Phòng ban quản lý**: mở phòng, gửi tin nhắn, chọn agent thuộc phòng nếu muốn mention.
-- **Tra cứu tri thức**: chọn phạm vi dịch vụ và từ khóa, xem tài liệu được phép truy cập.
 - **Báo cáo**: chọn tòa nhà, loại dịch vụ nếu báo cáo doanh thu, và kỳ; xem bảng và **Tải Word**. Doanh thu tính theo hóa đơn đã phát hành.
-- **Quản trị viên → Duyệt bộ nhớ**: đọc nội dung và duyệt/từ chối có lý do.
 - **Thông báo**: xem cập nhật của vai trò hiện tại và đánh dấu đã đọc.
 
 #### Lưu ý khi demo

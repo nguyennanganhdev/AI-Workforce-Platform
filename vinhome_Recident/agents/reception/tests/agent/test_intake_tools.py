@@ -118,7 +118,7 @@ def test_invented_details_are_sent_for_checking_and_never_as_a_description():
 
 def test_no_other_tool_hands_the_request_over_after_the_question():
     backend = Backend(lambda details: verdict(False))
-    model = Model(calls(file_request(symptom="bị rò nước"), ("ask_management", {}), ("report_emergency", {}),
+    model = Model(calls(file_request(symptom="bị rò nước"), ("report_emergency", {}),
                         file_request(symptom="bị rò nước", item="ống vỡ")))
     assert turn(backend, model)[0] == QUESTION
     asked = [name for name, _ in backend.calls]

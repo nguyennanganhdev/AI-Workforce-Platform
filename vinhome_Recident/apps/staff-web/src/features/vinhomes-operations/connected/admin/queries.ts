@@ -1,6 +1,6 @@
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { tryClient, type ClientOptions } from "@/lib/client";
-import { businessHeaders } from "@/lib/coordination/queries";
+import { businessHeaders } from "@/lib/business-headers";
 import type { AuditEvent } from "@/lib/admin/queries";
 export type RegisteredModel = {
   id: string;

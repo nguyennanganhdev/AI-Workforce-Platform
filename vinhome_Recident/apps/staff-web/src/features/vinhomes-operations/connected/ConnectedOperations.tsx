@@ -2,28 +2,21 @@ import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react"
 import { uploadImage } from "../../../../../../packages/shared/direct-image-upload";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { roomSessionsQueryOptions, roomsQueryOptions } from "@/lib/rooms/queries";
-import { Coordination } from "./coordination/Coordination";
-import { sessionState } from "./coordination/model";
-import { AgentsPage } from "./ManagedAgents";
 import {
   connectedPages,
 } from "../layout/connected-operations-shell";
 import { UrbanOperationsShell as ConnectedOperationsShell } from '../layout/urban-operations-shell';
 import { WorkspaceFrame } from "../workspace/WorkspaceFrame";
 import { AccountsPage } from "./admin/Accounts";
-import { AdminOverviewPage, AdminConnectionsPage, AuditPage, ModelsPage, UnitsPage } from "./admin/Platform";
+import { AdminOverviewPage, AuditPage, UnitsPage } from "./admin/Platform";
 import { overviewOptions } from './admin/queries';
-import { modelsQueryOptions } from '@/lib/admin/queries';
 import "./connected.css";
 import { FieldJob, type FieldActions } from "./field/FieldJob";
 import { FieldWorkList } from "./field/FieldWorkList";
 import { active, ownOrders, placeOf, stateOf, type FieldPhoto } from "./field/model";
-import { Inquiries, LearnedAnswers, type Inquiry, type LearnedAnswer } from "./Inquiries";
 import { OperationsDashboardView } from "../components/operations-dashboard";
 import { LiveReportsPage } from "../workspace/LiveReportsPage";
 import { WorkListView } from "../workspace/WorkPage";
-import { AskAgent } from './AskAgent';
 import type { WorkItem } from "../workspace/work-items";
 
 type Ticket = {
@@ -57,42 +50,6 @@ type Detail = {
   ticket: Ticket;
   workOrders: Order[];
   events: { id: string; event_type: string; occurred_at: string }[];
-};
-type Session = {
-  session: {
-    id: string;
-    status: string;
-    state_version: number;
-    supervisor_name: string;
-    // Written by the backend when the Supervisor runtime accepts the ticket and reports its state.
-    supervisor?: { acceptedAt?: string } | null;
-    runtime?: { phase: string; pauseReason?: string | null } | null;
-  } | null;
-  // What the Supervisor's room did: the specialists it invited, their tasks and their replies.
-  room?: {
-    members: string[];
-    tasks: { description: string; status: string; agent: string }[];
-    replies: { id: string; agent: string; text: string; created_at: string }[];
-    // What management asked an agent inside this session, and whether it was answered yet.
-    questions: { id: string; agent: string; text: string; status: string }[];
-    // The plan the Supervisor proposed from those replies. Management decides it, then the resident.
-    plan?: {
-      id: string;
-      title: string;
-      status: string;
-      version: number;
-      management_note?: string | null;
-      proposal: {
-        steps: string[];
-        performer_role: string;
-        expected_duration: string;
-        conditions: string;
-        cost?: { amount: number; currency: string } | null;
-      };
-    } | null;
-  };
-  missing?: string;
-  awaitingManagementApproval?: boolean;
 };
 // What the resident reported first, then before and after the work.
 const PHOTO_ORDER = ["", "issue", "before", "after", "other"];
@@ -140,7 +97,6 @@ export function ConnectedOperations() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [jobs, setJobs] = useState<Order[]>([]);
   const [detail, setDetail] = useState<Detail>();
-  const [session, setSession] = useState<Session>();
   const [catalog, setCatalog] = useState<Catalog>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -160,10 +116,6 @@ export function ConnectedOperations() {
   );
   const [evidence, setEvidence] = useState<{ id: string; file_id: string; original_name: string; purpose: string; work_order_id: string | null; status: string }[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  // Closed for the resident, but the coordination session still needs management.
-  const [awaitingClosure, setAwaitingClosure] = useState<string[]>([]);
-  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
-  const [learned, setLearned] = useState<LearnedAnswer[]>([]);
   const [conversation, setConversation] = useState<
     { id: string; sender_kind: string; text: string; created_at: string }[]
   >([]);
@@ -228,19 +180,13 @@ export function ConnectedOperations() {
       }
       return result;
     };
-    const [data, cat, mine, allOrders, dashboard, closures, questions, knowledge] = await Promise.all([
+    const [data, cat, mine, allOrders, dashboard] = await Promise.all([
       pages<Ticket>("/tickets"),
       request<Catalog>("/catalogs"),
       request<{ items: Order[] }>("/my-work-orders?limit=100"),
       pages<Order>("/work-orders"),
       request<{approvals: {status: string; count: number}[]}>("/dashboard"),
-      request<{ ticketIds: string[] }>("/sessions/awaiting-approval"),
-      request<{ items: Inquiry[] }>("/sessions/inquiries"),
-      request<{ items: LearnedAnswer[] }>("/knowledge/candidates"),
     ]);
-    setInquiries(questions.items);
-    setLearned(knowledge.items);
-    setAwaitingClosure(closures.ticketIds);
     setStats(dashboard);
     setTickets(data);
     setCatalog(cat);
@@ -250,7 +196,6 @@ export function ConnectedOperations() {
     if (ticketId.current) {
       const d = await request<Detail>(`/tickets/${ticketId.current}`);
       setDetail(d);
-      setSession(await request<Session>(`/tickets/${ticketId.current}/session`));
       setConversation((await request<{ items: typeof conversation }>(`/tickets/${ticketId.current}/conversation`)).items);
       const p = await request<{
         items: { id: string; original_name: string; purpose?: string }[];
@@ -302,7 +247,6 @@ export function ConnectedOperations() {
   useEffect(() => {
     ticketId.current = "";
     setDetail(undefined);
-    setSession(undefined);
     setConversation([]);
     setPhotos([]);
     setEvidence([]);
@@ -334,7 +278,6 @@ export function ConnectedOperations() {
     if (ticketId.current === id && detail?.ticket.id === id) return;
     ticketId.current = id;
     setDetail(undefined);
-    setSession(undefined);
     setConversation([]);
     setPhotos([]);
     setEvidence([]);
@@ -343,7 +286,6 @@ export function ConnectedOperations() {
     await run(async () => {
       const d = await request<Detail>(`/tickets/${id}`);
       setDetail(d);
-      setSession(await request<Session>(`/tickets/${id}/session`));
       setConversation((await request<{ items: typeof conversation }>(`/tickets/${id}/conversation`)).items);
       if (d.ticket.category_id && me?.role !== "staff") {
         try {
@@ -366,37 +308,27 @@ export function ConnectedOperations() {
   }, [linkedTicket, linkedOrder, me?.user.id, busy]);
   const management = me?.role === "management" || me?.role === "admin";
   const navigate = useNavigate();
-  // Management lands on the coordination room: that is where requests wait for a decision.
+  // Management lands on the request board: that is where requests wait for a decision.
   useEffect(() => {
-    if (me?.role === 'management' && path === "") void navigate({ to: "/operations/team", replace: true });
+    if (me?.role === 'management' && path === "") void navigate({ to: "/operations/kanban", replace: true });
   }, [me?.role, path, navigate]);
   // An administrator's page opened by someone else used to draw the work list under that page's
   // title ("Nhật ký" over a list of jobs). It goes to the account's own start page instead.
-  const adminOnly = ["units", "connections", "models", "audit"].includes(path);
+  const adminOnly = ["units", "audit"].includes(path);
   useEffect(() => {
     if (me && me.role !== "admin" && adminOnly)
-      void navigate({ to: management ? "/operations/team" : "/operations/my-tasks", replace: true });
+      void navigate({ to: management ? "/operations/kanban" : "/operations/my-tasks", replace: true });
   }, [me, adminOnly, management, navigate]);
-  const rooms = useQuery({ ...roomsQueryOptions(), enabled: management });
-  const roomId = rooms.data?.items[0]?.id || "";
-  const waiting = useQuery({ ...roomSessionsQueryOptions(roomId), enabled: management && !!roomId });
   const adminSummary = useQuery({...overviewOptions(), enabled:me?.role === 'admin',refetchInterval:30_000});
-  const roleModels = useQuery({...modelsQueryOptions(),enabled:me?.role === 'admin',refetchInterval:30_000});
   const ownJobs = ownOrders(jobs);
-  const workNotices = management
-    ? (waiting.data || []).filter((s) => sessionState(s).group === "attention")
-      .map((s) => ({ id: s.id, title: s.ticket_title, note: sessionState(s).label, to: `/operations/team?session=${encodeURIComponent(s.id)}` }))
-    // Offered work and accepted work waiting to start stay in the worker's queue.
-    : ownJobs.filter((j) => ["offered", "accepted"].includes(stateOf(j))).map((j) => ({ id: j.id, title: tickets.find((t) => t.id === j.ticket_id)?.title || "Công việc mới",
+  // Offered work and accepted work waiting to start stay in the worker's queue.
+  const workNotices = management ? [] : ownJobs.filter((j) => ["offered", "accepted"].includes(stateOf(j))).map((j) => ({ id: j.id, title: tickets.find((t) => t.id === j.ticket_id)?.title || "Công việc mới",
         note: stateOf(j) === "accepted" ? "Đã nhận · Trong hàng đợi" : "Mới giao · Trong hàng đợi", to: `/operations/my-tasks?ticket=${encodeURIComponent(j.ticket_id)}&order=${encodeURIComponent(j.id)}` }));
   const notices = [...workNotices,
-    ...(adminSummary.data?.pending_accounts ? [{id:'accounts-pending',title:`${adminSummary.data.pending_accounts} tài khoản chờ duyệt`,note:'Xem hồ sơ đăng ký để quyết định.',to:'/operations/accounts',count:adminSummary.data.pending_accounts}] : []),
-    ...((roleModels.data || []).filter(m=>!m.configured).map(m=>({id:`model-${m.role}`,title:`Cấu hình model cho ${m.role === 'factory' ? 'Factory' : m.role === 'embedding' ? 'Tìm kiếm tri thức' : m.role === 'reception' ? 'Lễ tân' : m.role === 'supervisor' ? 'Supervisor' : 'Agent chuyên môn'}`,note:'Vai trò chưa có model được cấu hình.',to:'/operations/models'})))];
-  const coordinating = management && ['team', 'kanban', 'incidents', 'triage', 'dispatch', 'work-orders', 'qc'].includes(path);
+    ...(adminSummary.data?.pending_accounts ? [{id:'accounts-pending',title:`${adminSummary.data.pending_accounts} tài khoản chờ duyệt`,note:'Xem hồ sơ đăng ký để quyết định.',to:'/operations/accounts',count:adminSummary.data.pending_accounts}] : [])];
   // The administrator's own pages: what it sets up for management to work with.
   const adminPage = me?.role !== "admin" ? null : path === '' ? <AdminOverviewPage /> : path === "accounts" ? <AccountsPage /> : path === "units" ? <UnitsPage />
-    : path === "connections" ? <AdminConnectionsPage /> : path === "models" ? <ModelsPage /> : path === "audit" ? <AuditPage /> : null;
-  const plan = session?.room?.plan;
+    : path === "audit" ? <AuditPage /> : null;
   const selected = detail?.ticket;
   const currentJob = ownJobs.find((j) => active(stateOf(j)));
   const ownSelected = detail?.workOrders.flatMap((order) => {
@@ -497,21 +429,20 @@ export function ConnectedOperations() {
     </>
   );
   return (
-    <ConnectedOperationsShell name={me?.user.name} email={me?.user.email} management={management} administrator={me?.role === "admin"} field={me?.role === "staff"} notices={notices} flush={coordinating || path === 'ask' || path === 'agents'}
-      unit={rooms.data?.items[0]?.name} buildingCount={catalog?.buildings.length}
-      searchItems={tickets.map(t => ({id:t.id,title:t.title,location:[t.unit_code ? `Căn ${t.unit_code}` : '', catalog?.buildings.find(b => b.id === t.building_id)?.code].filter(Boolean).join(', '),to:`/operations/team?ticket=${encodeURIComponent(t.id)}`}))}
+    <ConnectedOperationsShell name={me?.user.name} email={me?.user.email} management={management} administrator={me?.role === "admin"} field={me?.role === "staff"} notices={notices}
+      buildingCount={catalog?.buildings.length}
+      searchItems={tickets.map(t => ({id:t.id,title:t.title,location:[t.unit_code ? `Căn ${t.unit_code}` : '', catalog?.buildings.find(b => b.id === t.building_id)?.code].filter(Boolean).join(', '),to:`/operations/kanban?ticket=${encodeURIComponent(t.id)}`}))}
       // The list keeps active work first; inside a job, incoming work is announced in the queue.
       banner={me?.role === "staff" ? (selected ? notices.filter((n) => n.id !== focusedOrder?.id) : []) : undefined}
       alerts={tickets.filter(t => t.priority === 'critical' && !['closed', 'cancelled'].includes(t.status)).map(t => ({id: t.id, title: t.title, location_json: {towerCode: catalog?.buildings.find(b => b.id === t.building_id)?.code}}))}>
-      {!me ? <div className="flex flex-col gap-4">{banners}{!error && <p role="status" className="p-4 text-sm text-muted-foreground">Đang tải tài khoản và công việc…</p>}</div> : coordinating ? <Coordination userId={me?.user.id || ""} tickets={tickets} catalog={catalog} /> : path === 'ask' && management ? <AskAgent userId={me?.user.id || ''} /> : path === "agents" && management ? <AgentsPage />
-        : path === 'reports' && management ? <LiveReportsPage buildings={catalog?.buildings || []} categories={catalog?.serviceCategories || []} />
+      {!me ? <div className="flex flex-col gap-4">{banners}{!error && <p role="status" className="p-4 text-sm text-muted-foreground">Đang tải tài khoản và công việc…</p>}</div> : path === 'reports' && management ? <LiveReportsPage buildings={catalog?.buildings || []} categories={catalog?.serviceCategories || []} />
         : adminPage ? adminPage : me?.role === "staff" ? (
           <div className="flex flex-col gap-4">
             {banners}
             {!loaded || (busy && ticketId.current && !selected) ? <p role="status" className="rounded-xl border border-border bg-background p-4 text-sm text-muted-foreground">Đang tải công việc…</p> : selected && detail ? (
               <FieldJob key={selected.id} ticket={selected} place={placeOf(selected, catalog?.buildings || [])} busy={busy} request={request} actions={fieldActions}
                 orders={focusedOrder ? [focusedOrder] : []}
-                plan={plan?.status === "approved" ? plan : undefined} conversation={conversation}
+                conversation={conversation}
                 photos={fieldPhotos}
                 currentWork={currentJob ? { orderId: currentJob.id, title: tickets.find((t) => t.id === currentJob.ticket_id)?.title || "Công việc hiện tại", onOpen: () => void open(currentJob.ticket_id, currentJob.id) } : undefined}
                 onBack={() => { ticketId.current = ""; setDetail(undefined); setSelectedOrderId(""); void navigate({ to: `/operations/${path === "completed-tasks" ? "completed-tasks" : "my-tasks"}` }); }} />
@@ -564,29 +495,13 @@ export function ConnectedOperations() {
                 zones={(catalog?.buildings || []).map(b => ({tower: b.name, note: `${tickets.filter(t => t.building_id === b.id && !['closed', 'cancelled'].includes(t.status)).length} phản ánh đang mở`}))} />
             ) : !selected && (
               <>
-              {(path === "triage" || path === "kanban") && management && (
-                <LearnedAnswers items={learned} disabled={busy}
-                  onDecide={(item, decision) =>
-                    void run(async () => {
-                      await post(`/knowledge/candidates/${item.id}/decision`, { decision });
-                    })
-                  } />
-              )}
-              {(path === "triage" || path === "kanban") && management && (
-                <Inquiries items={inquiries} disabled={busy}
-                  onAnswer={(inquiry, text) =>
-                    void run(async () => {
-                      await post(`/sessions/${inquiry.id}/answer`, { version: inquiry.state_version, text });
-                    })
-                  } />
-              )}
               <WorkListView key={path} title={connectedPages[path]} manager={management} history={history} onHistory={setHistory}
                 initialBoard={path === 'kanban'} connectedAccount={{role: management ? 'manager' : 'staff', scope: 'được cấp trên hệ thống'}}
                 rows={visible.map((t): WorkItem => ({key: t.id, ticket: t.id, ticketId: "", title: t.title,
                   place: catalog?.buildings.find(b => b.id === t.building_id)?.name || 'Chưa xác định vị trí',
                   severity: SEVERITY[t.priority], department: catalog?.serviceCategories.find(c => c.id === t.category_id)?.name || 'Chưa phân loại',
-                  assignee: '', status: awaitingClosure.includes(t.id) ? 'Chờ BQL duyệt đóng' : labels[t.status] || t.status, updatedAt: t.updated_at,
-                  phase: awaitingClosure.includes(t.id) && management ? 'waiting' : ['closed', 'cancelled'].includes(t.status) ? 'history' : t.status === 'resolved' ? 'waiting' : t.status === 'in_progress' ? 'active' : 'new',
+                  assignee: '', status: labels[t.status] || t.status, updatedAt: t.updated_at,
+                  phase: ['closed', 'cancelled'].includes(t.status) ? 'history' : t.status === 'resolved' ? 'waiting' : t.status === 'in_progress' ? 'active' : 'new',
                 }))} onOpen={row => void open(row.ticket!)} />
               </>
             )}
@@ -684,10 +599,6 @@ export function ConnectedOperations() {
                             ))}
                           </ol>
                         </details>
-                      )}
-                      {/* The session itself lives in the coordination room: management opens it there. */}
-                      {management && session?.session && (
-                        <p><a href={`/operations/team?session=${encodeURIComponent(session.session.id)}`}>Mở phiên điều phối của yêu cầu này →</a></p>
                       )}
                       {detail.workOrders.map((order) => (
                           <article className="live-order" key={order.id}>

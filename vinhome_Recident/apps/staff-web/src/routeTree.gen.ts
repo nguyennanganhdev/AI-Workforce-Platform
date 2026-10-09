@@ -14,24 +14,19 @@ import { Route as AuthedOperationsRouteRouteImport } from './routes/_authed/oper
 import { Route as OperationsLoginRouteImport } from './routes/operations.login'
 import { Route as AuthedOperationsIndexRouteImport } from './routes/_authed/operations/index'
 import { Route as AuthedOperationsAccountsRouteImport } from './routes/_authed/operations/accounts'
-import { Route as AuthedOperationsAgentsRouteImport } from './routes/_authed/operations/agents'
 import { Route as AuthedOperationsApprovalsRouteImport } from './routes/_authed/operations/approvals'
-import { Route as AuthedOperationsAskRouteImport } from './routes/_authed/operations/ask'
 import { Route as AuthedOperationsAuditRouteImport } from './routes/_authed/operations/audit'
 import { Route as AuthedOperationsCompletedTasksRouteImport } from './routes/_authed/operations/completed-tasks'
-import { Route as AuthedOperationsConnectionsRouteImport } from './routes/_authed/operations/connections'
 import { Route as AuthedOperationsContractorRouteImport } from './routes/_authed/operations/contractor'
 import { Route as AuthedOperationsDispatchRouteImport } from './routes/_authed/operations/dispatch'
 import { Route as AuthedOperationsEvidenceRouteImport } from './routes/_authed/operations/evidence'
 import { Route as AuthedOperationsIncidentsRouteImport } from './routes/_authed/operations/incidents'
 import { Route as AuthedOperationsKanbanRouteImport } from './routes/_authed/operations/kanban'
-import { Route as AuthedOperationsModelsRouteImport } from './routes/_authed/operations/models'
 import { Route as AuthedOperationsMyTasksRouteImport } from './routes/_authed/operations/my-tasks'
 import { Route as AuthedOperationsQcRouteImport } from './routes/_authed/operations/qc'
 import { Route as AuthedOperationsReportsRouteImport } from './routes/_authed/operations/reports'
 import { Route as AuthedOperationsSanitationRouteImport } from './routes/_authed/operations/sanitation'
 import { Route as AuthedOperationsSecurityRouteImport } from './routes/_authed/operations/security'
-import { Route as AuthedOperationsTeamRouteImport } from './routes/_authed/operations/team'
 import { Route as AuthedOperationsTriageRouteImport } from './routes/_authed/operations/triage'
 import { Route as AuthedOperationsUnitsRouteImport } from './routes/_authed/operations/units'
 import { Route as AuthedOperationsWorkOrdersRouteImport } from './routes/_authed/operations/work-orders'
@@ -61,22 +56,12 @@ const AuthedOperationsAccountsRoute =
     path: '/accounts',
     getParentRoute: () => AuthedOperationsRouteRoute,
   } as any)
-const AuthedOperationsAgentsRoute = AuthedOperationsAgentsRouteImport.update({
-  id: '/agents',
-  path: '/agents',
-  getParentRoute: () => AuthedOperationsRouteRoute,
-} as any)
 const AuthedOperationsApprovalsRoute =
   AuthedOperationsApprovalsRouteImport.update({
     id: '/approvals',
     path: '/approvals',
     getParentRoute: () => AuthedOperationsRouteRoute,
   } as any)
-const AuthedOperationsAskRoute = AuthedOperationsAskRouteImport.update({
-  id: '/ask',
-  path: '/ask',
-  getParentRoute: () => AuthedOperationsRouteRoute,
-} as any)
 const AuthedOperationsAuditRoute = AuthedOperationsAuditRouteImport.update({
   id: '/audit',
   path: '/audit',
@@ -86,12 +71,6 @@ const AuthedOperationsCompletedTasksRoute =
   AuthedOperationsCompletedTasksRouteImport.update({
     id: '/completed-tasks',
     path: '/completed-tasks',
-    getParentRoute: () => AuthedOperationsRouteRoute,
-  } as any)
-const AuthedOperationsConnectionsRoute =
-  AuthedOperationsConnectionsRouteImport.update({
-    id: '/connections',
-    path: '/connections',
     getParentRoute: () => AuthedOperationsRouteRoute,
   } as any)
 const AuthedOperationsContractorRoute =
@@ -123,11 +102,6 @@ const AuthedOperationsKanbanRoute = AuthedOperationsKanbanRouteImport.update({
   path: '/kanban',
   getParentRoute: () => AuthedOperationsRouteRoute,
 } as any)
-const AuthedOperationsModelsRoute = AuthedOperationsModelsRouteImport.update({
-  id: '/models',
-  path: '/models',
-  getParentRoute: () => AuthedOperationsRouteRoute,
-} as any)
 const AuthedOperationsMyTasksRoute = AuthedOperationsMyTasksRouteImport.update({
   id: '/my-tasks',
   path: '/my-tasks',
@@ -155,11 +129,6 @@ const AuthedOperationsSecurityRoute =
     path: '/security',
     getParentRoute: () => AuthedOperationsRouteRoute,
   } as any)
-const AuthedOperationsTeamRoute = AuthedOperationsTeamRouteImport.update({
-  id: '/team',
-  path: '/team',
-  getParentRoute: () => AuthedOperationsRouteRoute,
-} as any)
 const AuthedOperationsTriageRoute = AuthedOperationsTriageRouteImport.update({
   id: '/triage',
   path: '/triage',
@@ -182,24 +151,19 @@ export interface FileRoutesByFullPath {
   '/operations': typeof AuthedOperationsRouteRouteWithChildren
   '/operations/login': typeof OperationsLoginRoute
   '/operations/accounts': typeof AuthedOperationsAccountsRoute
-  '/operations/agents': typeof AuthedOperationsAgentsRoute
   '/operations/approvals': typeof AuthedOperationsApprovalsRoute
-  '/operations/ask': typeof AuthedOperationsAskRoute
   '/operations/audit': typeof AuthedOperationsAuditRoute
   '/operations/completed-tasks': typeof AuthedOperationsCompletedTasksRoute
-  '/operations/connections': typeof AuthedOperationsConnectionsRoute
   '/operations/contractor': typeof AuthedOperationsContractorRoute
   '/operations/dispatch': typeof AuthedOperationsDispatchRoute
   '/operations/evidence': typeof AuthedOperationsEvidenceRoute
   '/operations/incidents': typeof AuthedOperationsIncidentsRoute
   '/operations/kanban': typeof AuthedOperationsKanbanRoute
-  '/operations/models': typeof AuthedOperationsModelsRoute
   '/operations/my-tasks': typeof AuthedOperationsMyTasksRoute
   '/operations/qc': typeof AuthedOperationsQcRoute
   '/operations/reports': typeof AuthedOperationsReportsRoute
   '/operations/sanitation': typeof AuthedOperationsSanitationRoute
   '/operations/security': typeof AuthedOperationsSecurityRoute
-  '/operations/team': typeof AuthedOperationsTeamRoute
   '/operations/triage': typeof AuthedOperationsTriageRoute
   '/operations/units': typeof AuthedOperationsUnitsRoute
   '/operations/work-orders': typeof AuthedOperationsWorkOrdersRoute
@@ -209,24 +173,19 @@ export interface FileRoutesByTo {
   '/': typeof AuthedRouteWithChildren
   '/operations/login': typeof OperationsLoginRoute
   '/operations/accounts': typeof AuthedOperationsAccountsRoute
-  '/operations/agents': typeof AuthedOperationsAgentsRoute
   '/operations/approvals': typeof AuthedOperationsApprovalsRoute
-  '/operations/ask': typeof AuthedOperationsAskRoute
   '/operations/audit': typeof AuthedOperationsAuditRoute
   '/operations/completed-tasks': typeof AuthedOperationsCompletedTasksRoute
-  '/operations/connections': typeof AuthedOperationsConnectionsRoute
   '/operations/contractor': typeof AuthedOperationsContractorRoute
   '/operations/dispatch': typeof AuthedOperationsDispatchRoute
   '/operations/evidence': typeof AuthedOperationsEvidenceRoute
   '/operations/incidents': typeof AuthedOperationsIncidentsRoute
   '/operations/kanban': typeof AuthedOperationsKanbanRoute
-  '/operations/models': typeof AuthedOperationsModelsRoute
   '/operations/my-tasks': typeof AuthedOperationsMyTasksRoute
   '/operations/qc': typeof AuthedOperationsQcRoute
   '/operations/reports': typeof AuthedOperationsReportsRoute
   '/operations/sanitation': typeof AuthedOperationsSanitationRoute
   '/operations/security': typeof AuthedOperationsSecurityRoute
-  '/operations/team': typeof AuthedOperationsTeamRoute
   '/operations/triage': typeof AuthedOperationsTriageRoute
   '/operations/units': typeof AuthedOperationsUnitsRoute
   '/operations/work-orders': typeof AuthedOperationsWorkOrdersRoute
@@ -238,24 +197,19 @@ export interface FileRoutesById {
   '/_authed/operations': typeof AuthedOperationsRouteRouteWithChildren
   '/operations/login': typeof OperationsLoginRoute
   '/_authed/operations/accounts': typeof AuthedOperationsAccountsRoute
-  '/_authed/operations/agents': typeof AuthedOperationsAgentsRoute
   '/_authed/operations/approvals': typeof AuthedOperationsApprovalsRoute
-  '/_authed/operations/ask': typeof AuthedOperationsAskRoute
   '/_authed/operations/audit': typeof AuthedOperationsAuditRoute
   '/_authed/operations/completed-tasks': typeof AuthedOperationsCompletedTasksRoute
-  '/_authed/operations/connections': typeof AuthedOperationsConnectionsRoute
   '/_authed/operations/contractor': typeof AuthedOperationsContractorRoute
   '/_authed/operations/dispatch': typeof AuthedOperationsDispatchRoute
   '/_authed/operations/evidence': typeof AuthedOperationsEvidenceRoute
   '/_authed/operations/incidents': typeof AuthedOperationsIncidentsRoute
   '/_authed/operations/kanban': typeof AuthedOperationsKanbanRoute
-  '/_authed/operations/models': typeof AuthedOperationsModelsRoute
   '/_authed/operations/my-tasks': typeof AuthedOperationsMyTasksRoute
   '/_authed/operations/qc': typeof AuthedOperationsQcRoute
   '/_authed/operations/reports': typeof AuthedOperationsReportsRoute
   '/_authed/operations/sanitation': typeof AuthedOperationsSanitationRoute
   '/_authed/operations/security': typeof AuthedOperationsSecurityRoute
-  '/_authed/operations/team': typeof AuthedOperationsTeamRoute
   '/_authed/operations/triage': typeof AuthedOperationsTriageRoute
   '/_authed/operations/units': typeof AuthedOperationsUnitsRoute
   '/_authed/operations/work-orders': typeof AuthedOperationsWorkOrdersRoute
@@ -268,24 +222,19 @@ export interface FileRouteTypes {
     | '/operations'
     | '/operations/login'
     | '/operations/accounts'
-    | '/operations/agents'
     | '/operations/approvals'
-    | '/operations/ask'
     | '/operations/audit'
     | '/operations/completed-tasks'
-    | '/operations/connections'
     | '/operations/contractor'
     | '/operations/dispatch'
     | '/operations/evidence'
     | '/operations/incidents'
     | '/operations/kanban'
-    | '/operations/models'
     | '/operations/my-tasks'
     | '/operations/qc'
     | '/operations/reports'
     | '/operations/sanitation'
     | '/operations/security'
-    | '/operations/team'
     | '/operations/triage'
     | '/operations/units'
     | '/operations/work-orders'
@@ -295,24 +244,19 @@ export interface FileRouteTypes {
     | '/'
     | '/operations/login'
     | '/operations/accounts'
-    | '/operations/agents'
     | '/operations/approvals'
-    | '/operations/ask'
     | '/operations/audit'
     | '/operations/completed-tasks'
-    | '/operations/connections'
     | '/operations/contractor'
     | '/operations/dispatch'
     | '/operations/evidence'
     | '/operations/incidents'
     | '/operations/kanban'
-    | '/operations/models'
     | '/operations/my-tasks'
     | '/operations/qc'
     | '/operations/reports'
     | '/operations/sanitation'
     | '/operations/security'
-    | '/operations/team'
     | '/operations/triage'
     | '/operations/units'
     | '/operations/work-orders'
@@ -323,24 +267,19 @@ export interface FileRouteTypes {
     | '/_authed/operations'
     | '/operations/login'
     | '/_authed/operations/accounts'
-    | '/_authed/operations/agents'
     | '/_authed/operations/approvals'
-    | '/_authed/operations/ask'
     | '/_authed/operations/audit'
     | '/_authed/operations/completed-tasks'
-    | '/_authed/operations/connections'
     | '/_authed/operations/contractor'
     | '/_authed/operations/dispatch'
     | '/_authed/operations/evidence'
     | '/_authed/operations/incidents'
     | '/_authed/operations/kanban'
-    | '/_authed/operations/models'
     | '/_authed/operations/my-tasks'
     | '/_authed/operations/qc'
     | '/_authed/operations/reports'
     | '/_authed/operations/sanitation'
     | '/_authed/operations/security'
-    | '/_authed/operations/team'
     | '/_authed/operations/triage'
     | '/_authed/operations/units'
     | '/_authed/operations/work-orders'
@@ -389,25 +328,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedOperationsAccountsRouteImport
       parentRoute: typeof AuthedOperationsRouteRoute
     }
-    '/_authed/operations/agents': {
-      id: '/_authed/operations/agents'
-      path: '/agents'
-      fullPath: '/operations/agents'
-      preLoaderRoute: typeof AuthedOperationsAgentsRouteImport
-      parentRoute: typeof AuthedOperationsRouteRoute
-    }
     '/_authed/operations/approvals': {
       id: '/_authed/operations/approvals'
       path: '/approvals'
       fullPath: '/operations/approvals'
       preLoaderRoute: typeof AuthedOperationsApprovalsRouteImport
-      parentRoute: typeof AuthedOperationsRouteRoute
-    }
-    '/_authed/operations/ask': {
-      id: '/_authed/operations/ask'
-      path: '/ask'
-      fullPath: '/operations/ask'
-      preLoaderRoute: typeof AuthedOperationsAskRouteImport
       parentRoute: typeof AuthedOperationsRouteRoute
     }
     '/_authed/operations/audit': {
@@ -422,13 +347,6 @@ declare module '@tanstack/react-router' {
       path: '/completed-tasks'
       fullPath: '/operations/completed-tasks'
       preLoaderRoute: typeof AuthedOperationsCompletedTasksRouteImport
-      parentRoute: typeof AuthedOperationsRouteRoute
-    }
-    '/_authed/operations/connections': {
-      id: '/_authed/operations/connections'
-      path: '/connections'
-      fullPath: '/operations/connections'
-      preLoaderRoute: typeof AuthedOperationsConnectionsRouteImport
       parentRoute: typeof AuthedOperationsRouteRoute
     }
     '/_authed/operations/contractor': {
@@ -466,13 +384,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedOperationsKanbanRouteImport
       parentRoute: typeof AuthedOperationsRouteRoute
     }
-    '/_authed/operations/models': {
-      id: '/_authed/operations/models'
-      path: '/models'
-      fullPath: '/operations/models'
-      preLoaderRoute: typeof AuthedOperationsModelsRouteImport
-      parentRoute: typeof AuthedOperationsRouteRoute
-    }
     '/_authed/operations/my-tasks': {
       id: '/_authed/operations/my-tasks'
       path: '/my-tasks'
@@ -508,13 +419,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedOperationsSecurityRouteImport
       parentRoute: typeof AuthedOperationsRouteRoute
     }
-    '/_authed/operations/team': {
-      id: '/_authed/operations/team'
-      path: '/team'
-      fullPath: '/operations/team'
-      preLoaderRoute: typeof AuthedOperationsTeamRouteImport
-      parentRoute: typeof AuthedOperationsRouteRoute
-    }
     '/_authed/operations/triage': {
       id: '/_authed/operations/triage'
       path: '/triage'
@@ -541,24 +445,19 @@ declare module '@tanstack/react-router' {
 
 interface AuthedOperationsRouteRouteChildren {
   AuthedOperationsAccountsRoute: typeof AuthedOperationsAccountsRoute
-  AuthedOperationsAgentsRoute: typeof AuthedOperationsAgentsRoute
   AuthedOperationsApprovalsRoute: typeof AuthedOperationsApprovalsRoute
-  AuthedOperationsAskRoute: typeof AuthedOperationsAskRoute
   AuthedOperationsAuditRoute: typeof AuthedOperationsAuditRoute
   AuthedOperationsCompletedTasksRoute: typeof AuthedOperationsCompletedTasksRoute
-  AuthedOperationsConnectionsRoute: typeof AuthedOperationsConnectionsRoute
   AuthedOperationsContractorRoute: typeof AuthedOperationsContractorRoute
   AuthedOperationsDispatchRoute: typeof AuthedOperationsDispatchRoute
   AuthedOperationsEvidenceRoute: typeof AuthedOperationsEvidenceRoute
   AuthedOperationsIncidentsRoute: typeof AuthedOperationsIncidentsRoute
   AuthedOperationsKanbanRoute: typeof AuthedOperationsKanbanRoute
-  AuthedOperationsModelsRoute: typeof AuthedOperationsModelsRoute
   AuthedOperationsMyTasksRoute: typeof AuthedOperationsMyTasksRoute
   AuthedOperationsQcRoute: typeof AuthedOperationsQcRoute
   AuthedOperationsReportsRoute: typeof AuthedOperationsReportsRoute
   AuthedOperationsSanitationRoute: typeof AuthedOperationsSanitationRoute
   AuthedOperationsSecurityRoute: typeof AuthedOperationsSecurityRoute
-  AuthedOperationsTeamRoute: typeof AuthedOperationsTeamRoute
   AuthedOperationsTriageRoute: typeof AuthedOperationsTriageRoute
   AuthedOperationsUnitsRoute: typeof AuthedOperationsUnitsRoute
   AuthedOperationsWorkOrdersRoute: typeof AuthedOperationsWorkOrdersRoute
@@ -567,24 +466,19 @@ interface AuthedOperationsRouteRouteChildren {
 
 const AuthedOperationsRouteRouteChildren: AuthedOperationsRouteRouteChildren = {
   AuthedOperationsAccountsRoute: AuthedOperationsAccountsRoute,
-  AuthedOperationsAgentsRoute: AuthedOperationsAgentsRoute,
   AuthedOperationsApprovalsRoute: AuthedOperationsApprovalsRoute,
-  AuthedOperationsAskRoute: AuthedOperationsAskRoute,
   AuthedOperationsAuditRoute: AuthedOperationsAuditRoute,
   AuthedOperationsCompletedTasksRoute: AuthedOperationsCompletedTasksRoute,
-  AuthedOperationsConnectionsRoute: AuthedOperationsConnectionsRoute,
   AuthedOperationsContractorRoute: AuthedOperationsContractorRoute,
   AuthedOperationsDispatchRoute: AuthedOperationsDispatchRoute,
   AuthedOperationsEvidenceRoute: AuthedOperationsEvidenceRoute,
   AuthedOperationsIncidentsRoute: AuthedOperationsIncidentsRoute,
   AuthedOperationsKanbanRoute: AuthedOperationsKanbanRoute,
-  AuthedOperationsModelsRoute: AuthedOperationsModelsRoute,
   AuthedOperationsMyTasksRoute: AuthedOperationsMyTasksRoute,
   AuthedOperationsQcRoute: AuthedOperationsQcRoute,
   AuthedOperationsReportsRoute: AuthedOperationsReportsRoute,
   AuthedOperationsSanitationRoute: AuthedOperationsSanitationRoute,
   AuthedOperationsSecurityRoute: AuthedOperationsSecurityRoute,
-  AuthedOperationsTeamRoute: AuthedOperationsTeamRoute,
   AuthedOperationsTriageRoute: AuthedOperationsTriageRoute,
   AuthedOperationsUnitsRoute: AuthedOperationsUnitsRoute,
   AuthedOperationsWorkOrdersRoute: AuthedOperationsWorkOrdersRoute,

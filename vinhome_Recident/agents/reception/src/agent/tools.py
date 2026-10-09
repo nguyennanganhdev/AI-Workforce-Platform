@@ -53,8 +53,6 @@ SPECS = [
     _function("request_status", "Xem tình trạng yêu cầu đang mở của cuộc trò chuyện này.", {}, []),
     _function("cancel_request", "Gửi đề nghị hủy yêu cầu đang mở của cuộc trò chuyện này.",
               {"reason": {"type": "string"}}, ["reason"]),
-    _function("ask_management", "Chuyển câu hỏi của cư dân tới Ban quản lý khi kho tri thức không có câu trả lời. "
-              "Chỉ dùng cho câu hỏi về tòa nhà, dịch vụ, phí, quy định, thủ tục.", {}, []),
 ]
 
 
@@ -77,12 +75,12 @@ class Toolbox:
         self.clarification: str | None = None
         self.filings = 0
         self.status: str | None = None
-        self.searched = self.forwarded = False
+        self.searched = False
 
     @property
     def acted(self) -> bool:
-        """Something reached management in this conversation: a request (now or earlier) or a forwarded question."""
-        return bool(self.open_request or self.forwarded or self.emergency)
+        """Something reached management in this conversation: a request (now or earlier) or an emergency."""
+        return bool(self.open_request or self.emergency)
 
     def _key(self, step: str) -> str:
         return hashlib.sha256(f"{self.channel_id}\x1f{self.message['id']}\x1f{step}".encode()).hexdigest()
@@ -257,15 +255,3 @@ class Toolbox:
             "message": reason.strip()[:2000] or "Cư dân đề nghị hủy.", "source_message_id": self.message["id"],
             "ticket_version": str(self.open_request["version"]), "facts": [], "file_ids": []}}, "cancel")
         return {"cancel": "requested", "note": "Đã gửi đề nghị hủy; chưa phải là đã hủy."}
-
-    async def _ask_management(self) -> dict:
-        if not self.searched:
-            # Only for an information question the knowledge base could not answer.
-            return {"error": "search_knowledge_first",
-                    "note": "Sự cố hay nhu cầu dịch vụ thì hỏi rõ rồi dùng file_request, không dùng công cụ này."}
-        opened = await self.backend.call("POST", f"/internal/reception/chats/{self.channel_id}/inquiries", self.context,
-                                         {"message_id": self.message["id"]})
-        if opened.get("accepted") is True:
-            self.forwarded = True
-            return {"forwarded": True, "note": "Ban quản lý sẽ trả lời ngay trong cuộc trò chuyện này."}
-        return {"forwarded": False, "note": "Chưa chuyển được; mời cư dân liên hệ trực tiếp Ban quản lý."}

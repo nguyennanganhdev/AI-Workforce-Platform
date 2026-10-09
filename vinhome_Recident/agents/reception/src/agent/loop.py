@@ -102,9 +102,8 @@ async def run_agent(model, toolbox: Toolbox, system: str, history: list[dict]) -
         problems = ["không đúng định dạng JSON {reply, sources}"] if final is None else violations(final[0], toolbox, conversation)
         if not problems:
             reply, sources = final
-            # A question handed to management was not answered from the passages, whatever the model lists.
-            used = [] if toolbox.forwarded else [toolbox.passages[rank] for rank in sources if rank in toolbox.passages]
-            if not used and not toolbox.forwarded:
+            used = [toolbox.passages[rank] for rank in sources if rank in toolbox.passages]
+            if not used:
                 # The model forgot to name its sources: a figure in the reply still shows where it came from.
                 figures = [_digits(figure) for figure in FIGURE.findall(reply) if len(_digits(figure)) >= 2]
                 used = [p for p in toolbox.passages.values() if any(f in _digits(p["text"]) for f in figures)]

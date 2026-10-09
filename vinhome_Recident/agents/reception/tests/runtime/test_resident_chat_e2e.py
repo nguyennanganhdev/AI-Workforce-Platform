@@ -121,35 +121,6 @@ def test_an_emergency_is_filed_at_emergency_level_with_the_fixed_reply():
     assert call("GET", f"/tickets/{ticket_id}", actor="management")["ticket"]["priority"] == "critical"
 
 
-def test_an_emergency_reply_carries_the_safety_guidance_management_approved():
-    """The backend's database needs the guidance proposed from tests/runtime/fixtures/guidance
-    (services/vinhomes-api/scripts/propose_emergency_guidance.py); without it the test is skipped."""
-    guidance = "Anh chị không bật công tắc điện, mở cửa nếu an toàn, rồi gọi an ninh và đơn vị gas."
-    pending = [item for item in call("GET", "/knowledge/candidates", actor="management")["items"] if item["answer"] == guidance]
-    for item in pending:
-        call("POST", f"/knowledge/candidates/{item['id']}/decision", actor="management", json={"decision": "approve"})
-    chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
-    reply, _ = say(chat, "Bếp nhà tôi có mùi gas rất nặng.")
-    if not pending and guidance not in reply:
-        pytest.skip("No gas guidance was proposed in this database")
-    assert reply.splitlines() == ["Mình đã chuyển yêu cầu của bạn đến Ban quản lý ở mức khẩn cấp.", guidance]
-
-
-def test_a_question_without_a_source_goes_to_management_and_the_answer_comes_back():
-    chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
-    before = len(call("GET", "/resident/tickets")["items"])
-    question = f"Bể bơi mở cửa lúc mấy giờ? ({uuid4().hex[:6]})"
-    reply, _ = say(chat, question)
-    # Reception does not guess and does not open a request: the question becomes a management session.
-    assert "chuyển câu hỏi của bạn tới Ban quản lý" in reply
-    assert len(call("GET", "/resident/tickets")["items"]) == before
-    inquiry = next(i for i in call("GET", "/sessions/inquiries", actor="management")["items"] if i["question"] == question)
-    call("POST", f"/sessions/{inquiry['id']}/answer", actor="management",
-         json={"version": inquiry["state_version"], "text": "Bể bơi mở từ 6 giờ đến 21 giờ."})
-    last = call("GET", f"/resident/chats/{chat}/messages?limit=100")["items"][-1]
-    assert last["sender_kind"] == "agent" and "6 giờ đến 21 giờ" in last["body"]["text"]
-
-
 def test_information_question_is_answered_from_cited_passages():
     chat = call("POST", "/resident/chats", expected=201, json={"title": f"E2E {uuid4()}"})["id"]
     reply, _ = say(chat, "Phí quản lý hiện nay là bao nhiêu?")

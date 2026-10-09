@@ -8,12 +8,7 @@ $settings = @{}
 # with the demo, so its settings are read from there unless this deployment has its own.
 $receptionFile = @('.local-connected/reception.env', '.local-v3-faker/reception.env') |
     ForEach-Object { Join-Path $serviceRoot $_ } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-# Optional: coordination.env lets the Supervisor runtime (agent-coordination) call this API.
-$coordinationFile = Join-Path $serviceRoot '.local-connected/coordination.env'
-if (!(Test-Path -LiteralPath $coordinationFile)) { $coordinationFile = $null }
-$factoryFile = Join-Path $serviceRoot '.local-connected/factory.env'
-if (!(Test-Path -LiteralPath $factoryFile)) { $factoryFile = $null }
-@($receptionFile, $coordinationFile, $factoryFile, $ConfigFile) | Where-Object { $_ } | ForEach-Object { Get-Content -LiteralPath $_ } | ForEach-Object {
+@($receptionFile, $ConfigFile) | Where-Object { $_ } | ForEach-Object { Get-Content -LiteralPath $_ } | ForEach-Object {
     if ($_ -and !$_.StartsWith('#') -and $_.Contains('=')) {
         $pair = $_ -split '=', 2
         $settings[$pair[0].Trim()] = $pair[1].Trim()
@@ -24,35 +19,10 @@ foreach ($required in @('VINHOMES_API_DATABASE_URL', 'VINHOMES_API_TENANT_ID')) 
 }
 if ($settings['VINHOMES_API_DEMO_MODE'] -eq '1' -or $settings['VINHOMES_API_DEV_USER_ID']) { throw 'Connected mode requires real sessions; demo and fixed development identities are forbidden.' }
 if ($settings['VINHOMES_API_TENANT_ID'] -eq '11111111-1111-5111-a111-111111111111') { throw 'The seeded demo tenant cannot be used as the real deployment.' }
-if ($settings['VINHOMES_API_PASSWORD_AUTH'] -ne '1') {
-$authUrl = [Uri]$settings['VINHOMES_API_AUTH_URL']
-if (!$authUrl.IsAbsoluteUri -or ($authUrl.Scheme -ne 'https' -and !($authUrl.Scheme -eq 'http' -and $authUrl.IsLoopback))) { throw 'Authentication requires HTTPS, or HTTP on loopback.' }
-# A public session endpoint must not silently admit anonymous callers (single-user mode).
-try {
-    $session = Invoke-RestMethod -Uri $authUrl.AbsoluteUri -TimeoutSec 5
-    if ($session.user.id) { throw 'Authentication endpoint granted an identity without a session. Disable single-user mode.' }
-} catch {
-    if (!$_.Exception.Response -or [int]$_.Exception.Response.StatusCode -notin @(401,403)) { throw }
-}
-}
+if ($settings['VINHOMES_API_PASSWORD_AUTH'] -ne '1') { throw 'Connected mode signs users in with passwords: set VINHOMES_API_PASSWORD_AUTH=1.' }
 foreach ($key in $settings.Keys) { [Environment]::SetEnvironmentVariable($key,$settings[$key],'Process') }
-$env:VINHOMES_API_COORDINATION_URL = 'http://127.0.0.1:4300'
-# Where the tool gateway reaches the knowledge search service (scripts/start_knowledge.ps1) for management's agents.
-$env:VINHOMES_API_KNOWLEDGE_URL = 'http://127.0.0.1:8787'
-$toolsFile = Join-Path $serviceRoot '.local-connected/technical-api.env'
-if (Test-Path -LiteralPath $toolsFile) {
-    $env:VINHOMES_API_TECHNICAL_TOOLS_URL = 'http://127.0.0.1:8788/internal/technical/v1'
-    $env:VINHOMES_API_TECHNICAL_TOOLS_TOKEN = (Get-Content -LiteralPath $toolsFile | Where-Object { $_.StartsWith('TECHNICAL_TOOLS_SERVICE_TOKEN=') }) -replace '^TECHNICAL_TOOLS_SERVICE_TOKEN=', ''
-}
-# Optional: routines.env (scripts/setup_routines.py) turns on schedules for management's agents.
-$routinesFile = Join-Path $serviceRoot '.local-connected/routines.env'
-if (Test-Path -LiteralPath $routinesFile) {
-    $env:VINHOMES_API_ROUTINES_URL = 'http://127.0.0.1:8789/internal/routines/v1'
-    $env:VINHOMES_API_ROUTINES_TOKEN = (Get-Content -LiteralPath $routinesFile | Where-Object { $_.StartsWith('ROUTINES_SERVICE_TOKEN=') }) -replace '^ROUTINES_SERVICE_TOKEN=', ''
-}
 $env:VINHOMES_API_DEMO_MODE = '0'
 $env:VINHOMES_API_DEV_USER_ID = ''
-$env:VINHOMES_API_TENANT_KEY = ''
 $env:PYTHONPATH = Join-Path $serviceRoot 'src'
 $python = Join-Path $serviceRoot '.venv/Scripts/python.exe'
 if (!(Test-Path -LiteralPath $python)) { throw 'Install the API virtual environment in services/vinhomes-api/.venv first.' }

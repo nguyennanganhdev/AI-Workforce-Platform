@@ -1,4 +1,7 @@
 """Verify real signed S3 upload, integrity and isolation with restricted PostgreSQL."""
+
+import pytest
+
 import asyncio
 import hashlib
 import os
@@ -9,7 +12,7 @@ import httpx
 import pytest
 from test_resident_contract import TENANT, image, sql
 from test_resident_contract import database as database
-from test_v3_agent_database import demo_client
+from test_domain_database import demo_client
 from datetime import timedelta
 
 from vinhomes_api import storage

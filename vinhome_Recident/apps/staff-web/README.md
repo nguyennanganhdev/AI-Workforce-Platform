@@ -1,6 +1,6 @@
 # Giao diện nhân viên (Operations / Field)
 
-React + Vite cho Ban quản lý, quản trị viên và nhân viên hiện trường. Gọi backend nghiệp vụ `services/vinhomes-api` qua `/api/business` (và một danh sách ticket qua API nền tảng, xem bên dưới); đăng nhập tại `/operations/login` bằng tài khoản thật. Hướng dẫn chạy kết nối: [docs/resident-web/07-connected-runtime.md](../../docs/resident-web/07-connected-runtime.md). Chế độ trải nghiệm dùng dữ liệu mẫu riêng, không chứng minh quyền hoặc ghi dữ liệu backend.
+React + Vite cho Ban quản lý, quản trị viên và nhân viên hiện trường. Gọi backend nghiệp vụ `services/vinhomes-api` qua `/api/business`; đăng nhập tại `/operations/login` bằng tài khoản thật. Hướng dẫn chạy kết nối: [docs/resident-web/07-connected-runtime.md](../../docs/resident-web/07-connected-runtime.md). Chế độ trải nghiệm dùng dữ liệu mẫu riêng, không chứng minh quyền hoặc ghi dữ liệu backend.
 
 ## Chạy
 
@@ -17,7 +17,6 @@ Một cổng cho mọi vai trò: Ban quản lý vào Điều phối, nhân viên
 |---|---|---|
 | `APP_PORT` | Cổng lắng nghe (`--port` cũng được) | `3020` |
 | `VINHOMES_API_URL` | Nơi backend nghiệp vụ chạy | `http://127.0.0.1:8000` |
-| `PLATFORM_API_URL` | API của nền tảng; chỉ danh sách "Yêu cầu hệ thống" (`/api/vinhomes/tickets`) đọc từ đây | `http://127.0.0.1:3001` |
 | `VINHOMES_API_ORIGIN` | Origin gửi tới API, khi API chỉ nhận origin của bản triển khai riêng của nó | của trình duyệt |
 | `VINHOMES_SURFACE` | Cổng đăng nhập: `operations` hoặc `field` | không gửi |
 

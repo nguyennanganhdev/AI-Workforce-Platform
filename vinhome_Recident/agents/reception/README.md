@@ -202,8 +202,7 @@ kiểm tra này cho `execute` và `reconcile`; cấu hình đường dẫn HTTP 
 Đây là **consumer proposal `ph16.draft.1`**, chưa phải OpenAPI đã được Team Chiến
 freeze. Supervisor output dùng schema **2.0** đã chốt trong tài liệu liên team.
 Graph Python hiện vẫn dùng V1 và generic `invoke`, chưa chuyển sang facade. Không
-inject adapter mới vào graph cũ rồi coi là tích hợp hoàn tất. Xem
-[request chuyển consumer/API](../docs/teams/hoang/requests/phan-hoang/PH16_TYPED_TOOLS_INTEGRATION.md).
+inject adapter mới vào graph cũ rồi coi là tích hợp hoàn tất.
 
 | Method | Input | Giá trị khi `kind=success` |
 |---|---|---|
@@ -261,6 +260,5 @@ Event V2 được kiểm tenant/binding/ticket/correlation; completion cần k�
 `work_completed`, chưa có nghĩa ticket đã đóng. Backend vẫn chịu trách nhiệm
 phân quyền, chống stale mutation và tính hợp lệ của bước đang chờ.
 
-[Handoff PH16](../docs/teams/hoang/handoffs/phan-hoang/PH16.md) ghi kết quả kiểm thử
-và phần consumer/backend còn chờ. Fixtures chỉ nằm trong tests; không có backend
+Fixtures chỉ nằm trong tests; không có backend
 giả hoặc model giả trong production path.

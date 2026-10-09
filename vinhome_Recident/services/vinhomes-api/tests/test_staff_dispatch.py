@@ -1,5 +1,7 @@
 """Staff specialty, accepted queue and active execution checks on isolated PostgreSQL."""
 
+
+
 import asyncio
 import time
 from threading import Barrier
@@ -12,8 +14,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from test_resident_contract import BASE, CATEGORY, OPS, TENANT, client, create, image, key, sql
 from test_resident_contract import database as database  # noqa: PLC0414 -- pytest fixture export
-from vinhomes_api.v3_coordination import work_by_department
-from vinhomes_api.supervised_flow import offer_work
+from vinhomes_api.work_offers import offer_work
 
 
 def approved_order(database, category=CATEGORY):
@@ -60,26 +61,6 @@ def accept(worker, assignment):
 def advance(worker, order, status):
     return worker.patch(f"/work-orders/{order['id']}/status", json={
         "version": order["version"], "status": status, "note": "Staff dispatch regression"})
-
-
-def test_short_cleaning_label_stays_with_the_cleaning_specialist():
-    class Departments:
-        def mappings(self):
-            return self
-
-        def all(self):
-            return [{"id": "tech", "code": "technical", "name": "Kỹ thuật"},
-                    {"id": "clean", "code": "cleaning", "name": "Vệ sinh & cảnh quan"}]
-
-    class Connection:
-        async def execute(self, *_):
-            return Departments()
-
-    steps = ["Kỹ thuật: sửa đoạn ống rò", "VỆ SINH: lau khô sàn", "Ve sinh: thu gom rác",
-             "Đề nghị cư dân kiểm tra lại"]
-    assert asyncio.run(work_by_department(Connection(), {"id": "team", "category_id": "tech"}, steps)) == [
-        {"category_id": "tech", "description": "1. sửa đoạn ống rò\n2. Đề nghị cư dân kiểm tra lại"},
-        {"category_id": "clean", "description": "1. lau khô sàn\n2. thu gom rác"}]
 
 
 def test_manual_dispatch_rejects_a_worker_without_the_work_specialty(database):

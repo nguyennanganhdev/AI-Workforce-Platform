@@ -66,7 +66,7 @@ async function choose(
 }
 
 async function mount(
-  page: "AccountsPage" | "ModelsPage" | "AuditPage",
+  page: "AccountsPage" | "AuditPage",
   respond: (url: string, init?: RequestInit) => Response,
 ) {
   const { QueryClientProvider, QueryClient } = await import(
@@ -222,89 +222,6 @@ test("a signed-in person changes their own password and is sent to sign in again
   expect(sent).toEqual([{ current_password: "old-password-1", new_password: "new-password-12" }]);
 });
 
-test("the model page says which model each role runs on and which service does not answer", async () => {
-  const { view } = await mount("ModelsPage", (url) =>
-    url.endsWith("/model-registry")
-      ? Response.json({ items: [], defaults: [] })
-      : Response.json({
-          items: [
-            {
-              role: "reception",
-              configured: true,
-              running: true,
-              model: "gemini-3.8-flash",
-              provider: "google",
-            },
-            {
-              role: "supervisor",
-              configured: true,
-              running: false,
-              model: null,
-              provider: null,
-            },
-            {
-              role: "specialist",
-              configured: true,
-              running: false,
-              model: null,
-              provider: null,
-            },
-            {
-              role: "factory",
-              configured: false,
-              running: false,
-              model: null,
-              provider: null,
-            },
-            {
-              role: "embedding",
-              configured: true,
-              running: null,
-              model: "text-embedding-3-large · 1536 chiều",
-              provider: "openai",
-            },
-          ],
-        }),
-  );
-  await view.findByText("Lễ tân");
-  const rows = Array.from(view.container.querySelectorAll("tbody tr")).map(
-    (li) => li.textContent,
-  );
-  expect(rows[0]).toContain("Lễ tân");
-  expect(rows[0]).toContain("gemini-3.8-flash");
-  expect(rows[0]).toContain("Dịch vụ đang chạy");
-  expect(rows[1]).toContain("Dịch vụ không trả lời");
-  expect(rows[3]).toContain("Chưa cấu hình");
-  expect(rows[4]).toContain("Đã cấu hình");
-  // No key and no address is ever part of this page.
-  expect(document.body.textContent).not.toMatch(/https?:\/\/|sk-/);
-});
-
-test("a configured Factory with no model name reports an unavailable name", async () => {
-  const { view } = await mount("ModelsPage", (url) =>
-    url.endsWith("/model-registry")
-      ? Response.json({ items: [], defaults: [] })
-      : Response.json({
-          items: [
-            {
-              role: "factory",
-              configured: true,
-              running: true,
-              model: null,
-              provider: null,
-            },
-          ],
-        }),
-  );
-  const selector = await view.findByRole("combobox", {
-    name: "Model cho Factory",
-  });
-  const row = selector.closest("tr")!;
-  expect(row.textContent).toContain("Dịch vụ chưa báo tên model");
-  expect(row.textContent).toContain("Dịch vụ đang chạy");
-  expect(row.textContent).not.toContain("Chưa cấu hình");
-});
-
 test("the audit page names events in plain words and asks the server for one kind", async () => {
   const asked: string[] = [];
   const { view } = await mount("AuditPage", (url) => {
@@ -408,71 +325,6 @@ test("the audit page takes the trail of a span of days as a file, and says why w
   }
 });
 
-test("the model role returns to deployment fallback and persists the clear", async () => {
-  let saved = true;
-  const { view, sent } = await mount("ModelsPage", (url, init) => {
-    if (init?.method === "DELETE") {
-      saved = false;
-      return Response.json({ ok: true, role: "supervisor", model_id: null });
-    }
-    if (url.endsWith("/model-registry"))
-      return Response.json({
-        items: [
-          {
-            id: "registered",
-            name: "Registered model",
-            kind: "chat",
-            provider: "openai",
-            allowed: true,
-            check_status: "ok",
-          },
-        ],
-        defaults: saved
-          ? [
-              {
-                role: "supervisor",
-                model_id: "registered",
-                updated_at: "2026-10-06T10:00:00Z",
-              },
-            ]
-          : [],
-      });
-    return Response.json({
-      items: [
-        {
-          role: "supervisor",
-          configured: true,
-          running: true,
-          model: "deployment-model",
-          provider: "openai",
-        },
-      ],
-    });
-  });
-  const roleSelector = await view.findByRole("combobox", {
-    name: "Model cho Supervisor",
-  });
-  await waitFor(() =>
-    expect(roleSelector.textContent).toContain("Registered model"),
-  );
-  await choose(view, "Model cho Supervisor", "Theo bản triển khai");
-  await waitFor(() =>
-    expect(sent).toEqual([
-      {
-        method: "DELETE",
-        url: "/api/business/admin/model-defaults/supervisor",
-        body: undefined,
-      },
-    ]),
-  );
-  expect(
-    await view.findByText("Vai trò đã quay lại model của bản triển khai"),
-  ).toBeTruthy();
-  expect(
-    view.getByRole("combobox", { name: "Model cho Supervisor" }).textContent,
-  ).toContain("Theo bản triển khai");
-});
-
 test("external audit events have readable names and cursor keeps the row id", async () => {
   const { eventLabel } = await import(
     "../src/features/vinhomes-operations/connected/admin/Audit"
@@ -511,21 +363,3 @@ test("external audit events have readable names and cursor keeps the row id", as
   ).toEqual({ at: items[49].created_at, id: items[49].id });
 });
 
-test("deleting a connector shows the API history refusal", async () => {
-  const { QueryClient } = await import("@tanstack/react-query");
-  const { removeConnectionMutationOptions } = await import(
-    "../src/lib/connections/mutations"
-  );
-  globalThis.fetch = (async (_input: RequestInfo | URL, _init?: RequestInit) =>
-    Response.json(
-      {
-        detail:
-          "Kết nối đã có lịch sử xác nhận công cụ. Hãy tạm ngưng kết nối để giữ lịch sử kiểm toán.",
-      },
-      { status: 409 },
-    )) as typeof fetch;
-  const mutation = removeConnectionMutationOptions(new QueryClient());
-  await expect(mutation.mutationFn!("calendar", {} as never)).rejects.toThrow(
-    "Hãy tạm ngưng kết nối",
-  );
-});

@@ -36,7 +36,7 @@ export function OperationsSidebar({ open = false, onNavigate }: { open?: boolean
   const pendingQcCount = workOrders.filter((w) => w.status === 'COMPLETED').length;
 
   const account = previewAccount();
-  const workspaceItems = account?.role === 'admin' ? [['accounts', 'Quản lý tài khoản']] : account?.role === 'manager' ? [['team', 'Nhóm ban quản lý'], ['reports', 'Báo cáo vận hành']] : [];
+  const workspaceItems = account?.role === 'admin' ? [['accounts', 'Quản lý tài khoản']] : account?.role === 'manager' ? [['kanban', 'Yêu cầu'], ['reports', 'Báo cáo vận hành']] : [];
 
   const allNavItems: NavItemDef[] = [
     {

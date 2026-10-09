@@ -1,12 +1,10 @@
 import { infiniteQueryOptions, mutationOptions, queryOptions, type QueryClient } from "@tanstack/react-query";
 import { tryClient, type ClientOptions } from "@/lib/client";
-import { businessHeaders } from "@/lib/coordination/queries";
+import { businessHeaders } from "@/lib/business-headers";
 
 export type Account = { id: string; name: string; email: string; role: string; status: string; administrator: boolean; management_unit_id: string | null };
 export type Unit = { id: string; code: string; name: string; status: string; buildings: string[]; staff: number; open_tickets: number;
   groups: { id: string; name: string; members: number; agents: number; connections: number }[] };
-export type RoleModel = { role: "reception" | "supervisor" | "specialist" | "factory" | "embedding"; configured: boolean;
-  running: boolean | null; model: string | null; provider: string | null };
 export type AuditEvent = { id: string; created_at: string; event_type: string; initiator_kind: string; actor: string | null;
   target_type: string; target_id: string; payload: Record<string, unknown> };
 
@@ -19,7 +17,7 @@ async function ask(path: string, options: ClientOptions, fallback: string, spoke
 }
 
 export const adminKeys = { accounts: ["admin", "accounts"] as const, units: ["admin", "units"] as const,
-  models: ["admin", "models"] as const, audit: (kind: string) => ["admin", "audit", kind] as const };
+  audit: (kind: string) => ["admin", "audit", kind] as const };
 
 export function accountsQueryOptions() {
   return queryOptions({ queryKey: adminKeys.accounts, queryFn: async (): Promise<{ accounts: Account[]; units: { id: string; name: string }[] }> => {
@@ -67,10 +65,6 @@ export function createUnitMutationOptions(queryClient: QueryClient) {
       queryClient.invalidateQueries({ queryKey: adminKeys.accounts }),
       queryClient.invalidateQueries({ queryKey: ["coordination"] })]);
   } });
-}
-export function modelsQueryOptions() {
-  return queryOptions({ queryKey: adminKeys.models, queryFn: async (): Promise<RoleModel[]> =>
-    (await (await ask("/admin/models", {}, "Không tải được trạng thái model.")).json()).items });
 }
 /** The trail of a span of days (both included) as a CSV file, which the browser saves. */
 export function exportAuditMutationOptions() {

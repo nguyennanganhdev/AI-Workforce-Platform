@@ -1,4 +1,4 @@
-"""Validation for the authoritative session snapshot returned by OpenBot backend."""
+"""Validation for the authoritative session snapshot returned by the Vinhomes backend."""
 
 from __future__ import annotations
 

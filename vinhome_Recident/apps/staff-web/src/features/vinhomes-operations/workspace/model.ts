@@ -356,7 +356,7 @@ export function landing(role: Role) {
   return role === "admin"
     ? "/operations/accounts"
     : role === "manager"
-      ? "/operations/team"
+      ? "/operations/kanban"
       : role === "resident"
         ? "/login"
         : "/operations/my-tasks";
@@ -365,7 +365,7 @@ export function canViewPath(role: Role, path: string) {
   if (role === "resident") return false;
   if (role === "admin") return path === "/operations/accounts";
   if (path === "/operations/accounts") return false;
-  if (["/operations/team", "/operations/reports"].includes(path))
+  if (["/operations/reports"].includes(path))
     return role === "manager";
   if (role === "manager") return true;
   return [

@@ -12,7 +12,7 @@ def arriving(door: str | None) -> Request:
     return Request({"type": "http", "headers": headers})
 
 
-def test_each_door_has_its_own_cookie_and_operations_keeps_the_one_openbot_reads():
+def test_each_door_has_its_own_cookie_and_operations_keeps_the_default_one():
     assert cookie(arriving(None)) == cookie(arriving("operations")) == "vinhomes_session"
     assert cookie(arriving("field")) == "vinhomes_staff_session"
     assert cookie(arriving("resident")) == "vinhomes_resident_session"

@@ -1,6 +1,6 @@
 # Vinhomes — cư dân và nhân viên
 
-Gói này chứa riêng phần Vinhomes của nền tảng AI Workforce: giao diện cư dân, giao diện nhân viên (Ban quản lý và nhân viên hiện trường), backend nghiệp vụ và agent tiếp nhận (Reception) trả lời cư dân. Nó không chứa mã chung của nền tảng (chat OpenBot, quản trị OpenBot, Supervisor). Mã gốc lấy từ nhánh `dev_TeamChien` (commit b5e4940).
+Gói domain Vinhomes, đứng riêng, không chứa mã của platform: giao diện cư dân, giao diện nhân viên (Ban quản lý và nhân viên hiện trường), backend nghiệp vụ và agent lễ tân (Reception) trả lời cư dân. Về sau platform sẽ nối vào gói này như một khách hàng; Reception là đầu nối duy nhất từ Vinhomes sang platform.
 
 ## Cấu trúc
 
@@ -12,9 +12,9 @@ vinhome_Recident/
 ├── services/
 │   └── vinhomes-api/   Backend nghiệp vụ       (FastAPI + PostgreSQL, cổng 8000)
 ├── agents/
-│   └── reception/      Agent tiếp nhận cư dân  (Python, cổng 4202)
+│   └── reception/      Agent lễ tân cho cư dân (Python, cổng 4202)
 ├── packages/
-│   └── shared/         Mã dùng chung của hai app (upload ảnh, đính kèm, kiểu ticket)
+│   └── shared/         Mã dùng chung của hai app (upload ảnh, đính kèm)
 ├── deploy/             Đóng gói: Dockerfile.web, nginx, compose.yml, deployment.env.example
 └── docs/               Hướng dẫn chạy và API (resident-web/, backend/)
 ```
@@ -23,11 +23,7 @@ vinhome_Recident/
 
 ## Công cụ
 
-Phần web dùng **Node 22 trở lên và npm**, phần Python dùng Python 3.12. Không cần Bun.
-
-Gói từng dùng Bun vì nó thừa kế từ repo nền tảng, nơi Bun chạy máy chủ OpenBot. Ở gói này Bun chỉ làm ba việc đều thay được: chạy test (nay là Vitest), chạy máy chủ production tự viết bằng `Bun.serve` (nay là nginx, giống app cư dân) và vài script phụ (nay là Node). Vite, TypeScript và Python không phụ thuộc Bun.
-
-Ngoại lệ: một số script trong `services/vinhomes-api/scripts/` (`start_knowledge`, `start_routines`, `start_technical_tools`, `setup_*`, `provision_*`, `publish_learned`) khởi chạy các công cụ của `server/` thuộc nền tảng, viết bằng Bun. Chúng cần Bun nhưng cũng cần `server/`, vốn không nằm trong gói.
+Phần web dùng **Node 22 trở lên và npm** (build bằng Vite, test bằng Vitest); phần Python dùng Python 3.12. Không cần Bun.
 
 ## Chạy khi phát triển
 
@@ -57,11 +53,13 @@ copy deployment.env.example deployment.env      # điền giá trị, không com
 docker compose --env-file deployment.env up -d --build
 ```
 
-Compose không khởi động các dịch vụ của nền tảng mà API gọi tới (Supervisor, tìm kiếm tri thức, tool host, lịch chạy, agent factory, kho S3) và không có job migration. Cần có sẵn một PostgreSQL đã migrate và khai báo địa chỉ các dịch vụ kia bằng biến `*_URL` trong `deployment.env`. Chi tiết trong [deploy/README.md](deploy/README.md).
+Compose không khởi động PostgreSQL và kho S3; job `migrate` tự tạo schema trong database trống. Chi tiết trong [deploy/README.md](deploy/README.md).
 
-## Phần chưa nằm trong gói
+## Đã bỏ và còn dang dở
 
-- `server/` (nền tảng): schema database V3 (`server/drizzle`) và các công cụ khởi tạo nằm ở đó. Backend cần database đã có schema này; test `services/vinhomes-api/tests` dựng database thật cũng cần nó.
-- Supervisor (`agent-coordination`), tìm kiếm tri thức, tool host: các dịch vụ API gọi tới; có ở nhánh `dev_TeamChien`.
-- Nhiều tài liệu trong `agents/` và `services/` trỏ tới `docs/teams/...`; các tài liệu đó cũng nằm ở `dev_TeamChien`.
-- `GET /api/vinhomes/tickets` (tab "Yêu cầu hệ thống", tab mặc định của Ban quản lý trong màn Phản ánh & Sự cố) là endpoint của máy chủ nền tảng (`server/src/app.ts`), không phải của `vinhomes-api`. Đặt `PLATFORM_API_URL` để tab này có dữ liệu; nếu không, nó báo lỗi tải và các tab khác vẫn dùng bình thường.
+Gói này đã bỏ toàn bộ phần Supervisor, quản lý agent (builder, đánh giá, model, kết nối MCP, lịch chạy, phòng chat của agent), học tri thức và tool gateway, cùng các màn hình tương ứng trong app nhân viên. Còn lại:
+
+- **Database đã thuộc gói** (`services/vinhomes-api/src/vinhomes_api/schema/`: 5 migration, dữ liệu mẫu, quyền role). Còn lại họ bảng `agents`, `agent_runs`, `execution_principals`, `runtime_*` mà cơ chế ủy quyền của Reception và việc tải tệp vẫn dùng; thay bằng mô hình nhỏ của domain là bước kế tiếp. Chi tiết: [docs/domain/SPEC_DATABASE_DOMAIN.md](docs/domain/SPEC_DATABASE_DOMAIN.md), nghiệp vụ: [docs/domain/NGHIEP_VU_VINHOMES.md](docs/domain/NGHIEP_VU_VINHOMES.md).
+- **Đường nối Reception ⇄ "Supervisor".** Reception giao ticket bằng hợp đồng `schema_v2`: hộp thư, kết quả trả về và câu hỏi gửi lại cư dân (`v3_reception_supervisor`, `v3_resident_interactions`, `/resident/supervisor-interactions`). Chưa có ai đọc hộp thư này; tên gọi và hợp đồng sẽ đổi khi nối sang platform.
+- **Lớp xem thử dữ liệu mẫu trong app nhân viên** vẫn còn khái niệm phòng và agent (`hooks/use-operations-data.ts`, `mock/`, `workspace/`).
+- **Nội dung an toàn khẩn cấp và tri thức** hiện để trống: Reception không đưa lời khuyên tự xử lý và không có nguồn trả lời câu hỏi thông tin cho đến khi có gói tri thức (`RECEPTION_KNOWLEDGE_URL`).

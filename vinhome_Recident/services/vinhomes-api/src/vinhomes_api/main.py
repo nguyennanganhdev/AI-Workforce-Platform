@@ -23,16 +23,11 @@ from .resident_api import operations_router as resident_intake_router
 from .resident_api import router as resident_contract_router
 from .resident_contract import ResidentBoundary, http_error, is_contract, validation_error
 from .v3_accounts import router as accounts_router
-from .v3_agent_reviews import router as agent_reviews_router
-from .v3_agent_builder import router as agent_builder_router
 from .v3_billing import router as billing_router
 from .v3_config import V3Settings
-from .v3_coordination import router as coordination_router
 from .v3_conversation_images import router as conversation_images_router
 from .v3_demo import router as demo_router
 from .v3_files import router as files_router
-from .v3_knowledge import router as knowledge_router
-from .v3_memory import router as memory_router
 from .v3_mutations import router as mutations_router
 from .v3_operations import router as operations_router
 from .v3_plans import router as plans_router
@@ -45,18 +40,10 @@ from .v3_report_jobs import router as report_jobs_router
 from .v3_reports import router as reports_router
 from .v3_resident import router as resident_router
 from .v3_resident_support import router as resident_support_router
-from .v3_room_agents import router as room_agents_router
-from .v3_rooms import router as rooms_router
-from .v3_private_chats import router as private_chats_router
-from .v3_models import router as model_registry_router
 from .v3_request_presentation import router as request_presentation_router
-from .v3_session_sources import router as session_sources_router, runtime_router as session_question_router
 from .v3_routes import router as v3_router
 from .v3_security import router as security_router
-from .v3_learning import router as learning_router
-from .v3_session import router as session_router
 from .v3_specialized import router as specialized_router
-from .v3_team_board import router as team_board_router
 from .v3_technical import router as technical_router
 from .v3_triage import router as triage_router
 from .v3_water import router as water_router
@@ -84,10 +71,10 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
         title="Vinhomes Operations API (database V3)",
         version="0.2.0",
         description=(
-            "Operations API for the canonical V3 tickets/work_orders schema. "
-            "Business calls require a platform session through VINHOMES_API_AUTH_URL, "
-            "or VINHOMES_API_DEV_USER_ID on loopback only. The user must have an "
-            "active admin or scoped management/staff grant in V3."
+            "Operations API of the Vinhomes domain: tickets, work orders and the resident contract. "
+            "Business calls need a signed-in user (VINHOMES_API_PASSWORD_AUTH=1), or "
+            "VINHOMES_API_DEV_USER_ID on loopback only. The user must have an "
+            "active admin or scoped management/staff grant."
         ),
         lifespan=lifespan,
     )
@@ -117,7 +104,7 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     async def health() -> dict[str, str]:
         return {"status": "ok", "service": "vinhomes-api", "schema": "v3",
                 "dataMode": "faker-database" if settings.demo_mode else "database",
-                "authMode": "password" if settings.password_auth else "demo" if settings.demo_mode else "development" if settings.dev_user_id else "session" if settings.auth_url else "unconfigured"}
+                "authMode": "password" if settings.password_auth else "demo" if settings.demo_mode else "development" if settings.dev_user_id else "unconfigured"}
 
     @app.get("/ready", tags=["health"])
     async def ready() -> dict[str, str]:
@@ -144,13 +131,6 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
                            and to_regclass('public.vh_resident_photos') is not null
                            and to_regclass('public.vh_reception_supervisor_messages') is not null
                            and to_regclass('public.vh_reception_supervisor_pending') is not null
-                           and to_regclass('public.vh_private_chats') is not null
-                           and to_regclass('public.vh_private_chat_sources') is not null
-                           and to_regclass('public.vh_session_sources') is not null
-                           and to_regclass('public.vh_external_call_confirmations') is not null
-                           and to_regclass('public.vh_agent_skills') is not null
-                           and to_regclass('public.admin_model_registry') is not null
-                           and to_regclass('public.admin_role_models') is not null
                     """)
                 )
                 if not result.scalar_one():
@@ -168,63 +148,30 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(files_router)
     app.include_router(resident_router)
     app.include_router(resident_support_router)
-    app.include_router(rooms_router)
-    app.include_router(private_chats_router)
-    app.include_router(model_registry_router)
     app.include_router(request_presentation_router)
-    app.include_router(session_sources_router)
-    app.include_router(session_question_router)
-    app.include_router(knowledge_router)
-    app.include_router(memory_router)
     app.include_router(reports_router)
     app.include_router(water_router)
     app.include_router(demo_router)
     app.include_router(security_router)
-    app.include_router(room_agents_router)
     app.include_router(accounts_router)
     app.include_router(plans_router)
     app.include_router(technical_router)
     app.include_router(conversation_images_router)
-    app.include_router(agent_reviews_router)
-    app.include_router(agent_builder_router)
     app.include_router(report_jobs_router)
     app.include_router(reception_router)
     app.include_router(reception_operations_router)
     app.include_router(reception_agent_router)
     app.include_router(billing_router)
-    app.include_router(team_board_router)
     app.include_router(resident_contract_router)
     app.include_router(resident_intake_router)
     app.include_router(reception_supervisor_router)
     app.include_router(supervisor_operations_router)
-    app.include_router(session_router)
-    app.include_router(coordination_router)
-    from .v3_room_runtime import router as room_runtime_router
-    app.include_router(room_runtime_router)
     from .v3_resident_interactions import router as resident_interactions_router
     app.include_router(resident_interactions_router)
-    from .v3_tool_gateway import router as tool_gateway_router
-    app.include_router(tool_gateway_router)
-    from .v3_agent_evals import internal as agent_eval_worker_router, router as agent_evals_router
-    from .v3_agent_eval_sandbox import router as agent_eval_sandbox_router
-    app.include_router(agent_evals_router)
-    app.include_router(agent_eval_worker_router)
-    app.include_router(agent_eval_sandbox_router)
-    from .v3_connections import router as connections_router, room_router as room_connections_router
-    app.include_router(connections_router)
-    app.include_router(room_connections_router)
-    from .v3_agent_library import router as agent_library_router
-    app.include_router(agent_library_router)
     from .v3_admin import router as admin_router
     app.include_router(admin_router)
     from .direct_uploads import router as direct_uploads_router
     app.include_router(direct_uploads_router)
-    from .v3_room_files import router as room_files_router
-    app.include_router(room_files_router)
-    from .v3_routines import internal as routine_firing_router, router as routines_router
-    app.include_router(routines_router)
-    app.include_router(routine_firing_router)
-    app.include_router(learning_router)
     from .resident_api import ticket_intake_router
     app.include_router(ticket_intake_router)
     if settings.demo_mode:

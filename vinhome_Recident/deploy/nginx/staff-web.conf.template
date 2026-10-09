@@ -30,20 +30,6 @@ server {
     proxy_read_timeout 255s;
   }
 
-  # The platform's own API: today only the live ticket list in "Phản ánh & Sự cố" (/api/vinhomes/tickets)
-  # reads from it. Resolved per request, so the container starts without it and that tab shows an
-  # error until PLATFORM_API_URL answers. The field door has nothing of the platform behind it.
-  location /api/ {
-    if ($field_door) {
-      return 404;
-    }
-    set $platform_api ${PLATFORM_API_URL};
-    proxy_pass $platform_api;
-    proxy_set_header Host $http_host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_read_timeout 255s;
-  }
-
   # Built files: a miss is a real 404, never the app's HTML.
   location /assets/ {
     try_files $uri =404;

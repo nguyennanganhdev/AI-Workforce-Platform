@@ -14,13 +14,14 @@ test("provides the work pages of every staff role", () => {
     "/operations/completed-tasks",
     "/operations/incidents",
     "/operations/approvals",
-    "/operations/agents",
+    "/operations/kanban",
   ]) {
     expect(router.routesByPath[path as keyof typeof router.routesByPath]?.fullPath).toBe(path);
   }
 });
 
-test("keeps no page of the general-purpose chat product", () => {
+test("keeps no page of the general-purpose chat product or of agent management", () => {
   const paths = Object.keys(router.routesByPath);
   expect(paths.filter((path) => /^\/(channel|admin|settings|sign|onboarding)/.test(path))).toEqual([]);
+  expect(paths.filter((path) => /^\/operations\/(agents|ask|models|connections|team)/.test(path))).toEqual([]);
 });

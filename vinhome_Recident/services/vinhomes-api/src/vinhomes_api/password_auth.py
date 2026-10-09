@@ -1,4 +1,4 @@
-"""PostgreSQL password identities for the V3 apps; independent of OpenBot SSO.
+"""PostgreSQL password identities for the resident and staff apps.
 
 The existing accounts/sessions tables use dedicated provider/token namespaces.
 Only hashes of passwords and opaque session tokens are stored in PostgreSQL.

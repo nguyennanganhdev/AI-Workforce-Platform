@@ -11,7 +11,8 @@ $migrationConfig = Get-Content (Join-Path $serviceRoot '.local-v3-faker/migratio
 $previousDatabaseUrl = $env:DATABASE_URL
 try {
     $env:DATABASE_URL = ($migrationConfig | Where-Object { $_.StartsWith('DATABASE_URL=') }) -replace '^DATABASE_URL=', ''
-    bun (Join-Path $projectRoot 'server/scripts/migrate.ts')
+    $env:PYTHONPATH = Join-Path $serviceRoot 'src'
+    & $python -m vinhomes_api.database migrate --url $env:DATABASE_URL
     if ($LASTEXITCODE -ne 0) { throw 'V3 migrations failed' }
 } finally {
     $env:DATABASE_URL = $previousDatabaseUrl

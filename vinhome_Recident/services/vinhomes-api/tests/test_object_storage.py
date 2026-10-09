@@ -2,6 +2,9 @@
 
     VINHOMES_TEST_S3_ENDPOINT=http://127.0.0.1:9599 VINHOMES_TEST_S3_ACCESS_KEY=... VINHOMES_TEST_S3_SECRET_KEY=... pytest tests/test_object_storage.py
 """
+
+import pytest
+
 import asyncio
 import os
 from pathlib import Path
@@ -13,7 +16,7 @@ from test_resident_contract import TENANT, image, sql
 from test_resident_contract import (
     database as database,  # noqa: PLC0414 -- pytest fixture export
 )
-from test_v3_agent_database import demo_client
+from test_domain_database import demo_client
 
 from vinhomes_api import storage, v3_files
 from vinhomes_api.storage_setup import setup

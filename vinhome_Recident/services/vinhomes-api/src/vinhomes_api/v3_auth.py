@@ -2,7 +2,6 @@
 
 from collections.abc import AsyncIterator
 
-import httpx
 from fastapi import Header, HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -29,30 +28,7 @@ async def _actor_id(request: Request, settings: V3Settings) -> str:
         if request.client is None or request.client.host not in {"127.0.0.1", "::1"}:
             raise HTTPException(403, "Development identity is only available on loopback")
         return settings.dev_user_id
-    if not settings.auth_url:
-        raise HTTPException(503, "VINHOMES_API_AUTH_URL is not configured")
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            response = await client.get(
-                settings.auth_url,
-                headers={"cookie": request.headers.get("cookie", "")},
-            )
-    except httpx.HTTPError as exc:
-        raise HTTPException(503, "Authentication server is unavailable") from exc
-    if response.status_code in {401, 403}:
-        raise HTTPException(response.status_code, "Sign in with an active platform account")
-    if response.status_code != 200:
-        raise HTTPException(503, "Authentication server is unavailable")
-    try:
-        session = response.json()
-        if session is None or (isinstance(session, dict) and session.get("user") is None):
-            raise HTTPException(401, "Sign in with an active platform account")
-        actor_id = session["user"]["id"]
-    except (ValueError, KeyError, TypeError) as exc:
-        raise HTTPException(503, "Authentication server returned an invalid identity") from exc
-    if not isinstance(actor_id, str) or not actor_id:
-        raise HTTPException(503, "Authentication server returned an invalid identity")
-    return actor_id
+    raise HTTPException(503, "Sign-in is not configured: set VINHOMES_API_PASSWORD_AUTH=1")
 
 
 async def scoped_connection(request: Request, x_demo_actor: str | None = Header(default=None)) -> AsyncIterator[tuple[AsyncConnection, str, bool]]:

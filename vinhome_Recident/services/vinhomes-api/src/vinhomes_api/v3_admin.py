@@ -1,19 +1,15 @@
 """What the platform administrator reads: the management units, the models at work, the audit trail.
 
-Accounts are managed by the password-login module and external connections by v3_connections.
+Accounts are managed by the password-login module.
 """
-import asyncio
 import csv
-import hashlib
 import io
 import json
-import os
 from datetime import date, datetime
 from typing import Annotated
 from uuid import UUID, uuid4
 
-import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -88,7 +84,7 @@ async def create_unit(body: UnitCreate, scope: Admin):
     if covered:
         raise HTTPException(409, f"{covered['name']} đã có {covered['unit_name']} phụ trách dịch vụ được chọn.")
     unit, workspace = uuid4(), uuid4()
-    room, supervisor = 'bql-' + str(unit), 'supervisor-' + str(unit)
+    room = 'bql-' + str(unit)
     tenant = "nullif(current_setting('app.tenant_id',true),'')::uuid"
     await db.execute(text(f"insert into management_units(id,tenant_id,code,name,status) values(:id,{tenant},:code,:name,'active')"),
                      {'id': unit, 'code': body.code, 'name': body.name})
@@ -107,15 +103,6 @@ async def create_unit(body: UnitCreate, scope: Admin):
     await db.execute(text(f"insert into channels(id,tenant_id,workspace_id,name,description,kind,created_by,is_dispatch_default) values(:id,{tenant},:workspace,:name,'Phòng điều phối yêu cầu của cư dân','management',:actor,true)"),
                      {'id': room, 'workspace': workspace, 'name': body.name, 'actor': actor})
     await db.execute(text(f"insert into channel_memberships(tenant_id,channel_id,user_id) values({tenant},:room,:actor)"), {'room': room, 'actor': actor})
-    await db.execute(text(f"insert into agents(id,tenant_id,workspace_id,name,type,configuration,purpose,status) values(:id,{tenant},:workspace,:name,'built_in','{{}}','supervisor','active')"),
-                     {'id': supervisor, 'workspace': workspace, 'name': 'Điều phối ' + body.name})
-    await db.execute(text(f"insert into channel_agents(tenant_id,channel_id,agent_id) values({tenant},:room,:agent)"), {'room': room, 'agent': supervisor})
-    await db.execute(text(f'''insert into agent_versions(tenant_id,agent_id,version_no,runtime,framework_version,instructions,config,config_hash,created_by)
-        values({tenant},:agent,1,'agentscope','2.0.9','Supervisor of the management room (agent-coordination)','{{}}',:hash,:actor)'''),
-        {'agent': supervisor, 'hash': hashlib.sha256(b'{}').hexdigest(), 'actor': actor})
-    await db.execute(text(f"insert into execution_principals(tenant_id,kind,workspace_id,status) values({tenant},'workspace_service',:workspace,'active')"), {'workspace': workspace})
-    from .report_bootstrap import install
-    await install(db, actor, workspace, room)
     await audit(db, actor, 'management_unit.created', 'management_unit', str(unit),
                 {'code': body.code, 'buildings': buildings, 'categories': categories, 'room': room})
     return {'id': unit, 'workspace_id': workspace, 'room_id': room}
@@ -123,7 +110,7 @@ async def create_unit(body: UnitCreate, scope: Admin):
 
 @router.get('/units')
 async def units(scope: Admin):
-    """Each management unit with the buildings it covers, its groups and how many people and agents work in it."""
+    """Each management unit with the buildings it covers, its groups and how many people work in it."""
     admin(scope)
     rows = await scope[0].execute(text('''select mu.id,mu.code,mu.name,mu.status,
         coalesce((select jsonb_agg(distinct b.name order by b.name) from buildings b
@@ -134,59 +121,13 @@ async def units(scope: Admin):
               or (s.kind='site' and s.site_id=b.site_id) or (s.kind='zone' and s.zone_id=b.zone_id))
           where b.tenant_id=mu.tenant_id and b.status='active'),'[]'::jsonb) as buildings,
         coalesce((select jsonb_agg(jsonb_build_object('id',w.id,'name',w.name,
-            'members',(select count(*) from workspace_members m where m.workspace_id=w.id and m.tenant_id=w.tenant_id and m.status='active'),
-            'agents',(select count(distinct r.agent_id) from agent_releases r join agents a on a.id=r.agent_id and a.tenant_id=r.tenant_id
-              where a.workspace_id=w.id and r.tenant_id=w.tenant_id and r.status='published' and r.revoked_at is null),
-            'connections',(select count(*) from mcp_servers c where c.tenant_id=w.tenant_id and c.provenance='custom'
-              and (c.workspace_id is null or c.workspace_id=w.id))) order by w.name)
+            'members',(select count(*) from workspace_members m where m.workspace_id=w.id and m.tenant_id=w.tenant_id and m.status='active')) order by w.name)
           from workspaces w where w.management_unit_id=mu.id and w.tenant_id=mu.tenant_id and w.status='active'),'[]'::jsonb) as groups,
         (select count(*) from staff_profiles sp where sp.management_unit_id=mu.id and sp.tenant_id=mu.tenant_id) as staff,
         (select count(*) from tickets t where t.management_unit_id=mu.id and t.tenant_id=mu.tenant_id
           and t.status not in ('closed','cancelled')) as open_tickets
         from management_units mu order by mu.name'''))
     return {'items': [dict(r) for r in rows.mappings()]}
-
-
-async def health(client: httpx.AsyncClient, url: str | None) -> dict | None:
-    """A service's own word on what it runs, or None when it does not answer. Never a key or an address."""
-    if not url:
-        return None
-    try:
-        reply = await client.get(url.rstrip('/') + '/health')
-        body = reply.json()
-        return body if reply.status_code == 200 and isinstance(body, dict) else None
-    except (httpx.HTTPError, ValueError):
-        return None
-
-
-@router.get('/models')
-async def models(request: Request, scope: Admin):
-    """Which model each role runs on, as the running services report it. Models are set in the
-    deployment's settings (one provider, key and address per role); this screen does not change them."""
-    admin(scope)
-    reception_url = request.app.state.settings.reception_url
-    coordination_url = os.getenv('VINHOMES_API_COORDINATION_URL', '').strip() or None
-    factory_url = os.getenv('FACTORY_SERVICE_URL', '').strip() or None
-    async with httpx.AsyncClient(timeout=4, follow_redirects=False) as client:
-        reception, coordination, factory = await asyncio.gather(
-            health(client, reception_url), health(client, coordination_url), health(client, factory_url))
-    embedding = (await scope[0].execute(text(
-        'select provider,model_name,dimension from embedding_models where active order by updated_at desc limit 1'))).mappings().first()
-
-    def role(code, configured, answer, model=None, provider=None):
-        return {'role': code, 'configured': bool(configured), 'running': answer is not None,
-                'model': model, 'provider': provider}
-
-    c = coordination or {}
-    return {'items': [
-        role('reception', reception_url, reception, (reception or {}).get('model'), (reception or {}).get('provider')),
-        role('supervisor', coordination_url, coordination, c.get('model'), c.get('provider')),
-        role('specialist', coordination_url, coordination, c.get('specialist_model')),
-        role('factory', factory_url, factory),
-        {'role': 'embedding', 'configured': embedding is not None, 'running': None,
-         'model': f"{embedding['model_name']} · {embedding['dimension']} chiều" if embedding else None,
-         'provider': embedding['provider'] if embedding else None},
-    ]}
 
 
 @router.get('/audit-events')
@@ -199,12 +140,10 @@ async def audit_events(scope: Admin, kind: str = Query('', max_length=60, patter
     if first and last and last<first: raise HTTPException(422,'Ngày kết thúc phải từ ngày bắt đầu trở đi.')
     if before_id and not before: raise HTTPException(422,'Mốc sự kiện cần đi cùng thời gian phân trang.')
     rows = await scope[0].execute(text("""select e.id,e.created_at,e.event_type,e.initiator_kind,e.target_type,e.target_id,e.payload,
-          coalesce(u.name,case when e.initiator_kind='agent' then (select a.name from agents a where a.id=e.initiator_id and a.tenant_id=e.tenant_id) end,
+          coalesce(u.name,
             case when e.initiator_kind='system' then 'Hệ thống' when e.initiator_kind='agent' then 'Agent' else 'Người dùng' end) as actor,
           coalesce(e.payload->>'title',e.payload->>'name',e.payload->>'connection_title',
-            (select a.name from agents a where e.target_type='agent' and a.id=e.target_id and a.tenant_id=e.tenant_id),
             (select t.title from tickets t where e.target_type='ticket' and t.id::text=e.target_id and t.tenant_id=e.tenant_id),
-            (select c.title from mcp_servers c where e.target_type in ('connection','mcp_server') and c.id=e.target_id and c.tenant_id=e.tenant_id),
             (select v.name from users v where e.target_type='account' and v.id=e.target_id),
             (select mu.name from management_units mu where e.target_type='management_unit' and mu.id::text=e.target_id and mu.tenant_id=e.tenant_id),e.target_type) as target_label,
           case when e.payload->>'ok'='false' or e.payload->>'success'='false' or e.payload->>'status'='failed' or e.event_type like '%.failed' then 'failed'
@@ -215,7 +154,7 @@ async def audit_events(scope: Admin, kind: str = Query('', max_length=60, patter
             or (e.created_at=cast(:before as timestamptz) and cast(:before_id as uuid) is not null and e.id<cast(:before_id as uuid)))
           and (cast(:first as date) is null or e.created_at>=(cast(cast(:first as date) as timestamp) at time zone 'Asia/Ho_Chi_Minh'))
           and (cast(:last as date) is null or e.created_at<(cast(cast(:last as date)+1 as timestamp) at time zone 'Asia/Ho_Chi_Minh'))
-          and (:actor='' or coalesce(u.name,e.initiator_id,'') ilike :actor_match or exists(select 1 from agents actor_agent where actor_agent.id=e.initiator_id and actor_agent.tenant_id=e.tenant_id and actor_agent.name ilike :actor_match))
+          and (:actor='' or coalesce(u.name,e.initiator_id,'') ilike :actor_match)
           and (:action='' or e.event_type=:action)
           and (:search='' or e.payload::text ilike :search_match or e.target_id ilike :search_match or e.event_type ilike :search_match)
           and (:result='' or (case when e.payload->>'ok'='false' or e.payload->>'success'='false' or e.payload->>'status'='failed' or e.event_type like '%.failed' then 'failed' when e.payload->>'ok'='true' or e.payload->>'success'='true' then 'success' else 'recorded' end)=:result)
@@ -250,7 +189,7 @@ async def audit_export(scope: Admin, first: date = Query(..., alias='from'), las
     # Midnight in Việt Nam, as a moment: the date is read as a local time there, not as one of the database's own zone.
     span = """e.created_at>=(cast(cast(:first as date) as timestamp) at time zone 'Asia/Ho_Chi_Minh')
         and e.created_at<(cast(cast(:last as date)+1 as timestamp) at time zone 'Asia/Ho_Chi_Minh') and (:kind='' or e.event_type like :prefix)
-        and (:actor='' or e.initiator_id ilike :actor_match or exists(select 1 from users actor_user where actor_user.id=e.actor_user_id and actor_user.name ilike :actor_match) or exists(select 1 from agents actor_agent where actor_agent.id=e.initiator_id and actor_agent.tenant_id=e.tenant_id and actor_agent.name ilike :actor_match))
+        and (:actor='' or e.initiator_id ilike :actor_match or exists(select 1 from users actor_user where actor_user.id=e.actor_user_id and actor_user.name ilike :actor_match))
         and (:action='' or e.event_type=:action)
         and (:search='' or e.payload::text ilike :search_match or e.target_id ilike :search_match or e.event_type ilike :search_match)
         and (:result='' or (case when e.payload->>'ok'='false' or e.payload->>'success'='false' or e.payload->>'status'='failed' or e.event_type like '%.failed' then 'failed' when e.payload->>'ok'='true' or e.payload->>'success'='true' then 'success' else 'recorded' end)=:result)"""
@@ -260,8 +199,7 @@ async def audit_export(scope: Admin, first: date = Query(..., alias='from'), las
         raise HTTPException(413, f'Khoảng này có {count} sự kiện, nhiều hơn mức {EXPORT_ROWS} của một tệp. Chọn khoảng ngắn hơn.')
     rows = await scope[0].execute(text("""select to_char(e.created_at at time zone 'Asia/Ho_Chi_Minh','YYYY-MM-DD HH24:MI:SS') as at,
           e.event_type,e.initiator_kind,e.target_type,e.target_id,e.payload,
-          coalesce(u.name, case when e.initiator_kind='agent' then (select a.name from agents a where a.id=e.initiator_id and a.tenant_id=e.tenant_id) end,
-            e.initiator_id) as actor
+          coalesce(u.name, e.initiator_id) as actor
         from audit_events e left join users u on u.id=e.actor_user_id where """ + span + ' order by e.created_at,e.id'), asked)
     out = io.StringIO()
     sheet = csv.writer(out)
@@ -283,8 +221,7 @@ async def overview(scope: Admin):
     counts = (await db.execute(text("""select
         (select count(*) from tickets where status not in ('closed','cancelled')) as open_tickets,
         (select count(*) from tickets where status not in ('closed','cancelled') and resolution_due_at<now()) as overdue_tickets,
-        (select count(*) from tenant_memberships where status='pending') as pending_accounts,
-        (select count(*) from mcp_servers where provenance='custom' and created_at>=now()-interval '24 hours') as new_connections"""))).mappings().one()
+        (select count(*) from tenant_memberships where status='pending') as pending_accounts"""))).mappings().one()
     chart = await db.execute(text("""select d::date as date,count(t.id) as count
         from generate_series((now() at time zone 'Asia/Ho_Chi_Minh')::date-13,
           (now() at time zone 'Asia/Ho_Chi_Minh')::date,interval '1 day') d

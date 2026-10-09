@@ -1,13 +1,14 @@
 """What Reception's runtime is told and may do in a conversation, against migrated, seeded PostgreSQL."""
 
+
+
 from uuid import UUID, uuid4
 
 from test_resident_contract import sql
 from test_resident_contract import (
     database as database,  # noqa: PLC0414 -- pytest fixture export
 )
-from test_v3_agent_database import delegate, operation
-from test_v3_coordination import BASE, SERVICE, app, hand_over, result
+from test_domain_database import app, delegate, operation
 
 
 def say(c, channel, text):
@@ -53,42 +54,6 @@ def test_reception_is_told_what_is_missing_and_the_question_is_counted(database,
         seen = c.get(f"/internal/reception/chats/{channel}/context?message_id={second}", headers=bearer).json()
         assert [m["text"] for m in seen["history"] if m["role"] == "resident"] == ["Nhà tắm của tôi bị rò nước", "ok"]
         assert seen["open_request"] is None
-
-
-def test_an_answer_in_the_chat_reaches_the_supervisor_even_after_the_ticket_was_reclassified(database, monkeypatch):
-    monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "3d" * 32)
-    with app(database) as c:
-        handoff, channel = hand_over(c, f"Điều hòa phòng ngủ không mát {uuid4().hex[:6]}")
-        team, ticket = handoff["team"]["id"], handoff["ticket"]["id"]
-        submitted = sql(database, "select message_id from vh_reception_supervisor_messages where team_id=$1", UUID(team))[0]["message_id"]
-        verified = c.post(BASE + "/reception/verify", headers=SERVICE, json={"team_id": team, "message_id": submitted}).json()
-
-        early = say(c, channel, "Tôi ở nhà buổi tối")
-        bearer = {"Authorization": "Bearer " + delegate(c, channel, early)["token"]}
-        follow = f"/internal/reception/chats/{channel}/follow-up"
-        # Nothing was asked: the message stays in the conversation and nothing is sent on.
-        assert c.post(follow, headers=bearer, json={"message_id": early}).json() == {"attached": 0, "delivered": False, "pending": None}
-
-        question = result(verified, "information_requested", "Điều hòa hỏng từ khi nào ạ?")
-        assert c.post(BASE + "/reception/send", headers=SERVICE, json={"message": question}).status_code == 200
-        # Management raises the priority while the question is open.
-        sql(database, "update tickets set priority='high',severity='major' where id=$1 returning id", UUID(ticket))
-        answer = say(c, channel, "Hỏng từ tối qua, bật lên chỉ có gió")
-        bearer = {"Authorization": "Bearer " + delegate(c, channel, answer)["token"]}
-        context = c.get(f"/internal/reception/chats/{channel}/context?message_id={answer}", headers=bearer).json()
-        assert context["open_request"]["pending"] == "information"
-        assert context["open_request"]["submitted"]["request"]["priority"] == "high"
-        sent = c.post(follow, headers=bearer, json={"message_id": answer})
-        assert sent.status_code == 200 and sent.json() == {"attached": 0, "delivered": True, "pending": "information"}, sent.text
-        stored = sql(database, "select payload->>'message' as message,payload->>'source_message_id' as source "
-                               "from vh_reception_supervisor_messages where ticket_id=$1 and message_type='information_provided'",
-                     UUID(ticket))
-        assert stored == [{"message": "Hỏng từ tối qua, bật lên chỉ có gió", "source": answer}]
-        assert c.get(BASE + f"/teams/{team}/view", headers=SERVICE).json()["pending_resident"] is None
-        # A second message is not an answer to a question that is no longer open.
-        later = say(c, channel, "Cảm ơn")
-        bearer = {"Authorization": "Bearer " + delegate(c, channel, later)["token"]}
-        assert c.post(follow, headers=bearer, json={"message_id": later}).json()["delivered"] is False
 
 
 def test_a_denied_danger_is_no_emergency_and_a_born_emergency_still_alerts_management(database, monkeypatch):
