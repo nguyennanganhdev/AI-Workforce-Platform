@@ -16,7 +16,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
 CALLS: list[dict] = []  # every request, for assertions
-MODE: dict = {"leader": "normal"}  # tests flip this to script a failing leader
+MODE: dict = {"leader": "normal", "scenario": "default"}  # tests flip this to script a failing leader
 
 
 def _text(m: dict) -> str:
@@ -45,6 +45,34 @@ def _results(msgs: list[dict], name: str) -> list[str]:
     return [_text(m) for m in msgs if m.get("role") == "tool" and m.get("tool_call_id") in ids]
 
 
+ITEMS = [{"label": "pipe", "amount": 300000}, {"label": "seal", "amount": 250000}]
+
+
+def repair_leader(msgs: list[dict], blob: str):
+    """Leader that works through field staff: request work, total the costs, ask the resident."""
+    n_req = _called(msgs, "CaseRequest")
+    reqs = _results(msgs, "CaseRequest")
+    if n_req == 0:
+        return [("CaseRequest", {"kind": "work_request", "evidence": ["E1"],
+                                 "fields": {"unit": "A-12-05", "issue": "leaking pipe"}})]
+    cost_ev = re.findall(r"evidence (E\d+):\ncost_items", blob)
+    confirm_ev = re.findall(r"evidence (E\d+):\nconfirmed: true", blob)
+    calc = _results(msgs, "calc_sum")
+    calc_ev = re.findall(r"\[evidence (E\d+)\]", " ".join(calc))
+    if cost_ev and not calc:
+        return [("calc_sum", {"label": "materials", "values": ["300000", "250000"]})]
+    if calc and n_req == 1:  # the first total is wrong on purpose
+        return [("CaseRequest", {"kind": "cost_confirmation", "evidence": [cost_ev[0]],
+                                 "fields": {"total": "600000", "items": ITEMS}})]
+    if n_req == 2 and "Not sent" in reqs[-1] and calc_ev:
+        return [("CaseRequest", {"kind": "cost_confirmation", "evidence": [calc_ev[0], cost_ev[0]],
+                                 "fields": {"total": "550000", "items": ITEMS}})]
+    if confirm_ev and _called(msgs, "CaseFinalize") == 0:
+        return [("CaseFinalize", {"answer": "Repair done. Cost 550000 VND confirmed.", "outcome": "resolved",
+                                  "cites": [calc_ev[0], confirm_ev[0]]})]
+    return "Waiting."
+
+
 def policy(msgs: list[dict], tools: list[dict]) -> list[tuple[str, dict]] | str:
     sp = _system(msgs)
     blob = " ".join(_text(m) for m in msgs if m.get("role") != "system")
@@ -57,6 +85,8 @@ def policy(msgs: list[dict], tools: list[dict]) -> list[tuple[str, dict]] | str:
         if out_of_budget:
             return [("CaseFinalize", {"answer": "Out of budget.", "outcome": "needs_human",
                                       "unknowns": ["budget spent before the case was verified"]})]
+        if MODE["scenario"] == "repair":
+            return repair_leader(msgs, blob)
         if _called(msgs, "TeamCreate") == 0:
             return [("TeamCreate", {"name": "case-team", "description": "Resolve the leak"})]
         if _called(msgs, "AgentCreate") == 0:

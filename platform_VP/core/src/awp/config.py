@@ -39,6 +39,8 @@ class Settings:
     callback_secret: str = ""
     # Allow callback URLs that point at private addresses (tests, closed networks).
     callback_allow_private: bool = False
+    # A request that expects a reply and gets none for this long ends the case as needs_human.
+    request_timeout_hours: float = 72.0
     max_challenge_rounds: int = 2
     digest_max_chars: int = 1800
 
@@ -71,6 +73,7 @@ class Settings:
             case_stall_seconds=int(e.get("AWP_CASE_STALL_SECONDS", 900) or 0),
             callback_secret=e.get("AWP_CALLBACK_SECRET", ""),
             callback_allow_private=(e.get("AWP_CALLBACK_ALLOW_PRIVATE", "").lower() in {"1", "true", "yes"}),
+            request_timeout_hours=float(e.get("AWP_REQUEST_TIMEOUT_HOURS", 72) or 72),
             max_challenge_rounds=int(e.get("AWP_MAX_CHALLENGE_ROUNDS", 2) or 2),
             digest_max_chars=int(e.get("AWP_DIGEST_MAX_CHARS", 1800) or 1800),
         )

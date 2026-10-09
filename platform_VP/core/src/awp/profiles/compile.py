@@ -5,8 +5,9 @@ from ..config import Settings
 from .models import AgentProfile
 
 # Tools every role gets. Anything else must be listed in `tools_allow`.
-LEADER_TOOLS = ["Case*", "TeamCreate", "AgentCreate", "AgentInvite", "TeamSay", "TeamDelete"]
-WORKER_TOOLS = ["CaseFact", "CaseGap", "CaseAsk", "CaseAnswer", "CaseChallenge", "CaseRead", "TeamSay"]
+LEADER_TOOLS = ["Case*", "calc_sum", "TeamCreate", "AgentCreate", "AgentInvite", "TeamSay", "TeamDelete"]
+WORKER_TOOLS = ["CaseFact", "CaseGap", "CaseAsk", "CaseAnswer", "CaseChallenge", "CaseRead", "CaseRequest",
+                "calc_sum", "TeamSay"]
 # Tools kept when a case runs out of budget: only what is needed to wrap up.
 WRAP_UP_TOOLS = ["CaseFinalize", "CaseRead", "CaseGap", "CaseAnswer", "TeamSay"]
 
@@ -95,7 +96,10 @@ def leader_prompt(profile: AgentProfile, version: int, settings: Settings) -> st
         "4. Finish only with CaseFinalize(answer, outcome, cites=[F../E..], unknowns). The answer may only "
         "contain numbers, dates and codes that appear in the cited items. If something is unknown or needs a "
         "person, use outcome needs_human and list it in unknowns. Saying what you do not know is correct.",
-        "5. You are the only one who decides.",
+        "5. Reach people outside the platform (field staff, the requester) with CaseRequest. If a request expects a "
+        "reply, end your turn: the reply wakes you, and CaseFinalize refuses while replies are pending. Use calc_sum "
+        "for totals; never add figures yourself.",
+        "6. You are the only one who decides.",
         _escalation(profile),
         _memory_note(profile),
         _domain(profile),

@@ -7,6 +7,7 @@ import hmac
 import ipaddress
 import json
 import logging
+import time
 from typing import Awaitable, Callable
 from urllib.parse import urlparse
 
@@ -15,6 +16,8 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from .. import db
+from ..casefile import build_view
+from ..requests import RequestError, as_text, validate
 from ..runtime import Runtime
 from .agentscope_client import AgentScopeClient, owner_of
 from .models import CaseIntake, CaseResult, FollowUp
@@ -80,6 +83,7 @@ class IntakeService:
         rt.close_hook = self.close
         self.default_leader = default_leader or {}  # domain -> leader profile key
         self.deliverers: dict[str, DeliverFn] = {}  # domain -> how a result goes back
+        self.request_deliverers: dict[str, Callable[[dict, dict], Awaitable[None]]] = {}
         self._tasks: set[asyncio.Task] = set()
         self.webhook_client = httpx.AsyncClient(timeout=DELIVERY_TIMEOUT)
 
@@ -152,14 +156,40 @@ class IntakeService:
             return {"case_id": case["id"], "status": case["status"], "replayed": True}
         if case["status"] != "open":
             raise IntakeError(409, f"case is {case['status']}")
-        # intake evidence is the requester's word, not a system record
-        ev = await self.rt.cases.add(case["id"], "evidence", "intake", {
-            "tool": "intake", "input": msg.kind, "text": msg.text})
-        leader = await self.rt.leader_name(case["id"])
-        await self.rt.deliver(case["id"], leader or "", f'ref="{ev.ref}"', "intake",
-                              f"New information ({msg.kind}) as evidence {ev.ref}: {msg.text}")
+        if msg.reply_to:
+            await self._record_reply(case, msg)
+        else:
+            # intake evidence is the requester's word, not a system record
+            ev = await self.rt.cases.add(case["id"], "evidence", "intake", {
+                "tool": "intake", "input": msg.kind, "text": msg.text})
+            leader = await self.rt.leader_name(case["id"])
+            await self.rt.deliver(case["id"], leader or "", f'ref="{ev.ref}"', "intake",
+                                  f"New information ({msg.kind}) as evidence {ev.ref}: {msg.text}")
         await self.rt.cases.remember_inbound(tenant, domain, msg.message_id, case["id"])
         return {"case_id": case["id"], "status": case["status"], "replayed": False}
+
+    async def _record_reply(self, case: dict, msg: FollowUp) -> None:
+        """A structured answer to a request an agent sent: check it, keep it as evidence, wake the sender."""
+        view = build_view(await self.rt.cases.items(case["id"]))
+        req = view.requests.get(msg.reply_to)
+        if req is None or not req.data.get("expects_reply"):
+            raise IntakeError(422, "no such request awaiting a reply")
+        if msg.reply_to in view.replies:
+            raise IntakeError(409, "that request was already answered")
+        kind = self.rt.request_kinds.get(case["domain"], {}).get(req.data["kind"])
+        try:
+            validate(kind.reply if kind else None, msg.data, "reply")
+        except RequestError as e:
+            raise IntakeError(422, str(e))
+        text = as_text(msg.data)
+        # It comes from the domain's own systems, so it counts as tool-grade evidence.
+        ev = await self.rt.cases.add(case["id"], "evidence", f"external:{req.data['kind']}", {
+            "tool": f"external:{req.data['kind']}", "input": msg.reply_to, "text": text})
+        await self.rt.cases.add(case["id"], "reply", f"external:{req.data['kind']}", {
+            "to_ref": msg.reply_to, "kind": req.data["kind"], "data": msg.data, "text": text[:300]})
+        await self.rt.deliver(
+            case["id"], req.author, f'ref="{msg.reply_to}"', "external",
+            f"Reply to {msg.reply_to} ({req.data['kind']}) recorded as evidence {ev.ref}:\n{text}")
 
     # ---- closing ----------------------------------------------------------
     async def result_of(self, case: dict, result: dict, outcome: str | None = None) -> CaseResult:
@@ -201,12 +231,14 @@ class IntakeService:
         if deliver is None and case and case["intake"].get("callback_url"):
             deliver = self._webhook
         status, error, ok = "sent", None, True
+        if row.kind == "request":
+            deliver = self.request_deliverers.get(case["domain"]) if case else None
         if deliver is None:  # a pull domain without a connector: nothing to send
             status, error, ok = "skipped", "no deliverer for this domain", False
         else:
             try:
-                await asyncio.wait_for(
-                    deliver(case, CaseResult.model_validate(row.payload)), DELIVERY_TIMEOUT)
+                payload = row.payload if row.kind == "request" else CaseResult.model_validate(row.payload)
+                await asyncio.wait_for(deliver(case, payload), DELIVERY_TIMEOUT)
             except NoRetry as e:
                 status, error, ok = "failed", str(e)[:300], False
             except Exception as e:  # keep it queued; the next sweep retries
@@ -237,10 +269,22 @@ class IntakeService:
         idle = self.rt.settings.case_stall_seconds
         if idle <= 0:
             return 0
-        ids = await self.rt.cases.stalled(idle)
-        for cid in ids:
-            await self.fail(cid, f"no activity for {idle} seconds")
-        return len(ids)
+        closed = 0
+        for cid in await self.rt.cases.stalled(idle):
+            open_requests = build_view(await self.rt.cases.items(cid)).open_requests()
+            if open_requests:
+                # Waiting for an outside reply is normal; give up only after the request timeout.
+                limit = self.rt.settings.request_timeout_hours * 3600
+                if time.time() - min(r.created_at for r in open_requests) <= limit:
+                    continue
+                case = await self.rt.cases.get_case(cid)
+                await self.close(cid, "finalized", {
+                    "answer": self.rt.rules_for(case["domain"]).safe_reply, "outcome": "needs_human",
+                    "cites": [], "unknowns": [f"no reply to {r.ref} ({r.data.get('kind')})" for r in open_requests]})
+            else:
+                await self.fail(cid, f"no activity for {idle} seconds")
+            closed += 1
+        return closed
 
     # ---- internals --------------------------------------------------------
     def _spawn(self, coro) -> None:

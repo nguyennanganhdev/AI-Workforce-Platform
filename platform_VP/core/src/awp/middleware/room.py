@@ -297,7 +297,7 @@ class LeaderWatchdog(_Base):
         view = build_view(await cases.items(cid))
         workers = [s for s in await cases.sessions_of_case(cid) if s["role"] == "worker"]
         waiting = [w for w in workers if w["agent_name"] not in view.reports]
-        if waiting or view.open_questions() or view.open_challenges():
+        if waiting or view.open_questions() or view.open_challenges() or view.open_requests():
             return  # members are still working; their report wakes the leader
         nudges = sum(1 for n in await cases.items(cid, kinds=("note",))
                      if n.data.get("type") == "nudge")

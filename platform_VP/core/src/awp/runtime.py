@@ -56,6 +56,8 @@ class Runtime:
     fail_hook: Callable[[str, str], Awaitable[None]] | None = None
     # (case_id, status, result) -> True when this call closed the case
     close_hook: Callable[[str, str, dict], Awaitable[bool]] | None = None
+    # domain -> request kind key -> RequestKind
+    request_kinds: dict[str, dict] = field(default_factory=dict)
     template_tenant: dict[str, str] = field(default_factory=dict)
     _profile_cache: dict = field(default_factory=dict)
 

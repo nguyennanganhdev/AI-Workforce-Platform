@@ -9,6 +9,7 @@ from pydantic import Field
 from awp.guard import Rules
 from awp.intake.models import CaseResult
 from awp.profiles import AgentProfile
+from awp.requests import RequestKind
 
 
 class _TicketP(ParamsBase):
@@ -52,6 +53,7 @@ class DemoPack:
 
     def __init__(self) -> None:
         self.results: list[tuple[dict, CaseResult]] = []
+        self.requests: list[dict] = []
 
     def profiles(self):
         return [
@@ -71,6 +73,27 @@ class DemoPack:
 
     def tools(self, rt, binding):
         return [LookupTicket(), PriceList()]
+
+    def request_kinds(self):
+        obj = {"type": "object"}
+        return [
+            RequestKind(key="work_request", description="Ask field staff to do the work and report costs.",
+                        fields={**obj, "properties": {"unit": {"type": "string"}, "issue": {"type": "string"}},
+                                "required": ["unit", "issue"]},
+                        reply={**obj, "required": ["cost_items"], "properties": {"cost_items": {
+                            "type": "array", "minItems": 1, "items": {
+                                **obj, "required": ["label", "amount"],
+                                "properties": {"label": {"type": "string"}, "amount": {"type": "number"}}}}}}),
+            RequestKind(key="cost_confirmation", description="Ask the requester to confirm the cost.",
+                        fields={**obj, "properties": {"total": {"type": "string"}, "items": {"type": "array"}},
+                                "required": ["total"]},
+                        reply={**obj, "required": ["confirmed"], "properties": {"confirmed": {"type": "boolean"}}}),
+            RequestKind(key="progress_update", description="Tell the requester how far things are.",
+                        fields={**obj, "properties": {"status": {"type": "string"}}, "required": ["status"]}),
+        ]
+
+    async def deliver_request(self, case, request):
+        self.requests.append(request)
 
     async def deliver_result(self, case, result):
         self.results.append((case, result))
@@ -100,6 +123,7 @@ ADM = {"Authorization": "Bearer adm-key"}
 def make_stack(tmp_path, judge=None, **settings_over):
     """A running platform on a scripted model: (client, pack, rt)."""
     MODE["leader"] = "normal"
+    MODE["scenario"] = "default"
     with FakeServer() as fake:
         settings = Settings(
             db_url=f"sqlite+aiosqlite:///{(tmp_path / 'awp.db').as_posix()}",
@@ -119,3 +143,4 @@ def make_stack(tmp_path, judge=None, **settings_over):
             yield client, pack, app.state.awp.rt
     CALLS.clear()
     MODE["leader"] = "normal"
+    MODE["scenario"] = "default"

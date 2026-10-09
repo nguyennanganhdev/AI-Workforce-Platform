@@ -38,6 +38,11 @@ def describe(it: Item, width: int = 160) -> str:
         return f"{it.ref} {it.author} answers {d.get('to_ref')}{tag}: {_clip(d.get('text', ''), width)}"
     if it.kind == "gap":
         return f"{it.ref} {it.author} does not know: {_clip(d.get('topic', ''), width)} (tried: {_clip(d.get('tried', ''), 80)})"
+    if it.kind == "request":
+        wait = "waits for a reply" if d.get("expects_reply") else "no reply expected"
+        return f"{it.ref} {it.author} sent {d.get('kind')} ({wait})"
+    if it.kind == "reply":
+        return f"{it.ref} reply to {d.get('to_ref')}: {_clip(d.get('text', ''), width)}"
     if it.kind == "decision":
         return f"{it.ref} leader decided: {_clip(d.get('text', ''), width)}"
     if it.kind == "report":
@@ -81,6 +86,9 @@ def render_digest(
         head.append("Members: " + "; ".join(status))
     if waiting:
         head.append("WAITING ON YOU: " + " | ".join(waiting))
+    outside = [f"{r.ref} {r.data.get('kind')}" for r in view.open_requests()]
+    if outside:
+        head.append("Waiting for a reply from outside: " + "; ".join(outside))
     tail = ["</room-digest>"]
     rules = _RULES.format(rounds=max_rounds)
 

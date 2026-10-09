@@ -14,6 +14,7 @@ Một domain gửi *vụ việc* (`POST /platform/v1/intake`). Lõi tạo hồ s
 | Bản tin phòng | `casefile/digest.py`, `middleware/room.py` | Mỗi lượt suy luận, agent nhận đoạn ngắn: ai nói gì, việc nào đang chờ mình. Chỉ phần mới từ lần xem trước; không có gì mới thì không tốn token. |
 | Chống bịa | `guard/` | Mỗi tool result có mã bằng chứng. `CaseFact`/`CaseAnswer`/`CaseFinalize` từ chối con số, ngày, mã không có trong bằng chứng được trích dẫn. Luật theo domain (cụm từ cấm, từ nội bộ). Jev là ý kiến thứ hai tùy chọn. Sai quá 3 lần thì kết quả thành `needs_human` với câu trả lời an toàn. |
 | Chi phí | `cost.py`, `providers.py`, `middleware/room.py` | Sổ chi phí mỗi lượt gọi model (theo vụ, agent, model). Tầng model theo hồ sơ. Ngân sách theo vụ: hết thì chỉ còn tool kết thúc. Lọc tool theo vai trước mỗi lần gọi. |
+| Yêu cầu ra ngoài | `requests.py`, `protocol/tools.py` | `CaseRequest` gửi một biểu mẫu do domain định nghĩa (yêu cầu thi công, khai chi phí, xin cư dân xác nhận, báo tiến độ). Mọi con số trong biểu mẫu phải có trong bằng chứng. Trả lời quay về dạng có cấu trúc (`reply_to` + `data`), được kiểm theo schema rồi thành bằng chứng, và đánh thức agent đã gửi. `calc_sum` cộng chính xác. Vụ không bị đóng vì im lặng khi đang chờ trả lời; `CaseFinalize` từ chối khi còn trả lời chưa tới, hoặc khi `confirm_with` chưa được cư dân xác nhận. Quá `AWP_REQUEST_TIMEOUT_HOURS` (72) không có trả lời thì vụ thành `needs_human`. |
 | Cổng nhận vụ việc | `intake/`, `router.py` | Nhận vụ việc (idempotent theo `message_id`), tin bổ sung, trả kết quả qua hàng đợi gửi lại. |
 | Bảo mật | `security.py` | Khóa dịch vụ cho từng domain, khóa admin cho từng tenant. `X-User-ID` bị thay bằng người dùng dịch vụ của tenant. Khóa API bị che trong mọi phản hồi `/credential`. |
 
@@ -47,13 +48,14 @@ Admin cũng dùng được API AgentScope gốc (`/agent/`, `/sessions/`…) b�
 ..\agentscope\.venv\Scripts\python.exe -m pytest tests -q
 ```
 
-29 test: đơn vị (guard, case file, digest, hồ sơ, giá) và đầu-cuối qua dịch vụ AgentScope thật với model giả có kịch bản (`tests/fake_llm.py`): ticket vào, leader mời hai chuyên viên, họ hỏi nhau, leader bị từ chối khi bịa con số rồi chốt đúng, kết quả đến gói, chi phí ghi theo tầng model, ngân sách hết thì chốt `needs_human`, leader im lặng thì vụ `failed` và domain được báo. Model giả chỉ kiểm đường ống; không nói gì về chất lượng của model thật.
+34 test: đơn vị (guard, case file, digest, hồ sơ, giá) và đầu-cuối qua dịch vụ AgentScope thật với model giả có kịch bản (`tests/fake_llm.py`): ticket vào, leader mời hai chuyên viên, họ hỏi nhau, leader bị từ chối khi bịa con số rồi chốt đúng, kết quả đến gói, chi phí ghi theo tầng model, ngân sách hết thì chốt `needs_human`, leader im lặng thì vụ `failed` và domain được báo. Model giả chỉ kiểm đường ống; không nói gì về chất lượng của model thật.
 
 ## Chưa làm hoặc chưa kiểm
 
 - Khi một vụ đóng, các agent đang chạy không bị ngắt (báo cáo muộn của chuyên viên bị bỏ qua nhưng lượt gọi model đang dở vẫn tính tiền).
 - Một chuyên viên lỗi giữa chừng không báo được cho leader (framework chặn sự kiện lỗi ở lớp ngoài); vụ sẽ bị đóng `failed` sau `AWP_CASE_STALL_SECONDS` (mặc định 900 giây).
-- Không mở lại được vụ đã đóng: tin bổ sung đến sau (ví dụ cư dân duyệt phương án) bị từ chối 409.
+- Không mở lại được vụ đã đóng. Vụ đang chờ trả lời thì vẫn mở, nên chỉ ảnh hưởng tin đến sau khi vụ đã chốt.
+- Gói Vinhomes chưa khai báo `request_kinds` và `deliver_request`: chờ phía Vinhomes có endpoint nhận yêu cầu thi công, biểu mẫu chi phí, xác nhận của cư dân. Lõi đã chạy được toàn bộ luồng này với một gói thử.
 - Guard so con số theo từng token; ngày viết khác định dạng (09/10/2026 so với 2026-10-09) bị coi là khác. Công cụ của domain nên in ngày giờ theo đúng dạng agent sẽ dùng.
 - Callback webhook chặn địa chỉ riêng theo tên/IP nhưng chưa chống DNS rebinding.
 

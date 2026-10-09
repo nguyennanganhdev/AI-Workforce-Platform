@@ -66,13 +66,18 @@ def memory_middlewares(rt: Runtime, tenant: str, profile) -> list:
 
 
 def tool_factory(rt: Runtime):
-    from ..protocol.tools import CASE_TOOLS
+    from ..protocol.calc import calc_sum
+    from ..protocol.tools import CASE_TOOLS, CaseRequest
 
     async def factory(user_id: str, agent_id: str, session_id: str) -> list:
         b = await rt.binding(user_id, agent_id, session_id)
         if b is None:
             return []
-        tools = [cls(rt, b) for cls in CASE_TOOLS]
+        tools = [cls(rt, b) for cls in CASE_TOOLS] + [calc_sum()]
+        case = await rt.cases.get_case(b.case_id)
+        kinds = rt.request_kinds.get(case["domain"], {}) if case else {}
+        if kinds:
+            tools.append(CaseRequest(rt, b, kinds))
         for make in rt.tool_factories:
             extra = make(rt, b)
             tools.extend(await extra if inspect.isawaitable(extra) else extra)

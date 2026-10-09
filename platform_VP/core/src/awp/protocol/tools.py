@@ -17,6 +17,7 @@ from agentscope.tool import ParamsBase, ToolBase, ToolChunk
 from ..casefile import CaseView, build_view
 from ..casefile.digest import describe
 from ..guard import check_text
+from ..requests import RequestError, RequestKind, figures_text, validate
 from ..runtime import Binding, Runtime
 
 MAX_FINALIZE_ATTEMPTS = 3
@@ -117,6 +118,12 @@ class _ChallengeP(ParamsBase):
     fact: str = Field(description="The fact id (F..) you dispute.")
     reason: str = Field(description="What is wrong or missing.")
     evidence: list[str] = Field(description="Evidence ids that show it. Opinions are not accepted.")
+
+
+class _RequestP(ParamsBase):
+    kind: str = Field(description="Which kind of request to send.")
+    fields: dict = Field(description="The fields of that kind.")
+    evidence: list[str] = Field(default_factory=list, description="Evidence ids that back every figure in fields.")
 
 
 class _ReadP(ParamsBase):
@@ -258,6 +265,49 @@ class CaseChallenge(_CaseTool):
         return _ok(f"{item.ref} sent to {f.item.author}.")
 
 
+class CaseRequest(_CaseTool):
+    """Reach someone outside the platform with a form the domain defined."""
+
+    name = "CaseRequest"
+    input_schema = _RequestP.model_json_schema()
+
+    def __init__(self, rt: Runtime, b: Binding, kinds: dict[str, RequestKind]) -> None:
+        super().__init__(rt, b)
+        self.kinds = kinds
+        listing = "\n".join(
+            f"- {k.key}: {k.description} Fields: {', '.join((k.fields.get('properties') or {}).keys())}. "
+            + ("A reply comes back and wakes you; end your turn and wait." if k.expects_reply
+               else "No reply is expected.")
+            for k in kinds.values())
+        self.description = ("Send a request outside the platform (field staff, the requester). Every figure in "
+                            "the fields must come from cited evidence.\nKinds:\n" + listing)
+
+    async def call(self, kind: str, fields: dict, evidence: list[str] | None = None) -> ToolChunk:
+        if (closed := await self._closed()):
+            return closed
+        spec = self.kinds.get(kind)
+        if spec is None:
+            return _err(f"Unknown kind. Use one of: {', '.join(self.kinds)}.")
+        try:
+            validate(spec.fields, fields, "fields")
+        except RequestError as e:
+            return _err(f"Not sent: {e}")
+        view = await self._view()
+        sources, trusted, bad = self._sources(view, evidence or [])
+        if bad:
+            return _err(f"Cannot cite: {', '.join(bad)}.")
+        problems = check_text(figures_text(fields), sources, await self.rt.case_rules(self.b.case_id), trusted)
+        if problems:
+            return _err("Not sent: " + "; ".join(problems))
+        case = await self.rt.cases.get_case(self.b.case_id)
+        item = await self.rt.cases.add(self.b.case_id, "request", self.b.agent_name,
+                                       {"kind": kind, "fields": fields, "expects_reply": spec.expects_reply})
+        await self.rt.cases.queue_outbox(self.b.case_id, "request", {
+            "case_id": self.b.case_id, "external_ref": case["external_ref"], "request_ref": item.ref,
+            "kind": kind, "fields": fields, "expects_reply": spec.expects_reply})
+        return _ok(f"{item.ref} sent." + (" Wait for the reply." if spec.expects_reply else ""))
+
+
 class CaseRead(_CaseTool):
     name = "CaseRead"
     description = "Read the case file: an overview, or one item in full by its id."
@@ -335,6 +385,16 @@ class CaseFinalize(_CaseTool):
             problems.append(f"cannot cite {', '.join(bad)}")
         if outcome == "resolved" and not cites:
             problems.append("a resolved answer must cite facts or evidence")
+        if outcome == "resolved":
+            # Waiting on someone is not a mistake to retry: refuse without counting an attempt.
+            waiting = [r.ref for r in view.open_requests()]
+            if waiting:
+                return _err(f"Not finalized: still waiting for replies to {', '.join(waiting)}.")
+            case = await self.rt.cases.get_case(self.b.case_id)
+            needed = (case or {}).get("intake", {}).get("confirm_with")
+            if needed and not view.confirmed(needed):
+                return _err(f"Not finalized: the requester has not confirmed. Send a {needed} request and wait "
+                            "for a reply with confirmed true.")
         if not problems:
             # every outcome is checked: the text reaches the domain either way
             problems += check_text(answer, sources, rules, trusted)

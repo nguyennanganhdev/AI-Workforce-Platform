@@ -8,6 +8,7 @@ from .guard import Rules
 from .intake.models import CaseResult
 from .intake.service import IntakeService
 from .profiles import AgentProfile
+from .requests import RequestKind
 from .runtime import Binding, Runtime
 
 
@@ -20,6 +21,12 @@ class DomainPack(Protocol):
     def rules(self) -> Rules: ...
 
     def tools(self, rt: Runtime, binding: Binding) -> list: ...
+
+    def request_kinds(self) -> list[RequestKind]:
+        """Forms an agent may send outside (optional)."""
+
+    async def deliver_request(self, case: dict, request: dict) -> None:
+        """Send one request to the domain (optional). Raise to have it retried."""
 
     async def deliver_result(self, case: dict, result: CaseResult) -> None:
         """Send a finished case back to the domain. Raise to have it retried."""
@@ -40,6 +47,10 @@ async def install_pack(rt: Runtime, intake: IntakeService, pack: DomainPack, ten
     rt.rules_by_domain[pack.domain] = pack.rules()
     intake.default_leader[pack.domain] = pack.default_leader
     intake.deliverers[pack.domain] = pack.deliver_result
+    for kind in (getattr(pack, "request_kinds", None) or (lambda: []))() or []:
+        rt.request_kinds.setdefault(pack.domain, {})[kind.key] = kind
+    if getattr(pack, "deliver_request", None):
+        intake.request_deliverers[pack.domain] = pack.deliver_request
 
     async def make_tools(runtime: Runtime, binding: Binding) -> list:
         case = await runtime.cases.get_case(binding.case_id)

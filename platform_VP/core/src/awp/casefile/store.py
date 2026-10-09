@@ -16,7 +16,7 @@ from .. import db
 PREFIX = {
     "evidence": "E", "fact": "F", "question": "Q", "challenge": "C",
     "answer": "A", "gap": "G", "decision": "D", "report": "R",
-    "note": "N", "final": "X",
+    "note": "N", "final": "X", "request": "T", "reply": "Y",
 }
 KIND_OF_PREFIX = {v: k for k, v in PREFIX.items()}
 
@@ -181,6 +181,12 @@ class CaseStore:
             if res.rowcount == 0:
                 await conn.execute(insert(db.cursors).values(
                     case_id=case_id, agent_key=agent_key, last_item_id=last_id))
+
+    async def queue_outbox(self, case_id: str, kind: str, payload: dict) -> None:
+        async with self._db.engine.begin() as conn:
+            await conn.execute(insert(db.outbox).values(
+                case_id=case_id, kind=kind, payload=payload,
+                status="pending", attempts=0, created_at=time.time()))
 
     async def close_case(self, case_id: str, status: str, result: dict,
                          outbox_payload: dict) -> bool:

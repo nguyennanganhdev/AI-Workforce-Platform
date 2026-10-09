@@ -30,6 +30,8 @@ class CaseIntake(BaseModel):
     budget_tokens: int | None = None
     # Push domains may ask for a signed callback; pull domains leave it empty.
     callback_url: str | None = None
+    # A request kind whose reply must say `confirmed: true` before the case may end as resolved.
+    confirm_with: str | None = None
 
 
 class FollowUp(BaseModel):
@@ -37,8 +39,11 @@ class FollowUp(BaseModel):
 
     message_id: str
     kind: str = "information"
-    text: str
+    text: str = ""
     attributes: dict = Field(default_factory=dict)
+    # A reply to a request the platform sent: its ref (T..) and the structured answer.
+    reply_to: str | None = None
+    data: dict = Field(default_factory=dict)
 
 
 class CaseResult(BaseModel):
