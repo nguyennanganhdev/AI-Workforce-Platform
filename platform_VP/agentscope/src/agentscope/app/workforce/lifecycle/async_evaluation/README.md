@@ -1,10 +1,13 @@
-# Async evaluation — Đặc tả Phase A
+# Async evaluation — Phase A và Phase B
 
-Chủ sở hữu: Phó Tiến Anh.
+Chủ sở hữu: Phó Tiến Anh. Giữ nguyên `phase_a_schema_bundle()`.
 
-Export `phase_a_schema_bundle()` cung cấp schema validation/evaluation và
-policy proposal. DTO shared là nguồn schema cho snapshot, case result,
-report và protocol reference. Phạm vi là đặc tả dữ liệu, chưa gồm logic
-validation, suites hoặc runner.
+Phase B exports: `AsyncDraftValidator` / `validate_async_draft` kiểm tra scoped
+policy/tool/protocol dependencies; `freeze_evaluation` tạo JSON evidence có hash;
+`lifecycle_suite` cung cấp expected turns versioned; `AsyncEvaluationService`
+gọi shared EvaluationRunnerPort bằng mock execution; `grade_case` và
+`check_release_evidence` fail closed khi hard gate/evidence/staleness sai.
+Không có fake runner trong production hoặc persistence/runtime thứ hai.
 
-[Baseline bàn giao](../../../../../../docs/workforce/handoffs/pho-tien-anh/BASELINE_PHASE_A.md).
+[Bàn giao Phase B](../../../../../../docs/workforce/handoffs/pho-tien-anh/PHASE_B.md)
+bao gồm hợp đồng evidence, policy dialect, lệnh test và giới hạn tích hợp C/D.

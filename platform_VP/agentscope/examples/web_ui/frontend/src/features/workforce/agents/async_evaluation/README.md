@@ -1,9 +1,12 @@
-# Async evaluation — Phạm vi report UI
+# Async evaluation — Report Phase B
 
-Chủ sở hữu: Phó Tiến Anh.
+Chủ sở hữu: Phó Tiến Anh. Export `EvaluationReport` và props view
+`EvaluationReportView` từ `index.ts`. Component hiển thị report từng case và
+lượt, hard gates, chi phí/latency, loading/error/empty state. Không fetch API hoặc
+publish; composition truyền report đã authorization/owner filter.
 
-Dữ liệu đầu vào dự kiến gồm evaluation report, kết quả từng case, hard-gate
-failures, metrics và artifact references. Đặc tả Phase A nằm tại
-[baseline](../../../../../../../../docs/workforce/handoffs/pho-tien-anh/BASELINE_PHASE_A.md).
+Chưa gắn shell route/API; TS shared chưa có EvaluationReport nên props là view
+cục bộ, không khai báo contract wire thứ hai. Cần thay bằng type canonical khi
+owner NCH export. TypeScript/ESLint pass; chưa browser/visual QA.
 
-Component report và tích hợp giao diện thuộc mốc triển khai tiếp theo.
+[Bàn giao Phase B](../../../../../../../../docs/workforce/handoffs/pho-tien-anh/PHASE_B.md).
