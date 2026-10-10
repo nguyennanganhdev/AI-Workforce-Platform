@@ -8,7 +8,7 @@ Phạm vi: tool execution, booking approval, idempotency, mocks và E2E.
 
 Khi triển khai, tạo `STATUS.md` theo mẫu ở mục 16. Mỗi yêu cầu đổi contract/hook/file chung ghi vào `INTEGRATION_REQUEST_<task-id>.md` theo mục 14.
 
-Hiện tại chưa có task được đánh dấu hoàn thành; việc tạo thư mục này không chứng minh module đã được code/test.
+Kết quả triển khai ngày 10/10/2026: xem [STATUS.md](STATUS.md) để đối chiếu từng task PHD-01–17, phần đã có code/test và phần còn chờ owner khác; xem [VALIDATION.md](VALIDATION.md) để chạy lại kiểm tra. Các integration requests nằm cùng thư mục. Chưa nghiệm thu tích hợp production hoặc E2E toàn platform.
 
 Nguyên tắc batch của bản 1.2 được giữ ở bản 1.3: PHD-12 kiểm tra batch tạo các agent độc lập, không tạo group production trước request; Leader chọn subset/chọn chéo batch, reuse không tăng agent/version và approval/booking state không lẫn giữa group. Đọc mục 2.3, 2.5 và 6 của kế hoạch trước khi code; nội dung này thay thế cách hiểu team artifact ở bản trước. Đây là đầu việc cần triển khai, chưa phải tính năng đã hoàn thành.
 
