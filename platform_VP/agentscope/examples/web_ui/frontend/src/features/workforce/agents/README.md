@@ -6,7 +6,11 @@ Phạm vi lane: vòng đời riêng từng agent, batch publish, thư viện chu
 
 Đọc [kế hoạch triển khai chung](../../../../../../../docs/workforce/KE_HOACH_TRIEN_KHAI.md) trước khi code, đặc biệt hợp đồng mục 6 và phần công việc mang đúng họ tên.
 
-Thư mục này mới là khung phân vùng công việc, chưa triển khai tính năng. Chủ sở hữu tạo code/test và file con tại đây; không sửa module của thành viên khác.
+UI hiện có export qua `index.ts`: `WorkforceAgentsPage`,
+`WorkforceAgentSettingsPage`, `WorkforceEvaluationPage`,
+`WorkforceBatchResults`, `AsyncEvaluationReport` và `createAgentsApi`.
+API nhận shared transport từ composition, không dựng auth/token store riêng.
+Global routes và shared transport chờ Foundation nối; xem STATUS trong handoff.
 
 Ghi tiến độ và yêu cầu tích hợp ở [thư mục bàn giao](../../../../../../../docs/workforce/handoffs/pho-tien-anh/README.md). File core, contracts dùng chung, migration, dependency và global route cần chuyển cho Nguyễn Chí Hoàng theo kế hoạch.
 

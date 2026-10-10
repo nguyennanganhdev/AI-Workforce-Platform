@@ -17,4 +17,6 @@ Nguyên tắc triển khai:
 - Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
 - Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
 
-Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+Đã có `AsyncEvaluationReport.tsx`: suite/case status, hard-gate blockers,
+cost/latency và evidence/transcript từng lượt. API/report do folder cha cung
+cấp; shared transport/global route chờ Foundation. Xem STATUS trong handoff.
