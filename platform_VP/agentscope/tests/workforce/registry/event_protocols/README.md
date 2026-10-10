@@ -17,4 +17,14 @@ Nguyên tắc triển khai:
 - Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
 - Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
 
-Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+Phase A đã có `test_protocols.py` và `fakes.py`. Chạy từ `platform_VP/agentscope`:
+
+```bash
+python -m unittest discover -s tests/workforce/registry/event_protocols -p 'test_*.py' -v
+```
+
+Fake dùng nguyên DTO/signature `AsyncProtocolPort`; kiểm tra scope/namespace,
+coverage, schema, deterministic normalization, order metadata và snapshot drift.
+Fake không persist/apply event, không gọi MCP/HTTP và không dùng trong production.
+Schema/samples/ordering rules:
+[PHASE_A.md](../../../../docs/workforce/handoffs/nguyen-phuong-dong/PHASE_A.md).
