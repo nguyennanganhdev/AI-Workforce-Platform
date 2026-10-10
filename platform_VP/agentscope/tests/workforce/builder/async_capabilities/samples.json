@@ -110,8 +110,8 @@
               ],
               "completion_condition": "verified status is completed",
               "human_confirmation": true,
-              "timeout_seconds": 3600,
-              "timeout_behavior": "request_attention"
+              "timeout_behavior": "needs_attention",
+              "schema_version": "1"
             }
           }
         ]
@@ -151,14 +151,16 @@
               "capabilities": [
                 "create"
               ],
-              "event_types": [],
+              "event_types": [
+                "completed"
+              ],
               "required_facts": [
                 "status"
               ],
               "completion_condition": "verified status is completed",
               "human_confirmation": true,
-              "timeout_seconds": 3600,
-              "timeout_behavior": "query_status"
+              "timeout_behavior": "status_query",
+              "schema_version": "1"
             }
           }
         ]
@@ -267,8 +269,8 @@
               ],
               "completion_condition": "verified status is completed",
               "human_confirmation": true,
-              "timeout_seconds": 3600,
-              "timeout_behavior": "request_attention"
+              "timeout_behavior": "needs_attention",
+              "schema_version": "1"
             }
           }
         ]
@@ -458,9 +460,9 @@
               ],
               "completion_condition": "verified status is completed",
               "human_confirmation": true,
-              "timeout_seconds": 3600,
-              "timeout_behavior": "request_attention",
-              "external_job_id": "fixed"
+              "timeout_behavior": "needs_attention",
+              "external_job_id": "fixed",
+              "schema_version": "1"
             }
           }
         ]
@@ -508,8 +510,8 @@
               ],
               "completion_condition": "verified status is completed",
               "human_confirmation": true,
-              "timeout_seconds": 0,
-              "timeout_behavior": "request_attention"
+              "timeout_behavior": "invalid",
+              "schema_version": "1"
             }
           }
         ]
@@ -626,8 +628,8 @@
               ],
               "completion_condition": "verified status is completed",
               "human_confirmation": true,
-              "timeout_seconds": 3600,
-              "timeout_behavior": "request_attention"
+              "timeout_behavior": "needs_attention",
+              "schema_version": "1"
             }
           }
         ]
@@ -675,8 +677,8 @@
               ],
               "completion_condition": "verified status is completed",
               "human_confirmation": true,
-              "timeout_seconds": 3600,
-              "timeout_behavior": "request_attention"
+              "timeout_behavior": "needs_attention",
+              "schema_version": "1"
             }
           }
         ]
@@ -748,8 +750,8 @@
               ],
               "completion_condition": "verified status is completed",
               "human_confirmation": true,
-              "timeout_seconds": 3600,
-              "timeout_behavior": "request_attention"
+              "timeout_behavior": "needs_attention",
+              "schema_version": "1"
             }
           }
         ]
@@ -821,8 +823,8 @@
               ],
               "completion_condition": "verified status is completed",
               "human_confirmation": true,
-              "timeout_seconds": 3600,
-              "timeout_behavior": "request_attention"
+              "timeout_behavior": "needs_attention",
+              "schema_version": "1"
             }
           }
         ]

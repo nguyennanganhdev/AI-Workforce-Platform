@@ -1,32 +1,32 @@
 # Trạng thái — Bùi Hữu Nghĩa
 
-Ngày kiểm tra: 2026-10-10. Branch: `feat/wf-builder`. Baseline commit: `3270ef3f61bba29af869ed833485fac9379a91fc`; thay đổi Phase A chưa commit.
+Ngày kiểm tra: 2026-10-10. Branch: `feat/wf-builder`. Baseline Phase B: `818554114c0a8f72107df9625c8e4b3e21883171`; thay đổi Phase B chưa commit.
 
 ## Phạm vi đã làm
 
-Hoàn thành phần thiết kế/schema nội bộ Phase A của BHN-02/BHN-12: requirement single/batch, capability bắt buộc/tùy chọn, tracking intent, clarification và policy proposal. Tái sử dụng BusinessProfile/WorkforceModel/ToolEffect. Chuẩn bị boundary samples cho BHN-03/07/09/13; không đánh dấu các task này hoàn thành toàn bộ.
+Hoàn thành phần độc lập của **Phase B bổ sung mục 17.9**: requirement extraction, capability checks, pinned protocol readiness, reuse/revise/resume/clarify, proposal edit/confirm/recheck và UI với fake ports. Liên quan phần Phase B của BHN-12–14 và các phần hỗ trợ BHN-02/03/07/09/10/11. Policy đã theo schema proposal Tiến Anh. Tái sử dụng DTO/ports, AgentScope message/model API, UI primitives và Registry handed-off fake.
 
-BHN-01–BHN-14 chưa hoàn thành end-to-end. Chưa có build persistence, extraction bằng LLM, selection/reuse service, manifest generation, UI, migration hay production wiring. MA còn phụ thuộc owner hợp đồng chốt schema/policy reference và detailed protocol.
+BHN-01–BHN-14 chưa hoàn thành end-to-end. Proposal session chỉ process-local preview; chưa có durable persistence, manifest/draft generation, KB/skill selection, full eval/publish/progress UI, migration, HTTP/root-route hoặc production wiring. Confirm không báo agent đã tạo. Query-only policy còn bị block khi event semantics chưa có metadata/chưa chốt. Không đánh dấu gate tích hợp chung hoặc production readiness từ fake tests.
 
-Files: `src/agentscope/app/workforce/builder/async_capabilities/{__init__.py,_requirements.py,README.md}`, `tests/workforce/builder/async_capabilities/{test_phase_a.py,samples.json}`, handoff cá nhân gồm integration request và `phase-a.schema.json` xuất từ schema nội bộ.
+Files nằm trong bốn vùng owned: backend `src/agentscope/app/workforce/builder/`, frontend `examples/web_ui/frontend/src/features/workforce/builder/`, tests `tests/workforce/builder/`, handoff `docs/workforce/handoffs/bui-huu-nghia/`. Không sửa module khác, contracts chung, root route, migration, dependency hay lockfile.
 
-Public exports nội bộ: `BuildRequirements`, `AgentRequirement`, `CapabilityRequirement`, `HandlingPolicyProposal`; schema proposal version `1`. Không sửa contracts chung, global frontend, module khác hoặc dependency/lockfile. Không đăng ký API.
+Backend public exports: RequirementExtractor/ExtractionResult/ExtractionError, CapabilitySelector, ProposalService, BuildProposal, ProtocolReadiness. UI export BuilderPanel/BuilderClient. Policy proposal version 1; timeout_behavior=status_query|needs_attention; không có timeout_seconds trong policy. Public API chưa đăng ký. Signatures, demo và limitations: [PHASE_B.md](PHASE_B.md).
 
 ## Kiểm tra
 
 ```powershell
 # Từ platform_VP/agentscope, với dependency của repo đã cài trong .venv
-.\.venv\Scripts\python.exe -m unittest tests.workforce.builder.async_capabilities.test_phase_a tests.workforce.foundation.test_contracts -v
-.\.venv\Scripts\python.exe -m compileall -q src/agentscope/app/workforce/builder/async_capabilities tests/workforce/builder/async_capabilities
+.\.venv\Scripts\python.exe -m unittest tests.workforce.builder.async_capabilities.test_phase_a tests.workforce.builder.async_capabilities.test_phase_b tests.workforce.foundation.test_contracts -v
+.\.venv\Scripts\python.exe -m compileall -q src/agentscope/app/workforce/builder tests/workforce/builder
 git diff --check
 ```
 
-Kết quả: **17 tests pass** (8 Builder Phase A + 9 Foundation contract regression), 6 valid samples validate/round-trip/JSON Schema pass, 13 invalid samples bị từ chối. Compileall, schema export và diff whitespace pass. Python 3.12.10, Pydantic 2.14.0. Môi trường ban đầu chưa có dependency; đã tạo `.venv` và cài editable repo với extras `service,storage-sql` theo pyproject, không sửa dependency/lockfile. Các lần test trước khi cài xong không import được package; kết quả trên là lần chạy sau khi cài hoàn tất.
+Kết quả review lại ngày 2026-10-10: **40 Builder/Foundation + 14 Registry + 8 Lifecycle + 4 Edge UI = 66 tests pass**. Bổ sung 7 regression tests và sửa lỗi mất clarification, capability/effect drift, tool bị xóa, query binding và mutable proposal response. Chi tiết từng lỗi đã tái hiện/sửa trong [PHASE_B.md](PHASE_B.md). TypeScript build và ESLint vùng Builder pass; compileall/schema export/whitespace pass. Browser UI checks có edit/confirm/cancel/reuse/blocked và mobile không tràn ngang, không lỗi JavaScript. Artifact QA: phase-b-ui.png. Môi trường Python 3.12/Pydantic 2.14/Node 22.18. Chi tiết lệnh và dependencies chỉ cài trong môi trường local nằm trong PHASE_B.md.
 
-Tests dùng fake Registry/AsyncProtocol/AgentReuse/Draft trong vùng Builder tests, không chạy MCP server hay gọi provider/model thật. Fake tests chỉ chứng minh cách trao đổi DTO/scope/revision và biểu diễn blocker; chưa chứng minh matching, DB race hoặc runtime behavior.
+Tests dùng fake model/Registry/AsyncProtocol/AgentReuse và demo client; production không export fake. Chưa kiểm tra provider/model thật, transactional races, recovery sau restart hoặc runtime worker. TypeScript types và UI proposal là local view, shared contracts giữ nguyên.
 
 ## Yêu cầu tích hợp và bước tiếp theo
 
-Xem `INTEGRATION_REQUEST_BHN_PHASE_A.md`: chốt canonical policy, persistence/ref/hash, protocol readiness/capability vocabulary và typed async requirements trong reuse comparison. Chí Hoàng sở hữu shared DTO/schema/TypeScript/migration; Đông sở hữu detailed protocol; Tiến Anh sở hữu draft validation/lifecycle.
+Xem [INTEGRATION_REQUEST_BHN_PHASE_B.md](INTEGRATION_REQUEST_BHN_PHASE_B.md): canonical policy/ref/storage; detailed snapshot accessor; query-only event_types semantics; typed async reuse coverage; durable sessions và HTTP/UI composition. Chí Hoàng sở hữu shared DTO/schema/TypeScript/migration, Đông protocol và Anh lifecycle. Integration request Phase A giữ làm lịch sử; policy mới đã theo Anh.
 
-Sau Phase A, triển khai BHN-01 rồi BHN-02/03 cùng fake ports, nối BHN-09 trước generate, tiếp tục proposal/manifest/validation/UI theo kế hoạch. Tận dụng model structured-output API, catalog/reuse/draft contracts, KB/skill và UI primitives hiện hữu. Không hạ tracking scope tự động khi thiếu capability.
+Bước tiếp theo: chốt các điểm nối, triển khai BHN-01 durable storage và BHN-04/05/06 còn thiếu rồi nối Registry/Draft/Reuse thật trong Phase C. Không dùng preview marker builder.async hoặc fake readiness làm contract production chưa review. Không hạ tracking scope tự động khi thiếu capability; Lifecycle vẫn chịu trách nhiệm atomic identity allocation.

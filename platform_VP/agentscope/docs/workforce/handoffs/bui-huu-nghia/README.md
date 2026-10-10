@@ -1,5 +1,7 @@
 # Bàn giao — Bùi Hữu Nghĩa
 
+Phase B bổ sung đã có capability checks/UI với fake ports. Xem [PHASE_B.md](PHASE_B.md), [STATUS.md](STATUS.md) và [integration requests hiện tại](INTEGRATION_REQUEST_BHN_PHASE_B.md). Policy đã đồng bộ theo Tiến Anh; chưa xác nhận production integration hoặc hoàn thành toàn bộ BHN-01–14.
+
 Branch đề xuất: `feat/wf-builder`. Đầu việc: **BHN-01–BHN-14**.
 
 Phạm vi: chat tạo một/nhiều agent độc lập, phát hiện trùng, chọn tool và sinh manifest từng agent.
@@ -8,7 +10,7 @@ Phạm vi: chat tạo một/nhiều agent độc lập, phát hiện trùng, ch�
 
 Khi triển khai, tạo `STATUS.md` theo mẫu ở mục 16. Mỗi yêu cầu đổi contract/hook/file chung ghi vào `INTEGRATION_REQUEST_<task-id>.md` theo mục 14.
 
-Hiện tại chưa có task được đánh dấu hoàn thành; việc tạo thư mục này không chứng minh module đã được code/test.
+Các checkbox BHN bên dưới theo dõi toàn bộ task qua nhiều phase nên vẫn để mở. Phần Phase B độc lập đã được code/test và review lại; phạm vi bàn giao, 66 test pass và các điểm chưa tích hợp được ghi trong PHASE_B.md và STATUS.md.
 
 Nguyên tắc batch của bản 1.2 được giữ ở bản 1.3: BHN-02/04/05/08–BHN-11 tạo một hoặc nhiều agent độc lập vào thư viện chung; batch chỉ theo dõi tiến độ/reuse. Builder không tạo roster/group production hay prompt phụ thuộc đồng đội cùng batch. Đọc mục 2.3, 2.5 và 6 của kế hoạch trước khi code; nội dung này thay thế cách hiểu team artifact ở bản trước. Đây là đầu việc cần triển khai, chưa phải tính năng đã hoàn thành.
 

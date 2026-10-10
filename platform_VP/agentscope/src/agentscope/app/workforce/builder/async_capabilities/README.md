@@ -7,7 +7,7 @@ Task bổ sung của owner: **BHN-12–BHN-14**; chọn phần tương ứng ph�
 
 Phạm vi: Requirements và sinh policy theo dõi; reuse/revise, missing capability.
 
-File theo phạm vi triển khai: `_requirements.py`, `_selector.py`, `_validator.py`. Phase A đã có schema trong `_requirements.py`; selector và validator nghiệp vụ dành cho phase sau.
+Code hiện có: `_requirements.py` (schema policy theo Tiến Anh), `_models.py` (local readiness/proposal views), `_selector.py` (capability/policy validation, pinned selection và recheck). Root Builder có extraction/reuse/proposal service; không sửa owner khác.
 
 ## Phase A — schema nội bộ Builder
 
@@ -23,4 +23,4 @@ Nguyên tắc triển khai:
 - Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
 - Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
 
-Phase A chỉ có schema nội bộ và test boundary bằng fake. Chưa triển khai API, worker, migration hoặc tích hợp production.
+Phase B đã có capability checks/UI với fake ports. Query-only chưa có policy event metadata vẫn bị block; không tự đặt event name. Detailed readiness là injected local boundary đang chờ shared accessor. Chưa triển khai HTTP API, worker, migration hoặc tích hợp production. Xem `docs/workforce/handoffs/bui-huu-nghia/PHASE_B.md` để chạy demo/test và đọc điểm nối còn mở.

@@ -6,7 +6,9 @@ Phạm vi lane: chat tạo một/nhiều agent độc lập, phát hiện trùng
 
 Đọc [kế hoạch triển khai chung](../../../../../../../docs/workforce/KE_HOACH_TRIEN_KHAI.md) trước khi code, đặc biệt hợp đồng mục 6 và phần công việc mang đúng họ tên.
 
-Thư mục này mới là khung phân vùng công việc, chưa triển khai tính năng. Chủ sở hữu tạo code/test và file con tại đây; không sửa module của thành viên khác.
+Phase B đã có `BuilderPanel`, capability/policy panel và local proposal view/client interface. Inject `BuilderClient` từ owner composition; chưa có root route hoặc HTTP adapter production. `tests/demo.html` + `tests/fakeClient.ts` chỉ cho demo/test, không được export từ production index.
+
+Demo dùng 5 fixtures sinh từ backend preview. Chạy Vite với `tests/vite.demo.config.mjs --configLoader native`, mở `/src/features/workforce/builder/tests/demo.html`. Test và giới hạn tích hợp xem `docs/workforce/handoffs/bui-huu-nghia/PHASE_B.md`. Không dùng conversation SSE làm build event API khi chưa chốt contract.
 
 Ghi tiến độ và yêu cầu tích hợp ở [thư mục bàn giao](../../../../../../../docs/workforce/handoffs/bui-huu-nghia/README.md). File core, contracts dùng chung, migration, dependency và global route cần chuyển cho Nguyễn Chí Hoàng theo kế hoạch.
 
