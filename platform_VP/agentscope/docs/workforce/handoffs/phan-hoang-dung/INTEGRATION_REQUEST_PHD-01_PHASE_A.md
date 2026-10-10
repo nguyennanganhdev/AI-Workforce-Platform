@@ -1,94 +1,80 @@
-# PHD-01/02/03/05/06/13–16 — Đối chiếu contracts Phase A
+# Integration request — Chốt contract và fake Phase A/B
 
-Ngày 10/10/2026. Người gửi: Phan Hoàng Dũng. Người nhận: Nguyễn Chí Hoàng; phối hợp Nguyễn Phương Đông và Phan Huy Hoàng.
+Task IDs: PHD-01/02/05/06/13–16. Ngày: 10/10/2026.
+Người gửi: Phan Hoàng Dũng. Người nhận: Nguyễn Chí Hoàng;
+phối hợp Nguyễn Phương Đông và Phan Huy Hoàng. Baseline: `53a139b`.
 
-Đã kiểm tra commit `1ff8fb6` (merge `a99d506`), `contracts/__init__.py`, các DTO/ports, TypeScript v1 và STATUS của Chí Hoàng. Output mới là Phase A, chưa có auth/routing/persistence/worker/migration/composition. Lần bổ sung Execution này dựa trên HEAD `383a387`; không sửa file chung hoặc module owner khác.
+Phạm vi: review schema/signature, thống nhất metadata và fake phục vụ consumer
+tests của Phase A/B. Không yêu cầu triển khai production services trong file này.
 
-## Phần đã nối được
+## Hiện trạng và phần đã giải quyết trong lane
 
-| Task | Thay đổi đã thực hiện |
-|---|---|
-| PHD-01/13 | Nhận `Scope` chung; Registry snapshot được gọi với `Scope` DTO. Validate đủ bốn chiều và kiểu/giới hạn ID trước SQL. `PartnerAudience` được normalize, bỏ optional null khi so sánh với approval/call cũ; vẫn so đúng user/ticket/chat/residence |
-| PHD-02 | MCP credential/client/projector adapter nhận `Scope` DTO chung; không tạo Scope thứ hai |
-| PHD-03 | Thêm export `calculator_catalog_descriptor(scope) -> ToolDescriptor` hợp lệ theo shared contracts; `calculator_descriptor` giữ metadata execution riêng để không bỏ guard reviewed-effect |
-| PHD-05/13 | HTTP và service dùng `PartnerApprovalDecision`; actor phải là `ActorContext` với `credential_purpose=customer_api`. `claim_or_read` nhận ActorContext, `record_result` nhận `RequestResult(data=decision_response)`; replay unwrap data, đọc được cached response dạng cũ |
-| PHD-14/09 | Operation mới lưu `creation_status=prepared` theo enum chung. Gateway vẫn đọc trạng thái `intent` cũ; UI nhận cả hai |
-| PHD-15 | Dùng `ProviderEventEnvelope`, bỏ JSON schema riêng. ACK/read dùng `ProviderEventReceipt`, có received_at; không lộ internal error. Internal ignored/stale được public thành rejected vì fact không được apply |
-| PHD-16 | Query schedule truyền Scope DTO và timezone-aware datetime cho `JobPort.enqueue(..., not_before=...)` |
-| Chung | `ExecutionError.public()` dùng `ErrorResponse`/`PublicError`, có request_id không rỗng, ổn định trong cùng exception; không đưa provider exception vào message/details |
+Đã nhận PHH schemas/proposals; consumer tests dùng FakeAsyncProtocolPort thật
+của NPD và PHH cause/claim/WorkflowRecord. PHD đã hoàn thiện adapters tại
+[PHASE_A.md](PHASE_A.md), kiểm chứng ở [PHASE_B.md](PHASE_B.md).
+Không còn yêu cầu thêm enqueue_provider hoặc bàn giao lại protocol/Workflow schema.
 
-Provider envelope canonical hóa bằng `model_dump(mode='json', exclude_none=True)` trước business hash. Optional null/omitted và shared DTO/mapping cùng dữ kiện tạo cùng receipt. Timezone bắt buộc; không coerce bool/float thành provider_version hoặc expected_revision. Signature vẫn xác minh trên raw body trước parse/normalize. Row inbox cũ được so sánh lại canonical envelope nếu hash khác; giữ nguyên payload/hash audit của row, vẫn reject changed business payload.
+Đã xử lý phía PHD: canonical config hash/detail pin, persisted normalization
+metadata validation, ExternalOperation shared projection/optional UOW,
+provider event → shared Workflow signature, CommandClaimResult interoperability.
+Các seam nội bộ bên dưới vẫn cần shared owner chốt; chưa tự promote DTO/hook.
 
-## Điểm còn thiếu — chưa thể coi là conformant port implementation
+## File/module nhận và đề xuất
 
-| Port/model Phase A hiện có | Execution đang cần | Đề xuất owner chốt |
+| Quyết định còn cần | Export/hook cần owner chốt | Owner |
 |---|---|---|
-| ProviderAuthPort trả ActorContext; DTO không có tenant_id/provider_integration_id | Namespace phải được xác minh trước khi nhận inbox/đọc receipt; hiện adapter nội bộ nhận mapping verified principal với hai trường này | Thêm `resolve_provider_namespace(actor, operation, uow?) -> verified context` hoặc DTO server-only chứa ActorContext + namespace. Không thêm namespace vào public envelope, không suy từ payload hoặc giả manager scope |
-| JobPort chỉ enqueue(scope, ...) | Inbox có thể đến trước operation, chưa biết owner Scope; phải inbox+job cùng transaction | Additive provider-namespace enqueue hoặc namespace job aggregate do Foundation sở hữu. Chưa có `enqueue_provider` trong shared port |
-| UnitOfWork có commit/rollback/after_commit | Repository hiện dùng AsyncSession.execute/bind/begin_nested | Foundation cung cấp session adapter/UOW bridge; không truyền arbitrary UnitOfWork vào repository rồi coi là SQL session. Chưa có concrete UOW/migrations |
-| ToolDescriptor.effect = read/write/external_operation; không có reviewed/credential/async metadata | Policy cần reviewed effect; booking/cancel có consent, credential_ref riêng và async protocol pin | Chốt execution snapshot/metadata adapter và mapping effect đã review; không tự coi external_operation là write hoặc tự gán reviewed=True. Canonical ToolDescriptor trần hiện bị guard chặn an toàn |
-| AsyncProtocolSnapshotRef chỉ có protocol/version/hash/tool/integration/capabilities | Cần immutable detailed protocol: create_fields, event/query support, ordering/transition, terminal policy, timeouts, normalizers creation/query | Đông cung cấp resolver detailed snapshot pin theo shared ref/hash và các hooks còn thiếu. Không giả detailed policy từ capabilities hoặc query LLM |
-| normalize_verified_event trả NormalizedJobEvent, cần inbox_event_id/received_at nhưng signature không nhận inbox metadata; DTO không có order_mode/terminal | Processor phải có metadata server-owned và ordering/terminal/transition policy | Chốt metadata bổ sung sau normalize hay input context; chốt policy separate from normalized fact. Current processor chưa tiêu thụ trực tiếp normalized DTO Phase A |
-| WorkflowPort.apply_external_event(scope, operation_ref: str, NormalizedJobEvent) | Execution hiện truyền full internal operation/event mapping; có mark_operation_attention/apply_execution_result hooks bổ sung | Huy Hoàng cung cấp binding lookup và atomic event/attention/result adapter cùng session; không đơn giản đổi mapping thành ID rồi bỏ policy |
-| PartnerCommandPort thiếu authorize_approval; claim trả object chưa chốt aggregate | Resolve approval owner + exact audience/binding trước cached read, claim-result shape is_new/request_id/result | Chốt server-only authorize hook và claim DTO với Huy Hoàng. Đã nối ActorContext/RequestResult, chưa giả rằng namespace service đã có |
-| ExternalOperationPort có optional UnitOfWork, trả ExternalOperation | Service nội bộ yêu cầu AsyncSession do caller giữ, trả record chứa protocol detail/pending/group; canonical audience bắt buộc trong khi manager-only run có thể không có partner audience | Chốt adapter aggregate và semantics manager-only async; bổ sung call/result DTO vào contracts sau khi nhận sample bên dưới. Không tạo DTO công khai thứ hai trong Execution |
-| TypeScript v1 có Scope/provider envelope, chưa có approval money/view/operation DTO/transport | UI hiện dùng component view models và injected request transport | Giữ view models trong lane Dũng; chờ shared transport và projection types tương ứng, không copy shared DTO hoặc sửa global barrel |
+| ProviderAuth trả ActorContext chưa có verified tenant/integration/inbox metadata | Canonical server-only verified event context: actor + namespace + persisted inbox ID/received_at, theo request NPD; thay request-local factory seam khi signature merge | NCH contracts/auth + NPD |
+| AsyncProtocolPort trả ref, chưa có exact-detail accessor | Authorized resolver(scope, exact ref) → immutable config/DTO; hash phải bằng NPD snapshot_ref.schema_hash, không query latest | NCH contracts + NPD Registry |
+| Query không có provider inbox | Canonical query result + timer cause hoặc shared query hook. Không dùng timer ID làm inbox_event_id/external_event_id | NCH + PHH + NPD |
+| ExternalOperation DTO bắt buộc audience | Chốt manager-only async semantics; không fabricate partner audience. Adapter hiện reject thiếu audience, internal service vẫn hỗ trợ record cũ | NCH contracts + PHH/PHD |
+| ToolDescriptor thiếu reviewed execution/credential metadata | Canonical reviewed snapshot adapter; không tự gán reviewed=True hoặc suy effect từ HTTP/annotations | NCH + NPD |
+| PHH aggregate/hook còn proposal | Promote CommandClaimResult/cause/checkpoint và authorize_approval/query/attention/execution-result hook; giữ preflight trước cached read | NCH + PHH, review PHD |
+| Generic UnitOfWork khác AsyncSession | Chốt contract join/commit/after_commit và fake UOW để kiểm tra consumer adapter | NCH Foundation |
+| PHH IR-PHH-A05 | Strict revision integer và aware public timestamps, đồng bộ Python/JSON Schema/TS | NCH; không sửa shared trong lane PHD |
 
-## Sample bàn giao cho call/result và provider receipt
+Theo dõi cùng [NPD Phase A request](../nguyen-phuong-dong/INTEGRATION_REQUEST_NPD_PHASE_A.md)
+và [PHH Phase A request](../phan-huy-hoang/INTEGRATION_REQUEST_PHH_PHASE_A.md);
+đây là đề nghị review/promotion, chưa có owner acceptance MA.
 
-Call được runtime cấp từ checkpoint/cause, không phải public body:
+## Caller, input/output, error và scope
 
-```json
-{
-  "call_id": "call-A",
-  "run_id": "run-A",
-  "agent_id": "hotel",
-  "version_id": "v1",
-  "tool_version_id": "hotel.book.v1",
-  "idempotency_key": "cause-1/tool-call-1",
-  "arguments": {"room": "FAKE-seaview"},
-  "approval_id": "approval-A"
-}
-```
+- ExecutionProtocolAdapter nhận shared AsyncProtocolPort + exact-detail resolver.
+  event_port_factory(context) trả port riêng với actor/Scope/integration/
+  inbox_event_id/received_at từ persisted inbox, không từ body.
+- ProviderEventProcessor truyền metadata gốc; NormalizedJobEvent phải giữ
+  external IDs/correlation/version/pin/source hash/time và đúng allowlist.
+  Mismatch → PROVIDER_NORMALIZATION_INVALID/quarantine, zero Workflow apply.
+- WorkflowEventAdapter gọi apply_external_event(Scope, operation_ref,
+  NormalizedJobEvent, uow). Full operation/binding vẫn ở DB; không drop metadata
+  để vừa signature. Query qua hook riêng với timer ID/source hash/observation,
+  không giả provider inbox.
+- ExternalOperationAdapter trả DTO chung; join caller session hoặc mở transaction
+  khi uow=None; record legacy thiếu canonical pin bị từ chối projection, không tự đoán.
+- PartnerApprovalService normalize typed claim, authorize trước replay;
+  result chưa có → COMMAND_RESULT_UNAVAILABLE, không success giả.
 
-Normalized create result từ reviewed provider adapter, tách job progress:
+Các signature dưới đây là **đề xuất để owner review và thống nhất fake**,
+chưa phải shared exports đã được chấp nhận:
 
-```json
-{
-  "creation_status": "succeeded",
-  "external_job_id": "FAKE-job-1",
-  "job_status": "assigned",
-  "pending": true
-}
-```
+- `apply_operation_query(scope, operation_ref, query_result, uow) -> WorkflowRecord`.
+  Query result gồm server `timer_id`, `protocol_schema_hash`, `source_hash`,
+  `observed_at`, `status`, `facts`, `provider_version`, `terminal`; dùng TimerCause,
+  không sinh provider inbox/event ID. Chốt query fact allowlist và version semantics
+  với NPD; fake cần mẫu đúng/sai pin, job namespace và stale version.
+- `mark_operation_attention(scope, operation, cause_id, reason, uow)` và
+  `apply_execution_result(scope, call, cause_id, uow)` là injected extensions;
+  cần thống nhất DTO/cause và fake, không duck-type vào shared WorkflowPort.
+- `authorize_approval(actor, approval_id, body, uow)` xác minh original
+  Scope/audience/binding/grant trước cached replay. Chốt typed CommandClaimResult
+  và RequestResult cùng UOW; fake cần replay sau revoke và pending result.
 
-Canonical provider envelope và ACK:
+## Transaction/retry/concurrency và tests
 
-```json
-{
-  "schema_version": "1",
-  "external_event_id": "A2",
-  "client_reference": "server-correlation-A",
-  "event_type": "FAKE.progress",
-  "provider_version": 2,
-  "occurred_at": "2026-10-09T02:30:00Z",
-  "data": {"status": "completed"}
-}
-```
+Inbox+enqueue commit trước ACK; operation+inbox outcome+Workflow sink cùng
+session. Rollback toàn bộ khi sink throw hoặc trả sai Scope/workflow/conversation/
+group/ticket/audience. Replays giữ original receipt/time/correlation/cause.
+Không network/model trong apply transaction, unknown không retry create mù.
 
-```json
-{
-  "receipt_id": "server-receipt-A",
-  "ingestion_status": "accepted",
-  "duplicate": false,
-  "received_at": "2026-10-09T02:30:01Z"
-}
-```
-
-Invalid examples: thêm scope/group/actor vào envelope → PROVIDER_EVENT_INVALID 422; cùng external_event_id khác data → EVENT_ID_CONFLICT 409; provider_events credential dùng customer approval → CUSTOMER_AUTH_REQUIRED 403; khác user/ticket/chat/residence → binding/decider/audience error, zero provider call.
-
-## Kiểm chứng và compatibility
-
-`tests/workforce/execution/test_shared_contracts.py` thêm 16 cases cho DTO interoperability, rejected injection/coercion, original receipt timestamp, audit hash cũ, canonical receipt cho stale fact, actor purpose và consent/resident isolation. ASGI partner test dùng ActorContext thật và fake command namespace cùng SQL transaction, assert RequestResult trước persist. Timer fixture assert Scope/datetime đúng shared signature. Đây vẫn là fake adapters, chưa là Foundation/Orchestration production service.
-
-Không cần SQL schema mới cho các chỉnh sửa JSON payload/projection hiện tại. Khi Foundation tạo migration/composition, cần quyết định backfill intent→prepared, xử lý cached approval result/body hash cũ và map internal ignored→public rejected; **không đổi hash audit inplace**. Chi tiết checks/skips tại [VALIDATION.md](VALIDATION.md). Các integration requests trước vẫn mở, chỉ phần DTO đã nhận được là gỡ phụ thuộc.
+Tests mới tại test_phase_ab.py và typed consent tests đã pass với fake port/schema
+đã bàn giao của NPD/PHH. Còn chờ owner xác nhận các contract/proposal trên và
+thống nhất fake; chưa dùng module tests để xác nhận MA/MB toàn platform.

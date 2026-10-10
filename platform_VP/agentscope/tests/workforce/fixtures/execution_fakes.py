@@ -287,7 +287,9 @@ class Protocols:
         }:
             raise ExecutionError("EVENT_TYPE_UNSUPPORTED", 422)
 
-    async def normalize_verified_event(self, principal, protocol, envelope):
+    async def normalize_verified_event(
+        self, principal, protocol, envelope, *, inbox_event_id, received_at
+    ):
         data = envelope["data"]
         if not isinstance(data.get("status"), str) or data["status"] not in {
             "assigned",
@@ -351,7 +353,8 @@ class Workflow:
             return
         await uow.execute(
             insert(test_events).values(
-                id="apply-" + event["inbox_event_id"],
+                id="apply-"
+                + (event.get("inbox_event_id") or event["timer_id"]),
                 payload={
                     "scope": scope,
                     "workflow_id": op["workflow_id"],

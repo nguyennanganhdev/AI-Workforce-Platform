@@ -4,10 +4,10 @@
 from typing import Any
 
 from ...contracts import ExternalCreationStatus
+from ._protocol import protocol_hash
 from .._utils import (
     ExecutionError,
     audience_ref,
-    digest,
     freeze,
     new_id,
     owner,
@@ -29,6 +29,8 @@ class ExternalOperationService:
         Persist protocol pin and server correlation before any provider call.
         """
         protocol = freeze(protocol)
+        if "snapshot_ref" in protocol and owner(scope) != protocol["scope"]:
+            raise ExecutionError("ASYNC_PROTOCOL_SCOPE_MISMATCH", 403)
         if (
             protocol.get("capability") != "external_tracking"
             or not (
@@ -50,7 +52,7 @@ class ExternalOperationService:
             "audience_ref": audience_ref(run_context.get("partner_audience")),
             "provider_integration_id": protocol["provider_integration_id"],
             "protocol": protocol,
-            "protocol_hash": digest(protocol),
+            "protocol_hash": protocol_hash(protocol),
             "correlation_id": new_id(),
             "external_job_id": None,
             "creation_status": ExternalCreationStatus.PREPARED.value,
