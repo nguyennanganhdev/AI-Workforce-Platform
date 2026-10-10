@@ -26,9 +26,50 @@ jobs:
         run: uv run --frozen pytest -q
       - name: Workforce lint and contract export
         run: |
-          uv run --frozen ruff check src/awp/workforce scripts tests/test_workforce.py tests/test_workforce_bus.py tests/test_workforce_governance.py tests/test_vinhomes_workforce.py
+          uv run --frozen ruff check src/awp/workforce scripts tests/test_workforce.py tests/test_workforce_bus.py tests/test_workforce_governance.py tests/test_vinhomes_workforce.py tests/test_workspace.py tests/workspace_browser_server.py
           uv run --frozen python scripts/export_contract.py
           git diff --exit-code -- ../../docs/workforce-v1.openapi.json
+  workforce-workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.0"
+          python-version: "3.12"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.33.2"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: platform_VP/apps/platform-web/pnpm-lock.yaml
+      - run: uv sync --frozen
+        working-directory: platform_VP/core
+      - run: pnpm install --frozen-lockfile
+        working-directory: platform_VP/apps/platform-web
+      - run: pnpm exec playwright install --with-deps chromium --only-shell
+        working-directory: platform_VP/apps/platform-web
+      - name: Workspace browser acceptance with scripted models
+        working-directory: platform_VP/core
+        run: |
+          mkdir -p .local/workspace-browser
+          uv run --frozen python tests/workspace_browser_server.py > .local/workspace-browser/server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8098/platform/v1/health > /dev/null; then break; fi
+            sleep 1
+          done
+          node tests/workspace.browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workforce-workspace-browser
+          path: platform_VP/core/.local/workspace-browser
+          if-no-files-found: ignore
   platform:
     runs-on: ubuntu-latest
     timeout-minutes: 20

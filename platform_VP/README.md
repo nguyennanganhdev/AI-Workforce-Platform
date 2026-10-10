@@ -2,6 +2,14 @@
 
 Platform cộng tác agent độc lập, dùng AgentScope vendored làm reasoning runtime. Không import service, database, tài khoản hoặc quy trình Vinhomes.
 
+## Workspace Workforce hiện tại
+
+Giao diện đang phát triển trên `dev_platform` nằm tại **http://localhost:8089/console**, nối trực tiếp với runtime `core/awp`. Xem [hướng dẫn khởi động và kiểm thử](core/README.md). Tài khoản nằm trong `core/.local/accounts.txt` (ignored).
+
+Luồng sử dụng: cấu hình model → tạo/công bố hồ sơ agent → chọn supervisor mặc định trong Thiết lập → Giao việc. Người giao việc không chọn team; supervisor mời chuyên viên theo quyền của hồ sơ. Màn hình công việc hiển thị trao đổi, phối hợp agent, bằng chứng, memory riêng và chi phí thực tế. Các công việc đối tác được quan sát tại đây; reply/consent của cư dân đi qua ứng dụng đối tác.
+
+Các mục bên dưới mô tả stack `vp` đời trước trên cổng 3080. Stack đó chưa được chuyển sang Workforce và không phải giao diện nghiệm thu cho luồng supervisor mới.
+
 ## Chạy local
 
 ```powershell

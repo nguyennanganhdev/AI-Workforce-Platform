@@ -1,40 +1,99 @@
 <!doctype html>
-<html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Workforce · Quản trị</title>
-<style>
-:root{font:15px/1.55 system-ui;color:#172a36;background:#f4f6f7}*{box-sizing:border-box}body{margin:0}header{padding:18px 30px;background:#162f3d;color:white;display:flex;align-items:center;gap:24px}header strong{font-size:20px}main{max-width:1350px;margin:auto;padding:26px}nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}button,input,select,textarea{font:inherit;border:1px solid #b8c7ce;border-radius:5px;padding:9px 12px}button{background:white;cursor:pointer;color:#173d51;min-height:44px}button:hover,button.active{background:#d6e8ed}button:disabled{opacity:.45;cursor:default}button.primary{background:#17627b;color:white}input,select{background:white}label{display:block;margin:12px 0 5px}section{background:white;border:1px solid #dce3e7;padding:24px;margin-bottom:20px;border-radius:8px}h1{font-size:26px;margin:0 0 8px}h2{font-size:19px;margin:0 0 16px}.muted{color:#5c707b}.error{color:#a02020;white-space:pre-wrap}.row{display:flex;gap:14px;align-items:end;flex-wrap:wrap}.row>*{flex:1;min-width:160px}table{width:100%;border-collapse:collapse;text-align:left}th,td{padding:12px;border-bottom:1px solid #e2e8eb;vertical-align:top}th{font-size:13px;color:#5c707b}td button{margin:0 4px 4px 0}textarea{width:100%;min-height:280px;font:13px/1.6 ui-monospace,monospace}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:550px;overflow:auto;background:#f5f7f9;padding:18px}dialog{max-width:850px;width:90%;border:1px solid #aac2cc;border-radius:8px}dialog::backdrop{background:#11253288}.scroll{overflow:auto}#login{max-width:430px;margin:70px auto}#login input{width:100%}a{color:#17627b}#notice{padding:14px 0}small{color:#607785}@media(max-width:700px){main{padding:14px}header{padding:16px}section{padding:16px}th,td{padding:9px}h1{font-size:22px}}
-</style>
-<header><strong>Workforce</strong><span id="identity">Quản trị platform</span><button id="logout" hidden>Đăng xuất</button></header>
-<main><section id="login"><h1>Đăng nhập</h1><p class="muted">Tài khoản quản trị được cấp bởi người vận hành.</p><form id="loginForm"><label for="username">Tên đăng nhập</label><input id="username" autocomplete="username" required><label for="password">Mật khẩu</label><input id="password" type="password" autocomplete="current-password" required><p><button class="primary">Đăng nhập</button></p></form></section>
-<div id="workspace" hidden><nav id="nav"></nav><div id="notice" role="status"></div><section><h1 id="heading"></h1><p id="description" class="muted"></p><div id="actions"></div><div id="content" class="scroll"></div></section></div><p id="error" class="error" role="alert"></p>
-<dialog id="editor"><form method="dialog"><button style="float:right">Đóng</button></form><h2 id="editorTitle"></h2><p id="editorHelp" class="muted"></p><textarea id="jsonEditor" aria-label="Cấu hình JSON"></textarea><p><button id="save" class="primary">Lưu</button></p><p id="editorError" class="error"></p></dialog>
-<dialog id="details"><form method="dialog"><button style="float:right">Đóng</button></form><h2 id="detailTitle"></h2><pre id="detailText"></pre></dialog>
-</main><script>
-'use strict';
-const $=id=>document.getElementById(id);let session=null,current='workflows',saveAction=null;
-const pages={workflows:['Workflow','Supervisor tiếp nhận yêu cầu và tổ chức chuyên viên. Workflow theo dõi công việc; trạng thái này tách biệt với ticket nghiệp vụ.'],profiles:['Hồ sơ agent','Vai trò, nhiệm vụ, kiến thức, bộ nhớ và quyền công cụ. Supervisor tự chọn chuyên viên từ danh sách được cấp.'],models:['Model & chi phí','Danh mục provider/model do người vận hành cấu hình. Giá chưa cấu hình sẽ chặn thực thi Workforce.'],routes:['Định tuyến','Ánh xạ đơn vị quản lý bên đối tác sang workspace và supervisor. Thay đổi route yêu cầu đối tác xác nhận lại.'],clients:['Đối tác','Credential khách hàng và nhà cung cấp có mục đích và quyền riêng. Khóa chỉ xuất hiện khi tạo hoặc xoay khóa.'],integrations:['Công cụ MCP','Danh mục công cụ đã onboarding, quyền đọc/ghi và yêu cầu consent.']};
-pages.knowledge=['Kiến thức','Tài liệu được duyệt, có phiên bản và quyền theo route cùng agent.'];pages.audit=['Nhật ký','Các thao tác quản trị và đối soát có bằng chứng.'];
-function node(tag,text,cls){let n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;}
-function button(text,action,admin=false){let b=node('button',text);b.onclick=()=>Promise.resolve(action()).catch(showError);if(admin&&session?.role!=='admin')b.disabled=true;return b;}
-function showError(e){$('error').textContent=e.message||String(e);}
-async function api(path,options={}){const r=await fetch(path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json',...(session?{'X-CSRF-Token':session.csrf}:{}),...options.headers}});let body=await r.json();if(!r.ok)throw Error(body.error?.message||body.detail||`HTTP ${r.status}`);return body;}
-function detail(title,value){for(const b of $('details').querySelectorAll(':scope > button'))b.remove();$('detailTitle').textContent=title;$('detailText').textContent=JSON.stringify(value,null,2);$('details').showModal();}
-function edit(title,value,action,help='Kiểm tra cấu hình trước khi lưu. Bản đã công bố được giữ nguyên để workflow đang chạy sử dụng.'){saveAction=action;$('editorTitle').textContent=title;$('editorHelp').textContent=help;$('jsonEditor').value=JSON.stringify(value,null,2);$('editorError').textContent='';$('editor').showModal();}
-$('save').onclick=async()=>{try{$('save').disabled=true;const result=await saveAction(JSON.parse($('jsonEditor').value));$('editor').close();if(result?.api_key||result?.signing_secret)detail('Lưu khóa tại backend đối tác — chỉ hiển thị một lần',result);await load(current);}catch(e){$('editorError').textContent=e.message;}finally{$('save').disabled=false;}};
-function table(columns,rows){let t=node('table'),head=node('tr');columns.forEach(c=>head.append(node('th',c)));let h=node('thead');h.append(head);t.append(h);let body=node('tbody');for(const values of rows){let tr=node('tr');values.forEach(value=>{let td=node('td');td.append(value instanceof Node?value:document.createTextNode(String(value??'—')));tr.append(td);});body.append(tr);}t.append(body);return t;}
-function controls(...items){let box=node('div');items.forEach(x=>box.append(x));return box;}
-async function load(page){current=page;$('error').textContent='';$('heading').textContent=pages[page][0];$('description').textContent=pages[page][1];$('actions').replaceChildren();$('content').textContent='Đang tải…';for(const b of $('nav').children)b.classList.toggle('active',b.dataset.page===page);
-if(page==='workflows'){const data=await api('/workforce/v1/admin/workflows');$('content').replaceChildren(table(['Workflow','Trạng thái','Phiên bản','Thao tác'],data.items.map(x=>[x.id,x.state,x.revision,button('Xem đội agent & thực thi',async()=>{let d=await api(`/workforce/v1/admin/workflows/${x.id}`);if(x.case_id){d.agents=(await api(`/platform/v1/cases/${x.case_id}/items`)).items;d.cost=await api(`/platform/v1/cases/${x.case_id}/cost`);}detail('Workflow '+x.id,d);const pending=d.operations.filter(o=>['unknown','started'].includes(o.status));for(const op of pending)$('detailText').after(button('Đối soát thao tác '+op.id,()=>edit('Kết quả đã kiểm chứng',{expected_status:op.status,status:'confirmed',external_job_id:op.external_job_id,evidence:''},v=>api(`/workforce/v1/admin/operations/${op.id}/reconcile`,{method:'POST',body:JSON.stringify(v)}),'Chỉ xác nhận sau khi kiểm tra kết quả thực tế bên đối tác. Không thực thi lại thao tác.')));})])));}
-if(page==='profiles'){const data=await api('/platform/v1/profiles');$('actions').append(button('Tạo hồ sơ agent',()=>edit('Hồ sơ mới',{key:'supervisor',name:'Supervisor',role:'leader',mission:'Tiếp nhận và điều phối yêu cầu; xác minh bằng chứng trước khi trả lời.',team:[],tools_allow:[],instructions:'',knowledge:{knowledge_base_ids:[],mcp_servers:[],skills:[]},memory:{enabled:false,scope:'private'},model_tier:'standard',model_id:null,max_iters:12},v=>api('/platform/v1/profiles',{method:'POST',body:JSON.stringify(v)})),true));$('content').replaceChildren(table(['Agent','Vai trò / model','Phiên bản','Thao tác'],data.profiles.map(x=>[x.profile.name,`${x.profile.role} · ${x.profile.model_id||x.profile.model_tier}`,`${x.version} · ${x.status}`,controls(button('Xem',()=>detail('Hồ sơ '+x.key,x)),button('Tạo phiên bản mới',()=>edit('Phiên bản mới',x.profile,v=>api('/platform/v1/profiles',{method:'POST',body:JSON.stringify(v)})),true),...(x.status==='draft'?[button('Công bố',async()=>{await api(`/platform/v1/profiles/${x.key}/versions/${x.version}/publish`,{method:'POST'});await load('profiles');},true)]:[]))])));}
-if(page==='models'){const [models,cost]=await Promise.all([api('/platform/v1/models'),api('/platform/v1/cost')]);$('content').replaceChildren(node('h2','Model khả dụng'),node('pre',JSON.stringify(models,null,2)),node('h2','Chi phí 24 giờ'),node('pre',JSON.stringify(cost,null,2)));}
-if(page==='routes'){const data=await api('/workforce/v1/admin/routes');$('actions').append(button('Tạo route',()=>edit('Route mới',{client_id:'customer',external_management_ref:'BQL-1',workspace:'workspace',manager_ref:'manager',leader_profile:'supervisor',require_residence:true,read_only_auto_close:true,budget_micros:500000,budget_tokens:100000,max_active_workflows:20,asset_capability:true,integration_ids:[]},v=>api('/workforce/v1/admin/routes',{method:'POST',body:JSON.stringify(v)})),true));$('content').replaceChildren(table(['Đơn vị quản lý','Trạng thái','Phiên bản','Thao tác'],data.items.map(x=>[x.external_ref,x.status,x.revision,controls(button('Xem',()=>detail('Route',x)),button('Sửa',()=>edit('Cập nhật route',{...x.config,expected_revision:x.revision},v=>api(`/workforce/v1/admin/routes/${x.id}`,{method:'PUT',body:JSON.stringify(v)}),'Workflow hiện tại giữ snapshot cũ và sẽ bị chặn khi route thay đổi. Đối tác cần xác nhận revision mới.'),true))])));}
-if(page==='clients'){const data=await api('/workforce/v1/admin/clients');$('actions').append(button('Tạo credential',()=>edit('Đối tác mới',{id:'customer',purpose:'customer',operations:['submit_request','reply','read_result','receive_events','submit_consent','close_workflow','confirm_route','sync_residence','upload_asset'],settings:{}},v=>api('/workforce/v1/admin/clients',{method:'POST',body:JSON.stringify(v)}),'Khóa chỉ được lưu tại backend. Provider sử dụng credential riêng và khai báo event_map/transitions đã thống nhất.'),true));$('content').replaceChildren(table(['Client','Mục đích','Trạng thái','Thao tác'],data.items.map(x=>[x.id,x.purpose,x.status,controls(button('Quyền',()=>detail('Quyền',x.operations)),button('Xoay khóa',async()=>{if(!confirm('Xoay khóa '+x.id+'? Backend đối tác phải cập nhật khóa mới.'))return;detail('Khóa mới — chỉ hiển thị một lần',await api(`/workforce/v1/admin/clients/${x.id}/rotate`,{method:'POST'}));},true),button('Thu hồi',async()=>{if(!confirm('Thu hồi credential '+x.id+'?'))return;await api(`/workforce/v1/admin/clients/${x.id}/revoke`,{method:'POST'});await load('clients');},true))])));}
-if(page==='integrations'){const data=await api('/workforce/v1/admin/integrations');$('actions').append(button('Thêm MCP',()=>edit('Kết nối MCP',{id:'provider',url:'http://domain-mcp:8810/mcp',headers:{},context_signing_key:'',tools:{get_ticket:{read_only:true,requires_consent:false,tracks_events:false}}},v=>api('/workforce/v1/admin/integrations',{method:'POST',body:JSON.stringify(v)}),'Endpoint và khóa do quản trị viên cấu hình. Công cụ ghi mặc định cần consent. Khóa được mã hóa tại platform.'),true));$('content').replaceChildren(table(['MCP','Trạng thái','Phiên bản','Thao tác'],data.items.map(x=>[x.id,x.status,x.revision,controls(button('Công cụ',()=>detail('Công cụ MCP',x)),button('Thu hồi',async()=>{if(!confirm('Thu hồi kết nối '+x.id+'?'))return;await api(`/workforce/v1/admin/integrations/${x.id}/revoke`,{method:'POST'});await load('integrations');},true))])));}
-if(page==='knowledge'){const data=await api('/workforce/v1/admin/knowledge/documents');$('actions').append(button('Công bố tài liệu',()=>edit('Tài liệu đã được duyệt',{knowledge_base_id:'procedures',document_key:'procedure-1',title:'Quy trình',text:'',source:''},v=>api('/workforce/v1/admin/knowledge/documents',{method:'POST',body:JSON.stringify(v)})),true));$('content').replaceChildren(table(['Kho','Tài liệu','Phiên bản','Thao tác'],data.items.map(x=>[x.knowledge_base_id,x.title,`${x.version} · ${x.status}`,controls(button('Xem',()=>detail(x.title,x)),button('Thu hồi',async()=>{if(!confirm('Thu hồi tài liệu này khỏi các workflow?'))return;await api(`/workforce/v1/admin/knowledge/documents/${x.id}/revoke`,{method:'POST'});await load('knowledge');},true))])));}
-if(page==='audit'){$('content').replaceChildren(node('pre',JSON.stringify(await api('/workforce/v1/admin/audit'),null,2)));}
-$('notice').textContent='Cập nhật lúc '+new Date().toLocaleTimeString('vi-VN');}
-async function ready(user){session=user;$('login').hidden=true;$('workspace').hidden=false;$('logout').hidden=false;$('identity').textContent=`${user.username} · ${user.role}`;$('nav').replaceChildren(...Object.keys(pages).map(k=>{let b=button(pages[k][0],()=>load(k));b.dataset.page=k;return b;}));await load(current);}
-$('loginForm').onsubmit=async e=>{e.preventDefault();try{await ready(await api('/console/login',{method:'POST',body:JSON.stringify({username:$('username').value,password:$('password').value})}));$('password').value='';}catch(err){showError(err);}};
-$('logout').onclick=async()=>{await api('/console/logout',{method:'POST'});location.reload();};
-api('/console/session').then(ready).catch(()=>{});
-</script></html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      name="description"
+      content="Quản lý đội ngũ agent, cộng tác và vận hành công việc trên Workforce."
+    />
+    <title>Workforce · Agent workspace</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23245045'/%3E%3Ctext x='6' y='30' font-size='30' fill='white'%3EW%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/console/assets/workspace.css" />
+    <script defer src="/console/assets/workspace.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#content">Đến nội dung chính</a>
+    <main id="login" class="login-layout">
+      <section class="login-story">
+        <div class="brand"><span class="brand-mark">W</span> Workforce</div>
+        <div>
+          <p class="eyebrow">KHÔNG GIAN LÀM VIỆC CỦA AGENT</p>
+          <h1>Giao một việc.<br />Cùng giải quyết.</h1>
+          <p>
+            Mỗi agent có nhiệm vụ và tri thức riêng.<br />Supervisor tổ chức đội
+            ngũ, theo dõi công việc<br />và kiểm chứng kết quả.
+          </p>
+        </div>
+        <small>Agent workspace · Powered by AgentScope</small>
+      </section>
+      <section class="login-panel">
+        <form id="login-form">
+          <p class="eyebrow">WORKSPACE</p>
+          <h2>Đăng nhập</h2>
+          <p class="muted">Dùng tài khoản do quản trị viên cấp.</p>
+          <label
+            >Tên đăng nhập<input
+              name="username"
+              autocomplete="username"
+              required /></label
+          ><label
+            >Mật khẩu<input
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+          /></label>
+          <p id="login-error" class="error" role="alert"></p>
+          <button class="primary wide" type="submit">Vào workspace →</button>
+        </form>
+      </section>
+    </main>
+    <div id="app" class="app-shell" hidden>
+      <aside class="sidebar" id="sidebar">
+        <a href="#overview" class="brand"
+          ><span class="brand-mark">W</span
+          ><span>Workforce<small>AGENT WORKSPACE</small></span></a
+        >
+        <nav id="nav" aria-label="Điều hướng chính"></nav>
+        <div class="sidebar-footer">
+          <span id="identity"></span
+          ><button id="logout" class="text-button">Đăng xuất</button>
+        </div>
+      </aside>
+      <div class="workspace">
+        <header class="topbar">
+          <button
+            id="menu"
+            class="icon-button"
+            aria-label="Mở điều hướng"
+            aria-expanded="false"
+          >
+            ☰</button
+          ><span id="breadcrumb">Workspace</span
+          ><span class="topbar-right"
+            ><span class="connection-dot"></span
+            ><span id="sync-status" role="status">Đang kết nối</span></span
+          >
+        </header>
+        <main id="content" tabindex="-1"></main>
+        <footer class="page-footer">
+          Workforce · Dữ liệu từ runtime thực tế
+        </footer>
+      </div>
+    </div>
+    <dialog id="editor" aria-labelledby="editor-title">
+      <div class="dialog-header">
+        <h2 id="editor-title"></h2>
+        <button id="close-editor" class="icon-button" aria-label="Đóng">
+          ×
+        </button>
+      </div>
+      <div id="editor-body"></div>
+    </dialog>
+    <div id="toast" role="status" hidden></div>
+  </body>
+</html>

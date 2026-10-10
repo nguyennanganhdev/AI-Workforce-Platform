@@ -18,6 +18,25 @@ Console: `http://localhost:8089/console`. Tài khoản local được ghi trong 
 
 Trong console: công bố profile supervisor/chuyên viên → tạo customer/provider credential và MCP integration → tạo route → backend đối tác xác nhận revision, đồng bộ quyền cư trú → gửi request. Session không có form chọn thành viên. Profile quy định mission, chuyên môn, giới hạn, tool allowlist, memory, knowledge và model; supervisor chọn chuyên viên theo nhiệm vụ.
 
+### Agent workspace
+
+Console có tổng quan, hồ sơ agent theo phiên bản, công việc, kho tri thức, model/provider, MCP, route, credential và nhật ký. Các biểu mẫu quản trị cơ bản không yêu cầu nhập JSON; schema sự kiện provider vẫn là cấu hình nâng cao. Model/provider hiện xem từ catalog; việc thêm model, credential và giá vẫn qua `models.yaml`/biến môi trường, chưa có form lưu provider trực tiếp từ trình duyệt.
+
+Công việc nội bộ: chọn supervisor đã công bố trong **Thiết lập** một lần, đặt ngân sách rồi **Giao việc** bằng mô tả yêu cầu. API `/workforce/v1/admin/workspace` dùng cùng hàng đợi, fencing, snapshot và kiểm soát chi phí của Workforce. Không cần khai báo cư trú, ticket hoặc chọn team. Thiếu model/credential/giá sẽ bị chặn ngay. Đổi thiết lập tạo route mới cho công việc tiếp theo, giữ nguyên route của công việc đang mở.
+
+Chi tiết công việc tách trao đổi với người giao việc, case file giữa các agent, bằng chứng, memory chưa kiểm chứng và thao tác/chi phí. Danh sách agent tham gia lấy từ session thực tế; hồ sơ được cấp quyền mời không tự xuất hiện như thành viên. Màn hình cập nhật mỗi 5 giây, giữ nội dung đang nhập. Người giao việc được bổ sung thông tin, xác nhận kết quả khi được yêu cầu hoặc dừng theo dõi. Dừng chặn lượt xử lý mới; lượt gọi provider đã gửi vẫn có thể phát sinh phí. Công việc đối tác chỉ được quan sát: tài khoản console không trả lời hoặc đồng ý thay cư dân.
+
+Kiểm thử trình duyệt dùng server và database tạm, AgentScope thật, model có kịch bản, không dùng credential trả phí:
+
+```powershell
+# Terminal 1, trong platform_VP/core:
+.venv\Scripts\python tests\workspace_browser_server.py
+# Terminal 2, cần dependency Playwright của apps/platform-web đã cài:
+node tests\workspace.browser.cjs
+```
+
+Kịch bản kiểm tra tạo/công bố agent, thiết lập supervisor, giao việc không chọn team, chuyên viên hỏi/đáp, chặn kết luận bịa số, chi phí và điều hướng desktop/mobile. Ảnh kiểm chứng lưu trong `.local/workspace-browser/` (ignored). Đây là kiểm chứng đường ống với model có kịch bản, chưa phải nghiệm thu chất lượng provider thật.
+
 Ngân sách mặc định route là 0,50 USD/100.000 token mỗi workflow, tối đa 20 workflow mở. `AWP_WORKFORCE_MONTHLY_BUDGET_USD=100` đặt trần tổng theo tenant/tháng UTC, có thể điều chỉnh. Mỗi lần gọi model giữ chỗ chi phí/token trong DB trước khi gửi; mất usage giữ nguyên khoản dự phòng. Không có giá thì chặn gọi. Hạn mức này là kiểm soát ứng dụng, không thay hạn mức thanh toán của provider.
 
 Knowledge được công bố có phiên bản và quyền theo giao của profile với route; tìm kiếm hiện tại theo từ khóa, không dùng embedding. Memory riêng theo workflow/profile, tối đa 32 ghi chú; không coi ghi chú là bằng chứng. Case file giữ bằng chứng, dữ kiện, câu hỏi/phản biện/báo cáo; digest ngắn và CaseRead tránh phát lại toàn bộ chat cho mọi agent. Khi chờ cư dân/công việc ngoài hệ thống, worker giải phóng lượt thực thi; không gọi model để poll tiến độ.

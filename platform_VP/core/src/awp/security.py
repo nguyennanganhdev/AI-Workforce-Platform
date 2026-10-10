@@ -70,7 +70,7 @@ class SecurityMiddleware:
             return await self.app(scope, receive, send)
         headers = list(scope["headers"])
         path = scope["path"]
-        if path in ("/console", "/console/login", "/console/session", "/console/logout"):
+        if path in ("/console", "/console/login", "/console/session", "/console/logout") or path.startswith("/console/assets/"):
             return await self.app(scope, receive, send)
         if path.startswith(("/workforce/v1/partner/", "/workforce/v1/provider/")):
             # These routers validate purpose-scoped machine credentials themselves.

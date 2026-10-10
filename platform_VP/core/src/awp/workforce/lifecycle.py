@@ -89,7 +89,9 @@ async def close(service, client, workflow_id, command):
             s.operations.c.status.not_in(["completed", "confirmed", "failed", "cancelled", "rejected"])))).first()
         busy = (await conn.execute(select(s.requests.c.id).where(s.requests.c.workflow_id == wf["id"],
             s.requests.c.status.in_(["accepted", "queued", "running"])))).first()
-        if (pending or busy) and not (command.stop_tracking_only and command.reason == "resident_requested_stop_tracking"):
+        stop = command.stop_tracking_only and (command.reason == "resident_requested_stop_tracking" or (
+            command.reason == "workspace_user_requested_stop_tracking" and bool(client["settings"].get("workspace"))))
+        if (pending or busy) and not stop:
             raise Fault(409, "WORKFLOW_NOT_READY_TO_CLOSE")
         req = await service.add_request(conn, client, wf, payload, "close", "completed")
         await service.transition(conn, wf, "closed", reason=command.reason)

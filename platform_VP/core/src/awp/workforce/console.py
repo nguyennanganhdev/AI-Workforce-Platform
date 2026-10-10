@@ -6,7 +6,7 @@ import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from .service import Fault
@@ -52,6 +52,12 @@ def build_console(service):
     @router.get("", response_class=HTMLResponse)
     async def page():
         return Path(__file__).with_name("console.html").read_text(encoding="utf-8")
+
+    @router.get("/assets/{name}")
+    async def asset(name: str):
+        if name not in {"workspace.js", "workspace.css"}:
+            raise Fault(404, "NOT_FOUND")
+        return FileResponse(Path(__file__).with_name(name), headers={"Cache-Control": "no-cache"})
 
     @router.post("/login")
     async def login(body: Login, request: Request):

@@ -122,6 +122,27 @@ async def prepare(service, job):
     return tenant, case, text
 
 
+async def failed_session(service, job, tenant, case):
+    """Inspect this execution's roster, including members that failed before binding."""
+    from agentscope.types import ReplyFinishedReason
+
+    async with service.rt.db.engine.connect() as conn:
+        sessions = set((await conn.execute(select(s.session_fences.c.id).where(
+            s.session_fences.c.job_id == job["id"], s.session_fences.c.owner == job["owner"],
+            s.session_fences.c.generation == job["generation"]))).scalars())
+    leader_id = case["leader_session_id"]
+    if leader_id in sessions:
+        leader = await service.rt.storage.get_session("awp:" + tenant, case["leader_agent_id"], leader_id)
+        team = await service.rt.storage.get_team("awp:" + tenant, leader.team_id) if leader and leader.team_id else None
+        if team and team.session_id == leader_id:
+            sessions.update(member.session_id for member in team.data.members)
+    for session_id in sessions:
+        messages, _ = await service.rt.storage.list_messages("awp:" + tenant, session_id)
+        if any(message.finished_reason == ReplyFinishedReason.ERROR for message in messages):
+            return session_id
+    return None
+
+
 async def execute(service, job):
     from .lifecycle import complete
     if job["kind"] == "provider":
@@ -155,11 +176,10 @@ async def execute(service, job):
         if current["status"] != "leased" or current["owner"] != job["owner"] or current["generation"] != job["generation"]:
             return
         if time.monotonic() >= next_failure_check:
-            from agentscope.types import ReplyFinishedReason
-            messages, _ = await service.rt.storage.list_messages("awp:" + tenant, case["leader_session_id"])
-            if any(message.finished_reason == ReplyFinishedReason.ERROR for message in messages):
+            failed = await failed_session(service, job, tenant, case)
+            if failed:
                 await complete(service, job["workflow_id"], "Yêu cầu cần người vận hành kiểm tra trước khi tiếp tục.",
-                    error={"code": "AGENT_EXECUTION_FAILED", "retryable": False},
+                    error={"code": "AGENT_EXECUTION_FAILED", "retryable": False, "session_id": failed},
                     fence=Fence(job["id"], job["owner"], job["generation"]))
                 return
             next_failure_check = time.monotonic() + 1

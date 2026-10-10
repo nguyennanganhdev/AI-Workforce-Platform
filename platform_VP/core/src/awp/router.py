@@ -144,7 +144,7 @@ def build_router(rt: Runtime, intake: IntakeService) -> APIRouter:
     async def models(request: Request):
         admin(request)
         return {"models": [{"id": s.id, "provider": s.provider, "model": s.model, "tier": s.tier,
-                            "available": s.available(), "priced": s.priced}
+                            "available": s.available(rt.catalog._env), "priced": s.priced}
                            for s in rt.catalog.specs.values()]}
 
     @r.get("/metrics")

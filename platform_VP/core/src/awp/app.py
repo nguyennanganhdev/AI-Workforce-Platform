@@ -97,6 +97,8 @@ def build_app(
     app.include_router(workforce_router(workforce))
     from .workforce.console import build_console
     app.include_router(build_console(workforce))
+    from .workforce.workspace import build_workspace
+    app.include_router(build_workspace(workforce))
 
     from fastapi.responses import JSONResponse
     from fastapi.exceptions import RequestValidationError
