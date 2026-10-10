@@ -42,6 +42,9 @@ Mapping v1 dùng **tên field cấp đầu**, không phải URL/JSONPath:
 - `event_mappings[event_type]`: status chuẩn hóa, JSON Schema Draft 2020-12 cho
   `data`, và allowlist `fact_fields`. Không gọi LLM hoặc biến provider notes thành
   instruction; field không được chọn không đi vào normalized facts.
+  `$ref`/`$dynamicRef` phải resolve được trong schema đã bàn giao, gồm `$defs`,
+  anchors và schema con có `$id`; thiếu đích hoặc cần tải ngoài bị từ chối ngay
+  khi cấu hình. Validation không tải schema từ mạng.
 - `transitions`: cạnh trạng thái cho phép; `terminal_statuses`: trạng thái cuối,
   không có cạnh đi ra. Status từ result/event phải thuộc tập đã khai báo.
 - `timeout_seconds`: thời hạn nghiệp vụ của pending operation. Hết hạn cần query

@@ -7,6 +7,9 @@ from typing import Literal
 
 from jsonschema import Draft202012Validator, SchemaError
 from pydantic import Field, model_validator
+from referencing import Registry
+from referencing.exceptions import Unresolvable
+from referencing.jsonschema import DRAFT202012
 
 from ...contracts import (
     AsyncProtocolSnapshotRef,
@@ -29,7 +32,26 @@ class EventMapping(WorkforceModel):
     def validate_schema(self) -> "EventMapping":
         try:
             Draft202012Validator.check_schema(self.data_schema)
-        except SchemaError as exc:
+            root = DRAFT202012.create_resource(self.data_schema)
+            # Resolve only bundled schemas; configuration never fetches URLs.
+            pending = [(root, Registry().resolver_with_root(root))]
+            while pending:
+                resource, resolver = pending.pop()
+                if isinstance(resource.contents, dict):
+                    for keyword in ("$ref", "$dynamicRef"):
+                        if keyword in resource.contents:
+                            target = resolver.lookup(
+                                resource.contents[keyword],
+                            )
+                            if not isinstance(target.contents, (dict, bool)):
+                                raise ValueError(
+                                    "reference must target a schema",
+                                )
+                pending.extend(
+                    (child, resolver.in_subresource(child))
+                    for child in resource.subresources()
+                )
+        except (SchemaError, Unresolvable) as exc:
             raise ValueError("invalid event data schema") from exc
         return self
 

@@ -32,9 +32,26 @@ provider_events, received_at từ inbox; snapshot provider-demo. Snapshot của
 provider-other phải bị từ chối dù external_job_id đều là job-123. Context purpose
 customer_api, hoặc ID inbox do payload tự khai, không được chấp nhận.
 
-Compatibility: chưa có implementation/caller production trong checkout; fake
-hiện seed context qua constructor chỉ cho test. Không cần migration của Registry
-cho thay đổi method; owner Execution chốt persistence inbox riêng.
+Compatibility trên nền `develop2` tại `3270ef3`: chưa có service Registry
+production, nhưng đã có các caller trong Execution:
+
+- `execution/_gateway.py`: gọi `get_snapshot` và `normalize_creation_result`.
+- `execution/provider_events/_ingress.py`: gọi `validate_envelope`.
+- `execution/provider_events/_processor.py`: gọi `normalize_verified_event`
+  và `validate_transition`.
+
+Các caller này dùng dictionary cho principal/protocol/envelope và đòi kết quả
+normalization có `status`, `facts`, `provider_version`, `order_mode`, `terminal`;
+`AsyncProtocolPort` chung hiện dùng DTO và trả `NormalizedJobEvent` với
+`normalized_status`, chưa có `order_mode`/`terminal` hoặc ba method bổ sung
+`normalize_creation_result`, `validate_envelope`, `validate_transition`.
+Fake Phase A chưa thay trực tiếp được protocol fake của Execution. Chí Hoàng/Dũng
+cần chốt contract và cập nhật callers/tests tại nhịp B/C trước khi nối runtime;
+không đổi interface chỉ dựa vào việc tests hai module chạy riêng đều pass.
+
+Fake hiện seed context qua constructor chỉ cho test. Đề xuất context trên chưa
+yêu cầu migration Registry; owner Execution chốt persistence inbox và đánh giá
+ảnh hưởng khi cập nhật contract. PR này không sửa callers hoặc shared contracts.
 
 ## Chí Hoàng + Dũng/Nghĩa/Anh — detailed snapshot
 

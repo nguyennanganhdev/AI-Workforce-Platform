@@ -18,7 +18,10 @@ from agentscope.app.workforce.contracts import (
     WorkforceContractError,
     WorkforceErrorCode,
 )
-from agentscope.app.workforce.registry.event_protocols import AsyncToolProtocol
+from agentscope.app.workforce.registry.event_protocols import (
+    AsyncToolProtocol,
+    EventMapping,
+)
 from fakes import FakeAsyncProtocolPort
 
 
@@ -147,6 +150,64 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
                     AsyncToolProtocol.model_validate(
                         self.samples["protocols"][name] | change,
                     )
+
+    def test_unresolvable_schema_references_fail_at_configuration(
+        self,
+    ) -> None:
+        for schema in (
+            {"$ref": "#/$defs/missing"},
+            {"properties": {"eta_minutes": {"$ref": "#/$defs/missing"}}},
+            {"allOf": [{"$ref": "#missing"}]},
+            {"$dynamicRef": "#missing"},
+            {"$ref": "https://untrusted.example/schema.json"},
+            {
+                "$defs": {"count": {"minimum": 0}},
+                "$ref": "#/$defs/count/minimum",
+            },
+        ):
+            with self.subTest(schema=schema):
+                with self.assertRaises(ValidationError):
+                    EventMapping(status="assigned", data_schema=schema)
+
+    async def test_local_schema_references_normalize_without_network(
+        self,
+    ) -> None:
+        for schema in (
+            {
+                "$defs": {"count": {"type": "integer", "minimum": 0}},
+                "properties": {"eta_minutes": {"$ref": "#/$defs/count"}},
+            },
+            {
+                "$defs": {"count": {"$anchor": "count", "type": "integer"}},
+                "properties": {"eta_minutes": {"$ref": "#count"}},
+            },
+            {
+                "$id": "https://schemas.example/event",
+                "$defs": {"count": {"$id": "count", "type": "integer"}},
+                "properties": {"eta_minutes": {"$ref": "count"}},
+            },
+            {"examples": [{"$ref": "literal data, not a schema reference"}]},
+        ):
+            with self.subTest(schema=schema):
+                config = self.protocol.model_dump(mode="json")
+                config["event_mappings"][self.event.event_type][
+                    "data_schema"
+                ] = schema
+                protocol = AsyncToolProtocol.model_validate(config)
+                fake = FakeAsyncProtocolPort(
+                    self.scope,
+                    [protocol],
+                    self.provider,
+                    "provider-demo",
+                    "inbox-1",
+                    self.fake.received_at,
+                )
+                event = await fake.normalize_verified_event(
+                    self.provider,
+                    protocol.snapshot_ref,
+                    self.event,
+                )
+                self.assertEqual(event.facts, {"eta_minutes": 20})
 
     def test_hash_is_canonical_and_detects_mapping_or_policy_drift(
         self,

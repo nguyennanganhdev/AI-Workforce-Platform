@@ -1,7 +1,8 @@
 # Trạng thái — Nguyễn Phương Đông
 
 Ngày kiểm tra: 2026-10-10. Branch: `dev/TeamDong/dongnpp`.
-Baseline: `aaa67a85028580547e49fdade5ab535e4daa3972`; thay đổi Phase A chưa commit.
+Baseline: `develop2` tại `3270ef3f61bba29af869ed833485fac9379a91fc` sau rollback.
+Phase A đã commit (`7ca52d4`, `038595f`) và bàn giao qua PR #46.
 
 ## Tiến độ
 
@@ -17,8 +18,8 @@ Gate endpoint MCP tại Bước 1 vẫn độc lập với Phase A này, xem
 ## Files, exports và phạm vi
 
 - `registry/event_protocols/_models.py`, `__init__.py`: export `AsyncToolProtocol`,
-  `EventMapping`; 148 dòng production, tái sử dụng `WorkforceModel`, `ToolEffect`,
-  `AsyncProtocolSnapshotRef`, Pydantic, jsonschema và Python standard library.
+  `EventMapping`; tái sử dụng `WorkforceModel`, `ToolEffect`,
+  `AsyncProtocolSnapshotRef`, Pydantic, jsonschema/referencing và Python standard library.
 - `tests/workforce/registry/event_protocols/fakes.py`, `test_protocols.py`:
   fake dùng nguyên `AsyncProtocolPort`, `ActorContext`, `ProviderEventEnvelope`,
   `NormalizedJobEvent`, `Scope` và lỗi capability chung. Fake chỉ trong test.
@@ -40,18 +41,21 @@ repo với service dependencies. Không sửa environment/manifest của repo.
 Từ `platform_VP/agentscope`:
 
 ```bash
-python -m pytest tests/workforce/registry/event_protocols tests/workforce/foundation/test_contracts.py -q
+python -m pytest tests/workforce/registry/event_protocols tests/workforce/foundation/test_contracts.py tests/workforce/execution -q
 python -m unittest discover -s tests/workforce/registry/event_protocols -p 'test_*.py' -v
 ```
 
-- Pytest: **21 passed, 52 subtests passed**, không warning; 12 test Registry mới
-  và 9 regression contracts Foundation.
-- Unittest discover: **12 tests OK**.
+- Pytest sau sửa review: **84 passed, 1 skipped, 62 subtests passed**; gồm
+  14 test Registry, 9 regression contracts Foundation và suite Execution.
+  PostgreSQL concurrency test skipped vì chưa có `WORKFORCE_TEST_POSTGRES_URL`.
+- Unittest discover: **14 tests OK**.
 - Schema export và sample snapshot/hash được đối chiếu với code trong test.
 - Black 23.3.0 (79 columns), flake8 6.1.0, add-trailing-comma 3.1.0,
   compileall và `git diff --check`: pass.
 
-Tests kiểm tra invalid config/schema, thiếu capability/version, đủ bốn chiều Scope,
+Tests kiểm tra invalid config/schema, reference hỏng hoặc cần tải ngoài bị từ chối,
+reference nội bộ/anchor/schema con hợp lệ vẫn normalize được, thiếu capability/version,
+đủ bốn chiều Scope,
 provider namespace/purpose, normalization deterministic/allowlist facts, order
 metadata, schema/policy hash drift và giữ bản pin cũ khi config đổi.
 Normalizer fake không áp state nên không coi đó là test DB ordering/reconciliation.
@@ -62,10 +66,13 @@ Nhịp B: repository/service/normalizer production và readiness UI trong lane �
 Foundation vẫn sở hữu session/uow/auth/jobs/migrations/transport. Chốt context
 normalization và detailed snapshot với Chí Hoàng/Dũng theo
 [INTEGRATION_REQUEST_NPD_PHASE_A.md](INTEGRATION_REQUEST_NPD_PHASE_A.md) trước khi nối thật.
+Execution đã có callers nhưng dùng dictionary và các method ngoài port chung;
+tests pass riêng chưa chứng minh fake/DTO Phase A thay được protocol của Execution.
 Không tự đoán integration namespace từ partner/tool name hoặc tự tạo inbox ID
 và received_at mới mỗi lần normalize.
 
-Chưa kiểm tra HTTP/MCP thật, DB, worker, inbox/replay/crash/race, frontend/E2E hoặc
-sandbox provider. Chưa có schema/table/migration Registry hoặc production
+Suite Execution dùng fake/SQLite; chưa chứng minh tích hợp protocol Registry
+vào runtime hoặc concurrency PostgreSQL. Chưa kiểm tra HTTP/MCP thật, worker thật,
+frontend/E2E hoặc sandbox provider. Chưa có schema/table/migration Registry hoặc production
 `RegistryPort`/`AsyncProtocolPort` service. Các integration requests mới là file
 bàn giao, chưa gửi thông báo cho chat/thành viên khác.
