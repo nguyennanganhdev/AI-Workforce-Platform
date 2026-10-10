@@ -7,7 +7,8 @@ Task bổ sung của owner: **NPD-10–NPD-12**; chọn phần tương ứng ph�
 
 Phạm vi: Protocol snapshots/capabilities và deterministic normalization; không nhận HTTP Provider Event request hoặc ghi inbox.
 
-File dự kiến khi triển khai: `_models.py`, `_tables.py`, `_repository.py`, `_normalizer.py`, `_service.py`. Đây chỉ là gợi ý chia file; chưa có code được tạo trong folder.
+Files hiện có: `_models.py`, `_repository.py` (persistence boundary),
+`_normalizer.py`, `_service.py`. SQL tables/migration/composition được nối Phase C.
 
 Nguyên tắc triển khai:
 
@@ -21,4 +22,8 @@ Phase A đã export `AsyncToolProtocol`, `EventMapping`: cấu hình có validat
 snapshot reference/hash và schema/samples. Xem
 [PHASE_A.md](../../../../../../docs/workforce/handoffs/nguyen-phuong-dong/PHASE_A.md).
 Fake `AsyncProtocolPort` và contract tests nằm trong lane test Registry.
-Chưa triển khai service/persistence, normalizer production, API, worker hoặc migration.
+Phase B bổ sung `AsyncProtocolService`, `AsyncProtocolRepository` và deterministic
+normalizer production. Service nhận Scope đã resolve và callback đọc metadata inbox
+đã xác minh, không tự tạo metadata. Fake repository chỉ trong tests; PostgreSQL,
+auth/inbox adapter, API/worker/migration/composition được nối ở Phase C. Xem
+[PHASE_B.md](../../../../../../docs/workforce/handoffs/nguyen-phuong-dong/PHASE_B.md).

@@ -1,5 +1,12 @@
 # event_protocols — API/event/workflow v1.4
 
+Phase B có tests cho `AsyncProtocolService` qua repository/context loader fake;
+fake Phase A dùng chung normalizer production. Chạy thêm
+`node tests/workforce/registry/event_protocols/test_event_channels.mjs` từ root
+AgentScope để kiểm tra readiness và render UI qua Vite/React SSR sẵn có.
+Chi tiết kết quả và giới hạn integration ở
+[PHASE_B.md](../../../../docs/workforce/handoffs/nguyen-phuong-dong/PHASE_B.md).
+
 Chủ sở hữu: **Nguyễn Phương Đông**. Branch: `feat/wf-registry`.
 Task bổ sung của owner: **NPD-10–NPD-12**; chọn phần tương ứng phạm vi folder dưới đây.
 
