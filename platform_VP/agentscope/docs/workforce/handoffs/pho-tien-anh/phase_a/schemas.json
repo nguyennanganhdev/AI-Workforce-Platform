@@ -1,0 +1,1619 @@
+{
+  "schema_version": "pta-phase-a-1",
+  "schemas": {
+    "ValidationReport": {
+      "additionalProperties": false,
+      "properties": {
+        "valid": {
+          "title": "Valid",
+          "type": "boolean"
+        },
+        "blockers": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Blockers",
+          "type": "array"
+        },
+        "tool_snapshot_hash": {
+          "title": "Tool Snapshot Hash",
+          "type": "string"
+        },
+        "protocol_hash": {
+          "title": "Protocol Hash",
+          "type": "string"
+        },
+        "dependency_hash": {
+          "title": "Dependency Hash",
+          "type": "string"
+        },
+        "tool_snapshots": {
+          "default": [],
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Tool Snapshots",
+          "type": "array"
+        }
+      },
+      "required": [
+        "valid",
+        "tool_snapshot_hash",
+        "protocol_hash",
+        "dependency_hash"
+      ],
+      "title": "ValidationReport",
+      "type": "object"
+    },
+    "EvaluationSnapshot": {
+      "$defs": {
+        "AgentManifest": {
+          "additionalProperties": false,
+          "properties": {
+            "schema_version": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "business_profile": {
+              "$ref": "#/$defs/BusinessProfile"
+            },
+            "spec": {
+              "$ref": "#/$defs/AgentSpec"
+            },
+            "async_policy_ref": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Async Policy Ref"
+            },
+            "protocol_snapshot_hashes": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Protocol Snapshot Hashes",
+              "type": "array"
+            }
+          },
+          "required": [
+            "schema_version",
+            "business_profile",
+            "spec"
+          ],
+          "title": "AgentManifest",
+          "type": "object"
+        },
+        "AgentSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "agent_key": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Agent Key",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "description": {
+              "default": "",
+              "maxLength": 4000,
+              "title": "Description",
+              "type": "string"
+            },
+            "capabilities": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            },
+            "system_prompt": {
+              "minLength": 1,
+              "title": "System Prompt",
+              "type": "string"
+            },
+            "model_config_ref": {
+              "additionalProperties": true,
+              "title": "Model Config Ref",
+              "type": "object"
+            },
+            "context_config": {
+              "additionalProperties": true,
+              "title": "Context Config",
+              "type": "object"
+            },
+            "react_config": {
+              "additionalProperties": true,
+              "title": "React Config",
+              "type": "object"
+            },
+            "tool_bindings": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/ToolBinding"
+              },
+              "title": "Tool Bindings",
+              "type": "array"
+            },
+            "knowledge_bindings": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Knowledge Bindings",
+              "type": "array"
+            },
+            "skill_bindings": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Skill Bindings",
+              "type": "array"
+            },
+            "collaboration_policy": {
+              "additionalProperties": true,
+              "title": "Collaboration Policy",
+              "type": "object"
+            },
+            "execution_policy": {
+              "additionalProperties": true,
+              "title": "Execution Policy",
+              "type": "object"
+            }
+          },
+          "required": [
+            "agent_key",
+            "name",
+            "capabilities",
+            "system_prompt",
+            "model_config_ref"
+          ],
+          "title": "AgentSpec",
+          "type": "object"
+        },
+        "BusinessProfile": {
+          "additionalProperties": false,
+          "properties": {
+            "profile_schema_version": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Profile Schema Version",
+              "type": "string"
+            },
+            "objective": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "title": "Objective",
+              "type": "string"
+            },
+            "responsibilities": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Responsibilities",
+              "type": "array"
+            },
+            "capabilities": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            },
+            "input_contract": {
+              "additionalProperties": true,
+              "title": "Input Contract",
+              "type": "object"
+            },
+            "output_contract": {
+              "additionalProperties": true,
+              "title": "Output Contract",
+              "type": "object"
+            },
+            "business_scope": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Business Scope",
+              "type": "string"
+            },
+            "required_constraints": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Required Constraints",
+              "type": "array"
+            },
+            "execution_policy": {
+              "$ref": "#/$defs/SideEffectPolicy"
+            },
+            "knowledge_requirements": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Knowledge Requirements",
+              "type": "array"
+            }
+          },
+          "required": [
+            "profile_schema_version",
+            "objective",
+            "responsibilities",
+            "capabilities",
+            "input_contract",
+            "output_contract",
+            "business_scope",
+            "execution_policy"
+          ],
+          "title": "BusinessProfile",
+          "type": "object"
+        },
+        "Scope": {
+          "additionalProperties": false,
+          "description": "Immutable owner boundary for every Workforce resource.",
+          "properties": {
+            "tenant_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "domain_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Domain Id",
+              "type": "string"
+            },
+            "area_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Area Id",
+              "type": "string"
+            },
+            "manager_account_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Manager Account Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "domain_id",
+            "area_id",
+            "manager_account_id"
+          ],
+          "title": "Scope",
+          "type": "object"
+        },
+        "SideEffectPolicy": {
+          "enum": [
+            "read_only",
+            "require_approval",
+            "allow_within_policy"
+          ],
+          "title": "SideEffectPolicy",
+          "type": "string"
+        },
+        "ToolBinding": {
+          "additionalProperties": false,
+          "properties": {
+            "tool_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Id",
+              "type": "string"
+            },
+            "tool_version_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Version Id",
+              "type": "string"
+            },
+            "schema_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Schema Hash",
+              "type": "string"
+            },
+            "required_capability": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Required Capability",
+              "type": "string"
+            },
+            "selection_reason": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "title": "Selection Reason",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool_id",
+            "tool_version_id",
+            "schema_hash",
+            "required_capability",
+            "selection_reason"
+          ],
+          "title": "ToolBinding",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "snapshot_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Snapshot Id",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "agent_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "draft_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Draft Id",
+          "type": "string"
+        },
+        "draft_revision": {
+          "minimum": 1,
+          "title": "Draft Revision",
+          "type": "integer"
+        },
+        "source_draft_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Source Draft Hash",
+          "type": "string"
+        },
+        "candidate_version_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Candidate Version Id",
+          "type": "string"
+        },
+        "manifest": {
+          "$ref": "#/$defs/AgentManifest"
+        },
+        "manifest_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Manifest Hash",
+          "type": "string"
+        },
+        "tool_snapshot_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Tool Snapshot Hash",
+          "type": "string"
+        },
+        "test_context_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Test Context Hash",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "snapshot_id",
+        "scope",
+        "agent_id",
+        "draft_id",
+        "draft_revision",
+        "source_draft_hash",
+        "candidate_version_id",
+        "manifest",
+        "manifest_hash",
+        "tool_snapshot_hash",
+        "test_context_hash",
+        "created_at"
+      ],
+      "title": "EvaluationSnapshot",
+      "type": "object"
+    },
+    "EvaluationCaseResult": {
+      "$defs": {
+        "EvaluationStatus": {
+          "enum": [
+            "queued",
+            "running",
+            "passed",
+            "failed",
+            "cancelled",
+            "error"
+          ],
+          "title": "EvaluationStatus",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Case Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/EvaluationStatus"
+        },
+        "metrics": {
+          "additionalProperties": true,
+          "title": "Metrics",
+          "type": "object"
+        },
+        "hard_gate_failures": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Hard Gate Failures",
+          "type": "array"
+        },
+        "transcript_ref": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transcript Ref"
+        },
+        "tool_trace_ref": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Trace Ref"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        }
+      },
+      "required": [
+        "case_id",
+        "status"
+      ],
+      "title": "EvaluationCaseResult",
+      "type": "object"
+    },
+    "EvaluationReport": {
+      "$defs": {
+        "EvaluationCaseResult": {
+          "additionalProperties": false,
+          "properties": {
+            "case_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Case Id",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/EvaluationStatus"
+            },
+            "metrics": {
+              "additionalProperties": true,
+              "title": "Metrics",
+              "type": "object"
+            },
+            "hard_gate_failures": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Hard Gate Failures",
+              "type": "array"
+            },
+            "transcript_ref": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Transcript Ref"
+            },
+            "tool_trace_ref": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Tool Trace Ref"
+            },
+            "error_code": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Error Code"
+            }
+          },
+          "required": [
+            "case_id",
+            "status"
+          ],
+          "title": "EvaluationCaseResult",
+          "type": "object"
+        },
+        "EvaluationStatus": {
+          "enum": [
+            "queued",
+            "running",
+            "passed",
+            "failed",
+            "cancelled",
+            "error"
+          ],
+          "title": "EvaluationStatus",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "evaluation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Evaluation Id",
+          "type": "string"
+        },
+        "agent_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "draft_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Draft Id",
+          "type": "string"
+        },
+        "draft_revision": {
+          "minimum": 1,
+          "title": "Draft Revision",
+          "type": "integer"
+        },
+        "manifest_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Manifest Hash",
+          "type": "string"
+        },
+        "snapshot_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Snapshot Id",
+          "type": "string"
+        },
+        "suite_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Suite Version",
+          "type": "string"
+        },
+        "runtime_profile_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Runtime Profile Hash",
+          "type": "string"
+        },
+        "tool_snapshot_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Tool Snapshot Hash",
+          "type": "string"
+        },
+        "test_context_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Test Context Hash",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/EvaluationStatus"
+        },
+        "metrics": {
+          "additionalProperties": true,
+          "title": "Metrics",
+          "type": "object"
+        },
+        "hard_gate_failures": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Hard Gate Failures",
+          "type": "array"
+        },
+        "cases": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EvaluationCaseResult"
+          },
+          "title": "Cases",
+          "type": "array"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished At"
+        }
+      },
+      "required": [
+        "evaluation_id",
+        "agent_id",
+        "draft_id",
+        "draft_revision",
+        "manifest_hash",
+        "snapshot_id",
+        "suite_version",
+        "runtime_profile_hash",
+        "tool_snapshot_hash",
+        "test_context_hash",
+        "status"
+      ],
+      "title": "EvaluationReport",
+      "type": "object"
+    },
+    "EvaluationRecord": {
+      "$defs": {
+        "AgentManifest": {
+          "additionalProperties": false,
+          "properties": {
+            "schema_version": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "business_profile": {
+              "$ref": "#/$defs/BusinessProfile"
+            },
+            "spec": {
+              "$ref": "#/$defs/AgentSpec"
+            },
+            "async_policy_ref": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Async Policy Ref"
+            },
+            "protocol_snapshot_hashes": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Protocol Snapshot Hashes",
+              "type": "array"
+            }
+          },
+          "required": [
+            "schema_version",
+            "business_profile",
+            "spec"
+          ],
+          "title": "AgentManifest",
+          "type": "object"
+        },
+        "AgentSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "agent_key": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Agent Key",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "description": {
+              "default": "",
+              "maxLength": 4000,
+              "title": "Description",
+              "type": "string"
+            },
+            "capabilities": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            },
+            "system_prompt": {
+              "minLength": 1,
+              "title": "System Prompt",
+              "type": "string"
+            },
+            "model_config_ref": {
+              "additionalProperties": true,
+              "title": "Model Config Ref",
+              "type": "object"
+            },
+            "context_config": {
+              "additionalProperties": true,
+              "title": "Context Config",
+              "type": "object"
+            },
+            "react_config": {
+              "additionalProperties": true,
+              "title": "React Config",
+              "type": "object"
+            },
+            "tool_bindings": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/ToolBinding"
+              },
+              "title": "Tool Bindings",
+              "type": "array"
+            },
+            "knowledge_bindings": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Knowledge Bindings",
+              "type": "array"
+            },
+            "skill_bindings": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Skill Bindings",
+              "type": "array"
+            },
+            "collaboration_policy": {
+              "additionalProperties": true,
+              "title": "Collaboration Policy",
+              "type": "object"
+            },
+            "execution_policy": {
+              "additionalProperties": true,
+              "title": "Execution Policy",
+              "type": "object"
+            }
+          },
+          "required": [
+            "agent_key",
+            "name",
+            "capabilities",
+            "system_prompt",
+            "model_config_ref"
+          ],
+          "title": "AgentSpec",
+          "type": "object"
+        },
+        "BusinessProfile": {
+          "additionalProperties": false,
+          "properties": {
+            "profile_schema_version": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Profile Schema Version",
+              "type": "string"
+            },
+            "objective": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "title": "Objective",
+              "type": "string"
+            },
+            "responsibilities": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Responsibilities",
+              "type": "array"
+            },
+            "capabilities": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            },
+            "input_contract": {
+              "additionalProperties": true,
+              "title": "Input Contract",
+              "type": "object"
+            },
+            "output_contract": {
+              "additionalProperties": true,
+              "title": "Output Contract",
+              "type": "object"
+            },
+            "business_scope": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Business Scope",
+              "type": "string"
+            },
+            "required_constraints": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Required Constraints",
+              "type": "array"
+            },
+            "execution_policy": {
+              "$ref": "#/$defs/SideEffectPolicy"
+            },
+            "knowledge_requirements": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Knowledge Requirements",
+              "type": "array"
+            }
+          },
+          "required": [
+            "profile_schema_version",
+            "objective",
+            "responsibilities",
+            "capabilities",
+            "input_contract",
+            "output_contract",
+            "business_scope",
+            "execution_policy"
+          ],
+          "title": "BusinessProfile",
+          "type": "object"
+        },
+        "EvaluationCaseResult": {
+          "additionalProperties": false,
+          "properties": {
+            "case_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Case Id",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/EvaluationStatus"
+            },
+            "metrics": {
+              "additionalProperties": true,
+              "title": "Metrics",
+              "type": "object"
+            },
+            "hard_gate_failures": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Hard Gate Failures",
+              "type": "array"
+            },
+            "transcript_ref": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Transcript Ref"
+            },
+            "tool_trace_ref": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Tool Trace Ref"
+            },
+            "error_code": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Error Code"
+            }
+          },
+          "required": [
+            "case_id",
+            "status"
+          ],
+          "title": "EvaluationCaseResult",
+          "type": "object"
+        },
+        "EvaluationReport": {
+          "additionalProperties": false,
+          "properties": {
+            "evaluation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Evaluation Id",
+              "type": "string"
+            },
+            "agent_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Agent Id",
+              "type": "string"
+            },
+            "draft_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Draft Id",
+              "type": "string"
+            },
+            "draft_revision": {
+              "minimum": 1,
+              "title": "Draft Revision",
+              "type": "integer"
+            },
+            "manifest_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Manifest Hash",
+              "type": "string"
+            },
+            "snapshot_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Snapshot Id",
+              "type": "string"
+            },
+            "suite_version": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Suite Version",
+              "type": "string"
+            },
+            "runtime_profile_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Runtime Profile Hash",
+              "type": "string"
+            },
+            "tool_snapshot_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Snapshot Hash",
+              "type": "string"
+            },
+            "test_context_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Test Context Hash",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/EvaluationStatus"
+            },
+            "metrics": {
+              "additionalProperties": true,
+              "title": "Metrics",
+              "type": "object"
+            },
+            "hard_gate_failures": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Hard Gate Failures",
+              "type": "array"
+            },
+            "cases": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/EvaluationCaseResult"
+              },
+              "title": "Cases",
+              "type": "array"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Started At"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Finished At"
+            }
+          },
+          "required": [
+            "evaluation_id",
+            "agent_id",
+            "draft_id",
+            "draft_revision",
+            "manifest_hash",
+            "snapshot_id",
+            "suite_version",
+            "runtime_profile_hash",
+            "tool_snapshot_hash",
+            "test_context_hash",
+            "status"
+          ],
+          "title": "EvaluationReport",
+          "type": "object"
+        },
+        "EvaluationSnapshot": {
+          "additionalProperties": false,
+          "properties": {
+            "snapshot_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Snapshot Id",
+              "type": "string"
+            },
+            "scope": {
+              "$ref": "#/$defs/Scope"
+            },
+            "agent_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Agent Id",
+              "type": "string"
+            },
+            "draft_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Draft Id",
+              "type": "string"
+            },
+            "draft_revision": {
+              "minimum": 1,
+              "title": "Draft Revision",
+              "type": "integer"
+            },
+            "source_draft_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Source Draft Hash",
+              "type": "string"
+            },
+            "candidate_version_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Candidate Version Id",
+              "type": "string"
+            },
+            "manifest": {
+              "$ref": "#/$defs/AgentManifest"
+            },
+            "manifest_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Manifest Hash",
+              "type": "string"
+            },
+            "tool_snapshot_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Snapshot Hash",
+              "type": "string"
+            },
+            "test_context_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Test Context Hash",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "snapshot_id",
+            "scope",
+            "agent_id",
+            "draft_id",
+            "draft_revision",
+            "source_draft_hash",
+            "candidate_version_id",
+            "manifest",
+            "manifest_hash",
+            "tool_snapshot_hash",
+            "test_context_hash",
+            "created_at"
+          ],
+          "title": "EvaluationSnapshot",
+          "type": "object"
+        },
+        "EvaluationStatus": {
+          "enum": [
+            "queued",
+            "running",
+            "passed",
+            "failed",
+            "cancelled",
+            "error"
+          ],
+          "title": "EvaluationStatus",
+          "type": "string"
+        },
+        "Scope": {
+          "additionalProperties": false,
+          "description": "Immutable owner boundary for every Workforce resource.",
+          "properties": {
+            "tenant_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "domain_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Domain Id",
+              "type": "string"
+            },
+            "area_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Area Id",
+              "type": "string"
+            },
+            "manager_account_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Manager Account Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "domain_id",
+            "area_id",
+            "manager_account_id"
+          ],
+          "title": "Scope",
+          "type": "object"
+        },
+        "SideEffectPolicy": {
+          "enum": [
+            "read_only",
+            "require_approval",
+            "allow_within_policy"
+          ],
+          "title": "SideEffectPolicy",
+          "type": "string"
+        },
+        "ToolBinding": {
+          "additionalProperties": false,
+          "properties": {
+            "tool_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Id",
+              "type": "string"
+            },
+            "tool_version_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Version Id",
+              "type": "string"
+            },
+            "schema_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Schema Hash",
+              "type": "string"
+            },
+            "required_capability": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Required Capability",
+              "type": "string"
+            },
+            "selection_reason": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "title": "Selection Reason",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool_id",
+            "tool_version_id",
+            "schema_hash",
+            "required_capability",
+            "selection_reason"
+          ],
+          "title": "ToolBinding",
+          "type": "object"
+        },
+        "ValidationReport": {
+          "additionalProperties": false,
+          "properties": {
+            "valid": {
+              "title": "Valid",
+              "type": "boolean"
+            },
+            "blockers": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Blockers",
+              "type": "array"
+            },
+            "tool_snapshot_hash": {
+              "title": "Tool Snapshot Hash",
+              "type": "string"
+            },
+            "protocol_hash": {
+              "title": "Protocol Hash",
+              "type": "string"
+            },
+            "dependency_hash": {
+              "title": "Dependency Hash",
+              "type": "string"
+            },
+            "tool_snapshots": {
+              "default": [],
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "title": "Tool Snapshots",
+              "type": "array"
+            }
+          },
+          "required": [
+            "valid",
+            "tool_snapshot_hash",
+            "protocol_hash",
+            "dependency_hash"
+          ],
+          "title": "ValidationReport",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/EvaluationSnapshot"
+        },
+        "report": {
+          "$ref": "#/$defs/EvaluationReport"
+        },
+        "suite_hash": {
+          "title": "Suite Hash",
+          "type": "string"
+        },
+        "runtime_profile": {
+          "additionalProperties": true,
+          "title": "Runtime Profile",
+          "type": "object"
+        },
+        "test_context": {
+          "additionalProperties": true,
+          "title": "Test Context",
+          "type": "object"
+        },
+        "validation": {
+          "$ref": "#/$defs/ValidationReport"
+        },
+        "protocol_refs": {
+          "default": [],
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Protocol Refs",
+          "type": "array"
+        },
+        "policy_snapshot": {
+          "additionalProperties": true,
+          "title": "Policy Snapshot",
+          "type": "object"
+        },
+        "gate_config": {
+          "additionalProperties": true,
+          "title": "Gate Config",
+          "type": "object"
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Job Id"
+        },
+        "artifacts": {
+          "additionalProperties": true,
+          "title": "Artifacts",
+          "type": "object"
+        }
+      },
+      "required": [
+        "scope",
+        "revision",
+        "snapshot",
+        "report",
+        "suite_hash",
+        "runtime_profile",
+        "test_context",
+        "validation",
+        "gate_config"
+      ],
+      "title": "EvaluationRecord",
+      "type": "object"
+    },
+    "AsyncProtocolSnapshotRef": {
+      "additionalProperties": false,
+      "description": "Stable reference while Registry owns detailed protocol semantics.",
+      "properties": {
+        "protocol_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Protocol Id",
+          "type": "string"
+        },
+        "protocol_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "schema_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Schema Hash",
+          "type": "string"
+        },
+        "tool_version_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Tool Version Id",
+          "type": "string"
+        },
+        "provider_integration_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Integration Id"
+        },
+        "capabilities": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        }
+      },
+      "required": [
+        "protocol_id",
+        "protocol_version",
+        "schema_hash",
+        "tool_version_id"
+      ],
+      "title": "AsyncProtocolSnapshotRef",
+      "type": "object"
+    },
+    "AsyncHandlingPolicyProposal": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "title": "AsyncHandlingPolicyProposal",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "completion_condition",
+        "human_confirmation",
+        "timeout_behavior",
+        "capabilities",
+        "event_types",
+        "required_facts"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "type": "string"
+        },
+        "completion_condition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "human_confirmation": {
+          "type": "boolean"
+        },
+        "timeout_behavior": {
+          "type": "string",
+          "enum": [
+            "status_query",
+            "needs_attention"
+          ]
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "event_types": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required_facts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}
