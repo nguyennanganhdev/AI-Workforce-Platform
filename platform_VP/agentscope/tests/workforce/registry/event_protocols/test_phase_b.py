@@ -121,6 +121,23 @@ class ProtocolServiceTests(unittest.IsolatedAsyncioTestCase):
             old.schema_hash,
         )
 
+    async def test_publish_rejects_non_finite_schema_before_repository(self):
+        repository = AsyncMock()
+        service = AsyncProtocolService(repository, self.scope, self.loader)
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                config = self.protocol.model_dump()
+                config["event_mappings"][self.event.event_type][
+                    "data_schema"
+                ] = {
+                    "type": "object",
+                    "properties": {"eta_minutes": {"const": value}},
+                }
+                protocol = AsyncToolProtocol.model_validate(config)
+                with self.assertRaises(ValueError):
+                    await service.publish(protocol)
+                repository.publish.assert_not_awaited()
+
     async def test_disable_blocks_new_calls_but_preserves_old_events(self):
         ref = self.protocol.snapshot_ref
         await self.service.set_enabled(ref.tool_version_id, False, ref)

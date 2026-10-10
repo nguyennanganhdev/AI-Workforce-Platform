@@ -3,6 +3,7 @@
 
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime
+import json
 
 from pydantic import AwareDatetime, TypeAdapter
 
@@ -57,6 +58,8 @@ class AsyncProtocolService:
         expected_snapshot: AsyncProtocolSnapshotRef | None = None,
         uow: UnitOfWork | None = None,
     ) -> AsyncProtocolSnapshotRef:
+        # Reject non-finite schema values before serialization turns them null.
+        json.dumps(protocol.model_dump(), allow_nan=False)
         protocol = AsyncToolProtocol.model_validate_json(
             protocol.model_dump_json(),
         )
