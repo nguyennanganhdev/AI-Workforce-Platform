@@ -1,0 +1,3757 @@
+{
+  "schema_version": "1",
+  "models": {
+    "Scope": {
+      "additionalProperties": false,
+      "description": "Immutable owner boundary for every Workforce resource.",
+      "properties": {
+        "tenant_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "domain_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Domain Id",
+          "type": "string"
+        },
+        "area_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Area Id",
+          "type": "string"
+        },
+        "manager_account_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Manager Account Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "domain_id",
+        "area_id",
+        "manager_account_id"
+      ],
+      "title": "Scope",
+      "type": "object"
+    },
+    "ActorContext": {
+      "$defs": {
+        "ActorKind": {
+          "description": "Authenticated actor source; this is not a product role.",
+          "enum": [
+            "manager",
+            "partner",
+            "system"
+          ],
+          "title": "ActorKind",
+          "type": "string"
+        },
+        "CredentialPurpose": {
+          "description": "Machine credential purpose used for least-privilege authorization.",
+          "enum": [
+            "customer_api",
+            "provider_events"
+          ],
+          "title": "CredentialPurpose",
+          "type": "string"
+        },
+        "ManagerRole": {
+          "description": "The only interactive product role in Workforce v1.",
+          "enum": [
+            "AREA_MANAGER"
+          ],
+          "title": "ManagerRole",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Server-derived identity used for authorization and audit.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/ActorKind"
+        },
+        "actor_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Actor Id",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ManagerRole"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "partner_client_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Partner Client Id"
+        },
+        "credential_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Credential Id"
+        },
+        "credential_purpose": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CredentialPurpose"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "external_user_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External User Id"
+        },
+        "authentication_source": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Authentication Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "actor_id",
+        "authentication_source"
+      ],
+      "title": "ActorContext",
+      "type": "object"
+    },
+    "PartnerAudience": {
+      "additionalProperties": false,
+      "description": "End-user and conversation boundary asserted by a trusted backend.",
+      "properties": {
+        "partner_client_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Partner Client Id",
+          "type": "string"
+        },
+        "external_user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External User Id",
+          "type": "string"
+        },
+        "external_conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Conversation Id",
+          "type": "string"
+        },
+        "external_ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Ticket Id"
+        },
+        "residence_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Residence Id"
+        }
+      },
+      "required": [
+        "partner_client_id",
+        "external_user_id",
+        "external_conversation_id"
+      ],
+      "title": "PartnerAudience",
+      "type": "object"
+    },
+    "RouteConfirmation": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "pattern": "^1$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "external_management_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "External Management Ref",
+          "type": "string"
+        },
+        "expected_revision": {
+          "minimum": 1,
+          "title": "Expected Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "external_management_ref",
+        "expected_revision"
+      ],
+      "title": "RouteConfirmation",
+      "type": "object"
+    },
+    "RouteConfirmationResult": {
+      "$defs": {
+        "PartnerOperation": {
+          "description": "Fine-grained operations granted to a machine credential.",
+          "enum": [
+            "submit_request",
+            "reply",
+            "read_result",
+            "receive_events",
+            "submit_consent",
+            "close_workflow",
+            "confirm_route",
+            "sync_residence",
+            "publish_job_event",
+            "read_event_receipt"
+          ],
+          "title": "PartnerOperation",
+          "type": "string"
+        },
+        "PartnerRouteStatus": {
+          "description": "Lifecycle of a partner route grant.",
+          "enum": [
+            "pending_confirmation",
+            "active",
+            "disabled",
+            "revoked"
+          ],
+          "title": "PartnerRouteStatus",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "route_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Route Id",
+          "type": "string"
+        },
+        "external_management_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "External Management Ref",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/PartnerRouteStatus"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "allowed_operations": {
+          "items": {
+            "$ref": "#/$defs/PartnerOperation"
+          },
+          "title": "Allowed Operations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "route_id",
+        "external_management_ref",
+        "status",
+        "revision",
+        "allowed_operations"
+      ],
+      "title": "RouteConfirmationResult",
+      "type": "object"
+    },
+    "ResidenceSync": {
+      "$defs": {
+        "ResidenceStatus": {
+          "enum": [
+            "active",
+            "inactive"
+          ],
+          "title": "ResidenceStatus",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "pattern": "^1$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "external_user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External User Id",
+          "type": "string"
+        },
+        "external_management_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "External Management Ref",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/ResidenceStatus"
+        },
+        "expected_revision": {
+          "minimum": 0,
+          "title": "Expected Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "external_user_id",
+        "external_management_ref",
+        "status",
+        "expected_revision"
+      ],
+      "title": "ResidenceSync",
+      "type": "object"
+    },
+    "ResidenceSyncResult": {
+      "$defs": {
+        "ResidenceStatus": {
+          "enum": [
+            "active",
+            "inactive"
+          ],
+          "title": "ResidenceStatus",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "residence_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Residence Id",
+          "type": "string"
+        },
+        "external_user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External User Id",
+          "type": "string"
+        },
+        "external_management_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "External Management Ref",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/ResidenceStatus"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "residence_id",
+        "external_user_id",
+        "external_management_ref",
+        "status",
+        "revision",
+        "updated_at"
+      ],
+      "title": "ResidenceSyncResult",
+      "type": "object"
+    },
+    "PartnerMcpDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "mcp_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Mcp Id",
+          "type": "string"
+        },
+        "partner_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Partner Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 4000,
+          "title": "Description",
+          "type": "string"
+        },
+        "catalog_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Catalog Version",
+          "type": "string"
+        },
+        "transport": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Transport",
+          "type": "string"
+        },
+        "connection_schema": {
+          "additionalProperties": true,
+          "title": "Connection Schema",
+          "type": "object"
+        },
+        "endpoint_template": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endpoint Template"
+        },
+        "status": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mcp_id",
+        "partner_id",
+        "name",
+        "catalog_version",
+        "transport",
+        "connection_schema",
+        "status"
+      ],
+      "title": "PartnerMcpDefinition",
+      "type": "object"
+    },
+    "McpConnection": {
+      "$defs": {
+        "ConnectionStatus": {
+          "enum": [
+            "connecting",
+            "syncing",
+            "ready",
+            "error",
+            "disabled"
+          ],
+          "title": "ConnectionStatus",
+          "type": "string"
+        },
+        "Scope": {
+          "additionalProperties": false,
+          "description": "Immutable owner boundary for every Workforce resource.",
+          "properties": {
+            "tenant_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "domain_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Domain Id",
+              "type": "string"
+            },
+            "area_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Area Id",
+              "type": "string"
+            },
+            "manager_account_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Manager Account Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "domain_id",
+            "area_id",
+            "manager_account_id"
+          ],
+          "title": "Scope",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "connection_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Connection Id",
+          "type": "string"
+        },
+        "mcp_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Mcp Id",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "desired_enabled": {
+          "title": "Desired Enabled",
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/ConnectionStatus"
+        },
+        "credential_ref": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Credential Ref"
+        },
+        "catalog_revision": {
+          "minimum": 0,
+          "title": "Catalog Revision",
+          "type": "integer"
+        },
+        "last_sync_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Sync At"
+        },
+        "last_error_code": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Error Code"
+        }
+      },
+      "required": [
+        "connection_id",
+        "mcp_id",
+        "scope",
+        "desired_enabled",
+        "status",
+        "catalog_revision"
+      ],
+      "title": "McpConnection",
+      "type": "object"
+    },
+    "ToolDescriptor": {
+      "$defs": {
+        "ToolEffect": {
+          "enum": [
+            "read",
+            "write",
+            "external_operation"
+          ],
+          "title": "ToolEffect",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "tool_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Tool Id",
+          "type": "string"
+        },
+        "tool_version_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Tool Version Id",
+          "type": "string"
+        },
+        "connection_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Connection Id"
+        },
+        "source_kind": {
+          "pattern": "^(mcp|builtin)$",
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "provider_tool_name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Provider Tool Name",
+          "type": "string"
+        },
+        "llm_alias": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Llm Alias",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 8000,
+          "title": "Description",
+          "type": "string"
+        },
+        "input_schema": {
+          "additionalProperties": true,
+          "title": "Input Schema",
+          "type": "object"
+        },
+        "output_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Schema"
+        },
+        "schema_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Schema Hash",
+          "type": "string"
+        },
+        "capabilities": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "effect": {
+          "$ref": "#/$defs/ToolEffect"
+        },
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "tool_id",
+        "tool_version_id",
+        "source_kind",
+        "provider_tool_name",
+        "llm_alias",
+        "input_schema",
+        "schema_hash",
+        "effect",
+        "available"
+      ],
+      "title": "ToolDescriptor",
+      "type": "object"
+    },
+    "AgentManifest": {
+      "$defs": {
+        "AgentSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "agent_key": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Agent Key",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "description": {
+              "default": "",
+              "maxLength": 4000,
+              "title": "Description",
+              "type": "string"
+            },
+            "capabilities": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            },
+            "system_prompt": {
+              "minLength": 1,
+              "title": "System Prompt",
+              "type": "string"
+            },
+            "model_config_ref": {
+              "additionalProperties": true,
+              "title": "Model Config Ref",
+              "type": "object"
+            },
+            "context_config": {
+              "additionalProperties": true,
+              "title": "Context Config",
+              "type": "object"
+            },
+            "react_config": {
+              "additionalProperties": true,
+              "title": "React Config",
+              "type": "object"
+            },
+            "tool_bindings": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/ToolBinding"
+              },
+              "title": "Tool Bindings",
+              "type": "array"
+            },
+            "knowledge_bindings": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Knowledge Bindings",
+              "type": "array"
+            },
+            "skill_bindings": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Skill Bindings",
+              "type": "array"
+            },
+            "collaboration_policy": {
+              "additionalProperties": true,
+              "title": "Collaboration Policy",
+              "type": "object"
+            },
+            "execution_policy": {
+              "additionalProperties": true,
+              "title": "Execution Policy",
+              "type": "object"
+            }
+          },
+          "required": [
+            "agent_key",
+            "name",
+            "capabilities",
+            "system_prompt",
+            "model_config_ref"
+          ],
+          "title": "AgentSpec",
+          "type": "object"
+        },
+        "BusinessProfile": {
+          "additionalProperties": false,
+          "properties": {
+            "profile_schema_version": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Profile Schema Version",
+              "type": "string"
+            },
+            "objective": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "title": "Objective",
+              "type": "string"
+            },
+            "responsibilities": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Responsibilities",
+              "type": "array"
+            },
+            "capabilities": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            },
+            "input_contract": {
+              "additionalProperties": true,
+              "title": "Input Contract",
+              "type": "object"
+            },
+            "output_contract": {
+              "additionalProperties": true,
+              "title": "Output Contract",
+              "type": "object"
+            },
+            "business_scope": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Business Scope",
+              "type": "string"
+            },
+            "required_constraints": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Required Constraints",
+              "type": "array"
+            },
+            "execution_policy": {
+              "$ref": "#/$defs/SideEffectPolicy"
+            },
+            "knowledge_requirements": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Knowledge Requirements",
+              "type": "array"
+            }
+          },
+          "required": [
+            "profile_schema_version",
+            "objective",
+            "responsibilities",
+            "capabilities",
+            "input_contract",
+            "output_contract",
+            "business_scope",
+            "execution_policy"
+          ],
+          "title": "BusinessProfile",
+          "type": "object"
+        },
+        "SideEffectPolicy": {
+          "enum": [
+            "read_only",
+            "require_approval",
+            "allow_within_policy"
+          ],
+          "title": "SideEffectPolicy",
+          "type": "string"
+        },
+        "ToolBinding": {
+          "additionalProperties": false,
+          "properties": {
+            "tool_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Id",
+              "type": "string"
+            },
+            "tool_version_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Version Id",
+              "type": "string"
+            },
+            "schema_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Schema Hash",
+              "type": "string"
+            },
+            "required_capability": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Required Capability",
+              "type": "string"
+            },
+            "selection_reason": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "title": "Selection Reason",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool_id",
+            "tool_version_id",
+            "schema_hash",
+            "required_capability",
+            "selection_reason"
+          ],
+          "title": "ToolBinding",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "business_profile": {
+          "$ref": "#/$defs/BusinessProfile"
+        },
+        "spec": {
+          "$ref": "#/$defs/AgentSpec"
+        },
+        "async_policy_ref": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Async Policy Ref"
+        },
+        "protocol_snapshot_hashes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Protocol Snapshot Hashes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "business_profile",
+        "spec"
+      ],
+      "title": "AgentManifest",
+      "type": "object"
+    },
+    "AgentBuildBatch": {
+      "$defs": {
+        "AgentSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "agent_key": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Agent Key",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "description": {
+              "default": "",
+              "maxLength": 4000,
+              "title": "Description",
+              "type": "string"
+            },
+            "capabilities": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            },
+            "system_prompt": {
+              "minLength": 1,
+              "title": "System Prompt",
+              "type": "string"
+            },
+            "model_config_ref": {
+              "additionalProperties": true,
+              "title": "Model Config Ref",
+              "type": "object"
+            },
+            "context_config": {
+              "additionalProperties": true,
+              "title": "Context Config",
+              "type": "object"
+            },
+            "react_config": {
+              "additionalProperties": true,
+              "title": "React Config",
+              "type": "object"
+            },
+            "tool_bindings": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/ToolBinding"
+              },
+              "title": "Tool Bindings",
+              "type": "array"
+            },
+            "knowledge_bindings": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Knowledge Bindings",
+              "type": "array"
+            },
+            "skill_bindings": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Skill Bindings",
+              "type": "array"
+            },
+            "collaboration_policy": {
+              "additionalProperties": true,
+              "title": "Collaboration Policy",
+              "type": "object"
+            },
+            "execution_policy": {
+              "additionalProperties": true,
+              "title": "Execution Policy",
+              "type": "object"
+            }
+          },
+          "required": [
+            "agent_key",
+            "name",
+            "capabilities",
+            "system_prompt",
+            "model_config_ref"
+          ],
+          "title": "AgentSpec",
+          "type": "object"
+        },
+        "BuildBatchStatus": {
+          "enum": [
+            "proposed",
+            "running",
+            "partially_ready",
+            "ready",
+            "completed",
+            "failed",
+            "cancelled"
+          ],
+          "title": "BuildBatchStatus",
+          "type": "string"
+        },
+        "BuildItem": {
+          "additionalProperties": false,
+          "properties": {
+            "item_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Item Id",
+              "type": "string"
+            },
+            "agent_key": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Agent Key",
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/BuildSource"
+            },
+            "reuse_action": {
+              "$ref": "#/$defs/ReuseAction"
+            },
+            "spec": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AgentSpec"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "reuse_agent_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Reuse Agent Id"
+            },
+            "reuse_version_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Reuse Version Id"
+            },
+            "target_agent_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Target Agent Id"
+            },
+            "source_version_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source Version Id"
+            },
+            "draft_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Draft Id"
+            },
+            "evaluation_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Evaluation Id"
+            },
+            "status": {
+              "$ref": "#/$defs/BuildItemStatus"
+            },
+            "error_code": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Error Code"
+            }
+          },
+          "required": [
+            "item_id",
+            "agent_key",
+            "source",
+            "reuse_action",
+            "status"
+          ],
+          "title": "BuildItem",
+          "type": "object"
+        },
+        "BuildItemStatus": {
+          "enum": [
+            "proposed",
+            "generating",
+            "validating",
+            "evaluating",
+            "passed",
+            "failed",
+            "published",
+            "completed_reused",
+            "blocked"
+          ],
+          "title": "BuildItemStatus",
+          "type": "string"
+        },
+        "BuildSource": {
+          "enum": [
+            "create",
+            "reuse",
+            "revise"
+          ],
+          "title": "BuildSource",
+          "type": "string"
+        },
+        "ReuseAction": {
+          "enum": [
+            "reuse",
+            "resume",
+            "revise",
+            "create",
+            "clarify",
+            "repair"
+          ],
+          "title": "ReuseAction",
+          "type": "string"
+        },
+        "ToolBinding": {
+          "additionalProperties": false,
+          "properties": {
+            "tool_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Id",
+              "type": "string"
+            },
+            "tool_version_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Version Id",
+              "type": "string"
+            },
+            "schema_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Schema Hash",
+              "type": "string"
+            },
+            "required_capability": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Required Capability",
+              "type": "string"
+            },
+            "selection_reason": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "title": "Selection Reason",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool_id",
+            "tool_version_id",
+            "schema_hash",
+            "required_capability",
+            "selection_reason"
+          ],
+          "title": "ToolBinding",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "batch_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Batch Id",
+          "type": "string"
+        },
+        "build_session_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Build Session Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/BuildItem"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/BuildBatchStatus"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "batch_id",
+        "build_session_id",
+        "revision",
+        "items",
+        "status",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "AgentBuildBatch",
+      "type": "object"
+    },
+    "ReuseCheck": {
+      "$defs": {
+        "MatchType": {
+          "enum": [
+            "same_business",
+            "partial_overlap",
+            "different",
+            "uncertain"
+          ],
+          "title": "MatchType",
+          "type": "string"
+        },
+        "ReuseAction": {
+          "enum": [
+            "reuse",
+            "resume",
+            "revise",
+            "create",
+            "clarify",
+            "repair"
+          ],
+          "title": "ReuseAction",
+          "type": "string"
+        },
+        "ReuseCandidate": {
+          "additionalProperties": false,
+          "properties": {
+            "agent_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Agent Id",
+              "type": "string"
+            },
+            "version_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Version Id"
+            },
+            "draft_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Draft Id"
+            },
+            "match_type": {
+              "$ref": "#/$defs/MatchType"
+            },
+            "reuse_status": {
+              "$ref": "#/$defs/ReuseStatus"
+            },
+            "covered_requirements": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Covered Requirements",
+              "type": "array"
+            },
+            "missing_requirements": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Missing Requirements",
+              "type": "array"
+            },
+            "differences": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Differences",
+              "type": "array"
+            },
+            "blockers": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Blockers",
+              "type": "array"
+            },
+            "reason": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "title": "Reason",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id",
+            "match_type",
+            "reuse_status",
+            "reason"
+          ],
+          "title": "ReuseCandidate",
+          "type": "object"
+        },
+        "ReuseStatus": {
+          "enum": [
+            "ready",
+            "draft",
+            "blocked",
+            "inactive"
+          ],
+          "title": "ReuseStatus",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "reuse_check_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Reuse Check Id",
+          "type": "string"
+        },
+        "requirement_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Requirement Hash",
+          "type": "string"
+        },
+        "agent_catalog_revision": {
+          "minimum": 0,
+          "title": "Agent Catalog Revision",
+          "type": "integer"
+        },
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/ReuseCandidate"
+          },
+          "title": "Candidates",
+          "type": "array"
+        },
+        "recommended_action": {
+          "$ref": "#/$defs/ReuseAction"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reuse_check_id",
+        "requirement_hash",
+        "agent_catalog_revision",
+        "candidates",
+        "recommended_action",
+        "created_at"
+      ],
+      "title": "ReuseCheck",
+      "type": "object"
+    },
+    "ReuseDecision": {
+      "$defs": {
+        "ReuseAction": {
+          "enum": [
+            "reuse",
+            "resume",
+            "revise",
+            "create",
+            "clarify",
+            "repair"
+          ],
+          "title": "ReuseAction",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "agent_key": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Agent Key",
+          "type": "string"
+        },
+        "action": {
+          "$ref": "#/$defs/ReuseAction"
+        },
+        "reuse_check_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Reuse Check Id",
+          "type": "string"
+        },
+        "agent_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agent Id"
+        },
+        "version_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Id"
+        },
+        "draft_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Draft Id"
+        },
+        "reason": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "expected_catalog_revision": {
+          "minimum": 0,
+          "title": "Expected Catalog Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "agent_key",
+        "action",
+        "reuse_check_id",
+        "reason",
+        "expected_catalog_revision"
+      ],
+      "title": "ReuseDecision",
+      "type": "object"
+    },
+    "EvaluationSnapshot": {
+      "$defs": {
+        "AgentManifest": {
+          "additionalProperties": false,
+          "properties": {
+            "schema_version": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "business_profile": {
+              "$ref": "#/$defs/BusinessProfile"
+            },
+            "spec": {
+              "$ref": "#/$defs/AgentSpec"
+            },
+            "async_policy_ref": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Async Policy Ref"
+            },
+            "protocol_snapshot_hashes": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Protocol Snapshot Hashes",
+              "type": "array"
+            }
+          },
+          "required": [
+            "schema_version",
+            "business_profile",
+            "spec"
+          ],
+          "title": "AgentManifest",
+          "type": "object"
+        },
+        "AgentSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "agent_key": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Agent Key",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "description": {
+              "default": "",
+              "maxLength": 4000,
+              "title": "Description",
+              "type": "string"
+            },
+            "capabilities": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            },
+            "system_prompt": {
+              "minLength": 1,
+              "title": "System Prompt",
+              "type": "string"
+            },
+            "model_config_ref": {
+              "additionalProperties": true,
+              "title": "Model Config Ref",
+              "type": "object"
+            },
+            "context_config": {
+              "additionalProperties": true,
+              "title": "Context Config",
+              "type": "object"
+            },
+            "react_config": {
+              "additionalProperties": true,
+              "title": "React Config",
+              "type": "object"
+            },
+            "tool_bindings": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/ToolBinding"
+              },
+              "title": "Tool Bindings",
+              "type": "array"
+            },
+            "knowledge_bindings": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Knowledge Bindings",
+              "type": "array"
+            },
+            "skill_bindings": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Skill Bindings",
+              "type": "array"
+            },
+            "collaboration_policy": {
+              "additionalProperties": true,
+              "title": "Collaboration Policy",
+              "type": "object"
+            },
+            "execution_policy": {
+              "additionalProperties": true,
+              "title": "Execution Policy",
+              "type": "object"
+            }
+          },
+          "required": [
+            "agent_key",
+            "name",
+            "capabilities",
+            "system_prompt",
+            "model_config_ref"
+          ],
+          "title": "AgentSpec",
+          "type": "object"
+        },
+        "BusinessProfile": {
+          "additionalProperties": false,
+          "properties": {
+            "profile_schema_version": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Profile Schema Version",
+              "type": "string"
+            },
+            "objective": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "title": "Objective",
+              "type": "string"
+            },
+            "responsibilities": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Responsibilities",
+              "type": "array"
+            },
+            "capabilities": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            },
+            "input_contract": {
+              "additionalProperties": true,
+              "title": "Input Contract",
+              "type": "object"
+            },
+            "output_contract": {
+              "additionalProperties": true,
+              "title": "Output Contract",
+              "type": "object"
+            },
+            "business_scope": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Business Scope",
+              "type": "string"
+            },
+            "required_constraints": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Required Constraints",
+              "type": "array"
+            },
+            "execution_policy": {
+              "$ref": "#/$defs/SideEffectPolicy"
+            },
+            "knowledge_requirements": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Knowledge Requirements",
+              "type": "array"
+            }
+          },
+          "required": [
+            "profile_schema_version",
+            "objective",
+            "responsibilities",
+            "capabilities",
+            "input_contract",
+            "output_contract",
+            "business_scope",
+            "execution_policy"
+          ],
+          "title": "BusinessProfile",
+          "type": "object"
+        },
+        "Scope": {
+          "additionalProperties": false,
+          "description": "Immutable owner boundary for every Workforce resource.",
+          "properties": {
+            "tenant_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "domain_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Domain Id",
+              "type": "string"
+            },
+            "area_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Area Id",
+              "type": "string"
+            },
+            "manager_account_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Manager Account Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "domain_id",
+            "area_id",
+            "manager_account_id"
+          ],
+          "title": "Scope",
+          "type": "object"
+        },
+        "SideEffectPolicy": {
+          "enum": [
+            "read_only",
+            "require_approval",
+            "allow_within_policy"
+          ],
+          "title": "SideEffectPolicy",
+          "type": "string"
+        },
+        "ToolBinding": {
+          "additionalProperties": false,
+          "properties": {
+            "tool_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Id",
+              "type": "string"
+            },
+            "tool_version_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Version Id",
+              "type": "string"
+            },
+            "schema_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Schema Hash",
+              "type": "string"
+            },
+            "required_capability": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Required Capability",
+              "type": "string"
+            },
+            "selection_reason": {
+              "maxLength": 4000,
+              "minLength": 1,
+              "title": "Selection Reason",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool_id",
+            "tool_version_id",
+            "schema_hash",
+            "required_capability",
+            "selection_reason"
+          ],
+          "title": "ToolBinding",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "snapshot_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Snapshot Id",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "agent_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "draft_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Draft Id",
+          "type": "string"
+        },
+        "draft_revision": {
+          "minimum": 1,
+          "title": "Draft Revision",
+          "type": "integer"
+        },
+        "source_draft_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Source Draft Hash",
+          "type": "string"
+        },
+        "candidate_version_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Candidate Version Id",
+          "type": "string"
+        },
+        "manifest": {
+          "$ref": "#/$defs/AgentManifest"
+        },
+        "manifest_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Manifest Hash",
+          "type": "string"
+        },
+        "tool_snapshot_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Tool Snapshot Hash",
+          "type": "string"
+        },
+        "test_context_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Test Context Hash",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "snapshot_id",
+        "scope",
+        "agent_id",
+        "draft_id",
+        "draft_revision",
+        "source_draft_hash",
+        "candidate_version_id",
+        "manifest",
+        "manifest_hash",
+        "tool_snapshot_hash",
+        "test_context_hash",
+        "created_at"
+      ],
+      "title": "EvaluationSnapshot",
+      "type": "object"
+    },
+    "EvaluationReport": {
+      "$defs": {
+        "EvaluationCaseResult": {
+          "additionalProperties": false,
+          "properties": {
+            "case_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Case Id",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/EvaluationStatus"
+            },
+            "metrics": {
+              "additionalProperties": true,
+              "title": "Metrics",
+              "type": "object"
+            },
+            "hard_gate_failures": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Hard Gate Failures",
+              "type": "array"
+            },
+            "transcript_ref": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Transcript Ref"
+            },
+            "tool_trace_ref": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Tool Trace Ref"
+            },
+            "error_code": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Error Code"
+            }
+          },
+          "required": [
+            "case_id",
+            "status"
+          ],
+          "title": "EvaluationCaseResult",
+          "type": "object"
+        },
+        "EvaluationStatus": {
+          "enum": [
+            "queued",
+            "running",
+            "passed",
+            "failed",
+            "cancelled",
+            "error"
+          ],
+          "title": "EvaluationStatus",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "evaluation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Evaluation Id",
+          "type": "string"
+        },
+        "agent_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "draft_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Draft Id",
+          "type": "string"
+        },
+        "draft_revision": {
+          "minimum": 1,
+          "title": "Draft Revision",
+          "type": "integer"
+        },
+        "manifest_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Manifest Hash",
+          "type": "string"
+        },
+        "snapshot_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Snapshot Id",
+          "type": "string"
+        },
+        "suite_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Suite Version",
+          "type": "string"
+        },
+        "runtime_profile_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Runtime Profile Hash",
+          "type": "string"
+        },
+        "tool_snapshot_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Tool Snapshot Hash",
+          "type": "string"
+        },
+        "test_context_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Test Context Hash",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/EvaluationStatus"
+        },
+        "metrics": {
+          "additionalProperties": true,
+          "title": "Metrics",
+          "type": "object"
+        },
+        "hard_gate_failures": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Hard Gate Failures",
+          "type": "array"
+        },
+        "cases": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EvaluationCaseResult"
+          },
+          "title": "Cases",
+          "type": "array"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished At"
+        }
+      },
+      "required": [
+        "evaluation_id",
+        "agent_id",
+        "draft_id",
+        "draft_revision",
+        "manifest_hash",
+        "snapshot_id",
+        "suite_version",
+        "runtime_profile_hash",
+        "tool_snapshot_hash",
+        "test_context_hash",
+        "status"
+      ],
+      "title": "EvaluationReport",
+      "type": "object"
+    },
+    "PartnerRequestEnvelope": {
+      "$defs": {
+        "PartnerCommandType": {
+          "enum": [
+            "start_workflow",
+            "workflow_reply"
+          ],
+          "title": "PartnerCommandType",
+          "type": "string"
+        },
+        "TextMessageInput": {
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "pattern": "^text$",
+              "title": "Type",
+              "type": "string"
+            },
+            "text": {
+              "maxLength": 20000,
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "text"
+          ],
+          "title": "TextMessageInput",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Public body; internal routing fields are intentionally absent.",
+      "properties": {
+        "schema_version": {
+          "pattern": "^1$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "command_type": {
+          "$ref": "#/$defs/PartnerCommandType"
+        },
+        "external_request_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Request Id",
+          "type": "string"
+        },
+        "external_management_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "External Management Ref",
+          "type": "string"
+        },
+        "external_user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External User Id",
+          "type": "string"
+        },
+        "external_ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Ticket Id"
+        },
+        "external_conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Conversation Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        },
+        "residence_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Residence Id"
+        },
+        "timezone": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timezone"
+        },
+        "message": {
+          "$ref": "#/$defs/TextMessageInput"
+        }
+      },
+      "required": [
+        "schema_version",
+        "command_type",
+        "external_request_id",
+        "external_management_ref",
+        "external_user_id",
+        "external_conversation_id",
+        "message"
+      ],
+      "title": "PartnerRequestEnvelope",
+      "type": "object"
+    },
+    "InboundReceipt": {
+      "$defs": {
+        "AssistantMessage": {
+          "additionalProperties": false,
+          "properties": {
+            "message_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Message Id",
+              "type": "string"
+            },
+            "workflow_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Workflow Id",
+              "type": "string"
+            },
+            "sender": {
+              "default": "assistant",
+              "pattern": "^assistant$",
+              "title": "Sender",
+              "type": "string"
+            },
+            "text": {
+              "maxLength": 20000,
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "message_id",
+            "workflow_id",
+            "text",
+            "created_at"
+          ],
+          "title": "AssistantMessage",
+          "type": "object"
+        },
+        "NextAction": {
+          "enum": [
+            "none",
+            "submit_reply",
+            "submit_approval",
+            "watch_request",
+            "watch_events",
+            "confirm_close",
+            "resolve_attention"
+          ],
+          "title": "NextAction",
+          "type": "string"
+        },
+        "PublicError": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkforceErrorCode"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "title": "Code"
+            },
+            "message": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Message",
+              "type": "string"
+            },
+            "details": {
+              "additionalProperties": true,
+              "title": "Details",
+              "type": "object"
+            },
+            "request_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Request Id",
+              "type": "string"
+            },
+            "retryable": {
+              "default": false,
+              "title": "Retryable",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "request_id"
+          ],
+          "title": "PublicError",
+          "type": "object"
+        },
+        "RequestResult": {
+          "additionalProperties": false,
+          "properties": {
+            "messages": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AssistantMessage"
+              },
+              "title": "Messages",
+              "type": "array"
+            },
+            "data": {
+              "additionalProperties": true,
+              "title": "Data",
+              "type": "object"
+            }
+          },
+          "title": "RequestResult",
+          "type": "object"
+        },
+        "RequestStatus": {
+          "enum": [
+            "accepted",
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "blocked"
+          ],
+          "title": "RequestStatus",
+          "type": "string"
+        },
+        "WorkflowState": {
+          "enum": [
+            "accepted",
+            "active",
+            "waiting_external_event",
+            "awaiting_user",
+            "awaiting_approval",
+            "awaiting_confirmation",
+            "needs_attention",
+            "blocked_authorization",
+            "blocked_route_changed",
+            "closed"
+          ],
+          "title": "WorkflowState",
+          "type": "string"
+        },
+        "WorkforceErrorCode": {
+          "enum": [
+            "ROUTE_NOT_AUTHORIZED",
+            "CONVERSATION_SCOPE_MISMATCH",
+            "EXTERNAL_TICKET_REQUIRED",
+            "TICKET_ALREADY_BOUND",
+            "CONVERSATION_ALREADY_BOUND",
+            "WORKFLOW_BINDING_MISMATCH",
+            "WORKFLOW_REFERENCE_REQUIRED",
+            "WORKFLOW_CLOSED",
+            "WORKFLOW_NOT_READY_TO_CLOSE",
+            "ROUTE_CONFLICT",
+            "IDEMPOTENCY_CONFLICT",
+            "REVISION_CONFLICT",
+            "MISSING_REQUIRED_CAPABILITY",
+            "AGENT_ALREADY_EXISTS",
+            "AGENT_BUILD_IN_PROGRESS",
+            "REUSE_DECISION_STALE",
+            "EVENT_ID_CONFLICT",
+            "EVENT_CURSOR_EXPIRED",
+            "UNSUPPORTED_MESSAGE_PART"
+          ],
+          "title": "WorkforceErrorCode",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "request_status": {
+          "$ref": "#/$defs/RequestStatus"
+        },
+        "external_ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Ticket Id"
+        },
+        "conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ticket Id"
+        },
+        "workflow_state": {
+          "$ref": "#/$defs/WorkflowState"
+        },
+        "next_action": {
+          "$ref": "#/$defs/NextAction"
+        },
+        "workflow_revision": {
+          "minimum": 1,
+          "title": "Workflow Revision",
+          "type": "integer"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublicError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "accepted_at": {
+          "format": "date-time",
+          "title": "Accepted At",
+          "type": "string"
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completed At"
+        },
+        "status_url": {
+          "minLength": 1,
+          "title": "Status Url",
+          "type": "string"
+        },
+        "conversation_url": {
+          "minLength": 1,
+          "title": "Conversation Url",
+          "type": "string"
+        },
+        "event_stream_url": {
+          "minLength": 1,
+          "title": "Event Stream Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "request_status",
+        "conversation_id",
+        "workflow_id",
+        "workflow_state",
+        "next_action",
+        "workflow_revision",
+        "accepted_at",
+        "status_url",
+        "conversation_url",
+        "event_stream_url"
+      ],
+      "title": "InboundReceipt",
+      "type": "object"
+    },
+    "CloseWorkflowCommand": {
+      "additionalProperties": false,
+      "description": "Explicit, idempotent request to close one bound workflow.",
+      "properties": {
+        "schema_version": {
+          "pattern": "^1$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "external_request_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Request Id",
+          "type": "string"
+        },
+        "external_user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External User Id",
+          "type": "string"
+        },
+        "external_ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Ticket Id"
+        },
+        "external_conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Conversation Id",
+          "type": "string"
+        },
+        "expected_revision": {
+          "minimum": 1,
+          "title": "Expected Revision",
+          "type": "integer"
+        },
+        "reason": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "stop_tracking_only": {
+          "default": false,
+          "title": "Stop Tracking Only",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schema_version",
+        "external_request_id",
+        "external_user_id",
+        "external_conversation_id",
+        "expected_revision",
+        "reason"
+      ],
+      "title": "CloseWorkflowCommand",
+      "type": "object"
+    },
+    "ConversationSnapshot": {
+      "$defs": {
+        "AssistantMessage": {
+          "additionalProperties": false,
+          "properties": {
+            "message_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Message Id",
+              "type": "string"
+            },
+            "workflow_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Workflow Id",
+              "type": "string"
+            },
+            "sender": {
+              "default": "assistant",
+              "pattern": "^assistant$",
+              "title": "Sender",
+              "type": "string"
+            },
+            "text": {
+              "maxLength": 20000,
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "message_id",
+            "workflow_id",
+            "text",
+            "created_at"
+          ],
+          "title": "AssistantMessage",
+          "type": "object"
+        },
+        "NextAction": {
+          "enum": [
+            "none",
+            "submit_reply",
+            "submit_approval",
+            "watch_request",
+            "watch_events",
+            "confirm_close",
+            "resolve_attention"
+          ],
+          "title": "NextAction",
+          "type": "string"
+        },
+        "WorkflowProjection": {
+          "additionalProperties": false,
+          "properties": {
+            "workflow_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Workflow Id",
+              "type": "string"
+            },
+            "external_ticket_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "External Ticket Id"
+            },
+            "ticket_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Ticket Id"
+            },
+            "state": {
+              "$ref": "#/$defs/WorkflowState"
+            },
+            "next_action": {
+              "$ref": "#/$defs/NextAction"
+            },
+            "revision": {
+              "minimum": 1,
+              "title": "Revision",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "workflow_id",
+            "state",
+            "next_action",
+            "revision"
+          ],
+          "title": "WorkflowProjection",
+          "type": "object"
+        },
+        "WorkflowState": {
+          "enum": [
+            "accepted",
+            "active",
+            "waiting_external_event",
+            "awaiting_user",
+            "awaiting_approval",
+            "awaiting_confirmation",
+            "needs_attention",
+            "blocked_authorization",
+            "blocked_route_changed",
+            "closed"
+          ],
+          "title": "WorkflowState",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "external_conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Conversation Id",
+          "type": "string"
+        },
+        "external_user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External User Id",
+          "type": "string"
+        },
+        "workflows": {
+          "items": {
+            "$ref": "#/$defs/WorkflowProjection"
+          },
+          "title": "Workflows",
+          "type": "array"
+        },
+        "messages": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AssistantMessage"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "pending_approvals": {
+          "default": [],
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Pending Approvals",
+          "type": "array"
+        },
+        "snapshot_cursor": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Snapshot Cursor"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "external_conversation_id",
+        "external_user_id",
+        "workflows"
+      ],
+      "title": "ConversationSnapshot",
+      "type": "object"
+    },
+    "TicketConversationBinding": {
+      "$defs": {
+        "Scope": {
+          "additionalProperties": false,
+          "description": "Immutable owner boundary for every Workforce resource.",
+          "properties": {
+            "tenant_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "domain_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Domain Id",
+              "type": "string"
+            },
+            "area_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Area Id",
+              "type": "string"
+            },
+            "manager_account_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Manager Account Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "domain_id",
+            "area_id",
+            "manager_account_id"
+          ],
+          "title": "Scope",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Immutable server-side route from one partner ticket to one group.",
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "partner_client_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Partner Client Id",
+          "type": "string"
+        },
+        "external_user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External User Id",
+          "type": "string"
+        },
+        "external_ticket_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Ticket Id",
+          "type": "string"
+        },
+        "external_conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Conversation Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "group_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Group Id",
+          "type": "string"
+        },
+        "route_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Route Id",
+          "type": "string"
+        },
+        "route_revision": {
+          "minimum": 1,
+          "title": "Route Revision",
+          "type": "integer"
+        },
+        "status": {
+          "default": "active",
+          "pattern": "^(active|closed)$",
+          "title": "Status",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "partner_client_id",
+        "external_user_id",
+        "external_ticket_id",
+        "external_conversation_id",
+        "workflow_id",
+        "conversation_id",
+        "group_id",
+        "route_id",
+        "route_revision",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "TicketConversationBinding",
+      "type": "object"
+    },
+    "ConversationEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "default": "1",
+          "pattern": "^1$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "event_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 1,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "event_type": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Event Type",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "title": "Recorded At",
+          "type": "string"
+        },
+        "conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "external_ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Ticket Id"
+        },
+        "external_conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Conversation Id",
+          "type": "string"
+        },
+        "external_user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External User Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        },
+        "ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ticket Id"
+        },
+        "causation_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Causation Id"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        }
+      },
+      "required": [
+        "event_id",
+        "sequence",
+        "event_type",
+        "occurred_at",
+        "recorded_at",
+        "conversation_id",
+        "external_conversation_id",
+        "external_user_id"
+      ],
+      "title": "ConversationEvent",
+      "type": "object"
+    },
+    "EventHistoryPage": {
+      "$defs": {
+        "ConversationEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "schema_version": {
+              "default": "1",
+              "pattern": "^1$",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "event_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Event Id",
+              "type": "string"
+            },
+            "sequence": {
+              "minimum": 1,
+              "title": "Sequence",
+              "type": "integer"
+            },
+            "event_type": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Event Type",
+              "type": "string"
+            },
+            "occurred_at": {
+              "format": "date-time",
+              "title": "Occurred At",
+              "type": "string"
+            },
+            "recorded_at": {
+              "format": "date-time",
+              "title": "Recorded At",
+              "type": "string"
+            },
+            "conversation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Conversation Id",
+              "type": "string"
+            },
+            "external_ticket_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "External Ticket Id"
+            },
+            "external_conversation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "External Conversation Id",
+              "type": "string"
+            },
+            "external_user_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "External User Id",
+              "type": "string"
+            },
+            "workflow_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Workflow Id"
+            },
+            "ticket_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Ticket Id"
+            },
+            "causation_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Causation Id"
+            },
+            "payload": {
+              "additionalProperties": true,
+              "title": "Payload",
+              "type": "object"
+            }
+          },
+          "required": [
+            "event_id",
+            "sequence",
+            "event_type",
+            "occurred_at",
+            "recorded_at",
+            "conversation_id",
+            "external_conversation_id",
+            "external_user_id"
+          ],
+          "title": "ConversationEvent",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ConversationEvent"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Cursor"
+        },
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "has_more"
+      ],
+      "title": "EventHistoryPage",
+      "type": "object"
+    },
+    "PartnerApprovalDecision": {
+      "$defs": {
+        "ApprovalDecision": {
+          "enum": [
+            "approve",
+            "reject"
+          ],
+          "title": "ApprovalDecision",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "pattern": "^1$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "external_request_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Request Id",
+          "type": "string"
+        },
+        "external_user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External User Id",
+          "type": "string"
+        },
+        "external_ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Ticket Id"
+        },
+        "external_conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Conversation Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "decision": {
+          "$ref": "#/$defs/ApprovalDecision"
+        },
+        "expected_revision": {
+          "minimum": 1,
+          "title": "Expected Revision",
+          "type": "integer"
+        },
+        "arguments_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Arguments Hash",
+          "type": "string"
+        },
+        "quote_ref": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quote Ref"
+        }
+      },
+      "required": [
+        "schema_version",
+        "external_request_id",
+        "external_user_id",
+        "external_conversation_id",
+        "workflow_id",
+        "decision",
+        "expected_revision",
+        "arguments_hash"
+      ],
+      "title": "PartnerApprovalDecision",
+      "type": "object"
+    },
+    "ProviderEventEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "pattern": "^1$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "external_event_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Event Id",
+          "type": "string"
+        },
+        "external_job_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Job Id"
+        },
+        "client_reference": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client Reference"
+        },
+        "event_type": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Event Type",
+          "type": "string"
+        },
+        "provider_version": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Version"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        }
+      },
+      "required": [
+        "schema_version",
+        "external_event_id",
+        "event_type",
+        "occurred_at"
+      ],
+      "title": "ProviderEventEnvelope",
+      "type": "object"
+    },
+    "ProviderEventReceipt": {
+      "$defs": {
+        "EventIngestionStatus": {
+          "enum": [
+            "accepted",
+            "duplicate",
+            "quarantined",
+            "applied",
+            "rejected"
+          ],
+          "title": "EventIngestionStatus",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "receipt_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Receipt Id",
+          "type": "string"
+        },
+        "ingestion_status": {
+          "$ref": "#/$defs/EventIngestionStatus"
+        },
+        "duplicate": {
+          "default": false,
+          "title": "Duplicate",
+          "type": "boolean"
+        },
+        "received_at": {
+          "format": "date-time",
+          "title": "Received At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "receipt_id",
+        "ingestion_status",
+        "received_at"
+      ],
+      "title": "ProviderEventReceipt",
+      "type": "object"
+    },
+    "ErrorResponse": {
+      "$defs": {
+        "PublicError": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkforceErrorCode"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "title": "Code"
+            },
+            "message": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Message",
+              "type": "string"
+            },
+            "details": {
+              "additionalProperties": true,
+              "title": "Details",
+              "type": "object"
+            },
+            "request_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Request Id",
+              "type": "string"
+            },
+            "retryable": {
+              "default": false,
+              "title": "Retryable",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "request_id"
+          ],
+          "title": "PublicError",
+          "type": "object"
+        },
+        "WorkforceErrorCode": {
+          "enum": [
+            "ROUTE_NOT_AUTHORIZED",
+            "CONVERSATION_SCOPE_MISMATCH",
+            "EXTERNAL_TICKET_REQUIRED",
+            "TICKET_ALREADY_BOUND",
+            "CONVERSATION_ALREADY_BOUND",
+            "WORKFLOW_BINDING_MISMATCH",
+            "WORKFLOW_REFERENCE_REQUIRED",
+            "WORKFLOW_CLOSED",
+            "WORKFLOW_NOT_READY_TO_CLOSE",
+            "ROUTE_CONFLICT",
+            "IDEMPOTENCY_CONFLICT",
+            "REVISION_CONFLICT",
+            "MISSING_REQUIRED_CAPABILITY",
+            "AGENT_ALREADY_EXISTS",
+            "AGENT_BUILD_IN_PROGRESS",
+            "REUSE_DECISION_STALE",
+            "EVENT_ID_CONFLICT",
+            "EVENT_CURSOR_EXPIRED",
+            "UNSUPPORTED_MESSAGE_PART"
+          ],
+          "title": "WorkforceErrorCode",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/PublicError"
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "title": "ErrorResponse",
+      "type": "object"
+    }
+  }
+}
