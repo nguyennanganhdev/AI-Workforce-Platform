@@ -1,3 +1,5 @@
+> Ghi chú 2026-10-10: đây là bàn giao lịch sử của Phase A. Người dùng đã cho phép thực hiện Phase B; tiến độ hiện tại xem STATUS.md/PHASE_B.md. Các yêu cầu chốt contract còn mở được nối ở C, không chặn B.
+
 # PHH Phase A — Workflow/checkpoint/event schema
 
 Phạm vi là hàng **A — chốt hợp đồng** tại mục 17.9 của [kế hoạch](../../KE_HOACH_TRIEN_KHAI.md), không phải lát cắt nghiệp vụ “A. Response-only” tại mục 17.1 và không phải toàn bộ PHH-01–PHH-17. Baseline và bằng chứng chạy ở [STATUS.md](STATUS.md).

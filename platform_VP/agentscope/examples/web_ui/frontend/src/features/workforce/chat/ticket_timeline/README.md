@@ -7,7 +7,7 @@ Task bổ sung của owner: **PHH-14–PHH-17**; chọn phần tương ứng ph�
 
 Phạm vi: Timeline/close nhiều ticket/workflow, mỗi hộp chat giữ đúng binding, reconnect và event/message dedupe.
 
-File dự kiến khi triển khai: `index.ts`, `TicketTimeline.tsx`, `WorkflowStatus.tsx`, `api.ts`. Đây chỉ là gợi ý chia file; chưa có code được tạo trong folder.
+File dự kiến khi triển khai: `index.ts`, `TicketTimeline.tsx`, `WorkflowStatus.tsx`, `api.ts`. Phase B đã triển khai component/API/controller/state trong folder này.
 
 Nguyên tắc triển khai:
 
@@ -18,4 +18,8 @@ Nguyên tắc triển khai:
 - Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
 - Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
 
-Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+Thư mục có component/API controller và test Phase B; mounting, worker và migration thật thuộc Phase C. Không tạo stub thành công trong production.
+
+## Phase B — 2026-10-10
+
+Đã có TicketTimeline/WorkflowStatus, state reducer và API/followTimeline controller. Dùng shared/event_transport và Execution WorkforceApprovalCard. Key theo identity + conversation + workflow + ticket + user + chat; snapshot/410, abort, auth failure và message dedupe có test. UI consumer abort follower khi đổi binding và dùng manager JWT/BFF đã được phê duyệt, không đưa machine key vào browser. Real mounting/auth/quote wiring ở C.

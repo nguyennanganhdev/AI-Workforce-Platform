@@ -8,7 +8,7 @@ Phạm vi: Leader chọn group khi có request, chat/@agent và context từ th�
 
 Khi triển khai, tạo `STATUS.md` theo mẫu ở mục 16. Mỗi yêu cầu đổi contract/hook/file chung ghi vào `INTEGRATION_REQUEST_<task-id>.md` theo mục 14.
 
-Tiến độ local mới nhất: [STATUS.md](STATUS.md) — gói hợp đồng Phase A của PHH đã có schema/sample/test, đang chờ owner review; chưa triển khai Phase B. Checklist task bên dưới vẫn là phạm vi implementation của toàn kế hoạch, không được đánh dấu xong chỉ từ schema.
+Tiến độ local mới nhất: [STATUS.md](STATUS.md) — Phase B đã có service workflow/continuation/replay/SSE/timeline và test bằng fake ports; chi tiết/bằng chứng local ở STATUS.md và PHASE_B.md. Checklist task bên dưới vẫn là phạm vi implementation của toàn kế hoạch, không được đánh dấu xong chỉ từ schema.
 
 Nguyên tắc batch của bản 1.2 được giữ ở bản 1.3: PHH-02/03/04/12 chọn agent từ toàn bộ thư viện khi có request, tạo group/session lúc đó, không lọc theo batch. Run hiện tại giữ version pin; request mới chọn subset/version phù hợp mà không cần phát hành team. Đọc mục 2.3, 2.5 và 6 của kế hoạch trước khi code; nội dung này thay thế cách hiểu team artifact ở bản trước. Đây là đầu việc cần triển khai, chưa phải tính năng đã hoàn thành.
 

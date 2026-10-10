@@ -19,3 +19,7 @@ Nguyên tắc triển khai:
 - Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
 
 Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+
+## Phase B — 2026-10-10
+
+Runner run_phase_b.py: 112 backend scenarios; timeline.test.ts và timeline-render.test.tsx: 36 frontend scenarios. Fake atomic store/UOW/clock/runtime/operations/signals chỉ ở test. Các source PHH/NCH/Execution import thật. B106 kiểm trọn MB lifecycle; B112 chặn start mới trên ticket đã bound; matrix và log nằm trong handoff PHH. Chưa database/HTTP/provider/process crash thật.

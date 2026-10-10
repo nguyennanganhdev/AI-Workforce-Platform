@@ -20,3 +20,7 @@ Nguyên tắc triển khai:
 - Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
 
 Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+
+## Phase B — 2026-10-10
+
+Public exports: ConversationEventService, PublicEventWriter, EventRepository/ConversationAccess và EventCursorExpired. Append/history/snapshot lọc binding/allowlist; after-commit advisory signals và NCH ConversationSseService replay durable log. SQL/auth/HTTP/proxy wiring ở C, không có outbound sender. Bàn giao: PHH PHASE_B.md.
