@@ -1,0 +1,26 @@
+FROM golang:1.24-bookworm AS build
+
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local
+
+RUN git clone --depth 1 --branch RELEASE.2025-10-15T17-29-55Z \
+        https://github.com/minio/minio.git /src/minio \
+    && cd /src/minio \
+    && go build -o /out/minio .
+
+RUN git clone --depth 1 --branch RELEASE.2025-08-13T08-35-41Z \
+        https://github.com/minio/mc.git /src/mc \
+    && cd /src/mc \
+    && go build -o /out/mc .
+
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /out/minio /out/mc /usr/local/bin/
+RUN minio --version && mc --version
+
+EXPOSE 9000 9001
+ENTRYPOINT ["minio"]
+CMD ["server", "/data", "--console-address", ":9001"]
