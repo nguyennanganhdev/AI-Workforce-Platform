@@ -6,7 +6,7 @@ Phạm vi lane: chat tạo một/nhiều agent độc lập, phát hiện trùng
 
 Đọc [kế hoạch triển khai chung](../../../../../docs/workforce/KE_HOACH_TRIEN_KHAI.md) trước khi code, đặc biệt hợp đồng mục 6 và phần công việc mang đúng họ tên.
 
-Thư mục này mới là khung phân vùng công việc, chưa triển khai tính năng. Chủ sở hữu tạo code/test và file con tại đây; không sửa module của thành viên khác.
+Phase B đã có RequirementExtractor, CapabilitySelector, ReuseMatcher và ProposalService preview. Policy theo schema Tiến Anh; ports/DTO chung giữ nguyên. Session hiện process-local; confirm chỉ xác nhận proposal, chưa tạo draft/agent hoặc publish. Xem [bàn giao Phase B](../../../../../docs/workforce/handoffs/bui-huu-nghia/PHASE_B.md) để chạy test/demo và đọc các điểm tích hợp còn mở.
 
 Ghi tiến độ và yêu cầu tích hợp ở [thư mục bàn giao](../../../../../docs/workforce/handoffs/bui-huu-nghia/README.md). File core, contracts dùng chung, migration, dependency và global route cần chuyển cho Nguyễn Chí Hoàng theo kế hoạch.
 

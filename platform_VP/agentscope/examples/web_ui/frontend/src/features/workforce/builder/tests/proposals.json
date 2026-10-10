@@ -1,0 +1,467 @@
+{
+  "ready": {
+    "proposal_id": "20723408-d58a-47c6-9126-6094bdbc7ab2",
+    "revision": 1,
+    "items": [
+      {
+        "requirement": {
+          "agent_key": "lookup",
+          "business_profile": {
+            "profile_schema_version": "1",
+            "objective": "Lookup information",
+            "responsibilities": [
+              "lookup"
+            ],
+            "capabilities": [
+              "lookup"
+            ],
+            "input_contract": {},
+            "output_contract": {},
+            "business_scope": "manager-owned library",
+            "required_constraints": [],
+            "execution_policy": "read_only",
+            "knowledge_requirements": []
+          },
+          "capabilities": [
+            {
+              "capability": "lookup",
+              "required": true,
+              "reason": "requested lookup"
+            }
+          ],
+          "effect": "read",
+          "tracking_intent": "create_only",
+          "clarification_questions": [],
+          "policy_proposal": null
+        },
+        "selection": {
+          "bindings": [
+            {
+              "tool_id": "tool-v1",
+              "tool_version_id": "tool-v1",
+              "schema_hash": "tool-hash",
+              "required_capability": "lookup",
+              "selection_reason": "Available read tool covers lookup; compatible schema and required tracking checks passed"
+            }
+          ],
+          "protocols": [],
+          "covered": [
+            "lookup"
+          ],
+          "missing_optional": [],
+          "blockers": [],
+          "support": [
+            "response_only"
+          ],
+          "tracking_channel": "none",
+          "completion_policy": null
+        },
+        "reuse_decision": {
+          "agent_key": "lookup",
+          "action": "create",
+          "reuse_check_id": "check",
+          "agent_id": null,
+          "version_id": null,
+          "draft_id": null,
+          "reason": "No unambiguous equivalent identity; decision is scope-bound",
+          "expected_catalog_revision": 1
+        },
+        "candidates": [],
+        "blockers": [],
+        "duplicate_keys": []
+      }
+    ],
+    "status": "ready",
+    "questions": [],
+    "notices": []
+  },
+  "reused": {
+    "proposal_id": "af02ff40-321f-4fad-99e7-dab6b35fb565",
+    "revision": 1,
+    "items": [
+      {
+        "requirement": {
+          "agent_key": "lookup",
+          "business_profile": {
+            "profile_schema_version": "1",
+            "objective": "Lookup information",
+            "responsibilities": [
+              "lookup"
+            ],
+            "capabilities": [
+              "lookup"
+            ],
+            "input_contract": {},
+            "output_contract": {},
+            "business_scope": "manager-owned library",
+            "required_constraints": [],
+            "execution_policy": "read_only",
+            "knowledge_requirements": []
+          },
+          "capabilities": [
+            {
+              "capability": "lookup",
+              "required": true,
+              "reason": "requested lookup"
+            }
+          ],
+          "effect": "read",
+          "tracking_intent": "create_only",
+          "clarification_questions": [],
+          "policy_proposal": null
+        },
+        "selection": {
+          "bindings": [
+            {
+              "tool_id": "tool-v1",
+              "tool_version_id": "tool-v1",
+              "schema_hash": "tool-hash",
+              "required_capability": "lookup",
+              "selection_reason": "Available read tool covers lookup; compatible schema and required tracking checks passed"
+            }
+          ],
+          "protocols": [],
+          "covered": [
+            "lookup"
+          ],
+          "missing_optional": [],
+          "blockers": [],
+          "support": [
+            "response_only"
+          ],
+          "tracking_channel": "none",
+          "completion_policy": null
+        },
+        "reuse_decision": {
+          "agent_key": "lookup",
+          "action": "reuse",
+          "reuse_check_id": "check",
+          "agent_id": "existing",
+          "version_id": "published",
+          "draft_id": null,
+          "reason": "Compared objective, responsibilities, I/O, scope, constraints and policy",
+          "expected_catalog_revision": 1
+        },
+        "candidates": [
+          {
+            "agent_id": "existing",
+            "version_id": "published",
+            "draft_id": null,
+            "match_type": "same_business",
+            "reuse_status": "ready",
+            "covered_requirements": [
+              "lookup",
+              "builder.async:{\"policy\":null,\"tracking_intent\":\"create_only\"}"
+            ],
+            "missing_requirements": [],
+            "differences": [],
+            "blockers": [],
+            "reason": "Compared objective, responsibilities, I/O, scope, constraints and policy"
+          }
+        ],
+        "blockers": [],
+        "duplicate_keys": []
+      }
+    ],
+    "status": "ready",
+    "questions": [],
+    "notices": []
+  },
+  "missing": {
+    "proposal_id": "4e804a8a-93da-4937-9c1e-26e6d4d48053",
+    "revision": 1,
+    "items": [
+      {
+        "requirement": {
+          "agent_key": "lookup",
+          "business_profile": {
+            "profile_schema_version": "1",
+            "objective": "Lookup information",
+            "responsibilities": [
+              "lookup"
+            ],
+            "capabilities": [
+              "lookup"
+            ],
+            "input_contract": {},
+            "output_contract": {},
+            "business_scope": "manager-owned library",
+            "required_constraints": [],
+            "execution_policy": "read_only",
+            "knowledge_requirements": []
+          },
+          "capabilities": [
+            {
+              "capability": "lookup",
+              "required": true,
+              "reason": "requested lookup"
+            }
+          ],
+          "effect": "read",
+          "tracking_intent": "create_only",
+          "clarification_questions": [],
+          "policy_proposal": null
+        },
+        "selection": {
+          "bindings": [],
+          "protocols": [],
+          "covered": [],
+          "missing_optional": [],
+          "blockers": [
+            {
+              "code": "MISSING_REQUIRED_CAPABILITY",
+              "message": "Enable a compatible MCP/tool for this required capability",
+              "capability": "lookup"
+            }
+          ],
+          "support": [
+            "response_only"
+          ],
+          "tracking_channel": "none",
+          "completion_policy": null
+        },
+        "reuse_decision": {
+          "agent_key": "lookup",
+          "action": "create",
+          "reuse_check_id": "check",
+          "agent_id": null,
+          "version_id": null,
+          "draft_id": null,
+          "reason": "No unambiguous equivalent identity; decision is scope-bound",
+          "expected_catalog_revision": 1
+        },
+        "candidates": [],
+        "blockers": [],
+        "duplicate_keys": []
+      }
+    ],
+    "status": "needs_input",
+    "questions": [],
+    "notices": []
+  },
+  "tracking": {
+    "proposal_id": "93514a71-eb54-4048-b8dc-bf2732d2a402",
+    "revision": 1,
+    "items": [
+      {
+        "requirement": {
+          "agent_key": "create",
+          "business_profile": {
+            "profile_schema_version": "1",
+            "objective": "Create work",
+            "responsibilities": [
+              "lookup"
+            ],
+            "capabilities": [
+              "create"
+            ],
+            "input_contract": {},
+            "output_contract": {},
+            "business_scope": "manager-owned library",
+            "required_constraints": [],
+            "execution_policy": "require_approval",
+            "knowledge_requirements": []
+          },
+          "capabilities": [
+            {
+              "capability": "create",
+              "required": true,
+              "reason": "create work"
+            }
+          ],
+          "effect": "external_operation",
+          "tracking_intent": "track_to_completion",
+          "clarification_questions": [],
+          "policy_proposal": {
+            "schema_version": "1",
+            "capabilities": [
+              "create"
+            ],
+            "event_types": [
+              "completed"
+            ],
+            "required_facts": [
+              "status"
+            ],
+            "completion_condition": "verified status is completed",
+            "human_confirmation": true,
+            "timeout_behavior": "needs_attention"
+          }
+        },
+        "selection": {
+          "bindings": [
+            {
+              "tool_id": "tool-v1",
+              "tool_version_id": "tool-v1",
+              "schema_hash": "tool-hash",
+              "required_capability": "create",
+              "selection_reason": "Available external_operation tool covers create; compatible schema and required tracking checks passed"
+            }
+          ],
+          "protocols": [
+            {
+              "protocol_id": "p",
+              "protocol_version": "1",
+              "schema_hash": "6b044c9b5886d7b3d4da8ecf1964e95901438142abbb84535a4676b1a2ad8f00",
+              "tool_version_id": "tool-v1",
+              "provider_integration_id": "provider",
+              "capabilities": [
+                "create",
+                "receive_status"
+              ]
+            }
+          ],
+          "covered": [
+            "create"
+          ],
+          "missing_optional": [],
+          "blockers": [],
+          "support": [
+            "external_tracking"
+          ],
+          "tracking_channel": "provider_events",
+          "completion_policy": "explicit_close"
+        },
+        "reuse_decision": {
+          "agent_key": "create",
+          "action": "revise",
+          "reuse_check_id": "check",
+          "agent_id": "existing",
+          "version_id": "published",
+          "draft_id": null,
+          "reason": "Compared objective, responsibilities, I/O, scope, constraints and policy; nâng cấp cùng identity để đáp ứng capability/policy còn thiếu",
+          "expected_catalog_revision": 1
+        },
+        "candidates": [
+          {
+            "agent_id": "existing",
+            "version_id": "published",
+            "draft_id": null,
+            "match_type": "same_business",
+            "reuse_status": "ready",
+            "covered_requirements": [
+              "create"
+            ],
+            "missing_requirements": [
+              "async_handling_policy"
+            ],
+            "differences": [],
+            "blockers": [],
+            "reason": "Compared objective, responsibilities, I/O, scope, constraints and policy; nâng cấp cùng identity để đáp ứng capability/policy còn thiếu"
+          }
+        ],
+        "blockers": [],
+        "duplicate_keys": []
+      }
+    ],
+    "status": "ready",
+    "questions": [],
+    "notices": []
+  },
+  "query_only": {
+    "proposal_id": "ebf3a9ef-b6aa-4848-b60a-8ac214ca1dcd",
+    "revision": 1,
+    "items": [
+      {
+        "requirement": {
+          "agent_key": "create",
+          "business_profile": {
+            "profile_schema_version": "1",
+            "objective": "Create work",
+            "responsibilities": [
+              "lookup"
+            ],
+            "capabilities": [
+              "create"
+            ],
+            "input_contract": {},
+            "output_contract": {},
+            "business_scope": "manager-owned library",
+            "required_constraints": [],
+            "execution_policy": "require_approval",
+            "knowledge_requirements": []
+          },
+          "capabilities": [
+            {
+              "capability": "create",
+              "required": true,
+              "reason": "create work"
+            }
+          ],
+          "effect": "external_operation",
+          "tracking_intent": "track_to_completion",
+          "clarification_questions": [],
+          "policy_proposal": {
+            "schema_version": "1",
+            "capabilities": [
+              "create"
+            ],
+            "event_types": [
+              "completed"
+            ],
+            "required_facts": [
+              "status"
+            ],
+            "completion_condition": "verified status is completed",
+            "human_confirmation": true,
+            "timeout_behavior": "needs_attention"
+          }
+        },
+        "selection": {
+          "bindings": [],
+          "protocols": [],
+          "covered": [],
+          "missing_optional": [],
+          "blockers": [
+            {
+              "code": "POLICY_EVENT_SEMANTICS_UNRESOLVED",
+              "message": "Policy event types are not supported by pinned metadata; query-only semantics need agreement",
+              "capability": null
+            },
+            {
+              "code": "MISSING_REQUIRED_CAPABILITY",
+              "message": "Protocol does not provide required policy facts",
+              "capability": null
+            },
+            {
+              "code": "MISSING_REQUIRED_CAPABILITY",
+              "message": "Policy capabilities are not all covered by selected bindings",
+              "capability": null
+            },
+            {
+              "code": "MISSING_REQUIRED_CAPABILITY",
+              "message": "No selected tool covers the requested side effect",
+              "capability": null
+            },
+            {
+              "code": "MISSING_REQUIRED_CAPABILITY",
+              "message": "No selected operation supports verified tracking",
+              "capability": null
+            }
+          ],
+          "support": [
+            "interactive"
+          ],
+          "tracking_channel": "none",
+          "completion_policy": null
+        },
+        "reuse_decision": {
+          "agent_key": "create",
+          "action": "create",
+          "reuse_check_id": "check",
+          "agent_id": null,
+          "version_id": null,
+          "draft_id": null,
+          "reason": "No unambiguous equivalent identity; decision is scope-bound",
+          "expected_catalog_revision": 1
+        },
+        "candidates": [],
+        "blockers": [],
+        "duplicate_keys": []
+      }
+    ],
+    "status": "needs_input",
+    "questions": [],
+    "notices": []
+  }
+}

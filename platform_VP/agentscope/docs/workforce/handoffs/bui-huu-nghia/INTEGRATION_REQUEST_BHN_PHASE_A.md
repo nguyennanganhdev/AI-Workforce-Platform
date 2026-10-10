@@ -2,6 +2,8 @@
 
 Owner: Bùi Hữu Nghĩa. Related tasks: BHN-02/03/07/09/12/13.
 
+Update 2026-10-10: Phase B follows Tiến Anh's policy proposal. Positive timeout is protocol metadata; policy uses status_query/needs_attention and required nonempty event/fact arrays. This file preserves the original Phase-A proposal; current decisions/requests are in [INTEGRATION_REQUEST_BHN_PHASE_B.md](INTEGRATION_REQUEST_BHN_PHASE_B.md).
+
 ## Existing contracts reused
 
 Builder-local `BuildRequirements` nests canonical `BusinessProfile`; it does not duplicate Scope, tool catalog, manifest or reuse DTOs. `CapabilityRequirement` describes required/optional capabilities and reason before tool selection. `HandlingPolicyProposal` is an internal proposal, **not** the canonical production `AsyncHandlingPolicy`.

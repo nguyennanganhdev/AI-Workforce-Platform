@@ -176,12 +176,12 @@
       "properties": {
         "schema_version": {
           "const": "1",
-          "default": "1",
           "title": "Schema Version",
           "type": "string"
         },
         "capabilities": {
           "items": {
+            "minLength": 1,
             "type": "string"
           },
           "minItems": 1,
@@ -189,18 +189,20 @@
           "type": "array"
         },
         "event_types": {
-          "default": [],
           "items": {
+            "minLength": 1,
             "type": "string"
           },
+          "minItems": 1,
           "title": "Event Types",
           "type": "array"
         },
         "required_facts": {
-          "default": [],
           "items": {
+            "minLength": 1,
             "type": "string"
           },
+          "minItems": 1,
           "title": "Required Facts",
           "type": "array"
         },
@@ -214,25 +216,22 @@
           "title": "Human Confirmation",
           "type": "boolean"
         },
-        "timeout_seconds": {
-          "exclusiveMinimum": 0,
-          "title": "Timeout Seconds",
-          "type": "integer"
-        },
         "timeout_behavior": {
           "enum": [
-            "request_attention",
-            "query_status"
+            "needs_attention",
+            "status_query"
           ],
           "title": "Timeout Behavior",
           "type": "string"
         }
       },
       "required": [
+        "schema_version",
         "capabilities",
+        "event_types",
+        "required_facts",
         "completion_condition",
         "human_confirmation",
-        "timeout_seconds",
         "timeout_behavior"
       ],
       "title": "HandlingPolicyProposal",
