@@ -1,0 +1,118 @@
+{
+  "scope": "PHH workflow ValueError guards only; in-memory mutations",
+  "count": 13,
+  "killed": 13,
+  "survivors": [],
+  "outcomes": [
+    {
+      "mutation": "remove-guard-1",
+      "line": 97,
+      "detected_by": [
+        "PHA-047",
+        "PHA-048",
+        "PHA-049",
+        "PHA-050",
+        "PHA-051"
+      ],
+      "survived": false
+    },
+    {
+      "mutation": "remove-guard-2",
+      "line": 100,
+      "detected_by": [
+        "PHA-052"
+      ],
+      "survived": false
+    },
+    {
+      "mutation": "remove-guard-3",
+      "line": 103,
+      "detected_by": [
+        "duplicate-protocol"
+      ],
+      "survived": false
+    },
+    {
+      "mutation": "remove-guard-4",
+      "line": 106,
+      "detected_by": [
+        "PHA-053"
+      ],
+      "survived": false
+    },
+    {
+      "mutation": "remove-guard-5",
+      "line": 130,
+      "detected_by": [
+        "PHA-060"
+      ],
+      "survived": false
+    },
+    {
+      "mutation": "remove-guard-6",
+      "line": 134,
+      "detected_by": [
+        "PHA-062",
+        "PHA-063"
+      ],
+      "survived": false
+    },
+    {
+      "mutation": "remove-guard-7",
+      "line": 147,
+      "detected_by": [
+        "PHA-064"
+      ],
+      "survived": false
+    },
+    {
+      "mutation": "remove-guard-8",
+      "line": 149,
+      "detected_by": [
+        "PHA-065"
+      ],
+      "survived": false
+    },
+    {
+      "mutation": "remove-guard-9",
+      "line": 156,
+      "detected_by": [
+        "duplicate-workflow-pins"
+      ],
+      "survived": false
+    },
+    {
+      "mutation": "remove-guard-10",
+      "line": 158,
+      "detected_by": [
+        "PHA-066"
+      ],
+      "survived": false
+    },
+    {
+      "mutation": "remove-guard-11",
+      "line": 173,
+      "detected_by": [
+        "PHA-067",
+        "PHA-068"
+      ],
+      "survived": false
+    },
+    {
+      "mutation": "remove-guard-12",
+      "line": 178,
+      "detected_by": [
+        "duplicate-messages"
+      ],
+      "survived": false
+    },
+    {
+      "mutation": "remove-guard-13",
+      "line": 183,
+      "detected_by": [
+        "PHA-069"
+      ],
+      "survived": false
+    }
+  ]
+}

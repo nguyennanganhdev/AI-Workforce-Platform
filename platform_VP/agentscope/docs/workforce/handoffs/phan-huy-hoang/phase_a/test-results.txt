@@ -1,0 +1,328 @@
+test_PHA_001 (test_phase_a.PhaseAAcceptance.test_PHA_001)
+Remove trigger_id ... ok
+test_PHA_002 (test_phase_a.PhaseAAcceptance.test_PHA_002)
+Remove workflow_id ... ok
+test_PHA_003 (test_phase_a.PhaseAAcceptance.test_PHA_003)
+Remove cause ... ok
+test_PHA_004 (test_phase_a.PhaseAAcceptance.test_PHA_004)
+Remove workflow_id ... ok
+test_PHA_005 (test_phase_a.PhaseAAcceptance.test_PHA_005)
+Remove state_revision ... ok
+test_PHA_006 (test_phase_a.PhaseAAcceptance.test_PHA_006)
+Remove session_refs ... ok
+test_PHA_007 (test_phase_a.PhaseAAcceptance.test_PHA_007)
+Remove agent_version_pins ... ok
+test_PHA_008 (test_phase_a.PhaseAAcceptance.test_PHA_008)
+Remove shared_state_ref ... ok
+test_PHA_009 (test_phase_a.PhaseAAcceptance.test_PHA_009)
+Remove used_budget ... ok
+test_PHA_010 (test_phase_a.PhaseAAcceptance.test_PHA_010)
+Remove scope.tenant_id ... ok
+test_PHA_011 (test_phase_a.PhaseAAcceptance.test_PHA_011)
+Remove scope.domain_id ... ok
+test_PHA_012 (test_phase_a.PhaseAAcceptance.test_PHA_012)
+Remove scope.area_id ... ok
+test_PHA_013 (test_phase_a.PhaseAAcceptance.test_PHA_013)
+Remove scope.manager_account_id ... ok
+test_PHA_014 (test_phase_a.PhaseAAcceptance.test_PHA_014)
+Remove group_id ... ok
+test_PHA_015 (test_phase_a.PhaseAAcceptance.test_PHA_015)
+Remove route_id ... ok
+test_PHA_016 (test_phase_a.PhaseAAcceptance.test_PHA_016)
+Remove route_revision ... ok
+test_PHA_017 (test_phase_a.PhaseAAcceptance.test_PHA_017)
+Remove request_id ... ok
+test_PHA_018 (test_phase_a.PhaseAAcceptance.test_PHA_018)
+Remove is_new ... ok
+test_PHA_019 (test_phase_a.PhaseAAcceptance.test_PHA_019)
+Remove status ... ok
+test_PHA_020 (test_phase_a.PhaseAAcceptance.test_PHA_020)
+Remove event_id ... ok
+test_PHA_021 (test_phase_a.PhaseAAcceptance.test_PHA_021)
+Remove sequence ... ok
+test_PHA_022 (test_phase_a.PhaseAAcceptance.test_PHA_022)
+Remove conversation_id ... ok
+test_PHA_023 (test_phase_a.PhaseAAcceptance.test_PHA_023)
+Remove external_conversation_id ... ok
+test_PHA_024 (test_phase_a.PhaseAAcceptance.test_PHA_024)
+Remove external_user_id ... ok
+test_PHA_025 (test_phase_a.PhaseAAcceptance.test_PHA_025)
+Set cause.kind = 'provider_instruction' ... ok
+test_PHA_026 (test_phase_a.PhaseAAcceptance.test_PHA_026)
+Remove cause.request_id ... ok
+test_PHA_027 (test_phase_a.PhaseAAcceptance.test_PHA_027)
+Request cause also supplies timer identity ... ok
+test_PHA_028 (test_phase_a.PhaseAAcceptance.test_PHA_028)
+Set cause = {'kind': 'approval', 'request_id': 'approval-request-A'} ... ok
+test_PHA_029 (test_phase_a.PhaseAAcceptance.test_PHA_029)
+Set cause = {'kind': 'approval', 'approval_id': 'approval-A'} ... ok
+test_PHA_030 (test_phase_a.PhaseAAcceptance.test_PHA_030)
+Set cause = {'kind': 'external_event', 'cause_event_id': 'inbox-A'} ... ok
+test_PHA_031 (test_phase_a.PhaseAAcceptance.test_PHA_031)
+Set cause = {'kind': 'external_event', 'operation_id': 'operation-A'} ... ok
+test_PHA_032 (test_phase_a.PhaseAAcceptance.test_PHA_032)
+Set cause = {'kind': 'timer', 'timer_id': ''} ... ok
+test_PHA_033 (test_phase_a.PhaseAAcceptance.test_PHA_033)
+Inject scope into queued trigger ... ok
+test_PHA_034 (test_phase_a.PhaseAAcceptance.test_PHA_034)
+Inject group_id into queued trigger ... ok
+test_PHA_035 (test_phase_a.PhaseAAcceptance.test_PHA_035)
+Inject actor into queued trigger ... ok
+test_PHA_036 (test_phase_a.PhaseAAcceptance.test_PHA_036)
+Inject credential into queued trigger ... ok
+test_PHA_037 (test_phase_a.PhaseAAcceptance.test_PHA_037)
+Inject callback_url into queued trigger ... ok
+test_PHA_038 (test_phase_a.PhaseAAcceptance.test_PHA_038)
+Set expected_state_revision = 0 ... ok
+test_PHA_039 (test_phase_a.PhaseAAcceptance.test_PHA_039)
+Set expected_state_revision = -1 ... ok
+test_PHA_040 (test_phase_a.PhaseAAcceptance.test_PHA_040)
+Set expected_state_revision = True ... ok
+test_PHA_041 (test_phase_a.PhaseAAcceptance.test_PHA_041)
+Set expected_state_revision = '1' ... ok
+test_PHA_042 (test_phase_a.PhaseAAcceptance.test_PHA_042)
+Set schema_version = 'production-v1' ... ok
+test_PHA_043 (test_phase_a.PhaseAAcceptance.test_PHA_043)
+Set session_refs = [] ... ok
+test_PHA_044 (test_phase_a.PhaseAAcceptance.test_PHA_044)
+Set agent_version_pins = [] ... ok
+test_PHA_045 (test_phase_a.PhaseAAcceptance.test_PHA_045)
+Set agent_version_pins.0.version_id = '' ... ok
+test_PHA_046 (test_phase_a.PhaseAAcceptance.test_PHA_046)
+Set protocol_pins.0.schema_hash = '' ... ok
+test_PHA_047 (test_phase_a.PhaseAAcceptance.test_PHA_047)
+Duplicate session_refs ... ok
+test_PHA_048 (test_phase_a.PhaseAAcceptance.test_PHA_048)
+Duplicate pending_task_ids ... ok
+test_PHA_049 (test_phase_a.PhaseAAcceptance.test_PHA_049)
+Duplicate pending_question_ids ... ok
+test_PHA_050 (test_phase_a.PhaseAAcceptance.test_PHA_050)
+Duplicate pending_approval_ids ... ok
+test_PHA_051 (test_phase_a.PhaseAAcceptance.test_PHA_051)
+Duplicate operation_refs ... ok
+test_PHA_052 (test_phase_a.PhaseAAcceptance.test_PHA_052)
+Same agent pinned to two versions ... ok
+test_PHA_053 (test_phase_a.PhaseAAcceptance.test_PHA_053)
+Duplicate processed timer cause ... ok
+test_PHA_054 (test_phase_a.PhaseAAcceptance.test_PHA_054)
+Set used_budget.model_turns = -1 ... ok
+test_PHA_055 (test_phase_a.PhaseAAcceptance.test_PHA_055)
+Set used_budget.tool_calls = -1 ... ok
+test_PHA_056 (test_phase_a.PhaseAAcceptance.test_PHA_056)
+Set used_budget.input_tokens = -1 ... ok
+test_PHA_057 (test_phase_a.PhaseAAcceptance.test_PHA_057)
+Set used_budget.output_tokens = -1 ... ok
+test_PHA_058 (test_phase_a.PhaseAAcceptance.test_PHA_058)
+Set used_budget.tool_calls = True ... ok
+test_PHA_059 (test_phase_a.PhaseAAcceptance.test_PHA_059)
+Set used_budget.input_tokens = 1.5 ... ok
+test_PHA_060 (test_phase_a.PhaseAAcceptance.test_PHA_060)
+New claim incorrectly reports completed result ... ok
+test_PHA_061 (test_phase_a.PhaseAAcceptance.test_PHA_061)
+Set is_new = 'false' ... ok
+test_PHA_062 (test_phase_a.PhaseAAcceptance.test_PHA_062)
+Completed command has no stored result ... ok
+test_PHA_063 (test_phase_a.PhaseAAcceptance.test_PHA_063)
+Running command incorrectly has completed result ... ok
+test_PHA_064 (test_phase_a.PhaseAAcceptance.test_PHA_064)
+Set checkpoint.workflow_id = 'workflow-B' ... ok
+test_PHA_065 (test_phase_a.PhaseAAcceptance.test_PHA_065)
+Set checkpoint.state_revision = 2 ... ok
+test_PHA_066 (test_phase_a.PhaseAAcceptance.test_PHA_066)
+Set checkpoint.agent_version_pins.0.version_id = 'unpublished-v2' ... ok
+test_PHA_067 (test_phase_a.PhaseAAcceptance.test_PHA_067)
+Candidate keeps old revision ... ok
+test_PHA_068 (test_phase_a.PhaseAAcceptance.test_PHA_068)
+Candidate skips a revision ... ok
+test_PHA_069 (test_phase_a.PhaseAAcceptance.test_PHA_069)
+Set result.messages.0.workflow_id = 'workflow-B' ... ok
+test_PHA_070 (test_phase_a.PhaseAAcceptance.test_PHA_070)
+Set sequence = 0 ... ok
+test_PHA_071 (test_phase_a.PhaseAAcceptance.test_PHA_071)
+Set schema_version = '2' ... ok
+test_PHA_072 (test_phase_a.PhaseAAcceptance.test_PHA_072)
+Set scope = {'tenant_id': 'secret'} ... ok
+test_PHA_073 (test_phase_a.PhaseAAcceptance.test_PHA_073)
+Set group_id = 'internal-group' ... ok
+test_PHA_074 (test_phase_a.PhaseAAcceptance.test_PHA_074)
+Provider status must not become core workflow state ... ok
+test_PHA_075 (test_phase_a.PhaseAAcceptance.test_PHA_075)
+Start command supplies existing workflow ID ... ok
+test_PHA_076 (test_phase_a.PhaseAAcceptance.test_PHA_076)
+Reply lacks workflow ID ... ok
+test_PHA_077 (test_phase_a.PhaseAAcceptance.test_PHA_077)
+Set scope = {'tenant_id': 'attacker'} ... ok
+test_PHA_078 (test_phase_a.PhaseAAcceptance.test_PHA_078)
+Closed workflow still requests reply ... ok
+test_PHA_079 (test_phase_a.PhaseAAcceptance.test_PHA_079)
+Completed request incorrectly waits for itself ... ok
+test_PHA_080 (test_phase_a.PhaseAAcceptance.test_PHA_080)
+Set expected_revision = 0 ... ok
+test_all_structural_schemas_and_samples (test_phase_a.PhaseAAcceptance.test_all_structural_schemas_and_samples) ... ok
+test_artifacts_have_no_drift (test_phase_a.PhaseAAcceptance.test_artifacts_have_no_drift) ... ok
+test_checkpoint_accepts_registry_actual_snapshot_refs (test_phase_a.PhaseAAcceptance.test_checkpoint_accepts_registry_actual_snapshot_refs) ... ok
+test_current_shared_port_signatures_are_documented_baseline (test_phase_a.PhaseAAcceptance.test_current_shared_port_signatures_are_documented_baseline) ... ok
+test_duplicate_message_ids_rejected (test_phase_a.PhaseAAcceptance.test_duplicate_message_ids_rejected) ... ok
+test_duplicate_protocol_tool_version_rejected (test_phase_a.PhaseAAcceptance.test_duplicate_protocol_tool_version_rejected) ... ok
+test_event_round_trip_preserves_nullable_wire_keys (test_phase_a.PhaseAAcceptance.test_event_round_trip_preserves_nullable_wire_keys) ... ok
+test_four_causes_are_disjoint_and_deduped_by_cause (test_phase_a.PhaseAAcceptance.test_four_causes_are_disjoint_and_deduped_by_cause) ... ok
+test_internal_event_names_not_public (test_phase_a.PhaseAAcceptance.test_internal_event_names_not_public) ... ok
+test_new_and_cached_pending_claim_shapes (test_phase_a.PhaseAAcceptance.test_new_and_cached_pending_claim_shapes) ... ok
+test_payload_allowlist_rejects_internal_fields (test_phase_a.PhaseAAcceptance.test_payload_allowlist_rejects_internal_fields) ... ok
+test_post_and_event_reference_same_message (test_phase_a.PhaseAAcceptance.test_post_and_event_reference_same_message) ... ok
+test_public_events_exactly_match_contract_section_9_7 (test_phase_a.PhaseAAcceptance.test_public_events_exactly_match_contract_section_9_7) ... ok
+test_shared_models_are_canonical_objects (test_phase_a.PhaseAAcceptance.test_shared_models_are_canonical_objects) ... ok
+test_three_patterns_and_timeout_receipt_shapes (test_phase_a.PhaseAAcceptance.test_three_patterns_and_timeout_receipt_shapes) ... ok
+test_two_tickets_share_agent_but_not_runtime_references (test_phase_a.PhaseAAcceptance.test_two_tickets_share_agent_but_not_runtime_references) ... ok
+test_valid_AsyncProtocolSnapshotRef (test_phase_a.PhaseAAcceptance.test_valid_AsyncProtocolSnapshotRef) ... ok
+test_valid_CloseWorkflowCommand (test_phase_a.PhaseAAcceptance.test_valid_CloseWorkflowCommand) ... ok
+test_valid_CommandClaimResult (test_phase_a.PhaseAAcceptance.test_valid_CommandClaimResult) ... ok
+test_valid_ConversationEvent (test_phase_a.PhaseAAcceptance.test_valid_ConversationEvent) ... ok
+test_valid_EventHistoryPage (test_phase_a.PhaseAAcceptance.test_valid_EventHistoryPage) ... ok
+test_valid_InboundReceipt (test_phase_a.PhaseAAcceptance.test_valid_InboundReceipt) ... ok
+test_valid_PartnerRequestEnvelope (test_phase_a.PhaseAAcceptance.test_valid_PartnerRequestEnvelope) ... ok
+test_valid_PinnedRuntimeContext (test_phase_a.PhaseAAcceptance.test_valid_PinnedRuntimeContext) ... ok
+test_valid_RequestResult (test_phase_a.PhaseAAcceptance.test_valid_RequestResult) ... ok
+test_valid_RuntimeTurnResult (test_phase_a.PhaseAAcceptance.test_valid_RuntimeTurnResult) ... ok
+test_valid_TicketConversationBinding (test_phase_a.PhaseAAcceptance.test_valid_TicketConversationBinding) ... ok
+test_valid_WorkflowCheckpoint (test_phase_a.PhaseAAcceptance.test_valid_WorkflowCheckpoint) ... ok
+test_valid_WorkflowRecord (test_phase_a.PhaseAAcceptance.test_valid_WorkflowRecord) ... ok
+test_valid_WorkflowTrigger (test_phase_a.PhaseAAcceptance.test_valid_WorkflowTrigger) ... ok
+test_budget_input_tokens_bool (test_phase_a_adversarial.PhaseAAdversarial.test_budget_input_tokens_bool) ... ok
+test_budget_input_tokens_float (test_phase_a_adversarial.PhaseAAdversarial.test_budget_input_tokens_float) ... ok
+test_budget_input_tokens_fraction (test_phase_a_adversarial.PhaseAAdversarial.test_budget_input_tokens_fraction) ... ok
+test_budget_input_tokens_list (test_phase_a_adversarial.PhaseAAdversarial.test_budget_input_tokens_list) ... ok
+test_budget_input_tokens_null (test_phase_a_adversarial.PhaseAAdversarial.test_budget_input_tokens_null) ... ok
+test_budget_input_tokens_object (test_phase_a_adversarial.PhaseAAdversarial.test_budget_input_tokens_object) ... ok
+test_budget_input_tokens_string (test_phase_a_adversarial.PhaseAAdversarial.test_budget_input_tokens_string) ... ok
+test_budget_model_turns_bool (test_phase_a_adversarial.PhaseAAdversarial.test_budget_model_turns_bool) ... ok
+test_budget_model_turns_float (test_phase_a_adversarial.PhaseAAdversarial.test_budget_model_turns_float) ... ok
+test_budget_model_turns_fraction (test_phase_a_adversarial.PhaseAAdversarial.test_budget_model_turns_fraction) ... ok
+test_budget_model_turns_list (test_phase_a_adversarial.PhaseAAdversarial.test_budget_model_turns_list) ... ok
+test_budget_model_turns_null (test_phase_a_adversarial.PhaseAAdversarial.test_budget_model_turns_null) ... ok
+test_budget_model_turns_object (test_phase_a_adversarial.PhaseAAdversarial.test_budget_model_turns_object) ... ok
+test_budget_model_turns_string (test_phase_a_adversarial.PhaseAAdversarial.test_budget_model_turns_string) ... ok
+test_budget_output_tokens_bool (test_phase_a_adversarial.PhaseAAdversarial.test_budget_output_tokens_bool) ... ok
+test_budget_output_tokens_float (test_phase_a_adversarial.PhaseAAdversarial.test_budget_output_tokens_float) ... ok
+test_budget_output_tokens_fraction (test_phase_a_adversarial.PhaseAAdversarial.test_budget_output_tokens_fraction) ... ok
+test_budget_output_tokens_list (test_phase_a_adversarial.PhaseAAdversarial.test_budget_output_tokens_list) ... ok
+test_budget_output_tokens_null (test_phase_a_adversarial.PhaseAAdversarial.test_budget_output_tokens_null) ... ok
+test_budget_output_tokens_object (test_phase_a_adversarial.PhaseAAdversarial.test_budget_output_tokens_object) ... ok
+test_budget_output_tokens_string (test_phase_a_adversarial.PhaseAAdversarial.test_budget_output_tokens_string) ... ok
+test_budget_tool_calls_bool (test_phase_a_adversarial.PhaseAAdversarial.test_budget_tool_calls_bool) ... ok
+test_budget_tool_calls_float (test_phase_a_adversarial.PhaseAAdversarial.test_budget_tool_calls_float) ... ok
+test_budget_tool_calls_fraction (test_phase_a_adversarial.PhaseAAdversarial.test_budget_tool_calls_fraction) ... ok
+test_budget_tool_calls_list (test_phase_a_adversarial.PhaseAAdversarial.test_budget_tool_calls_list) ... ok
+test_budget_tool_calls_null (test_phase_a_adversarial.PhaseAAdversarial.test_budget_tool_calls_null) ... ok
+test_budget_tool_calls_object (test_phase_a_adversarial.PhaseAAdversarial.test_budget_tool_calls_object) ... ok
+test_budget_tool_calls_string (test_phase_a_adversarial.PhaseAAdversarial.test_budget_tool_calls_string) ... ok
+test_claim_accepted_False_False (test_phase_a_adversarial.PhaseAAdversarial.test_claim_accepted_False_False) ... ok
+test_claim_accepted_False_True (test_phase_a_adversarial.PhaseAAdversarial.test_claim_accepted_False_True) ... ok
+test_claim_accepted_True_False (test_phase_a_adversarial.PhaseAAdversarial.test_claim_accepted_True_False) ... ok
+test_claim_accepted_True_True (test_phase_a_adversarial.PhaseAAdversarial.test_claim_accepted_True_True) ... ok
+test_claim_blocked_False_False (test_phase_a_adversarial.PhaseAAdversarial.test_claim_blocked_False_False) ... ok
+test_claim_blocked_False_True (test_phase_a_adversarial.PhaseAAdversarial.test_claim_blocked_False_True) ... ok
+test_claim_blocked_True_False (test_phase_a_adversarial.PhaseAAdversarial.test_claim_blocked_True_False) ... ok
+test_claim_blocked_True_True (test_phase_a_adversarial.PhaseAAdversarial.test_claim_blocked_True_True) ... ok
+test_claim_completed_False_False (test_phase_a_adversarial.PhaseAAdversarial.test_claim_completed_False_False) ... ok
+test_claim_completed_False_True (test_phase_a_adversarial.PhaseAAdversarial.test_claim_completed_False_True) ... ok
+test_claim_completed_True_False (test_phase_a_adversarial.PhaseAAdversarial.test_claim_completed_True_False) ... ok
+test_claim_completed_True_True (test_phase_a_adversarial.PhaseAAdversarial.test_claim_completed_True_True) ... ok
+test_claim_failed_False_False (test_phase_a_adversarial.PhaseAAdversarial.test_claim_failed_False_False) ... ok
+test_claim_failed_False_True (test_phase_a_adversarial.PhaseAAdversarial.test_claim_failed_False_True) ... ok
+test_claim_failed_True_False (test_phase_a_adversarial.PhaseAAdversarial.test_claim_failed_True_False) ... ok
+test_claim_failed_True_True (test_phase_a_adversarial.PhaseAAdversarial.test_claim_failed_True_True) ... ok
+test_claim_queued_False_False (test_phase_a_adversarial.PhaseAAdversarial.test_claim_queued_False_False) ... ok
+test_claim_queued_False_True (test_phase_a_adversarial.PhaseAAdversarial.test_claim_queued_False_True) ... ok
+test_claim_queued_True_False (test_phase_a_adversarial.PhaseAAdversarial.test_claim_queued_True_False) ... ok
+test_claim_queued_True_True (test_phase_a_adversarial.PhaseAAdversarial.test_claim_queued_True_True) ... ok
+test_claim_running_False_False (test_phase_a_adversarial.PhaseAAdversarial.test_claim_running_False_False) ... ok
+test_claim_running_False_True (test_phase_a_adversarial.PhaseAAdversarial.test_claim_running_False_True) ... ok
+test_claim_running_True_False (test_phase_a_adversarial.PhaseAAdversarial.test_claim_running_True_False) ... ok
+test_claim_running_True_True (test_phase_a_adversarial.PhaseAAdversarial.test_claim_running_True_True) ... ok
+test_dedupe_approval_cause_ignores_conflicting_approval_ref (test_phase_a_adversarial.PhaseAAdversarial.test_dedupe_approval_cause_ignores_conflicting_approval_ref) ... ok
+test_dedupe_external_cause_ignores_conflicting_operation_ref (test_phase_a_adversarial.PhaseAAdversarial.test_dedupe_external_cause_ignores_conflicting_operation_ref) ... ok
+test_duplicate_workflow_version_pin_rejected (test_phase_a_adversarial.PhaseAAdversarial.test_duplicate_workflow_version_pin_rejected) ... ok
+test_each_workflow_guard_has_a_negative_witness (test_phase_a_adversarial.PhaseAAdversarial.test_each_workflow_guard_has_a_negative_witness) ... ok
+test_exported_schema_is_fresh_each_call (test_phase_a_adversarial.PhaseAAdversarial.test_exported_schema_is_fresh_each_call) ... ok
+test_input_containers_are_not_aliased (test_phase_a_adversarial.PhaseAAdversarial.test_input_containers_are_not_aliased) ... ok
+test_payload_approval_required_manager_account_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_approval_required_manager_account_id) ... ok
+test_payload_approval_required_provider_integration_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_approval_required_provider_integration_id) ... ok
+test_payload_approval_required_raw_tool_trace (test_phase_a_adversarial.PhaseAAdversarial.test_payload_approval_required_raw_tool_trace) ... ok
+test_payload_approval_resolved_manager_account_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_approval_resolved_manager_account_id) ... ok
+test_payload_approval_resolved_provider_integration_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_approval_resolved_provider_integration_id) ... ok
+test_payload_approval_resolved_raw_tool_trace (test_phase_a_adversarial.PhaseAAdversarial.test_payload_approval_resolved_raw_tool_trace) ... ok
+test_payload_assistant_message_manager_account_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_assistant_message_manager_account_id) ... ok
+test_payload_assistant_message_provider_integration_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_assistant_message_provider_integration_id) ... ok
+test_payload_assistant_message_raw_tool_trace (test_phase_a_adversarial.PhaseAAdversarial.test_payload_assistant_message_raw_tool_trace) ... ok
+test_payload_operation_status_changed_manager_account_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_operation_status_changed_manager_account_id) ... ok
+test_payload_operation_status_changed_provider_integration_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_operation_status_changed_provider_integration_id) ... ok
+test_payload_operation_status_changed_raw_tool_trace (test_phase_a_adversarial.PhaseAAdversarial.test_payload_operation_status_changed_raw_tool_trace) ... ok
+test_payload_request_accepted_manager_account_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_request_accepted_manager_account_id) ... ok
+test_payload_request_accepted_provider_integration_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_request_accepted_provider_integration_id) ... ok
+test_payload_request_accepted_raw_tool_trace (test_phase_a_adversarial.PhaseAAdversarial.test_payload_request_accepted_raw_tool_trace) ... ok
+test_payload_ticket_created_manager_account_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_ticket_created_manager_account_id) ... ok
+test_payload_ticket_created_provider_integration_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_ticket_created_provider_integration_id) ... ok
+test_payload_ticket_created_raw_tool_trace (test_phase_a_adversarial.PhaseAAdversarial.test_payload_ticket_created_raw_tool_trace) ... ok
+test_payload_ticket_status_changed_manager_account_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_ticket_status_changed_manager_account_id) ... ok
+test_payload_ticket_status_changed_provider_integration_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_ticket_status_changed_provider_integration_id) ... ok
+test_payload_ticket_status_changed_raw_tool_trace (test_phase_a_adversarial.PhaseAAdversarial.test_payload_ticket_status_changed_raw_tool_trace) ... ok
+test_payload_workflow_awaiting_user_manager_account_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_workflow_awaiting_user_manager_account_id) ... ok
+test_payload_workflow_awaiting_user_provider_integration_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_workflow_awaiting_user_provider_integration_id) ... ok
+test_payload_workflow_awaiting_user_raw_tool_trace (test_phase_a_adversarial.PhaseAAdversarial.test_payload_workflow_awaiting_user_raw_tool_trace) ... ok
+test_payload_workflow_closed_manager_account_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_workflow_closed_manager_account_id) ... ok
+test_payload_workflow_closed_provider_integration_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_workflow_closed_provider_integration_id) ... ok
+test_payload_workflow_closed_raw_tool_trace (test_phase_a_adversarial.PhaseAAdversarial.test_payload_workflow_closed_raw_tool_trace) ... ok
+test_payload_workflow_needs_attention_manager_account_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_workflow_needs_attention_manager_account_id) ... ok
+test_payload_workflow_needs_attention_provider_integration_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_workflow_needs_attention_provider_integration_id) ... ok
+test_payload_workflow_needs_attention_raw_tool_trace (test_phase_a_adversarial.PhaseAAdversarial.test_payload_workflow_needs_attention_raw_tool_trace) ... ok
+test_payload_workflow_status_changed_manager_account_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_workflow_status_changed_manager_account_id) ... ok
+test_payload_workflow_status_changed_provider_integration_id (test_phase_a_adversarial.PhaseAAdversarial.test_payload_workflow_status_changed_provider_integration_id) ... ok
+test_payload_workflow_status_changed_raw_tool_trace (test_phase_a_adversarial.PhaseAAdversarial.test_payload_workflow_status_changed_raw_tool_trace) ... ok
+test_public_validator_rechecks_mutated_payload (test_phase_a_adversarial.PhaseAAdversarial.test_public_validator_rechecks_mutated_payload) ... ok
+test_public_validator_rechecks_unvalidated_envelope_copy (test_phase_a_adversarial.PhaseAAdversarial.test_public_validator_rechecks_unvalidated_envelope_copy) ... ok
+test_public_validator_rejects_unknown_fields_on_constructed_event (test_phase_a_adversarial.PhaseAAdversarial.test_public_validator_rejects_unknown_fields_on_constructed_event) ... ok
+test_python_datetime_closed_at (test_phase_a_adversarial.PhaseAAdversarial.test_python_datetime_closed_at) ... ok
+test_python_datetime_expires_at (test_phase_a_adversarial.PhaseAAdversarial.test_python_datetime_expires_at) ... ok
+test_rfc3339_checker_is_active_and_rejects_naive_time (test_phase_a_adversarial.PhaseAAdversarial.test_rfc3339_checker_is_active_and_rejects_naive_time) ... ok
+test_seeded_cross_workflow_swaps_rejected (test_phase_a_adversarial.PhaseAAdversarial.test_seeded_cross_workflow_swaps_rejected) ... ok
+test_timestamp_closed_at_date_only (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_closed_at_date_only) ... ok
+test_timestamp_closed_at_epoch (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_closed_at_epoch) ... ok
+test_timestamp_closed_at_epoch_string (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_closed_at_epoch_string) ... ok
+test_timestamp_closed_at_fraction (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_closed_at_fraction) ... ok
+test_timestamp_closed_at_invalid_day (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_closed_at_invalid_day) ... ok
+test_timestamp_closed_at_naive (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_closed_at_naive) ... ok
+test_timestamp_closed_at_null (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_closed_at_null) ... ok
+test_timestamp_closed_at_offset (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_closed_at_offset) ... ok
+test_timestamp_closed_at_offset_no_colon (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_closed_at_offset_no_colon) ... ok
+test_timestamp_closed_at_space_separator (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_closed_at_space_separator) ... ok
+test_timestamp_closed_at_utc (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_closed_at_utc) ... ok
+test_timestamp_expires_at_date_only (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_expires_at_date_only) ... ok
+test_timestamp_expires_at_epoch (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_expires_at_epoch) ... ok
+test_timestamp_expires_at_epoch_string (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_expires_at_epoch_string) ... ok
+test_timestamp_expires_at_fraction (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_expires_at_fraction) ... ok
+test_timestamp_expires_at_invalid_day (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_expires_at_invalid_day) ... ok
+test_timestamp_expires_at_naive (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_expires_at_naive) ... ok
+test_timestamp_expires_at_null (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_expires_at_null) ... ok
+test_timestamp_expires_at_offset (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_expires_at_offset) ... ok
+test_timestamp_expires_at_offset_no_colon (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_expires_at_offset_no_colon) ... ok
+test_timestamp_expires_at_space_separator (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_expires_at_space_separator) ... ok
+test_timestamp_expires_at_utc (test_phase_a_adversarial.PhaseAAdversarial.test_timestamp_expires_at_utc) ... ok
+test_trigger_id_boundary_array (test_phase_a_adversarial.PhaseAAdversarial.test_trigger_id_boundary_array) ... ok
+test_trigger_id_boundary_bool (test_phase_a_adversarial.PhaseAAdversarial.test_trigger_id_boundary_bool) ... ok
+test_trigger_id_boundary_empty (test_phase_a_adversarial.PhaseAAdversarial.test_trigger_id_boundary_empty) ... ok
+test_trigger_id_boundary_integer (test_phase_a_adversarial.PhaseAAdversarial.test_trigger_id_boundary_integer) ... ok
+test_trigger_id_boundary_max (test_phase_a_adversarial.PhaseAAdversarial.test_trigger_id_boundary_max) ... ok
+test_trigger_id_boundary_null (test_phase_a_adversarial.PhaseAAdversarial.test_trigger_id_boundary_null) ... ok
+test_trigger_id_boundary_object (test_phase_a_adversarial.PhaseAAdversarial.test_trigger_id_boundary_object) ... ok
+test_trigger_id_boundary_one (test_phase_a_adversarial.PhaseAAdversarial.test_trigger_id_boundary_one) ... ok
+test_trigger_id_boundary_over (test_phase_a_adversarial.PhaseAAdversarial.test_trigger_id_boundary_over) ... ok
+test_trigger_id_boundary_unicode (test_phase_a_adversarial.PhaseAAdversarial.test_trigger_id_boundary_unicode) ... ok
+test_trigger_id_boundary_unicode_over (test_phase_a_adversarial.PhaseAAdversarial.test_trigger_id_boundary_unicode_over) ... ok
+test_version_pin_permutation_is_allowed (test_phase_a_adversarial.PhaseAAdversarial.test_version_pin_permutation_is_allowed) ... ok
+
+----------------------------------------------------------------------
+Ran 242 tests in 0.543s
+
+OK
+CONTRACT-ONLY: service initializers skipped; real workforce modules loaded.

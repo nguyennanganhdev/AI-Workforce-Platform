@@ -1,0 +1,3353 @@
+{
+  "schema_version": "phh-phase-a-1",
+  "status": "proposal_pending_owner_acceptance",
+  "shared_models": [
+    "WorkflowRecord",
+    "TicketConversationBinding",
+    "ConversationEvent",
+    "EventHistoryPage",
+    "InboundReceipt",
+    "PartnerRequestEnvelope",
+    "CloseWorkflowCommand",
+    "RequestResult",
+    "AsyncProtocolSnapshotRef"
+  ],
+  "schemas": {
+    "WorkflowRecord": {
+      "$defs": {
+        "PartnerAudience": {
+          "additionalProperties": false,
+          "description": "End-user and conversation boundary asserted by a trusted backend.",
+          "properties": {
+            "partner_client_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Partner Client Id",
+              "type": "string"
+            },
+            "external_user_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "External User Id",
+              "type": "string"
+            },
+            "external_conversation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "External Conversation Id",
+              "type": "string"
+            },
+            "external_ticket_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "External Ticket Id"
+            },
+            "residence_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Residence Id"
+            }
+          },
+          "required": [
+            "partner_client_id",
+            "external_user_id",
+            "external_conversation_id"
+          ],
+          "title": "PartnerAudience",
+          "type": "object"
+        },
+        "Scope": {
+          "additionalProperties": false,
+          "description": "Immutable owner boundary for every Workforce resource.",
+          "properties": {
+            "tenant_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "domain_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Domain Id",
+              "type": "string"
+            },
+            "area_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Area Id",
+              "type": "string"
+            },
+            "manager_account_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Manager Account Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "domain_id",
+            "area_id",
+            "manager_account_id"
+          ],
+          "title": "Scope",
+          "type": "object"
+        },
+        "WorkflowState": {
+          "enum": [
+            "accepted",
+            "active",
+            "waiting_external_event",
+            "awaiting_user",
+            "awaiting_approval",
+            "awaiting_confirmation",
+            "needs_attention",
+            "blocked_authorization",
+            "blocked_route_changed",
+            "closed"
+          ],
+          "title": "WorkflowState",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "workflow_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "audience": {
+          "$ref": "#/$defs/PartnerAudience"
+        },
+        "conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ticket Id"
+        },
+        "route_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Route Id",
+          "type": "string"
+        },
+        "route_revision": {
+          "minimum": 1,
+          "title": "Route Revision",
+          "type": "integer"
+        },
+        "state": {
+          "$ref": "#/$defs/WorkflowState"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "group_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Group Id",
+          "type": "string"
+        },
+        "checkpoint_ref": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Checkpoint Ref"
+        },
+        "version_pins": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Version Pins",
+          "type": "array"
+        },
+        "pending_waits": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Pending Waits",
+          "type": "array"
+        },
+        "last_applied_event_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Applied Event Id"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workflow_id",
+        "scope",
+        "audience",
+        "conversation_id",
+        "route_id",
+        "route_revision",
+        "state",
+        "revision",
+        "group_id",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "WorkflowRecord",
+      "type": "object"
+    },
+    "TicketConversationBinding": {
+      "$defs": {
+        "Scope": {
+          "additionalProperties": false,
+          "description": "Immutable owner boundary for every Workforce resource.",
+          "properties": {
+            "tenant_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "domain_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Domain Id",
+              "type": "string"
+            },
+            "area_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Area Id",
+              "type": "string"
+            },
+            "manager_account_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Manager Account Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "domain_id",
+            "area_id",
+            "manager_account_id"
+          ],
+          "title": "Scope",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Immutable server-side route from one partner ticket to one group.",
+      "properties": {
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "partner_client_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Partner Client Id",
+          "type": "string"
+        },
+        "external_user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External User Id",
+          "type": "string"
+        },
+        "external_ticket_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Ticket Id",
+          "type": "string"
+        },
+        "external_conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Conversation Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "group_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Group Id",
+          "type": "string"
+        },
+        "route_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Route Id",
+          "type": "string"
+        },
+        "route_revision": {
+          "minimum": 1,
+          "title": "Route Revision",
+          "type": "integer"
+        },
+        "status": {
+          "default": "active",
+          "pattern": "^(active|closed)$",
+          "title": "Status",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "partner_client_id",
+        "external_user_id",
+        "external_ticket_id",
+        "external_conversation_id",
+        "workflow_id",
+        "conversation_id",
+        "group_id",
+        "route_id",
+        "route_revision",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "TicketConversationBinding",
+      "type": "object"
+    },
+    "ConversationEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "default": "1",
+          "pattern": "^1$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "event_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 1,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "event_type": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Event Type",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "title": "Recorded At",
+          "type": "string"
+        },
+        "conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "external_ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Ticket Id"
+        },
+        "external_conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Conversation Id",
+          "type": "string"
+        },
+        "external_user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External User Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        },
+        "ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ticket Id"
+        },
+        "causation_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Causation Id"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        }
+      },
+      "required": [
+        "event_id",
+        "sequence",
+        "event_type",
+        "occurred_at",
+        "recorded_at",
+        "conversation_id",
+        "external_conversation_id",
+        "external_user_id"
+      ],
+      "title": "ConversationEvent",
+      "type": "object"
+    },
+    "EventHistoryPage": {
+      "$defs": {
+        "ConversationEvent": {
+          "additionalProperties": false,
+          "properties": {
+            "schema_version": {
+              "default": "1",
+              "pattern": "^1$",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "event_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Event Id",
+              "type": "string"
+            },
+            "sequence": {
+              "minimum": 1,
+              "title": "Sequence",
+              "type": "integer"
+            },
+            "event_type": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Event Type",
+              "type": "string"
+            },
+            "occurred_at": {
+              "format": "date-time",
+              "title": "Occurred At",
+              "type": "string"
+            },
+            "recorded_at": {
+              "format": "date-time",
+              "title": "Recorded At",
+              "type": "string"
+            },
+            "conversation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Conversation Id",
+              "type": "string"
+            },
+            "external_ticket_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "External Ticket Id"
+            },
+            "external_conversation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "External Conversation Id",
+              "type": "string"
+            },
+            "external_user_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "External User Id",
+              "type": "string"
+            },
+            "workflow_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Workflow Id"
+            },
+            "ticket_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Ticket Id"
+            },
+            "causation_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Causation Id"
+            },
+            "payload": {
+              "additionalProperties": true,
+              "title": "Payload",
+              "type": "object"
+            }
+          },
+          "required": [
+            "event_id",
+            "sequence",
+            "event_type",
+            "occurred_at",
+            "recorded_at",
+            "conversation_id",
+            "external_conversation_id",
+            "external_user_id"
+          ],
+          "title": "ConversationEvent",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/ConversationEvent"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Cursor"
+        },
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "has_more"
+      ],
+      "title": "EventHistoryPage",
+      "type": "object"
+    },
+    "InboundReceipt": {
+      "$defs": {
+        "AssistantMessage": {
+          "additionalProperties": false,
+          "properties": {
+            "message_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Message Id",
+              "type": "string"
+            },
+            "workflow_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Workflow Id",
+              "type": "string"
+            },
+            "sender": {
+              "default": "assistant",
+              "pattern": "^assistant$",
+              "title": "Sender",
+              "type": "string"
+            },
+            "text": {
+              "maxLength": 20000,
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "message_id",
+            "workflow_id",
+            "text",
+            "created_at"
+          ],
+          "title": "AssistantMessage",
+          "type": "object"
+        },
+        "NextAction": {
+          "enum": [
+            "none",
+            "submit_reply",
+            "submit_approval",
+            "watch_request",
+            "watch_events",
+            "confirm_close",
+            "resolve_attention"
+          ],
+          "title": "NextAction",
+          "type": "string"
+        },
+        "PublicError": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WorkforceErrorCode"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "title": "Code"
+            },
+            "message": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Message",
+              "type": "string"
+            },
+            "details": {
+              "additionalProperties": true,
+              "title": "Details",
+              "type": "object"
+            },
+            "request_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Request Id",
+              "type": "string"
+            },
+            "retryable": {
+              "default": false,
+              "title": "Retryable",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "request_id"
+          ],
+          "title": "PublicError",
+          "type": "object"
+        },
+        "RequestResult": {
+          "additionalProperties": false,
+          "properties": {
+            "messages": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AssistantMessage"
+              },
+              "title": "Messages",
+              "type": "array"
+            },
+            "data": {
+              "additionalProperties": true,
+              "title": "Data",
+              "type": "object"
+            }
+          },
+          "title": "RequestResult",
+          "type": "object"
+        },
+        "RequestStatus": {
+          "enum": [
+            "accepted",
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "blocked"
+          ],
+          "title": "RequestStatus",
+          "type": "string"
+        },
+        "WorkflowState": {
+          "enum": [
+            "accepted",
+            "active",
+            "waiting_external_event",
+            "awaiting_user",
+            "awaiting_approval",
+            "awaiting_confirmation",
+            "needs_attention",
+            "blocked_authorization",
+            "blocked_route_changed",
+            "closed"
+          ],
+          "title": "WorkflowState",
+          "type": "string"
+        },
+        "WorkforceErrorCode": {
+          "enum": [
+            "ROUTE_NOT_AUTHORIZED",
+            "CONVERSATION_SCOPE_MISMATCH",
+            "EXTERNAL_TICKET_REQUIRED",
+            "TICKET_ALREADY_BOUND",
+            "CONVERSATION_ALREADY_BOUND",
+            "WORKFLOW_BINDING_MISMATCH",
+            "WORKFLOW_REFERENCE_REQUIRED",
+            "WORKFLOW_CLOSED",
+            "WORKFLOW_NOT_READY_TO_CLOSE",
+            "ROUTE_CONFLICT",
+            "IDEMPOTENCY_CONFLICT",
+            "REVISION_CONFLICT",
+            "MISSING_REQUIRED_CAPABILITY",
+            "AGENT_ALREADY_EXISTS",
+            "AGENT_BUILD_IN_PROGRESS",
+            "REUSE_DECISION_STALE",
+            "EVENT_ID_CONFLICT",
+            "EVENT_CURSOR_EXPIRED",
+            "UNSUPPORTED_MESSAGE_PART"
+          ],
+          "title": "WorkforceErrorCode",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "request_status": {
+          "$ref": "#/$defs/RequestStatus"
+        },
+        "external_ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Ticket Id"
+        },
+        "conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ticket Id"
+        },
+        "workflow_state": {
+          "$ref": "#/$defs/WorkflowState"
+        },
+        "next_action": {
+          "$ref": "#/$defs/NextAction"
+        },
+        "workflow_revision": {
+          "minimum": 1,
+          "title": "Workflow Revision",
+          "type": "integer"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PublicError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "accepted_at": {
+          "format": "date-time",
+          "title": "Accepted At",
+          "type": "string"
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completed At"
+        },
+        "status_url": {
+          "minLength": 1,
+          "title": "Status Url",
+          "type": "string"
+        },
+        "conversation_url": {
+          "minLength": 1,
+          "title": "Conversation Url",
+          "type": "string"
+        },
+        "event_stream_url": {
+          "minLength": 1,
+          "title": "Event Stream Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "request_status",
+        "conversation_id",
+        "workflow_id",
+        "workflow_state",
+        "next_action",
+        "workflow_revision",
+        "accepted_at",
+        "status_url",
+        "conversation_url",
+        "event_stream_url"
+      ],
+      "title": "InboundReceipt",
+      "type": "object"
+    },
+    "PartnerRequestEnvelope": {
+      "$defs": {
+        "PartnerCommandType": {
+          "enum": [
+            "start_workflow",
+            "workflow_reply"
+          ],
+          "title": "PartnerCommandType",
+          "type": "string"
+        },
+        "TextMessageInput": {
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "pattern": "^text$",
+              "title": "Type",
+              "type": "string"
+            },
+            "text": {
+              "maxLength": 20000,
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "text"
+          ],
+          "title": "TextMessageInput",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Public body; internal routing fields are intentionally absent.",
+      "properties": {
+        "schema_version": {
+          "pattern": "^1$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "command_type": {
+          "$ref": "#/$defs/PartnerCommandType"
+        },
+        "external_request_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Request Id",
+          "type": "string"
+        },
+        "external_management_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "External Management Ref",
+          "type": "string"
+        },
+        "external_user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External User Id",
+          "type": "string"
+        },
+        "external_ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Ticket Id"
+        },
+        "external_conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Conversation Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        },
+        "residence_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Residence Id"
+        },
+        "timezone": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timezone"
+        },
+        "message": {
+          "$ref": "#/$defs/TextMessageInput"
+        }
+      },
+      "required": [
+        "schema_version",
+        "command_type",
+        "external_request_id",
+        "external_management_ref",
+        "external_user_id",
+        "external_conversation_id",
+        "message"
+      ],
+      "title": "PartnerRequestEnvelope",
+      "type": "object"
+    },
+    "CloseWorkflowCommand": {
+      "additionalProperties": false,
+      "description": "Explicit, idempotent request to close one bound workflow.",
+      "properties": {
+        "schema_version": {
+          "pattern": "^1$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "external_request_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Request Id",
+          "type": "string"
+        },
+        "external_user_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External User Id",
+          "type": "string"
+        },
+        "external_ticket_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Ticket Id"
+        },
+        "external_conversation_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "External Conversation Id",
+          "type": "string"
+        },
+        "expected_revision": {
+          "minimum": 1,
+          "title": "Expected Revision",
+          "type": "integer"
+        },
+        "reason": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "stop_tracking_only": {
+          "default": false,
+          "title": "Stop Tracking Only",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schema_version",
+        "external_request_id",
+        "external_user_id",
+        "external_conversation_id",
+        "expected_revision",
+        "reason"
+      ],
+      "title": "CloseWorkflowCommand",
+      "type": "object"
+    },
+    "RequestResult": {
+      "$defs": {
+        "AssistantMessage": {
+          "additionalProperties": false,
+          "properties": {
+            "message_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Message Id",
+              "type": "string"
+            },
+            "workflow_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Workflow Id",
+              "type": "string"
+            },
+            "sender": {
+              "default": "assistant",
+              "pattern": "^assistant$",
+              "title": "Sender",
+              "type": "string"
+            },
+            "text": {
+              "maxLength": 20000,
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "message_id",
+            "workflow_id",
+            "text",
+            "created_at"
+          ],
+          "title": "AssistantMessage",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "messages": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AssistantMessage"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "data": {
+          "additionalProperties": true,
+          "title": "Data",
+          "type": "object"
+        }
+      },
+      "title": "RequestResult",
+      "type": "object"
+    },
+    "AsyncProtocolSnapshotRef": {
+      "additionalProperties": false,
+      "description": "Stable reference while Registry owns detailed protocol semantics.",
+      "properties": {
+        "protocol_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Protocol Id",
+          "type": "string"
+        },
+        "protocol_version": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "schema_hash": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Schema Hash",
+          "type": "string"
+        },
+        "tool_version_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Tool Version Id",
+          "type": "string"
+        },
+        "provider_integration_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Integration Id"
+        },
+        "capabilities": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        }
+      },
+      "required": [
+        "protocol_id",
+        "protocol_version",
+        "schema_hash",
+        "tool_version_id"
+      ],
+      "title": "AsyncProtocolSnapshotRef",
+      "type": "object"
+    },
+    "WorkflowTrigger": {
+      "$defs": {
+        "ApprovalCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "approval",
+              "title": "Kind",
+              "type": "string"
+            },
+            "request_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Request Id",
+              "type": "string"
+            },
+            "approval_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "request_id",
+            "approval_id"
+          ],
+          "title": "ApprovalCause",
+          "type": "object"
+        },
+        "ExternalEventCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "external_event",
+              "title": "Kind",
+              "type": "string"
+            },
+            "cause_event_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Cause Event Id",
+              "type": "string"
+            },
+            "operation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "cause_event_id",
+            "operation_id"
+          ],
+          "title": "ExternalEventCause",
+          "type": "object"
+        },
+        "RequestCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "request",
+              "title": "Kind",
+              "type": "string"
+            },
+            "request_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "request_id"
+          ],
+          "title": "RequestCause",
+          "type": "object"
+        },
+        "TimerCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "timer",
+              "title": "Kind",
+              "type": "string"
+            },
+            "timer_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Timer Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "timer_id"
+          ],
+          "title": "TimerCause",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Internal wakeup reference. Scope/authority must be reloaded from DB.",
+      "properties": {
+        "trigger_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Trigger Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "cause": {
+          "discriminator": {
+            "mapping": {
+              "approval": "#/$defs/ApprovalCause",
+              "external_event": "#/$defs/ExternalEventCause",
+              "request": "#/$defs/RequestCause",
+              "timer": "#/$defs/TimerCause"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RequestCause"
+            },
+            {
+              "$ref": "#/$defs/ApprovalCause"
+            },
+            {
+              "$ref": "#/$defs/ExternalEventCause"
+            },
+            {
+              "$ref": "#/$defs/TimerCause"
+            }
+          ],
+          "title": "Cause"
+        },
+        "expected_state_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected State Revision"
+        }
+      },
+      "required": [
+        "trigger_id",
+        "workflow_id",
+        "cause"
+      ],
+      "title": "WorkflowTrigger",
+      "type": "object"
+    },
+    "WorkflowCheckpoint": {
+      "$defs": {
+        "AgentVersionPin": {
+          "additionalProperties": false,
+          "properties": {
+            "agent_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Agent Id",
+              "type": "string"
+            },
+            "version_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id",
+            "version_id"
+          ],
+          "title": "AgentVersionPin",
+          "type": "object"
+        },
+        "ApprovalCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "approval",
+              "title": "Kind",
+              "type": "string"
+            },
+            "request_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Request Id",
+              "type": "string"
+            },
+            "approval_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "request_id",
+            "approval_id"
+          ],
+          "title": "ApprovalCause",
+          "type": "object"
+        },
+        "AsyncProtocolSnapshotRef": {
+          "additionalProperties": false,
+          "description": "Stable reference while Registry owns detailed protocol semantics.",
+          "properties": {
+            "protocol_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Protocol Id",
+              "type": "string"
+            },
+            "protocol_version": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Protocol Version",
+              "type": "string"
+            },
+            "schema_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Schema Hash",
+              "type": "string"
+            },
+            "tool_version_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Version Id",
+              "type": "string"
+            },
+            "provider_integration_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Provider Integration Id"
+            },
+            "capabilities": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            }
+          },
+          "required": [
+            "protocol_id",
+            "protocol_version",
+            "schema_hash",
+            "tool_version_id"
+          ],
+          "title": "AsyncProtocolSnapshotRef",
+          "type": "object"
+        },
+        "ExternalEventCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "external_event",
+              "title": "Kind",
+              "type": "string"
+            },
+            "cause_event_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Cause Event Id",
+              "type": "string"
+            },
+            "operation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "cause_event_id",
+            "operation_id"
+          ],
+          "title": "ExternalEventCause",
+          "type": "object"
+        },
+        "RequestCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "request",
+              "title": "Kind",
+              "type": "string"
+            },
+            "request_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "request_id"
+          ],
+          "title": "RequestCause",
+          "type": "object"
+        },
+        "TimerCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "timer",
+              "title": "Kind",
+              "type": "string"
+            },
+            "timer_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Timer Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "timer_id"
+          ],
+          "title": "TimerCause",
+          "type": "object"
+        },
+        "UsedBudget": {
+          "additionalProperties": false,
+          "properties": {
+            "model_turns": {
+              "minimum": 0,
+              "title": "Model Turns",
+              "type": "integer"
+            },
+            "tool_calls": {
+              "minimum": 0,
+              "title": "Tool Calls",
+              "type": "integer"
+            },
+            "input_tokens": {
+              "minimum": 0,
+              "title": "Input Tokens",
+              "type": "integer"
+            },
+            "output_tokens": {
+              "minimum": 0,
+              "title": "Output Tokens",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "model_turns",
+            "tool_calls",
+            "input_tokens",
+            "output_tokens"
+          ],
+          "title": "UsedBudget",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Durable references, not raw runtime objects, prompts or credentials.",
+      "properties": {
+        "schema_version": {
+          "const": "phh-phase-a-1",
+          "default": "phh-phase-a-1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "state_revision": {
+          "minimum": 1,
+          "title": "State Revision",
+          "type": "integer"
+        },
+        "session_refs": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Session Refs",
+          "type": "array"
+        },
+        "agent_version_pins": {
+          "items": {
+            "$ref": "#/$defs/AgentVersionPin"
+          },
+          "minItems": 1,
+          "title": "Agent Version Pins",
+          "type": "array"
+        },
+        "protocol_pins": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AsyncProtocolSnapshotRef"
+          },
+          "title": "Protocol Pins",
+          "type": "array"
+        },
+        "shared_state_ref": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Shared State Ref",
+          "type": "string"
+        },
+        "pending_task_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Pending Task Ids",
+          "type": "array"
+        },
+        "pending_question_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Pending Question Ids",
+          "type": "array"
+        },
+        "pending_approval_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Pending Approval Ids",
+          "type": "array"
+        },
+        "operation_refs": {
+          "default": [],
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Operation Refs",
+          "type": "array"
+        },
+        "last_processed_causes": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "approval": "#/$defs/ApprovalCause",
+                "external_event": "#/$defs/ExternalEventCause",
+                "request": "#/$defs/RequestCause",
+                "timer": "#/$defs/TimerCause"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/RequestCause"
+              },
+              {
+                "$ref": "#/$defs/ApprovalCause"
+              },
+              {
+                "$ref": "#/$defs/ExternalEventCause"
+              },
+              {
+                "$ref": "#/$defs/TimerCause"
+              }
+            ]
+          },
+          "title": "Last Processed Causes",
+          "type": "array"
+        },
+        "used_budget": {
+          "$ref": "#/$defs/UsedBudget"
+        }
+      },
+      "required": [
+        "workflow_id",
+        "state_revision",
+        "session_refs",
+        "agent_version_pins",
+        "shared_state_ref",
+        "used_budget"
+      ],
+      "title": "WorkflowCheckpoint",
+      "type": "object"
+    },
+    "CommandClaimResult": {
+      "$defs": {
+        "AssistantMessage": {
+          "additionalProperties": false,
+          "properties": {
+            "message_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Message Id",
+              "type": "string"
+            },
+            "workflow_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Workflow Id",
+              "type": "string"
+            },
+            "sender": {
+              "default": "assistant",
+              "pattern": "^assistant$",
+              "title": "Sender",
+              "type": "string"
+            },
+            "text": {
+              "maxLength": 20000,
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "message_id",
+            "workflow_id",
+            "text",
+            "created_at"
+          ],
+          "title": "AssistantMessage",
+          "type": "object"
+        },
+        "RequestResult": {
+          "additionalProperties": false,
+          "properties": {
+            "messages": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AssistantMessage"
+              },
+              "title": "Messages",
+              "type": "array"
+            },
+            "data": {
+              "additionalProperties": true,
+              "title": "Data",
+              "type": "object"
+            }
+          },
+          "title": "RequestResult",
+          "type": "object"
+        },
+        "RequestStatus": {
+          "enum": [
+            "accepted",
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "blocked"
+          ],
+          "title": "RequestStatus",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Shared-command return proposal; also supports non-workflow approvals.",
+      "properties": {
+        "request_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "is_new": {
+          "title": "Is New",
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/$defs/RequestStatus"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequestResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "request_id",
+        "is_new",
+        "status"
+      ],
+      "title": "CommandClaimResult",
+      "type": "object"
+    },
+    "PinnedRuntimeContext": {
+      "$defs": {
+        "AgentVersionPin": {
+          "additionalProperties": false,
+          "properties": {
+            "agent_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Agent Id",
+              "type": "string"
+            },
+            "version_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id",
+            "version_id"
+          ],
+          "title": "AgentVersionPin",
+          "type": "object"
+        },
+        "ApprovalCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "approval",
+              "title": "Kind",
+              "type": "string"
+            },
+            "request_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Request Id",
+              "type": "string"
+            },
+            "approval_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "request_id",
+            "approval_id"
+          ],
+          "title": "ApprovalCause",
+          "type": "object"
+        },
+        "AsyncProtocolSnapshotRef": {
+          "additionalProperties": false,
+          "description": "Stable reference while Registry owns detailed protocol semantics.",
+          "properties": {
+            "protocol_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Protocol Id",
+              "type": "string"
+            },
+            "protocol_version": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Protocol Version",
+              "type": "string"
+            },
+            "schema_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Schema Hash",
+              "type": "string"
+            },
+            "tool_version_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Version Id",
+              "type": "string"
+            },
+            "provider_integration_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Provider Integration Id"
+            },
+            "capabilities": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            }
+          },
+          "required": [
+            "protocol_id",
+            "protocol_version",
+            "schema_hash",
+            "tool_version_id"
+          ],
+          "title": "AsyncProtocolSnapshotRef",
+          "type": "object"
+        },
+        "ExternalEventCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "external_event",
+              "title": "Kind",
+              "type": "string"
+            },
+            "cause_event_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Cause Event Id",
+              "type": "string"
+            },
+            "operation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "cause_event_id",
+            "operation_id"
+          ],
+          "title": "ExternalEventCause",
+          "type": "object"
+        },
+        "PartnerAudience": {
+          "additionalProperties": false,
+          "description": "End-user and conversation boundary asserted by a trusted backend.",
+          "properties": {
+            "partner_client_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Partner Client Id",
+              "type": "string"
+            },
+            "external_user_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "External User Id",
+              "type": "string"
+            },
+            "external_conversation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "External Conversation Id",
+              "type": "string"
+            },
+            "external_ticket_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "External Ticket Id"
+            },
+            "residence_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Residence Id"
+            }
+          },
+          "required": [
+            "partner_client_id",
+            "external_user_id",
+            "external_conversation_id"
+          ],
+          "title": "PartnerAudience",
+          "type": "object"
+        },
+        "RequestCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "request",
+              "title": "Kind",
+              "type": "string"
+            },
+            "request_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "request_id"
+          ],
+          "title": "RequestCause",
+          "type": "object"
+        },
+        "Scope": {
+          "additionalProperties": false,
+          "description": "Immutable owner boundary for every Workforce resource.",
+          "properties": {
+            "tenant_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "domain_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Domain Id",
+              "type": "string"
+            },
+            "area_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Area Id",
+              "type": "string"
+            },
+            "manager_account_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Manager Account Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "domain_id",
+            "area_id",
+            "manager_account_id"
+          ],
+          "title": "Scope",
+          "type": "object"
+        },
+        "TimerCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "timer",
+              "title": "Kind",
+              "type": "string"
+            },
+            "timer_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Timer Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "timer_id"
+          ],
+          "title": "TimerCause",
+          "type": "object"
+        },
+        "UsedBudget": {
+          "additionalProperties": false,
+          "properties": {
+            "model_turns": {
+              "minimum": 0,
+              "title": "Model Turns",
+              "type": "integer"
+            },
+            "tool_calls": {
+              "minimum": 0,
+              "title": "Tool Calls",
+              "type": "integer"
+            },
+            "input_tokens": {
+              "minimum": 0,
+              "title": "Input Tokens",
+              "type": "integer"
+            },
+            "output_tokens": {
+              "minimum": 0,
+              "title": "Output Tokens",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "model_turns",
+            "tool_calls",
+            "input_tokens",
+            "output_tokens"
+          ],
+          "title": "UsedBudget",
+          "type": "object"
+        },
+        "WorkflowCheckpoint": {
+          "additionalProperties": false,
+          "description": "Durable references, not raw runtime objects, prompts or credentials.",
+          "properties": {
+            "schema_version": {
+              "const": "phh-phase-a-1",
+              "default": "phh-phase-a-1",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "workflow_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Workflow Id",
+              "type": "string"
+            },
+            "state_revision": {
+              "minimum": 1,
+              "title": "State Revision",
+              "type": "integer"
+            },
+            "session_refs": {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Session Refs",
+              "type": "array"
+            },
+            "agent_version_pins": {
+              "items": {
+                "$ref": "#/$defs/AgentVersionPin"
+              },
+              "minItems": 1,
+              "title": "Agent Version Pins",
+              "type": "array"
+            },
+            "protocol_pins": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AsyncProtocolSnapshotRef"
+              },
+              "title": "Protocol Pins",
+              "type": "array"
+            },
+            "shared_state_ref": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Shared State Ref",
+              "type": "string"
+            },
+            "pending_task_ids": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Pending Task Ids",
+              "type": "array"
+            },
+            "pending_question_ids": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Pending Question Ids",
+              "type": "array"
+            },
+            "pending_approval_ids": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Pending Approval Ids",
+              "type": "array"
+            },
+            "operation_refs": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Operation Refs",
+              "type": "array"
+            },
+            "last_processed_causes": {
+              "default": [],
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "approval": "#/$defs/ApprovalCause",
+                    "external_event": "#/$defs/ExternalEventCause",
+                    "request": "#/$defs/RequestCause",
+                    "timer": "#/$defs/TimerCause"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/RequestCause"
+                  },
+                  {
+                    "$ref": "#/$defs/ApprovalCause"
+                  },
+                  {
+                    "$ref": "#/$defs/ExternalEventCause"
+                  },
+                  {
+                    "$ref": "#/$defs/TimerCause"
+                  }
+                ]
+              },
+              "title": "Last Processed Causes",
+              "type": "array"
+            },
+            "used_budget": {
+              "$ref": "#/$defs/UsedBudget"
+            }
+          },
+          "required": [
+            "workflow_id",
+            "state_revision",
+            "session_refs",
+            "agent_version_pins",
+            "shared_state_ref",
+            "used_budget"
+          ],
+          "title": "WorkflowCheckpoint",
+          "type": "object"
+        },
+        "WorkflowRecord": {
+          "additionalProperties": false,
+          "properties": {
+            "workflow_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Workflow Id",
+              "type": "string"
+            },
+            "scope": {
+              "$ref": "#/$defs/Scope"
+            },
+            "audience": {
+              "$ref": "#/$defs/PartnerAudience"
+            },
+            "conversation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Conversation Id",
+              "type": "string"
+            },
+            "ticket_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Ticket Id"
+            },
+            "route_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Route Id",
+              "type": "string"
+            },
+            "route_revision": {
+              "minimum": 1,
+              "title": "Route Revision",
+              "type": "integer"
+            },
+            "state": {
+              "$ref": "#/$defs/WorkflowState"
+            },
+            "revision": {
+              "minimum": 1,
+              "title": "Revision",
+              "type": "integer"
+            },
+            "group_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Group Id",
+              "type": "string"
+            },
+            "checkpoint_ref": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Checkpoint Ref"
+            },
+            "version_pins": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Version Pins",
+              "type": "array"
+            },
+            "pending_waits": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Pending Waits",
+              "type": "array"
+            },
+            "last_applied_event_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Last Applied Event Id"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workflow_id",
+            "scope",
+            "audience",
+            "conversation_id",
+            "route_id",
+            "route_revision",
+            "state",
+            "revision",
+            "group_id",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "WorkflowRecord",
+          "type": "object"
+        },
+        "WorkflowState": {
+          "enum": [
+            "accepted",
+            "active",
+            "waiting_external_event",
+            "awaiting_user",
+            "awaiting_approval",
+            "awaiting_confirmation",
+            "needs_attention",
+            "blocked_authorization",
+            "blocked_route_changed",
+            "closed"
+          ],
+          "title": "WorkflowState",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Snapshot shape only. Loading/revalidation remain Foundation work.",
+      "properties": {
+        "workflow": {
+          "$ref": "#/$defs/WorkflowRecord"
+        },
+        "checkpoint": {
+          "$ref": "#/$defs/WorkflowCheckpoint"
+        }
+      },
+      "required": [
+        "workflow",
+        "checkpoint"
+      ],
+      "title": "PinnedRuntimeContext",
+      "type": "object"
+    },
+    "RuntimeTurnResult": {
+      "$defs": {
+        "AgentVersionPin": {
+          "additionalProperties": false,
+          "properties": {
+            "agent_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Agent Id",
+              "type": "string"
+            },
+            "version_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id",
+            "version_id"
+          ],
+          "title": "AgentVersionPin",
+          "type": "object"
+        },
+        "ApprovalCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "approval",
+              "title": "Kind",
+              "type": "string"
+            },
+            "request_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Request Id",
+              "type": "string"
+            },
+            "approval_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "request_id",
+            "approval_id"
+          ],
+          "title": "ApprovalCause",
+          "type": "object"
+        },
+        "AssistantMessage": {
+          "additionalProperties": false,
+          "properties": {
+            "message_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Message Id",
+              "type": "string"
+            },
+            "workflow_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Workflow Id",
+              "type": "string"
+            },
+            "sender": {
+              "default": "assistant",
+              "pattern": "^assistant$",
+              "title": "Sender",
+              "type": "string"
+            },
+            "text": {
+              "maxLength": 20000,
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "message_id",
+            "workflow_id",
+            "text",
+            "created_at"
+          ],
+          "title": "AssistantMessage",
+          "type": "object"
+        },
+        "AsyncProtocolSnapshotRef": {
+          "additionalProperties": false,
+          "description": "Stable reference while Registry owns detailed protocol semantics.",
+          "properties": {
+            "protocol_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Protocol Id",
+              "type": "string"
+            },
+            "protocol_version": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Protocol Version",
+              "type": "string"
+            },
+            "schema_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Schema Hash",
+              "type": "string"
+            },
+            "tool_version_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Version Id",
+              "type": "string"
+            },
+            "provider_integration_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Provider Integration Id"
+            },
+            "capabilities": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            }
+          },
+          "required": [
+            "protocol_id",
+            "protocol_version",
+            "schema_hash",
+            "tool_version_id"
+          ],
+          "title": "AsyncProtocolSnapshotRef",
+          "type": "object"
+        },
+        "ExternalEventCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "external_event",
+              "title": "Kind",
+              "type": "string"
+            },
+            "cause_event_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Cause Event Id",
+              "type": "string"
+            },
+            "operation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "cause_event_id",
+            "operation_id"
+          ],
+          "title": "ExternalEventCause",
+          "type": "object"
+        },
+        "RequestCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "request",
+              "title": "Kind",
+              "type": "string"
+            },
+            "request_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "request_id"
+          ],
+          "title": "RequestCause",
+          "type": "object"
+        },
+        "RequestResult": {
+          "additionalProperties": false,
+          "properties": {
+            "messages": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AssistantMessage"
+              },
+              "title": "Messages",
+              "type": "array"
+            },
+            "data": {
+              "additionalProperties": true,
+              "title": "Data",
+              "type": "object"
+            }
+          },
+          "title": "RequestResult",
+          "type": "object"
+        },
+        "TimerCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "timer",
+              "title": "Kind",
+              "type": "string"
+            },
+            "timer_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Timer Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "timer_id"
+          ],
+          "title": "TimerCause",
+          "type": "object"
+        },
+        "UsedBudget": {
+          "additionalProperties": false,
+          "properties": {
+            "model_turns": {
+              "minimum": 0,
+              "title": "Model Turns",
+              "type": "integer"
+            },
+            "tool_calls": {
+              "minimum": 0,
+              "title": "Tool Calls",
+              "type": "integer"
+            },
+            "input_tokens": {
+              "minimum": 0,
+              "title": "Input Tokens",
+              "type": "integer"
+            },
+            "output_tokens": {
+              "minimum": 0,
+              "title": "Output Tokens",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "model_turns",
+            "tool_calls",
+            "input_tokens",
+            "output_tokens"
+          ],
+          "title": "UsedBudget",
+          "type": "object"
+        },
+        "WorkflowCheckpoint": {
+          "additionalProperties": false,
+          "description": "Durable references, not raw runtime objects, prompts or credentials.",
+          "properties": {
+            "schema_version": {
+              "const": "phh-phase-a-1",
+              "default": "phh-phase-a-1",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "workflow_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Workflow Id",
+              "type": "string"
+            },
+            "state_revision": {
+              "minimum": 1,
+              "title": "State Revision",
+              "type": "integer"
+            },
+            "session_refs": {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Session Refs",
+              "type": "array"
+            },
+            "agent_version_pins": {
+              "items": {
+                "$ref": "#/$defs/AgentVersionPin"
+              },
+              "minItems": 1,
+              "title": "Agent Version Pins",
+              "type": "array"
+            },
+            "protocol_pins": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AsyncProtocolSnapshotRef"
+              },
+              "title": "Protocol Pins",
+              "type": "array"
+            },
+            "shared_state_ref": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Shared State Ref",
+              "type": "string"
+            },
+            "pending_task_ids": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Pending Task Ids",
+              "type": "array"
+            },
+            "pending_question_ids": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Pending Question Ids",
+              "type": "array"
+            },
+            "pending_approval_ids": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Pending Approval Ids",
+              "type": "array"
+            },
+            "operation_refs": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Operation Refs",
+              "type": "array"
+            },
+            "last_processed_causes": {
+              "default": [],
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "approval": "#/$defs/ApprovalCause",
+                    "external_event": "#/$defs/ExternalEventCause",
+                    "request": "#/$defs/RequestCause",
+                    "timer": "#/$defs/TimerCause"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/RequestCause"
+                  },
+                  {
+                    "$ref": "#/$defs/ApprovalCause"
+                  },
+                  {
+                    "$ref": "#/$defs/ExternalEventCause"
+                  },
+                  {
+                    "$ref": "#/$defs/TimerCause"
+                  }
+                ]
+              },
+              "title": "Last Processed Causes",
+              "type": "array"
+            },
+            "used_budget": {
+              "$ref": "#/$defs/UsedBudget"
+            }
+          },
+          "required": [
+            "workflow_id",
+            "state_revision",
+            "session_refs",
+            "agent_version_pins",
+            "shared_state_ref",
+            "used_budget"
+          ],
+          "title": "WorkflowCheckpoint",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Uncommitted candidate; persistence must enforce CAS/fence and auth.",
+      "properties": {
+        "trigger_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Trigger Id",
+          "type": "string"
+        },
+        "expected_state_revision": {
+          "minimum": 1,
+          "title": "Expected State Revision",
+          "type": "integer"
+        },
+        "checkpoint": {
+          "$ref": "#/$defs/WorkflowCheckpoint"
+        },
+        "result": {
+          "$ref": "#/$defs/RequestResult"
+        }
+      },
+      "required": [
+        "trigger_id",
+        "expected_state_revision",
+        "checkpoint",
+        "result"
+      ],
+      "title": "RuntimeTurnResult",
+      "type": "object"
+    }
+  },
+  "public_payloads": {
+    "request.accepted": {
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id"
+      ],
+      "title": "RequestAcceptedPayload",
+      "type": "object"
+    },
+    "workflow.status_changed": {
+      "$defs": {
+        "WorkflowState": {
+          "enum": [
+            "accepted",
+            "active",
+            "waiting_external_event",
+            "awaiting_user",
+            "awaiting_approval",
+            "awaiting_confirmation",
+            "needs_attention",
+            "blocked_authorization",
+            "blocked_route_changed",
+            "closed"
+          ],
+          "title": "WorkflowState",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/WorkflowState"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "state",
+        "revision"
+      ],
+      "title": "WorkflowStatusPayload",
+      "type": "object"
+    },
+    "ticket.created": {
+      "additionalProperties": false,
+      "properties": {
+        "ticket_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Ticket Id",
+          "type": "string"
+        },
+        "status": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticket_id",
+        "status"
+      ],
+      "title": "TicketCreatedPayload",
+      "type": "object"
+    },
+    "ticket.status_changed": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        },
+        "public_details": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Public Details"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "TicketStatusPayload",
+      "type": "object"
+    },
+    "assistant.message": {
+      "additionalProperties": false,
+      "properties": {
+        "message_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Message Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message_id",
+        "text"
+      ],
+      "title": "AssistantMessagePayload",
+      "type": "object"
+    },
+    "approval.required": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Approval Id",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|[+-]\\d{2}:\\d{2})$",
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval_id",
+        "summary",
+        "expires_at"
+      ],
+      "title": "ApprovalRequiredPayload",
+      "type": "object"
+    },
+    "approval.resolved": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Approval Id",
+          "type": "string"
+        },
+        "status": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval_id",
+        "status"
+      ],
+      "title": "ApprovalResolvedPayload",
+      "type": "object"
+    },
+    "operation.status_changed": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Operation Type",
+          "type": "string"
+        },
+        "status_schema": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Status Schema",
+          "type": "string"
+        },
+        "status": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        },
+        "external_reference": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Reference"
+        }
+      },
+      "required": [
+        "operation_type",
+        "status_schema",
+        "status"
+      ],
+      "title": "OperationStatusPayload",
+      "type": "object"
+    },
+    "workflow.awaiting_user": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reason",
+        "revision"
+      ],
+      "title": "WorkflowAwaitingUserPayload",
+      "type": "object"
+    },
+    "workflow.needs_attention": {
+      "additionalProperties": false,
+      "properties": {
+        "reason_code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason_code"
+      ],
+      "title": "WorkflowNeedsAttentionPayload",
+      "type": "object"
+    },
+    "workflow.closed": {
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "const": "closed",
+          "title": "State",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "reason": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "closed_at": {
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|[+-]\\d{2}:\\d{2})$",
+          "title": "Closed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "revision",
+        "reason",
+        "closed_at"
+      ],
+      "title": "WorkflowClosedPayload",
+      "type": "object"
+    }
+  }
+}
