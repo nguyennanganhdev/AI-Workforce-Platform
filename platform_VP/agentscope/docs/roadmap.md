@@ -21,8 +21,7 @@ AgentScope aims to build **production-ready** voice agents rather than demonstra
 Our development strategy for voice agents consists of **three progressive milestones**:
 
 1. **TTS Models** → 2. **Multimodal Models** → 3. **Real-time Multimodal Models**
-
----
+--- streaming speech to speech
 
 #### Phase 1: TTS (Text-to-Speech) Models
 
@@ -49,7 +48,6 @@ Our development strategy for voice agents consists of **three progressive milest
 ---
 
 #### Phase 3: Real-time Multimodal Models
-
 
 - **Beyond request-response**: Explore streaming, interrupt handling, and concurrent multimodal processing
 - **New programming paradigms**: Design agent programming models specifically tailored for real-time interactions

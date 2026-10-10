@@ -1,0 +1,128 @@
+{
+  "notice": "Synthetic review fixtures only; no live tools, credentials or provider integrations. Timeouts are illustrative, not platform defaults.",
+  "generation_request": {
+    "client_message_id": "00000000-0000-4000-8000-000000000001",
+    "expected_revision": 0,
+    "mode": "single",
+    "message": "Tạo một agent tra cứu thông tin, tự chọn tool phù hợp và không thực hiện giao dịch.",
+    "generation_model": {
+      "type": "fixture_provider",
+      "credential_id": "fixture-credential-reference",
+      "model": "fixture-generation-model",
+      "parameters": {}
+    }
+  },
+  "single_agent_requirements": {
+    "schema_version": "bhn.phase-a.proposal.1",
+    "mode": "single",
+    "intent": "build",
+    "name": "Agent tra cứu",
+    "description": "Tra cứu dữ liệu từ nguồn được cấp quyền.",
+    "objective": "Trả lời câu hỏi bằng thông tin đã được xác minh.",
+    "responsibilities": ["Tra cứu thông tin", "Nêu nguồn kết quả"],
+    "requirements": [{
+      "requirement_id": "lookup",
+      "capability": "information.lookup",
+      "required": true,
+      "effect": "read",
+      "tracking_goal": "none",
+      "reason": "Người dùng chỉ yêu cầu tra cứu, không thực hiện giao dịch."
+    }],
+    "resource_selections": [{
+      "kind": "tool",
+      "resource_id": "00000000-0000-4000-8000-000000000010",
+      "version_ref": "00000000-0000-4000-8000-000000000011",
+      "covers_requirements": ["lookup"],
+      "selection_reason": "Descriptor mẫu khai báo capability tra cứu và effect read."
+    }],
+    "runtime_model_option_id": "fixture-runtime-option",
+    "questions": [],
+    "missing_capabilities": [],
+    "policy_candidate": {
+      "capabilities": ["information.lookup"],
+      "event_types": [],
+      "required_facts": [],
+      "effect": "read",
+      "tracking": "none",
+      "completion": {"kind": "response_delivered", "all_of": []},
+      "human_confirmation": "none",
+      "close_policy": "auto_close_read_only",
+      "timeout_behavior": "not_applicable",
+      "max_wait_seconds": null
+    }
+  },
+  "policies": {
+    "interactive_read": {
+      "capabilities": ["options.compare"],
+      "event_types": [],
+      "required_facts": [],
+      "effect": "read",
+      "tracking": "none",
+      "completion": {"kind": "response_delivered", "all_of": []},
+      "human_confirmation": "explicit_close",
+      "close_policy": "explicit_close",
+      "timeout_behavior": "not_applicable",
+      "max_wait_seconds": null
+    },
+    "create_only": {
+      "capabilities": ["job.create"],
+      "event_types": [],
+      "required_facts": ["accepted"],
+      "effect": "write",
+      "tracking": "none",
+      "completion": {"kind": "operation_accepted", "all_of": [{"fact": "accepted", "equals": true}]},
+      "human_confirmation": "explicit_close",
+      "close_policy": "explicit_close",
+      "timeout_behavior": "not_applicable",
+      "max_wait_seconds": null
+    },
+    "booking_confirmed": {
+      "capabilities": ["booking.create"],
+      "event_types": [],
+      "required_facts": ["booking_status"],
+      "effect": "booking",
+      "tracking": "none",
+      "completion": {"kind": "operation_terminal", "all_of": [{"fact": "booking_status", "equals": "confirmed"}]},
+      "human_confirmation": "explicit_close",
+      "close_policy": "explicit_close",
+      "timeout_behavior": "not_applicable",
+      "max_wait_seconds": null
+    },
+    "pending_provider_event": {
+      "capabilities": ["job.create", "job.track"],
+      "event_types": ["job.status_changed"],
+      "required_facts": ["job_status"],
+      "effect": "write",
+      "tracking": "provider_event",
+      "completion": {"kind": "operation_terminal", "all_of": [{"fact": "job_status", "equals": "completed"}]},
+      "human_confirmation": "explicit_close",
+      "close_policy": "explicit_close",
+      "timeout_behavior": "needs_attention",
+      "max_wait_seconds": 3600
+    },
+    "pending_query_only": {
+      "capabilities": ["job.create", "job.track"],
+      "event_types": [],
+      "required_facts": ["job_status"],
+      "effect": "write",
+      "tracking": "status_query",
+      "completion": {"kind": "operation_terminal", "all_of": [{"fact": "job_status", "equals": "completed"}]},
+      "human_confirmation": "explicit_close",
+      "close_policy": "explicit_close",
+      "timeout_behavior": "query_then_attention",
+      "max_wait_seconds": 3600
+    },
+    "pending_event_with_query_fallback": {
+      "capabilities": ["booking.create", "booking.track"],
+      "event_types": ["booking.status_changed"],
+      "required_facts": ["booking_status"],
+      "effect": "booking",
+      "tracking": "provider_event_or_status_query",
+      "completion": {"kind": "operation_terminal", "all_of": [{"fact": "booking_status", "equals": "confirmed"}]},
+      "human_confirmation": "explicit_close",
+      "close_policy": "explicit_close",
+      "timeout_behavior": "query_then_attention",
+      "max_wait_seconds": 3600
+    }
+  }
+}

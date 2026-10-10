@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BHN Phase A review proposal — NOT a shared production contract",
+  "$comment": "Owner review artifact. Promote through Foundation contracts; production must not import this file. Local version is independent of plan 1.4.3.",
+  "$ref": "#/$defs/SingleAgentRequirements",
+  "$defs": {
+    "Text": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "Texts": {"type": "array", "items": {"$ref": "#/$defs/Text"}, "uniqueItems": true},
+    "ModelSelection": {
+      "description": "Review projection of existing ChatModelConfig. Credential ID is opaque legacy data, never a secret; backend resolves access and provider parameters.",
+      "type": "object", "additionalProperties": false,
+      "required": ["type", "credential_id", "model", "parameters"],
+      "properties": {
+        "type": {"$ref": "#/$defs/Text"},
+        "credential_id": {"$ref": "#/$defs/Text"},
+        "model": {"$ref": "#/$defs/Text"},
+        "parameters": {"type": "object", "description": "Validate against the existing provider Parameters schema; schema-valid does not authorize parameters or embedded credentials."}
+      }
+    },
+    "GenerationRequest": {
+      "description": "Proposed body for a message in an already authorized build session. Scope/session ownership is resolved by the backend, not accepted from the body.",
+      "type": "object", "additionalProperties": false,
+      "required": ["client_message_id", "expected_revision", "mode", "message", "generation_model"],
+      "properties": {
+        "client_message_id": {"type": "string", "format": "uuid"},
+        "expected_revision": {"type": "integer", "minimum": 0},
+        "mode": {"const": "single"},
+        "message": {"type": "string", "minLength": 1, "maxLength": 12000, "pattern": "\\S"},
+        "generation_model": {"$ref": "#/$defs/ModelSelection"}
+      }
+    },
+    "FactPredicate": {
+      "description": "Equality on a verified normalized fact; all predicates must hold. No executable expression or LLM assertion counts as a verified fact.",
+      "type": "object", "additionalProperties": false,
+      "required": ["fact", "equals"],
+      "properties": {
+        "fact": {"$ref": "#/$defs/Text"},
+        "equals": {"type": ["string", "boolean", "integer"]}
+      }
+    },
+    "AsyncHandlingPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["capabilities", "event_types", "required_facts", "effect", "tracking", "completion", "human_confirmation", "close_policy", "timeout_behavior", "max_wait_seconds"],
+      "properties": {
+        "capabilities": {"$ref": "#/$defs/Texts", "minItems": 1},
+        "event_types": {"$ref": "#/$defs/Texts"},
+        "required_facts": {"$ref": "#/$defs/Texts"},
+        "effect": {"enum": ["read", "write", "booking", "cancel"]},
+        "tracking": {"enum": ["none", "provider_event", "status_query", "provider_event_or_status_query"]},
+        "completion": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "all_of"],
+          "properties": {
+            "kind": {"enum": ["response_delivered", "operation_accepted", "operation_terminal"]},
+            "all_of": {"type": "array", "items": {"$ref": "#/$defs/FactPredicate"}, "uniqueItems": true}
+          },
+          "allOf": [{
+            "if": {"properties": {"kind": {"enum": ["operation_accepted", "operation_terminal"]}}},
+            "then": {"properties": {"all_of": {"minItems": 1}}}
+          }]
+        },
+        "human_confirmation": {"enum": ["none", "explicit_close"]},
+        "close_policy": {"enum": ["auto_close_read_only", "explicit_close"]},
+        "timeout_behavior": {"enum": ["not_applicable", "needs_attention", "query_then_attention"]},
+        "max_wait_seconds": {"type": ["integer", "null"], "minimum": 1}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"tracking": {"const": "none"}}},
+          "then": {"properties": {"event_types": {"maxItems": 0}, "timeout_behavior": {"const": "not_applicable"}, "max_wait_seconds": {"type": "null"}}},
+          "else": {"properties": {"completion": {"properties": {"kind": {"const": "operation_terminal"}}}, "required_facts": {"minItems": 1}, "close_policy": {"const": "explicit_close"}, "timeout_behavior": {"enum": ["needs_attention", "query_then_attention"]}, "max_wait_seconds": {"type": "integer", "minimum": 1}}}
+        },
+        {
+          "if": {"properties": {"tracking": {"enum": ["provider_event", "provider_event_or_status_query"]}}},
+          "then": {"properties": {"event_types": {"minItems": 1}}}
+        },
+        {
+          "if": {"properties": {"timeout_behavior": {"const": "query_then_attention"}}},
+          "then": {"properties": {"tracking": {"enum": ["status_query", "provider_event_or_status_query"]}}}
+        },
+        {
+          "if": {"properties": {"close_policy": {"const": "auto_close_read_only"}}},
+          "then": {"properties": {"effect": {"const": "read"}, "tracking": {"const": "none"}, "completion": {"properties": {"kind": {"const": "response_delivered"}}}, "human_confirmation": {"const": "none"}}},
+          "else": {"properties": {"human_confirmation": {"const": "explicit_close"}}}
+        }
+      ]
+    },
+    "Requirement": {
+      "description": "Extracted intent, not a provider capability claim. A read capability may still have a pending external operation.",
+      "type": "object", "additionalProperties": false,
+      "required": ["requirement_id", "capability", "required", "effect", "tracking_goal", "reason"],
+      "properties": {
+        "requirement_id": {"$ref": "#/$defs/Text"},
+        "capability": {"$ref": "#/$defs/Text"},
+        "required": {"type": "boolean"},
+        "effect": {"enum": ["read", "write", "booking", "cancel", "unknown"]},
+        "tracking_goal": {"enum": ["none", "create_only", "until_terminal", "until_user_close", "unspecified"]},
+        "reason": {"$ref": "#/$defs/Text"}
+      }
+    },
+    "ResourceSelection": {
+      "description": "Candidate suggestion only. Backend resolves resource/version and maps verified tools to canonical ToolBinding; no authority is granted by this object.",
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "resource_id", "version_ref", "covers_requirements", "selection_reason"],
+      "properties": {
+        "kind": {"enum": ["tool", "knowledge", "skill"]},
+        "resource_id": {"$ref": "#/$defs/Text"},
+        "version_ref": {"$ref": "#/$defs/Text"},
+        "covers_requirements": {"$ref": "#/$defs/Texts", "minItems": 1},
+        "selection_reason": {"$ref": "#/$defs/Text"}
+      }
+    },
+    "SingleAgentRequirements": {
+      "description": "Model output before backend capability/reuse checks. Policy is a candidate, not a validated manifest or runtime instruction.",
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "mode", "intent", "name", "description", "objective", "responsibilities", "requirements", "resource_selections", "runtime_model_option_id", "questions", "missing_capabilities", "policy_candidate"],
+      "properties": {
+        "schema_version": {"const": "bhn.phase-a.proposal.1"},
+        "mode": {"const": "single"},
+        "intent": {"enum": ["build", "clarify", "runtime_request"]},
+        "name": {"anyOf": [{"$ref": "#/$defs/Text"}, {"type": "null"}]},
+        "description": {"anyOf": [{"$ref": "#/$defs/Text"}, {"type": "null"}]},
+        "objective": {"anyOf": [{"$ref": "#/$defs/Text"}, {"type": "null"}]},
+        "responsibilities": {"$ref": "#/$defs/Texts"},
+        "requirements": {"type": "array", "items": {"$ref": "#/$defs/Requirement"}},
+        "resource_selections": {"type": "array", "items": {"$ref": "#/$defs/ResourceSelection"}},
+        "runtime_model_option_id": {"anyOf": [{"$ref": "#/$defs/Text"}, {"type": "null"}]},
+        "questions": {"$ref": "#/$defs/Texts"},
+        "missing_capabilities": {"$ref": "#/$defs/Texts"},
+        "policy_candidate": {"anyOf": [{"$ref": "#/$defs/AsyncHandlingPolicy"}, {"type": "null"}]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"intent": {"const": "build"}}},
+          "then": {"properties": {"name": {"$ref": "#/$defs/Text"}, "description": {"$ref": "#/$defs/Text"}, "objective": {"$ref": "#/$defs/Text"}, "responsibilities": {"minItems": 1}, "questions": {"maxItems": 0}, "policy_candidate": {"$ref": "#/$defs/AsyncHandlingPolicy"}, "requirements": {"minItems": 1, "items": {"properties": {"effect": {"enum": ["read", "write", "booking", "cancel"]}, "tracking_goal": {"enum": ["none", "create_only", "until_terminal", "until_user_close"]}}}}}}
+        },
+        {
+          "if": {"properties": {"intent": {"const": "clarify"}}},
+          "then": {"properties": {"questions": {"minItems": 1}, "policy_candidate": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"intent": {"const": "runtime_request"}}},
+          "then": {"properties": {"policy_candidate": {"type": "null"}, "resource_selections": {"maxItems": 0}}}
+        }
+      ]
+    }
+  }
+}

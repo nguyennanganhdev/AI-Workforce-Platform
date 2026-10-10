@@ -1,5 +1,7 @@
 # async_capabilities — API/event/workflow v1.4
 
+Cập nhật 10/10/2026: `test_phase_a_schema.py` kiểm tra [schema/mẫu đề xuất Phase A](../../../../docs/workforce/handoffs/bui-huu-nghia/phase_a/README.md); `test_canonical_handoff.py` kiểm tra mẫu Builder theo Foundation JSON Schema export đã pull. Chạy từ repo root: `python -B -m unittest discover -s tests/workforce/builder/async_capabilities -p "test_*.py" -v`. Kết quả mới: 40 pass, 1 skip (protocol-ref chưa có schema export). Dùng unittest + jsonschema đã nằm trong dependency repo; chưa chạy runtime/fake port implementation hoặc Pydantic custom validators. Các phạm vi còn lại bên dưới vẫn là kế hoạch.
+
 Chủ sở hữu: **Bùi Hữu Nghĩa**. Branch: `feat/wf-builder`.
 Task bổ sung của owner: **BHN-12–BHN-14**; chọn phần tương ứng phạm vi folder dưới đây.
 

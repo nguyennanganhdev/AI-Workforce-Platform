@@ -4,6 +4,10 @@ Branch đề xuất: `feat/wf-builder`. Đầu việc: **BHN-01–BHN-14**.
 
 Phạm vi: chat tạo một/nhiều agent độc lập, phát hiện trùng, chọn tool và sinh manifest từng agent.
 
+[Plan Phase A và định hướng Builder](PLAN_PHASE_A.md): làm một agent trước, cho chọn model dùng để sinh, tự đề xuất thông tin/tài nguyên phù hợp, sau đó mở rộng batch. Khi code phải ưu tiên tận dụng implementation và thư viện hiện có của repository. Đây là kế hoạch, chưa phải phần triển khai đã hoàn thành; xem [STATUS.md](STATUS.md).
+
+[Gói bàn giao Phase A](phase_a/README.md) đã có schema đề xuất, samples, prompt và khảo sát code tái sử dụng. [Sau pull Foundation Phase A](phase_a/PULL_UPDATE.md), đã thêm mẫu/test theo export canonical: tổng 40 tests pass, 1 skip vì thiếu JSON Schema của AsyncProtocolSnapshotRef. Đã cập nhật yêu cầu tích hợp [BHN-05](INTEGRATION_REQUEST_BHN-05.md), [BHN-12](INTEGRATION_REQUEST_BHN-12.md), [BHN-13](INTEGRATION_REQUEST_BHN-13.md). DTO nền đã có; typed async policy/model sinh và implementation liên module còn thiếu, chưa triển khai Builder production.
+
 [Kế hoạch và hợp đồng chung](../../KE_HOACH_TRIEN_KHAI.md) là tài liệu đầu vào cho AI. Gửi cả file kế hoạch và nói rõ: “Tôi là Bùi Hữu Nghĩa”.
 
 Khi triển khai, tạo `STATUS.md` theo mẫu ở mục 16. Mỗi yêu cầu đổi contract/hook/file chung ghi vào `INTEGRATION_REQUEST_<task-id>.md` theo mục 14.

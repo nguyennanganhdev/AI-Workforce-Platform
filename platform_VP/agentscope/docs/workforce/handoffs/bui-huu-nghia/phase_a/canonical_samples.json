@@ -1,0 +1,101 @@
+{
+  "notice": "Synthetic Builder handoff samples for Foundation contract version 1 at a99d506. These validate DTO shape only; no tools, models or scopes are provisioned.",
+  "scope": {
+    "tenant_id": "fixture-tenant",
+    "domain_id": "fixture-domain",
+    "area_id": "fixture-area",
+    "manager_account_id": "fixture-manager"
+  },
+  "tool_descriptor": {
+    "tool_id": "fixture-tool",
+    "tool_version_id": "fixture-tool-v1",
+    "source_kind": "builtin",
+    "provider_tool_name": "fixture_lookup",
+    "llm_alias": "fixture_lookup",
+    "description": "Read-only synthetic lookup descriptor; not an executable tool.",
+    "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"], "additionalProperties": false},
+    "output_schema": {"type": "object", "properties": {"answer": {"type": "string"}}, "required": ["answer"], "additionalProperties": false},
+    "schema_hash": "fixture-schema-hash",
+    "capabilities": ["information.lookup"],
+    "effect": "read",
+    "available": true
+  },
+  "tool_binding": {
+    "tool_id": "fixture-tool",
+    "tool_version_id": "fixture-tool-v1",
+    "schema_hash": "fixture-schema-hash",
+    "required_capability": "information.lookup",
+    "selection_reason": "Matches the read-only lookup requirement in the fixture."
+  },
+  "business_profile": {
+    "profile_schema_version": "1",
+    "objective": "Answer questions from verified information.",
+    "responsibilities": ["Retrieve information", "Report its source"],
+    "capabilities": ["information.lookup"],
+    "input_contract": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+    "output_contract": {"type": "object", "properties": {"answer": {"type": "string"}}, "required": ["answer"]},
+    "business_scope": "The authenticated manager's authorized information sources.",
+    "required_constraints": ["Read-only", "Never disclose another manager's data"],
+    "execution_policy": "read_only",
+    "knowledge_requirements": []
+  },
+  "manifest": {
+    "schema_version": "1",
+    "business_profile": {
+      "profile_schema_version": "1",
+      "objective": "Answer questions from verified information.",
+      "responsibilities": ["Retrieve information", "Report its source"],
+      "capabilities": ["information.lookup"],
+      "input_contract": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+      "output_contract": {"type": "object", "properties": {"answer": {"type": "string"}}, "required": ["answer"]},
+      "business_scope": "The authenticated manager's authorized information sources.",
+      "required_constraints": ["Read-only", "Never disclose another manager's data"],
+      "execution_policy": "read_only",
+      "knowledge_requirements": []
+    },
+    "spec": {
+      "agent_key": "lookup",
+      "name": "Lookup agent",
+      "description": "A standalone read-only agent.",
+      "capabilities": ["information.lookup"],
+      "system_prompt": "Use only bound information tools. Answer from verified output and state missing information. Never perform a transaction.",
+      "model_config_ref": {"type": "fixture_provider", "credential_id": "fixture-runtime-credential", "model": "fixture-runtime-model", "parameters": {}},
+      "context_config": {},
+      "react_config": {},
+      "tool_bindings": [{
+        "tool_id": "fixture-tool", "tool_version_id": "fixture-tool-v1",
+        "schema_hash": "fixture-schema-hash", "required_capability": "information.lookup",
+        "selection_reason": "Matches the read-only lookup requirement in the fixture."
+      }],
+      "knowledge_bindings": [],
+      "skill_bindings": [],
+      "collaboration_policy": {},
+      "execution_policy": {"side_effect_policy": "read_only"}
+    },
+    "async_policy_ref": null,
+    "protocol_snapshot_hashes": []
+  },
+  "async_protocol_ref": {
+    "protocol_id": "fixture-protocol", "protocol_version": "1",
+    "schema_hash": "fixture-protocol-hash", "tool_version_id": "fixture-create-v1",
+    "provider_integration_id": "fixture-provider",
+    "capabilities": ["create", "receive_status", "status_query"]
+  },
+  "create_decision": {
+    "agent_key": "lookup", "action": "create", "reuse_check_id": "fixture-reuse-check",
+    "reason": "No matching agent was found by the fixture reuse check.",
+    "expected_catalog_revision": 3
+  },
+  "reuse_decision": {
+    "agent_key": "lookup", "action": "reuse", "reuse_check_id": "fixture-reuse-check",
+    "agent_id": "fixture-agent", "version_id": "fixture-agent-v1",
+    "reason": "The published candidate satisfies the fixture requirements.",
+    "expected_catalog_revision": 3
+  },
+  "revise_decision": {
+    "agent_key": "lookup", "action": "revise", "reuse_check_id": "fixture-reuse-check",
+    "agent_id": "fixture-agent", "version_id": "fixture-agent-v1",
+    "reason": "Add tracking to the same identity after user confirmation.",
+    "expected_catalog_revision": 3
+  }
+}
