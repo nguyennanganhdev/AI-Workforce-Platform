@@ -4,6 +4,12 @@ Branch đề xuất: `feat/wf-registry`. Đầu việc: **NPD-01–NPD-12**.
 
 Phạm vi: MCP catalog, kết nối, discovery và kho tool đã đăng ký.
 
+## Điểm tiếp tục kế hoạch endpoint MCP — 2026-10-10
+
+Triển khai đang dừng tại Bước 1 để chờ contracts/SDK dùng chung theo yêu cầu của người dùng. Xem [STATUS.md](STATUS.md) và [INTEGRATION_REQUEST_NPD_ENDPOINT.md](INTEGRATION_REQUEST_NPD_ENDPOINT.md) để biết bằng chứng, owner và điều kiện tiếp tục; chưa có NPD nào được đánh dấu hoàn thành. Khi tiếp tục, ưu tiên wrapper MCP, contracts, SQL/session, transport frontend và UI components sẵn có; không tạo lớp thay thế.
+
+Kế hoạch endpoint mới nhất giữ `workflow_state`/`next_action` cho Customer request/reply; không thêm hai field này vào response MCP/tool/skill, dù các hướng dẫn v1.4 tổng quát bên dưới viết “mọi response”.
+
 [Kế hoạch và hợp đồng chung](../../KE_HOACH_TRIEN_KHAI.md) là tài liệu đầu vào cho AI. Gửi cả file kế hoạch và nói rõ: “Tôi là Nguyễn Phương Đông”.
 
 Khi triển khai, tạo `STATUS.md` theo mẫu ở mục 16. Mỗi yêu cầu đổi contract/hook/file chung ghi vào `INTEGRATION_REQUEST_<task-id>.md` theo mục 14.
