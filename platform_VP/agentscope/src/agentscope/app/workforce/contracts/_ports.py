@@ -291,6 +291,23 @@ class JobPort(Protocol):
         not_before: datetime | None = None,
     ) -> OpaqueId: ...
 
+    async def enqueue_provider(
+        self,
+        provider_context: Mapping[str, object],
+        job_type: str,
+        payload: JsonObject,
+        idempotency_key: str,
+        uow: UnitOfWork | None = None,
+        not_before: datetime | None = None,
+    ) -> OpaqueId:
+        """Enqueue work before an operation has resolved manager scope.
+
+        Implementations must derive ``tenant_id`` and
+        ``provider_integration_id`` from a verified provider context. They
+        must never accept either namespace from a public event body.
+        """
+        ...
+
     async def claim(
         self,
         worker_id: str,
@@ -515,6 +532,30 @@ class PublicEventSignalPort(Protocol):
         conversation_id: OpaqueId,
         timeout: float,
     ) -> int | None: ...
+
+    async def health(self) -> bool: ...
+
+
+@runtime_checkable
+class RequestCompletionSignalPort(Protocol):
+    """Best-effort wake-up for bounded POST result waiters.
+
+    The persisted request result remains authoritative. A missed signal only
+    delays the next database read and must never lose a completed result.
+    """
+
+    async def notify_after_commit(
+        self,
+        scope: Scope,
+        request_id: OpaqueId,
+    ) -> None: ...
+
+    async def wait_for_completion(
+        self,
+        scope: Scope,
+        request_id: OpaqueId,
+        timeout: float,
+    ) -> bool: ...
 
     async def health(self) -> bool: ...
 

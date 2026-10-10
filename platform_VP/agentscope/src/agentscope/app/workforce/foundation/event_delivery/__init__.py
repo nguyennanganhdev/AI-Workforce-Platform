@@ -1,25 +1,24 @@
 # -*- coding: utf-8 -*-
-"""Workforce identity, persistence, jobs, and transport adapters.
+"""Durable jobs and advisory signals for Workforce async delivery."""
 
-SQL adapters and composition are added in Phase C. Shared interfaces must be
-imported from :mod:`agentscope.app.workforce.contracts`.
-"""
-
-from .event_delivery import (
-    ConversationSseService,
+from ._jobs import (
     DurableJob,
     DurableJobRepository,
     DurableJobService,
-    DurableJobWorker,
     JobClaim,
     JobLeaseLostError,
     JobNamespaceError,
     JobOwnerKind,
     JobStatus,
-    JobHandler,
+)
+from ._signals import (
     MessageBusPublicEventSignal,
     MessageBusRequestCompletionSignal,
-    SseFrame,
+)
+from ._sse import ConversationSseService, SseFrame
+from ._worker import (
+    DurableJobWorker,
+    JobHandler,
     WorkerOutcome,
     WorkerOutcomeStatus,
 )
