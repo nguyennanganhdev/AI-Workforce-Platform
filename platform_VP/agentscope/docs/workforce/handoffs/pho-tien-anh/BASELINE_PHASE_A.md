@@ -1,108 +1,95 @@
-# Phase A — Phó Tiến Anh
+# Phase A — Đặc tả validation và evaluation snapshot
 
-Ngày kiểm tra: 2026-10-10.
-validation/eval snapshot schema cho PTA-14–PTA-16.
+Chủ sở hữu: Phó Tiến Anh. Ngày đối chiếu: 10/10/2026.
+Căn cứ: mục 17.9 của [kế hoạch triển khai](../../KE_HOACH_TRIEN_KHAI.md).
 
-## Đầu ra bàn giao
+## Mục tiêu nghiệp vụ
 
-- [Schema bundle](phase_a/schemas.json), version `pta-phase-a-1`.
-- Export: `agentscope.app.workforce.lifecycle.async_evaluation.phase_a_schema_bundle`.
-- Schema lấy trực tiếp từ shared DTO baseline và Lifecycle aggregates hiện tại,
-  không sao chép/định nghĩa lại shared DTO. Mỗi phần tử trong `schemas` là một
-  JSON Schema độc lập; `$defs` và `$ref` được resolve trong chính phần tử đó.
+Định nghĩa dữ liệu phục vụ kiểm tra và đánh giá từng bản nháp agent. Hồ sơ đánh
+giá cần xác định được chủ sở hữu, bản nháp, phiên bản ứng viên và các đầu vào
+phụ thuộc tại thời điểm đánh giá, làm căn cứ cho quyết định phát hành.
+
+## Đầu ra
+
+- [Schema bundle](phase_a/schemas.json), phiên bản `pta-phase-a-1`.
+- [Mẫu dữ liệu](phase_a/samples.json) cho validation, evaluation record và policy.
+- Export schema: `agentscope.app.workforce.lifecycle.async_evaluation.phase_a_schema_bundle`.
+- Aggregate đề xuất: `agentscope.app.workforce.lifecycle.ValidationReport` và `EvaluationRecord`.
 - Contract tests: `tests/workforce/lifecycle/async_evaluation/test_phase_a.py`.
 
-## Validation và snapshot
+Mỗi phần tử của `schemas` là một tài liệu JSON Schema độc lập; `$ref` được
+phân giải trong `$defs` của chính phần tử đó. DTO dùng chung được nhập trực tiếp
+từ `workforce/contracts`. Hai aggregate Lifecycle là đề xuất bàn giao dữ liệu,
+chờ owner đặc tả dùng chung đối chiếu producer và consumer.
 
-| Thành phần | Contract hiện tại |
+## Cấu trúc dữ liệu
+
+| Thành phần | Nội dung |
 |---|---|
-| `EvaluationSnapshot` (shared) | Scope đủ bốn trường; agent/draft/revision/source hash/candidate version; manifest, tool hash, test-context hash và timestamp |
-| `ValidationReport` (Lifecycle) | valid/blockers, tool/protocol/dependency hashes và đầy đủ tool snapshots |
-| `EvaluationRecord` (Lifecycle) | Shared snapshot/report, suite hash, runtime profile, test context, validation, protocol refs, policy snapshot, gate config, revision/job/artifact refs |
-| `AsyncProtocolSnapshotRef` (shared) | protocol ID/version/schema hash/tool version/provider integration/capabilities |
-| `AsyncHandlingPolicyProposal` | Schema đề xuất cho owner chung: capabilities/event types/required facts/completion condition/human confirmation/timeout behavior |
+| `ValidationReport` | Kết quả hợp lệ, mã blocker, hash tool/protocol/dependency và dữ liệu tool snapshot |
+| `EvaluationSnapshot` — shared DTO | Scope bốn trường, agent/draft/revision, source hash, candidate version, manifest, tool hash, test-context hash và thời điểm tạo |
+| `EvaluationRecord` — aggregate đề xuất | Shared snapshot/report, suite hash, runtime profile, test context, validation, protocol refs, policy snapshot, gate config, revision, job và artifact refs |
+| `EvaluationCaseResult`, `EvaluationReport` — shared DTO | Trạng thái đánh giá, metrics, hard-gate failures, case results và các hash đối soát |
+| `AsyncProtocolSnapshotRef` — shared DTO | Protocol ID/version/schema hash, tool version, provider integration và capabilities |
+| `AsyncHandlingPolicyProposal` | Schema đề xuất cho capabilities, event types, required facts, completion condition, human confirmation và timeout behavior |
 
-Policy proposal chỉ là artifact thiết kế của Phase A, không phải DTO production
-thứ hai. Schema_version `1`, timeout `status_query` hoặc `needs_attention`;
-không cho ticket/job/workflow/endpoint/roster vào policy. Danh sách capability
-phải bao phủ các binding external-operation; phép kiểm bao phủ chạy bằng code,
-không được thay thế bằng JSON Schema. `completion_condition` hiện là chuỗi
-opaque cho runtime policy consumer, validator không thực thi biểu thức đó.
+`AsyncHandlingPolicyProposal` là artifact thiết kế, không phải DTO policy dùng
+chung. `schema_version` là `1`; `timeout_behavior` nhận `status_query` hoặc
+`needs_attention`. Schema chỉ nhận các trường được khai báo, do đó không nhận
+ID ticket/job/workflow, endpoint hoặc roster. `completion_condition` là chuỗi
+mô tả; cách diễn giải thuộc đặc tả của thành phần sử dụng policy.
 
-Snapshot bổ sung nằm trong `EvaluationRecord`, không thêm trường vào shared
-`EvaluationSnapshot` khi chưa qua owner. Protocol refs và policy cũng nằm trong
-test context được hash; runtime profile/suite/gate/validation được lưu cùng
-record. Publish regrade và kiểm tra revision/hash/profile/dependency trước
-commit. Không có runtime ticket/group hay team deployment trong manifest.
+`runtime_profile`, `test_context`, `policy_snapshot`, `gate_config`, tool
+snapshots và protocol refs trong aggregate còn dùng mapping. JSON Schema chưa
+kiểm tra ngữ nghĩa của các mapping này; chi tiết cần được thống nhất với owner.
+Protocol reference không thay thế toàn bộ protocol payload hoặc event schema.
 
-## Điểm nối đã có trong code
+## Nguyên tắc nghiệp vụ cần thống nhất
 
-```python
-ManifestValidator.freeze(scope, manifest)
-# -> (ValidationReport, Tuple[Dict[str, Any], ...], Dict[str, Any])
-ResourceValidationPort.validate_resources(scope, manifest)
-# -> Dict[str, Any]: valid + dependency evidence, chỉ reference, không secret
-AsyncPolicyPort.get_policy(scope, policy_ref)
-# -> Dict[str, Any]: policy theo schema đề xuất, resolve trong scope
-AsyncProtocolPort.get_snapshot(scope, tool_version_id)
-# -> AsyncProtocolSnapshotRef (shared)
-EvaluationRunnerPort.run_case(scope, version_snapshot, test_case, execution_mode)
-# -> EvaluationCaseResult (shared); execution_mode do backend gán "mock"
-VersionUsagePort.get_version_references(scope, version_id)
-# -> Tuple[Dict[str, Any], ...]: persisted references từ Orchestration
-```
+- Scope gồm `tenant_id`, `domain_id`, `area_id`, `manager_account_id`.
+- Mỗi hồ sơ đánh giá gắn với một agent, draft revision và candidate version xác định.
+- Snapshot và report phải thống nhất scope, identity, revision và các hash liên quan.
+- Policy phải bao phủ capability của binding external-operation.
+- Protocol và policy là đầu vào đóng băng của evaluation; runtime ticket/group không thuộc manifest.
+- Kết quả đánh giá cần đối soát với draft và dependency trước quyết định phát hành.
 
-Runner nhận shared snapshot và `test_case` gồm stable `case_run_id`,
-`candidate_version_id`, `runtime_profile`, `test_context`, `sandbox_namespace`.
-`test_context` gồm suite hash, execution mode, clock, protocol refs, policy,
-peer fixtures. Runner không được tự đổi candidate, scope hoặc namespace.
-Output dùng `EvaluationCaseResult`; `metrics` phải có tool trace, violation
-counts, cost/latency và evidence từng lượt. Thiếu evidence fail closed.
+Các điều kiện liên trường, hash, capability coverage và tính bất biến cần được
+kiểm tra bằng logic nghiệp vụ ở phase triển khai. Contract tests Phase A kiểm
+tra cấu trúc dữ liệu, không xác nhận các hành vi runtime này.
 
-Các blocker thuộc validator: `ASYNC_POLICY_REQUIRED`, `ASYNC_POLICY_INVALID`,
-`ASYNC_CAPABILITY_COVERAGE`, `RUNTIME_DATA_IN_POLICY`,
-`PROTOCOL_TOOL_MISMATCH`, `PROTOCOL_SNAPSHOT_DRIFT`,
-`TOOL_SNAPSHOT_UNAVAILABLE`, `RESOURCE_UNAVAILABLE`. Port lookup failures
-không chuyển thành thành công. Drift sau eval chặn publish; version đã pin
-không bị publish/rollback thay nội dung.
+## Trách nhiệm phối hợp
 
-## Ranh giới owner và giới hạn
+| Owner | Nội dung cần thống nhất |
+|---|---|
+| Nguyễn Chí Hoàng | DTO dùng chung, compatibility và việc tiếp nhận aggregate đề xuất |
+| Nguyễn Phương Đông | Protocol payload/version/hash và capability mapping |
+| Bùi Hữu Nghĩa | Policy schema, policy reference và revision |
+| Phan Huy Hoàng | Dữ liệu đầu vào/đầu ra runner và version usage/checkpoint references |
+| Phó Tiến Anh | Validation/evaluation schema, mẫu dữ liệu và contract tests |
 
-- Chí Hoàng: promotion DTO/schema/TypeScript dùng chung và composition/migration.
-- Đông: protocol chi tiết, hash/version và capability coverage qua shared port.
-- Nghĩa: policy resolution/immutable policy revision qua `AsyncPolicyPort`.
-- Huy Hoàng: runtime runner và persisted version usage/checkpoint references.
-- Tiến Anh: validator, snapshot aggregate, schemas và consumer contract tests.
+## Điều kiện nghiệm thu Phase A
 
-Shared baseline hiện chỉ có protocol reference, chưa có full protocol payload;
-Lifecycle không tự coi reference là toàn bộ protocol mapping/event schema.
-Policy/resource/usage ports chi tiết vẫn dùng dictionary trong code hiện tại.
-Schema bundle nêu đúng mức chi tiết này để owner có thể promotion additive;
-không tuyên bố các adapter provider hoặc shared policy DTO đã được tích hợp.
+Schema hợp lệ theo Draft 2020-12; DTO shared khớp baseline; mẫu dữ liệu hợp lệ;
+thiếu scope hoặc trường bắt buộc bị từ chối; policy sai cấu trúc bị từ chối.
+Việc chấp thuận đặc tả dùng chung cần có đối chiếu của các owner liên quan.
 
-Phase A phần Tiến Anh đã có đầu ra review được và tests trong owned paths.
-Việc chấp thuận/merge contract chung của các owner chưa được xác nhận. Phase C
-(runtime thật, route UI, worker/migration) và nghiệm thu Phase D vẫn chưa xong.
-Không tạo integration-request files theo yêu cầu người dùng.
-
-## Xác minh và tái sinh artifact
+## Lệnh kiểm tra
 
 Từ `platform_VP/agentscope`:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m pytest tests/workforce/lifecycle -q
-PYTHONPATH=src .venv/bin/python - <<'PY'
+PYTHONPATH=src .venv/bin/python -m pytest tests/workforce/foundation tests/workforce/lifecycle -q
+```
+
+Tái sinh schema artifact:
+
+```bash
+PYTHONPATH=src .venv/bin/python - <<'PYTHON'
 import json
 from pathlib import Path
 from agentscope.app.workforce.lifecycle.async_evaluation import phase_a_schema_bundle
 Path('docs/workforce/handoffs/pho-tien-anh/phase_a/schemas.json').write_text(
     json.dumps(phase_a_schema_bundle(), indent=2, ensure_ascii=False) + '\n'
 )
-PY
+PYTHON
 ```
-
-Kết quả: **45 passed, 12 subtests passed**, SQLite riêng cho tests. Contract
-tests kiểm schema hợp lệ, khớp shared baseline, scope đầy đủ, policy hợp lệ/
-không hợp lệ và capability thiếu. Các tests lifecycle sẵn có kiểm snapshot,
-stale eval, pin/version và restart bằng fake ports. Không chạy live provider,
-không sửa shared contracts/migration/UI routing, không commit.

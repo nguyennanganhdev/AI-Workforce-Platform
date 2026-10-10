@@ -13,7 +13,7 @@ def phase_a_schema_bundle() -> Dict[str, Any]:
     """Return isolated schema documents for Foundation's additive integration.
 
     Policy is a design proposal only; Builder/Foundation own its shared DTO.
-    Existing Lifecycle consumers continue using the baseline shared models.
+    Snapshot/report schemas come directly from the baseline shared models.
     """
     models = (
         ValidationReport,

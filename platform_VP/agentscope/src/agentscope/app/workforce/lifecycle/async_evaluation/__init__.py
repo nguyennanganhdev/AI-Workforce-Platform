@@ -1,6 +1,5 @@
-"""Lifecycle evaluation helpers; no runtime workflow persistence here."""
+"""Phase A schema artifacts for validation and evaluation."""
 
-from ._suites import lifecycle_suite
 from ._schema import phase_a_schema_bundle
 
-__all__ = ["lifecycle_suite", "phase_a_schema_bundle"]
+__all__ = ["phase_a_schema_bundle"]

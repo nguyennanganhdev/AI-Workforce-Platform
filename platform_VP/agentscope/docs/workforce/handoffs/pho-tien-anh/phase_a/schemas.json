@@ -3,6 +3,7 @@
   "schemas": {
     "ValidationReport": {
       "additionalProperties": false,
+      "description": "Validation outcome and dependency evidence for one agent draft.",
       "properties": {
         "valid": {
           "title": "Valid",
@@ -1367,6 +1368,7 @@
         },
         "ValidationReport": {
           "additionalProperties": false,
+          "description": "Validation outcome and dependency evidence for one agent draft.",
           "properties": {
             "valid": {
               "title": "Valid",
@@ -1413,6 +1415,7 @@
         }
       },
       "additionalProperties": false,
+      "description": "Proposed aggregate joining shared evaluation DTOs and frozen context.",
       "properties": {
         "scope": {
           "$ref": "#/$defs/Scope"
