@@ -1,5 +1,7 @@
 # Bàn giao — Phan Huy Hoàng
 
+Trạng thái hiện tại: **Phase B PHH hoàn thành ở phạm vi module local**, baseline `develop2@8487404`, branch `dev2PHH-B`. Xem [STATUS](STATUS.md), [Phase B](PHASE_B.md), [ma trận 246 scenarios](PHASE_B_TEST_MATRIX.md) và [integration request](INTEGRATION_REQUEST_PHH_PHASE_B.md). Phase C/D và các gate liên module chưa được chứng nhận.
+
 Branch đề xuất: `feat/wf-orchestration`. Đầu việc: **PHH-01–PHH-17**.
 
 Phạm vi: Leader chọn group khi có request, chat/@agent và context từ thư viện agent chung.
@@ -8,7 +10,7 @@ Phạm vi: Leader chọn group khi có request, chat/@agent và context từ th�
 
 Khi triển khai, tạo `STATUS.md` theo mẫu ở mục 16. Mỗi yêu cầu đổi contract/hook/file chung ghi vào `INTEGRATION_REQUEST_<task-id>.md` theo mục 14.
 
-Tiến độ local mới nhất: [STATUS.md](STATUS.md) — gói hợp đồng Phase A của PHH đã có schema/sample/test, đang chờ owner review; chưa triển khai Phase B. Checklist task bên dưới vẫn là phạm vi implementation của toàn kế hoạch, không được đánh dấu xong chỉ từ schema.
+Tiến độ local mới nhất: [STATUS.md](STATUS.md) — Phase A có schema/sample/test; Phase B có logic module/UI/test và đã sửa các lỗi phản biện. Canonical promotion, adapter/composition và kiểm chứng C/D còn mở. Checklist task bên dưới vẫn là phạm vi implementation của toàn kế hoạch.
 
 Nguyên tắc batch của bản 1.2 được giữ ở bản 1.3: PHH-02/03/04/12 chọn agent từ toàn bộ thư viện khi có request, tạo group/session lúc đó, không lọc theo batch. Run hiện tại giữ version pin; request mới chọn subset/version phù hợp mà không cần phát hành team. Đọc mục 2.3, 2.5 và 6 của kế hoạch trước khi code; nội dung này thay thế cách hiểu team artifact ở bản trước. Đây là đầu việc cần triển khai, chưa phải tính năng đã hoàn thành.
 
@@ -40,4 +42,3 @@ Các thư mục v1.4 đã chuẩn bị cho bạn:
 - [tests/workforce/orchestration/async_workflows/](../../../../tests/workforce/orchestration/async_workflows/README.md) — Workflow transitions/checkpoint/HITL/cursor/isolation/crash windows.
 
 Bắt đầu bằng đọc hợp đồng 17.3–17.4, viết logic và test với fake port thuộc module mình, rồi bàn giao signature/schema/hook request cho owner cung cấp. Các fake chỉ trong test/demo, production không trả thành công giả. Mỗi người làm trong branch/worktree riêng; migration/core/shared contracts chỉ Chí Hoàng sửa.
-

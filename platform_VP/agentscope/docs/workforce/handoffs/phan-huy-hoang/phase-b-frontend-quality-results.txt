@@ -1,0 +1,3 @@
+Scoped ESLint exit: 0 (source unchanged after verified lint)
+Checking formatting...
+All matched files use Prettier code style!

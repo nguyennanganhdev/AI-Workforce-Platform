@@ -1,0 +1,4 @@
+CONTRACT-ONLY: service initializers skipped; real workforce modules loaded.
+Matrix exported: 246 unique scenarios
+AST/Black: 18 scoped Python files; dirty=0
+Flake8: 0 errors (E203 excluded for Black slices)

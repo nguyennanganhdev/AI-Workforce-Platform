@@ -1,21 +1,22 @@
-# async_workflows — API/event/workflow v1.4
+# PHH Phase B module tests
 
-Chủ sở hữu: **Phan Huy Hoàng**. Branch: `feat/wf-orchestration`.
-Task bổ sung của owner: **PHH-14–PHH-17**; chọn phần tương ứng phạm vi folder dưới đây.
+Owner: **Phan Huy Hoàng**. Baseline `develop2@8487404`; local branch `dev2PHH-B`.
 
-Đọc [kế hoạch triển khai](../../../../docs/workforce/KE_HOACH_TRIEN_KHAI.md) và [bàn giao cá nhân](../../../../docs/workforce/handoffs/phan-huy-hoang/README.md) trước khi code. Đặc tả chung nằm ở mục 17; ranh giới ownership ở 5.3 và task chi tiết trong phần mang tên owner. Các đường dẫn link tính từ folder này.
+175 backend scenarios B001–B175 and 71 UI scenarios UI001–UI071. Each has a unique ID; the backend runner rejects fewer than 50 cases, duplicate IDs and skips. Fake UOW/store/clock/runtime/operations/signals live only in `fakes.py`.
 
-Phạm vi: Workflow transitions/checkpoint/HITL/cursor/isolation/crash windows và hai ticket/hộp chat cùng user chạy xen kẽ.
+Backend tests cover request/reply/close, three lifecycle patterns, immutable binding/pins, HITL authority, lease/fence, rollback and public projections. B131–B151 add per-frame SSE authorization, public errors and stop-tracking without consent. UI tests cover receipt/event/snapshot reducers, replay/dedupe, 410 recovery, identity isolation, API/transport/auth refresh/abort and React static render. UI053–UI063 mount React components in Happy DOM and click/check/submit/retry/switch tickets; they do not certify a browser or global app. B106 verifies the PHH lifecycle slice with fake dependencies; it is not the global MB gate.
 
-File dự kiến khi triển khai: `test_workflow.py`, `test_replay.py`, `test_close_race.py`, `test_continuation.py`. Đây chỉ là gợi ý chia file; chưa có code được tạo trong folder.
+```powershell
+python tests/workforce/orchestration/async_workflows/run_phase_b.py --isolated-imports --dependency-path .venv/Lib/site-packages
+pnpm --dir tests/workforce/orchestration/async_workflows install --ignore-workspace --ignore-scripts --frozen-lockfile
+bun test ./tests/workforce/orchestration/async_workflows/timeline.test.ts ./tests/workforce/orchestration/async_workflows/timeline-render.test.tsx ./tests/workforce/orchestration/async_workflows/timeline-interaction.test.tsx
+python tests/workforce/orchestration/async_workflows/verify_phase_b.py --dependency-path .venv/Lib/site-packages
+python tests/workforce/orchestration/async_workflows/run_dependency_regressions.py --suite registry --dependency-path .venv/Lib/site-packages
+python tests/workforce/orchestration/async_workflows/run_dependency_regressions.py --suite foundation --dependency-path .venv/Lib/site-packages
+```
 
-Nguyên tắc triển khai:
+`--isolated-imports` skips service initializers while loading real workforce source. Happy DOM 20.14.6 is pinned in this test folder's private package.json/pnpm-lock.yaml; application dependencies are unchanged. Quality formatting/matrix export requires explicit `--format`/`--export-matrix`; ordinary tests never regenerate expected artifacts. Dependency runners only read other owners' source.
 
-- Một role AREA_MANAGER, Scope đủ tenant/domain/area/manager và audience cư dân; không route theo payload tự khai.
-- Dùng DTO/ports chung; không import private service hoặc ghi bảng module khác. uow đi xuyên inbox → workflow/public event → trigger khi cần atomicity.
-- Customer request/reply POST ưu tiên `200`, chỉ `202/watch_request` khi hết thời gian chờ; response luôn có `workflow_state` và `next_action`. Response-only read-only có thể auto-close; interactive dùng reply/approval/explicit close; Provider Event/SSE tracking chỉ dùng khi operation thật sự pending.
-- Test A1/B1/A2/B2 luôn resolve group A/B tương ứng; shared state/approval/operation/SSE/close không lẫn. Mismatch ticket/conversation/workflow phải zero dispatch/model/tool; hai start đồng thời cho cùng ticket chỉ tạo một binding/group.
-- Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
-- Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
+See [PHH status](../../../../docs/workforce/handoffs/phan-huy-hoang/STATUS.md) for evidence and [matrix](../../../../docs/workforce/handoffs/phan-huy-hoang/PHASE_B_TEST_MATRIX.md) for inputs/expected assertions/source lines. PostgreSQL, real HTTP/provider/browser and multi-process restart require later integration checks.
 
-Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+B152–B175 cover mixed operation completion and retained history, advisory signal hangs/slow cleanup/cancellation, lost notifications with durable result, and new close CAS versus ledger retries. The fake operation lookup has per-operation pending overrides, so terminal A and pending B are independently represented. UI064–UI071 cover concurrent POST/snapshot recovery, cached cursor, repeated revisions, abort/backoff, foreign snapshots, authorization failure and same-revision state conflicts.

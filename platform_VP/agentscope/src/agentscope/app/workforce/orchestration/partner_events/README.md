@@ -1,22 +1,11 @@
-# partner_events — API/event/workflow v1.4
+# PHH public conversation events
 
-Chủ sở hữu: **Phan Huy Hoàng**. Branch: `feat/wf-orchestration`.
-Task bổ sung của owner: **PHH-14–PHH-17**; chọn phần tương ứng phạm vi folder dưới đây.
+Owner: **Phan Huy Hoàng**. Plan task PHH-16; Phase B replay/history/snapshot/SSE implementation.
 
-Đọc [kế hoạch triển khai](../../../../../../docs/workforce/KE_HOACH_TRIEN_KHAI.md) và [bàn giao cá nhân](../../../../../../docs/workforce/handoffs/phan-huy-hoang/README.md) trước khi code. Đặc tả chung nằm ở mục 17; ranh giới ownership ở 5.3 và task chi tiết trong phần mang tên owner. Các đường dẫn link tính từ folder này.
+`ConversationEventService` authorizes persisted scope/audience on every read, validates closed public envelopes/payloads, requires ordered pages and returns consistent snapshots supplied by the repository. `PublicEventWriter` builds public projections from a pinned workflow binding. Provider inbox/facts, prompts and credentials are not copied into public events.
 
-Phạm vi: Public event log, SSE/history/snapshot và notification signal sau commit; không sender outbound.
+Foundation `ConversationSseService` is reused. A bounded advisory-signal adapter allows periodic durable catch-up during notification outages and propagates cancellation. Heartbeat is finite and at most 60 seconds for repeated authorization checks. Public stream/subscription revalidates authorization and immutable binding before every frame, including cached replay items and heartbeats. Disconnect closes the nested replay iterator; HTTP/proxy bounded queues/timeouts still belong to integration. After-commit notification never substitutes event persistence.
 
-File dự kiến khi triển khai: `_tables.py`, `_repository.py`, `_projection.py`, `_router.py`, `_stream.py`. Đây chỉ là gợi ý chia file; chưa có code được tạo trong folder.
+`EventRepository` must implement atomic sequence allocation, scoped cursor/retention handling and one consistent snapshot. Phase B exercises these interfaces with test-only fakes; PostgreSQL/HTTP/proxy/retention implementation is a later integration requirement. No HTTP sender to partner endpoints is added.
 
-Nguyên tắc triển khai:
-
-- Một role AREA_MANAGER, Scope đủ tenant/domain/area/manager và audience cư dân; không route theo payload tự khai.
-- Dùng DTO/ports chung; không import private service hoặc ghi bảng module khác. uow đi xuyên inbox → workflow/public event → trigger khi cần atomicity.
-- Customer request/reply POST ưu tiên `200`, chỉ `202/watch_request` khi hết thời gian chờ; response luôn có `workflow_state` và `next_action`. Response-only read-only có thể auto-close; interactive dùng reply/approval/explicit close; Provider Event/SSE tracking chỉ dùng khi operation thật sự pending.
-- SSE/history đọc cùng DB public event log; notification mất vẫn phải catch-up được. Không enqueue HTTP delivery tới endpoint đối tác.
-- Public event project external_ticket_id từ persisted binding. Conversation/stream A không phát event workflow B; cursor/snapshot/history kiểm tra client + user + ticket/conversation binding và không lộ group_id.
-- Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
-- Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
-
-Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+[Phase B handoff](../../../../../../docs/workforce/handoffs/phan-huy-hoang/PHASE_B.md) / [integration requests](../../../../../../docs/workforce/handoffs/phan-huy-hoang/INTEGRATION_REQUEST_PHH_PHASE_B.md).

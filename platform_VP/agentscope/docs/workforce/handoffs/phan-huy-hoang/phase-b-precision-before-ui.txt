@@ -1,0 +1,450 @@
+bun test v1.3.14 (0d9b296a)
+
+tests\workforce\orchestration\async_workflows\timeline.test.ts:
+(pass) PHH Phase B timeline state > UI001 POST then SSE produces one bubble [2.05ms]
+(pass) PHH Phase B timeline state > UI002 SSE then POST produces one bubble [0.12ms]
+(pass) PHH Phase B timeline state > UI003 repeated event is deduped [0.07ms]
+(pass) PHH Phase B timeline state > UI004 identity participates in cache key [0.45ms]
+(pass) PHH Phase B timeline state > UI005 ticket participates in cache key [0.06ms]
+(pass) PHH Phase B timeline state > UI006 message conflict fails without mutation [0.57ms]
+(pass) PHH Phase B timeline state > UI007 status is a card, never an assistant bubble [0.11ms]
+(pass) PHH Phase B timeline state > UI008 workflow closed cannot reopen [0.15ms]
+(pass) PHH Phase B timeline state > UI009 older receipt cannot regress status [0.60ms]
+(pass) PHH Phase B timeline state > UI010 snapshot catch-up dedupes next POST [0.38ms]
+(pass) PHH Phase B timeline state > UI011 sequence reversal fails [0.12ms]
+(pass) PHH Phase B timeline state > UI012 approvals have independent ids [0.15ms]
+(pass) PHH Phase B timeline state > UI013 closed stream cannot introduce new assistant message [0.11ms]
+(pass) PHH Phase B timeline state > UI014 snapshot foreign message fails [0.57ms]
+(pass) PHH Phase B timeline state > UI015 snapshot older revision fails [0.12ms]
+(pass) PHH Phase B timeline state > UI016 invalid timestamp fails [0.07ms]
+(pass) PHH Phase B timeline state > UI017 unknown event fails without cursor advancement [0.10ms]
+(pass) PHH Phase B timeline state > UI018 failed receipt for other ticket cannot update state [0.06ms]
+(pass) PHH Phase B timeline state > UI019 invalid closed event fails [0.06ms]
+(pass) PHH Phase B timeline state > UI020 status revision conflict fails [0.08ms]
+(pass) PHH Phase B timeline state > UI21: conversation_id cross-chat event rejected [0.12ms]
+(pass) PHH Phase B timeline state > UI22: workflow_id cross-chat event rejected [0.02ms]
+(pass) PHH Phase B timeline state > UI23: external_user_id cross-chat event rejected [0.03ms]
+(pass) PHH Phase B timeline state > UI24: external_conversation_id cross-chat event rejected [0.07ms]
+(pass) PHH Phase B timeline state > UI25: external_ticket_id cross-chat event rejected [0.88ms]
+120 | describe('PHH Phase B precision regressions', () => {
+121 |   test('UI037 pending receipt preserves watch_request while workflow is waiting', () => {
+122 |     const result = { ...receipt(), request_status: 'accepted' as const,
+123 |       workflow_state: 'waiting_external_event' as const, next_action: 'watch_request' as const, result: null };
+124 |     const state = applyReceipt(createTimeline(binding), result);
+125 |     expect(state.nextAction).toBe('watch_request');
+                                   ^
+error: expect(received).toBe(expected)
+
+Expected: "watch_request"
+Received: "watch_events"
+
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline.test.ts:125:30)
+(fail) PHH Phase B precision regressions > UI037 pending receipt preserves watch_request while workflow is waiting [8.25ms]
+125 |     expect(state.nextAction).toBe('watch_request');
+126 |   });
+127 |   test('UI038 failed receipt uses resolve_attention rather than watch_request', () => {
+128 |     const state = applyReceipt(createTimeline(binding), { ...receipt(), request_status: 'failed',
+129 |       workflow_state: 'active', next_action: 'resolve_attention', result: null });
+130 |     expect(state.nextAction).toBe('resolve_attention');
+                                   ^
+error: expect(received).toBe(expected)
+
+Expected: "resolve_attention"
+Received: "watch_request"
+
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline.test.ts:130:30)
+(fail) PHH Phase B precision regressions > UI038 failed receipt uses resolve_attention rather than watch_request [0.84ms]
+129 |       workflow_state: 'active', next_action: 'resolve_attention', result: null });
+130 |     expect(state.nextAction).toBe('resolve_attention');
+131 |   });
+132 |   test('UI039 snapshot rejects inconsistent next_action', () => {
+133 |     const invalid = snapshot(); invalid.workflows[0].next_action = 'none';
+134 |     expect(() => applySnapshot(createTimeline(binding), invalid)).toThrow();
+                                                                        ^
+error: expect(received).toThrow()
+
+Received function did not throw
+Received value: {
+  binding: {
+    identityKey: "verified-owner-1",
+    workflowId: "workflow-A",
+    conversationId: "conversation-A",
+    externalUserId: "user-1",
+    externalConversationId: "chat-A",
+    externalTicketId: "ticket-A",
+  },
+  state: "awaiting_user",
+  nextAction: "submit_reply",
+  revision: 2,
+  messages: [
+    {
+      message_id: "message-A",
+      workflow_id: "workflow-A",
+      sender: "assistant",
+      text: "Đã tiếp nhận A",
+      created_at: "2026-10-10T09:00:00Z",
+    }
+  ],
+  cards: [],
+  approvalIds: [],
+  cursor: "snapshot-A",
+  sequence: 0,
+  seen: [],
+  connection: "reconnecting",
+}
+
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline.test.ts:134:67)
+(fail) PHH Phase B precision regressions > UI039 snapshot rejects inconsistent next_action [4.30ms]
+133 |     const invalid = snapshot(); invalid.workflows[0].next_action = 'none';
+134 |     expect(() => applySnapshot(createTimeline(binding), invalid)).toThrow();
+135 |   });
+136 |   test('UI040 unknown public payload fields fail before cursor advancement', () => {
+137 |     expect(() => applyEvent(createTimeline(binding), event({ payload: {
+138 |       message_id: 'message-A', text: 'Allowed', credential_ref: 'private-test-reference' } }))).toThrow();
+                                                                                                      ^
+error: expect(received).toThrow()
+
+Received function did not throw
+Received value: {
+  binding: {
+    identityKey: "verified-owner-1",
+    workflowId: "workflow-A",
+    conversationId: "conversation-A",
+    externalUserId: "user-1",
+    externalConversationId: "chat-A",
+    externalTicketId: "ticket-A",
+  },
+  state: "accepted",
+  nextAction: "watch_request",
+  revision: 0,
+  messages: [
+    {
+      message_id: "message-A",
+      workflow_id: "workflow-A",
+      sender: "assistant",
+      text: "Allowed",
+      created_at: "2026-10-10T09:00:00Z",
+    }
+  ],
+  cards: [],
+  approvalIds: [],
+  cursor: "event-A",
+  sequence: 1,
+  seen: [ "event-A" ],
+  connection: "live",
+}
+
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline.test.ts:138:97)
+(fail) PHH Phase B precision regressions > UI040 unknown public payload fields fail before cursor advancement [0.49ms]
+137 |     expect(() => applyEvent(createTimeline(binding), event({ payload: {
+138 |       message_id: 'message-A', text: 'Allowed', credential_ref: 'private-test-reference' } }))).toThrow();
+139 |   });
+140 |   test('UI041 duplicate event id with changed payload is a conflict', () => {
+141 |     const state = applyEvent(createTimeline(binding), event());
+142 |     expect(() => applyEvent(state, event({ payload: { message_id: 'message-A', text: 'Different' } }))).toThrow();
+                                                                                                              ^
+error: expect(received).toThrow()
+
+Received function did not throw
+Received value: {
+  binding: {
+    identityKey: "verified-owner-1",
+    workflowId: "workflow-A",
+    conversationId: "conversation-A",
+    externalUserId: "user-1",
+    externalConversationId: "chat-A",
+    externalTicketId: "ticket-A",
+  },
+  state: "accepted",
+  nextAction: "watch_request",
+  revision: 0,
+  messages: [
+    {
+      message_id: "message-A",
+      workflow_id: "workflow-A",
+      sender: "assistant",
+      text: "Đã tiếp nhận A",
+      created_at: "2026-10-10T09:00:00Z",
+    }
+  ],
+  cards: [],
+  approvalIds: [],
+  cursor: "event-A",
+  sequence: 1,
+  seen: [ "event-A" ],
+  connection: "live",
+}
+
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline.test.ts:142:105)
+(fail) PHH Phase B precision regressions > UI041 duplicate event id with changed payload is a conflict [0.39ms]
+(pass) PHH Phase B precision regressions > UI042 identical duplicate ignores object key ordering [0.10ms]
+(pass) PHH Phase B precision regressions > UI043 array payload cannot masquerade as a public object [0.10ms]
+149 |   test('UI043 array payload cannot masquerade as a public object', () => {
+150 |     expect(() => applyEvent(createTimeline(binding), event({
+151 |       event_type: 'workflow.needs_attention', payload: [] as unknown as ConversationEvent['payload'] }))).toThrow();
+152 |   });
+153 |   test('UI044 event id must be a string', () => {
+154 |     expect(() => applyEvent(createTimeline(binding), event({ event_id: 5 as unknown as string }))).toThrow();
+                                                                                                         ^
+error: expect(received).toThrow()
+
+Received function did not throw
+Received value: {
+  binding: {
+    identityKey: "verified-owner-1",
+    workflowId: "workflow-A",
+    conversationId: "conversation-A",
+    externalUserId: "user-1",
+    externalConversationId: "chat-A",
+    externalTicketId: "ticket-A",
+  },
+  state: "accepted",
+  nextAction: "watch_request",
+  revision: 0,
+  messages: [
+    {
+      message_id: "message-A",
+      workflow_id: "workflow-A",
+      sender: "assistant",
+      text: "Đã tiếp nhận A",
+      created_at: "2026-10-10T09:00:00Z",
+    }
+  ],
+  cards: [],
+  approvalIds: [],
+  cursor: 5,
+  sequence: 1,
+  seen: [ 5 ],
+  connection: "live",
+}
+
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline.test.ts:154:100)
+(fail) PHH Phase B precision regressions > UI044 event id must be a string [0.24ms]
+201 | 		case 'assistant.message':
+202 | 			if (
+203 | 				state.state === 'closed' &&
+204 | 				!state.messages.some((m) => m.message_id === p.message_id)
+205 | 			)
+206 | 				throw new Error('Workflow đã đóng không nhận tin nhắn mới');
+                                                                   ^
+error: Workflow đã đóng không nhận tin nhắn mới
+      at applyEvent (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\examples\web_ui\frontend\src\features\workforce\chat\ticket_timeline\state.ts:206:62)
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline.test.ts:159:22)
+(fail) PHH Phase B precision regressions > UI045 closed POST still permits historical messages replayed before close [0.31ms]
+158 |       workflow_revision: 3, next_action: 'none', result: { messages: [], data: {} } });
+159 |     const replayed = applyEvent(state, event());
+160 |     expect(replayed.state).toBe('closed'); expect(replayed.messages).toHaveLength(1);
+161 |   });
+162 |   test('UI046 non existent calendar timestamp is rejected', () => {
+163 |     expect(() => applyEvent(createTimeline(binding), event({ occurred_at: '2026-02-30T09:00:00Z' }))).toThrow();
+                                                                                                            ^
+error: expect(received).toThrow()
+
+Received function did not throw
+Received value: {
+  binding: {
+    identityKey: "verified-owner-1",
+    workflowId: "workflow-A",
+    conversationId: "conversation-A",
+    externalUserId: "user-1",
+    externalConversationId: "chat-A",
+    externalTicketId: "ticket-A",
+  },
+  state: "accepted",
+  nextAction: "watch_request",
+  revision: 0,
+  messages: [
+    {
+      message_id: "message-A",
+      workflow_id: "workflow-A",
+      sender: "assistant",
+      text: "Đã tiếp nhận A",
+      created_at: "2026-02-30T09:00:00Z",
+    }
+  ],
+  cards: [],
+  approvalIds: [],
+  cursor: "event-A",
+  sequence: 1,
+  seen: [ "event-A" ],
+  connection: "live",
+}
+
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline.test.ts:163:103)
+(fail) PHH Phase B precision regressions > UI046 non existent calendar timestamp is rejected [0.31ms]
+161 |   });
+162 |   test('UI046 non existent calendar timestamp is rejected', () => {
+163 |     expect(() => applyEvent(createTimeline(binding), event({ occurred_at: '2026-02-30T09:00:00Z' }))).toThrow();
+164 |   });
+165 |   test('UI047 snapshot cursor must be null or a nonempty string', () => {
+166 |     expect(() => applySnapshot(createTimeline(binding), { ...snapshot(), snapshot_cursor: '' })).toThrow();
+                                                                                                       ^
+error: expect(received).toThrow()
+
+Received function did not throw
+Received value: {
+  binding: {
+    identityKey: "verified-owner-1",
+    workflowId: "workflow-A",
+    conversationId: "conversation-A",
+    externalUserId: "user-1",
+    externalConversationId: "chat-A",
+    externalTicketId: "ticket-A",
+  },
+  state: "awaiting_user",
+  nextAction: "submit_reply",
+  revision: 2,
+  messages: [
+    {
+      message_id: "message-A",
+      workflow_id: "workflow-A",
+      sender: "assistant",
+      text: "Đã tiếp nhận A",
+      created_at: "2026-10-10T09:00:00Z",
+    }
+  ],
+  cards: [],
+  approvalIds: [],
+  cursor: "",
+  sequence: 0,
+  seen: [],
+  connection: "reconnecting",
+}
+
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline.test.ts:166:98)
+(fail) PHH Phase B precision regressions > UI047 snapshot cursor must be null or a nonempty string [0.28ms]
+165 |   test('UI047 snapshot cursor must be null or a nonempty string', () => {
+166 |     expect(() => applySnapshot(createTimeline(binding), { ...snapshot(), snapshot_cursor: '' })).toThrow();
+167 |   });
+168 |   test('UI048 snapshot approval cannot reference another workflow', () => {
+169 |     const invalid = { ...snapshot(), pending_approvals: [{ approval_id: 'approval-A', workflow_id: 'workflow-B' }] };
+170 |     expect(() => applySnapshot(createTimeline(binding), invalid)).toThrow();
+                                                                        ^
+error: expect(received).toThrow()
+
+Received function did not throw
+Received value: {
+  binding: {
+    identityKey: "verified-owner-1",
+    workflowId: "workflow-A",
+    conversationId: "conversation-A",
+    externalUserId: "user-1",
+    externalConversationId: "chat-A",
+    externalTicketId: "ticket-A",
+  },
+  state: "awaiting_user",
+  nextAction: "submit_reply",
+  revision: 2,
+  messages: [
+    {
+      message_id: "message-A",
+      workflow_id: "workflow-A",
+      sender: "assistant",
+      text: "Đã tiếp nhận A",
+      created_at: "2026-10-10T09:00:00Z",
+    }
+  ],
+  cards: [],
+  approvalIds: [ "approval-A" ],
+  cursor: "snapshot-A",
+  sequence: 0,
+  seen: [],
+  connection: "reconnecting",
+}
+
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline.test.ts:170:67)
+(fail) PHH Phase B precision regressions > UI048 snapshot approval cannot reference another workflow [0.45ms]
+43 | 				signal,
+44 | 				cache: 'no-store',
+45 | 			},
+46 | 		);
+47 | 		if (!response.ok)
+48 | 			throw new EventStreamHttpError(response.status, 'Không thể cập nhật hộp chat');
+              ^
+EventStreamHttpError: Không thể cập nhật hộp chat
+ status: 401,
+
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\examples\web_ui\frontend\src\features\workforce\chat\ticket_timeline\api.ts:48:10)
+      at async <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline.test.ts:177:15)
+(fail) PHH Phase B precision regressions > UI049 REST refresh retries the identical command exactly once [2.82ms]
+187 |         return sse(event({ event_id: 'event-B', payload: { message_id: 'message-B', text: 'Second' } }));
+188 |       } });
+189 |     await followTimeline(api, current, (next) => {
+190 |       current = next; if (next.cursor === 'event-B') stop.abort();
+191 |     }, stop.signal, new MemoryEventCursorStore(), () => current);
+192 |     expect(current.messages.map((m) => m.message_id)).toEqual(['message-A', 'message-B']);
+                                                            ^
+error: expect(received).toEqual(expected)
+
+  [
+-   "message-A",
+    "message-B",
+  ]
+
+- Expected  - 1
++ Received  + 0
+
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline.test.ts:192:55)
+(fail) PHH Phase B precision regressions > UI050 follower preserves a concurrent POST through the current-state provider [12.25ms]
+197 |     store.set(`${timelineKey(binding)}:workforce:conversation:${binding.conversationId}`, 'cached-A');
+198 |     let current = createTimeline(binding);
+199 |     const api = createTimelineApi({ baseUrl: '/workforce/v1/partner', getAccessToken: () => null,
+200 |       fetchImpl: async () => new Response('', { status: 403 }) });
+201 |     await expect(followTimeline(api, current, (next) => { current = next; }, new AbortController().signal, store)).rejects.toThrow();
+202 |     expect(current.connection).toBe('blocked');
+                                     ^
+error: expect(received).toBe(expected)
+
+Expected: "blocked"
+Received: "idle"
+
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline.test.ts:202:32)
+(fail) PHH Phase B precision regressions > UI051 cached cursor recovery denial publishes blocked state [3.61ms]
+203 |   });
+204 |   test('UI052 abort during token loading prevents a detached REST request', async () => {
+205 |     const stop = new AbortController(); let calls = 0;
+206 |     const api = createTimelineApi({ baseUrl: '/workforce/v1/partner', getAccessToken: async () => { stop.abort(); return 'token'; },
+207 |       fetchImpl: async () => { calls++; return Response.json(receipt()); } });
+208 |     await expect(api.readResult('request-A', 'user-1', stop.signal)).rejects.toThrow();
+                                                                                   ^
+error:
+
+Expected promise that rejects
+Received promise that resolved: Promise { <resolved> }
+
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline.test.ts:208:78)
+(fail) PHH Phase B precision regressions > UI052 abort during token loading prevents a detached REST request [1.43ms]
+(pass) PHH Phase B shared transport integration > UI026 follower applies event and stops on abort [1.77ms]
+(pass) PHH Phase B shared transport integration > UI027 wrong binding stops before cursor is saved [1.31ms]
+(pass) PHH Phase B shared transport integration > UI028 410 recovers snapshot and uses fresh cursor [1.12ms]
+(pass) PHH Phase B shared transport integration > UI029 denied stream stops and clears its cursor [0.37ms]
+(pass) PHH Phase B shared transport integration > UI030 close API rejects other ticket before fetch [0.20ms]
+(pass) PHH Phase B shared transport integration > UI031 close API uses exact workflow and revision [0.31ms]
+(pass) PHH Phase B shared transport integration > UI032 abort during snapshot never updates detached chat [0.45ms]
+
+tests\workforce\orchestration\async_workflows\timeline-render.test.tsx:
+(pass) UI033 renders waiting and reconnecting independently [26.04ms]
+(pass) UI034 closed ticket disables close and cannot offer stop tracking [1.75ms]
+(pass) UI035 assistant text is escaped and labeled [2.61ms]
+(pass) UI036 reuses Execution ApprovalCard only for approval bound to this timeline [37.50ms]
+
+14 tests failed:
+(fail) PHH Phase B precision regressions > UI037 pending receipt preserves watch_request while workflow is waiting [8.25ms]
+(fail) PHH Phase B precision regressions > UI038 failed receipt uses resolve_attention rather than watch_request [0.84ms]
+(fail) PHH Phase B precision regressions > UI039 snapshot rejects inconsistent next_action [4.30ms]
+(fail) PHH Phase B precision regressions > UI040 unknown public payload fields fail before cursor advancement [0.49ms]
+(fail) PHH Phase B precision regressions > UI041 duplicate event id with changed payload is a conflict [0.39ms]
+(fail) PHH Phase B precision regressions > UI044 event id must be a string [0.24ms]
+(fail) PHH Phase B precision regressions > UI045 closed POST still permits historical messages replayed before close [0.31ms]
+(fail) PHH Phase B precision regressions > UI046 non existent calendar timestamp is rejected [0.31ms]
+(fail) PHH Phase B precision regressions > UI047 snapshot cursor must be null or a nonempty string [0.28ms]
+(fail) PHH Phase B precision regressions > UI048 snapshot approval cannot reference another workflow [0.45ms]
+(fail) PHH Phase B precision regressions > UI049 REST refresh retries the identical command exactly once [2.82ms]
+(fail) PHH Phase B precision regressions > UI050 follower preserves a concurrent POST through the current-state provider [12.25ms]
+(fail) PHH Phase B precision regressions > UI051 cached cursor recovery denial publishes blocked state [3.61ms]
+(fail) PHH Phase B precision regressions > UI052 abort during token loading prevents a detached REST request [1.43ms]
+
+ 38 pass
+ 14 fail
+ 74 expect() calls
+Ran 52 tests across 2 files. [1156.00ms]
