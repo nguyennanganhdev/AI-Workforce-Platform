@@ -1,0 +1,302 @@
+{
+  "protocols": {
+    "sync": {
+      "protocol_id": "demo-sync",
+      "protocol_version": "1",
+      "tool_version_id": "tool-sync-v1",
+      "effect": "read",
+      "result_mode": "terminal",
+      "completion_policy": "read_only_auto_close"
+    },
+    "interactive": {
+      "protocol_id": "demo-interactive",
+      "protocol_version": "1",
+      "tool_version_id": "tool-interactive-v1",
+      "effect": "write",
+      "result_mode": "terminal",
+      "completion_policy": "explicit_close",
+      "requires_approval": true
+    },
+    "create_only": {
+      "protocol_id": "demo-create-only",
+      "protocol_version": "1",
+      "tool_version_id": "tool-create-v1",
+      "provider_integration_id": "provider-demo",
+      "effect": "external_operation",
+      "result_mode": "pending",
+      "completion_policy": "explicit_close",
+      "client_reference_field": "client_reference",
+      "external_job_id_field": "job_id",
+      "status_field": "status",
+      "transitions": {
+        "pending": [
+          "assigned"
+        ],
+        "assigned": [
+          "on_the_way"
+        ],
+        "on_the_way": [
+          "arrived"
+        ],
+        "arrived": [
+          "completed"
+        ]
+      },
+      "terminal_statuses": [
+        "completed"
+      ],
+      "timeout_seconds": 3600
+    },
+    "provider_event": {
+      "protocol_id": "demo-provider",
+      "protocol_version": "1",
+      "tool_version_id": "tool-provider-v1",
+      "provider_integration_id": "provider-demo",
+      "effect": "external_operation",
+      "result_mode": "pending",
+      "completion_policy": "explicit_close",
+      "client_reference_field": "client_reference",
+      "external_job_id_field": "job_id",
+      "status_field": "status",
+      "transitions": {
+        "pending": [
+          "assigned"
+        ],
+        "assigned": [
+          "on_the_way"
+        ],
+        "on_the_way": [
+          "arrived"
+        ],
+        "arrived": [
+          "completed"
+        ]
+      },
+      "terminal_statuses": [
+        "completed"
+      ],
+      "timeout_seconds": 3600,
+      "ordering": "provider_version",
+      "event_mappings": {
+        "job.assigned": {
+          "status": "assigned",
+          "data_schema": {
+            "type": "object",
+            "properties": {
+              "eta_minutes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "fact_fields": [
+            "eta_minutes"
+          ]
+        },
+        "job.on_the_way": {
+          "status": "on_the_way",
+          "data_schema": {
+            "type": "object",
+            "properties": {
+              "eta_minutes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "fact_fields": [
+            "eta_minutes"
+          ]
+        },
+        "job.arrived": {
+          "status": "arrived",
+          "data_schema": {
+            "type": "object",
+            "properties": {
+              "eta_minutes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "fact_fields": [
+            "eta_minutes"
+          ]
+        },
+        "job.completed": {
+          "status": "completed",
+          "data_schema": {
+            "type": "object",
+            "properties": {
+              "eta_minutes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "fact_fields": [
+            "eta_minutes"
+          ]
+        }
+      }
+    },
+    "query_only": {
+      "protocol_id": "demo-query",
+      "protocol_version": "1",
+      "tool_version_id": "tool-query-create-v1",
+      "provider_integration_id": "provider-demo",
+      "effect": "external_operation",
+      "result_mode": "pending",
+      "completion_policy": "explicit_close",
+      "client_reference_field": "client_reference",
+      "external_job_id_field": "job_id",
+      "status_field": "status",
+      "transitions": {
+        "pending": [
+          "assigned"
+        ],
+        "assigned": [
+          "on_the_way"
+        ],
+        "on_the_way": [
+          "arrived"
+        ],
+        "arrived": [
+          "completed"
+        ]
+      },
+      "terminal_statuses": [
+        "completed"
+      ],
+      "timeout_seconds": 3600,
+      "status_query_tool_version_id": "tool-query-status-v1",
+      "ordering": "provider_version"
+    }
+  },
+  "tool_descriptor": {
+    "tool_id": "tool-provider",
+    "tool_version_id": "tool-provider-v1",
+    "connection_id": "connection-demo",
+    "source_kind": "mcp",
+    "provider_tool_name": "create_job",
+    "llm_alias": "demo_create_job",
+    "description": "Demo external operation; no real network call.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "client_reference": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_reference"
+      ],
+      "additionalProperties": false
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id",
+        "status"
+      ]
+    },
+    "schema_hash": "demo-tool-schema-v1",
+    "capabilities": [
+      "create"
+    ],
+    "effect": "external_operation",
+    "available": true
+  },
+  "provider_event": {
+    "schema_version": "1",
+    "external_event_id": "event-003",
+    "external_job_id": "job-123",
+    "client_reference": "correlation-001",
+    "event_type": "job.on_the_way",
+    "provider_version": 3,
+    "occurred_at": "2026-10-10T08:00:00Z",
+    "data": {
+      "eta_minutes": 20,
+      "note": "Provider text is untrusted data."
+    }
+  },
+  "snapshot_refs": {
+    "sync": {
+      "protocol_id": "demo-sync",
+      "protocol_version": "1",
+      "schema_hash": "f924c9ead2357a5dc1f44d9429d084a4bb181aa2409b26ca0344e504b7351cb4",
+      "tool_version_id": "tool-sync-v1",
+      "provider_integration_id": null,
+      "capabilities": [
+        "terminal"
+      ]
+    },
+    "interactive": {
+      "protocol_id": "demo-interactive",
+      "protocol_version": "1",
+      "schema_hash": "d567564f19b0250fe27db0d24e79bcbe307d7cde0d01e7e6163b8d35dde42430",
+      "tool_version_id": "tool-interactive-v1",
+      "provider_integration_id": null,
+      "capabilities": [
+        "terminal",
+        "approval"
+      ]
+    },
+    "create_only": {
+      "protocol_id": "demo-create-only",
+      "protocol_version": "1",
+      "schema_hash": "f209a3762381835595e7f60929e08923ae677dc0d97ad08a0c3c4248e803859a",
+      "tool_version_id": "tool-create-v1",
+      "provider_integration_id": "provider-demo",
+      "capabilities": [
+        "create"
+      ]
+    },
+    "provider_event": {
+      "protocol_id": "demo-provider",
+      "protocol_version": "1",
+      "schema_hash": "104927ce4e1da30fe55c3af123a34706845931de4c9ab50215fcd526667603a9",
+      "tool_version_id": "tool-provider-v1",
+      "provider_integration_id": "provider-demo",
+      "capabilities": [
+        "create",
+        "receive_status"
+      ]
+    },
+    "query_only": {
+      "protocol_id": "demo-query",
+      "protocol_version": "1",
+      "schema_hash": "26f48ad1d14d41138ed20cfa1fc378d68eedfdb1cbb7225186f7d1b9d67a0369",
+      "tool_version_id": "tool-query-create-v1",
+      "provider_integration_id": "provider-demo",
+      "capabilities": [
+        "create",
+        "status_query"
+      ]
+    }
+  }
+}

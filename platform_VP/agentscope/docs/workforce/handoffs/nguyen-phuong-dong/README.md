@@ -4,9 +4,17 @@ Branch đề xuất: `feat/wf-registry`. Đầu việc: **NPD-01–NPD-12**.
 
 Phạm vi: MCP catalog, kết nối, discovery và kho tool đã đăng ký.
 
+## Phase A — 2026-10-10
+
+Đã triển khai phần nhịp A mục 17.9: cấu hình protocol có validation, ordering/mapping,
+snapshot hash, JSON Schema/samples và fake `AsyncProtocolPort` trong test. Xem
+[PHASE_A.md](PHASE_A.md), [STATUS.md](STATUS.md) và
+[INTEGRATION_REQUEST_NPD_PHASE_A.md](INTEGRATION_REQUEST_NPD_PHASE_A.md).
+NPD-10–12 chưa hoàn thành toàn bộ; service/DB/normalizer production/UI thuộc nhịp sau.
+
 ## Điểm tiếp tục kế hoạch endpoint MCP — 2026-10-10
 
-Triển khai đang dừng tại Bước 1 để chờ contracts/SDK dùng chung theo yêu cầu của người dùng. Xem [STATUS.md](STATUS.md) và [INTEGRATION_REQUEST_NPD_ENDPOINT.md](INTEGRATION_REQUEST_NPD_ENDPOINT.md) để biết bằng chứng, owner và điều kiện tiếp tục; chưa có NPD nào được đánh dấu hoàn thành. Khi tiếp tục, ưu tiên wrapper MCP, contracts, SQL/session, transport frontend và UI components sẵn có; không tạo lớp thay thế.
+Kế hoạch endpoint MCP vẫn dừng tại Bước 1 để chờ contracts/SDK dùng chung. Gate này độc lập với Phase A protocol đã triển khai bằng contracts hiện có. Xem [INTEGRATION_REQUEST_NPD_ENDPOINT.md](INTEGRATION_REQUEST_NPD_ENDPOINT.md) để biết owner và điều kiện tiếp tục. Khi tiếp tục endpoint, ưu tiên wrapper MCP, contracts, SQL/session, transport frontend và UI components sẵn có; không tạo lớp thay thế.
 
 Kế hoạch endpoint mới nhất giữ `workflow_state`/`next_action` cho Customer request/reply; không thêm hai field này vào response MCP/tool/skill, dù các hướng dẫn v1.4 tổng quát bên dưới viết “mọi response”.
 
@@ -44,4 +52,3 @@ Các thư mục v1.4 đã chuẩn bị cho bạn:
 - [tests/workforce/registry/event_protocols/](../../../../tests/workforce/registry/event_protocols/README.md) — Protocol schema/ordering/drift/capability tests.
 
 Bắt đầu bằng đọc hợp đồng 17.3–17.4, viết logic và test với fake port thuộc module mình, rồi bàn giao signature/schema/hook request cho owner cung cấp. Các fake chỉ trong test/demo, production không trả thành công giả. Mỗi người làm trong branch/worktree riêng; migration/core/shared contracts chỉ Chí Hoàng sửa.
-
