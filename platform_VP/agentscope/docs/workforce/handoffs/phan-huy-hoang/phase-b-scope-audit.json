@@ -1,0 +1,399 @@
+{
+  "verified_at_utc": "2026-10-10T18:34:08.488410+00:00",
+  "branch": "dev2PHH-B",
+  "baseline": "848740498c92894c074cf264f6ce6307a2dfb9cc",
+  "origin": "https://github.com/nguyennanganhdev/AI-Workforce-Platform.git",
+  "remote_develop2_head_last_verified": "848740498c92894c074cf264f6ce6307a2dfb9cc",
+  "remote_head_not_refreshed_during_local_fix": false,
+  "work_scope": "PHH Phase B independent module and critique fixes only",
+  "changed_files_including_audit": 55,
+  "audited_files": 54,
+  "unauthorized_paths": [],
+  "diff_check": "PASS",
+  "whitespace_errors": [],
+  "conflict_markers": [],
+  "broken_local_links": [],
+  "phase_a_source_and_artifacts_unchanged": true,
+  "shared_contracts_migrations_global_ui_manifests_compose_ci_changed": false,
+  "test_only_dependency_manifest": "tests/workforce/orchestration/async_workflows/package.json",
+  "test_only_dependency_lockfile": "tests/workforce/orchestration/async_workflows/pnpm-lock.yaml",
+  "test_only_dom_dependency": "happy-dom@20.14.6",
+  "staged_changes": [
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/INTEGRATION_REQUEST_PHH_PHASE_B.md",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/PHASE_B.md",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/PHASE_B_TEST_MATRIX.md",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/README.md",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/STATUS.md",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-build-results.txt",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-critic-before-backend.txt",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-critic-before-ui.txt",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-deep-review-before-backend.txt",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-deep-review-before-ui.txt",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-foundation-regression.txt",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-frontend-quality-results.txt",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-phase-a-regression.txt",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-precision-before-backend.txt",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-precision-before-ui.txt",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-quality-results.txt",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-registry-regression.txt",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-scope-audit.json",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-test-results.txt",
+    "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-ui-test-results.txt",
+    "platform_VP/agentscope/examples/web_ui/frontend/src/features/workforce/chat/README.md",
+    "platform_VP/agentscope/examples/web_ui/frontend/src/features/workforce/chat/ticket_timeline/README.md",
+    "platform_VP/agentscope/examples/web_ui/frontend/src/features/workforce/chat/ticket_timeline/TicketTimeline.tsx",
+    "platform_VP/agentscope/examples/web_ui/frontend/src/features/workforce/chat/ticket_timeline/WorkflowStatus.tsx",
+    "platform_VP/agentscope/examples/web_ui/frontend/src/features/workforce/chat/ticket_timeline/api.ts",
+    "platform_VP/agentscope/examples/web_ui/frontend/src/features/workforce/chat/ticket_timeline/index.ts",
+    "platform_VP/agentscope/examples/web_ui/frontend/src/features/workforce/chat/ticket_timeline/state.ts",
+    "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/README.md",
+    "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/__init__.py",
+    "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/_ingress.py",
+    "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/partner_events/README.md",
+    "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/partner_events/__init__.py",
+    "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/partner_events/_service.py",
+    "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/workflows/README.md",
+    "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/workflows/__init__.py",
+    "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/workflows/_boundary.py",
+    "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/workflows/_continuation.py",
+    "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/workflows/_service.py",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/README.md",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/fakes.py",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/package.json",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/pnpm-lock.yaml",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/run_dependency_regressions.py",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/run_phase_b.py",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/test_phase_b.py",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/test_phase_b_critic.py",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/test_phase_b_deep_review.py",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/test_phase_b_ingress.py",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/test_phase_b_precision.py",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/test_phase_b_review.py",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/timeline-interaction.test.tsx",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/timeline-render.test.tsx",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/timeline.test.ts",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/tsconfig.json",
+    "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/verify_phase_b.py"
+  ],
+  "local_commits_added": 0,
+  "remote_mutations_performed": false,
+  "phase_b_cases": {
+    "backend": 175,
+    "ui": 71,
+    "ui_dom_interaction": 11,
+    "matrix": 246
+  },
+  "regression_cases": {
+    "phase_a": 242,
+    "registry": 24,
+    "foundation": 10
+  },
+  "total_test_cases_passed": 522,
+  "corrected_review_findings": [
+    "per-frame SSE authorization/binding validation",
+    "persisted PublicError projection and consistent request identity",
+    "authorized stop-tracking with unresolved consent refs",
+    "mixed terminal/pending operations with retained history and active waits",
+    "concurrent POST/stale snapshot recovery with abortable backoff",
+    "bounded advisory completion waits independent of slow cancellation cleanup",
+    "revision CAS for new closed-workflow commands while ledger retries stay idempotent"
+  ],
+  "limitations": [
+    "test-only fake storage/UOW/runtime/operation/signal",
+    "service bootstrap skipped",
+    "Happy DOM component interactions; no actual browser/global mounting validation",
+    "no PostgreSQL/HTTP/provider/process-restart validation",
+    "global MA/MB/MC/MD not certified"
+  ],
+  "files": [
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/INTEGRATION_REQUEST_PHH_PHASE_B.md",
+      "sha256": "78ca455a581aefcc5de9bced4e150c8ae0939f57a64d651c607a1030d78e6c5d",
+      "bytes": 7084
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/PHASE_B.md",
+      "sha256": "41abca2e550d8dc4fa44794fff87baf70650b071249acd6dde45a23657afb6a5",
+      "bytes": 9843
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/PHASE_B_TEST_MATRIX.md",
+      "sha256": "b2ef81108aa2e10898a7f2373575c43b7ec003bac64bb7b910f43e83b3b37fa5",
+      "bytes": 73293
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/README.md",
+      "sha256": "1e5af3571f91355dd0e8ebace90532a2429801f6e65f858e60b73f1b426cc6a3",
+      "bytes": 7121
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/STATUS.md",
+      "sha256": "a576a4fbb2a9800149820046d1afdee288f47aea59b1d401ba7604e9a71773b7",
+      "bytes": 6700
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-build-results.txt",
+      "sha256": "462d8e0fe1dee6ecaeba93f170ad0044e3b93195f838d87c86f1f052360b740e",
+      "bytes": 38807
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-critic-before-backend.txt",
+      "sha256": "c1310dcf6f267966039c67dd81597505e739e02f36193a704a54bc1226dfc879",
+      "bytes": 48286
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-critic-before-ui.txt",
+      "sha256": "3b20e50b7688d0afefcadb15ede029e0732b3f9a04773c00b93e15cb79c00217",
+      "bytes": 7071
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-deep-review-before-backend.txt",
+      "sha256": "5a42ec3ae557b62aa7a0f51e31f8834377b46b10b24ac3569949462c7cb29852",
+      "bytes": 47857
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-deep-review-before-ui.txt",
+      "sha256": "d97b24b6d0b34344b1a41f8c723ae0b4642ee2f94b90a4ede1c2bb389e0dc827",
+      "bytes": 14381
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-foundation-regression.txt",
+      "sha256": "c8f8bb7428272e4cfeda5094cdc005d47166c64207718ad39bf49d77b05f175d",
+      "bytes": 1821
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-frontend-quality-results.txt",
+      "sha256": "6d7b46d389af6f5c898ba24c6e154e5831a093a69ccd4616d14a7a754e43597d",
+      "bytes": 130
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-phase-a-regression.txt",
+      "sha256": "e17416a16e3028399910f3701bce17fe580924cca909de6bb081fd026c904d20",
+      "bytes": 28808
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-precision-before-backend.txt",
+      "sha256": "aac50c6c5c21da6e833f879e4f91f0eb5f09963b2e2ca13a8ce406ab0a4fad73",
+      "bytes": 29639
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-precision-before-ui.txt",
+      "sha256": "1b6034a07fa0c613041a83b4323a89a818d147e824436d83ba71019099294abc",
+      "bytes": 22705
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-quality-results.txt",
+      "sha256": "4485fdd30f2051ba9e1ced8bdd137b1401120d3526b1beef3685bb493070a0df",
+      "bytes": 211
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-registry-regression.txt",
+      "sha256": "918604f48a6000e8da041cae36c050dcc7c5783cd5d996c091e0d58a045c5575",
+      "bytes": 5105
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-test-results.txt",
+      "sha256": "4d8e58b2a623cc421b21e321f7bd5cd7c90fe61bfe7442fd4944205fd42af5e2",
+      "bytes": 29073
+    },
+    {
+      "path": "platform_VP/agentscope/docs/workforce/handoffs/phan-huy-hoang/phase-b-ui-test-results.txt",
+      "sha256": "16f1adcb5f66ba12dc23f6a8759bf047d0ea3a80c79bc2cd9ea5a679e0bef481",
+      "bytes": 7383
+    },
+    {
+      "path": "platform_VP/agentscope/examples/web_ui/frontend/src/features/workforce/chat/README.md",
+      "sha256": "aa313cd9d5624592aa4ef549587f1c90a3c6b06a5e489accfea92023d1726e11",
+      "bytes": 2831
+    },
+    {
+      "path": "platform_VP/agentscope/examples/web_ui/frontend/src/features/workforce/chat/ticket_timeline/README.md",
+      "sha256": "4749e73b22b7ee68d268cd8d36eef9ba6ee09e8b6290f12ba234b7d670be5b72",
+      "bytes": 2729
+    },
+    {
+      "path": "platform_VP/agentscope/examples/web_ui/frontend/src/features/workforce/chat/ticket_timeline/TicketTimeline.tsx",
+      "sha256": "26cf5fd7a05455fac1d3f347200604f98ee12e501cf992a126c4528f4e097668",
+      "bytes": 4089
+    },
+    {
+      "path": "platform_VP/agentscope/examples/web_ui/frontend/src/features/workforce/chat/ticket_timeline/WorkflowStatus.tsx",
+      "sha256": "8c27e1e1b1ff9bec5f2950fc8104dd7e8bbc788daa48bdd29932e97733e028e4",
+      "bytes": 1128
+    },
+    {
+      "path": "platform_VP/agentscope/examples/web_ui/frontend/src/features/workforce/chat/ticket_timeline/api.ts",
+      "sha256": "9343dba8c1c6903e426fdd253caf3b1c3c5c27b7f32f798bf5b0fe3ec899cf49",
+      "bytes": 7604
+    },
+    {
+      "path": "platform_VP/agentscope/examples/web_ui/frontend/src/features/workforce/chat/ticket_timeline/index.ts",
+      "sha256": "d8c8bf4571b0802ef3df751f5561a6218150b0acef06bae84590288c780e2956",
+      "bytes": 399
+    },
+    {
+      "path": "platform_VP/agentscope/examples/web_ui/frontend/src/features/workforce/chat/ticket_timeline/state.ts",
+      "sha256": "ac142694d4a6274f8b6f3e85363c408616493b2bb36fadb497628ebcf5062e31",
+      "bytes": 13297
+    },
+    {
+      "path": "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/README.md",
+      "sha256": "3a3a37237a090b5827af1a1cad0474d6100471d6f87fae2079dbebbbf4a5d491",
+      "bytes": 3163
+    },
+    {
+      "path": "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/__init__.py",
+      "sha256": "7216e99264e67c261eefb9b3593c07d4558cabf9b2faa4da280eafc1e0906ba6",
+      "bytes": 335
+    },
+    {
+      "path": "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/_ingress.py",
+      "sha256": "ddb2329234ba19a505b98c60d042efb35bc875783ca6225313db19002ab9e036",
+      "bytes": 20030
+    },
+    {
+      "path": "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/partner_events/README.md",
+      "sha256": "61e7baa06715505d87188207843cee398dd76cd652dd93cbd6787fe908b50916",
+      "bytes": 1579
+    },
+    {
+      "path": "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/partner_events/__init__.py",
+      "sha256": "b97d836604661711199c4493a689cf51f846ad368a40184b0e5e3ce08677bc10",
+      "bytes": 390
+    },
+    {
+      "path": "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/partner_events/_service.py",
+      "sha256": "9b99638c08725c2db3ef3f0570225079486470bd888c8d1acfd5eafdc95e19dd",
+      "bytes": 12730
+    },
+    {
+      "path": "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/workflows/README.md",
+      "sha256": "e4330caa69d78a2e8597d2cbe03736a5a52771b0e5db149deb5e4337a3503843",
+      "bytes": 1242
+    },
+    {
+      "path": "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/workflows/__init__.py",
+      "sha256": "cc1146098cdf396b225050de1735932f684d96da4c20f8286669a1c565fa15b4",
+      "bytes": 928
+    },
+    {
+      "path": "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/workflows/_boundary.py",
+      "sha256": "9b17e41d59d3600d248dd5fb019e7df2f6a931171401d1aefb6520d1a1fb0dc8",
+      "bytes": 6616
+    },
+    {
+      "path": "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/workflows/_continuation.py",
+      "sha256": "aeb2ba22451ddaffdd42d4b432b5ff98f0199110976b36a8a35433eaf4f86d19",
+      "bytes": 16349
+    },
+    {
+      "path": "platform_VP/agentscope/src/agentscope/app/workforce/orchestration/workflows/_service.py",
+      "sha256": "b8cd5f9927419286874e436bbacfc84d50e2fb5f0b4f1181ed9af2113c75f46c",
+      "bytes": 17210
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/README.md",
+      "sha256": "d93a5ed442d2d8799495717f64b35c70809b46e73797943123a779246ee24900",
+      "bytes": 3120
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/fakes.py",
+      "sha256": "c77806119c9524710812f6c7314766d27e3d30eb6fe5b6d0fc1deabb4f804250",
+      "bytes": 26879
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/package.json",
+      "sha256": "527709470c8b2936fbf438b15b8aca5b078a8957a4187d9d157fce952098f45e",
+      "bytes": 131
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/pnpm-lock.yaml",
+      "sha256": "3ccfc70c9ac0b11f1523ccb07d671e948b21fd12802baed2f03a02b56f4141c1",
+      "bytes": 2769
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/run_dependency_regressions.py",
+      "sha256": "06344e29a9b83d32550af7bc908b5f0a113967a25d68d9506aa2b65ad9c1b993",
+      "bytes": 1904
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/run_phase_b.py",
+      "sha256": "f02385f6b7fcaeb445d3660deb64bc86aba34182b35cf5852ce95ca8a8a70d58",
+      "bytes": 2066
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/test_phase_b.py",
+      "sha256": "099c94ecc880a2b8c2af9885c145e16897e7c7930990dc51e561dffd7a5c2a04",
+      "bytes": 31649
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/test_phase_b_critic.py",
+      "sha256": "a1cc913690099e5b656aec423a8db1f9f7bfc23fe61fb626c997ef16cfb903c2",
+      "bytes": 15772
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/test_phase_b_deep_review.py",
+      "sha256": "0f352ebf7ae3b887b8115001680c3d531a9f3ac9be7d1ad53d13387595708e63",
+      "bytes": 18617
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/test_phase_b_ingress.py",
+      "sha256": "6000bac76c08b402f64773bcdeed57bd79ce5f353969c210d4331da8c0e68fdd",
+      "bytes": 7382
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/test_phase_b_precision.py",
+      "sha256": "f50cc21435de1c910ad42c7e25429b6737d8cdd804af539ed2622f95b03be3b0",
+      "bytes": 13406
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/test_phase_b_review.py",
+      "sha256": "20d8cda56f4b9aec49f8648698d4d7ad0368b1390ed00e3ae3f40331e3d9c51d",
+      "bytes": 11915
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/timeline-interaction.test.tsx",
+      "sha256": "615a6a16861b25d191b3300de1e16b4e260abed4b4c13cf692873ce4baa7a3f8",
+      "bytes": 10723
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/timeline-render.test.tsx",
+      "sha256": "f44bbb9e80346858bca5cd1e32659d25d58d1fb6b10839c3910d7e3488fbd91a",
+      "bytes": 3393
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/timeline.test.ts",
+      "sha256": "017f4f9616b996445f0a7fc3b2ab11470167a90021f0e2bdb3f04dc0a8e1a35e",
+      "bytes": 29100
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/tsconfig.json",
+      "sha256": "9e27b7116e993c947c3ae01dbca45bd0cd02c9e9c6870a30b805fa76c14ed5d7",
+      "bytes": 280
+    },
+    {
+      "path": "platform_VP/agentscope/tests/workforce/orchestration/async_workflows/verify_phase_b.py",
+      "sha256": "bc2587664067f3cdfac3140f7984a159d4dbb5021c24497a3780252805e4923d",
+      "bytes": 7244
+    }
+  ],
+  "deep_review_regressions": {
+    "backend_added": 24,
+    "ui_added": 8,
+    "before_backend": {
+      "tests": 171,
+      "failures": 4,
+      "errors": 6
+    },
+    "before_ui": {
+      "tests": 69,
+      "failures": 4
+    }
+  },
+  "limits_of_deadline_evidence": "Notification wait is bounded; concrete DB/auth/HTTP timeout and subscription resource cleanup need Phase C adapters.",
+  "verification_context": "Pre-commit snapshot on dev2PHH-B after staging for authorized publication",
+  "publication_requested": true,
+  "publication_target": "origin/dev2PHH-B",
+  "remote_head_verified_before_publication": true,
+  "log_publication_normalization": "Trailing whitespace removed from three output logs; test evidence and results unchanged."
+}

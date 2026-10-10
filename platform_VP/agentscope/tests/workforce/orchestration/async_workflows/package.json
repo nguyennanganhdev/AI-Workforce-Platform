@@ -1,0 +1,8 @@
+{
+  "name": "phh-phase-b-ui-tests",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "happy-dom": "20.14.6"
+  }
+}

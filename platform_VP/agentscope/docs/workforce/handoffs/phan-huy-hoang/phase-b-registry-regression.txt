@@ -1,0 +1,33 @@
+CONTRACT-ONLY: service initializers skipped; real workforce modules loaded.
+Read-only dependency suite: registry
+test_actor_namespace_and_missing_metadata_fail_closed (phh_dependency_tests.test_phase_b.ProtocolServiceTests.test_actor_namespace_and_missing_metadata_fail_closed) ... ok
+test_all_scope_dimensions_isolate_current_and_pinned (phh_dependency_tests.test_phase_b.ProtocolServiceTests.test_all_scope_dimensions_isolate_current_and_pinned) ... ok
+test_disable_blocks_new_calls_but_preserves_old_events (phh_dependency_tests.test_phase_b.ProtocolServiceTests.test_disable_blocks_new_calls_but_preserves_old_events) ... ok
+test_forged_pins_and_caller_mutation_cannot_rewrite_content (phh_dependency_tests.test_phase_b.ProtocolServiceTests.test_forged_pins_and_caller_mutation_cannot_rewrite_content) ... ok
+test_inbox_metadata_is_loaded_per_event_and_retry_is_stable (phh_dependency_tests.test_phase_b.ProtocolServiceTests.test_inbox_metadata_is_loaded_per_event_and_retry_is_stable) ... ok
+test_injected_uow_is_forwarded_without_commit (phh_dependency_tests.test_phase_b.ProtocolServiceTests.test_injected_uow_is_forwarded_without_commit) ... ok
+test_normalizer_preserves_order_and_rejects_invalid_events (phh_dependency_tests.test_phase_b.ProtocolServiceTests.test_normalizer_preserves_order_and_rejects_invalid_events) ... Executing <Task finished name='Task-32' coro=<ProtocolServiceTests.test_normalizer_preserves_order_and_rejects_invalid_events() done, defined at C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\registry\event_protocols\test_phase_b.py:244> result=None created at C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py:100> took 0.141 seconds
+ok
+test_publish_idempotency_conflict_and_stale_revision (phh_dependency_tests.test_phase_b.ProtocolServiceTests.test_publish_idempotency_conflict_and_stale_revision) ... ok
+test_publish_rejects_non_finite_schema_before_repository (phh_dependency_tests.test_phase_b.ProtocolServiceTests.test_publish_rejects_non_finite_schema_before_repository) ... ok
+test_shared_port_and_all_modes (phh_dependency_tests.test_phase_b.ProtocolServiceTests.test_shared_port_and_all_modes) ... ok
+test_bad_event_schema_unknown_type_and_missing_version_fail (phh_dependency_tests.test_protocols.ProtocolTests.test_bad_event_schema_unknown_type_and_missing_version_fail) ... ok
+test_capabilities_distinguish_all_five_modes (phh_dependency_tests.test_protocols.ProtocolTests.test_capabilities_distinguish_all_five_modes) ... ok
+test_create_only_cannot_claim_tracking_coverage (phh_dependency_tests.test_protocols.ProtocolTests.test_create_only_cannot_claim_tracking_coverage) ... ok
+test_fake_implements_shared_port_and_checks_all_scope_fields (phh_dependency_tests.test_protocols.ProtocolTests.test_fake_implements_shared_port_and_checks_all_scope_fields) ... ok
+test_hash_is_canonical_and_detects_mapping_or_policy_drift (phh_dependency_tests.test_protocols.ProtocolTests.test_hash_is_canonical_and_detects_mapping_or_policy_drift) ... ok
+test_invalid_configuration_fails_closed (phh_dependency_tests.test_protocols.ProtocolTests.test_invalid_configuration_fails_closed) ... ok
+test_local_schema_references_normalize_without_network (phh_dependency_tests.test_protocols.ProtocolTests.test_local_schema_references_normalize_without_network) ... ok
+test_normalization_is_deterministic_and_projects_only_facts (phh_dependency_tests.test_protocols.ProtocolTests.test_normalization_is_deterministic_and_projects_only_facts) ... ok
+test_normalization_keeps_order_metadata (phh_dependency_tests.test_protocols.ProtocolTests.test_normalization_keeps_order_metadata) ... Executing <Task finished name='Task-89' coro=<ProtocolTests.test_normalization_keeps_order_metadata() done, defined at C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\registry\event_protocols\test_protocols.py:338> result=None created at C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py:100> took 0.110 seconds
+ok
+test_pinned_snapshot_survives_caller_mutation (phh_dependency_tests.test_protocols.ProtocolTests.test_pinned_snapshot_survives_caller_mutation) ... ok
+test_protocol_drift_keeps_old_snapshot_resolvable (phh_dependency_tests.test_protocols.ProtocolTests.test_protocol_drift_keeps_old_snapshot_resolvable) ... ok
+test_samples_validate_with_exported_schema_and_shared_dtos (phh_dependency_tests.test_protocols.ProtocolTests.test_samples_validate_with_exported_schema_and_shared_dtos) ... ok
+test_unresolvable_schema_references_fail_at_configuration (phh_dependency_tests.test_protocols.ProtocolTests.test_unresolvable_schema_references_fail_at_configuration) ... ok
+test_wrong_namespace_or_credential_purpose_is_rejected (phh_dependency_tests.test_protocols.ProtocolTests.test_wrong_namespace_or_credential_purpose_is_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 24 tests in 1.421s
+
+OK

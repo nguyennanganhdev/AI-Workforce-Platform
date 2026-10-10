@@ -1,55 +1,54 @@
-# PHH — Phase A: gói hợp đồng để review
+# PHH — Phase B hoàn thành ở phạm vi module local
 
-Ngày kiểm tra: 2026-10-10. Thành viên: Phan Huy Hoàng.
+Ngày xác minh cuối: 2026-10-11 (Asia/Saigon). Owner: **Phan Huy Hoàng**.
 
-Clone từ `origin/develop2`, commit nền `254ec21a52c0f23511aee44248e9ca732b9c6cd3`.
-Nhánh bàn giao: `dev2PHH`; đích pull request: `develop2`. Phạm vi bàn giao chỉ gồm Phase A của PHH.
+Bản clone mới của `origin/develop2`: `848740498c92894c074cf264f6ce6307a2dfb9cc` (PR #56). Nhánh làm việc local: `dev2PHH-B`. Nhánh này được tạo theo yêu cầu push mới của người dùng. Commit và trạng thái remote xem trực tiếp trên Git/GitHub; chưa tạo hoặc merge PR trong lần bàn giao này.
 
-**Hoàn thành phần chuẩn bị hợp đồng Phase A của PHH theo mục 17.9:** schema workflow/checkpoint/trigger/event, mẫu dữ liệu, kiểm thử và yêu cầu tích hợp. **Chỉ được làm Phase A theo yêu cầu người dùng. Chưa có xác nhận MA; chưa bắt đầu Phase B và không tự chuyển sang B.** Không đánh dấu toàn bộ PHH-12–PHH-17 hoàn thành vì các task này còn implementation ở giai đoạn sau.
+Theo yêu cầu mới của người dùng, đã triển khai lại **Phase B mục 17.9**: workflow/continuation, request/result, public event replay/history/snapshot/SSE và ticket timeline với fake operation/signal/runtime trong test. Quy định chỉ làm A trong STATUS cũ đã được yêu cầu mới thay thế. Các artifact/source Phase A được giữ nguyên.
 
-## Đầu ra và phạm vi
+**Gate PHH-B-LOCAL: PASS.** Đây là kết quả của phần PHH; không tuyên bố gate MB liên module hoặc Phase C/D đã hoàn thành.
 
-- [PHASE_A.md](PHASE_A.md): đối chiếu đầu vào, invariants, transaction ordering và điều kiện sang B.
-- [INTEGRATION_REQUEST_PHH_PHASE_A.md](INTEGRATION_REQUEST_PHH_PHASE_A.md): chữ ký hiện tại/đề xuất, điểm chưa thống nhất và owner cần chốt.
-- [phase_a/schemas.json](phase_a/schemas.json): 9 model canonical tái xuất nguyên schema; 5 aggregate PHH đề xuất; 11 public payload schema.
-- [phase_a/samples.json](phase_a/samples.json): mẫu hợp lệ, 4 loại cause, 3 pattern, 2 ticket cùng user/agent nhưng khác workflow/group/session.
-- [phase_a/TEST_MATRIX.md](phase_a/TEST_MATRIX.md): 80 ca âm gốc có ID, input mutation và kết quả mong đợi. Suite hiện có tổng 242 tests, gồm cả kiểm thử đối kháng mới.
-- [phase_a/QA_RESULTS.md](phase_a/QA_RESULTS.md): lỗi trước sửa, bản sửa, mutation testing và các điểm shared contract còn mở.
-- Source trong `src/agentscope/app/workforce/orchestration/{phase_a.py,workflows/phase_a.py,partner_events/phase_a.py}`.
-- Test/runner trong `tests/workforce/orchestration/phase_a/`.
+## Kết quả kiểm chứng
 
-Export review: `orchestration.phase_a.phase_a_schema_bundle()`, version `phh-phase-a-1`, status `proposal_pending_owner_acceptance`. DTO canonical vẫn lấy trực tiếp từ `workforce.contracts`; không sửa `contracts/`, migration, composition root, dependency manifest hay UI.
+| Kiểm tra | Kết quả | Bằng chứng |
+|---|---|---|
+| Phase B backend B001–B175 | 175 PASS; 0 fail/error/skip | [Log](phase-b-test-results.txt) |
+| Phase B UI UI001–UI071 | 71 PASS; 0 fail; có 11 test thao tác DOM | [Log](phase-b-ui-test-results.txt) |
+| Hồi quy Phase A | 242 PASS; 0 fail/error/skip | [Log](phase-b-phase-a-regression.txt) |
+| Registry protocol hiện có | 24 PASS; 0 fail/error/skip | [Log](phase-b-registry-regression.txt) |
+| Foundation jobs/signals/SSE hiện có | 10 PASS; 0 fail/error/skip | [Log](phase-b-foundation-regression.txt) |
+| Frontend TypeScript + Vite build | PASS; có cảnh báo bundle lớn từ ứng dụng | [Log](phase-b-build-results.txt) |
+| AST/Black/Flake8 phạm vi PHH | PASS; 18 file Python, 0 lỗi | [Log](phase-b-quality-results.txt) |
+| ESLint UI PHH + Prettier source/test | PASS | [Log](phase-b-frontend-quality-results.txt) |
+| Phạm vi thay đổi/định dạng/link/ID test | Xem biên bản cuối | [Audit](phase-b-scope-audit.json) |
 
-## Kiểm chứng
+Tổng **522 test PASS**, trong đó **246 kịch bản riêng của Phase B PHH**. Không cộng vòng lặp nội bộ, assertion, render count hay test của người khác vào 246. [Ma trận](PHASE_B_TEST_MATRIX.md) ghi ID, fixture/scenario, assertion mong đợi và dòng source.
 
-**242/242 unittest PHH PASS; 0 fail, 0 error, 0 skip.** Có 200 biến thể trộn workflow với seed cố định trong một test; không cộng các vòng lặp đó vào số 242. Thử vô hiệu hóa từng chốt `ValueError` của workflow trong bộ nhớ: **13/13 mutant bị test phát hiện**. Kiểm toán shared riêng vẫn có **2 điểm OPEN**, không gộp thành PASS.
+Lượt review sâu tiếp theo đã sửa cả bốn lỗi: giữ toàn bộ operation refs trong checkpoint nhưng chỉ đưa operation đang pending vào pending_waits; refetch snapshot cũ do POST đồng thời với backoff và abort; tự giới hạn chờ tín hiệu bằng monotonic deadline, hủy subscription mà không chờ cleanup chậm; kiểm tra revision trước closed-state return cho mọi lệnh đóng mới. Retry đúng ID/body vẫn đọc ledger trước CAS. Kiểm tra cả terminal history binding/pin/operation ID, active tracking capability và confirmation sau operation cuối hoàn tất.
 
-Đã kiểm tra JSON Schema Draft 2020-12 với RFC3339 checker thực sự hoạt động, mẫu hợp lệ, serializer và model validators. Test âm xác nhận mẫu gốc hợp lệ trước khi sửa, tránh pass do fixture sai sẵn. Checkpoint nhận snapshot thật sinh bởi `AsyncToolProtocol.snapshot_ref` của NPD với các mẫu NPD trong checkout này. Bộ cũ 110 tests chưa phát hiện hết các lỗi nay đã sửa; chi tiết trước/sau ở QA_RESULTS.
+Bổ sung **24 backend cases B152–B175 + 8 UI cases UI064–UI071**. Lượt tái hiện đầu tiên trước sửa chạy 171 backend với **4 failure + 6 error**, và 69 UI với **4 failure**: [backend trước sửa](phase-b-deep-review-before-backend.txt), [UI trước sửa](phase-b-deep-review-before-ui.txt). Sáu ca guard/abort/capability bổ sung sau đó cũng PASS. B039 được chỉnh đúng semantics: direct close chỉ no-op khi revision hiện tại khớp; B168 kiểm tra exact retry qua ingress/ledger.
 
-Log: [phase_a/test-results.txt](phase_a/test-results.txt). Chín file Python qua Black 23.3.0 (79 cột), Flake8 6.1.0 và AST parse; các link local trong handoff hợp lệ. Chưa chạy toàn bộ pre-commit hooks hoặc full repo suite.
+Sau phản biện độc lập, đã sửa ba lỗi: revalidate quyền và immutable binding trước từng frame SSE/heartbeat; giữ PublicError trong read/result/retry/wait và kiểm tra consistency; cho phép authorized stop-tracking ở awaiting_approval mà không cấp consent hoặc hủy provider operation. Test B046 được sửa theo quy tắc any-open-state của kế hoạch, B055 yêu cầu chặn ngay frame tiếp theo. Thêm 21 backend cases B131–B151 và 11 component interaction cases UI053–UI063.
 
-Môi trường chạy: Python 3.12.14 bundled, Pydantic 2.13.5; jsonschema 4.25.1 và rfc3339-validator 0.1.4 cài riêng vào `.venv/Lib/site-packages`. Windows Application Control chặn interpreter của venv mới nên dùng interpreter đã có; không thay chính sách máy. Không cài toàn bộ service stack.
+Nhóm test bổ sung đầu tiên trước sửa chạy 147 backend với **5 failure + 10 error**, và 63 UI với **1 failure**: [backend trước sửa](phase-b-critic-before-backend.txt), [UI trước sửa](phase-b-critic-before-ui.txt). Các ca mới đã PASS sau sửa. Happy DOM 20.14.6 chỉ là dependency test PHH, có manifest/lockfile riêng trong test folder.
 
-Từ `platform_VP/agentscope`, chạy với Python đã có Pydantic, jsonschema và rfc3339-validator:
+Bộ nền 112 backend + 36 UI từng qua nhưng còn thiếu coverage. Khi bổ sung test tái hiện trước sửa: **8 failure + 1 error backend, 14 failure UI**. [Backend trước sửa](phase-b-precision-before-backend.txt), [UI trước sửa](phase-b-precision-before-ui.txt). Tất cả các ca này đã qua sau sửa; các lần thử tool bị giới hạn môi trường không được ghi là PASS.
 
-```powershell
-python tests/workforce/orchestration/phase_a/run_phase_a.py --isolated-imports
-```
+## Đầu ra
 
-Lệnh thực tế trên máy này:
+- [PHASE_B.md](PHASE_B.md): scope, hành vi, exports và lệnh tái hiện.
+- [INTEGRATION_REQUEST_PHH_PHASE_B.md](INTEGRATION_REQUEST_PHH_PHASE_B.md): adapter/hook cần nối ở C, owner và invariant.
+- Backend chỉ trong `src/agentscope/app/workforce/orchestration/`.
+- UI chỉ trong `examples/web_ui/frontend/src/features/workforce/chat/ticket_timeline/` và README chat.
+- Test/runner/fakes chỉ trong `tests/workforce/orchestration/async_workflows/`.
+- Handoff/log/matrix chỉ trong folder PHH này.
 
-```powershell
-& 'C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' tests/workforce/orchestration/phase_a/run_phase_a.py --isolated-imports --dependency-path .venv/Lib/site-packages
-```
+Không sửa source của owner khác, shared contracts, migrations, App.tsx, dependency manifests/lockfiles của ứng dụng, Docker/compose hoặc CI. Không thêm demo hoặc tài liệu phản biện riêng.
 
-`--isolated-imports` chỉ bỏ initializer của `agentscope`/`agentscope.app` trong tiến trình test; vẫn import source thật của workforce/contracts và module PHH/NPD. Đây là bằng chứng contract-only, **không phải application bootstrap, integration runtime hay full regression**. Trong môi trường service đầy đủ, có thể bỏ cờ này. `--export` là thao tác riêng, chủ động tái tạo artifact; lần chạy test thông thường không ghi lại expected output.
+## Giới hạn kiểm chứng
 
-## Phụ thuộc và giới hạn
+Backend dùng source PHH, shared DTO, SSE và protocol thật nhưng fake persistence/UOW/clock/runtime/operation/signal. `--isolated-imports` bỏ initializer dịch vụ trong tiến trình test; không kiểm tra application bootstrap. UI đã kiểm thử reducer/transport/API, static render và React component được mount vào Happy DOM: click/checkbox, loading/double-submit, error/retry, đổi ticket khi đang chờ, late close và approval quote hashes. Chưa kiểm thử browser thật với ứng dụng đã mount toàn bộ.
 
-Đầu vào thật đã đọc: NCH shared DTO/ports/UOW; NPD protocol/schema/hash; BHN requirements/policy proposal; PTA validation/eval schema; PHD operation/inbox và integration requests. Mẫu trong gói PHH là dữ liệu test, không có backend/provider thật hay fake service trả thành công. Không tái sử dụng implementation `dev2PHH` cũ.
+Chưa chạy PostgreSQL transaction/concurrency/migration, provider/MCP/model thật, HTTP/proxy thật, restart nhiều process, full repository suite hoặc toàn bộ pre-commit hooks. Các bài close/lease/signal lỗi dùng fake không phải bằng chứng Phase D hay production.
 
-Các yêu cầu còn mở: promotion DTO và chữ ký port (NCH/PHH/PHD); thống nhất policy BHN/PTA; resolver protocol snapshot (NPD/NCH); mapping operation/event/approval và UOW (PHD/NCH/PHH). Xem integration request để có chữ ký và owner cụ thể.
-
-Chưa chạy/chưa triển khai: DB constraints/migration; inbox/outbox commit; lease/fence; replay/SSE; close/update race; crash/restart; quyền trên request thật; AgentScope turn; provider sandbox; UI. Schema không chứng minh các tính chất này.
-
-Việc tiếp theo trong A: owner review các đề xuất, NCH xử lý IR-PHH-A05 và hợp nhất canonical contracts, rồi cập nhật artifact/test theo chữ ký đã chốt. Chưa được làm B trong yêu cầu hiện tại, kể cả khi checklist MA được cập nhật sau này; cần yêu cầu mới của người dùng.
+Việc tiếp theo là **Phase C theo yêu cầu mới**, sau khi nối các adapter trong integration request. Bàn giao trên nhánh riêng `dev2PHH-B` theo yêu cầu mới; việc tạo PR/merge là bước riêng.

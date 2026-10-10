@@ -1,21 +1,35 @@
-# ticket_timeline — API/event/workflow v1.4
+# PHH ticket timeline — Phase B
 
-Chủ sở hữu: **Phan Huy Hoàng**. Branch: `feat/wf-orchestration`.
-Task bổ sung của owner: **PHH-14–PHH-17**; chọn phần tương ứng phạm vi folder dưới đây.
+Owner: **Phan Huy Hoàng**. PHH-17; local baseline `develop2@8487404`.
 
-Đọc [kế hoạch triển khai](../../../../../../../../docs/workforce/KE_HOACH_TRIEN_KHAI.md) và [bàn giao cá nhân](../../../../../../../../docs/workforce/handoffs/phan-huy-hoang/README.md) trước khi code. Đặc tả chung nằm ở mục 17; ranh giới ownership ở 5.3 và task chi tiết trong phần mang tên owner. Các đường dẫn link tính từ folder này.
+Exports: TicketTimeline, WorkflowStatus, createTimeline/applyReceipt/applyEvent/applySnapshot, createTimelineApi and followTimeline. Reuses shared/event_transport and Execution WorkforceApprovalCard.
 
-Phạm vi: Timeline/close nhiều ticket/workflow, mỗi hộp chat giữ đúng binding, reconnect và event/message dedupe.
+State/cursor keys contain authenticated identity, conversation, workflow, ticket, user and external chat. Wrong binding or a conflicting event/message fails before cursor advancement. Receipts retain next_action; snapshots and public payloads are validated. A closed receipt permits historical replay; a delivered close event establishes the boundary against later new messages. Refresh retries the same serialized command once on 401; abort prevents updates to detached chat.
 
-File dự kiến khi triển khai: `index.ts`, `TicketTimeline.tsx`, `WorkflowStatus.tsx`, `api.ts`. Đây chỉ là gợi ý chia file; chưa có code được tạo trong folder.
+Host integration keeps a synchronous state ref:
 
-Nguyên tắc triển khai:
+```typescript
+const stateRef = { current: createTimeline(binding) };
+const publish = (next: TimelineState) => {
+	stateRef.current = next;
+	setState(next);
+};
+// A POST result also goes through this same ref:
+publish(applyReceipt(stateRef.current, receipt));
+await followTimeline(
+	api,
+	stateRef.current,
+	publish,
+	abort.signal,
+	cursorStore,
+	() => stateRef.current,
+);
+```
 
-- Một role AREA_MANAGER, Scope đủ tenant/domain/area/manager và audience cư dân; không route theo payload tự khai.
-- Dùng DTO/ports chung; không import private service hoặc ghi bảng module khác. uow đi xuyên inbox → workflow/public event → trigger khi cần atomicity.
-- Customer request/reply POST ưu tiên `200`, chỉ `202/watch_request` khi hết thời gian chờ; response luôn có `workflow_state` và `next_action`. Response-only read-only có thể auto-close; interactive dùng reply/approval/explicit close; Provider Event/SSE tracking chỉ dùng khi operation thật sự pending.
-- State UI được key theo conversation_id + workflow_id/external_ticket_id, không theo user hoặc “ticket gần nhất”. Hai hộp chat có cursor/stream/status/close riêng; event không khớp binding không được render sang hộp đang mở.
-- Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
-- Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
+Abort the follower when authenticated identity/binding changes. onClose receives the exact binding, revision and stopTrackingOnly; host creates and retains a stable command ID for retries. Failed close never marks the ticket closed locally. Stop-tracking permits closing an open ticket with pending approvals without submitting a consent decision; ordinary completion close still requires no unresolved approval. Supply a manager JWT/BFF token approved by the shared-auth owner; do not expose machine partner keys in the browser. API baseUrl is supplied by the host, for example an approved BFF mapping.
 
-Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+71 reducer/API/transport/static-render/interaction tests live in the PHH test folder. Eleven tests mount React in Happy DOM and exercise close/approval clicks, loading/double-submit, error/retry, late completion and ticket switches. Global mounting, real token/quote feeds and actual browser checks remain in Phase C. No demo page or global App.tsx changes are added.
+
+[Status](../../../../../../../../docs/workforce/handoffs/phan-huy-hoang/STATUS.md) / [integration requests](../../../../../../../../docs/workforce/handoffs/phan-huy-hoang/INTEGRATION_REQUEST_PHH_PHASE_B.md).
+
+A stale snapshot caused by an in-flight POST is retried with abortable backoff (50ms increasing to at most 1s). Current POST state stays intact; the cursor advances only after a valid current snapshot. Foreign bindings, same-revision state conflicts and permission failures still stop the follower.

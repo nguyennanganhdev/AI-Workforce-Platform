@@ -1,0 +1,519 @@
+UNIT TESTS: real PHH/shared modules; application startup skipped.
+PHH-B-LOCAL: 147 independent backend scenarios
+test_B001_start_reserves_binding_and_checkpoint_job_atomically (test_phase_b.PhaseB.test_B001_start_reserves_binding_and_checkpoint_job_atomically) ... ok
+test_B002_retry_reuses_group_and_job (test_phase_b.PhaseB.test_B002_retry_reuses_group_and_job) ... ok
+test_B003_two_tickets_same_user_and_agent_have_separate_sessions (test_phase_b.PhaseB.test_B003_two_tickets_same_user_and_agent_have_separate_sessions) ... ok
+test_B004_start_commit_failure_rolls_back (test_phase_b.PhaseB.test_B004_start_commit_failure_rolls_back) ... ok
+test_B005_reply_keeps_group_session_and_pins (test_phase_b.PhaseB.test_B005_reply_keeps_group_session_and_pins) ... ok
+test_B006_reply_to_other_ticket_is_denied (test_phase_b.PhaseB.test_B006_reply_to_other_ticket_is_denied) ... ok
+test_B007_reply_stale_revision_does_not_enqueue (test_phase_b.PhaseB.test_B007_reply_stale_revision_does_not_enqueue) ... ok
+test_B008_reply_changed_content_same_id_conflicts (test_phase_b.PhaseB.test_B008_reply_changed_content_same_id_conflicts) ... ok
+test_B009_revoked_actor_cannot_reply (test_phase_b.PhaseB.test_B009_revoked_actor_cannot_reply) ... ok
+test_B010_provider_credential_cannot_read_customer_events (test_phase_b.PhaseB.test_B010_provider_credential_cannot_read_customer_events) ... ok
+test_B011_pending_request_runs_once_and_persists_processed_cause (test_phase_b.PhaseB.test_B011_pending_request_runs_once_and_persists_processed_cause) ... ok
+test_B012_message_id_is_identical_in_result_event_and_snapshot (test_phase_b.PhaseB.test_B012_message_id_is_identical_in_result_event_and_snapshot) ... ok
+test_B013_response_only_published_read_only_auto_closes (test_phase_b.PhaseB.test_B013_response_only_published_read_only_auto_closes) ... ok
+test_B014_interactive_cannot_auto_close (test_phase_b.PhaseB.test_B014_interactive_cannot_auto_close) ... ok
+test_B015_approval_wait_requires_real_pending_ref (test_phase_b.PhaseB.test_B015_approval_wait_requires_real_pending_ref) ... ok
+test_B016_wait_requires_tracking_pattern_and_pending_operation (test_phase_b.PhaseB.test_B016_wait_requires_tracking_pattern_and_pending_operation) ... ok
+test_B017_terminal_operation_cannot_enter_external_wait (test_phase_b.PhaseB.test_B017_terminal_operation_cannot_enter_external_wait) ... ok
+test_B018_no_operation_cannot_enter_external_wait (test_phase_b.PhaseB.test_B018_no_operation_cannot_enter_external_wait) ... ok
+test_B019_interleaved_turns_keep_correct_group_and_messages (test_phase_b.PhaseB.test_B019_interleaved_turns_keep_correct_group_and_messages) ... ok
+test_B020_unbound_trigger_is_rejected_before_runtime (test_phase_b.PhaseB.test_B020_unbound_trigger_is_rejected_before_runtime) ... ok
+test_B021_forged_approval_cannot_resume (test_phase_b.PhaseB.test_B021_forged_approval_cannot_resume) ... ok
+test_B022_verified_approval_preserves_other_pins (test_phase_b.PhaseB.test_B022_verified_approval_preserves_other_pins) ... ok
+test_B023_lease_prevents_two_workers_running_same_workflow (test_phase_b.PhaseB.test_B023_lease_prevents_two_workers_running_same_workflow) ... ok
+test_B024_expired_lease_candidate_cannot_commit (test_phase_b.PhaseB.test_B024_expired_lease_candidate_cannot_commit) ... ok
+test_B025_replaced_fence_candidate_cannot_commit (test_phase_b.PhaseB.test_B025_replaced_fence_candidate_cannot_commit) ... ok
+test_B026_close_during_turn_discards_late_message (test_phase_b.PhaseB.test_B026_close_during_turn_discards_late_message) ... ok
+test_B027_runtime_guard_blocks_side_effect_after_close (test_phase_b.PhaseB.test_B027_runtime_guard_blocks_side_effect_after_close) ... ok
+test_B028_runtime_exception_releases_lease (test_phase_b.PhaseB.test_B028_runtime_exception_releases_lease) ... ok
+test_B029_commit_failure_can_retry_from_last_checkpoint (test_phase_b.PhaseB.test_B029_commit_failure_can_retry_from_last_checkpoint) ... ok
+test_B030_revoked_grant_during_runtime_discards_result (test_phase_b.PhaseB.test_B030_revoked_grant_during_runtime_discards_result) ... ok
+test_B031_event_fault_rolls_back_checkpoint_result_and_messages (test_phase_b.PhaseB.test_B031_event_fault_rolls_back_checkpoint_result_and_messages) ... ok
+test_B032_signal_loss_still_keeps_result_replayable (test_phase_b.PhaseB.test_B032_signal_loss_still_keeps_result_replayable) ... ok
+test_B033_external_event_applies_fact_and_checkpoint_without_llm (test_phase_b.PhaseB.test_B033_external_event_applies_fact_and_checkpoint_without_llm) ... ok
+test_B034_duplicate_external_event_no_new_job_or_event (test_phase_b.PhaseB.test_B034_duplicate_external_event_no_new_job_or_event) ... ok
+test_B035_old_provider_version_does_not_revert_status (test_phase_b.PhaseB.test_B035_old_provider_version_does_not_revert_status) ... ok
+test_B036_external_event_during_approval_keeps_HITL (test_phase_b.PhaseB.test_B036_external_event_during_approval_keeps_HITL) ... ok
+test_B037_wait_time_does_not_spend_tokens (test_phase_b.PhaseB.test_B037_wait_time_does_not_spend_tokens) ... ok
+test_B038_external_event_commit_failure_rolls_back_all (test_phase_b.PhaseB.test_B038_external_event_commit_failure_rolls_back_all) ... ok
+test_B039_close_is_idempotent_and_no_duplicate_public_close (test_phase_b.PhaseB.test_B039_close_is_idempotent_and_no_duplicate_public_close) ... ok
+test_B040_close_wrong_revision_is_rejected (test_phase_b.PhaseB.test_B040_close_wrong_revision_is_rejected) ... ok
+test_B041_close_wrong_ticket_is_rejected (test_phase_b.PhaseB.test_B041_close_wrong_ticket_is_rejected) ... ok
+test_B042_close_does_not_close_other_workflow (test_phase_b.PhaseB.test_B042_close_does_not_close_other_workflow) ... ok
+test_B043_closed_workflow_reply_cannot_reopen (test_phase_b.PhaseB.test_B043_closed_workflow_reply_cannot_reopen) ... ok
+test_B044_closed_turn_uses_no_model (test_phase_b.PhaseB.test_B044_closed_turn_uses_no_model) ... ok
+test_B045_pending_operation_requires_explicit_stop_tracking (test_phase_b.PhaseB.test_B045_pending_operation_requires_explicit_stop_tracking) ... ok
+test_B046_pending_approval_cannot_be_bypassed_by_stop_tracking (test_phase_b.PhaseB.test_B046_pending_approval_cannot_be_bypassed_by_stop_tracking) ... ok
+test_B047_close_event_failure_rolls_back_state (test_phase_b.PhaseB.test_B047_close_event_failure_rolls_back_state) ... ok
+test_B048_history_paginates_in_order (test_phase_b.PhaseB.test_B048_history_paginates_in_order) ... ok
+test_B049_foreign_cursor_never_reads_from_start (test_phase_b.PhaseB.test_B049_foreign_cursor_never_reads_from_start) ... ok
+test_B050_expired_cursor_requires_snapshot (test_phase_b.PhaseB.test_B050_expired_cursor_requires_snapshot) ... ok
+test_B051_snapshot_and_history_recheck_revoked_grant (test_phase_b.PhaseB.test_B051_snapshot_and_history_recheck_revoked_grant) ... ok
+test_B052_replay_rejects_repository_cross_conversation_leak (test_phase_b.PhaseB.test_B052_replay_rejects_repository_cross_conversation_leak) ... ok
+test_B053_sse_replays_durable_records_before_wait (test_phase_b.PhaseB.test_B053_sse_replays_durable_records_before_wait) ... ok
+test_B054_sse_lost_signal_catches_up_from_log_after_heartbeat (test_phase_b.PhaseB.test_B054_sse_lost_signal_catches_up_from_log_after_heartbeat) ... ok
+test_B055_sse_revocation_checked_on_next_replay_page (test_phase_b.PhaseB.test_B055_sse_revocation_checked_on_next_replay_page) ... ok
+test_B056_injected_uow_does_not_commit_or_notify_early (test_phase_b.PhaseB.test_B056_injected_uow_does_not_commit_or_notify_early) ... ok
+test_B057_runtime_does_not_hold_open_transaction (test_phase_b.PhaseB.test_B057_runtime_does_not_hold_open_transaction) ... ok
+test_B058_new_instance_resumes_checkpoint_without_rebuild (test_phase_b.PhaseB.test_B058_new_instance_resumes_checkpoint_without_rebuild) ... ok
+test_B059_external_event_after_close_cannot_create_trigger (test_phase_b.PhaseB.test_B059_external_event_after_close_cannot_create_trigger) ... ok
+test_B060_parallel_claims_run_model_once (test_phase_b.PhaseB.test_B060_parallel_claims_run_model_once) ... ok
+test_B061_runtime_boundary (test_phase_b.PhaseB.test_B061_runtime_boundary)
+Reject runtime mutation candidate.trigger_id ... ok
+test_B062_runtime_boundary (test_phase_b.PhaseB.test_B062_runtime_boundary)
+Reject runtime mutation candidate.expected_state_revision ... ok
+test_B063_runtime_boundary (test_phase_b.PhaseB.test_B063_runtime_boundary)
+Reject runtime mutation candidate.checkpoint.workflow_id ... ok
+test_B064_runtime_boundary (test_phase_b.PhaseB.test_B064_runtime_boundary)
+Reject runtime mutation candidate.checkpoint.session_refs ... ok
+test_B065_runtime_boundary (test_phase_b.PhaseB.test_B065_runtime_boundary)
+Reject runtime mutation candidate.checkpoint.agent_version_pins ... ok
+test_B066_runtime_boundary (test_phase_b.PhaseB.test_B066_runtime_boundary)
+Reject runtime mutation candidate.checkpoint.protocol_pins ... ok
+test_B067_runtime_boundary (test_phase_b.PhaseB.test_B067_runtime_boundary)
+Reject runtime mutation candidate.checkpoint.last_processed_causes ... ok
+test_B068_runtime_boundary (test_phase_b.PhaseB.test_B068_runtime_boundary)
+Reject runtime mutation candidate.checkpoint.used_budget.model_turns ... ok
+test_B069_runtime_boundary (test_phase_b.PhaseB.test_B069_runtime_boundary)
+Reject runtime mutation candidate.checkpoint.used_budget.tool_calls ... ok
+test_B070_runtime_boundary (test_phase_b.PhaseB.test_B070_runtime_boundary)
+Reject runtime mutation candidate.checkpoint.used_budget.input_tokens ... ok
+test_B071_runtime_boundary (test_phase_b.PhaseB.test_B071_runtime_boundary)
+Reject runtime mutation candidate.result.messages.0.workflow_id ... ok
+test_B072_event_provider_integration_id (test_phase_b.PhaseB.test_B072_event_provider_integration_id) ... ok
+test_B073_event_protocol_schema_hash (test_phase_b.PhaseB.test_B073_event_protocol_schema_hash) ... ok
+test_B074_event_external_job_id (test_phase_b.PhaseB.test_B074_event_external_job_id) ... ok
+test_B075_event_client_reference (test_phase_b.PhaseB.test_B075_event_client_reference) ... ok
+test_B076_invalid_page_limit (test_phase_b.PhaseB.test_B076_invalid_page_limit) ... ok
+test_B077_invalid_page_limit (test_phase_b.PhaseB.test_B077_invalid_page_limit) ... ok
+test_B078_invalid_page_limit (test_phase_b.PhaseB.test_B078_invalid_page_limit) ... ok
+test_B079_invalid_page_limit (test_phase_b.PhaseB.test_B079_invalid_page_limit) ... ok
+test_B080_invalid_page_limit (test_phase_b.PhaseB.test_B080_invalid_page_limit) ... ok
+test_B131_slow_replay_revalidates_before_each_sse_frame (test_phase_b_critic.CriticPhaseB.test_B131_slow_replay_revalidates_before_each_sse_frame)
+A revoked reader cannot consume the next cached page item. ... FAIL
+test_B132_subscription_rechecks_revocation_within_one_page (test_phase_b_critic.CriticPhaseB.test_B132_subscription_rechecks_revocation_within_one_page)
+Semantic subscription must use the same per-frame guard. ... FAIL
+test_B133_idle_revocation_blocks_the_next_heartbeat (test_phase_b_critic.CriticPhaseB.test_B133_idle_revocation_blocks_the_next_heartbeat)
+Revoked clients do not retain a successful idle stream. ... FAIL
+test_B134_binding_change_invalidates_an_already_loaded_page (test_phase_b_critic.CriticPhaseB.test_B134_binding_change_invalidates_an_already_loaded_page)
+A stored binding cannot change between streamed frames. ... FAIL
+test_B135_failed_result_preserves_persisted_public_error (test_phase_b_critic.CriticPhaseB.test_B135_failed_result_preserves_persisted_public_error)
+GET result exposes the original safe terminal failure. ... ERROR
+test_B136_blocked_result_preserves_public_error (test_phase_b_critic.CriticPhaseB.test_B136_blocked_result_preserves_public_error)
+Blocked is also a terminal result with a public cause. ... ERROR
+test_B137_foreign_public_error_is_rejected (test_phase_b_critic.CriticPhaseB.test_B137_foreign_public_error_is_rejected)
+A failure from another request must never be returned. ... ERROR
+test_B138_completed_request_cannot_include_failure (test_phase_b_critic.CriticPhaseB.test_B138_completed_request_cannot_include_failure)
+Result, status and error form one consistent projection. ... ERROR
+test_B139_pending_request_cannot_include_terminal_error (test_phase_b_critic.CriticPhaseB.test_B139_pending_request_cannot_include_terminal_error)
+A pending result must not be mixed with a previous failure. ... ERROR
+test_B140_failed_request_requires_a_persisted_error (test_phase_b_critic.CriticPhaseB.test_B140_failed_request_requires_a_persisted_error)
+Repositories cannot silently discard terminal error details. ... FAIL
+test_B141_failed_retry_and_bounded_wait_keep_the_same_error (test_phase_b_critic.CriticPhaseB.test_B141_failed_retry_and_bounded_wait_keep_the_same_error)
+Retry reads the old failure without another group/turn. ... ERROR
+test_B142_stop_tracking_can_close_a_pending_approval (test_phase_b_critic.CriticPhaseB.test_B142_stop_tracking_can_close_a_pending_approval)
+Stop tracking never means approving or consuming consent. ... ERROR
+test_B143_normal_close_still_requires_resolving_approval (test_phase_b_critic.CriticPhaseB.test_B143_normal_close_still_requires_resolving_approval)
+A completion close cannot claim pending approval is resolved. ... ok
+test_B144_late_approval_cannot_resume_a_stopped_workflow (test_phase_b_critic.CriticPhaseB.test_B144_late_approval_cannot_resume_a_stopped_workflow)
+Retained consent refs do not authorize a closed workflow turn. ... ERROR
+test_B145_stop_tracking_with_approval_preserves_other_ticket (test_phase_b_critic.CriticPhaseB.test_B145_stop_tracking_with_approval_preserves_other_ticket)
+Closing A cannot change B or manufacture operation cancellation. ... ERROR
+test_B146_stop_tracking_still_rejects_revoked_permission (test_phase_b_critic.CriticPhaseB.test_B146_stop_tracking_still_rejects_revoked_permission)
+The open-state exception never bypasses close authorization. ... ok
+test_B147_pending_request_closed_projection_has_public_error (test_phase_b_critic.CriticPhaseB.test_B147_pending_request_closed_projection_has_public_error)
+A queued request blocked by close has an explicit public cause. ... ERROR
+test_B081_pending_post_has_watch_request (test_phase_b_ingress.IngressPhaseB.test_B081_pending_post_has_watch_request) ... ok
+test_B082_completed_post_same_message_as_event (test_phase_b_ingress.IngressPhaseB.test_B082_completed_post_same_message_as_event) ... ok
+test_B083_retry_post_never_rebuilds (test_phase_b_ingress.IngressPhaseB.test_B083_retry_post_never_rebuilds) ... ok
+test_B084_same_request_changed_content_conflicts (test_phase_b_ingress.IngressPhaseB.test_B084_same_request_changed_content_conflicts) ... ok
+test_B085_actor_cannot_impersonate_user (test_phase_b_ingress.IngressPhaseB.test_B085_actor_cannot_impersonate_user) ... ok
+test_B086_other_user_cannot_read_result (test_phase_b_ingress.IngressPhaseB.test_B086_other_user_cannot_read_result) ... ok
+test_B087_result_revalidates_grant (test_phase_b_ingress.IngressPhaseB.test_B087_result_revalidates_grant) ... ok
+test_B088_wait_deadline_returns_pending (test_phase_b_ingress.IngressPhaseB.test_B088_wait_deadline_returns_pending) ... ok
+test_B089_signal_wakes_and_rereads_result (test_phase_b_ingress.IngressPhaseB.test_B089_signal_wakes_and_rereads_result) ... ok
+test_B090_atomic_post_failure_leaves_no_claim (test_phase_b_ingress.IngressPhaseB.test_B090_atomic_post_failure_leaves_no_claim) ... ok
+test_B091_reply_keeps_group_without_bootstrap (test_phase_b_ingress.IngressPhaseB.test_B091_reply_keeps_group_without_bootstrap) ... ok
+test_B092_interleaved_post_results_keep_own_message (test_phase_b_ingress.IngressPhaseB.test_B092_interleaved_post_results_keep_own_message) ... ok
+test_B093_close_before_result_returns_none_action (test_phase_b_ingress.IngressPhaseB.test_B093_close_before_result_returns_none_action) ... ok
+test_B094_naive_wait_deadline_rejected (test_phase_b_ingress.IngressPhaseB.test_B094_naive_wait_deadline_rejected) ... ok
+test_B095_scope_injection_rejected (test_phase_b_ingress.IngressPhaseB.test_B095_scope_injection_rejected) ... ok
+test_B113_reply_reuses_original_route_without_resolving_again (test_phase_b_precision.PrecisionPhaseB.test_B113_reply_reuses_original_route_without_resolving_again)
+Reply A after remapping must use A's saved route and group. ... ok
+test_B114_reply_changed_management_ref_is_rejected_atomically (test_phase_b_precision.PrecisionPhaseB.test_B114_reply_changed_management_ref_is_rejected_atomically)
+A new management ref cannot move an existing workflow. ... ok
+test_B115_lost_signal_reader_still_catches_up_from_durable_log (test_phase_b_precision.PrecisionPhaseB.test_B115_lost_signal_reader_still_catches_up_from_durable_log)
+Signal outage yields a heartbeat then reloads committed events. ... ok
+test_B116_auth_recheck_cannot_be_delayed_over_sixty_seconds (test_phase_b_precision.PrecisionPhaseB.test_B116_auth_recheck_cannot_be_delayed_over_sixty_seconds)
+Reject heartbeat configuration beyond the revocation bound. ... ok
+test_B117_snapshot_rejects_private_approval_fields (test_phase_b_precision.PrecisionPhaseB.test_B117_snapshot_rejects_private_approval_fields)
+Public snapshots never serialize a copied credential field. ... ok
+test_B118_pending_operation_cannot_claim_completion_confirmation (test_phase_b_precision.PrecisionPhaseB.test_B118_pending_operation_cannot_claim_completion_confirmation)
+An unfinished operation cannot produce confirm_close. ... ok
+test_B119_terminal_operation_allows_completion_confirmation (test_phase_b_precision.PrecisionPhaseB.test_B119_terminal_operation_allows_completion_confirmation)
+Valid terminal control reaches confirm_close. ... ok
+test_B120_history_rejects_copied_extra_envelope_field (test_phase_b_precision.PrecisionPhaseB.test_B120_history_rejects_copied_extra_envelope_field)
+model_copy cannot bypass closed history envelope validation. ... ok
+test_B121_snapshot_rejects_copied_extra_envelope_field (test_phase_b_precision.PrecisionPhaseB.test_B121_snapshot_rejects_copied_extra_envelope_field)
+Snapshots revalidate models instead of trusting model_copy. ... ok
+test_B122_non_finite_heartbeat_is_rejected (test_phase_b_precision.PrecisionPhaseB.test_B122_non_finite_heartbeat_is_rejected)
+NaN cannot disable periodic authorization/catch-up checks. ... ok
+test_B123_close_boolean_revision_is_rejected_before_claim (test_phase_b_precision.PrecisionPhaseB.test_B123_close_boolean_revision_is_rejected_before_claim)
+True must not become revision 1 through canonical DTO coercion. ... ok
+test_B124_close_string_flag_is_rejected_before_claim (test_phase_b_precision.PrecisionPhaseB.test_B124_close_string_flag_is_rejected_before_claim)
+The string false cannot enable a stop-tracking close. ... ok
+test_B125_copied_nested_message_cannot_add_scope (test_phase_b_precision.PrecisionPhaseB.test_B125_copied_nested_message_cannot_add_scope)
+Nested model_copy extras cannot enter the command ledger. ... ok
+test_B126_copied_request_view_extras_cannot_be_serialized (test_phase_b_precision.PrecisionPhaseB.test_B126_copied_request_view_extras_cannot_be_serialized)
+Persisted read views are revalidated before public projection. ... ok
+test_B127_sse_signal_cancellation_is_not_swallowed (test_phase_b_precision.PrecisionPhaseB.test_B127_sse_signal_cancellation_is_not_swallowed)
+Cancellation propagates rather than opening another stream read. ... ok
+test_B128_hung_signal_is_bounded_and_rechecks_revocation (test_phase_b_precision.PrecisionPhaseB.test_B128_hung_signal_is_bounded_and_rechecks_revocation)
+A hung notification cannot prevent the next authorization read. ... ok
+test_B129_duplicate_snapshot_approval_ids_are_rejected (test_phase_b_precision.PrecisionPhaseB.test_B129_duplicate_snapshot_approval_ids_are_rejected)
+Two public approvals cannot silently share an identity. ... ok
+test_B130_boolean_history_sequence_is_not_coerced (test_phase_b_precision.PrecisionPhaseB.test_B130_boolean_history_sequence_is_not_coerced)
+A forged bool sequence cannot become integer sequence 1. ... ok
+test_B096_start_checkpoint_ref_is_persisted (test_phase_b_review.ReviewPhaseB.test_B096_start_checkpoint_ref_is_persisted) ... ok
+test_B097_conflicting_duplicate_inbox_hash_is_rejected (test_phase_b_review.ReviewPhaseB.test_B097_conflicting_duplicate_inbox_hash_is_rejected) ... ok
+test_B098_both_correlations_must_match (test_phase_b_review.ReviewPhaseB.test_B098_both_correlations_must_match) ... ok
+test_B099_pending_approval_cannot_disappear_on_plain_reply (test_phase_b_review.ReviewPhaseB.test_B099_pending_approval_cannot_disappear_on_plain_reply) ... ok
+test_B100_resolving_A_cannot_remove_pending_B (test_phase_b_review.ReviewPhaseB.test_B100_resolving_A_cannot_remove_pending_B) ... ok
+test_B101_runtime_cannot_discard_pending_operation (test_phase_b_review.ReviewPhaseB.test_B101_runtime_cannot_discard_pending_operation) ... ok
+test_B102_foreign_operation_is_rejected_even_when_not_waiting (test_phase_b_review.ReviewPhaseB.test_B102_foreign_operation_is_rejected_even_when_not_waiting) ... ok
+test_B103_read_only_guard_rejects_write_side_effect (test_phase_b_review.ReviewPhaseB.test_B103_read_only_guard_rejects_write_side_effect) ... ok
+test_B104_plain_close_requires_confirmation_state (test_phase_b_review.ReviewPhaseB.test_B104_plain_close_requires_confirmation_state) ... ok
+test_B105_same_conversation_wrong_workflow_event_is_rejected (test_phase_b_review.ReviewPhaseB.test_B105_same_conversation_wrong_workflow_event_is_rejected) ... ok
+test_B106_fake_lifecycle_request_progress_confirmation_close (test_phase_b_review.ReviewPhaseB.test_B106_fake_lifecycle_request_progress_confirmation_close) ... ok
+test_B107_close_uses_shared_command_namespace (test_phase_b_review.ReviewPhaseB.test_B107_close_uses_shared_command_namespace) ... ok
+test_B108_close_retry_ignores_old_revision_after_claim (test_phase_b_review.ReviewPhaseB.test_B108_close_retry_ignores_old_revision_after_claim) ... ok
+test_B109_all_state_projections_are_defined (test_phase_b_review.ReviewPhaseB.test_B109_all_state_projections_are_defined) ... ok
+test_B110_opaque_ids_cannot_collide_in_job_dedupe_key (test_phase_b_review.ReviewPhaseB.test_B110_opaque_ids_cannot_collide_in_job_dedupe_key) ... ok
+test_B111_runtime_message_naive_time_is_rejected (test_phase_b_review.ReviewPhaseB.test_B111_runtime_message_naive_time_is_rejected) ... ok
+test_B112_new_start_cannot_implicitly_reply_to_bound_ticket (test_phase_b_review.ReviewPhaseB.test_B112_new_start_cannot_implicitly_reply_to_bound_ticket) ... ok
+
+======================================================================
+ERROR: test_B135_failed_result_preserves_persisted_public_error (test_phase_b_critic.CriticPhaseB.test_B135_failed_result_preserves_persisted_public_error)
+GET result exposes the original safe terminal failure.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 123, in test_B135_failed_result_preserves_persisted_public_error
+    result = await self.h.ingress.read_result(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\_ingress.py", line 239, in read_result
+    view = RequestView.model_validate(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\site-packages\pydantic\main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for RequestView
+error
+  Extra inputs are not permitted [type=extra_forbidden, input_value={'code': 'RUNTIME_FAILED'...t-A', 'retryable': True}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden
+
+======================================================================
+ERROR: test_B136_blocked_result_preserves_public_error (test_phase_b_critic.CriticPhaseB.test_B136_blocked_result_preserves_public_error)
+Blocked is also a terminal result with a public cause.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 134, in test_B136_blocked_result_preserves_public_error
+    result = await self.h.ingress.read_result(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\_ingress.py", line 239, in read_result
+    view = RequestView.model_validate(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\site-packages\pydantic\main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for RequestView
+error
+  Extra inputs are not permitted [type=extra_forbidden, input_value={'code': 'RUNTIME_FAILED'...t-A', 'retryable': True}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden
+
+======================================================================
+ERROR: test_B137_foreign_public_error_is_rejected (test_phase_b_critic.CriticPhaseB.test_B137_foreign_public_error_is_rejected)
+A failure from another request must never be returned.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 148, in test_B137_foreign_public_error_is_rejected
+    await self.h.ingress.read_result(
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\_ingress.py", line 239, in read_result
+    view = RequestView.model_validate(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\site-packages\pydantic\main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for RequestView
+error
+  Extra inputs are not permitted [type=extra_forbidden, input_value={'code': 'RUNTIME_FAILED'...t-B', 'retryable': True}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden
+
+======================================================================
+ERROR: test_B138_completed_request_cannot_include_failure (test_phase_b_critic.CriticPhaseB.test_B138_completed_request_cannot_include_failure)
+Result, status and error form one consistent projection.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 165, in test_B138_completed_request_cannot_include_failure
+    await self.h.ingress.read_result(
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\_ingress.py", line 239, in read_result
+    view = RequestView.model_validate(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\site-packages\pydantic\main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for RequestView
+error
+  Extra inputs are not permitted [type=extra_forbidden, input_value={'code': 'RUNTIME_FAILED'...-A', 'retryable': False}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden
+
+======================================================================
+ERROR: test_B139_pending_request_cannot_include_terminal_error (test_phase_b_critic.CriticPhaseB.test_B139_pending_request_cannot_include_terminal_error)
+A pending result must not be mixed with a previous failure.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 177, in test_B139_pending_request_cannot_include_terminal_error
+    await self.h.ingress.read_result(
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\_ingress.py", line 239, in read_result
+    view = RequestView.model_validate(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\site-packages\pydantic\main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for RequestView
+error
+  Extra inputs are not permitted [type=extra_forbidden, input_value={'code': 'RUNTIME_FAILED'...-A', 'retryable': False}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden
+
+======================================================================
+ERROR: test_B141_failed_retry_and_bounded_wait_keep_the_same_error (test_phase_b_critic.CriticPhaseB.test_B141_failed_retry_and_bounded_wait_keep_the_same_error)
+Retry reads the old failure without another group/turn.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 196, in test_B141_failed_retry_and_bounded_wait_keep_the_same_error
+    retry = await self.accept()
+            ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 33, in accept
+    return await self.h.ingress.accept(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\_ingress.py", line 233, in accept
+    return await self.read_result(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\_ingress.py", line 239, in read_result
+    view = RequestView.model_validate(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\site-packages\pydantic\main.py", line 732, in model_validate
+    return cls.__pydantic_validator__.validate_python(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for RequestView
+error
+  Extra inputs are not permitted [type=extra_forbidden, input_value={'code': 'RUNTIME_FAILED'...t-A', 'retryable': True}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/extra_forbidden
+
+======================================================================
+ERROR: test_B142_stop_tracking_can_close_a_pending_approval (test_phase_b_critic.CriticPhaseB.test_B142_stop_tracking_can_close_a_pending_approval)
+Stop tracking never means approving or consuming consent.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 213, in test_B142_stop_tracking_can_close_a_pending_approval
+    closed = await self.h.workflows.close(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\workflows\_service.py", line 462, in close
+    return await self._transaction(uow, close)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\workflows\_service.py", line 113, in _transaction
+    result = await action(owned)
+             ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\workflows\_service.py", line 400, in close
+    raise WorkflowConflict(
+agentscope.app.workforce.orchestration.workflows._boundary.WorkflowConflict: pending approval must be resolved before close
+
+======================================================================
+ERROR: test_B144_late_approval_cannot_resume_a_stopped_workflow (test_phase_b_critic.CriticPhaseB.test_B144_late_approval_cannot_resume_a_stopped_workflow)
+Retained consent refs do not authorize a closed workflow turn.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 244, in test_B144_late_approval_cannot_resume_a_stopped_workflow
+    await self.h.workflows.close(
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\workflows\_service.py", line 462, in close
+    return await self._transaction(uow, close)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\workflows\_service.py", line 113, in _transaction
+    result = await action(owned)
+             ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\workflows\_service.py", line 400, in close
+    raise WorkflowConflict(
+agentscope.app.workforce.orchestration.workflows._boundary.WorkflowConflict: pending approval must be resolved before close
+
+======================================================================
+ERROR: test_B145_stop_tracking_with_approval_preserves_other_ticket (test_phase_b_critic.CriticPhaseB.test_B145_stop_tracking_with_approval_preserves_other_ticket)
+Closing A cannot change B or manufacture operation cancellation.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 265, in test_B145_stop_tracking_with_approval_preserves_other_ticket
+    await self.h.workflows.close(
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\workflows\_service.py", line 462, in close
+    return await self._transaction(uow, close)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\workflows\_service.py", line 113, in _transaction
+    result = await action(owned)
+             ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\src\agentscope\app\workforce\orchestration\workflows\_service.py", line 400, in close
+    raise WorkflowConflict(
+agentscope.app.workforce.orchestration.workflows._boundary.WorkflowConflict: pending approval must be resolved before close
+
+======================================================================
+ERROR: test_B147_pending_request_closed_projection_has_public_error (test_phase_b_critic.CriticPhaseB.test_B147_pending_request_closed_projection_has_public_error)
+A queued request blocked by close has an explicit public cause.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 296, in test_B147_pending_request_closed_projection_has_public_error
+    self.assertEqual(result.error.code, "WORKFLOW_CLOSED")
+                     ^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'code'
+
+======================================================================
+FAIL: test_B131_slow_replay_revalidates_before_each_sse_frame (test_phase_b_critic.CriticPhaseB.test_B131_slow_replay_revalidates_before_each_sse_frame)
+A revoked reader cannot consume the next cached page item.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 74, in test_B131_slow_replay_revalidates_before_each_sse_frame
+    with self.assertRaises(PermissionError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: PermissionError not raised
+
+======================================================================
+FAIL: test_B132_subscription_rechecks_revocation_within_one_page (test_phase_b_critic.CriticPhaseB.test_B132_subscription_rechecks_revocation_within_one_page)
+Semantic subscription must use the same per-frame guard.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 85, in test_B132_subscription_rechecks_revocation_within_one_page
+    with self.assertRaises(PermissionError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: PermissionError not raised
+
+======================================================================
+FAIL: test_B133_idle_revocation_blocks_the_next_heartbeat (test_phase_b_critic.CriticPhaseB.test_B133_idle_revocation_blocks_the_next_heartbeat)
+Revoked clients do not retain a successful idle stream.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 97, in test_B133_idle_revocation_blocks_the_next_heartbeat
+    with self.assertRaises(PermissionError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: PermissionError not raised
+
+======================================================================
+FAIL: test_B134_binding_change_invalidates_an_already_loaded_page (test_phase_b_critic.CriticPhaseB.test_B134_binding_change_invalidates_an_already_loaded_page)
+A stored binding cannot change between streamed frames.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 114, in test_B134_binding_change_invalidates_an_already_loaded_page
+    with self.assertRaises(PermissionError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: PermissionError not raised
+
+======================================================================
+FAIL: test_B140_failed_request_requires_a_persisted_error (test_phase_b_critic.CriticPhaseB.test_B140_failed_request_requires_a_persisted_error)
+Repositories cannot silently discard terminal error details.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\test_phase_b_critic.py", line 186, in test_B140_failed_request_requires_a_persisted_error
+    with self.assertRaises(WorkflowConflict):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: WorkflowConflict not raised
+
+----------------------------------------------------------------------
+Ran 147 tests in 1.291s
+
+FAILED (failures=5, errors=10)

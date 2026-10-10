@@ -1,0 +1,17 @@
+CONTRACT-ONLY: service initializers skipped; real workforce modules loaded.
+Read-only dependency suite: foundation
+test_enqueue_is_idempotent_inside_owner_namespace (phh_dependency_tests.test_phase_b.DurableJobTests.test_enqueue_is_idempotent_inside_owner_namespace) ... ok
+test_expired_claim_cannot_borrow_new_fence_in_shared_service (phh_dependency_tests.test_phase_b.DurableJobTests.test_expired_claim_cannot_borrow_new_fence_in_shared_service) ... ok
+test_expired_lease_is_reclaimed_with_new_fence (phh_dependency_tests.test_phase_b.DurableJobTests.test_expired_lease_is_reclaimed_with_new_fence) ... ok
+test_not_before_and_retry_do_not_busy_loop (phh_dependency_tests.test_phase_b.DurableJobTests.test_not_before_and_retry_do_not_busy_loop) ... ok
+test_provider_job_uses_verified_namespace_not_public_body (phh_dependency_tests.test_phase_b.DurableJobTests.test_provider_job_uses_verified_namespace_not_public_body) ... ok
+test_worker_dispatches_and_persists_sanitized_failure (phh_dependency_tests.test_phase_b.DurableJobTests.test_worker_dispatches_and_persists_sanitized_failure) ... ok
+test_public_signal_returns_committed_sequence (phh_dependency_tests.test_phase_b.SignalAndSseTests.test_public_signal_returns_committed_sequence) ... ok
+test_request_signal_isolated_by_full_manager_scope (phh_dependency_tests.test_phase_b.SignalAndSseTests.test_request_signal_isolated_by_full_manager_scope) ... ok
+test_sse_rejects_header_injection (phh_dependency_tests.test_phase_b.SignalAndSseTests.test_sse_rejects_header_injection) ... ok
+test_sse_replays_database_before_waiting_for_signal (phh_dependency_tests.test_phase_b.SignalAndSseTests.test_sse_replays_database_before_waiting_for_signal) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.180s
+
+OK

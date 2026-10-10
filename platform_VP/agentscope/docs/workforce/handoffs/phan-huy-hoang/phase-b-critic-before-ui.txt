@@ -1,0 +1,91 @@
+bun test v1.3.14 (0d9b296a)
+
+tests\workforce\orchestration\async_workflows\timeline.test.ts:
+(pass) PHH Phase B timeline state > UI001 POST then SSE produces one bubble [2.21ms]
+(pass) PHH Phase B timeline state > UI002 SSE then POST produces one bubble [0.74ms]
+(pass) PHH Phase B timeline state > UI003 repeated event is deduped [0.57ms]
+(pass) PHH Phase B timeline state > UI004 identity participates in cache key [0.09ms]
+(pass) PHH Phase B timeline state > UI005 ticket participates in cache key [0.02ms]
+(pass) PHH Phase B timeline state > UI006 message conflict fails without mutation [0.32ms]
+(pass) PHH Phase B timeline state > UI007 status is a card, never an assistant bubble [0.08ms]
+(pass) PHH Phase B timeline state > UI008 workflow closed cannot reopen [0.09ms]
+(pass) PHH Phase B timeline state > UI009 older receipt cannot regress status [0.04ms]
+(pass) PHH Phase B timeline state > UI010 snapshot catch-up dedupes next POST [0.17ms]
+(pass) PHH Phase B timeline state > UI011 sequence reversal fails [0.78ms]
+(pass) PHH Phase B timeline state > UI012 approvals have independent ids [1.19ms]
+(pass) PHH Phase B timeline state > UI013 closed stream cannot introduce new assistant message [0.40ms]
+(pass) PHH Phase B timeline state > UI014 snapshot foreign message fails [0.14ms]
+(pass) PHH Phase B timeline state > UI015 snapshot older revision fails [0.04ms]
+(pass) PHH Phase B timeline state > UI016 invalid timestamp fails [0.04ms]
+(pass) PHH Phase B timeline state > UI017 unknown event fails without cursor advancement [0.05ms]
+(pass) PHH Phase B timeline state > UI018 failed receipt for other ticket cannot update state [0.03ms]
+(pass) PHH Phase B timeline state > UI019 invalid closed event fails [0.09ms]
+(pass) PHH Phase B timeline state > UI020 status revision conflict fails [0.11ms]
+(pass) PHH Phase B timeline state > UI021: conversation_id cross-chat event rejected [0.08ms]
+(pass) PHH Phase B timeline state > UI022: workflow_id cross-chat event rejected [0.03ms]
+(pass) PHH Phase B timeline state > UI023: external_user_id cross-chat event rejected [0.03ms]
+(pass) PHH Phase B timeline state > UI024: external_conversation_id cross-chat event rejected [0.02ms]
+(pass) PHH Phase B timeline state > UI025: external_ticket_id cross-chat event rejected [0.02ms]
+(pass) PHH Phase B precision regressions > UI037 pending receipt preserves watch_request while workflow is waiting [0.04ms]
+(pass) PHH Phase B precision regressions > UI038 failed receipt uses resolve_attention rather than watch_request [0.03ms]
+(pass) PHH Phase B precision regressions > UI039 snapshot rejects inconsistent next_action [0.06ms]
+(pass) PHH Phase B precision regressions > UI040 unknown public payload fields fail before cursor advancement [0.06ms]
+(pass) PHH Phase B precision regressions > UI041 duplicate event id with changed payload is a conflict [0.08ms]
+(pass) PHH Phase B precision regressions > UI042 identical duplicate ignores object key ordering [0.08ms]
+(pass) PHH Phase B precision regressions > UI043 array payload cannot masquerade as a public object [0.05ms]
+(pass) PHH Phase B precision regressions > UI044 event id must be a string [0.04ms]
+(pass) PHH Phase B precision regressions > UI045 closed POST still permits historical messages replayed before close [0.08ms]
+(pass) PHH Phase B precision regressions > UI046 non existent calendar timestamp is rejected [0.07ms]
+(pass) PHH Phase B precision regressions > UI047 snapshot cursor must be null or a nonempty string [0.04ms]
+(pass) PHH Phase B precision regressions > UI048 snapshot approval cannot reference another workflow [0.07ms]
+(pass) PHH Phase B precision regressions > UI049 REST refresh retries the identical command exactly once [1.18ms]
+(pass) PHH Phase B precision regressions > UI050 follower preserves a concurrent POST through the current-state provider [6.55ms]
+(pass) PHH Phase B precision regressions > UI051 cached cursor recovery denial publishes blocked state [3.51ms]
+(pass) PHH Phase B precision regressions > UI052 abort during token loading prevents a detached REST request [0.45ms]
+(pass) PHH Phase B shared transport integration > UI026 follower applies event and stops on abort [1.21ms]
+(pass) PHH Phase B shared transport integration > UI027 wrong binding stops before cursor is saved [0.92ms]
+(pass) PHH Phase B shared transport integration > UI028 410 recovers snapshot and uses fresh cursor [1.58ms]
+(pass) PHH Phase B shared transport integration > UI029 denied stream stops and clears its cursor [0.34ms]
+(pass) PHH Phase B shared transport integration > UI030 close API rejects other ticket before fetch [0.16ms]
+(pass) PHH Phase B shared transport integration > UI031 close API uses exact workflow and revision [0.30ms]
+(pass) PHH Phase B shared transport integration > UI032 abort during snapshot never updates detached chat [0.38ms]
+
+tests\workforce\orchestration\async_workflows\timeline-render.test.tsx:
+(pass) UI033 renders waiting and reconnecting independently [5.42ms]
+(pass) UI034 closed ticket disables close and cannot offer stop tracking [0.45ms]
+(pass) UI035 assistant text is escaped and labeled [0.58ms]
+(pass) UI036 reuses Execution ApprovalCard only for approval bound to this timeline [7.64ms]
+
+tests\workforce\orchestration\async_workflows\timeline-interaction.test.tsx:
+108 |     onDecide: async (...args) => { decisions.push(args); },
+109 |     onClose: async (...args) => { closes.push(args); },
+110 |   });
+111 |   expect(closeButton().disabled).toBe(true);
+112 |   await act(async () => checkbox().click());
+113 |   expect(closeButton().disabled).toBe(false);
+                                       ^
+error: expect(received).toBe(expected)
+
+Expected: false
+Received: true
+
+      at <anonymous> (C:\Users\hoang\OneDrive\Documents\ChatGPT\VIN AI intern\develop 2\platform_VP\agentscope\tests\workforce\orchestration\async_workflows\timeline-interaction.test.tsx:113:34)
+(fail) UI053 stop tracking while awaiting approval closes without consent [81.28ms]
+(pass) UI054 unresolved approval never enables an ordinary completion close [15.02ms]
+(pass) UI055 repeated close clicks submit once and show pending state [15.97ms]
+(pass) UI056 failed close keeps the workflow open and permits explicit retry [15.13ms]
+(pass) UI057 changing ticket during a pending close isolates its late error [14.97ms]
+(pass) UI058 changing ticket resets the stop-tracking choice [16.12ms]
+(pass) UI059 a closed SSE state stays closed after an in-flight close settles [15.96ms]
+(pass) UI060 stop tracking cannot bypass a blocked connection [15.14ms]
+(pass) UI061 approval submits exact quote hashes once under repeated clicks [45.44ms]
+(pass) UI062 failed approval permits retry with the same quote hashes [46.87ms]
+(pass) UI063 completion close uses the latest rendered revision [15.65ms]
+
+1 tests failed:
+(fail) UI053 stop tracking while awaiting approval closes without consent [81.28ms]
+
+ 62 pass
+ 1 fail
+ 116 expect() calls
+Ran 63 tests across 3 files. [1048.00ms]
