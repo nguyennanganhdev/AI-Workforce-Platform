@@ -3,7 +3,11 @@
 
 from typing import Any
 
-from ...contracts import ProviderEventEnvelope, ProviderEventReceipt
+from ...contracts import (
+    ActorContext,
+    ProviderEventEnvelope,
+    ProviderEventReceipt,
+)
 from .._utils import (
     ExecutionError,
     digest,
@@ -117,6 +121,10 @@ class ProviderEventIngress:
             "ingestion_status": "accepted",
             "error": None,
         }
+        if "actor" in principal:
+            record["provider_ref"]["actor"] = value(
+                ActorContext.model_validate(principal["actor"])
+            )
         async with self.repo.transaction() as uow:
             await self.auth.authorize_integration(
                 principal, "publish_job_event", uow=uow

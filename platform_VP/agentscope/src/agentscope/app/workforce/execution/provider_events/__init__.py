@@ -3,5 +3,10 @@
 
 from ._ingress import ProviderEventIngress
 from ._processor import ProviderEventProcessor
+from ._workflow import WorkflowEventAdapter
 
-__all__ = ["ProviderEventIngress", "ProviderEventProcessor"]
+__all__ = [
+    "ProviderEventIngress",
+    "ProviderEventProcessor",
+    "WorkflowEventAdapter",
+]

@@ -10,6 +10,25 @@ class ProviderBackend:
         self.client, self.headers = client, headers
         self.receipts = {}
 
+    @staticmethod
+    def progress_events(job_id, correlation, prefix="A"):
+        """Deterministic demo lifecycle; retry the same event object/ID."""
+        return [
+            {
+                "schema_version": "1",
+                "external_event_id": f"{prefix}{version}",
+                "external_job_id": job_id,
+                "client_reference": correlation,
+                "event_type": "job." + status,
+                "provider_version": version,
+                "occurred_at": "2026-10-10T09:00:00Z",
+                "data": {"eta_minutes": 0, "note": "TEST PRIVATE NOTE"},
+            }
+            for version, status in enumerate(
+                ("assigned", "on_the_way", "arrived", "completed"), 1
+            )
+        ]
+
     async def send(self, envelope):
         response = await self.client.post(
             "/workforce/v1/provider/job-events",
