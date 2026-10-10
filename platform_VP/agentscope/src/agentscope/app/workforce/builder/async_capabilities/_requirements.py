@@ -1,8 +1,8 @@
-"""Builder-owned Phase-A schemas; not shared production contracts."""
+"""Builder-owned extraction schemas; policy aligned with Lifecycle's proposal."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, StrictBool, model_validator
 
 from ...contracts import BusinessProfile, ToolEffect, WorkforceModel
 
@@ -18,14 +18,15 @@ class CapabilityRequirement(WorkforceModel):
 class HandlingPolicyProposal(WorkforceModel):
     """Proposed portable policy awaiting shared-contract integration."""
 
-    schema_version: Literal["1"] = "1"
-    capabilities: tuple[str, ...] = Field(min_length=1)
-    event_types: tuple[str, ...] = ()
-    required_facts: tuple[str, ...] = ()
+    schema_version: Literal["1"]
+    capabilities: tuple[Annotated[str, Field(min_length=1)], ...] = Field(min_length=1)
+    event_types: tuple[Annotated[str, Field(min_length=1)], ...] = Field(min_length=1)
+    required_facts: tuple[Annotated[str, Field(min_length=1)], ...] = Field(
+        min_length=1
+    )
     completion_condition: str = Field(min_length=1, max_length=2000)
-    human_confirmation: bool
-    timeout_seconds: int = Field(gt=0)
-    timeout_behavior: Literal["request_attention", "query_status"]
+    human_confirmation: StrictBool
+    timeout_behavior: Literal["needs_attention", "status_query"]
 
 
 class AgentRequirement(WorkforceModel):
