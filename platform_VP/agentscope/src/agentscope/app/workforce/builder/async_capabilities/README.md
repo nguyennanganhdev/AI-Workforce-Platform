@@ -7,7 +7,13 @@ Task bổ sung của owner: **BHN-12–BHN-14**; chọn phần tương ứng ph�
 
 Phạm vi: Requirements và sinh policy theo dõi; reuse/revise, missing capability.
 
-File dự kiến khi triển khai: `_requirements.py`, `_selector.py`, `_validator.py`. Đây chỉ là gợi ý chia file; chưa có code được tạo trong folder.
+File theo phạm vi triển khai: `_requirements.py`, `_selector.py`, `_validator.py`. Phase A đã có schema trong `_requirements.py`; selector và validator nghiệp vụ dành cho phase sau.
+
+## Phase A — schema nội bộ Builder
+
+`_requirements.py` đã bổ sung `BuildRequirements`, `AgentRequirement`, `CapabilityRequirement` và `HandlingPolicyProposal`. Đây là schema đề xuất nội bộ, tái sử dụng `BusinessProfile`/`WorkforceModel`; chưa thay thế DTO production chung và chưa có selector/service/runtime. `tracking_intent` diễn tả yêu cầu năng lực, không quyết định trạng thái workflow thực tế.
+
+Samples và test nằm tại `tests/workforce/builder/async_capabilities/`. Các điểm cần chốt với owner hợp đồng nằm trong `docs/workforce/handoffs/bui-huu-nghia/INTEGRATION_REQUEST_BHN_PHASE_A.md`.
 
 Nguyên tắc triển khai:
 
@@ -17,4 +23,4 @@ Nguyên tắc triển khai:
 - Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
 - Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
 
-Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+Phase A chỉ có schema nội bộ và test boundary bằng fake. Chưa triển khai API, worker, migration hoặc tích hợp production.

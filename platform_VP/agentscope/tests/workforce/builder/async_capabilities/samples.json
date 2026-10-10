@@ -1,0 +1,870 @@
+{
+  "valid": [
+    {
+      "name": "read_only_sync",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "lookup",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Lookup information",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "lookup"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "read_only"
+            },
+            "capabilities": [
+              {
+                "capability": "lookup",
+                "reason": "requested lookup"
+              }
+            ],
+            "effect": "read",
+            "tracking_intent": "create_only"
+          }
+        ]
+      }
+    },
+    {
+      "name": "create_only_confirmed",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "create",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Create work",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "create"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "require_approval"
+            },
+            "capabilities": [
+              {
+                "capability": "create",
+                "reason": "create work"
+              }
+            ],
+            "effect": "external_operation",
+            "tracking_intent": "create_only"
+          }
+        ]
+      }
+    },
+    {
+      "name": "pending_event_tracking",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "create",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Create work",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "create"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "require_approval"
+            },
+            "capabilities": [
+              {
+                "capability": "create",
+                "reason": "create work"
+              }
+            ],
+            "effect": "external_operation",
+            "tracking_intent": "track_to_completion",
+            "policy_proposal": {
+              "capabilities": [
+                "create"
+              ],
+              "event_types": [
+                "completed"
+              ],
+              "required_facts": [
+                "status"
+              ],
+              "completion_condition": "verified status is completed",
+              "human_confirmation": true,
+              "timeout_seconds": 3600,
+              "timeout_behavior": "request_attention"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "status_query_fallback",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "create",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Create work",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "create"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "require_approval"
+            },
+            "capabilities": [
+              {
+                "capability": "create",
+                "reason": "create work"
+              }
+            ],
+            "effect": "external_operation",
+            "tracking_intent": "track_to_completion",
+            "policy_proposal": {
+              "capabilities": [
+                "create"
+              ],
+              "event_types": [],
+              "required_facts": [
+                "status"
+              ],
+              "completion_condition": "verified status is completed",
+              "human_confirmation": true,
+              "timeout_seconds": 3600,
+              "timeout_behavior": "query_status"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "clarify_tracking",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "create",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Create work",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "create"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "require_approval"
+            },
+            "capabilities": [
+              {
+                "capability": "create",
+                "reason": "create work"
+              }
+            ],
+            "effect": "external_operation",
+            "tracking_intent": "unspecified",
+            "clarification_questions": [
+              "Should the agent track completion?"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "independent_batch",
+      "payload": {
+        "mode": "batch",
+        "agents": [
+          {
+            "agent_key": "lookup",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Lookup information",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "lookup"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "read_only"
+            },
+            "capabilities": [
+              {
+                "capability": "lookup",
+                "reason": "requested lookup"
+              }
+            ],
+            "effect": "read",
+            "tracking_intent": "create_only"
+          },
+          {
+            "agent_key": "create",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Create work",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "create"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "require_approval"
+            },
+            "capabilities": [
+              {
+                "capability": "create",
+                "reason": "create work"
+              }
+            ],
+            "effect": "external_operation",
+            "tracking_intent": "track_to_completion",
+            "policy_proposal": {
+              "capabilities": [
+                "create"
+              ],
+              "event_types": [
+                "completed"
+              ],
+              "required_facts": [
+                "status"
+              ],
+              "completion_condition": "verified status is completed",
+              "human_confirmation": true,
+              "timeout_seconds": 3600,
+              "timeout_behavior": "request_attention"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "forbidden_scope",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "lookup",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Lookup information",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "lookup"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "read_only"
+            },
+            "capabilities": [
+              {
+                "capability": "lookup",
+                "reason": "requested lookup"
+              }
+            ],
+            "effect": "read",
+            "tracking_intent": "create_only",
+            "scope": "forged"
+          }
+        ]
+      }
+    },
+    {
+      "name": "forbidden_group_id",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "lookup",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Lookup information",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "lookup"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "read_only"
+            },
+            "capabilities": [
+              {
+                "capability": "lookup",
+                "reason": "requested lookup"
+              }
+            ],
+            "effect": "read",
+            "tracking_intent": "create_only",
+            "group_id": "forged"
+          }
+        ]
+      }
+    },
+    {
+      "name": "forbidden_workflow_id",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "lookup",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Lookup information",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "lookup"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "read_only"
+            },
+            "capabilities": [
+              {
+                "capability": "lookup",
+                "reason": "requested lookup"
+              }
+            ],
+            "effect": "read",
+            "tracking_intent": "create_only",
+            "workflow_id": "forged"
+          }
+        ]
+      }
+    },
+    {
+      "name": "forbidden_credential",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "lookup",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Lookup information",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "lookup"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "read_only"
+            },
+            "capabilities": [
+              {
+                "capability": "lookup",
+                "reason": "requested lookup"
+              }
+            ],
+            "effect": "read",
+            "tracking_intent": "create_only",
+            "credential": "forged"
+          }
+        ]
+      }
+    },
+    {
+      "name": "runtime_policy_id",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "create",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Create work",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "create"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "require_approval"
+            },
+            "capabilities": [
+              {
+                "capability": "create",
+                "reason": "create work"
+              }
+            ],
+            "effect": "external_operation",
+            "tracking_intent": "track_to_completion",
+            "policy_proposal": {
+              "capabilities": [
+                "create"
+              ],
+              "event_types": [
+                "completed"
+              ],
+              "required_facts": [
+                "status"
+              ],
+              "completion_condition": "verified status is completed",
+              "human_confirmation": true,
+              "timeout_seconds": 3600,
+              "timeout_behavior": "request_attention",
+              "external_job_id": "fixed"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid_timeout",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "create",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Create work",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "create"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "require_approval"
+            },
+            "capabilities": [
+              {
+                "capability": "create",
+                "reason": "create work"
+              }
+            ],
+            "effect": "external_operation",
+            "tracking_intent": "track_to_completion",
+            "policy_proposal": {
+              "capabilities": [
+                "create"
+              ],
+              "event_types": [
+                "completed"
+              ],
+              "required_facts": [
+                "status"
+              ],
+              "completion_condition": "verified status is completed",
+              "human_confirmation": true,
+              "timeout_seconds": 0,
+              "timeout_behavior": "request_attention"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "tracking_without_policy",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "create",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Create work",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "create"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "require_approval"
+            },
+            "capabilities": [
+              {
+                "capability": "create",
+                "reason": "create work"
+              }
+            ],
+            "effect": "external_operation",
+            "tracking_intent": "track_to_completion"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unspecified_without_question",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "create",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Create work",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "create"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "require_approval"
+            },
+            "capabilities": [
+              {
+                "capability": "create",
+                "reason": "create work"
+              }
+            ],
+            "effect": "external_operation",
+            "tracking_intent": "unspecified",
+            "clarification_questions": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "read_only_tracking",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "create",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Create work",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "create"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "require_approval"
+            },
+            "capabilities": [
+              {
+                "capability": "create",
+                "reason": "create work"
+              }
+            ],
+            "effect": "read",
+            "tracking_intent": "track_to_completion",
+            "policy_proposal": {
+              "capabilities": [
+                "create"
+              ],
+              "event_types": [
+                "completed"
+              ],
+              "required_facts": [
+                "status"
+              ],
+              "completion_condition": "verified status is completed",
+              "human_confirmation": true,
+              "timeout_seconds": 3600,
+              "timeout_behavior": "request_attention"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "create_only_async_policy",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "create",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Create work",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "create"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "require_approval"
+            },
+            "capabilities": [
+              {
+                "capability": "create",
+                "reason": "create work"
+              }
+            ],
+            "effect": "external_operation",
+            "tracking_intent": "create_only",
+            "policy_proposal": {
+              "capabilities": [
+                "create"
+              ],
+              "event_types": [
+                "completed"
+              ],
+              "required_facts": [
+                "status"
+              ],
+              "completion_condition": "verified status is completed",
+              "human_confirmation": true,
+              "timeout_seconds": 3600,
+              "timeout_behavior": "request_attention"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "multiple_single",
+      "payload": {
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "lookup",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Lookup information",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "lookup"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "read_only"
+            },
+            "capabilities": [
+              {
+                "capability": "lookup",
+                "reason": "requested lookup"
+              }
+            ],
+            "effect": "read",
+            "tracking_intent": "create_only"
+          },
+          {
+            "agent_key": "create",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Create work",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "create"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "require_approval"
+            },
+            "capabilities": [
+              {
+                "capability": "create",
+                "reason": "create work"
+              }
+            ],
+            "effect": "external_operation",
+            "tracking_intent": "track_to_completion",
+            "policy_proposal": {
+              "capabilities": [
+                "create"
+              ],
+              "event_types": [
+                "completed"
+              ],
+              "required_facts": [
+                "status"
+              ],
+              "completion_condition": "verified status is completed",
+              "human_confirmation": true,
+              "timeout_seconds": 3600,
+              "timeout_behavior": "request_attention"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate_agent_key",
+      "payload": {
+        "mode": "batch",
+        "agents": [
+          {
+            "agent_key": "lookup",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Lookup information",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "lookup"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "read_only"
+            },
+            "capabilities": [
+              {
+                "capability": "lookup",
+                "reason": "requested lookup"
+              }
+            ],
+            "effect": "read",
+            "tracking_intent": "create_only"
+          },
+          {
+            "agent_key": "lookup",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Create work",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "create"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "require_approval"
+            },
+            "capabilities": [
+              {
+                "capability": "create",
+                "reason": "create work"
+              }
+            ],
+            "effect": "external_operation",
+            "tracking_intent": "track_to_completion",
+            "policy_proposal": {
+              "capabilities": [
+                "create"
+              ],
+              "event_types": [
+                "completed"
+              ],
+              "required_facts": [
+                "status"
+              ],
+              "completion_condition": "verified status is completed",
+              "human_confirmation": true,
+              "timeout_seconds": 3600,
+              "timeout_behavior": "request_attention"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate_capability",
+      "payload": {
+        "schema_version": "1",
+        "mode": "single",
+        "agents": [
+          {
+            "agent_key": "lookup",
+            "business_profile": {
+              "profile_schema_version": "1",
+              "objective": "Lookup information",
+              "responsibilities": [
+                "lookup"
+              ],
+              "capabilities": [
+                "lookup"
+              ],
+              "input_contract": {},
+              "output_contract": {},
+              "business_scope": "manager-owned library",
+              "execution_policy": "read_only"
+            },
+            "capabilities": [
+              {
+                "capability": "lookup",
+                "reason": "requested lookup"
+              },
+              {
+                "capability": "lookup",
+                "reason": "requested lookup"
+              }
+            ],
+            "effect": "read",
+            "tracking_intent": "create_only"
+          }
+        ]
+      }
+    }
+  ]
+}
