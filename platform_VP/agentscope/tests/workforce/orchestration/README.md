@@ -6,7 +6,7 @@ Phạm vi lane: Leader chọn group khi có request, chat/@agent và context t�
 
 Đọc [kế hoạch triển khai chung](../../../docs/workforce/KE_HOACH_TRIEN_KHAI.md) trước khi code, đặc biệt hợp đồng mục 6 và phần công việc mang đúng họ tên.
 
-Thư mục này mới là khung phân vùng công việc, chưa triển khai tính năng. Chủ sở hữu tạo code/test và file con tại đây; không sửa module của thành viên khác.
+Ngày 10/10/2026 đã có pytest/unittest suites và React behavior checker. Chạy từ gốc agentscope: `.venv/Scripts/python.exe -m pytest tests/workforce/orchestration -q`. Xem [STATUS](../../../docs/workforce/handoffs/phan-huy-hoang/STATUS.md) cho môi trường, kết quả và giới hạn; fake/SQLite tests không thay PostgreSQL/runtime integration.
 
 Ghi tiến độ và yêu cầu tích hợp ở [thư mục bàn giao](../../../docs/workforce/handoffs/phan-huy-hoang/README.md). File core, contracts dùng chung, migration, dependency và global route cần chuyển cho Nguyễn Chí Hoàng theo kế hoạch.
 

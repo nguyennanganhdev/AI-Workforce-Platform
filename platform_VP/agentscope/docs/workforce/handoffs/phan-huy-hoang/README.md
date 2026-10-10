@@ -1,6 +1,6 @@
 # Bàn giao — Phan Huy Hoàng
 
-Branch đề xuất: `feat/wf-orchestration`. Đầu việc: **PHH-01–PHH-17**.
+Nhánh bàn giao theo yêu cầu người dùng: `dev2PHH` (triển khai local trước đó: `feat/wf-orchestration`). Đầu việc: **PHH-01–PHH-17**.
 
 Phạm vi: Leader chọn group khi có request, chat/@agent và context từ thư viện agent chung.
 
@@ -8,7 +8,9 @@ Phạm vi: Leader chọn group khi có request, chat/@agent và context từ th�
 
 Khi triển khai, tạo `STATUS.md` theo mẫu ở mục 16. Mỗi yêu cầu đổi contract/hook/file chung ghi vào `INTEGRATION_REQUEST_<task-id>.md` theo mục 14.
 
-Hiện tại chưa có task được đánh dấu hoàn thành; việc tạo thư mục này không chứng minh module đã được code/test.
+Đã bắt đầu code/test ngày 10/10/2026, có [STATUS.md](STATUS.md), [kế hoạch 3 giai đoạn](KE_HOACH_PHH_3_GIAI_DOAN.md) và [integration request](INTEGRATION_REQUEST_PHH_FOUNDATION.md). Chưa có task được đánh dấu hoàn thành end-to-end; đọc STATUS để biết bằng chứng local và phần còn thiếu.
+
+Danh mục kiểm thử mở rộng: [G1 — 55 kịch bản](KICH_BAN_TEST_G1.md), [G2 — 55 kịch bản](KICH_BAN_TEST_G2.md), [G3 — 55 kịch bản](KICH_BAN_TEST_G3.md). Mỗi giai đoạn có 50 ca tự động local và 5 ca tích hợp cần môi trường thật; kết quả và cách chạy tại [TEST_RESULTS.md](TEST_RESULTS.md).
 
 Nguyên tắc batch của bản 1.2 được giữ ở bản 1.3: PHH-02/03/04/12 chọn agent từ toàn bộ thư viện khi có request, tạo group/session lúc đó, không lọc theo batch. Run hiện tại giữ version pin; request mới chọn subset/version phù hợp mà không cần phát hành team. Đọc mục 2.3, 2.5 và 6 của kế hoạch trước khi code; nội dung này thay thế cách hiểu team artifact ở bản trước. Đây là đầu việc cần triển khai, chưa phải tính năng đã hoàn thành.
 

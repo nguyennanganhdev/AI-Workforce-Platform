@@ -1,0 +1,26 @@
+"""Module-local storage seam; Foundation supplies UOW and real DB wiring.
+
+Every get is owner-filtered. Save uses expected revision and increments it.
+Insert must reject duplicates. UOW has rollback semantics and must serialize
+the conversation/run rows touched by the transaction. No implementation here
+silently substitutes fake persistence in production.
+"""
+
+from typing import Any, AsyncContextManager, Protocol
+
+
+class OrchestrationRepository(Protocol):
+    def transaction(self) -> AsyncContextManager[Any]: ...
+    async def get(self, kind: str, scope: tuple, record_id: str, uow: Any) -> Any: ...
+    async def insert(self, kind: str, record: Any, uow: Any) -> None: ...
+    async def save(self, kind: str, record: Any, expected_revision: int, uow: Any) -> Any: ...
+
+
+class IdentityDependency(Protocol):
+    async def check_scope_active(self, scope: Any, uow: Any = None) -> None: ...
+
+
+class PublishedCatalogDependency(Protocol):
+    async def list_candidates(self, scope: Any, capabilities: tuple[str, ...]) -> Any: ...
+    async def get_version(self, scope: Any, version_id: str) -> Any: ...
+    async def get_deployment(self, scope: Any, deployment_id: str) -> Any: ...
