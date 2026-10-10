@@ -17,4 +17,8 @@ Nguyên tắc triển khai:
 - Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
 - Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
 
-Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+Phase A đã export `AsyncToolProtocol`, `EventMapping`: cấu hình có validation,
+snapshot reference/hash và schema/samples. Xem
+[PHASE_A.md](../../../../../../docs/workforce/handoffs/nguyen-phuong-dong/PHASE_A.md).
+Fake `AsyncProtocolPort` và contract tests nằm trong lane test Registry.
+Chưa triển khai service/persistence, normalizer production, API, worker hoặc migration.
