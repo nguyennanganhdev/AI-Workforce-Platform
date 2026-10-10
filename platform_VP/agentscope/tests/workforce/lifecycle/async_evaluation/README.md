@@ -17,4 +17,6 @@ Nguyên tắc triển khai:
 - Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
 - Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
 
-Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+Đã có `test_evaluation.py` và `test_version_pins.py`, dùng fake ports trong
+folder cha cùng SQL repository thật. Chạy được với SQLite hoặc PostgreSQL test
+DB; không gọi provider/model thật. Xem STATUS để biết bằng chứng và giới hạn.

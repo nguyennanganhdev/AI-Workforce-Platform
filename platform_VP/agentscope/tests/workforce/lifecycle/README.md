@@ -6,7 +6,10 @@ Phạm vi lane: vòng đời riêng từng agent, batch publish, thư viện chu
 
 Đọc [kế hoạch triển khai chung](../../../docs/workforce/KE_HOACH_TRIEN_KHAI.md) trước khi code, đặc biệt hợp đồng mục 6 và phần công việc mang đúng họ tên.
 
-Thư mục này mới là khung phân vùng công việc, chưa triển khai tính năng. Chủ sở hữu tạo code/test và file con tại đây; không sửa module của thành viên khác.
+Tests hiện có kiểm tra SQL/CAS/unique/atomic publish, draft/reuse/batch,
+validation/gates, API scope/error, restart/cancel, async snapshots và version
+pins. Fakes chỉ ở `_fakes.py`. `frontend/` có DOM behavior tests và runner trong
+copy tạm. Xem STATUS trong handoff để biết lệnh chạy và bằng chứng PostgreSQL.
 
 Ghi tiến độ và yêu cầu tích hợp ở [thư mục bàn giao](../../../docs/workforce/handoffs/pho-tien-anh/README.md). File core, contracts dùng chung, migration, dependency và global route cần chuyển cho Nguyễn Chí Hoàng theo kế hoạch.
 
