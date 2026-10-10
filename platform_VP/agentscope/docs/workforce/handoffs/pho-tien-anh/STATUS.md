@@ -65,3 +65,60 @@ retention. Các mốc này chưa nằm trong đầu ra nghiệm thu hiện tại
 
 API, UI, migration, provider/runner adapter và live E2E chưa thuộc bằng chứng
 kiểm tra Phase A. Không có network call tới model hoặc provider trong bộ test này.
+
+## Cập nhật Phase B — 10/10/2026
+
+Đã hoàn thành phần độc lập
+**async validation/suites với fake runner** ở mục 17.9, tiếp nối Phase A.
+Không dùng điều kiện chờ review Phase A trong ghi chú cũ để dừng nhiệm vụ đã
+được giao; các contract proposal còn mở vẫn được ghi rõ và không tự promote.
+
+Task phần đã làm: PTA-14 validation/hash/frozen evidence; PTA-03/05/06/15
+suite/grading/report với shared EvaluationRunnerPort, mock-only; stale-eval
+guard phục vụ PTA-07/16. Chưa hoàn thành toàn bộ PTA-01–PTA-16.
+
+Files: `lifecycle/async_evaluation/{_validation,_suites,_evaluation}.py`,
+exports `__init__.py`, owned `test_phase_b.py`, frontend
+`agents/async_evaluation/{EvaluationReport.tsx,index.ts}`, tài liệu Phase B và
+integration request. Type hints phần mới dùng `typing`.
+Không sửa README bàn giao (đã có diff của user trước phiên), không commit.
+
+Public exports: `AsyncDraftValidator`, `validate_async_draft`, `canonical_hash`,
+`FrozenEvaluation`, `freeze_evaluation`, `LifecycleSuite`, `LifecycleCase`,
+`ExpectedTurn`, `lifecycle_suite`, `TurnEvidence`, `grade_case`,
+`AsyncEvaluationService`, `check_release_evidence`. Shared DTO/schema Phase A
+được giữ nguyên. Suite `pta-lifecycle-1`, gate `pta-gate-1`.
+
+Test: **63 passed, 153 subtests passed** trên Lifecycle/Foundation/Builder/
+Registry; Black formatting, Flake8, TypeScript build, scoped ESLint pass.
+Bằng chứng scope/hash/drift/missing coverage/invalid policy, zero LLM idle,
+duplicate side effects, missing consent, false completion, cross-audience,
+secret/budget/unbound-tool/argument hard gates, stale report và serialization.
+Các event là stimuli test, không event IDs đã persist ở provider inbox.
+
+Mock/live: fake runner/clock trong test; production service không mock thành
+công. Chưa DB/runtime/HTTP/provider E2E, browser QA hoặc sandbox onboarding.
+Không có migration/dependency mới. Open: canonical policy resolver, detailed
+protocol resolver, PHH runtime metrics, usage/checkpoint retention, jobs/API/
+UI composition. Phase C nối runtime thật; Phase D kiểm tra publish pin/long
+wait/revoke/restart/retention. Không ghi bảng workflow của PHH.
+
+Chi tiết, lệnh tái chạy và giới hạn: [PHASE_B.md](PHASE_B.md).
+Yêu cầu owner: [INTEGRATION_REQUEST_PTA_PHASE_B.md](INTEGRATION_REQUEST_PTA_PHASE_B.md).
+
+UI SSR smoke pass: loading/error/empty, failed case, từng lượt và escaping HTML.
+`git diff --check` phần PTA sửa pass; full-tree check báo blank line EOF trong
+README bàn giao đã có sẵn, giữ nguyên theo yêu cầu user.
+
+## Rà soát lần hai — 10/10/2026
+
+Đã sửa 3 lỗi trong Phase B: freeze không gắn validation cũ với manifest mới;
+runner error/nonterminal không được pass; release gate dùng cùng ngưỡng ≥90%
+và zero hard gates với evaluation, tính lại aggregate metrics trước phát hành.
+Thêm 3 regression tests (đã thấy fail trước sửa, pass sau sửa), gồm guard
+phát hiện report completion bị tự thay. Không thay shared DTO/schema hoặc UI.
+
+Kết quả mới nhất: **66 passed, 153 subtests passed** trên Lifecycle/Foundation/
+Builder/Registry; Black --check, Flake8, TypeScript build và scoped ESLint pass.
+Không sửa README bàn giao, không commit. Runtime/DB/provider/live và browser
+QA vẫn chưa chạy; không nâng trạng thái nghiệm thu C/D từ tests Phase B.
