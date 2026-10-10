@@ -4,6 +4,14 @@ Branch đề xuất: `feat/wf-registry`. Đầu việc: **NPD-01–NPD-12**.
 
 Phạm vi: MCP catalog, kết nối, discovery và kho tool đã đăng ký.
 
+## Phase B — 2026-10-10
+
+Đã triển khai phần độc lập protocol service/normalizer/readiness UI với injected
+repository và verified inbox reader. Xem [PHASE_B.md](PHASE_B.md),
+[STATUS.md](STATUS.md) và [INTEGRATION_REQUEST_NPD_PHASE_B.md](INTEGRATION_REQUEST_NPD_PHASE_B.md).
+Migration/composition, nối Execution và API/UI runtime thuộc Phase C; chưa
+đánh dấu hoàn thành toàn bộ NPD-10–12 hoặc gate endpoint MCP.
+
 ## Phase A — 2026-10-10
 
 Đã triển khai phần nhịp A mục 17.9: cấu hình protocol có validation, ordering/mapping,

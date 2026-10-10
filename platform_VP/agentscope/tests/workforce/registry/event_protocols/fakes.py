@@ -1,13 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Phase-A fake only: no network, persistence, credential lookup or auth."""
+"""Test-only protocol/storage doubles; no network or real auth/credentials."""
 
 from collections.abc import Sequence
 from datetime import datetime
-import hashlib
-import json
-
-from jsonschema import Draft202012Validator
-from referencing import Registry
 
 from agentscope.app.workforce.contracts import (
     ActorContext,
@@ -21,6 +16,9 @@ from agentscope.app.workforce.contracts import (
     WorkforceErrorCode,
 )
 from agentscope.app.workforce.registry.event_protocols import AsyncToolProtocol
+from agentscope.app.workforce.registry.event_protocols._normalizer import (
+    normalize_event,
+)
 
 
 class FakeAsyncProtocolPort:
@@ -93,39 +91,82 @@ class FakeAsyncProtocolPort:
             or protocol.provider_integration_id != self.provider_integration_id
         ):
             raise PermissionError("provider namespace mismatch")
-        if envelope.schema_version != protocol.event_schema_version:
-            raise ValueError("event schema version mismatch")
-        if protocol.ordering == "provider_version" and (
-            envelope.provider_version is None
-        ):
-            raise ValueError("provider_version is required")
-        mapping = protocol.event_mappings[envelope.event_type]
-        Draft202012Validator(
-            mapping.data_schema,
-            registry=Registry(),
-        ).validate(envelope.data)
-        source = json.dumps(
-            envelope.model_dump(mode="json"),
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            allow_nan=False,
-        )
-        return NormalizedJobEvent(
+        return normalize_event(
+            protocol,
+            envelope,
             inbox_event_id=self.inbox_event_id,
             provider_integration_id=self.provider_integration_id,
-            external_event_id=envelope.external_event_id,
-            external_job_id=envelope.external_job_id,
-            client_reference=envelope.client_reference,
-            normalized_status=mapping.status,
-            facts={
-                k: envelope.data[k]
-                for k in mapping.fact_fields
-                if k in envelope.data
-            },
-            provider_version=envelope.provider_version,
-            protocol_schema_hash=protocol_snapshot.schema_hash,
-            source_hash=hashlib.sha256(source.encode()).hexdigest(),
-            occurred_at=envelope.occurred_at,
             received_at=self.received_at,
         )
+
+
+class FakeAsyncProtocolRepository:
+    """Test-only atomic repository; serialized content cannot be mutated."""
+
+    def __init__(self) -> None:
+        self.snapshots = {}
+        self.current = {}
+        self.uows = []
+
+    @staticmethod
+    def _scope(scope):
+        return tuple(scope.model_dump().values())
+
+    def _key(self, scope, ref):
+        return (
+            self._scope(scope),
+            ref.tool_version_id,
+            ref.protocol_id,
+            ref.protocol_version,
+        )
+
+    async def publish(self, scope, protocol, expected_snapshot, uow=None):
+        ref = protocol.snapshot_ref
+        key = self._key(scope, ref)
+        previous = self.snapshots.get(key)
+        if previous is not None and (
+            AsyncToolProtocol.model_validate_json(previous).snapshot_ref != ref
+        ):
+            raise WorkforceContractError(
+                WorkforceErrorCode.IDEMPOTENCY_CONFLICT,
+                "protocol version already has different content",
+            )
+        current_key = (self._scope(scope), protocol.tool_version_id)
+        current, enabled = self.current.get(current_key, (None, True))
+        if current == ref:
+            return
+        if current != expected_snapshot:
+            raise WorkforceContractError(
+                WorkforceErrorCode.REVISION_CONFLICT,
+                "current protocol changed",
+            )
+        self.uows.append(uow)
+        self.snapshots[key] = protocol.model_dump_json()
+        self.current[current_key] = (ref, enabled)
+
+    async def get_current(self, scope, tool_version_id):
+        ref, enabled = self.current[(self._scope(scope), tool_version_id)]
+        return await self.get_pinned(scope, ref), enabled
+
+    async def get_pinned(self, scope, ref):
+        return AsyncToolProtocol.model_validate_json(
+            self.snapshots[self._key(scope, ref)],
+        )
+
+    async def set_enabled(
+        self,
+        scope,
+        tool_version_id,
+        enabled,
+        expected_snapshot,
+        uow=None,
+    ):
+        key = (self._scope(scope), tool_version_id)
+        current, _ = self.current[key]
+        if current != expected_snapshot:
+            raise WorkforceContractError(
+                WorkforceErrorCode.REVISION_CONFLICT,
+                "current protocol changed",
+            )
+        self.uows.append(uow)
+        self.current[key] = (current, enabled)

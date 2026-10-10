@@ -7,7 +7,8 @@ Task bổ sung của owner: **NPD-10–NPD-12**; chọn phần tương ứng ph�
 
 Phạm vi: UI theo dõi readiness Provider Event API/MCP query/correlation, không quản lý SSE transport của Chí Hoàng.
 
-File dự kiến khi triển khai: `index.ts`, `EventChannelsPanel.tsx`, `api.ts`. Đây chỉ là gợi ý chia file; chưa có code được tạo trong folder.
+Files hiện có: `index.ts`, `EventChannelsPanel.tsx`, `readiness.ts`.
+API/transport do shell inject khi nối Phase C.
 
 Nguyên tắc triển khai:
 
@@ -17,4 +18,10 @@ Nguyên tắc triển khai:
 - Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
 - Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
 
-Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+Phase B export `EventChannelsPanel` và `EventChannelView` qua `index.ts`.
+Caller inject channels/loading/error/onRetry; dùng house components, không tự tạo
+transport hoặc root route. Readiness tách capability cấu hình khỏi auth/binding/
+correlation thực tế; disable call mới không che reception hợp lệ cho job cũ.
+Blocker dùng mã allowlist, không render raw error/credential/secret.
+Tests và điểm nối API/shell Phase C xem
+[PHASE_B.md](../../../../../../../../docs/workforce/handoffs/nguyen-phuong-dong/PHASE_B.md).
