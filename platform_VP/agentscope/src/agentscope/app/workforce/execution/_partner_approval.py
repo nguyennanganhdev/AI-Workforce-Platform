@@ -75,8 +75,13 @@ class PartnerApprovalService:
                 ),
                 uow=uow,
             )
+            command = value(command)
             if not command["is_new"]:
                 cached = command["result"]
+                if cached is None:
+                    raise ExecutionError(
+                        "COMMAND_RESULT_UNAVAILABLE", retryable=True
+                    )
                 if isinstance(cached, RequestResult):
                     return cached.data
                 cached = value(cached)

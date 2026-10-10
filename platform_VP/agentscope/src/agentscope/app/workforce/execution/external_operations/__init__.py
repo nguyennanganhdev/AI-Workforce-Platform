@@ -3,5 +3,12 @@
 
 from ._service import ExternalOperationService
 from ._reconciliation import OperationReconciler
+from ._protocol import ExecutionProtocolAdapter
+from ._adapter import ExternalOperationAdapter
 
-__all__ = ["ExternalOperationService", "OperationReconciler"]
+__all__ = [
+    "ExternalOperationService",
+    "OperationReconciler",
+    "ExecutionProtocolAdapter",
+    "ExternalOperationAdapter",
+]

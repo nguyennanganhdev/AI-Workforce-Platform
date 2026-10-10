@@ -46,6 +46,8 @@ class ProviderEventProcessor:
                     principal,
                     op["protocol"],
                     envelope,
+                    inbox_event_id=row["id"],
+                    received_at=row["received_at"],
                 )
                 event = dict(event)
                 event.update(

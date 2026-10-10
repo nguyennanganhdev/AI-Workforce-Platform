@@ -12,6 +12,7 @@ from ._calculator import calculate
 from ._effects import SIDE_EFFECTS, classify
 from ._mcp_adapter import validate
 from ._utils import ExecutionError, digest, freeze, value
+from .external_operations._protocol import protocol_hash
 
 
 class ExecutionGateway:
@@ -78,7 +79,7 @@ class ExecutionGateway:
                     Scope.model_validate(scope), descriptor["tool_version_id"]
                 )
             )
-            if digest(protocol) != descriptor["async_protocol_hash"]:
+            if protocol_hash(protocol) != descriptor["async_protocol_hash"]:
                 raise ExecutionError("ASYNC_PROTOCOL_PIN_MISMATCH", 403)
         async with self.repo.transaction() as uow:
             context, descriptor = await self.policy.check(

@@ -1,5 +1,8 @@
 # Kiểm chứng Execution — Phan Hoàng Dũng
 
+Ghi chép lịch sử trước baseline `53a139b`. Kết quả/lệnh hiện tại sau code PHH
+và hoàn thiện Phase A/B được ghi ở [PHASE_B.md](PHASE_B.md) và [STATUS.md](STATUS.md).
+
 Ngày 10/10/2026; baseline cũ `6bc7d60`, lần nối contracts Phase A dựa trên HEAD `383a387`, branch `feat/wf-execution`. Đã kiểm tra output Chí Hoàng ở `1ff8fb6`/`a99d506`. Đây là kiểm chứng module/DTO interoperability và regression SDK, chưa nghiệm thu toàn platform. Phạm vi và đầu ra còn thiếu: [STATUS.md](STATUS.md).
 
 ## Kết quả đã chạy
@@ -48,7 +51,7 @@ Ruff/mypy dùng Python tooling có sẵn của workspace. Dependencies frontend 
 3. `test_cases_80_84_85_86_ticket_context_and_mismatch`.
 4. `test_case_87_parallel_start_has_one_binding_and_group`.
 
-Ba test cuối cần `WORKFORCE_E2E_FACTORY=module:function` từ composition thật: app, DB, worker, auth/mapping và Registry/Builder/Lifecycle/Orchestration. Chi tiết interface và coverage cases 56–88 ở [PHD-11](INTEGRATION_REQUEST_PHD-11.md). Không tạo Customer API hoặc runtime giả để làm các test này pass.
+Ba test cuối cần `WORKFORCE_E2E_FACTORY=module:function` từ composition thật: app, DB, worker, auth/mapping và Registry/Builder/Lifecycle/Orchestration. Chi tiết gate/factory đã gộp vào [PHASE_B.md](PHASE_B.md). Không tạo Customer API hoặc runtime giả để làm các test này pass.
 
 ## Bằng chứng và phần chưa xác minh
 

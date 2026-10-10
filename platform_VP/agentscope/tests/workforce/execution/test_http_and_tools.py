@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
+import pytest
 from fastapi import FastAPI
 from sqlalchemy import insert, select
 
@@ -38,8 +39,20 @@ def run(test):
 class Commands:
     """TEST ONLY shared namespace fake backed by the same transaction."""
 
-    def __init__(self, env):
+    def __init__(self, env, typed_claim=False):
         self.env = env
+        self.typed_claim = typed_claim
+
+    def claim(self, **fields):
+        if not self.typed_claim:
+            return fields
+        from agentscope.app.workforce.orchestration.workflows.phase_a import (
+            CommandClaimResult,
+        )
+
+        return CommandClaimResult(
+            status="accepted" if fields["is_new"] else "completed", **fields
+        )
 
     async def authorize_approval(self, actor, approval_id, body, uow):
         record = await self.env.repo.get(
@@ -75,15 +88,13 @@ class Commands:
             payload = rows[0]["payload"]
             if payload["hash"] != payload_hash:
                 raise ExecutionError("IDEMPOTENCY_CONFLICT")
-            return {
-                "is_new": False,
-                "request_id": request_id,
-                "result": payload["result"],
-            }
+            return self.claim(
+                is_new=False, request_id=request_id, result=payload["result"]
+            )
         await uow.execute(
             insert(test_events).values(id=key, payload={"hash": payload_hash})
         )
-        return {"is_new": True, "request_id": request_id}
+        return self.claim(is_new=True, request_id=request_id)
 
     async def record_result(self, request_id, result, uow):
         from sqlalchemy import update
@@ -112,7 +123,7 @@ class Commands:
         )
 
 
-def app_fixture(env, manager_scope=SCOPE_A):
+def app_fixture(env, manager_scope=SCOPE_A, typed_claim=False):
     app = FastAPI()
 
     async def manager():
@@ -121,7 +132,9 @@ def app_fixture(env, manager_scope=SCOPE_A):
     async def customer():
         return ActorContext.model_validate(PARTNER)
 
-    partner_approvals = PartnerApprovalService(env.approvals, Commands(env))
+    partner_approvals = PartnerApprovalService(
+        env.approvals, Commands(env, typed_claim)
+    )
     app.include_router(
         create_router(
             env.gateway,
@@ -226,7 +239,8 @@ def test_http_execution_owner_and_no_public_execute_endpoint():
     run(scenario)
 
 
-def test_partner_consent_shared_idempotency_and_ticket_binding():
+@pytest.mark.parametrize("typed_claim", [False, True])
+def test_partner_consent_shared_idempotency_and_ticket_binding(typed_claim):
     async def scenario():
         async with harness() as env:
             env.runtime.contexts["run-A"]["allowed_decider"] = {
@@ -251,7 +265,9 @@ def test_partner_consent_shared_idempotency_and_ticket_binding():
                 "quote_ref": approval["quote"]["quote_ref"],
             }
             async with httpx.AsyncClient(
-                transport=httpx.ASGITransport(app=app_fixture(env)),
+                transport=httpx.ASGITransport(
+                    app=app_fixture(env, typed_claim=typed_claim)
+                ),
                 base_url="http://test",
             ) as client:
                 path = (
@@ -271,6 +287,11 @@ def test_partner_consent_shared_idempotency_and_ticket_binding():
                 replay = await client.post(path, json=body)
                 assert first.status_code == replay.status_code == 202
                 assert first.json() == replay.json()
+                env.runtime.active = False
+                denied_replay = await client.post(path, json=body)
+                assert denied_replay.status_code == 403
+                assert env.provider.calls == 0
+                env.runtime.active = True
                 conflict = await client.post(
                     path, json={**body, "decision": "reject"}
                 )
