@@ -1,11 +1,13 @@
 export interface ExternalOperationView {
-	creation_status: 'intent' | 'succeeded' | 'failed' | 'unknown';
+	// `intent` remains readable for execution rows saved before contracts Phase A.
+	creation_status: 'prepared' | 'intent' | 'succeeded' | 'failed' | 'unknown';
 	job_status: string | null;
 	pending: boolean;
 	external_job_id: string | null;
 }
 
 const creationLabels = {
+	prepared: 'Chuẩn bị gửi yêu cầu',
 	intent: 'Chuẩn bị gửi yêu cầu',
 	succeeded: 'Nhà cung cấp đã nhận yêu cầu',
 	failed: 'Gửi yêu cầu không thành công',

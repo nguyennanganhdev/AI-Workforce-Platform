@@ -3,53 +3,56 @@
 
 from typing import Any
 
+from ...contracts import ProviderEventEnvelope, ProviderEventReceipt
 from .._utils import (
     ExecutionError,
     digest,
-    freeze,
     new_id,
     timestamp,
     utc_now,
     value,
 )
 
-ENVELOPE_SCHEMA = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": [
-        "schema_version",
-        "external_event_id",
-        "event_type",
-        "occurred_at",
-        "data",
-    ],
-    "properties": {
-        "schema_version": {"const": "1"},
-        "external_event_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-        },
-        "external_job_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-        },
-        "client_reference": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-        },
-        "event_type": {"type": "string", "minLength": 1, "maxLength": 255},
-        "provider_version": {"type": "integer", "minimum": 0},
-        "occurred_at": {"type": "string", "format": "date-time"},
-        "data": {"type": "object"},
-    },
-    "anyOf": [
-        {"required": ["external_job_id"]},
-        {"required": ["client_reference"]},
-    ],
-}
+
+def canonical_envelope(
+    envelope: ProviderEventEnvelope | dict[str, Any],
+) -> dict[str, Any]:
+    """Canonical shared DTO wire form for persistence and business hashes."""
+    from .._utils import instant
+
+    try:
+        wire = value(envelope)
+        if not isinstance(wire, dict):
+            raise ValueError
+        if not isinstance(wire.get("occurred_at"), str):
+            raise ValueError
+        version = wire.get("provider_version")
+        if version is not None and type(version) is not int:
+            raise ValueError
+        dto = ProviderEventEnvelope.model_validate(envelope)
+        # Shared datetime currently permits naive values; execution cannot
+        # order such provider facts safely.
+        instant(dto.occurred_at.isoformat())
+        return dto.model_dump(mode="json", exclude_none=True)
+    except (ValueError, ExecutionError):
+        raise ExecutionError("PROVIDER_EVENT_INVALID", 422) from None
+
+
+def receipt_projection(
+    record: dict[str, Any], duplicate: bool = False
+) -> dict[str, Any]:
+    """Expose the shared receipt, with no internal quarantine/auth details."""
+    status = record["ingestion_status"]
+    # A stale fact that was deliberately ignored was not applied. The shared
+    # public enum calls that outcome rejected; keep the internal reason/state.
+    if status == "ignored":
+        status = "rejected"
+    return ProviderEventReceipt(
+        receipt_id=record["id"],
+        ingestion_status=status,
+        duplicate=duplicate,
+        received_at=record["received_at"],
+    ).model_dump(mode="json")
 
 
 class ProviderEventIngress:
@@ -70,23 +73,19 @@ class ProviderEventIngress:
         self.jobs, self.operations, self.clock = jobs, operations, clock
 
     async def accept(
-        self, verified_principal: Any, envelope: Any, payload_hash: Any = None
+        self,
+        verified_principal: Any,
+        envelope: ProviderEventEnvelope | dict[str, Any],
+        payload_hash: str | None = None,
     ) -> Any:
         """
         Verified principal must be obtained from ProviderAuthPort, never the
         body.
         """
-        from jsonschema import Draft202012Validator, FormatChecker
-
-        principal, envelope = value(verified_principal), freeze(envelope)
+        principal = value(verified_principal)
         if principal.get("purpose") != "provider_events":
             raise ExecutionError("PROVIDER_AUTH_REQUIRED", 403)
-        if list(
-            Draft202012Validator(
-                ENVELOPE_SCHEMA, format_checker=FormatChecker()
-            ).iter_errors(envelope)
-        ):
-            raise ExecutionError("PROVIDER_EVENT_INVALID", 422)
+        envelope = canonical_envelope(envelope)
         await self.auth.authorize_integration(principal, "publish_job_event")
         await self.protocols.validate_envelope(principal, envelope)
         source_hash = digest(envelope)
@@ -125,7 +124,13 @@ class ProviderEventIngress:
             stored = await self.repo.insert_once(
                 "inbox", record, namespace, uow
             )
-            if stored["payload_hash"] != source_hash:
+            # Accept pre-Phase-A rows only when their normalized business
+            # envelope is identical. Never overwrite the original audit hash.
+            if (
+                stored["payload_hash"] != source_hash
+                and digest(canonical_envelope(stored["envelope"]))
+                != source_hash
+            ):
                 raise ExecutionError("EVENT_ID_CONFLICT")
             duplicate = stored["id"] != record["id"]
             if not duplicate:
@@ -139,11 +144,7 @@ class ProviderEventIngress:
                     stored["id"],
                     uow=uow,
                 )
-        return {
-            "receipt_id": stored["id"],
-            "ingestion_status": stored["ingestion_status"],
-            "duplicate": duplicate,
-        }
+        return receipt_projection(stored, duplicate)
 
     async def read_receipt(self, principal: Any, receipt_id: Any) -> Any:
         """
@@ -166,8 +167,4 @@ class ProviderEventIngress:
             if not rows:
                 raise ExecutionError("RESOURCE_NOT_FOUND", 404)
             row = rows[0]
-            return {
-                "receipt_id": row["id"],
-                "ingestion_status": row["ingestion_status"],
-                "error": row["error"],
-            }
+            return receipt_projection(row)

@@ -3,8 +3,10 @@
 
 from typing import Any
 
+from ...contracts import ExternalCreationStatus
 from .._utils import (
     ExecutionError,
+    audience_ref,
     digest,
     freeze,
     new_id,
@@ -45,13 +47,13 @@ class ExternalOperationService:
             "conversation_id": run_context["conversation_id"],
             "group_id": run_context.get("group_id"),
             "ticket_id": run_context.get("ticket_id"),
-            "audience_ref": freeze(run_context.get("partner_audience")),
+            "audience_ref": audience_ref(run_context.get("partner_audience")),
             "provider_integration_id": protocol["provider_integration_id"],
             "protocol": protocol,
             "protocol_hash": digest(protocol),
             "correlation_id": new_id(),
             "external_job_id": None,
-            "creation_status": "intent",
+            "creation_status": ExternalCreationStatus.PREPARED.value,
             "job_status": None,
             "pending": True,
             "last_provider_version": None,

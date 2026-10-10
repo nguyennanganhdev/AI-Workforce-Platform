@@ -4,10 +4,12 @@ Người gửi: Phan Hoàng Dũng. Người nhận: Nguyễn Phương Đông; ph
 
 Hiện trạng: chỉ scaffold. ExecutionPolicy dùng `RegistryPort.get_tool_snapshot(scope, tool_version_id)` đúng tên mục 6.3; snapshot available được check với binding tool_id/version/schema_hash/capability đã pin. Runtime.authorize_tool kiểm tra connection/credential/actor policy hiện hành. Scope không phải field bắt buộc mới của ToolDescriptor: scoped port phải authorize; nếu adapter đính kèm scope nội bộ thì Execution cũng so khớp.
 
+Cập nhật sau contracts Phase A của Chí Hoàng: Registry vẫn chưa có implementation. Execution đã truyền Scope DTO vào shared snapshot port và thêm `calculator_catalog_descriptor(scope) -> ToolDescriptor`. ToolEffect/AsyncProtocolSnapshotRef hiện chưa chứa đủ metadata/semantics để chạy gateway; xem [đối chiếu Phase A](INTEGRATION_REQUEST_PHD-01_PHASE_A.md), không tự cấp reviewed-effect hoặc suy detailed protocol từ reference.
+
 Đầu ra cần bàn giao:
 
 - Tool snapshots immutable cùng observed MCP input/output schema và aliases duy nhất. `effect_reviewed` là **metadata nội bộ đề xuất**, mặc định thiếu là bị chặn; effect không đoán từ HTTP hoặc readOnlyHint. Cần chốt với contracts. Registry chỉ discovery, không call write/booking để test.
-- Import descriptor `execution.calculator_descriptor(scope)`: tool builtin.money.v1, capability calculate_money, JSON schema integer minor units. Builder chỉ thấy khi đã đăng ký rõ trong catalog.
+- Import canonical descriptor `execution.calculator_catalog_descriptor(scope)`: tool builtin.money.v1, capability calculate_money, JSON schema integer minor units. `calculator_descriptor` giữ extension metadata riêng của gateway. Builder chỉ thấy khi đã đăng ký rõ trong catalog và execution metadata được review.
 - MCP connection/credential adapter và reviewed `idempotency_fields={tool_version_id: provider_field}` inject vào `McpAdapter`. Gateway/ToolBase ẩn server field khỏi input model; adapter gửi call_id (sync) hoặc correlation_id (async) đã persist. Provider không hỗ trợ key không được claim exactly-once. Không lấy field/key từ model hay annotation chưa duyệt.
 - Mandatory MCP output projector: `project(scope, descriptor, ToolChunk) -> sanitized JSON`, validate business outcome từ dữ kiện provider; không persist raw response/credential/private note. SDK MCPTool hiện chuyển content thành ToolChunk, nên projector provider cần parse JSON content thật; không giả cấu trúc structuredContent mà SDK không export.
 - Quote port `validate(scope, context, call, descriptor)` xác minh giá/ngày/số người/option từ quote/version thật; trả quote_ref/quote_version/provider/option/dates/amount/fees/cancellation_terms/expires_at. Model không tự cấp quote.

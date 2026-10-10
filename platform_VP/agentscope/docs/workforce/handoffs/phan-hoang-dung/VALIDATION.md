@@ -1,13 +1,14 @@
 # Kiểm chứng Execution — Phan Hoàng Dũng
 
-Ngày 10/10/2026; baseline `6bc7d60`, branch `feat/wf-execution`. Đây là kiểm chứng module độc lập và regression SDK, chưa nghiệm thu toàn platform. Phạm vi và đầu ra còn thiếu: [STATUS.md](STATUS.md).
+Ngày 10/10/2026; baseline cũ `6bc7d60`, lần nối contracts Phase A dựa trên HEAD `383a387`, branch `feat/wf-execution`. Đã kiểm tra output Chí Hoàng ở `1ff8fb6`/`a99d506`. Đây là kiểm chứng module/DTO interoperability và regression SDK, chưa nghiệm thu toàn platform. Phạm vi và đầu ra còn thiếu: [STATUS.md](STATUS.md).
 
 ## Kết quả đã chạy
 
 | Kiểm tra | Kết quả | Giới hạn |
 |---|---|---|
-| Suite riêng Execution + E2E slice | **48 passed, 4 skipped**, 6.09 giây | SQLite, fake ports và mock provider; có MCP stdio thực qua SDK |
-| Suite trên cùng regression Toolkit/Permission/MCP headers | **128 passed, 50 skipped, 11 subtests passed**, 10.60 giây | 4 skip thuộc lane Dũng, 46 skip thuộc suite SDK hiện có; không coi skip là pass |
+| Suite cuối: Execution/E2E slice + shared contracts tests + regression Toolkit/Permission/MCP headers | **153 passed, 50 skipped, 11 subtests passed**, 17.38 giây | Có 9 contract tests của Chí Hoàng; 4 skip thuộc lane Dũng, 46 skip do Windows/Unix/Bash/symlink của suite SDK hiện có |
+| Execution/E2E subset trong suite cuối | **64 passed, 4 skipped** | Thêm 16 cases DTO interoperability; SQLite/fake adapters và mock MCP stdio thực, chưa production composition |
+| Kết quả trước Phase A, lưu đối chiếu | 48 passed/4 skipped riêng; 128 passed/50 skipped/11 subtests khi kèm SDK | Kết quả lịch sử; không dùng thay cho suite cuối |
 | Ruff E/F, line length 79 | All checks passed | Chỉ source/test trong lane |
 | mypy | Success, 23 source files | Kiểm tra typed definitions; các port còn dùng `Any` chờ DTO/Protocol chung |
 | ESLint feature approvals | Exit 0 | Bao gồm demo và external operation component |
@@ -16,7 +17,9 @@ Ngày 10/10/2026; baseline `6bc7d60`, branch `feat/wf-execution`. Đây là ki�
 | Browser UI smoke | **Chưa chạy** | Browser inventory trả `apps=[]`, `browsers=[]`; Vite đã khởi chạy và dừng |
 | PostgreSQL races, full-platform E2E, provider sandbox | **Chưa chạy** | Chưa đủ môi trường/implementation/credential được bàn giao |
 
-Lần suite riêng cuối thực hiện sau các cập nhật cuối của source/tests. Regression rộng chạy sau các thay đổi logic cuối; sau đó chỉ chỉnh style, tên test và tài liệu. Không gọi model trả phí, không booking thật, không gửi event sang backend đối tác thật.
+Suite cuối chạy sau các thay đổi logic/tests Phase A. Frontend build và ESLint cũng đã chạy lại sau chỉnh creation status. Không gọi model trả phí, không booking thật, không gửi event sang backend đối tác thật. Đã kiểm tra lại Docker: pipe dockerDesktopLinuxEngine không tồn tại; WORKFORCE_TEST_POSTGRES_URL chưa được đặt.
+
+DTO mới đã được test từ package contracts thực: Scope, ActorContext, PartnerAudience, ToolDescriptor, PartnerApprovalDecision, RequestResult, ProviderEventEnvelope/Receipt và ErrorResponse. Các fake adapter không thay concrete auth/routing/jobs của Foundation. Xem [PHD-01 Phase A](INTEGRATION_REQUEST_PHD-01_PHASE_A.md) cho chữ ký còn thiếu/khác.
 
 ## Chạy lại
 
@@ -27,7 +30,7 @@ $env:PYTHONIOENCODING = 'utf-8'
 $env:PYTHONPATH = (Join-Path (Get-Location) 'src')
 & "$env:TEMP\wf-execution-venv\Scripts\python.exe" -m pytest tests/workforce/execution tests/workforce/e2e -q -rs -p no:cacheprovider --basetemp "$env:TEMP\wf-execution-pytest-final-owned"
 
-& "$env:TEMP\wf-execution-venv\Scripts\python.exe" -m pytest tests/workforce/execution tests/workforce/e2e tests/toolkit_test.py tests/permission_engine_test.py tests/permission_mode_test.py tests/mcp_runtime_headers_test.py -q -p no:cacheprovider --basetemp "$env:TEMP\wf-execution-pytest-release"
+& "$env:TEMP\wf-execution-venv\Scripts\python.exe" -m pytest tests/workforce/execution tests/workforce/e2e tests/workforce/foundation/test_contracts.py tests/toolkit_test.py tests/permission_engine_test.py tests/permission_mode_test.py tests/mcp_runtime_headers_test.py -q -p no:cacheprovider --basetemp "$env:TEMP\wf-execution-phase-a-verified"
 
 python -m ruff check src/agentscope/app/workforce/execution tests/workforce/execution tests/workforce/e2e tests/workforce/fixtures --select E,F --line-length 79
 python -m mypy src/agentscope/app/workforce/execution --follow-imports=skip --ignore-missing-imports --disallow-untyped-defs --disallow-incomplete-defs
@@ -36,7 +39,7 @@ pnpm.cmd --dir examples/web_ui/frontend exec tsc -b
 pnpm.cmd --dir examples/web_ui/frontend build
 ```
 
-Ruff/mypy dùng Python tooling có sẵn của workspace. Dependencies frontend được cài theo frozen lockfile, ignore scripts; không đổi package manifest/lockfile. Trên Windows sandbox này, mock MCP stdio cần subprocess/named pipe và Vite build cần native subprocess; đã chạy ngoài sandbox sau khi được cấp quyền.
+Ruff/mypy dùng Python tooling có sẵn của workspace. Dependencies frontend được cài theo frozen lockfile, ignore scripts; không đổi package manifest/lockfile. Lần triển khai trước cần cấp quyền ngoài sandbox cho subprocess/named pipe; lần nối Phase A chạy với permission profile disabled do user cung cấp, không xin thêm quyền.
 
 ## Bốn test còn gate
 

@@ -3,6 +3,12 @@
 
 from typing import Any
 
+from ..contracts import (
+    ActorContext,
+    CredentialPurpose,
+    PartnerApprovalDecision,
+    RequestResult,
+)
 from ._utils import ExecutionError, digest, timestamp, value
 
 
@@ -14,16 +20,33 @@ class PartnerApprovalService:
     def __init__(self, approvals: Any, commands: Any) -> None:
         self.approvals, self.commands = approvals, commands
 
-    async def decide(self, actor: Any, approval_id: Any, body: Any) -> Any:
+    async def decide(
+        self,
+        actor: ActorContext | dict[str, Any],
+        approval_id: str,
+        body: PartnerApprovalDecision | dict[str, Any],
+    ) -> Any:
         """
         Claim and record consent in the same UOW as the approval mutation.
         """
-        actor, body = value(actor), value(body)
+        try:
+            actor = ActorContext.model_validate(actor)
+        except ValueError:
+            raise ExecutionError("CUSTOMER_AUTH_REQUIRED", 403) from None
         if (
-            actor.get("kind") != "partner"
-            or actor.get("purpose") != "customer"
+            actor.kind != "partner"
+            or actor.credential_purpose != CredentialPurpose.CUSTOMER_API
         ):
             raise ExecutionError("CUSTOMER_AUTH_REQUIRED", 403)
+        try:
+            # Do not let Pydantic coerce bool/float revisions at this boundary.
+            if type(value(body).get("expected_revision")) is not int:
+                raise ValueError
+            body = PartnerApprovalDecision.model_validate(body)
+        except ValueError:
+            raise ExecutionError("APPROVAL_DECISION_INVALID", 422) from None
+        actor_context = actor
+        actor, body = value(actor), value(body)
         async with self.approvals.repo.transaction() as uow:
             # The command port resolves owner/audience from the stored approval
             # reference and checks binding before it exposes a cached result.
@@ -38,7 +61,7 @@ class PartnerApprovalService:
                 scope, approval, actor, audience, uow
             )
             command = await self.commands.claim_or_read(
-                actor,
+                actor_context,
                 body["external_request_id"],
                 "approval_decision",
                 approval_id,
@@ -53,7 +76,14 @@ class PartnerApprovalService:
                 uow=uow,
             )
             if not command["is_new"]:
-                return command["result"]
+                cached = command["result"]
+                if isinstance(cached, RequestResult):
+                    return cached.data
+                cached = value(cached)
+                if set(cached) == {"messages", "data"}:
+                    return RequestResult.model_validate(cached).data
+                # Pre-Phase-A command rows contain the direct response.
+                return cached
             if body["expected_revision"] != approval["revision"]:
                 raise ExecutionError("REVISION_CONFLICT")
             if body["quote_ref"] != approval["quote"]["quote_ref"]:
@@ -76,6 +106,6 @@ class PartnerApprovalService:
                 "accepted_at": timestamp(self.approvals.clock()),
             }
             await self.commands.record_result(
-                command["request_id"], result, uow=uow
+                command["request_id"], RequestResult(data=result), uow=uow
             )
             return result

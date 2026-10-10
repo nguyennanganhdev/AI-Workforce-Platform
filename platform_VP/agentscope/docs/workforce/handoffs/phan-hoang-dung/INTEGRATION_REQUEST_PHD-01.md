@@ -2,7 +2,7 @@
 
 Người gửi: Phan Hoàng Dũng. Người nhận: Nguyễn Chí Hoàng. Baseline contract: kế hoạch 1.4.3 mục 6 và 17.
 
-Hiện trạng: Foundation/contracts/integrations chỉ scaffold. Execution đã có implementation và tests với fake ports; không thể include router, tạo Alembic migration, sửa core tool assembly/HITL hoặc giả auth production trong lane này.
+Hiện trạng cập nhật: đã nhận contracts Phase A và nối các DTO dùng được; concrete Foundation/integrations vẫn chưa có service. Xem [đối chiếu Phase A](INTEGRATION_REQUEST_PHD-01_PHASE_A.md) cho từng signature còn thiếu/khác. Execution có implementation và tests với fake ports; không thể include router, tạo Alembic migration, sửa core tool assembly/HITL hoặc giả auth production trong lane này.
 
 File/module nhận cần sửa: Workforce contracts/async_api, foundation, integrations, shared frontend; core tool assembly/ChatService/HITL và Alembic theo ownership kế hoạch. Không yêu cầu thay StorageBase hay tạo migration chain thứ hai.
 

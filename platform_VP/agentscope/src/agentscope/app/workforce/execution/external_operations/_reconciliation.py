@@ -3,7 +3,8 @@
 
 from typing import Any
 
-from .._utils import ExecutionError, digest
+from ...contracts import Scope
+from .._utils import ExecutionError, digest, instant, timestamp
 
 
 class OperationReconciler:
@@ -44,8 +45,11 @@ class OperationReconciler:
             return None
         if not op["protocol"].get("status_query"):
             raise ExecutionError("STATUS_QUERY_UNAVAILABLE")
+        if isinstance(not_before, str):
+            not_before = instant(not_before)
+        timestamp(not_before)
         return await self.jobs.enqueue(
-            scope,
+            Scope.model_validate(scope),
             "operation_reconcile",
             {
                 "operation_id": operation_id,

@@ -7,6 +7,7 @@ from typing import Any
 
 import json
 
+from ..contracts import PartnerApprovalDecision
 from ._utils import ExecutionError, value
 
 
@@ -165,7 +166,8 @@ def create_router(
         async def action() -> Any:
             body = await request.json()
             check_decision(body, partner=True)
-            return await partner_approvals.decide(actor, approval_id, body)
+            decision = PartnerApprovalDecision.model_validate(body)
+            return await partner_approvals.decide(actor, approval_id, decision)
 
         return await respond(action)
 
@@ -174,22 +176,17 @@ def create_router(
 
 def check_decision(body: Any, partner: Any) -> Any:
     """
-    Minimal boundary validation until shared DTO/schema exports are merged.
+    Use the canonical partner DTO; manager view input remains execution-owned.
     """
     required = {"decision", "arguments_hash", "quote_hash"}
     if partner:
-        required = {
-            "schema_version",
-            "decision",
-            "arguments_hash",
-            "quote_ref",
-            "expected_revision",
-            "external_request_id",
-            "external_user_id",
-            "external_conversation_id",
-            "external_ticket_id",
-            "workflow_id",
-        }
+        try:
+            PartnerApprovalDecision.model_validate(body)
+        except ValueError:
+            raise ExecutionError("APPROVAL_DECISION_INVALID", 422) from None
+        if type(body["expected_revision"]) is not int:
+            raise ExecutionError("APPROVAL_DECISION_INVALID", 422)
+        return
     if (
         not isinstance(body, dict)
         or set(body) != required
@@ -198,12 +195,6 @@ def check_decision(body: Any, partner: Any) -> Any:
             for k in required - {"expected_revision"}
         )
         or body["decision"] not in {"approve", "reject"}
-    ):
-        raise ExecutionError("APPROVAL_DECISION_INVALID", 422)
-    if partner and (
-        body["schema_version"] != "1"
-        or type(body["expected_revision"]) is not int
-        or body["expected_revision"] < 1
     ):
         raise ExecutionError("APPROVAL_DECISION_INVALID", 422)
 

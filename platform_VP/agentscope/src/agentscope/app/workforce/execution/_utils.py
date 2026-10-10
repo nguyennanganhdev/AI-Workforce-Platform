@@ -8,6 +8,9 @@ import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from pydantic import ValidationError
+
+from ..contracts import ErrorResponse, PartnerAudience, PublicError, Scope
 
 SCOPE_FIELDS = ("tenant_id", "domain_id", "area_id", "manager_account_id")
 
@@ -20,18 +23,18 @@ class ExecutionError(Exception):
     ) -> None:
         super().__init__(code)
         self.code, self.status, self.retryable = code, status, retryable
+        self.request_id = new_id()
 
-    def public(self) -> Any:
+    def public(self) -> dict[str, Any]:
         """Return the common error envelope without provider exception text."""
-        return {
-            "error": {
-                "code": self.code,
-                "message": self.code,
-                "details": {},
-                "request_id": None,
-                "retryable": self.retryable,
-            }
-        }
+        return ErrorResponse(
+            error=PublicError(
+                code=self.code,
+                message=self.code,
+                request_id=self.request_id,
+                retryable=self.retryable,
+            )
+        ).model_dump(mode="json")
 
 
 def value(obj: Any) -> Any:
@@ -85,12 +88,26 @@ def instant(text: Any) -> Any:
     return dt
 
 
-def owner(scope: Any) -> Any:
+def owner(scope: Scope | dict[str, Any]) -> dict[str, str]:
     """Require all four owner dimensions; never infer owner from actor."""
-    scope = value(scope)
-    if not scope or any(not scope.get(k) for k in SCOPE_FIELDS):
-        raise ExecutionError("SCOPE_REQUIRED", 403)
-    return {k: scope[k] for k in SCOPE_FIELDS}
+    try:
+        return Scope.model_validate(scope).model_dump(mode="json")
+    except ValidationError:
+        raise ExecutionError("SCOPE_REQUIRED", 403) from None
+
+
+def audience_ref(
+    audience: PartnerAudience | dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Normalize optional audience fields without weakening exact binding."""
+    if audience is None:
+        return None
+    try:
+        return PartnerAudience.model_validate(audience).model_dump(
+            mode="json", exclude_none=True
+        )
+    except ValidationError:
+        raise ExecutionError("PARTNER_AUDIENCE_INVALID", 403) from None
 
 
 def require_scope(scope: Any, record: Any) -> Any:

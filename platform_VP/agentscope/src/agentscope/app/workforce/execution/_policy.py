@@ -5,6 +5,7 @@ from typing import Any
 
 import re
 
+from ..contracts import Scope
 from ._effects import classify
 from ._utils import ExecutionError, owner, value
 
@@ -57,7 +58,7 @@ class ExecutionPolicy:
         )
         descriptor = value(
             await self.registry.get_tool_snapshot(
-                scope,
+                Scope.model_validate(scope),
                 request["tool_version_id"],
             )
         )

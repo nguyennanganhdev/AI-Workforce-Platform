@@ -3,7 +3,8 @@
 
 from typing import Any
 
-from ._utils import ExecutionError, digest
+from ..contracts import Scope, ToolDescriptor
+from ._utils import ExecutionError, digest, owner
 
 INPUT_SCHEMA = {
     "type": "object",
@@ -49,24 +50,36 @@ INPUT_SCHEMA = {
 }
 
 
+def calculator_catalog_descriptor(
+    scope: Scope | dict[str, Any],
+) -> ToolDescriptor:
+    """Canonical Registry handoff; owner checks remain in the Registry port."""
+    owner(scope)
+    return ToolDescriptor(
+        tool_id="builtin.money",
+        tool_version_id="builtin.money.v1",
+        source_kind="builtin",
+        provider_tool_name="money",
+        llm_alias="workforce_money",
+        description="Total verified prices and fees in minor units.",
+        input_schema=INPUT_SCHEMA,
+        schema_hash=digest(INPUT_SCHEMA),
+        capabilities=("calculate_money",),
+        effect="read",
+        available=True,
+    )
+
+
 def calculator_descriptor(scope: Any) -> Any:
     """
     Return a descriptor for Registry to register explicitly in this scope.
     """
     return {
-        "tool_id": "builtin.money",
-        "tool_version_id": "builtin.money.v1",
-        "source_kind": "builtin",
-        "provider_tool_name": "money",
-        "llm_alias": "workforce_money",
-        "description": "Total verified prices and fees in minor units.",
-        "input_schema": INPUT_SCHEMA,
-        "schema_hash": digest(INPUT_SCHEMA),
-        "capabilities": ["calculate_money"],
-        "effect": "read",
+        **calculator_catalog_descriptor(scope).model_dump(
+            mode="json", exclude_none=True
+        ),
         "effect_reviewed": True,
-        "available": True,
-        "scope": scope,
+        "scope": owner(scope),
     }
 
 

@@ -6,7 +6,11 @@ Execution exports. SQL/SDK/FastAPI dependencies are loaded only when used.
 from typing import Any
 
 from ._approvals import ApprovalService
-from ._calculator import calculate, calculator_descriptor
+from ._calculator import (
+    calculate,
+    calculator_catalog_descriptor,
+    calculator_descriptor,
+)
 from ._gateway import ExecutionGateway
 from ._partner_approval import PartnerApprovalService
 from ._policy import ExecutionPolicy
@@ -39,6 +43,7 @@ __all__ = [
     "PartnerApprovalService",
     "TransactionService",
     "calculate",
+    "calculator_catalog_descriptor",
     "calculator_descriptor",
     "create_router",
     "create_repository",

@@ -7,6 +7,7 @@ from datetime import timedelta
 
 from ._utils import (
     ExecutionError,
+    audience_ref,
     digest,
     freeze,
     instant,
@@ -95,7 +96,7 @@ class ApprovalService:
             "expires_at": timestamp(expires),
             "status": "pending",
             "allowed_decider": freeze(allowed),
-            "audience_ref": freeze(context.get("partner_audience")),
+            "audience_ref": audience_ref(context.get("partner_audience")),
             "decision_history": [],
         }
         stored = await self.repo.insert_once(
@@ -120,10 +121,9 @@ class ApprovalService:
         for key, expected in allowed.items():
             if actor.get(key) != expected:
                 raise ExecutionError("APPROVAL_DECIDER_FORBIDDEN", 403)
-        if (
-            allowed["kind"] == "partner"
-            and value(audience) != approval["audience_ref"]
-        ):
+        if allowed["kind"] == "partner" and audience_ref(
+            audience
+        ) != audience_ref(approval["audience_ref"]):
             raise ExecutionError("APPROVAL_AUDIENCE_FORBIDDEN", 403)
         context = value(
             await self.runtime.load(scope, approval["run_id"], uow=uow)
@@ -132,7 +132,8 @@ class ApprovalService:
             context.get("workflow_id") != approval["workflow_id"]
             or context.get("group_id") != approval["group_id"]
             or context.get("conversation_id") != approval["conversation_id"]
-            or context.get("partner_audience") != approval["audience_ref"]
+            or audience_ref(context.get("partner_audience"))
+            != audience_ref(approval["audience_ref"])
         ):
             raise ExecutionError("WORKFLOW_BINDING_MISMATCH")
         await self.runtime.revalidate(
@@ -231,7 +232,8 @@ class ApprovalService:
             or approval["call_id"] != request["call_id"]
             or approval["group_id"] != context.get("group_id")
             or approval["workflow_id"] != context.get("workflow_id")
-            or approval["audience_ref"] != context.get("partner_audience")
+            or audience_ref(approval["audience_ref"])
+            != audience_ref(context.get("partner_audience"))
             or approval["arguments_hash"] != digest(request["arguments"])
             or approval["quote_hash"] != digest(quote)
         ):

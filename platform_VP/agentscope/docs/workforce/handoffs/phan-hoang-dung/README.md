@@ -10,6 +10,8 @@ Khi triển khai, tạo `STATUS.md` theo mẫu ở mục 16. Mỗi yêu cầu đ
 
 Kết quả triển khai ngày 10/10/2026: xem [STATUS.md](STATUS.md) để đối chiếu từng task PHD-01–17, phần đã có code/test và phần còn chờ owner khác; xem [VALIDATION.md](VALIDATION.md) để chạy lại kiểm tra. Các integration requests nằm cùng thư mục. Chưa nghiệm thu tích hợp production hoặc E2E toàn platform.
 
+Đã đối chiếu và nối tiếp các DTO dùng được sau khi nhận contracts Phase A của Nguyễn Chí Hoàng (`1ff8fb6`). Chi tiết phần đã gỡ phụ thuộc và port còn thiếu: [PHD-01 Phase A](INTEGRATION_REQUEST_PHD-01_PHASE_A.md).
+
 Nguyên tắc batch của bản 1.2 được giữ ở bản 1.3: PHD-12 kiểm tra batch tạo các agent độc lập, không tạo group production trước request; Leader chọn subset/chọn chéo batch, reuse không tăng agent/version và approval/booking state không lẫn giữa group. Đọc mục 2.3, 2.5 và 6 của kế hoạch trước khi code; nội dung này thay thế cách hiểu team artifact ở bản trước. Đây là đầu việc cần triển khai, chưa phải tính năng đã hoàn thành.
 
 ## Cập nhật bắt buộc theo kế hoạch 1.3

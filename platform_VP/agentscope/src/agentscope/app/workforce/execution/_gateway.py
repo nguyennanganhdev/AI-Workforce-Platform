@@ -7,6 +7,7 @@ from typing import Any
 
 import asyncio
 
+from ..contracts import Scope
 from ._calculator import calculate
 from ._effects import SIDE_EFFECTS, classify
 from ._mcp_adapter import validate
@@ -74,7 +75,7 @@ class ExecutionGateway:
         if descriptor.get("async_protocol_hash"):
             protocol = freeze(
                 await self.protocols.get_snapshot(
-                    scope, descriptor["tool_version_id"]
+                    Scope.model_validate(scope), descriptor["tool_version_id"]
                 )
             )
             if digest(protocol) != descriptor["async_protocol_hash"]:
@@ -223,7 +224,7 @@ class ExecutionGateway:
                         "operations", operation["id"], uow, scope, lock=True
                     )
                     current["reconciliation_error"] = error
-                    if current["creation_status"] == "intent":
+                    if current["creation_status"] in {"prepared", "intent"}:
                         current["creation_status"] = "unknown"
                     await self.repo.save(
                         "operations", current, current["revision"], uow

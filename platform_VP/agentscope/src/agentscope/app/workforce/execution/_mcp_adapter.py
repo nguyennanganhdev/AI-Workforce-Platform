@@ -5,6 +5,7 @@ from typing import Any
 
 from contextlib import asynccontextmanager
 
+from ..contracts import Scope
 from ._utils import ExecutionError, freeze
 
 
@@ -71,6 +72,7 @@ class McpAdapter:
         """
         Resolve credentials just in time; factory owns an isolated MCPClient.
         """
+        scope = Scope.model_validate(scope)
         arguments = freeze(arguments)
         field = self.idempotency_fields.get(descriptor["tool_version_id"])
         if field:

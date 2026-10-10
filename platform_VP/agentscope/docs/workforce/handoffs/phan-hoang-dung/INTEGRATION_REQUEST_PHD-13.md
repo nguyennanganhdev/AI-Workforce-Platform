@@ -30,3 +30,7 @@ Frontend import riêng từ `features/workforce/approvals/index.ts`. `WorkforceA
 
 Test hiện có: `test_http_and_tools.py` partner consent/quasi shared namespace, `test_execution_slice.py` hai group/operation xen kẽ và close sink; test ports có transaction rollback thật. Đây chưa chứng minh Customer API/worker/SSE/context đầy đủ. Cần ports thật để chạy cases 56–88 và observation hooks trong INTEGRATION_REQUEST_PHD-11.
 
+## Cập nhật contracts Phase A
+
+Đã nhận ActorContext/PartnerAudience/PartnerApprovalDecision/RequestResult và nối vào đường consent. Customer credential purpose là `customer_api`; claim nhận ActorContext, record_result nhận RequestResult(data=response). Scope/audience DTO được kiểm tra trong tests, optional null không làm lệch consent cũ. `authorize_approval`, claim aggregate và runtime/Workflow concrete services vẫn chưa có; các signature khác biệt xem [PHD-01 Phase A](INTEGRATION_REQUEST_PHD-01_PHASE_A.md).
+

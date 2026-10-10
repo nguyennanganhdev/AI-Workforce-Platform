@@ -10,6 +10,7 @@ import httpx
 from fastapi import FastAPI
 from sqlalchemy import insert, select
 
+from agentscope.app.workforce.contracts import ActorContext, RequestResult
 from agentscope.app.workforce.execution import (
     PartnerApprovalService,
     create_router,
@@ -59,6 +60,7 @@ class Commands:
     async def claim_or_read(
         self, actor, request_id, command_kind, target_ref, payload_hash, uow
     ):
+        assert isinstance(actor, ActorContext)
         key = "command-" + request_id
         rows = (
             (
@@ -86,6 +88,7 @@ class Commands:
     async def record_result(self, request_id, result, uow):
         from sqlalchemy import update
 
+        assert isinstance(result, RequestResult)
         row = (
             (
                 await uow.execute(
@@ -100,7 +103,12 @@ class Commands:
         await uow.execute(
             update(test_events)
             .where(test_events.c.id == row["id"])
-            .values(payload={**row["payload"], "result": result})
+            .values(
+                payload={
+                    **row["payload"],
+                    "result": result.model_dump(mode="json"),
+                }
+            )
         )
 
 
@@ -111,7 +119,7 @@ def app_fixture(env, manager_scope=SCOPE_A):
         return {"scope": manager_scope, "actor": MANAGER}
 
     async def customer():
-        return PARTNER
+        return ActorContext.model_validate(PARTNER)
 
     partner_approvals = PartnerApprovalService(env.approvals, Commands(env))
     app.include_router(
@@ -192,7 +200,8 @@ def test_provider_http_raw_auth_precedes_parse_and_ack_is_durable():
                 assert set(response.json()) == {
                     "receipt_id",
                     "ingestion_status",
-                    "error",
+                    "duplicate",
+                    "received_at",
                 }
 
     run(scenario)

@@ -4,7 +4,15 @@
 from typing import Any
 
 from ._effects import SIDE_EFFECTS, classify
-from ._utils import ExecutionError, digest, freeze, owner, timestamp, utc_now
+from ._utils import (
+    ExecutionError,
+    audience_ref,
+    digest,
+    freeze,
+    owner,
+    timestamp,
+    utc_now,
+)
 
 
 class TransactionService:
@@ -67,7 +75,7 @@ class TransactionService:
             "workflow_id": context.get("workflow_id"),
             "group_id": context.get("group_id"),
             "conversation_id": context["conversation_id"],
-            "audience_ref": freeze(context.get("partner_audience")),
+            "audience_ref": audience_ref(context.get("partner_audience")),
             "idempotency_key": key,
             "fingerprint": fingerprint,
             "request": freeze(request),
@@ -90,7 +98,8 @@ class TransactionService:
         if (
             stored["workflow_id"] != context.get("workflow_id")
             or stored["group_id"] != context.get("group_id")
-            or stored["audience_ref"] != context.get("partner_audience")
+            or audience_ref(stored["audience_ref"])
+            != audience_ref(context.get("partner_audience"))
         ):
             raise ExecutionError("WORKFLOW_BINDING_MISMATCH")
         if stored["status"] not in {"proposed", "awaiting_approval"}:
@@ -126,7 +135,9 @@ class TransactionService:
                     "provider_reference": stored["id"],
                     "run_id": context["run_id"],
                     "workflow_id": context.get("workflow_id"),
-                    "audience_ref": freeze(context.get("partner_audience")),
+                    "audience_ref": audience_ref(
+                        context.get("partner_audience")
+                    ),
                     "tool_version_id": request["tool_version_id"],
                     "quote_ref": quote["quote_ref"],
                 },

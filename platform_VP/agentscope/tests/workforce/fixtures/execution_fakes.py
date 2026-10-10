@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from sqlalchemy import Column, JSON, MetaData, String, Table, insert
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from agentscope.app.workforce.contracts import ActorContext, Scope
 from agentscope.app.workforce.execution import (
     ApprovalService,
     ExecutionGateway,
@@ -21,6 +22,7 @@ from agentscope.app.workforce.execution._utils import (
     ExecutionError,
     digest,
     freeze,
+    owner,
     timestamp,
 )
 from agentscope.app.workforce.execution.external_operations import (
@@ -56,11 +58,14 @@ PROVIDER = {
 }
 PARTNER = {
     "kind": "partner",
-    "purpose": "customer",
+    "credential_purpose": "customer_api",
+    "credential_id": "TEST-ONLY-CUSTOMER",
+    "authentication_source": "fixture",
     "actor_id": "customer",
     "partner_client_id": "customer",
     "external_user_id": "resident-123",
 }
+PARTNER = ActorContext.model_validate(PARTNER).model_dump(mode="json")
 
 test_metadata = MetaData()
 test_events = Table(
@@ -127,7 +132,7 @@ class Runtime:
 
     async def load(self, scope, run_id, uow=None):
         context = self.contexts[run_id]
-        if context["scope"] != scope:
+        if context["scope"] != owner(scope):
             raise ExecutionError("RESOURCE_NOT_FOUND", 404)
         return freeze(context)
 
@@ -160,6 +165,7 @@ class Registry:
         self.descriptor = descriptor
 
     async def get_tool_snapshot(self, scope, tool_version_id):
+        assert isinstance(scope, Scope)
         if tool_version_id != self.descriptor["tool_version_id"]:
             return None
         return freeze(self.descriptor)
@@ -201,6 +207,8 @@ class Jobs:
     async def enqueue(
         self, scope, job_type, payload, key, uow, not_before=None
     ):
+        assert isinstance(scope, Scope)
+        assert isinstance(not_before, datetime) and not_before.tzinfo
         await self.enqueue_provider({}, job_type, payload, key, uow)
 
 
@@ -268,6 +276,7 @@ class Protocols:
         self.protocol = protocol
 
     async def get_snapshot(self, scope, tool_version_id):
+        assert isinstance(scope, Scope)
         return freeze(self.protocol)
 
     async def validate_envelope(self, principal, envelope):
@@ -428,7 +437,8 @@ class Secrets:
         self.owner = SCOPE_A
 
     async def resolve_for_execution(self, scope, ref, mode):
-        if scope != self.owner:
+        assert isinstance(scope, Scope)
+        if owner(scope) != self.owner:
             raise ExecutionError("CREDENTIAL_SCOPE_MISMATCH", 403)
         return {"environment": self.environment, "identity": "TEST-ONLY"}
 
