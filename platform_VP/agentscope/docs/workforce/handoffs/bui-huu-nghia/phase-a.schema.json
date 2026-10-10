@@ -1,0 +1,292 @@
+{
+  "$defs": {
+    "AgentRequirement": {
+      "additionalProperties": false,
+      "description": "Structured extraction output, without owner or runtime identifiers.",
+      "properties": {
+        "agent_key": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Agent Key",
+          "type": "string"
+        },
+        "business_profile": {
+          "$ref": "#/$defs/BusinessProfile"
+        },
+        "capabilities": {
+          "items": {
+            "$ref": "#/$defs/CapabilityRequirement"
+          },
+          "minItems": 1,
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "effect": {
+          "$ref": "#/$defs/ToolEffect"
+        },
+        "tracking_intent": {
+          "enum": [
+            "create_only",
+            "track_to_completion",
+            "unspecified"
+          ],
+          "title": "Tracking Intent",
+          "type": "string"
+        },
+        "clarification_questions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Clarification Questions",
+          "type": "array"
+        },
+        "policy_proposal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HandlingPolicyProposal"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "agent_key",
+        "business_profile",
+        "capabilities",
+        "effect",
+        "tracking_intent"
+      ],
+      "title": "AgentRequirement",
+      "type": "object"
+    },
+    "BusinessProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "profile_schema_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Profile Schema Version",
+          "type": "string"
+        },
+        "objective": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Objective",
+          "type": "string"
+        },
+        "responsibilities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Responsibilities",
+          "type": "array"
+        },
+        "capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "input_contract": {
+          "additionalProperties": true,
+          "title": "Input Contract",
+          "type": "object"
+        },
+        "output_contract": {
+          "additionalProperties": true,
+          "title": "Output Contract",
+          "type": "object"
+        },
+        "business_scope": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Business Scope",
+          "type": "string"
+        },
+        "required_constraints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Constraints",
+          "type": "array"
+        },
+        "execution_policy": {
+          "$ref": "#/$defs/SideEffectPolicy"
+        },
+        "knowledge_requirements": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Knowledge Requirements",
+          "type": "array"
+        }
+      },
+      "required": [
+        "profile_schema_version",
+        "objective",
+        "responsibilities",
+        "capabilities",
+        "input_contract",
+        "output_contract",
+        "business_scope",
+        "execution_policy"
+      ],
+      "title": "BusinessProfile",
+      "type": "object"
+    },
+    "CapabilityRequirement": {
+      "additionalProperties": false,
+      "description": "Business capability requested before selecting a concrete tool.",
+      "properties": {
+        "capability": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Capability",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "reason": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "capability",
+        "reason"
+      ],
+      "title": "CapabilityRequirement",
+      "type": "object"
+    },
+    "HandlingPolicyProposal": {
+      "additionalProperties": false,
+      "description": "Proposed portable policy awaiting shared-contract integration.",
+      "properties": {
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "event_types": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Event Types",
+          "type": "array"
+        },
+        "required_facts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Facts",
+          "type": "array"
+        },
+        "completion_condition": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Completion Condition",
+          "type": "string"
+        },
+        "human_confirmation": {
+          "title": "Human Confirmation",
+          "type": "boolean"
+        },
+        "timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        },
+        "timeout_behavior": {
+          "enum": [
+            "request_attention",
+            "query_status"
+          ],
+          "title": "Timeout Behavior",
+          "type": "string"
+        }
+      },
+      "required": [
+        "capabilities",
+        "completion_condition",
+        "human_confirmation",
+        "timeout_seconds",
+        "timeout_behavior"
+      ],
+      "title": "HandlingPolicyProposal",
+      "type": "object"
+    },
+    "SideEffectPolicy": {
+      "enum": [
+        "read_only",
+        "require_approval",
+        "allow_within_policy"
+      ],
+      "title": "SideEffectPolicy",
+      "type": "string"
+    },
+    "ToolEffect": {
+      "enum": [
+        "read",
+        "write",
+        "external_operation"
+      ],
+      "title": "ToolEffect",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One build request proposes independent agents, never a runtime group.",
+  "properties": {
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "single",
+        "batch"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "agents": {
+      "items": {
+        "$ref": "#/$defs/AgentRequirement"
+      },
+      "minItems": 1,
+      "title": "Agents",
+      "type": "array"
+    }
+  },
+  "required": [
+    "mode",
+    "agents"
+  ],
+  "title": "BuildRequirements",
+  "type": "object"
+}
