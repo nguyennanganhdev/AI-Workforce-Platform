@@ -17,4 +17,15 @@ Nguyên tắc triển khai:
 - Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
 - Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
 
-Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+## Trạng thái Phase B
+
+`test_phase_b.py` kiểm tra idempotency, provider namespace, `not_before`, retry,
+lease reclaim/fencing, worker dispatch, manager-scope signal isolation,
+committed sequence, replay-first SSE và header injection. `fakes.py` chỉ là
+test double cho repository/event port; không được dùng làm production backend.
+
+Chạy:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest tests.workforce.foundation.async_api.test_phase_b -v
+```

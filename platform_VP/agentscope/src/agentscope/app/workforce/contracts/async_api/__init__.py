@@ -33,6 +33,7 @@ from .._ports import (
     ProviderAuthPort,
     ProviderEventIngressPort,
     PublicEventSignalPort,
+    RequestCompletionSignalPort,
     RuntimeContinuationPort,
     WorkflowPort,
 )
@@ -62,6 +63,7 @@ __all__ = [
     "ProviderEventReceipt",
     "PublicError",
     "PublicEventSignalPort",
+    "RequestCompletionSignalPort",
     "RequestStatus",
     "RuntimeContinuationPort",
     "TicketConversationBinding",

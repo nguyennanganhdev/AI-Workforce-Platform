@@ -18,4 +18,23 @@ Nguyên tắc triển khai:
 - Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
 - Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
 
-Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+## Trạng thái Phase B
+
+Đã triển khai phần độc lập của NCH-14:
+
+- `DurableJobService` và `DurableJobWorker`: enqueue idempotent theo owner,
+  `not_before`, claim/reclaim lease, fencing token, heartbeat, retry và handler
+  isolation. Persistence đi qua `DurableJobRepository`; fake chỉ nằm trong
+  `tests/`. PostgreSQL repository và migration thuộc Phase C.
+- `JobPort.enqueue_provider(...)`: đường enqueue additive cho provider event
+  đã xác thực khi operation chưa resolve ra manager Scope. Namespace bắt buộc
+  có `tenant_id` và `provider_integration_id`, không đọc từ public payload.
+- `MessageBusPublicEventSignal` và
+  `MessageBusRequestCompletionSignal`: channel được hash từ đủ manager Scope
+  và resource ID. Signal chỉ đánh thức; event/result chuẩn phải đọc lại từ DB.
+- `ConversationSseService`: replay-first qua `ConversationEventPort`, sau đó
+  đợi signal và định kỳ catch-up; heartbeat không mang business event ID.
+  `SseFrame` encode UTF-8 và chặn newline injection ở `id`/`event`.
+
+Chưa có ở Phase B: Alembic/SQL repository, FastAPI route, provider signature,
+retention/410 repository và composition root. Không có HTTP sender outbound.
