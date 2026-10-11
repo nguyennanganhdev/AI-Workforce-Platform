@@ -2,3 +2,4 @@
 .uv-python
 graphify-out/
 .tmp
+.ruff_cache/

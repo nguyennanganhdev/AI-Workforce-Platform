@@ -8,7 +8,11 @@ Phạm vi: vòng đời riêng từng agent, batch publish, thư viện chung, S
 
 Khi triển khai, tạo `STATUS.md` theo mẫu ở mục 16. Mỗi yêu cầu đổi contract/hook/file chung ghi vào `INTEGRATION_REQUEST_<task-id>.md` theo mục 14.
 
-Hiện tại chưa có task được đánh dấu hoàn thành; việc tạo thư mục này không chứng minh module đã được code/test.
+C5 đã hoàn thành và merge qua PR #64 tại
+`830cdacd56f868d509d208b91b9a6bc29d70c935`. Phạm vi và bằng chứng xem
+[STATUS.md](STATUS.md), [PHASE_C_C5.md](PHASE_C_C5.md) và
+[INTEGRATION_REQUEST_PTA_C5.md](INTEGRATION_REQUEST_PTA_C5.md). Kết quả C5
+không tự động đánh dấu toàn bộ PTA-01–PTA-16 hoàn thành ngoài phạm vi đã nêu.
 
 Nguyên tắc batch của bản 1.2 được giữ ở bản 1.3: PTA-01/07–PTA-13 quản lý identity/draft/eval/version/deployment của từng agent; BuildBatchPort hỗ trợ phát hành nhiều agent đạt. PTA-13 là batch + eval từng agent, thay yêu cầu team reference/eval cũ. Mọi agent xuất hiện độc lập trong thư viện. Đọc mục 2.3, 2.5 và 6 của kế hoạch trước khi code; nội dung này thay thế cách hiểu team artifact ở bản trước. Đây là đầu việc cần triển khai, chưa phải tính năng đã hoàn thành.
 

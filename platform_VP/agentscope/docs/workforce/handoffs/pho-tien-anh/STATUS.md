@@ -1,6 +1,7 @@
 # Trạng thái bàn giao — Phó Tiến Anh
 
-Ngày đối chiếu: 11/10/2026. Branch checkout: `feat/wf-lifecycle`.
+Ngày cập nhật: 11/10/2026. C5 đã merge vào `develop2` qua PR #64 tại
+`830cdacd56f868d509d208b91b9a6bc29d70c935`.
 
 ## Phạm vi nghiệm thu
 
@@ -123,18 +124,18 @@ Builder/Registry; Black --check, Flake8, TypeScript build và scoped ESLint pass
 Không sửa README bàn giao, không commit. Runtime/DB/provider/live và browser
 QA vẫn chưa chạy; không nâng trạng thái nghiệm thu C/D từ tests Phase B.
 
-## Điều phối Phase C — cập nhật từ C1 ngày 2026-10-11
+## Điều phối Phase C — gate C5 đã hoàn thành
 
-Bạn là owner **C5**, chỉ bắt đầu sau C4 của Phan Huy Hoàng đã merge. Khi đó
-runtime thật phải có workflow/checkpoint/continuation/event output; không nối
-eval vào fake runner Phase B rồi coi là C5 hoàn thành.
+Phó Tiến Anh là owner **C5**. C5 đã bắt đầu sau khi C4 của Phan Huy Hoàng merge
+và đã dùng workflow/checkpoint/continuation/event output thật; không coi fake
+runner Phase B là nghiệm thu C5.
 
 C1 đã cung cấp canonical UOW/jobs/auth/bootstrap; C2/C3 sẽ cung cấp protocol và
 Builder/Execution thật. C5 nối eval đa lượt với chính runtime/guard production,
 inject mock provider/fixed clock nhưng dùng cùng checkpoint, approval và tool
 policy. Persist evidence/report theo scope, giữ version/hash pin và chặn publish
 khi report stale hoặc hard gate fail. Bàn giao schema/index cho migration C7 và
-runtime evidence exports cho E2E C6.
+runtime evidence exports cho E2E C6. Các đầu ra này hiện đã được bàn giao.
 
 Theo dõi gate tại [../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).
 
@@ -147,7 +148,7 @@ thật. Khi commit C4 đã merge vào `develop2`, C5 có thể bắt đầu theo
 workflow. Migration/composition production vẫn thuộc C7 và không phải blocker
 cho việc nối evaluation runtime trong test C5.
 
-## C5 — 11/10/2026
+## C5 — HOÀN THÀNH VÀ ĐÃ MERGE — 11/10/2026
 
 Đã hoàn thiện code và SQL/runtime integration tests cho **eval đa lượt nối
 seam runtime C4**.
@@ -191,9 +192,9 @@ long-wait retention/publish race D. Không đánh dấu toàn bộ PTA-01–PTA-
 
 C6 dùng exports runtime/evidence và thay test stimuli bằng provider ingress
 thật. C7 gom metadata 4 bảng/index, job handler, concrete Leader/driver và
-API/UI composition. Không sửa migration/root/source owner khác, không sửa
-README bàn giao của PTA, không stage/commit hoặc sửa index/refs/lịch sử Git.
-Source thay đổi vẫn nằm trong working tree để user review.
+API/UI composition. C5 đã merge qua PR #64, vì vậy không còn là source chỉ nằm
+trong working tree. Phó Tiến Anh không còn đầu việc C5, trừ khi C6 phát hiện lỗi
+tích hợp cần trả lại đúng owner.
 
 Chi tiết và lệnh tái chạy: [PHASE_C_C5.md](PHASE_C_C5.md).
 Schema/index/signature bàn giao: [INTEGRATION_REQUEST_PTA_C5.md](INTEGRATION_REQUEST_PTA_C5.md)

@@ -26,12 +26,13 @@ C7 — Nguyễn Chí Hoàng: composition/migration/CI cuối
 
 - Phase A: 6/6 đã hoàn thành và merge.
 - Phase B: 6/6 đã hoàn thành; C0 đã chốt trong baseline chung.
-- C1, C2 và cả hai lane C3 đã merge vào baseline chung
-  `develop2@7bfdc6097fbbd8a5cfeddaf8f84f60b2ddf798c3`.
-- C4 của Phan Huy Hoàng đang nằm trong working tree kế tiếp trên đúng baseline
-  đó; code và kiểm thử đã hoàn tất, chờ review/commit/merge.
-- C5 chỉ bắt đầu sau khi commit C4 xuất hiện trên `develop2`; C6 và C7 tiếp tục
-  theo đúng thứ tự của sơ đồ.
+- C1, C2 và cả hai lane C3 đã hoàn thành và merge.
+- C4 của Phan Huy Hoàng đã merge qua PR #63 tại
+  `develop2@86fa2931bbfd54d064798e00e0998429c6ac9cb5`.
+- C5 của Phó Tiến Anh đã merge qua PR #64. Baseline chung hiện tại là
+  `develop2@830cdacd56f868d509d208b91b9a6bc29d70c935`.
+- **C6 của Phan Hoàng Dũng đã được mở và là bước tiếp theo.**
+- **C7 của Nguyễn Chí Hoàng vẫn chờ C6 hoàn thành và merge.**
 
 ## Quy tắc tiếp tục
 
@@ -41,14 +42,38 @@ lane chạy song song sau C2; các bước còn lại chạy tuần tự. Mỗi 
 `STATUS.md`, nêu commit đầu vào, exports đã dùng, test, phần giả/live và request
 tích hợp còn mở. Không sửa lại migration đã merge; gửi schema additive cho C7.
 
-## Cập nhật mới nhất — C4 ngày 2026-10-11
+## Bảng gate C0–C7 — cập nhật ngày 2026-10-11
 
-- Baseline đầu vào C4: `develop2@7bfdc6097fbbd8a5cfeddaf8f84f60b2ddf798c3`;
-  C1, C2 và cả hai lane C3 đã có trên nhánh chung.
-- C4 của Phan Huy Hoàng đã hoàn thành code và test trong working tree; chờ commit,
-  review và merge vào `develop2`.
-- Sau khi commit C4 xuất hiện trên `develop2`, Phó Tiến Anh pull commit đó và bắt
-  đầu C5. C6 và C7 vẫn chưa được bắt đầu trước khi các gate ngay trước hoàn tất.
-- Handoff authoritative của C4:
-  `phan-huy-hoang/PHASE_C_C4.md` và
-  `phan-huy-hoang/INTEGRATION_REQUEST_PHH_C4.md`.
+| Mốc | Owner | Trạng thái | Baseline / đầu ra quyết định |
+|---|---|---|---|
+| C0 | Cả đội | Hoàn thành | Phase B của 6/6 thành viên đã merge |
+| C1 | Nguyễn Chí Hoàng | Hoàn thành | Foundation DB/UOW/Auth/Job/Signal/Bootstrap |
+| C2 | Nguyễn Phương Đông | Hoàn thành | Registry protocol thật ↔ Execution |
+| C3 | Bùi Hữu Nghĩa + Phan Hoàng Dũng | Hoàn thành | Builder validation và Provider ingress/Operation/Protocol đều đã merge |
+| C4 | Phan Huy Hoàng | Hoàn thành, đã merge PR #63 | `86fa2931bbfd54d064798e00e0998429c6ac9cb5` |
+| C5 | Phó Tiến Anh | Hoàn thành, đã merge PR #64 | `830cdacd56f868d509d208b91b9a6bc29d70c935` |
+| C6 | Phan Hoàng Dũng | **Sẵn sàng triển khai** | Pull baseline C5 hiện tại; làm E2E toàn lát cắt |
+| C7 | Nguyễn Chí Hoàng | **Chờ C6** | Chỉ mở sau khi C6 merge; làm composition/migration/CI cuối |
+
+## Bàn giao C5 → C6
+
+Phan Hoàng Dũng pull chính xác baseline
+`develop2@830cdacd56f868d509d208b91b9a6bc29d70c935`, sau đó đọc:
+
+- `pho-tien-anh/PHASE_C_C5.md` và
+  `pho-tien-anh/INTEGRATION_REQUEST_PTA_C5.md`;
+- `phan-huy-hoang/PHASE_C_C4.md` và
+  `phan-huy-hoang/INTEGRATION_REQUEST_PHH_C4.md`;
+- `phan-hoang-dung/PHASE_C_C3.md` và
+  `phan-hoang-dung/INTEGRATION_REQUEST_PHD_C3.md`.
+
+C6 phải kiểm chứng cùng một lát cắt production seam: Customer POST → durable
+workflow job → Leader/Execution operation → provider event ingress/inbox/worker
+→ Workflow apply trong cùng UOW → public event history/SSE → close ticket. Với
+query/timer, dùng query hook thật và không tạo provider inbox giả. C6 dùng
+runtime evidence/evaluation exports C5, nhưng không tự gom migration hoặc sửa
+global composition thuộc C7.
+
+Khi C6 hoàn thành, owner phải cập nhật `phan-hoang-dung/STATUS.md`, ghi commit
+đầu vào, test đã chạy, phần còn fake/live và integration request rõ ràng cho C7.
+Chỉ sau commit C6 xuất hiện trên `develop2` thì Nguyễn Chí Hoàng mới mở C7.

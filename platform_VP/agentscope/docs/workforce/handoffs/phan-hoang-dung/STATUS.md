@@ -1,8 +1,10 @@
 # Trạng thái — Phan Hoàng Dũng
 
-Ngày: **11/10/2026**, Asia/Saigon. Nhánh: **feat/wf-execution**.
-Baseline: **67ff871**, đã chứa C1 `a4c2fdd` và C2 `b9feee2` trên
-`develop2`. Thay đổi C3 lần này chưa commit/push.
+Ngày cập nhật: **11/10/2026**, Asia/Saigon. Baseline chung hiện tại:
+`develop2@830cdacd56f868d509d208b91b9a6bc29d70c935`.
+
+**Trạng thái mới nhất:** lane C3 đã merge; C4 và C5 cũng đã merge. Gate C6 đã
+mở và Phan Hoàng Dũng là owner bước tiếp theo.
 
 ## Kết luận phạm vi
 
@@ -99,6 +101,26 @@ không triển khai thay C4/C7 hoặc bắt đầu C6 khi các bước trước 
 C4 đã nhận seam C3 và cung cấp Workflow sink thật trong caller UOW, gồm
 `apply_external_event` hiện có và `apply_query_result` canonical cho TimerCause.
 C4 đã kiểm tra query hook qua `WorkflowEventAdapter` + Execution SQL repository
-thật. C6 chưa bắt đầu: vẫn phải chờ C4 merge và C5 hoàn thành. Hướng dẫn nối C6
-nằm tại `../phan-huy-hoang/INTEGRATION_REQUEST_PHH_C4.md`.
+thật. C4 đã merge qua PR #63 và C5 đã merge qua PR #64, nên điều kiện mở C6 đã
+đủ. Hướng dẫn nối nằm tại
+`../phan-huy-hoang/INTEGRATION_REQUEST_PHH_C4.md` và
+`../pho-tien-anh/INTEGRATION_REQUEST_PTA_C5.md`.
+
+## C6 — SẴN SÀNG TRIỂN KHAI
+
+Pull baseline `develop2@830cdacd56f868d509d208b91b9a6bc29d70c935` và triển
+khai E2E toàn lát cắt, không làm lại C3–C5:
+
+- Customer POST → durable workflow job → Leader/Execution operation;
+- provider event HTTP → inbox/job/worker → operation fact → Workflow apply
+  trong cùng UOW;
+- Workflow continuation → public event log/history/SSE → close ticket;
+- query/timer đi qua query hook thật, không tạo provider inbox giả;
+- dùng runtime evidence/evaluation exports C5 để chứng minh eval chạy trên cùng
+  runtime seam, giữ scope và version/hash pin.
+
+C6 chưa sở hữu global composition, migration hợp nhất hoặc CI cuối; các phần đó
+vẫn thuộc C7 của Nguyễn Chí Hoàng. Khi hoàn thành, cập nhật file này và tạo bàn
+giao cụ thể cho C7 với metadata, handler/router factories, lệnh test và phần còn
+fake/live.
 
