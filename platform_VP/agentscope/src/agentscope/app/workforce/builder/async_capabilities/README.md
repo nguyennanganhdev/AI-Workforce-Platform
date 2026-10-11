@@ -24,3 +24,5 @@ Nguyên tắc triển khai:
 - Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
 
 Phase B đã có capability checks/UI với fake ports. Query-only chưa có policy event metadata vẫn bị block; không tự đặt event name. Detailed readiness là injected local boundary đang chờ shared accessor. Chưa triển khai HTTP API, worker, migration hoặc tích hợp production. Xem `docs/workforce/handoffs/bui-huu-nghia/PHASE_B.md` để chạy demo/test và đọc điểm nối còn mở.
+
+C3 chỉ nối protocol validation ↔ Builder: `RegistryProtocolReadiness` dùng public exact resolver C2, `RegistryCapabilitySelector` pin terminal external protocol mà không ép polling, và root Builder export `ProtocolBuildValidator` để recheck/validate trước draft write. Query-only và create-only pending thiếu semantics vẫn block. Tests SQL protocol qua UOW C1 nằm trong `tests/workforce/builder/phase_c/`; không có SQL Builder session, draft journal hoặc generator mới. Bằng chứng/giới hạn ở `docs/workforce/handoffs/bui-huu-nghia/PHASE_C_C3.md`; không chờ C5/full Builder production để bàn giao C3.

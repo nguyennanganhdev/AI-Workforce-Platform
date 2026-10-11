@@ -1,5 +1,39 @@
 # Trạng thái — Bùi Hữu Nghĩa
 
+## Cập nhật C3 — 2026-10-11 (trạng thái hiện hành)
+
+Baseline `67ff8715e4a40a37538b727442b3b66f2c9223e1`, branch `feat/wf-builder`,
+đã chứa C1/C2 merge. Thay đổi C3 hiện chưa commit/push.
+
+**Chỉ C3 theo trình tự chung: Protocol validation ↔ Builder.** Đã triển khai
+exact C2 readiness adapter, RegistryCapabilitySelector và ProtocolBuildValidator
+trước draft write. Tái sử dụng ProposalService/validator Phase B, canonical UOW
+C1 và SQL protocol C2; code/test sẵn sàng review/bàn giao, chưa commit/merge.
+
+Đã gỡ phần mở rộng SQL session/message, durable service, generator, journal/
+recovery và DDL Builder; service/reuse Phase B giữ nguyên. Không thay module
+owner khác, không làm root/migration hoặc task Phase D.
+
+Tests: **31 Builder A/B + 16 Builder C3 + 29 Registry + 29 Foundation pass**.
+Registry có 1 PostgreSQL gate skipped. Lifecycle **24 pass, 1 baseline failure**
+ở test policy legacy; đã tái hiện với Builder nguyên bản HEAD. Không sửa test Anh.
+
+Output C1/C2 cùng Phase B đã đủ cho C3 này; không chờ C5 hoặc toàn bộ Builder
+production. Model/catalog/reuse/policy resolver là test doubles; protocol/UOW/
+validator dùng thật. Chưa kiểm tra PostgreSQL concurrency/runtime E2E. Pending
+create-only/query-only thiếu semantics bị block theo contract hiện hữu. Root/
+API/migration C7 và provider production không phải blocker review C3 hẹp.
+
+Chi tiết: [PHASE_C_C3.md](PHASE_C_C3.md),
+[requests C3](INTEGRATION_REQUEST_BHN_C3.md),
+[PLAN_C3.md](PLAN_C3.md). Không tuyên bố BHN-01–14 hoàn thành toàn bộ.
+
+## Lịch sử Phase B và hướng dẫn trước khi triển khai C3
+
+Các ghi chú bên dưới phản ánh thời điểm bàn giao cũ. Các câu “C2 chờ merge” và
+số test Phase B không phải trạng thái C3 hiện tại. Session vẫn process-local;
+C3 này không triển khai durable Builder persistence.
+
 Ngày kiểm tra: 2026-10-10. Branch: `feat/wf-builder`. Baseline Phase B: `818554114c0a8f72107df9625c8e4b3e21883171`; thay đổi Phase B chưa commit.
 
 ## Phạm vi đã làm
