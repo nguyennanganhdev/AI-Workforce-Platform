@@ -1,3 +1,44 @@
 .uv-cache
 .uv-python
 graphify-out/
+
+# Dependencies and build output
+node_modules
+dist/
+build/
+coverage/
+.tanstack/
+
+# Local environment (keep example templates)
+.env
+.env.*
+!.env.example
+!.env.*.example
+egress.env
+
+# Python environments and caches
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local runtime output and state
+*.log
+.local-run/
+.local-connected/
+.logs/
+.demo-logs/
+.markdown-collab/
+.coordination-state/
+.reception-state/
+
+# Local service configuration and generated application config
+*.env
+!.env.example
+!*.env.example
+.local-v3-faker/
+/app/src/lib/generated/application-config.ts

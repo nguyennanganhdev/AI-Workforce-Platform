@@ -193,6 +193,9 @@ export function SchemaForm({
 						<Textarea
 							id={fieldId}
 							rows={3}
+							// Capped: a schema default can be a prompt dozens of
+							// lines long, and the field grows with its content.
+							className="max-h-56"
 							value={(current as string | undefined) ?? ''}
 							onChange={(e) => onChange(key, e.target.value)}
 							placeholder={placeholder}

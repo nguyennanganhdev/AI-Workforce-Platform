@@ -15,7 +15,9 @@ function BubbleGroup({ className, ...props }: React.ComponentProps<'div'>) {
 }
 
 const bubbleVariants = cva(
-	'group/bubble relative flex w-fit max-w-[80%] min-w-0 flex-col gap-1 group-data-[align=end]/message:self-end data-[align=end]:self-end data-[variant=ghost]:max-w-full',
+	// `agent` shares `ghost`'s exemption from the 80% cap: a reply has to be able
+	// to span the column so a code block or a table inside it is not squeezed.
+	'group/bubble relative flex w-fit max-w-[80%] min-w-0 flex-col gap-1 group-data-[align=end]/message:self-end data-[align=end]:self-end data-[variant=ghost]:max-w-full data-[variant=agent]:max-w-full',
 	{
 		variants: {
 			variant: {
@@ -30,6 +32,23 @@ const bubbleVariants = cva(
 				ghost: 'border-none *:data-[slot=bubble-content]:rounded-none *:data-[slot=bubble-content]:bg-transparent *:data-[slot=bubble-content]:p-0 [&>[data-slot=bubble-content]:is(button,a):hover]:bg-muted [&>[data-slot=bubble-content]:is(button,a):hover]:text-foreground dark:[&>[data-slot=bubble-content]:is(button,a):hover]:bg-muted/50',
 				destructive:
 					'*:data-[slot=bubble-content]:bg-destructive/10 *:data-[slot=bubble-content]:text-destructive dark:*:data-[slot=bubble-content]:bg-destructive/20 [&>[data-slot=bubble-content]:is(button,a):hover]:bg-destructive/20 dark:[&>[data-slot=bubble-content]:is(button,a):hover]:bg-destructive/30',
+				// The two clay variants (tokens in `styles/clay.css`).
+				//
+				// Radius and border use `[&>[data-slot=bubble-content]]:` rather than
+				// `*:data-[slot=…]:` on purpose: `BubbleContent` sets `rounded-xl
+				// border-transparent` on itself, and the `*:` form only ties that on
+				// specificity. The attribute selector outranks it outright.
+				//
+				// What a person said: a pale blue slab with the corner nearest the
+				// speaker squared off, which is what points the bubble at them. Not
+				// `default` — blue fill is the action colour, and a sent sentence is
+				// not something to click.
+				question:
+					'[&>[data-slot=bubble-content]]:rounded-[var(--r-bubble)] [&>[data-slot=bubble-content]]:rounded-tr-lg [&>[data-slot=bubble-content]]:border-[#f5f8ff] *:data-[slot=bubble-content]:bg-[#e4edff] *:data-[slot=bubble-content]:text-[var(--ink)] *:data-[slot=bubble-content]:shadow-[var(--clay-bubble-mine)] [&>[data-slot=bubble-content]:is(button,a):hover]:bg-[#dbe6ff]',
+				// What an agent said: the flat corner on the LEFT so it points the
+				// other way, and a clay with a real drop shadow — arriving messages
+				// sit higher than the reader's own.
+				agent: '[&>[data-slot=bubble-content]]:rounded-[var(--r-bubble)] [&>[data-slot=bubble-content]]:rounded-tl-lg [&>[data-slot=bubble-content]]:border-white *:data-[slot=bubble-content]:bg-[#f0f3f8] *:data-[slot=bubble-content]:text-[var(--ink)] *:data-[slot=bubble-content]:shadow-[var(--clay-bubble)] [&>[data-slot=bubble-content]:is(button,a):hover]:bg-[#e9eef6]',
 			},
 		},
 		defaultVariants: {

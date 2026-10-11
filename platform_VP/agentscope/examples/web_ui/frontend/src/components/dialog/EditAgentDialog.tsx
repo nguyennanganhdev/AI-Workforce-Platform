@@ -12,6 +12,7 @@ import {
 import type { SchemaFormValue } from '@/components/form/SchemaForm';
 import { Alert, AlertDescription } from '@/components/ui/alert.tsx';
 import { Button } from '@/components/ui/button';
+import { ClayAvatar } from '@/components/ui/clay-avatar';
 import {
 	Dialog,
 	DialogContent,
@@ -98,16 +99,18 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 		}
 	};
 
-	const nameValid = !!(values?.identity.name as string | undefined)?.trim();
+	const name = (values?.identity.name as string | undefined)?.trim() ?? '';
+	const nameValid = !!name;
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="!w-[500px] !max-w-[500px]">
-				<DialogHeader>
-					<DialogTitle>{t('dialog-agent-edit.title')}</DialogTitle>
-					<DialogDescription className="sr-only">
-						{t('dialog-agent-edit.description')}
-					</DialogDescription>
+				<DialogHeader className="flex-row items-center gap-3 pr-8">
+					<ClayAvatar id={agent.id} label={name || agent.data.name} size={44} />
+					<div className="flex min-w-0 flex-col gap-1">
+						<DialogTitle>{t('dialog-agent-edit.title')}</DialogTitle>
+						<DialogDescription>{t('dialog-agent-edit.description')}</DialogDescription>
+					</div>
 				</DialogHeader>
 				<div className="no-scrollbar -mx-4 max-h-[75vh] overflow-y-auto px-4">
 					{schema && values ? (
@@ -130,7 +133,6 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 						onClick={() => onOpenChange(false)}
 						disabled={submitting}
 					>
-						<CircleAlert className="size-3.5" />
 						{t('common.cancel')}
 					</Button>
 					<Button
@@ -138,11 +140,11 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 						disabled={!nameValid || submitting || !schema || !values}
 					>
 						{submitting ? (
-							<Loader2 className="size-3.5 animate-spin" />
+							<Loader2 className="animate-spin" />
 						) : (
-							<Save className="size-3.5" />
+							<Save />
 						)}
-						{submitting ? t('common.saving') : t('common.save')}
+						{submitting ? t('common.saving') : t('dialog-agent-edit.submit')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

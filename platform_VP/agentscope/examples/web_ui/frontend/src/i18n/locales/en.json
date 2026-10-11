@@ -51,7 +51,8 @@
 		"message": "Message",
 		"llm": "LLM",
 		"tts": "TTS",
-		"embedding": "Embedding"
+		"embedding": "Embedding",
+		"switchToVi": "Chuyển sang tiếng Việt"
 	},
 	"error": {
 		"description": "The page hit an unexpected error. You can retry or go back home.",
@@ -65,16 +66,21 @@
 			"fileCount_one": "{{count}} file",
 			"fileCount_other": "{{count}} files",
 			"lineCount_one": "Read {{formatted}} line",
-			"lineCount_other": "Read {{formatted}} lines"
+			"lineCount_other": "Read {{formatted}} lines",
+			"lines": "{{count}} lines"
 		},
 		"glob": {
-			"name": "Glob"
+			"name": "Glob",
+			"pattern": "Glob pattern"
 		},
 		"taskCreate": {
-			"name": "TaskCreate"
+			"name": "TaskCreate",
+			"title": "Create task",
+			"untitled": "(untitled)"
 		},
 		"grep": {
-			"name": "Grep"
+			"name": "Grep",
+			"pattern": "Grep pattern"
 		},
 		"summary": {
 			"separator": ", ",
@@ -92,7 +98,9 @@
 			"mcp_other": "called {{count}} MCP tools",
 			"fallback_one": "called {{count}} tool",
 			"fallback_other": "called {{count}} tools"
-		}
+		},
+		"input": "Input",
+		"output": "Output"
 	},
 	"textInput": {
 		"toComplete": "to complete",
@@ -163,20 +171,113 @@
 			"earlier": "Earlier"
 		}
 	},
+	"shell": {
+		"backToChat": "Back to chat",
+		"groupOperations": "Operations",
+		"groupCapabilities": "What agents can use",
+		"account": "Account"
+	},
+	"agents": {
+		"title": "Agents",
+		"create": "Create agent",
+		"view": {
+			"graph": "Graph",
+			"list": "List",
+			"library": "Library"
+		},
+		"list": {
+			"name": "Name",
+			"reach": "Leader can pick",
+			"access": "Access",
+			"actions": "Actions",
+			"actionsFor": "Actions for {{name}}",
+			"owner": "Yours",
+			"noDescription": "No description yet",
+			"chat": "Open chat",
+			"edit": "Edit",
+			"delete": "Delete agent",
+			"emptyTitle": "No agents yet",
+			"emptyDescription": "Use “Create agent” at the top to make the first one.",
+			"errorTitle": "Could not load the agents",
+			"errorDescription": "Check the connection to the server and try again.",
+			"retry": "Try again"
+		},
+		"graph": {
+			"sample": "Session counts and response times are sample figures",
+			"sampleAll": "The agents and figures on this graph are sample data",
+			"agentCount": "Agents: {{count}}",
+			"running": "Sessions running: {{count}}",
+			"response": "Average response {{seconds}} s",
+			"seconds": "{{seconds}} s",
+			"fullscreen": "Full screen",
+			"exitFullscreen": "Exit full screen",
+			"zoomIn": "Zoom in",
+			"zoomOut": "Zoom out",
+			"fit": "Fit to view",
+			"legendLive": "sessions running",
+			"legendHuman": "waiting on you",
+			"legendIdle": "configured, idle",
+			"resident": "Residents",
+			"residentNote": "send requests through a partner",
+			"you": "You",
+			"youNote": "chat directly",
+			"leader": "Leader",
+			"leaderNote": "Picks the agents for each request",
+			"approval": "Your approval",
+			"approvalNote": "Plans waiting: {{count}}",
+			"pending": "Waiting: {{count}}",
+			"sessionCount": "Sessions: {{count}}",
+			"idle": "idle",
+			"invitable": "Leader can pick",
+			"notInvitable": "Invites off",
+			"invitableHelp": "The Leader can bring this agent into a session when a request needs it.",
+			"notInvitableHelp": "This agent has “Invitable” switched off, so the Leader cannot bring it into a session. Switch it on under Edit, Invite config.",
+			"inspectorSessions": "Sessions today",
+			"inspectorRunning": "Running",
+			"inspectorResponse": "Response",
+			"mobile": "The graph needs a wider screen. The agents are listed below."
+		},
+		"library": {
+			"intro": "What you can give your agents. Each has its own page in Settings.",
+			"mcp": {
+				"title": "External connections (MCP)",
+				"description": "Tools from outside systems."
+			},
+			"skill": {
+				"title": "Skills",
+				"description": "Reusable instructions for agents."
+			},
+			"knowledge": {
+				"title": "Knowledge",
+				"description": "Documents agents can look things up in."
+			},
+			"credential": {
+				"title": "Credentials",
+				"description": "Access keys for models and services."
+			}
+		}
+	},
 	"dialog-agent-create": {
 		"title": "Create agent",
-		"description": "Define a new agent's identity and behaviour."
+		"description": "Define a new agent's identity and behaviour.",
+		"submit": "Create agent"
 	},
 	"agent-form": {
+		"advanced": {
+			"legend": "Advanced settings",
+			"description": "The defaults work. Open a section when you need to change it."
+		},
 		"identity": {
 			"legend": "Agent Identity",
 			"description": "Name and instructions that define this agent's behaviour.",
 			"name": {
 				"label": "Name",
-				"placeholder": "My agent"
+				"placeholder": "My agent",
+				"description": "A name that states a role, such as Technical, Hotel or Car, changes the badge on the sticker."
 			},
 			"system-prompt": {
-				"label": "System prompt"
+				"label": "System prompt",
+				"description": "Describe the agent's role, the scope of its work and how it should answer."
 			}
 		},
 		"context-config": {
@@ -187,6 +288,9 @@
 			},
 			"reserve-ratio": {
 				"label": "Reserve ratio"
+			},
+			"context-buffer-ratio": {
+				"label": "Context buffer ratio"
 			},
 			"tool-result-limit": {
 				"label": "Tool result limit"
@@ -237,7 +341,8 @@
 	},
 	"dialog-agent-edit": {
 		"title": "Edit agent",
-		"description": "Update this agent's configuration."
+		"description": "Update this agent's configuration.",
+		"submit": "Save changes"
 	},
 	"dialog-agent-delete": {
 		"entity": "agent",
@@ -581,7 +686,18 @@
 		"selectArea": "Select area",
 		"createAccount": "Create account",
 		"connectedTo": "Service:",
-		"authenticationDisabled": "Authentication is not enabled on the backend. Set AUTH_ENABLED=true and restart it."
+		"authenticationDisabled": "Authentication is not enabled on the backend. Set AUTH_ENABLED=true and restart it.",
+		"brand": "AgentScope Platform",
+		"usernameHint": "3–64 lowercase letters, numbers, dots, underscores or hyphens.",
+		"errors": {
+			"invalidCredentials": "invalid credentials",
+			"invalidEmail": "invalid email address",
+			"invalidUsername": "username must be 3-64 lowercase letters, numbers, ., _, or -",
+			"invalidPassword": "password must be 12-1024 bytes",
+			"alreadyExists": "email or username already exists",
+			"scopeRequired": "domain_id and area_id are required",
+			"invalidArea": "area does not belong to the selected domain"
+		}
 	},
 	"setup": {
 		"title": "Connect to Service",

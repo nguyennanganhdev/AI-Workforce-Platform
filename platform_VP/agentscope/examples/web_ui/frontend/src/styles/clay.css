@@ -1,0 +1,213 @@
+/*
+ * The claymorphism design layer: soft, inflated surfaces on a warm cream ground.
+ *
+ * Three things make the look, and all three have to be present or it reads as
+ * an ordinary flat UI with big corners:
+ *
+ *   1. A warm canvas. `#f3f0ea`, not white and not grey. Every panel is lighter
+ *      than the ground it sits on, so the ground shows as a gutter between them.
+ *   2. Generous radii. 21px on bubbles, 10–15px on controls.
+ *   3. The clay shadow. An inner highlight at the top-left, an inner shadow at
+ *      the bottom-right, a SOLID few-pixel lip underneath, and a wide soft drop.
+ *      The lip is what makes a surface look thick instead of merely blurred.
+ *
+ * It reaches components nobody rewrote by rebinding the tokens they already
+ * read — the shadcn set (`--background`, `--primary`, `--border`, ...) and this
+ * app's own (`--bg`, `--panel-shadow`, ...) — onto the clay palette below.
+ *
+ * Scoped to a class, not `:root`: the two shell layouts put `.clay-theme` on
+ * `<body>` through `useClayTheme`, so emptying that one hook reverts the whole
+ * visual change.
+ *
+ * Light only. There is no clay dark palette, so `index.css` switches the
+ * `dark:` variant off under this class rather than letting dark utilities
+ * paint over light tokens.
+ */
+
+.clay-theme {
+	/* `<html>` may still carry `.dark` from the OS preference. */
+	color-scheme: light;
+
+	/* ---- Ground and surfaces. ---- */
+	--canvas: #f3f0ea; /* the page */
+	--panel: #faf9f6; /* side panels */
+	--surface: #fcfcfa; /* the main pane */
+	--raised: #ffffff; /* cards, popovers and dialogs sitting on a panel */
+	--sunken: #efeee9; /* inputs, which are pressed INTO the surface */
+
+	/* ---- Lines. Cool for structure, warm where they border cream. ---- */
+	--line: #e9edf1;
+	--line-soft: #e8ecf0;
+	--line-warm: #edede7;
+
+	/* ---- Ink. Blue-slate rather than black; black is too hard against cream. ---- */
+	--ink: #29334b;
+	--ink-2: #68778c;
+	--ink-3: #8796ad;
+
+	/* ---- Action. The one saturated colour. ---- */
+	--action: #4169f5;
+	--action-deep: #486cec;
+	--action-soft: #eaf0ff;
+
+	/* ---- Accents, used to tell people and states apart, never decoratively. ---- */
+	--mint: #9ce3d5;
+	--mint-ink: #245d58;
+	--mint-soft: #e3f5ef;
+	--coral: #ffc0a7;
+	--coral-ink: #824c3a;
+	--coral-soft: #fff0ea;
+	--amber-soft: #fff1d5;
+	--amber-ink: #765007;
+	--violet-soft: #edeaff;
+	--violet-ink: #65588b;
+
+	/* The selected row in a list. Peach, with its own clay. */
+	--selected: #ffe3d1;
+	--selected-line: #fff5ee;
+
+	/*
+	 * ---- The clay recipes. ----
+	 * Written out per role rather than derived: each one's highlight and shadow
+	 * are mixed for the surface it sits on, and a generic formula produces grey
+	 * mud on a warm ground.
+	 */
+	--clay:
+		inset 3px 3px 6px #ffffffcc, inset -3px -4px 7px #27365410, 0 5px 0 #dcdfe744,
+		0 9px 22px #313c5310;
+	/* Inputs. Inverted: the highlight is at the bottom, so it reads as pressed in. */
+	--clay-sunken: inset 2px 3px 5px #d9d9d2, inset -2px -2px 5px #ffffff;
+	/* Somebody else's message. */
+	--clay-bubble: inset 2px 2px 5px #ffffff, inset -2px -3px 5px #dbe0eb88, 0 4px 8px #34476806;
+	/* Your own message. */
+	--clay-bubble-mine: inset 3px 3px 5px #f6f9ff, inset -3px -3px 6px #b6c9f455;
+	/* A raised slab of the action colour. */
+	--clay-action: inset 3px 3px 4px #99b2ff, inset -3px -3px 5px #2b4cbc, 0 3px 0 #c2cef1;
+	/* The selected row. */
+	--clay-selected: inset 3px 3px 5px #fff2e5, inset -3px -4px 7px #e2b79b44, 0 4px 0 #f2ddcd;
+
+	/* ---- Radii. ---- */
+	--r-panel: 28px;
+	--r-card: 23px;
+	--r-bubble: 21px;
+	--r-tile: 15px;
+	--r-control: 12px;
+	--r-chip: 11px;
+
+	/*
+	 * ---- The shadcn tokens the vendored primitives read. ----
+	 * `--background` is the raised white rather than the canvas: in this app the
+	 * page ground is `--bg`, and `bg-background` paints dialogs, outline buttons
+	 * and active tabs — things that sit ON a panel.
+	 */
+	--background: var(--raised);
+	--foreground: var(--ink);
+	--card: var(--surface);
+	--card-foreground: var(--ink);
+	--popover: var(--raised);
+	--popover-foreground: var(--ink);
+	--primary: var(--action);
+	--primary-foreground: #ffffff;
+	--secondary: var(--sunken);
+	--secondary-foreground: var(--ink);
+	--muted: var(--sunken);
+	--muted-foreground: var(--ink-2);
+	--accent: var(--action-soft);
+	--accent-foreground: var(--action);
+	--destructive: #d2493a;
+	--border: var(--line);
+	--input: var(--line);
+	--ring: var(--action);
+	--sidebar: var(--panel);
+	--sidebar-foreground: var(--ink);
+	--sidebar-primary: var(--action);
+	--sidebar-primary-foreground: #ffffff;
+	/* Hover is the cream showing through; selected is the peach slab below. */
+	--sidebar-accent: var(--canvas);
+	--sidebar-accent-foreground: var(--ink);
+	--sidebar-border: var(--line-warm);
+	--sidebar-ring: var(--action);
+	--sidebar-active: var(--selected);
+	--sidebar-active-line: var(--selected-line);
+
+	/* ---- This app's own tokens (see `index.css`). ---- */
+	--bg: var(--canvas);
+	--text: var(--ink-2);
+	--text-h: var(--ink);
+	--text-secondary: var(--ink-2);
+	--text-tertiary: var(--ink-3);
+	--text-data: var(--ink-3);
+	--surface-muted: var(--sunken);
+	--row-hover: var(--canvas);
+	/* Every `shadow-panel` surface becomes a clay slab without being touched. */
+	--panel-shadow: var(--clay);
+	--tab-shadow: 0 1px 2px rgba(24, 25, 28, 0.07);
+
+	/*
+	 * `--radius` drives `rounded-lg` and the scale around it. 12px puts `lg` on
+	 * the control radius; `2xl` then lands at 21.6px, the bubble radius.
+	 */
+	--radius: var(--r-control);
+
+	/*
+	 * `font-heading` reads `var(--font-sans)`, which nothing else declares, so
+	 * headings (dialog titles) fell back to the browser default instead of the
+	 * face set on the container below.
+	 */
+	--font-sans: 'Trebuchet MS', 'Segoe UI', sans-serif;
+}
+
+/* The strip of `<html>` that shows on overscroll, and its native scrollbar. */
+html:has(> .clay-theme) {
+	background: #f3f0ea;
+	color-scheme: light;
+}
+
+@layer base {
+	/*
+	 * On the container, not through `--font-sans`: `font-family` inherits its
+	 * COMPUTED value, and `html` already resolved that variable.
+	 *
+	 * Trebuchet MS ships with Windows and macOS and needs no download. Its
+	 * rounded, humanist letterforms are part of the clay look.
+	 */
+	.clay-theme {
+		background: var(--canvas);
+		color: var(--ink);
+		font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+	}
+
+	/* Thicker and further out than a default ring, because it has to be
+	   findable against soft edges that have no hard border of their own. */
+	.clay-theme :focus-visible {
+		outline: 3px solid var(--action);
+		outline-offset: 3px;
+	}
+
+	/* Scrollbars, warmed to the ground they run against. */
+	.clay-theme ::-webkit-scrollbar-thumb {
+		background: #ddd9cf;
+		border-radius: 999px;
+	}
+	.clay-theme * {
+		scrollbar-color: #ddd9cf transparent;
+	}
+}
+
+/*
+ * `@layer components` keeps these BELOW the utilities layer, so any screen that
+ * needs to override one still can with an ordinary class.
+ */
+@layer components {
+	/* The near-white edge every clay slab carries. `shadow-panel` already marks
+	   each floating pane and card in the app. */
+	.clay-theme .shadow-panel,
+	.clay-theme .clay-panel {
+		border: 1px solid #ffffff;
+	}
+
+	/* A side panel that is a slab but never asked for `shadow-panel`. */
+	.clay-theme .clay-panel {
+		box-shadow: var(--clay);
+	}
+}

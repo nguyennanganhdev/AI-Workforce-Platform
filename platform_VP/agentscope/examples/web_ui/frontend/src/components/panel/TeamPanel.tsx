@@ -2,6 +2,7 @@ import { Bot, Crown, UsersRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import type { AgentView, TeamDetailResponse, TeamMemberInfo } from '@/api';
+import { SELECTED_ROW } from '@/components/layout/selected-row';
 import { PanelEmpty } from '@/components/panel/PanelEmpty';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/i18n/useI18n';
@@ -83,7 +84,7 @@ export function TeamPanel({ team, currentSessionId }: TeamPanelProps) {
 				onClick={onClick}
 				className={cn(
 					'w-full justify-start gap-2 font-normal',
-					isActive && 'bg-accent text-accent-foreground',
+					isActive && SELECTED_ROW,
 				)}
 			>
 				{icon}

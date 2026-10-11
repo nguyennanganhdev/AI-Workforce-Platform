@@ -14,14 +14,23 @@ i18n.use(LanguageDetector)
 			vi: { translation: viTranslations },
 			zh: { translation: zhTranslations },
 		},
-		fallbackLng: 'en',
+		fallbackLng: ['vi', 'en'],
+		supportedLngs: ['vi', 'en', 'zh'],
+		nonExplicitSupportedLngs: true,
 		interpolation: {
 			escapeValue: false,
 		},
 		detection: {
-			order: ['localStorage', 'navigator'],
+			order: ['localStorage'],
+			lookupLocalStorage: 'agentscope-ui-language',
 			caches: ['localStorage'],
 		},
 	});
+
+const updateDocumentLanguage = (language: string) => {
+	document.documentElement.lang = language.split('-')[0];
+};
+i18n.on('languageChanged', updateDocumentLanguage);
+updateDocumentLanguage(i18n.resolvedLanguage ?? 'vi');
 
 export default i18n;

@@ -460,7 +460,21 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 				{blocks
 					.filter((block) => block.type !== 'data')
 					.map((block, index) => (
-						<Bubble key={index} variant={isUser ? 'muted' : 'ghost'}>
+						// Only the agent's prose gets a bubble. Thinking, hints and
+						// tool runs stay bare one-line disclosures — bubbling each
+						// would bury the answer under its own working. An empty text
+						// block (a reply that has not streamed a token yet) stays
+						// bare too, so no hollow bubble flashes.
+						<Bubble
+							key={index}
+							variant={
+								isUser
+									? 'question'
+									: block.type === 'text' && block.text
+										? 'agent'
+										: 'ghost'
+							}
+						>
 							<BubbleContent>
 								<ASBlock block={block} />
 							</BubbleContent>

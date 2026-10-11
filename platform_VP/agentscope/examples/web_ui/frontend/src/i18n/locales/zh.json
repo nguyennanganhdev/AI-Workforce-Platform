@@ -51,7 +51,8 @@
 		"message": "消息",
 		"llm": "LLM",
 		"tts": "TTS",
-		"embedding": "向量"
+		"embedding": "向量",
+		"switchToVi": "Chuyển sang tiếng Việt"
 	},
 	"error": {
 		"description": "页面遇到意外错误。你可以重试或返回首页。",
@@ -65,16 +66,21 @@
 			"fileCount_one": "{{count}} 个文件",
 			"fileCount_other": "{{count}} 个文件",
 			"lineCount_one": "读取 {{formatted}} 行",
-			"lineCount_other": "读取 {{formatted}} 行"
+			"lineCount_other": "读取 {{formatted}} 行",
+			"lines": "{{count}} lines"
 		},
 		"glob": {
-			"name": "Glob"
+			"name": "Glob",
+			"pattern": "Glob pattern"
 		},
 		"taskCreate": {
-			"name": "TaskCreate"
+			"name": "TaskCreate",
+			"title": "Create task",
+			"untitled": "(untitled)"
 		},
 		"grep": {
-			"name": "Grep"
+			"name": "Grep",
+			"pattern": "Grep pattern"
 		},
 		"summary": {
 			"separator": "，",
@@ -92,7 +98,9 @@
 			"mcp_other": "调用 {{count}} 次 MCP",
 			"fallback_one": "调用 {{count}} 次工具",
 			"fallback_other": "调用 {{count}} 次工具"
-		}
+		},
+		"input": "Input",
+		"output": "Output"
 	},
 	"textInput": {
 		"toComplete": "补全",
@@ -163,20 +171,113 @@
 			"earlier": "更早"
 		}
 	},
+	"shell": {
+		"backToChat": "返回对话",
+		"groupOperations": "运行",
+		"groupCapabilities": "智能体可用的能力",
+		"account": "账户"
+	},
+	"agents": {
+		"title": "智能体",
+		"create": "创建智能体",
+		"view": {
+			"graph": "拓扑图",
+			"list": "列表",
+			"library": "资源库"
+		},
+		"list": {
+			"name": "名称",
+			"reach": "Leader 可选用",
+			"access": "权限",
+			"actions": "操作",
+			"actionsFor": "对 {{name}} 的操作",
+			"owner": "我的",
+			"noDescription": "暂无描述",
+			"chat": "打开对话",
+			"edit": "编辑",
+			"delete": "删除智能体",
+			"emptyTitle": "还没有智能体",
+			"emptyDescription": "点击上方“创建智能体”来创建第一个。",
+			"errorTitle": "未能加载智能体列表",
+			"errorDescription": "请检查与服务器的连接后重试。",
+			"retry": "重试"
+		},
+		"graph": {
+			"sample": "会话数与响应时间为示例数据",
+			"sampleAll": "图中的智能体与数据均为示例",
+			"agentCount": "{{count}} 个智能体",
+			"running": "{{count}} 个会话运行中",
+			"response": "平均响应 {{seconds}} 秒",
+			"seconds": "{{seconds}} 秒",
+			"fullscreen": "全屏",
+			"exitFullscreen": "退出全屏",
+			"zoomIn": "放大",
+			"zoomOut": "缩小",
+			"fit": "适应视图",
+			"legendLive": "有会话运行中",
+			"legendHuman": "等待你审批",
+			"legendIdle": "已配置，空闲",
+			"resident": "住户",
+			"residentNote": "通过合作方发送请求",
+			"you": "你",
+			"youNote": "直接对话",
+			"leader": "Leader",
+			"leaderNote": "为每个请求挑选智能体",
+			"approval": "你来审批",
+			"approvalNote": "{{count}} 个方案待审批",
+			"pending": "{{count}} 个待审批",
+			"sessionCount": "{{count}} 个会话",
+			"idle": "空闲",
+			"invitable": "Leader 可选用",
+			"notInvitable": "未开启邀请",
+			"invitableHelp": "当请求需要时，Leader 可以把这个智能体加入会话。",
+			"notInvitableHelp": "该智能体未开启“允许被邀请”，Leader 无法将其加入会话。请在编辑的“邀请配置”中开启。",
+			"inspectorSessions": "今日会话",
+			"inspectorRunning": "运行中",
+			"inspectorResponse": "响应",
+			"mobile": "拓扑图需要更宽的屏幕。下面是智能体列表。"
+		},
+		"library": {
+			"intro": "可以分配给智能体的资源。每一项在“设置”中都有自己的页面。",
+			"mcp": {
+				"title": "外部连接（MCP）",
+				"description": "来自外部系统的工具。"
+			},
+			"skill": {
+				"title": "技能",
+				"description": "可复用的智能体指引。"
+			},
+			"knowledge": {
+				"title": "知识库",
+				"description": "供智能体查阅的文档。"
+			},
+			"credential": {
+				"title": "凭证",
+				"description": "模型与服务的访问密钥。"
+			}
+		}
+	},
 	"dialog-agent-create": {
 		"title": "创建智能体",
-		"description": "定义新智能体的身份与行为。"
+		"description": "定义新智能体的身份与行为。",
+		"submit": "创建智能体"
 	},
 	"agent-form": {
+		"advanced": {
+			"legend": "高级设置",
+			"description": "可保持默认。需要调整时再展开对应部分。"
+		},
 		"identity": {
 			"legend": "智能体身份",
 			"description": "定义此智能体行为的名称和指令。",
 			"name": {
 				"label": "名称",
-				"placeholder": "我的智能体"
+				"placeholder": "我的智能体",
+				"description": "名称中带有角色词（如技术、酒店、车辆）时，贴纸上的徽章会随之变化。"
 			},
 			"system-prompt": {
-				"label": "系统提示词"
+				"label": "系统提示词",
+				"description": "描述智能体的角色、工作范围和回答方式。"
 			}
 		},
 		"context-config": {
@@ -187,6 +288,9 @@
 			},
 			"reserve-ratio": {
 				"label": "保留比例"
+			},
+			"context-buffer-ratio": {
+				"label": "上下文缓冲比例"
 			},
 			"tool-result-limit": {
 				"label": "工具结果限制"
@@ -237,7 +341,8 @@
 	},
 	"dialog-agent-edit": {
 		"title": "编辑智能体",
-		"description": "更新此智能体的配置。"
+		"description": "更新此智能体的配置。",
+		"submit": "保存更改"
 	},
 	"dialog-agent-delete": {
 		"entity": "智能体",
@@ -581,7 +686,18 @@
 		"selectArea": "选择区域",
 		"createAccount": "创建账户",
 		"connectedTo": "服务地址：",
-		"authenticationDisabled": "后端尚未启用身份验证。请设置 AUTH_ENABLED=true 并重启后端。"
+		"authenticationDisabled": "后端尚未启用身份验证。请设置 AUTH_ENABLED=true 并重启后端。",
+		"brand": "AgentScope Platform",
+		"usernameHint": "3–64 lowercase letters, numbers, dots, underscores or hyphens.",
+		"errors": {
+			"invalidCredentials": "invalid credentials",
+			"invalidEmail": "invalid email address",
+			"invalidUsername": "username must be 3-64 lowercase letters, numbers, ., _, or -",
+			"invalidPassword": "password must be 12-1024 bytes",
+			"alreadyExists": "email or username already exists",
+			"scopeRequired": "domain_id and area_id are required",
+			"invalidArea": "area does not belong to the selected domain"
+		}
 	},
 	"setup": {
 		"title": "连接到服务器",

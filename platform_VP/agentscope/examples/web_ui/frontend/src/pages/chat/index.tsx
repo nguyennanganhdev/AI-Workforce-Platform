@@ -21,6 +21,8 @@ import { AgentDialog } from '@/components/dialog/AgentDialog';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { EditAgentDialog } from '@/components/dialog/EditAgentDialog';
 import { RenameSessionDialog } from '@/components/dialog/RenameSessionDialog';
+import { AccountMenu } from '@/components/layout/AccountMenu';
+import { Brand } from '@/components/layout/Brand';
 import { AgentSelect } from '@/components/select/AgentSelect';
 import { ChatTourController } from '@/components/tour/ChatTourController';
 import { Button } from '@/components/ui/button';
@@ -40,9 +42,11 @@ import {
 import {
 	Sidebar,
 	SidebarContent,
+	SidebarFooter,
 	SidebarGroup,
 	SidebarGroupContent,
 	SidebarGroupLabel,
+	SidebarHeader,
 	SidebarMenu,
 	SidebarMenuAction,
 	SidebarMenuBadge,
@@ -54,7 +58,9 @@ import {
 import { AudioProvider } from '@/context/AudioContext';
 import { useAgents } from '@/hooks/useAgents';
 import { useSessions } from '@/hooks/useSessions';
+import { useSettled } from '@/hooks/useSettled';
 import { useTranslation } from '@/i18n/useI18n.ts';
+import { MockChat } from '@/pages/mock';
 
 /**
  * The chat page's outer shell. Responsibilities split cleanly:
@@ -233,14 +239,20 @@ const ChatPageInner = () => {
 		<div className="flex h-full w-full p-2 gap-2">
 			{/*
 			 * Desktop stays `collapsible="none"` so the session list sits in
-			 * normal flow beside the app rail (AppSidebar). Mobile switches to
+			 * normal flow as the chat shell's own navigation. Mobile switches to
 			 * `offcanvas`, which makes shadcn's Sidebar render its Sheet overlay
 			 * (the drawer we want) — instead of the desktop `fixed left-0`
-			 * container, which would otherwise cover the app rail.
+			 * container.
 			 */}
-			<Sidebar collapsible={isMobile ? 'offcanvas' : 'none'} className="rounded-[22px]">
+			<Sidebar
+				collapsible={isMobile ? 'offcanvas' : 'none'}
+				className="clay-panel rounded-[22px]"
+			>
 				{/* Scrolling moves down to the session list below, so the
 				    agent picker and the new-session button stay put. */}
+				<SidebarHeader className="px-4 pt-3 pb-1">
+					<Brand />
+				</SidebarHeader>
 				<SidebarContent className="my-2 overflow-hidden">
 					<SidebarGroup className="px-2 py-0">
 						<SidebarGroupLabel className="justify-between">
@@ -262,7 +274,7 @@ const ChatPageInner = () => {
 								value={urlAgentId ?? null}
 								onChange={(id) => navigate(`/chat/${id}`)}
 								variant="ghost"
-								size="default"
+								size="lg"
 							/>
 							<DropdownMenu>
 								<DropdownMenuTrigger asChild>
@@ -511,6 +523,10 @@ const ChatPageInner = () => {
 						</SidebarGroupContent>
 					</SidebarGroup>
 				</SidebarContent>
+				{/* The way out of the chat shell: Settings, and the account. */}
+				<SidebarFooter>
+					<AccountMenu showSettings showTour />
+				</SidebarFooter>
 			</Sidebar>
 			<div className="flex flex-1 min-w-0">
 				<ChatViewport
@@ -579,10 +595,45 @@ const ChatPageInner = () => {
 	);
 };
 
-export const ChatPage = () => (
-	<AudioProvider>
-		<SidebarProvider defaultOpen>
-			<ChatPageInner />
-		</SidebarProvider>
-	</AudioProvider>
-);
+export const ChatPage = () => {
+	const { t } = useTranslation();
+	const { agents, loading, refetch } = useAgents();
+
+	// "No agents" only means something once a fetch has actually come back.
+	const settled = useSettled(loading);
+
+	if (!settled) return null;
+
+	// With no agent there is nobody to talk to, and the real page would be an
+	// empty shell. The sample conversations stand in for it until the first
+	// agent exists, so the screen shows what it is for.
+	if (agents.length === 0) {
+		return (
+			<MockChat
+				footer={<AccountMenu showSettings />}
+				notice={
+					<div className="flex flex-col gap-2 rounded-[var(--r-tile)] bg-[var(--amber-soft)] p-3 text-xs text-[var(--amber-ink)]">
+						<p>
+							Đây là các cuộc trò chuyện mẫu. Tạo tác nhân AI đầu tiên để bắt đầu trò
+							chuyện thật.
+						</p>
+						<AgentDialog onCreated={refetch}>
+							<Button id="tour-create-agent" size="sm">
+								<Plus />
+								{t('dialog-agent-create.title')}
+							</Button>
+						</AgentDialog>
+					</div>
+				}
+			/>
+		);
+	}
+
+	return (
+		<AudioProvider>
+			<SidebarProvider defaultOpen>
+				<ChatPageInner />
+			</SidebarProvider>
+		</AudioProvider>
+	);
+};

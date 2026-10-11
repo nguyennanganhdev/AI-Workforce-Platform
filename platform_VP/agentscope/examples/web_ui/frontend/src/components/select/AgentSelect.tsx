@@ -3,6 +3,7 @@ import { Check, ChevronDown } from 'lucide-react';
 import type { AgentView } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ClayAvatar } from '@/components/ui/clay-avatar';
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -36,7 +37,15 @@ interface Props extends Omit<React.ComponentPropsWithoutRef<typeof Button>, 'onC
  * into "Yours" and "Shared with you" groups so the read-only
  * origin of the shared entries is unambiguous at a glance.
  */
-export function AgentSelect({ agents, value, onChange, placeholder, className, ...props }: Props) {
+export function AgentSelect({
+	agents,
+	value,
+	onChange,
+	placeholder,
+	className,
+	size = 'sm',
+	...props
+}: Props) {
 	const { t } = useTranslation();
 	const selected = agents.find((a) => a.id === value) ?? null;
 	const displayLabel = selected
@@ -54,6 +63,7 @@ export function AgentSelect({ agents, value, onChange, placeholder, className, .
 				<Check
 					className={`size-3.5 shrink-0 ${isSelected ? 'opacity-100' : 'opacity-0'}`}
 				/>
+				<ClayAvatar id={agent.id} label={agent.data.name} size={22} />
 				<span className="min-w-0 flex-1 truncate">{agent.data.name}</span>
 				{!agent.editable && (
 					<Badge
@@ -73,11 +83,23 @@ export function AgentSelect({ agents, value, onChange, placeholder, className, .
 			<DropdownMenuTrigger asChild>
 				<Button
 					variant="outline"
-					size="sm"
+					size={size}
 					className={cn('justify-between gap-1 font-normal', className)}
 					{...props}
 				>
-					<span className="truncate">{displayLabel}</span>
+					<span className="flex min-w-0 items-center gap-2">
+						{/* Only the `lg` trigger has room for the 28px tile, which
+						    is the smallest size that draws the role portrait
+						    instead of initials. */}
+						{selected && (
+							<ClayAvatar
+								id={selected.id}
+								label={selected.data.name}
+								size={size === 'lg' ? 28 : 22}
+							/>
+						)}
+						<span className="truncate">{displayLabel}</span>
+					</span>
 					<ChevronDown className="size-3.5 text-muted-foreground" />
 				</Button>
 			</DropdownMenuTrigger>

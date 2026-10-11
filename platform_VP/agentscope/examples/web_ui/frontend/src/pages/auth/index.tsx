@@ -116,7 +116,10 @@ export function AuthPage({ onAuthenticated }: Props) {
 			if (error instanceof ApiError && error.status === 503) {
 				setErrorMessage(t('auth.authenticationDisabled'));
 			} else {
-				setErrorMessage(formatApiErrorForAlert(error));
+				const message = formatApiErrorForAlert(error);
+				const errorKeys: Record<string, string> = {"invalid credentials":"invalidCredentials","invalid email address":"invalidEmail","username must be 3-64 lowercase letters, numbers, ., _, or -":"invalidUsername","password must be 12-1024 bytes":"invalidPassword","email or username already exists":"alreadyExists","domain_id and area_id are required":"scopeRequired","area does not belong to the selected domain":"invalidArea"};
+				const key = errorKeys[message];
+				setErrorMessage(key ? t('auth.errors.' + key) : message);
 			}
 		} finally {
 			setSubmitting(false);
@@ -133,7 +136,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 					</div>
 					<div className="space-y-3">
 						<p className="text-sm font-semibold uppercase tracking-[0.22em] text-primary">
-							AgentScope Platform
+							{t('auth.brand')}
 						</p>
 						<h1 className="max-w-xl text-4xl font-semibold tracking-tight">
 							{t('auth.heroTitle')}
@@ -231,6 +234,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 												}
 												required
 											/>
+										<FieldDescription>{t('auth.usernameHint')}</FieldDescription>
 										</Field>
 									</>
 								)}

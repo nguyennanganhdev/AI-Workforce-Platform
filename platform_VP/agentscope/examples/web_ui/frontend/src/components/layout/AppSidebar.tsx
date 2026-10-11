@@ -48,7 +48,7 @@ export function AppSidebar() {
 	};
 
 	const handleToggleLanguage = () => {
-		const next = i18n.language.startsWith('zh') ? 'en' : 'zh';
+		const next = i18n.language.startsWith('vi') ? 'en' : 'vi';
 		i18n.changeLanguage(next);
 	};
 
@@ -63,7 +63,8 @@ export function AppSidebar() {
 	return (
 		<Sidebar
 			collapsible="none"
-			className="w-[calc(var(--sidebar-width-icon)+1px)]! bg-transparent"
+			// +3px: 1px as before, 2px for the border each menu button now reserves.
+			className="clay-rail w-[calc(var(--sidebar-width-icon)+3px)]! bg-transparent"
 		>
 			<SidebarHeader>
 				<div className="flex items-center justify-center size-8 mt-2 rounded-full bg-primary">
@@ -163,9 +164,9 @@ export function AppSidebar() {
 					<SidebarMenuItem>
 						<SidebarMenuButton
 							tooltip={{
-								children: i18n.language.startsWith('zh')
+								children: i18n.language.startsWith('vi')
 									? t('common.switchToEn')
-									: t('common.switchToZh'),
+									: t('common.switchToVi'),
 								hidden: false,
 							}}
 							onClick={handleToggleLanguage}

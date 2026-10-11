@@ -330,7 +330,10 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 				{headerSlot}
 				<div
 					id="tour-chat-input"
-					className="flex w-full flex-col rounded-[28px] border bg-background px-2"
+					// A sunken field: the place you type into is pressed INTO the
+					// panel, while the send slab beside it stands out of it. The
+					// `var()` fallbacks keep the stock pill outside the clay theme.
+					className="flex w-full flex-col rounded-[28px] border border-[color:var(--sunken,var(--border))] bg-[var(--sunken,var(--background))] px-2 shadow-[var(--clay-sunken,none)]"
 					data-tour="chat-input"
 				>
 					{files.length > 0 && (
@@ -510,7 +513,10 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 										onClick={sendButton.onClick}
 										disabled={sendButton.disabled}
 										size="icon-lg"
-										className="shrink-0 rounded-full"
+										// A rounded slab, not a circle: the one raised,
+										// saturated control on the screen. 13px keeps the
+										// clay reference's 15-on-43 ratio at this 36px size.
+										className="shrink-0 rounded-[13px] bg-[var(--action-deep,var(--primary))] shadow-[var(--clay-action,none)] hover:bg-[var(--action,var(--primary))]"
 									>
 										<sendButton.icon className="h-4 w-4" />
 									</Button>

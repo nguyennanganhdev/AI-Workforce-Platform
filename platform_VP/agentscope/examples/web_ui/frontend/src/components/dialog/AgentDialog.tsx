@@ -1,4 +1,4 @@
-import { CircleAlert, Loader2, PlusCircle } from 'lucide-react';
+import { CircleAlert, Loader2, Plus } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -12,6 +12,7 @@ import {
 import type { SchemaFormValue } from '@/components/form/SchemaForm';
 import { Alert, AlertDescription } from '@/components/ui/alert.tsx';
 import { Button } from '@/components/ui/button';
+import { ClayAvatar } from '@/components/ui/clay-avatar';
 import {
 	Dialog,
 	DialogContent,
@@ -82,17 +83,21 @@ export function AgentDialog({ onCreated, children }: Props) {
 		}
 	};
 
-	const nameValid = !!(values?.identity.name as string | undefined)?.trim();
+	const name = (values?.identity.name as string | undefined)?.trim() ?? '';
+	const nameValid = !!name;
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
 			<DialogTrigger asChild>{children}</DialogTrigger>
 			<DialogContent className="!w-[500px] !max-w-[500px]">
-				<DialogHeader>
-					<DialogTitle>{t('dialog-agent-create.title')}</DialogTitle>
-					<DialogDescription className="sr-only">
-						{t('dialog-agent-create.description')}
-					</DialogDescription>
+				{/* The sticker follows the name as it is typed, so the author sees
+				    which role badge the agent will carry before creating it. */}
+				<DialogHeader className="flex-row items-center gap-3 pr-8">
+					<ClayAvatar id={name || 'new-agent'} label={name || undefined} size={44} />
+					<div className="flex min-w-0 flex-col gap-1">
+						<DialogTitle>{t('dialog-agent-create.title')}</DialogTitle>
+						<DialogDescription>{t('dialog-agent-create.description')}</DialogDescription>
+					</div>
 				</DialogHeader>
 				<div className="no-scrollbar -mx-4 max-h-[75vh] overflow-y-auto px-4">
 					{schema && values ? (
@@ -111,19 +116,14 @@ export function AgentDialog({ onCreated, children }: Props) {
 				)}
 				<DialogFooter>
 					<Button variant="ghost" onClick={() => setOpen(false)} disabled={submitting}>
-						<CircleAlert className="size-3.5" />
 						{t('common.cancel')}
 					</Button>
 					<Button
 						onClick={handleSubmit}
 						disabled={!nameValid || submitting || !schema || !values}
 					>
-						{submitting ? (
-							<Loader2 className="size-3.5 animate-spin" />
-						) : (
-							<PlusCircle className="size-3.5" />
-						)}
-						{submitting ? t('common.creating') : t('common.create')}
+						{submitting ? <Loader2 className="animate-spin" /> : <Plus />}
+						{submitting ? t('common.creating') : t('dialog-agent-create.submit')}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

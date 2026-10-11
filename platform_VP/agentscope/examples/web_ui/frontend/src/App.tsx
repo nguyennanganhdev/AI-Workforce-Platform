@@ -10,29 +10,35 @@ import { authApi } from '@/api';
 import type { AuthUser } from '@/api';
 import { AUTH_EXPIRED_EVENT } from '@/api/client';
 import { RouteError } from '@/components/error/RouteError';
-import { AppLayout } from '@/components/layout/AppLayout';
+import { ChatLayout } from '@/components/layout/ChatLayout';
+import { SettingsLayout } from '@/components/layout/SettingsLayout';
 import { buildChatTour } from '@/components/tour/chatTourSteps';
 import { TourCard } from '@/components/tour/TourCard';
+import { CurrentUserProvider } from '@/context/CurrentUserContext';
 import { UploadProvider } from '@/context/UploadContext';
 import { useTranslation } from '@/i18n/useI18n';
 import { queryClient } from '@/lib/query-client';
+import { AgentsPage } from '@/pages/agents';
 import { AuthPage } from '@/pages/auth';
 import { ChannelPage } from '@/pages/channel';
 import { ChatPage } from '@/pages/chat';
 import { CredentialPage } from '@/pages/credential';
 import { KnowledgePage } from '@/pages/knowledge';
+import { MockChatPage } from '@/pages/mock';
 import { SchedulePage } from '@/pages/schedule';
 
 const router = createBrowserRouter([
+	// Two shells. The chat gets the whole window; everything that is
+	// configured rather than talked to lives behind its own navigation.
 	{
-		element: <AppLayout />,
+		element: <ChatLayout />,
 		errorElement: <RouteError />,
 		children: [
 			{
 				// Content-level boundary: a crash in a page replaces only
-				// the Outlet area, so AppLayout (the icon rail / nav) stays
-				// usable. The parent route keeps its own errorElement as a
-				// last-resort catch-all for AppLayout/AppSidebar crashes.
+				// the Outlet area, so the shell around it stays usable. The
+				// parent route keeps its own errorElement as a last-resort
+				// catch-all for a crash in the layout itself.
 				errorElement: <RouteError />,
 				children: [
 					{ path: '/', element: <Navigate to="/chat" replace /> },
@@ -40,6 +46,22 @@ const router = createBrowserRouter([
 						path: '/chat/:agentId?/:sessionId?/:memberId?',
 						element: <ChatPage />,
 					},
+				],
+			},
+		],
+	},
+	{
+		element: <SettingsLayout />,
+		errorElement: <RouteError />,
+		children: [
+			{
+				errorElement: <RouteError />,
+				children: [
+					// The settings pages keep their own paths, so every
+					// existing link to them still works; `/settings` is the
+					// shell's front door.
+					{ path: '/settings', element: <Navigate to="/agents" replace /> },
+					{ path: '/agents/:view?', element: <AgentsPage /> },
 					{ path: '/schedule', element: <SchedulePage /> },
 					{ path: '/channel', element: <ChannelPage /> },
 					{ path: '/credential', element: <CredentialPage /> },
@@ -61,7 +83,7 @@ function App() {
 	const [authStatus, setAuthStatus] = useState<'checking' | 'authenticated' | 'anonymous'>(
 		'checking',
 	);
-	const [, setCurrentUser] = useState<AuthUser | null>(null);
+	const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
 	const tours = useMemo(() => [buildChatTour(t)], [t]);
 
 	useEffect(() => {
@@ -82,6 +104,12 @@ function App() {
 			window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpired);
 		};
 	}, []);
+
+	// The mock chat screen runs on sample data and talks to no backend, so it
+	// is served ahead of the auth check — it has to open with no server up.
+	if (window.location.pathname === '/mock/chat') {
+		return <MockChatPage />;
+	}
 
 	if (authStatus === 'checking') {
 		return (
@@ -114,9 +142,11 @@ function App() {
 					shadowOpacity="0.6"
 					cardTransition={{ type: 'spring', duration: 0.4 }}
 				>
-					<UploadProvider>
-						<RouterProvider router={router} />
-					</UploadProvider>
+					<CurrentUserProvider value={currentUser}>
+						<UploadProvider>
+							<RouterProvider router={router} />
+						</UploadProvider>
+					</CurrentUserProvider>
 					<Toaster richColors position="top-right" />
 				</Onborda>
 			</OnbordaProvider>
