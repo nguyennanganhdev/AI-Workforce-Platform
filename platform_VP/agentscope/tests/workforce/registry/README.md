@@ -6,7 +6,11 @@ Phạm vi lane: MCP catalog, kết nối, discovery và kho tool đã đăng ký
 
 Đọc [kế hoạch triển khai chung](../../../docs/workforce/KE_HOACH_TRIEN_KHAI.md) trước khi code, đặc biệt hợp đồng mục 6 và phần công việc mang đúng họ tên.
 
-Thư mục này mới là khung phân vùng công việc, chưa triển khai tính năng. Chủ sở hữu tạo code/test và file con tại đây; không sửa module của thành viên khác.
+Phase A/B đã có protocol/schema/service/normalizer tests. Phase C/C2 bổ sung
+test SQL repository/CAS/exact pin và contract integration với
+`ExecutionProtocolAdapter` trong `event_protocols/test_phase_c.py`.
+`test_phase_c_postgres.py` là gate concurrency tùy chọn, chỉ chạy khi có
+`WORKFORCE_TEST_POSTGRES_URL` dành riêng.
 
 Ghi tiến độ và yêu cầu tích hợp ở [thư mục bàn giao](../../../docs/workforce/handoffs/nguyen-phuong-dong/README.md). File core, contracts dùng chung, migration, dependency và global route cần chuyển cho Nguyễn Chí Hoàng theo kế hoạch.
 

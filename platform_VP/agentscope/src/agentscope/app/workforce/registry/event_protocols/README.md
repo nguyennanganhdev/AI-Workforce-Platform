@@ -8,7 +8,9 @@ Task bổ sung của owner: **NPD-10–NPD-12**; chọn phần tương ứng ph�
 Phạm vi: Protocol snapshots/capabilities và deterministic normalization; không nhận HTTP Provider Event request hoặc ghi inbox.
 
 Files hiện có: `_models.py`, `_repository.py` (persistence boundary),
-`_normalizer.py`, `_service.py`. SQL tables/migration/composition được nối Phase C.
+`_normalizer.py`, `_service.py`, `_tables.py`, `_sql_repository.py` và
+`_provider.py`. C2 đã có SQL repository/provider production; migration và root
+composition vẫn do Nguyễn Chí Hoàng gom ở C7.
 
 Nguyên tắc triển khai:
 
@@ -24,6 +26,9 @@ snapshot reference/hash và schema/samples. Xem
 Fake `AsyncProtocolPort` và contract tests nằm trong lane test Registry.
 Phase B bổ sung `AsyncProtocolService`, `AsyncProtocolRepository` và deterministic
 normalizer production. Service nhận Scope đã resolve và callback đọc metadata inbox
-đã xác minh, không tự tạo metadata. Fake repository chỉ trong tests; PostgreSQL,
-auth/inbox adapter, API/worker/migration/composition được nối ở Phase C. Xem
-[PHASE_B.md](../../../../../../docs/workforce/handoffs/nguyen-phuong-dong/PHASE_B.md).
+đã xác minh, không tự tạo metadata. C2 bổ sung
+`SqlAsyncProtocolRepository`/`SqlAsyncProtocolProvider`, immutable version, CAS
+current pointer/enable và exact resolver dùng trực tiếp được bởi
+`ExecutionProtocolAdapter`. Provider inbox loader thật thuộc C3; migration/root
+composition thuộc C7. Xem
+[PHASE_C_C2.md](../../../../../../docs/workforce/handoffs/nguyen-phuong-dong/PHASE_C_C2.md).

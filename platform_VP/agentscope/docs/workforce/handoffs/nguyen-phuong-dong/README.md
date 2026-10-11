@@ -4,6 +4,18 @@ Branch đề xuất: `feat/wf-registry`. Đầu việc: **NPD-01–NPD-12**.
 
 Phạm vi: MCP catalog, kết nối, discovery và kho tool đã đăng ký.
 
+## Phase C/C2 — 2026-10-11
+
+Đã triển khai phần Registry của lát cắt C2 trên baseline C1: SQL repository cho
+immutable protocol versions/current head, revision CAS, exact pinned resolver
+và production provider dùng UOW chung. Đã kiểm tra tích hợp Registry SQL với
+`ExecutionProtocolAdapter`; chưa tự nối provider inbox hoặc root composition
+của owner khác. Xem [PHASE_C_C2.md](PHASE_C_C2.md), [STATUS.md](STATUS.md) và
+[INTEGRATION_REQUEST_NPD_C2.md](INTEGRATION_REQUEST_NPD_C2.md).
+
+C2 đang ở working tree chờ review/merge. Chỉ sau khi commit C2 có trên nhánh
+chung thì hai lane C3/Builder và C3/Execution mới pull và bắt đầu.
+
 ## Phase B — 2026-10-10
 
 Đã triển khai phần độc lập protocol service/normalizer/readiness UI với injected
