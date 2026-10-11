@@ -1,10 +1,15 @@
 # Trạng thái — Phan Huy Hoàng
 
-Ngày cập nhật: **2026-10-11**. Baseline chung hiện tại:
+Ngày cập nhật: **2026-10-12**. Baseline bàn giao C5:
 `develop2@830cdacd56f868d509d208b91b9a6bc29d70c935`.
 
 **Trạng thái mới nhất:** C4 đã hoàn thành và merge qua PR #63 tại
 `86fa2931bbfd54d064798e00e0998429c6ac9cb5`; output C4 đã được C5 sử dụng.
+Hai lỗi acceptance C6 đã xử lý: query sau revoke giữ operation fact và không
+phát Workflow/public send; reply sai immutable tuple trả
+`409/WORKFLOW_BINDING_MISMATCH` sau kiểm tra quyền. Sai user hoặc grant bị
+revoke vẫn trả `403/AUTHORIZATION_DENIED`. Chi tiết và validation mới nhất
+tại [PHASE_C_C4.md](PHASE_C_C4.md).
 
 Phase A của cả 6 thành viên đã merge. Phase B của 5 thành viên còn lại cũng đã merge; phần này triển khai mới công việc Phase B của Phan Huy Hoàng trên baseline đó, không lấy hoặc cherry-pick code từ PR #58.
 

@@ -30,6 +30,10 @@ class WorkflowClosed(WorkflowConflict):
     """The requested action cannot be applied to a closed workflow."""
 
 
+class WorkflowBindingMismatch(WorkflowConflict):
+    """An authorized customer supplied a different immutable ticket tuple."""
+
+
 class WorkflowPattern(StrEnum):
     RESPONSE_ONLY = "response_only"
     INTERACTIVE = "interactive"
@@ -47,10 +51,7 @@ class WorkflowAggregate(PinnedRuntimeContext):
     @model_validator(mode="after")
     def validate_policy(self) -> "WorkflowAggregate":
         workflow = self.workflow
-        if (
-            workflow.created_at.tzinfo is None
-            or workflow.updated_at.tzinfo is None
-        ):
+        if workflow.created_at.tzinfo is None or workflow.updated_at.tzinfo is None:
             raise ValueError("workflow timestamps must be timezone-aware")
         if (
             type(workflow.revision) is not int
@@ -64,9 +65,7 @@ class WorkflowAggregate(PinnedRuntimeContext):
             raise ValueError(
                 "response-only workflows require published read-only policy"
             )
-        if len(self.applied_external_events) != len(
-            set(self.applied_external_events)
-        ):
+        if len(self.applied_external_events) != len(set(self.applied_external_events)):
             raise ValueError("external event identities must be unique")
         if any(
             not timer_id or not source_hash
@@ -162,9 +161,7 @@ class WorkflowRepository(Protocol):
         uow: UnitOfWork | None = None,
     ) -> bool: ...
 
-    async def release_lease(
-        self, scope: Scope, lease: WorkflowLease
-    ) -> None: ...
+    async def release_lease(self, scope: Scope, lease: WorkflowLease) -> None: ...
 
 
 class WorkflowBootstrap(Protocol):
@@ -288,4 +285,3 @@ def require_binding(
     if workflow.scope != scope or workflow.audience != audience:
         raise PermissionError("workflow scope or audience mismatch")
     return workflow
-

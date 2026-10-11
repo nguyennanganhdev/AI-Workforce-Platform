@@ -8,7 +8,10 @@ from agentscope.app.workforce.orchestration import (
     PartnerIngressService,
     receipt_http_status,
 )
-from agentscope.app.workforce.orchestration.workflows import WorkflowConflict
+from agentscope.app.workforce.orchestration.workflows import (
+    WorkflowBindingMismatch,
+    WorkflowConflict,
+)
 
 from fakes import Harness, customer_actor
 
@@ -97,7 +100,7 @@ class WorkflowIngressTests(unittest.IsolatedAsyncioTestCase):
             self.actor, envelope("B1", "external-ticket-B", "external-chat-B")
         )
         job_count = len(self.harness.uows.store.jobs)
-        with self.assertRaises(PermissionError):
+        with self.assertRaises(WorkflowBindingMismatch):
             await self.ingress.accept(
                 self.actor,
                 envelope(
