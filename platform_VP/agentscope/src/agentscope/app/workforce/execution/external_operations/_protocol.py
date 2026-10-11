@@ -91,7 +91,8 @@ class ExecutionProtocolAdapter:
             "create_fields": fields,
         }
 
-    async def validate_envelope(self, principal: Any, envelope: Any) -> None:
+    @staticmethod
+    async def validate_envelope(principal: Any, envelope: Any) -> None:
         """Only structural validation before operation/pinned policy lookup."""
         from ..provider_events._ingress import canonical_envelope
 
@@ -111,6 +112,7 @@ class ExecutionProtocolAdapter:
         *,
         inbox_event_id: str,
         received_at: str,
+        uow: Any = None,
     ) -> Any:
         from jsonschema import ValidationError as SchemaError
 
@@ -136,6 +138,9 @@ class ExecutionProtocolAdapter:
                 "provider_integration_id": ref.provider_integration_id,
                 "inbox_event_id": inbox_event_id,
                 "received_at": received,
+                "provider_context": principal,
+                "protocol_snapshot": ref,
+                "uow": uow,
             }
             port = self.port
             if self.event_port_factory is not None:

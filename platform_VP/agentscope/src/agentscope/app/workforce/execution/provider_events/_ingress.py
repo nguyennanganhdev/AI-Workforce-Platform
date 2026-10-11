@@ -4,13 +4,14 @@
 from typing import Any
 
 from ...contracts import (
-    ActorContext,
     ProviderEventEnvelope,
     ProviderEventReceipt,
+    VerifiedProviderContext,
 )
 from .._utils import (
     ExecutionError,
     digest,
+    freeze,
     new_id,
     timestamp,
     utc_now,
@@ -106,25 +107,20 @@ class ProviderEventIngress:
             "revision": 1,
             "payload_hash": source_hash,
             "envelope": envelope,
-            # Retain identity only, never authentication material.
-            "provider_ref": {
-                k: principal[k]
-                for k in (
-                    "tenant_id",
-                    "provider_integration_id",
-                    "actor_id",
-                    "kind",
-                    "purpose",
-                )
-            },
+            # Preserve the full server-only VerifiedProviderContext for
+            # credential revalidation after restart. It contains identifiers
+            # and authentication time, never API keys or signing secrets.
+            "provider_ref": freeze(
+                {
+                    k: v
+                    for k, v in principal.items()
+                    if k in VerifiedProviderContext.model_fields
+                }
+            ),
             "received_at": timestamp(self.clock()),
             "ingestion_status": "accepted",
             "error": None,
         }
-        if "actor" in principal:
-            record["provider_ref"]["actor"] = value(
-                ActorContext.model_validate(principal["actor"])
-            )
         async with self.repo.transaction() as uow:
             await self.auth.authorize_integration(
                 principal, "publish_job_event", uow=uow

@@ -7,6 +7,11 @@ phối hợp Nguyễn Phương Đông và Phan Huy Hoàng. Baseline: `53a139b`.
 Phạm vi: review schema/signature, thống nhất metadata và fake phục vụ consumer
 tests của Phase A/B. Không yêu cầu triển khai production services trong file này.
 
+**Cập nhật 11/10/2026:** các điểm verified context, exact-detail resolver và
+canonical UOW consumer đã được C1/C2 cung cấp và Dũng nối ở
+[PHASE_C_C3.md](PHASE_C_C3.md). Bảng dưới giữ các quyết định A/B còn cần owner
+chốt; điểm nối implementation C4/C7 theo [request C3](INTEGRATION_REQUEST_PHD_C3.md).
+
 ## Hiện trạng và phần đã giải quyết trong lane
 
 Đã nhận PHH schemas/proposals; consumer tests dùng FakeAsyncProtocolPort thật
@@ -23,13 +28,10 @@ Các seam nội bộ bên dưới vẫn cần shared owner chốt; chưa tự pr
 
 | Quyết định còn cần | Export/hook cần owner chốt | Owner |
 |---|---|---|
-| ProviderAuth trả ActorContext chưa có verified tenant/integration/inbox metadata | Canonical server-only verified event context: actor + namespace + persisted inbox ID/received_at, theo request NPD; thay request-local factory seam khi signature merge | NCH contracts/auth + NPD |
-| AsyncProtocolPort trả ref, chưa có exact-detail accessor | Authorized resolver(scope, exact ref) → immutable config/DTO; hash phải bằng NPD snapshot_ref.schema_hash, không query latest | NCH contracts + NPD Registry |
 | Query không có provider inbox | Canonical query result + timer cause hoặc shared query hook. Không dùng timer ID làm inbox_event_id/external_event_id | NCH + PHH + NPD |
 | ExternalOperation DTO bắt buộc audience | Chốt manager-only async semantics; không fabricate partner audience. Adapter hiện reject thiếu audience, internal service vẫn hỗ trợ record cũ | NCH contracts + PHH/PHD |
 | ToolDescriptor thiếu reviewed execution/credential metadata | Canonical reviewed snapshot adapter; không tự gán reviewed=True hoặc suy effect từ HTTP/annotations | NCH + NPD |
 | PHH aggregate/hook còn proposal | Promote CommandClaimResult/cause/checkpoint và authorize_approval/query/attention/execution-result hook; giữ preflight trước cached read | NCH + PHH, review PHD |
-| Generic UnitOfWork khác AsyncSession | Chốt contract join/commit/after_commit và fake UOW để kiểm tra consumer adapter | NCH Foundation |
 | PHH IR-PHH-A05 | Strict revision integer và aware public timestamps, đồng bộ Python/JSON Schema/TS | NCH; không sửa shared trong lane PHD |
 
 Theo dõi cùng [NPD Phase A request](../nguyen-phuong-dong/INTEGRATION_REQUEST_NPD_PHASE_A.md)

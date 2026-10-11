@@ -1,5 +1,8 @@
 # Phase B — Provider ingress, correlation và reconciliation
 
+Tài liệu ghi nhận đầu ra B tại 10/10/2026. Cập nhật tích hợp C1/C2:
+[PHASE_C_C3.md](PHASE_C_C3.md), trạng thái hiện tại: [STATUS.md](STATUS.md).
+
 Ngày: 10/10/2026. Branch: `feat/wf-execution`. Baseline: `53a139b`.
 Theo mục 17.9 của [kế hoạch](../../KE_HOACH_TRIEN_KHAI.md).
 **Đã hoàn thiện phần Phase B làm độc lập của lane Dũng**: provider ingress,
