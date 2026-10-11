@@ -49,3 +49,22 @@ def phase_a_schema_bundle() -> Dict[str, Any]:
         "properties": properties,
     }
     return {"schema_version": "pta-phase-a-1", "schemas": schemas}
+
+
+def phase_c_schema_bundle() -> Dict[str, Any]:
+    """Export sanitized local evidence schemas, preserving shared C4/Phase A DTOs."""
+    from ...orchestration.workflows import CommittedTurnEvidence
+    from ._evaluation import FrozenEvaluation, TurnEvidence
+    from ._runtime import RuntimeAudit, RuntimeObservation
+
+    models = (
+        FrozenEvaluation,
+        TurnEvidence,
+        CommittedTurnEvidence,
+        RuntimeAudit,
+        RuntimeObservation,
+    )
+    return {
+        "schema_version": "pta-runtime-evidence-1",
+        "schemas": {model.__name__: model.model_json_schema() for model in models},
+    }
