@@ -1,10 +1,18 @@
 # Trạng thái — Nguyễn Chí Hoàng
 
-Tên thành viên / branch / commit được kiểm tra (nếu có): Nguyễn Chí Hoàng / `dev_TeamHoang` / `7d7ec2cfcaacc91da80e2f2dde97885ac0ce5fce`.
+Tên thành viên / branch / baseline được kiểm tra: Nguyễn Chí Hoàng /
+`dev_TeamHoang` / `develop2@848740498c92894c074cf264f6ce6307a2dfb9cc`.
+Working tree hiện chứa PHH Phase B và NCH Phase C/C1 chưa commit.
 
-Task IDs đã hoàn thành: NCH-01; phần contract khởi động của NCH-02; phần Phase A của NCH-13; phần độc lập Phase B của NCH-14 (jobs/worker/signal/SSE transport bằng repository/ports, chưa gồm persistence/migration Phase C).
+Task IDs đã hoàn thành theo nhịp: NCH-01; contract khởi động NCH-02/NCH-13;
+Phase B độc lập của NCH-14; và output C1 thuộc NCH-03/05/06/08/12/14/15 gồm
+SQL UOW, verified membership/routing, durable-job repository, provider HMAC,
+migration Foundation và bootstrap opt-in. Không đánh dấu toàn bộ các task này
+hoàn thành end-to-end chỉ từ output C1.
 
-Task IDs đang làm / chưa làm: persistence/auth/routing/composition/migration còn lại của NCH-02–NCH-16 chưa làm; NCH-03 trở đi không được đánh dấu hoàn thành toàn task chỉ từ output Phase B.
+Task IDs đang làm/chưa làm: Customer/Provider HTTP routers, workflow/event
+production repositories, runtime adapter/worker loop, frontend/root composition,
+full migration của năm module, CI/E2E/runbook vẫn chờ C2–C6 rồi hoàn tất ở C7.
 
 Files và thư mục đã sửa: output Phase A trước đó; Phase B thêm `foundation/event_delivery/`, `shared/event_transport/`, `tests/workforce/foundation/async_api/`, contract ports additive và `PHASE_B.md`.
 
@@ -25,7 +33,10 @@ Cách chạy demo hoặc test:
 
 Kết quả test: 9 contract tests pass bằng Python 3.11.15; compileall pass; schema export pass; TypeScript contract type-check pass bằng `tsc.cmd`; `git diff --check` pass. Pytest chưa chạy do `.venv` thiếu package pytest; `pnpm` chưa có trên PATH.
 
-Schema/migration/dependency requests: Alembic head hiện tại `0008_area_platform`; Phase A chưa tạo migration. Cần cài nhóm dev nếu CI bắt buộc dùng pytest.
+Schema/migration/dependency: Alembic có đúng một head
+`0009_workforce_foundation`. Migration tạo membership/route/provider credential/
+durable jobs và backfill tài khoản cũ ở trạng thái `pending_verification`;
+không thêm dependency.
 
 Đầu vào module khác đã dùng (fake hay thật): chưa dùng implementation module khác; các port là boundary/fake-ready.
 
@@ -33,7 +44,9 @@ Integration requests còn mở: xem `INTEGRATION_REQUEST_NCH_PHASE_A.md`; các y
 
 Live verification còn thiếu: FastAPI route, PostgreSQL transaction/uniqueness, Redis server thật, provider signature, AgentScope continuation và browser UI runtime. MessageBus in-memory, SSE encoder/replay service và TypeScript transport đã có test/type/lint cục bộ.
 
-Việc tiếp theo AI cần làm: Phase C triển khai PostgreSQL repository/migration/bootstrap/provider signature, đồng thời tiếp tục Identity/PartnerRouting theo NCH-03/NCH-04/NCH-12. Chỉ nối concrete service của module khác sau khi owner bàn giao public exports và tests; không import private implementation.
+Việc tiếp theo theo đúng tuần tự: merge PHH Phase B + C1 thành baseline chung,
+sau đó Nguyễn Phương Đông thực hiện C2. Nguyễn Chí Hoàng không nhảy tới C7
+trước C2–C6; chỉ review schema/hook additive và giữ migration chain ổn định.
 
 ## Cập nhật Phase B
 
@@ -42,3 +55,17 @@ Việc tiếp theo AI cần làm: Phase C triển khai PostgreSQL repository/mig
 - Job service có idempotency namespace, `not_before`, lease reclaim, fencing, heartbeat và retry; fake repository chỉ nằm trong test.
 - Frontend fetch-SSE có bearer token, refresh, Last-Event-ID, 410 snapshot signal và cursor advance sau xử lý.
 - Chi tiết output, lệnh kiểm tra và giới hạn Phase C: xem `PHASE_B.md`.
+
+## Cập nhật Phase C/C1 — 2026-10-11
+
+- Code và test: xem [PHASE_C_C1.md](PHASE_C_C1.md).
+- Trình tự/gate toàn đội: xem [../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).
+- Kết quả mới: **10/10 C1**, **19/19 Foundation A/B**, **14/14 PHH
+  Phase B**, **24/24 Registry**, **4/4 Auth core** pass; compileall, schema
+  export và Alembic single-head pass.
+- SQLite test harness đã chạy migration upgrade/downgrade và repository thật.
+  PostgreSQL concurrency/Redis multi-process/provider sandbox chưa chạy vì
+  không có dedicated environment trong phiên này.
+- `VerifiedProviderContext` đã chốt server-only. Phase C của Dũng phải persist
+  đủ context này (không rút còn dict thiếu credential/signing key) trước khi
+  re-authorize provider event sau dequeue.

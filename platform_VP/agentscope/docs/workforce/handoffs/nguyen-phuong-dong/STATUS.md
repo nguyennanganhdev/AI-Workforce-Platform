@@ -68,3 +68,22 @@ bàn giao. Requests Phase A/endpoint chưa tự được đóng.
 Chưa kiểm tra PostgreSQL concurrency, HTTP/MCP/provider thật, worker/bootstrap,
 browser/E2E hoặc sandbox provider; chưa chứng minh gate MB/MC/MD. Không gửi
 thông báo sang chat/thành viên khác hoặc tự sửa file của owner khác.
+
+## Điều phối Phase C — cập nhật từ C1 ngày 2026-10-11
+
+Bạn là owner **C2**, người code ngay sau C1. Chưa bắt đầu từ một branch cũ:
+hãy chờ/pull commit chung chứa PHH Phase B và NCH C1, rồi ghi commit đó vào
+STATUS trước khi sửa code.
+
+Output C1 có thể dùng: `SqlAlchemyUnitOfWorkFactory`,
+`SqlDurableJobRepository`, `SqlIdentityPort`, `SqlPartnerRoutingPort`,
+`VerifiedProviderContext`, `WorkforceBootstrap`; migration head nền là
+`0009_workforce_foundation`. Không tạo engine/UOW/migration riêng trong Registry.
+
+Phạm vi C2: nối `AsyncProtocolRepository` production bằng injected session/UOW,
+exact pinned detail resolver và normalizer context lấy từ persisted provider
+inbox; nối Registry protocol thật với Execution. Bàn giao table metadata,
+unique/CAS/index và public exports cho Chí Hoàng; không sửa migration `0009` đã
+merge. C2 phải merge và cập nhật kết quả test trước khi mở hai lane C3.
+
+Theo dõi thứ tự tại [../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).

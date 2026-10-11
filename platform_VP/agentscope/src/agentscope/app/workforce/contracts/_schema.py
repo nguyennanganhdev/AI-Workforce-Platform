@@ -20,7 +20,12 @@ from ._execution import (
     ProviderEventEnvelope,
     ProviderEventReceipt,
 )
-from ._identity import ActorContext, PartnerAudience, Scope
+from ._identity import (
+    ActorContext,
+    PartnerAudience,
+    Scope,
+    VerifiedProviderContext,
+)
 from ._manifest import AgentManifest
 from ._partner_routing import (
     ResidenceSync,
@@ -36,6 +41,7 @@ CONTRACT_SCHEMA_VERSION = "1"
 SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     Scope,
     ActorContext,
+    VerifiedProviderContext,
     PartnerAudience,
     RouteConfirmation,
     RouteConfirmationResult,

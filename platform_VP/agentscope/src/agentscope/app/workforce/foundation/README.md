@@ -6,7 +6,9 @@ Phạm vi lane: contracts single/batch, AREA_MANAGER + domain/area/account, part
 
 Đọc [kế hoạch triển khai chung](../../../../../docs/workforce/KE_HOACH_TRIEN_KHAI.md) trước khi code, đặc biệt hợp đồng mục 6 và phần công việc mang đúng họ tên.
 
-Thư mục này mới là khung phân vùng công việc, chưa triển khai tính năng. Chủ sở hữu tạo code/test và file con tại đây; không sửa module của thành viên khác.
+Phase C/C1 đã triển khai nền SQL/UOW, membership verification, partner route
+guard, provider HMAC authentication và durable job repository. Các adapter SQL
+được lazy-load để không bắt buộc dependency storage-sql khi chỉ import SDK.
 
 Ghi tiến độ và yêu cầu tích hợp ở [thư mục bàn giao](../../../../../docs/workforce/handoffs/nguyen-chi-hoang/README.md). File core, contracts dùng chung, migration, dependency và global route cần chuyển cho Nguyễn Chí Hoàng theo kế hoạch.
 
@@ -27,5 +29,7 @@ Folder con mới thuộc phạm vi này:
 
 - [event_delivery/](event_delivery/README.md) — Provider credential guard, durable delivery/outbox, signing/retry/recovery; không lưu workflow của Huy Hoàng.
 
-Đây là phạm vi cần code/test. Chưa có Customer API, Provider Event API, SSE worker, migration hoặc UI mới được triển khai bởi README này.
+Đã có migration `0009_workforce_foundation`, bootstrap và signal wiring. Chưa
+có Customer/Provider HTTP router, workflow repository, worker loop hay UI route;
+các phần đó thuộc các bước C2–C7 và không được hiểu là hoàn thành bởi C1.
 

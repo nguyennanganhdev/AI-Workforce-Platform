@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Identity, ownership scope, and partner audience contracts."""
 
+from datetime import datetime
 from enum import StrEnum
 
 from pydantic import Field, model_validator
@@ -66,6 +67,48 @@ class ActorContext(WorkforceModel):
                 )
             if self.credential_purpose is None:
                 raise ValueError("partner actor requires credential_purpose")
+        return self
+
+
+class VerifiedProviderContext(WorkforceModel):
+    """Server-only identity produced after API-key and HMAC verification.
+
+    This object is never accepted from a public request body.  It carries the
+    provider namespace that durable inbox and job code need before an external
+    operation can be resolved to its immutable manager scope.
+    """
+
+    tenant_id: OpaqueId
+    provider_integration_id: OpaqueId
+    actor_id: OpaqueId
+    kind: ActorKind = ActorKind.PARTNER
+    purpose: CredentialPurpose = CredentialPurpose.PROVIDER_EVENTS
+    credential_id: OpaqueId
+    partner_client_id: OpaqueId
+    signing_key_id: OpaqueId
+    authenticated_at: datetime
+    actor: ActorContext
+
+    @model_validator(mode="after")
+    def validate_provider_shape(self) -> "VerifiedProviderContext":
+        if self.kind != ActorKind.PARTNER:
+            raise ValueError("provider context requires partner actor kind")
+        if self.purpose != CredentialPurpose.PROVIDER_EVENTS:
+            raise ValueError(
+                "provider context requires provider_events purpose",
+            )
+        if self.actor.kind != ActorKind.PARTNER:
+            raise ValueError("nested provider actor must be a partner")
+        if self.actor.partner_client_id != self.partner_client_id:
+            raise ValueError("provider client must match nested actor")
+        if self.actor.credential_id != self.credential_id:
+            raise ValueError("provider credential must match nested actor")
+        if self.actor.credential_purpose != self.purpose:
+            raise ValueError("provider purpose must match nested actor")
+        if self.authenticated_at.tzinfo is None:
+            raise ValueError(
+                "provider authentication time must be timezone-aware",
+            )
         return self
 
 
