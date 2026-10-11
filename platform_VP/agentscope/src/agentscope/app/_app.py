@@ -104,6 +104,7 @@ def create_app(
     channels: list[Type[ChannelBase]] | None = None,
     auth_service: AuthService | None = None,
     business_service: BusinessService | None = None,
+    workforce_bootstrap: Any | None = None,
     download_secret: str | None = None,
     title: str = "AgentScope",
     version: str = __version__,
@@ -280,6 +281,11 @@ def create_app(
             Area registration directory, domain partner API keys, ticket
             queues, and reviewed-memory workflows. Pass it together with
             ``auth_service`` for the area platform APIs.
+        workforce_bootstrap (`WorkforceBootstrap | None`, optional):
+            Optional Phase-C Workforce composition root. Its SQL lifecycle is
+            managed together with the app and its message bus must be the same
+            instance passed to ``create_app``. ``None`` keeps Workforce
+            production endpoints disabled.
         download_secret (`str | None`, optional):
             Signs the short-lived tokens that let a browser download a
             workspace file by navigation. Defaults to a value generated
@@ -308,6 +314,15 @@ def create_app(
     app.state.storage = storage
     app.state.auth_service = auth_service
     app.state.business_service = business_service
+    if (
+        workforce_bootstrap is not None
+        and workforce_bootstrap.message_bus is not message_bus
+    ):
+        raise ValueError(
+            "workforce_bootstrap must use create_app's message_bus",
+        )
+    app.state.workforce_bootstrap = workforce_bootstrap
+    app.state.workforce = None
     app.state.message_bus = message_bus
     workspace_manager.bind_storage(storage)
     app.state.workspace_manager = workspace_manager

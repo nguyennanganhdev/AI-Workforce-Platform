@@ -122,3 +122,18 @@ Kết quả mới nhất: **66 passed, 153 subtests passed** trên Lifecycle/Fou
 Builder/Registry; Black --check, Flake8, TypeScript build và scoped ESLint pass.
 Không sửa README bàn giao, không commit. Runtime/DB/provider/live và browser
 QA vẫn chưa chạy; không nâng trạng thái nghiệm thu C/D từ tests Phase B.
+
+## Điều phối Phase C — cập nhật từ C1 ngày 2026-10-11
+
+Bạn là owner **C5**, chỉ bắt đầu sau C4 của Phan Huy Hoàng đã merge. Khi đó
+runtime thật phải có workflow/checkpoint/continuation/event output; không nối
+eval vào fake runner Phase B rồi coi là C5 hoàn thành.
+
+C1 đã cung cấp canonical UOW/jobs/auth/bootstrap; C2/C3 sẽ cung cấp protocol và
+Builder/Execution thật. C5 nối eval đa lượt với chính runtime/guard production,
+inject mock provider/fixed clock nhưng dùng cùng checkpoint, approval và tool
+policy. Persist evidence/report theo scope, giữ version/hash pin và chặn publish
+khi report stale hoặc hard gate fail. Bàn giao schema/index cho migration C7 và
+runtime evidence exports cho E2E C6.
+
+Theo dõi gate tại [../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).

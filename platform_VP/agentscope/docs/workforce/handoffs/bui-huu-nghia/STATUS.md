@@ -30,3 +30,18 @@ Tests dùng fake model/Registry/AsyncProtocol/AgentReuse và demo client; produc
 Xem [INTEGRATION_REQUEST_BHN_PHASE_B.md](INTEGRATION_REQUEST_BHN_PHASE_B.md): canonical policy/ref/storage; detailed snapshot accessor; query-only event_types semantics; typed async reuse coverage; durable sessions và HTTP/UI composition. Chí Hoàng sở hữu shared DTO/schema/TypeScript/migration, Đông protocol và Anh lifecycle. Integration request Phase A giữ làm lịch sử; policy mới đã theo Anh.
 
 Bước tiếp theo: chốt các điểm nối, triển khai BHN-01 durable storage và BHN-04/05/06 còn thiếu rồi nối Registry/Draft/Reuse thật trong Phase C. Không dùng preview marker builder.async hoặc fake readiness làm contract production chưa review. Không hạ tracking scope tự động khi thiếu capability; Lifecycle vẫn chịu trách nhiệm atomic identity allocation.
+
+## Điều phối Phase C — cập nhật từ C1 ngày 2026-10-11
+
+Bạn thuộc lane **C3/Builder**, chạy song song với lane C3 của Phan Hoàng Dũng
+nhưng chỉ sau khi C2 của Nguyễn Phương Đông đã merge. Pull baseline C2 và ghi
+commit đầu vào trong STATUS; không bắt đầu từ output protocol fake Phase B.
+
+C1 đã cung cấp UOW/identity/routing/jobs/bootstrap và migration Foundation.
+C3 của bạn nối exact protocol validation/readiness thật vào Builder, durable
+proposal/draft handoff và scope từ verified principal. Dùng session/UOW được
+inject; không tạo DB engine, Scope từ body, migration hoặc policy contract thứ
+hai. Bàn giao schema/index cần thêm cho Chí Hoàng, và public output cần cho C5.
+
+Bạn không cần chờ lane C3 của Dũng để code, nhưng C4 chỉ mở khi **cả hai lane
+C3** đã merge. Theo dõi [../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).

@@ -107,3 +107,23 @@ context/resolver/query-result/manager-only semantics, UOW, hook và strict
 validation review với NCH/NPD/PHH. Các yêu cầu triển khai ngoài A/B đã loại bỏ;
 không còn backlog production trong integration request của lần bàn giao này.
 
+## Điều phối Phase C — cập nhật từ C1 ngày 2026-10-11
+
+Bạn có hai mốc riêng:
+
+1. **C3/Execution**, chạy song song với Builder sau khi C2 của Nguyễn Phương
+   Đông merge: nối provider ingress ↔ operation ↔ exact protocol bằng UOW/jobs/
+   provider auth C1. Persist đầy đủ `VerifiedProviderContext`; record
+   `provider_ref` Phase B hiện thiếu credential/signing-key/authenticated-at nên
+   phải được nâng cấp trước khi re-authorize event sau dequeue. Không lấy Scope
+   hoặc provider namespace từ body.
+2. **C6/E2E**, chỉ bắt đầu sau khi C4 của Huy Hoàng và C5 của Tiến Anh đều
+   merge: chạy toàn lát cắt Customer POST → workflow/runtime → operation →
+   Provider Event → event log/SSE → close, gồm duplicate/order/crash/unknown/
+   scope isolation.
+
+C1 có migration Foundation `0009`, UOW, durable-job repository, HMAC provider
+auth và bootstrap. Không tạo engine/migration/job implementation song song;
+bàn giao bảng Execution cần thêm cho C7. Trình tự:
+[../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).
+

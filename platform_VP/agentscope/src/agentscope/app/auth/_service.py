@@ -326,6 +326,34 @@ class AuthService(AbstractAsyncContextManager):
                         "updated_at": now,
                     },
                 )
+                # Workforce access is separate from account activation.  A
+                # registration records the selected domain/area as a pending
+                # membership; only the explicit verification workflow may
+                # promote it to ``verified`` and enable partner routing.
+                await connection.execute(
+                    text(
+                        """
+                        INSERT INTO wf_manager_memberships (
+                            id, tenant_id, domain_id, area_id,
+                            manager_account_id, status, revision,
+                            verified_by, verified_at, created_at, updated_at
+                        ) VALUES (
+                            :membership_id, :tenant_id, :domain_id, :area_id,
+                            :manager_account_id, 'pending_verification', 1,
+                            NULL, NULL, :created_at, :updated_at
+                        )
+                        """,
+                    ),
+                    {
+                        "membership_id": str(uuid4()),
+                        "tenant_id": tenant_id,
+                        "domain_id": domain_id,
+                        "area_id": area_id,
+                        "manager_account_id": user.id,
+                        "created_at": now,
+                        "updated_at": now,
+                    },
+                )
         except IntegrityError as exc:
             raise UserAlreadyExistsError(
                 "email or username already exists",

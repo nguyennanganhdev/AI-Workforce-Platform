@@ -7,7 +7,11 @@ Task bổ sung của owner: **NCH-13–NCH-16**; chọn phần tương ứng ph�
 
 Phạm vi: Composition và adapter AgentScope/business; core hook/migration chỉ Chí Hoàng tích hợp.
 
-File dự kiến khi triển khai: `_bootstrap.py`, `_runtime_adapter.py`, `_business_bridge.py`, `_workers.py`. Đây chỉ là gợi ý chia file; chưa có code được tạo trong folder.
+Đã có `_bootstrap.py`: mở Workforce SQL pool, tạo canonical UOW, identity,
+route/grant, durable jobs, provider auth và hai signal adapters; app lifespan
+nhận bootstrap qua tham số opt-in. `_runtime_adapter.py`,
+`_business_bridge.py`, `_workers.py` vẫn là output của C4–C7 sau khi các owner
+bàn giao production adapters.
 
 Nguyên tắc triển khai:
 
@@ -17,4 +21,5 @@ Nguyên tắc triển khai:
 - Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
 - Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
 
-Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+Bootstrap C1 không tự mount endpoint và không khởi động fake worker. Production
+API/worker chỉ được bật sau các gate tuần tự ghi trong handoff Phase C.
