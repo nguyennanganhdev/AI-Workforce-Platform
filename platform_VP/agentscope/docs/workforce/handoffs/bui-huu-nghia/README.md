@@ -4,6 +4,8 @@ Phase B bổ sung đã có capability checks/UI với fake ports. Xem [PHASE_B.m
 
 Branch đề xuất: `feat/wf-builder`. Đầu việc: **BHN-01–BHN-14**.
 
+Triển khai C3 ngày 2026-10-11 đã thu gọn đúng trình tự chung: **Protocol validation ↔ Builder**, dùng C1/C2 và Phase B. Adapter/selector protocol thật cùng hook validation trước draft write đã có, **16 C3 + 31 Builder A/B tests pass**, sẵn sàng review/bàn giao code; chưa commit/merge. Không triển khai SQL session/generator/journal, không chờ C5/full Builder production hoặc nhận task Phase D. Xem [PHASE_C_C3.md](PHASE_C_C3.md), [PLAN_C3.md](PLAN_C3.md) và [điểm nối C3](INTEGRATION_REQUEST_BHN_C3.md) cho bằng chứng và giới hạn thật/fake.
+
 Phạm vi: chat tạo một/nhiều agent độc lập, phát hiện trùng, chọn tool và sinh manifest từng agent.
 
 [Kế hoạch và hợp đồng chung](../../KE_HOACH_TRIEN_KHAI.md) là tài liệu đầu vào cho AI. Gửi cả file kế hoạch và nói rõ: “Tôi là Bùi Hữu Nghĩa”.
