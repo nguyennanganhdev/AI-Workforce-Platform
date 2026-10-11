@@ -10,6 +10,8 @@ Phase B đã có RequirementExtractor, CapabilitySelector, ReuseMatcher và Prop
 
 Ghi tiến độ và yêu cầu tích hợp ở [thư mục bàn giao](../../../../../docs/workforce/handoffs/bui-huu-nghia/README.md). File core, contracts dùng chung, migration, dependency và global route cần chuyển cho Nguyễn Chí Hoàng theo kế hoạch.
 
+C3 chỉ nối protocol validation thật từ C2 vào Builder Phase B, trên UOW C1: `RegistryProtocolReadiness`, `RegistryCapabilitySelector` và `ProtocolBuildValidator`. Proposal kiểm tra sớm protocol effect/mode; binding dedup theo tool version và `binding_capabilities` giữ đủ coverage để recheck. Hook gọi validator Lifecycle trước DraftPort write; caller xác minh Scope/confirmation và chặn invalid report/lỗi. Không thêm SQL session, generator, journal/recovery hoặc root/migration. C3 ban đầu đã mở PR #62; bản sửa review chưa commit/push, chưa xác nhận production toàn luồng. Xem [bàn giao C3](../../../../../docs/workforce/handoffs/bui-huu-nghia/PHASE_C_C3.md) cho wiring/tests và giới hạn.
+
 ## Cập nhật bắt buộc theo kế hoạch 1.3
 
 Giữ một role `AREA_MANAGER` và chọn domain/area. Scope là `(tenant_id, domain_id, area_id, manager_account_id)`; partner request phải resolve mapping/grant tới đúng tài khoản đích trước khi chạy Leader, không broadcast theo area. Actor đối tác/cư dân không phải owner platform. Đọc mục 2.6 và hợp đồng mục 6; chỉ dẫn cũ yêu cầu bỏ domain/area không còn hợp lệ.
