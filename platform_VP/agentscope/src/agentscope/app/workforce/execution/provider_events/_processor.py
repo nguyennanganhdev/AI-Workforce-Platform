@@ -5,7 +5,7 @@ Atomic normalized fact + inbox outcome + WorkflowPort trigger application.
 
 from typing import Any
 
-from .._utils import ExecutionError, digest
+from .._utils import ExecutionError, digest, value
 
 
 class ProviderEventProcessor:
@@ -21,18 +21,47 @@ class ProviderEventProcessor:
         row.update(ingestion_status=status, error=error)
         return await self.repo.save("inbox", row, row["revision"], uow)
 
-    async def process(self, receipt_id: Any) -> Any:
+    async def handle_job(self, job: Any) -> dict[str, Any]:
+        """Foundation JobHandler; check namespace against the stored inbox."""
+        from ...foundation.event_delivery import DurableJob
+
+        job = DurableJob.model_validate(value(job))
+        receipt_id = job.payload.get("receipt_id")
+        if (
+            job.owner_kind != "provider"
+            or job.job_type != "provider_event"
+            or not isinstance(receipt_id, str)
+            or not receipt_id
+        ):
+            raise ExecutionError("PROVIDER_JOB_INVALID", 422)
+        status = await self.process(
+            receipt_id,
+            provider_namespace={
+                "tenant_id": job.tenant_id,
+                "provider_integration_id": job.provider_integration_id,
+            },
+        )
+        return {"receipt_id": receipt_id, "ingestion_status": status}
+
+    async def process(
+        self, receipt_id: Any, *, provider_namespace: Any = None
+    ) -> Any:
         """Retriable DB failures roll back every module in the shared UOW."""
         async with self.repo.transaction() as uow:
             row = await self.repo.get("inbox", receipt_id, uow, lock=True)
             if row is None:
                 raise ExecutionError("RESOURCE_NOT_FOUND", 404)
-            if row["ingestion_status"] in {"applied", "ignored"}:
-                return row["ingestion_status"]
+            if provider_namespace is not None and any(
+                row[key] != expected
+                for key, expected in provider_namespace.items()
+            ):
+                raise ExecutionError("RESOURCE_NOT_FOUND", 404)
             principal, envelope = row["provider_ref"], row["envelope"]
             await self.ingress.auth.authorize_integration(
                 principal, "process_job_event", uow=uow
             )
+            if row["ingestion_status"] in {"applied", "ignored"}:
+                return row["ingestion_status"]
             try:
                 op = await self.operations.resolve(principal, envelope, uow)
                 if op is None:
@@ -48,6 +77,7 @@ class ProviderEventProcessor:
                     envelope,
                     inbox_event_id=row["id"],
                     received_at=row["received_at"],
+                    uow=uow,
                 )
                 event = dict(event)
                 event.update(

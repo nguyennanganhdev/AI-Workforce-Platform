@@ -1,5 +1,8 @@
 # Phase A — Operation/inbox và ranh giới liên module
 
+Tài liệu ghi nhận đầu ra A tại 10/10/2026. Cập nhật tích hợp C1/C2:
+[PHASE_C_C3.md](PHASE_C_C3.md), trạng thái hiện tại: [STATUS.md](STATUS.md).
+
 Ngày: 10/10/2026. Thành viên: Phan Hoàng Dũng. Branch: `feat/wf-execution`.
 Baseline đã nhận code PHH: `53a139b` (fast-forward từ `origin/develop2`).
 Phạm vi theo mục 17.9 của [kế hoạch 1.4.3](../../KE_HOACH_TRIEN_KHAI.md):
