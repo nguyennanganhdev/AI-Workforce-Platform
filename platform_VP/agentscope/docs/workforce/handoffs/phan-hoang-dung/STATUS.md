@@ -94,3 +94,11 @@ early event và query timer không tạo provider inbox giả.
 Không tự backfill credential/signing-key/authentication time cho inbox cũ,
 không triển khai thay C4/C7 hoặc bắt đầu C6 khi các bước trước chưa bàn giao.
 
+## Tín hiệu từ C4 — 2026-10-11
+
+C4 đã nhận seam C3 và cung cấp Workflow sink thật trong caller UOW, gồm
+`apply_external_event` hiện có và `apply_query_result` canonical cho TimerCause.
+C4 đã kiểm tra query hook qua `WorkflowEventAdapter` + Execution SQL repository
+thật. C6 chưa bắt đầu: vẫn phải chờ C4 merge và C5 hoàn thành. Hướng dẫn nối C6
+nằm tại `../phan-huy-hoang/INTEGRATION_REQUEST_PHH_C4.md`.
+

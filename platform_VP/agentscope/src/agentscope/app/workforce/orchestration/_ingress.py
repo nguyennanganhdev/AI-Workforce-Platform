@@ -1,13 +1,12 @@
-# -*- coding: utf-8 -*-
 """Partner ingress, idempotency, immutable routing, and bounded wait."""
 
 import asyncio
-from datetime import datetime, timezone
-from hashlib import sha256
 import json
+from datetime import UTC, datetime
+from hashlib import sha256
 from time import monotonic
 from typing import Protocol
-from urllib.parse import quote, urlencode
+from urllib.parse import quote
 
 from ..contracts import (
     CloseWorkflowCommand,
@@ -25,7 +24,6 @@ from ..contracts import (
 from .workflows import WorkflowConflict, next_action
 from .workflows._models import parse_aggregate, raw_value, require_binding
 from .workflows.phase_a import CommandClaimResult
-
 
 PENDING_REQUESTS = {
     RequestStatus.ACCEPTED,
@@ -80,7 +78,7 @@ class PartnerIngressService:
         events,
         completion_signals,
         *,
-        clock=lambda: datetime.now(timezone.utc),
+        clock=lambda: datetime.now(UTC),
         wait_slice_seconds: float = 1.0,
     ) -> None:
         if wait_slice_seconds <= 0:
@@ -114,6 +112,33 @@ class PartnerIngressService:
             external_conversation_id=envelope.external_conversation_id,
             residence_id=envelope.residence_id,
         )
+        payload_hash = sha256(
+            json.dumps(
+                envelope.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        # A valid retry remains bound to its original owner even when the
+        # partner route was remapped after the first commit.  Production
+        # command ledgers expose this read; Phase-B fakes remain compatible.
+        read_existing = getattr(self.commands, "read_existing", None)
+        if read_existing is not None:
+            existing = await read_existing(
+                partner_actor,
+                envelope.external_request_id,
+                envelope.command_type.value,
+                envelope.workflow_id,
+                payload_hash,
+            )
+            if existing is not None:
+                claim = CommandClaimResult.model_validate(raw_value(existing))
+                return await self.read_result(
+                    partner_actor,
+                    claim.request_id,
+                    envelope.external_user_id,
+                )
         if envelope.command_type == PartnerCommandType.START_WORKFLOW:
             route = await self.routing.resolve(
                 partner_actor,
@@ -152,14 +177,6 @@ class PartnerIngressService:
             route_id = original.route_id
             route_revision = original.route_revision
             operation = PartnerOperation.REPLY
-        payload_hash = sha256(
-            json.dumps(
-                envelope.model_dump(mode="json"),
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest()
         async with self.workflows.uows() as tx:
             await self.identity.check_scope_active(scope, tx)
             await self.routing.revalidate(
@@ -189,6 +206,10 @@ class PartnerIngressService:
                     "text": envelope.message.text,
                 }
                 if envelope.command_type == PartnerCommandType.START_WORKFLOW:
+                    message.update(
+                        route_id=route_id,
+                        route_revision=route_revision,
+                    )
                     workflow = await self.workflows.start_with_binding(
                         scope, partner_actor, audience, message, tx
                     )
@@ -327,7 +348,6 @@ class PartnerIngressService:
             action = "resolve_attention"
         else:
             action = next_action(workflow.state)
-        query = urlencode({"external_user_id": external_user_id})
         request_path = (
             "/workforce/v1/partner/requests/"
             f"{quote(request_id, safe='')}"
@@ -350,9 +370,9 @@ class PartnerIngressService:
             error=error,
             accepted_at=request.accepted_at,
             completed_at=request.completed_at,
-            status_url=f"{request_path}?{query}",
-            conversation_url=f"{conversation_path}?{query}",
-            event_stream_url=f"{conversation_path}/events?{query}",
+            status_url=request_path,
+            conversation_url=conversation_path,
+            event_stream_url=f"{conversation_path}/events",
         )
 
     async def wait_for_result(

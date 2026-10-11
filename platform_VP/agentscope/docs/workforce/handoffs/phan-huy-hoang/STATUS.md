@@ -55,3 +55,16 @@ Bàn giao schema/table/index của request, binding, workflow, checkpoint và ev
 log cho Chí Hoàng để gom migration C7; dùng injected UOW, không tạo engine hoặc
 migration riêng. C4 phải cung cấp runtime/evidence port thật để Tiến Anh mở C5.
 Theo dõi [../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).
+
+## Cập nhật Phase C4 — 2026-10-11
+
+C4 đã được triển khai trên baseline `develop2@7bfdc6097fbbd8a5cfeddaf8f84f60b2ddf798c3`.
+Đã có SQL repositories/metadata, Customer API router factory, durable workflow
+job handler, injected Leader bootstrap/runtime, Execution operation/query hook,
+public event replay/SSE và committed-turn evidence cho C5. Kết quả kiểm thử:
+**5/5 C4 SQL/HTTP integration** và **14/14 Phase B regression** pass.
+
+Chi tiết: [PHASE_C_C4.md](PHASE_C_C4.md). Điểm nối C5/C6/C7:
+[INTEGRATION_REQUEST_PHH_C4.md](INTEGRATION_REQUEST_PHH_C4.md). Không có
+migration/global composition/worker deployment trong C4; các phần đó vẫn thuộc
+C7. Sau khi commit này merge vào `develop2`, C5 của Phó Tiến Anh được phép bắt đầu.

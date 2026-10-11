@@ -26,15 +26,12 @@ C7 — Nguyễn Chí Hoàng: composition/migration/CI cuối
 
 - Phase A: 6/6 đã hoàn thành và merge.
 - Phase B: 6/6 đã hoàn thành; C0 đã chốt trong baseline chung.
-- C1 của Nguyễn Chí Hoàng: đã merge trong baseline
-  `dev_TeamHoang@a4c2fddac720bb155efaa01eb91266b95f7b7181`.
-- C2 của Nguyễn Phương Đông, do Nguyễn Chí Hoàng thực hiện thay: đã triển khai
-  SQL protocol repository/provider, exact pinned resolver và kiểm tra tích hợp
-  Registry → Execution adapter trong working tree hiện tại; đang chờ review và
-  merge lên nhánh chung.
-- Hai lane C3 chưa bắt đầu từ working tree C2 chưa merge. Sau khi commit C2 có
-  trên `develop2`, Bùi Hữu Nghĩa và Phan Hoàng Dũng pull đúng commit đó rồi mới
-  triển khai song song.
+- C1, C2 và cả hai lane C3 đã merge vào baseline chung
+  `develop2@7bfdc6097fbbd8a5cfeddaf8f84f60b2ddf798c3`.
+- C4 của Phan Huy Hoàng đang nằm trong working tree kế tiếp trên đúng baseline
+  đó; code và kiểm thử đã hoàn tất, chờ review/commit/merge.
+- C5 chỉ bắt đầu sau khi commit C4 xuất hiện trên `develop2`; C6 và C7 tiếp tục
+  theo đúng thứ tự của sơ đồ.
 
 ## Quy tắc tiếp tục
 
@@ -43,3 +40,15 @@ mình. Chỉ bắt đầu khi bước ngay trước đã có commit trên nhánh
 lane chạy song song sau C2; các bước còn lại chạy tuần tự. Mỗi PR cập nhật
 `STATUS.md`, nêu commit đầu vào, exports đã dùng, test, phần giả/live và request
 tích hợp còn mở. Không sửa lại migration đã merge; gửi schema additive cho C7.
+
+## Cập nhật mới nhất — C4 ngày 2026-10-11
+
+- Baseline đầu vào C4: `develop2@7bfdc6097fbbd8a5cfeddaf8f84f60b2ddf798c3`;
+  C1, C2 và cả hai lane C3 đã có trên nhánh chung.
+- C4 của Phan Huy Hoàng đã hoàn thành code và test trong working tree; chờ commit,
+  review và merge vào `develop2`.
+- Sau khi commit C4 xuất hiện trên `develop2`, Phó Tiến Anh pull commit đó và bắt
+  đầu C5. C6 và C7 vẫn chưa được bắt đầu trước khi các gate ngay trước hoàn tất.
+- Handoff authoritative của C4:
+  `phan-huy-hoang/PHASE_C_C4.md` và
+  `phan-huy-hoang/INTEGRATION_REQUEST_PHH_C4.md`.
