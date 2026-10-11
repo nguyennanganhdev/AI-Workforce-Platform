@@ -1,11 +1,12 @@
 # Phase C — C6 E2E toàn lát cắt của Phan Hoàng Dũng
 
-Ngày **11/10/2026**, Asia/Saigon. Nhánh **`feat/wf-execution`**.
+Ngày cập nhật **12/10/2026**, Asia/Saigon. Nhánh **`feat/wf-execution`**.
 Commit đầu vào **`69e21f7`**, chứa C1–C5; C4 merge `86fa293`, C5 merge `830cdac`.
 Đọc kế hoạch triển khai 1.4.3, bảng tuần tự C0–C7, bàn giao C3/C4/C5 trước khi làm.
 
-**Đã triển khai phần kiểm tra C6 có thể làm trong owned paths. Chưa nghiệm thu
-C6 toàn bộ:** còn lỗi query sau revoke thuộc C4 và các gate cần môi trường.
+**C6 hoàn thành trong môi trường kiểm thử hiện có: 11 passed, zero xfail.**
+Query-after-revoke và binding mismatch đã được kiểm chứng sau sửa C4.
+PostgreSQL gate chưa chạy vì không có dedicated DSN; không tính skip là pass.
 Xem [request C6](INTEGRATION_REQUEST_PHD_C6.md),
 [trạng thái mới nhất](STATUS.md). Không tự đánh dấu mở C7.
 
@@ -22,8 +23,9 @@ Xem [request C6](INTEGRATION_REQUEST_PHD_C6.md),
 - Handoff chỉ cập nhật/tạo STATUS, PHASE và INTEGRATION_REQUEST; không tạo
   NEXT_STEPS. Request A/B/C3 ghi rõ các producer C4 đã được cung cấp.
 
-Không sửa source/module của thành viên khác, root bootstrap, contracts,
-migration, dependencies hoặc CI. C6 không có schema production mới.
+Output Orchestration mô tả tại [PHH C4](../phan-huy-hoang/PHASE_C_C4.md).
+Root bootstrap, contracts, migration, dependencies và CI không thay đổi.
+C6 không có schema production mới.
 
 ## Lát cắt thực thi
 
@@ -73,7 +75,8 @@ root production, không phải module production mới của Dũng.
 | Hai chat cùng user | Tách workflow/conversation/group/session/approval/cursor; hai HTTP SSE đúng binding; replies xen kẽ; stop/close A không đổi B |
 | C5 cùng runtime seam | Năm case response-only, interactive booking, external events, unknown reconciliation, audience isolation; raw provider và query job; SQL evidence/report/release check; replay zero model/provider calls |
 | Terminal/interactive không tracking giả | Không external operations cho hai pattern này; timer IDs không được dùng làm external event ID trong inbox |
-| Query sau route revoke | Strict xfail tái hiện rollback mất fact trong C4; không tính pass |
+| Query sau route revoke | Fact commit, Workflow/history/evidence không đổi, worker idle, không thêm model call; không còn xfail |
+| Reply sai immutable tuple | Caller có quyền nhận 409/WORKFLOW_BINDING_MISMATCH; sai user hoặc grant bị revoke vẫn 403/AUTHORIZATION_DENIED; không dispatch |
 | PostgreSQL race | 8 signed HTTP deliveries + 8 concurrent applies; một fact revision/continuation; cần DSN, chưa chạy |
 
 SSE test gọi router HTTP thực và gửi ASGI `http.disconnect` sau số frame giới
@@ -107,12 +110,14 @@ aiosqlite, asyncpg, httpx, pytest; không đổi dependency manifests.
 $env:PYTHONPATH='src;tests/workforce/fixtures'
 & "$env:TEMP\wf-execution-venv\Scripts\python.exe" -m pytest `
   tests/workforce/e2e/async_tickets/test_phase_c_c6.py `
-  tests/workforce/e2e/async_tickets/test_phase_c_c6_postgres.py -q -rx -rs
+  tests/workforce/e2e/async_tickets/test_phase_c_c6_postgres.py -q -ra
 
 $env:PYTHONPATH='src;tests/workforce/fixtures;tests/workforce/registry/event_protocols'
 & "$env:TEMP\wf-execution-venv\Scripts\python.exe" -m pytest `
   tests/workforce/execution tests/workforce/e2e tests/workforce/foundation `
   tests/workforce/registry tests/workforce/lifecycle tests/workforce/builder `
+  --ignore=tests/workforce/e2e/async_tickets/test_phase_c_c6.py `
+  --ignore=tests/workforce/e2e/async_tickets/test_phase_c_c6_postgres.py `
   --import-mode=importlib -q
 
 $env:PYTHONPATH='src;tests/workforce/orchestration/async_workflows;tests/workforce/orchestration/phase_a'
@@ -124,34 +129,26 @@ Các suite có module `fakes`/`fixtures` trùng tên nên chạy Orchestration r
 không sửa root conftest của đội. Một lượt collect tất cả cùng PYTHONPATH tối
 thiểu lỗi import legacy; không phải kết quả regression code.
 
-Kết quả C6 cuối lượt: **10 tests đạt, 1 strict xfail, 1 PostgreSQL skip**.
-Trong lượt suite cuối có 9 tests đạt; test grading sau chỉnh assertion đọc
-`aggregate.pattern` đã chạy lại riêng: **1 passed, 10 deselected**. Không cộng
-test deselected vào pass; strict xfail là lỗi baseline còn mở.
+Kết quả ngày 12/10/2026:
 
-Regression rộng ngoài các tests C6 mới: **274 passed, 9 skipped,
-178 subtests passed**. Lượt rộng ban đầu
-còn lỗi trong test C6 đóng chat đang pending approval; đã sửa test dùng
-`stop_tracking_only=True` đúng contract, kiểm tra lại bằng suite C6.
+- C6: **11 passed, 0 xfail, 1 skipped** trong 96.97 giây. Skip duy nhất của
+  lượt C6 là PostgreSQL do không có `WORKFORCE_TEST_POSTGRES_URL`.
+- Regression ngoài C6: **274 passed, 9 skipped, 178 subtests passed**.
+- Orchestration: **262 passed, 97 subtests passed** sau cập nhật assertion
+  regression ingress theo exception binding mismatch mới.
+- Kiểm thử C4 SQL/HTTP tập trung: **6 passed**. Bounded-wait kiểm tra worker
+  succeeded và receipt completed; chi tiết sửa test trong handoff C4.
+- Ruff E/F: **pass** trên năm file source Orchestration (88 cột) và ba file
+  test thay đổi (79 cột).
 
-Orchestration chạy riêng: **260 passed, 1 failed, 97 subtests passed**. Failure
-là test sẵn có `C4SqlSliceTests.test_bounded_wait_observes_committed_worker_result`:
-deadline 1 giây, kết quả 202 thay vì 200. Đã tái hiện ở hai lượt, không sửa
-module/test của PHH; không báo suite này xanh.
-Chạy riêng test này cũng fail. Kịch bản chẩn đoán tương đương chạy riêng có
-worker `succeeded`, receipt `completed`, không job error; chưa kết luận lỗi
-sản phẩm từ deadline 1 giây nhạy timing. PHH cần kiểm tra test/đồng bộ worker.
-
-Ruff E/F, line length 79: pass cho bốn file Python thay đổi. Không thay source
-nên không tuyên bố có lượt mypy production mới.
-
-Không có `WORKFORCE_TEST_POSTGRES_URL` hoặc `WORKFORCE_E2E_FACTORY`. Docker CLI
-có nhưng `dockerDesktopLinuxEngine` không chạy. PostgreSQL gate mới và các gate
-factory cũ cần môi trường riêng; không dùng credentials production để chạy.
+Strict xfail đã bỏ, assertion binding mismatch đổi từ 403 sang 409 và kiểm tra
+đúng error code. Assertion route revoke đọc kết quả vẫn là 403.
+Không có `WORKFORCE_E2E_FACTORY`; các gate factory cũ vẫn cần composition C7.
+PostgreSQL locks/race và deployment không nằm trong kết luận pass SQLite này.
 
 ## Bàn giao
 
-[INTEGRATION_REQUEST_PHD_C6.md](INTEGRATION_REQUEST_PHD_C6.md) nêu blocker C4,
+[INTEGRATION_REQUEST_PHD_C6.md](INTEGRATION_REQUEST_PHD_C6.md) ghi C4 đã xử lý,
 approval bridge, handler/router map, metadata và các điều kiện môi trường.
-Chỉ sau xử lý blocker và merge C6 vào develop2 mới đối chiếu mở C7 theo bảng
-tuần tự của đội. Không tự commit, push hoặc tạo PR trong lượt này.
+C6 không còn blocker query-after-revoke/binding mismatch. Điều phối mở C7 theo
+baseline tích hợp của đội là bước riêng. Không thực hiện thao tác Git trong lượt này.

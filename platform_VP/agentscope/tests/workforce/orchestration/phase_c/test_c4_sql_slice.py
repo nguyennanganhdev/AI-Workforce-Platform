@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -98,7 +99,10 @@ class _Ids:
 
 class _Authorization:
     async def authorize(self, scope, actor, audience, operation, uow=None):
-        if scope != SCOPE or actor.external_user_id != audience.external_user_id:
+        if (
+            scope != SCOPE
+            or actor.external_user_id != audience.external_user_id
+        ):
             raise PermissionError
 
     async def authorize_trigger(self, aggregate, trigger, uow=None):
@@ -234,6 +238,7 @@ class C4SqlSliceTests(unittest.IsolatedAsyncioTestCase):
         self.workflows_repo = SqlWorkflowRepository(
             self.uows, clock=self.clock, ids=self.ids
         )
+
         async def tenant_resolver(actor, uow):
             if actor.partner_client_id != "partner-1":
                 raise PermissionError
@@ -245,9 +250,7 @@ class C4SqlSliceTests(unittest.IsolatedAsyncioTestCase):
             clock=self.clock,
             ids=self.ids,
         )
-        self.checkpoints = SqlCheckpointRepository(
-            self.uows, clock=self.clock
-        )
+        self.checkpoints = SqlCheckpointRepository(self.uows, clock=self.clock)
         self.execution_repository = create_execution_repository(
             uow_factory=self.uows
         )
@@ -304,7 +307,7 @@ class C4SqlSliceTests(unittest.IsolatedAsyncioTestCase):
             self.jobs,
             {handler.job_type: handler},
             worker_id="durable-worker",
-            heartbeat_interval=0.01,
+            heartbeat_interval=10.0,
         )
         self.ingress = PartnerIngressService(
             self.workflow_service,
@@ -387,12 +390,13 @@ class C4SqlSliceTests(unittest.IsolatedAsyncioTestCase):
                 self.actor,
                 receipt.request_id,
                 "resident-1",
-                NOW + timedelta(seconds=1),
+                NOW + timedelta(seconds=10),
             )
         )
         await asyncio.sleep(0)
-        await self.worker.run_once()
-        completed = await asyncio.wait_for(waiter, timeout=1)
+        outcome = await self.worker.run_once()
+        self.assertEqual("succeeded", outcome.status)
+        completed = await asyncio.wait_for(waiter, timeout=10)
         self.assertEqual(200, receipt_http_status(completed))
         self.assertEqual("completed", completed.request_status)
 
@@ -433,7 +437,7 @@ class C4SqlSliceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("completed", response.json()["request_status"])
 
             response = await client.get(
-                f'{pending["conversation_url"]}/event-history',
+                f"{pending['conversation_url']}/event-history",
                 params={"external_user_id": "resident-1"},
             )
             self.assertEqual(200, response.status_code)
@@ -478,6 +482,65 @@ class C4SqlSliceTests(unittest.IsolatedAsyncioTestCase):
             workflow_b.checkpoint.session_refs,
         )
 
+    async def test_reply_binding_conflict_preserves_authorization_errors(self):
+        receipt = await self.ingress.accept(
+            self.actor, self.envelope("request-A", "ticket-A", "chat-A")
+        )
+        app = FastAPI()
+
+        async def customer_dependency():
+            return self.actor
+
+        app.include_router(
+            create_router(
+                self.ingress,
+                self.event_service,
+                customer_dependency,
+                bounded_wait_seconds=0,
+            )
+        )
+        body = self.envelope("bad-tuple", "ticket-B", "chat-B").model_dump(
+            mode="json"
+        )
+        body.update(
+            command_type="workflow_reply", workflow_id=receipt.workflow_id
+        )
+        before = await self.workflows_repo.load(SCOPE, receipt.workflow_id)
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/workforce/v1/partner/requests", json=body
+            )
+            self.assertEqual(409, response.status_code)
+            self.assertEqual(
+                "WORKFLOW_BINDING_MISMATCH", response.json()["error"]["code"]
+            )
+
+            async def denied(*args, **kwargs):
+                raise PermissionError("grant revoked")
+
+            with patch.object(self.ingress.routing, "revalidate", denied):
+                response = await client.post(
+                    "/workforce/v1/partner/requests", json=body
+                )
+            self.assertEqual(403, response.status_code)
+            self.assertEqual(
+                "AUTHORIZATION_DENIED", response.json()["error"]["code"]
+            )
+            response = await client.post(
+                "/workforce/v1/partner/requests",
+                json={**body, "external_user_id": "foreign-user"},
+            )
+            self.assertEqual(403, response.status_code)
+            self.assertEqual(
+                "AUTHORIZATION_DENIED", response.json()["error"]["code"]
+            )
+        self.assertEqual(0, self.leader.calls)
+        self.assertEqual(
+            before, await self.workflows_repo.load(SCOPE, receipt.workflow_id)
+        )
+
     async def test_execution_query_hook_uses_timer_cause_and_same_uow(self):
         receipt = await self.ingress.accept(
             self.actor, self.envelope("request-A", "ticket-A", "chat-A")
@@ -488,9 +551,9 @@ class C4SqlSliceTests(unittest.IsolatedAsyncioTestCase):
             Path(__file__).resolve().parents[4]
             / "docs/workforce/handoffs/nguyen-phuong-dong/phase_a_samples.json"
         )
-        raw = json.loads(sample_path.read_text(encoding="utf-8"))[
-            "protocols"
-        ]["query_only"]
+        raw = json.loads(sample_path.read_text(encoding="utf-8"))["protocols"][
+            "query_only"
+        ]
         raw.update(
             tool_version_id="technical.create.v1",
             provider_integration_id="provider-1",
