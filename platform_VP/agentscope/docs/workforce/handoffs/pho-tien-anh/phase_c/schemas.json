@@ -1,0 +1,1121 @@
+{
+  "schema_version": "pta-runtime-evidence-1",
+  "schemas": {
+    "FrozenEvaluation": {
+      "additionalProperties": false,
+      "description": "JSON string sealing prevents nested DTO mappings from mutating evidence.",
+      "properties": {
+        "payload_json": {
+          "title": "Payload Json",
+          "type": "string"
+        },
+        "content_hash": {
+          "title": "Content Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "payload_json",
+        "content_hash"
+      ],
+      "title": "FrozenEvaluation",
+      "type": "object"
+    },
+    "TurnEvidence": {
+      "$defs": {
+        "NextAction": {
+          "enum": [
+            "none",
+            "submit_reply",
+            "submit_approval",
+            "watch_request",
+            "watch_events",
+            "confirm_close",
+            "resolve_attention"
+          ],
+          "title": "NextAction",
+          "type": "string"
+        },
+        "WorkflowState": {
+          "enum": [
+            "accepted",
+            "active",
+            "waiting_external_event",
+            "awaiting_user",
+            "awaiting_approval",
+            "awaiting_confirmation",
+            "needs_attention",
+            "blocked_authorization",
+            "blocked_route_changed",
+            "closed"
+          ],
+          "title": "WorkflowState",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Runner evidence proposal carried in shared case metrics, not a runtime DTO.",
+      "properties": {
+        "cause": {
+          "title": "Cause",
+          "type": "string"
+        },
+        "workflow_state": {
+          "$ref": "#/$defs/WorkflowState"
+        },
+        "next_action": {
+          "$ref": "#/$defs/NextAction"
+        },
+        "llm_calls": {
+          "minimum": 0,
+          "title": "Llm Calls",
+          "type": "integer"
+        },
+        "side_effect_calls": {
+          "minimum": 0,
+          "title": "Side Effect Calls",
+          "type": "integer"
+        },
+        "tracking_records": {
+          "minimum": 0,
+          "title": "Tracking Records",
+          "type": "integer"
+        },
+        "approval_granted": {
+          "title": "Approval Granted",
+          "type": "boolean"
+        },
+        "provider_confirmed": {
+          "title": "Provider Confirmed",
+          "type": "boolean"
+        },
+        "audience_key": {
+          "title": "Audience Key",
+          "type": "string"
+        },
+        "notification_audiences": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notification Audiences",
+          "type": "array"
+        },
+        "unbound_tool_calls": {
+          "minimum": 0,
+          "title": "Unbound Tool Calls",
+          "type": "integer"
+        },
+        "argument_checks": {
+          "minimum": 0,
+          "title": "Argument Checks",
+          "type": "integer"
+        },
+        "argument_passes": {
+          "minimum": 0,
+          "title": "Argument Passes",
+          "type": "integer"
+        },
+        "secret_leaked": {
+          "title": "Secret Leaked",
+          "type": "boolean"
+        },
+        "budget_exceeded": {
+          "title": "Budget Exceeded",
+          "type": "boolean"
+        },
+        "claimed_completion": {
+          "title": "Claimed Completion",
+          "type": "boolean"
+        },
+        "cost": {
+          "minimum": 0,
+          "title": "Cost",
+          "type": "number"
+        },
+        "latency_ms": {
+          "minimum": 0,
+          "title": "Latency Ms",
+          "type": "number"
+        }
+      },
+      "required": [
+        "cause",
+        "workflow_state",
+        "next_action",
+        "llm_calls",
+        "side_effect_calls",
+        "tracking_records",
+        "approval_granted",
+        "provider_confirmed",
+        "audience_key",
+        "notification_audiences",
+        "unbound_tool_calls",
+        "argument_checks",
+        "argument_passes",
+        "secret_leaked",
+        "budget_exceeded",
+        "claimed_completion",
+        "cost",
+        "latency_ms"
+      ],
+      "title": "TurnEvidence",
+      "type": "object"
+    },
+    "CommittedTurnEvidence": {
+      "$defs": {
+        "WorkflowState": {
+          "enum": [
+            "accepted",
+            "active",
+            "waiting_external_event",
+            "awaiting_user",
+            "awaiting_approval",
+            "awaiting_confirmation",
+            "needs_attention",
+            "blocked_authorization",
+            "blocked_route_changed",
+            "closed"
+          ],
+          "title": "WorkflowState",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Sanitized runtime evidence persisted atomically with a completed turn.",
+      "properties": {
+        "workflow_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "trigger_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Trigger Id",
+          "type": "string"
+        },
+        "cause_kind": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Cause Kind",
+          "type": "string"
+        },
+        "audience_key": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Audience Key",
+          "type": "string"
+        },
+        "before_state": {
+          "$ref": "#/$defs/WorkflowState"
+        },
+        "after_state": {
+          "$ref": "#/$defs/WorkflowState"
+        },
+        "before_revision": {
+          "minimum": 1,
+          "title": "Before Revision",
+          "type": "integer"
+        },
+        "after_revision": {
+          "minimum": 2,
+          "title": "After Revision",
+          "type": "integer"
+        },
+        "next_action": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Next Action",
+          "type": "string"
+        },
+        "checked_effects": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Checked Effects",
+          "type": "array"
+        },
+        "model_turns": {
+          "minimum": 0,
+          "title": "Model Turns",
+          "type": "integer"
+        },
+        "tool_calls": {
+          "minimum": 0,
+          "title": "Tool Calls",
+          "type": "integer"
+        },
+        "input_tokens": {
+          "minimum": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "minimum": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "new_tracking_records": {
+          "minimum": 0,
+          "title": "New Tracking Records",
+          "type": "integer"
+        },
+        "message_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Message Ids",
+          "type": "array"
+        },
+        "approval_cause": {
+          "title": "Approval Cause",
+          "type": "boolean"
+        },
+        "provider_cause": {
+          "title": "Provider Cause",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "workflow_id",
+        "trigger_id",
+        "cause_kind",
+        "audience_key",
+        "before_state",
+        "after_state",
+        "before_revision",
+        "after_revision",
+        "next_action",
+        "model_turns",
+        "tool_calls",
+        "input_tokens",
+        "output_tokens",
+        "new_tracking_records",
+        "approval_cause",
+        "provider_cause"
+      ],
+      "title": "CommittedTurnEvidence",
+      "type": "object"
+    },
+    "RuntimeAudit": {
+      "additionalProperties": false,
+      "description": "Required sanitized audit from Execution/provider and output inspection.\n\nThese facts cannot be inferred from an approval cause or provider event.\nNo arguments, message text, prompts, credentials or exception text belong\nhere. Missing audit is a runner error, never an implicit successful check.",
+      "properties": {
+        "side_effect_calls": {
+          "minimum": 0,
+          "title": "Side Effect Calls",
+          "type": "integer"
+        },
+        "approval_granted": {
+          "title": "Approval Granted",
+          "type": "boolean"
+        },
+        "provider_confirmed": {
+          "title": "Provider Confirmed",
+          "type": "boolean"
+        },
+        "notification_audiences": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notification Audiences",
+          "type": "array"
+        },
+        "unbound_tool_calls": {
+          "minimum": 0,
+          "title": "Unbound Tool Calls",
+          "type": "integer"
+        },
+        "argument_checks": {
+          "minimum": 0,
+          "title": "Argument Checks",
+          "type": "integer"
+        },
+        "argument_passes": {
+          "minimum": 0,
+          "title": "Argument Passes",
+          "type": "integer"
+        },
+        "secret_leaked": {
+          "title": "Secret Leaked",
+          "type": "boolean"
+        },
+        "budget_exceeded": {
+          "title": "Budget Exceeded",
+          "type": "boolean"
+        },
+        "claimed_completion": {
+          "title": "Claimed Completion",
+          "type": "boolean"
+        },
+        "cost": {
+          "minimum": 0,
+          "title": "Cost",
+          "type": "number"
+        },
+        "latency_ms": {
+          "minimum": 0,
+          "title": "Latency Ms",
+          "type": "number"
+        }
+      },
+      "required": [
+        "side_effect_calls",
+        "approval_granted",
+        "provider_confirmed",
+        "notification_audiences",
+        "unbound_tool_calls",
+        "argument_checks",
+        "argument_passes",
+        "secret_leaked",
+        "budget_exceeded",
+        "claimed_completion",
+        "cost",
+        "latency_ms"
+      ],
+      "title": "RuntimeAudit",
+      "type": "object"
+    },
+    "RuntimeObservation": {
+      "$defs": {
+        "AgentVersionPin": {
+          "additionalProperties": false,
+          "properties": {
+            "agent_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Agent Id",
+              "type": "string"
+            },
+            "version_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id",
+            "version_id"
+          ],
+          "title": "AgentVersionPin",
+          "type": "object"
+        },
+        "ApprovalCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "approval",
+              "title": "Kind",
+              "type": "string"
+            },
+            "request_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Request Id",
+              "type": "string"
+            },
+            "approval_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "request_id",
+            "approval_id"
+          ],
+          "title": "ApprovalCause",
+          "type": "object"
+        },
+        "AsyncProtocolSnapshotRef": {
+          "additionalProperties": false,
+          "description": "Stable reference while Registry owns detailed protocol semantics.",
+          "properties": {
+            "protocol_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Protocol Id",
+              "type": "string"
+            },
+            "protocol_version": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Protocol Version",
+              "type": "string"
+            },
+            "schema_hash": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Schema Hash",
+              "type": "string"
+            },
+            "tool_version_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tool Version Id",
+              "type": "string"
+            },
+            "provider_integration_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Provider Integration Id"
+            },
+            "capabilities": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Capabilities",
+              "type": "array"
+            }
+          },
+          "required": [
+            "protocol_id",
+            "protocol_version",
+            "schema_hash",
+            "tool_version_id"
+          ],
+          "title": "AsyncProtocolSnapshotRef",
+          "type": "object"
+        },
+        "ExternalEventCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "external_event",
+              "title": "Kind",
+              "type": "string"
+            },
+            "cause_event_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Cause Event Id",
+              "type": "string"
+            },
+            "operation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "cause_event_id",
+            "operation_id"
+          ],
+          "title": "ExternalEventCause",
+          "type": "object"
+        },
+        "PartnerAudience": {
+          "additionalProperties": false,
+          "description": "End-user and conversation boundary asserted by a trusted backend.",
+          "properties": {
+            "partner_client_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Partner Client Id",
+              "type": "string"
+            },
+            "external_user_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "External User Id",
+              "type": "string"
+            },
+            "external_conversation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "External Conversation Id",
+              "type": "string"
+            },
+            "external_ticket_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "External Ticket Id"
+            },
+            "residence_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Residence Id"
+            }
+          },
+          "required": [
+            "partner_client_id",
+            "external_user_id",
+            "external_conversation_id"
+          ],
+          "title": "PartnerAudience",
+          "type": "object"
+        },
+        "PinnedRuntimeContext": {
+          "additionalProperties": false,
+          "description": "Snapshot shape only. Loading/revalidation remain Foundation work.",
+          "properties": {
+            "workflow": {
+              "$ref": "#/$defs/WorkflowRecord"
+            },
+            "checkpoint": {
+              "$ref": "#/$defs/WorkflowCheckpoint"
+            }
+          },
+          "required": [
+            "workflow",
+            "checkpoint"
+          ],
+          "title": "PinnedRuntimeContext",
+          "type": "object"
+        },
+        "RequestCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "request",
+              "title": "Kind",
+              "type": "string"
+            },
+            "request_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "request_id"
+          ],
+          "title": "RequestCause",
+          "type": "object"
+        },
+        "RuntimeAudit": {
+          "additionalProperties": false,
+          "description": "Required sanitized audit from Execution/provider and output inspection.\n\nThese facts cannot be inferred from an approval cause or provider event.\nNo arguments, message text, prompts, credentials or exception text belong\nhere. Missing audit is a runner error, never an implicit successful check.",
+          "properties": {
+            "side_effect_calls": {
+              "minimum": 0,
+              "title": "Side Effect Calls",
+              "type": "integer"
+            },
+            "approval_granted": {
+              "title": "Approval Granted",
+              "type": "boolean"
+            },
+            "provider_confirmed": {
+              "title": "Provider Confirmed",
+              "type": "boolean"
+            },
+            "notification_audiences": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Notification Audiences",
+              "type": "array"
+            },
+            "unbound_tool_calls": {
+              "minimum": 0,
+              "title": "Unbound Tool Calls",
+              "type": "integer"
+            },
+            "argument_checks": {
+              "minimum": 0,
+              "title": "Argument Checks",
+              "type": "integer"
+            },
+            "argument_passes": {
+              "minimum": 0,
+              "title": "Argument Passes",
+              "type": "integer"
+            },
+            "secret_leaked": {
+              "title": "Secret Leaked",
+              "type": "boolean"
+            },
+            "budget_exceeded": {
+              "title": "Budget Exceeded",
+              "type": "boolean"
+            },
+            "claimed_completion": {
+              "title": "Claimed Completion",
+              "type": "boolean"
+            },
+            "cost": {
+              "minimum": 0,
+              "title": "Cost",
+              "type": "number"
+            },
+            "latency_ms": {
+              "minimum": 0,
+              "title": "Latency Ms",
+              "type": "number"
+            }
+          },
+          "required": [
+            "side_effect_calls",
+            "approval_granted",
+            "provider_confirmed",
+            "notification_audiences",
+            "unbound_tool_calls",
+            "argument_checks",
+            "argument_passes",
+            "secret_leaked",
+            "budget_exceeded",
+            "claimed_completion",
+            "cost",
+            "latency_ms"
+          ],
+          "title": "RuntimeAudit",
+          "type": "object"
+        },
+        "Scope": {
+          "additionalProperties": false,
+          "description": "Immutable owner boundary for every Workforce resource.",
+          "properties": {
+            "tenant_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Tenant Id",
+              "type": "string"
+            },
+            "domain_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Domain Id",
+              "type": "string"
+            },
+            "area_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Area Id",
+              "type": "string"
+            },
+            "manager_account_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Manager Account Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "tenant_id",
+            "domain_id",
+            "area_id",
+            "manager_account_id"
+          ],
+          "title": "Scope",
+          "type": "object"
+        },
+        "TimerCause": {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "timer",
+              "title": "Kind",
+              "type": "string"
+            },
+            "timer_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Timer Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "timer_id"
+          ],
+          "title": "TimerCause",
+          "type": "object"
+        },
+        "UsedBudget": {
+          "additionalProperties": false,
+          "properties": {
+            "model_turns": {
+              "minimum": 0,
+              "title": "Model Turns",
+              "type": "integer"
+            },
+            "tool_calls": {
+              "minimum": 0,
+              "title": "Tool Calls",
+              "type": "integer"
+            },
+            "input_tokens": {
+              "minimum": 0,
+              "title": "Input Tokens",
+              "type": "integer"
+            },
+            "output_tokens": {
+              "minimum": 0,
+              "title": "Output Tokens",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "model_turns",
+            "tool_calls",
+            "input_tokens",
+            "output_tokens"
+          ],
+          "title": "UsedBudget",
+          "type": "object"
+        },
+        "WorkflowCheckpoint": {
+          "additionalProperties": false,
+          "description": "Durable references, not raw runtime objects, prompts or credentials.",
+          "properties": {
+            "schema_version": {
+              "const": "phh-phase-a-1",
+              "default": "phh-phase-a-1",
+              "title": "Schema Version",
+              "type": "string"
+            },
+            "workflow_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Workflow Id",
+              "type": "string"
+            },
+            "state_revision": {
+              "minimum": 1,
+              "title": "State Revision",
+              "type": "integer"
+            },
+            "session_refs": {
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "Session Refs",
+              "type": "array"
+            },
+            "agent_version_pins": {
+              "items": {
+                "$ref": "#/$defs/AgentVersionPin"
+              },
+              "minItems": 1,
+              "title": "Agent Version Pins",
+              "type": "array"
+            },
+            "protocol_pins": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AsyncProtocolSnapshotRef"
+              },
+              "title": "Protocol Pins",
+              "type": "array"
+            },
+            "shared_state_ref": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Shared State Ref",
+              "type": "string"
+            },
+            "pending_task_ids": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Pending Task Ids",
+              "type": "array"
+            },
+            "pending_question_ids": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Pending Question Ids",
+              "type": "array"
+            },
+            "pending_approval_ids": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Pending Approval Ids",
+              "type": "array"
+            },
+            "operation_refs": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Operation Refs",
+              "type": "array"
+            },
+            "last_processed_causes": {
+              "default": [],
+              "items": {
+                "discriminator": {
+                  "mapping": {
+                    "approval": "#/$defs/ApprovalCause",
+                    "external_event": "#/$defs/ExternalEventCause",
+                    "request": "#/$defs/RequestCause",
+                    "timer": "#/$defs/TimerCause"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/RequestCause"
+                  },
+                  {
+                    "$ref": "#/$defs/ApprovalCause"
+                  },
+                  {
+                    "$ref": "#/$defs/ExternalEventCause"
+                  },
+                  {
+                    "$ref": "#/$defs/TimerCause"
+                  }
+                ]
+              },
+              "title": "Last Processed Causes",
+              "type": "array"
+            },
+            "used_budget": {
+              "$ref": "#/$defs/UsedBudget"
+            }
+          },
+          "required": [
+            "workflow_id",
+            "state_revision",
+            "session_refs",
+            "agent_version_pins",
+            "shared_state_ref",
+            "used_budget"
+          ],
+          "title": "WorkflowCheckpoint",
+          "type": "object"
+        },
+        "WorkflowRecord": {
+          "additionalProperties": false,
+          "properties": {
+            "workflow_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Workflow Id",
+              "type": "string"
+            },
+            "scope": {
+              "$ref": "#/$defs/Scope"
+            },
+            "audience": {
+              "$ref": "#/$defs/PartnerAudience"
+            },
+            "conversation_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Conversation Id",
+              "type": "string"
+            },
+            "ticket_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Ticket Id"
+            },
+            "route_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Route Id",
+              "type": "string"
+            },
+            "route_revision": {
+              "minimum": 1,
+              "title": "Route Revision",
+              "type": "integer"
+            },
+            "state": {
+              "$ref": "#/$defs/WorkflowState"
+            },
+            "revision": {
+              "minimum": 1,
+              "title": "Revision",
+              "type": "integer"
+            },
+            "group_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Group Id",
+              "type": "string"
+            },
+            "checkpoint_ref": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Checkpoint Ref"
+            },
+            "version_pins": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Version Pins",
+              "type": "array"
+            },
+            "pending_waits": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Pending Waits",
+              "type": "array"
+            },
+            "last_applied_event_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Last Applied Event Id"
+            },
+            "created_at": {
+              "format": "date-time",
+              "title": "Created At",
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "date-time",
+              "title": "Updated At",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workflow_id",
+            "scope",
+            "audience",
+            "conversation_id",
+            "route_id",
+            "route_revision",
+            "state",
+            "revision",
+            "group_id",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "WorkflowRecord",
+          "type": "object"
+        },
+        "WorkflowState": {
+          "enum": [
+            "accepted",
+            "active",
+            "waiting_external_event",
+            "awaiting_user",
+            "awaiting_approval",
+            "awaiting_confirmation",
+            "needs_attention",
+            "blocked_authorization",
+            "blocked_route_changed",
+            "closed"
+          ],
+          "title": "WorkflowState",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Persisted before/after context and audit for one idempotent stimulus.",
+      "properties": {
+        "before": {
+          "$ref": "#/$defs/PinnedRuntimeContext"
+        },
+        "after": {
+          "$ref": "#/$defs/PinnedRuntimeContext"
+        },
+        "next_action": {
+          "title": "Next Action",
+          "type": "string"
+        },
+        "trigger_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Trigger Ids",
+          "type": "array"
+        },
+        "audit": {
+          "$ref": "#/$defs/RuntimeAudit"
+        }
+      },
+      "required": [
+        "before",
+        "after",
+        "next_action",
+        "trigger_ids",
+        "audit"
+      ],
+      "title": "RuntimeObservation",
+      "type": "object"
+    }
+  }
+}
