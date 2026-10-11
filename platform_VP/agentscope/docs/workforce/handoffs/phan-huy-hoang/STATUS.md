@@ -1,6 +1,10 @@
 # Trạng thái — Phan Huy Hoàng
 
-Ngày kiểm tra: **2026-10-11**. Baseline: `develop2@848740498c92894c074cf264f6ce6307a2dfb9cc`.
+Ngày cập nhật: **2026-10-11**. Baseline chung hiện tại:
+`develop2@830cdacd56f868d509d208b91b9a6bc29d70c935`.
+
+**Trạng thái mới nhất:** C4 đã hoàn thành và merge qua PR #63 tại
+`86fa2931bbfd54d064798e00e0998429c6ac9cb5`; output C4 đã được C5 sử dụng.
 
 Phase A của cả 6 thành viên đã merge. Phase B của 5 thành viên còn lại cũng đã merge; phần này triển khai mới công việc Phase B của Phan Huy Hoàng trên baseline đó, không lấy hoặc cherry-pick code từ PR #58.
 
@@ -39,22 +43,18 @@ Regression lân cận: Foundation **19/19 pass**, Registry **24/24 pass**. Suite
 
 Chưa có PostgreSQL repository/migration, FastAPI route thật, application composition, worker deployment hoặc E2E với Redis/provider thật. Đây là đầu việc Phase C/D và phải dùng integration request, không được hiểu fake test là production persistence. Không sửa shared contracts, migration, global route, dependency hoặc lockfile trong phần triển khai này.
 
-## Điều phối Phase C — cập nhật từ C1 ngày 2026-10-11
+## Điều phối Phase C — gate C4 đã hoàn thành
 
-Phase B của bạn trong working tree đã test nhưng tại thời điểm cập nhật này chưa
-có commit/merge trên `develop2`. Commit chung tiếp theo phải giữ nguyên output
-PHH Phase B này cùng C1; không lấy PR #58 cũ thay thế.
-
-Bạn là owner **C4**, chỉ bắt đầu sau C2 và cả hai lane C3 (Builder + Execution)
-đã merge. C1 đã có UOW/identity/routing/jobs/signals/provider auth/bootstrap.
-C4 nối production Customer POST → persisted request/binding/workflow → bounded
-wait → Leader continuation → public event log/SSE. Mỗi ticket/hộp chat vẫn có
-workflow/group/session riêng; HTTP không chạy model trong transaction.
+Phase B của Phan Huy Hoàng và C1–C3 đã merge trước khi C4 bắt đầu. C4 nối
+production Customer POST → persisted request/binding/workflow → bounded wait →
+Leader continuation → public event log/SSE. Mỗi ticket/hộp chat vẫn có
+workflow/group/session riêng; HTTP không chạy model trong transaction. C4 hiện
+đã merge và không còn là gate đang chờ.
 
 Bàn giao schema/table/index của request, binding, workflow, checkpoint và event
 log cho Chí Hoàng để gom migration C7; dùng injected UOW, không tạo engine hoặc
-migration riêng. C4 phải cung cấp runtime/evidence port thật để Tiến Anh mở C5.
-Theo dõi [../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).
+migration riêng. Runtime/evidence port C4 đã được C5 sử dụng. Theo dõi trạng
+thái mới nhất tại [../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).
 
 ## Cập nhật Phase C4 — 2026-10-11
 
@@ -67,4 +67,5 @@ public event replay/SSE và committed-turn evidence cho C5. Kết quả kiểm t
 Chi tiết: [PHASE_C_C4.md](PHASE_C_C4.md). Điểm nối C5/C6/C7:
 [INTEGRATION_REQUEST_PHH_C4.md](INTEGRATION_REQUEST_PHH_C4.md). Không có
 migration/global composition/worker deployment trong C4; các phần đó vẫn thuộc
-C7. Sau khi commit này merge vào `develop2`, C5 của Phó Tiến Anh được phép bắt đầu.
+C7. C4 đã merge qua PR #63; C5 sau đó đã hoàn thành và merge qua PR #64.
+Handoff C4 hiện là đầu vào trực tiếp cho C6 và C7, không còn trạng thái chờ merge.
