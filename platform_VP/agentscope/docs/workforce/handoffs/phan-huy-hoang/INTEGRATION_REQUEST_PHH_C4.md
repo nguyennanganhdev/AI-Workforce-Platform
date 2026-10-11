@@ -1,6 +1,7 @@
 # Integration request sau C4
 
-Trạng thái: **C4 READY, chờ merge để mở C5**.
+Trạng thái: **C4 đã merge qua PR #63; C5 đã dùng đầu ra này và cũng đã merge.
+Tài liệu hiện là đầu vào cho C6/C7.**
 
 ## C5 — Phó Tiến Anh
 

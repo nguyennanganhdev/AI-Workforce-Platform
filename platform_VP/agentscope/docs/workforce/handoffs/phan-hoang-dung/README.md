@@ -4,6 +4,12 @@ Branch đề xuất: `feat/wf-execution`. Đầu việc: **PHD-01–PHD-17**.
 
 Phạm vi: tool execution, booking approval, idempotency, mocks và E2E.
 
+Trạng thái Phase C ngày 11/10/2026: lane C3 đã merge; C4 và C5 cũng đã merge.
+**C6 E2E toàn lát cắt hiện đã được mở cho Phan Hoàng Dũng** trên baseline
+`develop2@830cdacd56f868d509d208b91b9a6bc29d70c935`. Đọc
+[STATUS.md](STATUS.md), [bảng tuần tự](../PHASE_C_SEQUENCE.md) và bàn giao C5
+tại `../pho-tien-anh/INTEGRATION_REQUEST_PTA_C5.md` trước khi code.
+
 [Kế hoạch và hợp đồng chung](../../KE_HOACH_TRIEN_KHAI.md) là tài liệu đầu vào cho AI. Gửi cả file kế hoạch và nói rõ: “Tôi là Phan Hoàng Dũng”.
 
 Khi triển khai, tạo `STATUS.md` theo mẫu ở mục 16. Mỗi yêu cầu đổi contract/hook/file chung ghi vào `INTEGRATION_REQUEST_<task-id>.md` theo mục 14.

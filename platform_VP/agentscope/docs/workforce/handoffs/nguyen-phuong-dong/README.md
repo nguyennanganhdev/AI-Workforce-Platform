@@ -13,8 +13,9 @@ và production provider dùng UOW chung. Đã kiểm tra tích hợp Registry SQ
 của owner khác. Xem [PHASE_C_C2.md](PHASE_C_C2.md), [STATUS.md](STATUS.md) và
 [INTEGRATION_REQUEST_NPD_C2.md](INTEGRATION_REQUEST_NPD_C2.md).
 
-C2 đang ở working tree chờ review/merge. Chỉ sau khi commit C2 có trên nhánh
-chung thì hai lane C3/Builder và C3/Execution mới pull và bắt đầu.
+C2 đã merge vào `develop2`; hai lane C3/Builder và C3/Execution cũng đã dùng
+đầu ra này và hoàn thành. Trạng thái toàn chuỗi xem
+[../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).
 
 ## Phase B — 2026-10-10
 
@@ -42,7 +43,8 @@ Kế hoạch endpoint mới nhất giữ `workflow_state`/`next_action` cho Cust
 
 Khi triển khai, tạo `STATUS.md` theo mẫu ở mục 16. Mỗi yêu cầu đổi contract/hook/file chung ghi vào `INTEGRATION_REQUEST_<task-id>.md` theo mục 14.
 
-Hiện tại chưa có task được đánh dấu hoàn thành; việc tạo thư mục này không chứng minh module đã được code/test.
+C2 đã hoàn thành và merge. Việc đó không tự động đánh dấu toàn bộ NPD-01–NPD-12
+hoàn thành ngoài phạm vi được ghi rõ trong `STATUS.md` và `PHASE_C_C2.md`.
 
 Nguyên tắc batch của bản 1.2 được giữ ở bản 1.3: Registry đăng ký tool cho Builder và kiểm tra availability của agent ứng viên. Agent tạo lẻ/hàng loạt dùng chung kho tool trong scope; batch không là phạm vi cấp tool hoặc group thực thi. Đọc mục 2.3, 2.5 và 6 của kế hoạch trước khi code; nội dung này thay thế cách hiểu team artifact ở bản trước. Đây là đầu việc cần triển khai, chưa phải tính năng đã hoàn thành.
 
