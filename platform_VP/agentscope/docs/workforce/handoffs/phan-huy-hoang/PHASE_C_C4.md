@@ -96,3 +96,29 @@ gate C7; không coi SQLite là bằng chứng PostgreSQL production.
 
 Các dependency tiếp theo nằm tại
 [INTEGRATION_REQUEST_PHH_C4.md](INTEGRATION_REQUEST_PHH_C4.md).
+
+## Cập nhật acceptance C6 — 2026-10-12
+
+- `WorkflowService.apply_query_result` xác minh Scope/binding/operation/pin và
+  dedupe trước; closed workflow trả nguyên record. Với workflow còn mở,
+  authorize timer trigger trước mọi ghi Workflow/checkpoint/public events.
+  Original grant bị revoke trả nguyên record, giữ operation fact trong caller
+  UOW và không enqueue continuation. Không bắt lỗi binding/pin hay lỗi DB.
+- Partner ingress resolve original request của đúng partner/user, revalidate
+  original Scope/route/audience rồi mới báo immutable tuple conflict. Exception
+  nội bộ `WorkflowBindingMismatch` được router map thành
+  `409/WORKFLOW_BINDING_MISMATCH`. Authorization failure vẫn
+  `403/AUTHORIZATION_DENIED`; không claim command hoặc dispatch khi lỗi.
+- Test HTTP/SQL kiểm tra 409/code, revoked grant và foreign user 403, zero
+  Leader calls, Workflow không đổi. Regression ingress kiểm tra exception mới
+  và command ledger/job count không đổi.
+- Test bounded-wait dùng heartbeat 10 giây theo mặc định worker, tránh write
+  heartbeat SQLite mỗi 10 ms. Deadline/wait_for 10 giây dành cho integration
+  test; vẫn assert worker succeeded và HTTP receipt 200/completed.
+
+Kiểm thử C4 SQL/HTTP tập trung: **6 passed**.
+Toàn bộ Orchestration: **262 passed, 97 subtests passed**. Ruff E/F pass trên
+năm source files thay đổi (88 cột) và hai test files Orchestration (79 cột).
+Consumer C6: **11 passed, 0 xfail, 1 PostgreSQL skip** do chưa có dedicated DSN.
+PostgreSQL locks/race, composition, migration và CI vẫn là gate môi trường/C7;
+không kết luận từ SQLite rằng các gate đó đã pass.

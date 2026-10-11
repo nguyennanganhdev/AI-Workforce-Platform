@@ -15,7 +15,8 @@ chốt; điểm nối implementation C4/C7 theo [request C3](INTEGRATION_REQUEST
 **Cập nhật C6:** C4 đã cung cấp `WorkflowQueryResult`/`apply_query_result`
 với TimerCause trong module Orchestration, C6 đã dùng hook này bằng SQL thật.
 Không còn yêu cầu cung cấp implementation query hook; promotion vào shared
-contracts vẫn do owner chốt. Blocker query sau revoke và wiring cuối theo
+contracts vẫn do owner chốt. Query sau revoke đã xử lý, C6 đạt zero xfail
+ngày 12/10/2026; wiring cuối theo
 [request C6](INTEGRATION_REQUEST_PHD_C6.md). Những đề xuất A/B dưới đây giữ
 để truy vết, không thay signature runtime C4 đã bàn giao.
 

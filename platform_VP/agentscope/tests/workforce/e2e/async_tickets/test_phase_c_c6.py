@@ -4,7 +4,6 @@ import json
 import unittest
 from unittest.mock import patch
 
-import pytest
 from sqlalchemy import select, update
 
 from agentscope.app.workforce.contracts import EvaluationStatus
@@ -495,7 +494,10 @@ class C6SliceTests(unittest.IsolatedAsyncioTestCase):
                 "message": {"type": "text", "text": "TEST"},
             },
         )
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.json()["error"]["code"], "WORKFLOW_BINDING_MISMATCH"
+        )
         self.assertEqual(driver.model.calls, calls)
         for event in hist_a["items"]:
             self.assertEqual(event["external_ticket_id"], "A")
@@ -616,40 +618,28 @@ class C6SliceTests(unittest.IsolatedAsyncioTestCase):
             operation,
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=PermissionError,
-        reason="IR PHD C6: C4 query hook rolls back fact after revoke",
-    )
     async def test_query_after_route_revoke_keeps_fact_without_send(self):
         driver = self.driver
         _, workflow_id, operation = await self.create_operation()
         before = await driver.env.workflows_repo.load(SCOPE, workflow_id)
+        evidence = await driver.repo.evidence(SCOPE, workflow_id)
+        calls = driver.model.calls
+        backend = CustomerBackend(
+            driver.client, {"x-test-user": "raw"}, "raw", "tower-a"
+        )
+        backend._remember(
+            "raw", "chat-raw", driver.opened["raw"][1].model_dump(mode="json")
+        )
+        history = (await self.history(backend, "raw")).json()
         async with driver.env.uows() as tx:
             await tx.execute(
                 update(partner_manager_routes).values(status="revoked")
             )
             await tx.commit()
-        # Required invariant matches provider-event handling: retain verified
-        # operation fact, suppress workflow/public sends. C4 currently raises
-        # at enqueue_trigger, rolling back the fact in the caller UOW.
-        try:
-            outcome = await driver.reconciler.reconcile(
-                SCOPE, operation["id"], "query-after-revoke"
-            )
-        except PermissionError:
-            # Verify the baseline defect before recording known failure.
-            self.assertEqual(
-                await driver.env.execution_repository.read(
-                    "operations", SCOPE, operation["id"]
-                ),
-                operation,
-            )
-            self.assertEqual(
-                await driver.env.workflows_repo.load(SCOPE, workflow_id),
-                before,
-            )
-            raise
+        # Retain verified operation facts without publishing or waking a turn.
+        outcome = await driver.reconciler.reconcile(
+            SCOPE, operation["id"], "query-after-revoke"
+        )
         self.assertEqual(
             outcome,
             "applied",
@@ -658,7 +648,19 @@ class C6SliceTests(unittest.IsolatedAsyncioTestCase):
             "operations", SCOPE, operation["id"]
         )
         self.assertEqual(current["revision"], operation["revision"] + 1)
+        self.assertIsNotNone(current["last_source_hash"])
         self.assertEqual(
             await driver.env.workflows_repo.load(SCOPE, workflow_id), before
         )
         self.assertEqual((await driver.worker.run_once()).status, "idle")
+        self.assertEqual(driver.model.calls, calls)
+        self.assertEqual(
+            await driver.repo.evidence(SCOPE, workflow_id), evidence
+        )
+        # Restore read permission only to compare the durable public history.
+        async with driver.env.uows() as tx:
+            await tx.execute(
+                update(partner_manager_routes).values(status="active")
+            )
+            await tx.commit()
+        self.assertEqual((await self.history(backend, "raw")).json(), history)

@@ -1,61 +1,26 @@
-# Integration request — C6 → Phan Huy Hoàng / Nguyễn Chí Hoàng
+﻿# Integration request — C6 → C7
 
-Ngày **11/10/2026**. Người gửi: **Phan Hoàng Dũng**.
-Nhánh `feat/wf-execution`, commit đầu vào `69e21f7` (C1–C5 đã merge).
+Cập nhật **12/10/2026**. Người gửi: **Phan Hoàng Dũng**.
 Tasks PHD-14–17, E2E toàn lát cắt. Không yêu cầu bàn giao lại C1/C2/C5.
 
-## C6-01 — Query sau revoke làm mất operation fact — chặn nghiệm thu
+## C6-01 — Query sau revoke và binding mismatch — đã xử lý
 
-**Owner: Phan Huy Hoàng**, phối hợp Dũng chạy lại consumer test.
-Module: `orchestration/workflows/_service.py`,
-`WorkflowService.apply_query_result`.
+Output Orchestration: [PHH C4](../phan-huy-hoang/PHASE_C_C4.md).
 
-Caller thật: `OperationReconciler.reconcile` →
-`WorkflowEventAdapter(query_sink=workflow_service.apply_query_result)`.
-Input gồm Scope, operation reference, timer ID, exact protocol hash,
-source hash, observed_at, status/facts/version/terminal; dùng caller UOW.
+- `WorkflowService.apply_query_result` kiểm tra binding/pin trước, revalidate
+  original grant trước mọi thay đổi Workflow/checkpoint/public events.
+  Grant bị revoke giữ operation fact đã xác minh trong caller UOW, không
+  enqueue continuation. Lỗi binding/pin hoặc DB vẫn fail/rollback.
+- Reply sai immutable tuple của customer đã có quyền trả
+  `409/WORKFLOW_BINDING_MISMATCH`; sai user hoặc grant bị revoke vẫn
+  `403/AUTHORIZATION_DENIED`, không claim command hoặc dispatch.
+- Consumer C6 đã bỏ strict xfail và sửa assertion 403 → 409/code.
+  Query test xác nhận operation revision/source hash commit, Workflow,
+  history/evidence không đổi, worker idle và không thêm model call.
+- C6: **11 passed, zero xfail**. PostgreSQL gate skip vì chưa có DSN.
 
-Tái hiện:
-
-1. Customer HTTP mở workflow, consent HTTP, Execution tạo operation pending.
-2. Revoke original partner route trong DB.
-3. Query transport trả kết quả hợp lệ; reconciler ghi operation fact trong UOW.
-4. Query hook C4 ghi Workflow/checkpoint/public events rồi gọi enqueue trigger.
-   Authorization phát hiện revoke và ném `PermissionError`.
-5. Caller UOW rollback toàn bộ, operation fact cũng mất. Provider-event hook
-   hiện đã xử lý đúng bằng cách giữ fact và suppress Workflow/public send.
-
-Yêu cầu: kiểm tra original grant/closed/binding phù hợp trước khi thay Workflow
-và phát event; route revoke không được làm mất fact provider đã xác minh.
-Trả `WorkflowRecord` nguyên binding để Execution commit fact. Mismatch pin,
-Scope, correlation hoặc lỗi DB thật vẫn phải fail/rollback; không catch mọi
-`PermissionError` để trả success ở Execution.
-
-Test thuộc Dũng:
-`tests/workforce/e2e/async_tickets/test_phase_c_c6.py::C6SliceTests::test_query_after_route_revoke_keeps_fact_without_send`.
-Marker `xfail(strict=True, raises=PermissionError)` chỉ ghi nhận lỗi baseline;
-không tính pass. Test kiểm tra rollback fact/Workflow trước khi rethrow lỗi
-đã biết. Sau fix, bỏ marker, xác nhận operation fact commit, Workflow không
-đổi, không continuation/model/public send mới.
-
-```powershell
-$env:PYTHONPATH='src;tests/workforce/fixtures'
-& "$env:TEMP\wf-execution-venv\Scripts\python.exe" -m pytest `
-  tests/workforce/e2e/async_tickets/test_phase_c_c6.py `
-  -k query_after_route_revoke -q -rx
-```
-
-Dũng không sửa source Orchestration ngoài owned paths hoặc đổi shared hook.
-
-Regression C4 riêng còn một failure tại test có sẵn
-`C4SqlSliceTests.test_bounded_wait_observes_committed_worker_result`: thời hạn
-1 giây nhận 202 thay vì kỳ vọng 200, đã tái hiện cả khi chạy suite riêng.
-PHH kiểm tra deadline/đồng bộ worker trong test; HTTP 202 khi chưa hoàn tất
-là fallback hợp lệ nên chưa kết luận đây là lỗi sản phẩm. Không tăng timeout
-hoặc sửa test của PHH trong lane Dũng.
-Diagnostic riêng có worker succeeded/receipt completed, không job error;
-chưa kết luận lỗi sản phẩm. Kết quả regression không được tính xanh cho đến
-khi PHH xử lý hoặc chốt rõ điều kiện chạy test này.
+Lệnh và bằng chứng đầy đủ: [PHASE_C_C6.md](PHASE_C_C6.md).
+Không còn yêu cầu sửa C4 cho hai lỗi này.
 
 ## C6-02 — Composition approval ACK và continuation
 
@@ -95,28 +60,25 @@ fixture vào source production và không fabricate auth/runtime/catalog.
   mount Execution/Orchestration routers với customer/manager/provider auth thật.
 - C5 case binding phải commit trước first workflow turn, evidence writer cùng
   UOW với checkpoint/output; runtime/eval giữ đủ Scope/version/hash pins.
-- Metadata vẫn qua exports Foundation/Registry/Execution/Orchestration/Lifecycle;
+- Metadata qua exports Foundation/Registry/Execution/Orchestration/Lifecycle;
   C6 không thêm schema. Execution metadata sáu bảng và legacy verified context
   theo [request C3](INTEGRATION_REQUEST_PHD_C3.md).
 - Migration additive sau head thực tế, không sửa revision đã merge. C6
   `create_all` chỉ tạo DB test, không thay nghiệm thu migration.
 
-Môi trường còn thiếu: dedicated `WORKFORCE_TEST_POSTGRES_URL` và C7 application
-factory `WORKFORCE_E2E_FACTORY`. Docker Linux engine hiện không chạy.
-
-Gate PostgreSQL mới:
-`tests/workforce/e2e/async_tickets/test_phase_c_c6_postgres.py`:
-8 concurrent signed HTTP deliveries, 8 concurrent SQL inbox applies, một
-Workflow fact revision và một continuation/model turn. Dùng schema ngẫu nhiên
-riêng; chỉ cleanup schema test. Chưa được chạy khi chưa có DSN.
+Môi trường chưa có `WORKFORCE_TEST_POSTGRES_URL` và
+`WORKFORCE_E2E_FACTORY`. PostgreSQL gate tại
+`tests/workforce/e2e/async_tickets/test_phase_c_c6_postgres.py` chạy
+8 concurrent signed HTTP deliveries và 8 concurrent SQL inbox applies;
+assert một Workflow fact revision và một continuation/model turn.
+Dùng schema ngẫu nhiên riêng, chỉ cleanup schema test. Chạy khi có dedicated DSN;
+không tính SQLite hoặc skip là bằng chứng PostgreSQL locks/race.
 
 Ba gate application factory cũ giữ nguyên assertions và điều kiện chạy;
-chỉ sửa skip reason để không báo sai rằng C1–C5 implementations còn thiếu.
-Không tính các skip này là bằng chứng đã nghiệm thu toàn application.
+không tính các skip này là đã nghiệm thu toàn application.
 
-## Điều kiện đóng request / mở C7
+## Bàn giao
 
-PHH sửa C6-01, Dũng bỏ strict xfail và chạy lại C6; C7/môi trường cung cấp DSN
-để chạy race gate. Commit C6 cần merge vào develop2 theo bảng tuần tự của đội.
-Composition/migration/CI cuối vẫn do Chí Hoàng triển khai sau gate, không do
-Dũng sửa ngoài phạm vi để làm tests xanh.
+C6 đã pass trong môi trường hiện có; composition/migration/CI cuối thuộc C7.
+Điều phối mở C7 theo baseline tích hợp của đội là bước riêng.
+Lượt này chỉ sửa code/tài liệu và kiểm thử, không thực hiện thao tác Git.

@@ -1,14 +1,15 @@
 # Trạng thái — Phan Hoàng Dũng
 
-Cập nhật **11/10/2026**, Asia/Saigon. Nhánh **`feat/wf-execution`**.
+Cập nhật **12/10/2026**, Asia/Saigon. Nhánh **`feat/wf-execution`**.
 Commit đầu vào **`69e21f7`**, đã chứa C1–C5; C5 merge tại `830cdac`.
 
 ## Kết luận mới nhất
 
-**Đã triển khai bộ E2E C6 trong phạm vi Dũng. Chưa nghiệm thu C6 hoàn toàn:**
-test query sau revoke phát hiện lỗi tại hook Orchestration của Phan Huy Hoàng.
-Không tính `xfail` hoặc các gate cần môi trường là pass. Chi tiết triển khai:
-[PHASE_C_C6.md](PHASE_C_C6.md); yêu cầu xử lý:
+**C6 hoàn thành trong môi trường kiểm thử hiện có: 11 passed, zero xfail.**
+Query sau revoke giữ operation fact và không phát Workflow/public send;
+binding mismatch của caller đã được xác thực trả `409/WORKFLOW_BINDING_MISMATCH`.
+PostgreSQL gate skip vì chưa có dedicated DSN, không tính là pass.
+Chi tiết triển khai: [PHASE_C_C6.md](PHASE_C_C6.md); bàn giao C7:
 [INTEGRATION_REQUEST_PHD_C6.md](INTEGRATION_REQUEST_PHD_C6.md).
 
 - Phase A/B và lane C3 đã bàn giao; giữ tài liệu lịch sử
@@ -26,10 +27,10 @@ Không tính `xfail` hoặc các gate cần môi trường là pass. Chi tiết 
 
 ## Phạm vi thay đổi C6
 
-Chỉ `tests/workforce/e2e/**`, `tests/workforce/fixtures/**` và thư mục handoff
-này. Không thay source của Foundation, Registry, Builder, Lifecycle,
-Orchestration, contracts, root composition, migration hoặc CI. Không thêm
-bảng/cột production và không đổi frontend. Không tạo NEXT_STEPS.
+Phần E2E gồm `tests/workforce/e2e/**`, `tests/workforce/fixtures/**` và handoff
+này. Output Orchestration được mô tả trong handoff PHH C4. Foundation,
+Registry, Builder, Lifecycle, contracts, root composition, migration và CI
+không thay đổi. Không thêm bảng/cột production hoặc NEXT_STEPS.
 
 ## Những gì bộ C6 kiểm tra
 
@@ -49,22 +50,21 @@ bảng/cột production và không đổi frontend. Không tạo NEXT_STEPS.
 Lệnh chạy, kết quả và giới hạn môi trường được ghi tại
 [PHASE_C_C6.md](PHASE_C_C6.md).
 
-Validation C6 cuối lượt: **10 tests đạt, 1 strict xfail, 1 PostgreSQL skip**.
+Validation C6 cuối lượt: **11 passed, 0 xfail, 1 PostgreSQL skip**.
 Regression các module khác ngoài C6: **274 passed, 9 skipped,
-178 subtests passed**. Orchestration: **260 passed, 1 failed,
-97 subtests passed**; failure là test bounded wait 1 giây có sẵn nhận 202
-thay vì 200, cũng tái hiện khi chạy riêng. Ruff E/F 79 cột: pass.
+178 subtests passed**. Orchestration: **262 passed, 97 subtests passed**.
+Ruff E/F pass trên tám file Python thay đổi; lệnh kiểm thử xem
+[PHASE_C_C6.md](PHASE_C_C6.md).
 
-## Điểm còn chặn và owner
+## Đã xử lý và giới hạn môi trường
 
-1. **Phan Huy Hoàng:** `WorkflowService.apply_query_result` sau route revoke
-   gọi enqueue trigger, authorization ném `PermissionError` và rollback cả
-   operation fact. Cần giữ fact đã xác minh, không phát Workflow/public send,
-   tương tự `apply_external_event`. Có strict xfail tái hiện; sau fix phải bỏ
-   marker và chạy lại để nghiệm thu.
+1. **Query-after-revoke và binding mismatch đã xử lý.** Strict xfail đã bỏ;
+   test kiểm tra fact commit, Workflow/history/evidence không đổi, worker idle
+   và không thêm model call. Bàn giao Orchestration tại
+   [PHH C4](../phan-huy-hoang/PHASE_C_C4.md).
 2. **Nguyễn Chí Hoàng / môi trường test:** chưa có dedicated PostgreSQL DSN;
-   Docker CLI có nhưng Linux engine không chạy. Gate PostgreSQL C6 đã viết,
-   chưa kiểm chứng locks/race bằng SQLite.
+   gate PostgreSQL C6 đã viết nhưng chưa chạy. Không dùng SQLite để kết luận
+   locks/race PostgreSQL đã được kiểm chứng.
 3. **Nguyễn Chí Hoàng, C7:** mount routers/handlers, approval authorizer và
    continuation bridge trong composition thật; migration additive và CI.
    `WORKFORCE_E2E_FACTORY` chưa có; ba gate application factory cũ vẫn skip.
@@ -81,5 +81,5 @@ live model/provider, DB production hay composition toàn ứng dụng.
 và migration notes; phần sink C4 đã được giải quyết. Các quyết định shared
 contract còn lại theo
 [INTEGRATION_REQUEST_PHD-01_PHASE_A.md](INTEGRATION_REQUEST_PHD-01_PHASE_A.md).
-Request mới nhất và thứ tự gỡ blocker nằm trong request C6; không tự mở C7
-hoặc cập nhật gate của cả đội.
+Các yêu cầu composition/migration/CI còn lại nằm trong request C6.
+Không thực hiện commit, merge hoặc thao tác Git trong lượt này.

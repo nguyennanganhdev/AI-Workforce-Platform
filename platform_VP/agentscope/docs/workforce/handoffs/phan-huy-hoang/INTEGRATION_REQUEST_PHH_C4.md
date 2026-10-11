@@ -3,6 +3,12 @@
 Trạng thái: **C4 đã merge qua PR #63; C5 đã dùng đầu ra này và cũng đã merge.
 Tài liệu hiện là đầu vào cho C6/C7.**
 
+Cập nhật **2026-10-12**: acceptance query-after-revoke và binding mismatch đã
+xử lý, chi tiết tại [PHASE_C_C4.md](PHASE_C_C4.md). Consumer C6 hiện có
+**11 passed, zero xfail**; PostgreSQL gate skip vì chưa có dedicated DSN.
+Không còn yêu cầu sửa C4 cho hai lỗi này; các yêu cầu composition C7 bên dưới
+vẫn giữ nguyên.
+
 ## C5 — Phó Tiến Anh
 
 Dùng đúng runtime production seam của C4:

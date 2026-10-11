@@ -7,7 +7,7 @@ Nguyễn Phương Đông theo dõi producer Registry C2.
 
 **Cập nhật C6, 11/10/2026:** C4/C5 đã merge. Workflow sink/query hook trong
 caller UOW đã được tiêu thụ với SQL thật, không còn request thiếu producer C4.
-Lỗi query sau revoke và wiring C7 mới nhất theo
+Query sau revoke đã xử lý, C6 đạt zero xfail ngày 12/10/2026; wiring C7 theo
 [INTEGRATION_REQUEST_PHD_C6.md](INTEGRATION_REQUEST_PHD_C6.md).
 Các tiêu chí và kết quả fake C4 bên dưới là lịch sử tại lượt C3.
 

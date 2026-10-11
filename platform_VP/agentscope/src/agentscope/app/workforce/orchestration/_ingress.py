@@ -21,7 +21,7 @@ from ..contracts import (
     RequestStatus,
     WorkforceModel,
 )
-from .workflows import WorkflowConflict, next_action
+from .workflows import WorkflowBindingMismatch, WorkflowConflict, next_action
 from .workflows._models import parse_aggregate, raw_value, require_binding
 from .workflows.phase_a import CommandClaimResult
 
@@ -112,6 +112,8 @@ class PartnerIngressService:
             external_conversation_id=envelope.external_conversation_id,
             residence_id=envelope.residence_id,
         )
+        route_audience = audience
+        binding_mismatch = False
         payload_hash = sha256(
             json.dumps(
                 envelope.model_dump(mode="json"),
@@ -143,9 +145,7 @@ class PartnerIngressService:
             route = await self.routing.resolve(
                 partner_actor,
                 {
-                    "external_management_ref": (
-                        envelope.external_management_ref
-                    ),
+                    "external_management_ref": (envelope.external_management_ref),
                     "external_user_id": envelope.external_user_id,
                     "residence_id": envelope.residence_id,
                 },
@@ -164,15 +164,12 @@ class PartnerIngressService:
                     )
                 )
             )
-            if (
+            binding_mismatch = (
                 original.workflow_id != envelope.workflow_id
                 or original.audience != audience
-                or original.external_management_ref
-                != envelope.external_management_ref
-            ):
-                raise PermissionError(
-                    "reply immutable route or ticket mismatch"
-                )
+                or original.external_management_ref != envelope.external_management_ref
+            )
+            route_audience = original.audience
             scope = original.scope
             route_id = original.route_id
             route_revision = original.route_revision
@@ -184,10 +181,14 @@ class PartnerIngressService:
                 route_id,
                 route_revision,
                 partner_actor,
-                audience,
+                route_audience,
                 operation,
                 tx,
             )
+            if binding_mismatch:
+                raise WorkflowBindingMismatch(
+                    "reply immutable route or ticket mismatch"
+                )
             claim = CommandClaimResult.model_validate(
                 raw_value(
                     await self.commands.claim_or_read(
@@ -242,9 +243,7 @@ class PartnerIngressService:
                         scope=scope,
                         audience=audience,
                         external_request_id=envelope.external_request_id,
-                        external_management_ref=(
-                            envelope.external_management_ref
-                        ),
+                        external_management_ref=(envelope.external_management_ref),
                         payload_hash=payload_hash,
                         route_id=route_id,
                         route_revision=route_revision,
@@ -265,16 +264,13 @@ class PartnerIngressService:
         self._require_customer_actor(partner_actor, external_user_id)
         view = RequestView.model_validate(
             raw_value(
-                await self.requests.read(
-                    partner_actor, request_id, external_user_id
-                )
+                await self.requests.read(partner_actor, request_id, external_user_id)
             )
         )
         request = view.request
         if (
             request.request_id != request_id
-            or request.audience.partner_client_id
-            != partner_actor.partner_client_id
+            or request.audience.partner_client_id != partner_actor.partner_client_id
             or request.audience.external_user_id != external_user_id
         ):
             raise PermissionError("request result audience mismatch")
@@ -288,9 +284,7 @@ class PartnerIngressService:
             PartnerOperation.READ_RESULT,
         )
         aggregate = parse_aggregate(
-            await self.workflows.repository.load(
-                request.scope, request.workflow_id
-            )
+            await self.workflows.repository.load(request.scope, request.workflow_id)
         )
         workflow = require_binding(aggregate, request.scope, request.audience)
         if (
@@ -348,14 +342,9 @@ class PartnerIngressService:
             action = "resolve_attention"
         else:
             action = next_action(workflow.state)
-        request_path = (
-            "/workforce/v1/partner/requests/"
-            f"{quote(request_id, safe='')}"
-        )
+        request_path = f"/workforce/v1/partner/requests/{quote(request_id, safe='')}"
         conversation = quote(workflow.conversation_id, safe="")
-        conversation_path = (
-            f"/workforce/v1/partner/conversations/{conversation}"
-        )
+        conversation_path = f"/workforce/v1/partner/conversations/{conversation}"
         return InboundReceipt(
             request_id=request_id,
             request_status=status,
@@ -398,9 +387,7 @@ class PartnerIngressService:
             duration = min(remaining(), self.wait_slice_seconds)
             if duration <= 0:
                 return receipt
-            view = await self.requests.read(
-                partner_actor, request_id, external_user_id
-            )
+            view = await self.requests.read(partner_actor, request_id, external_user_id)
             waiter = asyncio.create_task(
                 self.completion_signals.wait_for_completion(
                     view.request.scope, request_id, duration
@@ -537,4 +524,3 @@ class PartnerIngressService:
 
 def receipt_http_status(receipt: InboundReceipt) -> int:
     return 202 if receipt.request_status in PENDING_REQUESTS else 200
-

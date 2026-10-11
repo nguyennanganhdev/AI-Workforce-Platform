@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from ..contracts import ActorContext, CloseWorkflowCommand
 from ._ingress import receipt_http_status
 from .partner_events import EventCursorExpired
-from .workflows import WorkflowClosed, WorkflowConflict
+from .workflows import WorkflowBindingMismatch, WorkflowClosed, WorkflowConflict
 
 
 def create_router(
@@ -67,6 +67,11 @@ def create_router(
                 },
                 status_code=410,
             )
+        except WorkflowBindingMismatch:
+            return JSONResponse(
+                {"error": {"code": "WORKFLOW_BINDING_MISMATCH"}},
+                status_code=409,
+            )
         except PermissionError:
             return JSONResponse(
                 {"error": {"code": "AUTHORIZATION_DENIED"}},
@@ -110,8 +115,7 @@ def create_router(
                     verified,
                     receipt.request_id,
                     verified.external_user_id,
-                    datetime.now(UTC)
-                    + timedelta(seconds=bounded_wait_seconds),
+                    datetime.now(UTC) + timedelta(seconds=bounded_wait_seconds),
                 )
             return JSONResponse(
                 receipt.model_dump(mode="json"),
@@ -127,9 +131,7 @@ def create_router(
         principal: Any = customer_principal,
     ) -> Any:
         return await respond(
-            lambda: ingress.read_result(
-                actor(principal), request_id, external_user_id
-            )
+            lambda: ingress.read_result(actor(principal), request_id, external_user_id)
         )
 
     @router.get("/partner/conversations/{conversation_id}")
@@ -166,9 +168,7 @@ def create_router(
         conversation_id: str,
         external_user_id: str = Query(min_length=1),
         after_cursor: str | None = None,
-        last_event_id: str | None = Header(
-            default=None, alias="Last-Event-ID"
-        ),
+        last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
         principal: Any = customer_principal,
     ) -> Any:
         async def action():
@@ -181,13 +181,9 @@ def create_router(
             cursor = last_event_id or after_cursor
             verified = customer(principal, external_user_id)
             # Fail auth/expired cursor before Starlette sends SSE headers.
-            await conversation_events.list_after(
-                verified, conversation_id, cursor, 1
-            )
+            await conversation_events.list_after(verified, conversation_id, cursor, 1)
             return StreamingResponse(
-                conversation_events.stream(
-                    verified, conversation_id, cursor
-                ),
+                conversation_events.stream(verified, conversation_id, cursor),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -205,18 +201,14 @@ def create_router(
     ) -> Any:
         async def action():
             verified = actor(principal)
-            command = CloseWorkflowCommand.model_validate(
-                await json_body(request)
-            )
+            command = CloseWorkflowCommand.model_validate(await json_body(request))
             original = await ingress.requests.resolve_workflow_request(
                 verified, workflow_id, command.external_user_id
             )
             receipt = await ingress.close_workflow(
                 verified, original.scope, workflow_id, command
             )
-            return JSONResponse(
-                receipt.model_dump(mode="json"), status_code=200
-            )
+            return JSONResponse(receipt.model_dump(mode="json"), status_code=200)
 
         return await respond(action)
 
