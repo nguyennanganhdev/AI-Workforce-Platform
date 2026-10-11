@@ -1,3 +1,4 @@
 .uv-cache
 .uv-python
 graphify-out/
+.tmp

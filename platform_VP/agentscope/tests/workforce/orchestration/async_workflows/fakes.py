@@ -53,7 +53,6 @@ from agentscope.app.workforce.orchestration.workflows.phase_a import (
     WorkflowCheckpoint,
 )
 
-
 NOW = datetime(2026, 10, 11, 8, 0, tzinfo=UTC)
 SCOPE = Scope(
     tenant_id="tenant-1",
@@ -112,7 +111,7 @@ class Store:
 
 
 class FakeUnitOfWork:
-    def __init__(self, factory: "FakeUnitOfWorkFactory") -> None:
+    def __init__(self, factory: FakeUnitOfWorkFactory) -> None:
         self.factory = factory
         self.state = deepcopy(factory.store)
         self.callbacks = []
@@ -598,6 +597,30 @@ class FakeCommands:
     def __init__(self, factory: FakeUnitOfWorkFactory, clock: Clock) -> None:
         self.factory = factory
         self.clock = clock
+
+    async def read_existing(
+        self,
+        actor,
+        external_request_id,
+        command_kind,
+        target_ref,
+        payload_hash,
+    ):
+        entry = self.factory.store.command_ledger.get(
+            (actor.partner_client_id, external_request_id)
+        )
+        if entry is None:
+            return None
+        if entry["fingerprint"] != (command_kind, target_ref, payload_hash):
+            raise WorkflowConflict(
+                "idempotency key reused with other content"
+            )
+        return CommandClaimResult(
+            request_id=entry["request_id"],
+            is_new=False,
+            status=entry["status"],
+            result=self.factory.store.results.get(entry["request_id"]),
+        )
 
     async def claim_or_read(
         self,

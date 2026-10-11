@@ -1,10 +1,10 @@
-# -*- coding: utf-8 -*-
 """Lease-fenced continuation of one durable workflow cause."""
 
 from datetime import timedelta
 
 from ...contracts import WorkflowState
 from ._models import (
+    CommittedTurnEvidence,
     TurnDecision,
     WorkflowClosed,
     WorkflowConflict,
@@ -12,7 +12,7 @@ from ._models import (
     parse_aggregate,
     raw_value,
 )
-from ._service import BLOCKED_STATES, HUMAN_WAIT_STATES
+from ._service import BLOCKED_STATES, HUMAN_WAIT_STATES, next_action
 from .phase_a import (
     ApprovalCause,
     ExternalEventCause,
@@ -33,8 +33,15 @@ class ExecutionGuard:
         self._aggregate = aggregate
         self._trigger = trigger
         self._lease = lease
+        self._checked_effects: list[str] = []
 
     async def check(self, effect: str = "read") -> None:
+        await self._check(effect, record=True)
+
+    async def validate(self) -> None:
+        await self._check("read", record=False)
+
+    async def _check(self, effect: str, *, record: bool) -> None:
         service = self._continuation.workflows
         original = self._aggregate.workflow
         if self._aggregate.published_read_only and effect != "read":
@@ -59,6 +66,12 @@ class ExecutionGuard:
         ):
             raise WorkflowConflict("workflow lease/fence is no longer current")
         await service.authorization.authorize_trigger(current, self._trigger)
+        if record:
+            self._checked_effects.append(effect)
+
+    @property
+    def checked_effects(self) -> tuple[str, ...]:
+        return tuple(self._checked_effects)
 
 
 class WorkflowContinuation:
@@ -72,6 +85,7 @@ class WorkflowContinuation:
         max_model_turns: int = 100,
         max_tool_calls: int = 1000,
         max_tokens: int = 1_000_000,
+        evidence=None,
     ) -> None:
         limits = (
             lease_seconds,
@@ -88,6 +102,7 @@ class WorkflowContinuation:
         self.max_model_turns = max_model_turns
         self.max_tool_calls = max_tool_calls
         self.max_tokens = max_tokens
+        self.evidence = evidence
 
     async def run(self, scope, trigger, worker_id: str) -> str:
         service = self.workflows
@@ -153,7 +168,7 @@ class WorkflowContinuation:
                     "runtime loaded a different pinned checkpoint"
                 )
             guard = ExecutionGuard(self, aggregate, parsed, lease)
-            await guard.check()
+            await guard.validate()
             decision = TurnDecision.model_validate(
                 raw_value(
                     await service.runtime.invoke_turn(
@@ -257,6 +272,59 @@ class WorkflowContinuation:
                             return
 
                     tx.add_after_commit(notify_result)
+                if self.evidence is not None:
+                    before_budget = aggregate.checkpoint.used_budget
+                    after_budget = checkpoint.used_budget
+                    audience = workflow.audience
+                    await self.evidence.record(
+                        CommittedTurnEvidence(
+                            workflow_id=workflow.workflow_id,
+                            trigger_id=parsed.trigger_id,
+                            cause_kind=parsed.cause.kind,
+                            audience_key=(
+                                audience.external_ticket_id
+                                or audience.external_conversation_id
+                            ),
+                            before_state=aggregate.workflow.state,
+                            after_state=workflow.state,
+                            before_revision=aggregate.workflow.revision,
+                            after_revision=workflow.revision,
+                            next_action=next_action(workflow.state),
+                            checked_effects=guard.checked_effects,
+                            model_turns=(
+                                after_budget.model_turns
+                                - before_budget.model_turns
+                            ),
+                            tool_calls=(
+                                after_budget.tool_calls
+                                - before_budget.tool_calls
+                            ),
+                            input_tokens=(
+                                after_budget.input_tokens
+                                - before_budget.input_tokens
+                            ),
+                            output_tokens=(
+                                after_budget.output_tokens
+                                - before_budget.output_tokens
+                            ),
+                            new_tracking_records=len(
+                                set(checkpoint.operation_refs)
+                                - set(aggregate.checkpoint.operation_refs)
+                            ),
+                            message_ids=tuple(
+                                message.message_id
+                                for message in decision.candidate.result.messages
+                            ),
+                            approval_cause=isinstance(
+                                parsed.cause, ApprovalCause
+                            ),
+                            provider_cause=isinstance(
+                                parsed.cause,
+                                (ExternalEventCause, TimerCause),
+                            ),
+                        ),
+                        tx,
+                    )
                 await tx.commit()
             return "applied"
         except PermissionError:

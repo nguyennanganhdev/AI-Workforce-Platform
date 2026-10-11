@@ -137,3 +137,12 @@ khi report stale hoặc hard gate fail. Bàn giao schema/index cho migration C7 
 runtime evidence exports cho E2E C6.
 
 Theo dõi gate tại [../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).
+
+## Tín hiệu đầu vào C5 từ C4 — 2026-10-11
+
+C4 đã cung cấp `LeaderTurnRunner`, `SqlRuntimeContinuation`,
+`CommittedTurnEvidence` và `RuntimeEvidenceWriter` cùng checkpoint/guard/event
+thật. Khi commit C4 đã merge vào `develop2`, C5 có thể bắt đầu theo
+`../phan-huy-hoang/INTEGRATION_REQUEST_PHH_C4.md`; không cần chờ thêm fake
+workflow. Migration/composition production vẫn thuộc C7 và không phải blocker
+cho việc nối evaluation runtime trong test C5.
