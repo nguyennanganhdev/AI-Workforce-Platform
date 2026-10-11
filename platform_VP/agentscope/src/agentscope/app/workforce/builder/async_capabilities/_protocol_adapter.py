@@ -51,6 +51,8 @@ class RegistryProtocolReadiness:
             completion_policy=protocol.completion_policy,
             timeout_seconds=protocol.timeout_seconds,
             status_query_tool_version_id=protocol.status_query_tool_version_id,
+            effect=protocol.effect,
+            result_mode=protocol.result_mode,
         )
 
 
@@ -64,9 +66,15 @@ class RegistryCapabilitySelector(CapabilitySelector):
 
     async def _check(self, scope, req, tool):
         checked = await super()._check(scope, req, tool)
+        if checked[0]:
+            return checked
+        if req.tracking_intent == "track_to_completion" and checked[1] is not None:
+            return (
+                self._protocol_errors(tool, checked[1], checked[2], "pending"),
+                *checked[1:],
+            )
         if (
-            checked[0]
-            or req.tracking_intent != "create_only"
+            req.tracking_intent != "create_only"
             or tool.effect != ToolEffect.EXTERNAL_OPERATION
         ):
             return checked
@@ -92,7 +100,12 @@ class RegistryCapabilitySelector(CapabilitySelector):
             details = await self.readiness.read(scope, snapshot)
             if details.snapshot != snapshot:
                 raise LookupError("Protocol detail pin differs")
-            return [], snapshot, details, "none"
+            return (
+                self._protocol_errors(tool, snapshot, details, "terminal"),
+                snapshot,
+                details,
+                "none",
+            )
         except (LookupError, WorkforceContractError) as exc:
             if (
                 isinstance(exc, WorkforceContractError)
@@ -110,3 +123,32 @@ class RegistryCapabilitySelector(CapabilitySelector):
                 None,
                 "none",
             )
+
+    @staticmethod
+    def _protocol_errors(tool, snapshot, details, expected_mode):
+        if details is None or details.effect is None or details.result_mode is None:
+            return [
+                Blocker(
+                    code="PROTOCOL_DETAILS_REQUIRED",
+                    message="Exact protocol effect and result mode are required",
+                )
+            ]
+        if (
+            snapshot.tool_version_id != tool.tool_version_id
+            or details.snapshot.tool_version_id != tool.tool_version_id
+            or details.effect != tool.effect
+        ):
+            return [
+                Blocker(
+                    code="PROTOCOL_TOOL_MISMATCH",
+                    message="Protocol tool version/effect differs from selected tool",
+                )
+            ]
+        if details.result_mode != expected_mode:
+            return [
+                Blocker(
+                    code="PROTOCOL_RESULT_MODE_MISMATCH",
+                    message="Protocol result mode differs from requested tracking behavior",
+                )
+            ]
+        return []

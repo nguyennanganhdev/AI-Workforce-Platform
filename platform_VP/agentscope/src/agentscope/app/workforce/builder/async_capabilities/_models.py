@@ -10,6 +10,7 @@ from ...contracts import (
     ReuseDecision,
     Scope,
     ToolBinding,
+    ToolEffect,
     WorkforceModel,
 )
 from ._requirements import AgentRequirement
@@ -32,6 +33,8 @@ class ProtocolReadiness(WorkforceModel):
     completion_policy: Literal["read_only_auto_close", "explicit_close"]
     timeout_seconds: int | None = Field(default=None, gt=0)
     status_query_tool_version_id: str | None = None
+    effect: ToolEffect | None = None
+    result_mode: Literal["terminal", "pending"] | None = None
 
 
 class ProtocolReadinessReader(Protocol):
@@ -42,6 +45,7 @@ class ProtocolReadinessReader(Protocol):
 
 class CapabilitySelection(WorkforceModel):
     bindings: tuple[ToolBinding, ...] = ()
+    binding_capabilities: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     protocols: tuple[AsyncProtocolSnapshotRef, ...] = ()
     covered: tuple[str, ...] = ()
     missing_optional: tuple[str, ...] = ()

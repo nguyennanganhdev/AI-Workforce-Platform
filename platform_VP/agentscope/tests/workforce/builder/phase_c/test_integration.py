@@ -9,7 +9,10 @@ from agentscope.app.workforce.builder import (
     RegistryProtocolReadiness,
     RequirementExtractor,
 )
-from agentscope.app.workforce.builder.async_capabilities import BuildRequirements
+from agentscope.app.workforce.builder.async_capabilities import (
+    BuildRequirements,
+    CapabilityRequirement,
+)
 from agentscope.app.workforce.contracts import (
     AgentManifest,
     AgentSpec,
@@ -122,6 +125,247 @@ class BuilderProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(details.completion_policy, "explicit_close")
         self.assertEqual(details.timeout_seconds, 3600)
         self.assertEqual(details.status_query_tool_version_id, "query-v1")
+        self.assertEqual(details.effect, protocol.effect)
+        self.assertEqual(details.result_mode, protocol.result_mode)
+
+    def multi_lookup_requirements(self):
+        first = self.fixture.sync.agents[0]
+        req = first.model_copy(
+            update={
+                "capabilities": tuple(
+                    CapabilityRequirement(capability=name, reason="Required lookup")
+                    for name in ("lookup", "lookup2")
+                ),
+                "business_profile": first.business_profile.model_copy(
+                    update={"capabilities": ("lookup", "lookup2")}
+                ),
+            }
+        )
+        return self.fixture.sync.model_copy(update={"agents": (req,)})
+
+    async def test_tracking_protocol_effect_mismatch_blocks_proposal_and_confirm(self):
+        payload = self.fixture.protocol().model_dump(mode="json")
+        payload["effect"] = "read"
+        await self.port.publish(AsyncToolProtocol.model_validate(payload))
+        service, proposal = await self.proposal()
+        self.assertEqual(proposal.status, "needs_input")
+        self.assertFalse(proposal.can_confirm)
+        self.assertIn(
+            "PROTOCOL_TOOL_MISMATCH",
+            [b.code for b in proposal.items[0].selection.blockers],
+        )
+        with self.assertRaises(ValueError):
+            await service.confirm(self.scope, proposal.proposal_id, proposal.revision)
+
+    async def test_terminal_protocol_effect_mismatch_blocks_create_only_proposal(self):
+        await self.port.publish(
+            AsyncToolProtocol(
+                protocol_id="terminal",
+                protocol_version="1",
+                tool_version_id="tool-v1",
+                effect="read",
+                result_mode="terminal",
+                completion_policy="explicit_close",
+            )
+        )
+        requirements = BuildRequirements.model_validate(
+            self.fixture.samples[1]["payload"]
+        )
+        service, proposal = await self.proposal(requirements)
+        self.assertFalse(proposal.can_confirm)
+        self.assertIn(
+            "PROTOCOL_TOOL_MISMATCH",
+            [b.code for b in proposal.items[0].selection.blockers],
+        )
+        with self.assertRaises(ValueError):
+            await service.confirm(self.scope, proposal.proposal_id, proposal.revision)
+
+    async def test_effect_drift_refreshes_to_blocked_proposal(self):
+        protocol = self.fixture.protocol()
+        await self.port.publish(protocol)
+        service, proposal = await self.proposal()
+        payload = protocol.model_dump(mode="json")
+        payload.update(effect="read", protocol_version="2")
+        await self.port.publish(
+            AsyncToolProtocol.model_validate(payload), protocol.snapshot_ref
+        )
+        refreshed = await service.confirm(
+            self.scope, proposal.proposal_id, proposal.revision
+        )
+        self.assertEqual((refreshed.status, refreshed.revision), ("needs_input", 2))
+        self.assertIn(
+            "PROTOCOL_TOOL_MISMATCH",
+            [b.code for b in refreshed.items[0].selection.blockers],
+        )
+
+    async def test_missing_effect_or_incompatible_result_mode_blocks_early(self):
+        protocol = self.fixture.protocol()
+        await self.port.publish(protocol)
+        original = self.readiness.read
+        for updates, expected in (
+            ({"effect": None}, "PROTOCOL_DETAILS_REQUIRED"),
+            ({"result_mode": "terminal"}, "PROTOCOL_RESULT_MODE_MISMATCH"),
+        ):
+            with self.subTest(updates=updates):
+
+                async def altered(scope, snapshot):
+                    return (await original(scope, snapshot)).model_copy(update=updates)
+
+                self.readiness.read = altered
+                _, proposal = await self.proposal()
+                self.assertFalse(proposal.can_confirm)
+                self.assertIn(
+                    expected, [b.code for b in proposal.items[0].selection.blockers]
+                )
+
+    async def test_wrong_protocol_tool_version_blocks_proposal(self):
+        protocol = self.fixture.protocol().model_copy(
+            update={"tool_version_id": "another-tool"}
+        )
+        await self.port.publish(protocol)
+
+        async def wrong_snapshot(scope, version):
+            return protocol.snapshot_ref
+
+        self.port.get_snapshot = wrong_snapshot
+        _, proposal = await self.proposal()
+        self.assertFalse(proposal.can_confirm)
+        self.assertIn(
+            "PROTOCOL_SNAPSHOT_MISMATCH",
+            [b.code for b in proposal.items[0].selection.blockers],
+        )
+
+    async def test_multi_capability_tool_has_one_binding_and_valid_manifest(self):
+        self.catalog.tools = (
+            tool().model_copy(update={"capabilities": ("lookup", "lookup2")}),
+        )
+        service, proposal = await self.proposal(self.multi_lookup_requirements())
+        self.assertTrue(proposal.can_confirm)
+        confirmed = await service.confirm(
+            self.scope, proposal.proposal_id, proposal.revision
+        )
+        item = confirmed.items[0]
+        self.assertEqual(
+            [b.tool_version_id for b in item.selection.bindings], ["tool-v1"]
+        )
+        self.assertEqual(item.selection.covered, ("lookup", "lookup2"))
+        self.assertEqual(
+            item.selection.binding_capabilities, {"tool-v1": ("lookup", "lookup2")}
+        )
+        report, _ = await self.validator().validate(
+            self.scope, item, self.manifest(item)
+        )
+        self.assertTrue(report.valid, report.blockers)
+
+    async def test_secondary_capability_drift_blocks_confirm_after_deduplication(self):
+        self.catalog.tools = (
+            tool().model_copy(update={"capabilities": ("lookup", "lookup2")}),
+        )
+        service, proposal = await self.proposal(self.multi_lookup_requirements())
+        self.catalog.tools = (
+            tool(),
+        )  # Same ID/hash/primary capability; lookup2 disappeared.
+        refreshed = await service.confirm(
+            self.scope, proposal.proposal_id, proposal.revision
+        )
+        self.assertEqual((refreshed.status, refreshed.revision), ("needs_input", 2))
+        self.assertFalse(refreshed.can_confirm)
+
+    async def test_secondary_capability_drift_blocks_prewrite_after_confirm(self):
+        self.catalog.tools = (
+            tool().model_copy(update={"capabilities": ("lookup", "lookup2")}),
+        )
+        service, proposal = await self.proposal(self.multi_lookup_requirements())
+        confirmed = await service.confirm(
+            self.scope, proposal.proposal_id, proposal.revision
+        )
+        self.catalog.tools = (tool(),)
+        item = confirmed.items[0]
+        with self.assertRaises(WorkforceContractError):
+            await self.validator().validate(self.scope, item, self.manifest(item))
+
+    async def test_query_fallback_and_requested_capability_share_one_binding(self):
+        await self.port.publish(self.fixture.protocol(query=True))
+        self.catalog.tools = (
+            tool("create", "external_operation"),
+            tool("status_query", version="query-v1").model_copy(
+                update={"capabilities": ("status_query", "lookup")}
+            ),
+        )
+        original = self.fixture.tracking.agents[0]
+        lookup = CapabilityRequirement(capability="lookup", reason="Read-only lookup")
+        for capabilities in (
+            (*original.capabilities, lookup),
+            (lookup, *original.capabilities),
+        ):
+            with self.subTest(order=tuple(c.capability for c in capabilities)):
+                req = original.model_copy(
+                    update={
+                        "capabilities": capabilities,
+                        "business_profile": original.business_profile.model_copy(
+                            update={"capabilities": ("create", "lookup")}
+                        ),
+                        "policy_proposal": original.policy_proposal.model_copy(
+                            update={"timeout_behavior": "status_query"}
+                        ),
+                    }
+                )
+                requirements = self.fixture.tracking.model_copy(
+                    update={"agents": (req,)}
+                )
+                service, proposal = await self.proposal(requirements)
+                confirmed = await service.confirm(
+                    self.scope, proposal.proposal_id, proposal.revision
+                )
+                item = confirmed.items[0]
+                self.assertEqual(len(item.selection.bindings), 2)
+                self.assertEqual(
+                    set(item.selection.binding_capabilities["query-v1"]),
+                    {"lookup", "status_query"},
+                )
+                policy = req.policy_proposal.model_dump(mode="json")
+                report, _ = await self.validator(policy=policy).validate(
+                    self.scope, item, self.manifest(item)
+                )
+                self.assertTrue(report.valid, report.blockers)
+
+    async def test_external_tool_multi_capability_has_single_protocol_dependency(self):
+        await self.port.publish(self.fixture.protocol())
+        self.catalog.tools = (
+            tool("create", "external_operation").model_copy(
+                update={"capabilities": ("create", "create2")}
+            ),
+        )
+        original = self.fixture.tracking.agents[0]
+        req = original.model_copy(
+            update={
+                "capabilities": (
+                    *original.capabilities,
+                    CapabilityRequirement(capability="create2", reason="Second action"),
+                ),
+                "business_profile": original.business_profile.model_copy(
+                    update={"capabilities": ("create", "create2")}
+                ),
+                "policy_proposal": original.policy_proposal.model_copy(
+                    update={"capabilities": ("create", "create2")}
+                ),
+            }
+        )
+        requirements = self.fixture.tracking.model_copy(update={"agents": (req,)})
+        service, proposal = await self.proposal(requirements)
+        confirmed = await service.confirm(
+            self.scope, proposal.proposal_id, proposal.revision
+        )
+        item = confirmed.items[0]
+        self.assertEqual(len(item.selection.bindings), 1)
+        self.assertEqual(len(item.selection.protocols), 1)
+        self.assertEqual(
+            item.selection.binding_capabilities, {"tool-v1": ("create", "create2")}
+        )
+        report, _ = await self.validator(
+            policy=req.policy_proposal.model_dump(mode="json")
+        ).validate(self.scope, item, self.manifest(item))
+        self.assertTrue(report.valid, report.blockers)
 
     async def test_real_protocol_exact_pin_disable_and_scope(self):
         protocol = self.fixture.protocol()

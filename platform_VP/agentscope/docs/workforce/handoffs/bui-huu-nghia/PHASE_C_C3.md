@@ -2,7 +2,10 @@
 
 Ngày: **2026-10-11**. Owner: **Bùi Hữu Nghĩa**. Branch: `feat/wf-builder`.
 Baseline: `67ff8715e4a40a37538b727442b3b66f2c9223e1`, chứa C1/C2.
-Thay đổi hiện chưa commit/push.
+Code C3 ban đầu đã commit/push tại `304c39a4097dd47f39c8c9e43187594ae3a223d0`,
+đã mở [PR #62](https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/62).
+Bản sửa theo review hiện nằm trong working tree, chưa commit/push; chờ review
+lại trước merge. Không coi trạng thái PR là đã merge hoặc CI pass.
 
 ## Trạng thái và phạm vi
 
@@ -72,6 +75,15 @@ dependency composition, Builder không triển khai inbox loader hoặc normaliz
 
 ## Hành vi đã kiểm chứng
 
+- Protocol readiness giữ cả effect/result_mode; selector so tool version/effect
+  và mode với yêu cầu trước khi proposal được confirm. Effect mismatch trả
+  `PROTOCOL_TOOL_MISMATCH`, proposal needs_input và confirm bị chặn; metadata
+  thiếu hoặc mode không phù hợp cũng bị chặn. Drift sau proposal được refresh.
+- Một tool version chỉ có một binding, kể cả query fallback dùng chung tool.
+  `selection.binding_capabilities` lưu đủ capability theo từng tool version;
+  `covered` vẫn giữ toàn bộ coverage. Shared ToolBinding giữ required_capability
+  đại diện, không đổi shared contract. Recheck kiểm tra cả capability phụ để
+  dedup không làm mất kiểm tra drift trước confirm/pre-write.
 - Read-only không đòi event channel/protocol.
 - Terminal create-only có exact protocol pin, không tự thêm tracking/polling.
 - Tracking dùng correlation, event/fact metadata, timeout và query binding thật.
@@ -97,7 +109,7 @@ Từ `platform_VP/agentscope`:
 
 | Suite/check | Kết quả |
 |---|---|
-| C3 protocol → Builder | 16 pass |
+| C3 protocol → Builder | 26 pass |
 | Builder A/B regression | 31 pass |
 | Registry | 29 pass, 1 PostgreSQL gate skipped |
 | Foundation A/B/C1 | 29 pass |
@@ -105,8 +117,10 @@ Từ `platform_VP/agentscope`:
 | Compileall / Black changed Python files / whitespace / ownership | Pass |
 | Import Builder core | Không eager-load sqlalchemy |
 
-Suite C3 đã thay thế suite 35 test rộng trước đó. Các số cũ không áp dụng cho
-bản C3 đã thu gọn. Dùng C1 UOW và C2 SQL repository/provider cùng
+Suite C3 đã thu gọn có 16 test ban đầu; bản sửa PR #62 bổ sung 10 regression
+tests về effect/tool version/mode, dedup, secondary capability drift và query
+fallback. Suite hiện có 26 test; số 35 của bản rộng trước đó không áp dụng.
+Dùng C1 UOW và C2 SQL repository/provider cùng
 `AsyncDraftValidator` thật; SQLite qua async facade của test Foundation. Model,
 tool catalog/reuse và immutable policy resolver là test doubles trong tests của
 Nghĩa. Không có draft write, policy store hoặc production fake trong C3 code.

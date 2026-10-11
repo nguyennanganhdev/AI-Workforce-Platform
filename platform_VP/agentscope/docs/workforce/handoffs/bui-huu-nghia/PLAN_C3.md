@@ -3,7 +3,9 @@
 Cập nhật **2026-10-11** theo yêu cầu chỉ thực hiện C3 trong trình tự chung.
 Owner: **Bùi Hữu Nghĩa**. Branch: `feat/wf-builder`.
 Baseline: `67ff8715e4a40a37538b727442b3b66f2c9223e1`, chứa C1 `a4c2fdd` và C2
-`b9feee2` (merge PR #60). Chưa commit/push thay đổi C3.
+`b9feee2` (merge PR #60). Code C3 ban đầu đã commit/push tại `304c39a`, mở
+[PR #62](https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/62).
+Bản sửa review chưa commit/push; chỉ sửa trong vùng Nghĩa, chờ review lại.
 
 ## 1. Phạm vi đã chốt
 
@@ -64,6 +66,9 @@ service/reuse Phase B được giữ nguyên.
 - [x] `RegistryCapabilitySelector` tận dụng selector Phase B, đọc current enabled
   protocol qua `get_snapshot` và `validate_capability_coverage`.
 - [x] Giữ pin/version/hash, không đổi old pin thành current pointer.
+- [x] Theo review PR #62: giữ effect/result_mode trong readiness, so với tool và
+  tracking intent; mismatch có blocker trước confirm. Dedup binding theo tool
+  version, lưu coverage từng tool và recheck capability phụ.
 - [x] Read-only không đòi protocol; terminal create-only pin protocol để validator
   chấp nhận, không thêm polling. Pending/query-only thiếu semantics bị chặn rõ.
 
@@ -97,8 +102,11 @@ service/reuse Phase B được giữ nguyên.
   [PHASE_C_C3.md](PHASE_C_C3.md); cập nhật STATUS/README của Nghĩa.
 - [x] Bỏ các request provider/production composition khỏi blocker C3; ghi các
   lưu ý hiện hữu tại [INTEGRATION_REQUEST_BHN_C3.md](INTEGRATION_REQUEST_BHN_C3.md).
-- [ ] Review/commit/merge lên baseline chung theo quy trình team; chưa được yêu cầu
-  commit/push trong phiên này.
+- [x] Commit/push C3 ban đầu và mở PR #62 (`304c39a`).
+- [x] Sửa 3 vấn đề review: validation sớm, dedup/coverage và trạng thái handoff;
+  10 regression tests bổ sung (26 test C3 tổng cộng).
+- [ ] Commit/push bản sửa, review lại và merge theo quy trình team. Phiên sửa
+  hiện tại chưa được yêu cầu commit/push/merge.
 
 ## 4. Tiêu chí bàn giao C3
 
