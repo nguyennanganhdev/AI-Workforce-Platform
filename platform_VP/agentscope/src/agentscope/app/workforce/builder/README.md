@@ -10,7 +10,7 @@ Phase B đã có RequirementExtractor, CapabilitySelector, ReuseMatcher và Prop
 
 Ghi tiến độ và yêu cầu tích hợp ở [thư mục bàn giao](../../../../../docs/workforce/handoffs/bui-huu-nghia/README.md). File core, contracts dùng chung, migration, dependency và global route cần chuyển cho Nguyễn Chí Hoàng theo kế hoạch.
 
-C3 chỉ nối protocol validation thật từ C2 vào Builder Phase B, trên UOW C1: `RegistryProtocolReadiness`, `RegistryCapabilitySelector` và `ProtocolBuildValidator`. Hook recheck capability/binding/pin và gọi validator Lifecycle trước DraftPort write; caller xác minh Scope/confirmation và chặn invalid report/lỗi. Không thêm SQL session, generator, journal/recovery hoặc root/migration. Code/test C3 sẵn sàng review/bàn giao; chưa commit/merge hay xác nhận production toàn luồng. Xem [bàn giao C3](../../../../../docs/workforce/handoffs/bui-huu-nghia/PHASE_C_C3.md) cho wiring/tests và giới hạn.
+C3 chỉ nối protocol validation thật từ C2 vào Builder Phase B, trên UOW C1: `RegistryProtocolReadiness`, `RegistryCapabilitySelector` và `ProtocolBuildValidator`. Proposal kiểm tra sớm protocol effect/mode; binding dedup theo tool version và `binding_capabilities` giữ đủ coverage để recheck. Hook gọi validator Lifecycle trước DraftPort write; caller xác minh Scope/confirmation và chặn invalid report/lỗi. Không thêm SQL session, generator, journal/recovery hoặc root/migration. C3 ban đầu đã mở PR #62; bản sửa review chưa commit/push, chưa xác nhận production toàn luồng. Xem [bàn giao C3](../../../../../docs/workforce/handoffs/bui-huu-nghia/PHASE_C_C3.md) cho wiring/tests và giới hạn.
 
 ## Cập nhật bắt buộc theo kế hoạch 1.3
 

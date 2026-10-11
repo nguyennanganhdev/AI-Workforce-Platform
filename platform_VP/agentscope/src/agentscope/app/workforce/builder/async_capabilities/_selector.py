@@ -234,7 +234,31 @@ class CapabilitySelector:
         return blockers, snapshot, details, channel
 
     async def select(self, scope: Scope, req: AgentRequirement) -> CapabilitySelection:
-        bindings, refs, covered, optional, blockers = [], {}, [], [], []
+        bindings, binding_capabilities, refs = {}, {}, {}
+        covered, optional, blockers = [], [], []
+
+        def add_binding(tool, capability, reason):
+            version = tool.tool_version_id
+            if version not in bindings:
+                bindings[version] = ToolBinding(
+                    tool_id=tool.tool_id,
+                    tool_version_id=version,
+                    schema_hash=tool.schema_hash,
+                    required_capability=capability,
+                    selection_reason=reason,
+                )
+                binding_capabilities[version] = []
+            elif (
+                bindings[version].tool_id != tool.tool_id
+                or bindings[version].schema_hash != tool.schema_hash
+            ):
+                raise WorkforceContractError(
+                    WorkforceErrorCode.REUSE_DECISION_STALE,
+                    "Tool snapshot changed during selection; refresh proposal",
+                )
+            if capability not in binding_capabilities[version]:
+                binding_capabilities[version].append(capability)
+
         channel, completion = "none", None
         effect_covered = req.effect == ToolEffect.READ
         if req.clarification_questions or req.tracking_intent == "unspecified":
@@ -287,14 +311,10 @@ class CapabilitySelector:
                 continue
             covered.append(capability.capability)
             effect_covered = effect_covered or chosen.effect == req.effect
-            bindings.append(
-                ToolBinding(
-                    tool_id=chosen.tool_id,
-                    tool_version_id=chosen.tool_version_id,
-                    schema_hash=chosen.schema_hash,
-                    required_capability=capability.capability,
-                    selection_reason=f"Available {chosen.effect.value} tool covers {capability.capability}; compatible schema and required tracking checks passed",
-                )
+            add_binding(
+                chosen,
+                capability.capability,
+                f"Available {chosen.effect.value} tool covers {capability.capability}; compatible schema and required tracking checks passed",
             )
             if (
                 details is not None
@@ -304,18 +324,11 @@ class CapabilitySelector:
                 query = await self.registry.get_tool_snapshot(
                     scope, details.status_query_tool_version_id
                 )
-                if not any(
-                    b.tool_version_id == query.tool_version_id for b in bindings
-                ):
-                    bindings.append(
-                        ToolBinding(
-                            tool_id=query.tool_id,
-                            tool_version_id=query.tool_version_id,
-                            schema_hash=query.schema_hash,
-                            required_capability="status_query",
-                            selection_reason="Pinned read-only status-query binding for verified tracking",
-                        )
-                    )
+                add_binding(
+                    query,
+                    "status_query",
+                    "Pinned read-only status-query binding for verified tracking",
+                )
         if req.policy_proposal is not None and not set(
             req.policy_proposal.capabilities
         ) <= set(covered):
@@ -349,7 +362,11 @@ class CapabilitySelector:
             )
         )
         return CapabilitySelection(
-            bindings=tuple(bindings),
+            bindings=tuple(bindings.values()),
+            binding_capabilities={
+                version: tuple(capabilities)
+                for version, capabilities in binding_capabilities.items()
+            },
             protocols=tuple(refs.values()),
             covered=tuple(covered),
             missing_optional=tuple(optional),
@@ -384,7 +401,11 @@ class CapabilitySelector:
                 or current.schema_hash != binding.schema_hash
                 or current.tool_id != binding.tool_id
                 or current.tool_version_id != binding.tool_version_id
-                or binding.required_capability not in current.capabilities
+                or not {
+                    binding.required_capability,
+                    *selection.binding_capabilities.get(binding.tool_version_id, ()),
+                }
+                <= set(current.capabilities)
             ):
                 raise WorkforceContractError(
                     WorkforceErrorCode.REUSE_DECISION_STALE,

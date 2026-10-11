@@ -3,18 +3,24 @@
 ## Cập nhật C3 — 2026-10-11 (trạng thái hiện hành)
 
 Baseline `67ff8715e4a40a37538b727442b3b66f2c9223e1`, branch `feat/wf-builder`,
-đã chứa C1/C2 merge. Thay đổi C3 hiện chưa commit/push.
+đã chứa C1/C2 merge. Code C3 ban đầu đã commit/push tại `304c39a`, mở
+[PR #62](https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/62).
+Bản sửa review hiện chưa commit/push; chờ review lại và merge.
 
 **Chỉ C3 theo trình tự chung: Protocol validation ↔ Builder.** Đã triển khai
 exact C2 readiness adapter, RegistryCapabilitySelector và ProtocolBuildValidator
 trước draft write. Tái sử dụng ProposalService/validator Phase B, canonical UOW
-C1 và SQL protocol C2; code/test sẵn sàng review/bàn giao, chưa commit/merge.
+C1 và SQL protocol C2; bản sửa code/test sẵn sàng bàn giao review lại.
+
+Sửa review PR #62: protocol effect/mode mismatch bị chặn ngay ở proposal;
+bindings dedup theo tool version, coverage lưu đầy đủ theo tool và recheck
+không bỏ qua capability phụ. Bổ sung 10 regression tests trong vùng Nghĩa.
 
 Đã gỡ phần mở rộng SQL session/message, durable service, generator, journal/
 recovery và DDL Builder; service/reuse Phase B giữ nguyên. Không thay module
 owner khác, không làm root/migration hoặc task Phase D.
 
-Tests: **31 Builder A/B + 16 Builder C3 + 29 Registry + 29 Foundation pass**.
+Tests: **31 Builder A/B + 26 Builder C3 + 29 Registry + 29 Foundation pass**.
 Registry có 1 PostgreSQL gate skipped. Lifecycle **24 pass, 1 baseline failure**
 ở test policy legacy; đã tái hiện với Builder nguyên bản HEAD. Không sửa test Anh.
 
