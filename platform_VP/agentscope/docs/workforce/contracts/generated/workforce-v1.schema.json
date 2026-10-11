@@ -160,6 +160,197 @@
       "title": "ActorContext",
       "type": "object"
     },
+    "VerifiedProviderContext": {
+      "$defs": {
+        "ActorContext": {
+          "additionalProperties": false,
+          "description": "Server-derived identity used for authorization and audit.",
+          "properties": {
+            "kind": {
+              "$ref": "#/$defs/ActorKind"
+            },
+            "actor_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Actor Id",
+              "type": "string"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ManagerRole"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "partner_client_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Partner Client Id"
+            },
+            "credential_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Credential Id"
+            },
+            "credential_purpose": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CredentialPurpose"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "external_user_id": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "External User Id"
+            },
+            "authentication_source": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Authentication Source",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "actor_id",
+            "authentication_source"
+          ],
+          "title": "ActorContext",
+          "type": "object"
+        },
+        "ActorKind": {
+          "description": "Authenticated actor source; this is not a product role.",
+          "enum": [
+            "manager",
+            "partner",
+            "system"
+          ],
+          "title": "ActorKind",
+          "type": "string"
+        },
+        "CredentialPurpose": {
+          "description": "Machine credential purpose used for least-privilege authorization.",
+          "enum": [
+            "customer_api",
+            "provider_events"
+          ],
+          "title": "CredentialPurpose",
+          "type": "string"
+        },
+        "ManagerRole": {
+          "description": "The only interactive product role in Workforce v1.",
+          "enum": [
+            "AREA_MANAGER"
+          ],
+          "title": "ManagerRole",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Server-only identity produced after API-key and HMAC verification.\n\nThis object is never accepted from a public request body.  It carries the\nprovider namespace that durable inbox and job code need before an external\noperation can be resolved to its immutable manager scope.",
+      "properties": {
+        "tenant_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "provider_integration_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Provider Integration Id",
+          "type": "string"
+        },
+        "actor_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Actor Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ActorKind",
+          "default": "partner"
+        },
+        "purpose": {
+          "$ref": "#/$defs/CredentialPurpose",
+          "default": "provider_events"
+        },
+        "credential_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Credential Id",
+          "type": "string"
+        },
+        "partner_client_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Partner Client Id",
+          "type": "string"
+        },
+        "signing_key_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Signing Key Id",
+          "type": "string"
+        },
+        "authenticated_at": {
+          "format": "date-time",
+          "title": "Authenticated At",
+          "type": "string"
+        },
+        "actor": {
+          "$ref": "#/$defs/ActorContext"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "provider_integration_id",
+        "actor_id",
+        "credential_id",
+        "partner_client_id",
+        "signing_key_id",
+        "authenticated_at",
+        "actor"
+      ],
+      "title": "VerifiedProviderContext",
+      "type": "object"
+    },
     "PartnerAudience": {
       "additionalProperties": false,
       "description": "End-user and conversation boundary asserted by a trusted backend.",

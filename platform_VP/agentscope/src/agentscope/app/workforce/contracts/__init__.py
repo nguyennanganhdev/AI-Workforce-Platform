@@ -71,6 +71,7 @@ from ._identity import (
     ManagerRole,
     PartnerAudience,
     Scope,
+    VerifiedProviderContext,
 )
 from ._manifest import (
     AgentManifest,
@@ -222,6 +223,7 @@ __all__ = [
     "ToolEffect",
     "UnitOfWork",
     "UnitOfWorkFactory",
+    "VerifiedProviderContext",
     "WorkflowPort",
     "WorkflowProjection",
     "WorkflowRecord",

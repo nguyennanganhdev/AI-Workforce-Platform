@@ -37,6 +37,7 @@ from .._ports import (
     RuntimeContinuationPort,
     WorkflowPort,
 )
+from .._identity import VerifiedProviderContext
 
 __all__ = [
     "AsyncProtocolPort",
@@ -71,5 +72,6 @@ __all__ = [
     "WorkflowProjection",
     "WorkflowRecord",
     "WorkflowState",
+    "VerifiedProviderContext",
     "WorkforceErrorCode",
 ]

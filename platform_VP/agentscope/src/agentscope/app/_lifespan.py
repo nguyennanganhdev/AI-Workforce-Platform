@@ -56,6 +56,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     resource_access_policy = app.state.resource_access_policy
     auth_service = app.state.auth_service
     business_service = app.state.business_service
+    workforce_bootstrap = app.state.workforce_bootstrap
 
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(storage)
@@ -65,6 +66,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await stack.enter_async_context(auth_service)
         if business_service is not None:
             await stack.enter_async_context(business_service)
+        if workforce_bootstrap is not None:
+            await stack.enter_async_context(workforce_bootstrap)
+            app.state.workforce = workforce_bootstrap.components
+            stack.callback(setattr, app.state, "workforce", None)
         if knowledge_base_manager is not None:
             # ``KnowledgeBaseManagerBase.__aenter__`` enters the bound
             # vector store too, so a single context covers both.

@@ -30,7 +30,13 @@ from ._execution import (
     ProviderEventEnvelope,
     ProviderEventReceipt,
 )
-from ._identity import ActorContext, CredentialPurpose, PartnerAudience, Scope
+from ._identity import (
+    ActorContext,
+    CredentialPurpose,
+    PartnerAudience,
+    Scope,
+    VerifiedProviderContext,
+)
 from ._manifest import AgentManifest, BusinessProfile
 from ._partner_routing import PartnerOperation, ResolvedPartnerRoute
 from ._reuse import ReuseCheck, ReuseDecision
@@ -327,18 +333,18 @@ class ProviderAuthPort(Protocol):
         self,
         raw_body: bytes,
         headers: Mapping[str, str],
-    ) -> ActorContext: ...
+    ) -> VerifiedProviderContext: ...
 
     async def authorize_integration(
         self,
-        principal: ActorContext,
-        operation: PartnerOperation,
+        principal: VerifiedProviderContext,
+        operation: PartnerOperation | str,
         uow: UnitOfWork | None = None,
     ) -> None: ...
 
     async def require_purpose(
         self,
-        principal: ActorContext,
+        principal: VerifiedProviderContext,
         purpose: CredentialPurpose,
     ) -> None: ...
 

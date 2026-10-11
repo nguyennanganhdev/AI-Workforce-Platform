@@ -8,7 +8,10 @@ Phạm vi: contracts single/batch, AREA_MANAGER + domain/area/account, partner m
 
 Khi triển khai, tạo `STATUS.md` theo mẫu ở mục 16. Mỗi yêu cầu đổi contract/hook/file chung ghi vào `INTEGRATION_REQUEST_<task-id>.md` theo mục 14.
 
-Hiện tại chưa có task được đánh dấu hoàn thành; việc tạo thư mục này không chứng minh module đã được code/test.
+Tiến độ thực tế nằm trong [STATUS.md](STATUS.md). Phase C/C1 và gate cho
+người kế tiếp được ghi tại [PHASE_C_C1.md](PHASE_C_C1.md) và
+[../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md); không suy ra trạng thái chỉ từ
+việc thư mục hoặc scaffold tồn tại.
 
 Nguyên tắc batch của bản 1.2 được giữ ở bản 1.3: Contracts phân biệt AgentManifest của một agent, AgentBuildBatch theo dõi nhiều agent và RunGroup chỉ hình thành khi có request. Tích hợp BuildBatchPort; không tạo team template/version/deployment từ Builder. Đọc mục 2.3, 2.5 và 6 của kế hoạch trước khi code; nội dung này thay thế cách hiểu team artifact ở bản trước. Đây là đầu việc cần triển khai, chưa phải tính năng đã hoàn thành.
 
