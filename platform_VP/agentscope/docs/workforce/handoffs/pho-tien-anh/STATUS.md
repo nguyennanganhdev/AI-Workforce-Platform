@@ -1,6 +1,6 @@
 # Trạng thái bàn giao — Phó Tiến Anh
 
-Ngày đối chiếu: 10/10/2026. Branch: `feat/wf-lifecycle`.
+Ngày đối chiếu: 11/10/2026. Branch checkout: `feat/wf-lifecycle`.
 
 ## Phạm vi nghiệm thu
 
@@ -146,3 +146,57 @@ thật. Khi commit C4 đã merge vào `develop2`, C5 có thể bắt đầu theo
 `../phan-huy-hoang/INTEGRATION_REQUEST_PHH_C4.md`; không cần chờ thêm fake
 workflow. Migration/composition production vẫn thuộc C7 và không phải blocker
 cho việc nối evaluation runtime trong test C5.
+
+## C5 — 11/10/2026
+
+Đã hoàn thiện code và SQL/runtime integration tests cho **eval đa lượt nối
+seam runtime C4**.
+
+- Tái dùng Phase A/B: scoped validator, immutable frozen snapshot, deterministic
+  grading, hard gates và shared report/UI shape; không sửa shared DTO/schema A.
+- Tái dùng C1 canonical SQL UOW/jobs/worker; C2 SQL protocol provider và exact
+  refs; C3 Builder policy shape và Execution guard/approval/gateway; C4
+  SqlRuntimeContinuation/LeaderTurnRunner/WorkflowContinuation/context/evidence.
+- Thêm `RuntimeEvaluationRunner`, `RuntimeCaseDriver`, `RuntimeObservation`,
+  `RuntimeAudit`, `SqlRuntimeEvidenceWriter`, `SqlEvaluationRepository`,
+  `EvaluationJobService`, `EvaluationJobHandler`, `check_persisted_release`,
+  `get_metadata`, `phase_c_schema_bundle`. Type hints dùng `typing`.
+- Persist frozen input/job cùng UOW; bind case trong bootstrap UOW trước job
+  commit; evidence cùng checkpoint/public result UOW. Step/result/report
+  immutable/hash, full Scope, replay và cancel marker; không giữ transaction
+  qua model/provider. Publish hook đọc lại runtime evidence, chặn fake report,
+  thiếu/tampered/cancelled evidence, stale input và hard gates.
+- Suite `pta-lifecycle-2`: giữ operation refs/confirmation sau close và chạy
+  Leader khi timer có trigger theo C4 mặc định. Frozen suite cũ không thay đổi.
+  Sửa test policy legacy sau khi đối chiếu schema BHN C3; không nới validator.
+
+Kết quả: **22 tests C5 pass**; nhóm Lifecycle/Foundation/Builder/Registry/C4
+**167 passed, 5 skipped, 178 subtests passed**; Execution/E2E hiện có
+**112 passed, 4 skipped**; workflow A/B **14 unittest tests pass**.
+Black vùng thay đổi, Flake8, mypy **9 source files**, schema/DDL PostgreSQL và
+SQLite compile, lazy import và diff check pass. Black toàn test folder còn
+báo baseline `test_phase_a.py` chưa formatted; giữ nguyên file đó.
+
+Mock/live: Workflow SQL/checkpoint/lease/guard, Foundation UOW/jobs và
+Execution approval/policy/transactions/gateway thật trên SQLite. Scripted
+Leader adapter/model, MCP provider, catalog/authority/quote/HITL/secret resolver
+là test doubles, nằm trong tests; không dùng FakeRunner Phase B. C5 provider
+events là normalized stimuli, không giả inbox/HTTP đã chạy. Test SQL reload /
+injected cancellation không phải process kill/restart hoặc PostgreSQL race.
+
+Skips: 4 Builder UI cần demo đang chạy/`BUILDER_UI_TEST_URL`, 2 PostgreSQL gates cần dedicated DSN và 3
+full-platform E2E cần factory composition. Chưa chạy concrete AgentScope
+Leader/session production, provider/model/live sandbox, HTTP/UI deployment,
+long-wait retention/publish race D. Không đánh dấu toàn bộ PTA-01–PTA-16 xong.
+
+C6 dùng exports runtime/evidence và thay test stimuli bằng provider ingress
+thật. C7 gom metadata 4 bảng/index, job handler, concrete Leader/driver và
+API/UI composition. Không sửa migration/root/source owner khác, không sửa
+README bàn giao của PTA, không stage/commit hoặc sửa index/refs/lịch sử Git.
+Source thay đổi vẫn nằm trong working tree để user review.
+
+Chi tiết và lệnh tái chạy: [PHASE_C_C5.md](PHASE_C_C5.md).
+Schema/index/signature bàn giao: [INTEGRATION_REQUEST_PTA_C5.md](INTEGRATION_REQUEST_PTA_C5.md)
+và [phase_c/schemas.json](phase_c/schemas.json).
+
+Rà soát lại C5: chặn ghi đè scope trong khóa truy vấn; đối chiếu identity/revision của payload evidence với hàng SQL; chặn evidence mới và stimulus tiếp theo khi case đã hủy. Bổ sung ba regression tests; chạy lại nhóm Lifecycle/Foundation/Builder/Registry/C4: 167 passed, 5 skipped, 178 subtests passed. Black vùng thay đổi, Flake8 và mypy đều pass. Kết quả Execution/E2E và unittest ở trên là lần kiểm chứng trước.
