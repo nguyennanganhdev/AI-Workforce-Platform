@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 """Durable workflow commands for request, reply, external event, and close."""
 
+import json
 from collections.abc import Callable, Mapping
 from datetime import datetime
 from hashlib import sha256
-import json
 from uuid import uuid4
 
 from ...contracts import (
@@ -23,7 +22,7 @@ from ._models import (
     WorkflowBootstrap,
     WorkflowClosed,
     WorkflowConflict,
-    WorkflowPattern,
+    WorkflowQueryResult,
     WorkflowRepository,
     WorkflowReservation,
     parse_aggregate,
@@ -37,7 +36,6 @@ from .phase_a import (
     WorkflowTrigger,
     cause_key,
 )
-
 
 HUMAN_WAIT_STATES = {
     WorkflowState.AWAITING_USER,
@@ -432,6 +430,108 @@ class WorkflowService:
                         cause_event_id=event.inbox_event_id,
                         operation_id=operation_ref,
                     ),
+                ).model_dump(mode="json"),
+                tx,
+            )
+            return candidate.workflow
+
+        return await self._in_transaction(uow, execute)
+
+    async def apply_query_result(
+        self,
+        scope,
+        operation_ref,
+        query_result,
+        uow=None,
+    ):
+        """Apply a verified status-query fact without fabricating an inbox event."""
+        result = WorkflowQueryResult.model_validate(raw_value(query_result))
+
+        async def execute(tx):
+            operation = await self.operations.get(scope, operation_ref, tx)
+            aggregate = parse_aggregate(
+                await self.repository.load(scope, operation.workflow_id, tx)
+            )
+            record = require_binding(aggregate, scope, operation.audience)
+            if (
+                operation.operation_id != operation_ref
+                or operation.workflow_id != record.workflow_id
+                or operation.conversation_id != record.conversation_id
+                or operation.ticket_id != record.ticket_id
+                or operation.operation_id
+                not in aggregate.checkpoint.operation_refs
+                or operation.protocol_snapshot
+                not in aggregate.checkpoint.protocol_pins
+                or result.protocol_schema_hash
+                != operation.protocol_snapshot.schema_hash
+            ):
+                raise PermissionError(
+                    "query operation is not pinned to workflow"
+                )
+            previous_hash = aggregate.applied_query_results.get(result.timer_id)
+            if previous_hash is not None:
+                if previous_hash != result.source_hash:
+                    raise WorkflowConflict(
+                        "timer result was reused with different content"
+                    )
+                return record
+            if record.state == WorkflowState.CLOSED:
+                return record
+            candidate = advance(aggregate, self.clock)
+            candidate = parse_aggregate(
+                candidate.model_copy(
+                    update={
+                        "applied_query_results": {
+                            **aggregate.applied_query_results,
+                            result.timer_id: result.source_hash,
+                        }
+                    }
+                )
+            )
+            checkpoint_ref = await self.runtime.persist_checkpoint(
+                scope, record.workflow_id, candidate.checkpoint, tx
+            )
+            candidate = parse_aggregate(
+                candidate.model_copy(
+                    update={
+                        "workflow": candidate.workflow.model_copy(
+                            update={"checkpoint_ref": checkpoint_ref}
+                        )
+                    }
+                )
+            )
+            if not await self.repository.save(candidate, record.revision, tx):
+                raise WorkflowConflict("query result revision conflict")
+            await self.events.write(
+                candidate.workflow,
+                "operation.status_changed",
+                {
+                    "operation_type": operation.protocol_snapshot.protocol_id,
+                    "status_schema": (
+                        operation.protocol_snapshot.protocol_version
+                    ),
+                    "status": result.status,
+                    "external_reference": operation.external_job_id,
+                },
+                tx,
+                result.timer_id,
+            )
+            await self.events.write(
+                candidate.workflow,
+                "workflow.status_changed",
+                {
+                    "state": candidate.workflow.state.value,
+                    "revision": candidate.workflow.revision,
+                },
+                tx,
+                result.timer_id,
+            )
+            await self.enqueue_trigger(
+                scope,
+                WorkflowTrigger(
+                    trigger_id=self.ids(),
+                    workflow_id=record.workflow_id,
+                    cause={"kind": "timer", "timer_id": result.timer_id},
                 ).model_dump(mode="json"),
                 tx,
             )

@@ -1,11 +1,12 @@
-# -*- coding: utf-8 -*-
 """Public Phase-B workflow orchestration exports."""
 
 from ._continuation import ExecutionGuard, WorkflowContinuation
 from ._models import (
     CloseMessage,
+    CommittedTurnEvidence,
     OperationReader,
     ReplyMessage,
+    RuntimeEvidenceWriter,
     StartMessage,
     TurnDecision,
     WorkflowAggregate,
@@ -15,6 +16,7 @@ from ._models import (
     WorkflowConflict,
     WorkflowLease,
     WorkflowPattern,
+    WorkflowQueryResult,
     WorkflowRepository,
     WorkflowReservation,
 )
@@ -22,9 +24,11 @@ from ._service import WorkflowService, advance, next_action
 
 __all__ = [
     "CloseMessage",
+    "CommittedTurnEvidence",
     "ExecutionGuard",
     "OperationReader",
     "ReplyMessage",
+    "RuntimeEvidenceWriter",
     "StartMessage",
     "TurnDecision",
     "WorkflowAggregate",
@@ -35,6 +39,7 @@ __all__ = [
     "WorkflowContinuation",
     "WorkflowLease",
     "WorkflowPattern",
+    "WorkflowQueryResult",
     "WorkflowRepository",
     "WorkflowReservation",
     "WorkflowService",

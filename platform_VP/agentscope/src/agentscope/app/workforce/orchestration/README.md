@@ -28,5 +28,15 @@ Folder con mới thuộc phạm vi này:
 - [workflows/](workflows/README.md) — Workflow state/trigger/checkpoint/close/continuation; không lưu provider inbox.
 - [partner_events/](partner_events/README.md) — Public event log, SSE/history/snapshot và notification signal sau commit; không sender outbound.
 
-Đây là phạm vi cần code/test. Chưa có Customer API, Provider Event API, SSE worker, migration hoặc UI mới được triển khai bởi README này.
+Ở mốc Phase B, phạm vi này chưa có Customer API SQL/composition; trạng thái mới
+nhất được cập nhật ở mục Phase C4 dưới đây. Provider Event API vẫn thuộc
+Execution, còn migration/global worker/UI vẫn thuộc các mốc sau.
+
+## Phase C4
+
+C4 hiện đã có SQL adapter, Customer API router factory, workflow continuation
+job handler, injected Leader runtime, Execution operation/query bridge và public
+event history/SSE. Module vẫn không tự mount route, tạo schema hay khởi động
+worker; C7 thực hiện composition và migration. Xem
+`docs/workforce/handoffs/phan-huy-hoang/PHASE_C_C4.md`.
 
