@@ -1,6 +1,7 @@
 """Frozen evaluation inputs and fail-closed grading over the shared runner port."""
 
 import json
+from copy import deepcopy
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -242,7 +243,14 @@ class AsyncEvaluationService:
                 result = await self.runner.run_case(
                     scope,
                     EvaluationSnapshot.model_validate(payload["snapshot"]),
-                    suite.runner_input(case),
+                    {
+                        **suite.runner_input(case),
+                        "runtime_profile": deepcopy(payload["runtime_profile"]),
+                        "test_context": deepcopy(payload["test_context"]),
+                        "protocol_refs": deepcopy(
+                            payload["dependencies"]["protocol_refs"]
+                        ),
+                    },
                     "mock",
                 )
                 results.append(grade_case(case, result))
