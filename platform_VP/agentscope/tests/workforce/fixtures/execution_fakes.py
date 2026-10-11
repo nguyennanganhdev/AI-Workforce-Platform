@@ -288,7 +288,8 @@ class Protocols:
             raise ExecutionError("EVENT_TYPE_UNSUPPORTED", 422)
 
     async def normalize_verified_event(
-        self, principal, protocol, envelope, *, inbox_event_id, received_at
+        self, principal, protocol, envelope, *, inbox_event_id, received_at,
+        uow=None,
     ):
         data = envelope["data"]
         if not isinstance(data.get("status"), str) or data["status"] not in {
@@ -462,6 +463,7 @@ async def harness(
     url="sqlite+aiosqlite:///:memory:",
     tracking=False,
     calculator=False,
+    canonical_uow=False,
     **engine_args,
 ):
     """
@@ -505,9 +507,16 @@ async def harness(
     async with engine.begin() as connection:
         await connection.run_sync(get_metadata().create_all)
         await connection.run_sync(test_metadata.create_all)
-    repo = create_repository(
-        async_sessionmaker(engine, expire_on_commit=False)
-    )
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    if canonical_uow:
+        from agentscope.app.workforce.foundation import (
+            SqlAlchemyUnitOfWorkFactory,
+        )
+
+        uows = SqlAlchemyUnitOfWorkFactory(sessions)
+        repo = create_repository(uow_factory=uows)
+    else:
+        repo = create_repository(sessions)
     runtime, registry, quotes = (
         Runtime(descriptor),
         Registry(descriptor),

@@ -28,11 +28,13 @@ def get_metadata() -> Any:
     return metadata
 
 
-def create_repository(session_factory: Any) -> Any:
-    """Reuse Foundation's session factory instead of a second engine."""
+def create_repository(
+    session_factory: Any = None, *, uow_factory: Any = None
+) -> Any:
+    """Join Foundation's canonical UOW, or a legacy session factory."""
     from ._repository import ExecutionRepository
 
-    return ExecutionRepository(session_factory)
+    return ExecutionRepository(session_factory, uow_factory=uow_factory)
 
 
 __all__ = [

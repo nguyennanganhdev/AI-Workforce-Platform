@@ -31,12 +31,22 @@ TABLES = {
 class ExecutionRepository:
     """Scoped JSON records plus relational keys, unique constraints and CAS."""
 
-    def __init__(self, session_factory: Any) -> None:
+    def __init__(
+        self, session_factory: Any = None, *, uow_factory: Any = None
+    ) -> None:
+        if (session_factory is None) == (uow_factory is None):
+            raise ValueError("supply exactly one session or UOW factory")
         self.session_factory = session_factory
+        self.uow_factory = uow_factory
 
     @asynccontextmanager
     async def transaction(self) -> Any:
         """Do not use this context across model/provider network calls."""
+        if self.uow_factory is not None:
+            async with self.uow_factory() as uow:
+                yield uow
+                await uow.commit()
+            return
         async with self.session_factory() as session:
             async with session.begin():
                 yield session

@@ -32,11 +32,20 @@ def create_router(
     globals()["Request"] = Request
     router = APIRouter(prefix="/workforce/v1", tags=["workforce-execution"])
 
+    async def authenticate_provider(raw: bytes, headers: Any) -> Any:
+        try:
+            return await provider_auth.authenticate(raw, headers)
+        except PermissionError:
+            raise ExecutionError("PROVIDER_UNAUTHENTICATED", 401) from None
+
     async def respond(action: Any) -> Any:
         try:
             return await action()
         except ExecutionError as error:
             return JSONResponse(error.public(), status_code=error.status)
+        except PermissionError:
+            denied = ExecutionError("AUTHORIZATION_DENIED", 403)
+            return JSONResponse(denied.public(), status_code=denied.status)
         except (ValueError, UnicodeError):
             invalid_error = ExecutionError("REQUEST_BODY_INVALID", 422)
             return JSONResponse(
@@ -51,7 +60,7 @@ def create_router(
                 raw.extend(chunk)
                 if len(raw) > max_provider_bytes:
                     raise ExecutionError("PAYLOAD_TOO_LARGE", 413)
-            principal = await provider_auth.authenticate(
+            principal = await authenticate_provider(
                 bytes(raw), dict(request.headers)
             )
             try:
@@ -65,7 +74,7 @@ def create_router(
     @router.get("/provider/event-receipts/{receipt_id}")
     async def provider_receipt(receipt_id: str, request: Request) -> Any:
         async def action() -> Any:
-            principal = await provider_auth.authenticate(
+            principal = await authenticate_provider(
                 b"", dict(request.headers)
             )
             return await provider_ingress.read_receipt(principal, receipt_id)

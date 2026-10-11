@@ -1,144 +1,96 @@
 # Trạng thái — Phan Hoàng Dũng
 
-Ngày: **10/10/2026**, Asia/Saigon. Nhánh: **feat/wf-execution**.
-Baseline code mới: **53a139b** — đã fast-forward origin/develop2, nhận commit
-PHH `7a8e356`, giữ các thay đổi handoff đang có. Thay đổi lane Dũng lần này
-chưa commit/push.
+Ngày: **11/10/2026**, Asia/Saigon. Nhánh: **feat/wf-execution**.
+Baseline: **67ff871**, đã chứa C1 `a4c2fdd` và C2 `b9feee2` trên
+`develop2`. Thay đổi C3 lần này chưa commit/push.
 
-## Phase A/B đã làm và giới hạn nghiệm thu
+## Kết luận phạm vi
 
-- **Phase A của Dũng:** đã có operation/inbox schema + provider-event fixtures;
-  bổ sung adapters và consumer tests dùng fake port thật của Đông, schemas/
-  claim DTO thật của Huy Hoàng. Chi tiết [PHASE_A.md](PHASE_A.md).
-- **Phase B độc lập của Dũng:** đã hoàn thiện provider ingress, correlation,
-  reconciliation, fake technician backend và các adapter ranh giới. Chi tiết
-  [PHASE_B.md](PHASE_B.md), gồm lệnh chạy và giới hạn kiểm chứng.
-- **MA chung chưa xác nhận:** verified inbox context/detailed resolver/promotion
-  DTO/hook và shared strict validation còn cần NCH/NPD/PHH duyệt.
-- **MB/MC/MD chưa nghiệm thu:** chưa có runtime Workflow/Customer API/worker
-  production composition/PostgreSQL/SSE server/sandbox để chạy toàn chuỗi.
-  Không đánh dấu toàn bộ PHD-01–17 hoàn thành.
+- Phase A/B đã bàn giao; tài liệu lịch sử:
+  [PHASE_A.md](PHASE_A.md), [PHASE_B.md](PHASE_B.md).
+- **Lane C3 của Dũng đã hoàn thiện:** Provider ingress ↔ Operation ↔ Protocol
+  dùng auth/UOW/jobs C1 và Registry SQL C2 thật; chi tiết
+  [PHASE_C_C3.md](PHASE_C_C3.md).
+- Chỉ kết luận lane Dũng; không đánh dấu C3 Builder của Nghĩa hoàn thành.
+  C4 Workflow/POST/Leader/event log/SSE, C6 E2E toàn lát cắt và C7
+  composition/migration/CI chưa được nghiệm thu trong lượt này.
+- Verified context, exact resolver và canonical UOW consumer đã được nối;
+  không còn báo thiếu output C1/C2 này.
 
-Không còn chờ Huy Hoàng bàn giao schema Phase A: gói này đã nhận và chạy kiểm tra.
-PHH chưa triển khai Phase B runtime; không viết thay owner.
+## Tasks C3 và đầu ra
 
-## Phạm vi bàn giao Phase A/B
-
-Theo mục 17.9 của kế hoạch; các Task IDs bên dưới chỉ tính phần thuộc A/B,
-không đánh dấu hoàn thành toàn task trong kế hoạch tổng.
-
-| Phase | Tasks liên quan | Đầu ra đã có | Điểm còn cần chốt trong A/B |
-|---|---|---|---|
-| A | PHD-14/15/17 | Operation/inbox schema, provider-event fixtures và pinned protocol/normalized DTO consumer tests | Verified inbox context, exact-detail resolver signature, manager-only audience và shared strict validation |
-| B | PHD-14/15 | Provider ingress, correlation, atomic inbox apply và shared Workflow adapter với fake sink | Session/UOW contract và fake, hook/cause DTO review |
-| B | PHD-07/16 | Reconciliation/query timer/CAS, job conflict và query version handling | Query-result schema, fact allowlist/version semantics và query hook/fake |
-| B | PHD-17 | Fake technician backend assigned/on_the_way/arrived/completed, hai ticket xen kẽ | Không thay fake backend bằng bằng chứng runtime toàn platform |
-| A/B, consumer compatibility | PHD-01/02/05/06/13 | Canonical protocol pin, shared operation projection, typed command claim và consent replay/revoke tests | Reviewed tool metadata, authorize/attention/result signatures và fake |
-
-## Code và exports thay đổi trong lượt này
-
-Chỉ sửa owned paths `src/agentscope/app/workforce/execution/**`,
-`tests/workforce/{execution,fixtures}/**` và handoff cá nhân.
-Code owner khác được nhận nguyên trạng từ merge baseline, không chỉnh lại.
-
-- Mới: `external_operations/_protocol.py` — ExecutionProtocolAdapter,
-  exact resolve_snapshot, canonical pin validation và projected create/query mapping.
-- Mới: `external_operations/_adapter.py` — ExternalOperationAdapter,
-  shared DTO output/Scope filtering/optional UOW.
-- Mới: `provider_events/_workflow.py` — WorkflowEventAdapter, provider DTO/
-  original binding validation, explicit query/attention/result hook injection.
-- Chỉnh gateway/operation service dùng canonical config hash cho pin mới,
-  giữ digest cũ khi record legacy không có snapshot_ref.
-- Chỉnh ingress giữ ActorContext identity đã xác minh; processor truyền
-  persisted inbox ID/time vào normalizer, không sinh mới khi retry.
-- Chỉnh reconciliation kiểm tra job namespace/conflict trước update; query
-  giữ timer cause/observation/source hash, không tự tạo provider inbox identity.
-  Query cùng business facts vẫn persist version/job binding mới, không emit status trùng.
-- Chỉnh partner consent nhận typed claim/result, pending result fail closed.
-- Mới: `tests/workforce/fixtures/phase_ab_fakes.py`,
-  `tests/workforce/execution/provider_events/test_phase_ab.py`.
-  Chỉnh consent tests, legacy fixture signature và fake technician progress_events.
-
-Exports cũ giữ nguyên. Exports mới nằm trong subpackages external_operations
-và provider_events, không sửa root Workforce barrel/shared ports.
-Contract dùng shared DTO Phase A và provider envelope schema_version=1;
-protocol config theo schema/hash thật của Đông, PHH proposals `phh-phase-a-1`.
-
-## Đầu vào module khác đã dùng
-
-| Owner | Đã dùng / còn thiếu |
-|---|---|
-| NCH | Shared DTO/ports; DurableJobService.enqueue_provider thật với SQL enqueue test double; Phase B jobs/worker/signals/SSE transport có code, production persistence/bootstrap/auth chưa có |
-| NPD | AsyncToolProtocol/EventMapping, real snapshot hash/samples; C2 đã tạo SQL repository/provider và exact resolver nhưng đang chờ merge/wiring C3; fake port chỉ còn dùng trong consumer tests |
-| PHH | WorkflowRecord sample, WorkflowTrigger/ExternalEventCause/TimerCause/CommandClaimResult proposal thật; Workflow test sink do Dũng sở hữu, không có PHH runtime giả production |
-| BHN/PTA | Requirement/policy/validation/eval schema đã merge; production build/reuse/eval/publish chưa có |
-
-## Bằng chứng kiểm tra hiện tại
-
-- Execution/E2E slice + Foundation contracts + Registry Phase A:
-  **113 passed, 4 skipped, 62 subtests passed**.
-- Foundation Phase B chạy riêng: **10 passed**.
-- PHH Phase A runner: **242 passed**, không fail/error/skip.
-- Ruff E/F 79 cột: pass; mypy: **26 source files**, pass.
-- Không chạy lại frontend/browser trong lượt này vì không đổi frontend.
-  Kết quả lint/build cũ chỉ là lịch sử ở VALIDATION.md.
-
-Bốn skip: một PostgreSQL concurrency test cần dedicated DSN, ba full-platform
-tests cần WORKFORCE_E2E_FACTORY. Lỗi collection Foundation default import mode
-và thiếu RFC3339 checker của lần chạy đầu đã khắc phục; lệnh chuẩn ở PHASE_B.md.
-Không sửa test config hoặc dependency manifests của owner khác.
-
-| Invariant | Đã kiểm tra | Chưa chứng minh bằng hệ thống thật |
+| Tasks | Đã thực hiện trong C3 | Giới hạn |
 |---|---|---|
-| Inbox + job, apply + sink | SQLite atomic rollback; job service NCH thật với repository double | PostgreSQL commit/race/fencing, durable worker |
-| Pins/normalization | Old pin khi current v2 đổi; namespace/hash/identity/time/fact allowlist, early event | Registry persistence/resolver/auth signature thật |
-| Order/reconciliation | Duplicate/delta gap/reprocess/terminal/stale-query/job conflict | Worker retry/recovery/timer scheduling production |
-| Workflow/binding/close | Shared DTO boundary, wrong sink response rollback, hai workflow xen kẽ và fake closed sink giữ fact | Checkpoint/outbox/trigger runtime, real close race/retention/restart |
-| Replay/client/UI | Consent replay/revoke; client SSE parser/dedupe lịch sử | Server SSE replay/live/410/proxy và Chat browser |
-| Onboarding | Mock MCP/HTTP provider/customer; A1–A4/B1–B4 đối soát | Endpoint/credential/grant/signing/idempotency/query sandbox |
+| PHD-14 | Dùng Registry SQL exact detail pin cho operation/create result; bind theo đủ Scope | Runtime/tool catalog/MCP trong test vẫn là dependencies giả |
+| PHD-15 | Persist full VerifiedProviderContext; request-local loader đọc inbox thật; re-authorize credential; worker handler kiểm tra provider namespace | Workflow apply sink thật thuộc C4 |
+| PHD-16 | Query/transition dùng exact pin kể cả current bị đổi hoặc disable; scoped durable query timer, giữ TimerCause | MCP query transport và canonical query hook chưa phải live integration |
+| PHD-17, kiểm tra C3 | Signed provider HTTP, durable worker thật, rollback/retry, early correlation, hai manager xen kẽ | Chưa làm C6 full-platform E2E |
 
-Schema/metadata/record samples ở PHASE_A.md; lệnh chạy và giới hạn kiểm chứng ở PHASE_B.md.
-Không gọi model trả phí, booking thật hoặc backend đối tác ngoài repo.
+## Owned paths và exports
 
-## Integration requests còn mở
+Chỉ thay đổi:
+`src/agentscope/app/workforce/execution/**`,
+`tests/workforce/{execution,fixtures}/**`,
+`docs/workforce/handoffs/phan-hoang-dung/**`.
+Không sửa contracts/Foundation/Registry/Orchestration, migration, root bootstrap
+hoặc dependency manifests.
 
-Chỉ giữ [Contract và fake Phase A/B](INTEGRATION_REQUEST_PHD-01_PHASE_A.md):
-context/resolver/query-result/manager-only semantics, UOW, hook và strict
-validation review với NCH/NPD/PHH. Các yêu cầu triển khai ngoài A/B đã loại bỏ;
-không còn backlog production trong integration request của lần bàn giao này.
+- `create_repository(session_factory=None, *, uow_factory=None)`: C3 dùng
+  canonical UOW factory C1; giữ compatibility với session factory cũ.
+- Mới `external_operations.RegistryExecutionProtocols`: bind public Registry
+  service/resolver theo Scope; không query trực tiếp bảng Registry.
+- Mới loader nội bộ `provider_events/_context.py`: đối chiếu stored
+  context/envelope/receipt/time/Scope/pin, re-authorize trong apply UOW.
+- Ingress persist full server-only verified context; job payload chỉ tham chiếu
+  receipt, không mang provider-controlled Scope hoặc signing secret.
+- `ProviderEventProcessor.handle_job(job)`: callable Foundation JobHandler,
+  kiểm tra namespace với inbox rồi trả receipt/outcome.
+- HTTP sanitize PermissionError từ C1: authentication sai trả 401,
+  thiếu operation trả 403.
+- Tests mới `test_execution_c3.py`, fixture `phase_c_fakes.py`; fixture cũ thêm
+  tùy chọn canonical UOW và nhận normalization UOW.
 
-## Điều phối Phase C — cập nhật từ C1 ngày 2026-10-11
+Không thêm bảng/cột: provider_ref nằm trong JSON payload của inbox hiện có.
+Metadata sáu bảng Execution bàn giao cho C7 qua `execution.get_metadata()`.
 
-Bạn có hai mốc riêng:
+## Producer thật và test dependencies
 
-1. **C3/Execution**, chạy song song với Builder sau khi C2 của Nguyễn Phương
-   Đông merge: nối provider ingress ↔ operation ↔ exact protocol bằng UOW/jobs/
-   provider auth C1. Persist đầy đủ `VerifiedProviderContext`; record
-   `provider_ref` Phase B hiện thiếu credential/signing-key/authenticated-at nên
-   phải được nâng cấp trước khi re-authorize event sau dequeue. Không lấy Scope
-   hoặc provider namespace từ body.
-2. **C6/E2E**, chỉ bắt đầu sau khi C4 của Huy Hoàng và C5 của Tiến Anh đều
-   merge: chạy toàn lát cắt Customer POST → workflow/runtime → operation →
-   Provider Event → event log/SSE → close, gồm duplicate/order/crash/unknown/
-   scope isolation.
+| Thành phần | Trạng thái kiểm chứng |
+|---|---|
+| C1 auth | HmacProviderAuth + SQL credential repository thật; API-key authenticator/secret resolver là test dependencies |
+| C1 UOW/jobs/worker | Canonical UOW + SQL job repository + service + worker thật, cùng DB test |
+| C2 Registry | SqlAsyncProtocolRepository/Provider/service thật; publish/current/old-pin lookup bằng SQLite |
+| Execution | HTTP/ingress/repository/operation/processor/reconciler/adapters thật |
+| Workflow | Fake sink của Dũng dùng shared DTO/PHH schemas, ghi SQL trong caller UOW; không thay implementation C4 |
+| Provider/MCP/runtime/catalog | Fake backend/ports của owned tests; không có sandbox/model/booking thật |
 
-C1 có migration Foundation `0009`, UOW, durable-job repository, HMAC provider
-auth và bootstrap. Không tạo engine/migration/job implementation song song;
-bàn giao bảng Execution cần thêm cho C7. Trình tự:
-[../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).
+## Bằng chứng kiểm tra ngày 11/10/2026
 
-### Output C2 đang chờ merge cho C3/Execution
+- Execution/E2E slice + Foundation contracts + Registry:
+  **150 passed, 5 skipped, 76 subtests passed**, gồm **22 tests C3** mới.
+- Foundation Phase B + C1: **20 passed**.
+- Workflow Phase B: **14 passed** bằng unittest discover.
+- Ruff E/F 79 cột: pass. Mypy: **28 source files**, pass.
+- Các lệnh chạy lại, test collection notes và invariants tại
+  [PHASE_C_C3.md](PHASE_C_C3.md). Frontend không thay đổi.
 
-C2 đã tạo `SqlAsyncProtocolProvider`/`SqlAsyncProtocolRepository`, exact old-pin
-lookup và test Registry SQL → `ExecutionProtocolAdapter` trên baseline C1. Sau
-khi C2 merge lên `develop2`, pull đúng commit đó rồi:
+Hai skip PostgreSQL cần dedicated `WORKFORCE_TEST_POSTGRES_URL`; ba skip
+full-platform cần `WORKFORCE_E2E_FACTORY`. Không tính skip là pass hoặc coi
+SQLite là bằng chứng PostgreSQL locks/races.
 
-- bind protocol service bằng Scope đã persist của ExternalOperation;
-- inject loader đọc provider inbox thật và re-authorize credential/grant;
-- persist đầy đủ `VerifiedProviderContext`, không dựng identity từ event body;
-- truyền `protocol_provider.resolve_detail` vào adapter;
-- không dùng `FakeAsyncProtocolPort` trong production composition.
+Đã kiểm tra signature/timestamp/body Scope sai, duplicate receipt, revoke trước
+apply, enqueue failure sau SQL insert, sink rollback + after-commit callback,
+loader metadata forgery, exact old pin sau drift/disable, hai manager xen kẽ,
+early event và query timer không tạo provider inbox giả.
 
-Chi tiết producer và giới hạn PostgreSQL gate:
-[../nguyen-phuong-dong/INTEGRATION_REQUEST_NPD_C2.md](../nguyen-phuong-dong/INTEGRATION_REQUEST_NPD_C2.md).
+## Integration requests còn cần owner
+
+- [C3 → C4/C7](INTEGRATION_REQUEST_PHD_C3.md): Workflow sink/hooks trong caller
+  UOW; đăng ký worker/router bằng dependencies thật; gom metadata vào migration
+  additive và quyết định xử lý inbox legacy thiếu verified context.
+- [Contract Phase A/B](INTEGRATION_REQUEST_PHD-01_PHASE_A.md): chỉ giữ các
+  quyết định shared còn mở; đã cập nhật phần context/resolver/UOW được giải quyết.
+
+Không tự backfill credential/signing-key/authentication time cho inbox cũ,
+không triển khai thay C4/C7 hoặc bắt đầu C6 khi các bước trước chưa bàn giao.
 
