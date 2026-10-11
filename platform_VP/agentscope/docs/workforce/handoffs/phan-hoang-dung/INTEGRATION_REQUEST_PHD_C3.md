@@ -5,6 +5,12 @@ Tasks: **PHD-14/15/16**, lane **C3**. Baseline: `67ff871` chứa C1/C2.
 Người nhận: **Phan Huy Hoàng (C4)**, **Nguyễn Chí Hoàng (C7)**;
 Nguyễn Phương Đông theo dõi producer Registry C2.
 
+**Cập nhật C6, 11/10/2026:** C4/C5 đã merge. Workflow sink/query hook trong
+caller UOW đã được tiêu thụ với SQL thật, không còn request thiếu producer C4.
+Lỗi query sau revoke và wiring C7 mới nhất theo
+[INTEGRATION_REQUEST_PHD_C6.md](INTEGRATION_REQUEST_PHD_C6.md).
+Các tiêu chí và kết quả fake C4 bên dưới là lịch sử tại lượt C3.
+
 ## Đã xong phía Execution
 
 [PHASE_C_C3.md](PHASE_C_C3.md) bàn giao canonical UOW consumer, full persisted
@@ -62,7 +68,7 @@ Tests cần owner nối: PostgreSQL atomic inbox+job/apply+sink, worker retry v�
 HTTP receipt sau durable commit trong composition app thật. Dedicated DSN và
 full-platform factory chưa được cung cấp; không đánh dấu các gate bị skip là pass.
 
-## Phạm vi chưa yêu cầu Dũng triển khai trong C3
+## Phạm vi tại thời điểm C3 — lịch sử
 
 C4 runtime/POST/Leader/event log/SSE và C7 global composition/migration thuộc
 owner nhận. C6 E2E toàn lát cắt chưa bắt đầu trong lượt C3 này.

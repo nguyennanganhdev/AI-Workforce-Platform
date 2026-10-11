@@ -17,8 +17,8 @@ FACTORY = os.environ.get("WORKFORCE_E2E_FACTORY")
 pytestmark = pytest.mark.skipif(
     not FACTORY,
     reason=(
-        "Foundation composition/worker and Registry/Builder/Lifecycle/"
-        "Orchestration implementations missing"
+        "C7 application composition factory not supplied via "
+        "WORKFORCE_E2E_FACTORY; C6 SQL slice runs in test_phase_c_c6.py"
     ),
 )
 
