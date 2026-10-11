@@ -6,8 +6,9 @@ Phạm vi lane: MCP catalog, kết nối, discovery và kho tool đã đăng ký
 
 Đọc [kế hoạch triển khai chung](../../../../../docs/workforce/KE_HOACH_TRIEN_KHAI.md) trước khi code, đặc biệt hợp đồng mục 6 và phần công việc mang đúng họ tên.
 
-Phase A protocol đã có cấu hình/schema và fake tests trong `event_protocols/`.
-Catalog/connection/discovery/service/persistence/UI chưa triển khai. Chủ sở hữu
+Phase A/B protocol đã có cấu hình/schema/service/normalizer. Phase C/C2 đã có
+SQL persistence và exact resolver production trong `event_protocols/`.
+Catalog/connection/discovery NPD-01–09 vẫn chưa triển khai end-to-end. Chủ sở hữu
 tạo code/test và file con tại đây; không sửa module của thành viên khác.
 
 Ghi tiến độ và yêu cầu tích hợp ở [thư mục bàn giao](../../../../../docs/workforce/handoffs/nguyen-phuong-dong/README.md). File core, contracts dùng chung, migration, dependency và global route cần chuyển cho Nguyễn Chí Hoàng theo kế hoạch.

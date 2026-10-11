@@ -69,7 +69,7 @@ protocol config theo schema/hash thật của Đông, PHH proposals `phh-phase-a
 | Owner | Đã dùng / còn thiếu |
 |---|---|
 | NCH | Shared DTO/ports; DurableJobService.enqueue_provider thật với SQL enqueue test double; Phase B jobs/worker/signals/SSE transport có code, production persistence/bootstrap/auth chưa có |
-| NPD | AsyncToolProtocol/EventMapping, real snapshot hash/samples; FakeAsyncProtocolPort thật cho consumer tests; resolver/normalizer production chưa có |
+| NPD | AsyncToolProtocol/EventMapping, real snapshot hash/samples; C2 đã tạo SQL repository/provider và exact resolver nhưng đang chờ merge/wiring C3; fake port chỉ còn dùng trong consumer tests |
 | PHH | WorkflowRecord sample, WorkflowTrigger/ExternalEventCause/TimerCause/CommandClaimResult proposal thật; Workflow test sink do Dũng sở hữu, không có PHH runtime giả production |
 | BHN/PTA | Requirement/policy/validation/eval schema đã merge; production build/reuse/eval/publish chưa có |
 
@@ -126,4 +126,19 @@ C1 có migration Foundation `0009`, UOW, durable-job repository, HMAC provider
 auth và bootstrap. Không tạo engine/migration/job implementation song song;
 bàn giao bảng Execution cần thêm cho C7. Trình tự:
 [../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).
+
+### Output C2 đang chờ merge cho C3/Execution
+
+C2 đã tạo `SqlAsyncProtocolProvider`/`SqlAsyncProtocolRepository`, exact old-pin
+lookup và test Registry SQL → `ExecutionProtocolAdapter` trên baseline C1. Sau
+khi C2 merge lên `develop2`, pull đúng commit đó rồi:
+
+- bind protocol service bằng Scope đã persist của ExternalOperation;
+- inject loader đọc provider inbox thật và re-authorize credential/grant;
+- persist đầy đủ `VerifiedProviderContext`, không dựng identity từ event body;
+- truyền `protocol_provider.resolve_detail` vào adapter;
+- không dùng `FakeAsyncProtocolPort` trong production composition.
+
+Chi tiết producer và giới hạn PostgreSQL gate:
+[../nguyen-phuong-dong/INTEGRATION_REQUEST_NPD_C2.md](../nguyen-phuong-dong/INTEGRATION_REQUEST_NPD_C2.md).
 

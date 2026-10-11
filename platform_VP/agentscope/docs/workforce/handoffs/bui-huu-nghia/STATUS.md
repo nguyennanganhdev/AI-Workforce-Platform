@@ -45,3 +45,13 @@ hai. Bàn giao schema/index cần thêm cho Chí Hoàng, và public output cần
 
 Bạn không cần chờ lane C3 của Dũng để code, nhưng C4 chỉ mở khi **cả hai lane
 C3** đã merge. Theo dõi [../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).
+
+### Output C2 đang chờ merge
+
+C2 đã tạo `SqlAsyncProtocolProvider`/`SqlAsyncProtocolRepository` và exact
+pinned resolver trong working tree dựa trên baseline C1. Khi C2 đã merge lên
+`develop2`, pull commit đó rồi dùng public `AsyncProtocolPort`/
+`AsyncProtocolService` để recheck protocol, capability và revision trước khi
+tạo/sửa draft. Không query trực tiếp hai bảng Registry và không mang fake
+protocol Phase B vào production. Chi tiết producer:
+[../nguyen-phuong-dong/INTEGRATION_REQUEST_NPD_C2.md](../nguyen-phuong-dong/INTEGRATION_REQUEST_NPD_C2.md).

@@ -25,11 +25,16 @@ C7 — Nguyễn Chí Hoàng: composition/migration/CI cuối
 ## Trạng thái hiện tại
 
 - Phase A: 6/6 đã hoàn thành và merge.
-- Phase B: 5/6 đã merge vào baseline đang checkout.
-- Phase B của Phan Huy Hoàng: đã code/test trong working tree hiện tại, chưa có
-  commit/merge trên `develop2` tại thời điểm ghi file.
-- C1 của Nguyễn Chí Hoàng: đã code/test trong cùng working tree, chờ review và
-  merge. C2 chưa được mở chính thức cho tới khi C0+C1 có commit chung.
+- Phase B: 6/6 đã hoàn thành; C0 đã chốt trong baseline chung.
+- C1 của Nguyễn Chí Hoàng: đã merge trong baseline
+  `dev_TeamHoang@a4c2fddac720bb155efaa01eb91266b95f7b7181`.
+- C2 của Nguyễn Phương Đông, do Nguyễn Chí Hoàng thực hiện thay: đã triển khai
+  SQL protocol repository/provider, exact pinned resolver và kiểm tra tích hợp
+  Registry → Execution adapter trong working tree hiện tại; đang chờ review và
+  merge lên nhánh chung.
+- Hai lane C3 chưa bắt đầu từ working tree C2 chưa merge. Sau khi commit C2 có
+  trên `develop2`, Bùi Hữu Nghĩa và Phan Hoàng Dũng pull đúng commit đó rồi mới
+  triển khai song song.
 
 ## Quy tắc tiếp tục
 
