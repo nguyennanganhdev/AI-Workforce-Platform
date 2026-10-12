@@ -1,7 +1,8 @@
 # Ma trận kiểm thử D3 — Bùi Hữu Nghĩa
 
-Ngày chạy: **2026-10-12**. Baseline `278ea4a`. Implementation ở working tree,
-chưa commit/push. Phạm vi: Builder consumer; không phải full-platform Phase D.
+Ngày chạy: **2026-10-12**. Baseline triển khai `278ea4a`. Implementation
+`f1f195f` đã merge qua PR #71 vào `develop2` tại `58c00f2`. Phạm vi: Builder
+consumer; không phải full-platform Phase D.
 
 Các tên method dưới đây thuộc suite tương ứng:
 

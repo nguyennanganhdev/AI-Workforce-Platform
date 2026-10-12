@@ -54,3 +54,14 @@ jobs:
           python -m pytest -q tests/workforce/orchestration/async_workflows
           python -m pytest -q tests/workforce/orchestration/phase_c tests/workforce/orchestration/phase_d
           python -m pytest -q tests/workforce/e2e/async_tickets/test_phase_c_c6.py
+      - name: Run Builder D3 gates
+        run: |
+          python -m unittest \
+            tests.workforce.builder.async_capabilities.test_phase_a \
+            tests.workforce.builder.async_capabilities.test_phase_b \
+            tests.workforce.builder.phase_c.test_integration \
+            tests.workforce.builder.phase_d.test_missing_capability \
+            tests.workforce.builder.phase_d.test_reuse \
+            tests.workforce.builder.phase_d.test_concurrent_build \
+            tests.workforce.foundation.test_contracts \
+            -q

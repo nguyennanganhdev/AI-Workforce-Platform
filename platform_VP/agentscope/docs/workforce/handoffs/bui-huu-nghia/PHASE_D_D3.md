@@ -2,9 +2,11 @@
 
 Ngày: **2026-10-12**. Branch `feat/wf-builder`.
 Baseline: `278ea4a3a4a62b79b290d2e9fc6bf24d33ba06a7` (PR #68, có C7/D0–D2).
-**Đã thực hiện D3 consumer theo [PLAN_D3.md](PLAN_D3.md), sẵn sàng review.**
-Code/test/tài liệu mới ở working tree, **chưa commit/push hoặc mở PR D3**.
-Không tuyên bố CI/merge mới hoặc toàn Phase D hoàn thành.
+**D3 consumer theo [PLAN_D3.md](PLAN_D3.md) đã merge vào `develop2`.**
+Implementation commit `f1f195f`; PR [#71](https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/71)
+đã merge tại `58c00f2`. Builder D3 đã được bổ sung vào workflow Phase D sau
+merge. Không từ đó suy diễn PostgreSQL canonical-write hoặc toàn Phase D đã
+hoàn thành.
 
 ## Kết quả và thay đổi
 
@@ -132,8 +134,8 @@ Không cần chờ output D4 của Anh để review D3 consumer này. Các reque
   reference sẽ bị Builder block, provider cần trả metadata đầy đủ.
 - **Dũng/D3/E2E**: dùng controlled schedules/repro và invariants ở
   [TEST_MATRIX_D3.md](TEST_MATRIX_D3.md); full actual writes/recovery thuộc lane owner.
-- **Chí Hoàng**: thêm owner suite Builder D3 vào CI bằng commands/path đã ghi;
-  cung cấp môi trường test PostgreSQL nếu cần gate DB. Không sửa CI trong PR Nghĩa.
+- **Chí Hoàng**: owner suite Builder D3 đã được thêm vào CI sau khi PR #71
+  merge; vẫn cần cung cấp môi trường PostgreSQL nếu nghiệm thu canonical-write DB.
 
-Sau review, commit/push trên `feat/wf-builder` và merge theo quy trình team khi
-người dùng yêu cầu. Bàn giao hiện chưa gửi ra ngoài hoặc merge.
+Trạng thái Git hiện hành: implementation `f1f195f` đã merge qua PR #71 vào
+`develop2` tại `58c00f2`; tài liệu này là nguồn bàn giao đã đồng bộ sau merge.

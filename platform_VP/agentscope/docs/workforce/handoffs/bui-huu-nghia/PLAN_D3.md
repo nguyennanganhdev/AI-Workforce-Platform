@@ -1,16 +1,17 @@
 # Kế hoạch D3 — Bùi Hữu Nghĩa
 
 Ngày lập: **2026-10-12**. Owner: **Bùi Hữu Nghĩa**.
-Branch: `feat/wf-builder`. Trạng thái: **đã thực hiện D3 consumer, sẵn sàng review**.
+Branch triển khai: `feat/wf-builder`. Trạng thái: **đã merge vào `develop2`**.
 Baseline đã kiểm tra: `278ea4a3a4a62b79b290d2e9fc6bf24d33ba06a7`
 (merge PR #68, chứa commit `bbd6d9a` C7/D0–D2 và `3aabceb` sửa C3 của Nghĩa).
-HEAD và ref local `origin/develop2` cùng baseline này khi lập plan; working tree
-sạch trước khi thêm tài liệu. Không suy ra trạng thái CI từ việc đã merge.
+Implementation commit `f1f195f`; PR [#71](https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/71)
+đã merge vào `develop2` tại `58c00f2`. Baseline `278ea4a` phía trên là đầu vào
+khi triển khai, không phải HEAD hiện hành.
 
 Kết quả implementation: **34 backend D3 pass**, **8 browser pass**; regression
 Builder A/B/C3/D3 + shared contracts **100 pass**, Registry/D1 **32 pass, 1 skip**.
-Sửa một lỗi DRAFT thiếu draft_id trong ReuseMatcher. Code/test/tài liệu chưa
-commit/push. [PHASE_D_D3.md](PHASE_D_D3.md) ghi kết quả hiện hành;
+Sửa một lỗi DRAFT thiếu draft_id trong ReuseMatcher. Code/test/tài liệu đã
+commit, push và merge. [PHASE_D_D3.md](PHASE_D_D3.md) ghi kết quả hiện hành;
 [TEST_MATRIX_D3.md](TEST_MATRIX_D3.md) map mọi ID bên dưới với evidence.
 
 D3.0–D3.6 đã thực hiện trong phạm vi consumer; các phần khảo sát/kế hoạch bên
@@ -313,9 +314,9 @@ git ls-files --others --exclude-standard
 
 Tên file ở lệnh D3 là dự kiến; không chạy trước khi file tồn tại. Nếu dùng pytest
 trong môi trường D1 đã đủ dependencies, chạy từng owner suite riêng để tránh
-trùng tên module test. CI hiện tại chưa có lệnh chạy Builder D3: gửi command/path
-cho Chí Hoàng thêm vào `.github/workflows/workforce-phase-d.yml` ở repo root,
-không tự sửa CI. D3 test mặc định không gọi model/MCP trả phí hoặc booking thật.
+trùng tên module test. Sau khi PR #71 merge, owner Chí Hoàng đã thêm lệnh chạy
+Builder D3 vào `.github/workflows/workforce-phase-d.yml` ở repo root. D3 test
+mặc định không gọi model/MCP trả phí hoặc booking thật.
 
 PostgreSQL test chỉ dùng `WORKFORCE_TEST_POSTGRES_URL` trỏ DB test riêng theo D1,
 không đọc/in DSN/secret từ `.env`, không reset DB. Database concurrency phải có
@@ -362,7 +363,8 @@ trước để mở D3.
 
 Output cho **Dũng**: fixtures/repro consumer có thể gọi lại trong E2E; Dũng sở hữu
 assertion actual concurrent writes, provider recovery và toàn lát cắt. Output cho
-**Chí Hoàng**: lệnh Builder D3 cần thêm CI và điều kiện test environment còn thiếu.
+**Chí Hoàng**: lệnh Builder D3 đã được thêm vào CI; điều kiện test
+PostgreSQL/canonical-write vẫn là giới hạn môi trường riêng chưa được chứng minh.
 
 Kết thúc ở **D3 của Bùi Hữu Nghĩa**. Publish/rollback/evaluation pin thuộc D4 của
 Anh; SSE/workflow/replay thuộc Huy Hoàng; provider recovery/order thuộc Dũng/Đông;
