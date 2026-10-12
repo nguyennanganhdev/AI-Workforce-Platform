@@ -3,6 +3,12 @@
 Cập nhật **12/10/2026**. Người gửi: **Phan Hoàng Dũng**.
 Tasks PHD-14–17, E2E toàn lát cắt. Không yêu cầu bàn giao lại C1/C2/C5.
 
+**Cập nhật D3 ngày 12/10/2026:** output C7/D1 đã cung cấp production approval
+continuation adapter, scoped reconcile handler và composition. D3 đã tiêu thụ
+hai adapter này trong SQL/HTTP fault tests; các yêu cầu C6-02/03 bên dưới là
+bàn giao lịch sử. Gate CI/PostgreSQL còn lại theo
+[request D3](INTEGRATION_REQUEST_PHD_D3.md), không còn báo thiếu code C7.
+
 ## C6-01 — Query sau revoke và binding mismatch — đã xử lý
 
 Output Orchestration: [PHH C4](../phan-huy-hoang/PHASE_C_C4.md).
