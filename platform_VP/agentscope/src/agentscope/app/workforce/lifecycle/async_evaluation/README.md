@@ -26,3 +26,11 @@ Không chạy DDL, mount API hoặc tự publish trong adapter.
 
 [C5 handoff](../../../../../../docs/workforce/handoffs/pho-tien-anh/PHASE_C_C5.md)
 và [composition/metadata](../../../../../../docs/workforce/handoffs/pho-tien-anh/INTEGRATION_REQUEST_PTA_C5.md).
+## D4: release transaction
+
+`check_persisted_release(..., uow=None)` giữ signature cũ và thêm lựa chọn
+đọc toàn bộ persisted evidence trong canonical UOW của caller. Khi có UOW,
+khóa evaluation case cancellation marker đến commit; không tự commit.
+`SqlEvaluationRepository.in_transaction(uow)` bind các read này. Service
+publish/rollback nằm ở [../releases/](../releases/README.md), dùng lại validator,
+frozen input và grader A/B/C5, không tạo runner hoặc workflow thứ hai.
