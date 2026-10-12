@@ -817,3 +817,95 @@ Cả bốn đều vô hình với các test Python: đó là lý do test trình 
 - Chưa chạy trên PostgreSQL: slice không đổi bảng, không thêm truy vấn ngoài một `select` manager trong `me`.
 - **Commit**: chỉ các tệp của slice này, trên `wip/platform-core-mvp`, sau commit B4 (`25bcca3`, đóng gói Docker, do tác nhân khác commit trong lúc slice này đang làm). Lần chạy đầy đủ ở trên chạy trên cây đã có thay đổi `awp/__main__.py` của B4.
 - **Việc để lại cho bước rà soát cuối (B4 đã commit trước B3)**: (1) `docs/openapi.json` được xuất trước khi có `GET /wf/me` và `GET …/gate`: cần xuất lại; (2) ảnh Docker được build trước khi có `awp/console/`: cần build lại và kiểm `GET /console` trong container (package-data đã khai trong `pyproject.toml` và có test; đã dựng thử một wheel từ nguồn bằng `pip wheel` và nó chứa đủ `awp/console/` với bốn tệp; chưa chạy bản đã cài trong container); (3) `deploy/smoke.py` chưa có bước nào mở `/console`.
+
+## P5b (Redis, nhiều tiến trình API, phục hồi sau khi tiến trình bị giết thật)
+
+Ngày 12/10/2026. Phạm vi: đặc tả chính mục 9, mục 10 dòng P5, mục 13 các điểm 8 đến 14 và 21 đến 25; `docs/MVP_DAC_TA_BO_SUNG.md` M5, M7 và mục 8. Mọi "leader" vẫn là model kịch bản và đối tác vẫn là MCP mẫu: phần này chứng minh sổ sách của platform dưới một cú giết tiến trình, không nói gì về model thật hay đối tác thật.
+
+### Nối Redis
+
+- `AWP_REDIS_URL` (`Settings.redis_url`) → `awp/bus.py: FleetBus`, một lớp con của `RedisMessageBus` của AgentScope (không sửa mã AgentScope). Không đặt biến thì vẫn là `InMemoryMessageBus`. Redis không trả lời lúc khởi động → tiến trình dừng với lỗi rõ ràng (`AWP_REDIS_URL is set but Redis does not answer`).
+- **Khác biệt duy nhất của `FleetBus`**: giá trị của mọi khóa (`acquire_lock`) là `<node>:<ngẫu nhiên>` thay cho một chuỗi ngẫu nhiên. `node` là tên của một tiến trình trong suốt đời nó (`bus.new_node`, không bao giờ dùng lại). Nhờ đó tiến trình khác biết khóa của ai, và xóa đúng khóa của một tiến trình đã chết bằng so-sánh-rồi-xóa (Lua). Phần còn lại (`SET NX EX`, gia hạn nửa TTL, nhả bằng so giá trị) chép nguyên cách của AgentScope.
+- Gói `redis` (8.1.0, đúng phiên bản của venv) vào `deploy/requirements.in` và `requirements.lock` (102 gói; sinh lại bằng đúng lệnh ở đầu tệp lock, khác bản cũ đúng một gói). Compose: `redis` ra khỏi profile `not-wired`, `api` phụ thuộc `redis` khỏe, `AWP_REDIS_URL` nằm trong `deploy/.env` (mật khẩu do `init_env.py` sinh).
+- **Redis không phải nguồn sự thật.** Mọi workflow, event, operation, approval ở PostgreSQL. Tín hiệu qua Redis (kênh `awp:wake`) chỉ làm nhanh: luồng SSE và request đang chờ vẫn thăm dò DB như trước; danh sách agent đã phát hành được đọc lại mỗi 30 giây ở mọi tiến trình. Thứ duy nhất *chỉ* nằm ở bus là khóa phiên và hàng đợi đánh thức của AgentScope (xem "Còn mở").
+
+### Cái gì từng là "của một tiến trình", và đã sửa thế nào
+
+| Thứ | Trước | Nay |
+|---|---|---|
+| Ai đang sống | không có khái niệm | Mỗi tiến trình ("node") giữ một dòng `node:<id>` trong `wf_leases` và gia hạn mỗi `AWP_WF_LEASE_SECONDS / 4` (mặc định 60 giây; `workforce/nodes.py`). Mọi việc tiến trình khác làm với một node đều chờ dòng đó hết hạn. |
+| Job (`wf_jobs`) | nhận bằng UPDATE có điều kiện dưới khóa hội thoại (`SKIP LOCKED` trên PostgreSQL, đã có); `lease_owner` không được ghi; lease 60 giây gia hạn trong `_await_end` | `claim_job` ghi `lease_owner = node`. **Nhịp tim của node gia hạn lease của mọi job mà dispatcher của nó đang giữ** (một câu UPDATE), nên lease còn sống khi và chỉ khi tiến trình còn sống và dispatcher còn chạy. `finish_job`, `_release`, `_fail` chỉ đụng job còn thuộc đúng chủ. Job của tiến trình khác còn lease: vòng quét **không đụng** (trước đây vòng quét của tiến trình thứ hai đi `settle` workflow đó). Hết lease → `recover_job`: lượt đã xong thì đóng job, chưa thì xếp lại và chạy ngay (không chờ vòng quét sau). |
+| Khóa phiên của AgentScope trong Redis | một tiến trình chết để lại khóa tới ~600 giây: mọi lượt sau của phiên đó đứng chờ | `nodes.bury` (đầu mỗi vòng quét): với mỗi node đã hết hạn, `FleetBus.release_of(node)` xóa các khóa mà giá trị mang tên node đó, từng khóa bằng so-sánh-rồi-xóa. Không bao giờ xóa khóa của node còn sống (dòng của nó còn hạn), khóa không mang tên node, hay khóa đã được người khác lấy lại (giá trị khác). Sau đó đối soát approval, rồi xóa dòng node. Lặp lại được; hai tiến trình cùng làm cũng không sao. |
+| Lượt dở sau khi tiến trình chết | `orphan_turns` dựa vào khóa phiên | như cũ, nay chạy sau `bury` nên khóa của tiến trình chết không còn che |
+| Tin đã nói rồi tiến trình mới chết | job chạy lại; trùng lời chỉ được chặn khi model nói lại *y hệt* | **`recover.spoke`**: lượt bị cắt mà leader đã nói với cư dân thì job **không chạy lại** (đóng job, `settle` quyết định từ điều đã nói), đúng chính sách vốn có cho lượt lỗi (`_check_turn`). Model thật sẽ không lặp nguyên văn, nên chạy lại là nói hai lần. |
+| Đánh thức SSE / request đang chờ | `Waker` trong bộ nhớ; tiến trình khác chỉ thấy ở lần thăm dò kế tiếp (1 giây) | `waker.relay`: mỗi lần commit có `poke`, tiến trình phát `{"key": conversation}` lên kênh `awp:wake`; tiến trình khác nhận và đánh thức người đọc của mình. Phát rồi quên (không hàng đợi); mất tín hiệu thì quay về thăm dò. |
+| Giới hạn số luồng SSE mỗi khóa | `Counter` trong tiến trình (N tiến trình = N lần giới hạn) | `stream.Slots.enter`: tập có thứ tự trong Redis (`awp:streams:<key>`), mỗi luồng một phần tử có hạn 60 giây, luồng tự gia hạn khi còn mở và gỡ khi đóng; luồng của tiến trình chết tự hết hạn. Redis không trả lời → đếm trong tiến trình (không bao giờ từ chối hay cắt luồng vì Redis). |
+| `ledger.INFLIGHT` / `HELD` (đặc tả 13.21) | bộ nhớ của tiến trình gọi; vòng đối soát của tiến trình khác coi operation đang gọi là "tàn dư của crash" sau `wf_op_grace_seconds` | Cột mới `wf_operations.node` (migration `0006_operation_node`): tiến trình đánh dấu `sent` ghi tên mình. **Khi node đó còn sống, không tiến trình nào khác đụng dòng đó**: lời gọi đang chạy là của nó, và câu trả lời nó cầm trong tay mà DB chưa nhận (`HELD`) do chính nó ghi. Node chết thì câu trả lời (nếu có) chết theo: đó là "không ai biết", và tiến trình khác đi đúng thứ tự cũ (gửi lại cùng `client_reference` nếu tool idempotent → hỏi trạng thái → `unknown` + `needs_attention`). `ledger.touch` thành một lần giành thật (so-sánh trên `updated_at`): hai tiến trình cùng thấy một dòng thì một bên lấy. |
+| Chỗ chạy đánh giá (`AWP_EVAL_PARALLEL`) | semaphore trong tiến trình | hàng chờ là chính các dòng `awp_eval_runs` đang `running` của tenant theo thứ tự tạo (`EvalStore.ahead`): mọi tiến trình thấy cùng một hàng. |
+| Workflow sandbox của một lần đánh giá | engine của tiến trình khác nhặt job và làm ca trượt (ghi ở B2 là để P5b) | `sandbox.elsewhere`: lần đánh giá còn `running` mà không sống ở tiến trình này thì **không nhận job** của nó. Hết hạn thuê của lần chạy thì như cũ (job bị từ chối, workflow bị đóng). |
+| Danh sách chuyên viên leader được tạo (`rt.templates`) | chỉ tiến trình nhận lệnh `publish/retire/rollback` cập nhật | tiến trình đó báo `{"sync": "templates"}` qua bus; mọi tiến trình của một fleet còn tự đọc lại mỗi 30 giây. |
+| Rate limit theo khóa | trong tiến trình | **vẫn trong tiến trình** (N bản sao cho phép N lần `AWP_WF_RATE_PER_MINUTE`); ghi ở sổ tay vận hành. |
+| Cache `tools/list` của MCP, client MCP | trong tiến trình | vẫn vậy, và ổn: cấu hình đọc từ DB mỗi lần dùng, danh sách tool cũ tối đa `AWP_MCP_LIST_TTL_SECONDS`. |
+| Cờ "hết ngân sách" (`rt.wrap_up`) | trong tiến trình | vẫn vậy: tiến trình khác biết sau lời gọi model đầu tiên của nó cho vụ đó (tối đa một lời gọi thừa mỗi tiến trình, đúng như sau một lần khởi động lại). |
+| Dọn dữ liệu (retention) | đã là một tiến trình mỗi chu kỳ qua `wf_leases` | không đổi. Các vòng quét còn lại (hết hạn, áp sự kiện provider, đối soát operation) chạy ở mọi tiến trình và mỗi bước là so-sánh-và-đặt. |
+
+**Không có Redis thì chỉ một tiến trình.** Khóa phiên khi đó nằm trong bộ nhớ, hai tiến trình sẽ chạy một phiên hai lần. `nodes.enter` từ chối khởi động (`another platform process is running on this database`) khi thấy dòng node của tiến trình khác *đang được gia hạn*; nếu dòng đó không nhúc nhích (tiến trình trước chết đột ngột) thì chờ nó hết hạn (tối đa `AWP_WF_LEASE_SECONDS`) rồi mới khởi động. Tắt êm thì xóa dòng của mình, nên khởi động lại bình thường không chờ.
+
+### Approval sau crash (đặc tả 13.25; ca "resumed_at rồi chết" ở "Sửa sau review S4")
+
+- `orphan_approvals` (approval `pending` mà agent không đỗ) nay chạy lúc khởi động **và mỗi lần chôn một node chết**. Mới: nếu lượt đã hỏi sắp chạy lại (job của nó còn `queued`/`dispatched`) thì hủy **không báo leader** (lượt đó tự hỏi lại từ tin nhắn của nó; báo thêm là nói hai lần).
+- **Chiều ngược lại** (`recover.orphan_parks`, `resume.unresumed`): dòng approval ghi agent đã nhận câu trả lời (`resumed_at`) nhưng tiến trình chết trước khi lượt được lưu, nên phiên vẫn `awaiting_permission`. Trước đây không ai đánh thức nó nữa và mọi tin gửi sau đều mất. Nay: rút `resumed_at` và đưa câu trả lời lại (job `approval_resume` còn sống thì dùng nó, không thì tạo job mới). Tool cư dân đã đồng ý vẫn chạy nhiều nhất một lần: `used_at` chỉ dùng một lần và operation nằm trong sổ.
+- **Tìm thấy nhờ lần chạy Docker hai bản sao**: `POST /chat` mang sự kiện duyệt không chạy lượt tại chỗ mà đi qua hàng đợi đánh thức của AgentScope, nên lượt của agent có thể chạy ở tiến trình *khác* tiến trình giữ job. Khi tiến trình chạy lượt chết còn tiến trình giữ job sống, job kết thúc "êm" trong khi agent vẫn đỗ, và các job sau của workflow bị giữ lại mãi. Sửa: `resume.run` sau khi lượt kết thúc kiểm lại phiên; còn đỗ thì đưa câu trả lời lại (tối đa ba vòng, rồi job lỗi).
+
+### Kill thật (bộ `multiproc`)
+
+`tests/workforce/mpkit.py` chạy `python -m awp` thành các tiến trình HĐH thật (hai, có test dùng ba) trên một PostgreSQL và một Redis, cùng model kịch bản và MCP mẫu của `deploy/demo` cũng là tiến trình riêng. Giết bằng `TerminateProcess` (Windows) / `SIGKILL`; mọi khẳng định đọc qua API công khai của tiến trình còn sống. Cách chạy: sổ tay vận hành mục 11.
+
+| Điểm giết | Test (`test_multiproc_kill.py`) | Kết quả quan sát |
+|---|---|---|
+| (a) giữa lời gọi model của lượt leader | `test_a_kill_in_the_middle_of_the_leaders_model_call…` | request `completed` qua tiến trình còn lại; đúng một tin; reply tiếp theo vào cùng workflow |
+| khóa Redis kẹt | `test_the_session_lock_a_killed_process_left_in_redis…` | khóa còn TTL > 300 giây sau khi giết; trong lease không ai đụng; sau lease được xóa và request xong trong < 45 giây (lease thử nghiệm 4 giây) thay vì ~600 giây |
+| không phá khóa của tiến trình sống | `test_a_live_process_keeps_its_lock_and_its_job…` | lượt kéo dài 2,5 lần lease: khóa nguyên giá trị, không lời gọi model thứ hai, một tin |
+| (b) trong tool hành động, sau dòng intent, trước khi đối tác trả lời | `test_b_kill_inside_a_partner_action_before_the_partner_answered…` | tiến trình còn lại gửi lại **cùng `client_reference`**: đối tác nhận 2 lời gọi, tạo **1** job; workflow đi tiếp tới `closed` |
+| (b) tool không idempotent, không hỏi được trạng thái | `test_b_kill_inside_an_action_nobody_can_ask_about…` | **không gửi lại**; `needs_attention` với lý do công khai `operation_unknown`; đối tác nhận đúng 1 lời gọi |
+| (c) đối tác đã trả lời, chưa ghi được | `test_c_kill_after_the_partner_answered…` (test giữ khóa hàng hội thoại từ ngoài để câu trả lời không ghi được) | như (b): gửi lại cùng reference, 1 job; `operation.status_changed` đúng `pending, assigned, completed`, mỗi bước một lần |
+| (d) đang đỗ trên approval, quyết định tới tiến trình kia | `test_d_kill_while_parked_on_an_approval…` | tool chạy đúng 1 lần; gửi lại cùng quyết định trả cùng câu |
+| (d) sau khi agent nhận quyết định, tool đang chạy | `test_d_kill_after_the_agent_took_the_decision…` (giết đúng tiến trình đang chạy lượt) | câu trả lời được đưa lại, cổng từ chối lần dùng thứ hai, sổ gửi lại cùng reference: 1 job |
+| (d) giết tiến trình *không* chạy lượt | `test_d_kill_of_the_other_process…` | lượt đi tiếp ở nơi nó chạy; đối tác nhận 1 lời gọi |
+| (e) giữa commit event và giao SSE | `test_e_kill_between_the_commit_of_events_and_their_delivery…` (tiến trình bị đóng băng rồi giết) | client nối lại tiến trình kia bằng `Last-Event-ID`: nhận đúng các event còn thiếu, không mất, không lặp, đúng thứ tự |
+| (f) đang chờ sự kiện provider | `test_f_kill_while_waiting_for_a_provider_event…` | sự kiện tới tiến trình kia được áp, leader hỏi xác nhận, đóng |
+| hai tiến trình cùng sống | 4 test | request chờ ở tiến trình này trong khi lượt chạy ở tiến trình kia; POST ở A đánh thức SSE ở B qua bus (chu kỳ thăm dò đặt 30 giây); giới hạn luồng tính trên cả fleet; đánh giá bắt đầu ở A không bị B làm hỏng |
+
+Mỗi test còn kiểm chung (`mpkit.audit`): `sequence` không hở, không `event_id` hay `message_id` trùng, không câu nào nói với cư dân hai lần, không approval nào được giải quyết hai lần.
+
+**"Đúng một lần" nghĩa là gì ở đây.** Đối tác *thực hiện* đúng một lần (một job cho một `client_reference`). Số lời gọi tới đối tác là 1, trừ khi tiến trình chết giữa lời gọi của một tool khai `idempotency_arg`: khi đó là 2 lời gọi với cùng reference, và đối tác phải biến lời thứ hai thành không-làm-gì (đúng đặc tả 13.24). Tool không idempotent thì không bao giờ có lời gọi thứ hai; đổi lại workflow cần người.
+
+### Kịch bản có tên của chủ dự án (`tests/workforce/test_owner_scenarios.py`)
+
+Mỗi kịch bản viết một lần và chạy hai lần: một tiến trình (bộ mặc định; "platform dừng" là tắt êm rồi mở app khác trên cùng DB) và fleet tiến trình thật (marker `multiproc`). Leader ở cả hai là **cùng một kịch bản** (`deploy/demo/fake_model.py`).
+
+- **M5, booking có kiểm soát**: hành động cần cư dân đồng ý (không gì được gửi trước đó, gửi lại request cũng vậy), khởi động lại hai lần giữa chừng, gửi lại quyết định, đóng: một lần đặt. Bản fleet: giết tiến trình 0 khi cư dân đang nghĩ, giết tiến trình 1 **trong** lời gọi đã duyệt (không còn tiến trình nào), khởi động tiến trình thứ ba: một job ở đối tác.
+- **M7, ticket nhiều lượt** (chủ dự án gọi các ca ticket là M8, M8I, M9 và chỉ mô tả "hai ticket của một khách không lẫn; event không mất sau gián đoạn"): hai ticket của một cư dân, mỗi ticket bốn lượt xen kẽ, mỗi ticket một approval (một duyệt, một từ chối), sự kiện provider cho ticket được duyệt, luồng SSE bị cắt giữa chừng rồi nối lại bằng `Last-Event-ID`. Kịch bản của model trả lời bằng **mọi mã ticket nó từng thấy trong phiên**, nên một phiên dính chữ của ticket kia sẽ tự khai. Bản fleet: các lượt xen kẽ giữa hai tiến trình, tiến trình mà client đang đọc SSE bị đóng băng rồi giết sau khi các event tiếp theo đã commit.
+
+### Docker hai bản sao (chạy thật; `platform_VP/deploy/SMOKE_RESULT.md`)
+
+Chọn **hai service** (`api` cổng 8800, `api2` cổng 8801, profile `two`) thay cho `--scale`: cổng của từng bản sao cố định, script và tài liệu chỉ thẳng được vào từng bản. `smoke.py` thêm bước console (trang và hai tệp tĩnh lấy từ container), `--sse-base` (đọc SSE từ bản sao khác) và `--failover-to` + `--kill` (giết một bản sao bằng `docker kill -s KILL` ngay trong lời gọi đã duyệt, đi tiếp qua bản kia).
+
+### Lệch so với lời giao việc và so với trước
+
+- **Hành vi đổi**: job có lượt chết *sau khi leader đã nói* không chạy lại nữa (xem bảng). Test cũ `test_a_job_whose_turn_died_with_the_process_runs_again` dựng crash bằng cách sửa dòng của một lượt đã nói xong; nay nó đặt `started_at` của lượt về sau câu nói để đúng tiền đề "chưa nói gì".
+- **Hành vi đổi**: job sandbox của một lần đánh giá còn hạn thuê không bị từ chối ngay ở tiến trình khác mà được để yên tới khi hạn thuê hết (`test_a_sandbox_workflow_left_by_a_dead_process…` sửa theo).
+- Hai test thay `finish_job` bằng hàm giả nay nhận thêm tham số từ khóa (`owner`).
+- Ảnh Docker mới mang tag **`0.2.0`** (có migration mới). **Sự cố do tôi gây ra**: lần build đầu của slice này chạy với tag mặc định `0.1.0` và ghi đè ảnh `awp-platform:0.1.0` của bước B4 (id `7845e29d…` ghi trong bản SMOKE_RESULT cũ không còn trên máy). Tôi đã dựng lại `0.1.0` từ mã đã commit (`git archive 3edf705`); nó tương đương về mã nhưng **không phải** đúng ảnh cũ. Không container nào đang dùng ảnh đó.
+- Worktree `E:\AI-Workforce-Platform-mvp` biến mất giữa lúc tôi đang đọc mã (bị gỡ từ nơi khác; cây lúc đó sạch, không mất gì); tôi tạo lại nó trên đúng nhánh và khóa (`git worktree lock`) trong lúc làm.
+
+### Còn mở / giới hạn (nói thẳng)
+
+- **Một tiến trình đứng lâu hơn lease mà chưa chết** (treo, mất DB lâu) bị coi là đã chết: job của nó được xếp lại và khóa phiên bị xóa trong khi lượt của nó có thể còn chạy → có thể hai lượt của một phiên và một tin nói hai lần. Nhịp tim kế tiếp của nó ghi log lỗi và đăng ký lại; không có hàng rào (fencing) ở `CaseSay`. Giảm rủi ro bằng lease đủ dài (mặc định 60 giây; các test dùng 4 giây).
+- **Hàng đợi đánh thức của AgentScope giao tối đa một lần.** Tiến trình chết sau khi rút một mục (báo cáo của chuyên viên đánh thức leader) thì mục đó mất: workflow nằm `active` tới `AWP_CASE_STALL_SECONDS` (900 giây) rồi `needs_attention` (`stalled`). Không kẹt mãi, nhưng không tự phục hồi. Chưa có test giết đúng điểm này (model kịch bản của fleet không tạo chuyên viên).
+- **Redis mất dữ liệu hoặc ngừng** trong lúc chạy: lượt đang chạy lỗi, job thử lại tới `AWP_WF_JOB_ATTEMPTS` rồi `needs_attention` (`engine_error`). Suy từ mã; chưa có test giết Redis.
+- Các điểm giết đều rơi vào lúc tiến trình đang chờ I/O (model, đối tác, khóa DB). **Giết đúng giữa một giao dịch DB đang ghi chưa thử** (PostgreSQL tự rollback; mã không dựa vào gì khác, nhưng chưa có bằng chứng chạy).
+- Fleet thử nghiệm chạy trên **một máy**: workspace là một thư mục chung. Nhiều máy cần workspace dùng chung (chưa kiểm); lease so bằng đồng hồ của từng tiến trình, nên đồng hồ các máy phải khớp (lệch nhỏ so với lease).
+- Rate limit, cờ hết ngân sách, cache `tools/list` vẫn theo tiến trình (bảng trên).
+- Trên Windows `python.exe` của venv là trình khởi chạy sinh tiến trình con; bộ test lấy PID thật từ log của uvicorn để giết và đóng băng đúng tiến trình phục vụ.
+- Chưa làm trong slice này: P5c (MinIO, tải 20 workflow).

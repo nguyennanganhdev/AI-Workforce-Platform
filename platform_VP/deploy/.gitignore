@@ -5,3 +5,4 @@
 models.yaml
 .smoke_state.json
 backups/
+__pycache__/
