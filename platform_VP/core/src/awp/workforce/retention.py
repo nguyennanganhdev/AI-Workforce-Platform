@@ -6,7 +6,7 @@ not over (sent, pending or unknown: contract 12). What is dropped leaves a tombs
 cursor answers 410 instead of "unknown", and `purged_through` records how far the log was cut.
 The newest event always stays: it is the anchor `snapshot_cursor` points at.
 
-`run` does all of it (events, provider dedupe rows, the finished jobs and turns of closed workflows) and `tick` is the scheduled
+`run` does all of it (events, provider dedupe rows, the finished jobs and turns and the images of closed workflows) and `tick` is the scheduled
 call: under a lease (lease.py) it runs once per `retention_every_seconds` in the whole fleet. A period of 0 days keeps that kind
 of data for ever. Everything here is safe to repeat and decides from the rows, never from what a previous run did.
 """
@@ -18,6 +18,7 @@ import socket
 
 from sqlalchemy import and_, delete, exists, func, insert, or_, select, update
 
+from ..assets import StoreError
 from . import lease, tables as t
 from .close import OPEN_OPERATION
 from .common import now
@@ -105,9 +106,50 @@ async def purge_leftovers(db, days: float, at: float | None = None) -> dict:
     return {"jobs": jobs.rowcount, "turns": turns.rowcount}
 
 
+async def purge_assets(db, store, days: float, at: float | None = None) -> int:
+    """The images (spec A3) of conversations whose workflows all closed more than `days` ago and owe nothing: the object
+    leaves the store, then its row leaves the table. An image of an open workflow is never touched, nor one of a closed
+    workflow with an operation nobody has seen the end of. An image that was uploaded and never sent in a message goes
+    `days` after its upload, unless the conversation it was uploaded for has a workflow that is still open.
+
+    A sent image: object first, row second, so a store that fails leaves the row and the next run tries again (deleting
+    twice is fine). A never-sent image: its row first and only while it is still unsent, so a message that takes the
+    image at that very moment either finds no asset or keeps it whole."""
+    if store is None:
+        return 0
+    cutoff = (at if at is not None else now()) - days * DAY
+    a, w, c = t.assets.c, t.workflows.c, t.conversations.c
+    sent = and_(a.conversation_id.is_not(None), ~exists().where(w.conversation_id == a.conversation_id, ~_closed_before(cutoff)))
+    unsent = and_(a.conversation_id.is_(None), a.created_at < cutoff, ~exists().where(
+        c.client_id == a.client_id, c.external_conversation_id == a.external_conversation_id,
+        w.conversation_id == c.id, w.state != "closed"))
+    async with db.engine.connect() as conn:
+        rows = (await conn.execute(select(a.id, a.object_key, a.conversation_id).where(or_(sent, unsent)))).all()
+    gone = 0
+    for asset_id, key, conversation in rows:
+        try:
+            if conversation is None:
+                async with db.engine.begin() as conn:
+                    claimed = await conn.execute(delete(t.assets).where(a.id == asset_id, a.conversation_id.is_(None)))
+                if claimed.rowcount != 1:
+                    continue
+                gone += 1
+                await store.delete(key)
+            else:
+                await store.delete(key)
+                async with db.engine.begin() as conn:
+                    gone += (await conn.execute(delete(t.assets).where(a.id == asset_id))).rowcount
+        except StoreError as e:
+            log.error("retention could not delete the object of asset %s: %s", asset_id, e)
+    return gone
+
+
 async def run(ctx, at: float | None = None) -> dict:
-    """All the purges with the periods of the settings. Returns what each removed."""
+    """All the purges with the periods of the settings. Returns what each removed (`assets` only where there is a store)."""
     s, done = ctx.settings, {"events": 0, "inbox": 0, "jobs": 0, "turns": 0}
+    store = getattr(getattr(ctx, "rt", None), "assets", None)
+    if store is not None:
+        done["assets"] = await purge_assets(ctx.db, store, s.closed_retention_days, at) if s.closed_retention_days > 0 else 0
     if s.event_retention_days > 0:
         done["events"] = (await purge_events(ctx.db, s.event_retention_days, at))["events"]
     if s.inbox_retention_days > 0:

@@ -22,6 +22,7 @@ from agentscope.middleware import MiddlewareBase
 from agentscope.permission import PermissionBehavior, PermissionDecision
 from agentscope.tool import ToolResponse
 
+from ..assets import redact
 from ..casefile import build_view, render_digest
 from ..profiles import WRAP_UP_TOOLS, AgentProfile, tool_patterns
 from ..profiles.compile import LEADER_TOOLS, WORKER_TOOLS
@@ -176,7 +177,7 @@ class EvidenceMiddleware(_Base):
                 text = "\n".join(b.text for b in item.content if isinstance(b, TextBlock))
                 ev = await self.rt.cases.add(
                     self.b.case_id, "evidence", self.b.agent_name,
-                    {"tool": name, "input": call.input[:300], "text": text[:20000]})
+                    {"tool": name, "input": redact(call.input)[:300], "text": text[:20000]})  # no signature of a link is kept
                 item.content.append(TextBlock(text=f"[evidence {ev.ref}]"))
             yield item
 

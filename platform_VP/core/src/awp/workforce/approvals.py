@@ -28,6 +28,7 @@ from agentscope.message import ToolCallState
 from agentscope.permission import PermissionBehavior, PermissionDecision
 from sqlalchemy import func, insert, select, update
 
+from ..assets import masked
 from ..casefile import build_view
 from ..guard import figures_missing
 from ..guard import figures_text
@@ -65,8 +66,10 @@ class _Open(dict):
 
 def summary_of(name: str, args: dict, tool: dict) -> dict:
     """What the resident is shown for a partner tool: the route's sentence for it, and the arguments the
-    hash covers."""
+    hash covers. Where an argument holds a signed link to an image (CaseAssetLink) the summary says "[image link]":
+    the resident learns that a photo goes along, and is shown no address."""
     text = tool.get("consent_summary") or f"Run {name}"
+    args = masked(args)
     try:
         text = text.format_map(_Open(args))
     except (ValueError, IndexError, AttributeError, TypeError):
@@ -186,7 +189,7 @@ class ConsentGate:
             return f"Not asked: the arguments are longer than {MAX_ARGUMENTS} characters."
         shown = summary_of(call.name, args, tools[call.name])
         known = [i.data.get("text", "") for i in await self.rt.cases.items(self.b.case_id, kinds=("evidence", "fact"))]
-        missing = figures_missing(figures_text({"text": shown["text"], "arguments": args}), known)
+        missing = figures_missing(figures_text({"text": shown["text"], "arguments": shown["arguments"]}), known)
         if missing:
             return ("Not asked, the resident has seen nothing: figures not found in the evidence of the case: "
                     + ", ".join(missing[:5]) + ". Look them up first, or leave them out.")

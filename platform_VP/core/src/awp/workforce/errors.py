@@ -61,9 +61,9 @@ def field_errors(items: list[dict]) -> list[dict]:
              "reason": e.get("msg", "invalid")} for e in items[:20]]
 
 
-async def load_body(request: Request) -> bytes:
+async def load_body(request: Request, limit: int | None = None) -> bytes:
     """Read the body, refusing as soon as it passes the limit (not after it is all in memory)."""
-    limit = request.app.state.wf.settings.wf_body_limit
+    limit = request.app.state.wf.settings.wf_body_limit if limit is None else limit
     declared = request.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > limit:
         raise too_large(limit)
@@ -137,10 +137,11 @@ def correlation_id(request: Request) -> str | None:
 class WorkforceRoute(APIRoute):
     """Applies the error model. A credential-less call is refused before its body is read."""
     authenticated = True
+    body_limit: str | None = "wf_body_limit"  # the setting that caps the body; None: the endpoint reads the body itself
 
     def get_route_handler(self):
         inner = super().get_route_handler()
-        authenticated = self.authenticated
+        authenticated, body_limit = self.authenticated, self.body_limit
 
         async def handler(request: Request) -> Response:
             rid = request.state.request_id = new_id("req")
@@ -150,7 +151,8 @@ class WorkforceRoute(APIRoute):
             try:
                 if authenticated and crypto.parse_authorization(request.headers.get("authorization")) is None:
                     raise unauthenticated()
-                await load_body(request)
+                if body_limit:
+                    await load_body(request, getattr(request.app.state.wf.settings, body_limit))
                 return await inner(request)
             except WorkforceError as e:
                 return e.response(rid)
@@ -168,6 +170,12 @@ class WorkforceRoute(APIRoute):
                                       retryable=True).response(rid)
 
         return handler
+
+
+class UploadRoute(WorkforceRoute):
+    """A route whose body is an image, not JSON. Its limit is larger (AWP_ASSET_MAX_BYTES), so nothing of the body is
+    read here: the endpoint reads it (load_body) after it has checked the key, the operation and the capability."""
+    body_limit = None
 
 
 class OpenRoute(WorkforceRoute):

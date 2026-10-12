@@ -22,6 +22,7 @@ from .console import build_console
 from .cost import CostService
 from .db import Database, engine_options
 from .agentscope_client import AgentScopeClient
+from .assets import build_store
 from .builder import Builder
 from .bus import build_bus, new_node
 from .evals.runner import EvalRunner
@@ -37,6 +38,7 @@ from .security import SecurityMiddleware
 from .workforce import install_workforce, retention
 from .workforce.managers import ManagerKeys
 from .workforce.runner import WorkflowEngine
+from .workforce.uploads import ensure_store
 from .workforce.waker import relay
 
 log = logging.getLogger("awp")
@@ -92,7 +94,8 @@ def build_app(
         settings=settings, db=database, cases=CaseStore(database),
         profiles=ProfileStore(database), catalog=catalog,
         cost=CostService(database, catalog), storage=storage, bus=bus, judge=judge,
-        node=node, shared_bus=bool(message_bus is not None or settings.redis_url))
+        node=node, shared_bus=bool(message_bus is not None or settings.redis_url),
+        assets=build_store(settings))  # a setting that cannot work stops the start here, by its name
 
     secret = secrets.token_urlsafe(24)
     kwargs = dict(
@@ -129,6 +132,7 @@ def build_app(
         else:
             await require_head(settings.db_url)
         retention.warn_if_short(settings)
+        await ensure_store(rt)  # the bucket, made when missing; a store that is down is logged and tried again by an upload
         await rt.sync_templates()
         await rt.evals.store.reap()  # the evaluation runs of a process that is gone
         stop = asyncio.Event()
@@ -192,6 +196,8 @@ def build_app(
             if task is not None:
                 await task
             await client.aclose()
+            if rt.assets is not None:
+                await rt.assets.aclose()
             await database.dispose()
 
     app.router.lifespan_context = lifespan

@@ -12,6 +12,7 @@ from ..runtime import Runtime
 from ..workforce.lookup import workflow_of_case
 from ..workforce.partner_tools import partner_tools
 from ..workforce.turns import TurnRecorder
+from ..workforce.uploads import can_attach
 from ..workforce.watch import WorkerWatch
 from .room import (DigestMiddleware, EvidenceMiddleware, LedgerMiddleware, TierMiddleware,
                    ToolGateMiddleware)
@@ -86,6 +87,7 @@ def memory_middlewares(rt: Runtime, tenant: str, profile, workflow_id: str) -> l
 
 
 def tool_factory(rt: Runtime):
+    from ..protocol.assetlink import CaseAssetLink
     from ..protocol.calc import calc_sum
     from ..protocol.consent import CaseAskConsent
     from ..protocol.say import CaseSay
@@ -101,6 +103,8 @@ def tool_factory(rt: Runtime):
         tools = [cls(rt, b) for cls in CASE_TOOLS] + [calc_sum()]
         if b.role == "leader":
             tools += [CaseSay(rt, b), CaseAskConsent(rt, b)]
+            if getattr(rt, "assets", None) is not None and await can_attach(rt.db, wf["client_id"]):
+                tools.append(CaseAssetLink(rt, b))  # images (spec A3): only where the client may send any
         for make in rt.tool_factories:
             extra = make(rt, b)
             tools.extend(await extra if inspect.isawaitable(extra) else extra)

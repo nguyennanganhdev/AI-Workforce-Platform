@@ -38,6 +38,7 @@
     builderApply: ['POST', '/platform/v1/builder/sessions/{}/apply'],
     clients: ['GET', '/platform/v1/wf/clients'],
     clientAdd: ['POST', '/platform/v1/wf/clients'],
+    clientPatch: ['PATCH', '/platform/v1/wf/clients/{}'],
     keys: ['GET', '/platform/v1/wf/clients/{}/keys'],
     keyAdd: ['POST', '/platform/v1/wf/clients/{}/keys'],
     keyRevoke: ['POST', '/platform/v1/wf/keys/{}/revoke'],
@@ -865,6 +866,7 @@
   // 3. Đối tác
   // =====================================================================================================================
   const CUSTOMER_OPS = ['submit_request', 'reply', 'read_result', 'receive_events', 'submit_consent', 'close_workflow', 'confirm_route', 'sync_residence'];
+  const ASSET_OP = 'attach_asset';  // the operation of a key and the capability of a client share the name
   const SCHEMA_SAMPLE = {
     version: '1', version_mode: 'snapshot',
     events: {
@@ -931,7 +933,8 @@
 
     // ---- partner keys
     const addKey = () => formDialog('Tạo khóa đối tác', [
-      { name: 'operations', label: 'Quyền (operations)', type: 'checks', required: true, value: CUSTOMER_OPS, options: CUSTOMER_OPS.map((o) => [o, o]) },
+      { name: 'operations', label: 'Quyền (operations)', type: 'checks', required: true, value: CUSTOMER_OPS, options: [...CUSTOMER_OPS, ASSET_OP].map((o) => [o, o]),
+        hint: ASSET_OP + ' chỉ có tác dụng khi client được bật gửi ảnh (phần mở rộng ngoài hợp đồng v1).' },
       { name: 'routes', label: 'Route được dùng', value: '*', required: true, hint: '* là mọi route của client; hoặc danh sách route_id cách nhau bằng dấu phẩy.' },
       { name: 'expires_at', label: 'Hết hạn (để trống: không hết hạn)', type: 'datetime-local' },
     ], { submit: 'Tạo khóa', check: (v) => (future(v.expires_at) ? { expires_at: future(v.expires_at) } : null), onSubmit: async (v) => {
@@ -1069,8 +1072,17 @@
         h('button', { class: 'sm', type: 'button', text: 'Khóa provider', onclick: () => integrationKeys(g) })] },
     ], integrations, 'Chưa có integration nào.');
 
+    // ---- images: an extension beyond contract v1, off until the operator turns it on for this client
+    const images = (client.capabilities || []).includes(ASSET_OP);
+    const setImages = (on) => confirm(on ? 'Bật gửi ảnh' : 'Tắt gửi ảnh', on
+      ? 'Client này sẽ được tải ảnh lên và gửi tin nhắn kèm ảnh. Đây là phần mở rộng ngoài hợp đồng v1: chỉ bật khi đối tác đã đồng ý. Khóa của đối tác còn cần quyền ' + ASSET_OP + '.'
+      : 'Client này không tải ảnh lên được nữa và tin nhắn kèm ảnh bị từ chối (422). Ảnh đã gửi vẫn được giữ theo lịch dọn.', on ? 'Bật' : 'Tắt',
+      async () => { await call('clientPatch', [cid], { body: { capabilities: on ? [ASSET_OP] : [] } }); toast(on ? 'Đã bật gửi ảnh' : 'Đã tắt gửi ảnh'); again(); }, !on);
+
     return [
       h('div', { class: 'page-head' }, h('div', null, h('h1', { text: client.name }), h('div', { class: 'lead mono', text: client.client_id + ' · ' + client.domain + ' · ' + client.environment }))),
+      panel('Gửi ảnh (attach_asset)', 'phần mở rộng ngoài hợp đồng v1, cần đối tác đồng ý', [h('button', { type: 'button', text: images ? 'Tắt' : 'Bật', onclick: () => setImages(!images) })],
+        h('div', { class: 'panel-body row' }, badge(images ? 'đang bật' : 'đang tắt', images ? 'ok' : ''), h('span', { text: images ? 'Client này được tải ảnh lên và gửi tin nhắn kèm ảnh.' : 'Client này chỉ gửi được tin nhắn chữ.' }))),
       panel('Khóa đối tác', 'dùng với Authorization: ApiKey trên /workforce/v1', [h('button', { type: 'button', text: 'Tạo khóa', onclick: addKey })], keyTable(keys, 'Chưa có khóa nào.')),
       panel('Tài khoản ban quản lý (manager)', 'khóa vận hành chỉ thấy route của chính manager', [h('button', { type: 'button', text: 'Thêm manager', onclick: addManager })], managerTable),
       panel('Route', needs || 'tạo ở trạng thái pending, đối tác xác nhận', [h('button', { type: 'button', text: 'Tạo route', disabled: !!needs, title: needs || '', onclick: addRoute })], routeTable),

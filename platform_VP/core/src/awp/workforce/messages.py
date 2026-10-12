@@ -13,16 +13,22 @@ from .workflows import IllegalTransition
 
 
 def public_message(row: Any) -> dict:
-    return {"message_id": row["id"], "workflow_id": row["workflow_id"], "sender": row["sender"],
-            "text": row["text"], "created_at": iso(row["created_at"])}
+    """Contract 9.1. A message that carries images also names them, by id only (spec A3: never where the bytes are)."""
+    out = {"message_id": row["id"], "workflow_id": row["workflow_id"], "sender": row["sender"],
+           "text": row["text"], "created_at": iso(row["created_at"])}
+    if row["asset_ids"]:
+        out["asset_ids"] = list(row["asset_ids"])
+    return out
 
 
-async def add_user_message(conn, workflow: Any, request_id: str, text: str, sequence: int) -> str:
-    """The resident's text. `sequence` is that of the request.accepted event written just before."""
+async def add_user_message(conn, workflow: Any, request_id: str, text: str, sequence: int,
+                           asset_ids: list[str] | None = None) -> str:
+    """The resident's text (empty when they sent only an image) and the images sent with it. `sequence` is that of the
+    request.accepted event written just before."""
     mid = new_id("msg")
     await conn.execute(insert(t.messages).values(
         id=mid, conversation_id=workflow["conversation_id"], workflow_id=workflow["id"],
-        request_id=request_id, sender="user", text=text, asset_ids=[], sequence=sequence,
+        request_id=request_id, sender="user", text=text, asset_ids=list(asset_ids or []), sequence=sequence,
         created_at=now()))
     return mid
 

@@ -21,7 +21,7 @@ from .auth import CUSTOMER_OPS, PROVIDER_OPS
 from .common import iso, now
 from .crypto import SecretKeyMissing
 from .managers import build_admin_managers
-from .schemas import (ClientIn, IntegrationIn, KeyIn, ProviderKeyIn, ReplaceRouteIn, RotateIn,
+from .schemas import (ClientIn, ClientPatch, IntegrationIn, KeyIn, ProviderKeyIn, ReplaceRouteIn, RotateIn,
                       RouteConfig, RouteIn)
 from .tables import new_id
 
@@ -142,6 +142,16 @@ def build_admin(ctx: Any) -> APIRouter:
     async def get_client(client_id: str, request: Request):
         tenant = tenant_of(request)
         async with db.engine.connect() as conn:
+            return client_out(await first(conn, client_q(tenant, client_id), "client"))
+
+    @r.patch("/clients/{client_id}")
+    async def patch_client(client_id: str, body: ClientPatch, request: Request):
+        """Give or take a capability (`attach_asset`: the image extension, spec A3). It holds from the next request on:
+        every request reads the client's row."""
+        tenant = tenant_of(request)
+        async with db.engine.begin() as conn:
+            await first(conn, client_q(tenant, client_id), "client")
+            await conn.execute(update(t.clients).where(t.clients.c.id == client_id).values(capabilities=list(body.capabilities)))
             return client_out(await first(conn, client_q(tenant, client_id), "client"))
 
     # ---- customer keys ---------------------------------------------------

@@ -74,6 +74,14 @@ class MessageIn(Strict):
     text: Annotated[str, Field(min_length=1, max_length=20000), AfterValidator(_not_blank)]
 
 
+class ImageIn(Strict):
+    """A message that carries an image (spec A3: beyond contract v1, only for a client with the capability attach_asset).
+    The image is named by the id its upload returned, never by an address; `text` is what the resident wrote with it."""
+    type: Literal["image"]
+    asset_id: Annotated[str, Field(pattern=r"^ast_[0-9a-f]{32}$")]
+    text: Annotated[str, Field(min_length=1, max_length=20000), AfterValidator(_not_blank)] | None = None
+
+
 class RequestIn(Strict):
     """start_workflow and workflow_reply share one envelope; which fields mean what is the service's job."""
     schema_version: SchemaVersion
@@ -87,6 +95,10 @@ class RequestIn(Strict):
     residence_id: ExtId | None = None
     timezone: Zone | None = None
     message: MessageIn
+
+
+class ImageRequestIn(RequestIn):
+    message: ImageIn
 
 
 STOP_TRACKING = "resident_requested_stop_tracking"
@@ -123,6 +135,18 @@ class ClientIn(Strict):
     domain: Slug
     environment: Literal["sandbox", "production"]
     capabilities: list[Literal["attach_asset"]] = []
+
+
+class ClientPatch(Strict):
+    """What an operator may change on a client: its capabilities (the whole list, as it should be from now on)."""
+    capabilities: list[Literal["attach_asset"]] = Field(max_length=len(CAPABILITIES))
+
+    @field_validator("capabilities")
+    @classmethod
+    def _unique(cls, v: list[str]) -> list[str]:
+        if len(set(v)) != len(v):
+            raise ValueError("capabilities must be unique")
+        return v
 
 
 def _future(v: datetime | None) -> datetime | None:

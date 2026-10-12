@@ -22,6 +22,7 @@ from typing import Any, NamedTuple
 from sqlalchemy import insert, select, update
 from sqlalchemy.exc import IntegrityError
 
+from ..assets import stable
 from . import tables as t
 from .approvals import args_hash
 from .common import now
@@ -60,7 +61,9 @@ def reference_of(workflow_id: str, tool: str, ahash: str) -> str:
 
 
 def hash_of(arguments: dict) -> str:
-    return args_hash(arguments)
+    """A signed link to an image (CaseAssetLink) counts as the object it points at: the same request made again after a
+    crash carries a link signed at another second, and must still be found to be the same request."""
+    return args_hash(stable(arguments))
 
 
 def stored(res: PartnerResult) -> dict:

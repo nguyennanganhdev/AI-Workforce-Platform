@@ -32,6 +32,7 @@ MAX_TTL = 7 * 24 * 3600  # the longest a SigV4 presigned URL may live
 TIMEOUT = 15.0
 EXTENSION = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}  # the types an asset may be
 # A link made by `link`: recognised by the signature in its query, whichever backend made it.
+KEY = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*")  # plain names: no "..", no drive, no root
 SIGNED = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s\"'<>\\]*[?&]X-(?:Amz|Awp)-Signature=[0-9A-Za-z]+[^\s\"'<>\\]*")
 
 
@@ -65,6 +66,18 @@ def unsigned(url: str) -> str:
 def redact(text: str) -> str:
     """`text` with every signed link cut down to `unsigned`: what may be stored or shown where the link must not be."""
     return SIGNED.sub(lambda m: unsigned(m.group(0)), text)
+
+
+def masked(value: Any) -> Any:
+    """Arguments of a tool as a resident may be shown them: where a signed link stood it only says that an image goes
+    along. Not even the unsigned address: where the bytes are is nobody's business outside the platform."""
+    if isinstance(value, str):
+        return SIGNED.sub("[image link]", value)
+    if isinstance(value, dict):
+        return {k: masked(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [masked(v) for v in value]
+    return value
 
 
 def stable(value: Any) -> Any:
@@ -245,10 +258,11 @@ class LocalStore:
         self._secret = secrets.token_bytes(32)
 
     def _path(self, key: str) -> Path:
-        path = (self.root / key).resolve()
-        if self.root not in path.parents:
+        """Judged by how the key is written, not by asking the file system where it leads (which answers differently
+        while another upload is making the same folder)."""
+        if not KEY.fullmatch(key):
             raise StoreError("the object's key leaves the asset directory")
-        return path
+        return self.root.joinpath(*key.split("/"))
 
     async def ensure(self) -> None:
         await asyncio.to_thread(self.root.mkdir, parents=True, exist_ok=True)

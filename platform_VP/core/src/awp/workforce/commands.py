@@ -25,13 +25,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import insert, select
 from sqlalchemy.exc import DBAPIError
 
-from . import binding, tables as t
+from . import binding, tables as t, uploads
 from .auth import authenticate, lacks, need, route_denied
 from .common import now
 from .errors import WorkforceError, failed, invalid, json_object, validated
 from .events import emit, lock_conversation
 from .messages import add_user_message
-from .schemas import RequestIn
+from .schemas import ImageRequestIn, RequestIn
 from .settle import TERMINAL, body_of
 from .tables import new_id
 from .waker import wait, waker
@@ -58,17 +58,22 @@ def fingerprint(b: RequestIn) -> str:
                "conversation": b.external_conversation_id, "workflow": b.workflow_id,
                "residence": b.residence_id, "timezone": b.timezone,
                "message": {"type": b.message.type, "text": b.message.text}}
+    if b.message.type == "image":  # (a text message keeps the fingerprint it always had)
+        meaning["message"]["asset_id"] = b.message.asset_id
     raw = json.dumps(meaning, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return "sha256:" + hashlib.sha256(raw.encode()).hexdigest()
 
 
-def parse(data: dict, text_limit: int) -> RequestIn:
+def parse(data: dict, text_limit: int, images: bool = False) -> RequestIn:
+    """`images`: the client has the capability attach_asset (spec A3). Without it an image is what any other part
+    that is not text is: unsupported (contract 6.2)."""
     msg = data.get("message")
-    if isinstance(msg, dict) and isinstance(msg.get("type"), str) and msg["type"] != "text":
+    kind = msg.get("type") if isinstance(msg, dict) else None
+    if isinstance(kind, str) and kind != "text" and not (kind == "image" and images):
         raise WorkforceError("UNSUPPORTED_MESSAGE_PART", 422,
-                             "Only text messages are accepted.", {"part_type": msg["type"][:40]})
-    body = validated(data, RequestIn)
-    if len(body.message.text) > text_limit:
+                             "Only text messages are accepted.", {"part_type": kind[:40]})
+    body = validated(data, ImageRequestIn if kind == "image" else RequestIn)
+    if len(body.message.text or "") > text_limit:
         raise failed("Request does not match the schema.",
                      [{"field": "message.text", "reason": f"longer than {text_limit} characters"}])
     if body.command_type == "start_workflow" and body.workflow_id is not None:
@@ -182,6 +187,9 @@ async def _admit(ctx, conn, p, body: RequestIn, fp: str, route: Any, wait_s: flo
         if not p.covers(m.workflow["route_id"]):  # a key with no grant on that route changes nothing there
             return route_denied()
         return await _block(conn, m.workflow, m.state)
+    image = body.message.asset_id if body.message.type == "image" else None
+    if image:  # the asset of exactly this client, resident and conversation, or nothing
+        await uploads.for_message(conn, client, body.external_user_id, body.external_conversation_id, image)
 
     if not start:
         await lock_conversation(conn, conv["id"])
@@ -227,8 +235,11 @@ async def _admit(ctx, conn, p, body: RequestIn, fp: str, route: Any, wait_s: flo
                   revision=1, expects=None, current_request_id=rid, close_reason=None,
                   attention_reason=None, last_activity_at=stamp, created_at=stamp, closed_at=None)
         await conn.execute(insert(t.workflows).values(**wf))
-    ev = await emit(conn, conv_id, "request.accepted", {"request_id": rid}, workflow=wf)
-    mid = await add_user_message(conn, wf, rid, body.message.text, ev.sequence)
+    ev = await emit(conn, conv_id, "request.accepted", {"request_id": rid, **({"asset_ids": [image]} if image else {})},
+                    workflow=wf)
+    mid = await add_user_message(conn, wf, rid, body.message.text or "", ev.sequence, [image] if image else [])
+    if image:
+        await uploads.bind(conn, image, conv_id)
     if not start:  # a resident's word puts a resting workflow back to work; a busy one stays as it is
         wf = await transition(conn, wf, wf["state"] if wf["state"] in BUSY else "active",
                               reason=None if wf["state"] in BUSY else "resident_reply", request_id=rid)
@@ -287,7 +298,7 @@ def build_commands(r: APIRouter, ctx: Any) -> None:
             need(p, OPERATION[kind])
         elif not (p.operations & {"submit_request", "reply"}):
             raise lacks("submit_request")
-        body = parse(data, ctx.settings.wf_text_limit)
+        body = parse(data, ctx.settings.wf_text_limit, images=uploads.has_capability(p))
         a = await accept(ctx, p, body)
         if a.job_id:
             try:

@@ -19,7 +19,8 @@ from .common import now
 from .errors import WorkforceError, unauthenticated
 
 CUSTOMER_OPS = ("submit_request", "reply", "read_result", "receive_events", "submit_consent",
-                "close_workflow", "confirm_route", "sync_residence")
+                "close_workflow", "confirm_route", "sync_residence",
+                "attach_asset")  # the last one is the image extension (spec A3): of use only to a client with that capability
 PROVIDER_OPS = ("publish_job_event", "read_event_receipt")
 # What a confirmed route lets a customer key do at run time (contract 8.1).
 RUNTIME_OPS = CUSTOMER_OPS[:6]
