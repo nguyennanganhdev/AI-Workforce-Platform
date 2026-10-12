@@ -23,12 +23,19 @@ def scoped(table: Any, scope: Scope, keys: Mapping[str, Any]) -> List[Any]:
 class SqlEvaluationRepository:
     """No schema creation; injected transactions are never committed here."""
 
-    def __init__(self, uows: UnitOfWorkFactory) -> None:
+    def __init__(self, uows: UnitOfWorkFactory, uow: Any = None) -> None:
         self.uows = uows
+        self._uow = uow
+
+    def in_transaction(self, uow: Any) -> "SqlEvaluationRepository":
+        """Bind release verification reads to the caller's canonical UOW."""
+        return SqlEvaluationRepository(self.uows, uow)
 
     async def read(
         self, table: Any, scope: Scope, keys: Mapping[str, Any], uow: Any = None
     ) -> Optional[Dict[str, Any]]:
+        if uow is None:
+            uow = self._uow
         if uow is None:
             async with self.uows() as tx:
                 return await self.read(table, scope, keys, tx)
@@ -44,6 +51,8 @@ class SqlEvaluationRepository:
         values: Mapping[str, Any],
         uow: Any = None,
     ) -> None:
+        if uow is None:
+            uow = self._uow
         if uow is None:
             async with self.uows() as tx:
                 await self.put(table, scope, keys, values, tx)
@@ -139,22 +148,24 @@ class SqlEvaluationRepository:
         return record
 
     async def evidence(
-        self, scope: Scope, workflow_id: str
+        self, scope: Scope, workflow_id: str, uow: Any = None
     ) -> List[CommittedTurnEvidence]:
-        async with self.uows() as tx:
-            rows = (
-                (
-                    await tx.execute(
-                        select(turn_evidence)
-                        .where(
-                            *scoped(turn_evidence, scope, {"workflow_id": workflow_id})
-                        )
-                        .order_by(turn_evidence.c.after_revision)
-                    )
+        if uow is None:
+            uow = self._uow
+        if uow is None:
+            async with self.uows() as tx:
+                return await self.evidence(scope, workflow_id, tx)
+        rows = (
+            (
+                await uow.execute(
+                    select(turn_evidence)
+                    .where(*scoped(turn_evidence, scope, {"workflow_id": workflow_id}))
+                    .order_by(turn_evidence.c.after_revision)
                 )
-                .mappings()
-                .all()
             )
+            .mappings()
+            .all()
+        )
         result = []
         for row in rows:
             if canonical_hash(row["payload"]) != row["content_hash"]:

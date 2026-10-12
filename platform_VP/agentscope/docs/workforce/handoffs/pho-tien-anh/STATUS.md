@@ -1,7 +1,6 @@
 # Trạng thái bàn giao — Phó Tiến Anh
 
-Ngày cập nhật: 11/10/2026. C5 đã merge vào `develop2` qua PR #64 tại
-`830cdacd56f868d509d208b91b9a6bc29d70c935`.
+Ngày cập nhật: 12/10/2026.
 
 ## Phạm vi nghiệm thu
 
@@ -201,3 +200,58 @@ Schema/index/signature bàn giao: [INTEGRATION_REQUEST_PTA_C5.md](INTEGRATION_RE
 và [phase_c/schemas.json](phase_c/schemas.json).
 
 Rà soát lại C5: chặn ghi đè scope trong khóa truy vấn; đối chiếu identity/revision của payload evidence với hàng SQL; chặn evidence mới và stimulus tiếp theo khi case đã hủy. Bổ sung ba regression tests; chạy lại nhóm Lifecycle/Foundation/Builder/Registry/C4: 167 passed, 5 skipped, 178 subtests passed. Black vùng thay đổi, Flake8 và mypy đều pass. Kết quả Execution/E2E và unittest ở trên là lần kiểm chứng trước.
+
+## D4 — Code và regression SQL/mock hoàn thành — 12/10/2026
+
+Tiếp nối A/B/C5 và đầu ra D2/D3, thực hiện publish pin, protocol pin, long-wait,
+stale evaluation, archive/disable/revoke và rollback trong phạm vi Lifecycle.
+Không thay source/shared contract/migration/CI hoặc fixture của owner khác.
+
+- `lifecycle/releases/`: `SqlReleaseService`, `ReleaseSelection`,
+  `ReleaseContext`, `PublishedVersion`, `ReleaseValidator`,
+  `PinnedVersionAuthorization`, `VersionUsageReader`, `get_release_metadata`,
+  `phase_d_schema_bundle`. Type hints dùng `typing`, SQL imports lazy.
+- Explicit publish đúng selections, CAS candidate/deployment, revalidation
+  current dependencies và C5 committed evidence trong cùng UOW. Một item stale
+  rollback cả danh sách. Immutable version giữ candidate ID/hash; lost-response
+  replay không tạo version mới. Edit và evaluation cancellation bị serialize
+  với release commit. Membership recheck cũng áp dụng với idempotent replay.
+- `stage_candidate(..., uow=...)` ghép canonical draft write, không tự commit.
+  Không coi staging là full DraftPort/business-key reservation/deduplication.
+- Rollback chỉ đổi head sau ownership/compatibility check. Archive ngăn chọn
+  mới, giữ old pin; disable/revoke chặn model/tool trước resume, PHH commit
+  blocked_authorization. Provider fact sau revoke vẫn persist, không public
+  message/wakeup. Không ghi wf_workflows/checkpoint của PHH.
+- Giữ immutable version/eval vô thời hạn, không purge/TTL. Usage/checkpoint
+  references đọc qua injected port của PHH; không suy đoán usage từ tuổi record.
+
+Kiểm chứng trên checkout hiện tại:
+
+| Nhóm | Kết quả |
+|---|---|
+| D4 mới, nằm trong nhóm Lifecycle | **28 pass, 4 PostgreSQL gates skip** |
+| Lifecycle/Foundation/Builder/Registry/C4 | **233 passed, 17 skipped, 213 subtests passed** |
+| Execution/E2E C6/D3 | **134 passed, 8 skipped, 3 subtests passed** |
+| Workflow A/B, unittest discovery có `-t .` | **14 tests pass** |
+| Black / Flake8 `--max-line-length=88` / mypy 8 source files | Pass |
+| JSON Schema artifact / DDL hai dialect / lazy DTO import | Pass |
+
+Lệnh và ma trận: [PHASE_D_D4.md](PHASE_D_D4.md),
+`tests/workforce/lifecycle/releases/README.md`. Discovery unittest cũ thiếu
+`-t .` không load được relative imports; đã sửa lệnh, không sửa source PHH.
+Skips gồm 4 D4 PostgreSQL, 2 PostgreSQL Registry/Execution, 4 C6/D3 PostgreSQL,
+12 Builder browser/demo và 3 full-platform factory. Không tính skip là pass.
+
+Long-wait dùng clock tiến 200 ngày, dispose/reconnect SQL pool và worker mới
+từ fixture D3. Sau publish v2/rollback/archive/protocol revise+disable, pending
+workflow vẫn pin v1/protocol/session cũ; signed provider event resume một lần,
+không lặp create, idle/duplicate không thêm calls. Đây là SQL/mock với real
+HMAC/HTTP/inbox/checkpoint/guard/evidence, scripted model/provider và test
+tool/policy/usage adapters; không phải 200 ngày chờ thật/process kill/live sandbox.
+
+Metadata bốn bảng, schema `pta-release-1` và signature được bàn giao tại
+[INTEGRATION_REQUEST_PTA_D4.md](INTEGRATION_REQUEST_PTA_D4.md),
+[phase_d/schemas.json](phase_d/schemas.json). Cần Foundation additive migration,
+manager auth/API + catalog/bootstrap wiring, owner transactional dependency
+adapter và usage reader trước production. PostgreSQL DSN chưa được cấp; D5/D6/D7,
+sandbox và canonical concurrent-build uniqueness chưa được nghiệm thu từ D4.
