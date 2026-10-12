@@ -132,7 +132,8 @@ def test_user_test_3_a_wrong_total_from_the_provider_is_refused_and_the_resident
         said = w.messages(p.wid)[-1][1]
         assert "do not add up" in said and "600000" not in said  # the resident is told nothing false, and nothing was asked
         assert "The resident agreed" not in " ".join(m[1] for m in w.messages(p.wid))
-        assert p.state() == "waiting_external_event" and p.jobs() == 1  # the work is still being waited for
+        w.wait_state(p.wid, "waiting_external_event")  # settle follows the turn; the work is still being waited for
+        assert p.jobs() == 1
 
 
 def test_a_cost_the_resident_refuses_is_not_charged_and_the_leader_says_so(tmp_path, partner):
