@@ -110,7 +110,25 @@ class PartnerApprovalService:
                 "workflow_id": approval["workflow_id"],
                 "accepted_at": timestamp(self.approvals.clock()),
             }
-            await self.commands.record_result(
-                command["request_id"], RequestResult(data=result), uow=uow
+            public_result = RequestResult(data=result)
+            record_with_continuation = getattr(
+                self.commands,
+                "record_approval_result",
+                None,
             )
+            if record_with_continuation is None:
+                await self.commands.record_result(
+                    command["request_id"], public_result, uow=uow
+                )
+            else:
+                # C7 production adapter records the response and durable
+                # approval wakeup in this same UOW.  Older/test command ports
+                # keep the narrow record_result contract.
+                await record_with_continuation(
+                    actor_context,
+                    resolved,
+                    command["request_id"],
+                    public_result,
+                    uow=uow,
+                )
             return result

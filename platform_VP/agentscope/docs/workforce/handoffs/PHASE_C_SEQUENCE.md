@@ -1,6 +1,6 @@
 # Trình tự Phase C và trạng thái bàn giao
 
-Cập nhật: **2026-10-11**. File này là bảng điều phối nội bộ, không phải contract
+Cập nhật: **2026-10-12**. File này là bảng điều phối nội bộ, không phải contract
 gửi đối tác và không thay đổi `KE_HOACH_TRIEN_KHAI.md`.
 
 ```text
@@ -31,8 +31,11 @@ C7 — Nguyễn Chí Hoàng: composition/migration/CI cuối
   `develop2@86fa2931bbfd54d064798e00e0998429c6ac9cb5`.
 - C5 của Phó Tiến Anh đã merge qua PR #64. Baseline chung hiện tại là
   `develop2@830cdacd56f868d509d208b91b9a6bc29d70c935`.
-- **C6 của Phan Hoàng Dũng đã được mở và là bước tiếp theo.**
-- **C7 của Nguyễn Chí Hoàng vẫn chờ C6 hoàn thành và merge.**
+- C6 của Phan Hoàng Dũng đã merge qua PR #67 tại
+  `develop2@5e66ea0` và mở gate C7.
+- **C7 của Nguyễn Chí Hoàng đã được triển khai trong working tree hiện tại,
+  chưa commit/push/merge.** Sau khi merge, dùng
+  [PHASE_D_SEQUENCE.md](PHASE_D_SEQUENCE.md) để tiếp tục Phase D.
 
 ## Quy tắc tiếp tục
 
@@ -42,7 +45,7 @@ lane chạy song song sau C2; các bước còn lại chạy tuần tự. Mỗi 
 `STATUS.md`, nêu commit đầu vào, exports đã dùng, test, phần giả/live và request
 tích hợp còn mở. Không sửa lại migration đã merge; gửi schema additive cho C7.
 
-## Bảng gate C0–C7 — cập nhật ngày 2026-10-11
+## Bảng gate C0–C7 — cập nhật ngày 2026-10-12
 
 | Mốc | Owner | Trạng thái | Baseline / đầu ra quyết định |
 |---|---|---|---|
@@ -52,10 +55,10 @@ tích hợp còn mở. Không sửa lại migration đã merge; gửi schema add
 | C3 | Bùi Hữu Nghĩa + Phan Hoàng Dũng | Hoàn thành | Builder validation và Provider ingress/Operation/Protocol đều đã merge |
 | C4 | Phan Huy Hoàng | Hoàn thành, đã merge PR #63 | `86fa2931bbfd54d064798e00e0998429c6ac9cb5` |
 | C5 | Phó Tiến Anh | Hoàn thành, đã merge PR #64 | `830cdacd56f868d509d208b91b9a6bc29d70c935` |
-| C6 | Phan Hoàng Dũng | **Sẵn sàng triển khai** | Pull baseline C5 hiện tại; làm E2E toàn lát cắt |
-| C7 | Nguyễn Chí Hoàng | **Chờ C6** | Chỉ mở sau khi C6 merge; làm composition/migration/CI cuối |
+| C6 | Phan Hoàng Dũng | Hoàn thành, đã merge PR #67 | `develop2@5e66ea0`; E2E C6 11/11 pass |
+| C7 | Nguyễn Chí Hoàng | Đã code/test, chưa merge | Composition/UOW, migration `0010`, worker registration, router mounting và CI |
 
-## Bàn giao C5 → C6
+## Lịch sử bàn giao C5 → C6
 
 Phan Hoàng Dũng pull chính xác baseline
 `develop2@830cdacd56f868d509d208b91b9a6bc29d70c935`, sau đó đọc:
@@ -74,6 +77,7 @@ query/timer, dùng query hook thật và không tạo provider inbox giả. C6 d
 runtime evidence/evaluation exports C5, nhưng không tự gom migration hoặc sửa
 global composition thuộc C7.
 
-Khi C6 hoàn thành, owner phải cập nhật `phan-hoang-dung/STATUS.md`, ghi commit
-đầu vào, test đã chạy, phần còn fake/live và integration request rõ ràng cho C7.
-Chỉ sau commit C6 xuất hiện trên `develop2` thì Nguyễn Chí Hoàng mới mở C7.
+Điều kiện bàn giao lịch sử này đã hoàn tất tại PR #67. C7 đã dùng metadata,
+handler/router factory và test evidence đó trên baseline `develop2@5e66ea0`;
+trạng thái tiếp theo được theo dõi tại
+[PHASE_D_SEQUENCE.md](PHASE_D_SEQUENCE.md).

@@ -14,7 +14,7 @@ from agentscope.app.workforce.orchestration.workflows import (
     WorkflowPattern,
 )
 
-from fakes import Harness, SCOPE, customer_actor
+from .fakes import Harness, SCOPE, customer_actor
 
 
 class ContinuationTests(unittest.IsolatedAsyncioTestCase):

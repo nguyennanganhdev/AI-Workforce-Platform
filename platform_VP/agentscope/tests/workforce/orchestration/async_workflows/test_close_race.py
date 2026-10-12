@@ -3,7 +3,7 @@ import unittest
 from agentscope.app.workforce.contracts import WorkflowState
 from agentscope.app.workforce.orchestration.workflows import WorkflowClosed
 
-from fakes import Harness, SCOPE, customer_actor
+from .fakes import Harness, SCOPE, customer_actor
 
 
 class CloseRaceTests(unittest.IsolatedAsyncioTestCase):

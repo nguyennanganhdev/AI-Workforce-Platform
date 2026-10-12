@@ -1,0 +1,56 @@
+name: Workforce Phase D Gate
+
+on:
+  pull_request:
+    paths:
+      - "platform_VP/agentscope/src/agentscope/app/workforce/**"
+      - "platform_VP/agentscope/src/agentscope/app/storage/_sql/_alembic/**"
+      - "platform_VP/agentscope/tests/workforce/**"
+      - "platform_VP/agentscope/scripts/workforce/**"
+      - ".github/workflows/workforce-phase-d.yml"
+  push:
+    branches: [develop2]
+
+jobs:
+  phase-d:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform_VP/agentscope
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: agentscope_test
+          POSTGRES_USER: agentscope
+          POSTGRES_PASSWORD: agentscope_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentscope -d agentscope_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      AGENTSCOPE_SQL_URL: >-
+        postgresql+asyncpg://agentscope:agentscope_test@localhost:5432/agentscope_test
+      WORKFORCE_TEST_POSTGRES_URL: >-
+        postgresql+asyncpg://agentscope:agentscope_test@localhost:5432/agentscope_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Install Workforce test dependencies
+        run: uv pip install -q -e ".[dev,service,storage-postgres,auth]"
+      - name: Validate environment and migration head
+        run: python scripts/workforce/check_phase_d_environment.py
+      - name: Upgrade the production migration chain
+        run: python -m alembic -c src/agentscope/app/storage/_sql/_alembic/alembic.ini upgrade head
+      - name: Run C7, D1 and D2 gates
+        run: |
+          python -m pytest -q tests/workforce/integrations/test_phase_c_c7.py tests/workforce/foundation/phase_d
+          python -m pytest -q tests/workforce/registry/event_protocols
+          python -m pytest -q tests/workforce/orchestration/async_workflows
+          python -m pytest -q tests/workforce/orchestration/phase_c tests/workforce/orchestration/phase_d
+          python -m pytest -q tests/workforce/e2e/async_tickets/test_phase_c_c6.py
