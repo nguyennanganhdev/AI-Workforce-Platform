@@ -123,6 +123,12 @@ async def list_chats(scope: ResidentScope, limit: int = Query(50, ge=1, le=100),
                  where first.channel_id=c.id and first.sender_kind='user' and first.body->>'text'<>''
                  order by first.seq limit 1), c.name) as title,
                t.id as ticket_id, t.code as ticket_code, t.status as ticket_status,
+               -- A handed-over request whose result waits for the resident's answer: the chat shows the card to
+               -- confirm it (never without a link). Not tied to the coordinator's turn, which may say nothing.
+               exists(select 1 from platform_links l where l.ticket_id=t.id and l.tenant_id=c.tenant_id and l.status='open')
+                 and exists(select 1 from work_approvals a join work_orders w on w.id=a.work_order_id and w.tenant_id=a.tenant_id
+                   where w.ticket_id=t.id and a.tenant_id=c.tenant_id and a.kind='customer_completion' and a.status='pending'
+                     and (a.expires_at is null or a.expires_at>now())) as confirm_close,
                (select count(*) from messages msg where msg.channel_id=c.id and msg.seq>m.last_read_seq
                  and msg.visibility in ('room','customer') and msg.sender_user_id is distinct from :actor_id) as unread_count
         from channels c
@@ -150,7 +156,11 @@ async def list_messages(channel_id: str, scope: ResidentScope,
           and tenant_id=nullif(current_setting('app.tenant_id', true), '')::uuid
         order by seq limit :limit
     """), {"channel_id": channel_id, "after_seq": after_seq, "limit": limit})
-    return {"items": _rows(result)}
+    items = _rows(result)
+    # A repair quote in the chat is a card the resident answers: the app is told where each one stands now.
+    from .platform import quote_states
+    await quote_states(scope[0], items)
+    return {"items": items}
 
 
 @router.post("/resident/chats/{channel_id}/messages", status_code=201,
@@ -200,6 +210,10 @@ async def send_message(channel_id: str, body: SendMessage, request: Request, sco
            "actor_id": actor_id, "body": json.dumps(content),
            "client_message_id": body.client_message_id})
     created = dict(result.mappings().one())
+    from .platform import divert
+    if await divert(db, actor_id, channel_id, body.text, content.get("fileIds", [])):
+        # The platform's coordinator answers in this chat; Reception is not asked.
+        return created
     if request.app.state.settings.reception_url:
         # Runs after this transaction commits, so the runtime can read the message.
         from .v3_reception_runtime import dispatch_turn
@@ -576,6 +590,9 @@ async def decide_resident_approval(approval_id: UUID, body: ResidentApprovalDeci
     await db.execute(text("""
         update work_approvals set decided_event_id=:event_id where id=:approval_id
     """), {"event_id": event_id, "approval_id": approval_id})
+    if approval["kind"] == "customer_completion":
+        from .platform import completion_decided
+        await completion_decided(db, ticket["id"], target_status == "closed", body.approved, body.note)
     return decision
 
 

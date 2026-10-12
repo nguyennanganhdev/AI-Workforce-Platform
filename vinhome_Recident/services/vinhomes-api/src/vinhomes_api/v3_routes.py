@@ -240,5 +240,8 @@ async def get_work_order(work_order_id: UUID, scope: Scope) -> dict[str, object]
     redo = await connection.execute(text("""
         select * from vh_qc_redo_orders where source_work_order_id=:work_order_id
     """), params)
-    return {"workOrder": dict(row), "assignments": _rows(assignments),
-            "approvals": _rows(approvals), "qcResults": _rows(qc), "redoOrders": _rows(redo)}
+    # A request handed to the platform: the resident answers a quote on its card in their chat, not on staff's device.
+    in_chat = await connection.execute(text("select exists(select 1 from platform_links where ticket_id=:id and status in ('pending','open'))"),
+                                       {"id": row["ticket_id"]})
+    return {"workOrder": dict(row), "assignments": _rows(assignments), "approvals": _rows(approvals),
+            "qcResults": _rows(qc), "redoOrders": _rows(redo), "quoteInChat": in_chat.scalar_one()}

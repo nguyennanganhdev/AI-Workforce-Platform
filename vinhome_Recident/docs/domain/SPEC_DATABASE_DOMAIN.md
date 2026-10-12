@@ -30,7 +30,7 @@ Thành công nghĩa là:
 | Trigger không nội bộ | 139 (77 trên bảng mã dùng) | `pg_trigger` |
 | Hàm `app_*` giữ bất biến nghiệp vụ | 13 | `pg_proc` |
 | Ràng buộc trên bảng mã dùng | 168 check, 394 khóa ngoại, 158 unique, 4 exclusion | `pg_constraint` |
-| Extension | `btree_gist` (cần cho exclusion), `vector` (chỉ platform), `plpgsql` | `pg_extension` |
+| Extension | `btree_gist` (cần cho exclusion), `vector` (kho tri thức của domain), `plpgsql` | `pg_extension` |
 | Role runtime của domain | `vinhomes_v3_api` | `pg_roles` |
 
 **Hai thế hệ dữ liệu chồng nhau trong gói.**
@@ -63,7 +63,7 @@ Số bảng mỗi nhóm là ước lượng (88 + 24 + 11 + 2 + 75 = 200, lệch
 
 ## 6. Sáu mục cốt lõi
 
-**Công nghệ**: PostgreSQL 16 trở lên với `btree_gist`; không dùng `vector`. Python 3.12, `asyncpg`/SQLAlchemy như hiện có.
+**Công nghệ**: PostgreSQL 16 trở lên với `btree_gist` và `vector` (pgvector, cho kho tri thức). Python 3.12, `asyncpg`/SQLAlchemy như hiện có.
 
 **Lệnh** (đề xuất, chưa tồn tại):
 

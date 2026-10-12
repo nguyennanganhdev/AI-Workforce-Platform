@@ -500,6 +500,9 @@ export function App({ live }: { live?: ConnectedResident }) {
               onSend={send}
               onForm={live?.startForm}
               question={live?.question()}
+              onApproval={live?.decidePlatform}
+              onQuote={live?.decideQuote}
+              onResolve={live?.decide}
               onOpen={openRequest}
               onRequests={() => navigate("requests")}
               onSubmit={() => {

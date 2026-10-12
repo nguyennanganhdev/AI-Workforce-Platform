@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { OnsiteConsent, QuoteForm, type QuoteInput } from "../RepairQuote";
-import { AFTER, REJECTIONS, STEPS, ended, stateOf, stateText, stepOf, type FieldOrder, type FieldPhoto, type FieldPlan, type FieldTicket } from "./model";
+import { ACCEPTANCE, AFTER, REJECTIONS, STEPS, ended, stateOf, stateText, stepOf, type FieldOrder, type FieldPhoto, type FieldPlan, type FieldTicket } from "./model";
 
 export type FieldActions = {
   accept: (order: FieldOrder, minutes: number) => void;
@@ -14,7 +14,9 @@ export type FieldActions = {
   advance: (order: FieldOrder, status: string, note: string) => void;
   quote: (order: FieldOrder, note: string, quote: QuoteInput) => void;
   consent: (order: FieldOrder, approved: boolean) => void;
-  photo: (order: FieldOrder, file: File, phase: "before" | "after", note: string) => void;
+  photo: (order: FieldOrder, file: File, phase: "before" | "after" | "verification", note: string) => void;
+  /** Sends the technician's acceptance result; the resident confirms it in their own app. Without it the step is not offered. */
+  acceptance?: (order: FieldOrder, note: string) => void;
 };
 
 const ETA = [15, 30, 60, 120];
@@ -56,9 +58,9 @@ function Shots({ title, photos, disabled, onAdd }: { title: string; photos: Fiel
 }
 
 /** One order as its stepper and the single thing to do now. */
-function FieldStep({ order, ticket, photos, busy, request, actions, planned, currentWork }: {
+function FieldStep({ order, ticket, photos, busy, request, actions, planned, requiresPlan, currentWork }: {
   order: FieldOrder; ticket: FieldTicket; photos: FieldPhoto[]; busy: boolean; request: <T>(path: string) => Promise<T>; actions: FieldActions;
-  planned: boolean; currentWork?: { title: string; onOpen: () => void };
+  planned: boolean; requiresPlan: boolean; currentWork?: { title: string; onOpen: () => void };
 }) {
   const state = stateOf(order);
   const noteId = useId();
@@ -68,12 +70,17 @@ function FieldStep({ order, ticket, photos, busy, request, actions, planned, cur
   const [reason, setReason] = useState("");
   const [approved, setApproved] = useState(false);
   const [quoting, setQuoting] = useState(false);
+  const [acceptanceNote, setAcceptanceNote] = useState("");
   const needsRevision = !!order.repair_approval_status && order.repair_approval_status !== "approved";
   const before = photos.filter((p) => p.purpose === "before"), after = photos.filter((p) => p.purpose === "after");
+  const verification = photos.filter((p) => p.purpose === "verification");
   const ready = before.length > 0 && after.length > 0;
   const step = stepOf(state, ready);
   const text = stateText(state);
-  const sent = state === "completed" ? AFTER[ticket.status] : undefined;
+  // Requests without a plan: the technician reports the acceptance result; the others go to management as before.
+  const onsite = state === "completed" && !requiresPlan;
+  const accepting = onsite && !!actions.acceptance && !["resolved", "closed", "cancelled"].includes(ticket.status);
+  const sent = accepting ? ACCEPTANCE : state === "completed" ? AFTER[ticket.status] : undefined;
   const refusal = reason === "OTHER" ? note.trim() : REJECTIONS.find(([code]) => code === reason)?.[1] || "";
   return (
     <section aria-label="Việc cần làm" aria-busy={busy} className="flex min-w-0 flex-col gap-4 rounded-xl border border-border bg-background p-4">
@@ -180,6 +187,23 @@ function FieldStep({ order, ticket, photos, busy, request, actions, planned, cur
           {after.length > 0 && <Shots title="Ảnh sau khi xử lý" photos={after} disabled />}
         </>
       )}
+
+      {accepting && (
+        <>
+          <Shots title="Ảnh nghiệm thu" photos={verification} disabled={busy} onAdd={(file) => actions.photo(order, file, "verification", "")} />
+          <label className="text-sm font-medium text-foreground" htmlFor={noteId}>Ghi chú nghiệm thu <span className="font-normal text-muted-foreground">(không bắt buộc)</span>
+            <Textarea id={noteId} className="mt-1.5 text-base" rows={2} maxLength={2000} value={acceptanceNote} onChange={(e) => setAcceptanceNote(e.target.value)} />
+          </label>
+          <Button className={primary} disabled={busy || !verification.length} onClick={() => actions.acceptance?.(order, acceptanceNote.trim())}>Gửi kết quả nghiệm thu</Button>
+          {!verification.length && <p role="status" className="text-sm leading-relaxed text-muted-foreground">Cần ít nhất 1 ảnh nghiệm thu để gửi kết quả.</p>}
+        </>
+      )}
+      {onsite && ticket.status === "resolved" && (
+        <>
+          {verification.length > 0 && <Shots title="Ảnh nghiệm thu" photos={verification} disabled />}
+          <p role="status" className="text-sm font-medium text-primary">Đã gửi kết quả nghiệm thu. Chờ cư dân xác nhận trên ứng dụng.</p>
+        </>
+      )}
     </section>
   );
 }
@@ -188,13 +212,15 @@ function FieldStep({ order, ticket, photos, busy, request, actions, planned, cur
  * One job on site, top to bottom: where to go, the step to do now, what the resident reported, and
  * the plan that was agreed. Nothing of the request's internal codes or of management's session.
  */
-export function FieldJob({ ticket, place, orders, plan, photos, conversation, busy, request, actions, onBack, currentWork }: {
+export function FieldJob({ ticket, place, orders, plan, requiresPlan = !!plan, photos, conversation, busy, request, actions, onBack, currentWork }: {
   ticket: FieldTicket; place: string; orders: FieldOrder[]; plan?: FieldPlan; photos: FieldPhoto[];
+  /** The request goes through a plan and management's acceptance, so there is no acceptance on site. */
+  requiresPlan?: boolean;
   conversation: { id: string; sender_kind: string; text: string }[]; busy: boolean;
   request: <T>(path: string) => Promise<T>; actions: FieldActions; onBack: () => void;
   currentWork?: { orderId: string; title: string; onOpen: () => void };
 }) {
-  const reported = photos.filter((p) => !["before", "after"].includes(p.purpose));
+  const reported = photos.filter((p) => !["before", "after", "verification"].includes(p.purpose));
   const said = conversation.filter((m) => m.sender_kind === "user");
   const open = orders.some((o) => !ended(stateOf(o)));
   return (
@@ -210,7 +236,7 @@ export function FieldJob({ ticket, place, orders, plan, photos, conversation, bu
 
       {!orders.length && <p role="status" className="rounded-xl border border-border bg-background p-4 text-sm leading-relaxed text-muted-foreground">Việc này không còn được giao cho bạn. Quay lại danh sách để xem công việc hiện tại.</p>}
       {orders.map((order) => <FieldStep key={order.id} order={order} ticket={ticket} photos={photos.filter((p) => p.work_order_id === order.id)} busy={busy} request={request} actions={actions}
-        planned={!!plan} currentWork={currentWork?.orderId !== order.id ? currentWork : undefined} />)}
+        planned={!!plan} requiresPlan={requiresPlan} currentWork={currentWork?.orderId !== order.id ? currentWork : undefined} />)}
 
       <Section title="Cư dân phản ánh">
         <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">{ticket.description || ticket.title}</p>

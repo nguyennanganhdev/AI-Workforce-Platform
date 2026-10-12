@@ -7,6 +7,8 @@ import {
   allPages,
   requestView,
   withoutRequestCode,
+  approvalOf,
+  quoteOf,
   type Profile,
   type Chat,
   type Message,
@@ -48,6 +50,7 @@ export function useConnectedResident() {
   const awaiting = useRef(false);
   const generation = useRef(0);
   const keys = useRef(new Map<string, string>());
+  const answered = useRef(new Map<string, boolean>());
   const keyFor = (value: string) => {
     if (!keys.current.has(value)) keys.current.set(value, crypto.randomUUID());
     return keys.current.get(value)!;
@@ -122,8 +125,16 @@ export function useConnectedResident() {
         ),
       ),
     );
+    // An approval that was answered arrives again as a later message: one card, the latest.
+    const latest = new Map(
+      messages.flatMap((m) => (m.body.platform ? [[m.body.platform.approval_id, m.id]] : [])),
+    );
     const chatMessages = messages
-      .filter((m) => m.body.text || m.body.fileIds?.length)
+      .filter(
+        (m) =>
+          (m.body.text || m.body.fileIds?.length || m.body.platform) &&
+          (!m.body.platform || latest.get(m.body.platform.approval_id) === m.id),
+      )
       .map((m) => ({
         id: m.id,
         role:
@@ -134,6 +145,7 @@ export function useConnectedResident() {
         ...(m.body.fileIds?.length
           ? { photos: m.body.fileIds.map((id) => ({ id, name: "Ảnh đính kèm", url: `/api/business/resident/photos/${id}` })) }
           : {}),
+        ...(m.body.platform ? { approval: approvalOf(m.body, answered.current), quote: quoteOf(m.body) } : {}),
       }));
     // Reception answers within the backend's three-minute dispatch limit, or the backend
     // stores a fallback reply. Older unanswered messages predate the agent.
@@ -160,6 +172,7 @@ export function useConnectedResident() {
         id: c.id,
         title: c.title || c.name,
         requestId: c.ticket_id,
+        confirmClose: c.confirm_close,
         requestStatus: c.ticket_id
           ? statusLabels[
               requests.find((r) => r.id === c.ticket_id)?.status ?? "received"
@@ -258,6 +271,20 @@ export function useConnectedResident() {
     else drafts.current.delete(active.current);
     setState((s) => ({ ...s, draft }));
   };
+  /** Records the resident's decision on one pending approval, against the request as it is now. */
+  const answer = (pending: (a: Approval) => boolean, approved: boolean, note: string) =>
+    run(async () => {
+      const approval = approvals.find((a) => a.status === "pending" && pending(a));
+      if (!approval)
+        throw new Error("Không còn yêu cầu xác nhận đang chờ. Hãy tải lại.");
+      const detail = await api<TicketDetail>(`/resident/tickets/${approval.ticket_id}`);
+      const body = JSON.stringify({ approved, note, version: detail.ticket.version });
+      await api(`/resident/approvals/${approval.id}/decision`, {
+        method: "POST",
+        body,
+        headers: { "Idempotency-Key": keyFor(`${approval.id}:${body}`) },
+      });
+    });
   return {
     state,
     profile,
@@ -400,31 +427,31 @@ export function useConnectedResident() {
           a.kind === "customer_repair" &&
           a.status === "pending",
       ),
+    /** The resident's answer to what the platform's agent asked before acting. */
+    decidePlatform: (approvalId: string, approve: boolean) =>
+      run(async () => {
+        const body = JSON.stringify({ approve });
+        await api(`/resident/platform/approvals/${approvalId}/decision`, {
+          method: "POST",
+          body,
+          headers: { "Idempotency-Key": keyFor(`${approvalId}:${body}`) },
+        });
+        answered.current.set(approvalId, approve);
+      }),
     decide: (
       id: string,
       accepted: boolean,
       reason?: string,
       kind = "customer_completion",
     ) =>
-      run(async () => {
-        const approval = approvals.find(
-          (a) =>
-            a.ticket_id === id && a.kind === kind && a.status === "pending",
-        );
-        if (!approval)
-          throw new Error("Không còn yêu cầu xác nhận đang chờ. Hãy tải lại.");
-        const detail = await api<TicketDetail>(`/resident/tickets/${id}`);
-        const body = JSON.stringify({
-          approved: accepted,
-          note: reason || "Tôi xác nhận kết quả đã hoàn tất.",
-          version: detail.ticket.version,
-        });
-        await api(`/resident/approvals/${approval.id}/decision`, {
-          method: "POST",
-          body,
-          headers: { "Idempotency-Key": keyFor(`${approval.id}:${body}`) },
-        });
-      }),
+      answer(
+        (a) => a.ticket_id === id && a.kind === kind,
+        accepted,
+        reason || "Tôi xác nhận kết quả đã hoàn tất.",
+      ),
+    /** The resident's answer on the quote card of the chat: the same decision as on the request page. */
+    decideQuote: (approvalId: string, accepted: boolean, reason?: string) =>
+      answer((a) => a.id === approvalId, accepted, reason || "Tôi đồng ý báo giá."),
   };
 }
 export type ConnectedResident = ReturnType<typeof useConnectedResident>;

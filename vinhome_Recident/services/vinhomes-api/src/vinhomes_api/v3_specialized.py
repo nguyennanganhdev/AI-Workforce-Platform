@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -126,6 +126,62 @@ async def submit_qc(work_order_id: UUID, body: QcSubmit, scope: Scope) -> dict[s
     from .v3_completion import publish_completion
     await publish_completion(scope, ticket["id"])
     return qc
+
+
+class OnsiteAcceptance(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int = Field(ge=0)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+@router.post("/work-orders/{work_order_id}/onsite-acceptance", status_code=201,
+             summary="Send the acceptance report of my finished work, for the resident to confirm")
+async def accept_onsite(work_order_id: UUID, body: OnsiteAcceptance, scope: Scope) -> dict[str, object]:
+    """Requests without a plan: the staff member who did the job reports its result (photos, a note). Nothing here
+    says the resident saw or accepted anything: the report publishes the result, and the resident confirms or
+    refuses it in their own app. Management's inspection (POST .../qc) is unchanged."""
+    from .v3_completion import publish_completion
+    from .v3_mutations import requires_plan
+    ticket = await work_ticket(scope, work_order_id, lock=True)
+    performer = await scope[0].execute(text("""
+        select 1 from work_assignments a join staff_profiles sp on sp.id=a.staff_id and sp.tenant_id=a.tenant_id
+        where a.work_order_id=:id and sp.user_id=:actor and a.status in ('accepted','completed') limit 1
+    """), {"id": work_order_id, "actor": scope[1]})
+    if performer.first() is None:
+        raise HTTPException(403, "Only the staff member who took this work can report its acceptance")
+    if await requires_plan(scope, ticket["id"]):
+        raise HTTPException(409, "This request follows a plan; management inspects its work")
+    if ticket["status"] in {"resolved", "closed", "cancelled"}:
+        raise HTTPException(409, "The result is already published or the ticket is closed")
+    order = (await scope[0].execute(text("select status,version from work_orders where id=:id for update"),
+                                    {"id": work_order_id})).mappings().one()
+    if order["version"] != body.version or order["status"] != "completed":
+        raise HTTPException(409, "The acceptance report requires the current completed work order")
+    # Once per job, and never over an inspection: after management failed the work or the resident refused the
+    # result, the way on is management's inspection or a new job, not the same report again.
+    inspected = await scope[0].execute(text("select 1 from vh_qc_results where work_order_id=:id limit 1"), {"id": work_order_id})
+    if inspected.first() is not None:
+        raise HTTPException(409, "This work was already inspected; a new job or management's inspection is needed")
+    photos = (await scope[0].execute(text("""
+        select count(*) from evidence_items where work_order_id=:id and status='active' and purpose in ('after','verification')
+    """), {"id": work_order_id})).scalar_one()
+    if not photos:
+        raise HTTPException(409, "Attach a photo of the result before sending the acceptance report")
+    # Kept as what it is: the report of the person who did the work (checked_by is that person). The result is
+    # published on it (v3_completion reads the row); whether the work is accepted is the resident's answer.
+    result = await scope[0].execute(text("""
+        insert into vh_qc_results (tenant_id,work_order_id,outcome,criteria,redo_required,note,checked_by)
+        select tenant_id,:id,'pass',cast(:criteria as jsonb),false,:note,:actor from tickets where id=:ticket
+        returning id,work_order_id,outcome,checked_at
+    """), {"id": work_order_id, "ticket": ticket["id"], "note": (body.note or "").strip() or None, "actor": scope[1],
+           "criteria": json.dumps([{"name": "acceptance_report", "result": "pass", "photos": photos}])})
+    qc = dict(result.mappings().one())
+    await record_event(scope, ticket, "work_order.qc_recorded",
+                       json.dumps({"qcId": str(qc["id"]), "outcome": "pass", "channel": "acceptance_report"}))
+    await publish_completion(scope, ticket["id"])
+    status = await scope[0].execute(text("select status from tickets where id=:id"), {"id": ticket["id"]})
+    return {**qc, "ticket_status": status.scalar_one()}
 
 
 class RedoCreate(BaseModel):

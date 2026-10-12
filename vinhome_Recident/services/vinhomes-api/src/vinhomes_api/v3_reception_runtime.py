@@ -7,7 +7,8 @@ reception_delegation); the model never decides policy.
 
 import json
 import logging
-from contextlib import asynccontextmanager
+import re
+from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -16,7 +17,8 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from .reception_delegation import DelegatedScope as Scope
 from .reception_delegation import finish_run, reception_client, start_run
@@ -44,10 +46,22 @@ EMERGENCY_KINDS = {
 EMERGENCY_TERMS = tuple(term for terms in EMERGENCY_KINDS.values() for term in terms)
 
 
-# Everyday uses of "cháy" that are a broken part, not a fire. Removed before matching, so
+# Everyday uses of "cháy" that are a broken part or burnt food, not a fire. Removed before matching, so
 # "bóng đèn bị cháy, có mùi khét và bốc khói" is still an emergency through its other terms.
-BENIGN_TERMS = ("cháy bóng", "bóng đèn bị cháy", "bóng đèn cháy", "bóng bị cháy", "đèn bị cháy", "cháy cầu chì", "cầu chì bị cháy",
-                "cơm bị cháy", "cơm cháy", "nấu ăn bị cháy", "đồ ăn bị cháy", "cháy nắng")
+BENIGN_TERMS = ("cháy bóng", "cháy cầu chì", "cơm bị cháy", "cơm cháy", "nấu ăn bị cháy", "đồ ăn bị cháy", "cháy nắng")
+# A bulb or a fuse that burnt out: a whole clause that names the lamp, then "cháy", and around them only the words
+# below (who asks, where the lamp is, "bị", "rồi"). Any other word leaves "cháy" a fire: a verb ("đèn bắt cháy"),
+# something else that burns ("cạnh cột đèn có xe máy cháy"), how it burns ("cháy dữ dội", "cháy lan sang rèm").
+# A wrong guess must fall on the side of the fire.
+_ASKING = "nhà|tôi|em|mình|anh|chị|cái|chiếc|mấy|các|nhờ|xin|cần|thay|sửa|giúp|báo|ban|quản|lý|bql|thợ|kỹ|thuật|cho|ơi|dạ|ạ|chào"
+_PLACE = (r"đèn|led|tuýp|trần|ngủ|chùm|bàn|sưởi|tổng|tủ|điện|phòng|khách|bếp|tắm|vệ|sinh|nhà|hành|lang|ban|công|tầng|ở|trong|ngoài"
+          r"|của|tôi|em|mình|số|\w*\d\w*|bị|đã|lại|hay|vừa|mới")
+_AFTER = (r"rồi|mất|luôn|hỏng|nữa|ạ|à|nhé|nha|nhờ|xin|cần|thay|sửa|giúp|kiểm|tra|ban|quản|lý|bql|thợ|kỹ|thuật|cho|em|tôi|mình|với"
+          r"|mới|được|không|từ|sáng|tối|hôm|qua|nay|cái|bóng|\d+")
+BURNT_OUT = re.compile(rf"((?:^|[.,;:!?]) ?(?:(?:{_ASKING}) )*(?:bóng|đèn|cầu chì)(?: (?:{_PLACE}))* )cháy"
+                       rf"((?: (?:{_AFTER}))* ?(?=$|[.,;:!?]))")
+# Said anywhere in the message, these mean the lamp did more than burn out.
+FLAMES = re.compile(r"\b(?:lửa|khói|bén)\b")
 
 
 def emergency_kind(message_text: str) -> str | None:
@@ -55,6 +69,8 @@ def emergency_kind(message_text: str) -> str | None:
     message = fold(message_text)
     for term in BENIGN_TERMS:
         message = message.replace(term, " ")
+    if not FLAMES.search(message):
+        message = BURNT_OUT.sub(r"\1\2", message)
     for name, terms in EMERGENCY_KINDS.items():
         for term in terms:
             start = message.find(term)
@@ -211,6 +227,19 @@ async def intake_check(channel_id: str, body: IntakeCheck, scope: Scope) -> dict
                   emergency=body.emergency, asked=asked)
 
 
+async def attach_photos(db: AsyncConnection, actor: str, ticket_id, file_ids: list) -> list:
+    """Photos of a chat message become photos of the request, with the ticket event staff see; returns the new ones."""
+    held = await db.execute(text("select file_id from ticket_files where ticket_id=:ticket"), {"ticket": ticket_id})
+    known = {str(row[0]) for row in held}
+    photos = [file_id for file_id in file_ids if str(file_id) not in known]
+    if not photos:
+        return []
+    from .v3_conversation_images import AttachImages, attach
+
+    await attach(ticket_id, AttachImages(file_ids=photos), (db, actor))
+    return photos
+
+
 class FollowUp(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -230,15 +259,8 @@ async def follow_up(channel_id: str, body: FollowUp, scope: Scope) -> dict[str, 
     """), {"id": body.message_id, "channel": channel_id, "actor": actor})).mappings().first()
     if request is None or message is None:
         raise HTTPException(404, "No open request or resident message in this conversation")
-    held = await db.execute(text("select file_id from ticket_files where ticket_id=:ticket"), {"ticket": request["id"]})
-    known = {str(row[0]) for row in held}
-    photos = [file_id for file_id in message["file_ids"] if file_id not in known]
-    if photos and request["status"] != "resolved":
-        from .v3_conversation_images import AttachImages, attach
-
-        await attach(request["id"], AttachImages(file_ids=photos), (db, actor))
-    else:
-        photos = []
+    # A request whose result waits for the resident's answer takes no photo from Reception: the answer comes first.
+    photos = [] if request["status"] == "resolved" else await attach_photos(db, actor, request["id"], message["file_ids"])
     delivered = False
     if request["pending"] == "information" and request["submitted"] and message["text"].strip():
         from .v3_reception_supervisor import ReceptionToSupervisorMessage, submit_reception_message
@@ -286,49 +308,71 @@ async def _resident_transaction(app, actor_id: str):
         yield db
 
 
+@asynccontextmanager
+async def _one_turn(app, channel_id: str):
+    """One Reception turn per conversation at a time, whichever copy of the API sent it and whichever copy of
+    Reception runs it: a second message waits here for the reply to the first.
+
+    The lock is PostgreSQL's, held on a connection of its own for the length of the turn: the pool stays free for
+    the calls the runtime makes back, and a process that dies lets go of the lock with its connection.
+    """
+    engine = create_async_engine(app.state.settings.database_url, poolclass=NullPool)
+    try:
+        async with engine.connect() as held:
+            await held.execution_options(isolation_level="AUTOCOMMIT")
+            await held.execute(text("select pg_advisory_lock(hashtextextended(:key, 0))"), {"key": "reception-turn:" + channel_id})
+            yield
+    finally:
+        await engine.dispose()
+
+
 async def dispatch_turn(app, actor_id: str, channel_id: str, message: dict[str, object]) -> None:
     """Run after the resident message is committed; the runtime stores its own reply."""
     settings = app.state.settings
     run_id, delivered, usage = None, False, None
-    try:
-        async with _resident_transaction(app, actor_id) as db:
-            # A turn that died with the process left its message unanswered for good: the resident is
-            # told so now. Four minutes is past any turn still running (the wait below is three).
-            lost = await db.execute(text(f"""
-                select m.id from messages m
-                where m.channel_id=:channel and m.tenant_id={TENANT} and m.sender_kind='user' and m.sender_user_id=:actor
-                  and m.id<>:current and m.created_at between now()-interval '1 day' and now()-interval '4 minutes'
-                  and coalesce(m.body->>'type','')<>'ticket_draft' and not m.body ? 'supervisorResponse'
-                  and not exists(select 1 from messages r where r.channel_id=m.channel_id and r.reply_to_id=m.id)
-                  and m.seq>coalesce((select max(a.seq) from messages a where a.channel_id=m.channel_id and a.sender_kind='agent'),0)
-                order by m.seq
-            """), {"channel": channel_id, "actor": actor_id, "current": UUID(str(message["id"]))})
-            for row in lost.all():
-                await write_reply(db, channel_id, UNAVAILABLE_REPLY, row[0])
-            delegation = await start_run(db, actor_id, channel_id, str(message["id"]), POLICY_VERSION)
-        run_id = delegation["context"]["runId"]
-        async with httpx.AsyncClient(timeout=180) as client:
-            response = await client.post(
-                f"{settings.reception_url}/v1/turns",
-                # The service token only proves this call comes from the backend.
-                headers={"Authorization": f"Bearer {settings.reception_service_token}"},
-                json={"user_id": actor_id, "channel_id": channel_id, "message": message, "delegation": delegation},
-            )
-        delivered = response.status_code == 200
-        if delivered:
-            usage = response.json().get("usage")
-        if not delivered:
-            log.warning("Reception runtime returned HTTP %s", response.status_code)
-    except httpx.HTTPError as exc:
-        log.warning("Reception runtime is unreachable: %s", type(exc).__name__)
-    except Exception:  # noqa: BLE001 - the resident still gets the fallback reply below
-        log.exception("Could not open the Reception run")
-    try:
-        async with _resident_transaction(app, actor_id) as db:
-            if run_id:
-                await finish_run(db, run_id, delivered, usage if isinstance(usage, dict) else None)
+    async with AsyncExitStack() as held:
+        try:
+            # Before anything else: the turns of one conversation run one after the other.
+            await held.enter_async_context(_one_turn(app, channel_id))
+            async with _resident_transaction(app, actor_id) as db:
+                # A turn that died with the process left its message unanswered for good: the resident is
+                # told so now. Four minutes is past any turn still running (the wait below is three).
+                lost = await db.execute(text(f"""
+                    select m.id from messages m
+                    where m.channel_id=:channel and m.tenant_id={TENANT} and m.sender_kind='user' and m.sender_user_id=:actor
+                      and m.id<>:current and m.created_at between now()-interval '1 day' and now()-interval '4 minutes'
+                      and coalesce(m.body->>'type','')<>'ticket_draft' and not m.body ? 'supervisorResponse'
+                      and not exists(select 1 from messages r where r.channel_id=m.channel_id and r.reply_to_id=m.id)
+                      and m.seq>coalesce((select max(a.seq) from messages a where a.channel_id=m.channel_id and a.sender_kind='agent'),0)
+                    order by m.seq
+                """), {"channel": channel_id, "actor": actor_id, "current": UUID(str(message["id"]))})
+                for row in lost.all():
+                    await write_reply(db, channel_id, UNAVAILABLE_REPLY, row[0])
+                delegation = await start_run(db, actor_id, channel_id, str(message["id"]), POLICY_VERSION)
+            run_id = delegation["context"]["runId"]
+            async with httpx.AsyncClient(timeout=180) as client:
+                response = await client.post(
+                    f"{settings.reception_url}/v1/turns",
+                    # The service token only proves this call comes from the backend.
+                    headers={"Authorization": f"Bearer {settings.reception_service_token}"},
+                    json={"user_id": actor_id, "channel_id": channel_id, "message": message, "delegation": delegation},
+                )
+            delivered = response.status_code == 200
+            if delivered:
+                usage = response.json().get("usage")
             if not delivered:
-                # The resident must not be left without an answer when the runtime is down.
-                await write_reply(db, channel_id, UNAVAILABLE_REPLY, UUID(str(message["id"])))
-    except Exception:  # noqa: BLE001 - a failed fallback must not crash the background task
-        log.exception("Could not close the Reception run")
+                log.warning("Reception runtime returned HTTP %s", response.status_code)
+        except httpx.HTTPError as exc:
+            log.warning("Reception runtime is unreachable: %s", type(exc).__name__)
+        except Exception:  # noqa: BLE001 - the resident still gets the fallback reply below
+            log.exception("Could not open the Reception run")
+        # Still inside the lock: the next turn of this conversation starts after this one's reply is stored.
+        try:
+            async with _resident_transaction(app, actor_id) as db:
+                if run_id:
+                    await finish_run(db, run_id, delivered, usage if isinstance(usage, dict) else None)
+                if not delivered:
+                    # The resident must not be left without an answer when the runtime is down.
+                    await write_reply(db, channel_id, UNAVAILABLE_REPLY, UUID(str(message["id"])))
+        except Exception:  # noqa: BLE001 - a failed fallback must not crash the background task
+            log.exception("Could not close the Reception run")

@@ -1,4 +1,4 @@
-import type { ResidentRequest, RequestStatus } from "./types";
+import type { PlatformApproval, PlatformQuote, ResidentRequest, RequestStatus } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -64,6 +64,8 @@ export type Chat = {
   created_at: string;
   ticket_id?: string;
   ticket_code?: string;
+  /** The platform's agent has asked the resident to confirm the result of this chat's request. */
+  confirm_close?: boolean;
   unread_count: number;
 };
 export type Message = {
@@ -71,9 +73,65 @@ export type Message = {
   seq: number;
   sender_kind: string;
   /** `fileIds`: photos the resident sent with this message, stored with the chat before it was posted. */
-  body: { text?: string; fileIds?: string[] };
+  body: {
+    text?: string;
+    fileIds?: string[];
+    /** Written by the platform bridge: an approval or a repair quote the resident answers on a card. */
+    platform?: {
+      kind: string;
+      approval_id: string;
+      summary?: { text?: string; arguments?: { items?: { label: string; amount: number }[]; total?: number } };
+      /** Of a quote: the bill. */
+      lines?: PlatformQuote["lines"];
+      labor_cost?: number;
+      warranty_months?: number;
+      total?: number;
+      expires_at?: string | null;
+      status: PlatformApproval["status"];
+    };
+  };
   created_at: string;
 };
+/**
+ * The approval card of a message. `answered` holds what the resident chose here, shown until the
+ * platform has recorded it; a pending approval past its time can no longer be answered.
+ */
+export function approvalOf(
+  body: Message["body"],
+  answered: Map<string, boolean>,
+  now = Date.now(),
+): PlatformApproval | undefined {
+  const p = body.platform;
+  if (p?.kind !== "approval") return undefined;
+  const mine = answered.get(p.approval_id);
+  const items = p.summary?.arguments?.items;
+  return {
+    id: p.approval_id,
+    text: withoutRequestCode(p.summary?.text || body.text || ""),
+    ...(Array.isArray(items) && items.length ? { items, total: p.summary?.arguments?.total } : {}),
+    status:
+      p.status !== "pending"
+        ? p.status
+        : mine !== undefined
+          ? mine ? "approved" : "rejected"
+          : p.expires_at && Date.parse(p.expires_at) <= now
+            ? "expired"
+            : "pending",
+  };
+}
+/** The quote card of a message; a pending quote past its time can no longer be answered. */
+export function quoteOf(body: Message["body"], now = Date.now()): PlatformQuote | undefined {
+  const p = body.platform;
+  if (p?.kind !== "quote") return undefined;
+  return {
+    id: p.approval_id,
+    lines: p.lines ?? [],
+    laborCost: p.labor_cost ?? 0,
+    warrantyMonths: p.warranty_months ?? 0,
+    total: p.total ?? 0,
+    status: p.status === "pending" && p.expires_at && Date.parse(p.expires_at) <= now ? "expired" : p.status,
+  };
+}
 export type Ticket = {
   id: string;
   code: string;
@@ -127,7 +185,7 @@ export function requestView(
     "work_order.offered": "Đã phân công nhân viên",
     "work_assignment.responded": "Nhân viên phản hồi phân công",
     "work_order.status_changed": "Cập nhật tiến độ thi công",
-    "ticket.resolution_published": "Kết quả đã đạt nghiệm thu",
+    "ticket.resolution_published": "Đã có kết quả, chờ bạn xác nhận",
     "work_approval.decided": "Đã ghi nhận phản hồi của bạn",
     "ticket.status_changed": "Cập nhật trạng thái",
   };

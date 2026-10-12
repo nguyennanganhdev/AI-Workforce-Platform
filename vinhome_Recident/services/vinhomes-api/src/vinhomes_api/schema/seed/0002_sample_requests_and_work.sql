@@ -25,6 +25,7 @@ SELECT md5('role:'||user_id)::uuid,tenant_id,id,'99999999-9999-5999-a999-9999999
       WHEN user_id IN ('local-v3-technical','local-v3-security') THEN 'staff' ELSE 'customer' END,
  'local-v3-admin','2026-01-01T00:00:00Z'
 FROM tenant_memberships WHERE tenant_id='11111111-1111-5111-a111-111111111111'
+ AND (user_id LIKE 'local-v3-%' OR user_id LIKE 'faker-resident-%')  -- the sample people above only: seed runs again on every start, after others have joined
 ON CONFLICT(id) DO NOTHING;
 
 INSERT INTO service_categories(id,tenant_id,code,name)

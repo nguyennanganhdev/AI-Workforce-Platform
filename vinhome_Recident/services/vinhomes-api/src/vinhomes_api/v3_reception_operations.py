@@ -683,7 +683,8 @@ async def _escalate_emergency(scope, call: OperationCall):
     )
     if ticket is None:
         raise HTTPException(404, "Resident ticket not found")
-    if ticket["status"] in {"resolved", "closed", "cancelled"}:
+    # A resolved ticket still waits for the resident's answer: danger reported there reaches management too.
+    if ticket["status"] in {"closed", "cancelled"}:
         raise HTTPException(409, "A final ticket cannot be emergency-escalated")
     source = (
         await db.execute(
@@ -984,6 +985,11 @@ async def _handoff_draft(scope, call: OperationCall):
         raise HTTPException(404, "Created resident ticket not found")
     if str(snapshot["management_unit_id"]) != str(destination["managementUnitId"]):
         raise HTTPException(409, "Management coverage changed before handoff")
+    # With the platform connected its coordinator takes the request from here. An emergency is handed over too,
+    # with the level Reception assessed; what happens to it here (below) does not change.
+    from .platform import link_ticket
+
+    await link_ticket(db, ticket_id)
     if not destination.get("available"):
         draft_body["ticket_id"] = str(ticket_id)
         draft_body["ticket_code"] = snapshot["code"]

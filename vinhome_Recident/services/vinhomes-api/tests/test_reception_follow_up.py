@@ -117,3 +117,52 @@ def test_a_message_whose_turn_was_lost_is_answered_when_the_next_one_arrives(dat
         replied = sql(database, "select reply_to_id,body->>'text' as text from messages where channel_id=$1 and sender_kind='agent'", channel)
         assert {(str(r["reply_to_id"]), r["text"]) for r in replied} == {(lost, UNAVAILABLE_REPLY), (now, UNAVAILABLE_REPLY)}
         assert recent not in {str(r["reply_to_id"]) for r in replied}
+
+
+def test_two_turns_of_one_conversation_run_one_after_the_other_whichever_api_copy_sends_them(database, monkeypatch):
+    monkeypatch.setenv("RECEPTION_DELEGATION_KEY", "6a" * 32)
+    import asyncio
+    import json
+    import threading
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    import httpx
+    from vinhomes_api.v3_reception_runtime import dispatch_turn
+
+    seen, running = [], threading.Event()
+
+    async def reception(request):
+        """Stands for every copy of the runtime: it only records when a turn is inside it."""
+        text = json.loads(request.content)["message"]["text"]
+        seen.append(("start", text))
+        running.set()
+        await asyncio.sleep(0.6)
+        seen.append(("end", text))
+        return httpx.Response(200, json={"status": "completed", "usage": {}})
+
+    monkeypatch.setattr("vinhomes_api.v3_reception_runtime.httpx", SimpleNamespace(
+        HTTPError=httpx.HTTPError,
+        AsyncClient=lambda **options: httpx.AsyncClient(transport=httpx.MockTransport(reception), **options)))
+    # Two copies of the API on one database, each with its own event loop and connections.
+    with app(database) as one, app(database) as two:
+        chat = one.post("/resident/chats", json={"title": "Hai bản"}).json()["id"]
+        other = one.post("/resident/chats", json={"title": "Chat khác"}).json()["id"]
+        sent = {text: say(one, channel, text) for channel, text in ((chat, "Một"), (chat, "Hai"), (other, "Khác"))}
+        for copy in (one, two):
+            copy.app.state.settings = replace(copy.app.state.settings, reception_url="http://reception.invalid",
+                                              reception_service_token="t" * 32)
+
+        def turn(copy, channel, text):
+            return copy.portal.start_task_soon(dispatch_turn, copy.app, "local-v3-resident", channel,
+                                               {"id": sent[text], "text": text, "fileIds": []})
+        first = turn(one, chat, "Một")
+        assert running.wait(20)
+        waiting = [turn(two, chat, "Hai"), turn(two, other, "Khác")]
+        for done in (first, *waiting):
+            done.result(60)
+    assert [step for step in seen if step[1] != "Khác"] == [("start", "Một"), ("end", "Một"), ("start", "Hai"), ("end", "Hai")]
+    # Another conversation does not wait for this one.
+    assert seen.index(("start", "Khác")) < seen.index(("end", "Một"))
+    runs = sql(database, "select status from delegations where channel_id=$1", chat)
+    assert [r["status"] for r in runs] == ["finished", "finished"]

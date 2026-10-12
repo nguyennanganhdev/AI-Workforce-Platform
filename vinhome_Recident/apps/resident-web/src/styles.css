@@ -1934,6 +1934,10 @@ h3 {
 .question-quick button[aria-pressed="true"] { border-color: #4169f5; background: #eef2ff; color: #1d3fc4; font-weight: 600; }
 .question-item input { box-sizing: border-box; width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: #fafbfc; font: inherit; font-size: 16px; }
 .question-item input:focus-visible, .question-quick button:focus-visible { outline: 2px solid #4169f5; outline-offset: 2px; }
+.approval-costs { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 14px; }
+.approval-costs li { display: flex; justify-content: space-between; gap: 12px; }
+.approval-costs li > :last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.question-card .button-row { margin-top: 0; }
 
 /* Subtle glass on the resident bottom navigation only; opaque fallback above. */
 @supports ((backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px))) {

@@ -7,9 +7,8 @@ import asyncio
 import hashlib
 import hmac
 import os
+import re
 import secrets
-import time
-from collections import OrderedDict
 from uuid import UUID, uuid4
 from typing import Literal
 
@@ -27,7 +26,6 @@ SURFACE = "x-vinhomes-surface"
 COOKIES = {"": COOKIE, "operations": COOKIE, "field": "vinhomes_staff_session", "resident": "vinhomes_resident_session"}
 PROVIDER = "vinhomes-password-v1"
 TTL = 8 * 60 * 60
-_attempts: OrderedDict[str, list[float]] = OrderedDict()
 _hash_slots = asyncio.Semaphore(2)
 
 
@@ -48,6 +46,16 @@ def check_password(password: str, encoded: str) -> bool:
         return False
 
 
+def sign_in_name(typed: str) -> str:
+    """What a typed sign-in name is compared with: an email as it is, a Vietnamese mobile number as stored
+    (+84...), however it was typed (leading 0, spaces, dots)."""
+    name = typed.strip().lower()
+    digits = re.sub(r"[\s.\-]", "", name)
+    if re.fullmatch(r"0\d{9}", digits):
+        return "+84" + digits[1:]
+    return digits if re.fullmatch(r"\+84\d{9}", digits) else name
+
+
 def session_hash(token: str) -> str:
     return "vinhomes-v1:" + hashlib.sha256(token.encode()).hexdigest()
 
@@ -60,17 +68,33 @@ def enabled(request: Request):
     return request.app.state.engine
 
 
-def rate_limit(request: Request, identifier: str):
-    # Bounded, single-process local deployment limiter. Use a shared limiter before scaling workers.
-    now = time.monotonic()
-    for key, limit in [("ip:" + (request.client.host if request.client else "unknown"), 60), ("account:" + identifier, 10)]:
-        recent = [t for t in _attempts.get(key, []) if now-t < 300]
-        if len(recent) >= limit:
-            raise HTTPException(429, "Thử đăng nhập quá nhiều lần. Vui lòng chờ 5 phút.", headers={"Retry-After":"300"})
-        _attempts[key] = recent + [now]
-        _attempts.move_to_end(key)
-    while len(_attempts) > 10000:
-        _attempts.popitem(last=False)
+def caller_address(request: Request) -> str:
+    """The address a sign-in try is counted under. Each of our proxies adds the address it was called from at the
+    end of X-Forwarded-For, so the caller is that many places from the end; whatever the caller wrote there itself
+    stands further left and is never read. Fewer entries than proxies (a call that came past them): the socket."""
+    hops = request.app.state.settings.trusted_proxy_hops
+    chain = [part.strip() for part in ",".join(request.headers.getlist("x-forwarded-for")).split(",") if part.strip()]
+    if 0 < hops <= len(chain):
+        return chain[-hops]
+    return request.client.host if request.client else "unknown"
+
+
+async def rate_limit(request: Request, identifier: str):
+    # Counted in PostgreSQL: one budget for every copy of the API, and a restart does not hand out a new one.
+    limited = False
+    async with request.app.state.engine.begin() as db:
+        await db.execute(text("delete from sign_in_attempts where at<now()-interval '5 minutes'"))
+        for name, limit in [("ip:" + caller_address(request), 60), ("account:" + identifier, 10)]:
+            # Stored as a digest: the table never holds an address or a sign-in name.
+            key = hashlib.sha256(name.encode()).hexdigest()
+            await db.execute(text("select pg_advisory_xact_lock(hashtextextended(:key,0))"), {"key": "sign-in:" + key})
+            recent = (await db.execute(text("select count(*) from sign_in_attempts where key=:key and at>=now()-interval '5 minutes'"), {"key": key})).scalar_one()
+            if recent >= limit:
+                limited = True
+                break
+            await db.execute(text("insert into sign_in_attempts(key) values(:key)"), {"key": key})
+    if limited:
+        raise HTTPException(429, "Thử đăng nhập quá nhiều lần. Vui lòng chờ 5 phút.", headers={"Retry-After":"300"})
 
 
 def surface(request: Request) -> str:
@@ -133,8 +157,8 @@ async def config(request: Request):
 @router.post("/login")
 async def login(body: Credentials, request: Request, response: Response):
     engine = enabled(request)
-    identifier = body.identifier.strip().lower()
-    rate_limit(request,identifier)
+    identifier = sign_in_name(body.identifier)
+    await rate_limit(request,identifier)
     async with engine.begin() as db:
         await context(db,request)
         user = (await db.execute(text("""
@@ -376,7 +400,7 @@ async def register(body: Registration,request: Request):
     email = body.email.strip().lower()
     if "@" not in email or any(c.isspace() for c in email):
         raise HTTPException(422,"Email không hợp lệ.")
-    rate_limit(request,email)
+    await rate_limit(request,email)
     async with _hash_slots:
         hashed = await asyncio.to_thread(password_hash,body.password)
     async with engine.begin() as db:
@@ -395,7 +419,7 @@ async def register(body: Registration,request: Request):
 @router.post("/change-password")
 async def change_password(body: PasswordChange,request: Request,response: Response):
     user = await authenticated_user(request)
-    rate_limit(request,user["id"])
+    await rate_limit(request,user["id"])
     async with enabled(request).begin() as db:
         row = (await db.execute(text("select id,password from accounts where user_id=:id and provider_id=:provider for update"),{"id":user["id"],"provider":PROVIDER})).mappings().one()
         async with _hash_slots:

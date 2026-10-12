@@ -65,6 +65,13 @@ export const AFTER: Record<string, [string, string]> = {
   cancelled: ["Yêu cầu đã hủy", "Yêu cầu này đã được hủy."],
 };
 
+/** A finished job on a request without a plan: the technician reports the result, the resident confirms it in their own app. */
+export const ACCEPTANCE: [string, string] = ["Nghiệm thu", "Chụp ảnh nghiệm thu rồi gửi kết quả. Cư dân sẽ xem và xác nhận trên ứng dụng của họ."];
+
+/** What the acceptance report sends: the order as it was read, and the technician's note. */
+export const acceptanceBody = (order: Pick<FieldOrder, "version">, note: string) =>
+  ({ version: order.version, ...(note ? { note } : {}) });
+
 export const REJECTIONS: [string, string][] = [["BUSY", "Đang bận việc khác"], ["WRONG_SKILL", "Không đúng chuyên môn"], ["OFF_SHIFT", "Đã hết ca"], ["OTHER", "Lý do khác"]];
 
 /** "Sapphire 1 - S1.01 · Căn 1201": the building, and the apartment when it is known. */

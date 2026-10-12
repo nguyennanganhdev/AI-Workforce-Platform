@@ -25,6 +25,8 @@ class V3Settings:
     reception_url: str | None = None
     # Messages one resident may send to the assistant per minute; each one costs model calls.
     resident_messages_per_minute: int = 30
+    # How many of our own proxies stand in front (gateway: 1, Caddy and gateway: 2). 0: the socket address is the caller.
+    trusted_proxy_hops: int = 0
 
     @classmethod
     def from_env(cls) -> "V3Settings":
@@ -73,6 +75,9 @@ class V3Settings:
         if reception_url and not re.fullmatch(r'(?:[0-9a-fA-F]{2}){32,}', os.getenv('RECEPTION_DELEGATION_KEY', '')):
             # Fail at startup instead of answering every resident with the fallback reply.
             raise ValueError('Reception URL requires RECEPTION_DELEGATION_KEY (at least 32 random bytes as hex)')
+        trusted_proxy_hops = int(os.getenv('VINHOMES_API_TRUSTED_PROXY_HOPS', '0'))
+        if not 0 <= trusted_proxy_hops <= 2:
+            raise ValueError('VINHOMES_API_TRUSTED_PROXY_HOPS must be 0, 1 or 2')
         return cls(
             host=host,
             port=port,
@@ -89,4 +94,5 @@ class V3Settings:
             reception_service_token=reception_token,
             reception_url=reception_url,
             resident_messages_per_minute=int(os.getenv('VINHOMES_API_RESIDENT_MESSAGES_PER_MINUTE', '30')),
+            trusted_proxy_hops=trusted_proxy_hops,
         )

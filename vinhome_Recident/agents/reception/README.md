@@ -39,8 +39,8 @@ python -m ruff format --check src/tools tests/tools
 operation. Backend phải xác nhận `linked_file_ids` cho thao tác bổ sung ảnh. URL thật,
 service credential và API của Team Chiến không được hard-code trong graph.
 
-`src/persistence/sqlite.py` cung cấp checkpointer SQLite bền vững cho local/test.
-Production nhiều replica cần thay bằng checkpointer PostgreSQL tương thích. Khi một
+`src/persistence/sqlite.py` cung cấp checkpointer SQLite bền vững cho local/test; chỉ chế độ `graph` mở tệp này
+(xem "Chạy nhiều bản"). Chế độ `graph` muốn chạy nhiều bản cần thay bằng checkpointer PostgreSQL tương thích. Khi một
 thread chưa có checkpoint, `resolve_session` lấy snapshot ticket/file đã xác minh từ
 backend theo contract trong `src/persistence/recovery.py`.
 
@@ -100,7 +100,7 @@ Biến môi trường ở `.env.example` (`RECEPTION_SERVICE_TOKEN`, `RECEPTION_
 - `runtime/knowledge.py` gọi `search_knowledge` v1 khi có `RECEPTION_KNOWLEDGE_URL` và chỉ trả lời từ passage có trích dẫn.
   Passage phải nói về đúng đối tượng được hỏi (hỏi Masteri mà chỉ có nguồn Sapphire thì coi là không đủ nguồn);
   câu trả lời kết thúc bằng dòng `(Nguồn: <tiêu đề tài liệu>)` do code ghép, không phải model viết.
-  Kho tri thức nạp bằng `server/src/knowledge/publish.ts`, dịch vụ tìm kiếm chạy bằng `server/src/knowledge/serve.ts`.
+  Kho tri thức nằm trong database của backend: nạp bằng `python -m vinhomes_api.knowledge load`, tìm ở `POST /internal/knowledge/search` của backend (`RECEPTION_KNOWLEDGE_URL` là địa chỉ backend).
 - `runtime/inquiry.py`: câu hỏi không có nguồn. Model chỉ phân loại (về tòa nhà / ngoài phạm vi / chưa rõ); câu về
   tòa nhà được chuyển thành session trong group chat của BQL qua `POST /internal/reception/chats/{id}/inquiries`,
   và backend đưa câu trả lời của BQL (sau này là Supervisor) về lại cuộc trò chuyện.
@@ -124,7 +124,38 @@ Bản đóng gói (`deploy/vinhomes`) chạy `loop`; mã nguồn không đặt b
 | Mã nguồn | `src/graph` (Team Hoàng) | `src/agent` |
 | Ai dẫn dắt hội thoại | Code: phân loại rồi đi nhánh cố định | Model: tự hỏi lại, tự chọn công cụ, tự viết câu trả lời |
 | Trạng thái | Checkpoint LangGraph (SQLite) | Không giữ trạng thái: mỗi lượt đọc hội thoại và yêu cầu đang mở từ backend |
+| Chạy nhiều bản cùng lúc | Không: chỉ một bản | Được |
 | Số lượt gọi model mỗi lượt chat | 3–4 | 2 (thường) |
+
+### Chạy nhiều bản
+
+Chế độ `loop` chạy được nhiều bản song song sau cùng một tên dịch vụ (trong gói Docker:
+`docker compose ... up -d --scale reception=2`). Không bản nào cần ổ đĩa riêng hay dùng chung.
+
+Vì sao được:
+
+- **Không có gì của một lượt chat nằm lại trong một bản.** Mỗi lượt, bản nhận lượt đọc hội thoại, yêu cầu đang mở
+  và hồ sơ cư dân từ backend; câu trả lời và yêu cầu được ghi qua backend. Chế độ `loop` không mở tệp SQLite nào
+  (`RECEPTION_STATE_PATH` không được dùng), nên container chạy được cả khi hệ thống tệp chỉ cho đọc.
+- **Token ủy quyền của lượt** do backend cấp và backend kiểm ở mỗi lời gọi; bản nhận lượt chỉ giữ nó trong bộ nhớ
+  cho đến hết lượt. Bản khác không cần biết token đó.
+- **Mỗi cuộc trò chuyện một lượt tại một thời điểm** do backend giữ, không do Reception: trước khi gửi một lượt,
+  backend lấy một khóa của PostgreSQL theo cuộc trò chuyện (`dispatch_turn` trong
+  `services/vinhomes-api/src/vinhomes_api/v3_reception_runtime.py`) và giữ đến khi câu trả lời đã lưu. Tin thứ hai
+  của cùng cuộc trò chuyện chờ ở đó, dù do bản API nào nhận và bản Reception nào sẽ chạy. Các cuộc trò chuyện
+  khác nhau không chờ nhau. Khóa trong bộ nhớ của từng bản Reception vẫn còn, nhưng chỉ có tác dụng trong bản đó.
+- **Một lượt bị gửi lại sang bản khác không tạo yêu cầu thứ hai.** Khóa chống lặp của từng thao tác được tính từ
+  mã cuộc trò chuyện và mã tin nhắn, nên bản nào chạy cũng ra cùng khóa và backend trả lại kết quả đã lưu; mỗi tin
+  nhắn của cư dân chỉ có một câu trả lời.
+
+Chế độ `graph` **chỉ chạy một bản**: trạng thái hội thoại nằm trong hai tệp SQLite (`RECEPTION_STATE_PATH` và tệp
+`.records` cạnh nó) và trong bộ nhớ của tiến trình. Nhiều container cùng ghi một tệp SQLite sẽ hỏng dữ liệu, còn
+mỗi container một tệp thì lượt sau rơi vào bản không có trạng thái của lượt trước. Không chạy `graph` với
+`--scale reception=2`.
+
+Đã kiểm: `tests/runtime/test_replicas.py` (một lượt gửi tới hai bản chỉ tạo một yêu cầu và một câu trả lời; `loop`
+không tạo tệp trạng thái, `graph` có) và ở backend `tests/test_reception_follow_up.py` (hai lượt của một cuộc trò
+chuyện gửi từ hai bản API chạy lần lượt, cuộc trò chuyện khác không phải chờ).
 
 `src/agent` gồm ba file:
 
@@ -163,7 +194,7 @@ không, và viết lại cặp hỏi - đáp cho tổng quát (bản viết lạ
 Đây chỉ là ý kiến: quyết định duyệt, chờ duyệt hay loại là của backend (`v3_learning.decide`).
 
 Chưa có trong runtime: nhận sự kiện từ Supervisor (chưa có Supervisor chạy), trả lời tương tác của Supervisor,
-self-help (backend trả 501 nên graph mời hỗ trợ trực tiếp), checkpointer PostgreSQL cho nhiều replica.
+self-help (backend trả 501 nên graph mời hỗ trợ trực tiếp), checkpointer PostgreSQL để chế độ `graph` chạy nhiều bản.
 
 Đánh giá hội thoại với model thật: `tests/evals/run_live.py` gửi 52 kịch bản tiếng Việt
 (`tests/evals/live_conversations.vi.json`) qua API cư dân rồi chấm bằng dữ kiện từ backend (có tạo yêu cầu
@@ -190,7 +221,8 @@ nhân cư dân không nói: test kiểm nó không vào yêu cầu.
 - `tests/persistence/`: checkpointer SQLite và khôi phục phiên.
 - `tests/evals/`: đánh giá chất lượng với model thật (chạy riêng, tốn token).
 
-Test mặc định **chưa chứng minh** restart/multi-replica; chạy đủ cần backend và model thật.
+Test mặc định kiểm việc chạy nhiều bản ở chế độ `loop` bằng model giả (xem "Chạy nhiều bản"); **chưa chứng minh**
+restart và nhiều bản của chế độ `graph`. Chạy đủ cần backend và model thật.
 
 ## Reception tools — PH16
 

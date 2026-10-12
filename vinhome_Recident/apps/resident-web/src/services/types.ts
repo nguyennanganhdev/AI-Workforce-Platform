@@ -17,12 +17,31 @@ export type ResidentRequest = {
   photos: Photo[];
   events: RequestEvent[];
 };
+/** What the platform's agent asks the resident to agree to before it acts. */
+export type PlatformApproval = {
+  id: string;
+  text: string;
+  items?: { label: string; amount: number }[];
+  total?: number;
+  status: "pending" | "approved" | "rejected" | "expired";
+};
+/** A repair quote the resident answers in the chat, as a bill. */
+export type PlatformQuote = {
+  id: string;
+  lines: { name: string; quantity: string | number; unit: string; amount: number }[];
+  laborCost: number;
+  warrantyMonths: number;
+  total: number;
+  status: PlatformApproval["status"];
+};
 export type ChatMessage = {
   id: string;
   role: "resident" | "assistant";
   text: string;
   photos?: Photo[];
   requestId?: string;
+  approval?: PlatformApproval;
+  quote?: PlatformQuote;
 };
 export type Draft = {
   step: "description" | "location" | "review";
@@ -48,6 +67,8 @@ export type ResidentConversation = {
   requestId?: string;
   /** Status of the linked request, as the resident reads it. */
   requestStatus?: string;
+  /** The platform's agent has asked the resident to confirm the result here. */
+  confirmClose?: boolean;
   /** Last message of the conversation, for lists that do not load its messages. */
   preview?: string;
   unread: number;

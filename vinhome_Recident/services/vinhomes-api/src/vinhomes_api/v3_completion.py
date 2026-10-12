@@ -23,11 +23,11 @@ async def publish_completion(scope, ticket_id):
     await db.execute(text("""
         insert into work_approvals(tenant_id,work_order_id,kind,requested_to_user_id,request_detail,status,request_hash)
         select tenant_id,:order_id,'customer_completion',requester_user_id,
-          jsonb_build_object('note','Kết quả đã được nghiệm thu. Vui lòng kiểm tra và xác nhận.'),
+          jsonb_build_object('note','Đã có kết quả xử lý. Vui lòng kiểm tra và xác nhận.'),
           'pending',:revision from tickets where id=:id
     """), {"id": ticket_id, "order_id": orders[0]["id"], "revision": f"completion:{ticket_id}:{ticket['last_event_seq']}"})
     await db.execute(text("update tickets set status='resolved',resolved_at=now() where id=:id"), {"id": ticket_id})
-    event_id = await record_event(scope, ticket, "ticket.resolution_published", json.dumps({"message": "Kết quả đã được nghiệm thu"}), to_status="resolved")
+    event_id = await record_event(scope, ticket, "ticket.resolution_published", json.dumps({"message": "Đã có kết quả xử lý, chờ cư dân xác nhận"}), to_status="resolved")
     await db.execute(text("""
         insert into notification_deliveries(tenant_id,user_id,ticket_event_id,channel,dedupe_key,payload,status,available_at)
         select tenant_id,requester_user_id,:event_id,'in_app',:key,

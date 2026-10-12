@@ -20,6 +20,7 @@ import "./assistant-home.css";
 import { resident } from "../../mocks/seed";
 import { formOffered } from "../../services/chat-turn";
 import { QuestionCard } from "./QuestionCard";
+import { ApprovalCard, CompletionCard, QuoteCard } from "./PlatformCards";
 import { MAX_PHOTOS, readPhotos } from "../../services/resident-service";
 import type { Draft, Photo, ResidentState } from "../../services/types";
 import { RequestCard } from "../requests/Requests";
@@ -37,6 +38,12 @@ type AssistantProps = {
   onForm?: () => void;
   /** What management is asking in this conversation right now, if anything. */
   question?: string;
+  /** Answers an approval card of the platform's agent. */
+  onApproval?: (id: string, approve: boolean) => unknown;
+  /** Answers a repair quote card. */
+  onQuote?: (id: string, accepted: boolean, reason?: string) => unknown;
+  /** Answers the completion of this conversation's request: the same decision as on the request page. */
+  onResolve?: (requestId: string, accepted: boolean, reason?: string) => unknown;
   onOpen: (id: string) => void;
   onRequests: () => void;
   onSubmit: () => void;
@@ -56,6 +63,9 @@ export function Assistant({
   onSend,
   onForm,
   question,
+  onApproval,
+  onQuote,
+  onResolve,
   onOpen,
   onRequests,
   onSubmit,
@@ -80,6 +90,11 @@ export function Assistant({
     state.requests.find((r) => r.status !== "completed");
   const started = conversation;
   const offerForm = !!onForm && formOffered(state.messages);
+  const active = state.conversations?.find((c) => c.id === state.activeConversationId);
+  const requestId = active?.requestId;
+  // A handed-over request whose result waits for this resident's answer; other chats show nothing new.
+  const toConfirm =
+    !!requestId && !!active?.confirmClose && state.requests.some((r) => r.id === requestId && r.status === "confirmation");
   return (
     <div className={`assistant-content ${started ? "started" : "assistant-home"}`}>
       {!started && (
@@ -153,6 +168,11 @@ export function Assistant({
                   </span>
                 )}
                 <div className="message-body">
+                  {message.approval && onApproval ? (
+                    <ApprovalCard approval={message.approval} busy={busy} onDecide={onApproval} />
+                  ) : message.quote && onQuote ? (
+                    <QuoteCard quote={message.quote} busy={busy} onDecide={onQuote} />
+                  ) : (
                   <div className="message-bubble">
                     {message.text && <p>{message.text}</p>}
                     {!!message.photos?.length && (
@@ -170,6 +190,7 @@ export function Assistant({
                       </div>
                     )}
                   </div>
+                  )}
                   {message.requestId &&
                     (() => {
                       const request = state.requests.find(
@@ -203,6 +224,9 @@ export function Assistant({
       )}
       {started && question && !state.awaitingReply && (
         <QuestionCard key={question} question={question} busy={busy} onAnswer={(text) => onSend(text)} />
+      )}
+      {started && toConfirm && onResolve && (
+        <CompletionCard key={requestId} busy={busy} onResolve={(accepted, reason) => onResolve(requestId, accepted, reason)} />
       )}
       {started && connected && state.draft && state.draft.step !== "review" && (
         <p className="edit-draft-note" role="status">

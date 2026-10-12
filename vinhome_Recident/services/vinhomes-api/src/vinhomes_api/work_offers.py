@@ -5,6 +5,7 @@ running now. An offer waits OFFER_HOURS for the technician before management has
 """
 
 import json
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
@@ -35,9 +36,11 @@ async def agent_event(db, ticket_id: UUID, agent_id: str, event_type: str, paylo
     return event_id
 
 
-async def offer_work(db, ticket_id: UUID, work_order_id: UUID, agent_id: str) -> bool:
+async def offer_work(db, ticket_id: UUID, work_order_id: UUID, agent_id: str, staff_id: UUID | None = None,
+                     eta_at: datetime | None = None) -> bool:
     """Offer the work to the least busy available technician of the ticket's unit with this specialty.
 
+    `staff_id`: only that person, when they can take it. `eta_at`: the appointment they are offered it for.
     False when nobody can take it now: the work stays queued until a slot is released or management dispatches it.
     """
     staff = (await db.execute(text(f"""
@@ -56,14 +59,20 @@ async def offer_work(db, ticket_id: UUID, work_order_id: UUID, agent_id: str) ->
             and ss.category_id=w.category_id and ss.active)
           and exists (select 1 from staff_shifts sh where sh.staff_id=sp.id and sh.tenant_id=sp.tenant_id
             and sh.status='available' and sh.starts_at<=now() and sh.ends_at>now())
+          and (cast(:staff as uuid) is null or sp.id=cast(:staff as uuid))
+          -- Work the platform dispatched is not offered again to someone who refused it or let the offer run out.
+          and not exists (select 1 from work_assignments past
+            join platform_operations po on po.work_order_id=past.work_order_id and po.tenant_id=past.tenant_id
+            where past.work_order_id=w.id and past.tenant_id=w.tenant_id and past.staff_id=sp.id
+              and past.status in ('rejected','released'))
         order by busy.load,sp.id limit 1 for update of sp skip locked
-    """), {"work": work_order_id, "ticket": ticket_id})).scalar_one_or_none()
+    """), {"work": work_order_id, "ticket": ticket_id, "staff": staff_id})).scalar_one_or_none()
     if staff is None:
         return False
     assignment = (await db.execute(text(f"""
-        insert into work_assignments(tenant_id,work_order_id,staff_id,assigned_by_client_id,status,offered_at,offer_expires_at)
-        values({TENANT},:work,:staff,:agent,'offered',now(),now()+make_interval(hours => :hours)) returning id
-    """), {"work": work_order_id, "staff": staff, "agent": agent_id, "hours": OFFER_HOURS})).scalar_one()
+        insert into work_assignments(tenant_id,work_order_id,staff_id,assigned_by_client_id,status,offered_at,offer_expires_at,eta_at)
+        values({TENANT},:work,:staff,:agent,'offered',now(),now()+make_interval(hours => :hours),:eta) returning id
+    """), {"work": work_order_id, "staff": staff, "agent": agent_id, "hours": OFFER_HOURS, "eta": eta_at})).scalar_one()
     await db.execute(text("update work_orders set status='offered',version=version+1,updated_at=now() where id=:id"),
                      {"id": work_order_id})
     await agent_event(db, ticket_id, agent_id, "work_order.offered", {"assignmentId": str(assignment), "offeredBy": "supervisor"})
@@ -72,6 +81,9 @@ async def offer_work(db, ticket_id: UUID, work_order_id: UUID, agent_id: str) ->
 
 async def offer_queued_work(db, released_work_order_id: UUID) -> None:
     """Use a released queue slot for approved agent-planned work of the same unit and specialty."""
+    # Work the platform dispatched: a refused job goes to the next person, and what waited is offered.
+    from .platform_work import offer_waiting
+    await offer_waiting(db, {released_work_order_id})
     staff = (await db.execute(text(f"""
         select sp.id,sp.management_unit_id from work_assignments a
         join staff_profiles sp on sp.id=a.staff_id and sp.tenant_id=a.tenant_id

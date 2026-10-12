@@ -9,6 +9,11 @@ server {
   # API has a new address every time its container is replaced: residents then get 502 until nginx restarts.
   resolver 127.0.0.11 valid=10s ipv6=off;
 
+  # The tools of the AI platform's agent are not for browsers: the platform calls the API's own address.
+  location ~ ^/api/business/mcp(/|$) {
+    return 404;
+  }
+
   location /api/business/ {
     set $vinhomes_api ${VINHOMES_API_URL};
     # Drops the /api/business prefix, as the development proxy does. The query string is kept.

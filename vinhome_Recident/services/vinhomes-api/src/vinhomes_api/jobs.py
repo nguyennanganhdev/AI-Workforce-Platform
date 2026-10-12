@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from .events import emit
+from .platform_work import expire_offers
 from .resident_services import expire_unpaid
 
 TENANT = "nullif(current_setting('app.tenant_id',true),'')::uuid"
@@ -41,6 +42,8 @@ async def sweep_tenant(db) -> dict[str, int]:
         update service_requests set status='cancelled',cancelled_at=now(),cancel_reason='Quá 7 ngày không bổ sung hồ sơ'
         where tenant_id={TENANT} and status='need_more_info' and updated_at<now()-interval '7 days'
     """))).rowcount
+    # Work the platform dispatched: an offer nobody answered goes to the next person, and what waited is offered.
+    counts["offers_expired"] = await expire_offers(db)
     return counts
 
 

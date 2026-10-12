@@ -17,6 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import create_async_engine
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from . import platform_mcp
 from .password_auth import router as password_router
 from .reception_runtime_api import router as reception_runtime_router
 from .resident_api import operations_router as resident_intake_router
@@ -48,6 +49,7 @@ from .v3_technical import router as technical_router
 from .v3_triage import router as triage_router
 from .integration import router as integration_router
 from .integration_cases import router as integration_cases_router
+from .knowledge import router as knowledge_router
 from .operations_services import router as operations_services_router
 from .resident_services import router as resident_services_router
 from .v3_water import router as water_router
@@ -66,7 +68,8 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
             if settings.database_url else None
         )
         try:
-            yield
+            async with platform_mcp.serving(app):
+                yield
         finally:
             if app.state.engine is not None:
                 await app.state.engine.dispose()
@@ -176,6 +179,10 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(admin_router)
     app.include_router(integration_router)
     app.include_router(integration_cases_router)
+    app.include_router(knowledge_router)
+    from .platform import router as platform_router
+    app.include_router(platform_router)
+    platform_mcp.mount(app)
     app.include_router(resident_services_router)
     app.include_router(operations_services_router)
     from .direct_uploads import router as direct_uploads_router

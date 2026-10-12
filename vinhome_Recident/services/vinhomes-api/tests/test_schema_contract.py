@@ -14,7 +14,7 @@ from vinhomes_api import database as tool
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "vinhomes_api"
 # Identity tables shared by every tenant: a person signs in before any tenant is chosen.
-GLOBAL_TABLES = {"accounts", "platform_admins", "sessions", "state_transitions", "tenants", "users", "schema_migrations"}
+GLOBAL_TABLES = {"accounts", "platform_admins", "sessions", "sign_in_attempts", "state_transitions", "tenants", "users", "schema_migrations"}
 # Tables of the platform that must never come back into this package's SQL.
 PLATFORM_TABLES = {
     "knowledge_bases", "knowledge_documents", "knowledge_chunks", "knowledge_embeddings", "knowledge_reviews",
@@ -54,7 +54,7 @@ def test_every_tenant_table_has_forced_row_level_security_and_a_policy(database)
 def test_no_platform_table_exists_in_the_domain_database(database):
     names = {r["relname"] for r in sql(database, "select relname from pg_class where relnamespace='public'::regnamespace and relkind='r'")}
     assert names & PLATFORM_TABLES == set()
-    assert "vector" not in {r["extname"] for r in sql(database, "select extname from pg_extension")}
+    assert "vector" in {r["extname"] for r in sql(database, "select extname from pg_extension")}  # the domain's own knowledge search (0013_knowledge.sql)
 
 
 def test_the_backend_sql_never_names_a_platform_table():

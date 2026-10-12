@@ -213,6 +213,14 @@ test("a pending repair quote blocks work and an approved latest quote unlocks it
   view.rerender(<FieldJob {...props} request={approved} />);
   await waitFor(() => expect((view.getByRole("button", { name: "Bắt đầu xử lý" }) as HTMLButtonElement).disabled).toBe(false));
   expect(view.queryByRole("button", { name: "Cư dân đồng ý tại chỗ" })).toBeNull();
+  cleanup();
+
+  // A request the coordinator holds: the resident answers on the quote card in their own chat, never on this device.
+  const inChat = async () => ({ quoteInChat: true, approvals: [{ kind: "customer_repair", status: "pending", created_at: "2026-10-07T10:00:00Z", request_detail: { note: "Thay vòi", total: 100000 } }] }) as never;
+  const held = render(<FieldJob {...props} request={inChat} />);
+  await waitFor(() => expect(held.getByText(/tự bấm Đồng ý hoặc Không đồng ý/)).toBeTruthy());
+  expect(held.queryByRole("button", { name: "Cư dân đồng ý tại chỗ" })).toBeNull();
+  expect(held.queryByRole("button", { name: "Chưa đồng ý, lập lại" })).toBeNull();
 });
 
 test("repair quote read failures retain a retry path and cannot unlock work", async () => {
@@ -228,4 +236,46 @@ test("repair quote read failures retain a retry path and cannot unlock work", as
   fireEvent.click(view.getByRole("button", { name: "Thử lại tải phương án" }));
   await waitFor(() => expect(view.getByRole("button", { name: "Cư dân đồng ý tại chỗ" })).toBeTruthy());
   expect(view.queryByRole("alert")).toBeNull();
+});
+
+test("a finished job without a plan ends with the technician's acceptance report: a verification photo, an optional note, never a resident's name", async () => {
+  const { FieldJob } = await import("../src/features/vinhomes-operations/connected/field/FieldJob");
+  const { acceptanceBody } = await import("../src/features/vinhomes-operations/connected/field/model");
+  const calls: unknown[][] = [];
+  const actions: FieldActions = { accept: () => undefined, reject: () => undefined, advance: () => undefined, quote: () => undefined, consent: () => undefined,
+    photo: (o, file, phase) => calls.push(["photo", o.id, file.name, phase]), acceptance: (o, note) => calls.push(["acceptance", acceptanceBody(o, note)]) };
+  const done = order({ status: "completed", assignment_status: "completed", version: 7 });
+  const props = { place: "S1.01", orders: [done], conversation: [], busy: false, request: async () => ({ approvals: [] }) as never, actions, onBack: () => undefined };
+  // Without a verification photo there is nothing to send yet.
+  const view = render(<FieldJob {...props} ticket={ticket()} photos={[photo("before"), photo("after")]} />);
+  expect(view.getByRole("heading", { name: "Nghiệm thu" })).toBeTruthy();
+  expect((view.getByRole("button", { name: "Gửi kết quả nghiệm thu" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(view.getByRole("status").textContent).toContain("1 ảnh nghiệm thu");
+  fireEvent.change(view.getByLabelText("Thêm ảnh nghiệm thu"), { target: { files: [new File(["x"], "nghiem-thu.png", { type: "image/png" })] } });
+  expect(calls).toEqual([["photo", "o1", "nghiem-thu.png", "verification"]]);
+  view.rerender(<FieldJob {...props} ticket={ticket()} photos={[photo("before"), photo("after"), photo("verification")]} />);
+  // The verification photo is evidence of the work, not something the resident reported.
+  expect(view.getAllByRole("img")).toHaveLength(3);
+  const send = view.getByRole("button", { name: "Gửi kết quả nghiệm thu" }) as HTMLButtonElement;
+  expect(send.disabled).toBe(false);
+  fireEvent.click(send);
+  expect(calls.at(-1)).toEqual(["acceptance", { version: 7 }]);
+  fireEvent.change(view.getByLabelText(/Ghi chú nghiệm thu/), { target: { value: " Đã kiểm tra, hết rò. " } });
+  fireEvent.click(send);
+  expect(calls.at(-1)).toEqual(["acceptance", { version: 7, note: "Đã kiểm tra, hết rò." }]);
+
+  // Sent: the request waits for the resident in their own app.
+  view.rerender(<FieldJob {...props} ticket={ticket({ status: "resolved" })} photos={[photo("before"), photo("after"), photo("verification")]} />);
+  expect(view.queryByRole("button", { name: "Gửi kết quả nghiệm thu" })).toBeNull();
+  expect(view.getByText("Đã gửi kết quả nghiệm thu. Chờ cư dân xác nhận trên ứng dụng.")).toBeTruthy();
+  expect(view.container.textContent).not.toContain("VH-");
+});
+
+test("a request that goes through a plan keeps management's acceptance: no acceptance on site", async () => {
+  const { FieldJob } = await import("../src/features/vinhomes-operations/connected/field/FieldJob");
+  const actions: FieldActions = { accept: () => undefined, reject: () => undefined, advance: () => undefined, quote: () => undefined, consent: () => undefined, photo: () => undefined, acceptance: () => undefined };
+  const view = render(<FieldJob ticket={ticket()} place="S1.01" orders={[order({ status: "completed" })]} photos={[photo("before"), photo("after")]} conversation={[]}
+    busy={false} request={async () => ({ approvals: [] }) as never} actions={actions} onBack={() => undefined} requiresPlan />);
+  expect(view.queryByRole("button", { name: "Gửi kết quả nghiệm thu" })).toBeNull();
+  expect(view.getByRole("heading", { name: "Đã gửi kết quả" })).toBeTruthy();
 });

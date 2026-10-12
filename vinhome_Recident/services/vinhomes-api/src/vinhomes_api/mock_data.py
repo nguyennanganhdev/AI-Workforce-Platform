@@ -2,10 +2,10 @@
 
     python -m vinhomes_api.database mock --url URL [--profile test|standard] [--seed 42]
 
-Ids are derived from names, so running it twice adds nothing. Everything that has a life cycle (statements, passes,
-cards, bookings, permits, requests) is created in its first status and moved along by updates, so the database's own
-rules judge the data. Dates are relative to the day it runs. It needs the base sample (`database seed`) first and a role
-that is not held to row level security, like `seed`.
+It is built once: a database that has it is left as it is. Ids are derived from names. Everything that has a life
+cycle (statements, passes, cards, bookings, permits, requests) is created in its first status and moved along by
+updates, so the database's own rules judge the data. Dates are relative to the day it runs. It needs the base sample
+(`database seed`) first and a role that is not held to row level security, like `seed`.
 """
 
 import json
@@ -38,11 +38,14 @@ class Profile:
     history_tickets: int
     staff: int
     handbook_variants: bool
+    # The base sample's technician has no history and no sign-in in the packaged stack, so every new repair would be
+    # offered to him first and wait there. The world people try by hand puts him on leave; the tests work with him.
+    base_technician_on_leave: bool
 
 
 PROFILES = {
-    "test": Profile(extra_towers=0, townhouses=0, months=3, history_tickets=40, staff=6, handbook_variants=False),
-    "standard": Profile(extra_towers=3, townhouses=50, months=6, history_tickets=900, staff=24, handbook_variants=True),
+    "test": Profile(extra_towers=0, townhouses=0, months=3, history_tickets=40, staff=6, handbook_variants=False, base_technician_on_leave=False),
+    "standard": Profile(extra_towers=3, townhouses=50, months=6, history_tickets=900, staff=24, handbook_variants=True, base_technician_on_leave=True),
 }
 
 FAMILY = ["Nguyễn", "Trần", "Lê", "Phạm", "Hoàng", "Huỳnh", "Phan", "Vũ", "Võ", "Đặng", "Bùi", "Đỗ", "Hồ", "Ngô", "Dương", "Lý"]
@@ -107,7 +110,7 @@ class World:
         self.residents: dict[str, list[tuple[str, str]]] = {}  # unit code -> [(user_id, relation)]
         self.users: dict[str, str] = {}        # user id -> display name
         self.counts: dict[str, int] = {}
-        self.workers: list[dict] = []          # staff who can take work: id, user, category, places left
+        self.workers: list[dict] = []          # staff who can take work: id, user, category, places left, may hold a job under way
         self.phones: set[str] = {"0901000001", "0901000002", "0901000003", "0901000004", "0901000005", "0902000001"}
 
     def count(self, name: str, n: int = 1):
@@ -232,6 +235,10 @@ class World:
         self.count("residents", len(self.users))
 
     async def staff(self):
+        """Technicians work three shifts that follow one another round the clock, a third of them on each, so a
+        repair can be offered to someone at any hour. The history (`tickets`) gives the first three, then every
+        second three, no job under way and leaves each of them one place; the others are full, because whoever has
+        a job under way cannot set off for another and new work is offered to anyone with a place."""
         fixed = [("hoa", "Kỹ thuật viên Hoa", CAT_TECH, "available"), ("khoa", "Kỹ thuật viên Khoa", CAT_TECH, "on_leave"), ("giang", "Bảo vệ Giang", CAT_SEC, "available")]
         people = list(fixed)
         for n in range(self.p.staff - len(fixed)):
@@ -239,6 +246,7 @@ class World:
         await self.user("mock-minh", "Quản lý Minh", "0902000001")
         await self.c.execute("insert into scoped_user_roles(id,tenant_id,membership_id,scope_id,role_code,granted_by,valid_from) values($1,$2,$3,$4,'management','local-v3-admin','2026-01-01T00:00:00Z') on conflict(id) do nothing",
                              uid("role", "mock-minh"), TENANT, uid("membership", "mock-minh"), uuid.UUID("99999999-9999-5999-a999-999999999998"))
+        technicians = 0
         for key, name, category, availability in people:
             user = f"mock-{key}"
             await self.user(user, name)
@@ -250,13 +258,23 @@ class World:
                 await self.c.execute("insert into scoped_user_roles(id,tenant_id,membership_id,scope_id,role_code,granted_by,valid_from) values($1,$2,$3,$4,'staff','local-v3-admin','2026-01-01T00:00:00Z') on conflict(id) do nothing",
                                      uid("role", user, building), TENANT, uid("membership", user), self.scope_id[building])
             if availability == "available":
-                self.workers.append({"id": staff_id, "user": user, "category": category, "left": 3})
-                night = key == "giang" or (category == CAT_SEC)
+                guard = category == CAT_SEC
+                under_way = guard or technicians // 3 % 2 == 1
+                self.workers.append({"id": staff_id, "user": user, "category": category, "left": 3 if under_way else 2,
+                                     "under_way": under_way})
                 for d in range(-30, 31):
                     day = datetime.combine(self.today + timedelta(days=d), time(0), tzinfo=timezone.utc)
-                    start, end = (day + timedelta(hours=13), day + timedelta(hours=23, minutes=59)) if night else (day + timedelta(hours=1), day + timedelta(hours=10))
+                    if guard:
+                        start, end = day + timedelta(hours=13), day + timedelta(hours=23, minutes=59)
+                    else:
+                        # Vietnam time 06:00-14:00, 14:00-22:00 or 22:00-06:00, by the technician's turn in the list.
+                        start = day + timedelta(hours=8 * (technicians % 3) - 1)
+                        end = start + timedelta(hours=8)
                     await self.c.execute("insert into staff_shifts(id,tenant_id,staff_id,starts_at,ends_at,status) values($1,$2,$3,$4,$5,'available') on conflict(id) do nothing",
                                          uid("shift", key, d), TENANT, staff_id, start, end)
+                technicians += not guard
+        if self.p.base_technician_on_leave:
+            await self.c.execute("update staff_profiles set availability='on_leave' where user_id='local-v3-technical' and tenant_id=$1", TENANT)
         self.count("staff", len(people) + 1)
 
     # ---------- money ----------
@@ -568,7 +586,7 @@ class World:
             amount = self.rng.choice([0, 150000, 300000, 450000])
             worker = None
             if status in ("assigned", "in_progress"):
-                free = [w for w in self.workers if w["category"] == category and w["left"] > 0]
+                free = [w for w in self.workers if w["category"] == category and w["left"] > 0 and (status == "assigned" or w["under_way"])]
                 if free:
                     worker = self.rng.choice(free)
                     worker["left"] -= 1
@@ -707,6 +725,10 @@ async def build(url: str, profile: str = "standard", seed: int = 42) -> dict[str
             raise SystemExit("Run `database seed` first: the world is built on the base sample.")
         async with conn.transaction():
             await conn.execute("select set_config('app.tenant_id',$1,true)", str(TENANT))
+            # Built once. The requests come last, so theirs being there means all of it is. A second run would put the
+            # counters of requests people worked on since back to the built history and, on another day, draw new bookings.
+            if await conn.fetchval("select exists(select 1 from tickets where tenant_id=$1 and code like 'MOCK-%')", TENANT):
+                return {}
             world = World(conn, PROFILES[profile], seed)
             for step in (world.places, world.people, world.staff, world.statements, world.cards, world.visitors, world.amenities,
                          world.renovation, world.desk, world.knowledge, world.tickets):

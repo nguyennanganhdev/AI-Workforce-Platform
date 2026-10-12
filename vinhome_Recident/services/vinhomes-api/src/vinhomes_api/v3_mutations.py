@@ -420,6 +420,10 @@ async def decide_repair_onsite(work_order_id: UUID, body: OnsiteDecision, scope:
     order = (await scope[0].execute(text("select status,version from work_orders where id=:id for update"), {"id": work_order_id})).mappings().one()
     if order["version"] != body.version or order["status"] != "awaiting_approval":
         raise HTTPException(409, "No repair proposal is awaiting the resident")
+    linked = await scope[0].execute(text("select 1 from platform_links where ticket_id=:id and status in ('pending','open')"), {"id": ticket["id"]})
+    if linked.first() is not None:
+        # The resident has the quote as a card in their own chat: only their own tap there answers it.
+        raise HTTPException(409, "The resident answers this quote in their own chat")
     pending = await scope[0].execute(text("""
         select id from work_approvals where work_order_id=:id and kind='customer_repair' and status='pending'
           and (expires_at is null or expires_at>now())
@@ -752,7 +756,8 @@ async def attach_evidence(ticket_id: UUID, body: EvidenceAttach,
         if order.first() is None:
             raise HTTPException(422, "Work order does not belong to this ticket")
         if not await management_access(scope,ticket):
-            executor=await scope[0].execute(text("select 1 from work_assignments a join staff_profiles sp on sp.id=a.staff_id and sp.tenant_id=a.tenant_id where a.work_order_id=:work and sp.user_id=:actor and a.status='accepted'"), {'work':body.work_order_id,'actor':scope[1]})
+            # The acceptance photo is taken after the job was reported done.
+            executor=await scope[0].execute(text("select 1 from work_assignments a join staff_profiles sp on sp.id=a.staff_id and sp.tenant_id=a.tenant_id where a.work_order_id=:work and sp.user_id=:actor and (a.status='accepted' or (a.status='completed' and :purpose='verification'))"), {'work':body.work_order_id,'actor':scope[1],'purpose':body.purpose})
             if executor.first() is None:
                 raise HTTPException(403,'Accepted executor or responsible management required for work evidence')
     if body.assignment_id is not None:

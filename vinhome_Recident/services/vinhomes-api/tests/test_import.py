@@ -136,3 +136,32 @@ def test_a_zone_rule_that_makes_no_sense_or_names_no_zone_is_refused(database, t
     added, problems = asyncio.run(load(database["admin"], str(tmp_path), False))
     assert added == {} and len(problems) == 4 and all(p.startswith("zone_settings.csv line") for p in problems), problems
     assert not sql(database, "select 1 from zone_settings where note='imp: bad'")
+
+
+def test_the_sync_loads_a_folder_when_it_is_ready_and_changed_and_ends_who_left_the_export(database, tmp_path):
+    from vinhomes_api.import_data import STATE, sync
+
+    def run():
+        return asyncio.run(sync(database["admin"], str(tmp_path)))
+
+    def link(user):
+        return sql(database, "select valid_to from unit_residents where user_id=$1", user)[0]["valid_to"]
+
+    write(tmp_path)
+    before = tables(database)
+    assert run().startswith("waiting") and tables(database) == before                       # 1: nothing is read before READY
+    (tmp_path / "READY").write_text("")
+    assert run().startswith("loaded") and link("imp-member") is None                         # 2: loaded
+    loaded = tables(database)
+    assert run() == "unchanged" and tables(database) == loaded                               # 3: the same files cost nothing
+    rows = FILES["residents"]
+    write(tmp_path, {"residents": [rows[0], rows[1], rows[3]]})                                # 4: one resident left the export
+    assert "ended=1" in run()
+    assert link("imp-member") is not None and link("imp-owner") is None
+    assert sql(database, "select count(*) as n from users where id='imp-member'")[0]["n"] == 1   # ended, never deleted
+    write(tmp_path, {"residents": rows[:1] + [["", "0911", "IMP1-0101", "owner", "verified", "x"]]})
+    refused = run()                                                                          # 5: a bad file changes nothing
+    assert refused.startswith("REFUSED") and "residents.csv line 2" in refused and link("imp-owner") is None
+    assert run() == "unchanged" and json.loads((tmp_path / STATE).read_text(encoding="utf-8"))["ok"] is False   # and is not tried again
+    write(tmp_path, {"residents": rows})                                                     # 6: back in the export: a resident again
+    assert "back=1" in run() and link("imp-member") is None

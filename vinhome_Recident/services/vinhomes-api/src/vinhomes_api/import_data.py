@@ -9,6 +9,7 @@ again adds nothing. It adds rows; it does not change rows that already exist. Se
 """
 
 import csv
+import hashlib
 import json
 from datetime import date, datetime, time
 from pathlib import Path
@@ -44,6 +45,15 @@ def read(path: Path) -> list[dict]:
 
 def find(folder: Path, kind: str) -> Path | None:
     return next((p for p in (folder / f"{kind}.csv", folder / f"{kind}.json") if p.is_file()), None)
+
+
+def person_id(name: str, phone: str | None, email: str | None, user_id: str | None) -> str:
+    return user_id or "imp-" + (phone or email or name).lower().replace(" ", "")
+
+
+def link_id(row: dict):
+    """The id of one line of residents.csv: this person in this home in this relation."""
+    return uid("import", "link", person_id(row["name"], row.get("phone"), row.get("email"), row.get("user_id")), row["unit_code"], row["relation"])
 
 
 class Loader:
@@ -110,7 +120,7 @@ class Loader:
         self.count("units")
 
     async def person(self, name: str, phone: str | None, email: str | None, user_id: str | None) -> str:
-        user = user_id or "imp-" + (phone or email or name).lower().replace(" ", "")
+        user = person_id(name, phone, email, user_id)
         await self.c.execute("insert into users(id,email,name,status,phone_e164) values($1,$2,$3,'active',$4) on conflict(id) do nothing", user, email or f"{user}@example.invalid", name, ("+84" + phone.lstrip("0")) if phone else None)
         await self.c.execute("insert into tenant_memberships(id,tenant_id,user_id,status,joined_at) values($1,$2,$3,'active',now()) on conflict(id) do nothing", uid("membership", user), TENANT, user)
         return user
@@ -124,7 +134,7 @@ class Loader:
         user = await self.person(name, row.get("phone"), row.get("email"), row.get("user_id"))
         await self.c.execute("""insert into unit_residents(id,tenant_id,unit_id,user_id,relation,verification_status,valid_from,verified_by,verified_at)
             values($1,$2,$3,$4,$5,$6,coalesce($7::timestamptz,now()),$8,$9) on conflict(id) do nothing""",
-                             uid("import", "link", user, unit, relation), TENANT, unit_id, user, relation, status, self.stamp(row.get("valid_from")),
+                             link_id(row), TENANT, unit_id, user, relation, status, self.stamp(row.get("valid_from")),
                              "local-v3-admin" if status == "verified" else None, datetime.now().astimezone() if status == "verified" else None)
         self.count("residents")
 
@@ -285,7 +295,7 @@ class Loader:
         self.count("announcements")
 
 
-async def load(url: str, folder: str, dry_run: bool) -> tuple[dict[str, int], list[str]]:
+async def load(url: str, folder: str, dry_run: bool, ended: list = (), back: list = ()) -> tuple[dict[str, int], list[str]]:
     root = Path(folder)
     if not root.is_dir():
         raise SystemExit(f"{folder} is not a folder")
@@ -317,6 +327,10 @@ async def load(url: str, folder: str, dry_run: bool) -> tuple[dict[str, int], li
                     problems.append(f"{path.name} line {number}: {type(exc).__name__}: {exc}")
         if not problems:
             await loader.settle_notes()
+            # The sync: people who left the export stop being residents of that home from now on (their requests
+            # and chats stay); people it ended earlier and who are in the export again are residents again.
+            await conn.execute("update unit_residents set valid_to=now() where tenant_id=$1 and id=any($2::uuid[]) and valid_to is null", TENANT, list(ended))
+            await conn.execute("update unit_residents set valid_to=null where tenant_id=$1 and id=any($2::uuid[]) and valid_to is not null", TENANT, list(back))
         if problems or dry_run:
             await tx.rollback()
         else:
@@ -324,3 +338,42 @@ async def load(url: str, folder: str, dry_run: bool) -> tuple[dict[str, int], li
         return loader.added, problems
     finally:
         await conn.close()
+
+
+STATE = ".sync-state.json"
+
+
+async def sync(url: str, folder: str) -> str:
+    """One pass of the scheduled sync (`database sync`): loads the export files of the folder when they changed.
+
+    The system that writes the files writes a file named READY last; without it nothing is read, so a half-written
+    export is never loaded. A set of files is tried once: the same files again, loaded or refused, cost one hash.
+    A resident line that was in the last loaded export and is gone now ends that person's link to the home.
+    Returns the line to log. The state (what was loaded last, the result) is the file .sync-state.json in the folder.
+    """
+    root = Path(folder)
+    if not (root / "READY").is_file():
+        return "waiting: no READY file in the folder"
+    files = [path for kind in ORDER if (path := find(root, kind))]
+    seen = hashlib.sha256("".join(f"{path.name}:{hashlib.sha256(path.read_bytes()).hexdigest()};" for path in files).encode()).hexdigest()
+    state = json.loads((root / STATE).read_text(encoding="utf-8")) if (root / STATE).is_file() else {}
+    if state.get("files") == seen:
+        return "unchanged"
+    try:
+        residents = find(root, "residents")
+        links = None if residents is None else {str(link_id(row)) for row in read(residents)}
+    except (KeyError, ValueError):
+        links = None  # a bad residents file: the load below says which line
+    known, gone = set(state.get("links", [])), set(state.get("ended", []))
+    ended = [] if links is None else sorted(known - links)
+    back = [] if links is None else sorted(gone & links)
+    added, problems = await load(url, folder, False, ended, back)
+    if not problems:
+        known, gone = (links if links is not None else known), (gone | set(ended)) - set(back)
+    # What ends next time is judged against the last export that was loaded, never against a refused one.
+    result = {"files": seen, "at": datetime.now().astimezone().isoformat(timespec="seconds"), "ok": not problems,
+              "added": added, "problems": problems, "links": sorted(known), "ended": sorted(gone)}
+    (root / STATE).write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    if problems:
+        return f"REFUSED, nothing was written ({len(problems)} problem(s)): " + "; ".join(problems[:5])
+    return "loaded, rows read: " + (", ".join(f"{k}={v}" for k, v in added.items()) or "none") + f"; residents ended={len(ended)}, back={len(back)}"

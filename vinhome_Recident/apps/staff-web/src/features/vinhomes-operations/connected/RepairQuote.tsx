@@ -132,6 +132,8 @@ export function OnsiteConsent({
 }) {
   const [quote, setQuote] = useState<QuoteDetail>();
   const [status, setStatus] = useState("");
+  // Yêu cầu do trợ lý điều phối theo dõi: cư dân tự bấm trên thẻ báo giá trong hộp chat của họ.
+  const [inChat, setInChat] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [retry, setRetry] = useState(0);
@@ -140,10 +142,10 @@ export function OnsiteConsent({
     let current = true;
     const load = async () => {
       try {
-        const data = await request<{ approvals: { kind: string; status: string; request_detail: QuoteDetail; created_at?: string }[] }>(`/work-orders/${orderId}`);
+        const data = await request<{ quoteInChat?: boolean; approvals: { kind: string; status: string; request_detail: QuoteDetail; created_at?: string }[] }>(`/work-orders/${orderId}`);
         const latest = data.approvals.filter((a) => a.kind === "customer_repair").sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))[0];
         if (current) {
-          setQuote(latest?.request_detail); setStatus(latest?.status || ""); setError(""); setLoading(false);
+          setQuote(latest?.request_detail); setStatus(latest?.status || ""); setInChat(!!data.quoteInChat); setError(""); setLoading(false);
           onApprovedChange?.(latest?.status === "approved");
         }
       } catch (e) {
@@ -192,9 +194,9 @@ export function OnsiteConsent({
         )}
       </div>
       <p className="text-sm text-muted-foreground">
-        Cư dân có thể đồng ý trên ứng dụng cư dân, hoặc đọc và trả lời ngay trên máy này.
+        {inChat ? "Cư dân đã nhận báo giá trong hộp chat của họ và tự bấm Đồng ý hoặc Không đồng ý ở đó." : "Cư dân có thể đồng ý trên ứng dụng cư dân, hoặc đọc và trả lời ngay trên máy này."}
       </p>
-      {status === "pending" && !error && <div className="grid gap-2 sm:grid-cols-2">
+      {status === "pending" && !inChat && !error && <div className="grid gap-2 sm:grid-cols-2">
         <Button variant="outline" className="min-h-12 h-auto whitespace-normal py-3 text-base" disabled={disabled || loading} onClick={() => onDecide(true)}>
           Cư dân đồng ý tại chỗ
         </Button>

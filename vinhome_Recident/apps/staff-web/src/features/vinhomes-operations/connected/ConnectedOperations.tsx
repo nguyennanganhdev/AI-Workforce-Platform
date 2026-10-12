@@ -14,7 +14,7 @@ import { overviewOptions } from './admin/queries';
 import "./connected.css";
 import { FieldJob, type FieldActions } from "./field/FieldJob";
 import { FieldWorkList } from "./field/FieldWorkList";
-import { active, ownOrders, placeOf, stateOf, type FieldPhoto } from "./field/model";
+import { acceptanceBody, active, ownOrders, placeOf, stateOf, type FieldPhoto } from "./field/model";
 import { OperationsDashboardView } from "../components/operations-dashboard";
 import { LiveReportsPage } from "../workspace/LiveReportsPage";
 import { WorkListView } from "../workspace/WorkPage";
@@ -50,7 +50,7 @@ type Order = {
 type Detail = {
   ticket: Ticket;
   workOrders: Order[];
-  events: { id: string; event_type: string; occurred_at: string }[];
+  events: { id: string; event_type: string; occurred_at: string; payload?: { requiresPlan?: boolean } | null }[];
 };
 // What the resident reported first, then before and after the work.
 const PHOTO_ORDER = ["", "issue", "before", "after", "other"];
@@ -341,8 +341,9 @@ export function ConnectedOperations() {
   const focusedOrder = ownSelected.find((order) => order.id === selectedOrderId) || ownSelected.find((order) => active(stateOf(order))) || ownSelected[0];
   const imageSource = (id: string) => `/api/business/files/${id}/content?inline=true${local ? `&demoActor=${actor}` : ""}`;
   const fieldPhotos: FieldPhoto[] = [
-    ...photos.filter((p) => !["before", "after"].includes(p.purpose || "")).map((p) => ({ id: p.id, name: p.original_name, purpose: p.purpose || "", src: imageSource(p.id) })),
-    ...evidence.filter((p) => p.status === "active" && ["before", "after"].includes(p.purpose)).map((p) => ({ id: p.id, name: p.original_name, purpose: p.purpose, work_order_id: p.work_order_id, src: imageSource(p.file_id) })),
+    // A verification photo is stored as a file of the request too; it is shown once, as evidence.
+    ...photos.filter((p) => !["before", "after"].includes(p.purpose || "") && !evidence.some((e) => e.file_id === p.id && e.purpose === "verification")).map((p) => ({ id: p.id, name: p.original_name, purpose: p.purpose || "", src: imageSource(p.id) })),
+    ...evidence.filter((p) => p.status === "active" && ["before", "after", "verification"].includes(p.purpose)).map((p) => ({ id: p.id, name: p.original_name, purpose: p.purpose, work_order_id: p.work_order_id, src: imageSource(p.file_id) })),
   ];
   const visible = tickets.filter((t) => {
     if (path === "triage" && !["open", "triaging"].includes(t.status))
@@ -385,10 +386,15 @@ export function ConnectedOperations() {
     }),
     photo: (order, picture, purpose, caption) => void run(async () => {
       const base = `/tickets/${order.ticket_id}`;
+      // The file store has no "verification" kind; the evidence record carries it.
+      const kind = purpose === "verification" ? "other" : purpose;
       const stored = await uploadImage(request, `${base}/direct-uploads`,
-        `${base}/files?filename=${encodeURIComponent(picture.name)}&mimeType=${encodeURIComponent(picture.type)}&purpose=${purpose}`,
-        picture, picture.name, crypto.randomUUID(), purpose);
+        `${base}/files?filename=${encodeURIComponent(picture.name)}&mimeType=${encodeURIComponent(picture.type)}&purpose=${kind}`,
+        picture, picture.name, crypto.randomUUID(), kind);
       await post(`${base}/evidence`, { file_id: stored.fileId, work_order_id: order.id, assignment_id: order.assignment_id, purpose, caption });
+    }),
+    acceptance: (order, text) => void run(async () => {
+      await post(`/work-orders/${order.id}/onsite-acceptance`, acceptanceBody(order, text));
     }),
   };
   // Shown above the page in either frame: the demo actor of a local database, and what went wrong.
@@ -443,7 +449,7 @@ export function ConnectedOperations() {
           <div className="flex flex-col gap-4">
             {banners}
             {!loaded || (busy && ticketId.current && !selected) ? <p role="status" className="rounded-xl border border-border bg-background p-4 text-sm text-muted-foreground">Đang tải công việc…</p> : selected && detail ? (
-              <FieldJob key={selected.id} ticket={selected} place={placeOf(selected, catalog?.buildings || [])} busy={busy} request={request} actions={fieldActions}
+              <FieldJob key={selected.id} ticket={selected} requiresPlan={detail.events.some((e) => e.event_type === "ticket.created" && !!e.payload?.requiresPlan)} place={placeOf(selected, catalog?.buildings || [])} busy={busy} request={request} actions={fieldActions}
                 orders={focusedOrder ? [focusedOrder] : []}
                 conversation={conversation}
                 photos={fieldPhotos}

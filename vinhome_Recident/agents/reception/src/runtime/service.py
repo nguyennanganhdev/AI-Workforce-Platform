@@ -205,26 +205,32 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        async with httpx.AsyncClient() as client, open_sqlite_checkpointer(settings.state_path) as checkpointer:
-            store = await DraftStore.open(settings.state_path + ".records")
-            try:
-                backend = BackendClient(settings.backend_url, client)
-                chat_model = model or ChatCompletionsModel(settings.model, client)
-                tools = BackendOperations(backend, store, chat_model)
-
-                async def resolve_session(context, signal):
-                    return {"channel_id": context["channelId"], "reception_session_id": context["bindingId"]}
-
-                app.state.backend, app.state.tools, app.state.model = backend, tools, chat_model
-                app.state.client = client
-                app.state.graph = create_reception_workflow_factory(WorkflowOptions(
-                    intake=KnowledgeSearch(settings.knowledge_url, backend, client, chat_model),
-                    resolve_session=resolve_session, reconcile=tools.invoke,
-                    request_policy=RequestPolicy(backend), timeout_ms=60000,
-                )).create(GraphDependencies(model=chat_model, tools=tools, checkpointer=checkpointer))
+        async with httpx.AsyncClient() as client:
+            backend = BackendClient(settings.backend_url, client)
+            chat_model = model or ChatCompletionsModel(settings.model, client)
+            app.state.backend, app.state.model, app.state.client = backend, chat_model, client
+            if settings.agent == "loop":
+                # The model-led agent keeps nothing between turns, so it opens no state file:
+                # any number of copies can run side by side, and none needs a volume.
                 yield
-            finally:
-                await store.close()
+                return
+            async with open_sqlite_checkpointer(settings.state_path) as checkpointer:
+                store = await DraftStore.open(settings.state_path + ".records")
+                try:
+                    tools = BackendOperations(backend, store, chat_model)
+
+                    async def resolve_session(context, signal):
+                        return {"channel_id": context["channelId"], "reception_session_id": context["bindingId"]}
+
+                    app.state.tools = tools
+                    app.state.graph = create_reception_workflow_factory(WorkflowOptions(
+                        intake=KnowledgeSearch(settings.knowledge_url, backend, client, chat_model),
+                        resolve_session=resolve_session, reconcile=tools.invoke,
+                        request_policy=RequestPolicy(backend), timeout_ms=60000,
+                    )).create(GraphDependencies(model=chat_model, tools=tools, checkpointer=checkpointer))
+                    yield
+                finally:
+                    await store.close()
 
     app = FastAPI(title="Reception runtime", lifespan=lifespan)
 
@@ -253,10 +259,10 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                      usage["model_calls"], usage["input_tokens"], usage["output_tokens"], usage["latency_ms"])
             return usage
         message = body.message.model_dump(exclude_defaults=True) | {"id": body.message.id, "text": body.message.text}
-        # One turn at a time per conversation: the graph state is a single thread.
+        # One turn at a time per conversation: the graph state is a single thread. This lock only holds inside
+        # this process; across copies of the runtime it is the backend that sends a conversation's turns one by one.
         async with locks.setdefault(body.channel_id, asyncio.Lock()):
-            tools, backend = request.app.state.tools, request.app.state.backend
-            tools.handoffs.pop(body.channel_id, None)
+            backend = request.app.state.backend
             backend.tokens[body.channel_id] = body.delegation.token
             if settings.agent == "loop":
                 try:
@@ -274,6 +280,8 @@ def create_app(settings: Settings | None = None, model=None) -> FastAPI:
                 finally:
                     backend.tokens.pop(body.channel_id, None)
                 return {"status": "completed", "reply": reply, "usage": measured()}
+            tools = request.app.state.tools
+            tools.handoffs.pop(body.channel_id, None)
             try:
                 clarification = None
                 try:
