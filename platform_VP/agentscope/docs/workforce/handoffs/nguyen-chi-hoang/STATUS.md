@@ -1,10 +1,13 @@
 # Trạng thái — Nguyễn Chí Hoàng
 
 Tên thành viên: Nguyễn Chí Hoàng. Baseline chung hiện tại:
-`develop2@830cdacd56f868d509d208b91b9a6bc29d70c935`.
+`develop2@5e66ea0`.
 
-**Trạng thái mới nhất:** C1–C5 đã merge. Nguyễn Chí Hoàng là owner C7 nhưng C7
-vẫn chờ C6 của Phan Hoàng Dũng hoàn thành và merge.
+**Trạng thái mới nhất — 2026-10-12:** C1–C6 đã merge. C7 và D1 đã được triển
+khai trong working tree hiện tại, chưa commit/push/merge. Nguyễn Chí Hoàng đồng
+thời thực hiện thay hai lane D2 của Nguyễn Phương Đông và Phan Huy Hoàng. Chi
+tiết tại [PHASE_C_C7_VA_PHASE_D_D1.md](PHASE_C_C7_VA_PHASE_D_D1.md) và
+[../PHASE_D_SEQUENCE.md](../PHASE_D_SEQUENCE.md).
 
 Task IDs đã hoàn thành theo nhịp: NCH-01; contract khởi động NCH-02/NCH-13;
 Phase B độc lập của NCH-14; và output C1 thuộc NCH-03/05/06/08/12/14/15 gồm
@@ -44,11 +47,12 @@ không thêm dependency.
 
 Integration requests còn mở: xem `INTEGRATION_REQUEST_NCH_PHASE_A.md`; các yêu cầu này phục vụ phase sau và không chặn contract hiện tại.
 
-Live verification còn thiếu: FastAPI route, PostgreSQL transaction/uniqueness, Redis server thật, provider signature, AgentScope continuation và browser UI runtime. MessageBus in-memory, SSE encoder/replay service và TypeScript transport đã có test/type/lint cục bộ.
+Live verification còn thiếu sau C7/D1: CI PostgreSQL của PR, Redis multi-process,
+provider sandbox thật và browser E2E. FastAPI router mounting, SQL composition,
+worker registration, SSE reconnect/replay và C6 runtime slice đã có test cục bộ.
 
-Trình tự hiện tại: C1–C5 đã merge; Phan Hoàng Dũng thực hiện C6. Nguyễn Chí
-Hoàng không bắt đầu C7 trước khi C6 merge; trong thời gian chờ chỉ review
-schema/hook additive và giữ migration chain ổn định.
+Trình tự hiện tại: C1–C6 đã merge; C7/D1 và hai lane D2 đã code/test nhưng chưa
+merge. D3 chỉ mở sau khi PR hiện tại được review và merge.
 
 ## Cập nhật Phase B
 
@@ -72,14 +76,11 @@ schema/hook additive và giữ migration chain ổn định.
   đủ context này (không rút còn dict thiếu credential/signing key) trước khi
   re-authorize provider event sau dequeue.
 
-## Điều phối sau khi C5 merge — 2026-10-11
+## Lịch sử điều phối sau khi C5 merge — 2026-10-11
 
 - C5 đã merge qua PR #64 tại
   `830cdacd56f868d509d208b91b9a6bc29d70c935`.
-- C6 của Phan Hoàng Dũng hiện được mở để kiểm chứng E2E toàn lát cắt.
-- C7 **chưa được bắt đầu** trước khi C6 có commit trên `develop2` và bàn giao
-  metadata, handler/router factories, test evidence và danh sách seam còn mở.
-- Khi gate C7 mở, Nguyễn Chí Hoàng mới gom global composition, migration additive
-  của các module, worker registration, API/router mounting và CI/PostgreSQL gate
-  cuối; không sửa ngược implementation thuộc owner C2–C6 nếu không có lỗi tích
-  hợp được chứng minh.
+- Điều kiện lịch sử là C7 chỉ mở sau C6. Điều kiện này đã được thỏa khi PR #67
+  merge vào `develop2@5e66ea0`.
+- Kết quả C7/D1 hiện tại được ghi riêng tại
+  [PHASE_C_C7_VA_PHASE_D_D1.md](PHASE_C_C7_VA_PHASE_D_D1.md).

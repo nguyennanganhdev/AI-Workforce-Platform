@@ -22,7 +22,7 @@ from agentscope.app.workforce.registry.event_protocols import (
     AsyncToolProtocol,
     EventMapping,
 )
-from fakes import FakeAsyncProtocolPort
+from .fakes import FakeAsyncProtocolPort
 
 
 class ProtocolTests(unittest.IsolatedAsyncioTestCase):

@@ -438,6 +438,14 @@ def create_app(
     ):
         app.include_router(router)
 
+    # C7 composition owns the production Workforce graph.  Its routers are
+    # assembled from the same repository/UOW bundle that the lifespan opens;
+    # mounting here keeps OpenAPI stable and prevents duplicate route mounting
+    # on lifespan restarts.
+    if workforce_bootstrap is not None:
+        for router in workforce_bootstrap.routers:
+            app.include_router(router)
+
     @app.exception_handler(HubError)
     async def _on_hub_error(_: Request, exc: HubError) -> JSONResponse:
         """Report an upstream registry failure as a gateway error.

@@ -1,5 +1,12 @@
 # Trạng thái — Nguyễn Phương Đông
 
+## Cập nhật Phase D/D2 — 2026-10-12
+
+Nguyễn Chí Hoàng đã thực hiện thay lane D2 trên baseline
+`develop2@5e66ea0`. Protocol drift/disable/exact pinned snapshot đã có acceptance
+SQL và **30 pass, 1 PostgreSQL gate skip, 76 subtests pass**. Thay đổi còn trong
+working tree, chưa merge. Xem [PHASE_D_D2.md](PHASE_D_D2.md).
+
 ## Cập nhật Phase C/C2 — 2026-10-11
 
 Owner theo kế hoạch: **Nguyễn Phương Đông**. Người thực hiện thay trong lượt

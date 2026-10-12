@@ -291,6 +291,53 @@ class ProtocolSqlRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("on_the_way", normalized["status"])
         self.assertEqual({"eta_minutes": 20}, normalized["facts"])
 
+    async def test_phase_d_drift_disable_keeps_exact_pinned_normalizer(
+        self,
+    ):
+        """A disabled/revised head cannot rewrite an in-flight operation."""
+        original = await self.service.publish(self.protocol)
+        changed = self.protocol.model_dump(mode="json")
+        changed["protocol_version"] = "2"
+        changed["event_mappings"][self.event.event_type]["status"] = "arrived"
+        revised = AsyncToolProtocol.model_validate(changed)
+        current = await self.service.publish(revised, original)
+        await self.service.set_enabled(
+            current.tool_version_id,
+            False,
+            current,
+        )
+
+        adapter = ExecutionProtocolAdapter(
+            self.service,
+            self.provider.resolve_detail,
+        )
+        with self.assertRaises(PermissionError):
+            await adapter.get_snapshot(
+                self.scope,
+                self.protocol.tool_version_id,
+            )
+
+        pinned = await adapter.resolve_snapshot(self.scope, original)
+        principal = {
+            "tenant_id": self.scope.tenant_id,
+            "provider_integration_id": "provider-demo",
+            "actor_id": self.actor.actor_id,
+            "purpose": "provider_events",
+            "actor": self.actor.model_dump(mode="json"),
+        }
+        event = await adapter.normalize_verified_event(
+            principal,
+            pinned,
+            self.event.model_dump(mode="json"),
+            inbox_event_id="inbox-1",
+            received_at=NOW.isoformat(),
+        )
+        self.assertEqual("on_the_way", event["status"])
+        self.assertNotEqual(
+            original.schema_hash,
+            current.schema_hash,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

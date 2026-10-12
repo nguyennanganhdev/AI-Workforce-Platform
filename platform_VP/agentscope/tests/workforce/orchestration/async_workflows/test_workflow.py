@@ -13,7 +13,7 @@ from agentscope.app.workforce.orchestration.workflows import (
     WorkflowConflict,
 )
 
-from fakes import Harness, customer_actor
+from .fakes import Harness, customer_actor
 
 
 def envelope(
