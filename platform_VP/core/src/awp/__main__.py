@@ -57,8 +57,13 @@ def main(argv: list[str] | None = None) -> int | None:
     if not settings.secret_key and not settings.dev_open:
         raise SystemExit("Set AWP_SECRET_KEY (a Fernet key) or AWP_DEV_OPEN=1 for local work.")
     app = build_app(settings)
+    # On SIGTERM uvicorn stops accepting and waits for the open requests. An event stream (SSE) never ends by itself, so
+    # without a limit the wait lasts until the supervisor kills the process and the shutdown below (the engine stops,
+    # the pools close) never runs. After AWP_SHUTDOWN_SECONDS the open requests are cancelled; a stream's client
+    # reconnects with its cursor.
     uvicorn.run(app, host=os.environ.get("AWP_HOST", "127.0.0.1"),
-                port=int(os.environ.get("AWP_PORT", "8800")))
+                port=int(os.environ.get("AWP_PORT", "8800")),
+                timeout_graceful_shutdown=int(os.environ.get("AWP_SHUTDOWN_SECONDS") or 20))
     return None
 
 

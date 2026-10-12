@@ -1,0 +1,7 @@
+# secrets and local state of a deployment: never committed
+.env
+.env.*
+!.env.example
+models.yaml
+.smoke_state.json
+backups/

@@ -1,0 +1,23 @@
+# The model catalog of the `demo` profile: every tier is the scripted model of deploy/demo/fake_model.py.
+# It is offered only when DEMO_MODEL_KEY is set (init_env.py --demo sets it; any value works, it is not a secret).
+# No prices on purpose: the ledger records these calls as "unpriced", never as a real cost.
+# For real models copy ../core/models.example.yaml to deploy/models.yaml and set AWP_MODELS_HOST_FILE=./models.yaml.
+models:
+  - id: demo-strong
+    provider: openai_compatible
+    model: demo-scripted-strong
+    tier: strong
+    base_url: http://fake-model:8900/v1
+    api_key_env: DEMO_MODEL_KEY
+  - id: demo-standard
+    provider: openai_compatible
+    model: demo-scripted-standard
+    tier: standard
+    base_url: http://fake-model:8900/v1
+    api_key_env: DEMO_MODEL_KEY
+  - id: demo-cheap
+    provider: openai_compatible
+    model: demo-scripted-cheap
+    tier: cheap
+    base_url: http://fake-model:8900/v1
+    api_key_env: DEMO_MODEL_KEY

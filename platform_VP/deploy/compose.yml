@@ -1,0 +1,174 @@
+# The platform on one machine: PostgreSQL, a one-shot migration job and the API.
+#
+#   cd platform_VP/deploy
+#   python init_env.py                 # once: writes .env with fresh secrets (never overwrites one)
+#   docker compose build               # the image awp-platform:<AWP_IMAGE_TAG> from ../Dockerfile
+#   docker compose up -d               # postgres -> migrate (must succeed) -> api
+#   docker compose --profile demo up -d    # the same plus a scripted model and a sample MCP server (python smoke.py)
+#
+# Project name `awp-platform`: containers are awp-platform-<service>-1, volumes awp-platform_<name>.
+# Every published port is bound to 127.0.0.1. Put a reverse proxy with TLS in front for anything else.
+#
+# WHAT IS WIRED: postgres, migrate, api (one replica).
+# WHAT IS NOT: `redis` and `minio` sit under the profile `not-wired`. The code reads no Redis URL and no S3 setting
+# today (awp/config.py), so they are not started by default and nothing talks to them. See docs/WORKFORCE_V1_BAN_GIAO.md.
+name: awp-platform
+
+x-logging: &logging
+  driver: json-file
+  options: {max-size: "10m", max-file: "5"}
+
+x-awp: &awp
+  image: awp-platform:${AWP_IMAGE_TAG:-0.1.0}
+  env_file: [.env]
+  init: true  # reaps the child processes an agent's tools may leave; signals still reach the Python process
+  logging: *logging
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: awp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run "python init_env.py" first (it writes deploy/.env)}
+      POSTGRES_DB: awp
+    configs:
+      - source: pg_init
+        target: /docker-entrypoint-initdb.d/10-awp-storage.sql
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${AWP_PG_HOST_PORT:-5590}:5432"
+    healthcheck:
+      # over TCP on purpose: while the image initialises a new data directory its temporary server has no TCP port,
+      # so this stays red until both databases exist and the real server is up
+      test: ["CMD-SHELL", "psql -h 127.0.0.1 -U awp -d awp_storage -Atc 'select 1' >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    stop_grace_period: 60s
+    logging: *logging
+
+  # One shot, before every start of the API: awp's tables, then AgentScope's storage tables with AgentScope's own
+  # scripts, then a check that the database is what the code expects. AgentScope's auto_migrate is never used.
+  migrate:
+    <<: *awp
+    pull_policy: never
+    restart: "no"
+    depends_on:
+      postgres: {condition: service_healthy}
+    entrypoint: ["/bin/sh", "-c", "python -m awp migrate --storage && python -m awp migrate --check"]
+
+  api:
+    <<: *awp
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    environment:
+      AWP_HOST: 0.0.0.0
+      AWP_PORT: "8800"
+      AWP_AUTO_CREATE: "0"  # tables come from the migrate job; a database behind the code stops the start
+      AWP_WORKSPACE_DIR: /var/lib/awp/workspaces
+      AWP_MODELS_FILE: /etc/awp/models.yaml
+    volumes:
+      - workspaces:/var/lib/awp
+      - ${AWP_MODELS_HOST_FILE:?set AWP_MODELS_HOST_FILE in deploy/.env (init_env.py does)}:/etc/awp/models.yaml:ro
+    ports:
+      - "127.0.0.1:${AWP_HOST_PORT:-8800}:8800"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8800/platform/v1/health', timeout=4).read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 60s
+      start_interval: 2s
+    stop_grace_period: 45s  # SIGTERM, then this long for running requests and the engine to stop, then SIGKILL
+
+  # ---- profile demo: no model key needed --------------------------------------------------------------------------
+  # A scripted OpenAI-compatible model and a sample partner MCP server, both run from the platform image with the
+  # scripts in ./demo. For deploy/smoke.py and for looking around the console; never for production.
+  fake-model:
+    <<: *awp
+    profiles: [demo]
+    pull_policy: never
+    restart: unless-stopped
+    env_file: []
+    entrypoint: ["python", "/demo/fake_model.py"]
+    volumes: ["./demo:/demo:ro"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8900/health', timeout=4).read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    stop_grace_period: 5s
+
+  fake-mcp:
+    <<: *awp
+    profiles: [demo]
+    pull_policy: never
+    restart: unless-stopped
+    env_file: []
+    environment:
+      DEMO_MCP_TOKEN: ${DEMO_MCP_TOKEN:-demo-mcp-token}
+    entrypoint: ["python", "/demo/fake_mcp.py"]
+    volumes: ["./demo:/demo:ro"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8901/health', timeout=4).read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    stop_grace_period: 5s
+
+  # ---- profile not-wired: present for the next phase, used by nothing today ------------------------------------------
+  redis:
+    profiles: [not-wired]
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:-}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDISCLI_AUTH\""]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *logging
+
+  minio:
+    profiles: [not-wired]
+    image: cgr.dev/chainguard/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-awp}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+    command: ["server", "/data", "--console-address", ":9001"]
+    volumes:
+      - miniodata:/data
+    ports:
+      - "127.0.0.1:${AWP_MINIO_HOST_PORT:-9190}:9000"
+      - "127.0.0.1:${AWP_MINIO_CONSOLE_HOST_PORT:-9191}:9001"
+    healthcheck:
+      test: ["CMD-SHELL", "mc alias set self http://127.0.0.1:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\" >/dev/null && mc ready self"]
+      interval: 10s
+      timeout: 8s
+      retries: 6
+    logging: *logging
+
+configs:
+  pg_init:
+    # the second database (AgentScope's storage); the first, `awp`, is POSTGRES_DB. Runs once, on an empty data directory.
+    content: |
+      CREATE DATABASE awp_storage OWNER awp;
+
+volumes:
+  pgdata:
+  workspaces:
+  redisdata:
+  miniodata:

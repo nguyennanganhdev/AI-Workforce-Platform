@@ -1,0 +1,52 @@
+# Direct runtime dependencies of the image. deploy/requirements.lock is compiled from this file (see its header).
+# The two packages of this repository (agentscope, awp) are NOT listed: the Dockerfile installs them from source
+# with --no-deps, then `pip check` fails the build when this list no longer covers what they declare.
+
+# ---- AgentScope (platform_VP/agentscope/pyproject.toml, [project].dependencies) ----
+aioitertools
+anthropic
+dashscope
+docstring_parser
+filetype
+json5
+json_repair[schema]>=0.63.4
+mcp<2.0.0
+httpx
+numpy
+openai
+python-datauri
+opentelemetry-api>=1.39.0
+opentelemetry-sdk>=1.39.0
+opentelemetry-exporter-otlp>=1.39.0
+opentelemetry-semantic-conventions>=0.60b0
+python-socketio
+rich
+shortuuid
+python-frontmatter
+jinja2
+aiofiles
+tree_sitter
+tree_sitter_bash
+jsonschema
+pypdf
+tzdata
+# extra "service": the HTTP service awp is built on (agentscope.app)
+fastapi
+uvicorn
+apscheduler
+ag-ui-protocol>=0.1.10
+# extra "storage-sql": AsyncSQLAlchemyStorage and its migrations
+sqlalchemy[asyncio]>=2.0
+alembic>=1.13
+
+# ---- awp (platform_VP/core/pyproject.toml) ----
+pydantic>=2
+pyyaml
+aiosqlite
+# extra "postgres"
+asyncpg
+# imported by awp but not declared in its pyproject: Fernet (awp/workforce/crypto.py); uvicorn is listed above
+cryptography
+
+# Deliberately absent: redis and aioboto3 (the code has no Redis bus or S3 wiring yet), model extras
+# (gemini, ollama, xai), typesafe-sdk (Jev), sandboxes, vector stores, RAG parsers, mem0/reme, test tools.

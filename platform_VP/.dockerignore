@@ -1,0 +1,30 @@
+# Build context of platform_VP/Dockerfile. Everything is left out, then only what the image is built from is let in.
+*
+
+!agentscope/pyproject.toml
+!agentscope/README.md
+!agentscope/LICENSE
+!agentscope/src
+!core/pyproject.toml
+!core/src
+!deploy/requirements.lock
+
+# Never, wherever they sit inside what was let in: environments, caches, version control, local data and secrets.
+**/.venv
+**/venv
+**/node_modules
+**/.git
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/*.egg-info
+**/*.db
+**/*.db-journal
+**/*.sqlite
+**/*.sqlite3
+**/.env
+**/.env.*
+**/awp_workspaces
+**/models.yaml
