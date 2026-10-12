@@ -54,7 +54,7 @@ class CaseSay(_CaseTool):
             return _err("You already said exactly this to the resident. Say something new or stop.")
         sources, trusted, bad = self._sources(await self._view(), cites or [])
         if bad:
-            return _err(f"Cannot cite: {', '.join(bad)}.")
+            return _err(f"Cannot cite: {', '.join(bad)}. Only evidence (E..) and facts (F..) can be cited.")
         refused = problems(text, sources, await self._rules(wf), trusted)
         if refused:
             return _err("Not sent, the resident has seen nothing: " + "; ".join(refused)
