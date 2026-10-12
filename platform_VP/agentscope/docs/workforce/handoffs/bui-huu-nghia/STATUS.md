@@ -2,10 +2,12 @@
 
 ## Cập nhật D3 — 2026-10-12 (trạng thái hiện hành)
 
-Đã thực hiện [PLAN_D3.md](PLAN_D3.md), **D3 consumer sẵn sàng review**. Baseline:
-`278ea4a3a4a62b79b290d2e9fc6bf24d33ba06a7`, branch `feat/wf-builder`, cùng ref local
-`origin/develop2`; chứa `3aabceb` sửa C3 và merge PR #68 (`bbd6d9a` C7/D0–D2).
-Các câu “chưa commit/push” trong ghi chú C3 cũ bên dưới là trạng thái lịch sử.
+Đã thực hiện [PLAN_D3.md](PLAN_D3.md), **D3 consumer đã merge vào `develop2`**.
+Baseline triển khai `278ea4a3a4a62b79b290d2e9fc6bf24d33ba06a7`; implementation
+`f1f195f` trên `feat/wf-builder` đã merge qua PR
+[#71](https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/71) tại
+`58c00f2`. Các câu “chưa commit/push” trong ghi chú C3/Phase B cũ bên dưới là
+trạng thái lịch sử tại thời điểm bàn giao tương ứng.
 
 Output D2 của Đông đã dùng trong SQL protocol regression. Không cần chờ D4 của
 Anh; two-instance concurrency dùng canonical contract double để kiểm tra refresh,
@@ -25,8 +27,8 @@ không đề xuất reuse old version hoặc revise khi chưa biết draft nào.
 Tests mới trong `tests/workforce/builder/phase_d/`; fault demo trong frontend
 Builder tests. Public exports/contracts/schema không đổi, không thêm migration.
 Handoff mới: PLAN/TEST_MATRIX/PHASE_D_D3 và INTEGRATION_REQUEST_BHN_D3.
-Code/test/docs hiện chưa commit/push. Tiếp theo: review consumer D3, đưa commands
-vào CI qua Chí Hoàng; commit/push/merge khi người dùng yêu cầu. Không nhận D4.
+Code/test/docs D3 đã commit/push/merge; owner Chí Hoàng đã thêm suite Builder D3
+vào workflow Phase D. Output của Nghĩa sẵn sàng cho D4; Nghĩa không nhận D4.
 
 ## Lịch sử C3 — 2026-10-11
 

@@ -5,11 +5,10 @@ file này ghi điểm phối hợp, không giao thêm task D4 cho Nghĩa.
 
 ## D3-CI — Nguyễn Chí Hoàng
 
-File cần owner sửa: `.github/workflows/workforce-phase-d.yml` **ở repo root**.
-Workflow hiện chạy C7/D1/D2/Registry/Orchestration/C6, chưa chạy Builder D3.
+**Đã xử lý sau khi PR #71 merge.** Owner đã cập nhật
+`.github/workflows/workforce-phase-d.yml` ở repo root để chạy Builder D3.
 
-Đề nghị thêm command riêng sau install dependencies, working directory
-`platform_VP/agentscope`:
+Command đã thêm, chạy với working directory `platform_VP/agentscope`:
 
 ```sh
 python -m unittest tests.workforce.builder.async_capabilities.test_phase_a tests.workforce.builder.async_capabilities.test_phase_b tests.workforce.builder.phase_c.test_integration tests.workforce.builder.phase_d.test_missing_capability tests.workforce.builder.phase_d.test_reuse tests.workforce.builder.phase_d.test_concurrent_build tests.workforce.foundation.test_contracts -q
@@ -17,9 +16,9 @@ python -m unittest tests.workforce.builder.async_capabilities.test_phase_a tests
 
 Local command có **100 pass**. Đây là suite deterministic không gọi MCP/model
 trả phí. Browser demo suite chạy riêng nếu CI đã có Playwright/browser; không
-tự thêm runner/dependency vào PR của Nghĩa. Chí Hoàng sở hữu environment checker,
-test DSN và global CI; local thiếu `pytest`, `aiosqlite`, DSN không được che bằng
-trạng thái “CI pass”.
+tự thêm runner/dependency vào PR của Nghĩa. Chí Hoàng tiếp tục sở hữu environment
+checker, test DSN và global CI; trạng thái suite Builder xanh không thay thế bằng
+chứng PostgreSQL canonical-write khi DSN/gate đó chưa chạy.
 
 ## D3-WRITE — Phó Tiến Anh (provider), Nguyễn Chí Hoàng (composition/DB), Phan Hoàng Dũng (E2E)
 

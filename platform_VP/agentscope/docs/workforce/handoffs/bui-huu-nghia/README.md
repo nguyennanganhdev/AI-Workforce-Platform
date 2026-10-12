@@ -1,12 +1,15 @@
 # Bàn giao — Bùi Hữu Nghĩa
 
-**2026-10-12 — D3 consumer đã thực hiện, sẵn sàng review:** missing-capability,
+**2026-10-12 — D3 consumer đã merge vào `develop2`:** missing-capability,
 reuse và concurrent-build regressions trên baseline `278ea4a` chứa C7/D0–D2.
 Có **34 backend + 8 browser checks pass**; sửa DRAFT thiếu draft_id bị đề xuất
 reuse/revise sai. Xem [PHASE_D_D3.md](PHASE_D_D3.md),
 [TEST_MATRIX_D3.md](TEST_MATRIX_D3.md) và [PLAN_D3.md](PLAN_D3.md).
-Code/test/docs chưa commit/push; không tuyên bố PostgreSQL canonical-write hoặc
-full production Builder. [Request phối hợp D3](INTEGRATION_REQUEST_BHN_D3.md).
+Implementation `f1f195f` đã merge qua PR
+[#71](https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/71) tại
+`58c00f2`; Builder D3 đã được thêm vào workflow Phase D. Không tuyên bố
+PostgreSQL canonical-write hoặc full production Builder.
+[Request phối hợp D3](INTEGRATION_REQUEST_BHN_D3.md).
 
 Phase B bổ sung đã có capability checks/UI với fake ports. Xem [PHASE_B.md](PHASE_B.md), [STATUS.md](STATUS.md) và [integration requests hiện tại](INTEGRATION_REQUEST_BHN_PHASE_B.md). Policy đã đồng bộ theo Tiến Anh; chưa xác nhận production integration hoặc hoàn thành toàn bộ BHN-01–14.
 
