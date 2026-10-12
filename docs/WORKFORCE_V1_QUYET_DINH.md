@@ -891,6 +891,24 @@ Mỗi kịch bản viết một lần và chạy hai lần: một tiến trình 
 
 Chọn **hai service** (`api` cổng 8800, `api2` cổng 8801, profile `two`) thay cho `--scale`: cổng của từng bản sao cố định, script và tài liệu chỉ thẳng được vào từng bản. `smoke.py` thêm bước console (trang và hai tệp tĩnh lấy từ container), `--sse-base` (đọc SSE từ bản sao khác) và `--failover-to` + `--kill` (giết một bản sao bằng `docker kill -s KILL` ngay trong lời gọi đã duyệt, đi tiếp qua bản kia).
 
+### Số liệu (chạy thật, 12/10/2026)
+
+Trước slice (commit `3edf705`), bộ mặc định, SQLite, `-n 8`: 1299 passed, 12 skipped, **1 failed** (`test_wf_t2_review_order.py::test_a_later_event_stands_back_for_an_earlier_one_of_the_same_operation_and_follows_it`; test này xanh trong mọi lần chạy sau đó của slice, tôi không tìm nguyên nhân: coi là chập chờn có sẵn, còn mở).
+
+Trên cây đã commit (`de85852`; mã `src/` không đổi kể từ đó):
+
+| Lần chạy | Kết quả |
+|---|---|
+| Bộ mặc định, SQLite, `-n 8` | **1328 passed, 32 skipped, 0 failed** trong 490 s (1360 test; 32 bỏ qua gồm 18 test `multiproc`, 3 test cần Redis thật, các test chỉ có nghĩa trên PostgreSQL, test trình duyệt, 14.3-8b) |
+| Bộ `multiproc` (PostgreSQL + Redis, tiến trình thật, tuần tự), **ba lần liên tiếp** | **18 passed** mỗi lần: 293 s, 283 s, 287 s. Ba lần trước đó trên cùng mã (trước khi thư mục bị mất): 18 passed mỗi lần (281, 274, 274 s) |
+| `test_wf_p5b_fleet.py` với PostgreSQL và Redis thật | 16 passed (ba test Redis không bị bỏ qua) |
+| Bộ mặc định, PostgreSQL, tuần tự | PG_LINE |
+| Docker, hai bản sao (`SMOKE_RESULT.md` mục 10) | `smoke.py` 22/22 ba lần: A (không giết), B (giết bản đang chạy lượt), C (giết bản giữ job) |
+
+Lịch sử các lần đỏ trong slice (không giấu): lần chạy đầy đủ đầu tiên sau khi đổi engine có 4 test đỏ (ba test dựng crash bằng tay theo hành vi cũ, một test thay `finish_job`; đã sửa như ghi ở "Lệch"); lần chạy PostgreSQL đầu tiên có 1 test đỏ (`test_a_live_run_keeps_its_lease…`: lần đánh giá kết thúc `error` khi máy đang cùng lúc build image Docker và chạy bộ `multiproc`; chạy riêng hai lần đều xanh, và lần chạy PostgreSQL đầy đủ kế tiếp trên máy rảnh xanh hết: tôi coi là do tải, không chứng minh được hơn thế); lần chạy bộ `multiproc` đầu tiên có 7 test đỏ, đều do bộ đồ nghề test (đọc sai tên field của snapshot, giết nhầm trình khởi chạy thay vì tiến trình Python trên Windows) trừ một: kịch bản model trả lời có chữ số bị cổng chống bịa từ chối (đúng hành vi của platform; kịch bản đổi sang không dùng chữ số).
+
+Image `awp-platform:0.2.0` (`eed4fad8…`) được kiểm là chứa đúng mã đã commit: băm của 111 tệp trong gói `awp` của image bằng băm của `platform_VP/core/src/awp` ở `de85852`.
+
 ### Lệch so với lời giao việc và so với trước
 
 - **Hành vi đổi**: job có lượt chết *sau khi leader đã nói* không chạy lại nữa (xem bảng). Test cũ `test_a_job_whose_turn_died_with_the_process_runs_again` dựng crash bằng cách sửa dòng của một lượt đã nói xong; nay nó đặt `started_at` của lượt về sau câu nói để đúng tiền đề "chưa nói gì".

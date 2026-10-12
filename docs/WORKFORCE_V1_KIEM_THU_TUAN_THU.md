@@ -53,6 +53,8 @@ Cập nhật: 12/10/2026 (phase P4; dòng 13.9-9 và ý 14.3-8 cập nhật ở 
 
 ## Số liệu
 
+**P5b (12/10/2026)**: bộ mặc định trên SQLite `-n 8`: 1328 passed, 32 skipped, 0 failed (1360 test). Riêng bộ kill thật (`-m multiproc`, cần PostgreSQL và Redis): 18 passed, ba lần liên tiếp, trong đó có `test_14_3_08c…`. Chi tiết ở `docs/WORKFORCE_V1_QUYET_DINH.md`, mục P5b. Đoạn dưới là số liệu của P4, giữ làm lịch sử.
+
 Lần chạy sạch cuối (ổ khóa thức, máy không ngủ): 1097 passed, 2 skipped, 0 failed trong 1139.57 giây cho cả bộ mặc định (1099 test). Riêng `test_compliance.py`: 27 test, 25 passed, 2 skipped (ý 8b và 8c của 14.3), chạy riêng khoảng 100 giây. Ba lần chạy đầy đủ liên tiếp đều xanh; chi tiết từng lần và các test đỏ của lần đầu ở `docs/WORKFORCE_V1_QUYET_DINH.md`, mục "P4".
 
 Tổng kết độ phủ (13.9: 12 dòng; 14.3: 13 ý): 12/12 dòng 13.9 có test passing (dòng 9 là mô phỏng restart); 14.3: 11 ý passing đầy đủ, ý 8 passing một phần (platform và worker, mô phỏng) kèm hai test bỏ qua (backend đối tác: phía đối tác; kill thật: cần hạ tầng thật), ý 13 một nửa kiểm được (tách môi trường) và một nửa là quy trình. Chưa dòng nào là bằng chứng production.

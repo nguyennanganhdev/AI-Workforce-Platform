@@ -228,7 +228,7 @@ Các mục 1 đến 9 ở trên là lần chạy của bước B4 (image `0.1.0`
 | | |
 |---|---|
 | Image | `awp-platform:0.2.0`, id `sha256:eed4fad8b81ae9671e907729f879684de15c19a6b01a1f130df67db1a23734ad`, 130.675.117 byte nén (614 MB trên đĩa); 102 gói bên thứ ba (thêm `redis` 8.1.0) |
-| Build từ | nhánh `wip/platform-core-mvp`, cây làm việc của slice P5b ngay trước commit của nó |
+| Build từ | nhánh `wip/platform-core-mvp`, cây làm việc của slice P5b trước khi commit. Sau commit đã kiểm: băm của 111 tệp trong gói `awp` của image bằng băm của `platform_VP/core/src/awp` ở commit `de85852` |
 | Stack | `docker compose --profile demo --profile two up -d`: `postgres`, `redis` (có mật khẩu, `appendonly yes`), `migrate`, `api` (127.0.0.1:8800), `api2` (127.0.0.1:8801), `fake-model`, `fake-mcp` |
 | Migration | `at revision 0006_operation_node`, `AgentScope storage at its latest revision`, `up to date at revision 0006_operation_node` |
 | Khởi động nguội | từ volume rỗng tới `GET /platform/v1/health` trả 200: 17 giây (một lần đo, máy đang chạy cả bộ test) |
