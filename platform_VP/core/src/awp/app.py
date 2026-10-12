@@ -19,6 +19,7 @@ from agentscope.app.workspace_manager import LocalWorkspaceManager
 
 from .casefile import CaseStore
 from .config import Settings
+from .console import build_console
 from .cost import CostService
 from .db import Database, engine_options
 from .agentscope_client import AgentScopeClient
@@ -104,6 +105,7 @@ def build_app(
 
     client = AgentScopeClient(rt, app, secret)
     app.include_router(build_router(rt))
+    app.include_router(build_console())  # the admin console at /console: static files, every call it makes needs a key
     wf = install_workforce(app, rt)
     engine = WorkflowEngine(wf, client)  # the real engine; a test may put another in wf.engine
     wf.engine = engine

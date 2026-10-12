@@ -16,6 +16,7 @@ import secrets
 from dataclasses import dataclass
 
 from .config import Settings
+from .console import is_console
 
 
 MANAGER_PREFIX = "mk_"  # a manager's operator key; it is looked up in the database, never among the admin keys
@@ -96,6 +97,8 @@ class SecurityMiddleware:
             v, self.internal_secret.encode()) for k, v in headers)
         if internal:
             return await self.app(scope, receive, send)
+        if is_console(scope["method"], path):
+            return await self.app(scope, receive, send)  # the static page: it holds no data, its API calls carry the key
 
         if any(k == b"authorization" and v[:7].lower() == b"apikey " for k, v in headers):
             return await self._reply(send, 401, {"detail": "partner keys only work on /workforce"})

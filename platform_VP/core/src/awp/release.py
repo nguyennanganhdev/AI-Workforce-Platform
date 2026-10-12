@@ -197,6 +197,16 @@ def build_release(r: APIRouter, rt: Runtime, caller) -> None:
         await rt.sync_templates()
         return {**out.model_dump(), "warnings": warnings}
 
+    @r.get("/profiles/{key}/versions/{version}/gate")
+    async def read_gate(key: str, version: int, request: Request):
+        """Whether a plain publish of this version would pass the evaluation gate now, and if not why: what a screen
+        shows next to its Publish button. The decision is the same function `publish` asks."""
+        p = await may(request, key)
+        rec = await version_of(p, key, version)
+        refused = await gate(rt, p.tenant, rec) if rec.status == "draft" else None
+        return {"key": key, "version": version, "status": rec.status, "publishable": rec.status == "draft" and refused is None,
+                "refusal": refused}
+
     @r.post("/profiles/{key}/versions/{version}/publish")
     async def publish_profile(key: str, version: int, request: Request, body: PublishIn | None = None):
         p = await may(request, key, write=True)

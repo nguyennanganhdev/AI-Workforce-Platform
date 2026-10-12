@@ -28,7 +28,8 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-awp = ["migrations/script.py.mako", "migrations/versions/*.py"]
+awp = ["migrations/script.py.mako", "migrations/versions/*.py",
+       "console/*.html", "console/*.js", "console/*.css", "console/*.svg"]  # the admin console's static files
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

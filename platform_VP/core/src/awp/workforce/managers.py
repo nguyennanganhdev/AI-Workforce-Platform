@@ -17,7 +17,7 @@ from sqlalchemy import insert, select, update
 
 from ..security import MANAGER_PREFIX, Principal
 from . import crypto, tables as t
-from .adminkit import first, tenant_clients, tenant_of
+from .adminkit import first, scope_of, tenant_clients, tenant_of
 from .common import iso, now
 from .schemas import ManagerIn, ManagerKeyIn
 from .tables import new_id
@@ -66,8 +66,21 @@ async def get_manager(conn, tenant: str, manager_id: str) -> Any:
 
 
 def build_admin_managers(r: APIRouter, ctx: Any) -> None:
-    """Only the tenant admin: every handler asks `tenant_of`, which refuses a manager's key."""
+    """Only the tenant admin: every handler asks `tenant_of`, which refuses a manager's key. The one exception is `me`,
+    which tells any caller who its own key is."""
     db = ctx.db
+
+    @r.get("/me")
+    async def me(request: Request):
+        """Who the key is: what the console shows after login, and how it knows which screens this key can open."""
+        who = scope_of(request)
+        out = {"tenant": who.tenant, "role": "manager" if who.manager_id else "admin", "actor": request.state.principal.actor,
+               "manager_id": who.manager_id, "manager_name": None, "client_id": None}
+        if who.manager_id:
+            async with db.engine.connect() as conn:
+                m = await get_manager(conn, who.tenant, who.manager_id)
+            out.update(manager_name=m["name"], client_id=m["client_id"])
+        return out
 
     @r.post("/clients/{client_id}/managers", status_code=201)
     async def create_manager(client_id: str, body: ManagerIn, request: Request):

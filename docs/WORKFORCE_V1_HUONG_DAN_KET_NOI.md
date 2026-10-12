@@ -2,6 +2,8 @@
 
 Cập nhật: 10/10/2026 (phase P4). Viết cho **người vận hành platform** (làm các bước admin) và **người tích hợp phía đối tác** (gọi API công khai). Hợp đồng là `docs/contract/CONTRACT_TICH_HOP_DOI_TAC.md` (bản `1.3-draft`); tài liệu này chỉ nói *làm thế nào*. API cũ (`/platform/v1/intake`, webhook, khóa dịch vụ `AWP_SERVICE_KEYS`) không còn: đối tác chỉ dùng `/workforce/v1`.
 
+Mọi bước admin dưới đây (mục 1 đến 5) cũng làm được trên console quản trị tại `$P/console` (đăng nhập bằng khóa admin; `docs/WORKFORCE_V1_VAN_HANH.md` mục 10): console gọi đúng các API này, nên các lệnh `curl` vẫn là tài liệu chuẩn. Riêng tạo và sửa hồ sơ agent bằng JSON (bước 1) chỉ có ở API; trên console, hồ sơ được tạo qua "Tạo agent qua chat".
+
 Quy ước trong ví dụ: `$P` là địa chỉ platform (ví dụ `http://127.0.0.1:8800`), `$ADMIN` là một khóa trong `AWP_ADMIN_KEYS` (Bearer), id và bí mật trong ngoặc nhọn là giá trị trả về ở bước trước. Khóa của đối tác có dạng `dp_<id>.<secret>`, chỉ hiện **một lần** khi tạo; platform chỉ lưu băm SHA-256.
 
 ## 0. Việc phải có trước
