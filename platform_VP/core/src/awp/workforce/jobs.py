@@ -64,7 +64,7 @@ def images_note(asset_ids: list[str], known: list[dict]) -> str:
     references. The ids and types are the platform's own (the upload's), nothing the resident typed."""
     if not asset_ids:
         return ""
-    about = {a["id"]: f" ({attr(a['content_type'])}, {int(a['size'])} bytes)" for a in known}
+    about = {a["id"]: f" ({a['content_type']}, {int(a['size'])} bytes)" for a in known}  # the type is one of the platform's four
     listed = ", ".join(attr(a) + about.get(a, "") for a in asset_ids)
     return (f" The resident attached {len(asset_ids)} image(s): {listed}. You are given references only and cannot see "
             "the images: say nothing about what they show. When a partner tool needs a photo, get a short-lived link "

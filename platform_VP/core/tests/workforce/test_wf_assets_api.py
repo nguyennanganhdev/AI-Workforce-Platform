@@ -371,3 +371,23 @@ def test_a_key_may_be_given_the_operation_and_a_route_confirmation_does_not_list
 def _integration(flow) -> str:
     return flow.env.post(f"/platform/v1/wf/clients/{flow.client['client_id']}/integrations", {"event_schema": {
         "version": "1", "version_mode": "snapshot", "events": {"x.done": {"status": "completed", "rank": 1}}}}).json()["integration_id"]
+
+
+def test_the_consoles_partner_screen_turns_images_on_and_off_and_offers_the_operation(make_env):
+    from consolekit import JS, Page
+
+    with make_env() as env:
+        page = Page(env, "adm-a")
+        client = page.ok("clientAdd", body={"name": "Đối tác A", "domain": "homes", "environment": "sandbox"})
+        cid = client["client_id"]
+        assert client["capabilities"] == []
+        assert page.ok("clientPatch", cid, body={"capabilities": ["attach_asset"]})["capabilities"] == ["attach_asset"]
+        assert [c["capabilities"] for c in page.ok("clients")["clients"]] == [["attach_asset"]]  # what the screen draws its line from
+        key = page.call("keyAdd", cid, body={"operations": ["submit_request", "attach_asset"], "routes": ["*"]})
+        assert key.status_code == 201 and key.json()["operations"] == ["submit_request", "attach_asset"]
+        assert page.ok("clientPatch", cid, body={"capabilities": []})["capabilities"] == []
+        operator = Page(env, env.manager_key(env.manager(cid)["manager_id"])["Authorization"].split()[1])
+        assert operator.call("clientPatch", cid, body={"capabilities": ["attach_asset"]}).status_code == 403
+        assert Page(env, "adm-b").call("clientPatch", cid, body={"capabilities": ["attach_asset"]}).status_code == 404
+    assert "[...CUSTOMER_OPS, ASSET_OP]" in JS and "call('clientPatch', [cid]" in JS
+    assert "value: CUSTOMER_OPS," in JS  # the operation is offered, not ticked for every new key
