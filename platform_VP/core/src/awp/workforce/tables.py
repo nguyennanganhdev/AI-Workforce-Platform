@@ -369,6 +369,8 @@ operations = Table(
     Column("result", JSON),
     # What the model sent (its own arguments): a crash leaves an intent that is sent again from here.
     Column("arguments", JSON),
+    # The process that holds the live call (nodes.py): while it lives, no other process takes the row for a leftover.
+    Column("node", String(40)),
     _f("created_at"),
     _f("updated_at"),
     UniqueConstraint("client_reference", name="uq_operation_reference"),

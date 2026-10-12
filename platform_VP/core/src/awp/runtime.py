@@ -42,6 +42,8 @@ class Runtime:
     cost: CostService
     storage: Any  # agentscope StorageBase
     bus: Any  # agentscope MessageBus
+    node: str = ""  # the name of this process in the fleet (bus.new_node): in job leases, lock values, operations
+    shared_bus: bool = False  # the bus is one that other processes use too (Redis): several processes may run
     judge: SupportJudge | None = None
     # The live dict AgentScope reads sub-agent templates from (mutated in place).
     templates: dict = field(default_factory=dict)
@@ -59,6 +61,9 @@ class Runtime:
     evals: Any = None  # evals.runner.EvalRunner: runs a profile version in the sandbox before it is released
     builder: Any = None  # builder.Builder: proposes profiles in a chat, makes drafts
     template_tenant: dict[str, str] = field(default_factory=dict)
+    # Says something to the other processes of the fleet (set by the app when the bus is shared): "templates" after the
+    # published agents changed here, so that they read them again at once instead of at their next periodic look.
+    announce: Callable[[str], None] | None = None
     _profile_cache: dict = field(default_factory=dict)
 
     # ---- who is this agent? -------------------------------------------
@@ -134,8 +139,10 @@ class Runtime:
         return True
 
     # ---- templates -----------------------------------------------------
-    async def sync_templates(self) -> list[str]:
-        """Make the live template registry equal the published specialists."""
+    async def sync_templates(self, announce: bool = True) -> list[str]:
+        """Make the live template registry equal the published specialists. The registry is this process's memory:
+        the process that published tells the others (`announce`), and every process of a fleet also reads it again
+        every half minute (app.py), so a lost message costs half a minute, never a wrong agent for ever."""
         published = [r for r in await self.profiles.all_published()
                      if r.profile.role == "specialist"]
         keep = {r.key for r in published}
@@ -147,4 +154,6 @@ class Runtime:
             del self.templates[key]
             self.template_tenant.pop(key, None)
         self._profile_cache.clear()
+        if announce and self.announce is not None:
+            self.announce("templates")
         return sorted(keep)

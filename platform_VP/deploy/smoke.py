@@ -12,6 +12,11 @@ backend (the provider key and signing key). Every step asserts and prints PASS o
     python smoke.py --docker              also ask the sample MCP server how often it was really called
                                           (docker compose exec; without it that one check is skipped)
 
+Two replicas (docker compose --profile two): the walk goes through one, the event stream is read from the other, and
+the first can be killed in the middle of the approved call to the partner; the rest then goes through the second:
+    python smoke.py --docker --sse-base http://127.0.0.1:8801
+    python smoke.py --docker --sse-base http://127.0.0.1:8801 --failover-to http://127.0.0.1:8801 --kill awp-platform-api-1
+
 With the `demo` profile the model is scripted (deploy/demo/fake_model.py): this proves the image, the migrations, the
 wiring and the workflow machinery. It proves nothing about a real model. Without the demo model the same walk runs on
 whatever model the catalog offers; a real model may word things differently and take longer.
@@ -166,7 +171,36 @@ class Smoke:
         return {"external_user_id": USER, "external_ticket_id": self.s["ticket"],
                 "external_conversation_id": self.s["chat"]}
 
+    def sample_partner(self, *argv: str) -> dict:
+        """Run the sample MCP server's own command line inside its container (its port is not published)."""
+        out = subprocess.run(["docker", "compose", "-p", self.args.project, "exec", "-T", "fake-mcp", "python", "/demo/fake_mcp.py",
+                              *argv], capture_output=True, text=True, timeout=60, cwd=str(HERE))
+        check(out.returncode == 0, f"could not reach the sample MCP server ({' '.join(argv)}): {out.stderr[:300]}")
+        return json.loads(out.stdout)
+
     # ---- the steps ------------------------------------------------------------------------------------------------------
+    def console(self):
+        """The admin console is part of the image: the page and its three files come from the container, with the
+        headers that keep it to its own origin, and without a key (it holds no data)."""
+        req = urllib.request.Request(self.base + "/console", headers={"Accept": "text/html"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            page, kind, csp = r.read().decode("utf-8", "replace"), r.headers.get("content-type", ""), r.headers.get("content-security-policy", "")
+            check(r.status == 200 and kind.startswith("text/html"), f"/console answered {r.status} {kind}")
+        check("<html" in page.lower() and "app.js" in page and "app.css" in page, "the page is not the console's index.html")
+        check("default-src 'self'" in csp, f"the console's Content-Security-Policy is {csp!r}")
+        check("http://" not in page and "https://" not in page, "the console page refers to another origin")
+        sizes = {}
+        for name, want in (("app.js", "javascript"), ("app.css", "text/css")):
+            with urllib.request.urlopen(self.base + "/console/" + name, timeout=20) as r:
+                body = r.read()
+                check(r.status == 200 and want in r.headers.get("content-type", "") and len(body) > 1000,
+                      f"/console/{name} answered {r.status} {r.headers.get('content-type')} with {len(body)} bytes")
+                sizes[name] = len(body)
+        status, _ = self.call("GET", "/console/config.py")
+        check(status == 404, f"a file that is not one of the console's answered {status}")
+        return (f"GET /console: 200 text/html ({len(page)} bytes) with its CSP; app.js {sizes['app.js']} and app.css "
+                f"{sizes['app.css']} bytes from the container; no key needed, nothing loaded from elsewhere")
+
     def health(self):
         body = self.until(lambda: (lambda r: r[1] if r[0] == 200 else None)(self.call("GET", "/platform/v1/health", timeout=5)),
                           self.args.health_timeout, "GET /platform/v1/health to answer 200")
@@ -289,11 +323,15 @@ class Smoke:
                 "unusable; the header value is not readable back")
 
     def activate(self):
+        # idempotency_arg: the sample partner makes a request with a reference it already has a no-op, so the platform
+        # may send a request again that a crash left half sent (without it such a request needs a person)
         t = self.expect(self.adm("PATCH", f"/wf/routes/{self.s['route_id']}/tools/book_repair", {
             "status": "active", "tracking": "events", "client_reference_arg": "client_reference",
+            "idempotency_arg": "client_reference",
             "integration_id": self.s["integration_id"], "consent_summary": "Book a repair visit for {slot}"}), 200, "activate book_repair")
         check((t["status"], t["tracking"], t["requires_consent"]) == ("active", "events", True), f"the tool is not as activated: {t}")
-        return "book_repair active: an action that needs the resident's consent, followed by provider events"
+        return ("book_repair active: an action that needs the resident's consent, followed by provider events, safe to "
+                "send again with the same reference")
 
     def confirm(self):
         self.s.update(ticket=f"TICKET-{self.s['run']}", chat=f"CHAT-{self.s['run']}")
@@ -326,8 +364,10 @@ class Smoke:
                 "ids; nothing was sent to the partner yet")
 
     def sse(self):
-        """The event stream from its beginning: read frames until the approval request shows up."""
-        url = urllib.parse.urlsplit(self.base)
+        """The event stream from its beginning: read frames until the approval request shows up. With --sse-base it
+        is read from another replica than the one the requests went to."""
+        source = (self.args.sse_base or self.base).rstrip("/")
+        url = urllib.parse.urlsplit(source)
         conn = http.client.HTTPConnection(url.hostname, url.port or 80, timeout=20)
         seen: list[str] = []
         try:
@@ -352,7 +392,8 @@ class Smoke:
         finally:
             conn.close()
         check("approval.required" in seen, f"the stream did not deliver approval.required within 20 s: {seen}")
-        return f"SSE delivered {len(seen)} events with cursors: {seen}"
+        where = f" (read from {source}, the requests went to {self.base})" if source != self.base else ""
+        return f"SSE delivered {len(seen)} events with cursors{where}: {seen}"
 
     def read_approval(self):
         snap = self.snapshot()
@@ -371,15 +412,36 @@ class Smoke:
                 "arguments_hash": a["arguments_hash"]}
         if a.get("quote_ref"):
             body["quote_ref"] = a["quote_ref"]
+        to = (self.args.failover_to or "").rstrip("/")
+        if to:  # the approved call will hang at the sample partner: the request is in, its answer is not out
+            check(bool(self.args.kill and self.args.docker), "--failover-to needs --kill <container> and --docker")
+            self.sample_partner("--hold", "on")
         d = self.expect(self.partner("POST", f"/approvals/{a['approval_id']}/decision", body), 202, "the decision")
         check(d["status"] == "approved", f"the decision answered {d}")
-        self.wait_state("waiting_external_event")
+        note = "the tool ran"
+        if to:
+            self.until(lambda: self.sample_partner("--stats")["held"] == 1, 60, "the approved call to hang at the sample partner")
+            killed = subprocess.run(["docker", "kill", "-s", "KILL", self.args.kill], capture_output=True, text=True, timeout=60)
+            check(killed.returncode == 0, f"docker kill {self.args.kill}: {killed.stderr[:300]}")
+            t0 = time.monotonic()
+            self.sample_partner("--hold", "off")
+            was, self.base = self.base, to
+            self.s["failed_over"] = True
+            self.wait_state("waiting_external_event", max(self.args.turn_timeout, 240))
+            note = (f"{self.args.kill} was killed (SIGKILL) inside the approved call to the partner; {to} took the "
+                    f"workflow over {time.monotonic() - t0:.0f}s later (it waits for the dead process's lease) instead of {was}")
+        else:
+            self.wait_state("waiting_external_event")
         again = self.expect(self.partner("POST", f"/approvals/{a['approval_id']}/decision", body), 202, "the same decision again")
         check(again == d, "sending the same decision again answered differently")
-        return "approved (202); the tool ran and the workflow is waiting_external_event; the same decision again is answered the same"
+        return f"approved (202); {note} and the workflow is waiting_external_event; the same decision again is answered the same"
 
     def operation(self):
-        ops = self.expect(self.adm("GET", "/wf/operations", params={"workflow_id": self.s["workflow_id"]}), 200, "operations")["operations"]
+        def listed():
+            return self.expect(self.adm("GET", "/wf/operations", params={"workflow_id": self.s["workflow_id"]}), 200, "operations")["operations"]
+        if self.s.get("failed_over"):  # the dead process had the partner's answer, if any: the survivor asks again first
+            self.until(lambda: [o for o in listed() if o["status"] == "pending"], 180, "the survivor to learn what became of the request")
+        ops = listed()
         check(len(ops) == 1, f"wanted exactly one operation, got {len(ops)}: {ops}")
         op = ops[0]
         check(op["tool"] == "book_repair" and op["status"] == "pending" and op["client_reference"], f"unexpected operation: {op}")
@@ -454,21 +516,30 @@ class Smoke:
         note = "202 duplicate"
         partner = "partner call count: skipped (run with --docker)"
         if self.args.docker:
-            out = subprocess.run(["docker", "compose", "-p", self.args.project, "exec", "-T", "fake-mcp", "python", "/demo/fake_mcp.py",
-                                  "--stats"], capture_output=True, text=True, timeout=60, cwd=str(HERE))
-            check(out.returncode == 0, f"could not read the sample MCP server's counters: {out.stderr[:300]}")
-            stats = json.loads(out.stdout)
+            stats = self.sample_partner("--stats")
             ref = self.s["client_reference"]
-            times = stats["book_repair_calls_by_reference"].get(ref, 0)
-            check(ref in stats["jobs"] and times == 1,
-                  f"the partner was called {times} times with this workflow's reference (wanted exactly 1): {stats}")
-            partner = (f"the sample MCP server was called exactly once with this reference and holds one job for it "
-                       f"({stats['jobs'][ref]}); all its calls since it started, every workflow together: {stats['calls']}")
+            times, made = stats["book_repair_calls_by_reference"].get(ref, 0), stats["side_effects_by_reference"].get(ref, 0)
+            # after a kill inside the call the survivor sends the request once more with the SAME reference; the partner
+            # answers from the job it already has
+            # after a kill inside the call: the agent is woken through a queue either replica may take. If the killed
+            # one ran the call, the survivor sent the request once more with the SAME reference (2 calls, the partner
+            # answers from the job it has); if the survivor ran it, the call simply went on (1 call).
+            want = (1, 2) if self.s.get("failed_over") else (1,)
+            check(ref in stats["jobs"] and times in want and made == 1,
+                  f"the partner was called {times} times with this workflow's reference (wanted {' or '.join(map(str, want))}) "
+                  f"and made {made} job(s) for it (wanted 1): {stats}")
+            how = ("exactly once with this reference and holds one job for it" if times == 1 else
+                   "twice with this reference (the second time by the replica that took over) and made ONE job for it")
+            if self.s.get("failed_over") and times == 1:
+                how += " (the call was running in the replica that survived; the killed one held the job)"
+            partner = (f"the sample MCP server was called {how} ({stats['jobs'][ref]}); all its calls since it started, "
+                       f"every workflow together: {stats['calls']}")
         return (f"1 operation (completed), 1 approval (approved), 2 receipts (applied), {len(says)} distinct messages to the "
                 f"resident, one approval.required/approval.resolved/workflow.closed; the same event again: {note}; {partner}")
 
     STEPS = [
         ("health", "API is up and protected", health),
+        ("console", "Admin console is served", console),
         ("models", "A model is available", models),
         ("profile", "Leader profile (draft)", profile),
         ("eval", "Evaluation of the draft", evaluation),
@@ -562,6 +633,10 @@ def main() -> int:
     ap.add_argument("--resume", action="store_true", help="go on from the saved state")
     ap.add_argument("--docker", action="store_true", help="also read the sample MCP server's call counters (docker compose exec)")
     ap.add_argument("--project", default="awp-platform", help="compose project name, for --docker")
+    ap.add_argument("--sse-base", help="read the event stream from this address (another replica) instead of --base")
+    ap.add_argument("--failover-to", help="address of another replica: the replica at --base is killed inside the approved "
+                    "call to the partner and the walk goes on through this one (needs --kill and --docker)")
+    ap.add_argument("--kill", help="container to kill for --failover-to (docker kill -s KILL), e.g. awp-platform-api-1")
     ap.add_argument("--health-timeout", type=float, default=120)
     ap.add_argument("--turn-timeout", type=float, default=120, help="seconds one agent turn may take")
     ap.add_argument("--eval-timeout", type=float, default=900)

@@ -215,11 +215,11 @@ class FailsFinishing:
         import awp.workforce.runner as runner
         self.runner, self.real, self.calls, self.n = runner, runner.finish_job, 0, n
 
-    async def __call__(self, conn, jid, status="done"):
+    async def __call__(self, conn, jid, status="done", **how):
         self.calls += 1
         if self.calls <= self.n:
             raise RuntimeError("connection reset")
-        return await self.real(conn, jid, status)
+        return await self.real(conn, jid, status, **how)
 
 
 def test_a_dispatcher_that_died_after_the_turn_does_not_block_the_next_reply(tmp_path):
@@ -254,7 +254,9 @@ def test_a_job_whose_turn_died_with_the_process_runs_again(tmp_path):
         w.quiet()
         jid = w.sql("select id from wf_jobs")[0][0]
         w.sql("update wf_jobs set status='dispatched', lease_until=1 where id=?", (jid,))
-        w.sql("update wf_turns set status='running', ended_at=null")
+        # (the turn "began" now, after the words of the finished one: a dead turn that had already spoken is another case,
+        # test_wf_p5b_recovery.py)
+        w.sql("update wf_turns set status='running', ended_at=null, started_at=?", (time.time(),))
         w.run(w.engine.start)
         w.wait(lambda: w.sql("select status, attempts from wf_jobs") == [("done", 2)], 20, "the job to run again")
         assert w.sql("select count(*) from wf_turns") == [(2,)]
@@ -282,7 +284,7 @@ def test_an_engine_stopped_in_the_bookkeeping_after_a_turn_hands_the_job_back_to
     with world(tmp_path, scripts.interactive, wf_wait_seconds=0.3) as w:
         reached = threading.Event()
 
-        async def never(conn, jid, *a):
+        async def never(conn, jid, *a, **k):
             reached.set()
             await asyncio.Event().wait()  # the write that marks the job done never comes back
 

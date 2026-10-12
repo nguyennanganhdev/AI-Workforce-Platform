@@ -48,7 +48,7 @@ class Settings:
     wf_heartbeat_seconds: float = 15.0  # SSE ": heartbeat" comment (contract 9.6)
     wf_revalidate_seconds: float = 30.0  # SSE re-checks key and grant; the contract caps it at 60
     wf_sse_poll_seconds: float = 1.0  # SSE reads the log this often when no wake-up signal arrives
-    wf_max_streams: int = 20  # open event streams per API key in one process; 0 disables
+    wf_max_streams: int = 20  # open event streams per API key (the whole fleet with Redis, else this process); 0 disables
     # Fernet key that seals provider signing secrets and MCP headers. Required unless AWP_DEV_OPEN.
     secret_key: str = ""
     approval_ttl_seconds: int = 24 * 3600
@@ -57,6 +57,12 @@ class Settings:
     wf_ack_seconds: float = 10.0
     wf_job_attempts: int = 3
     wf_turn_timeout_seconds: float = 900.0
+    # Several processes (P5b). AWP_REDIS_URL: the message bus all processes of a fleet share (session locks, wake-ups,
+    # signals); empty means one process with the bus in its memory, and a second process on the same database refuses to
+    # start. AWP_WF_LEASE_SECONDS: a process says it lives every quarter of this; the jobs and the session locks of one that
+    # was silent this long are taken over by the others.
+    redis_url: str = ""
+    wf_lease_seconds: float = 60.0
     # Retention (contract 12), run by one process of the fleet every `retention_every_seconds` (0: never): events are kept this
     # many days after the workflow closed, provider dedupe rows this many days, the finished jobs and turns of a closed workflow
     # this many days. 0 keeps that kind for ever. The contract's minimums are 90 and 180 days unless agreed otherwise.
@@ -140,6 +146,8 @@ class Settings:
             wf_ack_seconds=float(e.get("AWP_WF_ACK_SECONDS") or cls.wf_ack_seconds),
             wf_job_attempts=int(e.get("AWP_WF_JOB_ATTEMPTS") or cls.wf_job_attempts),
             wf_turn_timeout_seconds=float(e.get("AWP_WF_TURN_TIMEOUT_SECONDS") or cls.wf_turn_timeout_seconds),
+            redis_url=(e.get("AWP_REDIS_URL") or "").strip(),
+            wf_lease_seconds=float(e.get("AWP_WF_LEASE_SECONDS") or cls.wf_lease_seconds),
             event_retention_days=int(e.get("AWP_EVENT_RETENTION_DAYS") or cls.event_retention_days),
             inbox_retention_days=int(e.get("AWP_INBOX_RETENTION_DAYS") or cls.inbox_retention_days),
             closed_retention_days=int(e.get("AWP_CLOSED_RETENTION_DAYS") or cls.closed_retention_days),

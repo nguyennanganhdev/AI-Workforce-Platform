@@ -7,11 +7,17 @@ Generic on purpose: 'ticket' and 'repair' are only fixture names. Streamable HTT
 
 Every call is counted, so a check can prove how many times the partner was really called:
     python fake_mcp.py --stats      (run inside the container; prints JSON read from GET /stats)
+    python fake_mcp.py --hold on    (tests and the failover smoke only; `off` lets the held calls go)
+
+For tests only (the kill tests of core/tests/workforce/mpkit.py): POST /control {"hold": true} makes `book_repair` wait
+after it took the request in (the side effect is done, the answer is not sent) until {"hold": false}; /stats says how
+many calls are held and how many were answered. A test kills a platform process while its tool call hangs there.
 
 Run: python fake_mcp.py   (listens on 0.0.0.0:8901; expects `Authorization: Bearer $DEMO_MCP_TOKEN` when that is set)
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -28,6 +34,14 @@ def stats() -> int:
     return 0
 
 
+def hold(word: str) -> int:
+    req = urllib.request.Request(f"http://127.0.0.1:{PORT}/control", data=json.dumps({"hold": word == "on"}).encode(),
+                                 method="POST", headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=5) as r:
+        print(r.read().decode())
+    return 0
+
+
 def main() -> None:
     import uvicorn
     from mcp.server.fastmcp import FastMCP
@@ -37,6 +51,7 @@ def main() -> None:
     calls: list[dict] = []  # every tools/call
     jobs: dict[str, str] = {}  # client_reference -> job id (the partner's own idempotency)
     effects: list[str] = []  # one entry per real side effect
+    hold: dict = {"on": False, "open": None, "held": 0, "answered": 0}
 
     mcp = FastMCP("demo-partner", host="0.0.0.0", port=PORT, stateless_http=True, log_level="WARNING")
     # The server is reached by its compose service name: the SDK's DNS-rebinding guard only knows localhost.
@@ -54,12 +69,19 @@ def main() -> None:
         return f"{ticket_id}: leaking pipe, status waiting for a technician"
 
     @mcp.tool()
-    def book_repair(slot: str, client_reference: str, note: str = "") -> str:
+    async def book_repair(slot: str, client_reference: str, note: str = "") -> str:
         """Ask for a repair visit. The partner confirms later, through its provider events."""
         rec("book_repair", {"slot": slot, "client_reference": client_reference, "note": note})
         if client_reference not in jobs:
             jobs[client_reference] = f"JOB-{len(jobs) + 1}"
             effects.append(client_reference)
+        if hold["on"]:  # the request is in, the answer waits
+            hold["held"] += 1
+            try:
+                await hold["open"].wait()
+            finally:
+                hold["held"] -= 1
+        hold["answered"] += 1
         return json.dumps({"status": "pending", "operation_id": jobs[client_reference], "client_reference": client_reference})
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -83,16 +105,32 @@ def main() -> None:
                     ref = c["args"]["client_reference"]
                     by_ref[ref] = by_ref.get(ref, 0) + 1
             body = {"status": "ok"} if scope["path"] == "/health" else {
-                "calls": by_tool, "side_effects": len(effects), "jobs": jobs, "book_repair_calls_by_reference": by_ref}
+                "calls": by_tool, "side_effects": len(effects), "jobs": jobs, "book_repair_calls_by_reference": by_ref,
+                "side_effects_by_reference": {ref: effects.count(ref) for ref in jobs},
+                "held": hold["held"], "answered": hold["answered"]}
             return await JSONResponse(body)(scope, receive, send)
+        if scope["type"] == "http" and scope["path"] == "/control":  # tests only
+            raw, more = b"", True
+            while more:
+                msg = await receive()
+                raw, more = raw + msg.get("body", b""), msg.get("more_body", False)
+            want = bool(json.loads(raw or b"{}").get("hold"))
+            if hold["open"] is not None and not want:
+                hold["open"].set()
+            hold.update(on=want, open=asyncio.Event() if want else None)
+            return await JSONResponse({"hold": want})(scope, receive, send)
         if scope["type"] == "http" and TOKEN:
             auth = dict(scope["headers"]).get(b"authorization", b"").decode()
             if auth != f"Bearer {TOKEN}":
                 return await JSONResponse({"error": "unauthorized"}, status_code=401)(scope, receive, send)
         return await inner(scope, receive, send)
 
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="warning")
+    uvicorn.run(app, host=os.environ.get("DEMO_HOST", "0.0.0.0"), port=PORT, log_level="warning")
 
 
 if __name__ == "__main__":
-    sys.exit(stats()) if "--stats" in sys.argv else main()
+    if "--stats" in sys.argv:
+        sys.exit(stats())
+    if "--hold" in sys.argv:
+        sys.exit(hold(sys.argv[sys.argv.index("--hold") + 1]))
+    main()

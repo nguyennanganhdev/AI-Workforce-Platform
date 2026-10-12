@@ -1,13 +1,13 @@
 # Workforce v1: sổ tay vận hành
 
-Cập nhật: 11/10/2026 (phase P5, phần S7a: PostgreSQL, migration, retention). Viết cho **người vận hành platform**. Cách nối một đối tác (client, khóa, route, MCP, integration) ở `docs/WORKFORCE_V1_HUONG_DAN_KET_NOI.md`; tài liệu này nói về *chạy* platform: biến môi trường, cơ sở dữ liệu, migration, bí mật, sao lưu và các vòng quét nền.
+Cập nhật: 12/10/2026 (phase P5: PostgreSQL, migration, retention; P5b: Redis và nhiều tiến trình, mục 11). Viết cho **người vận hành platform**. Cách nối một đối tác (client, khóa, route, MCP, integration) ở `docs/WORKFORCE_V1_HUONG_DAN_KET_NOI.md`; tài liệu này nói về *chạy* platform: biến môi trường, cơ sở dữ liệu, migration, bí mật, sao lưu và các vòng quét nền.
 
 ## 1. Những gì cần có
 
 | Thành phần | Dev / một tiến trình | Nhiều tiến trình / production |
 |---|---|---|
 | Cơ sở dữ liệu | SQLite (`sqlite+aiosqlite:///./awp.db`), tự tạo bảng | **PostgreSQL 16** (`postgresql+asyncpg://…`), bảng tạo bằng migration |
-| Bus phiên (AgentScope) | `InMemoryMessageBus` (mặc định) | Redis (`RedisMessageBus`) là điều kiện để chạy **nhiều tiến trình**. **Chưa nối vào `python -m awp`** ở phần S7a: `build_app(message_bus=…)` nhận bus từ mã, biến `AWP_REDIS_URL` thuộc phần S7b. Gói `redis` đã khai ở extra `redis`. |
+| Bus phiên (AgentScope) | `InMemoryMessageBus` (mặc định, khi không đặt `AWP_REDIS_URL`) | **Redis** (`AWP_REDIS_URL=redis://:mật-khẩu@host:6379/0`) là điều kiện để chạy **nhiều tiến trình**: không có nó, tiến trình thứ hai trên cùng DB từ chối khởi động. Chi tiết ở mục 11. |
 | Lưu ảnh (A3) | chưa có | MinIO/S3 (phần S7 sau) |
 | Python | 3.11 | 3.11 |
 
@@ -30,8 +30,12 @@ Bắt buộc (trừ `AWP_DEV_OPEN=1`): `AWP_ADMIN_KEYS`, `AWP_SECRET_KEY`. Tất
 | `AWP_CLOSED_RETENTION_DAYS` | 90 | Job và lượt chạy đã xong của workflow đã đóng. `0` = không dọn. |
 | `AWP_RETENTION_EVERY_SECONDS` | 3600 | Chu kỳ dọn. `0` = tắt hẳn lịch dọn. |
 | `AWP_HOST`, `AWP_PORT` | `127.0.0.1`, `8800` | Địa chỉ nghe. |
+| `AWP_REDIS_URL` | trống | Bus chung của các tiến trình (mục 11). Trống = một tiến trình. Đặt mà Redis không trả lời thì tiến trình không khởi động. |
+| `AWP_WF_LEASE_SECONDS` | 60 | Một tiến trình báo "còn sống" mỗi một phần tư khoảng này. Tiến trình im lặng lâu hơn thế bị coi là đã chết: job, khóa phiên và các yêu cầu gửi dở của nó được tiến trình khác nhận. Nhỏ hơn = phục hồi nhanh hơn sau crash, và dễ coi nhầm một tiến trình chỉ đang treo là đã chết. |
+| `AWP_WF_MAX_STREAMS` | 20 | Số luồng SSE mở cùng lúc của một khóa API: tính trên **cả fleet** khi có Redis, trong một tiến trình khi không. |
+| `AWP_WF_RATE_PER_MINUTE` | 600 | Số request mỗi phút của một khóa API, **tính riêng trong từng tiến trình** (N bản sao cho phép N lần con số này). |
 | `AWP_EVAL_GATE` | `1` | Cổng phát hành: version chỉ được `publish` khi lần đánh giá gần nhất của đúng version đó đạt, hoặc có `override_reason`. **Để `1` ở production**; `0` chỉ cho máy phát triển không có model. |
-| `AWP_EVAL_CASE_TIMEOUT_SECONDS`, `AWP_EVAL_CASE_BUDGET_USD`, `AWP_EVAL_CASE_BUDGET_TOKENS`, `AWP_EVAL_PARALLEL` | 180, 0.5, 400000, 2 | Giới hạn của một ca đánh giá (thời gian, ngân sách) và số lần chạy đánh giá đồng thời **của một tenant** trong một tiến trình (mỗi tenant có chỗ riêng; mục 9). |
+| `AWP_EVAL_CASE_TIMEOUT_SECONDS`, `AWP_EVAL_CASE_BUDGET_USD`, `AWP_EVAL_CASE_BUDGET_TOKENS`, `AWP_EVAL_PARALLEL` | 180, 0.5, 400000, 2 | Giới hạn của một ca đánh giá (thời gian, ngân sách) và số lần chạy đánh giá đồng thời **của một tenant**, tính trên mọi tiến trình (mỗi tenant có chỗ riêng; mục 9). |
 | `AWP_BUILDER_OVERLAP_THRESHOLD`, `AWP_BUILDER_TIMEOUT_SECONDS` | 0.5, 90 | Ngưỡng trùng (0..1) để builder đổi `create` thành `reuse` (điểm cao hơn trong hai điểm: `handles` riêng, và `handles` + `mission`); thời gian tối đa cho một câu trả lời của model builder. |
 
 Hợp đồng (mục 12) đòi giữ event tối thiểu 90 ngày sau close và dedupe tối thiểu 180 ngày, "trừ thỏa thuận khác". Đặt thấp hơn là một ngoại lệ hợp đồng phải được ghi lại; platform chỉ ghi cảnh báo lúc khởi động.
@@ -80,10 +84,12 @@ Mỗi tiến trình chạy một vòng quét mỗi 2 giây (`build_app(sweep_eve
 
 | Việc | Mọi tiến trình đều làm? | Chi tiết |
 |---|---|---|
-| Nhặt job đang chờ, trả lại job mất chủ, đóng lượt dở | có (an toàn: mọi bước là so sánh-và-đặt dưới khóa hội thoại; trên PostgreSQL một bước không chờ khóa hội thoại của người khác mà bỏ qua, vòng sau làm lại) | `runner.sweep`, `recover.py` |
+| Báo "còn sống" và gia hạn lease các job mình giữ | có, mỗi `AWP_WF_LEASE_SECONDS / 4` | dòng `node:<id>` trong `wf_leases` (`nodes.py`) |
+| Chôn tiến trình đã chết: xóa khóa phiên nó để lại trong Redis, đối soát approval, xóa dòng của nó | có (lặp lại được; chỉ sau khi lease của nó hết) | `nodes.bury`, `recover.py` |
+| Nhặt job đang chờ, trả lại job mất chủ, đóng lượt dở | có (an toàn: mọi bước là so sánh-và-đặt dưới khóa hội thoại; trên PostgreSQL một bước không chờ khóa hội thoại của người khác mà bỏ qua, vòng sau làm lại). Job đang được tiến trình khác giữ (lease còn hạn) không bị đụng. | `runner.sweep`, `recover.py` |
 | Hết hạn approval, workflow kẹt, chờ ngoài quá hạn | có (như trên) | `expiry.py` |
 | Áp sự kiện provider đang chờ / nối lại sự kiện quarantined | có | `provider_sweep.py` |
-| Đối soát operation dở, hỏi `status_query` | có | `reconcile.py` |
+| Đối soát operation dở, hỏi `status_query` | có; operation của một tiến trình còn sống là của riêng nó, và một dòng chỉ một tiến trình giành được | `reconcile.py` |
 | **Dọn dữ liệu cũ (retention)** | **một tiến trình mỗi chu kỳ** | Xem dưới. |
 
 **Retention** chạy dưới một *lease* trong bảng `wf_leases` (tên `retention`): tiến trình nào giành được dòng đó thì dọn, các tiến trình khác bỏ qua; mỗi `AWP_RETENTION_EVERY_SECONDS` giây một lần cho cả đội tiến trình. Lease hết sau 10 phút nếu tiến trình chết giữa chừng và lần dọn bị coi là chưa chạy, nên tiến trình khác làm lại từ đầu (việc dọn lặp lại được). Lần dọn đầu tiên của một DB mới chạy ngay lúc khởi động. Mỗi lần dọn:
@@ -95,6 +101,8 @@ Mỗi tiến trình chạy một vòng quét mỗi 2 giây (`build_app(sweep_eve
 **Không bao giờ dọn**: workflow đang mở và mọi thứ của nó; workflow đã đóng còn operation `intent`/`sent`/`pending`/`unknown` (event, biên nhận, job, lượt chạy của nó); biên nhận đang xử lý (`accepted`, `processing`, `quarantined`); job `queued`/`dispatched` và lượt `running`; tombstone.
 
 Muốn giữ vô hạn một loại dữ liệu: đặt số ngày của nó là `0`. Muốn tắt cả lịch: `AWP_RETENTION_EVERY_SECONDS=0`. Xem lần dọn gần nhất: `select name, owner, last_run_at from wf_leases`.
+
+Xem các tiến trình đang sống: `select name, lease_until from wf_leases where name like 'node:%'` (mỗi tiến trình một dòng; dòng quá hạn là tiến trình đã chết chưa được chôn, sẽ biến mất ở vòng quét kế tiếp của một tiến trình khác).
 
 ## 7. Kiểm tra sức khỏe sau khi triển khai
 
@@ -126,7 +134,7 @@ Không đặt biến thì bộ test chạy trên SQLite như trước. Trên SQL
 - Mỗi tenant có một client và một route nội bộ (`environment = eval`, id suy ra từ tenant). Client này không bao giờ có khóa (API admin không nhìn thấy nó), route không có MCP server hay tool, nên không gì của sandbox đọc được qua `/workforce/v1` và không lời gọi nào tới đối tác. Các màn hình admin (`/wf/clients`, `/wf/routes`, `/wf/workflows`, `/cases`) không liệt kê sandbox; hồ sơ vụ của một ca đọc bằng `GET /platform/v1/cases/{case_id}/items` (id nằm trong kết quả lần chạy).
 - Tool của agent trong sandbox là câu trả lời ghi sẵn (`fixtures` của ca). Tool nào hồ sơ cho phép mà ca không có fixture thì agent không có tool đó.
 - Chuyên viên chạy dưới một leader đánh giá của platform (hồ sơ `awp_eval_leader`, không thuộc tenant nào; tiền tố `awp_` bị cấm với hồ sơ của tenant). Leader chạy đúng version đang nháp trong một workflow sandbox; chuyên viên nó gọi là các bản đã phát hành.
-- Giới hạn: mỗi ca tối đa `AWP_EVAL_CASE_TIMEOUT_SECONDS` giây và ngân sách `AWP_EVAL_CASE_BUDGET_USD`/`_TOKENS`; hết giờ thì workflow sandbox bị đóng, agent bị ngắt, ca trượt. Một version chỉ có một lần chạy tại một thời điểm (`409`; chỉ mục duy nhất `uq_eval_run_running` giữ điều đó cả giữa các tiến trình). Tiến trình đang chạy một lần đánh giá gia hạn `deadline` của nó mỗi ~22 giây (hạn 90 giây); lần chạy còn `running` sau hạn (tiến trình chết) tự thành `error`: sau khi platform chết đột ngột, version đó bị chặn tối đa 90 giây. Workflow sandbox chỉ được engine cho chạy khi lần đánh giá của nó đang sống trong chính tiến trình đó; workflow sandbox mà lần đánh giá đã hết (tiến trình chết giữa một ca) không được chạy lượt nào (job `failed`, không lời gọi model) và được đóng ở vòng quét kế tiếp.
+- Giới hạn: mỗi ca tối đa `AWP_EVAL_CASE_TIMEOUT_SECONDS` giây và ngân sách `AWP_EVAL_CASE_BUDGET_USD`/`_TOKENS`; hết giờ thì workflow sandbox bị đóng, agent bị ngắt, ca trượt. Một version chỉ có một lần chạy tại một thời điểm (`409`; chỉ mục duy nhất `uq_eval_run_running` giữ điều đó cả giữa các tiến trình). Tiến trình đang chạy một lần đánh giá gia hạn `deadline` của nó mỗi ~22 giây (hạn 90 giây); lần chạy còn `running` sau hạn (tiến trình chết) tự thành `error`: sau khi platform chết đột ngột, version đó bị chặn tối đa 90 giây. Workflow sandbox chỉ được engine cho chạy khi lần đánh giá của nó đang sống trong chính tiến trình đó: tiến trình khác của fleet **để yên** job của nó khi lần chạy còn hạn; workflow sandbox mà lần đánh giá đã hết (tiến trình chết giữa một ca) không được chạy lượt nào (job `failed`, không lời gọi model) và được đóng ở vòng quét kế tiếp.
 - Chi phí đánh giá là chi phí thật của tenant (ledger, theo vụ sandbox).
 
 **Phát hành** (`POST …/publish`): `409` với `detail.code = EVAL_REQUIRED` khi version chưa có lần đánh giá, lần gần nhất chưa đạt/đang chạy, bản nháp đã sửa sau khi đánh giá, hoặc **bộ ca đã đổi** sau khi đánh giá (kết quả gắn với băm nội dung hồ sơ và băm bộ ca: ca của platform + ca của tenant; thêm/sửa/xóa một ca, hoặc đổi hồ sơ thành viên team mà ca "chọn đúng chuyên viên" dựa vào, đều buộc chạy lại). Admin ghi đè bằng `{"override_reason": "..."}` (tối đa 300 ký tự), được ghi vào lịch sử cùng khóa admin đã dùng (`admin:<8 ký tự HMAC-SHA256 của khóa, khóa HMAC là AWP_SECRET_KEY>`: không phải băm trần của khóa admin, vì nhãn này hiện cho cả khóa manager; đổi `AWP_SECRET_KEY` thì nhãn của cùng một khóa admin đổi theo). **Rollback** (`POST /profiles/{key}/rollback {"to_version": n}`) đưa một version `retired` trở lại; workflow đang chạy giữ leader nó bắt đầu, chuyên viên được tạo sau đó và workflow mới dùng version vừa quay về. **Lịch sử**: `GET /profiles/{key}/history` (`create`, `eval`, `publish`, `override`, `rollback`, `retire`; ai, khi nào).
@@ -145,3 +153,49 @@ Platform tự phục vụ một trang quản trị tại `http://<AWP_HOST>:<AWP
 - **Trang không tự làm mới**: dữ liệu là của lúc mở màn hình; bấm "Tải lại dữ liệu" (góc dưới thanh bên) để đọc lại. Ngoại lệ duy nhất: khi một lần đánh giá đang chạy, màn hình agent hỏi lại kết quả mỗi 3 giây.
 - **Bí mật** (khóa đối tác, khóa manager, khóa provider, bí mật ký) hiện đúng một lần trong hộp thoại có nút Chép, đúng như API; đóng hộp thoại là không xem lại được.
 - **Kiểm bằng trình duyệt thật** (không nằm trong lần chạy mặc định): `AWP_TEST_BROWSER=1 pytest tests/workforce/test_wf_console_browser.py` cần Chrome hoặc Edge trên máy (`AWP_TEST_BROWSER_PATH` để chỉ đường dẫn khác) và gói `websockets` (đã có trong venv); thêm `AWP_CONSOLE_SHOTS=<thư mục>` để lưu ảnh từng màn hình (ảnh của lần chạy 12/10/2026 ở `docs/console/`).
+
+## 11. Nhiều tiến trình và Redis (P5b)
+
+**Mô hình.** Mọi tiến trình API giống nhau: không có leader, không có "worker" riêng. Request, sự kiện provider và luồng SSE vào tiến trình nào cũng được. Chúng dùng chung: PostgreSQL (nguồn sự thật duy nhất), Redis (bus), và thư mục workspace (`AWP_WORKSPACE_DIR`: phải là **cùng một thư mục** cho mọi tiến trình; trên một máy là volume chung, nhiều máy thì cần đĩa chung, chưa kiểm).
+
+**Redis dùng làm gì.** (1) Khóa phiên, hàng đợi đánh thức và hộp thư của AgentScope: không có chúng thì hai tiến trình có thể chạy cùng một phiên agent. (2) Tín hiệu giữa các tiến trình (kênh `awp:wake`): một POST ở tiến trình A đánh thức luồng SSE mở ở tiến trình B trong vài mili giây; một agent phát hành ở A được B biết ngay. (3) Bộ đếm luồng SSE theo khóa API. Redis **không** giữ workflow, event, operation hay approval nào.
+
+**Yêu cầu với Redis.** Redis 7, một instance (không cần cluster). Bật mật khẩu và đưa vào URL. Nên bật persistence (`appendonly yes`, compose đã bật): hàng đợi đánh thức nằm ở đó. Bộ nhớ nhỏ (mỗi phiên đang chạy một khóa, mỗi luồng SSE một phần tử). Mất Redis lúc đang chạy: các lượt đang chạy lỗi và được thử lại, quá số lần thì workflow `needs_attention` (`engine_error`); luồng SSE và request đang chờ vẫn chạy bằng thăm dò DB; giới hạn luồng quay về đếm trong từng tiến trình. Redis trở lại thì mọi thứ tự nối lại.
+
+**Bao nhiêu bản sao.** Đã chạy thật **hai** (bộ test giết tiến trình dùng hai và ba; Docker dùng hai). Không có gì trong mã giới hạn con số, nhưng chưa thử nhiều hơn ba. Tính pool: `số tiến trình × 2 × (AWP_DB_POOL_SIZE + AWP_DB_MAX_OVERFLOW)` phải dưới `max_connections` của PostgreSQL.
+
+**Không có Redis thì chỉ một tiến trình.** Tiến trình thứ hai trên cùng DB dừng ngay với `another platform process is running on this database`. Sau khi tiến trình duy nhất chết đột ngột, tiến trình khởi động lại **chờ tối đa `AWP_WF_LEASE_SECONDS`** (để chắc tiến trình cũ không còn) rồi mới lên; tắt êm thì không chờ. Có Redis thì không chờ.
+
+**Khi một tiến trình chết** (kill, mất điện, OOM): các tiến trình còn lại thấy dòng của nó trong `wf_leases` hết hạn sau tối đa `AWP_WF_LEASE_SECONDS`, rồi trong vòng quét kế tiếp (2 giây):
+
+| Thứ nó để lại | Việc được làm |
+|---|---|
+| Khóa phiên trong Redis (AgentScope giữ tới 600 giây) | xóa đúng các khóa mang tên nó; khóa của tiến trình sống không bao giờ bị đụng |
+| Job đang chạy | lượt đã xong, hoặc leader đã kịp nói với cư dân → đóng job (không nói lại); chưa → chạy lại, tối đa `AWP_WF_JOB_ATTEMPTS` lần rồi `needs_attention` (`engine_error`) |
+| Lời gọi đối tác đang dở | tool có `idempotency_arg` → gửi lại **cùng `client_reference`** (đối tác phải coi là một); tool có `status_query` → hỏi; không có cả hai → `needs_attention` (`operation_unknown`), không bao giờ gửi mò |
+| Approval đang hỏi mà agent chưa kịp đỗ | hủy công khai (`approval.resolved`), lượt chạy lại sẽ hỏi lại |
+| Agent đã nhận quyết định nhưng lượt chưa lưu | đưa quyết định lại; tool đã được duyệt vẫn chỉ chạy một lần |
+| Luồng SSE đang mở ở nó | đứt; client nối lại bản sao khác bằng `Last-Event-ID` và nhận đủ phần còn thiếu |
+| Lần đánh giá agent đang chạy | thành `error` sau 90 giây; chạy lại bằng tay |
+
+Thời gian phục hồi quan sát được: 53 đến 60 giây trên Docker với lease mặc định 60 giây; 5 đến 10 giây trong bộ test với lease 4 giây.
+
+**Vẫn theo từng tiến trình** (biết để khỏi ngạc nhiên): rate limit theo khóa (N bản sao = N lần hạn mức); cache danh sách tool của MCP (tối đa `AWP_MCP_LIST_TTL_SECONDS` giây cũ); cờ "vụ đã hết ngân sách" (tiến trình khác biết sau lời gọi model đầu tiên của nó cho vụ đó); bộ đếm `metrics` của `GET /platform/v1/cost`.
+
+**Giới hạn đã biết**: một tiến trình treo lâu hơn lease mà chưa chết bị coi là đã chết trong khi lượt của nó có thể còn chạy (hiếm; có thể làm một tin bị nói hai lần); một lần đánh thức nội bộ của AgentScope bị mất cùng tiến trình chết làm workflow nằm `active` tới `AWP_CASE_STALL_SECONDS` rồi `needs_attention` (`stalled`). Chi tiết ở `docs/WORKFORCE_V1_QUYET_DINH.md`, mục P5b.
+
+### Chạy bộ test giết tiến trình
+
+Bộ này chạy `python -m awp` thành các tiến trình thật và giết chúng (`tests/workforce/mpkit.py`). Cần một PostgreSQL và một Redis **dùng riêng cho test** (bộ test `FLUSHDB` Redis đó và tạo/xóa các database `awpt_*`):
+
+```
+docker run -d --name awp-test-pg -p 127.0.0.1:55432:5432 -e POSTGRES_USER=awp -e POSTGRES_PASSWORD=awp postgres:16-alpine \
+  -c fsync=off -c synchronous_commit=off -c full_page_writes=off -c max_connections=400
+docker run -d --name awp-test-redis -p 127.0.0.1:56379:6379 redis:7-alpine
+export AWP_TEST_PG_URL=postgresql://awp:awp@127.0.0.1:55432/postgres
+export AWP_TEST_REDIS_URL=redis://127.0.0.1:56379/0
+cd platform_VP/core && PYTHONPATH=src ../agentscope/.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider -m multiproc tests/workforce
+docker rm -f awp-test-pg awp-test-redis
+```
+
+18 test, khoảng 5 phút, chạy tuần tự (không `-n`). Thiếu một trong hai biến thì cả bộ tự bỏ qua, nên lần chạy mặc định (SQLite) và lần chạy PostgreSQL thường không đụng tới nó. Khi một test đỏ, phần cuối log của từng tiến trình API được in ra. Các test của `tests/workforce/test_wf_p5b_fleet.py` cần Redis thật chỉ cần `AWP_TEST_REDIS_URL`.

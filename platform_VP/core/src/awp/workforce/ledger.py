@@ -39,8 +39,12 @@ STATUS_OF = {OK: "completed", PENDING: "pending", FAILED: "failed", UNKNOWN: "un
 MAX_STORED_TEXT = 4000
 
 # Operations with a live call in this process: the sweep must not mistake them for a crash's leftovers.
-INFLIGHT: set[str] = set()
 # Answers the partner gave that the database would not take (it was down): the sweep writes them when it can.
+# Both live in the memory of the process that made the call, and the row names that process (`node`): the sweep of
+# another process leaves the row alone for as long as that process lives (reconcile.one), so a live call is never taken
+# for a leftover and an answer in hand is written by the process that has it. When that process dies, so does the
+# answer: nobody knows what became of the request, which is what the other processes then find out the honest way.
+INFLIGHT: set[str] = set()
 HELD: dict[str, PartnerResult] = {}
 _WRITES: set[asyncio.Task] = set()  # keeps a write that outlives its caller from being collected
 
@@ -124,25 +128,30 @@ async def begin(db, workflow_id: str, route_id: str, tool: str, model_args: dict
         return Begun({**row, "result": None, "external_job_id": None, "normalized_status": None}, True)
 
 
-async def mark_sent(db, op_id: str) -> bool:
-    """intent -> sent, just before the call leaves. False when the row is not an intent any more."""
+async def mark_sent(db, op_id: str, node: str | None = None) -> bool:
+    """intent -> sent, just before the call leaves, by the process `node`. False when the row is not an intent any more."""
     async with db.engine.begin() as conn:
         done = await conn.execute(update(t.operations).where(
-            t.operations.c.id == op_id, t.operations.c.status == "intent").values(status="sent", updated_at=now()))
+            t.operations.c.id == op_id, t.operations.c.status == "intent")
+            .values(status="sent", node=node, updated_at=now()))
     return done.rowcount == 1
 
 
-async def touch(db, op_id: str, status: str, expect: tuple[str, ...]) -> bool:
+async def touch(db, op_id: str, status: str, expect: tuple[str, ...], *, before: float | None = None,
+                node: str | None = None) -> bool:
     """Take an operation for a retry or a status query: set `status` and the clock, only from `expect`, and only while
     its workflow is open and its route active (stop tracking calls nothing at the partner, a suspended route does
     nothing by itself). The check is part of the claim, so a close that lands between two rows of one pass stops the
-    second."""
+    second. `before`: only a row nobody touched since then, so of two processes that saw the same row one takes it.
+    `node` becomes the process that holds it."""
     live = select(t.workflows.c.id).select_from(t.workflows.join(t.routes, t.routes.c.id == t.workflows.c.route_id)).where(
         t.workflows.c.state.notin_(("closed", *BLOCKED)), t.routes.c.status == "active")
+    where = [t.operations.c.id == op_id, t.operations.c.status.in_(expect), t.operations.c.workflow_id.in_(live)]
+    if before is not None:
+        where.append(t.operations.c.updated_at < before)
+    values = {"status": status, "updated_at": now(), **({"node": node} if node else {})}
     async with db.engine.begin() as conn:
-        done = await conn.execute(update(t.operations).where(
-            t.operations.c.id == op_id, t.operations.c.status.in_(expect), t.operations.c.workflow_id.in_(live))
-            .values(status=status, updated_at=now()))
+        done = await conn.execute(update(t.operations).where(*where).values(**values))
     return done.rowcount == 1
 
 

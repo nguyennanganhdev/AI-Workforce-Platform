@@ -13,7 +13,6 @@ from fastapi import FastAPI
 from starlette.middleware import Middleware
 
 from agentscope.app import create_app
-from agentscope.app.message_bus import InMemoryMessageBus
 from agentscope.app.storage import AsyncSQLAlchemyStorage
 from agentscope.app.workspace_manager import LocalWorkspaceManager
 
@@ -24,6 +23,7 @@ from .cost import CostService
 from .db import Database, engine_options
 from .agentscope_client import AgentScopeClient
 from .builder import Builder
+from .bus import build_bus, new_node
 from .evals.runner import EvalRunner
 from .evals.sandbox import fixture_tools
 from .guard import build_judge
@@ -37,6 +37,7 @@ from .security import SecurityMiddleware
 from .workforce import install_workforce, retention
 from .workforce.managers import ManagerKeys
 from .workforce.runner import WorkflowEngine
+from .workforce.waker import relay
 
 log = logging.getLogger("awp")
 
@@ -78,7 +79,11 @@ def build_app(
         storage = AsyncSQLAlchemyStorage(
             settings.agentscope_db_url, create_tables=settings.auto_create,  # else its own scripts made them: `migrate --storage`
             engine_kwargs={"connect_args": {"timeout": 30}} if sqlite else engine_options(settings.agentscope_db_url, **pool) or None)
-    bus = message_bus or InMemoryMessageBus()
+    node = new_node()
+    # AWP_REDIS_URL: the bus every process of the fleet shares. Without it the bus is this process's memory, and the engine
+    # refuses to start next to another process on the same database (workforce/nodes.py). A bus handed in is the caller's
+    # word that it is shared.
+    bus = message_bus or build_bus(settings.redis_url, node)
     workspaces = workspace_manager or LocalWorkspaceManager(basedir=settings.workspace_dir)
     if judge is None:
         judge = build_judge(settings.jev_enabled, settings.jev_model)
@@ -86,7 +91,8 @@ def build_app(
     rt = Runtime(
         settings=settings, db=database, cases=CaseStore(database),
         profiles=ProfileStore(database), catalog=catalog,
-        cost=CostService(database, catalog), storage=storage, bus=bus, judge=judge)
+        cost=CostService(database, catalog), storage=storage, bus=bus, judge=judge,
+        node=node, shared_bus=bool(message_bus is not None or settings.redis_url))
 
     secret = secrets.token_urlsafe(24)
     kwargs = dict(
@@ -127,8 +133,13 @@ def build_app(
         await rt.evals.store.reap()  # the evaluation runs of a process that is gone
         stop = asyncio.Event()
 
+        async def heard(said: dict) -> None:
+            if said.get("sync") == "templates":  # another process published, retired or rolled back an agent
+                await rt.sync_templates(announce=False)
+
         async def sweep() -> None:
             look_at = 0.0  # retention asks the lease at most every half minute (every period when that is shorter)
+            templates_at = time.monotonic() + 30.0
             while not stop.is_set():
                 try:
                     sweep_engine = getattr(wf.engine, "sweep", None)  # whichever engine is attached
@@ -140,6 +151,12 @@ def build_app(
                     await rt.evals.sweep()  # dead runs end; a sandbox workflow whose run is over is closed
                 except Exception:
                     log.exception("evaluation sweep failed")
+                if rt.shared_bus and time.monotonic() >= templates_at:  # the net under the fleet's "templates" news
+                    templates_at = time.monotonic() + 30.0
+                    try:
+                        await rt.sync_templates(announce=False)
+                    except Exception:
+                        log.exception("could not read the published agents again")
                 if time.monotonic() >= look_at:
                     look_at = time.monotonic() + min(30.0, settings.retention_every_seconds)
                     try:
@@ -152,12 +169,19 @@ def build_app(
         task = None
         try:
             async with inner(a):
+                await wf.slots.attach(bus if rt.shared_bus else None)
                 start_engine = getattr(wf.engine, "start", None)
                 if start_engine is not None:
                     await start_engine()
                 task = asyncio.create_task(sweep())
                 try:
-                    yield
+                    # a commit here wakes the readers of the other processes; what is published here is theirs at once
+                    async with relay(bus, node, rt.shared_bus, heard=heard) as tell:
+                        rt.announce = (lambda what: tell({"sync": what})) if rt.shared_bus else None
+                        try:
+                            yield
+                        finally:
+                            rt.announce = None
                 finally:
                     await rt.evals.stop()  # their sandbox workflows end with them, while the engine still runs
                     stop_engine = getattr(wf.engine, "stop", None)

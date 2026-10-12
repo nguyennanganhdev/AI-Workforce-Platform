@@ -19,6 +19,11 @@ interrupts the turn.
 
 Nothing waits for a timer when bookkeeping fails: the sweep settles every busy workflow with no dispatcher,
 closes turn rows left running under an idle session, and finishes a dispatched job whose turn ended (`recover.py`).
+
+Several processes run this engine on one database (`nodes.py`). A job is claimed by one of them (`lease_owner`), its
+lease is renewed by that process's heartbeat while its dispatcher lives, and another process touches it only after the
+lease ran out. A turn may run in another process than its job's dispatcher: all a dispatcher waits for is read from
+the database and the shared session lock, never from memory.
 """
 from __future__ import annotations
 
@@ -31,7 +36,8 @@ from agentscope.app.message_bus import MessageBusKeys
 from sqlalchemy import select, update
 
 from ..agentscope_client import AgentScopeClient, SessionBusy
-from . import resume, tables as t
+from ..evals import sandbox
+from . import nodes, resume, tables as t
 from .approvals import pending_count
 from .common import now
 from .engine import LockBusy, claim_job, finish_job
@@ -41,7 +47,7 @@ from .jobs import BUILDERS, CYCLE_KINDS, SENDER
 from .leader import Leader, LeaderUnavailable, ensure_leader, leader_of
 from .provider_sweep import apply_pending, stop as stop_provider_tasks
 from .reconcile import reconcile
-from .recover import answered, orphan_approvals, orphan_turns
+from .recover import orphan_approvals, orphan_parks, orphan_turns, recover_job
 from .routecheck import block_if_moved
 from .settle import fail_message, mark_running, settle_request
 from .settling import settle
@@ -50,7 +56,6 @@ from .workflows import BLOCKED, BUSY, transition
 log = logging.getLogger("awp.workforce")
 
 MAX_SENDS = 4  # the same message is sent this many times before the job fails
-LEASE = 60.0
 POLL = 0.03
 
 
@@ -69,6 +74,9 @@ class WorkflowEngine:
         self._unsettled: set[str] = set()
         self._stopping = False
         self._reconciling: asyncio.Task | None = None
+        self.node = getattr(self.rt, "node", "") or nodes.new_node()  # this process, in job leases and lock values
+        self.lease = max(float(self.settings.wf_lease_seconds), 0.2)
+        self._beat: asyncio.Task | None = None
 
     # ---- how work arrives -------------------------------------------------
     def notify(self, workflow_id: str, job_id: str) -> None:
@@ -92,11 +100,15 @@ class WorkflowEngine:
     async def start(self) -> None:
         """At startup: pick up what a previous run left (queued jobs, jobs whose lease ran out)."""
         self._stopping = False
-        await orphan_turns(self)  # whatever ran in the previous process is not running now
+        await nodes.enter(self.ctx.db, self.node, self.lease, bool(getattr(self.rt, "shared_bus", False)))
+        if self._beat is None or self._beat.done():
+            self._beat = asyncio.get_running_loop().create_task(nodes.heartbeat(self))
+        await orphan_turns(self)  # whatever ran in a process that is gone is not running now
         try:
             await orphan_approvals(self)  # and an approval nobody is parked on gets no answer through its agent
+            await orphan_parks(self)  # nor does an agent that died after it was handed its answer
         except Exception:
-            log.exception("could not reconcile the pending approvals")
+            log.exception("could not reconcile the approvals")
         await self.sweep()
 
     async def stop(self) -> None:
@@ -109,25 +121,33 @@ class WorkflowEngine:
         await asyncio.gather(*tasks, return_exceptions=True)
         self._tasks.clear()
         await stop_provider_tasks()
+        if self._beat is not None:
+            self._beat.cancel()
+            await asyncio.gather(self._beat, return_exceptions=True)
+            self._beat = None
+            try:
+                await nodes.leave(self.ctx.db, self.node)  # a clean stop leaves nothing to wait for
+            except Exception:
+                log.exception("could not remove the mark of this process")
 
     async def sweep(self) -> None:
         """Called every couple of seconds: pick up work whose notification was lost, give back the jobs of
         a dead dispatcher, expire what stopped moving."""
         db = self.ctx.db
+        await nodes.bury(self)  # first: the session locks of a dead process make its sessions look busy to all below
         async with db.engine.connect() as conn:
             queued = (await conn.execute(select(t.jobs.c.workflow_id).where(
                 t.jobs.c.status == "queued").distinct())).scalars().all()
-            stale = (await conn.execute(select(t.jobs).where(
-                t.jobs.c.status == "dispatched", t.jobs.c.lease_until < now()))).mappings().all()
+            held = (await conn.execute(select(t.jobs).where(t.jobs.c.status == "dispatched"))).mappings().all()
             busy = (await conn.execute(select(t.workflows.c.id).where(t.workflows.c.state.in_(BUSY)))).scalars().all()
+        await orphan_turns(self)
         for wid in queued:
             if wid not in self._tasks:
                 self.kick(wid)
-        for job in stale:
-            if job["workflow_id"] not in self._tasks:  # nobody here is working on it
-                await self._recover(job)
-        await orphan_turns(self)
-        has_job = {*queued, *(job["workflow_id"] for job in stale)}  # their dispatcher settles when the job is over
+        for job in held:  # a lease that ran out: the dispatcher died, here or with its whole process
+            if (job["lease_until"] or 0) < now() and job["workflow_id"] not in self._tasks:
+                await recover_job(self, job)
+        has_job = {*queued, *(job["workflow_id"] for job in held)}  # their dispatcher settles when the job is over
         async with db.engine.connect() as conn:
             busy = [*busy, *await resume.needing_work(conn)]
         for wid in dict.fromkeys(busy):  # settle is idempotent; this is what saves a workflow whose settle failed or was lost
@@ -146,23 +166,6 @@ class WorkflowEngine:
             raise
         except Exception:
             log.exception("operation reconcile failed")
-
-    async def _recover(self, job: Any) -> None:
-        """A dispatched job whose dispatcher is gone: done when its turn ended well, else another attempt."""
-        try:
-            if await answered(self, job):
-                async with self.ctx.db.engine.begin() as conn:
-                    conv = (await conn.execute(select(t.workflows.c.conversation_id).where(
-                        t.workflows.c.id == job["workflow_id"]))).scalar_one()
-                    if not await lock_conversation(conn, conv, wait=False):
-                        return  # in use: the next sweep finds the job again
-                    await finish_job(conn, job["id"])
-                self._unsettled.add(job["workflow_id"])
-                self.kick(job["workflow_id"])
-            else:
-                await self._fail(job, JobFailed("the dispatcher is gone"))
-        except Exception:
-            log.exception("could not recover job %s", job["id"])
 
     # ---- the dispatcher of one workflow -------------------------------------
     async def _drive(self, wid: str) -> None:
@@ -225,6 +228,8 @@ class WorkflowEngine:
 
     # ---- one job ------------------------------------------------------------
     async def _run_job(self, wid: str, jid: str) -> bool:
+        if await sandbox.elsewhere(self.rt, wid):  # an evaluation's workflow belongs to the process that runs it
+            return False
         try:
             claimed = await self._claim(jid)
         except LockBusy:  # a reply or a close is in the middle of its transaction: look again in a moment, holding nothing
@@ -265,7 +270,7 @@ class WorkflowEngine:
             try:
                 async with self.ctx.db.engine.begin() as conn:
                     await lock_conversation(conn, wf["conversation_id"])
-                    await finish_job(conn, jid)
+                    await finish_job(conn, jid, owner=self.node)  # (not ours any more: another process finished it)
                 break
             except Exception:
                 log.exception("job %s: could not mark it done (try %s)", jid, attempt + 1)
@@ -278,8 +283,9 @@ class WorkflowEngine:
     async def _release(self, jid: str) -> None:
         try:
             async with self.ctx.db.engine.begin() as conn:
-                await conn.execute(update(t.jobs).where(t.jobs.c.id == jid, t.jobs.c.status == "dispatched")
-                                   .values(lease_until=0))
+                await conn.execute(update(t.jobs).where(
+                    t.jobs.c.id == jid, t.jobs.c.status == "dispatched", t.jobs.c.lease_owner == self.node)
+                    .values(lease_until=0))
         except Exception:
             log.exception("could not release job %s", jid)
 
@@ -294,7 +300,7 @@ class WorkflowEngine:
 
     async def _claim(self, jid: str) -> tuple[dict, dict] | None:
         async with self.ctx.db.engine.begin() as conn:
-            job = await claim_job(conn, jid, wait=False)
+            job = await claim_job(conn, jid, wait=False, owner=self.node, lease=self.lease)
             if job is None:
                 return None
             job = dict(job)
@@ -326,9 +332,10 @@ class WorkflowEngine:
             wf = (await conn.execute(select(t.workflows).where(t.workflows.c.id == job["workflow_id"]))).mappings().one()
             await lock_conversation(conn, wf["conversation_id"])
             wf = (await conn.execute(select(t.workflows).where(t.workflows.c.id == wf["id"]))).mappings().one()
-            fresh = (await conn.execute(select(t.jobs.c.status).where(t.jobs.c.id == job["id"]))).scalar()
-            if fresh != "dispatched":
-                return
+            fresh = (await conn.execute(select(t.jobs.c.status, t.jobs.c.lease_owner).where(
+                t.jobs.c.id == job["id"]))).first()
+            if fresh is None or fresh[0] != "dispatched" or fresh[1] != job["lease_owner"]:
+                return  # it ended, or another process holds it by now
             if why.retry and job["attempts"] < self.settings.wf_job_attempts and wf["state"] != "closed":
                 await conn.execute(update(t.jobs).where(t.jobs.c.id == job["id"]).values(
                     status="queued", lease_owner=None, lease_until=None))
@@ -387,7 +394,7 @@ class WorkflowEngine:
     async def _await_end(self, wid: str, job: Any, leader: Leader, also: Leader | None = None) -> None:
         """Until the session is idle and no turn is running: the turns of the job, and any turn the
         leader's team started meanwhile, are over. `also` is a specialist session the job woke."""
-        start = last_lease = time.monotonic()
+        start = time.monotonic()  # (the job's lease is renewed by this process's heartbeat while this task lives)
         stopped = False
         while True:
             if not await self._locked(leader) and not (also is not None and await self._locked(also)):
@@ -400,10 +407,6 @@ class WorkflowEngine:
             if time.monotonic() - start > self.settings.wf_turn_timeout_seconds:
                 await self._stop_leader(leader)
                 raise JobFailed("the turn ran too long")
-            if time.monotonic() - last_lease > LEASE / 3:
-                last_lease = time.monotonic()
-                async with self.ctx.db.engine.begin() as conn:
-                    await conn.execute(update(t.jobs).where(t.jobs.c.id == job["id"]).values(lease_until=now() + LEASE))
             await asyncio.sleep(POLL)
 
     async def _running(self, wid: str) -> bool:

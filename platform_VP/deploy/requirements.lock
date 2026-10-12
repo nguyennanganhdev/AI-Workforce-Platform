@@ -7,7 +7,7 @@
 #       --python-platform x86_64-manylinux_2_28 --python-version 3.12 \
 #       --no-header --no-annotate --generate-hashes -o lock.txt        # then put this header back on top
 #
-# 101 packages on 2026-10-12, every one at the venv's version. agentscope and awp come from the repository source.
+# 102 packages on 2026-10-12 (redis added in slice P5b), every one at the venv's version. agentscope and awp come from the repository source.
 ag-ui-protocol==1.0.0 \
     --hash=sha256:0058eaf0522201089d444e430fc35180bc8ad0222cae39e8568b313e8105d9e6 \
     --hash=sha256:cfebecef2e7bc942cc8a52d908a4ea86a98f631d2ffdc6ec5812bb843eac74fb
@@ -1903,6 +1903,9 @@ pyyaml==6.0.3 \
     --hash=sha256:f7057c9a337546edc7973c0d3ba84ddcdf0daa14533c2065749c9075001090e6 \
     --hash=sha256:fa160448684b4e94d80416c0fa4aac48967a969efe22931448d853ada8baf926 \
     --hash=sha256:fc09d0aa354569bc501d4e787133afc08552722d3ab34836a80547331bb5d4a0
+redis==8.1.0 \
+    --hash=sha256:6e1a19beef9225c83efd689c7e6b7da2d5215b1f42cd13b7fc3714d0a09c7b25 \
+    --hash=sha256:a4fe1aac3d3b3cc791d4b3d5931c5a956045dc951ee74d1c913ee3ac4d2ee9fb
 referencing==0.37.0 \
     --hash=sha256:381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231 \
     --hash=sha256:44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8

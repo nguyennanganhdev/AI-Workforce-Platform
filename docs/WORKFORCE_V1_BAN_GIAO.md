@@ -1,6 +1,6 @@
 # Workforce v1: tài liệu bàn giao (Docker)
 
-Cập nhật: 12/10/2026 (bước B4). Viết cho hai người đọc:
+Cập nhật: 12/10/2026 (bước B4; Redis và hai bản sao API thêm ở P5b). Viết cho hai người đọc:
 
 - **Người vận hành platform**: chạy, dừng, nâng cấp, sao lưu, xoay khóa, xử lý workflow cần người (mục 1 đến 9).
 - **Người tích hợp phía đối tác**: gọi API công khai `/workforce/v1` (mục 10).
@@ -15,15 +15,19 @@ Tài liệu này nói về *chạy platform bằng Docker trên một máy*. Ý 
 |---|---|---|---|
 | `postgres` | `postgres:16-alpine` | Hai database: `awp` (bảng `awp_*`, `wf_*`) và `awp_storage` (phiên và tin nhắn của AgentScope) | **đang dùng** |
 | `migrate` | `awp-platform:<tag>` | Chạy một lần trước mỗi lần API khởi động: `python -m awp migrate --storage` rồi `--check`. API chỉ khởi động khi job này thoát 0 | **đang dùng** |
-| `api` | `awp-platform:<tag>` | Platform: `/workforce/v1` (đối tác), `/platform/v1` (admin, manager), `/console` (trang quản trị), engine workflow và các vòng quét nền, tất cả trong **một tiến trình** | **đang dùng** |
+| `redis` | `redis:7-alpine` | Bus chung của các tiến trình API (`AWP_REDIS_URL`): khóa phiên và hàng đợi đánh thức của AgentScope, tín hiệu giữa các bản sao, bộ đếm luồng SSE. Không giữ dữ liệu nghiệp vụ nào | **đang dùng** |
+| `api` | `awp-platform:<tag>` | Platform: `/workforce/v1` (đối tác), `/platform/v1` (admin, manager), `/console` (trang quản trị), engine workflow và các vòng quét nền, tất cả trong một tiến trình | **đang dùng** |
+| `api2` | `awp-platform:<tag>` | Bản sao thứ hai của `api` (cùng image, cùng cấu hình, cùng DB, Redis và volume workspace), chỉ với `--profile two` | tùy chọn |
 | `fake-model`, `fake-mcp` | `awp-platform:<tag>` | Model kịch bản và MCP mẫu, chỉ với `--profile demo` | chỉ để thử |
-| `redis`, `minio` | `redis:7-alpine`, `cgr.dev/chainguard/minio` | Có trong compose dưới profile `not-wired` | **chưa nối: mã chưa đọc biến Redis hay S3 nào** |
+| `minio` | `cgr.dev/chainguard/minio` | Có trong compose dưới profile `not-wired` | **chưa nối: mã chưa đọc biến S3 nào** |
 
-Image `awp-platform` (`platform_VP/Dockerfile`): `python:3.12-slim`, cài `awp` và AgentScope từ nguồn trong repo, 101 gói bên thứ ba ghim phiên bản và hash ở `deploy/requirements.lock` (đúng phiên bản của venv phát triển), chạy bằng user `awp` (uid 10001), không chứa bí mật. Thư mục duy nhất tiến trình ghi là `/var/lib/awp` (volume `workspaces`).
+Image `awp-platform` (`platform_VP/Dockerfile`): `python:3.12-slim`, cài `awp` và AgentScope từ nguồn trong repo, 102 gói bên thứ ba ghim phiên bản và hash ở `deploy/requirements.lock` (đúng phiên bản của venv phát triển), chạy bằng user `awp` (uid 10001), không chứa bí mật. Thư mục duy nhất tiến trình ghi là `/var/lib/awp` (volume `workspaces`).
 
-Cổng trên máy chủ, **tất cả chỉ bind `127.0.0.1`**: API `8800`, PostgreSQL `5590` (đổi trong `deploy/.env`: `AWP_HOST_PORT`, `AWP_PG_HOST_PORT`). MinIO `9190`/`9191` chỉ khi bật profile `not-wired`. Muốn cho máy khác gọi tới thì đặt một reverse proxy có TLS phía trước; platform không tự làm TLS.
+Cổng trên máy chủ, **tất cả chỉ bind `127.0.0.1`**: API `8800`, bản sao thứ hai `8801`, PostgreSQL `5590` (đổi trong `deploy/.env`: `AWP_HOST_PORT`, `AWP_HOST_PORT2`, `AWP_PG_HOST_PORT`). Redis không publish cổng nào. MinIO `9190`/`9191` chỉ khi bật profile `not-wired`. Muốn cho máy khác gọi tới thì đặt một reverse proxy có TLS phía trước; platform không tự làm TLS.
 
-Tên project compose là `awp-platform`: container `awp-platform-<dịch vụ>-1`, volume `awp-platform_pgdata`, `awp-platform_workspaces`.
+Tên project compose là `awp-platform`: container `awp-platform-<dịch vụ>-1`, volume `awp-platform_pgdata`, `awp-platform_redisdata`, `awp-platform_workspaces`.
+
+**Hai bản sao.** `docker compose --profile two up -d` chạy thêm `api2`. Hai bản sao ngang hàng: request, sự kiện provider và luồng SSE vào bản nào cũng được, và khi một bản chết bản kia nhận việc đang dở của nó sau `AWP_WF_LEASE_SECONDS` (60 giây). Trước chúng cần một reverse proxy chia tải (compose này không có); client SSE bị đứt thì nối lại, vào bản nào cũng được, bằng `Last-Event-ID`. Thêm bản sao thứ ba là thêm một service như `api2`. Chi tiết và giới hạn: `docs/WORKFORCE_V1_VAN_HANH.md` mục 11.
 
 ## 2. Khởi động lần đầu
 
@@ -34,7 +38,7 @@ cd platform_VP/deploy
 python init_env.py                 # sinh deploy/.env: khóa admin, AWP_SECRET_KEY, mật khẩu DB; in khóa admin MỘT lần
 # sửa deploy/models.yaml (script chép từ core/models.example.yaml) và thêm khóa model vào deploy/.env, ví dụ OPENAI_API_KEY=...
 docker compose build               # image awp-platform:<AWP_IMAGE_TAG>
-docker compose up -d               # postgres -> migrate -> api
+docker compose up -d               # postgres, redis -> migrate -> api   (thêm --profile two để có bản sao thứ hai)
 docker compose ps                  # api phải (healthy), migrate phải Exited (0)
 curl http://127.0.0.1:8800/platform/v1/health
 ```
@@ -49,11 +53,11 @@ curl http://127.0.0.1:8800/platform/v1/health
 python init_env.py --demo
 docker compose build
 docker compose --profile demo up -d
-python smoke.py --docker           # 21 bước, in PASS/FAIL từng bước
+python smoke.py --docker           # 22 bước, in PASS/FAIL từng bước
 docker compose --profile demo down -v
 ```
 
-`smoke.py` đi hết hướng dẫn nối bằng HTTP: hồ sơ leader, đánh giá, cổng phát hành, client, khóa, manager, integration, route, bật MCP và phát hiện tool, kích hoạt tool, đối tác xác nhận route, `start_workflow`, SSE, approval, sự kiện provider có chữ ký, xác nhận, đóng, rồi kiểm rằng không gì xảy ra hai lần. Nó tạo dữ liệu thử (client `Smoke partner …`, hồ sơ `smoke_leader_…`) trong tenant của khóa admin: **đừng chạy trên database production**.
+`smoke.py` đi hết hướng dẫn nối bằng HTTP: trang console lấy từ container, hồ sơ leader, đánh giá, cổng phát hành, client, khóa, manager, integration, route, bật MCP và phát hiện tool, kích hoạt tool, đối tác xác nhận route, `start_workflow`, SSE, approval, sự kiện provider có chữ ký, xác nhận, đóng, rồi kiểm rằng không gì xảy ra hai lần. Nó tạo dữ liệu thử (client `Smoke partner …`, hồ sơ `smoke_leader_…`) trong tenant của khóa admin: **đừng chạy trên database production**.
 
 ## 3. Dừng, khởi động lại, xem log
 
@@ -68,7 +72,7 @@ docker compose --profile demo down -v
 
 Dừng API là **tắt êm**: nhận SIGTERM, ngừng nhận request, chờ các request đang chạy tối đa `AWP_SHUTDOWN_SECONDS` (mặc định 20 giây), rồi dừng engine và đóng kết nối DB. Không có luồng SSE nào mở thì mất chưa tới 1 giây; có luồng SSE mở thì mất đủ 20 giây (luồng bị cắt, client nối lại bằng `Last-Event-ID`). Compose chờ tối đa 45 giây (`stop_grace_period`) trước khi giết.
 
-Tiến trình chết đột ngột (kể cả `kill -9`): Docker tự khởi động lại container (`restart: unless-stopped`). Khi khởi động, engine tự nhặt lại job mất chủ và đóng các lượt dở; workflow đang chờ cư dân hoặc chờ đối tác tiếp tục từ đúng trạng thái đã lưu. Đã thử thật hai lần (mục 9).
+Tiến trình chết đột ngột (kể cả `kill -9`): Docker tự khởi động lại container (`restart: unless-stopped`). Workflow đang chờ cư dân hoặc chờ đối tác tiếp tục ngay từ đúng trạng thái đã lưu. Việc tiến trình chết **đang làm dở** (một lượt của agent, một lời gọi đối tác) được tiến trình khác, hoặc chính nó sau khi lên lại, nhận sau khi lease của tiến trình chết hết hạn (tối đa `AWP_WF_LEASE_SECONDS`, 60 giây): lượt chưa nói gì với cư dân thì chạy lại, lời gọi đối tác dở thì gửi lại cùng `client_reference` nếu tool khai `idempotency_arg`, không thì workflow sang `needs_attention` (`operation_unknown`). Đã thử thật trên Docker và bằng bộ test giết tiến trình (mục 9).
 
 ## 4. Nâng cấp và rollback
 
@@ -177,14 +181,15 @@ Hai trạng thái gần giống nhưng **không** xử lý bằng `resolve` (l�
 
 ## 8. Giới hạn hiện tại
 
-- **Một bản sao API.** Bus phiên là `InMemoryMessageBus` trong tiến trình; `python -m awp` chưa đọc `AWP_REDIS_URL`. Đừng chạy hai container `api` trên cùng database. Chạy nhiều tiến trình cần nối Redis trong mã trước (gói `redis` cũng chưa có trong image: thêm vào `deploy/requirements.in` rồi sinh lại lock).
+- **Nhiều bản sao cần Redis.** Với `AWP_REDIS_URL` (compose đặt sẵn) chạy được nhiều tiến trình API trên một database; đã chạy thật hai. Bỏ `AWP_REDIS_URL` thì chỉ được một tiến trình: tiến trình thứ hai từ chối khởi động, và sau một lần chết đột ngột tiến trình lên lại chờ tối đa 60 giây. Vẫn tính riêng theo từng tiến trình: rate limit theo khóa API, cache danh sách tool của MCP, cờ "vụ đã hết ngân sách".
+- **Phục hồi sau khi một bản sao chết mất tới một lease** (60 giây mặc định) cho việc bản sao đó đang làm dở. Một tiến trình *treo* lâu hơn lease mà chưa chết bị coi là đã chết (hiếm; có thể làm một tin bị nói hai lần).
 - **Không lưu ảnh/tệp.** Mã chưa có cấu hình S3 nào; MinIO trong compose chưa được dùng (`aioboto3` chưa có trong image).
-- **Workspace là volume cục bộ** của một máy.
-- **Không TLS, không cân bằng tải**: cổng chỉ ở `127.0.0.1`. Console phải được phục vụ qua HTTPS khi ra khỏi máy phát triển (khóa nằm trong header của mọi lời gọi).
-- **Nâng cấp có thời gian ngừng** (một bản sao, migration chạy trước khi API mới lên).
+- **Workspace là volume cục bộ** của một máy: các bản sao phải ở trên cùng máy (hoặc dùng chung một đĩa, chưa kiểm).
+- **Không TLS, không cân bằng tải**: cổng chỉ ở `127.0.0.1`; hai bản sao là hai cổng, chia tải là việc của reverse proxy đặt phía trước. Console phải được phục vụ qua HTTPS khi ra khỏi máy phát triển (khóa nằm trong header của mọi lời gọi).
+- **Nâng cấp có thời gian ngừng** (migration chạy trước khi API mới lên; nâng cấp lần lượt từng bản sao trên hai phiên bản mã chưa được thử, đừng làm khi bản mới có migration).
 - **Dừng khi có luồng SSE mở mất 20 giây** (`AWP_SHUTDOWN_SECONDS`) và ghi một traceback `CancelledError` cho mỗi luồng bị cắt.
-- **Pool kết nối**: mỗi tiến trình mở tối đa `2 × (AWP_DB_POOL_SIZE + AWP_DB_MAX_OVERFLOW)` = 60 kết nối; PostgreSQL trong compose để mặc định `max_connections = 100`.
-- Giới hạn theo khóa API, trong một tiến trình: 600 request/phút, 20 luồng SSE. Body tối đa 256 KiB, một tin nhắn 20.000 ký tự, một lời gọi tool tối đa 9 giây, schema một tool MCP tối đa 32 KiB, approval sống 24 giờ.
+- **Pool kết nối**: mỗi tiến trình mở tối đa `2 × (AWP_DB_POOL_SIZE + AWP_DB_MAX_OVERFLOW)` = 40 kết nối (`deploy/.env.example` đặt 10 + 10 để hai bản sao vừa trong `max_connections = 100` mặc định của PostgreSQL).
+- Giới hạn theo khóa API: 600 request/phút **trong mỗi tiến trình**; 20 luồng SSE **trên cả fleet** (đếm qua Redis). Body tối đa 256 KiB, một tin nhắn 20.000 ký tự, một lời gọi tool tối đa 9 giây, schema một tool MCP tối đa 32 KiB, approval sống 24 giờ.
 - **MCP ở địa chỉ nội bộ bị chặn** (chống SSRF) trừ khi `AWP_MCP_ALLOW_PRIVATE=1`. Profile demo bật biến này vì MCP mẫu nằm trong mạng compose; production để `0`.
 - **Dữ liệu sandbox của các lần đánh giá không tự dọn** (`docs/WORKFORCE_V1_VAN_HANH.md` mục 9).
 - **Image 606 MB trên đĩa** (129 MB nén): phần lớn là phụ thuộc bắt buộc của AgentScope (numpy, SDK của các nhà cung cấp model, gRPC của OpenTelemetry).
@@ -197,20 +202,21 @@ Hai trạng thái gần giống nhưng **không** xử lý bằng `resolve` (l�
 
 - Image build từ nguồn trong repo với phụ thuộc ghim; `pip check` sạch; chạy bằng user không phải root.
 - Từ volume rỗng: PostgreSQL tạo hai database, job `migrate` đưa cả hai lịch sử migration lên mới nhất và `--check` qua, API lên với `AWP_AUTO_CREATE=0`. 17,8 giây cho cả stack; riêng API 3,2 giây.
-- `smoke.py`: 21/21 bước qua HTTP, gồm đánh giá thật trong sandbox, phát hành qua cổng, kho tool tự phát hiện từ MCP, hành động cần cư dân đồng ý, sự kiện provider có chữ ký (chữ ký sai bị 401), idempotency của request, quyết định và sự kiện, đóng bởi đối tác.
+- `smoke.py` (B4): 21/21 bước qua HTTP, gồm đánh giá thật trong sandbox, phát hành qua cổng, kho tool tự phát hiện từ MCP, hành động cần cư dân đồng ý, sự kiện provider có chữ ký (chữ ký sai bị 401), idempotency của request, quyết định và sự kiện, đóng bởi đối tác.
 - Giết tiến trình API bằng SIGKILL hai lần giữa một workflow (lúc chờ cư dân đồng ý, lúc chờ đối tác): workflow tiếp tục đúng trạng thái, MCP mẫu được gọi đúng một lần, không sự kiện hay tin nhắn nào lặp.
+- **P5b, image `0.2.0`, Redis đã nối, hai bản sao** (mục 10 của `SMOKE_RESULT.md`): `smoke.py` 22/22 bước (thêm bước console) qua bản sao 1 trong khi luồng SSE đọc từ bản sao 2; một bản sao bị `docker kill -s KILL` **ngay trong lời gọi đối tác đã được cư dân duyệt** và không lên lại, workflow đi hết qua bản sao còn lại, đối tác giữ đúng một job, không tin hay sự kiện nào lặp. Chạy cả hai chiều (giết bản đang chạy lượt; giết bản giữ job).
 - Tắt êm bằng SIGTERM, có và không có luồng SSE mở.
 - Ba lệnh sao lưu ở mục 5.
 
-**Đã chứng minh bằng bộ test của repo, không phải trên Docker**: `docs/WORKFORCE_V1_KIEM_THU_TUAN_THU.md` (12 dòng của hợp đồng 13.9 và 13 ý của 14.3; model kịch bản, MCP giả, SQLite một tiến trình; tài liệu đó tự ghi rõ là bằng chứng mô phỏng). Bước B4 **không chạy lại** bộ test đó.
+**Đã chứng minh bằng bộ test của repo, không phải trên Docker**: `docs/WORKFORCE_V1_KIEM_THU_TUAN_THU.md` (12 dòng của hợp đồng 13.9 và 13 ý của 14.3; model kịch bản, MCP giả, SQLite một tiến trình; tài liệu đó tự ghi rõ là bằng chứng mô phỏng). Từ P5b có thêm **bộ test giết tiến trình thật** (18 test, marker `multiproc`: platform chạy thành hai hoặc ba tiến trình HĐH trên PostgreSQL và Redis, một tiến trình bị `TerminateProcess`/`SIGKILL` giữa lời gọi model, trong lời gọi đối tác trước và sau khi đối tác trả lời, khi đang đỗ trên approval, sau khi agent nhận quyết định, giữa commit event và giao SSE, khi đang chờ provider) và hai kịch bản có tên của chủ dự án (M5 booking có kiểm soát, M7 ticket nhiều lượt) chạy cả một tiến trình lẫn fleet. Số liệu: `docs/WORKFORCE_V1_QUYET_DINH.md`, mục P5b.
 
 **Chưa chứng minh:**
 
 - **Model thật.** Mọi "leader" trong smoke và trong bộ test là kịch bản. Chưa biết model thật có gọi đúng tool, có xin đồng ý, có nói đúng tiếng Việt, tốn bao nhiêu. `smoke.py` chạy được với model thật (bỏ `--demo`, khai model trong `deploy/models.yaml`) nhưng **chưa ai chạy**, và các kiểm tra của nó viết cho câu trả lời kịch bản nên có thể đỏ với model thật dù hệ thống đúng.
 - **MCP thật và backend thật của đối tác.** Chỉ có server mẫu ba tool.
 - **Hạ tầng production**: TLS, reverse proxy, giám sát, cảnh báo, tải, nhiều máy, PostgreSQL được quản lý, giới hạn tài nguyên container.
-- **Nhiều bản sao, Redis, MinIO**: chưa nối trong mã.
-- **Giết giữa một lượt đang chạy hoặc giữa một lời gọi tool** trên container thật (chỉ có crash mô phỏng trong bộ test).
+- **MinIO / lưu ảnh**: chưa nối trong mã. **Hơn hai bản sao, nhiều máy, mất Redis hay PostgreSQL giữa chừng**: chưa thử.
+- **Giết giữa một lời gọi model** hoặc **giữa commit và giao SSE** trên container thật: chỉ có trong bộ test giết tiến trình (tiến trình thật, không phải container). Trên Docker mới giết ở một điểm (trong lời gọi đã duyệt). Giết đúng giữa một giao dịch database đang ghi: chưa thử ở đâu.
 - **Khôi phục từ bản sao lưu, nâng cấp, rollback, xoay khóa** trên stack Docker: có quy trình viết ở trên, chưa diễn tập.
 - **Tải**: smoke chạy từng workflow một.
 
@@ -236,11 +242,11 @@ Một thay đổi, trong `platform_VP/core/src/awp/__main__.py`: `uvicorn.run(..
 | Tệp | Việc |
 |---|---|
 | `platform_VP/Dockerfile`, `platform_VP/.dockerignore` | Image |
-| `platform_VP/deploy/compose.yml` | Các dịch vụ |
+| `platform_VP/deploy/compose.yml` | Các dịch vụ (Redis đã nối; `api2` ở profile `two`) |
 | `platform_VP/deploy/.env.example`, `init_env.py` | Biến môi trường và sinh bí mật |
 | `platform_VP/deploy/requirements.in`, `requirements.lock` | Phụ thuộc trực tiếp và bản ghim (cách sinh lại ở đầu tệp lock) |
 | `platform_VP/deploy/models.demo.yaml`, `demo/fake_model.py`, `demo/fake_mcp.py` | Profile demo |
-| `platform_VP/deploy/smoke.py`, `SMOKE_RESULT.md` | Script khói và kết quả lần chạy 12/10/2026 |
+| `platform_VP/deploy/smoke.py`, `SMOKE_RESULT.md` | Script khói (`--sse-base`, `--failover-to`, `--kill` cho hai bản sao) và kết quả các lần chạy 12/10/2026 |
 | `docs/openapi.json` | OpenAPI xuất từ container |
 
 ## 13. Tài liệu liên quan

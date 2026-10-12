@@ -236,8 +236,13 @@ def test_a_sandbox_workflow_left_by_a_dead_process_gets_no_turn_and_is_closed(tm
         assert w.sql("select state from wf_workflows where id=?", (wid,))[0][0] != "closed"
     with world(tmp_path, publish=False) as w:  # the next process: its engine finds the queued job at once
         ek.agents(tech=ek.careful)
-        w.wait(lambda: w.sql("select 1 from wf_jobs where workflow_id=? and status='failed'", (wid,)), 20, "the job to be refused")
-        assert w.sql("select status from awp_eval_runs where id=?", (run_id,)) == [("running",)]  # its lease is not over yet
+        # while the run's lease lives it may be running in another process of the fleet: its job is that process's (P5b)
+        w.sql("update awp_eval_runs set deadline=? where id=?", (time.time() + 4.0, run_id))
+        w.run(w.engine.sweep)
+        assert w.sql("select status from wf_jobs where workflow_id=?", (wid,)) == [("queued",)]
+        assert w.sql("select status from awp_eval_runs where id=?", (run_id,)) == [("running",)]
+        # once the lease is over nobody runs it: the job is refused, never given a turn
+        w.wait(lambda: w.sql("select 1 from wf_jobs where workflow_id=? and status='failed'", (wid,)), 30, "the job to be refused")
         w.wait(lambda: w.sql("select state from wf_workflows where id=?", (wid,)) == [("closed",)], 30,
                "the orphaned sandbox workflow to be closed")
         assert w.sql("select status from awp_eval_runs where id=?", (run_id,)) == [("error",)]

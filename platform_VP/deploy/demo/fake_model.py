@@ -1,19 +1,27 @@
 """A scripted OpenAI-compatible model for the `demo` profile of deploy/compose.yml (made from tests/fake_llm.py).
 
-It lets deploy/smoke.py prove the image and the wiring with NO model key and no cost. It proves nothing about how a
+It lets deploy/smoke.py prove the image and the wiring with NO model key and no cost, and it is the model of the
+kill tests (core/tests/workforce/mpkit.py), which run the platform as real processes. It proves nothing about how a
 real model behaves: every answer below is a fixed script.
 
 What the script plays, for whichever agent asks:
 - a resident who asks to book a repair -> call the partner tool `book_repair` once, then tell the resident what the
-  tool answered;
+  tool answered (pending; or that it is being handled when the platform says the request is already on its way);
 - a provider event that wakes the leader -> tell the resident, and ask for confirmation when the work is finished;
+- a message that names a ticket (`TKT-<NAME>`, letters only) -> answer with every ticket name the model was shown in
+  this session and a letter for how many of the resident's messages it holds: a session that ever saw another ticket's
+  words says so in its answer (no digit in it: the platform refuses a figure that no evidence backs);
 - anything else (the platform's evaluation cases included) -> record that it does not know, and say so;
 - the agent builder -> asks a question back.
 
-Run: python fake_model.py   (listens on 0.0.0.0:8900; GET /health, POST /v1/chat/completions)
+For tests only: POST /control {"hold": "<regex>"} holds every completion whose last user message matches until
+{"hold": ""} is posted; GET /health says how many are held. A test kills a platform process while its model call hangs.
+
+Run: python fake_model.py   (listens on 0.0.0.0:8900; GET /health, POST /control, POST /v1/chat/completions)
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -27,7 +35,11 @@ from fastapi.responses import StreamingResponse
 STRUCTURED = "generate_structured_output"  # the tool AgentScope forces for a structured answer
 HINTS = ("<system-reminder", "<workflow-state", "<room-digest")  # reminders the room adds as user messages
 ACTION = "book_repair"
-CALLS = {"requests": 0}
+TICKET = re.compile(r"\bTKT-[A-Z]+\b")
+RESIDENT = "<resident-message"
+ON_ITS_WAY = ("IN PROGRESS", "PENDING", "UNKNOWN", "ALREADY DONE")  # how the platform answers a request it already has
+CALLS = {"requests": 0, "held": 0}
+HOLD: dict = {"match": None, "open": None}  # a compiled pattern and the asyncio.Event that ends the hold
 
 
 def text_of(m: dict) -> str:
@@ -57,6 +69,10 @@ class Call:
     def results(self, name: str) -> list[str]:
         ids = [tc["id"] for m in self.turn for tc in (m.get("tool_calls") or []) if tc["function"]["name"] == name]
         return [text_of(m) for m in self.turn if m.get("role") == "tool" and m.get("tool_call_id") in ids]
+
+    def shown(self) -> str:
+        """Everything this session was shown that is not the system prompt: the whole context of the request."""
+        return " ".join(text_of(m) for m in self.msgs if m.get("role") not in ("system", "developer"))
 
 
 def say(text: str, expects: str = "none", cites: list[str] | None = None) -> list:
@@ -92,7 +108,16 @@ def script(c: Call):
         got = " ".join(c.results(ACTION))
         if evidence_of(got):
             return say("I asked for the visit on Monday; it is pending.", "none", evidence_of(got)[:1])
+        if got.startswith(ON_ITS_WAY) or "already used" in got:  # the platform has the request and did not send it twice
+            return say("Your request for a visit is being handled; I will tell you when it changes.", "none")
         return say("Understood, nothing was requested. Anything else?", "reply")
+
+    if TICKET.search(c.last_user):  # a ticket's own conversation: answer with all it has ever been shown
+        if said:
+            return "Said."
+        seen = "+".join(sorted(set(TICKET.findall(c.shown()))))
+        turns = sum(1 for m in c.msgs if m.get("role") == "user" and RESIDENT in text_of(m))
+        return say(f"Noted ({seen}), message {chr(64 + min(turns, 26))}.", "reply")
 
     # everything else: it does not know, records that, and says so (no figure, no date, no promise)
     if c.called("CaseGap") == 0 and "CaseGap" in c.names:
@@ -115,7 +140,17 @@ app = FastAPI(title="scripted demo model")
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "requests": CALLS["requests"]}
+    return {"status": "ok", **CALLS}
+
+
+@app.post("/control")
+async def control(req: Request):
+    """Tests only: hold the completions whose last user message matches, or let them all go ("")."""
+    pattern = str((await req.json()).get("hold") or "")
+    if HOLD["open"] is not None:
+        HOLD["open"].set()
+    HOLD.update(match=re.compile(pattern, re.S) if pattern else None, open=asyncio.Event() if pattern else None)
+    return {"hold": pattern}
 
 
 @app.post("/v1/chat/completions")
@@ -123,7 +158,16 @@ async def completions(req: Request):
     body = await req.json()
     msgs, tools = body.get("messages", []), body.get("tools")
     CALLS["requests"] += 1
-    out = script(Call(msgs, tools))
+    call = Call(msgs, tools)
+    if HOLD["match"] is not None and HOLD["match"].search(call.last_user):
+        CALLS["held"] += 1
+        try:
+            await HOLD["open"].wait()
+        finally:
+            CALLS["held"] -= 1
+    out = script(call)
+    if os.environ.get("DEMO_DEBUG"):  # what the script was asked and what it answered, in the server's log
+        print("ASKED", repr(call.last_user[:200]), "ANSWERED", str(out)[:200], flush=True)
     cid = "chatcmpl-" + uuid.uuid4().hex[:8]
     ptok = sum(len(json.dumps(m, ensure_ascii=False)) for m in msgs) // 4
 
@@ -151,4 +195,5 @@ async def completions(req: Request):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("DEMO_MODEL_PORT", "8900")), log_level="warning")
+    uvicorn.run(app, host=os.environ.get("DEMO_HOST", "0.0.0.0"), port=int(os.environ.get("DEMO_MODEL_PORT", "8900")),
+                log_level="warning")

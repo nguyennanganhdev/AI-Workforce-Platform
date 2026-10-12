@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import consentkit as ck
 import compkit
+import mpkit
 import pytest
 import scripts
 import t1kit
@@ -22,6 +23,7 @@ from conftest import ADM, key_headers
 from enginekit import world
 from fake_llm import CALLS
 from flowkit import Flow
+from mpkit import fleet  # noqa: F401 (the fixture of the one test here that kills a real process)
 from partnerkit import Partner
 from scripts import say
 from t1kit import SETTINGS, TOOLS, act, configure
@@ -458,12 +460,45 @@ def test_14_3_08b_the_partners_backend_restarts():
     pass
 
 
-@pytest.mark.skip(reason="needs real infrastructure: kill -9 of a real process (and, for several processes, Redis and Postgres). "
-                         "The default run simulates a restart (a new app on the same files, 14_3_08 above). The P0 crash probe "
-                         "that killed a real process used the API that P4 deleted and no longer runs; it is to be rewritten "
-                         "for the Workforce API in slice S7 (tests/probes/conftest.py)")
-def test_14_3_08c_a_real_process_kill_during_a_wait():
-    pass
+@pytest.mark.slow
+@pytest.mark.multiproc
+@mpkit.needs_fleet
+def test_14_3_08c_a_real_process_kill_during_a_wait(fleet):
+    """13.9 row 9 and 14.3 item 8 with a REAL kill (the tests above stop an app and start another): two platform
+    processes on PostgreSQL and Redis, the one that ran the turn is killed (TerminateProcess / SIGKILL) while the
+    workflow waits for the partner, and a third is started. The wait is recovered from the database as it was (same
+    state, revision, operation and public log), no job and no request to the partner is made for it, and the partner's
+    event then goes through. Skipped without AWP_TEST_PG_URL and AWP_TEST_REDIS_URL; the kills in the middle of a turn,
+    of a tool call and of a delivery are in test_multiproc_kill.py."""
+    w = mpkit.World(fleet, consent=False)
+    a, b = w.on(0), w.on(1)
+    r, body = a.start(message={"type": "text", "text": "Please book a repair visit for the leaking tap."})
+    started = w.settled(a, r)
+    conv = started["conversation_id"]
+    assert (started["workflow_state"], started["next_action"]) == ("waiting_external_event", "watch_events")
+    ref = mpkit.one_effect(fleet, calls=1)
+    before, picture = w.events(a, conv), w.state(a, conv)
+    asked = fleet.model.http.get("/health").json()["requests"]
+
+    fleet.kill(fleet.api[0])
+    fleet.start_api()  # the restart
+    c = w.on(2)
+    time.sleep(mpkit.LEASE + 5)  # the dead process's lease runs out and the others sweep, more than once
+
+    for flow in (b, c):  # the same wait, whoever is asked
+        assert w.state(flow, conv) == picture and w.events(flow, conv) == before
+    assert mpkit.one_effect(fleet, calls=1) == ref  # the partner was asked for nothing more
+    assert fleet.model.http.get("/health").json()["requests"] == asked  # and no turn ran: no new job
+    ops = c.http.get("/platform/v1/wf/operations", params={"workflow_id": started["workflow_id"]}, headers=ADM).json()
+    assert [(o["status"], o["client_reference"]) for o in ops["operations"]] == [("pending", ref)]
+
+    sent, _ = w.provider_on(2).send("job.completed", ref=ref)
+    assert sent.status_code == 202, sent.text
+    wf = w.until_state(c, conv, "awaiting_confirmation")
+    closed, _ = c.close({"workflow_id": started["workflow_id"], "workflow_revision": wf["workflow_revision"]}, body)
+    assert closed.status_code == 200 and closed.json()["state"] == "closed"
+    mpkit.audit(w, c, conv)
+    assert mpkit.one_effect(fleet, calls=1) == ref
 
 
 def test_14_3_09_sse_reconnect_with_last_event_id_loses_nothing_and_an_expired_cursor_is_410(tmp_path):

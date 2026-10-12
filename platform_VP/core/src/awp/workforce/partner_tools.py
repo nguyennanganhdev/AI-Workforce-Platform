@@ -317,7 +317,7 @@ class PartnerTool(ToolBase):
         if not begun.fresh:
             return chunk(*existing(op))
         run.op = op
-        if not await ledger.mark_sent(db, op["id"]):
+        if not await ledger.mark_sent(db, op["id"], getattr(self.rt, "node", None) or None):
             return chunk("IN PROGRESS: this request is being handled elsewhere. It was not sent again.", False)
         run.mine = run.sent = True
         ledger.INFLIGHT.add(op["id"])

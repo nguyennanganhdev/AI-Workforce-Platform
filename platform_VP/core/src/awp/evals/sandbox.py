@@ -43,6 +43,17 @@ def pin_of(case: dict | None) -> dict | None:
     return ((case or {}).get("meta") or {}).get("eval")
 
 
+async def elsewhere(rt, workflow_id: str) -> bool:
+    """A sandbox workflow of an evaluation that another process of the fleet is running: its turns are that process's
+    (the draft under test is in its memory), and taking its job here would only fail it."""
+    async with rt.db.engine.connect() as conn:
+        case_id = (await conn.execute(select(t.workflows.c.case_id).where(t.workflows.c.id == workflow_id))).scalar()
+    pin = pin_of(await rt.cases.get_case(case_id)) if case_id else None
+    if pin is None or rt.evals is None or rt.evals.live(pin.get("run")):
+        return False
+    return await rt.evals.store.status(pin.get("run")) == "running"
+
+
 def template_type(key: str, version: int) -> str:
     """The sub-agent type a draft specialist is created under. `@` cannot be in a profile key, so it never takes
     the place of a published specialist's template."""

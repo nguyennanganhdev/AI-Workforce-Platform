@@ -2,7 +2,10 @@
 
 Two kinds of operation need it, and the sweep (every couple of seconds) looks for both:
 
-  left half done   an `intent` or `sent` row older than `wf_op_grace_seconds` with no live call in this process:
+  left half done   an `intent` or `sent` row older than `wf_op_grace_seconds` with no live call: none in this
+                   process, and the process that sent it (the row's `node`) does not live any more (nodes.py). While
+                   that process lives the row is its own: it has the live call, or the answer in hand that its
+                   database would not take (ledger.HELD). So
                    the process died between writing the row and recording the answer. Nobody knows whether the
                    partner got it. In this order: the tool has an idempotency argument -> send it again with the
                    SAME client_reference (the partner makes it a no-op if it already has it); else the route can
@@ -17,6 +20,9 @@ An operation of a closed workflow, or of one whose route is suspended or replace
 calls anything at the partner): the check is part of taking the row (ledger.touch), so it holds for each row of a pass.
 A resend that could not even connect says nothing of the original request, which may have reached the partner before
 the crash: the row waits for the next pass.
+
+Every process of a fleet runs this pass. Taking a row is a compare-and-set on its clock (ledger.touch `before`), so two
+processes that saw the same row do not both call the partner about it.
 """
 from __future__ import annotations
 
@@ -25,7 +31,7 @@ from typing import Any
 
 from sqlalchemy import and_, or_, select
 
-from . import ledger, tables as t
+from . import ledger, nodes, tables as t
 from .common import now
 from .ledger import HELD, INFLIGHT
 from .partner_mcp import PartnerListError
@@ -98,11 +104,17 @@ async def attention(db: Any, workflow_id: str) -> None:
         await settle_waiting(conn, workflow_id)
 
 
-async def one(eng: Any, row: Any) -> None:
+async def one(eng: Any, row: Any, before: float | None = None) -> None:
     db, left_over = eng.ctx.db, row["status"] in ("intent", "sent")
-    if row["id"] in INFLIGHT or not await ledger.touch(db, row["id"], "sent" if left_over else row["status"],
-                                                      ("intent", "sent") if left_over else (row["status"],)):
-        return  # a live call here owns it, or something else just changed it
+    me = getattr(eng, "node", None)
+    if row["id"] in INFLIGHT:
+        return  # a live call here owns it
+    if left_over and row["node"] and row["node"] != me and await nodes.alive(db, row["node"]):
+        return  # the process that sent it lives: the call is its, and so is the answer if it has one in hand
+    if not await ledger.touch(db, row["id"], "sent" if left_over else row["status"],
+                              ("intent", "sent") if left_over else (row["status"],), before=before,
+                              node=me if left_over else None):
+        return  # something else just changed it, or another process took it
     if (row["result"] or {}).get("reviewed"):
         return  # a person looked at it; the touch above is what keeps it from coming back at once
     client = await client_of(eng, row)
@@ -136,11 +148,12 @@ async def reconcile(eng: Any, grace: float | None = None, poll: float | None = N
     """One pass over what needs finding out. Returns how many operations were looked at. `grace` and `poll`
     replace the settings (a test, or an operator who wants it now)."""
     s = eng.settings
-    rows = await candidates(eng.ctx.db, s.wf_op_grace_seconds if grace is None else grace,
-                            s.wf_status_poll_seconds if poll is None else poll)
+    grace = s.wf_op_grace_seconds if grace is None else grace
+    poll = s.wf_status_poll_seconds if poll is None else poll
+    rows = await candidates(eng.ctx.db, grace, poll)
     for row in rows:
         try:
-            await one(eng, row)
+            await one(eng, row, now() - (grace if row["status"] in ("intent", "sent") else poll))
         except Exception:
             log.exception("could not reconcile operation %s", row["id"])
     return len(rows)

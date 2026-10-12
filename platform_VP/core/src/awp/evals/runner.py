@@ -1,7 +1,8 @@
 """Runs the evaluation of one exact profile version: every case in the sandbox, one after another, then the checks.
 
 A run is a background task of this process and a row in `awp_eval_runs`. It is bounded on every side: each case
-has a time limit and a budget (the case's own, as for any workflow), a few runs of a tenant go at once, and whatever
+has a time limit and a budget (the case's own, as for any workflow), a few runs of a tenant go at once (in the whole
+fleet of processes, `_turn`), and whatever
 a case leaves running is closed and interrupted when it ends. Nothing here blocks the engine: a sandbox workflow is
 one more workflow to it, with its own dispatcher.
 
@@ -47,7 +48,6 @@ class EvalRunner:
         self.store = EvalStore(ctx.db)
         self._tasks: dict[str, asyncio.Task] = {}  # run id -> its task: the runs that are live in this process
         self._live: set[tuple[str, str, int]] = set()  # versions with a run in this process
-        self._slots: dict[str, asyncio.Semaphore] = {}  # per tenant: one tenant's runs never queue behind another's
 
     def live(self, run_id: str) -> bool:
         """Is this run running in this process? Only then may one of its sandbox workflows be given a turn."""
@@ -132,26 +132,37 @@ class EvalRunner:
             except Exception:
                 log.exception("evaluation %s: could not renew its lease", run_id)
 
+    async def _turn(self, run: dict) -> None:
+        """A few runs of one tenant at once (`eval_parallel`), counted over the whole fleet: the run starts when fewer
+        than that many running runs of its tenant are older than it. The queue is the rows themselves, so every process
+        sees the same one; a run whose process died is reaped at its deadline and gives its place up. One tenant's runs
+        never queue behind another's."""
+        limit = max(1, self.settings.eval_parallel)
+        while True:
+            await self.store.reap()
+            if await self.store.ahead(run) < limit:
+                return
+            await asyncio.sleep(0.3)
+
     async def _run(self, run: dict, rec: ProfileRecord, cases: list[dict]) -> None:
         tenant, started, results = run["tenant"], time.monotonic(), []
         kind = sandbox.template_type(rec.key, rec.version)
         specialist = rec.profile.role == "specialist"
         beat = asyncio.get_running_loop().create_task(self._beat(run["id"], asyncio.current_task()))
-        slots = self._slots.setdefault(tenant, asyncio.Semaphore(max(1, self.settings.eval_parallel)))
         try:
-            async with slots:
-                self.rt._profile_cache.pop((tenant, rec.key, rec.version), None)  # the draft as it is now, not as it was
-                if specialist:  # the exact version, as a sub-agent type only this run's sandbox cases may create (room.creatable)
-                    self.rt.templates[kind] = to_template(rec.profile, rec.version, self.settings).model_copy(update={"type": kind})
-                    self.rt.template_tenant[kind] = tenant
-                try:
-                    for i, case in enumerate(cases):
-                        results.append(await self._case(run, rec, i, case))
-                        await self.store.write_run(run["id"], results=results)
-                finally:
-                    if specialist:
-                        self.rt.templates.pop(kind, None)
-                        self.rt.template_tenant.pop(kind, None)
+            await self._turn(run)
+            self.rt._profile_cache.pop((tenant, rec.key, rec.version), None)  # the draft as it is now, not as it was
+            if specialist:  # the exact version, as a sub-agent type only this run's sandbox cases may create (room.creatable)
+                self.rt.templates[kind] = to_template(rec.profile, rec.version, self.settings).model_copy(update={"type": kind})
+                self.rt.template_tenant[kind] = tenant
+            try:
+                for i, case in enumerate(cases):
+                    results.append(await self._case(run, rec, i, case))
+                    await self.store.write_run(run["id"], results=results)
+            finally:
+                if specialist:
+                    self.rt.templates.pop(kind, None)
+                    self.rt.template_tenant.pop(kind, None)
             passed = sum(1 for r in results if r["passed"])
             now_is = await self.rt.profiles.get(tenant, rec.key, rec.version)
             if now_is is None or digest(now_is.profile) != run["profile_hash"]:

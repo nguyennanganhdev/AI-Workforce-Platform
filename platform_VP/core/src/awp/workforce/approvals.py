@@ -88,11 +88,12 @@ async def pending_count(conn, workflow_id: str) -> int:
 
 
 async def resolve(conn, wf: Any, row: Any, status: str, *, request_id: str | None, reason: str,
-                  why: str | None = None) -> tuple[dict, str]:
+                  why: str | None = None, wake: bool = True) -> tuple[dict, str | None]:
     """Decide a pending approval inside the caller's transaction, which holds the conversation's write lock
     and read `wf` under it: the row, `approval.resolved`, the workflow (active again when nothing else waits
     for the resident, otherwise only its revision moves) and the job that wakes the agent that asked.
     `why` goes with the job: what the leader is told about a cancellation depends on it (resume.notice).
+    `wake=False`: no job (recover.orphan_approvals: nobody is parked, and the turn that asked runs again by itself).
     Returns the workflow and the job id."""
     done = await conn.execute(update(t.approvals).where(
         t.approvals.c.id == row["id"], t.approvals.c.status == "pending")
@@ -105,6 +106,8 @@ async def resolve(conn, wf: Any, row: Any, status: str, *, request_id: str | Non
         wf = await transition(conn, wf, "active", reason=reason, request_id=request_id)
     else:
         wf = await bump(conn, wf)
+    if not wake:
+        return wf, None
     job = new_id("job")
     await conn.execute(insert(t.jobs).values(
         id=job, workflow_id=wf["id"], kind="approval_resume", request_id=request_id, status="queued",

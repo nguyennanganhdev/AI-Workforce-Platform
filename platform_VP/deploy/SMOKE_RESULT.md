@@ -1,4 +1,4 @@
-# Kết quả chạy khói trên Docker (B4)
+# Kết quả chạy khói trên Docker (B4, và P5b ở mục 10)
 
 Ngày chạy: 12/10/2026, khoảng 10:45 giờ Việt Nam (03:45 UTC; giờ trong log container là UTC). Máy: Windows 11, Docker Desktop 29.6.2 (linux/amd64), Compose v5.3.1. Project compose `awp-platform`, profile `demo`.
 
@@ -220,3 +220,172 @@ docker compose --profile demo up -d
 python smoke.py --docker
 docker compose --profile demo down -v      # -v xóa cả dữ liệu; bỏ -v để giữ
 ```
+
+## 10. P5b: Redis đã nối và hai bản sao API (chạy lại 12/10/2026)
+
+Các mục 1 đến 9 ở trên là lần chạy của bước B4 (image `0.1.0`, một bản sao, chưa có Redis) và được giữ nguyên làm lịch sử. Mục này là lần chạy của slice P5b trên mã có Redis, hai bản sao và phục hồi sau khi một bản sao bị giết. Vẫn là **model kịch bản** và **MCP mẫu**: không nói gì về model thật hay đối tác thật.
+
+| | |
+|---|---|
+| Image | `awp-platform:0.2.0`, id `sha256:eed4fad8b81ae9671e907729f879684de15c19a6b01a1f130df67db1a23734ad`, 130.675.117 byte nén (614 MB trên đĩa); 102 gói bên thứ ba (thêm `redis` 8.1.0) |
+| Build từ | nhánh `wip/platform-core-mvp`, cây làm việc của slice P5b ngay trước commit của nó |
+| Stack | `docker compose --profile demo --profile two up -d`: `postgres`, `redis` (có mật khẩu, `appendonly yes`), `migrate`, `api` (127.0.0.1:8800), `api2` (127.0.0.1:8801), `fake-model`, `fake-mcp` |
+| Migration | `at revision 0006_operation_node`, `AgentScope storage at its latest revision`, `up to date at revision 0006_operation_node` |
+| Khởi động nguội | từ volume rỗng tới `GET /platform/v1/health` trả 200: 17 giây (một lần đo, máy đang chạy cả bộ test) |
+| Cấu hình | mặc định của `deploy/.env.example` (`AWP_WF_LEASE_SECONDS` = 60) |
+
+```
+NAME                        IMAGE                STATUS                      PORTS
+awp-platform-api-1          awp-platform:0.2.0   Up 10 seconds (healthy)     127.0.0.1:8800->8800/tcp
+awp-platform-api2-1         awp-platform:0.2.0   Up 10 seconds (healthy)     127.0.0.1:8801->8800/tcp
+awp-platform-fake-mcp-1     awp-platform:0.2.0   Up 23 seconds (healthy)     8800/tcp
+awp-platform-fake-model-1   awp-platform:0.2.0   Up 23 seconds (healthy)     8800/tcp
+awp-platform-migrate-1      awp-platform:0.2.0   Exited (0) 11 seconds ago   
+awp-platform-postgres-1     postgres:16-alpine   Up 23 seconds (healthy)     127.0.0.1:5590->5432/tcp
+awp-platform-redis-1        redis:7-alpine       Up 23 seconds (healthy)     6379/tcp
+```
+
+### 10.1 Lần chạy A: cả 22 bước qua bản sao 1, luồng SSE đọc từ bản sao 2
+
+Lệnh: `python smoke.py --docker --sse-base http://127.0.0.1:8801`. **22/22 PASS**. Bước 2 là bước mới (console lấy từ container); bước 15 đọc SSE từ bản sao **không** nhận request nào của workflow đó.
+
+```
+smoke run b0233d against http://127.0.0.1:8800  (2026-10-12T05:12:57Z)
+[01/22] PASS  API is up and protected  (0.0s)
+         200 ok; without a key the admin API answers 401
+[02/22] PASS  Admin console is served  (0.0s)
+         GET /console: 200 text/html (567 bytes) with its CSP; app.js 97351 and app.css 11503 bytes from the container; no key needed, nothing loaded from elsewhere
+[03/22] PASS  A model is available  (0.0s)
+         3 available: demo-strong, demo-standard, demo-cheap [scripted demo model]
+[04/22] PASS  Leader profile (draft)  (0.0s)
+         draft smoke_leader_b0233d v1
+[05/22] PASS  Evaluation of the draft  (2.1s)
+         run passed (3 cases)
+[06/22] PASS  Release gate and publish  (0.0s)
+         evaluation passed, published through the gate; history: ['create', 'eval', 'publish'], published by admin:80773f07
+[07/22] PASS  Client and partner key  (0.1s)
+         client_a3ea47ec539a4b11aee01d80f4ea7437 (sandbox), key 20b09f3c3072675f; the partner key does not open /platform
+[08/22] PASS  Manager and manager key  (0.1s)
+         mgr_312c1e664a924b3a968ac7bacf32d891, key ca9a43f6acd89062; a manager key cannot create clients (403)
+[09/22] PASS  Integration, provider key, signing key  (0.0s)
+         intg_16a0f3c0a5434c2a9ff5fb29883738a5 with an API key and a signing key (needs AWP_SECRET_KEY to seal it)
+[10/22] PASS  Route (pending)  (0.0s)
+         route_36bdee74a7a94a38b278bc35d5906821 for SMOKE-B0233D: pending, revision 1
+[11/22] PASS  MCP server: add, enable, discover  (0.1s)
+         3 tools discovered at http://fake-mcp:8901/mcp: look-ups active, book_repair proposed and unusable; the header value is not readable back
+[12/22] PASS  Activate the action tool  (0.0s)
+         book_repair active: an action that needs the resident's consent, followed by provider events, safe to send again with the same reference
+[13/22] PASS  Partner confirms the route  (0.0s)
+         before: 403 ROUTE_NOT_AUTHORIZED; after the partner's confirmation: active, revision 2
+[14/22] PASS  start_workflow parks on consent  (0.5s)
+         wf_c26af8d64e7649cb9021ad393a1e6d12 is awaiting_approval / submit_approval; the same request again returned the same ids; nothing was sent to the partner yet
+[15/22] PASS  Event stream (SSE)  (0.1s)
+         SSE delivered 4 events with cursors (read from http://127.0.0.1:8801, the requests went to http://127.0.0.1:8800): ['request.accepted', 'workflow.status_changed', 'workflow.status_changed', 'approval.required']
+[16/22] PASS  Snapshot shows the approval  (0.0s)
+         approval appr_06ddb7c980ae4f5989317d9a0c7fd153 pending: {"text": "Book a repair visit for monday", "tool": "book_repair", "arguments": {"slot": "monday"}}; the manager's key sees this workflow only
+[17/22] PASS  Resident approves; tool runs  (1.1s)
+         approved (202); the tool ran and the workflow is waiting_external_event; the same decision again is answered the same
+[18/22] PASS  One pending operation  (0.0s)
+         one operation, pending, reference cr_c7bbf45749064d0964404a13b9efa6d4, partner job JOB-1; the leader said: 'I asked for the visit on Monday; it is pending.'
+[19/22] PASS  Signed provider events  (1.2s)
+         wrong signature: 401; job.assigned applied without waking the leader; job.completed applied
+[20/22] PASS  Leader asks to confirm  (0.0s)
+         awaiting_confirmation / confirm_close; the leader asked: 'The partner reports the work finished. Is everything right?'
+[21/22] PASS  Partner closes the workflow  (0.3s)
+         closed by the partner after the resident confirmed
+[22/22] PASS  Nothing happened twice  (0.8s)
+         1 operation (completed), 1 approval (approved), 2 receipts (applied), 3 distinct messages to the resident, one approval.required/approval.resolved/workflow.closed; the same event again: 202 duplicate; the sample MCP server was called exactly once with this reference and holds one job for it (JOB-1); all its calls since it started, every workflow together: {'book_repair': 1}
+
+SMOKE PASS: 22 of 22 steps passed (scripted demo model)
+```
+
+### 10.2 Lần chạy B: giết bản sao đang chạy lời gọi đã duyệt
+
+Lệnh: `python smoke.py --docker --sse-base http://127.0.0.1:8801 --failover-to http://127.0.0.1:8800 --kill awp-platform-api2-1` (trước đó `docker update --restart no awp-platform-api2-1` để bản sao bị giết **không** tự lên lại). Ở bước 17 script giữ câu trả lời của MCP mẫu, gửi quyết định, chờ tới khi lời gọi `book_repair` đang treo ở đối tác, rồi `docker kill -s KILL`. Trong lần này lượt của agent đang chạy ở chính bản sao bị giết. **22/22 PASS**; các bước khác giống lần A.
+
+```
+[15/22] PASS  Event stream (SSE)  (0.0s)
+         SSE delivered 4 events with cursors (read from http://127.0.0.1:8801, the requests went to http://127.0.0.1:8800): ['request.accepted', 'workflow.status_changed', 'workflow.status_changed', 'approval.required']
+[17/22] PASS  Resident approves; tool runs  (54.8s)
+         approved (202); awp-platform-api2-1 was killed (SIGKILL) inside the approved call to the partner; http://127.0.0.1:8800 took the workflow over 53s later (it waits for the dead process's lease) instead of http://127.0.0.1:8800 and the workflow is waiting_external_event; the same decision again is answered the same
+[18/22] PASS  One pending operation  (0.1s)
+         one operation, pending, reference cr_41d2334abb83c770bd4ac55df92ce543, partner job JOB-2; the leader said: 'Your request for a visit is being handled; I will tell you when it changes.'
+[19/22] PASS  Signed provider events  (0.7s)
+         wrong signature: 401; job.assigned applied without waking the leader; job.completed applied
+[20/22] PASS  Leader asks to confirm  (0.0s)
+         awaiting_confirmation / confirm_close; the leader asked: 'The partner reports the work finished. Is everything right?'
+[21/22] PASS  Partner closes the workflow  (0.1s)
+         closed by the partner after the resident confirmed
+[22/22] PASS  Nothing happened twice  (0.7s)
+         1 operation (completed), 1 approval (approved), 2 receipts (applied), 3 distinct messages to the resident, one approval.required/approval.resolved/workflow.closed; the same event again: 202 duplicate; the sample MCP server was called twice with this reference (the second time by the replica that took over) and made ONE job for it (JOB-2); all its calls since it started, every workflow together: {'book_repair': 3}
+
+SMOKE PASS: 22 of 22 steps passed (scripted demo model)
+```
+
+Log của bản sao còn sống (`api`), nguyên văn:
+
+```
+api-1  | node n9fe85f95ed9e4708 is gone: released 1 session lock(s) it left
+api-1  | approval appr_7e0c990eef594df3b2072359e87dee1b: its agent was handed the answer by a process that died; it is handed over again
+api-1  | node(s) n9fe85f95ed9e4708 did not say they live for a whole lease and were taken over
+api-1  | workflow wf_97389d97f4eb46e2a02894cb5e200553: 1 turn(s) were left running and are closed
+```
+
+```
+NAME                        STATUS                          PORTS
+awp-platform-api-1          Up About a minute (healthy)     127.0.0.1:8800->8800/tcp
+awp-platform-api2-1         Exited (137) 55 seconds ago     
+awp-platform-fake-mcp-1     Up About a minute (healthy)     8800/tcp
+awp-platform-fake-model-1   Up About a minute (healthy)     8800/tcp
+awp-platform-migrate-1      Exited (0) About a minute ago   
+awp-platform-postgres-1     Up About a minute (healthy)     127.0.0.1:5590->5432/tcp
+awp-platform-redis-1        Up About a minute (healthy)     6379/tcp
+```
+
+Điều bản ghi cho thấy: bản sao còn sống chờ lease của bản sao chết hết hạn (53 giây trong lần này), xóa khóa phiên nó để lại trong Redis, đóng lượt dở, đưa quyết định lại cho agent còn đang đỗ, và hỏi lại đối tác **với cùng `client_reference`**. Đối tác nhận hai lời gọi với reference đó và giữ **một** job. Cư dân nhận ba tin khác nhau, không tin nào lặp; mỗi loại `approval.required`/`approval.resolved`/`workflow.closed` đúng một lần.
+
+### 10.3 Lần chạy C: giết bản sao nhận request, lượt chạy ở bản sao kia
+
+Lệnh: `python smoke.py --docker --sse-base http://127.0.0.1:8801 --failover-to http://127.0.0.1:8801 --kill awp-platform-api-1` (sau khi `docker start awp-platform-api2-1`; `api` đặt `--restart no`). **22/22 PASS**.
+
+```
+[15/22] PASS  Event stream (SSE)  (0.1s)
+         SSE delivered 4 events with cursors (read from http://127.0.0.1:8801, the requests went to http://127.0.0.1:8800): ['request.accepted', 'workflow.status_changed', 'workflow.status_changed', 'approval.required']
+[17/22] PASS  Resident approves; tool runs  (61.3s)
+         approved (202); awp-platform-api-1 was killed (SIGKILL) inside the approved call to the partner; http://127.0.0.1:8801 took the workflow over 60s later (it waits for the dead process's lease) instead of http://127.0.0.1:8800 and the workflow is waiting_external_event; the same decision again is answered the same
+[18/22] PASS  One pending operation  (0.1s)
+         one operation, pending, reference cr_1569f3c2cdc414a9bf384e43c94713b8, partner job JOB-3; the leader said: 'I asked for the visit on Monday; it is pending.'
+[22/22] PASS  Nothing happened twice  (0.7s)
+         1 operation (completed), 1 approval (approved), 2 receipts (applied), 3 distinct messages to the resident, one approval.required/approval.resolved/workflow.closed; the same event again: 202 duplicate; the sample MCP server was called exactly once with this reference and holds one job for it (the call was running in the replica that survived; the killed one held the job) (JOB-3); all its calls since it started, every workflow together: {'book_repair': 4}
+
+SMOKE PASS: 22 of 22 steps passed (scripted demo model)
+```
+
+```
+api2-1  | node(s) n14150754b6794e42 did not say they live for a whole lease and were taken over
+```
+
+```
+NAME                        STATUS                            PORTS
+awp-platform-api-1          Exited (137) About a minute ago   
+awp-platform-api2-1         Up About a minute (healthy)       127.0.0.1:8801->8800/tcp
+awp-platform-fake-mcp-1     Up 2 minutes (healthy)            8800/tcp
+awp-platform-fake-model-1   Up 2 minutes (healthy)            8800/tcp
+awp-platform-migrate-1      Exited (0) 2 minutes ago          
+awp-platform-postgres-1     Up 2 minutes (healthy)            127.0.0.1:5590->5432/tcp
+awp-platform-redis-1        Up 2 minutes (healthy)            6379/tcp
+```
+
+Lần này bản sao bị giết là bản giữ job, còn lời gọi đối tác đang chạy ở bản sao kia (quyết định đánh thức agent qua hàng đợi của AgentScope, bản sao nào lấy được thì chạy): lời gọi cứ thế xong, đối tác nhận đúng một lời gọi, và job mồ côi được bản sao còn sống đóng sau khi lease hết.
+
+### 10.4 Giới hạn của phép thử này (nói thẳng)
+
+- Bản sao nào chạy lượt sau một quyết định **không điều khiển được** từ ngoài; lần B và lần C rơi vào hai nhánh khác nhau vì chọn giết hai container khác nhau, không phải vì script ép được. `smoke.py` chấp nhận cả hai nhánh và ghi nhánh nào đã xảy ra. Nhánh xác định (giết đúng tiến trình đang chạy lượt) nằm ở bộ test `multiproc`.
+- Một lần chạy đầu của lần B (image trước khi sửa) **đã đỏ ở bước 18** ("the leader said nothing to the resident"): bản sao giữ job còn sống, bản sao chạy lượt chết, và job kết thúc trong khi agent vẫn đỗ. Đó là lỗi thật, đã sửa trong `resume.run` (xem `docs/WORKFORCE_V1_QUYET_DINH.md`, mục P5b); các bản ghi ở trên là của image sau khi sửa.
+- Chỉ giết ở một điểm (trong lời gọi đã duyệt). Giữa lời gọi model, giữa commit và giao SSE, và các điểm khác: bộ test `multiproc`, không phải Docker.
+- Không thử: giết Redis, giết PostgreSQL, hơn hai bản sao, hai máy, model thật.
+- `docs/openapi.json` xuất lại từ container `0.2.0` (`GET /openapi.json` với khóa admin): 146 đường dẫn (11 dưới `/workforce`, 61 dưới `/platform`), không thêm bớt đường dẫn nào so với bản trước.
+
+### 10.5 Dọn dẹp
+
+`docker compose --profile demo --profile two --profile not-wired down -v`, xóa `deploy/.env` của lần chạy. Kiểm lại: không còn container, volume hay network nào tên `awp-platform*`. Image `awp-platform:0.2.0` được giữ lại; `awp-platform:0.1.0` đã bị lần build đầu của slice này ghi đè và được dựng lại từ mã đã commit của B4 (id mới, không còn là `7845e29d…` ở mục 1).

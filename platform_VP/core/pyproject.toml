@@ -38,4 +38,7 @@ addopts = "--ignore-glob=*/probes/*"
 # A test that runs this long dumps the stacks of every thread (stderr): the evidence a stall leaves, since a test that
 # only takes long passes. (pytest-timeout is not installed in the venv.)
 faulthandler_timeout = 180
-markers = ["slow: took 10 s or more in the P4 runs (none passed 20 s); pytest -m \"not slow\" is the quick loop"]
+markers = [
+    "slow: took 10 s or more in the P4 runs (none passed 20 s); pytest -m \"not slow\" is the quick loop",
+    "multiproc: the platform as real OS processes on PostgreSQL and Redis, with processes killed (tests/workforce/mpkit.py); skipped unless AWP_TEST_PG_URL and AWP_TEST_REDIS_URL are set",
+]

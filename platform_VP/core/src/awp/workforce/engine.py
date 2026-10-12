@@ -38,7 +38,7 @@ class NullEngine:
         return None
 
 
-async def claim_job(conn, job_id: str, *, wait: bool = True) -> Any:
+async def claim_job(conn, job_id: str, *, wait: bool = True, owner: str | None = None, lease: float = 60.0) -> Any:
     """Queued -> dispatched, once. None when someone else took it, it was cancelled, or another job
     of the same workflow is still dispatched (the turn after it picks this one up).
 
@@ -48,6 +48,9 @@ async def claim_job(conn, job_id: str, *, wait: bool = True) -> Any:
 
     `wait=False` (PostgreSQL: SKIP LOCKED on the conversation row) raises LockBusy instead of queueing behind a
     transaction that holds the conversation: the dispatcher tries again in a moment, with no connection held meanwhile.
+
+    `owner` is the process that takes the job and `lease` how long the claim stands unless that process renews it
+    (nodes.beat): a job whose lease ran out belongs to a process that died, and the sweep of any other gives it back.
     """
     sibling = t.jobs.alias("sibling")
     conv = (await conn.execute(select(t.workflows.c.conversation_id).select_from(
@@ -62,7 +65,7 @@ async def claim_job(conn, job_id: str, *, wait: bool = True) -> Any:
         async with conn.begin_nested():  # a lost race on the unique index must not poison the transaction
             done = await conn.execute(
                 update(t.jobs).where(t.jobs.c.id == job_id, t.jobs.c.status == "queued", ~busy)
-                .values(status="dispatched", attempts=t.jobs.c.attempts + 1, lease_until=now() + 60))
+                .values(status="dispatched", attempts=t.jobs.c.attempts + 1, lease_owner=owner, lease_until=now() + lease))
     except IntegrityError:
         return None
     if done.rowcount != 1:
@@ -70,6 +73,11 @@ async def claim_job(conn, job_id: str, *, wait: bool = True) -> Any:
     return (await conn.execute(select(t.jobs).where(t.jobs.c.id == job_id))).mappings().one()
 
 
-async def finish_job(conn, job_id: str, status: str = "done") -> None:
-    await conn.execute(update(t.jobs).where(t.jobs.c.id == job_id).values(
-        status=status, lease_owner=None, lease_until=None))
+async def finish_job(conn, job_id: str, status: str = "done", *, owner: str | None = None) -> bool:
+    """With `owner`: only the job that process still holds (one that was taken from it after its lease ran out is
+    somebody else's by now). False when nothing was written."""
+    where = [t.jobs.c.id == job_id]
+    if owner is not None:
+        where += [t.jobs.c.status == "dispatched", t.jobs.c.lease_owner == owner]
+    done = await conn.execute(update(t.jobs).where(*where).values(status=status, lease_owner=None, lease_until=None))
+    return done.rowcount == 1

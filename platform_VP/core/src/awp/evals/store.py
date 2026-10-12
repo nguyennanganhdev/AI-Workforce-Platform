@@ -177,6 +177,15 @@ class EvalStore:
                 db.eval_runs.c.id == run_id, db.eval_runs.c.status == "running").values(deadline=deadline))
         return done.rowcount == 1
 
+    async def ahead(self, run: dict) -> int:
+        """How many running runs of the same tenant were started before this one: its place in the tenant's queue, the
+        same from every process."""
+        r = db.eval_runs.c
+        async with self._db.engine.connect() as conn:
+            rows = (await conn.execute(select(r.created_at, r.id).where(
+                r.tenant == run["tenant"], r.status == "running", r.id != run["id"]))).all()
+        return sum(1 for at, rid in rows if (at, rid) < (run["created_at"], run["id"]))
+
     async def status(self, run_id: str) -> str | None:
         async with self._db.engine.connect() as conn:
             return (await conn.execute(select(db.eval_runs.c.status).where(db.eval_runs.c.id == run_id))).scalar()

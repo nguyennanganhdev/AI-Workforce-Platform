@@ -121,6 +121,31 @@ async def _send(eng, target: Leader, row: Any) -> None:
         await eng.client.abandon(target.tenant, target.agent_id, target.session_id, event)
 
 
+async def still_parked(eng, target: Leader) -> bool:
+    """The session waits on a permission right now (nothing runs in it and its saved run is parked)."""
+    try:
+        return await eng.client.status(target.tenant, target.agent_id, target.session_id) == "awaiting_permission"
+    except Exception:
+        log.exception("the session %s could not be read", target.session_id)
+        return False
+
+
+async def unresumed(eng, row: Any, target: Leader) -> Any:
+    """The row says its agent took the answer, and the agent is still parked: the run that took it died before it was
+    saved (a crash; R9 of the decisions). The acknowledgement is withdrawn so that the answer is sent again."""
+    if row["resumed_at"] is None or not await still_parked(eng, target):
+        return row
+    async with eng.ctx.db.engine.connect() as conn:
+        newer = (await conn.execute(select(t.approvals.c.id).where(
+            t.approvals.c.session_id == row["session_id"], t.approvals.c.created_at > row["created_at"]).limit(1))).first()
+    if newer is not None:
+        return row  # parked on a later request of its own
+    async with eng.ctx.db.engine.begin() as conn:
+        await conn.execute(update(t.approvals).where(t.approvals.c.id == row["id"]).values(resumed_at=None))
+    log.warning("approval %s: its agent is still parked after it was woken; the answer is sent again", row["id"])
+    return {**row, "resumed_at": None}
+
+
 async def wake(eng, wid: str, target: Leader, row: Any) -> None:
     """Send the event until the agent took it."""
     await eng._deliver(wid, target, "", RESUME + row["id"], "", send=lambda: _send(eng, target, row),
@@ -130,11 +155,23 @@ async def wake(eng, wid: str, target: Leader, row: Any) -> None:
 async def run(eng, wid: str, job: Any, leader: Leader) -> None:
     """The job `approval_resume`: wake the agent that asked, wait for its turn to end, and for an expired
     approval then wake the leader to tell the resident."""
+    from .runner import JobFailed
+
     row = await get(eng, job["payload"]["approval_id"])
     target = Leader(leader.tenant, row["agent_id"], row["session_id"])
-    if row["resumed_at"] is None:  # a repeated attempt finds the agent already woken
-        await wake(eng, wid, target, row)
-    await eng._await_end(wid, job, leader, target)
+    if job["attempts"] > 1:  # the attempt before this one may have died after the agent took the answer
+        row = await unresumed(eng, row, target)
+    for _ in range(3):
+        if row["resumed_at"] is None:  # a repeated attempt finds the agent already woken
+            await wake(eng, wid, target, row)
+        await eng._await_end(wid, job, leader, target)
+        # The agent's turn may have run in another process of the fleet (AgentScope's wake-up queue), and that process
+        # may have died in it: the turn is over, and the agent is still parked. Then it is handed its answer again.
+        row = await unresumed(eng, await get(eng, row["id"]), target)
+        if row["resumed_at"] is not None:
+            break
+    else:
+        raise JobFailed("the agent never took the decision in")
     await eng._check_turn(wid, RESUME + row["id"])
     if row["status"] in ("expired", "cancelled") and not await eng._halted(wid):
         async with eng.ctx.db.engine.connect() as conn:

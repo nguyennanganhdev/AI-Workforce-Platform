@@ -32,7 +32,7 @@ COPY core /build/core
 RUN pip wheel --no-deps --no-build-isolation -w /build/wheels /build/agentscope /build/core \
  && pip --python /opt/venv/bin/python install --no-deps /build/wheels/*.whl \
  && pip --python /opt/venv/bin/python check \
- && /opt/venv/bin/python -c "import awp, agentscope, asyncpg, cryptography, uvicorn; print('agentscope', agentscope.__version__)"
+ && /opt/venv/bin/python -c "import awp, agentscope, asyncpg, cryptography, redis, uvicorn; print('agentscope', agentscope.__version__)"
 
 # ---- runtime --------------------------------------------------------------------------------------------------------
 FROM python:3.12-slim

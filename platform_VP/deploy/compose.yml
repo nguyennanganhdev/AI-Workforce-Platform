@@ -1,17 +1,20 @@
-# The platform on one machine: PostgreSQL, a one-shot migration job and the API.
+# The platform on one machine: PostgreSQL, Redis, a one-shot migration job and the API.
 #
 #   cd platform_VP/deploy
 #   python init_env.py                 # once: writes .env with fresh secrets (never overwrites one)
 #   docker compose build               # the image awp-platform:<AWP_IMAGE_TAG> from ../Dockerfile
-#   docker compose up -d               # postgres -> migrate (must succeed) -> api
-#   docker compose --profile demo up -d    # the same plus a scripted model and a sample MCP server (python smoke.py)
+#   docker compose up -d               # postgres, redis -> migrate (must succeed) -> api
+#   docker compose --profile two up -d     # the same with a second API replica (api2, host port AWP_HOST_PORT2)
+#   docker compose --profile demo up -d    # plus a scripted model and a sample MCP server (python smoke.py)
 #
 # Project name `awp-platform`: containers are awp-platform-<service>-1, volumes awp-platform_<name>.
 # Every published port is bound to 127.0.0.1. Put a reverse proxy with TLS in front for anything else.
 #
-# WHAT IS WIRED: postgres, migrate, api (one replica).
-# WHAT IS NOT: `redis` and `minio` sit under the profile `not-wired`. The code reads no Redis URL and no S3 setting
-# today (awp/config.py), so they are not started by default and nothing talks to them. See docs/WORKFORCE_V1_BAN_GIAO.md.
+# WHAT IS WIRED: postgres, redis, migrate, api, and api2 (profile `two`). The API processes share the database, Redis
+# (AWP_REDIS_URL: session locks, wake-ups, the nudges between processes) and the `workspaces` volume; any of them
+# serves any request, and one that dies is taken over by the others (docs/WORKFORCE_V1_VAN_HANH.md section 11).
+# More replicas are more services like api2 (or any orchestrator that runs the same image with the same environment).
+# WHAT IS NOT: `minio` sits under the profile `not-wired`: the code reads no S3 setting today.
 name: awp-platform
 
 x-logging: &logging
@@ -19,10 +22,36 @@ x-logging: &logging
   options: {max-size: "10m", max-file: "5"}
 
 x-awp: &awp
-  image: awp-platform:${AWP_IMAGE_TAG:-0.1.0}
+  image: awp-platform:${AWP_IMAGE_TAG:-0.2.0}
   env_file: [.env]
   init: true  # reaps the child processes an agent's tools may leave; signals still reach the Python process
   logging: *logging
+
+# One API process. Every replica is this, with its own host port.
+x-api: &api
+  <<: *awp
+  restart: unless-stopped
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+    migrate: {condition: service_completed_successfully}
+  environment:
+    AWP_HOST: 0.0.0.0
+    AWP_PORT: "8800"
+    AWP_AUTO_CREATE: "0"  # tables come from the migrate job; a database behind the code stops the start
+    AWP_WORKSPACE_DIR: /var/lib/awp/workspaces
+    AWP_MODELS_FILE: /etc/awp/models.yaml
+  volumes:
+    - workspaces:/var/lib/awp
+    - ${AWP_MODELS_HOST_FILE:?set AWP_MODELS_HOST_FILE in deploy/.env (init_env.py does)}:/etc/awp/models.yaml:ro
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8800/platform/v1/health', timeout=4).read()"]
+    interval: 15s
+    timeout: 5s
+    retries: 4
+    start_period: 60s
+    start_interval: 2s
+  stop_grace_period: 45s  # SIGTERM, then this long for running requests and the engine to stop, then SIGKILL
 
 services:
   postgres:
@@ -60,34 +89,42 @@ services:
       postgres: {condition: service_healthy}
     entrypoint: ["/bin/sh", "-c", "python -m awp migrate --storage && python -m awp migrate --check"]
 
+  # The message bus of the API processes (AWP_REDIS_URL in deploy/.env): AgentScope's session locks, its wake-up queue,
+  # and the nudges that make a POST on one replica wake an event stream on another. Not the truth: every workflow,
+  # event and operation is in PostgreSQL, and a Redis that lost its data costs running turns, never a workflow.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?run "python init_env.py" first (it writes deploy/.env)}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDISCLI_AUTH\""]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *logging
+
   api:
-    <<: *awp
+    <<: *api
     build:
       context: ..
       dockerfile: Dockerfile
-    restart: unless-stopped
-    depends_on:
-      postgres: {condition: service_healthy}
-      migrate: {condition: service_completed_successfully}
-    environment:
-      AWP_HOST: 0.0.0.0
-      AWP_PORT: "8800"
-      AWP_AUTO_CREATE: "0"  # tables come from the migrate job; a database behind the code stops the start
-      AWP_WORKSPACE_DIR: /var/lib/awp/workspaces
-      AWP_MODELS_FILE: /etc/awp/models.yaml
-    volumes:
-      - workspaces:/var/lib/awp
-      - ${AWP_MODELS_HOST_FILE:?set AWP_MODELS_HOST_FILE in deploy/.env (init_env.py does)}:/etc/awp/models.yaml:ro
     ports:
       - "127.0.0.1:${AWP_HOST_PORT:-8800}:8800"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8800/platform/v1/health', timeout=4).read()"]
-      interval: 15s
-      timeout: 5s
-      retries: 4
-      start_period: 60s
-      start_interval: 2s
-    stop_grace_period: 45s  # SIGTERM, then this long for running requests and the engine to stop, then SIGKILL
+
+  # ---- profile two: a second replica of the API ---------------------------------------------------------------------
+  # The same image, environment, database, Redis and workspace volume as `api`, on its own host port. Neither is a
+  # leader: a request, a provider event or an event stream may go to either, and when one dies the other takes its
+  # running work over after AWP_WF_LEASE_SECONDS.
+  api2:
+    <<: *api
+    profiles: [two]
+    pull_policy: never
+    ports:
+      - "127.0.0.1:${AWP_HOST_PORT2:-8801}:8800"
 
   # ---- profile demo: no model key needed --------------------------------------------------------------------------
   # A scripted OpenAI-compatible model and a sample partner MCP server, both run from the platform image with the
@@ -125,22 +162,6 @@ services:
     stop_grace_period: 5s
 
   # ---- profile not-wired: present for the next phase, used by nothing today ------------------------------------------
-  redis:
-    profiles: [not-wired]
-    image: redis:7-alpine
-    restart: unless-stopped
-    environment:
-      REDISCLI_AUTH: ${REDIS_PASSWORD:-}
-    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDISCLI_AUTH\""]
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    logging: *logging
-
   minio:
     profiles: [not-wired]
     image: cgr.dev/chainguard/minio:latest

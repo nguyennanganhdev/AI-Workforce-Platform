@@ -201,6 +201,7 @@ def _app(tmp_path, wire, over):
     # How often the lifespan sweep runs (the default is the production 2 s). A test that steps the sweep by hand, or that
     # edits rows the sweep reads, turns the background one off (a large value) so that nobody else acts in between.
     sweep = over.pop("sweep_every", None)
+    bus = over.pop("message_bus", None)  # a bus two apps of one test share: what Redis is to two processes
     awp, scope = dbtest.urls(tmp_path)
     base = dict(
         db_url=awp.url,
@@ -209,7 +210,8 @@ def _app(tmp_path, wire, over):
         admin_keys={"adm-a": "ta", "adm-b": "tb"},
         secret_key=SECRET_KEY)
     base.update(over)
-    app = build_app(Settings(**base), catalog=catalog or ModelCatalog([]), judge=judge, **({"sweep_every": sweep} if sweep else {}))
+    app = build_app(Settings(**base), catalog=catalog or ModelCatalog([]), judge=judge, message_bus=bus,
+                    **({"sweep_every": sweep} if sweep else {}))
     if wire:
         wire(app)
     return app
