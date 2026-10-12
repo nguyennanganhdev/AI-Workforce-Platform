@@ -1,6 +1,7 @@
-"""Unit tests: no model, no AgentScope run."""
+"""Unit tests of the core: guard, case file, digest, profiles, model catalog, masking. No model, no AgentScope run."""
 import asyncio
 
+import dbtest
 from awp.casefile import CaseStore, build_view, render_digest
 from awp.config import Settings
 from awp.db import Database
@@ -42,13 +43,13 @@ def test_phrase_rules_need_evidence():
 
 
 # ---- case file -------------------------------------------------------------
-def test_case_file_flow_and_digest():
+def test_case_file_flow_and_digest(tmp_path):
     async def go():
-        db = Database("sqlite+aiosqlite:///:memory:")
+        db = Database(dbtest.one(tmp_path).url)
         await db.create_all()
         cs = CaseStore(db)
         cid = await cs.create_case(tenant="t", domain="d", external_ref="X1", user_id="u",
-                                   intake={"summary": "leak"})
+                                   meta={})
         e1 = await cs.add(cid, "evidence", "tech", {"tool": "lookup", "text": "T-1001 waiting"})
         f1 = await cs.add(cid, "fact", "tech", {"text": "waiting", "evidence": [e1.ref]})
         assert (e1.ref, f1.ref) == ("E1", "F1")
@@ -62,10 +63,10 @@ def test_case_file_flow_and_digest():
         members = [{"agent_name": "tech", "agent_id": "a1", "role": "worker"},
                    {"agent_name": "fin", "agent_id": "a2", "role": "worker"}]
         items = await cs.items(cid)
-        text = render_digest(case_id=cid, summary="leak", viewer="fin", role="worker", view=view,
+        text = render_digest(case_id=cid, viewer="fin", role="worker", view=view,
                              new_items=items, members=members, max_chars=1500, max_rounds=2)
-        assert "F1" in text and "C1" not in text.split("WAITING")[0] or True
-        quiet = render_digest(case_id=cid, summary="leak", viewer="fin", role="worker", view=view,
+        assert "F1" in text
+        quiet = render_digest(case_id=cid, viewer="fin", role="worker", view=view,
                               new_items=[i for i in items if i.author == "fin"], members=members,
                               max_chars=1500, max_rounds=2)
         assert quiet == ""  # nothing new from others -> no tokens spent
@@ -74,16 +75,16 @@ def test_case_file_flow_and_digest():
     run(go())
 
 
-def test_digest_is_bounded():
+def test_digest_is_bounded(tmp_path):
     async def go():
-        db = Database("sqlite+aiosqlite:///:memory:")
+        db = Database(dbtest.one(tmp_path).url)
         await db.create_all()
         cs = CaseStore(db)
-        cid = await cs.create_case(tenant="t", domain="d", external_ref="X2", user_id="u", intake={})
+        cid = await cs.create_case(tenant="t", domain="d", external_ref="X2", user_id="u", meta={})
         for i in range(60):
             await cs.add(cid, "fact", "tech", {"text": f"fact number {i} " + "x" * 120, "evidence": ["E1"]})
         items = await cs.items(cid)
-        text = render_digest(case_id=cid, summary="s", viewer="leader", role="leader",
+        text = render_digest(case_id=cid, viewer="leader", role="leader",
                              view=build_view(items), new_items=items, members=[], max_chars=1200, max_rounds=2)
         assert len(text) <= 1400 and "older item" in text
         await db.dispose()
@@ -92,9 +93,9 @@ def test_digest_is_bounded():
 
 
 # ---- profiles --------------------------------------------------------------
-def test_profile_versions_and_publish():
+def test_profile_versions_and_publish(tmp_path):
     async def go():
-        db = Database("sqlite+aiosqlite:///:memory:")
+        db = Database(dbtest.one(tmp_path).url)
         await db.create_all()
         ps = ProfileStore(db)
         p = AgentProfile(key="tech", name="T", mission="does x.")
@@ -130,6 +131,7 @@ def test_prompts_and_tool_patterns():
     assert "CaseFinalize" not in tool_patterns(spec) and "lookup_*" in tool_patterns(spec)
     lead = AgentProfile(key="boss", name="Boss", role="leader", mission="leads.", team=["tech"])
     assert "AgentCreate" in system_prompt(lead, 1, s) and "tech" in system_prompt(lead, 1, s)
+    assert "CaseSay" in system_prompt(lead, 1, s)  # the leader speaks to the resident through CaseSay only
 
 
 # ---- models and cost ---------------------------------------------------------
@@ -155,10 +157,10 @@ def test_secrets_are_masked():
 
 def test_concurrent_writers_get_distinct_references(tmp_path):
     async def go():
-        db = Database(f"sqlite+aiosqlite:///{(tmp_path / 'c.db').as_posix()}")
+        db = Database(dbtest.one(tmp_path, "c.db").url)
         await db.create_all()
         cs = CaseStore(db)
-        cid = await cs.create_case(tenant="t", domain="d", external_ref="X3", user_id="u", intake={})
+        cid = await cs.create_case(tenant="t", domain="d", external_ref="X3", user_id="u", meta={})
         items = await asyncio.gather(*[cs.add(cid, "fact", f"a{i}", {"text": str(i)}) for i in range(12)])
         assert len({i.ref for i in items}) == 12
         await db.dispose()
@@ -193,21 +195,10 @@ def test_late_worker_report_on_a_closed_case_is_swallowed():
     run(go())
 
 
-def test_stalled_cases_are_found_by_last_activity():
-    import time as _t
+def test_calc_sum_adds_exactly_and_says_what_it_added():
+    from awp.protocol.calc import calc_sum
 
-    async def go():
-        db = Database("sqlite+aiosqlite:///:memory:")
-        await db.create_all()
-        cs = CaseStore(db)
-        old = await cs.create_case(tenant="t", domain="d", external_ref="old", user_id="u", intake={})
-        busy = await cs.create_case(tenant="t", domain="d", external_ref="busy", user_id="u", intake={})
-        done = await cs.create_case(tenant="t", domain="d", external_ref="done", user_id="u", intake={})
-        await cs.update_case(done, status="finalized")
-        await asyncio.sleep(0.4)
-        await cs.add(busy, "note", "x", {})  # recent activity
-        found = await cs.stalled(0.2)
-        assert found == [old]  # not the busy one, not the finished one
-        await db.dispose()
-
-    run(go())
+    out = run(calc_sum().call(label="materials", values=["300,000", "250000", "0.1", "0.2"]))
+    assert "sum of materials: 550000.3 (from 4 amounts: 300,000, 250000, 0.1, 0.2)" in out.content[0].text
+    bad = run(calc_sum().call(label="x", values=["abc"]))
+    assert "is not a number" in bad.content[0].text and bad.state.value == "error"

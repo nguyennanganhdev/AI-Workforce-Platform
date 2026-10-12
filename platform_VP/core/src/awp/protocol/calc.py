@@ -1,6 +1,7 @@
 """A calculator the agents call instead of adding numbers themselves."""
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from pydantic import Field
@@ -9,7 +10,22 @@ from agentscope.message import TextBlock, ToolResultState
 from agentscope.permission import PermissionBehavior, PermissionDecision
 from agentscope.tool import ParamsBase, ToolBase, ToolChunk
 
-from ..requests import RequestError, to_decimal
+
+
+class NotANumber(ValueError):
+    """An amount the model wrote that is not a number; the message is for the model to read."""
+
+
+def to_decimal(value: Any) -> Decimal:
+    try:
+        return Decimal(str(value).replace(" ", "").replace(",", ""))
+    except InvalidOperation:
+        raise NotANumber(f"{value!r} is not a number") from None
+
+
+def total_of(values: list) -> Decimal:
+    """The exact sum, as calc_sum computes it (CaseAskConsent checks the resident's total with the same arithmetic)."""
+    return sum((to_decimal(v) for v in values), start=to_decimal(0))
 
 
 class _SumP(ParamsBase):
@@ -35,8 +51,8 @@ class calc_sum(ToolBase):  # noqa: N801 - the tool name the model sees
 
     async def call(self, label: str, values: list[str]) -> ToolChunk:
         try:
-            total = sum((to_decimal(v) for v in values), start=to_decimal(0))
-        except RequestError as e:
+            total = total_of(values)
+        except NotANumber as e:
             return ToolChunk(content=[TextBlock(text=str(e))], state=ToolResultState.ERROR)
         shown = int(total) if total == total.to_integral() else total.normalize()
         return ToolChunk(content=[TextBlock(

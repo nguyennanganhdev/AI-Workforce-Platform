@@ -38,11 +38,6 @@ def describe(it: Item, width: int = 160) -> str:
         return f"{it.ref} {it.author} answers {d.get('to_ref')}{tag}: {_clip(d.get('text', ''), width)}"
     if it.kind == "gap":
         return f"{it.ref} {it.author} does not know: {_clip(d.get('topic', ''), width)} (tried: {_clip(d.get('tried', ''), 80)})"
-    if it.kind == "request":
-        wait = "waits for a reply" if d.get("expects_reply") else "no reply expected"
-        return f"{it.ref} {it.author} sent {d.get('kind')} ({wait})"
-    if it.kind == "reply":
-        return f"{it.ref} reply to {d.get('to_ref')}: {_clip(d.get('text', ''), width)}"
     if it.kind == "decision":
         return f"{it.ref} leader decided: {_clip(d.get('text', ''), width)}"
     if it.kind == "report":
@@ -51,7 +46,7 @@ def describe(it: Item, width: int = 160) -> str:
 
 
 def render_digest(
-    *, case_id: str, summary: str, viewer: str, role: str, view: CaseView,
+    *, case_id: str, viewer: str, role: str, view: CaseView,
     new_items: list[Item], members: list[dict], max_chars: int, max_rounds: int,
 ) -> str:
     """Return the digest text, or an empty string when there is nothing new."""
@@ -64,7 +59,7 @@ def render_digest(
             waiting.append(f"{c.ref} on your {c.data.get('fact')}: {_clip(c.data.get('reason', ''), 140)}")
 
     # Tool output of others stays out of the digest (cost); CaseRead has it.
-    visible_new = [i for i in new_items if i.kind != "evidence" and i.author != viewer]
+    visible_new = [i for i in new_items if i.kind not in ("evidence", "invite", "trace") and i.author != viewer]
     if not waiting and not visible_new:
         return ""
 
@@ -80,15 +75,11 @@ def render_digest(
             state += f", {pend} question(s) waiting"
         status.append(f"{name}({m['role']}): {state}")
 
-    head = [f'<room-digest case="{case_id}" you="{viewer}" role="{role}">',
-            f"Ticket: {_clip(summary, 220)}"]
+    head = [f'<room-digest case="{case_id}" you="{viewer}" role="{role}">']
     if status:
         head.append("Members: " + "; ".join(status))
     if waiting:
         head.append("WAITING ON YOU: " + " | ".join(waiting))
-    outside = [f"{r.ref} {r.data.get('kind')}" for r in view.open_requests()]
-    if outside:
-        head.append("Waiting for a reply from outside: " + "; ".join(outside))
     tail = ["</room-digest>"]
     rules = _RULES.format(rounds=max_rounds)
 

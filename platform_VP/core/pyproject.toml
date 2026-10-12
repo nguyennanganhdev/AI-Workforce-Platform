@@ -11,10 +11,14 @@ dependencies = [
     "pyyaml",
     "sqlalchemy[asyncio]>=2",
     "aiosqlite",
+    "alembic",
 ]
 
 [project.optional-dependencies]
 jev = ["agentscope[classifier-jev]"]
+postgres = ["asyncpg"]  # AWP_DB_URL / AWP_AGENTSCOPE_DB_URL=postgresql+asyncpg://...
+redis = ["redis"]  # the message bus of a fleet of processes
+test = ["pytest", "pytest-xdist"]  # pytest -n 8: the whole suite in about 5 minutes instead of 30 (SQLite only)
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -23,6 +27,14 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+awp = ["migrations/script.py.mako", "migrations/versions/*.py"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+addopts = "--ignore-glob=*/probes/*"
+# A test that runs this long dumps the stacks of every thread (stderr): the evidence a stall leaves, since a test that
+# only takes long passes. (pytest-timeout is not installed in the venv.)
+faulthandler_timeout = 180
+markers = ["slow: took 10 s or more in the P4 runs (none passed 20 s); pytest -m \"not slow\" is the quick loop"]

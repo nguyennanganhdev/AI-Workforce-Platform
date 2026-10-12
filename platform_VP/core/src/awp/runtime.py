@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any, Callable
 
 from .casefile import CaseStore
 from .config import Settings
 from .cost import CostService
 from .db import Database
-from .guard import Rules, SupportJudge
+from .evals.sandbox import EVAL_LEADER, eval_leader, pin_of
+from .guard import SupportJudge
 from .profiles import MARKER, AgentProfile, ProfileStore, to_template
 from .providers import ModelCatalog
 
@@ -42,22 +43,21 @@ class Runtime:
     storage: Any  # agentscope StorageBase
     bus: Any  # agentscope MessageBus
     judge: SupportJudge | None = None
-    rules: Rules = field(default_factory=Rules)  # default for domains without their own
-    rules_by_domain: dict[str, Rules] = field(default_factory=dict)
     # The live dict AgentScope reads sub-agent templates from (mutated in place).
     templates: dict = field(default_factory=dict)
-    # Domain packs add tools: each factory gets (runtime, binding) -> list[ToolBase].
+    # In-process tools for every agent of a workflow, besides the route's partner tools (which come from MCP):
+    # each factory gets (runtime, binding) -> list[ToolBase]. The tests put their fake look-ups here.
     tool_factories: list[Callable[["Runtime", Binding], list]] = field(default_factory=list)
     # Cases whose budget is spent: agents may only wrap up.
     wrap_up: set[str] = field(default_factory=set)
     # Counters for ops: what the tool filter saved. Not a billing source.
     metrics: dict = field(default_factory=lambda: {"model_calls": 0, "tool_chars_offered": 0, "tool_chars_sent": 0})
     kb_manager: Any = None  # AgentScope knowledge base manager, when the feature is on
-    fail_hook: Callable[[str, str], Awaitable[None]] | None = None
-    # (case_id, status, result) -> True when this call closed the case
-    close_hook: Callable[[str, str, dict], Awaitable[bool]] | None = None
-    # domain -> request kind key -> RequestKind
-    request_kinds: dict[str, dict] = field(default_factory=dict)
+    mcp: Any = None  # workforce.partner_hub.McpHub: the MCP clients of the routes' partner tools
+    # The workflow engine, when one is attached: told (workflow id) that something in a room needs settling.
+    turn_hook: Callable[[str], None] | None = None
+    evals: Any = None  # evals.runner.EvalRunner: runs a profile version in the sandbox before it is released
+    builder: Any = None  # builder.Builder: proposes profiles in a chat, makes drafts
     template_tenant: dict[str, str] = field(default_factory=dict)
     _profile_cache: dict = field(default_factory=dict)
 
@@ -81,7 +81,9 @@ class Runtime:
         await self.cases.bind_session(leader["case_id"], session_id, agent_id, name, "worker")
         return Binding(leader["case_id"], session_id, agent_id, name, "worker", user_id)
 
-    async def profile_of(self, user_id: str, agent_id: str, tenant: str) -> tuple[AgentProfile | None, int]:
+    async def profile_of(self, user_id: str, agent_id: str, tenant: str,
+                         case: dict | None = None) -> tuple[AgentProfile | None, int]:
+        """`case`: the agent's case, which for the platform's own leader of an evaluation holds its profile."""
         agent = await self.storage.get_agent(user_id, agent_id)
         if agent is None:
             return None, 0
@@ -89,6 +91,9 @@ class Runtime:
         if not m:
             return None, 0
         key, version = m.group(1), int(m.group(2))
+        if key == EVAL_LEADER:  # no tenant has this profile (the key is reserved): it is made from the sandbox's pin
+            pin = pin_of(case)
+            return (eval_leader(pin), 0) if pin else (None, 0)
         cached = self._profile_cache.get((tenant, key, version))
         if cached is None:
             rec = await self.profiles.get(tenant, key, version)
@@ -97,13 +102,6 @@ class Runtime:
             cached = rec.profile
             self._profile_cache[(tenant, key, version)] = cached
         return cached, version
-
-    def rules_for(self, domain: str) -> Rules:
-        return self.rules_by_domain.get(domain, self.rules)
-
-    async def case_rules(self, case_id: str) -> Rules:
-        case = await self.cases.get_case(case_id)
-        return self.rules_for(case["domain"]) if case else self.rules
 
     async def leader_name(self, case_id: str) -> str | None:
         for s in await self.cases.sessions_of_case(case_id):
@@ -117,17 +115,21 @@ class Runtime:
         from agentscope.app._bus_ops import deliver_to_inbox
         from agentscope.message import HintBlock
 
+        from .agentscope_client import owner_of
+
         target = next((s for s in await self.cases.sessions_of_case(case_id)
                        if s["agent_name"] == to_name), None)
         case = await self.cases.get_case(case_id)
         if target is None or case is None:
             return False
+        # Sessions belong to the tenant's service user, whoever the case is about (a workflow case
+        # carries the resident's id in `user_id`).
         hint = HintBlock(
             hint=f'<case-message from="{sender}" {tag}>\n{text}\n</case-message>',
             source=json.dumps({"label": "case", "sublabel": sender}, ensure_ascii=False),
         )
         await deliver_to_inbox(
-            self.bus, user_id=case["user_id"], session_id=target["session_id"],
+            self.bus, user_id=owner_of(case["tenant"]), session_id=target["session_id"],
             agent_id=target["agent_id"], payload=hint.model_dump(mode="json"))
         return True
 
@@ -140,17 +142,9 @@ class Runtime:
         for r in published:
             self.templates[r.key] = to_template(r.profile, r.version, self.settings)
             self.template_tenant[r.key] = r.tenant
-        for key in [k for k in self.templates if k not in keep and k != "default"]:
+        # "@": a draft version under evaluation (evals/sandbox.template_type), which its run puts in and takes out
+        for key in [k for k in self.templates if k not in keep and k != "default" and "@" not in k]:
             del self.templates[key]
             self.template_tenant.pop(key, None)
         self._profile_cache.clear()
         return sorted(keep)
-
-    async def fail(self, case_id: str, reason: str) -> None:
-        if self.fail_hook is not None:
-            await self.fail_hook(case_id, reason)
-
-    async def close(self, case_id: str, status: str, result: dict) -> bool:
-        """Close an open case with its result. False if it was already closed."""
-        assert self.close_hook is not None, "no intake service is attached"
-        return await self.close_hook(case_id, status, result)

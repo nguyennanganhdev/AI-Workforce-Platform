@@ -9,6 +9,8 @@ buffered.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import secrets
 from dataclasses import dataclass
@@ -16,11 +18,28 @@ from dataclasses import dataclass
 from .config import Settings
 
 
+MANAGER_PREFIX = "mk_"  # a manager's operator key; it is looked up in the database, never among the admin keys
+
+
 @dataclass(frozen=True)
 class Principal:
+    """An admin of one tenant, or (with `manager_id`) an operator of one management account of that tenant: that one
+    reaches only the partner admin API and the profile list, and there only what belongs to its own routes."""
+
     tenant: str
-    domain: str | None  # set for a domain connector key
-    admin: bool
+    manager_id: str | None = None
+    label: str = "admin"  # who, for the record of a release: which admin key (a short print of it), or the dev fallback
+
+    @property
+    def actor(self) -> str:
+        return f"manager:{self.manager_id}" if self.manager_id else self.label
+
+
+def manager_may(method: str, path: str) -> bool:
+    """The paths a manager's key may reach at all. What it sees there is decided by each endpoint (workforce/adminkit.py);
+    everything else, the AgentScope API included, is closed to it."""
+    return (path.startswith("/platform/v1/wf/") or (method == "GET" and path == "/platform/v1/profiles")
+            or path.startswith("/platform/v1/profiles/"))  # evaluating and releasing the profiles of its own routes
 
 
 def mask_secrets(value):
@@ -48,20 +67,22 @@ def _bearer(headers: list[tuple[bytes, bytes]]) -> str | None:
 class SecurityMiddleware:
     """Resolves the caller, fixes X-User-ID, masks secrets in credential replies."""
 
-    def __init__(self, app, settings: Settings, internal_secret: str) -> None:
+    def __init__(self, app, settings: Settings, internal_secret: str, managers=None) -> None:
         self.app, self.settings, self.internal_secret = app, settings, internal_secret
+        self.managers = managers  # async (token) -> Principal | None, for keys that start with MANAGER_PREFIX
 
     def principal(self, key: str | None) -> Principal | None:
         s = self.settings
         if key:
-            for known, svc in s.service_keys.items():
-                if secrets.compare_digest(known.encode(), key.encode()):
-                    return Principal(svc.tenant, svc.domain, False)
             for known, tenant in s.admin_keys.items():
                 if secrets.compare_digest(known.encode(), key.encode()):
-                    return Principal(tenant, None, True)
-        if s.dev_open:
-            return Principal("dev", None, True)
+                    # keyed with the deployment's secret: the label is stored and shown (also to manager keys), and
+                    # must not be something a guessed admin key can be checked against
+                    mark = hmac.new(s.secret_key.encode(), key.encode(), hashlib.sha256).hexdigest()[:8]
+                    return Principal(tenant, label="admin:" + mark)
+        # A partner key is never a dev key, even when dev mode lets keyless calls in.
+        if s.dev_open and not (key or "").startswith("dp_"):
+            return Principal("dev", label="dev")
         return None
 
     async def __call__(self, scope, receive, send):
@@ -69,19 +90,27 @@ class SecurityMiddleware:
             return await self.app(scope, receive, send)
         headers = list(scope["headers"])
         path = scope["path"]
+        if path == "/workforce" or path.startswith("/workforce/"):
+            return await self.app(scope, receive, send)  # the router authenticates (ApiKey)
         internal = any(k == b"x-awp-internal" and secrets.compare_digest(
             v, self.internal_secret.encode()) for k, v in headers)
         if internal:
             return await self.app(scope, receive, send)
 
-        who = self.principal(_bearer(headers))
+        if any(k == b"authorization" and v[:7].lower() == b"apikey " for k, v in headers):
+            return await self._reply(send, 401, {"detail": "partner keys only work on /workforce"})
         if path == "/health" or path == "/platform/v1/health":
             return await self.app(scope, receive, send)
+        token = _bearer(headers)
+        if (token or "").startswith(MANAGER_PREFIX):  # never an admin key and never the dev fallback
+            who = await self.managers(token) if self.managers is not None else None
+        else:
+            who = self.principal(token)
         if who is None:
             return await self._reply(send, 401, {"detail": "missing or unknown key"})
+        if who.manager_id and not manager_may(scope["method"], path):
+            return await self._reply(send, 403, {"detail": "a manager's key does not open this"})
         is_platform = path.startswith("/platform/")
-        if not is_platform and not who.admin:
-            return await self._reply(send, 403, {"detail": "this key cannot use the agent API"})
 
         scope = dict(scope)
         scope["state"] = {**scope.get("state", {}), "principal": who}

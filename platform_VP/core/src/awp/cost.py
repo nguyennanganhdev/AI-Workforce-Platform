@@ -23,7 +23,7 @@ class CostService:
         async with self._db.engine.begin() as conn:
             await conn.execute(insert(db.ledger).values(
                 tenant=tenant, case_id=case_id, session_id=session_id,
-                agent_id=agent_id, agent_name=agent_name, model=model,
+                agent_id=agent_id, agent_name=agent_name[:80], model=model[:120],
                 tier=spec.tier if spec else None, input_tokens=input_tokens,
                 output_tokens=output_tokens, cache_read_tokens=cache_read,
                 cache_write_tokens=cache_write, cost_usd=cost,

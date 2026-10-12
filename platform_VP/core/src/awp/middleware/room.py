@@ -4,7 +4,8 @@ Five small hooks, each doing one job:
   TierMiddleware      run the agent on the model tier its profile asks for
   DigestMiddleware    tell the agent what the others did since it last looked
   EvidenceMiddleware  give every tool result an evidence id; keep reports honest
-  ToolGateMiddleware  show and allow only the tools the profile grants
+  ToolGateMiddleware  show and allow only the tools the profile grants; tools that need the resident's consent
+                      are stopped here until they have it (workforce/approvals.py)
   LedgerMiddleware    record the cost of every model call
 """
 from __future__ import annotations
@@ -15,17 +16,17 @@ import json
 import logging
 from typing import Any, AsyncGenerator
 
-from agentscope.event import HintBlockEvent, ReplyEndEvent
+from agentscope.event import HintBlockEvent
 from agentscope.message import AssistantMsg, HintBlock, TextBlock, ToolResultState
 from agentscope.middleware import MiddlewareBase
 from agentscope.permission import PermissionBehavior, PermissionDecision
 from agentscope.tool import ToolResponse
-from agentscope.types import ReplyFinishedReason
 
 from ..casefile import build_view, render_digest
 from ..profiles import WRAP_UP_TOOLS, AgentProfile, tool_patterns
 from ..profiles.compile import LEADER_TOOLS, WORKER_TOOLS
 from ..runtime import Binding, Runtime
+from ..workforce.approvals import ConsentGate
 
 log = logging.getLogger("awp")
 
@@ -70,13 +71,42 @@ class TierMiddleware(_Base):
             agent.model = original
 
 
+def _label_of(block: Any) -> str | None:
+    try:
+        return json.loads(block.source or "{}").get("label")
+    except (ValueError, AttributeError):
+        return None
+
+
+def _drop_hints(agent: Any, label: str) -> None:
+    """Remove the hint blocks of `label` from the context (a state block is replaced, not stacked)."""
+    ctx = agent.state.context
+    for msg in list(ctx):
+        if not isinstance(msg.content, list):
+            continue
+        kept = [b for b in msg.content if not (isinstance(b, HintBlock) and _label_of(b) == label)]
+        if len(kept) != len(msg.content):
+            msg.content = kept
+            if not kept:
+                ctx.remove(msg)
+
+
 class DigestMiddleware(_Base):
-    def __init__(self, *a: Any, **kw: Any) -> None:
+    def __init__(self, *a: Any, workflow_id: str | None = None, **kw: Any) -> None:
         super().__init__(*a, **kw)
         self._budget_told = False
+        self.workflow_id = workflow_id if self.b.role == "leader" else None
+        self._told_reply: str | None = None
 
     async def on_reasoning(self, agent, input_kwargs, next_handler) -> AsyncGenerator:
         blocks = []
+        if self.workflow_id and agent.state.reply_id != self._told_reply:
+            # Once per turn, from the database: the previous one is dropped so the context holds one.
+            self._told_reply = agent.state.reply_id
+            from ..workforce.context import render
+
+            _drop_hints(agent, "workflow")
+            blocks.append(_inject(agent, await render(self.rt.db, self.workflow_id), "workflow"))
         if self.b.case_id in self.rt.wrap_up and not self._budget_told:
             self._budget_told = True
             blocks.append(_inject(agent, _BUDGET_HINT, "budget"))
@@ -96,10 +126,8 @@ class DigestMiddleware(_Base):
         items = await cases.items(self.b.case_id)
         if not items or items[-1].id <= cursor:
             return ""
-        case = await cases.get_case(self.b.case_id)
         text = render_digest(
             case_id=self.b.case_id,
-            summary=(case or {}).get("intake", {}).get("summary", ""),
             viewer=self.b.agent_name, role=self.b.role, view=build_view(items),
             new_items=[i for i in items if i.id > cursor],
             members=await cases.sessions_of_case(self.b.case_id),
@@ -136,17 +164,20 @@ class EvidenceMiddleware(_Base):
                     args = {**args, "to": leader}
                 if args.get("to") == leader:
                     report_text = str(args.get("content", ""))
+        if report_text is not None:
+            # Into the case file BEFORE the message goes out. The message wakes the leader, and a leader that is
+            # already running reads the case file at its very next step: a report recorded only afterwards was
+            # missed by that turn and left unread for good (nothing wakes the leader a second time), so the
+            # workflow stayed `active` with its answer given. If the send then fails, the report is in the file
+            # all the same and the specialist is told of the failure.
+            await self.rt.cases.add(self.b.case_id, "report", self.b.agent_name, {"summary": report_text[:800]})
         async for item in next_handler(**input_kwargs):
-            if isinstance(item, ToolResponse) and item.state == ToolResultState.SUCCESS:
-                if report_text is not None:
-                    await self.rt.cases.add(self.b.case_id, "report", self.b.agent_name,
-                                            {"summary": report_text[:800]})
-                elif name != "TeamSay":
-                    text = "\n".join(b.text for b in item.content if isinstance(b, TextBlock))
-                    ev = await self.rt.cases.add(
-                        self.b.case_id, "evidence", self.b.agent_name,
-                        {"tool": name, "input": call.input[:300], "text": text[:20000]})
-                    item.content.append(TextBlock(text=f"[evidence {ev.ref}]"))
+            if isinstance(item, ToolResponse) and item.state == ToolResultState.SUCCESS and name != "TeamSay":
+                text = "\n".join(b.text for b in item.content if isinstance(b, TextBlock))
+                ev = await self.rt.cases.add(
+                    self.b.case_id, "evidence", self.b.agent_name,
+                    {"tool": name, "input": call.input[:300], "text": text[:20000]})
+                item.content.append(TextBlock(text=f"[evidence {ev.ref}]"))
             yield item
 
     @staticmethod
@@ -163,9 +194,12 @@ class ToolGateMiddleware(_Base):
     # tool the profile grants still goes through AgentScope's permission engine.
     OWN_TOOLS = ("Case", "Team", "AgentCreate", "AgentInvite")
 
-    def __init__(self, rt: Runtime, b: Binding, profile: AgentProfile | None, tenant: str = "") -> None:
+    def __init__(self, rt: Runtime, b: Binding, profile: AgentProfile | None, tenant: str = "",
+                 draft: str | None = None) -> None:
+        """`draft`: the one draft type (`key@version`) this case may create: the specialist its evaluation is about."""
         super().__init__(rt, b, profile)
-        self.tenant = tenant
+        self.tenant, self.draft = tenant, draft
+        self.gate = ConsentGate(rt, b)
 
     def _patterns(self) -> list[str]:
         if self.b.case_id in self.rt.wrap_up:
@@ -178,8 +212,9 @@ class ToolGateMiddleware(_Base):
         return any(fnmatch.fnmatchcase(name, p) for p in self._patterns())
 
     def creatable(self) -> list[str]:
-        """Specialist types this leader may create: its own team, else its tenant's."""
-        mine = {k for k, t in self.rt.template_tenant.items() if t == self.tenant}
+        """Specialist types this leader may create: its own team, else its tenant's. A draft under evaluation is in
+        the same registry while its run lasts: it is nobody's but its own sandbox's, whatever a profile's team says."""
+        mine = {k for k, t in self.rt.template_tenant.items() if t == self.tenant and ("@" not in k or k == self.draft)}
         if self.profile is not None and self.profile.team:
             return [k for k in self.profile.team if k in mine]
         return sorted(mine)
@@ -222,10 +257,35 @@ class ToolGateMiddleware(_Base):
                 return PermissionDecision(
                     behavior=PermissionBehavior.DENY,
                     message=f"you cannot create {wanted!r}; choose one of {self.creatable()}")
+        # After the profile's say and before the early ALLOW below: CaseAskConsent is one of OWN_TOOLS.
+        verdict = await self.gate.check(agent, input_kwargs)
+        if verdict is not None:
+            return verdict
         if name.startswith(self.OWN_TOOLS):
             return PermissionDecision(behavior=PermissionBehavior.ALLOW,
                                       message=f"{name} is granted by the profile")
         return await next_handler(**input_kwargs)
+
+    async def on_acting(self, agent, input_kwargs, next_handler) -> AsyncGenerator:
+        """A specialist the leader created leaves an `invite` item in the case file: the type it chose, the task it
+        gave, and the types it could have chosen, so that the choice can be read back later (M4)."""
+        call = input_kwargs["tool_call"]
+        async for item in next_handler(**input_kwargs):
+            if call.name == "AgentCreate" and isinstance(item, ToolResponse) and item.state == ToolResultState.SUCCESS:
+                try:
+                    args = EvidenceMiddleware._args(call)
+                    await self.rt.cases.add(self.b.case_id, "invite", self.b.agent_name, {
+                        "type": str(args.get("subagent_type", "default"))[:80], "name": str(args.get("name", ""))[:80],
+                        "task": str(args.get("prompt") or args.get("description") or "")[:800],
+                        "candidates": self.creatable()})
+                except Exception:  # the specialist exists and works; a missing audit line must not fail the leader's turn
+                    log.exception("could not record the invite of case %s", self.b.case_id)
+            yield item
+
+    async def on_reply(self, agent, input_kwargs, next_handler) -> AsyncGenerator:
+        await self.gate.resumed(input_kwargs.get("inputs"))
+        async for event in next_handler(**input_kwargs):
+            yield event
 
 
 class LedgerMiddleware(_Base):
@@ -270,41 +330,3 @@ class LedgerMiddleware(_Base):
         spent_tokens = totals["input_tokens"] + totals["output_tokens"]
         if (usd and totals["cost_usd"] >= usd) or (toks and spent_tokens >= toks):
             self.rt.wrap_up.add(self.b.case_id)
-
-
-class LeaderWatchdog(_Base):
-    """A leader that stops without finalizing is nudged twice, then the case fails."""
-
-    MAX_NUDGES = 2
-
-    async def on_reply(self, agent, input_kwargs, next_handler) -> AsyncGenerator:
-        end = None
-        async for event in next_handler(**input_kwargs):
-            if isinstance(event, ReplyEndEvent):
-                end = event
-            yield event
-        if end is not None and self.b.role == "leader":
-            await self._after(end)
-
-    async def _after(self, end: ReplyEndEvent) -> None:
-        cases, cid = self.rt.cases, self.b.case_id
-        case = await cases.get_case(cid)
-        if case is None or case["status"] != "open":
-            return
-        if end.finished_reason == ReplyFinishedReason.ERROR:
-            await self.rt.fail(cid, "the leader stopped with an error")
-            return
-        view = build_view(await cases.items(cid))
-        workers = [s for s in await cases.sessions_of_case(cid) if s["role"] == "worker"]
-        waiting = [w for w in workers if w["agent_name"] not in view.reports]
-        if waiting or view.open_questions() or view.open_challenges() or view.open_requests():
-            return  # members are still working; their report wakes the leader
-        nudges = sum(1 for n in await cases.items(cid, kinds=("note",))
-                     if n.data.get("type") == "nudge")
-        if nudges >= self.MAX_NUDGES:
-            await self.rt.fail(cid, "the leader did not finalize the case")
-            return
-        await cases.add(cid, "note", "platform", {"type": "nudge"})
-        await self.rt.deliver(
-            cid, self.b.agent_name, 'ref="nudge"', "platform",
-            "The case is not finalized. Call CaseFinalize now (outcome needs_human if anything is unverified).")

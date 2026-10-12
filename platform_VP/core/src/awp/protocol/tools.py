@@ -6,6 +6,7 @@ check the role themselves, in addition to the tool filter.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from pydantic import Field
@@ -16,10 +17,13 @@ from agentscope.tool import ParamsBase, ToolBase, ToolChunk
 
 from ..casefile import CaseView, build_view
 from ..casefile.digest import describe
-from ..guard import check_text
-from ..requests import RequestError, RequestKind, figures_text, validate
+from ..guard import Rules, check_text, figures_missing
 from ..runtime import Binding, Runtime
+from ..workforce.lookup import route_of, rules_of, unmarked, withdrawn, workflow_of_case
+from ..workforce.speak import BadText, checked, problems as text_problems, publish
+from ..workforce.workflows import IllegalTransition
 
+_CALC_VALUES = re.compile(r"\(from \d+ amounts: ([^()]*)\)\s*$")  # the tail calc_sum writes: the amounts it added
 MAX_FINALIZE_ATTEMPTS = 3
 OUTCOMES = ("resolved", "needs_human", "cannot_resolve")
 
@@ -45,23 +49,32 @@ class _CaseTool(ToolBase):
                                   message="case-file tool")
 
     async def _view(self) -> CaseView:
-        return build_view(await self.rt.cases.items(self.b.case_id))
+        view = build_view(await self.rt.cases.items(self.b.case_id))
+        view.withdrawn = await withdrawn(self.rt.db, view)  # a reopened operation's "done" mark proves nothing any more
+        return view
 
     def _sources(self, view: CaseView, refs: list[str]) -> tuple[list[str], list[str], list[str]]:
         """(texts of the cited items, the subset that comes from tools, refs that
-        cannot be cited). A fact brings its own evidence. What the requester typed
-        (tool "intake") counts as a source for figures but never as proof that a
-        system confirmed something."""
+        cannot be cited). A fact brings its own evidence. What the resident typed
+        (tool "resident") counts as a source for figures but never as proof that a
+        system confirmed something. What a workflow says reaches a resident unread by a person, so a
+        calc_sum result, which is derived from what the model typed, never proves a phrase, and it counts
+        as a source only when the other items cited with it state every amount it added up."""
         texts: list[str] = []
         trusted: list[str] = []
         bad: list[str] = []
+        calcs: list[tuple[str, str]] = []
 
         def add_evidence(ref: str) -> None:
             ev = view.evidence[ref]
             text = ev.data.get("text", "")
+            tool = ev.data.get("tool")
+            if tool == "calc_sum":
+                calcs.append((ref, text))
+                return
             texts.append(text)
-            if ev.data.get("tool") != "intake":
-                trusted.append(text)
+            if tool not in ("resident", "CaseAskConsent"):  # the resident's word, in theirs or in the form of a consent
+                trusted.append(unmarked(text) if ref in view.withdrawn else text)
 
         for ref in refs:
             if ref in view.evidence:
@@ -77,7 +90,22 @@ class _CaseTool(ToolBase):
                         add_evidence(e)
             else:
                 bad.append(ref)
+        for ref, text in dict(calcs).items():
+            added = _CALC_VALUES.search(text)
+            if added is None or figures_missing(" ; ".join(added.group(1).split(", ")), texts):
+                bad.append(f"{ref} (a calc_sum whose amounts are not stated in the other items you cite; "
+                           "cite the items the amounts came from together with it)")
+            else:
+                texts.append(text)
         return texts, trusted, bad
+
+    async def _rules(self, wf: dict | None = None) -> Rules:
+        """The rules of the route of this case's workflow (the rules of every route when there is none)."""
+        wf = wf or await workflow_of_case(self.rt.db, self.b.case_id)
+        if wf is None:
+            return rules_of({})
+        async with self.rt.db.engine.connect() as conn:
+            return rules_of((await route_of(conn, wf))["config"])
 
     async def _closed(self) -> ToolChunk | None:
         case = await self.rt.cases.get_case(self.b.case_id)
@@ -120,12 +148,6 @@ class _ChallengeP(ParamsBase):
     evidence: list[str] = Field(description="Evidence ids that show it. Opinions are not accepted.")
 
 
-class _RequestP(ParamsBase):
-    kind: str = Field(description="Which kind of request to send.")
-    fields: dict = Field(description="The fields of that kind.")
-    evidence: list[str] = Field(default_factory=list, description="Evidence ids that back every figure in fields.")
-
-
 class _ReadP(ParamsBase):
     ref: str | None = Field(default=None, description="One item to read in full; empty for an overview.")
 
@@ -159,7 +181,7 @@ class CaseFact(_CaseTool):
         sources, trusted, bad = self._sources(view, evidence)
         if bad:
             return _err(f"Cannot cite: {', '.join(bad)}. Known evidence: {', '.join(list(view.evidence)[-8:])}.")
-        problems = check_text(text, sources, await self.rt.case_rules(self.b.case_id), trusted)
+        problems = check_text(text, sources, await self._rules(), trusted)
         if problems:
             return _err("Not recorded: " + "; ".join(problems))
         item = await self.rt.cases.add(self.b.case_id, "fact", self.b.agent_name,
@@ -223,7 +245,7 @@ class CaseAnswer(_CaseTool):
             return _err(f"Cannot cite: {', '.join(bad)}.")
         if is_challenge and not retract and not evidence:
             return _err("Defend with evidence, or retract the fact.")
-        problems = check_text(text, sources, await self.rt.case_rules(self.b.case_id), trusted)
+        problems = check_text(text, sources, await self._rules(), trusted)
         if problems:
             return _err("Not recorded: " + "; ".join(problems))
         item = await self.rt.cases.add(self.b.case_id, "answer", self.b.agent_name,
@@ -263,49 +285,6 @@ class CaseChallenge(_CaseTool):
                               f"{item.ref} challenges your {fact}: {reason}\n"
                               f"Answer with CaseAnswer(ref=\"{item.ref}\"): defend with evidence or retract=true.")
         return _ok(f"{item.ref} sent to {f.item.author}.")
-
-
-class CaseRequest(_CaseTool):
-    """Reach someone outside the platform with a form the domain defined."""
-
-    name = "CaseRequest"
-    input_schema = _RequestP.model_json_schema()
-
-    def __init__(self, rt: Runtime, b: Binding, kinds: dict[str, RequestKind]) -> None:
-        super().__init__(rt, b)
-        self.kinds = kinds
-        listing = "\n".join(
-            f"- {k.key}: {k.description} Fields: {', '.join((k.fields.get('properties') or {}).keys())}. "
-            + ("A reply comes back and wakes you; end your turn and wait." if k.expects_reply
-               else "No reply is expected.")
-            for k in kinds.values())
-        self.description = ("Send a request outside the platform (field staff, the requester). Every figure in "
-                            "the fields must come from cited evidence.\nKinds:\n" + listing)
-
-    async def call(self, kind: str, fields: dict, evidence: list[str] | None = None) -> ToolChunk:
-        if (closed := await self._closed()):
-            return closed
-        spec = self.kinds.get(kind)
-        if spec is None:
-            return _err(f"Unknown kind. Use one of: {', '.join(self.kinds)}.")
-        try:
-            validate(spec.fields, fields, "fields")
-        except RequestError as e:
-            return _err(f"Not sent: {e}")
-        view = await self._view()
-        sources, trusted, bad = self._sources(view, evidence or [])
-        if bad:
-            return _err(f"Cannot cite: {', '.join(bad)}.")
-        problems = check_text(figures_text(fields), sources, await self.rt.case_rules(self.b.case_id), trusted)
-        if problems:
-            return _err("Not sent: " + "; ".join(problems))
-        case = await self.rt.cases.get_case(self.b.case_id)
-        item = await self.rt.cases.add(self.b.case_id, "request", self.b.agent_name,
-                                       {"kind": kind, "fields": fields, "expects_reply": spec.expects_reply})
-        await self.rt.cases.queue_outbox(self.b.case_id, "request", {
-            "case_id": self.b.case_id, "external_ref": case["external_ref"], "request_ref": item.ref,
-            "kind": kind, "fields": fields, "expects_reply": spec.expects_reply})
-        return _ok(f"{item.ref} sent." + (" Wait for the reply." if spec.expects_reply else ""))
 
 
 class CaseRead(_CaseTool):
@@ -361,8 +340,9 @@ class CaseDecide(_CaseTool):
 
 class CaseFinalize(_CaseTool):
     name = "CaseFinalize"
-    description = ("Leader only. Give the final answer for the case. Figures, dates and codes in it must appear "
-                   "in the cited items; unknowns must be listed. This ends the case.")
+    description = ("Leader only. Give the final answer for a question that needs no more than a look-up. Figures, "
+                   "dates and codes in it must appear in the cited items; unknowns must be listed. It is sent to "
+                   "the resident like CaseSay and the workflow decides what happens next: it never closes anything.")
     input_schema = _FinalizeP.model_json_schema()
 
     async def call(self, answer: str, outcome: str, cites: list[str] | None = None,
@@ -375,8 +355,11 @@ class CaseFinalize(_CaseTool):
             return _err(f"outcome must be one of {OUTCOMES}.")
         if (closed := await self._closed()):
             return closed
+        wf = await workflow_of_case(self.rt.db, self.b.case_id)
+        if wf is None:
+            return _err("CaseFinalize works only inside a workflow.")
         view = await self._view()
-        rules = await self.rt.case_rules(self.b.case_id)
+        rules = await self._rules(wf)
         sources, trusted, bad = self._sources(view, cites)
         problems: list[str] = []
         if view.open_challenges():
@@ -385,19 +368,23 @@ class CaseFinalize(_CaseTool):
             problems.append(f"cannot cite {', '.join(bad)}")
         if outcome == "resolved" and not cites:
             problems.append("a resolved answer must cite facts or evidence")
+        elif outcome == "resolved" and not trusted and not bad:
+            problems.append("a resolved answer must rest on a tool result or on facts backed by one, "
+                            "not only on what the resident said")
         if outcome == "resolved":
-            # Waiting on someone is not a mistake to retry: refuse without counting an attempt.
-            waiting = [r.ref for r in view.open_requests()]
-            if waiting:
-                return _err(f"Not finalized: still waiting for replies to {', '.join(waiting)}.")
-            case = await self.rt.cases.get_case(self.b.case_id)
-            needed = (case or {}).get("intake", {}).get("confirm_with")
-            if needed and not view.confirmed(needed):
-                return _err(f"Not finalized: the requester has not confirmed. Send a {needed} request and wait "
-                            "for a reply with confirmed true.")
+            # Waiting on a teammate is not a mistake to retry: refuse without counting an attempt.
+            asked = [q.ref for q in view.open_questions()]
+            if asked:
+                return _err(f"Not finalized: teammates still have unanswered questions ({', '.join(asked)}). "
+                            "Wait; their reports wake you.")
+            from ..workforce.settling import workers_pending  # a specialist you created has not reported, or a report is not read yet
+
+            if await workers_pending(self.rt, self.b.case_id):
+                return _err("Not finalized: your team has not finished. Wait for their reports, read them, "
+                            "then answer; their reports wake you.")
         if not problems:
-            # every outcome is checked: the text reaches the domain either way
-            problems += check_text(answer, sources, rules, trusted)
+            # every outcome is checked: the text reaches the resident either way
+            problems += text_problems(answer, sources, rules, trusted)
         judge = self.rt.judge
         if outcome == "resolved" and judge is not None and sources and not problems:
             p = await judge.support(answer, sources)
@@ -411,8 +398,10 @@ class CaseFinalize(_CaseTool):
                 # Not a claim of success, so no retry loop: send the safe text.
                 answer, unknowns = rules.safe_reply, [*unknowns, *problems]
             else:
+                # attempts since the last final answer (a workflow gives several over its life)
+                floor = view.final.id if view.final else 0
                 attempts = 1 + sum(1 for n in await self.rt.cases.items(self.b.case_id, kinds=("note",))
-                                   if n.data.get("type") == "final_attempt")
+                                   if n.data.get("type") == "final_attempt" and n.id > floor)
                 await self.rt.cases.add(self.b.case_id, "note", self.b.agent_name,
                                         {"type": "final_attempt", "problems": problems})
                 if attempts < MAX_FINALIZE_ATTEMPTS:
@@ -421,14 +410,22 @@ class CaseFinalize(_CaseTool):
                 answer, outcome = rules.safe_reply, "needs_human"
                 unknowns = [*unknowns, *problems]
 
+        try:  # what the resident reads is as bounded as a CaseSay: not blank, not endless
+            answer = checked(answer, self.rt.settings.wf_text_limit)
+        except BadText as e:
+            return _err(f"Not sent: {e} Give an answer the resident can read.")
         item = await self.rt.cases.add(self.b.case_id, "final", self.b.agent_name,
                                        {"answer": answer, "outcome": outcome, "cites": cites,
                                         "unknowns": unknowns})
-        result = {"answer": answer, "outcome": outcome, "cites": cites, "unknowns": unknowns,
-                  "ref": item.ref}
-        if not await self.rt.close(self.b.case_id, "finalized", result):
-            return _err("The case was closed meanwhile; nothing was recorded.")
-        return _ok(f"{item.ref} recorded; the case is finalized as {outcome}.")
+        try:  # the answer is a message; the case stays open and the workflow decides what is next
+            await publish(self.rt.db, wf["id"], answer, expects="none", outcome=outcome,
+                          limit=self.rt.settings.wf_text_limit)
+        except (IllegalTransition, BadText) as e:
+            return _err(f"Nothing was sent: {e}")
+        if self.rt.turn_hook is not None:
+            self.rt.turn_hook(wf["id"])
+        return _ok(f"{item.ref} recorded and sent to the resident as your answer ({outcome}). "
+                   "The workflow decides what happens next; do not say it is closed.")
 
 
 CASE_TOOLS = (CaseFact, CaseGap, CaseAsk, CaseAnswer, CaseChallenge, CaseRead, CaseDecide, CaseFinalize)

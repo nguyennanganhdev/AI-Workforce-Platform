@@ -22,23 +22,14 @@ class CaseView:
     gaps: list[Item] = field(default_factory=list)
     decisions: list[Item] = field(default_factory=list)
     reports: dict[str, Item] = field(default_factory=dict)  # author -> last report
-    requests: dict[str, Item] = field(default_factory=dict)
-    replies: dict[str, Item] = field(default_factory=dict)  # request ref -> its reply
     final: Item | None = None
     challenge_rounds: dict[str, int] = field(default_factory=dict)  # fact ref -> count
+    # Evidence of an operation (data["op"]) that no longer stands where the evidence said it did: a provider reported the
+    # work done and then reopened it. What it proves is withdrawn; its figures can still be cited.
+    withdrawn: set[str] = field(default_factory=set)
 
     def open_questions(self) -> list[Item]:
         return [q for ref, q in self.questions.items() if ref not in self.answers_to]
-
-    def open_requests(self) -> list[Item]:
-        """Requests sent outside that still wait for a reply."""
-        return [r for ref, r in self.requests.items()
-                if r.data.get("expects_reply") and ref not in self.replies]
-
-    def confirmed(self, kind: str) -> bool:
-        """Whether a reply of this request kind said `confirmed: true`."""
-        return any(self.requests[ref].data.get("kind") == kind and rep.data.get("data", {}).get("confirmed") is True
-                   for ref, rep in self.replies.items() if ref in self.requests)
 
     def open_challenges(self) -> list[Item]:
         return [c for ref, c in self.challenges.items() if ref not in self.answers_to]
@@ -90,10 +81,6 @@ def build_view(items: list[Item]) -> CaseView:
                     v.answers_to[cref] = it
         elif k == "report":
             v.reports[it.author] = it
-        elif k == "request":
-            v.requests[it.ref] = it
-        elif k == "reply":
-            v.replies[it.data.get("to_ref", "")] = it
         elif k == "final":
             v.final = it
     return v
