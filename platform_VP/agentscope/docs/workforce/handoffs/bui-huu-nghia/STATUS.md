@@ -1,6 +1,34 @@
 # Trạng thái — Bùi Hữu Nghĩa
 
-## Cập nhật C3 — 2026-10-11 (trạng thái hiện hành)
+## Cập nhật D3 — 2026-10-12 (trạng thái hiện hành)
+
+Đã thực hiện [PLAN_D3.md](PLAN_D3.md), **D3 consumer sẵn sàng review**. Baseline:
+`278ea4a3a4a62b79b290d2e9fc6bf24d33ba06a7`, branch `feat/wf-builder`, cùng ref local
+`origin/develop2`; chứa `3aabceb` sửa C3 và merge PR #68 (`bbd6d9a` C7/D0–D2).
+Các câu “chưa commit/push” trong ghi chú C3 cũ bên dưới là trạng thái lịch sử.
+
+Output D2 của Đông đã dùng trong SQL protocol regression. Không cần chờ D4 của
+Anh; two-instance concurrency dùng canonical contract double để kiểm tra refresh,
+không coi đó là PostgreSQL identity uniqueness. Chỉ sửa code/test/demo/handoff
+trong vùng Nghĩa, không thay code hoặc module của thành viên khác.
+
+Kiểm tra implementation: **34 backend D3 pass**, **8 browser pass trên Edge
+headless**. Regression **100 Builder A/B/C3/D3 + contracts pass**; **30 Registry
+pass + 1 PostgreSQL skip**, **2 D1 pass**. Black/compile/import/ESLint/focused
+TypeScript/whitespace/ownership pass. Local vẫn thiếu `aiosqlite`, `pytest` và
+PostgreSQL test DSN; C6/CI chưa chạy lại. Lệnh/thật/fake/giới hạn nằm trong
+[PHASE_D_D3.md](PHASE_D_D3.md) và [TEST_MATRIX_D3.md](TEST_MATRIX_D3.md).
+
+Fix production duy nhất: `_reuse_matcher.py` bắt buộc reference khi candidate
+có trạng thái draft; thiếu draft_id trả clarify + CANDIDATE_METADATA_REQUIRED,
+không đề xuất reuse old version hoặc revise khi chưa biết draft nào.
+Tests mới trong `tests/workforce/builder/phase_d/`; fault demo trong frontend
+Builder tests. Public exports/contracts/schema không đổi, không thêm migration.
+Handoff mới: PLAN/TEST_MATRIX/PHASE_D_D3 và INTEGRATION_REQUEST_BHN_D3.
+Code/test/docs hiện chưa commit/push. Tiếp theo: review consumer D3, đưa commands
+vào CI qua Chí Hoàng; commit/push/merge khi người dùng yêu cầu. Không nhận D4.
+
+## Lịch sử C3 — 2026-10-11
 
 Baseline `67ff8715e4a40a37538b727442b3b66f2c9223e1`, branch `feat/wf-builder`,
 đã chứa C1/C2 merge. Code C3 ban đầu đã commit/push tại `304c39a`, mở
