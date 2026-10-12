@@ -43,6 +43,9 @@ class PhaseCRuntimeDependencies:
     evaluation_runner: Any
     customer_dependency: Any
     manager_dependency: Any
+    release_tool_resolver: Any
+    release_policy_resolver: Any
+    release_context_resolver: Any
     clock: Any = lambda: datetime.now(UTC)
     call_factory: Any = None
     builtins: Mapping[str, Any] | None = None
@@ -157,12 +160,14 @@ def compose_phase_c_runtime(
     Domain-specific ports (Leader, MCP transport, quote provider and auth
     dependencies) are intentionally constructed by the deployer and supplied
     in ``services``.  This function owns the non-optional, easy-to-miss global
-    wiring: one UOW identity, two routers and all four durable job types.
+    wiring: one UOW identity, three routers and all four durable job types.
     """
     if services.get("uows") is not foundation.uows:
         raise ValueError("all Phase-C repositories must use foundation.uows")
-    if len(routers) != 2 or any(router is None for router in routers):
-        raise ValueError("workflow and execution routers are both required")
+    if len(routers) != 3 or any(router is None for router in routers):
+        raise ValueError(
+            "workflow, execution and release routers are all required"
+        )
     handlers = {
         "provider_event": provider_event_processor.handle_job,
         "workforce.workflow.continue": workflow_continuation_handler,
@@ -215,8 +220,11 @@ def build_phase_c_runtime(
     from ...lifecycle.async_evaluation import (
         AsyncEvaluationService,
         EvaluationJobHandler,
-        EvaluationJobService,
         SqlEvaluationRepository,
+    )
+    from ...lifecycle.releases import (
+        PinnedVersionAuthorization,
+        SqlReleaseService,
     )
     from ...orchestration import (
         ExecutionOperationReader,
@@ -239,11 +247,37 @@ def build_phase_c_runtime(
         WorkflowService,
     )
     from ...registry.event_protocols import SqlAsyncProtocolProvider
+    from ._releases import (
+        PublishedLeaderBootstrapResolver,
+        ReleaseAwareEvaluationJobService,
+        SqlWorkflowVersionUsageReader,
+        TransactionalReleaseValidator,
+        create_release_router,
+    )
 
     deps = dependencies
     uows = foundation.uows
     execution_repository = create_repository(uow_factory=uows)
     protocol_provider = SqlAsyncProtocolProvider(uows)
+    release_validator = TransactionalReleaseValidator(
+        protocol_provider.repository,
+        deps.release_tool_resolver,
+        deps.release_policy_resolver,
+    )
+    releases = SqlReleaseService(
+        uows,
+        release_validator,
+        foundation.identity,
+        clock=deps.clock,
+    )
+    release_authorization = PinnedVersionAuthorization(
+        deps.workflow_authorization,
+        releases,
+    )
+    leader_bootstrap_resolver = PublishedLeaderBootstrapResolver(
+        deps.leader_bootstrap_resolver,
+        releases,
+    )
     operations = ExternalOperationService(
         execution_repository, deps.clock
     )
@@ -281,7 +315,7 @@ def build_phase_c_runtime(
     event_repository = SqlEventRepository(uows)
     event_service = ConversationEventService(
         event_repository,
-        deps.workflow_authorization,
+        release_authorization,
         foundation.public_event_signal,
         uows,
         heartbeat_seconds=deps.heartbeat_seconds,
@@ -295,10 +329,10 @@ def build_phase_c_runtime(
     workflow_service = WorkflowService(
         workflow_repository,
         LeaderWorkflowBootstrap(
-            deps.leader_bootstrap_resolver,
+            leader_bootstrap_resolver,
             clock=deps.clock,
         ),
-        deps.workflow_authorization,
+        release_authorization,
         ExecutionOperationReader(execution_repository),
         foundation.jobs,
         event_writer,
@@ -354,8 +388,10 @@ def build_phase_c_runtime(
     evaluation_service = AsyncEvaluationService(
         deps.evaluation_runner, deps.clock
     )
-    evaluation_jobs = EvaluationJobService(
-        evaluation_repository, foundation.jobs
+    evaluation_jobs = ReleaseAwareEvaluationJobService(
+        evaluation_repository,
+        foundation.jobs,
+        releases,
     )
     evaluation_handler = EvaluationJobHandler(
         evaluation_repository, evaluation_service
@@ -382,6 +418,14 @@ def build_phase_c_runtime(
         deps.customer_dependency,
         foundation.provider_auth,
     )
+    release_usage = SqlWorkflowVersionUsageReader(uows)
+    release_router = create_release_router(
+        releases,
+        foundation.identity,
+        deps.manager_dependency,
+        deps.release_context_resolver,
+        release_usage,
+    )
     services = {
         "uows": uows,
         "protocol_provider": protocol_provider,
@@ -400,11 +444,15 @@ def build_phase_c_runtime(
         "operation_reconciler": reconciler,
         "evaluation_repository": evaluation_repository,
         "evaluation_jobs": evaluation_jobs,
+        "release_validator": release_validator,
+        "releases": releases,
+        "release_usage": release_usage,
+        "published_catalog": releases,
     }
     return compose_phase_c_runtime(
         foundation,
         services=services,
-        routers=(workflow_router, execution_router),
+        routers=(workflow_router, execution_router, release_router),
         provider_event_processor=provider_processor,
         workflow_continuation_handler=continuation_handler,
         operation_reconciler=reconciler,

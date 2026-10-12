@@ -30,6 +30,9 @@ class AsyncProtocolRepository(Protocol):
         self,
         scope: Scope,
         tool_version_id: str,
+        uow: UnitOfWork | None = None,
+        *,
+        for_update: bool = False,
     ) -> tuple[AsyncToolProtocol, bool]:
         ...
 
@@ -37,6 +40,7 @@ class AsyncProtocolRepository(Protocol):
         self,
         scope: Scope,
         snapshot: AsyncProtocolSnapshotRef,
+        uow: UnitOfWork | None = None,
     ) -> AsyncToolProtocol:
         ...
 

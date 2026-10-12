@@ -23,3 +23,28 @@ Nguyên tắc triển khai:
 
 Bootstrap C1 không tự mount endpoint và không khởi động fake worker. Production
 API/worker chỉ được bật sau các gate tuần tự ghi trong handoff Phase C.
+
+## Composition sau Phase D/D4
+
+`build_phase_c_runtime` hiện ghép production graph C1–D4 với cùng
+`foundation.uows` và mount ba router: workflow, execution và manager release.
+Deployer phải cấp thêm ba dependency không được phép dùng fake:
+
+- `release_tool_resolver(scope, tool_version_id, uow)`;
+- `release_policy_resolver(scope, policy_ref, uow)`;
+- `release_context_resolver(scope)`.
+
+Hai resolver đầu phải đọc/lock canonical owner record qua đúng UOW được truyền.
+Context release lấy từ cấu hình server, không lấy từ request body. Manager
+release API nằm dưới `/workforce/v1/manager/agent-releases`; đây không phải API
+đối tác. Bootstrap Leader chỉ chấp nhận current published/enabled/non-archived
+version, còn workflow đã chạy tiếp tục dùng exact version/protocol pin đã lưu.
+Retention reader đối chiếu cả workflow, checkpoint và durable tool-call; group
+được sở hữu bởi workflow, còn operation hiện không mang agent version riêng.
+`evaluation_jobs` trong runtime là `ReleaseAwareEvaluationJobService`: đăng ký
+frozen evaluation, release candidate và durable evaluation job trong cùng UOW.
+Khi sửa draft đã có candidate, caller truyền `expected_candidate_revision`;
+revision cũ bị từ chối bằng CAS, không ghi đè candidate mới hơn.
+
+Alembic head tương ứng là `0011_workforce_releases`. Gate và trạng thái tích hợp
+nằm tại `docs/workforce/handoffs/nguyen-chi-hoang/PHASE_D_D4_INTEGRATION.md`.

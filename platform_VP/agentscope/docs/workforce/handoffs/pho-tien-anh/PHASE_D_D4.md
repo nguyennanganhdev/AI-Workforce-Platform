@@ -87,6 +87,13 @@ DTO package import không eager-load SQLAlchemy. Không thay UI/dependency.
 
 ## Ranh giới bàn giao
 
+**Cập nhật sau merge:** PR #73 đã merge tại `develop2@35cec29`. Migration,
+manager API/auth, transactional validator, catalog/bootstrap, usage reader và CI
+đã được Nguyễn Chí Hoàng hoàn thành, commit và merge qua commit/PR chứa cập nhật
+status tại
+`../nguyen-chi-hoang/PHASE_D_D4_INTEGRATION.md`. Đoạn dưới mô tả trạng thái tại
+thời điểm Phó Tiến Anh bàn giao, không còn là trạng thái mới nhất.
+
 Đã có code D4 và regression SQL/mock trong phạm vi Lifecycle. Migration
 additive, manager API/auth wiring, transactional dependency adapter, catalog/
 bootstrap composition và usage reader production cần owner ghép theo
