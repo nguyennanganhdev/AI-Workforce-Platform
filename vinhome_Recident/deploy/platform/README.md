@@ -74,9 +74,9 @@ Mọi công cụ nhận `ticket_id` do agent chép từ tin nhắn đầu tiên;
 
 | Công cụ | Loại | Theo dõi |
 |---|---|---|
-| `vh_ticket_get`, `vh_resident_context`, `vh_knowledge_search`, `vh_home_rules`, `vh_debit_notes`, `vh_staff_available` | tra cứu, chỉ đọc | |
+| `vh_ticket_get`, `vh_resident_context`, `vh_knowledge_search`, `vh_home_rules`, `vh_debit_notes`, `vh_staff_available`, `vh_announcements` | tra cứu, chỉ đọc | |
 | `vh_work_order_dispatch` | hành động | `events`: trả `pending` kèm `external_job_id`, tiến độ về bằng sự kiện |
-| `vh_work_order_reschedule`, `vh_ticket_cancel`, `vh_ticket_add_note` | hành động | không: trả `confirmed` hoặc `failed` ngay |
+| `vh_work_order_reschedule`, `vh_ticket_cancel`, `vh_ticket_add_note`, `vh_visitor_register` | hành động | không: trả `confirmed` hoặc `failed` ngay |
 
 Không có công cụ nào ghi câu trả lời báo giá. Báo giá hiện thành một thẻ trong hộp chat do chính Vinhomes ghi; cư dân tự bấm Đồng ý hoặc Không đồng ý trên thẻ. Leader chỉ giải thích khi cư dân hỏi.
 

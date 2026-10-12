@@ -860,8 +860,8 @@ def test_the_mcp_server_lists_and_runs_the_tools_only_for_the_token(database, on
         assert "mcp-session-id" not in direct.headers   # stateless
 
         tools = {tool.name: tool for tool in asyncio.run(session(lambda client: client.list_tools())).tools}
-        looks = {"vh_ticket_get", "vh_resident_context", "vh_knowledge_search", "vh_home_rules", "vh_debit_notes", "vh_staff_available"}
-        acts = {"vh_work_order_dispatch", "vh_work_order_reschedule", "vh_ticket_cancel", "vh_ticket_add_note"}
+        looks = {"vh_ticket_get", "vh_resident_context", "vh_knowledge_search", "vh_home_rules", "vh_debit_notes", "vh_staff_available", "vh_announcements"}
+        acts = {"vh_work_order_dispatch", "vh_work_order_reschedule", "vh_ticket_cancel", "vh_ticket_add_note", "vh_visitor_register"}
         # Nothing records an answer to a quote: that is the resident's own tap on the card.
         assert set(tools) == looks | acts
         for name, tool in tools.items():
@@ -886,3 +886,34 @@ def test_the_mcp_server_lists_and_runs_the_tools_only_for_the_token(database, on
         server.should_exit = True
         thread.join(timeout=10)
     assert [e["payload"] for e in events(database, ticket, "ticket.note_added")] == [{"note": "Cư dân dặn gọi trước khi đến"}]
+
+
+def test_a_visitor_is_announced_once_under_the_rules_of_the_zone_and_the_notices_are_those_of_the_home(database, on):
+    with person(database, AN) as c:
+        _, ticket = hand_over(c)
+    soon = (datetime.now(VN) + timedelta(hours=3)).isoformat()
+    later = (datetime.now(VN) + timedelta(hours=6)).isoformat()
+
+    def passes():
+        return sql(database, "select status,guest_count,host_user_id from visitor_passes where guest_name like 'Khách thử%' order by created_at")
+
+    first = ref()
+    made = call(database, work.visitor_register, ticket, "Khách thử Một", soon, later, "family_visit", 2, None, first)
+    assert (made["status"], made["visit_status"], made["needs_desk_approval"]) == ("confirmed", "approved", False)      # 1: a family visit of two needs no desk
+    assert re.fullmatch(WHEN, made["visit_from"]) and "qr_token" not in made and "code" not in made
+    assert call(database, work.visitor_register, ticket, "Khách thử Một", soon, later, "family_visit", 2, None, first) == made
+    assert [(p["status"], p["host_user_id"]) for p in passes()] == [("approved", AN)]                                    # 2: asked twice, announced once, as the resident
+    big = call(database, work.visitor_register, ticket, "Khách thử Hai", soon, later, "family_visit", 8, None, ref())
+    assert (big["status"], big["visit_status"], big["needs_desk_approval"]) == ("confirmed", "pending_approval", True)   # 3: eight people wait for the desk
+    for bad in (("Khách thử Ba", "mai", later, "family_visit"), ("Khách thử Ba", later, soon, "family_visit"), ("Khách thử Ba", soon, later, "party"), ("", soon, later, "other")):
+        refused = call(database, work.visitor_register, ticket, *bad, 1, None, ref())
+        assert refused["status"] == "failed" and refused["reason"]                                                       # 4: refused in words, nothing written
+    assert len(passes()) == 2
+    assert call(database, work.visitor_register, str(uuid4()), "Khách thử Tư", soon, later, "other", 1, None, ref())["status"] == "failed"
+
+    seen = call(database, work.notices, ticket)["announcements"]
+    mine = sql(database, """select a.title from announcements a where a.status='published' and a.published_at<=now() and (a.expire_at is null or a.expire_at>now())
+        and ((cardinality(a.zone_ids)=0 and cardinality(a.building_ids)=0) or exists (select 1 from unit_residents ur join units u on u.id=ur.unit_id
+          where ur.user_id=$1 and (u.building_id=any(a.building_ids) or u.zone_id=any(a.zone_ids)))) order by a.published_at desc limit 10""", AN)
+    assert seen and [a["title"] for a in seen] == [a["title"] for a in mine]                                             # 5: what the resident's own app lists
+    assert all(re.fullmatch(WHEN, a["published_at"]) for a in seen)

@@ -135,6 +135,8 @@ Hành động nhận thêm tham số ẩn `client_reference` (platform điền) 
 | `vh_work_order_reschedule` | hành động | `ticket_id`, `appointment_at`, `reason` | `confirmed` |
 | `vh_ticket_cancel` | hành động | `ticket_id`, `reason` | `confirmed` hoặc `failed` |
 | `vh_ticket_add_note` | hành động | `ticket_id`, `note` | `confirmed` |
+| `vh_visitor_register` | hành động | `ticket_id`, `guest_name`, `visit_from`, `visit_to`, `purpose`, `guest_count?`, `vehicle_plate_no?` | `confirmed` kèm đã duyệt hay chờ quầy lễ tân duyệt; hoặc `failed` + lý do |
+| `vh_announcements` | tra cứu | `ticket_id` | thông báo của Ban quản lý cho tòa và phân khu của cư dân |
 
 `vh_ticket_get` có thêm khóa `status: "completed"` **chỉ khi** ticket đã `resolved` hoặc `closed`: platform coi khóa `status` ở tầng trên cùng là bằng chứng việc đã xong.
 

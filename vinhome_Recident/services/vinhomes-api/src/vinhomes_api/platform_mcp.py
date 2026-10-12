@@ -83,6 +83,23 @@ def build(app) -> FastMCP:
         """Staff with the specialty the request needs who are on shift now and have room for a job."""
         return await run(False, work.staff_available, ticket_id)
 
+    @mcp.tool(annotations=READ)
+    async def vh_announcements(ticket_id: Ticket) -> str:
+        """What management has announced to the resident's tower and zone (maintenance, water or power cuts, events), newest first."""
+        return await run(False, work.notices, ticket_id)
+
+    @mcp.tool()
+    async def vh_visitor_register(
+            ticket_id: Ticket, client_reference: Reference,
+            guest_name: Annotated[str, Field(description="Name of the visitor, as the resident gave it.")],
+            visit_from: Annotated[str, Field(description="When the visitor arrives, e.g. 2026-10-12T09:00:00+07:00 (Vietnam time).")],
+            visit_to: Annotated[str, Field(description="When the visitor leaves, same form.")],
+            purpose: Annotated[str, Field(description="family_visit, delivery, service_provider, business or other.")],
+            guest_count: Annotated[int, Field(description="How many people come.")] = 1,
+            vehicle_plate_no: Annotated[str | None, Field(description="Number plate, when the visitor comes by car or motorbike.")] = None) -> str:
+        """Announce a visitor for the resident's home. Ask the resident for the name, the two times and the purpose first; never guess them."""
+        return await run(True, work.visitor_register, ticket_id, guest_name, visit_from, visit_to, purpose, guest_count, vehicle_plate_no, client_reference)
+
     @mcp.tool()
     async def vh_work_order_dispatch(
             ticket_id: Ticket, client_reference: Reference,

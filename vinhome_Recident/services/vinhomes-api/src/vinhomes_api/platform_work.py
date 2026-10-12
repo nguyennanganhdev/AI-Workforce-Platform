@@ -19,7 +19,7 @@ from sqlalchemy import text
 
 from .knowledge import search
 from .platform import ACTIVE, CLIENT_ID, TENANT, VN, _quote, command, platform_client, vn_time
-from .resident_services import balance, debit_notes, home_rules
+from .resident_services import VisitorCreate, announcements, balance, create_visitor_pass, debit_notes, home_rules
 from .v3_mutations import requires_plan
 from .work_offers import agent_event, offer_queued_work, offer_work
 
@@ -230,6 +230,15 @@ async def staff_available(db, ticket_id) -> dict:
          "max_concurrent_jobs": r["max_concurrent_jobs"], "shift_ends_at": _at(r["ends_at"])} for r in rows]}
 
 
+async def notices(db, ticket_id) -> dict:
+    """What management has announced to the resident's tower and zone, newest first."""
+    ticket = await _ticket(db, ticket_id)
+    found = await announcements((db, ticket["requester_user_id"]), 10)
+    return {"announcements": [
+        {"title": a["title"], "kind": a["kind"], "important": a["is_important"], "published_at": _at(a["published_at"]),
+         "summary": a["summary"], "text": (a["body_md"] or "")[:1200]} for a in found["items"]]}
+
+
 # ---- actions ---------------------------------------------------------------------------------------------------------
 
 async def _stored(db, reference: str, tool: str, ticket_id):
@@ -408,6 +417,42 @@ async def add_note(db, ticket_id, note: str, client_reference) -> dict:
 
 
 # ---- offers that were turned down or ran out -------------------------------------------------------------------------
+
+VISIT_PURPOSES = {"family_visit": "thăm gia đình", "delivery": "giao hàng", "service_provider": "thợ, dịch vụ", "business": "công việc", "other": "khác"}
+
+
+def _time(value: str, what: str) -> datetime:
+    try:
+        at = datetime.fromisoformat((value or "").strip())
+    except ValueError:
+        raise Refused(f"{what} không đọc được. Hãy ghi dạng 2026-10-12T09:00:00+07:00.") from None
+    return at if at.tzinfo else at.replace(tzinfo=VN)
+
+
+async def visitor_register(db, ticket_id, guest_name: str, visit_from: str, visit_to: str, purpose: str, guest_count: int,
+                           vehicle_plate_no: str | None, client_reference) -> dict:
+    """Announce a visitor for the home of the ticket, as its resident would in the app: same rules of the zone."""
+    async def effect(ticket):
+        if ticket["unit_id"] is None:
+            raise Refused("Yêu cầu này không gắn với căn hộ nào.")
+        if purpose not in VISIT_PURPOSES or not (guest_name or "").strip():
+            raise Refused("Cần tên khách và mục đích: " + ", ".join(VISIT_PURPOSES) + ".")
+        try:
+            visit = VisitorCreate(guest_name=guest_name.strip(), guest_count=guest_count, purpose=purpose,
+                                  vehicle_plate_no=(vehicle_plate_no or "").strip() or None,
+                                  visit_from=_time(visit_from, "Giờ khách đến"), visit_to=_time(visit_to, "Giờ khách về"))
+            made = await create_visitor_pass(ticket["unit_id"], visit, (db, ticket["requester_user_id"]), client_reference)
+        except ValueError:
+            raise Refused("Thông tin khách không hợp lệ (tên tối đa 200 ký tự, số khách từ 1 đến 50).") from None
+        except HTTPException as no:
+            # The rule of the zone that was not met, as the resident's own app would say it.
+            raise Refused(f"Chưa đăng ký được khách: {no.detail}") from None
+        waits = made["status"] == "pending_approval"
+        return {"status": "confirmed", "visit_status": made["status"], "needs_desk_approval": waits, "guest_name": made["guest_name"],
+                "guest_count": made["guest_count"], "visit_from": _at(made["visit_from"]), "visit_to": _at(made["visit_to"]),
+                "note": "Lượt khách này chờ quầy lễ tân duyệt." if waits else "Đã được duyệt; mã vào cổng nằm ở mục Khách đến thăm trong ứng dụng của cư dân."}, None
+    return await _act(db, "vh_visitor_register", ticket_id, client_reference, effect)
+
 
 async def offer_waiting(db, turned_down=()) -> int:
     """Offer every queued job the platform dispatched to whoever can take it now; returns how many found someone.
