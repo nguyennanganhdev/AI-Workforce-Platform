@@ -203,6 +203,13 @@ Rà soát lại C5: chặn ghi đè scope trong khóa truy vấn; đối chiếu
 
 ## D4 — Code và regression SQL/mock hoàn thành — 12/10/2026
 
+**Cập nhật sau merge:** D4 đã merge qua PR #73 vào `develop2@35cec29`.
+Foundation migration, manager API/auth, production composition, transactional
+validator, usage reader và CI D4 đã được Nguyễn Chí Hoàng hoàn thành, commit và
+merge qua commit/PR chứa cập nhật status này; xem
+`../nguyen-chi-hoang/PHASE_D_D4_INTEGRATION.md`. Các số liệu/giới hạn bên dưới
+là snapshot trước lượt tích hợp này.
+
 Tiếp nối A/B/C5 và đầu ra D2/D3, thực hiện publish pin, protocol pin, long-wait,
 stale evaluation, archive/disable/revoke và rollback trong phạm vi Lifecycle.
 Không thay source/shared contract/migration/CI hoặc fixture của owner khác.

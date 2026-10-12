@@ -1,13 +1,27 @@
 # Trạng thái — Nguyễn Chí Hoàng
 
+## Cập nhật mới nhất — tích hợp cuối Phase D/D4 — 2026-10-12
+
+Baseline đầu vào là `develop2@35cec29`: C7/D1/D2, D3 và D4 đã merge. Nguyễn
+Chí Hoàng đã ghép xong phần production còn thiếu sau PR #73 gồm migration
+`0011_workforce_releases`, manager API/auth, transactional release validator,
+published catalog/Leader bootstrap, exact workflow/checkpoint usage reader và CI
+D4/PostgreSQL. Trạng thái bàn giao: **đã commit và đã merge vào `develop2`**
+qua commit/PR chứa chính cập nhật status này. Xem
+[PHASE_D_D4_INTEGRATION.md](PHASE_D_D4_INTEGRATION.md) và
+[../PHASE_D_SEQUENCE.md](../PHASE_D_SEQUENCE.md).
+
+Các đoạn trạng thái cũ bên dưới được giữ làm lịch sử theo từng mốc; không được
+dùng thay cho cập nhật mới nhất này.
+
 Tên thành viên: Nguyễn Chí Hoàng. Baseline chung hiện tại:
 `develop2@5e66ea0`.
 
-**Trạng thái mới nhất — 2026-10-12:** C1–C6 đã merge. C7 và D1 đã được triển
-khai trong working tree hiện tại, chưa commit/push/merge. Nguyễn Chí Hoàng đồng
-thời thực hiện thay hai lane D2 của Nguyễn Phương Đông và Phan Huy Hoàng. Chi
-tiết tại [PHASE_C_C7_VA_PHASE_D_D1.md](PHASE_C_C7_VA_PHASE_D_D1.md) và
-[../PHASE_D_SEQUENCE.md](../PHASE_D_SEQUENCE.md).
+**Snapshot lịch sử trước PR C7/D1/D2:** C1–C6 đã merge; C7/D1 và hai lane D2
+đang được triển khai tại thời điểm ghi. Các phần này sau đó đã commit và merge
+vào `develop2@278ea4a`. Chi tiết tại
+[PHASE_C_C7_VA_PHASE_D_D1.md](PHASE_C_C7_VA_PHASE_D_D1.md) và trạng thái cuối
+tại [../PHASE_D_SEQUENCE.md](../PHASE_D_SEQUENCE.md).
 
 Task IDs đã hoàn thành theo nhịp: NCH-01; contract khởi động NCH-02/NCH-13;
 Phase B độc lập của NCH-14; và output C1 thuộc NCH-03/05/06/08/12/14/15 gồm
@@ -51,8 +65,9 @@ Live verification còn thiếu sau C7/D1: CI PostgreSQL của PR, Redis multi-pr
 provider sandbox thật và browser E2E. FastAPI router mounting, SQL composition,
 worker registration, SSE reconnect/replay và C6 runtime slice đã có test cục bộ.
 
-Trình tự hiện tại: C1–C6 đã merge; C7/D1 và hai lane D2 đã code/test nhưng chưa
-merge. D3 chỉ mở sau khi PR hiện tại được review và merge.
+Snapshot trình tự tại thời điểm đó: C1–C6 đã merge; C7/D1 và hai lane D2 đang
+chờ merge. Mốc này đã được đóng tại `develop2@278ea4a`; xem cập nhật mới nhất ở
+đầu file.
 
 ## Cập nhật Phase B
 

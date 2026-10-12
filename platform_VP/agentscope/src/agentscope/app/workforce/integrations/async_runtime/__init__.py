@@ -15,6 +15,13 @@ from ._composition import (
     build_phase_c_runtime,
     compose_phase_c_runtime,
 )
+from ._releases import (
+    PublishedLeaderBootstrapResolver,
+    ReleaseAwareEvaluationJobService,
+    SqlWorkflowVersionUsageReader,
+    TransactionalReleaseValidator,
+    create_release_router,
+)
 
 __all__ = [
     "RuntimeFactory",
@@ -27,4 +34,9 @@ __all__ = [
     "PhaseCRuntimeDependencies",
     "build_phase_c_runtime",
     "compose_phase_c_runtime",
+    "PublishedLeaderBootstrapResolver",
+    "ReleaseAwareEvaluationJobService",
+    "SqlWorkflowVersionUsageReader",
+    "TransactionalReleaseValidator",
+    "create_release_router",
 ]

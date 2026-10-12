@@ -1,8 +1,14 @@
 # Điểm ghép D4 — Phó Tiến Anh
 
+> **Cập nhật 12/10/2026:** PR #73 đã merge vào `develop2@35cec29`. Nguyễn Chí
+> Hoàng đã hoàn thành, commit và merge phần migration/API/auth/composition/CI
+> qua commit/PR chứa cập nhật status này. Tài liệu này là input lịch sử; trạng
+> thái thực thi mới nhất nằm tại
+> `../nguyen-chi-hoang/PHASE_D_D4_INTEGRATION.md`.
+
 Ngày **12/10/2026**.
 
-## NCH — additive migration, auth/composition và CI D6
+## NCH — additive migration, auth/composition và CI tích hợp cuối Phase D
 
 Import metadata từ `lifecycle.releases.get_release_metadata()`. Thêm revision
 mới sau head đã merge; không sửa migration `0010_workforce_runtime` đã phát hành
@@ -100,7 +106,7 @@ Sau revoke agent, provider fact vẫn được PHD commit; adapter trả false c
 public delivery/wakeup. Agent disabled khi approval job đã enqueue sẽ được PHH
 đưa blocked_authorization với zero model/tool call, pin không đổi.
 
-## PHD — D5 E2E lượt 2
+## PHD — E2E tích hợp cuối Phase D
 
 Tái dùng exports và [test_long_wait.py](../../../../tests/workforce/lifecycle/releases/test_long_wait.py):
 raw signed HTTP, provider inbox, workflow/checkpoint/lease/evidence thật với
@@ -108,8 +114,8 @@ D3CaseDriver; published v1, chờ 200 ngày bằng clock, v2/rollback/archive,
 protocol revise+disable, worker reload rồi event resume v1; duplicate/idle
 không thêm calls. Ca revoke giữ operation completed nhưng không public output.
 
-D5 cần ghép catalog bootstrap thật, manager release API, transactional resolver
+E2E cuối cần ghép catalog bootstrap thật, manager release API, transactional resolver
 và migration sau khi NCH cung cấp; chạy toàn lát cắt Customer POST → Leader →
 ExternalOperation → Provider Event → resume → event log/SSE → close. Tests D4
-không tự mở D5 hoặc nhận task sandbox. Canonical concurrent-build uniqueness
+không tự mở phase mới hoặc nhận task sandbox. Canonical concurrent-build uniqueness
 ở yêu cầu BHN-D3-WRITE chưa được chứng minh bởi release CAS này.

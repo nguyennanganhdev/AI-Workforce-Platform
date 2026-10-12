@@ -332,11 +332,21 @@ class SqlReleaseService:
             raise ValueError("VERSION_IDENTITY_DRIFT")
         return version
 
-    async def get_version(self, scope: Scope, version_id: str) -> PublishedVersion:
+    async def get_version(
+        self, scope: Scope, version_id: str, uow: Any = None
+    ) -> PublishedVersion:
+        if uow is not None:
+            return await self._version(scope, version_id, uow)
         async with self.uows() as tx:
             return await self._version(scope, version_id, tx)
 
-    async def get_deployment(self, scope: Scope, deployment_id: str) -> Dict[str, Any]:
+    async def get_deployment(
+        self, scope: Scope, deployment_id: str, uow: Any = None
+    ) -> Dict[str, Any]:
+        if uow is not None:
+            return await self._read(
+                deployments, scope, {"deployment_id": deployment_id}, uow
+            )
         async with self.uows() as tx:
             return await self._read(
                 deployments, scope, {"deployment_id": deployment_id}, tx
