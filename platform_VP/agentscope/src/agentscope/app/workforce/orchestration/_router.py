@@ -21,6 +21,7 @@ def create_router(
     *,
     bounded_wait_seconds: float = 8.0,
     max_customer_bytes: int = 262_144,
+    metric_sink: Any = None,
 ) -> Any:
     """Build routes only; C7 owns mounting and application composition."""
     if bounded_wait_seconds < 0:
@@ -30,10 +31,16 @@ def create_router(
 
     from fastapi import APIRouter, Depends, Header, Query, Request
     from fastapi.responses import JSONResponse, StreamingResponse
+    from ..foundation.event_delivery import (
+        NullMetricSink,
+        SSE_CONNECTIONS,
+        SSE_REPLAYS,
+    )
 
     globals()["Request"] = Request
     router = APIRouter(prefix="/workforce/v1", tags=["workforce-orchestration"])
     customer_principal = Depends(customer_dependency)
+    metrics = metric_sink or NullMetricSink()
 
     def actor(value: Any) -> ActorContext:
         if isinstance(value, dict) and "actor" in value:
@@ -182,11 +189,26 @@ def create_router(
             verified = customer(principal, external_user_id)
             # Fail auth/expired cursor before Starlette sends SSE headers.
             await conversation_events.list_after(verified, conversation_id, cursor, 1)
+            metrics.increment(
+                SSE_CONNECTIONS,
+                labels={"result": "accepted"},
+            )
+            if cursor is not None:
+                metrics.increment(
+                    SSE_REPLAYS,
+                    labels={
+                        "cursor_source": (
+                            "last_event_id" if last_event_id else "query"
+                        )
+                    },
+                )
             return StreamingResponse(
                 conversation_events.stream(verified, conversation_id, cursor),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "Content-Encoding": "identity",
                     "X-Accel-Buffering": "no",
                 },
             )

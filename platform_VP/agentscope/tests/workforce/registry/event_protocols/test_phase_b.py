@@ -17,8 +17,8 @@ from agentscope.app.workforce.registry.event_protocols import (
     AsyncProtocolService,
     AsyncToolProtocol,
 )
-from fakes import FakeAsyncProtocolRepository
-import test_protocols
+from .fakes import FakeAsyncProtocolRepository
+from . import test_protocols
 
 
 class ProtocolServiceTests(unittest.IsolatedAsyncioTestCase):

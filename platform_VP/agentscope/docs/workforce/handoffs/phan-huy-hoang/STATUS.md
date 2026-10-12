@@ -1,5 +1,12 @@
 # Trạng thái — Phan Huy Hoàng
 
+## Cập nhật Phase D/D2 — 2026-10-12
+
+Nguyễn Chí Hoàng đã thực hiện thay lane D2 trên baseline
+`develop2@5e66ea0`. SSE reconnect/replay/proxy headers và regression
+sleep-wakeup/close race/hai ticket isolation đã pass; thay đổi còn trong working
+tree, chưa merge. Xem [PHASE_D_D2.md](PHASE_D_D2.md).
+
 Ngày cập nhật: **2026-10-12**. Baseline bàn giao C5:
 `develop2@830cdacd56f868d509d208b91b9a6bc29d70c935`.
 

@@ -5,7 +5,7 @@ from agentscope.app.workforce.orchestration.partner_events import (
     EventCursorExpired,
 )
 
-from fakes import Harness, SCOPE, customer_actor
+from .fakes import Harness, SCOPE, customer_actor
 
 
 class EventReplayTests(unittest.IsolatedAsyncioTestCase):
