@@ -158,8 +158,9 @@ async def list_messages(channel_id: str, scope: ResidentScope,
     """), {"channel_id": channel_id, "after_seq": after_seq, "limit": limit})
     items = _rows(result)
     # A repair quote in the chat is a card the resident answers: the app is told where each one stands now.
-    from .platform import quote_states
+    from .platform import booking_states, quote_states
     await quote_states(scope[0], items)
+    await booking_states(scope[0], scope[1], items)
     return {"items": items}
 
 

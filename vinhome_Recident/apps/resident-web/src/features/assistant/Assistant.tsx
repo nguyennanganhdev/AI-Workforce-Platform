@@ -20,7 +20,7 @@ import "./assistant-home.css";
 import { resident } from "../../mocks/seed";
 import { formOffered } from "../../services/chat-turn";
 import { QuestionCard } from "./QuestionCard";
-import { ApprovalCard, CompletionCard, QuoteCard } from "./PlatformCards";
+import { ApprovalCard, BookingCard, CompletionCard, QuoteCard } from "./PlatformCards";
 import { MAX_PHOTOS, readPhotos } from "../../services/resident-service";
 import type { Draft, Photo, ResidentState } from "../../services/types";
 import { RequestCard } from "../requests/Requests";
@@ -42,6 +42,8 @@ type AssistantProps = {
   onApproval?: (id: string, approve: boolean) => unknown;
   /** Answers a repair quote card. */
   onQuote?: (id: string, accepted: boolean, reason?: string) => unknown;
+  /** Confirms a booking card. */
+  onBooking?: (id: string) => unknown;
   /** Answers the completion of this conversation's request: the same decision as on the request page. */
   onResolve?: (requestId: string, accepted: boolean, reason?: string) => unknown;
   onOpen: (id: string) => void;
@@ -65,6 +67,7 @@ export function Assistant({
   question,
   onApproval,
   onQuote,
+  onBooking,
   onResolve,
   onOpen,
   onRequests,
@@ -172,6 +175,8 @@ export function Assistant({
                     <ApprovalCard approval={message.approval} busy={busy} onDecide={onApproval} />
                   ) : message.quote && onQuote ? (
                     <QuoteCard quote={message.quote} busy={busy} onDecide={onQuote} />
+                  ) : message.booking && onBooking ? (
+                    <BookingCard booking={message.booking} busy={busy} onConfirm={onBooking} />
                   ) : (
                   <div className="message-bubble">
                     {message.text && <p>{message.text}</p>}

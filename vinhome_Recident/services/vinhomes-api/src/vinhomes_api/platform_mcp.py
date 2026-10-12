@@ -88,6 +88,72 @@ def build(app) -> FastMCP:
         """What management has announced to the resident's tower and zone (maintenance, water or power cuts, events), newest first."""
         return await run(False, work.notices, ticket_id)
 
+    @mcp.tool(annotations=READ)
+    async def vh_visitor_list(ticket_id: Ticket) -> str:
+        """The visitors announced for the resident's home, with where each stands; visit_ref names one for vh_visitor_cancel."""
+        return await run(False, work.visitors, ticket_id)
+
+    @mcp.tool(annotations=READ)
+    async def vh_cards(ticket_id: Ticket) -> str:
+        """The access and parking cards of the resident's home; card_ref names one for vh_card_report_lost."""
+        return await run(False, work.access_cards, ticket_id)
+
+    @mcp.tool(annotations=READ)
+    async def vh_amenities(ticket_id: Ticket) -> str:
+        """The amenities that can be booked (pool, gym, courts, BBQ...) with price, hours and rules, and the bookings this home has from now on."""
+        return await run(False, work.amenity_list, ticket_id)
+
+    @mcp.tool(annotations=READ)
+    async def vh_amenity_availability(
+            ticket_id: Ticket, amenity_ref: Annotated[str, Field(description="amenity_ref of the amenity, from vh_amenities.")],
+            date: Annotated[str, Field(description="The day, e.g. 2026-10-12.")]) -> str:
+        """The free time slots of one amenity on one day, by area."""
+        return await run(False, work.amenity_free, ticket_id, amenity_ref, date)
+
+    @mcp.tool(annotations=READ)
+    async def vh_service_requests(ticket_id: Ticket) -> str:
+        """The requests this home made to the desk (a new card, a vehicle registration, moving goods...) and where each stands."""
+        return await run(False, work.desk_requests, ticket_id)
+
+    @mcp.tool(annotations=READ)
+    async def vh_construction(ticket_id: Ticket) -> str:
+        """The renovation rules that apply to the resident's home (hours, deposit, limits) and its renovation permits."""
+        return await run(False, work.renovation, ticket_id)
+
+    @mcp.tool(annotations=READ)
+    async def vh_my_requests(ticket_id: Ticket) -> str:
+        """The resident's other requests and where each stands. Only the request of this ticket_id can be worked on."""
+        return await run(False, work.other_requests, ticket_id)
+
+    @mcp.tool()
+    async def vh_visitor_cancel(ticket_id: Ticket, client_reference: Reference,
+                                visit_ref: Annotated[str, Field(description="visit_ref of the visit, from vh_visitor_list.")]) -> str:
+        """Cancel an announced visit the resident no longer expects."""
+        return await run(True, work.visitor_cancel, ticket_id, visit_ref, client_reference)
+
+    @mcp.tool()
+    async def vh_card_report_lost(ticket_id: Ticket, client_reference: Reference,
+                                  card_ref: Annotated[str, Field(description="card_ref of the card, from vh_cards.")]) -> str:
+        """Block a card the resident says is lost. It cannot be undone: be sure which card the resident means."""
+        return await run(True, work.card_lost, ticket_id, card_ref, client_reference)
+
+    @mcp.tool()
+    async def vh_amenity_book(
+            ticket_id: Ticket, client_reference: Reference,
+            amenity_ref: Annotated[str, Field(description="amenity_ref of the amenity, from vh_amenities.")],
+            start_at: Annotated[str, Field(description="Start, e.g. 2026-10-12T17:00:00+07:00, on a free slot from vh_amenity_availability.")],
+            end_at: Annotated[str, Field(description="End, same form; whole slots.")],
+            area: Annotated[str | None, Field(description="Area of the amenity, from vh_amenities; the first one when left out.")] = None,
+            people: Annotated[int, Field(description="How many people.")] = 1) -> str:
+        """Offer a booking: the resident gets a card in the chat and books by tapping it. This books NOTHING by itself."""
+        return await run(True, work.amenity_book, ticket_id, amenity_ref, start_at, end_at, area, people, client_reference)
+
+    @mcp.tool()
+    async def vh_amenity_cancel(ticket_id: Ticket, client_reference: Reference,
+                                booking_ref: Annotated[str, Field(description="booking_ref of the booking, from vh_amenities.")]) -> str:
+        """Cancel a booking of the resident's home, when the amenity still allows it."""
+        return await run(True, work.amenity_cancel, ticket_id, booking_ref, client_reference)
+
     @mcp.tool()
     async def vh_visitor_register(
             ticket_id: Ticket, client_reference: Reference,

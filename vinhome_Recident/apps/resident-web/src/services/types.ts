@@ -34,6 +34,19 @@ export type PlatformQuote = {
   total: number;
   status: PlatformApproval["status"];
 };
+/** An amenity booking the assistant offers: nothing is booked until the resident taps the card. */
+export type PlatformBooking = {
+  id: string;
+  amenity: string;
+  area: string;
+  startAt: string;
+  endAt: string;
+  guests: number;
+  total: number;
+  status: "pending" | "booked" | "expired";
+  /** Once booked: where the booking stands (confirmed, or waiting for payment). */
+  bookingStatus?: string;
+};
 export type ChatMessage = {
   id: string;
   role: "resident" | "assistant";
@@ -42,6 +55,7 @@ export type ChatMessage = {
   requestId?: string;
   approval?: PlatformApproval;
   quote?: PlatformQuote;
+  booking?: PlatformBooking;
 };
 export type Draft = {
   step: "description" | "location" | "review";

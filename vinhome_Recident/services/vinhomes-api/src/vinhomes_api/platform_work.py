@@ -19,7 +19,11 @@ from sqlalchemy import text
 
 from .knowledge import search
 from .platform import ACTIVE, CLIENT_ID, TENANT, VN, _quote, command, platform_client, vn_time
-from .resident_services import VisitorCreate, announcements, balance, create_visitor_pass, debit_notes, home_rules
+from .platform import booking_card, post_chat
+from .resident_services import (BookingCreate, VisitorCreate, amenities, announcements, availability, balance, cancel_booking,
+                                cancel_visitor_pass, cards, construction_permits, construction_policy, create_visitor_pass,
+                                debit_notes, home_rules, list_requests, load_amenity, mask, my_bookings, report_lost, visitor_passes)
+from .v3_resident import list_my_tickets
 from .v3_mutations import requires_plan
 from .work_offers import agent_event, offer_queued_work, offer_work
 
@@ -190,6 +194,105 @@ async def _home(db, ticket_id, call, *more):
         return await call(ticket["unit_id"], (db, ticket["requester_user_id"]), *more)
     except HTTPException:
         raise Refused("Người gửi yêu cầu không có quyền xem thông tin này của căn (công nợ chỉ dành cho chủ hộ và người thuê).") from None
+
+
+def _ref(value, what: str) -> UUID:
+    """An item the agent names by the *_ref a look-up gave it."""
+    try:
+        return UUID(str(value).strip())
+    except ValueError:
+        raise Refused(f"{what} không đúng. Hãy tra lại danh sách và chép đúng giá trị *_ref.") from None
+
+
+def _day(value: datetime) -> str:
+    return value.astimezone(VN).strftime("%H:%M")
+
+
+async def visitors(db, ticket_id) -> dict:
+    found = await _home(db, ticket_id, visitor_passes, 20)
+    return {"visits": [{"visit_ref": str(v["id"]), "guest_name": v["guest_name"], "guest_count": v["guest_count"],
+                        "purpose": VISIT_PURPOSES.get(v["purpose"], v["purpose"]), "visit_from": _at(v["visit_from"]),
+                        "visit_to": _at(v["visit_to"]), "visit_status": v["status"]} for v in found["items"]]}
+
+
+async def access_cards(db, ticket_id) -> dict:
+    found = await _home(db, ticket_id, cards)
+    # The number is shown as its last four digits: enough for the resident to tell their cards apart.
+    return {"cards": [{"card_ref": str(c["id"]), "card_no": mask(c["card_no"]), "kind": c["kind"], "card_status": c["status"],
+                       "holder_name": c["holder_name"], "vehicle_plate_no": c["vehicle_plate_no"],
+                       "valid_to": _at(c["valid_to"]) if isinstance(c["valid_to"], datetime) else c["valid_to"]} for c in found["items"]]}
+
+
+async def amenity_list(db, ticket_id) -> dict:
+    """What can be booked, and what this home has booked from now on."""
+    ticket = await _ticket(db, ticket_id)
+    scope = (db, ticket["requester_user_id"])
+    places = (await amenities(scope))["items"]
+    names = {p["id"]: p["name"] for p in places}
+    booked = (await _home(db, ticket_id, lambda unit, who: my_bookings(who, unit, 50)))["items"]
+    return {"amenities": [{"amenity_ref": str(p["id"]), "name": p["name"], "category": p["category"], "areas": p["areas"],
+                           "price_per_slot": int(p["price"]), "slot_minutes": p["slot_minutes"], "open": str(p["open_time"])[:5],
+                           "close": str(p["close_time"])[:5], "open_weekdays": p["open_weekdays"], "book_days_ahead": p["max_advance_days"],
+                           "cancel_hours_ahead": p["cancel_before_hours"], "max_people": p["max_guests"], "rules": p["rules_note"],
+                           "open_now_for_booking": p["status"] == "active"} for p in places],
+            "bookings": [{"booking_ref": str(b["id"]), "amenity": names.get(b["amenity_id"]), "area": b["area_code"], "start": _at(b["start_at"]),
+                          "end": _at(b["end_at"]), "people": b["guests"], "booking_status": b["status"], "total": int(b["total_amount"])}
+                         for b in booked if b["status"] in ("pending_payment", "confirmed") and b["end_at"] > datetime.now(VN)]}
+
+
+async def amenity_free(db, ticket_id, amenity_ref, date: str) -> dict:
+    ticket = await _ticket(db, ticket_id)
+    try:
+        found = await availability(_ref(amenity_ref, "amenity_ref"), (db, ticket["requester_user_id"]), (date or "").strip())
+    except (HTTPException, ValueError):
+        raise Refused("Không có tiện ích đó, hoặc ngày không đúng dạng 2026-10-12.") from None
+    if not found["bookable"]:
+        return {"date": found["date"], "bookable": False, "areas": [], "note": "Ngày này tiện ích không mở, đang đóng, hoặc ngoài thời hạn được đặt trước."}
+    return {"date": found["date"], "bookable": True, "areas": [
+        {"area": area["area_code"], "free_slots": [f"{_day(slot['start'])}-{_day(slot['end'])}" for slot in area["slots"] if slot["free"]]}
+        for area in found["areas"]]}
+
+
+async def desk_requests(db, ticket_id) -> dict:
+    found = await _home(db, ticket_id, list_requests, 20)
+    return {"requests": [{"kind": r["kind"], "request_status": r["status"], "details": r["details"], "created_at": _at(r["created_at"]),
+                          "submitted_at": _at(r["submitted_at"]), "due_at": _at(r["sla_due_at"]), "fulfilled_at": _at(r["fulfilled_at"]),
+                          "decision_note": r["decision_note"], "fee": int(r["fee_amount"]) if r["fee_amount"] is not None else None}
+                         for r in found["items"]]}
+
+
+async def renovation(db, ticket_id) -> dict:
+    """The renovation rules of the home and its permits (owner and tenant only, as in the resident's app)."""
+    ticket = await _ticket(db, ticket_id)
+    if ticket["unit_id"] is None:
+        raise Refused("Yêu cầu này không gắn với căn hộ nào.")
+    scope = (db, ticket["requester_user_id"])
+    try:
+        permits = (await construction_permits(ticket["unit_id"], scope))["items"]
+    except HTTPException:
+        raise Refused("Chỉ chủ hộ và người thuê xem được quy định và giấy phép thi công của căn.") from None
+    try:
+        rules = await construction_policy(ticket["unit_id"], scope)
+    except HTTPException:
+        rules = None
+    return {"rules": None if rules is None else {
+                "work_time": f"{str(rules['work_time_from'])[:5]}-{str(rules['work_time_to'])[:5]}",
+                "noisy_time": f"{str(rules['noisy_time_from'])[:5]}-{str(rules['noisy_time_to'])[:5]}" if rules["noisy_time_from"] else None,
+                "no_work_weekdays": rules["no_work_weekdays"], "deposit": int(rules["deposit_amount"] or 0),
+                "overtime_fee_per_hour": int(rules["overtime_fee_per_hour"] or 0), "max_workers": rules["max_workers"],
+                "max_duration_days": rules["max_duration_days"], "note": rules["note"]},
+            "permits": [{"category": x["category"], "work": x["scope_description"], "contractor": x["contractor_name"],
+                         "planned_start": str(x["planned_start"]), "planned_end": str(x["planned_end"]), "permit_status": x["status"],
+                         "reject_reason": x["reject_reason"], "deposit": int(x["deposit_amount"] or 0), "deposit_status": x["deposit_status"]}
+                        for x in permits]}
+
+
+async def other_requests(db, ticket_id) -> dict:
+    """The resident's other requests, newest first; only this one can be worked on with the tools."""
+    ticket = await _ticket(db, ticket_id)
+    mine = (await list_my_tickets((db, ticket["requester_user_id"]), 20, 0))["items"]
+    return {"requests": [{"title": t["title"], "request_status": t["status"], "priority": t["priority"], "created_at": _at(t["created_at"]),
+                          "updated_at": _at(t["updated_at"])} for t in mine if str(t["id"]) != str(ticket["id"])]}
 
 
 async def rules(db, ticket_id) -> dict:
@@ -452,6 +555,58 @@ async def visitor_register(db, ticket_id, guest_name: str, visit_from: str, visi
                 "guest_count": made["guest_count"], "visit_from": _at(made["visit_from"]), "visit_to": _at(made["visit_to"]),
                 "note": "Lượt khách này chờ quầy lễ tân duyệt." if waits else "Đã được duyệt; mã vào cổng nằm ở mục Khách đến thăm trong ứng dụng của cư dân."}, None
     return await _act(db, "vh_visitor_register", ticket_id, client_reference, effect)
+
+
+async def _as_resident(db, tool: str, ticket_id, reference, what: str, call, item, done: dict) -> dict:
+    """One thing the resident may do to an item of their own (cancel a visit, a booking, report a card lost), done
+    for them through the resident's own rule: it refuses what the app would refuse."""
+    async def effect(ticket):
+        try:
+            await call(_ref(item, what), (db, ticket["requester_user_id"]))
+        except HTTPException as no:
+            raise Refused(f"Chưa thực hiện được: {no.detail}") from None
+        return {"status": "confirmed", **done}, None
+    return await _act(db, tool, ticket_id, reference, effect)
+
+
+async def visitor_cancel(db, ticket_id, visit_ref, client_reference) -> dict:
+    return await _as_resident(db, "vh_visitor_cancel", ticket_id, client_reference, "visit_ref", cancel_visitor_pass, visit_ref, {"visit_status": "cancelled"})
+
+
+async def card_lost(db, ticket_id, card_ref, client_reference) -> dict:
+    return await _as_resident(db, "vh_card_report_lost", ticket_id, client_reference, "card_ref", report_lost, card_ref,
+                              {"card_status": "lost", "note": "Thẻ đã bị khóa. Cấp thẻ mới là một yêu cầu riêng tại quầy lễ tân."})
+
+
+async def amenity_cancel(db, ticket_id, booking_ref, client_reference) -> dict:
+    return await _as_resident(db, "vh_amenity_cancel", ticket_id, client_reference, "booking_ref", cancel_booking, booking_ref, {"booking_status": "cancelled"})
+
+
+async def amenity_book(db, ticket_id, amenity_ref, start_at: str, end_at: str, area: str | None, people: int, client_reference) -> dict:
+    """Shows the resident a booking card in the chat. Nothing is booked here: the place is taken when the resident
+    taps the card (a booking may cost money), under the rules of the amenity, checked again at that moment."""
+    async def effect(ticket):
+        if ticket["unit_id"] is None:
+            raise Refused("Yêu cầu này không gắn với căn hộ nào.")
+        try:
+            place = await load_amenity(db, _ref(amenity_ref, "amenity_ref"))
+            wanted = BookingCreate(unit_id=ticket["unit_id"], amenity_id=place["id"], area_code=(area or "").strip() or place["areas"][0],
+                                   start_at=_time(start_at, "Giờ bắt đầu"), end_at=_time(end_at, "Giờ kết thúc"), guests=people)
+        except HTTPException:
+            raise Refused("Không có tiện ích đó.") from None
+        except ValueError:
+            raise Refused("Thông tin đặt chỗ không hợp lệ (số người từ 1 đến 100).") from None
+        minutes = int((wanted.end_at - wanted.start_at).total_seconds() // 60)
+        if place["status"] != "active" or wanted.area_code not in place["areas"] or minutes <= 0 or minutes % place["slot_minutes"]:
+            raise Refused(f"Tiện ích phải đang mở, khu vực là một trong: {', '.join(place['areas'])}, và thời gian là các lượt {place['slot_minutes']} phút.")
+        total = int(place["price"]) * (minutes // place["slot_minutes"])
+        link = (await db.execute(text(f"select ticket_id,channel_id from platform_links where ticket_id=:id and tenant_id={TENANT}"),
+                                 {"id": ticket["id"]})).mappings().one()
+        await post_chat(db, link, "booking:" + client_reference, booking_card(client_reference, place, wanted, total))
+        return {"status": "confirmed", "card_shown": True, "booked": False, "amenity": place["name"], "area": wanted.area_code,
+                "start": _at(wanted.start_at), "end": _at(wanted.end_at), "people": wanted.guests, "total": total,
+                "note": "CHƯA đặt chỗ. Cư dân đã nhận một thẻ trong hộp chat và phải tự bấm xác nhận; khi họ bấm bạn sẽ nhận được tin."}, None
+    return await _act(db, "vh_amenity_book", ticket_id, client_reference, effect)
 
 
 async def offer_waiting(db, turned_down=()) -> int:

@@ -476,6 +476,73 @@ async def quote_states(db, messages: list[dict]) -> None:
         card["status"] = states.get(card["approval_id"], "expired")
 
 
+# ---- an amenity booking, confirmed by the resident's own tap ---------------------------------------------------------
+
+BOOKING_MINUTES = 15  # how long a card may be confirmed: after that the slot is asked for again
+
+
+def booking_card(card_id: str, amenity: dict, wanted, total: int) -> dict:
+    """The chat message that offers one booking. It books nothing: see confirm_booking."""
+    when = f"{vn_time(wanted.start_at)} đến {wanted.end_at.astimezone(VN):%H:%M}"
+    words = [f"Đặt {amenity['name']} ({wanted.area_code}): {when}, {wanted.guests} người.",
+             f"Phí: {_dong(total)}." if total else "Miễn phí.", "Bạn bấm Xác nhận đặt chỗ trên thẻ này để giữ chỗ."]
+    return {"text": "\n".join(words), "platform": {
+        "kind": "booking", "card_id": card_id, "amenity_id": str(amenity["id"]), "amenity": amenity["name"], "area": wanted.area_code,
+        "unit_id": str(wanted.unit_id), "start_at": wanted.start_at.isoformat(), "end_at": wanted.end_at.isoformat(), "guests": wanted.guests,
+        "total": total, "expires_at": (datetime.now(UTC) + timedelta(minutes=BOOKING_MINUTES)).isoformat()}}
+
+
+def _booking_cards(messages: list[dict]) -> list[dict]:
+    return [m["body"]["platform"] for m in messages
+            if isinstance(m["body"], dict) and isinstance(m["body"].get("platform"), dict) and m["body"]["platform"].get("kind") == "booking"]
+
+
+async def booking_states(db, actor_id: str, messages: list[dict]) -> None:
+    """Adds platform.status to every booking card among these chat messages: `booked` once the resident confirmed it
+    (with where the booking stands), else `pending` or `expired`. Read from the bookings, never stored in the message."""
+    cards = _booking_cards(messages)
+    if not cards:
+        return
+    rows = await db.execute(text(f"select idempotency_key,status from amenity_bookings where idempotency_key=any(:keys) and tenant_id={TENANT}"),
+                            {"keys": [f"{actor_id}:{card['card_id']}" for card in cards]})
+    made = dict(rows.all())
+    for card in cards:
+        booking = made.get(f"{actor_id}:{card['card_id']}")
+        card["status"] = "booked" if booking else "expired" if datetime.fromisoformat(card["expires_at"]) <= datetime.now(UTC) else "pending"
+        if booking:
+            card["booking_status"] = booking
+
+
+@router.post("/resident/platform/bookings/{card_id}/confirm", summary="Book what the coordinator's card in my chat offers")
+async def confirm_booking(scope: ResidentScope, card_id: str = Path(min_length=8, max_length=200)) -> dict[str, object]:
+    db, actor_id = scope
+    found = (await db.execute(text(f"""
+        select m.body,l.ticket_id from platform_inbox i
+        join platform_links l on l.ticket_id=i.ticket_id and l.tenant_id=i.tenant_id
+        join messages m on m.id=i.chat_message_id and m.tenant_id=i.tenant_id and m.channel_id=l.channel_id
+        where i.platform_id=:id and l.user_id=:actor and i.tenant_id={TENANT}
+    """), {"id": "booking:" + card_id, "actor": actor_id})).mappings().first()
+    if found is None:
+        raise HTTPException(404, "Booking card not found")
+    card = found["body"]["platform"]
+    from .resident_services import BookingCreate, book
+
+    already = (await db.execute(text(f"select 1 from amenity_bookings where idempotency_key=:key and tenant_id={TENANT}"),
+                                {"key": f"{actor_id}:{card_id}"})).first()
+    if already is None and datetime.fromisoformat(card["expires_at"]) <= datetime.now(UTC):
+        raise HTTPException(409, "Thẻ đặt chỗ đã hết hạn. Bạn nhắn lại để được đặt lượt khác.")
+    # The resident's own booking, under every rule of the amenity; the card id makes a second tap the same booking.
+    made = await book(BookingCreate(unit_id=card["unit_id"], amenity_id=card["amenity_id"], area_code=card["area"],
+                                    start_at=card["start_at"], end_at=card["end_at"], guests=card["guests"]), (db, actor_id), card_id)
+    if already is None:
+        waits = made["status"] == "pending_payment"
+        # `own`: the bridge's words, so that the coordinator knows and can tell the resident what comes next.
+        await command(db, found["ticket_id"], "workflow_reply", {"own": True, "text":
+                      f"Tôi đã bấm xác nhận đặt {card['amenity']} ({card['area']}), {vn_time(made['start_at'])}. "
+                      + ("Lượt đặt đang chờ thanh toán." if waits else "Lượt đặt đã được xác nhận.")})
+    return {"card_id": card_id, "status": "booked", "booking_status": made["status"]}
+
+
 # ---- staff progress, as the platform's provider events (spec section 7) --------------------------------------------
 
 def _quote(context: dict) -> dict:

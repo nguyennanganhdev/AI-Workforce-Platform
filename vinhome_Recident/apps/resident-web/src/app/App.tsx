@@ -502,6 +502,7 @@ export function App({ live }: { live?: ConnectedResident }) {
               question={live?.question()}
               onApproval={live?.decidePlatform}
               onQuote={live?.decideQuote}
+              onBooking={live?.confirmBooking}
               onResolve={live?.decide}
               onOpen={openRequest}
               onRequests={() => navigate("requests")}

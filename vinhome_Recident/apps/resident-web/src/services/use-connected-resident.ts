@@ -9,6 +9,7 @@ import {
   withoutRequestCode,
   approvalOf,
   quoteOf,
+  bookingOf,
   type Profile,
   type Chat,
   type Message,
@@ -51,6 +52,8 @@ export function useConnectedResident() {
   const generation = useRef(0);
   const keys = useRef(new Map<string, string>());
   const answered = useRef(new Map<string, boolean>());
+  /** Booking cards confirmed here, shown as booked until the next read says so. */
+  const booked = useRef(new Set<string>());
   const keyFor = (value: string) => {
     if (!keys.current.has(value)) keys.current.set(value, crypto.randomUUID());
     return keys.current.get(value)!;
@@ -145,7 +148,9 @@ export function useConnectedResident() {
         ...(m.body.fileIds?.length
           ? { photos: m.body.fileIds.map((id) => ({ id, name: "Ảnh đính kèm", url: `/api/business/resident/photos/${id}` })) }
           : {}),
-        ...(m.body.platform ? { approval: approvalOf(m.body, answered.current), quote: quoteOf(m.body) } : {}),
+        ...(m.body.platform
+          ? { approval: approvalOf(m.body, answered.current), quote: quoteOf(m.body), booking: bookingOf(m.body, booked.current) }
+          : {}),
       }));
     // Reception answers within the backend's three-minute dispatch limit, or the backend
     // stores a fallback reply. Older unanswered messages predate the agent.
@@ -449,6 +454,15 @@ export function useConnectedResident() {
         accepted,
         reason || "Tôi xác nhận kết quả đã hoàn tất.",
       ),
+    /** The resident's tap on a booking card: this, and nothing the assistant does, books the place. */
+    confirmBooking: (cardId: string) =>
+      run(async () => {
+        await api(`/resident/platform/bookings/${cardId}/confirm`, {
+          method: "POST",
+          headers: { "Idempotency-Key": keyFor(`booking:${cardId}`) },
+        });
+        booked.current.add(cardId);
+      }),
     /** The resident's answer on the quote card of the chat: the same decision as on the request page. */
     decideQuote: (approvalId: string, accepted: boolean, reason?: string) =>
       answer((a) => a.id === approvalId, accepted, reason || "Tôi đồng ý báo giá."),

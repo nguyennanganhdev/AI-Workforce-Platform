@@ -1,4 +1,4 @@
-import type { PlatformApproval, PlatformQuote, ResidentRequest, RequestStatus } from "./types";
+import type { PlatformApproval, PlatformBooking, PlatformQuote, ResidentRequest, RequestStatus } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -79,7 +79,16 @@ export type Message = {
     /** Written by the platform bridge: an approval or a repair quote the resident answers on a card. */
     platform?: {
       kind: string;
-      approval_id: string;
+      /** Of an approval and of a quote. */
+      approval_id?: string;
+      /** Of a booking card. */
+      card_id?: string;
+      amenity?: string;
+      area?: string;
+      start_at?: string;
+      end_at?: string;
+      guests?: number;
+      booking_status?: string;
       summary?: { text?: string; arguments?: { items?: { label: string; amount: number }[]; total?: number } };
       /** Of a quote: the bill. */
       lines?: PlatformQuote["lines"];
@@ -87,7 +96,7 @@ export type Message = {
       warranty_months?: number;
       total?: number;
       expires_at?: string | null;
-      status: PlatformApproval["status"];
+      status: PlatformApproval["status"] | PlatformBooking["status"];
     };
   };
   created_at: string;
@@ -103,15 +112,15 @@ export function approvalOf(
 ): PlatformApproval | undefined {
   const p = body.platform;
   if (p?.kind !== "approval") return undefined;
-  const mine = answered.get(p.approval_id);
+  const mine = answered.get(p.approval_id!);
   const items = p.summary?.arguments?.items;
   return {
-    id: p.approval_id,
+    id: p.approval_id!,
     text: withoutRequestCode(p.summary?.text || body.text || ""),
     ...(Array.isArray(items) && items.length ? { items, total: p.summary?.arguments?.total } : {}),
     status:
       p.status !== "pending"
-        ? p.status
+        ? (p.status as PlatformApproval["status"])
         : mine !== undefined
           ? mine ? "approved" : "rejected"
           : p.expires_at && Date.parse(p.expires_at) <= now
@@ -124,12 +133,33 @@ export function quoteOf(body: Message["body"], now = Date.now()): PlatformQuote 
   const p = body.platform;
   if (p?.kind !== "quote") return undefined;
   return {
-    id: p.approval_id,
+    id: p.approval_id!,
     lines: p.lines ?? [],
     laborCost: p.labor_cost ?? 0,
     warrantyMonths: p.warranty_months ?? 0,
     total: p.total ?? 0,
-    status: p.status === "pending" && p.expires_at && Date.parse(p.expires_at) <= now ? "expired" : p.status,
+    status: p.status === "pending" && p.expires_at && Date.parse(p.expires_at) <= now ? "expired" : (p.status as PlatformApproval["status"]),
+  };
+}
+/** The booking card of a message; `booked` holds the cards the resident confirmed here, until the backend says so. */
+export function bookingOf(body: Message["body"], booked: Set<string>, now = Date.now()): PlatformBooking | undefined {
+  const p = body.platform;
+  if (p?.kind !== "booking" || !p.card_id) return undefined;
+  return {
+    id: p.card_id,
+    amenity: p.amenity ?? "",
+    area: p.area ?? "",
+    startAt: p.start_at ?? "",
+    endAt: p.end_at ?? "",
+    guests: p.guests ?? 1,
+    total: p.total ?? 0,
+    status:
+      p.status === "booked" || booked.has(p.card_id)
+        ? "booked"
+        : p.status === "expired" || (p.expires_at && Date.parse(p.expires_at) <= now)
+          ? "expired"
+          : "pending",
+    ...(p.booking_status ? { bookingStatus: p.booking_status } : {}),
   };
 }
 export type Ticket = {

@@ -137,6 +137,23 @@ Hành động nhận thêm tham số ẩn `client_reference` (platform điền) 
 | `vh_ticket_add_note` | hành động | `ticket_id`, `note` | `confirmed` |
 | `vh_visitor_register` | hành động | `ticket_id`, `guest_name`, `visit_from`, `visit_to`, `purpose`, `guest_count?`, `vehicle_plate_no?` | `confirmed` kèm đã duyệt hay chờ quầy lễ tân duyệt; hoặc `failed` + lý do |
 | `vh_announcements` | tra cứu | `ticket_id` | thông báo của Ban quản lý cho tòa và phân khu của cư dân |
+| `vh_visitor_list` | tra cứu | `ticket_id` | các lượt khách của căn, kèm `visit_ref` |
+| `vh_visitor_cancel` | hành động | `ticket_id`, `visit_ref` | `confirmed` hoặc `failed` + lý do |
+| `vh_cards` | tra cứu | `ticket_id` | thẻ ra vào và thẻ xe của căn (số thẻ chỉ hiện bốn số cuối), kèm `card_ref` |
+| `vh_card_report_lost` | hành động | `ticket_id`, `card_ref` | `confirmed` (thẻ bị khóa) hoặc `failed` + lý do |
+| `vh_amenities` | tra cứu | `ticket_id` | tiện ích đặt được (giá, giờ mở, luật) và các lượt căn đã đặt, kèm `amenity_ref`, `booking_ref` |
+| `vh_amenity_availability` | tra cứu | `ticket_id`, `amenity_ref`, `date` | lượt còn trống trong ngày, theo khu vực |
+| `vh_amenity_book` | hành động | `ticket_id`, `amenity_ref`, `start_at`, `end_at`, `area?`, `people?` | `confirmed` nghĩa là **đã gửi thẻ**, chưa đặt chỗ (xem dưới) |
+| `vh_amenity_cancel` | hành động | `ticket_id`, `booking_ref` | `confirmed` hoặc `failed` + lý do |
+| `vh_service_requests` | tra cứu | `ticket_id` | các yêu cầu căn đã gửi quầy lễ tân và tình trạng |
+| `vh_construction` | tra cứu | `ticket_id` | quy định và giấy phép thi công của căn (chỉ chủ hộ, người thuê) |
+| `vh_my_requests` | tra cứu | `ticket_id` | các yêu cầu khác của cư dân và tình trạng, không kèm mã |
+
+**Đặt tiện ích cần cư dân tự bấm.** Một lượt đặt có thể mất phí, nên `vh_amenity_book` không đặt gì: nó ghi vào hộp chat một thẻ (tiện ích, khu vực, giờ, số người, phí) có nút "Xác nhận đặt chỗ", dùng được trong 15 phút. Cư dân bấm thì `POST /resident/platform/bookings/{card_id}/confirm` mới tạo lượt đặt, bằng đúng luật của tiện ích như khi đặt trong ứng dụng; bấm lại không tạo lượt thứ hai. Sau đó agent điều phối nhận một tin cho biết cư dân đã xác nhận và lượt đặt đang ở trạng thái nào (đã xác nhận, hoặc chờ thanh toán). Trạng thái của thẻ được đọc từ lượt đặt mỗi lần mở hộp chat, không lưu trong tin nhắn.
+
+Các công cụ hành động khác trong nhóm này (hủy lượt khách, hủy lượt đặt, báo mất thẻ) làm việc như chính cư dân làm trong ứng dụng: cùng một luật, và chỉ trên những thứ thuộc căn của cư dân đó.
+
+Chưa có công cụ tạo yêu cầu dịch vụ mới ở quầy (cấp thẻ, đăng ký xe): cư dân tự tạo trong ứng dụng, hoặc nói trong hộp chat để Lễ tân lập yêu cầu.
 
 `vh_ticket_get` có thêm khóa `status: "completed"` **chỉ khi** ticket đã `resolved` hoặc `closed`: platform coi khóa `status` ở tầng trên cùng là bằng chứng việc đã xong.
 

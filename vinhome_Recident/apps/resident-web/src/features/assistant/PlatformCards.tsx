@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { PlatformApproval, PlatformQuote } from "../../services/types";
+import type { PlatformApproval, PlatformBooking, PlatformQuote } from "../../services/types";
 
 const vnd = (n: number) => `${n.toLocaleString("vi-VN")}đ`;
 const OUTCOME = {
@@ -145,6 +145,57 @@ export function QuoteCard({ quote, busy, onDecide }: {
         />
       ) : (
         <p role="status">{QUOTE_OUTCOME[quote.status]}</p>
+      )}
+    </section>
+  );
+}
+
+const clock = (iso: string) => new Date(iso).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Ho_Chi_Minh" });
+const day = (iso: string) => new Date(iso).toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit", timeZone: "Asia/Ho_Chi_Minh" });
+
+/** A booking the assistant offers. The place is taken by the resident's tap and by nothing else: it may cost money. */
+export function BookingCard({ booking, busy, onConfirm }: {
+  booking: PlatformBooking;
+  busy?: boolean;
+  onConfirm: (id: string) => unknown;
+}) {
+  return (
+    <section className="question-card" aria-label="Đặt tiện ích">
+      <strong>Đặt {booking.amenity}</strong>
+      <ul className="approval-costs">
+        <li>
+          <span>Thời gian</span>
+          <span>
+            {clock(booking.startAt)} đến {clock(booking.endAt)}, {day(booking.startAt)}
+          </span>
+        </li>
+        <li>
+          <span>Khu vực</span>
+          <span>{booking.area}</span>
+        </li>
+        <li>
+          <span>Số người</span>
+          <span>{booking.guests}</span>
+        </li>
+        <li>
+          <strong>Phí</strong>
+          <strong>{booking.total > 0 ? vnd(booking.total) : "Miễn phí"}</strong>
+        </li>
+      </ul>
+      {booking.status === "pending" ? (
+        <div className="button-row">
+          <button type="button" className="primary-button" disabled={busy} onClick={() => onConfirm(booking.id)}>
+            Xác nhận đặt chỗ
+          </button>
+        </div>
+      ) : (
+        <p role="status">
+          {booking.status === "expired"
+            ? "Thẻ đặt chỗ đã hết hạn. Bạn nhắn lại để được đặt lượt khác."
+            : booking.bookingStatus === "pending_payment"
+              ? "Đã giữ chỗ. Bạn thanh toán ở mục Tiện ích để hoàn tất."
+              : "Bạn đã đặt chỗ."}
+        </p>
       )}
     </section>
   );

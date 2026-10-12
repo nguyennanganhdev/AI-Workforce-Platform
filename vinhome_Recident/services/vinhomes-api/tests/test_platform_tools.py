@@ -860,8 +860,10 @@ def test_the_mcp_server_lists_and_runs_the_tools_only_for_the_token(database, on
         assert "mcp-session-id" not in direct.headers   # stateless
 
         tools = {tool.name: tool for tool in asyncio.run(session(lambda client: client.list_tools())).tools}
-        looks = {"vh_ticket_get", "vh_resident_context", "vh_knowledge_search", "vh_home_rules", "vh_debit_notes", "vh_staff_available", "vh_announcements"}
-        acts = {"vh_work_order_dispatch", "vh_work_order_reschedule", "vh_ticket_cancel", "vh_ticket_add_note", "vh_visitor_register"}
+        looks = {"vh_ticket_get", "vh_resident_context", "vh_knowledge_search", "vh_home_rules", "vh_debit_notes", "vh_staff_available", "vh_announcements",
+                 "vh_visitor_list", "vh_cards", "vh_amenities", "vh_amenity_availability", "vh_service_requests", "vh_construction", "vh_my_requests"}
+        acts = {"vh_work_order_dispatch", "vh_work_order_reschedule", "vh_ticket_cancel", "vh_ticket_add_note", "vh_visitor_register",
+                "vh_visitor_cancel", "vh_card_report_lost", "vh_amenity_book", "vh_amenity_cancel"}
         # Nothing records an answer to a quote: that is the resident's own tap on the card.
         assert set(tools) == looks | acts
         for name, tool in tools.items():
@@ -917,3 +919,76 @@ def test_a_visitor_is_announced_once_under_the_rules_of_the_zone_and_the_notices
           where ur.user_id=$1 and (u.building_id=any(a.building_ids) or u.zone_id=any(a.zone_ids)))) order by a.published_at desc limit 10""", AN)
     assert seen and [a["title"] for a in seen] == [a["title"] for a in mine]                                             # 5: what the resident's own app lists
     assert all(re.fullmatch(WHEN, a["published_at"]) for a in seen)
+
+
+def test_the_services_of_the_home_are_read_and_changed_as_the_resident_would_and_a_booking_waits_for_their_tap(database, on):
+    with person(database, AN) as c:
+        channel, ticket = hand_over(c)
+    home = sql(database, "select unit_id from tickets where id=$1", UUID(ticket))[0]["unit_id"]
+    soon, later = (datetime.now(VN) + timedelta(hours=3)).isoformat(), (datetime.now(VN) + timedelta(hours=6)).isoformat()
+
+    # Visitors: listed with a reference, cancelled once.
+    call(database, work.visitor_register, ticket, "Khách dịch vụ", soon, later, "family_visit", 1, None, ref())
+    visit = next(v for v in call(database, work.visitors, ticket)["visits"] if v["guest_name"] == "Khách dịch vụ")
+    assert visit["visit_status"] == "approved" and re.fullmatch(WHEN, visit["visit_from"])
+    assert call(database, work.visitor_cancel, ticket, visit["visit_ref"], ref()) == {"status": "confirmed", "visit_status": "cancelled"}   # 1
+    assert call(database, work.visitor_cancel, ticket, visit["visit_ref"], ref())["status"] == "failed"                                     # 2: not twice
+    assert call(database, work.visitor_cancel, ticket, "không-phải-mã", ref())["status"] == "failed"
+
+    # Cards: the number is masked; a lost card is blocked; a card of another home cannot be touched.
+    sql(database, "insert into access_cards(tenant_id,card_no,kind,unit_id,status,holder_name) values($1,'C-TOOL-778899','resident',$2,'pending_issue','Người giữ thẻ') returning id", TENANT, home)
+    elsewhere = sql(database, "insert into access_cards(tenant_id,card_no,kind,unit_id,status) select $1,'C-TOOL-OTHER','resident',id,'pending_issue' from units where id<>$2 limit 1 returning id", TENANT, home)[0]["id"]
+    sql(database, "update access_cards set status='active' where card_no like 'C-TOOL-%' returning id")
+    mine = next(k for k in call(database, work.access_cards, ticket)["cards"] if k["holder_name"] == "Người giữ thẻ")
+    assert mine["card_no"].endswith("8899") and mine["card_no"].startswith("*") and mine["card_status"] == "active"                        # 3
+    assert call(database, work.card_lost, ticket, mine["card_ref"], ref())["card_status"] == "lost"                                         # 4
+    assert sql(database, "select status from access_cards where card_no='C-TOOL-778899'")[0]["status"] == "lost"
+    assert call(database, work.card_lost, ticket, str(elsewhere), ref())["status"] == "failed"                                              # 5
+    assert sql(database, "select status from access_cards where id=$1", elsewhere)[0]["status"] == "active"
+
+    # Amenities: a free slot the day after tomorrow, offered on a card; nothing is booked until the resident taps.
+    day = (datetime.now(VN) + timedelta(days=2)).date().isoformat()
+    places = call(database, work.amenity_list, ticket)["amenities"]
+    assert places and all(a["amenity_ref"] and a["name"] for a in places)
+    place, area, slot = next((a, f["area"], f["free_slots"][0]) for a in places if a["open_now_for_booking"]
+                             for f in call(database, work.amenity_free, ticket, a["amenity_ref"], day)["areas"] if f["free_slots"])
+    start, end = (f"{day}T{part}:00+07:00" for part in slot.split("-"))
+    before = sql(database, "select count(*) as n from amenity_bookings")[0]["n"]
+    card_id = ref()
+    offered = call(database, work.amenity_book, ticket, place["amenity_ref"], start, end, area, 2, card_id)
+    assert (offered["status"], offered["card_shown"], offered["booked"]) == ("confirmed", True, False)                                      # 6
+    assert offered["total"] == place["price_per_slot"] and sql(database, "select count(*) as n from amenity_bookings")[0]["n"] == before  # 7: no booking yet
+    assert call(database, work.amenity_book, ticket, place["amenity_ref"], start, end, area, 2, card_id) == offered
+    shown = [m for m in chat(database, channel) if (m.get("platform") or {}).get("kind") == "booking"]
+    assert len(shown) == 1 and place["name"] in shown[0]["text"]                                                                           # 8: one card
+
+    def card(c):
+        return next(m["body"]["platform"] for m in c.get(f"/resident/chats/{channel}/messages").json()["items"] if (m["body"].get("platform") or {}).get("kind") == "booking")
+
+    with person(database, CHAU) as other:
+        assert other.post(f"/resident/platform/bookings/{card_id}/confirm", headers=key()).status_code == 404                               # 9: only its resident
+    with person(database, AN) as c:
+        assert card(c)["status"] == "pending"
+        done = c.post(f"/resident/platform/bookings/{card_id}/confirm", headers=key())
+        assert done.status_code == 200 and done.json()["status"] == "booked", done.text                                                    # 10: the resident's tap books
+        assert c.post(f"/resident/platform/bookings/{card_id}/confirm", headers=key()).json() == done.json()
+        assert card(c)["status"] == "booked" and card(c)["booking_status"] == done.json()["booking_status"]
+    booked = sql(database, "select status,booked_by_user_id,guests from amenity_bookings where idempotency_key=$1", f"{AN}:{card_id}")
+    assert len(booked) == 1 and booked[0]["booked_by_user_id"] == AN and booked[0]["guests"] == 2
+    told = [x["body"]["text"] for x in commands(database, ticket) if x["kind"] == "workflow_reply"]
+    assert len(told) == 1 and told[0].startswith("Tôi đã bấm xác nhận đặt " + place["name"])                                              # 11: the coordinator is told, once
+    mine = call(database, work.amenity_list, ticket)["bookings"]
+    assert [b["amenity"] for b in mine if b["start"] == offered["start"]] == [place["name"]]
+    held = next(b for b in mine if b["start"] == offered["start"])
+    assert call(database, work.amenity_cancel, ticket, held["booking_ref"], ref()) == {"status": "confirmed", "booking_status": "cancelled"}   # 12
+    for bad in ((place["amenity_ref"], start, start, area), (str(uuid4()), start, end, area), (place["amenity_ref"], start, end, "khu-khong-co")):
+        assert call(database, work.amenity_book, ticket, *bad, 1, ref())["status"] == "failed"                                              # 13
+    assert len([m for m in chat(database, channel) if (m.get("platform") or {}).get("kind") == "booking"]) == 1
+
+    # The rest only reads, and never names another request by its code.
+    assert isinstance(call(database, work.desk_requests, ticket)["requests"], list)
+    assert set(call(database, work.renovation, ticket)) == {"rules", "permits"}
+    with person(database, AN) as c:
+        hand_over(c, "Đèn phòng khách không sáng lần hai")
+    others = call(database, work.other_requests, ticket)["requests"]
+    assert len(others) == min(20, sql(database, "select count(*) as n from tickets where requester_user_id=$1", AN)[0]["n"]) - 1 and "lần hai" in others[0]["title"] and all(set(o) == {"title", "request_status", "priority", "created_at", "updated_at"} for o in others)                    # 14
