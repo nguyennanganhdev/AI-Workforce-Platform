@@ -1,7 +1,7 @@
 # The platform image: awp (platform_VP/core) on the vendored AgentScope (platform_VP/agentscope), both installed from
 # this repository's source. Build context: platform_VP.
 #
-#   docker build -t awp-platform:0.1.0 -f platform_VP/Dockerfile platform_VP
+#   docker build -t awp-platform:0.3.0 -f platform_VP/Dockerfile platform_VP
 #
 # Third-party packages come from deploy/requirements.lock (exact versions and hashes, wheels only). Nothing secret is
 # copied in: keys, database URLs and the model catalog arrive at run time (deploy/compose.yml, deploy/.env).

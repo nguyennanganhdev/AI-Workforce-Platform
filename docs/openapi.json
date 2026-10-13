@@ -1241,6 +1241,26 @@
     "title": "ClientIn",
     "type": "object"
    },
+   "ClientPatch": {
+    "additionalProperties": false,
+    "description": "What an operator may change on a client: its capabilities (the whole list, as it should be from now on).",
+    "properties": {
+     "capabilities": {
+      "items": {
+       "const": "attach_asset",
+       "type": "string"
+      },
+      "maxItems": 1,
+      "title": "Capabilities",
+      "type": "array"
+     }
+    },
+    "required": [
+     "capabilities"
+    ],
+    "title": "ClientPatch",
+    "type": "object"
+   },
    "ConfirmResult": {
     "description": "Confirm result for a tool call.",
     "properties": {
@@ -12800,6 +12820,55 @@
     "tags": [
      "workforce-admin"
     ]
+   },
+   "patch": {
+    "description": "Give or take a capability (`attach_asset`: the image extension, spec A3). It holds from the next request on:\nevery request reads the client's row.",
+    "operationId": "patch_client_platform_v1_wf_clients__client_id__patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "client_id",
+      "required": true,
+      "schema": {
+       "title": "Client Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ClientPatch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Patch Client",
+    "tags": [
+     "workforce-admin"
+    ]
    }
   },
   "/platform/v1/wf/clients/{client_id}/integrations": {
@@ -16556,6 +16625,25 @@
      }
     },
     "summary": "Decision",
+    "tags": [
+     "workforce"
+    ]
+   }
+  },
+  "/workforce/v1/partner/assets": {
+   "post": {
+    "operationId": "upload_workforce_v1_partner_assets_post",
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Upload",
     "tags": [
      "workforce"
     ]

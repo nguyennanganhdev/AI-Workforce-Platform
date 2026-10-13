@@ -389,3 +389,19 @@ Lần này bản sao bị giết là bản giữ job, còn lời gọi đối t�
 ### 10.5 Dọn dẹp
 
 `docker compose --profile demo --profile two --profile not-wired down -v`, xóa `deploy/.env` của lần chạy. Kiểm lại: không còn container, volume hay network nào tên `awp-platform*`. Image `awp-platform:0.2.0` được giữ lại; `awp-platform:0.1.0` đã bị lần build đầu của slice này ghi đè và được dựng lại từ mã đã commit của B4 (id mới, không còn là `7845e29d…` ở mục 1).
+
+## Docker 0.3.0 verification - 2026-10-13
+
+Source: `feat/platform-core`, base commit `e198d5e`, with the Docker/S3 wiring changes of this section. This stack is separate from `vp-platform` and `vinhomes-domain`.
+
+- Image: `awp-platform:0.3.0`, image ID `sha256:14a66d3489485a6822ca3a5ccf541b65832b13ce2638e49777e6da0348599cc1`.
+- Build completed; hash-locked dependencies and `pip check` passed. Runtime user is `10001:10001`.
+- Compose was started from `E:/AI-Workforce-Platform/platform_VP/deploy` with `--profile demo --profile two`. PostgreSQL, Redis, MinIO, api, api2 and the two demo services are healthy; the migration job exited 0 on new volumes.
+- Installed `awp` source and console resources match all 115 local package files byte for byte. No source mount supplies the package.
+- `python smoke.py --docker --sse-base http://127.0.0.1:8801`: **23/23 passed**. HTTP commands reach api; SSE is read from api2. Checks include console, evaluation/release, MCP discovery, consent, provider signatures, dedupe and explicit close.
+- New image step: PNG upload returns the expected SHA-256 and size; replay returns the same asset; changing bytes under the same request ID returns 409. Reading the object from MinIO matches the hash; its signed URL works and unsigned read returns 403.
+- Targeted assets and console suite: **119 passed, 5 skipped in 27.90s**. The skipped cases need real MinIO; a separate run of those cases against this stack's MinIO then gave **5 passed in 9.57s**.
+- OpenAPI regenerated from the installed image: 147 paths, including `/workforce/v1/partner/assets`; the existing JSON formatting is preserved.
+- Local `.env` and smoke state remain ignored. No keys or deployment passwords are included in this report or committed.
+
+This proves local Docker packaging and the scripted workflow. It does not establish production acceptance, model quality, a real partner integration, restore from backups or resilience to infrastructure outages. Image support checks magic bytes; decoding, malware scanning and EXIF removal are not implemented. The signed public endpoint must be configured for the actual MCP/model readers before external deployment.

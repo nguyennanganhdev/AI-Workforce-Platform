@@ -1,6 +1,6 @@
 # Workforce v1: tài liệu bàn giao (Docker)
 
-Cập nhật: 12/10/2026 (bước B4; Redis và hai bản sao API thêm ở P5b). Viết cho hai người đọc:
+Cập nhật: 13/10/2026 (Docker 0.3.0: PostgreSQL, Redis, MinIO và hai bản sao API). Viết cho hai người đọc:
 
 - **Người vận hành platform**: chạy, dừng, nâng cấp, sao lưu, xoay khóa, xử lý workflow cần người (mục 1 đến 9).
 - **Người tích hợp phía đối tác**: gọi API công khai `/workforce/v1` (mục 10).
@@ -19,11 +19,13 @@ Tài liệu này nói về *chạy platform bằng Docker trên một máy*. Ý 
 | `api` | `awp-platform:<tag>` | Platform: `/workforce/v1` (đối tác), `/platform/v1` (admin, manager), `/console` (trang quản trị), engine workflow và các vòng quét nền, tất cả trong một tiến trình | **đang dùng** |
 | `api2` | `awp-platform:<tag>` | Bản sao thứ hai của `api` (cùng image, cùng cấu hình, cùng DB, Redis và volume workspace), chỉ với `--profile two` | tùy chọn |
 | `fake-model`, `fake-mcp` | `awp-platform:<tag>` | Model kịch bản và MCP mẫu, chỉ với `--profile demo` | chỉ để thử |
-| `minio` | `cgr.dev/chainguard/minio` | Có trong compose dưới profile `not-wired` | **chưa nối: mã chưa đọc biến S3 nào** |
+| `minio` | `cgr.dev/chainguard/minio` | Bucket private cho ảnh; API dùng `AWP_ASSET_BACKEND=s3` và `AWP_S3_*` | **đang dùng** |
 
 Image `awp-platform` (`platform_VP/Dockerfile`): `python:3.12-slim`, cài `awp` và AgentScope từ nguồn trong repo, 102 gói bên thứ ba ghim phiên bản và hash ở `deploy/requirements.lock` (đúng phiên bản của venv phát triển), chạy bằng user `awp` (uid 10001), không chứa bí mật. Thư mục duy nhất tiến trình ghi là `/var/lib/awp` (volume `workspaces`).
 
-Cổng trên máy chủ, **tất cả chỉ bind `127.0.0.1`**: API `8800`, bản sao thứ hai `8801`, PostgreSQL `5590` (đổi trong `deploy/.env`: `AWP_HOST_PORT`, `AWP_HOST_PORT2`, `AWP_PG_HOST_PORT`). Redis không publish cổng nào. MinIO `9190`/`9191` chỉ khi bật profile `not-wired`. Muốn cho máy khác gọi tới thì đặt một reverse proxy có TLS phía trước; platform không tự làm TLS.
+Cổng trên máy chủ, **tất cả chỉ bind `127.0.0.1`**: API `8800`, bản sao thứ hai `8801`, PostgreSQL `5590` (đổi trong `deploy/.env`: `AWP_HOST_PORT`, `AWP_HOST_PORT2`, `AWP_PG_HOST_PORT`). Redis không publish cổng nào. MinIO `9190`/`9191` chạy cùng stack. Muốn cho máy khác gọi tới thì đặt một reverse proxy có TLS phía trước; platform không tự làm TLS.
+
+**Địa chỉ ảnh:** `AWP_S3_ENDPOINT=http://minio:9000` dùng trong stack. `AWP_S3_PUBLIC_ENDPOINT` là địa chỉ ký vào link mà MCP/model sẽ đọc; mặc định cũng là `http://minio:9000` cho demo nội bộ. Khi tích hợp bên ngoài, đặt thành endpoint HTTPS họ truy cập được; không sửa host của link sau khi ký. Nếu đã có `deploy/.env` từ 0.2.0, thêm các biến phần 6 của `.env.example` với secret MinIO hiện có; script không ghi đè file cũ.
 
 Tên project compose là `awp-platform`: container `awp-platform-<dịch vụ>-1`, volume `awp-platform_pgdata`, `awp-platform_redisdata`, `awp-platform_workspaces`.
 
@@ -38,7 +40,7 @@ cd platform_VP/deploy
 python init_env.py                 # sinh deploy/.env: khóa admin, AWP_SECRET_KEY, mật khẩu DB; in khóa admin MỘT lần
 # sửa deploy/models.yaml (script chép từ core/models.example.yaml) và thêm khóa model vào deploy/.env, ví dụ OPENAI_API_KEY=...
 docker compose build               # image awp-platform:<AWP_IMAGE_TAG>
-docker compose up -d               # postgres, redis -> migrate -> api   (thêm --profile two để có bản sao thứ hai)
+docker compose up -d               # postgres, redis, minio -> migrate -> api   (thêm --profile two để có bản sao thứ hai)
 docker compose ps                  # api phải (healthy), migrate phải Exited (0)
 curl http://127.0.0.1:8800/platform/v1/health
 ```
@@ -53,7 +55,7 @@ curl http://127.0.0.1:8800/platform/v1/health
 python init_env.py --demo
 docker compose build
 docker compose --profile demo up -d
-python smoke.py --docker           # 22 bước, in PASS/FAIL từng bước
+python smoke.py --docker           # 23 bước, gồm upload ảnh MinIO; in PASS/FAIL từng bước
 docker compose --profile demo down -v
 ```
 
@@ -99,7 +101,7 @@ Quy trình nâng cấp và rollback ở mục này **chưa được chạy thử
 
 ## 5. Sao lưu và khôi phục
 
-Ba thứ phải sao lưu, và để riêng nhau:
+Bốn thứ phải sao lưu, và để riêng bí mật:
 
 1. **Hai database, cùng một thời điểm** (workflow tham chiếu phiên AgentScope bằng id; hai bản lệch nhau để lại workflow mất phiên):
 
@@ -109,7 +111,7 @@ docker compose exec -T postgres pg_dump -U awp -Fc awp         > backups/awp-$(d
 docker compose exec -T postgres pg_dump -U awp -Fc awp_storage > backups/awp_storage-$(date +%F).dump
 ```
 
-Hai lệnh `pg_dump` liền nhau trên một hệ đang nhận request có thể lệch nhau vài giây. Muốn khớp tuyệt đối: `docker compose stop api` trước, hoặc snapshot volume `awp-platform_pgdata`.
+Hai lệnh `pg_dump` liền nhau trên một hệ đang nhận request có thể lệch nhau vài giây. Muốn khớp tuyệt đối: dừng mọi bản sao API (`docker compose --profile two stop api api2`) trước, rồi sao lưu database, workspace và ảnh trong cùng khoảng dừng.
 
 2. **Volume workspace** (bộ nhớ dài hạn và offload ngữ cảnh theo workflow):
 
@@ -121,7 +123,15 @@ docker run --rm -v awp-platform_workspaces:/data:ro python:3.12-slim tar -czf - 
 
 3. **`deploy/.env`**, cất ở nơi giữ bí mật, **không** để chung với bản dump. Mất `AWP_SECRET_KEY` là mất mọi bí mật đã niêm trong database (khóa ký provider, header MCP): phải tạo lại.
 
-Thư mục `deploy/backups/` bị git bỏ qua. Ba lệnh sao lưu trên đã chạy thật trên stack thử.
+4. **Volume MinIO** (`awp-platform_miniodata`): giữ nguyên bytes mà `wf_assets` tham chiếu. Dừng API và MinIO trước khi lấy bản tar; nếu dùng S3 bên ngoài thì dùng snapshot/backup của dịch vụ đó. Khôi phục database mà bỏ mất object ảnh sẽ để lại metadata không đọc được ảnh.
+
+```
+docker compose stop minio
+docker run --rm -v awp-platform_miniodata:/data:ro python:3.12-slim tar -czf - -C /data . > backups/minio-$(date +%F).tgz
+docker compose --profile two up -d
+```
+
+Thư mục `deploy/backups/` bị git bỏ qua. Ba lệnh sao lưu database/workspace đã chạy trên stack thử ở B4; quy trình sao lưu/khôi phục MinIO mới này chưa được diễn tập.
 
 **Khôi phục** (thứ tự; **chưa được chạy thử**, hãy diễn tập trước khi cần):
 
@@ -183,7 +193,7 @@ Hai trạng thái gần giống nhưng **không** xử lý bằng `resolve` (l�
 
 - **Nhiều bản sao cần Redis.** Với `AWP_REDIS_URL` (compose đặt sẵn) chạy được nhiều tiến trình API trên một database; đã chạy thật hai. Bỏ `AWP_REDIS_URL` thì chỉ được một tiến trình: tiến trình thứ hai từ chối khởi động, và sau một lần chết đột ngột tiến trình lên lại chờ tối đa 60 giây. Vẫn tính riêng theo từng tiến trình: rate limit theo khóa API, cache danh sách tool của MCP, cờ "vụ đã hết ngân sách".
 - **Phục hồi sau khi một bản sao chết mất tới một lease** (60 giây mặc định) cho việc bản sao đó đang làm dở. Một tiến trình *treo* lâu hơn lease mà chưa chết bị coi là đã chết (hiếm; có thể làm một tin bị nói hai lần).
-- **Không lưu ảnh/tệp.** Mã chưa có cấu hình S3 nào; MinIO trong compose chưa được dùng (`aioboto3` chưa có trong image).
+- **Ảnh:** upload qua `/workforce/v1/partner/assets` cần capability và quyền `attach_asset`. MinIO lưu bytes, PostgreSQL lưu metadata; bucket private, link có thời hạn. Chỉ nhận PNG/JPEG/GIF/WebP qua magic bytes; chưa decode/scan malware, chưa tạo thumbnail hay bỏ EXIF.
 - **Workspace là volume cục bộ** của một máy: các bản sao phải ở trên cùng máy (hoặc dùng chung một đĩa, chưa kiểm).
 - **Không TLS, không cân bằng tải**: cổng chỉ ở `127.0.0.1`; hai bản sao là hai cổng, chia tải là việc của reverse proxy đặt phía trước. Console phải được phục vụ qua HTTPS khi ra khỏi máy phát triển (khóa nằm trong header của mọi lời gọi).
 - **Nâng cấp có thời gian ngừng** (migration chạy trước khi API mới lên; nâng cấp lần lượt từng bản sao trên hai phiên bản mã chưa được thử, đừng làm khi bản mới có migration).
@@ -193,7 +203,7 @@ Hai trạng thái gần giống nhưng **không** xử lý bằng `resolve` (l�
 - **MCP ở địa chỉ nội bộ bị chặn** (chống SSRF) trừ khi `AWP_MCP_ALLOW_PRIVATE=1`. Profile demo bật biến này vì MCP mẫu nằm trong mạng compose; production để `0`.
 - **Dữ liệu sandbox của các lần đánh giá không tự dọn** (`docs/WORKFORCE_V1_VAN_HANH.md` mục 9).
 - **Image 606 MB trên đĩa** (129 MB nén): phần lớn là phụ thuộc bắt buộc của AgentScope (numpy, SDK của các nhà cung cấp model, gRPC của OpenTelemetry).
-- `core/pyproject.toml` chưa khai `uvicorn` và `cryptography` dù mã dùng; image lấy chúng từ `deploy/requirements.lock`. Cài `awp` bằng `pip install` thuần ở nơi khác sẽ thiếu hai gói này.
+- `core/pyproject.toml` khai `uvicorn` và `cryptography`; bản Docker vẫn dùng dependency lock có hash.
 - `docs/openapi.json` ghi `info.version = 2.0.10dev`: đó là phiên bản AgentScope. Phiên bản hợp đồng đối tác nằm ở `schema_version` trong từng request.
 
 ## 9. Cái đã chứng minh và cái chưa
@@ -215,7 +225,7 @@ Hai trạng thái gần giống nhưng **không** xử lý bằng `resolve` (l�
 - **Model thật.** Mọi "leader" trong smoke và trong bộ test là kịch bản. Chưa biết model thật có gọi đúng tool, có xin đồng ý, có nói đúng tiếng Việt, tốn bao nhiêu. `smoke.py` chạy được với model thật (bỏ `--demo`, khai model trong `deploy/models.yaml`) nhưng **chưa ai chạy**, và các kiểm tra của nó viết cho câu trả lời kịch bản nên có thể đỏ với model thật dù hệ thống đúng.
 - **MCP thật và backend thật của đối tác.** Chỉ có server mẫu ba tool.
 - **Hạ tầng production**: TLS, reverse proxy, giám sát, cảnh báo, tải, nhiều máy, PostgreSQL được quản lý, giới hạn tài nguyên container.
-- **MinIO / lưu ảnh**: chưa nối trong mã. **Hơn hai bản sao, nhiều máy, mất Redis hay PostgreSQL giữa chừng**: chưa thử.
+- **Hơn hai bản sao, nhiều máy, mất Redis hay PostgreSQL giữa chừng**: chưa thử.
 - **Giết giữa một lời gọi model** hoặc **giữa commit và giao SSE** trên container thật: chỉ có trong bộ test giết tiến trình (tiến trình thật, không phải container). Trên Docker mới giết ở một điểm (trong lời gọi đã duyệt). Giết đúng giữa một giao dịch database đang ghi: chưa thử ở đâu.
 - **Khôi phục từ bản sao lưu, nâng cấp, rollback, xoay khóa** trên stack Docker: có quy trình viết ở trên, chưa diễn tập.
 - **Tải**: smoke chạy từng workflow một.

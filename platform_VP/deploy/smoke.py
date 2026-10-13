@@ -26,6 +26,7 @@ Exit code: 0 all steps passed (or paused by --until), 1 a step failed, 2 the scr
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import hmac
 import http.client
@@ -286,6 +287,58 @@ class Smoke:
         check(status == 403, f"a manager key could create a client ({status})")
         return f"{m['manager_id']}, key {k['key_id']}; a manager key cannot create clients (403)"
 
+    def assets(self):
+        if not self.env.get("AWP_ASSET_BACKEND"):
+            return "skipped: AWP_ASSET_BACKEND is not configured"
+        cid = self.s["client_id"]
+        self.expect(self.adm("PATCH", f"/wf/clients/{cid}", {"capabilities": ["attach_asset"]}), 200,
+                    "enable image uploads for the smoke client")
+        key = self.expect(self.adm("POST", f"/wf/clients/{cid}/keys", {"operations": [*OPS, "attach_asset"]}), 201,
+                          "create a key with image permission")["api_key"]
+        # A valid one-pixel PNG; no model call is needed to check the storage wiring.
+        data = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=")
+        params = {"external_request_id": f"image-{self.s['run']}", "external_user_id": USER,
+                  "external_conversation_id": f"image-chat-{self.s['run']}"}
+        def upload(raw):
+            return self.call("POST", PARTNER + "/assets", apikey=key, raw=raw,
+                             headers={"Content-Type": "image/png"}, params=params)
+        first = self.expect(upload(data), 201, "upload a PNG")
+        check(first["sha256"] == hashlib.sha256(data).hexdigest() and first["size"] == len(data), "image metadata differs")
+        check(self.expect(upload(data), 201, "replay the upload") == first, "replay created another asset")
+        check(upload(data + b"changed")[0] == 409, "changed bytes reused the same upload id")
+        if self.args.docker:
+            # Read the object through the installed package, then check the presigned and unsigned URLs internally.
+            script = '''import asyncio, hashlib, json, sys
+import httpx
+from sqlalchemy import text
+from awp.config import Settings
+from awp.db import Database
+from awp.assets import build_store, unsigned
+async def main():
+    asset = json.load(sys.stdin)
+    settings = Settings.from_env()
+    assert settings.asset_backend == "s3"
+    db, store = Database(settings.db_url), build_store(settings)
+    try:
+        async with db.engine.connect() as conn:
+            row = (await conn.execute(text("select object_key from wf_assets where id=:id"), {"id": asset["asset_id"]})).one()
+        data = await store.get(row[0])
+        assert hashlib.sha256(data).hexdigest() == asset["sha256"]
+        link = store.link(row[0], 60)
+        async with httpx.AsyncClient() as client:
+            assert (await client.get(link)).content == data
+            assert (await client.get(unsigned(link))).status_code == 403
+        print("MinIO object hash, signed read and private bucket verified")
+    finally:
+        await store.aclose()
+        await db.dispose()
+asyncio.run(main())'''
+            result = subprocess.run(["docker", "compose", "-p", self.args.project, "exec", "-T", "api", "python", "-c", script],
+                                    cwd=HERE, input=json.dumps(first), text=True, capture_output=True, timeout=60)
+            check(result.returncode == 0, "container image storage check failed: " + result.stderr[-600:])
+        return "PNG stored, matching SHA-256; replay is identical and changed bytes are refused" + (
+            "; MinIO signed read succeeds, anonymous read is 403" if self.args.docker else "")
+
     def integration(self):
         i = self.expect(self.adm("POST", f"/wf/clients/{self.s['client_id']}/integrations", {"event_schema": SCHEMA}), 201, "create the integration")
         k = self.expect(self.adm("POST", f"/wf/integrations/{i['integration_id']}/keys", {}), 201, "create the provider keys")
@@ -545,6 +598,7 @@ class Smoke:
         ("eval", "Evaluation of the draft", evaluation),
         ("publish", "Release gate and publish", publish),
         ("client", "Client and partner key", client),
+        ("assets", "Private image storage and upload replay", assets),
         ("manager", "Manager and manager key", manager),
         ("integration", "Integration, provider key, signing key", integration),
         ("route", "Route (pending)", route),

@@ -47,8 +47,8 @@ aiosqlite
 asyncpg
 # extra "redis": the message bus a fleet of processes shares (AWP_REDIS_URL, awp/bus.py)
 redis
-# imported by awp but not declared in its pyproject: Fernet (awp/workforce/crypto.py); uvicorn is listed above
+# Fernet (awp/workforce/crypto.py); uvicorn is listed above
 cryptography
 
-# Deliberately absent: aioboto3 (the code has no S3 wiring yet), model extras
+# S3 assets use signed httpx requests, so no additional S3 SDK is needed. Deliberately absent: model extras
 # (gemini, ollama, xai), typesafe-sdk (Jev), sandboxes, vector stores, RAG parsers, mem0/reme, test tools.

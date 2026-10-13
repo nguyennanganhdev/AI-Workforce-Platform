@@ -14,7 +14,7 @@
 # (AWP_REDIS_URL: session locks, wake-ups, the nudges between processes) and the `workspaces` volume; any of them
 # serves any request, and one that dies is taken over by the others (docs/WORKFORCE_V1_VAN_HANH.md section 11).
 # More replicas are more services like api2 (or any orchestrator that runs the same image with the same environment).
-# WHAT IS NOT: `minio` sits under the profile `not-wired`: the code reads no S3 setting today.
+# MinIO stores image assets. Each API uses AWP_S3_ENDPOINT internally; signed links use AWP_S3_PUBLIC_ENDPOINT.
 name: awp-platform
 
 x-logging: &logging
@@ -22,7 +22,7 @@ x-logging: &logging
   options: {max-size: "10m", max-file: "5"}
 
 x-awp: &awp
-  image: awp-platform:${AWP_IMAGE_TAG:-0.2.0}
+  image: awp-platform:${AWP_IMAGE_TAG:-0.3.0}
   env_file: [.env]
   init: true  # reaps the child processes an agent's tools may leave; signals still reach the Python process
   logging: *logging
@@ -34,6 +34,7 @@ x-api: &api
   depends_on:
     postgres: {condition: service_healthy}
     redis: {condition: service_healthy}
+    minio: {condition: service_healthy}
     migrate: {condition: service_completed_successfully}
   environment:
     AWP_HOST: 0.0.0.0
@@ -161,14 +162,13 @@ services:
       retries: 12
     stop_grace_period: 5s
 
-  # ---- profile not-wired: present for the next phase, used by nothing today ------------------------------------------
+  # Private image assets. The bucket is created by awp; access requires credentials or a short-lived signed URL.
   minio:
-    profiles: [not-wired]
     image: cgr.dev/chainguard/minio:latest
     restart: unless-stopped
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-awp}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?run "python init_env.py" first (it writes deploy/.env)}
     command: ["server", "/data", "--console-address", ":9001"]
     volumes:
       - miniodata:/data
@@ -176,7 +176,7 @@ services:
       - "127.0.0.1:${AWP_MINIO_HOST_PORT:-9190}:9000"
       - "127.0.0.1:${AWP_MINIO_CONSOLE_HOST_PORT:-9191}:9001"
     healthcheck:
-      test: ["CMD-SHELL", "mc alias set self http://127.0.0.1:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\" >/dev/null && mc ready self"]
+      test: ["CMD-SHELL", "mc --config-dir /tmp/mc-health alias set self http://127.0.0.1:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\" >/dev/null && mc --config-dir /tmp/mc-health ready self"]
       interval: 10s
       timeout: 8s
       retries: 6

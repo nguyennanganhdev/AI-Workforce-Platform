@@ -12,6 +12,8 @@ dependencies = [
     "sqlalchemy[asyncio]>=2",
     "aiosqlite",
     "alembic",
+    "uvicorn",
+    "cryptography",
 ]
 
 [project.optional-dependencies]
