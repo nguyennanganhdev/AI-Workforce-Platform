@@ -85,6 +85,45 @@ class SharedContextItem(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+AssignmentStatus = Literal[
+    "queued",
+    "assigned",
+    "reported",
+    "verified",
+    "accepted",
+    "challenged",
+    "stopped",
+    "failed",
+]
+
+
+class TaskAssignment(BaseModel):
+    """One entry of the Leader's task ledger, owned by the runtime.
+
+    The Leader writes the brief once (goal, expected output, done_when and
+    dependencies). The runtime then tracks the status from the members'
+    reports and the Leader's review decisions, and releases a queued
+    assignment when every dependency has reported. Models never have to
+    remember routing ids to keep this ledger correct.
+    """
+
+    agent_id: str = Field(default="", max_length=255)
+    agent_name: str = Field(default="", max_length=255)
+    goal: str = Field(min_length=1, max_length=20_000)
+    expected_output: str = Field(default="", max_length=4_000)
+    done_when: str = Field(default="", max_length=4_000)
+    depends_on: tuple[str, ...] = Field(default=(), max_length=20)
+    """Session ids of the assignments that must report first."""
+    status: AssignmentStatus = "assigned"
+    challenges: int = Field(default=0, ge=0)
+    last_report_event_id: str | None = Field(default=None, max_length=255)
+    last_feedback: str = Field(default="", max_length=4_000)
+    pending_payload: dict[str, Any] | None = None
+    """Inbox payload held back until dependencies report (never in packets)."""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class SharedTaskState(BaseModel):
     """Durable lifecycle of one logical task inside a ticket/group."""
 
@@ -99,6 +138,8 @@ class SharedTaskState(BaseModel):
     pending_question_ids: tuple[str, ...] = Field(default=(), max_length=20)
     pending_operation_ids: tuple[str, ...] = Field(default=(), max_length=50)
     collaboration: dict[str, "CollaborationBranch"] = Field(default_factory=dict)
+    assignments: dict[str, TaskAssignment] = Field(default_factory=dict)
+    """The Leader's task ledger keyed by the member's team session id."""
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -334,6 +375,7 @@ __all__ = [
     "SharedContextSummary",
     "SharedTaskState",
     "SharedTaskStatus",
+    "TaskAssignment",
     "TeamHandoffRecord",
     "TeamSharedContextRecord",
     "TeamSharedContextState",

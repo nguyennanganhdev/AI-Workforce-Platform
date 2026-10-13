@@ -238,13 +238,12 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             },
         )
 
-    async def test_broadcast_report_is_not_accepted(self) -> None:
-        """A worker broadcast cannot satisfy the final-report contract."""
+    async def test_untargeted_result_is_a_routed_report(self) -> None:
+        """Workers omit ``to`` for results; the runtime routes them to the
+        reply owner, so a successful untargeted result ends the reply."""
         items = await self._run(
             [
-                _call("TeamSay", content="done"),
-                _text("broadcast was rejected"),
-                _call("TeamSay", to="Leader", content="done"),
+                _call("TeamSay", kind="result", content="done"),
                 _text("reported"),
             ],
         )
@@ -254,10 +253,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         )
         self.assertListEqual(
             self.team_say.calls,
-            [
-                {"to": None, "content": "done"},
-                {"to": "Leader", "content": "done"},
-            ],
+            [{"to": None, "kind": "result", "content": "done"}],
         )
 
     async def test_report_to_other_member_is_not_accepted(self) -> None:

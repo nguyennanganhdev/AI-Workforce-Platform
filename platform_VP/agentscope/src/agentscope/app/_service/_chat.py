@@ -1524,9 +1524,8 @@ class ChatService:
                         "team turn. Team members report internally; combine "
                         "duplicate requests for missing information into one "
                         "concise question. Before asking it, call "
-                        "TeamSay(kind='requires_user_input', to=null, "
-                        "content=<question>) once, then ask it in your final "
-                        "reply."
+                        "TeamSay(kind='ask_customer', content=<question>) "
+                        "once, then ask it in your final reply."
                     )
                 elif isinstance(team_ctx, _WorkerContext):
                     if is_reply_owner:
@@ -1535,15 +1534,17 @@ class ChatService:
                             "the customer reply for this turn. Reply directly "
                             "once. Other members are internal collaborators. "
                             "Before asking the user for missing information, "
-                            "call TeamSay(kind='requires_user_input', to=null, "
+                            "call TeamSay(kind='need_customer_info', "
                             "content=<question>) once."
                         )
                     else:
                         attachment += (
                             " You are an internal collaborator. Never address "
-                            "the customer directly; report results or "
-                            "requires_user_input via TeamSay to the current "
-                            f"reply owner {(report_target_name or team_ctx.leader_name)!r}."
+                            "the customer directly; finish with "
+                            "TeamSay(kind='result') or TeamSay(kind='error'), "
+                            "which reach the current reply owner "
+                            f"{(report_target_name or team_ctx.leader_name)!r} "
+                            "automatically."
                         )
 
                 # Channel-bound sessions: tell the agent which chat it serves.
