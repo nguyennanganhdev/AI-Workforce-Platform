@@ -24,7 +24,7 @@ export function Participants({
 	return (
 		<aside
 			aria-label="Đối tượng tham gia cuộc trò chuyện"
-			className="clay-panel flex w-[280px] shrink-0 flex-col gap-5 overflow-y-auto rounded-[var(--r-panel)] bg-sidebar p-4 text-sidebar-foreground max-lg:hidden"
+			className="clay-panel flex w-[280px] shrink-0 flex-col gap-5 overflow-y-auto rounded-[16px] bg-canvas p-4 text-sidebar-foreground max-lg:hidden"
 		>
 			<section className="flex flex-col gap-2.5">
 				<h2 className="text-[12px]/[16px] font-semibold text-muted-foreground">
@@ -68,7 +68,11 @@ export function Participants({
 										className="absolute bottom-0 left-[17px] top-9 w-px bg-[var(--line-warm)]"
 									/>
 								)}
-								<AgentSticker agent={agent} size={36} />
+								<AgentSticker
+									agent={agent}
+									size={36}
+									working={agent === activeAgent}
+								/>
 								<div className="min-w-0 flex-1">
 									<p className="truncate text-[14px]/[20px] font-semibold">
 										{MOCK_AGENTS[agent].name}

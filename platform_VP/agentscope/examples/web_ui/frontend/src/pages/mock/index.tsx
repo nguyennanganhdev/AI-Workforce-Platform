@@ -116,7 +116,7 @@ function ConversationRow({
 							<Pin className="size-3 shrink-0 fill-current text-[var(--ink-3)]" />
 						)}
 					</span>
-					<span className="mt-px block truncate text-[14px]/[20px] font-medium">
+					<span className="mt-0.5 block max-w-[24ch] truncate text-[13px]/[18px] text-muted-foreground">
 						{preview}
 					</span>
 				</span>
@@ -247,7 +247,8 @@ export function MockChat({
 	}, [activeId, play.count, play.busy]);
 
 	/** Past the gate, onto whatever the script has after it. */
-	const advance = () => update(active.id, (prev) => ({ ...prev, count: prev.count + 1, busy: true }));
+	const advance = () =>
+		update(active.id, (prev) => ({ ...prev, count: prev.count + 1, busy: true }));
 
 	/** A refused approval: drop the rest of the script and play the refusal branch. */
 	const reject = () => {
@@ -282,7 +283,7 @@ export function MockChat({
 
 	return (
 		<div className="flex size-full gap-2 p-2">
-			<aside className="clay-panel flex w-[316px] shrink-0 flex-col gap-2 rounded-[var(--r-panel)] bg-sidebar p-2 text-sidebar-foreground max-md:hidden">
+			<aside className="clay-panel flex w-[316px] shrink-0 flex-col gap-2 rounded-[16px] bg-canvas p-2 text-sidebar-foreground max-md:hidden">
 				<Brand className="px-2 pt-1 pb-1" />
 
 				{/* Sunken, like the composer: raised things are pressed, sunken
@@ -349,7 +350,10 @@ export function MockChat({
 									<Tooltip>
 										<TooltipTrigger asChild>
 											<span tabIndex={0} className="block rounded-[10px]">
-												<AgentSticker agent={agent} />
+												<AgentSticker
+													agent={agent}
+													working={agent === activeAgent}
+												/>
 											</span>
 										</TooltipTrigger>
 										<TooltipContent>

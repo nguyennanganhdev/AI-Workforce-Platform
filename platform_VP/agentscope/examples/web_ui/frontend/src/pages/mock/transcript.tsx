@@ -23,23 +23,29 @@ import { cn } from '@/lib/utils';
 /** 28px is the smallest tile that draws the agent's sticker rather than initials. */
 const STICKER = 28;
 
-export function AgentSticker({ agent, size = STICKER }: { agent: MockAgentId; size?: number }) {
-	return <ClayAvatar id={agent} label={MOCK_AGENTS[agent].name} size={size} />;
+export function AgentSticker({
+	agent,
+	size = STICKER,
+	working = false,
+}: {
+	agent: MockAgentId;
+	size?: number;
+	working?: boolean;
+}) {
+	return <ClayAvatar id={agent} label={MOCK_AGENTS[agent].name} size={size} working={working} />;
 }
 
 /** `**name**` → bold. The scripts mark names this way; nothing else is parsed. */
 function withBold(text: string): ReactNode {
-	return text
-		.split('**')
-		.map((part, index) =>
-			index % 2 === 1 ? (
-				<strong key={index} className="font-semibold">
-					{part}
-				</strong>
-			) : (
-				<Fragment key={index}>{part}</Fragment>
-			),
-		);
+	return text.split('**').map((part, index) =>
+		index % 2 === 1 ? (
+			<strong key={index} className="font-semibold">
+				{part}
+			</strong>
+		) : (
+			<Fragment key={index}>{part}</Fragment>
+		),
+	);
 }
 
 /**
@@ -110,7 +116,7 @@ function StepLine({ event, running }: { event: StepEvent; running: boolean }) {
 				)}
 			>
 				{event.agent ? (
-					<AgentSticker agent={event.agent} />
+					<AgentSticker agent={event.agent} working={running} />
 				) : (
 					<Waypoints className="size-4 shrink-0" />
 				)}
@@ -126,9 +132,7 @@ function StepLine({ event, running }: { event: StepEvent; running: boolean }) {
 						>
 							<AgentSticker agent={agent} />
 							<span className="font-semibold">{MOCK_AGENTS[agent].name}</span>
-							<span className="text-muted-foreground">
-								{MOCK_AGENTS[agent].role}
-							</span>
+							<span className="text-muted-foreground">{MOCK_AGENTS[agent].role}</span>
 						</li>
 					))}
 				</ul>
@@ -144,7 +148,7 @@ function Thinking({ event, running }: { event: ThinkingEvent; running: boolean }
 	if (running) {
 		return (
 			<div className="flex items-center gap-2.5 text-sm text-muted-foreground">
-				<AgentSticker agent={event.agent} />
+				<AgentSticker agent={event.agent} working={running} />
 				<span className="shimmer">{name} đang suy nghĩ…</span>
 			</div>
 		);
@@ -156,7 +160,7 @@ function Thinking({ event, running }: { event: ThinkingEvent; running: boolean }
 					type="button"
 					className="group flex items-center gap-2.5 text-left text-sm text-muted-foreground hover:text-foreground"
 				>
-					<AgentSticker agent={event.agent} />
+					<AgentSticker agent={event.agent} working={running} />
 					<span>
 						{name} đã suy nghĩ {event.seconds} giây
 					</span>
@@ -182,7 +186,7 @@ function ToolCall({ event, running }: { event: ToolEvent; running: boolean }) {
 					type="button"
 					className="group flex w-full items-center gap-2.5 text-left text-[13px]/[20px] text-muted-foreground hover:text-foreground"
 				>
-					<AgentSticker agent={event.agent} />
+					<AgentSticker agent={event.agent} working={running} />
 					<span className={cn('min-w-0', running && 'shimmer')}>
 						{name} {running ? 'đang dùng' : 'đã dùng'} công cụ{' '}
 						<strong className="font-semibold text-foreground">{event.label}</strong>
@@ -242,7 +246,7 @@ function AgentAnswer({ event, running }: { event: AgentEvent; running: boolean }
 	return (
 		<div className="flex flex-col items-start gap-1.5">
 			<div className="flex items-center gap-2">
-				<AgentSticker agent={event.agent} />
+				<AgentSticker agent={event.agent} working={running} />
 				<span className="text-[13px]/[20px] font-semibold">
 					{MOCK_AGENTS[event.agent].name}
 				</span>

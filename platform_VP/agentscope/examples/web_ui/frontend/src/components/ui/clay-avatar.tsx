@@ -73,9 +73,7 @@ export function clayInitials(label: string): string {
 }
 
 /**
- * Below this, a sticker is a smudge: the robot and its role badge collapse
- * into a few coloured pixels, while two letters stay legible. 28 is where the
- * badge's icon can still be told apart.
+ * Use initials below 28px, where portrait details are hard to distinguish.
  */
 const PORTRAIT_FLOOR = 28;
 
@@ -91,6 +89,7 @@ export function ClayAvatar({
 	id,
 	label,
 	size,
+	working = false,
 }: {
 	className?: string;
 	/** Decides the colour, including that of a plain robot when the name names no role. */
@@ -98,6 +97,7 @@ export function ClayAvatar({
 	/** What the initials and the role are read from. Falls back to `id`. */
 	label?: string;
 	size: number;
+	working?: boolean;
 }) {
 	const tone = clayTone(id);
 	const name = label ?? id;
@@ -106,8 +106,10 @@ export function ClayAvatar({
 	return (
 		<span
 			aria-hidden="true"
+			data-working={working || undefined}
 			className={cn(
 				'flex shrink-0 items-center justify-center overflow-hidden font-bold',
+				working && 'agent-avatar-working',
 				className,
 			)}
 			style={{
@@ -116,16 +118,16 @@ export function ClayAvatar({
 				// A sticker brings its own ground.
 				background: drawPortrait ? undefined : tone.background,
 				color: tone.color,
-				border: `1px solid ${tone.border}`,
+				border: drawPortrait ? '1px solid #e5e7eb' : `1px solid ${tone.border}`,
 				borderRadius: Math.max(5, Math.round(size * 0.37)),
-				boxShadow: roomForClay ? tone.shadow : undefined,
+				boxShadow: !drawPortrait && roomForClay ? tone.shadow : undefined,
 				// Scaled to the tile, so two letters fit at every size.
 				fontSize: Math.max(8, Math.round(size * 0.34)),
 				letterSpacing: '0.01em',
 			}}
 		>
 			{drawPortrait ? (
-				<ClayPortrait size={size} which={portraitFor(name)} variant={clayToneIndex(id)} />
+				<ClayPortrait size={size} which={portraitFor(name)} working={working} />
 			) : (
 				clayInitials(name)
 			)}

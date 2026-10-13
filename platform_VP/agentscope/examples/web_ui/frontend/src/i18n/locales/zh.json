@@ -273,7 +273,7 @@
 			"name": {
 				"label": "名称",
 				"placeholder": "我的智能体",
-				"description": "名称中带有角色词（如技术、酒店、车辆）时，贴纸上的徽章会随之变化。"
+				"description": "名称中带有角色词（如技术、接待、计算）时，会选择对应的头像。"
 			},
 			"system-prompt": {
 				"label": "系统提示词",

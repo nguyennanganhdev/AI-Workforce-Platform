@@ -52,7 +52,10 @@ const PORT = '!size-2 !border !border-[var(--line)] !bg-[var(--raised)]';
 const SELECTED = 'border-[var(--action)] ring-[3px] ring-[var(--action-soft)]';
 
 /** Who sends requests in: dashed, because it is outside the platform. */
-const EntryNode = memo(function EntryNode({ data, selected }: NodeProps<FlowNode & { data: EntryData }>) {
+const EntryNode = memo(function EntryNode({
+	data,
+	selected,
+}: NodeProps<FlowNode & { data: EntryData }>) {
 	const Icon = data.icon === 'resident' ? UsersRound : UserRound;
 	return (
 		<div
@@ -65,17 +68,27 @@ const EntryNode = memo(function EntryNode({ data, selected }: NodeProps<FlowNode
 				<Icon className="size-4" />
 			</span>
 			<span className="min-w-0">
-				<span className="block truncate text-[13px]/[20px] font-semibold">{data.title}</span>
+				<span className="block truncate text-[13px]/[20px] font-semibold">
+					{data.title}
+				</span>
 				<span className="block truncate text-[12px]/[16px] text-muted-foreground">
 					{data.note}
 				</span>
 			</span>
-			<Handle type="source" position={Position.Right} className={PORT} isConnectable={false} />
+			<Handle
+				type="source"
+				position={Position.Right}
+				className={PORT}
+				isConnectable={false}
+			/>
 		</div>
 	);
 });
 
-const AgentNode = memo(function AgentNode({ data, selected }: NodeProps<FlowNode & { data: AgentData }>) {
+const AgentNode = memo(function AgentNode({
+	data,
+	selected,
+}: NodeProps<FlowNode & { data: AgentData }>) {
 	const { t } = useTranslation();
 	const { agent, metrics } = data;
 	return (
@@ -87,7 +100,12 @@ const AgentNode = memo(function AgentNode({ data, selected }: NodeProps<FlowNode
 		>
 			<Handle type="target" position={Position.Left} className={PORT} isConnectable={false} />
 			<div className="flex items-center gap-2.5 px-3 py-2.5">
-				<ClayAvatar id={agent.id} label={agent.name} size={36} />
+				<ClayAvatar
+					id={agent.id}
+					label={agent.name}
+					size={36}
+					working={metrics.running > 0}
+				/>
 				<span className="min-w-0 flex-1">
 					<span className="block truncate text-[13px]/[20px] font-semibold">
 						{agent.name}
@@ -135,16 +153,25 @@ const SupervisorNode = memo(function SupervisorNode({
 		>
 			<Handle type="target" position={Position.Left} className={PORT} isConnectable={false} />
 			<div className="flex items-center gap-2.5 px-3 py-2.5">
-				<ClayAvatar id="leader" label="Leader" size={36} />
+				<ClayAvatar id="leader" label="Leader" size={36} working={data.running > 0} />
 				<span className="min-w-0 flex-1">
-					<span className="block truncate text-[13px]/[20px] font-semibold">{data.title}</span>
-					<span className="block truncate text-[12px]/[16px] text-white/70">{data.note}</span>
+					<span className="block truncate text-[13px]/[20px] font-semibold">
+						{data.title}
+					</span>
+					<span className="block truncate text-[12px]/[16px] text-white/70">
+						{data.note}
+					</span>
 				</span>
 			</div>
 			<div className="border-t border-white/15 px-3 py-1.5 text-right text-[12px]/[16px] text-white/80">
 				{t('agents.graph.sessionCount', { count: data.running })}
 			</div>
-			<Handle type="source" position={Position.Right} className={PORT} isConnectable={false} />
+			<Handle
+				type="source"
+				position={Position.Right}
+				className={PORT}
+				isConnectable={false}
+			/>
 			<Handle
 				id="bottom"
 				type="source"
@@ -157,7 +184,10 @@ const SupervisorNode = memo(function SupervisorNode({
 });
 
 /** Where a person has to decide before anything is written. */
-const HumanNode = memo(function HumanNode({ data, selected }: NodeProps<FlowNode & { data: HumanData }>) {
+const HumanNode = memo(function HumanNode({
+	data,
+	selected,
+}: NodeProps<FlowNode & { data: HumanData }>) {
 	return (
 		<div
 			className={cn(
@@ -170,7 +200,9 @@ const HumanNode = memo(function HumanNode({ data, selected }: NodeProps<FlowNode
 				<ShieldCheck className="size-4" />
 			</span>
 			<span className="min-w-0">
-				<span className="block truncate text-[13px]/[20px] font-semibold">{data.title}</span>
+				<span className="block truncate text-[13px]/[20px] font-semibold">
+					{data.title}
+				</span>
 				<span className="block truncate text-[12px]/[16px]">{data.note}</span>
 			</span>
 		</div>
@@ -294,7 +326,10 @@ function Controls() {
 			</div>
 			<ul className={cn(PILL, 'h-8 gap-4')}>
 				{legend.map((item) => (
-					<li key={item.label} className="flex items-center gap-1.5 text-muted-foreground">
+					<li
+						key={item.label}
+						className="flex items-center gap-1.5 text-muted-foreground"
+					>
 						<svg width="22" height="4" aria-hidden="true">
 							<line
 								x1="0"
@@ -344,7 +379,9 @@ function Inspector({
 			>
 				<header className="flex items-start gap-3">
 					{agent && <ClayAvatar id={agent.id} label={agent.name} size={40} />}
-					{data.kind === 'supervisor' && <ClayAvatar id="leader" label="Leader" size={40} />}
+					{data.kind === 'supervisor' && (
+						<ClayAvatar id="leader" label="Leader" size={40} />
+					)}
 					<div className="min-w-0 flex-1">
 						<h2 className="truncate text-[16px]/[24px] font-semibold">{title}</h2>
 						<p className="text-[12px]/[16px] text-muted-foreground">{note}</p>
@@ -376,8 +413,12 @@ function Inspector({
 								key={label}
 								className="rounded-[var(--r-chip)] bg-[var(--sunken)] px-1 py-2"
 							>
-								<dd className="text-[16px]/[24px] font-semibold tabular-nums">{value}</dd>
-								<dt className="text-[12px]/[16px] text-muted-foreground">{label}</dt>
+								<dd className="text-[16px]/[24px] font-semibold tabular-nums">
+									{value}
+								</dd>
+								<dt className="text-[12px]/[16px] text-muted-foreground">
+									{label}
+								</dt>
 							</div>
 						))}
 					</dl>
@@ -499,7 +540,9 @@ export function AgentGraph({
 						<span className="size-1.5 rounded-full bg-current" />
 						{model.sample ? t('agents.graph.sampleAll') : t('agents.graph.sample')}
 					</span>
-					<span className={PILL}>{t('agents.graph.agentCount', { count: model.count })}</span>
+					<span className={PILL}>
+						{t('agents.graph.agentCount', { count: model.count })}
+					</span>
 					<span className={PILL}>
 						{t('agents.graph.running', { count: model.totalRunning })}
 					</span>
@@ -512,7 +555,9 @@ export function AgentGraph({
 				<Panel position={selected ? 'bottom-right' : 'top-right'}>
 					<Button variant="outline" size="sm" onClick={toggleFullscreen}>
 						{fullscreen ? <Minimize /> : <Maximize />}
-						{fullscreen ? t('agents.graph.exitFullscreen') : t('agents.graph.fullscreen')}
+						{fullscreen
+							? t('agents.graph.exitFullscreen')
+							: t('agents.graph.fullscreen')}
 					</Button>
 				</Panel>
 

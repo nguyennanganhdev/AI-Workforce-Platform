@@ -273,7 +273,7 @@
 			"name": {
 				"label": "Tên",
 				"placeholder": "Tác nhân của tôi",
-				"description": "Tên có từ chỉ vai trò, ví dụ Kỹ thuật, Khách sạn hoặc Xe, sẽ đổi huy hiệu trên sticker."
+				"description": "Tên có từ chỉ vai trò, ví dụ Kỹ thuật, Lễ tân hoặc Tính toán, sẽ chọn ảnh đại diện tương ứng."
 			},
 			"system-prompt": {
 				"label": "Chỉ dẫn hệ thống",

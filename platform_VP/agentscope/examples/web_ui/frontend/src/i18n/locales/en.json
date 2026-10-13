@@ -273,7 +273,7 @@
 			"name": {
 				"label": "Name",
 				"placeholder": "My agent",
-				"description": "A name that states a role, such as Technical, Hotel or Car, changes the badge on the sticker."
+				"description": "A name that states a role, such as Technical, Reception or Calculator, selects the corresponding portrait."
 			},
 			"system-prompt": {
 				"label": "System prompt",
