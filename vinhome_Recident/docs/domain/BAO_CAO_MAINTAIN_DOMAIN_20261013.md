@@ -6,6 +6,8 @@
 
 Phạm vi: dự án chính `E:\AI-Workforce-Platform`, nhánh `dev_Vinhome`; VPS `103.238.235.156`, tên miền `vinhome-platform.duckdns.org`. Kế hoạch/phạm vi đã chốt: [KE_HOACH_MAINTAIN_DOMAIN_20261013.md](KE_HOACH_MAINTAIN_DOMAIN_20261013.md).
 
+Commit mã triển khai: `7fa9c02793728683d44f0d311c4701e772bf73fc`, đã push `origin/dev_Vinhome`. Tag chạy thực tế: `maintain-20261013-7fa9c027`; image ID giữ nguyên so với bản đã kiểm thử.
+
 ## 1. Đã cập nhật
 
 | Hạng mục | Kết quả |
@@ -19,7 +21,7 @@ Phạm vi: dự án chính `E:\AI-Workforce-Platform`, nhánh `dev_Vinhome`; VPS
 | Receipt MCP | Thêm hash nội dung cho lệnh mới; retry không ghi lặp, đổi nội dung cùng reference bị từ chối; receipt lịch sử chưa có hash giữ replay kết quả cũ |
 | Docker | API và hai frontend đã build/deploy; API/init/scheduler/platform-sync dùng cùng tag; API bind loopback ngay cả khi gateway mở public |
 | File riêng | Root Git ignore phần `platform_VP` chưa tracked; bảo vệ env/export/handoff/test artifact; không untrack hoặc commit thay đổi platform đã tracked |
-| CI | Thêm workflow kiểm tra domain/API/UI và HTTP E2E, không chạy Agent/model; đã kiểm tra runner HTTP trong môi trường riêng, chưa coi cấu hình workflow là bằng chứng GitHub Actions đã chạy đạt |
+| CI | Workflow kiểm tra domain/API/UI và HTTP E2E, không chạy Agent/model; hai job business-api và frontend đã đạt trên commit mã triển khai — [GitHub Actions 38395267306](https://github.com/nguyennanganhdev/AI-Workforce-Platform/actions/runs/38395267306) |
 
 Migration mới: `0016_password_reset_tokens.sql`, `0017_platform_operation_payload.sql`. Các migration cũ được giữ nguyên. Đã áp migration và cấp quyền runtime đúng bảng cần ghi, vẫn giữ RLS theo tenant.
 
@@ -81,6 +83,8 @@ Một số lần chạy đầu phát hiện lỗi fixture quyền ghi, quyền x
 | Files | 33 | 33 |
 
 Reception, PostgreSQL, MinIO và backup giữ nguyên container ID. Không recreate Reception, không đổi provider/key/model. Không seed/reset hoặc xóa volume production. Account production được kiểm tra phân trang tới offset 600: trả 121 dòng cuối, tổng 721; tìm kiếm server tìm đúng account ngoài trang đầu.
+
+Đã dọn 15 container và network kiểm thử riêng trên VPS; giữ nguyên container/volume production. HTTP tên miền và IP đều trả 200 sau khi chốt tag phát hành.
 
 Tag/image ID, source hash, manifest và JUnit chi tiết nằm trong evidence riêng `deploy/test-accounts-20261013/domain-audit` và `/opt/vinhomes/releases/maintain-20261013`; không commit env, account export, snapshot hoặc log riêng. Báo cáo này có thể chia sẻ mà không chứa credential.
 
