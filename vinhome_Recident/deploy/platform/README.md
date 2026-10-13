@@ -72,9 +72,9 @@ Chỉ có một leader, không có chuyên viên: mỗi ticket là một việc 
 
 ### Công cụ
 
-Catalog ngày 13/10/2026 còn 7 tool, chỉ xử lý ticket đã bàn giao. Identity/căn hộ có sẵn trong gói domain gửi; Reception giữ tool tiếp nhận và các dịch vụ cư dân. Bên platform cần refresh catalog và gỡ grant cũ khi cập nhật declaration. Không tự áp declaration vào platform đang dùng trong đợt deploy domain.
+Catalog v2 giữ 7 tool, chỉ xử lý ticket đã bàn giao. Identity/căn hộ có sẵn; Reception giữ tiếp nhận/dịch vụ cư dân. Platform quản lý session và ngoại lệ, không có bước BQL duyệt yêu cầu ở domain. Xem [MCP_PLATFORM_V2.md](../../docs/domain/MCP_PLATFORM_V2.md): backend platform dùng control-plane token để tự lấy grant theo ticket/workflow, gắn vào transport riêng, refresh catalog/grants và parser v2. Không tự áp declaration vào platform chưa xác nhận adapter.
 
-Mọi công cụ nhận `ticket_id` do agent chép từ tin nhắn đầu tiên; Vinhomes chỉ chấp nhận ticket đã bàn giao và đang mở. Hành động nhận thêm tham số ẩn `client_reference` do platform điền, và làm đúng một lần cho mỗi giá trị. Không công cụ nào đòi cư dân đồng ý ở phía platform (`requires_consent: false`). Mỗi lời gọi tối đa 8 giây.
+Mọi công cụ nhận ticket_id từ bàn giao và phải dùng grant đúng ticket/workflow/tool còn hiệu lực. Backend cấp client_reference; lệnh mới có expected_ticket_version, hủy/đổi lịch có nguồn lời cư dân. Bootstrap token chỉ discovery/control-plane. Các thẻ đồng ý báo giá/xác nhận hoàn thành vẫn do cư dân tự bấm tại domain; requires_consent:false không bỏ qua quyền này. Tool timeout7s, declaration timeout8s; retry giữ reference/nội dung.
 
 | Công cụ | Loại | Theo dõi |
 |---|---|---|
@@ -110,7 +110,7 @@ Platform bỏ qua sự kiện có hạng thấp hơn hạng đã nhận của c�
 
 ## Kiểm tra đã nối được
 
-1. Phía platform, bằng khóa quản trị: `GET /platform/v1/wf/routes?client_id=<client>` cho route `active` sau khi xác nhận; `GET /platform/v1/wf/routes/<route>/tools` cho đủ 10 công cụ; `GET /platform/v1/wf/integrations/<integration>` cho 15 loại sự kiện và một khóa ký `active`.
+1. Phía platform, bằng khóa quản trị: `GET /platform/v1/wf/routes?client_id=<client>` cho route active; `GET /platform/v1/wf/routes/<route>/tools` đúng 7 công cụ; integration giữ 15 loại sự kiện và một khóa ký active. Trước khi bật route, phải nghiệm thu adapter control-plane → grant theo workflow; đây là yêu cầu chuyển đổi v2, không phải bằng chứng platform draft đã hỗ trợ sẵn.
 2. Phía Vinhomes: `dc logs platform-sync` không có lỗi xác thực. Đăng nhập một cư dân mẫu, nhắn một yêu cầu sửa chữa đủ thông tin: Lễ tân tạo ticket, vài giây sau trong hộp chat có lời của agent điều phối, và nhân viên đúng chuyên môn thấy lời mời việc trong app nhân viên.
 3. Khi có trục trặc, người vận hành platform xem `GET /platform/v1/wf/workflows?client_id=<client>` (trạng thái, `attention_reason`), `GET /platform/v1/wf/operations?workflow_id=<workflow>` (từng lời gọi công cụ: `client_reference`, `external_job_id`, lỗi) và `GET /platform/v1/wf/receipts?integration_id=<integration>` (từng sự kiện tiến độ). Workflow ở `needs_attention` thì `POST /platform/v1/wf/workflows/<workflow>/resolve` với `{"action": "resume"}` hoặc `{"action": "close"}`.
 

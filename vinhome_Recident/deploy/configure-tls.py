@@ -28,7 +28,10 @@ def render(domain: str) -> str:
   location / {{ return 308 https://{domain}$request_uri; }}
 }}
 '''
-    return http + tls
+    # A distinct container port keeps the SSH-only MCP endpoint usable without making public HTTP an exception
+    # to TLS. Publish this listener only on 127.0.0.1; never decide privacy from a spoofable Host header.
+    private = base.replace('  listen 8080;', '  listen 8081;', 1)
+    return http + tls + private
 
 
 if __name__ == '__main__':

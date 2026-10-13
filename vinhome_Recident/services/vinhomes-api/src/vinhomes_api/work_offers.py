@@ -59,6 +59,8 @@ async def offer_work(db, ticket_id: UUID, work_order_id: UUID, agent_id: str, st
             and ss.category_id=w.category_id and ss.active)
           and exists (select 1 from staff_shifts sh where sh.staff_id=sp.id and sh.tenant_id=sp.tenant_id
             and sh.status='available' and sh.starts_at<=now() and sh.ends_at>now())
+          and (cast(:eta as timestamptz) is null or exists(select 1 from staff_shifts sh where sh.staff_id=sp.id and sh.tenant_id=sp.tenant_id
+            and sh.status='available' and sh.starts_at<=cast(:eta as timestamptz) and sh.ends_at>cast(:eta as timestamptz)))
           and (cast(:staff as uuid) is null or sp.id=cast(:staff as uuid))
           -- Work the platform dispatched is not offered again to someone who refused it or let the offer run out.
           and not exists (select 1 from work_assignments past
@@ -66,7 +68,7 @@ async def offer_work(db, ticket_id: UUID, work_order_id: UUID, agent_id: str, st
             where past.work_order_id=w.id and past.tenant_id=w.tenant_id and past.staff_id=sp.id
               and past.status in ('rejected','released'))
         order by busy.load,sp.id limit 1 for update of sp skip locked
-    """), {"work": work_order_id, "ticket": ticket_id, "staff": staff_id})).scalar_one_or_none()
+    """), {"work": work_order_id, "ticket": ticket_id, "staff": staff_id,"eta":eta_at})).scalar_one_or_none()
     if staff is None:
         return False
     assignment = (await db.execute(text(f"""

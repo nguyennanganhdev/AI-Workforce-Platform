@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import platform_mcp
+from .platform_access import router as platform_access_router
 from .password_auth import router as password_router
 from . import password_recovery  # noqa: F401 - registers recovery routes on password_router
 from .reception_runtime_api import router as reception_runtime_router
@@ -184,6 +185,7 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     from .platform import router as platform_router
     app.include_router(platform_router)
     platform_mcp.mount(app)
+    app.include_router(platform_access_router)
     app.include_router(resident_services_router)
     app.include_router(operations_services_router)
     from .direct_uploads import router as direct_uploads_router

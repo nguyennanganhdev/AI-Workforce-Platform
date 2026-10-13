@@ -34,5 +34,6 @@ Thumbs.db
 # Deployment secrets
 deploy/deployment.env
 deploy/platform-handoff-*/
+deploy/mcp-grants/
 deploy/test-accounts-*/
 deploy/nginx/gateway.tls.generated.conf.template

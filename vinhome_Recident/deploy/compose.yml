@@ -165,6 +165,7 @@ services:
       VINHOMES_API_EMBEDDING_API_KEY: *embedding-key
       # Two settings, one list: browser sign-in and writes check the first, the resident app's CORS the second.
       VINHOMES_API_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:8080}
+      VINHOMES_API_MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
       VINHOMES_API_RESIDENT_ALLOWED_ORIGINS: ${VINHOMES_ALLOWED_ORIGINS:-http://localhost:8080}
       # How many proxies of ours a browser's request crosses before the API: the gateway, and Caddy on a server.
       VINHOMES_API_TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-1}

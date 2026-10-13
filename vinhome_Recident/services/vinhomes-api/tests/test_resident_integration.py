@@ -5,6 +5,10 @@ Uses the backend's explicitly enabled local actors, not production login accepta
 """
 import io
 import os
+import asyncio
+import hashlib
+from urllib.parse import urlsplit
+from uuid import UUID
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -37,6 +41,34 @@ def image_bytes():
     data = io.BytesIO()
     Image.new("RGB", (8, 8), "#557799").save(data, format="PNG")
     return data.getvalue()
+
+
+def mcp_snapshot(ticket_id):
+    """Read the actual MCP transport in this runner's disposable DB, without calling an Agent."""
+    owner=os.environ.get('VINHOMES_MCP_TEST_OWNER_URL')
+    if not owner:
+        return None  # This extra gate belongs to run_business_http, not arbitrary externally supplied APIs.
+    parts=urlsplit(owner)
+    assert parts.hostname in ('127.0.0.1','localhost') and parts.path.startswith('/maintain_flow_test_')
+    token='vhm_'+str(uuid4())
+    async def issue():
+        import asyncpg
+        db=await asyncpg.connect(owner)
+        try:
+            await db.execute("""insert into platform_links(ticket_id,tenant_id,channel_id,user_id,management_ref,status)
+                select t.id,t.tenant_id,t.channel_id,t.requester_user_id,m.code,'open' from tickets t
+                join management_units m on m.id=t.management_unit_id and m.tenant_id=t.tenant_id where t.id=$1
+                on conflict(ticket_id) do nothing""",UUID(ticket_id))
+            await db.execute("""insert into platform_mcp_grants(tenant_id,ticket_id,management_ref,token_hash,tools,expires_at)
+                select tenant_id,ticket_id,management_ref,$2,ARRAY['vh_ticket_get'],now()+interval '1 hour'
+                from platform_links where ticket_id=$1""",UUID(ticket_id),hashlib.sha256(token.encode()).hexdigest())
+        finally:await db.close()
+    asyncio.run(issue())
+    response=httpx.post(URL+'/mcp',headers={'Authorization':'Bearer '+token,'Accept':'application/json, text/event-stream'},
+        json={'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':'vh_ticket_get','arguments':{'ticket_id':ticket_id}}})
+    assert response.status_code==200,response.text
+    value=response.json()['result'];assert not value.get('isError'),value
+    return value['structuredContent']
 
 
 def create_ticket():
@@ -132,6 +164,9 @@ def finish_work(ticket_id, category_id, onsite=False, staff_user_id="local-v3-te
 def test_full_confirmation_retry_and_concurrent_decisions():
     ticket, category = create_ticket()
     _, approval = finish_work(ticket, category)
+    snapshot=mcp_snapshot(ticket)
+    if snapshot:
+        assert snapshot['ticket_status']=='resolved' and snapshot['confirmation']=={'result_published':True,'waiting_for_resident':True,'resident_accepted':False,'ticket_closed':False}
     current = call("GET", f"/resident/tickets/{ticket}")["ticket"]
     body = {"approved":True,"note":"Tôi đã kiểm tra, mọi thứ hoạt động tốt.","version":current["version"]}
     call("POST", f"/resident/approvals/{approval}/decision", expected=409,
@@ -145,6 +180,9 @@ def test_full_confirmation_retry_and_concurrent_decisions():
     winner=next(i for i,r in enumerate(responses) if r.status_code==200)
     assert decide(keys[winner]).json()==responses[winner].json()
     assert call("GET", f"/resident/tickets/{ticket}")["ticket"]["status"] == "closed"
+    snapshot=mcp_snapshot(ticket)
+    if snapshot:
+        assert snapshot['confirmation']=={'result_published':True,'waiting_for_resident':False,'resident_accepted':True,'ticket_closed':True}
     # Domain closure is authoritative; platform workflow acceptance is tested separately.
 
 
@@ -157,4 +195,7 @@ def test_rework_preserves_history_and_returns_to_management():
     assert call("GET", f"/tickets/{ticket}",actor="management")["ticket"]["status"] == "triaging"
     history = call("GET", f"/work-orders/{order}",actor="management")
     assert history["workOrder"]["status"] == "completed" and history["qcResults"][0]["outcome"] == "pass"
+    snapshot=mcp_snapshot(ticket)
+    if snapshot:
+        assert snapshot['ticket_status']=='triaging' and not snapshot['confirmation']['resident_accepted'] and not snapshot['confirmation']['ticket_closed']
     assert call("GET", f"/tickets/{ticket}/evidence",actor="management")["items"]

@@ -188,7 +188,7 @@ async def link_ticket(db, ticket_id) -> None:
     if not enabled():
         return
     ticket = (await db.execute(text(f"""
-        select t.channel_id,t.requester_user_id,t.title,t.description,t.request_kind,t.priority,t.severity,t.is_emergency,t.created_at,
+        select t.channel_id,t.requester_user_id,t.title,t.description,t.request_kind,t.priority,t.severity,t.is_emergency,t.created_at,t.version,t.response_due_at,t.resolution_due_at,
           mu.code as management_ref,c.name as category,c.code as category_code,u.code as unit,b.name as building,z.name as zone,
           resident.name as resident_name,
           (select ur.relation from unit_residents ur where ur.tenant_id=t.tenant_id and ur.unit_id=t.unit_id
@@ -204,11 +204,8 @@ async def link_ticket(db, ticket_id) -> None:
         left join service_categories c on c.id=t.category_id and c.tenant_id=t.tenant_id
         where t.id=:id and t.tenant_id={TENANT}
     """), {"id": ticket_id})).mappings().one()
-    if ticket["category_code"] == "security" and ticket["request_kind"] == "incident" and not ticket["is_emergency"]:
-        # Guards are sent by management alone: the coordinator could only refuse (platform_work.dispatch).
-        # An emergency is told to the platform whatever its category; there the coordinator only informs.
-        # Reception and resident services keep their own tools; platform only coordinates handed-over tickets.
-        return
+    # Every handed-over category reaches the platform. Receiving a session does not grant
+    # permission to dispatch guards or bypass the domain's business approval rules.
     fresh = await db.execute(text(f"""
         insert into platform_links(ticket_id,tenant_id,channel_id,user_id,management_ref)
         values (:ticket,{TENANT},:channel,:user,:ref) on conflict (ticket_id) do nothing returning ticket_id
@@ -223,7 +220,7 @@ async def link_ticket(db, ticket_id) -> None:
     urgency = ("KHẨN CẤP" + (f" ({kind})" if kind else "")) if ticket["is_emergency"] else "không khẩn cấp"
     if ticket["severity"] in SEVERITY:
         urgency += f"; mức độ nghiêm trọng: {SEVERITY[ticket['severity']]}"
-    lines = [f"ticket_id: {ticket_id}",
+    lines = [f"ticket_id: {ticket_id}","handover_version: v1.1",f"ticket_version: {ticket['version']}",
              "Cư dân: " + " ".join((ticket["resident_name"] or "cư dân").split()),
              "Quan hệ cư trú: " + {"owner":"chủ hộ","tenant":"người thuê","household":"thành viên trong hộ"}.get(ticket["resident_relation"],"chưa xác định"),
              "Loại yêu cầu: " + " - ".join(part for part in (KIND.get(ticket["request_kind"]), ticket["category"]) if part),
@@ -231,11 +228,23 @@ async def link_ticket(db, ticket_id) -> None:
              f"Tòa: {ticket['building']}", f"Phân khu: {ticket['zone'] or 'không có'}",
              f"Mức ưu tiên: {PRIORITY.get(ticket['priority'], ticket['priority'])}",
              f"Mức khẩn cấp do Lễ tân đánh giá: {urgency}", f"Số ảnh: {ticket['photos']}",
-             f"Giờ tạo: {vn_time(ticket['created_at'])}"]
+              f"Giờ tạo: {vn_time(ticket['created_at'])}",f"category_code: {ticket['category_code'] or 'unknown'}",
+              f"response_due_at: {ticket['response_due_at'].isoformat() if ticket['response_due_at'] else 'unknown'}",
+              f"resolution_due_at: {ticket['resolution_due_at'].isoformat() if ticket['resolution_due_at'] else 'unknown'}",
+              'Quyền thao tác phải đọc lại từ policy của vh_ticket_get; snapshot bàn giao không cấp thêm quyền.',
+              'Không xác định lại cư dân/căn hộ. Ảnh lưu tại domain; chỉ gửi số ảnh.']
     await command(db, ticket_id, "start_workflow", {"text": "\n".join(lines)})
 
 
-async def divert(db, actor_id: str, channel_id: str, message_text: str, file_ids=()) -> bool:
+async def notice(db,ticket_id,key,message_text):
+    """Use the existing text reply contract, not a new unregistered provider event type."""
+    await db.execute(text(f"""insert into platform_commands(tenant_id,ticket_id,kind,body)
+        select {TENANT},ticket_id,'workflow_reply',cast(:body as jsonb) from platform_links
+        where tenant_id={TENANT} and ticket_id=:ticket and status='open' and coalesce(state,'')<>'closed'
+        on conflict do nothing"""),{'ticket':ticket_id,'body':json.dumps({'text':message_text,'own':True,'domain_notice_key':key},ensure_ascii=False)})
+
+
+async def divert(db, actor_id: str, channel_id: str, message_text: str, file_ids=(),source_message_id=None) -> bool:
     """True when this resident message went to the platform instead of Reception.
 
     An emergency goes both ways: Reception handles it here, at once, as before, and the coordinator is told.
@@ -259,7 +268,8 @@ async def divert(db, actor_id: str, channel_id: str, message_text: str, file_ids
     # Only what is known here: whether management was reached is Reception's turn, which has not run yet.
     said = "\n".join(part for part in (
         f"Cư dân vừa báo tình huống khẩn cấp ({EMERGENCY[kind]}). Lời cư dân:" if kind else "",
-        message_text, f"Cư dân gửi thêm {len(photos)} ảnh." if photos else "") if part)
+        message_text, f"Cư dân gửi thêm {len(photos)} ảnh." if photos else "",
+        f"source_message_id: {source_message_id}" if source_message_id else "") if part)
     if not said:
         return True  # only photos the request already holds: nothing new to tell
     # `own`: Reception answers an emergency in the chat itself, so a silent coordinator leaves nobody unanswered.

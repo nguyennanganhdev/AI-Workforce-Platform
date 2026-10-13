@@ -7,5 +7,6 @@ services:
       - ${TLS_CERT_DIR:-/srv/vinhomes-tls}:/etc/letsencrypt:ro
     ports:
       - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${HTTPS_PORT:-443}:8443'
+      - '127.0.0.1:${GATEWAY_PRIVATE_PORT:-8081}:8081'
     healthcheck:
       test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/healthz']

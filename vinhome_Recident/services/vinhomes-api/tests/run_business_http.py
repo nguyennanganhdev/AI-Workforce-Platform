@@ -44,7 +44,8 @@ async def main():
                  'VINHOMES_API_TENANT_ID':'11111111-1111-5111-a111-111111111111',
                  'VINHOMES_API_DEMO_MODE':'1','VINHOMES_API_PASSWORD_AUTH':'0','VINHOMES_API_DEV_USER_ID':'',
                  'VINHOMES_API_VOLUME_FILE_STORAGE':'1','VINHOMES_RESIDENT_FILE_ROOT':directory,
-                 'VINHOMES_API_RECEPTION_URL':'','VINHOMES_API_PLATFORM_URL':'','VINHOMES_API_PLATFORM_MCP_TOKEN':'',
+                 'VINHOMES_API_RECEPTION_URL':'','VINHOMES_API_PLATFORM_URL':'','VINHOMES_API_PLATFORM_MCP_TOKEN':'isolated-business-mcp-discovery-token-0123456789',
+                 'VINHOMES_MCP_TEST_OWNER_URL':url_for(owner),
                  'VINHOMES_API_S3_ENDPOINT':'','VINHOMES_API_EMBEDDING_API_KEY':'','VINHOMES_SMTP_HOST':''}
             with open(Path(directory)/'api.log','wb') as log:
                 process=subprocess.Popen([sys.executable,'-m','vinhomes_api'],cwd=service,env=env,stdout=log,stderr=subprocess.STDOUT)

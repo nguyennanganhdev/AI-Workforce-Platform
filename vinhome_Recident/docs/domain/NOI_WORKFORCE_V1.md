@@ -62,6 +62,8 @@ Người thực hiện của agent platform trong dữ liệu Vinhomes là một
 
 Trong `_handoff_draft` (`v3_reception_operations.py`), ngay sau khi ticket và snapshot đã có và **trước** nhánh "không có nơi nhận", cùng giao dịch: nếu cầu nối bật thì ghi `platform_links` (`pending`) và một `platform_commands` `start_workflow`. Ticket khẩn cấp cũng được bàn giao; phần xử lý khẩn cấp tại chỗ phía sau không đổi.
 
+Không có bước BQL nhận/duyệt yêu cầu trước khi tạo session. Ticket an ninh thông thường cũng được bàn giao; quyền điều động bảo vệ vẫn do nghiệp vụ domain kiểm soát. Ủy quyền route là cấu hình tích hợp một lần, không phải duyệt từng ticket. Điểm bàn giao này chưa bao phủ các thao tác cư dân đang đi trực tiếp qua API booking/thẻ/khách ngoài luồng ticket.
+
 Ticket loại an ninh không khẩn cấp không gửi platform: việc an ninh do Ban quản lý điều động. Ticket an ninh **khẩn cấp** thì có gửi, để platform biết; leader chỉ báo tin cho cư dân, công cụ giao việc vẫn từ chối việc an ninh.
 
 `message.text` của `start_workflow` là văn bản duy nhất platform nhận, gồm: dòng `ticket_id: <uuid>` (agent phải chép đúng giá trị này vào mọi công cụ), loại yêu cầu, tiêu đề, mô tả của cư dân, căn, tòa, phân khu, mức ưu tiên, dòng `Mức khẩn cấp do Lễ tân đánh giá: …`, số ảnh, giờ tạo. Không có số điện thoại, không có mã `VH-…`.
@@ -119,9 +121,9 @@ Thẻ đồng ý của platform (`body.platform.kind = "approval"`, trả lời 
 
 ## 6. Công cụ MCP dành riêng cho xử lý ticket đã bàn giao
 
-Catalog được thu gọn ngày 13/10/2026: **7 tools**, tại `/mcp`, streamable HTTP không trạng thái, bắt buộc Bearer token. Reception giữ interface nội bộ của mình; platform không có tool tạo ticket hay xác định lại cư dân/căn hộ.
+Catalog giữ **7 tools**, tại `/mcp`, streamable HTTP không trạng thái, bắt buộc Bearer token. Hợp đồng nghiệp vụ nâng lên [MCP v2](MCP_PLATFORM_V2.md): platform quản lý session/ngoại lệ, không có hàng đợi hay bước BQL duyệt yêu cầu mới ở domain. Reception giữ interface nội bộ của mình; platform không tạo ticket hoặc xác định lại cư dân/căn hộ.
 
-Domain bàn giao ticket đã có tên cư dân/quan hệ cư trú, căn/tòa/phân khu, loại và nội dung yêu cầu, ưu tiên/khẩn cấp, số ảnh và giờ tạo. Mọi tool nhận `ticket_id` từ gói bàn giao; server kiểm tra tenant và link `pending`/`open`, không nhận `user_id` hoặc căn hộ tùy chọn để mở scope. Token thuộc integration/tenant được cấu hình, không phải token riêng từng workflow.
+Domain bàn giao ticket đã có tên cư dân/quan hệ cư trú, căn/tòa/phân khu, loại/nội dung yêu cầu, ưu tiên/khẩn cấp, số ảnh và giờ tạo; text v1.1 thêm version/category/deadlines. Token cấu hình dành cho backend control-plane/discovery. Backend platform tự lấy grant theo ticket/start command/workflow bằng `POST /api/business/platform/mcp-grants`, rồi gắn Bearer riêng vào MCP transport của session; không cần BQL duyệt. Mọi tool kiểm tenant, grant còn hiệu lực, ticket/management/workflow và tool scope; read/new write cần link active. Xem wire contract và chuyển đổi credential trong MCP v2.
 
 | Công cụ | Loại | Vai trò |
 |---|---|---|
@@ -133,7 +135,7 @@ Domain bàn giao ticket đã có tên cư dân/quan hệ cư trú, căn/tòa/ph�
 | `vh_ticket_cancel` | ghi | Hủy ticket khi luật nghiệp vụ cho phép; không bỏ qua việc đã đến nơi/đang xử lý |
 | `vh_ticket_add_note` | ghi | Bổ sung thông tin cho người xử lý |
 
-Lệnh ghi nhận `client_reference` do platform điền; retry cùng reference trả kết quả đã lưu, reference dùng cho ticket/công cụ/nội dung khác bị từ chối. Mỗi lời gọi dưới 8 giây, dưới 256 KiB; không trả số điện thoại, mã VH hoặc ghi chú nội bộ.
+Lệnh ghi nhận `client_reference` do platform điền; retry cùng reference trả kết quả đã lưu, reference dùng cho ticket/công cụ/nội dung khác bị từ chối. Lệnh mới cần `expected_ticket_version`; đổi lịch/hủy cần source_message_id cư dân. Tool có timeout thực thi7s, payload/output256KiB, quota theo grant và typed errors/isError. Không trả số điện thoại, mã VH hoặc ghi chú nội bộ. Alias completed là kết quả operation; đọc confirmation để biết cư dân đã đồng ý và ticket đã đóng hay chưa.
 
 Receipt từ trước migration `0017` chưa có hash nội dung: vẫn trả kết quả cũ cho cùng tool/ticket để tương thích, không áp dụng lại side effect. Bảo đảm từ chối đổi nội dung áp dụng cho receipt mới có hash.
 

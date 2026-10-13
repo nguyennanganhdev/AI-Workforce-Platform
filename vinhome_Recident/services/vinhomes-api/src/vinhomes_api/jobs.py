@@ -36,6 +36,11 @@ async def sweep_tenant(db) -> dict[str, int]:
         queued = await emit(db, f"ticket.sla_{kind}", {"ticketId": str(t["id"]), "ticketCode": t["code"], "priority": t["priority"],
                                                     "dueAt": t["resolution_due_at"].isoformat()}, dedupe_key=f"sla:{kind}:{t['id']}")
         counts["sla_breaches" if kind == "breached" else "sla_warnings"] += int(queued)
+        if queued:
+            from .platform import notice
+            linked=(await db.execute(text(f"select 1 from platform_links where tenant_id={TENANT} and ticket_id=:id and status in ('pending','open')"),{'id':t['id']})).first()
+            if linked:
+                await notice(db,t['id'],f"sla:{kind}:{t['id']}",'Domain cảnh báo: yêu cầu đã quá hạn xử lý.' if t['breached'] else 'Domain cảnh báo: yêu cầu sắp đến hạn xử lý.')
     counts["visits_expired"] = (await db.execute(text(f"update visitor_passes set status='expired' where tenant_id={TENANT} and status='approved' and visit_to<now()"))).rowcount
     counts["bookings_expired"] = await expire_unpaid(db)
     counts["requests_cancelled"] = (await db.execute(text(f"""

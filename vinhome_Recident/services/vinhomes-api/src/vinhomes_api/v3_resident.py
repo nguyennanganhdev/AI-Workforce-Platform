@@ -212,7 +212,7 @@ async def send_message(channel_id: str, body: SendMessage, request: Request, sco
            "client_message_id": body.client_message_id})
     created = dict(result.mappings().one())
     from .platform import divert
-    if await divert(db, actor_id, channel_id, body.text, content.get("fileIds", [])):
+    if await divert(db, actor_id, channel_id, body.text, content.get("fileIds", []),created['id']):
         # The platform's coordinator answers in this chat; Reception is not asked.
         return created
     if request.app.state.settings.reception_url:

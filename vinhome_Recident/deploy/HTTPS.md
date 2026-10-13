@@ -2,6 +2,21 @@
 
 Không dùng Caddy. Giữ một lớp gateway tới API, `TRUSTED_PROXY_HOPS=1`. Cần tên miền trỏ đúng VPS và kết nối từ Internet tới cổng 80/443.
 
+## DuckDNS DNS-01
+
+Với `vinhome-platform.duckdns.org`, có thể dùng Certbot trên host với `duckdns-acme-hook.py` khi HTTP-01 không xác minh được. Lưu riêng token tài khoản tại `/etc/vinhomes/duckdns-token.secret`, thư mục0700/file0600, không đưa vào env của API/Agent hoặc Git. Hook chỉ cập nhật TXT, không đổi bản ghi IP; không ghi đè TXT khác đang dùng.
+
+```bash
+certbot certonly --manual --preferred-challenges dns --non-interactive \
+  --manual-auth-hook 'python3 /opt/vinhomes/deploy/duckdns-acme-hook.py auth' \
+  --manual-cleanup-hook 'python3 /opt/vinhomes/deploy/duckdns-acme-hook.py cleanup' \
+  --config-dir /srv/vinhomes-tls --work-dir /srv/vinhomes-certbot-work \
+  --logs-dir /srv/vinhomes-certbot-logs \
+  -d vinhome-platform.duckdns.org --agree-tos --register-unsafely-without-email
+```
+
+Certbot lưu hooks để renew. VPS phải truy cập HTTPS DuckDNS API và truy vấn DNS được; chứng chỉ đã cấp không chứng minh tự động gia hạn đã sẵn sàng. Nếu dùng `DUCKDNS_HTTPS_PROXY` qua relay SSH loopback để xử lý tạm sự cố mạng, không lưu relay thành phụ thuộc vận hành. Cần kiểm tra `renew --dry-run` bằng đường mạng trực tiếp trước khi xác nhận gia hạn tự động hoàn chỉnh. Theo dõi hạn chứng chỉ và lỗi timer trong thời gian chờ xử lý kết nối.
+
 ## Cấp chứng chỉ trước khi bật TLS
 
 Thực hiện ở root thư mục `vinhome_Recident` trên Linux; giữ env hiện có nếu đã deploy, không tạo lại secret hoặc seed dữ liệu.
@@ -31,6 +46,8 @@ docker compose --env-file deploy/deployment.env -f deploy/compose.yml -f deploy/
 Base gateway cần bind public cổng 80; overlay bổ sung cổng 443. Đặt `VINHOMES_BIND_ADDRESS=0.0.0.0`, `GATEWAY_PORT=80`, `HTTPS_PORT=443` ở VPS nếu dùng Compose gốc. Nếu có override hosting hiện hữu, giữ nguyên binding đó và kiểm tra cấu hình hợp nhất trước khi áp dụng. API/PostgreSQL vẫn bind loopback, MinIO không publish.
 
 TLS template được render từ cùng base template, giữ các location ứng dụng/MCP/upload. HTTP chuyển 308 sang HTTPS, ngoại trừ challenge và `/healthz`. File render là artifact ignored, cần tạo lại khi cập nhật base gateway.
+
+Overlay còn có listener HTTP nội bộ riêng8081, publish **chỉ127.0.0.1** bằng `GATEWAY_PRIVATE_PORT` để giữ SSH tunnel. Nếu VPS đang dùng host8080 cho tunnel, đặt `GATEWAY_PRIVATE_PORT=8080` và bỏ mapping cũ `127.0.0.1:8080:8080` khỏi base compose. PublicHTTP80 vẫn redirect; không dùng Host header để quyết định một request là private. Listener này phục vụ quản trị/MCP qua SSH, không thay HTTPS cho đăng nhập browser khi bật cookieSecure.
 
 Sau khi HTTPS public hoạt động, cập nhật env riêng:
 

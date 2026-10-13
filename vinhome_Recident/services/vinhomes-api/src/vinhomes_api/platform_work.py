@@ -32,6 +32,7 @@ RELATION = {"owner": "chủ hộ", "tenant": "người thuê", "household": "th�
 # Work that is over, one way or another.
 ENDED = "('completed','cancelled','rejected')"
 MILESTONES = {
+    "ticket.note_added": "Bổ sung thông tin",
     "ticket.created": "Tiếp nhận yêu cầu", "work_order.created": "Tạo việc cho nhân viên", "work_order.offered": "Mời nhân viên nhận việc",
     "work_assignment.responded:accepted": "Nhân viên nhận việc", "work_assignment.responded:rejected": "Nhân viên từ chối",
     "work_assignment.expired": "Lời mời hết hạn", "work_order.unassigned": "Chưa có nhân viên nhận",
@@ -47,6 +48,10 @@ MILESTONES = {
 
 class Refused(Exception):
     """Said back to the coordinator in plain words; nothing was changed."""
+
+    def __init__(self, message, code='BUSINESS_RULE_REFUSED'):
+        super().__init__(message)
+        self.code=code
 
 
 def _at(value: datetime | None) -> str | None:
@@ -74,7 +79,7 @@ async def _ticket(db, ticket_id, lock: bool = False) -> dict:
     except ValueError:
         raise Refused(UNKNOWN) from None
     row = (await db.execute(text(f"""
-        select t.id,t.status,t.version,t.requester_user_id,t.unit_id,t.building_id,t.zone_id,t.management_unit_id,
+        select t.id,t.status,t.version,t.last_event_seq,t.requester_user_id,t.unit_id,t.building_id,t.zone_id,t.management_unit_id,
           t.category_id,c.code as category_code,c.name as category
         from tickets t join platform_links l on l.ticket_id=t.id and l.tenant_id=t.tenant_id
         left join service_categories c on c.id=t.category_id and c.tenant_id=t.tenant_id
@@ -87,7 +92,7 @@ async def _ticket(db, ticket_id, lock: bool = False) -> dict:
 
 # ---- look-ups --------------------------------------------------------------------------------------------------------
 
-async def ticket_get(db, ticket_id) -> dict:
+async def ticket_get(db, ticket_id, history_before_seq: int | None = None) -> dict:
     ticket = await _ticket(db, ticket_id)
     told = (await db.execute(text(f"""
         select t.title,t.description,t.request_kind,t.priority,t.severity,t.is_emergency,t.created_at,t.response_due_at,
@@ -99,7 +104,7 @@ async def ticket_get(db, ticket_id) -> dict:
         left join zones z on z.id=t.zone_id and z.tenant_id=t.tenant_id where t.id=:id
     """), {"id": ticket["id"]})).mappings().one()
     orders = (await db.execute(text(f"""
-        select w.description,w.status,w.scheduled_at,w.arrived_at,w.started_at,w.completed_at,
+        select w.id,w.version,w.description,w.status,w.scheduled_at,w.arrived_at,w.started_at,w.completed_at,
           case when a.status='offered' and a.offer_expires_at<=now() then 'expired' else a.status end as offer,
           a.eta_at,a.offer_expires_at,su.name as staff_name,q.outcome,q.checked_at,q.reported_by,q.note,
           p.photos_before,p.photos_after,p.photos_verification
@@ -114,10 +119,10 @@ async def ticket_get(db, ticket_id) -> dict:
             count(*) filter (where e.purpose='after') as photos_after,
             count(*) filter (where e.purpose='verification') as photos_verification
           from evidence_items e where e.work_order_id=w.id and e.tenant_id=w.tenant_id and e.status='active') p
-        where w.ticket_id=:id and w.tenant_id={TENANT} order by w.created_at,w.id
+        where w.ticket_id=:id and w.tenant_id={TENANT} order by w.created_at desc,w.id desc limit 51
     """), {"id": ticket["id"]})).mappings().all()
     approvals = (await db.execute(text(f"""
-        select a.id,a.kind,a.request_detail as detail,a.created_at from work_approvals a
+        select a.id,a.kind,a.request_detail as detail,a.created_at,a.expires_at from work_approvals a
         join work_orders w on w.id=a.work_order_id and w.tenant_id=a.tenant_id
         where w.ticket_id=:id and a.tenant_id={TENANT} and a.status='pending' and (a.expires_at is null or a.expires_at>now())
           and a.kind in ('customer_repair','customer_completion') order by a.created_at
@@ -125,19 +130,41 @@ async def ticket_get(db, ticket_id) -> dict:
     quote = next((a for a in reversed(approvals) if a["kind"] == "customer_repair"), None)
     asked = next((a for a in reversed(approvals) if a["kind"] == "customer_completion"), None)
     events = (await db.execute(text(f"""
-        select event_type,coalesce(payload->>'status',payload->>'channel') as status,occurred_at from ticket_events
-        where ticket_id=:id and tenant_id={TENANT} order by seq
-    """), {"id": ticket["id"]})).mappings().all()
+        select seq,event_type,coalesce(payload->>'status',payload->>'channel') as status,occurred_at from ticket_events
+        where ticket_id=:id and tenant_id={TENANT} and (cast(:before as bigint) is null or seq<:before)
+        order by seq desc limit 101
+    """), {"id": ticket["id"],"before":history_before_seq})).mappings().all()
+    policy=await action_policy(db,ticket)
+    from .platform_access import ACCESS
+    access=ACCESS.get()
+    if access:
+        for name,permission in policy['actions'].items():
+            if name not in access['tools']:
+                permission.update(allowed=False,blocked_reason='TICKET_SCOPE_FORBIDDEN')
+    resident_accepted=bool((await db.execute(text(f"""select exists(select 1 from work_approvals a join work_orders w on w.id=a.work_order_id and w.tenant_id=a.tenant_id
+        where w.ticket_id=:id and a.tenant_id={TENANT} and a.kind='customer_completion' and a.status='approved')"""),{'id':ticket['id']})).scalar_one())
+    now=datetime.now(VN)
     return {
+        "ticket_id":str(ticket['id']),"ticket_version":ticket['version'],"snapshot_seq":ticket['last_event_seq'],"read_at":now.isoformat(),
         "ticket_status": ticket["status"],
-        # The platform reads a top-level "status" as proof that the work is done: only once it was accepted.
+        # Compatibility alias for external operation completion, NOT resident acceptance or ticket closure.
         **({"status": "completed"} if ticket["status"] in ("resolved", "closed") else {}),
+        "confirmation":{"result_published":ticket['status'] in ('resolved','closed'),
+            "waiting_for_resident":ticket['status']=='resolved' and asked is not None,
+            "resident_accepted":resident_accepted and ticket['status']=='closed',"ticket_closed":ticket['status']=='closed'},
+        "policy":policy,
+        "sla":{"response_due_at":told['response_due_at'].isoformat() if told['response_due_at'] else None,
+            "resolution_due_at":told['resolution_due_at'].isoformat() if told['resolution_due_at'] else None,
+            "resolution_overdue":bool(told['resolution_due_at'] and told['resolution_due_at']<now and ticket['status'] not in ('resolved','closed','cancelled'))},
+        "history_page":{"next_before_seq":events[99]['seq'] if len(events)>100 else None,"limit":100},
+        "work_orders_truncated":len(orders)>50,
         "title": told["title"], "description": told["description"], "category": ticket["category"],
         "request_kind": told["request_kind"], "priority": told["priority"], "severity": told["severity"],
         "is_emergency": told["is_emergency"], "unit": told["unit"], "building": told["building"], "zone": told["zone"],
         "created_at": _at(told["created_at"]), "response_due_at": _at(told["response_due_at"]),
         "resolution_due_at": _at(told["resolution_due_at"]), "resident_photos": told["resident_photos"],
         "work_orders": [{
+            "work_order_id":str(w['id']),"version":w['version'],
             "description": w["description"], "work_status": w["status"], "appointment": _at(w["scheduled_at"]),
             "staff_name": w["staff_name"], "offer": w["offer"], "eta": _at(w["eta_at"]),
             "offer_expires_at": _at(w["offer_expires_at"]) if w["offer"] == "offered" else None,
@@ -147,12 +174,28 @@ async def ticket_get(db, ticket_id) -> dict:
             "acceptance_report": w["outcome"] and {"result": w["outcome"], "reported_by": w["reported_by"] or "Ban quản lý",
                                                    "reported_at": _at(w["checked_at"]), "note": w["note"]},
             "photos": {"before": w["photos_before"], "after": w["photos_after"], "verification": w["photos_verification"]},
-        } for w in orders],
-        "quote": quote and _quote({"quote": quote}),
+        } for w in reversed(orders[:50])],
+        "quote": quote and {**_quote({"quote": quote}),"approval_id":str(quote['id']),"expires_at":quote['expires_at'].isoformat() if quote['expires_at'] else None},
         "completion_request": asked and {"waiting_for_resident": True, "asked_at": _at(asked["created_at"])},
-        "milestones": [{"at": _at(e["occurred_at"]), "what": what} for e in events
+        "milestones": [{"seq":e['seq'],"at": _at(e["occurred_at"]), "what": what} for e in reversed(events[:100])
                        if (what := MILESTONES.get(f"{e['event_type']}:{e['status']}") or MILESTONES.get(e["event_type"]))],
     }
+
+
+async def action_policy(db,ticket) -> dict:
+    planned=await requires_plan((db,None,False),ticket['id'])
+    orders=(await db.execute(text(f"""select w.status,c.code as category,
+        coalesce((select q.outcome from vh_qc_results q where q.work_order_id=w.id and q.tenant_id=w.tenant_id order by q.checked_at desc,q.id desc limit 1),'') as qc
+        from work_orders w join service_categories c on c.id=w.category_id and c.tenant_id=w.tenant_id
+        where w.ticket_id=:id and w.tenant_id={TENANT} and w.status not in ('cancelled','rejected')"""),{'id':ticket['id']})).mappings().all()
+    active=ticket['status'] in ('open','triaging','assigned','in_progress')
+    blockers={
+        'vh_work_order_dispatch': 'TICKET_FINAL' if not active else 'PLAN_REQUIRED' if planned else 'SECURITY_MANAGEMENT_ONLY' if ticket['category_code']=='security' else 'CATEGORY_REQUIRED' if ticket['category_id'] is None else 'WORK_ALREADY_ACTIVE' if any(w['status']!='completed' or w['qc']!='pass' for w in orders) else None,
+        'vh_work_order_reschedule': None if active and any(w['status'] in ('queued','offered','accepted') for w in orders) else 'NO_RESCHEDULABLE_WORK',
+        'vh_ticket_cancel': 'TICKET_FINAL' if not active else 'SECURITY_MANAGEMENT_ONLY' if any(w['category']=='security' for w in orders) else 'WORK_ALREADY_ON_SITE' if any(w['status'] in ('arrived','in_progress','completed') for w in orders) else None,
+        'vh_ticket_add_note':None if active or ticket['status']=='resolved' else 'TICKET_FINAL'}
+    return {'version':'ticket-policy-v1','requires_plan':planned,'actions':{k:{'allowed':v is None,'blocked_reason':v} for k,v in blockers.items()},
+        'resident_approval_required_for':['quote','completion'],'security_dispatch':'management_only'}
 
 
 async def resident_context(db, ticket_id) -> dict:
@@ -181,7 +224,8 @@ async def knowledge_search(db, ticket_id, query: str) -> dict:
     tenant = (await db.execute(text(f"select {TENANT}"))).scalar_one()
     found = await search(db, tenant, "resident", ticket["zone_id"], ticket["building_id"], query.strip()[:1000], 5)
     return {"found": bool(found["hits"]), "passages": [
-        {"document": hit["title"], "section": hit["section"], "text": hit["text"], **({"unverified": True} if hit["unverified"] else {})}
+        {"document": hit["title"], "document_id":hit['documentId'],"version_id":hit['versionId'],"chunk_id":hit['chunkId'],
+         "audience":"resident","section": hit["section"], "text": hit["text"], **({"unverified": True} if hit["unverified"] else {})}
         for hit in found["hits"]]}
 
 
@@ -311,8 +355,9 @@ async def debts(db, ticket_id, view: str) -> dict:
             "notes": [{key: value for key, value in note.items() if key != "id"} for note in notes["items"]]}
 
 
-async def staff_available(db, ticket_id) -> dict:
+async def staff_available(db, ticket_id, appointment_at: str | None = None) -> dict:
     ticket = await _ticket(db, ticket_id)
+    at=_appointment(appointment_at)
     if ticket["category_id"] is None:
         raise Refused("Yêu cầu chưa được phân loại nên chưa biết cần chuyên môn nào.")
     # Who offer_work would consider: of the ticket's unit, with the specialty, on shift now and with room for a job.
@@ -321,15 +366,16 @@ async def staff_available(db, ticket_id) -> dict:
         join users u on u.id=sp.user_id and u.status='active'
         join staff_specialties ss on ss.staff_id=sp.id and ss.tenant_id=sp.tenant_id and ss.category_id=:category and ss.active
         cross join lateral (select max(x.ends_at) as ends_at from staff_shifts x where x.staff_id=sp.id and x.tenant_id=sp.tenant_id
-          and x.status='available' and x.starts_at<=now() and x.ends_at>now()) sh
+           and x.status='available' and x.starts_at<=coalesce(cast(:at as timestamptz),now()) and x.ends_at>coalesce(cast(:at as timestamptz),now())) sh
         cross join lateral (select count(*) as load from work_assignments a
           join work_orders o on o.id=a.work_order_id and o.tenant_id=a.tenant_id
           where a.staff_id=sp.id and o.status not in {ENDED}
             and (a.status='accepted' or (a.status='offered' and a.offer_expires_at>now()))) busy
         where sp.tenant_id={TENANT} and sp.active and sp.availability='available' and sp.management_unit_id=:unit
           and sh.ends_at is not null and busy.load<sp.max_concurrent_jobs order by busy.load,sp.id
-    """), {"category": ticket["category_id"], "unit": ticket["management_unit_id"]})).mappings().all()
-    return {"specialty": ticket["category"], "staff": [
+    """), {"category": ticket["category_id"], "unit": ticket["management_unit_id"],"at":at})).mappings().all()
+    return {"specialty": ticket["category"],"checked_for":at.isoformat() if at else datetime.now(VN).isoformat(),
+            "reservation_confirmed":False,"availability_basis":"shift_at_requested_time_and_current_load","staff": [
         {"staff_id": str(r["id"]), "name": r["name"], "proficiency": r["proficiency"], "active_jobs": r["load"],
          "max_concurrent_jobs": r["max_concurrent_jobs"], "shift_ends_at": _at(r["ends_at"])} for r in rows]}
 
@@ -352,13 +398,13 @@ async def _stored(db, reference: str, tool: str, ticket_id, request_hash=None):
     if row is None:
         return None
     if row.tool != tool or str(row.ticket_id) != str(ticket_id).strip().lower():
-        raise Refused("client_reference này đã dùng cho một lời gọi khác.")
+        raise Refused("client_reference này đã dùng cho một lời gọi khác.",'REFERENCE_CONFLICT')
     if row.request_hash is not None and row.request_hash != request_hash:
-        raise Refused("client_reference này đã dùng với nội dung khác.")
+        raise Refused("client_reference này đã dùng với nội dung khác.",'REFERENCE_CONFLICT')
     return row.answer
 
 
-async def _act(db, tool: str, ticket_id, reference, effect, payload=None) -> dict:
+async def _act(db, tool: str, ticket_id, reference, effect, payload=None, expected_version=None) -> dict:
     """Run `effect(ticket)` once for this reference. It returns the answer and, for a dispatch, the work order."""
     if not isinstance(reference, str) or not 8 <= len(reference) <= 120:
         return {"status": "failed", "reason": "Thiếu client_reference của platform."}
@@ -372,6 +418,11 @@ async def _act(db, tool: str, ticket_id, reference, effect, payload=None) -> dic
             ticket = await _ticket(db, ticket_id, lock=True)
             # The same call twice at once: the second waited for the ticket and finds the first one's answer.
             answer = await _stored(db, reference, tool, ticket_id, request_hash)
+            from .platform_access import ACCESS
+            if answer is None and ACCESS.get() is not None and expected_version is None:
+                raise Refused('Cần expected_ticket_version từ vh_ticket_get.','TICKET_VERSION_REQUIRED')
+            if answer is None and expected_version is not None and ticket['version']!=expected_version:
+                raise Refused('Ticket đã thay đổi. Đọc trạng thái mới trước khi thực hiện.','STALE_TICKET_VERSION')
         if answer is None:
             # A refusal half way undoes what the effect already wrote.
             async with db.begin_nested():
@@ -384,10 +435,10 @@ async def _act(db, tool: str, ticket_id, reference, effect, payload=None) -> dic
                        "answer": json.dumps(answer, ensure_ascii=False), "hash":request_hash})
         return answer
     except Refused as no:
-        return {"status": "failed", "reason": str(no)}
+        return {"status": "failed", "reason": str(no),"code":no.code,"retryable":False}
 
 
-async def dispatch(db, ticket_id, description: str, staff_id: str | None, appointment_at: str | None, client_reference) -> dict:
+async def dispatch(db, ticket_id, description: str, staff_id: str | None, appointment_at: str | None, client_reference, expected_version=None) -> dict:
     """Create the work and offer it. Its id is the platform's job id: staff progress is reported under this call."""
     async def effect(ticket):
         text_ = (description or "").strip()
@@ -438,11 +489,31 @@ async def dispatch(db, ticket_id, description: str, staff_id: str | None, appoin
                 "offer_expires_at": _at(offered["offer_expires_at"]), "appointment": _at(at),
                 "note": "Đã mời nhân viên, đang chờ người nhận."}, work
     return await _act(db, "vh_work_order_dispatch", ticket_id, client_reference, effect,
-                      {"description":description,"staff_id":staff_id,"appointment_at":appointment_at})
+                       {"description":description,"staff_id":staff_id,"appointment_at":appointment_at},expected_version)
 
 
-async def reschedule(db, ticket_id, appointment_at: str, reason: str | None, client_reference) -> dict:
+async def resident_source(db,ticket,source_message_id):
+    from .platform_access import ACCESS
+    if ACCESS.get() is None:
+        return  # Direct domain helpers keep their existing authority; this gate belongs to public MCP.
+    try:
+        source=UUID(str(source_message_id))
+    except ValueError:
+        raise Refused('Cần source_message_id của lời yêu cầu mới từ cư dân.','RESIDENT_SOURCE_REQUIRED') from None
+    valid=(await db.execute(text(f"""select 1 from messages m join platform_links l on l.channel_id=m.channel_id and l.tenant_id=m.tenant_id
+        join users u on u.id=m.sender_user_id and u.status='active'
+        join tenant_memberships tm on tm.user_id=u.id and tm.tenant_id=m.tenant_id and tm.status='active'
+        where m.id=:source and m.tenant_id={TENANT} and l.ticket_id=:ticket and m.sender_user_id=:resident
+          and m.sender_kind='user' and m.created_at>=l.created_at and m.created_at>now()-interval '24 hours'
+          and length(coalesce(m.body->>'text',''))>0"""),
+        {'source':source,'ticket':ticket['id'],'resident':ticket['requester_user_id']})).first()
+    if valid is None:
+        raise Refused('Tin nhắn nguồn không thuộc cư dân và ticket này hoặc đã hết hiệu lực.','RESIDENT_SOURCE_FORBIDDEN')
+
+
+async def reschedule(db, ticket_id, appointment_at: str, reason: str | None, client_reference, expected_version=None,source_message_id=None) -> dict:
     async def effect(ticket):
+        await resident_source(db,ticket,source_message_id)
         at = _appointment(appointment_at)
         if at is None:
             raise Refused("Cần giờ hẹn mới.")
@@ -472,12 +543,13 @@ async def reschedule(db, ticket_id, appointment_at: str, reason: str | None, cli
                 "type": "work.rescheduled", "workOrderId": str(work["id"]), "ticketId": str(ticket["id"]), "appointmentAt": at.isoformat()})})
         return {"status": "confirmed", "appointment": _at(at)}, None
     return await _act(db, "vh_work_order_reschedule", ticket_id, client_reference, effect,
-                      {"appointment_at":appointment_at,"reason":reason})
+                      {"appointment_at":appointment_at,"reason":reason,**({'source_message_id':source_message_id} if source_message_id else {})},expected_version)
 
 
-async def cancel(db, ticket_id, reason: str | None, client_reference) -> dict:
+async def cancel(db, ticket_id, reason: str | None, client_reference, expected_version=None,source_message_id=None) -> dict:
     """The resident no longer wants the request: the ticket, its unfinished work and the offers end together."""
     async def effect(ticket):
+        await resident_source(db,ticket,source_message_id)
         why = (reason or "").strip()[:2000] or "Cư dân đề nghị hủy yêu cầu."
         # TICKET_TRANSITIONS: only these may become cancelled.
         if ticket["status"] not in ("open", "triaging", "assigned", "in_progress"):
@@ -513,18 +585,20 @@ async def cancel(db, ticket_id, reason: str | None, client_reference) -> dict:
         # Nothing is left to coordinate: the workflow ends after this turn and the chat goes back to Reception.
         await command(db, ticket["id"], "close", {"reason": "resident_cancelled"})
         return {"status": "confirmed", "ticket_status": "cancelled", "cancelled_work_orders": len(orders)}, None
-    return await _act(db, "vh_ticket_cancel", ticket_id, client_reference, effect,{"reason":reason})
+    return await _act(db, "vh_ticket_cancel", ticket_id, client_reference, effect,{"reason":reason,**({'source_message_id':source_message_id} if source_message_id else {})},expected_version)
 
 
-async def add_note(db, ticket_id, note: str, client_reference) -> dict:
+async def add_note(db, ticket_id, note: str, client_reference,expected_version=None) -> dict:
     """Something the resident added for the staff. It is kept in the ticket's history, which staff read."""
     async def effect(ticket):
+        if ticket['status'] in ('closed','cancelled'):
+            raise Refused('Yêu cầu đã kết thúc.','TICKET_FINAL')
         said = (note or "").strip()
         if not 1 <= len(said) <= 2000:
             raise Refused("note cần từ 1 đến 2000 ký tự.")
         await agent_event(db, ticket["id"], CLIENT_ID, "ticket.note_added", {"note": said})
         return {"status": "confirmed"}, None
-    return await _act(db, "vh_ticket_add_note", ticket_id, client_reference, effect,{"note":note})
+    return await _act(db, "vh_ticket_add_note", ticket_id, client_reference, effect,{"note":note},expected_version)
 
 
 # ---- offers that were turned down or ran out -------------------------------------------------------------------------

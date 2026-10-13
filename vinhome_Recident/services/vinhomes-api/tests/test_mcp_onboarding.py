@@ -22,6 +22,7 @@ HELLO = {
 
 @pytest.fixture(autouse=True)
 def platform_not_configured(monkeypatch):
+    monkeypatch.setenv('VINHOMES_API_MCP_ALLOWED_HOSTS','testserver')
     for suffix in ("URL", "CUSTOMER_KEY", "PROVIDER_KEY", "SIGNING_KEY_ID", "SIGNING_SECRET", "MCP_TOKEN"):
         monkeypatch.delenv("VINHOMES_API_PLATFORM_" + suffix, raising=False)
 
