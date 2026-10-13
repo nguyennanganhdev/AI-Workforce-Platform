@@ -68,15 +68,13 @@ def test_mcp_view_exposes_catalog_but_not_connection_secret() -> None:
 
 def test_skill_normalisation_adds_safe_front_matter() -> None:
     agent = GeneratedAgent(
-        name="Hotel Agent",
-        objective="Tìm phòng: theo ngân sách của khách",
+        plan_index=0,
         system_prompt="Act only on verified hotel inventory and report tool results.",
-        selected_tool_ids=["mcp-1:search_rooms"],
         skill_name="Hotel Search",
         skill_markdown="# Workflow\n\nSearch, compare, then report verified options.",
     )
 
-    skill = _normalise_skill(agent)
+    skill = _normalise_skill(agent, "Tìm phòng: theo ngân sách của khách")
 
     assert skill.startswith("---\nname: hotel-search\n")
     assert 'description: "Tìm phòng: theo ngân sách của khách"' in skill

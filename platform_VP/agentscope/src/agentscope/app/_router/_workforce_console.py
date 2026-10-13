@@ -26,10 +26,7 @@ from ...mcp import MCPClient
 from ...message import AssistantMsg, Msg, SystemMsg, UserMsg
 from ...model import ChatModelBase
 from .._service import ResourceAccessService, get_model
-from .._workforce_policy import (
-    WORKFORCE_LEADER_PROMPT,
-    governed_system_prompt,
-)
+from .._workforce_policy import WORKFORCE_LEADER_PROMPT
 from ..deps import (
     get_current_user_id,
     get_resource_access_service,
@@ -88,12 +85,10 @@ class BuilderTool(BaseModel):
 
 
 class GeneratedAgent(BaseModel):
-    """The only three business artifacts Builder is allowed to author."""
+    """Business artifacts for one agent in the approved outline."""
 
-    name: str = Field(min_length=1, max_length=100)
-    objective: str = Field(min_length=1, max_length=4000)
+    plan_index: int = Field(ge=0, le=11)
     system_prompt: str = Field(min_length=20, max_length=30000)
-    selected_tool_ids: list[str] = Field(default_factory=list)
     skill_name: str = Field(min_length=1, max_length=100)
     skill_markdown: str = Field(min_length=20, max_length=50000)
 
@@ -540,47 +535,59 @@ def _raise_builder_model_error(exc: Exception, config: ChatModelConfig) -> None:
 
 async def _generate(
     message: str,
-    tools: list[BuilderTool],
+    planned_agents: list[PlannedAgentView],
     model: ChatModelBase,
     config: ChatModelConfig,
     reply_language: Literal["vi", "en"],
 ) -> tuple[BuilderGeneration, int, int]:
-    tool_json = json.dumps(
-        [tool.model_dump(mode="json") for tool in tools],
+    plan_json = json.dumps(
+        [
+            {"plan_index": index, **agent.model_dump(mode="json")}
+            for index, agent in enumerate(planned_agents)
+        ],
         ensure_ascii=False,
     )
-    instructions = """You are Agent Builder, not the runtime Leader.
-The conversation contains an outline approved by the area manager. Generate
-exactly those reusable independent business agents; do not merge their
-capabilities into one agent. A team request is only a batch creation shortcut;
-do not pre-bind a permanent team or a ticket. You may author ONLY: name, objective,
-system_prompt, selected_tool_ids and one reusable SKILL.md. Select only exact
-tool IDs in the supplied catalog. A tool ID may appear in only one generated
-agent. Give each operational tool to the narrowest specialist that owns that
-capability; a planning/coordinator agent must call that specialist through
-TeamSay instead of receiving a duplicate tool. Never output or modify model parameters,
-context limits, ReAct settings, timeouts, credentials, permissions or publish
-policy. The system prompt must explain when to communicate with another agent
-through TeamSay, but must not hard-code a particular future ticket. If the
-business capability cannot be implemented with the available tools, ask one
-specific clarification question or return no agents and explain the missing
-capability. Never claim that an unavailable tool exists.
+    instructions = """You author reusable business agents from the approved plan below.
+Return one artifact per plan_index. The server preserves the approved names,
+objectives and tool assignments; they are not fields for you to select again.
+Author only system_prompt, skill_name and skill_markdown for each agent.
+If a requirement is unresolved, ask a concise clarification question instead.
 
-LANGUAGE AND VOICE:
-- Use the language of the user's latest real request for every human-readable
-  field: Vietnamese for Vietnamese and English for English.
-- Make assistant_message and clarification_question sound like a natural,
-  concise conversation with a person. Avoid robotic acknowledgements, system
-  status prose, and unnecessary repetition.
-- Generated system prompts and skills must instruct each runtime agent to
-  answer in the language of the user's latest message and to communicate
-  naturally, without exposing internal orchestration unless asked.
+Write a concise system prompt describing the agent's role, scope and expected
+outcomes. Give it room to reason from the user's request; avoid a fixed script
+or step-by-step tool instructions. Include when to collaborate with peers
+through TeamSay. Put reusable domain guidance in SKILL.md rather than repeating
+it in the system prompt. Keep both artifacts independent of any specific trip,
+ticket or permanent team. Refer only to the tools assigned in the approved plan.
+Runtime safety, permissions, evidence and confirmation policies are supplied
+by the platform; do not copy them or technical settings into the authored role.
+
+Use the required build language consistently for all prose, including headings.
+Keep API identifiers unchanged. Speak naturally and concisely. Instruct each
+agent to respond in the user's language without exposing internal orchestration.
 """
-    instructions += (
-        "\nThe required language for this build is Vietnamese."
-        if reply_language == "vi"
-        else "\nThe required language for this build is English."
-    )
+    if reply_language == "vi":
+        instructions = """Bạn viết cấu hình nghiệp vụ theo plan đã duyệt bên dưới.
+Với mỗi plan_index, chỉ viết system_prompt, skill_name và skill_markdown.
+Máy chủ giữ nguyên tên, mục tiêu và toàn bộ công cụ của từng agent trong plan.
+Nếu còn yêu cầu chưa rõ, hãy hỏi ngắn gọn thay vì tự đổi plan.
+
+Viết toàn bộ phần diễn giải và tiêu đề bằng tiếng Việt tự nhiên, không xen
+từ tiếng Anh hoặc ngôn ngữ khác. Chỉ giữ nguyên định danh API khi dùng đúng
+tên công cụ trong plan; dịch các khái niệm nghiệp vụ sang tiếng Việt.
+
+System prompt cần ngắn gọn: vai trò, phạm vi, kết quả mong đợi và khi nào cần
+phối hợp với chuyên gia khác. Để agent tự suy luận theo yêu cầu của khách,
+không viết kịch bản hay hướng dẫn gọi công cụ từng bước. Đưa hướng dẫn nghiệp
+vụ tái sử dụng vào SKILL.md, tránh lặp lại trong system prompt. Không gắn cấu
+hình với một chuyến đi, ticket hay nhóm cố định. Chính sách an toàn, bằng
+chứng, quyền hạn và xác nhận đã do hệ thống cung cấp khi chat; không chép
+chính sách hoặc tham số kỹ thuật vào phần vai trò nghiệp vụ.
+Nhắc agent phản hồi bằng ngôn ngữ của khách, giao tiếp tự nhiên và không
+trình bày cơ chế điều phối nội bộ.
+"""
+    else:
+        instructions += "\nThe required language for this build is English."
     try:
         async with asyncio.timeout(60):
             (
@@ -592,9 +599,7 @@ LANGUAGE AND VOICE:
                 [
                     SystemMsg(
                         name="agent_builder",
-                        content=(
-                            instructions + "\nRegistered tool catalog:\n" + tool_json
-                        ),
+                        content=instructions + "\nApproved plan:\n" + plan_json,
                     ),
                     UserMsg(name="area_manager", content=message),
                 ],
@@ -611,13 +616,13 @@ LANGUAGE AND VOICE:
         _raise_builder_model_error(exc, config)
 
 
-def _normalise_skill(agent: GeneratedAgent) -> str:
+def _normalise_skill(agent: GeneratedAgent, objective: str) -> str:
     body = agent.skill_markdown.strip()
     if body.startswith("---"):
         parts = body.split("---", 2)
         body = parts[2].lstrip() if len(parts) == 3 else body
     description = json.dumps(
-        agent.objective.replace("\n", " ")[:300],
+        objective.replace("\n", " ")[:300],
         ensure_ascii=False,
     )
     return (
@@ -1000,6 +1005,48 @@ def _stored_proposal(messages: list[Msg]) -> ProposalView | None:
     return None
 
 
+def _validate_approved_plan(
+    planned_agents: list[PlannedAgentView],
+    tools: list[BuilderTool],
+) -> None:
+    """Reject a missing or stale plan instead of silently dropping tools."""
+    if not planned_agents:
+        raise HTTPException(
+            status_code=409,
+            detail="Chưa có định hướng đã lưu. Hãy lập và chốt lại plan.",
+        )
+    available = {tool.id: tool for tool in tools}
+    assigned: set[str] = set()
+    for agent in planned_agents:
+        ids = [tool.id for tool in agent.suggested_tools]
+        if (
+            not ids
+            or len(ids) != len(set(ids))
+            or assigned.intersection(ids)
+            or any(
+                tool.id not in available
+                or (tool.mcp_id, tool.tool_name)
+                != (available[tool.id].mcp_id, available[tool.id].tool_name)
+                for tool in agent.suggested_tools
+            )
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Tool trong plan của '{agent.name}' bị thiếu, trùng hoặc "
+                    "không còn khả dụng. Hãy kiểm tra MCP và chốt lại plan."
+                ),
+            )
+        assigned.update(ids)
+
+
+def _same_tool_bindings(record: AgentRecord, tools: list[BuilderTool]) -> bool:
+    return {
+        (binding.get("id"), binding.get("mcp_id"), binding.get("tool_name"))
+        for binding in record.data.tool_bindings
+    } == {(tool.id, tool.mcp_id, tool.tool_name) for tool in tools}
+
+
 async def _builder_session(
     storage: StorageBase,
     user_id: str,
@@ -1148,6 +1195,11 @@ async def prepare_builder(
         previous_transcript or body.message,
     )
     tools = await _catalog(storage, user_id)
+    planned_agents: list[PlannedAgentView] = []
+    if body.confirm_outline:
+        approved = _stored_proposal(messages)
+        planned_agents = approved.planned_agents if approved else []
+        _validate_approved_plan(planned_agents, tools)
     model = await get_model(user_id, body.chat_model_config, access)
     transcript = await _prepare_builder_memory(
         model=model,
@@ -1239,7 +1291,7 @@ async def prepare_builder(
     try:
         generation, prompt_tokens, reserved_output_tokens = await _generate(
             transcript,
-            tools,
+            planned_agents,
             model,
             body.chat_model_config,
             reply_language,
@@ -1269,6 +1321,7 @@ async def prepare_builder(
             status="needs_input",
             assistant_message=generation.assistant_message,
             clarification_question=generation.clarification_question,
+            planned_agents=planned_agents,
             chat_model_config=body.chat_model_config,
             fixed_config=_fixed_config(),
         )
@@ -1281,6 +1334,15 @@ async def prepare_builder(
         )
         return proposal
 
+    indices = [agent.plan_index for agent in generation.agents]
+    if sorted(indices) != list(range(len(planned_agents))):
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Model không sinh đủ cấu hình cho từng agent trong plan đã chốt. "
+                "Hãy thử sinh lại cấu hình."
+            ),
+        )
     by_id = {tool.id: tool for tool in tools}
     existing = [
         record
@@ -1289,25 +1351,24 @@ async def prepare_builder(
     ]
     views: list[ProposedAgentView] = []
     any_blocked = False
-    claimed_tool_ids: set[str] = set()
-    for agent in generation.agents:
-        exclusive_tool_ids, invalid, duplicate_tool_ids = _claim_exclusive_tool_ids(
-            agent.selected_tool_ids,
-            set(by_id),
-            claimed_tool_ids,
-        )
-        selected = [by_id[item] for item in exclusive_tool_ids]
+    for agent in sorted(generation.agents, key=lambda item: item.plan_index):
+        planned = planned_agents[agent.plan_index]
+        selected = [by_id[tool.id] for tool in planned.suggested_tools]
         reuse = max(
-            existing,
+            (
+                record
+                for record in existing
+                if _same_tool_bindings(record, selected)
+            ),
             key=lambda item: _similarity(
-                agent.objective,
+                planned.objective,
                 item.data.build_description or item.data.system_prompt,
             ),
             default=None,
         )
         reuse_score = (
             _similarity(
-                agent.objective,
+                planned.objective,
                 reuse.data.build_description or reuse.data.system_prompt,
             )
             if reuse is not None
@@ -1315,30 +1376,29 @@ async def prepare_builder(
         )
         checks = {
             "system_prompt": len(agent.system_prompt.strip()) >= 80,
-            "registered_tools": not invalid,
-            "exclusive_tool_assignment": not duplicate_tool_ids,
+            "registered_tools": True,
+            "exclusive_tool_assignment": True,
+            "approved_plan_tools": [tool.id for tool in selected]
+            == [tool.id for tool in planned.suggested_tools],
             "capability_has_tools": bool(selected),
             "skill": len(agent.skill_markdown.strip()) >= 40,
         }
-        passed = all(checks.values()) or reuse_score >= 0.72
+        passed = all(checks.values())
         any_blocked = any_blocked or not passed
         views.append(
             ProposedAgentView(
-                name=agent.name,
-                objective=agent.objective,
-                system_prompt=governed_system_prompt(
-                    "business",
-                    agent.system_prompt,
-                ),
+                name=planned.name,
+                objective=planned.objective,
+                system_prompt=agent.system_prompt.strip(),
                 selected_tools=selected,
                 skill_name=_slug(agent.skill_name),
-                skill_markdown=_normalise_skill(agent),
+                skill_markdown=_normalise_skill(agent, planned.objective),
                 evaluation={
                     "passed": passed,
                     "score": round(sum(checks.values()) / len(checks), 2),
                     "checks": checks,
-                    "invalid_tool_ids": invalid,
-                    "duplicate_tool_ids": duplicate_tool_ids,
+                    "invalid_tool_ids": [],
+                    "duplicate_tool_ids": [],
                     "reuse_similarity": round(reuse_score, 2),
                 },
                 reuse_agent_id=(reuse.id if reuse_score >= 0.72 else None),
@@ -1365,6 +1425,7 @@ async def prepare_builder(
             )
         ),
         clarification_question=generation.clarification_question,
+        planned_agents=planned_agents,
         agents=views,
         chat_model_config=body.chat_model_config,
         fixed_config=_fixed_config(),
@@ -1417,22 +1478,47 @@ async def publish_builder(
                 status_code=409,
                 detail="Proposal chưa đạt điều kiện phát hành",
             )
-        assigned_tools: set[str] = set()
-        duplicate_tools: set[str] = set()
-        for item in proposal.agents:
-            for tool in item.selected_tools:
-                if tool.id in assigned_tools:
-                    duplicate_tools.add(tool.id)
-                assigned_tools.add(tool.id)
-        if duplicate_tools:
+        _validate_approved_plan(
+            proposal.planned_agents,
+            await _catalog(storage, user_id),
+        )
+        if len(proposal.agents) != len(proposal.planned_agents):
             raise HTTPException(
                 status_code=409,
-                detail=(
-                    "Mỗi tool chỉ được gán cho một agent trong cùng proposal. "
-                    "Hãy tạo lại cấu hình cho các tool: "
-                    + ", ".join(sorted(duplicate_tools))
-                ),
+                detail="Cấu hình không đủ agent theo plan. Hãy sinh lại cấu hình.",
             )
+        for planned, item in zip(proposal.planned_agents, proposal.agents):
+            if (
+                item.name != planned.name
+                or item.objective != planned.objective
+                or [
+                    (tool.id, tool.mcp_id, tool.tool_name)
+                    for tool in item.selected_tools
+                ]
+                != [
+                    (tool.id, tool.mcp_id, tool.tool_name)
+                    for tool in planned.suggested_tools
+                ]
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Cấu hình khác plan đã chốt. Hãy sinh lại cấu hình.",
+                )
+            if item.reuse_agent_id:
+                reused = await storage.get_agent(user_id, item.reuse_agent_id)
+                if (
+                    reused is None
+                    or reused.source != "user"
+                    or reused.data.system_role != "business"
+                    or not _same_tool_bindings(reused, item.selected_tools)
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            "Tool của agent tái sử dụng đã thay đổi. "
+                            "Hãy sinh lại cấu hình."
+                        ),
+                    )
         proposal.status = "published"
 
     model_config = proposal.chat_model_config
@@ -1452,10 +1538,7 @@ async def publish_builder(
             user_id=user_id,
             data=AgentData(
                 name=item.name,
-                system_prompt=governed_system_prompt(
-                    "business",
-                    item.system_prompt,
-                ),
+                system_prompt=item.system_prompt,
                 context_config=_FIXED_CONTEXT.model_copy(deep=True),
                 react_config=_FIXED_REACT.model_copy(deep=True),
                 invite_config=InviteConfig(

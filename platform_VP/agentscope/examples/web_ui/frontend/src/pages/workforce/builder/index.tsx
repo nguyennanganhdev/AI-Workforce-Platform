@@ -91,7 +91,7 @@ function AgentProposalCard({ proposal }: { proposal: BuilderProposal['agents'][n
 						))}
 						{proposal.selected_tools.length === 0 && (
 							<p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-								Chưa có tool phù hợp trong MCP đã đăng ký.
+								Cấu hình agent chưa được gán tool. Hãy kiểm tra và chốt lại plan.
 							</p>
 						)}
 					</div>
