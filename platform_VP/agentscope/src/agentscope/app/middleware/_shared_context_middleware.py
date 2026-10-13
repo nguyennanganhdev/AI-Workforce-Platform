@@ -32,8 +32,10 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         *,
         task_id: str | None = None,
         membership_storage: StorageBase | None = None,
+        agent_id: str | None = None,
     ) -> None:
         self._mode = mode
+        self._agent_id = agent_id
         self._service = service
         self._user_id = user_id
         self._team_id = team_id
@@ -247,6 +249,23 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
         started = time.monotonic()
         output_tokens = 0
 
+        usage = None
+
+        async def record_usage() -> None:
+            # Provider usage is observability, not a budget input: a failure
+            # here must never fail the agent's turn.
+            try:
+                await self._service.record_provider_usage(
+                    user_id=self._user_id,
+                    team_id=self._team_id,
+                    agent_id=self._agent_id or agent.name,
+                    agent_name=agent.name,
+                    model=str(getattr(current_model, "model", "") or ""),
+                    usage=usage,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("Could not record provider usage")
+
         async def charge(*, elapsed_floor: float = 0.0):
             await self._service.measure_collaboration(
                 self._user_id,
@@ -275,6 +294,8 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
             await charge()
             raise
         if not hasattr(response, "__aiter__"):
+            usage = response.usage
+            await record_usage()
             output_tokens = (
                 response.usage.output_tokens
                 if response.usage
@@ -287,7 +308,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
             return response
 
         async def measured_stream():
-            nonlocal output_tokens
+            nonlocal output_tokens, usage
             partial_content = []
             complete = False
             try:
@@ -298,6 +319,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                         partial_content.extend(chunk.content)
                         if chunk.is_last:
                             complete = True
+                            usage = chunk.usage
                             output_tokens = (
                                 chunk.usage.output_tokens
                                 if chunk.usage
@@ -328,6 +350,7 @@ class SharedContextIsolationMiddleware(MiddlewareBase):
                         ],
                         None,
                     )
+                await record_usage()
                 await charge()
 
         return measured_stream()

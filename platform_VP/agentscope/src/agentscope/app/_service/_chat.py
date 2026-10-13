@@ -1426,6 +1426,7 @@ class ChatService:
                             shared_context_attachment,
                             task_id=context_task_id,
                             membership_storage=self._storage,
+                            agent_id=agent_id,
                         ),
                     )
 
@@ -1440,6 +1441,7 @@ class ChatService:
                         user_id,
                         None,
                         membership_storage=self._storage,
+                        agent_id=agent_id,
                     ))
 
                 fallback_cfg = session_record.config.fallback_chat_model_config

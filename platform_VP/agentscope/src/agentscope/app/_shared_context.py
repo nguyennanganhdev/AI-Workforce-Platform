@@ -25,6 +25,7 @@ from .message_bus import MessageBus, MessageBusKeys
 from .storage import (
     ContextDelta,
     ContextMode,
+    ProviderUsage,
     SharedContextEvent,
     SharedContextItem,
     SharedContextSummary,
@@ -2598,6 +2599,45 @@ class SharedContextService:
             metrics.last_token_counter = token_counter
             if budget_exceeded:
                 metrics.prompt_budget_failures += 1
+            await self._commit_mutation(user_id, record)
+
+    async def record_provider_usage(
+        self,
+        *,
+        user_id: str,
+        team_id: str,
+        agent_id: str,
+        agent_name: str,
+        model: str,
+        usage: object | None,
+    ) -> None:
+        """Accumulate the provider's own usage block for one model call.
+
+        ``usage`` is a :class:`~agentscope.model.ChatUsage` or ``None`` when
+        the provider/gateway did not report usage; the call is still counted
+        so a missing usage block is visible instead of silently zero.
+        """
+
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._load_or_create(user_id, team_id)
+            entry = record.state.metrics.provider_usage.setdefault(
+                agent_id,
+                ProviderUsage(),
+            )
+            entry.agent_name = agent_name[:255]
+            entry.model = model[:255]
+            entry.calls += 1
+            if usage is not None:
+                entry.calls_with_usage += 1
+                entry.input_tokens += max(0, int(getattr(usage, "input_tokens", 0)))
+                entry.cached_input_tokens += max(
+                    0,
+                    int(getattr(usage, "cache_input_tokens", 0) or 0),
+                )
+                entry.output_tokens += max(0, int(getattr(usage, "output_tokens", 0)))
             await self._commit_mutation(user_id, record)
 
     @staticmethod

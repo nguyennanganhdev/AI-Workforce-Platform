@@ -141,8 +141,28 @@ class SharedContextSummary(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class ProviderUsage(BaseModel):
+    """Provider-reported usage for one agent in a team (billing-shaped).
+
+    Unlike the counters below, these numbers come from the provider's
+    ``usage`` block, so ``cached_input_tokens`` shows how much of the prompt
+    was served from the provider's prompt cache.
+    """
+
+    agent_name: str = Field(default="", max_length=255)
+    model: str = Field(default="", max_length=255)
+    calls: int = Field(default=0, ge=0)
+    calls_with_usage: int = Field(default=0, ge=0)
+    input_tokens: int = Field(default=0, ge=0)
+    cached_input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+
+
 class SharedContextMetrics(BaseModel):
     """Auditable measurements from the selected model's token counter."""
+
+    provider_usage: dict[str, ProviderUsage] = Field(default_factory=dict)
+    """Provider usage keyed by agent id."""
 
     packets_built: int = Field(default=0, ge=0)
     compactions: int = Field(default=0, ge=0)

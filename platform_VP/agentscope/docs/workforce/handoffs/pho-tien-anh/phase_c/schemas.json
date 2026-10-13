@@ -590,6 +590,71 @@
             },
             "checkpoint": {
               "$ref": "#/$defs/WorkflowCheckpoint"
+            },
+            "shared_context_revision": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Shared Context Revision"
+            },
+            "shared_context_tokens": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Shared Context Tokens"
+            },
+            "shared_context": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Shared Context"
+            },
+            "leader_system_prompt": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Leader System Prompt"
+            },
+            "business_agent_evidence_policy": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Business Agent Evidence Policy"
             }
           },
           "required": [
@@ -612,6 +677,16 @@
               "minLength": 1,
               "title": "Request Id",
               "type": "string"
+            },
+            "asset_ids": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Asset Ids",
+              "type": "array"
             }
           },
           "required": [
