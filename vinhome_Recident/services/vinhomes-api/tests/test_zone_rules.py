@@ -128,3 +128,21 @@ def test_an_unpaid_booking_is_released_after_the_hold_its_zone_sets(database):
     after = [sql(database, "select status from amenity_bookings where id=$1", booking)[0]["status"] for booking in ids]
     assert after == ["pending_payment", "expired"], counts                                                              # 20 minutes is within a 30-minute hold, 40 is past it
     assert counts["bookings_expired"] >= 1
+
+
+def test_an_amenity_of_a_zone_is_listed_and_booked_only_for_homes_of_that_zone(database):
+    pool = sql(database, "select id from amenities where code='POOL-V2'")[0]["id"]      # the villa zone's pool
+    day = (datetime.now(timezone.utc) + timedelta(days=2)).date().isoformat()
+    slot = {"amenity_id": str(pool), "area_code": "main", "start_at": f"{day}T10:00:00+07:00", "end_at": f"{day}T11:00:00+07:00"}
+
+    def codes(c):
+        return {a["code"] for a in c.get("/resident/amenities").json()["items"]}
+
+    with person(database, AN) as c:
+        assert "POOL-V2" not in codes(c) and "GYM-S1" in codes(c)                                                        # 1: a tower sees its own zone's places
+        refused = c.post("/resident/amenity-bookings", json={**slot, "unit_id": str(home(database, TOWER))})
+        assert refused.status_code == 403 and "another zone" in refused.text                                               # 2: and cannot book the villa's pool
+    with person(database, DUNG) as c:
+        assert {"POOL-V2", "GYM-S1"} <= codes(c)                                                                         # 3: a home in each zone: both
+        assert c.post("/resident/amenity-bookings", json={**slot, "unit_id": str(home(database, "S1.01-1502"))}).status_code == 403   # 4: but each home books its own
+        assert c.post("/resident/amenity-bookings", json={**slot, "unit_id": str(home(database, VILLA))}).status_code == 201

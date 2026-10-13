@@ -304,14 +304,22 @@ async def cancel_request(request_id: UUID, scope: Resident):
 
 # ---------- amenities ----------
 
-AMENITY_FIELDS = "a.id,a.code,a.name,a.category,a.booking_mode,a.areas,a.price,a.slot_minutes,a.open_time,a.close_time,a.open_weekdays,a.max_advance_days,a.cancel_before_hours,a.weekly_quota_per_unit,a.max_guests,a.rules_note,a.status"
+AMENITY_FIELDS = "a.id,a.code,a.zone_id,a.name,a.category,a.booking_mode,a.areas,a.price,a.slot_minutes,a.open_time,a.close_time,a.open_weekdays,a.max_advance_days,a.cancel_before_hours,a.weekly_quota_per_unit,a.max_guests,a.rules_note,a.status"
 TZ = "coalesce(s.timezone,'Asia/Ho_Chi_Minh')"
 
 
 @router.get("/resident/amenities")
 async def amenities(scope: Resident):
-    db, _ = scope
-    rows = await db.execute(text(f"select {AMENITY_FIELDS} from amenities a where a.tenant_id={TENANT} and a.status<>'closed' order by a.name"))
+    db, user = scope
+    # An amenity of a zone is for the homes of that zone; one without a zone is for the whole site.
+    rows = await db.execute(text(f"""
+        select {AMENITY_FIELDS} from amenities a where a.tenant_id={TENANT} and a.status<>'closed'
+          and (a.zone_id is null or exists (
+            select 1 from unit_residents ur join units u on u.id=ur.unit_id and u.tenant_id=ur.tenant_id
+            where ur.tenant_id=a.tenant_id and ur.user_id=:user and ur.verification_status='verified'
+              and ur.valid_from<=now() and (ur.valid_to is null or ur.valid_to>now()) and u.zone_id=a.zone_id))
+        order by a.name
+    """), {"user": user})
     return {"items": [dict(r) for r in rows.mappings()]}
 
 
@@ -384,8 +392,10 @@ BOOKING_FIELDS = "id,code,amenity_id,area_code,unit_id,start_at,end_at,guests,st
 @router.post("/resident/amenity-bookings", status_code=201)
 async def book(body: BookingCreate, scope: Resident, key: Key = None):
     db, user = scope
-    await resident_unit(db, user, body.unit_id)
+    unit = await resident_unit(db, user, body.unit_id)
     amenity = await load_amenity(db, body.amenity_id)
+    if amenity["zone_id"] is not None and amenity["zone_id"] != unit["zone_id"]:
+        raise HTTPException(403, "This amenity is for the homes of another zone")
     if amenity["status"] != "active":
         raise HTTPException(409, f"This amenity is {amenity['status']}")
     if body.area_code not in amenity["areas"]:

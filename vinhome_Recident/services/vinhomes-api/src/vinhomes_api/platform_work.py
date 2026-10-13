@@ -227,7 +227,8 @@ async def amenity_list(db, ticket_id) -> dict:
     """What can be booked, and what this home has booked from now on."""
     ticket = await _ticket(db, ticket_id)
     scope = (db, ticket["requester_user_id"])
-    places = (await amenities(scope))["items"]
+    # Of the home this request is about: a resident with a home elsewhere is not offered that zone's places here.
+    places = [p for p in (await amenities(scope))["items"] if p["zone_id"] in (None, ticket["zone_id"])]
     names = {p["id"]: p["name"] for p in places}
     booked = (await _home(db, ticket_id, lambda unit, who: my_bookings(who, unit, 50)))["items"]
     return {"amenities": [{"amenity_ref": str(p["id"]), "name": p["name"], "category": p["category"], "areas": p["areas"],
@@ -596,6 +597,8 @@ async def amenity_book(db, ticket_id, amenity_ref, start_at: str, end_at: str, a
             raise Refused("Không có tiện ích đó.") from None
         except ValueError:
             raise Refused("Thông tin đặt chỗ không hợp lệ (số người từ 1 đến 100).") from None
+        if place["zone_id"] not in (None, ticket["zone_id"]):
+            raise Refused("Tiện ích này dành cho căn hộ của phân khu khác.")
         minutes = int((wanted.end_at - wanted.start_at).total_seconds() // 60)
         if place["status"] != "active" or wanted.area_code not in place["areas"] or minutes <= 0 or minutes % place["slot_minutes"]:
             raise Refused(f"Tiện ích phải đang mở, khu vực là một trong: {', '.join(place['areas'])}, và thời gian là các lượt {place['slot_minutes']} phút.")

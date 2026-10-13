@@ -951,6 +951,11 @@ def test_the_services_of_the_home_are_read_and_changed_as_the_resident_would_and
     day = (datetime.now(VN) + timedelta(days=2)).date().isoformat()
     places = call(database, work.amenity_list, ticket)["amenities"]
     assert places and all(a["amenity_ref"] and a["name"] for a in places)
+    # Only the places of the home's own zone: the villa zone's pool is not offered to a tower, nor booked for it.
+    villa = sql(database, "select id,name from amenities where code='POOL-V2'")[0]
+    assert villa["name"] not in [a["name"] for a in places]
+    wrong = call(database, work.amenity_book, ticket, str(villa["id"]), f"{day}T10:00:00+07:00", f"{day}T11:00:00+07:00", "main", 1, ref())
+    assert wrong["status"] == "failed" and "phân khu khác" in wrong["reason"]
     place, area, slot = next((a, f["area"], f["free_slots"][0]) for a in places if a["open_now_for_booking"]
                              for f in call(database, work.amenity_free, ticket, a["amenity_ref"], day)["areas"] if f["free_slots"])
     start, end = (f"{day}T{part}:00+07:00" for part in slot.split("-"))

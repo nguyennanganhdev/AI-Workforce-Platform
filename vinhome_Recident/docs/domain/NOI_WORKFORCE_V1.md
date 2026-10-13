@@ -141,7 +141,7 @@ Hành động nhận thêm tham số ẩn `client_reference` (platform điền) 
 | `vh_visitor_cancel` | hành động | `ticket_id`, `visit_ref` | `confirmed` hoặc `failed` + lý do |
 | `vh_cards` | tra cứu | `ticket_id` | thẻ ra vào và thẻ xe của căn (số thẻ chỉ hiện bốn số cuối), kèm `card_ref` |
 | `vh_card_report_lost` | hành động | `ticket_id`, `card_ref` | `confirmed` (thẻ bị khóa) hoặc `failed` + lý do |
-| `vh_amenities` | tra cứu | `ticket_id` | tiện ích đặt được (giá, giờ mở, luật) và các lượt căn đã đặt, kèm `amenity_ref`, `booking_ref` |
+| `vh_amenities` | tra cứu | `ticket_id` | tiện ích của phân khu căn đó và tiện ích chung toàn khu (giá, giờ mở, luật) và các lượt căn đã đặt, kèm `amenity_ref`, `booking_ref` |
 | `vh_amenity_availability` | tra cứu | `ticket_id`, `amenity_ref`, `date` | lượt còn trống trong ngày, theo khu vực |
 | `vh_amenity_book` | hành động | `ticket_id`, `amenity_ref`, `start_at`, `end_at`, `area?`, `people?` | `confirmed` nghĩa là **đã gửi thẻ**, chưa đặt chỗ (xem dưới) |
 | `vh_amenity_cancel` | hành động | `ticket_id`, `booking_ref` | `confirmed` hoặc `failed` + lý do |
