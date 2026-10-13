@@ -168,3 +168,8 @@ lerna-debug.log*
 **/workspaces/
 # Runtime workspace of the console example
 examples/console/workspace/
+
+# Local Docker setup
+/compose.override.yaml
+/deploy/minio/Dockerfile
+/deploy/ollama-local/
