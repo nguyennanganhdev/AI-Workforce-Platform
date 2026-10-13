@@ -7,6 +7,8 @@ real model behaves: every answer below is a fixed script.
 What the script plays, for whichever agent asks:
 - a resident who asks to book a repair -> call the partner tool `book_repair` once, then tell the resident what the
   tool answered (pending; or that it is being handled when the platform says the request is already on its way);
+  when the platform says the message came with an image (and offers CaseAssetLink), first get a link to the image and
+  hand it to `book_repair` as its `note`;
 - a provider event that wakes the leader -> tell the resident, and ask for confirmation when the work is finished;
 - a message that names a ticket (`TKT-<NAME>`, letters only) -> answer with every ticket name the model was shown in
   this session and a letter for how many of the resident's messages it holds: a session that ever saw another ticket's
@@ -36,6 +38,7 @@ STRUCTURED = "generate_structured_output"  # the tool AgentScope forces for a st
 HINTS = ("<system-reminder", "<workflow-state", "<room-digest")  # reminders the room adds as user messages
 ACTION = "book_repair"
 TICKET = re.compile(r"\bTKT-[A-Z]+\b")
+IMAGE = re.compile(r"\bast_[0-9a-f]{32}\b")
 RESIDENT = "<resident-message"
 ON_ITS_WAY = ("IN PROGRESS", "PENDING", "UNKNOWN", "ALREADY DONE")  # how the platform answers a request it already has
 CALLS = {"requests": 0, "held": 0}
@@ -101,8 +104,13 @@ def script(c: Call):
         return say("The partner sent an update.", "none", cites)
 
     if ACTION in c.names and re.search(r"\b(book|schedule)\b.*\brepair\b", c.last_user, re.I | re.S):
+        # an image came with the message: the platform's own sentence after the resident's words names it
+        photo = IMAGE.search(c.last_user.rpartition("</resident-message>")[2]) if "CaseAssetLink" in c.names else None
+        if photo and c.called("CaseAssetLink") == 0 and c.called(ACTION) == 0:
+            return [("CaseAssetLink", {"asset_id": photo.group(0)})]
         if c.called(ACTION) == 0:
-            return [(ACTION, {"slot": "monday"})]
+            link = (c.results("CaseAssetLink") or [""])[0].split("\n")[0]
+            return [(ACTION, {"slot": "monday", **({"note": link} if "://" in link else {})})]
         if said:
             return "Said."
         got = " ".join(c.results(ACTION))

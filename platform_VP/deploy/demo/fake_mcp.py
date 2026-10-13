@@ -2,7 +2,9 @@
 
 Generic on purpose: 'ticket' and 'repair' are only fixture names. Streamable HTTP at /mcp, three tools:
 - lookup_ticket   read only (readOnlyHint): the tool store activates it at once
-- book_repair     has a side effect, answers `pending`; idempotent by `client_reference` like a real partner must be
+- book_repair     has a side effect, answers `pending`; idempotent by `client_reference` like a real partner must be.
+                  When its `note` is a signed link to a picture (the platform's image extension), it fetches the
+                  picture at once, as a partner's backend should (the link is short-lived), and counts what it got
 - repair_status   read only: what became of a request, by its reference
 
 Every call is counted, so a check can prove how many times the partner was really called:
@@ -18,6 +20,7 @@ Run: python fake_mcp.py   (listens on 0.0.0.0:8901; expects `Authorization: Bear
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import sys
@@ -42,6 +45,17 @@ def hold(word: str) -> int:
     return 0
 
 
+def fetch(url: str) -> dict:
+    """What a signed link gave: the partner's side opening a resident's picture."""
+    try:
+        with urllib.request.urlopen(url, timeout=8) as r:
+            data = r.read()
+            return {"status": r.status, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+                    "content_type": r.headers.get("content-type", "")}
+    except Exception as e:  # noqa: BLE001 (a count for the test, whatever went wrong)
+        return {"status": getattr(e, "code", 0), "error": type(e).__name__}
+
+
 def main() -> None:
     import uvicorn
     from mcp.server.fastmcp import FastMCP
@@ -51,6 +65,7 @@ def main() -> None:
     calls: list[dict] = []  # every tools/call
     jobs: dict[str, str] = {}  # client_reference -> job id (the partner's own idempotency)
     effects: list[str] = []  # one entry per real side effect
+    photos: dict[str, dict] = {}  # client_reference -> what the link in `note` gave when it was fetched
     hold: dict = {"on": False, "open": None, "held": 0, "answered": 0}
 
     mcp = FastMCP("demo-partner", host="0.0.0.0", port=PORT, stateless_http=True, log_level="WARNING")
@@ -75,6 +90,8 @@ def main() -> None:
         if client_reference not in jobs:
             jobs[client_reference] = f"JOB-{len(jobs) + 1}"
             effects.append(client_reference)
+            if "X-Amz-Signature=" in note:
+                photos[client_reference] = await asyncio.to_thread(fetch, note)
         if hold["on"]:  # the request is in, the answer waits
             hold["held"] += 1
             try:
@@ -107,7 +124,7 @@ def main() -> None:
             body = {"status": "ok"} if scope["path"] == "/health" else {
                 "calls": by_tool, "side_effects": len(effects), "jobs": jobs, "book_repair_calls_by_reference": by_ref,
                 "side_effects_by_reference": {ref: effects.count(ref) for ref in jobs},
-                "held": hold["held"], "answered": hold["answered"]}
+                "held": hold["held"], "answered": hold["answered"], "photos": photos}
             return await JSONResponse(body)(scope, receive, send)
         if scope["type"] == "http" and scope["path"] == "/control":  # tests only
             raw, more = b"", True

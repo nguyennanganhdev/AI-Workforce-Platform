@@ -271,9 +271,18 @@ async def accept(ctx, p, body: RequestIn) -> Accepted:
     return result
 
 
+QUICK_WAIT = 2.0  # seconds a waiting POST looks at its request several times a second; after that about once a second
+
+
 async def respond(ctx, a: Accepted) -> JSONResponse:
-    """200 with the frozen result once the request settled; 202 when `wait_seconds` run out."""
-    deadline = time.monotonic() + a.wait_seconds
+    """200 with the frozen result once the request settled; 202 when `wait_seconds` run out.
+
+    The commit that settles the request wakes this wait at once (waker.py, across processes through the bus); looking
+    at the database as well is the net under a lost nudge. A turn that takes longer than a couple of seconds is looked
+    for less often: twenty requests waiting for their turns were the largest single source of queries under load
+    (P5c load test), each asking five times a second for something it would be told anyway."""
+    started = time.monotonic()
+    deadline = started + a.wait_seconds
     with waker.watch(a.conversation_id) as ev:
         while True:
             ev.clear()
@@ -285,7 +294,8 @@ async def respond(ctx, a: Accepted) -> JSONResponse:
                 left = deadline - time.monotonic()
                 if left <= 0:
                     return JSONResponse(await body_of(conn, req, status=req["status"]), status_code=202)
-            await wait(ev, min(left, random.uniform(0.1, 0.25)))
+            quick = time.monotonic() - started < QUICK_WAIT
+            await wait(ev, min(left, random.uniform(0.1, 0.25) if quick else random.uniform(0.6, 1.0)))
 
 
 def build_commands(r: APIRouter, ctx: Any) -> None:

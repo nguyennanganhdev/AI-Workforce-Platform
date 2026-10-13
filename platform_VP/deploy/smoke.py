@@ -26,6 +26,7 @@ Exit code: 0 all steps passed (or paused by --until), 1 a step failed, 2 the scr
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import hmac
 import http.client
@@ -45,7 +46,9 @@ STATE = HERE / ".smoke_state.json"
 PARTNER = "/workforce/v1/partner"
 ADMIN = "/platform/v1"
 OPS = ["submit_request", "reply", "read_result", "receive_events", "submit_consent", "close_workflow", "confirm_route",
-       "sync_residence"]
+       "sync_residence", "attach_asset"]  # the last one: the image extension beyond contract v1
+# A real picture, one pixel wide (PNG): what the resident "photographs" in this walk.
+PHOTO = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
 USER = "resident-smoke-1"
 MESSAGE = "Please book a repair visit for Monday."
 SCHEMA = {"version": "1", "version_mode": "snapshot", "events": {
@@ -57,7 +60,9 @@ SCHEMA = {"version": "1", "version_mode": "snapshot", "events": {
 INSTRUCTIONS = (
     "Answer in English. Say only what a tool has verified. When the resident asks to book or schedule a repair, call "
     "book_repair once with slot set to the day they named, then tell them with CaseSay what the tool answered (cite its "
-    "evidence id); a pending answer means the partner will confirm later. When a provider event reports the work "
+    "evidence id); a pending answer means the partner will confirm later. When the resident attached an image, first "
+    "get a link to it with CaseAssetLink and give that link to book_repair as its note; never show a link to the "
+    "resident. When a provider event reports the work "
     "completed, ask the resident with CaseSay (expects: confirmation) whether everything is right. If you cannot "
     "verify something, record it with CaseGap and say that you do not know.")
 
@@ -345,9 +350,43 @@ class Smoke:
         check(r["status"] == "active", f"the route is {r['status']} after the confirmation")
         return f"before: 403 ROUTE_NOT_AUTHORIZED; after the partner's confirmation: active, revision {r['revision']}"
 
+    def upload(self, data: bytes, tag: str, kind: str = "image/png"):
+        return self.call("POST", PARTNER + "/assets", raw=data, apikey=self.s["partner_key"], headers={"Content-Type": kind},
+                         params={"external_request_id": f"rq-{self.s['run']}-{tag}", "external_user_id": USER,
+                                 "external_conversation_id": self.s["chat"]})
+
+    def assets(self):
+        """The image extension (beyond contract v1): off until the operator gives the client the capability; an upload
+        is judged by its bytes; the same upload again is the same asset."""
+        def code(got):
+            body = got[1] if isinstance(got[1], dict) else {}
+            return got[0], (body.get("error") or {}).get("code"), (body.get("error") or {}).get("details") or {}
+        status, err, details = code(self.upload(PHOTO, "photo-early"))
+        check((status, err, details.get("capability")) == (403, "PERMISSION_DENIED", "attach_asset"),
+              f"an upload without the capability was answered {status} {err} {details}")
+        c = self.expect(self.adm("PATCH", f"/wf/clients/{self.s['client_id']}", {"capabilities": ["attach_asset"]}), 200, "give the capability")
+        check(c["capabilities"] == ["attach_asset"], f"the client's capabilities are {c['capabilities']}")
+        status, err, details = code(self.upload(b"<html>not a picture</html>", "photo-fake"))
+        if status == 503:
+            raise Failed(f"the platform has no image store ({details.get('reason')}): AWP_ASSET_BACKEND and AWP_S3_* in deploy/.env")
+        check((status, err) == (422, "VALIDATION_FAILED"), f"bytes that are no image, sent as image/png, were answered {status} {err}")
+        a = self.expect(self.upload(PHOTO, "photo"), 201, "upload the photo")
+        check(a["content_type"] == "image/png" and a["size"] == len(PHOTO) and a["sha256"] == hashlib.sha256(PHOTO).hexdigest(),
+              f"the upload answered {a}")
+        check(not any(k in json.dumps(a) for k in ("http", "X-Amz", "object_key")), f"the upload's answer says where the bytes are: {a}")
+        again = self.expect(self.upload(PHOTO, "photo"), 201, "the same upload again")
+        check(again == a, "sending the same upload again made another asset")
+        self.s["asset"] = {"asset_id": a["asset_id"], "sha256": a["sha256"]}
+        status, err, _ = code(self.partner("POST", "/requests", {**self.start_body("stranger"), "external_user_id": "resident-other"}))
+        check((status, err) == (404, "NOT_FOUND"), f"another resident could use the asset: {status} {err}")
+        return (f"without the capability: 403; bytes that are no image: 422; {a['asset_id']} stored ({a['size']} bytes, "
+                "image/png by its bytes), the same upload again is the same asset, another resident's message cannot carry it (404)")
+
     def start_body(self, tag: str = "start") -> dict:
+        asset = self.s.get("asset")  # once there is one, the resident's message carries the photo
+        message = {"type": "image", "asset_id": asset["asset_id"], "text": MESSAGE} if asset else {"type": "text", "text": MESSAGE}
         return {"schema_version": "1", "command_type": "start_workflow", "external_request_id": f"rq-{self.s['run']}-{tag}",
-                "external_management_ref": self.s["ref"], **self.ids(), "message": {"type": "text", "text": MESSAGE}}
+                "external_management_ref": self.s["ref"], **self.ids(), "message": message}
 
     def start(self):
         body = self.start_body()
@@ -400,6 +439,9 @@ class Smoke:
         check(len(snap["approvals"]) == 1, f"wanted one pending approval, got {snap['approvals']}")
         a = snap["approvals"][0]
         check(a["tool_name"] == "book_repair" and a["status"] == "pending", f"unexpected approval: {a}")
+        check("X-Amz" not in json.dumps(snap), "the snapshot shows a signed link")
+        if self.s.get("scripted"):  # the scripted leader hands the photo's link to the tool: the resident is shown none
+            check(a["summary"]["arguments"].get("note") == "[image link]", f"the consent shows the arguments as {a['summary']['arguments']}")
         self.s["approval"] = {k: a.get(k) for k in ("approval_id", "arguments_hash", "expected_revision", "quote_ref")}
         mine = self.expect(self.call("GET", "/platform/v1/wf/workflows", bearer=self.s["manager_key"]), 200, "workflows as the manager")
         check([w["workflow_id"] for w in mine["workflows"]] == [self.s["workflow_id"]], "the manager does not see exactly its own workflow")
@@ -449,6 +491,35 @@ class Smoke:
         said = [e["payload"].get("text") or e["payload"] for e in self.history() if e["event_type"] == "assistant.message"]
         check(bool(said), "the leader said nothing to the resident")
         return f"one operation, pending, reference {op['client_reference']}, partner job {op['external_job_id']}; the leader said: {said[-1]!r}"
+
+    def photo(self):
+        """The photo went to the partner as a link and nowhere else: every public read names it by id only."""
+        asset = self.s["asset"]
+        events = self.history()
+        accepted = [e["payload"] for e in events if e["event_type"] == "request.accepted"]
+        check(accepted and accepted[0].get("asset_ids") == [asset["asset_id"]], f"the history does not name the image: {accepted}")
+        mine = [m for m in self.snapshot()["messages"] if m["sender"] == "user"]
+        check(mine and mine[0].get("asset_ids") == [asset["asset_id"]], f"the snapshot does not name the image: {mine}")
+        out = json.dumps([events, self.snapshot(), self.call("GET", f"{PARTNER}/requests/{self.s['request_id']}",
+                                                             apikey=self.s["partner_key"], params={"external_user_id": USER})[1]])
+        check(not any(word in out for word in ("X-Amz", "minio", "awp-assets", "object_key")), "a public read says where the image is")
+        cases = self.expect(self.adm("GET", "/cases", params={"limit": 200}), 200, "cases")["cases"]
+        case = next((c["id"] for c in cases if c["external_ref"] == self.s["workflow_id"]), None)
+        check(bool(case), "the workflow's case was not found")
+        items = self.expect(self.adm("GET", f"/cases/{case}/items"), 200, "the case file")["items"]
+        made = [i["data"] for i in items if i["kind"] == "evidence" and i["data"].get("tool") == "CaseAssetLink"]
+        check("X-Amz-Signature" not in json.dumps(items), "the case file keeps a signed link")
+        if not made:
+            check(not self.s.get("scripted"), "the scripted leader did not ask for a link to the image")
+            return "named by id in history and snapshot; this model did not hand the photo to the partner (no link was made)"
+        partner = "what the partner fetched: skipped (run with --docker)"
+        if self.args.docker:
+            got = self.sample_partner("--stats").get("photos", {}).get(self.s["client_reference"])
+            check(bool(got) and got.get("status") == 200 and got.get("sha256") == asset["sha256"] and got.get("content_type") == "image/png",
+                  f"the partner did not get the photo through the link: {got}")
+            partner = f"the sample partner fetched it through the link: HTTP 200, {got['bytes']} bytes, the same sha256, image/png"
+        return (f"history and snapshot name {asset['asset_id']} by id only; the case file records that a link was made, "
+                f"without its signature ({made[0]['text'][-60:]!r}); {partner}")
 
     def provider_post(self, event_id: str, event_type: str, version: int, data: dict, *, secret: str | None = None,
                       raw: bytes | None = None):
@@ -551,11 +622,13 @@ class Smoke:
         ("mcp", "MCP server: add, enable, discover", mcp),
         ("activate", "Activate the action tool", activate),
         ("confirm", "Partner confirms the route", confirm),
+        ("assets", "Image upload (extension beyond contract v1)", assets),
         ("start", "start_workflow parks on consent", start),
         ("sse", "Event stream (SSE)", sse),
         ("approval", "Snapshot shows the approval", read_approval),
         ("approve", "Resident approves; tool runs", approve),
         ("waiting", "One pending operation", operation),
+        ("photo", "The photo reaches the partner by link only", photo),
         ("event", "Signed provider events", provider_event),
         ("confirmation", "Leader asks to confirm", confirmation),
         ("close", "Partner closes the workflow", close),

@@ -56,7 +56,32 @@ from .workflows import BLOCKED, BUSY, transition
 log = logging.getLogger("awp.workforce")
 
 MAX_SENDS = 4  # the same message is sent this many times before the job fails
+UNREADY = 30.0  # seconds an agent may be "not parked" without having taken the event that should wake it
+UNREADY_POLL = 0.2
 POLL = 0.03
+SLOW_POLL = 0.25  # what the waits below slow down to: a turn of a real model takes seconds, and every look is a query
+HALT_EVERY = 0.5  # how often a running turn's workflow is checked for having been closed or blocked meanwhile
+
+
+QUICK = 1.0  # seconds a wait keeps looking every POLL before it slows down
+
+
+class Pace:
+    """The pause between two looks at something that usually changes at once and sometimes takes minutes: POLL for the
+    first second, then longer, up to SLOW_POLL. Twenty turns waited for at a fixed 30 ms were over a thousand queries a
+    second that did nothing but ask (found by the load test, P5c); what answers within a second is as quick as before."""
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def next(self) -> float:
+        if time.monotonic() - self.since < QUICK:
+            return POLL
+        now_, self.pause = self.pause, min(self.pause * 1.5, SLOW_POLL)
+        return now_
+
+    def reset(self) -> None:
+        self.since, self.pause = time.monotonic(), POLL
 
 
 class JobFailed(Exception):
@@ -72,6 +97,7 @@ class WorkflowEngine:
         self._tasks: dict[str, asyncio.Task] = {}
         self._again: set[str] = set()
         self._unsettled: set[str] = set()
+        self._ended: dict[str, asyncio.Event] = {}  # workflow -> set when a turn of it ended in this process
         self._stopping = False
         self._reconciling: asyncio.Task | None = None
         self.node = getattr(self.rt, "node", "") or nodes.new_node()  # this process, in job leases and lock values
@@ -86,6 +112,9 @@ class WorkflowEngine:
         """A turn of a leader ended (Runtime.turn_hook). Ignored once another engine took our place."""
         if self.ctx.engine is self:
             self._unsettled.add(workflow_id)
+            ended = self._ended.get(workflow_id)
+            if ended is not None:
+                ended.set()  # whoever waits for this turn looks now, not at its next poll
             self.kick(workflow_id)
 
     def kick(self, workflow_id: str) -> None:
@@ -182,6 +211,7 @@ class WorkflowEngine:
         finally:
             if self._tasks.get(wid) is me:
                 del self._tasks[wid]
+                self._ended.pop(wid, None)
 
     async def _step(self, wid: str) -> bool:
         """Do one thing; True when something was done, so the dispatcher looks again."""
@@ -351,11 +381,11 @@ class WorkflowEngine:
         return await self.rt.bus.is_locked(MessageBusKeys.session_lock(leader.session_id))
 
     async def _idle(self, leader: Leader, timeout: float) -> bool:
-        end = time.monotonic() + timeout
+        end, pace = time.monotonic() + timeout, Pace()
         while await self._locked(leader):
             if time.monotonic() > end:
                 return False
-            await asyncio.sleep(POLL)
+            await asyncio.sleep(pace.next())
         return True
 
     async def _acked(self, wid: str, msg_id: str) -> bool:
@@ -364,11 +394,20 @@ class WorkflowEngine:
                 t.turns.c.workflow_id == wid, t.turns.c.msg_id == msg_id).limit(1))).first() is not None
 
     async def _deliver(self, wid: str, leader: Leader, text: str, msg_id: str, sender: str, *,
-                       send=None, acked=None) -> None:
+                       send=None, acked=None, ready=None) -> None:
         """Send until a turn carries `msg_id`. A 409 means the session is running and nothing was stored:
         wait for it to be idle and send again (not counted). A 200 that no turn follows is sent again too.
-        `send` and `acked` replace the message and its acknowledgement for an event that wakes a parked agent."""
+        `send` and `acked` replace the message and its acknowledgement for an event that wakes a parked agent.
+
+        `ready`: asked before every send; False means "not now" (look again in a moment). A message is safe to send
+        twice (while its run lives the second gets a 409, P0). An event that wakes a parked agent is not: it goes
+        through a queue, a second copy is taken after the first, finds the agent no longer waiting and fails its run.
+        Under load the acknowledgement of the first copy can take longer than AWP_WF_ACK_SECONDS, so such an event is
+        only sent while its agent is parked (resume.wake): not while its session runs (the first copy is being taken,
+        or the turn that asked is still ending) and not once it rests. An agent that stays "not parked" without the
+        acknowledgement for `UNREADY` seconds is not going to take the event: the attempt fails."""
         s, sends, end = self.settings, 0, time.monotonic() + self.settings.wf_turn_timeout_seconds
+        unready: float | None = None
 
         async def say() -> None:
             await self.client.say(leader.tenant, leader.agent_id, leader.session_id, text, name=sender, msg_id=msg_id)
@@ -379,35 +418,52 @@ class WorkflowEngine:
                 return
             if sends >= MAX_SENDS or time.monotonic() > end:
                 raise JobFailed("the message was never taken by a turn")
+            if ready is not None and not await ready():
+                unready = unready or time.monotonic()
+                if time.monotonic() - unready > max(UNREADY, 3 * s.wf_ack_seconds):
+                    raise JobFailed("the agent is not waiting for this event")
+                await asyncio.sleep(UNREADY_POLL)
+                continue
+            unready = None
             try:
                 await send()
             except SessionBusy:
                 await self._idle(leader, 30)
                 continue
             sends += 1
-            wait = time.monotonic() + s.wf_ack_seconds
+            wait, pace = time.monotonic() + s.wf_ack_seconds, Pace()
             while time.monotonic() < wait:
                 if await acked():
                     return
-                await asyncio.sleep(POLL)
+                await asyncio.sleep(pace.next())
 
     async def _await_end(self, wid: str, job: Any, leader: Leader, also: Leader | None = None) -> None:
         """Until the session is idle and no turn is running: the turns of the job, and any turn the
         leader's team started meanwhile, are over. `also` is a specialist session the job woke."""
         start = time.monotonic()  # (the job's lease is renewed by this process's heartbeat while this task lives)
-        stopped = False
+        stopped, looked, pace = False, 0.0, Pace()
+        ended = self._ended.setdefault(wid, asyncio.Event())  # set by on_turn: a turn of this workflow ended here
         while True:
+            ended.clear()
             if not await self._locked(leader) and not (also is not None and await self._locked(also)):
                 if not await self._running(wid):
                     return
                 await orphan_turns(self, wid)  # a row 'running' under an idle session is a dead run's
-            if not stopped and await self._halted(wid):  # closed or blocked while its turn runs: stop paying for it
-                stopped = True
-                await self._stop_leader(leader)
+            if not stopped and time.monotonic() - looked >= HALT_EVERY:
+                looked = time.monotonic()
+                if await self._halted(wid):  # closed or blocked while its turn runs: stop paying for it
+                    stopped = True
+                    await self._stop_leader(leader)
             if time.monotonic() - start > self.settings.wf_turn_timeout_seconds:
                 await self._stop_leader(leader)
                 raise JobFailed("the turn ran too long")
-            await asyncio.sleep(POLL)
+            # The end of a turn in this process is told (on_turn); the session's lock goes a moment later, so the
+            # looks after it are quick again. A turn that runs in another process of the fleet is found by looking.
+            try:
+                await asyncio.wait_for(ended.wait(), pace.next())
+                pace.reset()
+            except asyncio.TimeoutError:
+                pass
 
     async def _running(self, wid: str) -> bool:
         async with self.ctx.db.engine.connect() as conn:
@@ -427,7 +483,9 @@ class WorkflowEngine:
             rows = (await conn.execute(select(t.turns.c.status, t.turns.c.started_at).where(
                 t.turns.c.workflow_id == wid, t.turns.c.msg_id == msg_id))).all()
             failed = [at for status, at in rows if status == "error"]
-            if not failed:
+            # A turn of this very message that ended well is the attempt's outcome. A second run under the same id
+            # that failed is a second copy of the message or event that found its work already done: it proves nothing.
+            if not failed or any(status in ("completed", "parked") for status, _ in rows):
                 return
             spoke = (await conn.execute(select(t.messages.c.id).where(
                 t.messages.c.workflow_id == wid, t.messages.c.sender == "assistant",

@@ -147,9 +147,10 @@ async def unresumed(eng, row: Any, target: Leader) -> Any:
 
 
 async def wake(eng, wid: str, target: Leader, row: Any) -> None:
-    """Send the event until the agent took it."""
+    """Send the event until the agent took it. It is sent only while the agent is parked: once its session runs (the
+    first copy is being taken) or rests, another copy could only fail a run (runner._deliver)."""
     await eng._deliver(wid, target, "", RESUME + row["id"], "", send=lambda: _send(eng, target, row),
-                       acked=lambda: acked(eng, row["id"]))
+                       acked=lambda: acked(eng, row["id"]), ready=lambda: still_parked(eng, target))
 
 
 async def run(eng, wid: str, job: Any, leader: Leader) -> None:

@@ -1,20 +1,21 @@
-# The platform on one machine: PostgreSQL, Redis, a one-shot migration job and the API.
+# The platform on one machine: PostgreSQL, Redis, MinIO, a one-shot migration job and the API.
 #
 #   cd platform_VP/deploy
 #   python init_env.py                 # once: writes .env with fresh secrets (never overwrites one)
 #   docker compose build               # the image awp-platform:<AWP_IMAGE_TAG> from ../Dockerfile
-#   docker compose up -d               # postgres, redis -> migrate (must succeed) -> api
+#   docker compose up -d               # postgres, redis, minio -> migrate (must succeed) -> api
 #   docker compose --profile two up -d     # the same with a second API replica (api2, host port AWP_HOST_PORT2)
 #   docker compose --profile demo up -d    # plus a scripted model and a sample MCP server (python smoke.py)
 #
 # Project name `awp-platform`: containers are awp-platform-<service>-1, volumes awp-platform_<name>.
 # Every published port is bound to 127.0.0.1. Put a reverse proxy with TLS in front for anything else.
 #
-# WHAT IS WIRED: postgres, redis, migrate, api, and api2 (profile `two`). The API processes share the database, Redis
-# (AWP_REDIS_URL: session locks, wake-ups, the nudges between processes) and the `workspaces` volume; any of them
-# serves any request, and one that dies is taken over by the others (docs/WORKFORCE_V1_VAN_HANH.md section 11).
+# WHAT IS WIRED: postgres, redis, minio, migrate, api, and api2 (profile `two`). The API processes share the database,
+# Redis (AWP_REDIS_URL: session locks, wake-ups, the nudges between processes), the `workspaces` volume and the image
+# store (MinIO, AWP_S3_*: the images of clients that were given the capability attach_asset; the API makes the bucket
+# when it starts). Any process serves any request, and one that dies is taken over by the others
+# (docs/WORKFORCE_V1_VAN_HANH.md sections 11 and 12).
 # More replicas are more services like api2 (or any orchestrator that runs the same image with the same environment).
-# WHAT IS NOT: `minio` sits under the profile `not-wired`: the code reads no S3 setting today.
 name: awp-platform
 
 x-logging: &logging
@@ -22,7 +23,7 @@ x-logging: &logging
   options: {max-size: "10m", max-file: "5"}
 
 x-awp: &awp
-  image: awp-platform:${AWP_IMAGE_TAG:-0.2.0}
+  image: awp-platform:${AWP_IMAGE_TAG:-0.3.0}
   env_file: [.env]
   init: true  # reaps the child processes an agent's tools may leave; signals still reach the Python process
   logging: *logging
@@ -34,6 +35,7 @@ x-api: &api
   depends_on:
     postgres: {condition: service_healthy}
     redis: {condition: service_healthy}
+    minio: {condition: service_healthy}
     migrate: {condition: service_completed_successfully}
   environment:
     AWP_HOST: 0.0.0.0
@@ -161,20 +163,21 @@ services:
       retries: 12
     stop_grace_period: 5s
 
-  # ---- profile not-wired: present for the next phase, used by nothing today ------------------------------------------
+  # The image store (AWP_S3_* in deploy/.env): the pictures residents send, for clients that were given the capability
+  # attach_asset (an extension beyond contract v1). The API makes the bucket when it starts and is the only writer;
+  # a partner's tool reads one object through a link the platform signs for a few minutes (AWP_ASSET_URL_TTL). The
+  # bucket is private: without such a link nothing is readable. Its own web console (port 9001) is not published.
   minio:
-    profiles: [not-wired]
     image: cgr.dev/chainguard/minio:latest
     restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-awp}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?run "python init_env.py" first (it writes deploy/.env)}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?run "python init_env.py" first (it writes deploy/.env)}
     command: ["server", "/data", "--console-address", ":9001"]
     volumes:
       - miniodata:/data
     ports:
       - "127.0.0.1:${AWP_MINIO_HOST_PORT:-9190}:9000"
-      - "127.0.0.1:${AWP_MINIO_CONSOLE_HOST_PORT:-9191}:9001"
     healthcheck:
       test: ["CMD-SHELL", "mc alias set self http://127.0.0.1:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\" >/dev/null && mc ready self"]
       interval: 10s
