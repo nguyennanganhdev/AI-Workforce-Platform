@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CircleAlert as IconAlertCircle,
@@ -16,6 +16,7 @@ import {
   resetPasswordMutationOptions,
   updateAccountMutationOptions,
   type Account,
+  type OnboardingInput,
 } from "@/lib/admin/queries";
 import {
   AdminBadge,
@@ -29,6 +30,7 @@ import {
   downloadCsv,
   relativeTime,
 } from "./AdminUI";
+import { OnboardingFields } from "./OnboardingFields";
 
 const ROLES: Record<string, string> = {
   customer: "Cư dân",
@@ -61,12 +63,13 @@ const toneOf = (account: Account) =>
 
 export function AccountsPage() {
   const queryClient = useQueryClient();
-  const data = useQuery(accountsQueryOptions());
   const update = useMutation(updateAccountMutationOptions(queryClient));
   const [text, setText] = useState("");
   const [role, setRole] = useState("");
   const [unit, setUnit] = useState("");
   const [status, setStatus] = useState("");
+  const [offset, setOffset] = useState(0);
+  const data = useQuery(accountsQueryOptions({search: text.trim(), role, status, management_unit_id: unit, offset}));
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState("");
   const [checked, setChecked] = useState<string[]>([]);
@@ -74,18 +77,9 @@ export function AccountsPage() {
   const [notice, setNotice] = useState("");
   const accounts: EnrichedAccount[] = data.data?.accounts || [];
   const units = data.data?.units || [];
-  const needle = text.trim().toLowerCase();
-  const shown = accounts.filter(
-    (account) =>
-      (!needle ||
-        `${account.name} ${account.email}`.toLowerCase().includes(needle)) &&
-      (!role ||
-        (role === "admin"
-          ? account.administrator
-          : !account.administrator && account.role === role)) &&
-      (!status || account.status === status) &&
-      (!unit || account.management_unit_id === unit),
-  );
+  const shown = accounts;
+  useEffect(() => {setOffset(0); setChecked([]); setSelected("");}, [text, role, unit, status]);
+  useEffect(() => {setChecked([]); setSelected("");}, [offset]);
   const waiting = accounts.filter((account) => account.status === "pending");
   const open = accounts.find((account) => account.id === selected);
   const scopeOf = (account: EnrichedAccount) =>
@@ -123,7 +117,7 @@ export function AccountsPage() {
   return (
     <AdminPage
       title="Tài khoản"
-      meta={data.data ? `${accounts.length} tài khoản` : undefined}
+      meta={data.data ? `${data.data.total} tài khoản phù hợp` : undefined}
       action={
         <Button onClick={() => setCreating(true)}>
           <IconPlus />
@@ -135,7 +129,7 @@ export function AccountsPage() {
         <section className="ops-admin-panel ops-admin-pending">
           <header>
             <IconAlertCircle size={16} />
-            {waiting.length} tài khoản đang chờ bạn duyệt
+            Trang này có {waiting.length} tài khoản chờ duyệt
           </header>
           {waiting.slice(0, 3).map((account) => (
             <div className="ops-admin-pending-row" key={account.id}>
@@ -163,12 +157,7 @@ export function AccountsPage() {
                 </Button>
                 <Button
                   disabled={update.isPending}
-                  onClick={async () => {
-                    try {
-                      await change(account, "active");
-                      setNotice("Đã duyệt tài khoản");
-                    } catch {}
-                  }}
+                  onClick={() => setSelected(account.id)}
                 >
                   <IconCheck />
                   Duyệt
@@ -204,12 +193,6 @@ export function AccountsPage() {
                 onClick={() => setStatus(value)}
               >
                 {label}
-                <span>
-                  {value
-                    ? accounts.filter((account) => account.status === value)
-                        .length
-                    : accounts.length}
-                </span>
               </button>
             ))}
           </div>
@@ -377,6 +360,8 @@ export function AccountsPage() {
                         <AdminBadge tone={toneOf(account)}>
                           {STATUS[account.status] || account.status}
                         </AdminBadge>
+                        {account.role === "customer" && account.status === "active" && !account.apartment_scope && <small className="ops-admin-muted">Chờ xác minh căn hộ</small>}
+                        {account.role === "staff" && account.has_staff_profile === false && <small className="ops-admin-muted">Chưa có hồ sơ nhân viên</small>}
                       </td>
                       <td className="ops-admin-muted">
                         {account.last_activity_at
@@ -401,8 +386,12 @@ export function AccountsPage() {
             </div>
             <footer className="ops-admin-table-footer">
               <span>
-                Hiển thị {shown.length} trên {accounts.length} tài khoản
+                Hiển thị {offset + 1}–{offset + shown.length} trên {data.data?.total} tài khoản. CSV chỉ gồm trang này.
               </span>
+              <div className="ops-admin-actions">
+                <Button variant="outline" disabled={offset === 0 || data.isFetching} onClick={() => setOffset(Math.max(0, offset - 50))}>Trang trước</Button>
+                <Button variant="outline" disabled={data.data?.nextOffset == null || data.isFetching} onClick={() => setOffset(data.data?.nextOffset ?? offset)}>Trang sau</Button>
+              </div>
             </footer>
           </>
         ) : (
@@ -478,10 +467,12 @@ function NewAccount({ units, onClose }: { units: Units; onClose: () => void }) {
     role: "customer",
     unit: "",
   });
+  const [onboarding, setOnboarding] = useState<OnboardingInput>({});
+  const [onboardingReady, setOnboardingReady] = useState(true);
   const ready =
     form.name.trim().length >= 2 &&
     /\S+@\S+\.\S+/.test(form.email) &&
-    form.password.length >= 12;
+    form.password.length >= 12 && onboardingReady;
   const submit = async () => {
     try {
       await create.mutateAsync({
@@ -489,6 +480,7 @@ function NewAccount({ units, onClose }: { units: Units; onClose: () => void }) {
         email: form.email.trim(),
         password: form.password,
         role: form.role,
+        ...onboarding,
         ...(form.role === "management" && form.unit
           ? { management_unit_id: form.unit }
           : {}),
@@ -499,7 +491,7 @@ function NewAccount({ units, onClose }: { units: Units; onClose: () => void }) {
   return (
     <AdminDrawer
       title="Tạo tài khoản"
-      description="Cư dân cần xác minh căn hộ trước khi gửi phản ánh."
+      description={form.role === "staff" ? "Nhân viên cần hồ sơ, chuyên môn và ca làm để nhận việc." : form.role === "customer" ? "Cư dân cần xác minh căn hộ trước khi gửi phản ánh." : "Chọn phạm vi đơn vị quản lý phù hợp."}
       onClose={onClose}
       busy={create.isPending}
       footer={
@@ -577,6 +569,7 @@ function NewAccount({ units, onClose }: { units: Units; onClose: () => void }) {
             onChange={(unit) => setForm({ ...form, unit })}
           />
         )}{" "}
+        <OnboardingFields role={form.role} units={units} value={onboarding} onChange={setOnboarding} onReady={setOnboardingReady} busy={create.isPending} />
         {create.error && (
           <p role="alert" className="ops-admin-error">
             {create.error.message}
@@ -609,12 +602,15 @@ function AccountEditor({
   const [role, setRole] = useState(account.role);
   const [unit, setUnit] = useState(account.management_unit_id || "");
   const [confirming, setConfirming] = useState(false);
+  const [onboarding, setOnboarding] = useState<OnboardingInput>({});
+  const [onboardingReady, setOnboardingReady] = useState(true);
   async function save(status: "active" | "suspended") {
     try {
       await update.mutateAsync({
         id: account.id,
         role,
         status,
+        ...(status === "active" ? onboarding : {}),
         ...(role === "management" && unit ? { management_unit_id: unit } : {}),
       });
       onClose();
@@ -659,7 +655,7 @@ function AccountEditor({
               Hủy
             </Button>
             <Button
-              disabled={update.isPending}
+              disabled={update.isPending || !onboardingReady}
               onClick={() => void save("active")}
             >
               {update.isPending
@@ -707,6 +703,8 @@ function AccountEditor({
           </>
         )}
         {account.apartment_scope && <p>{account.apartment_scope}</p>}
+        {!account.administrator && <OnboardingFields userId={account.id} role={role} units={units} value={onboarding} onChange={setOnboarding} onReady={setOnboardingReady} busy={update.isPending} />}
+        {account.has_password === false && <p className="ops-admin-muted">Tài khoản chưa có đăng nhập bằng mật khẩu.</p>}
         {account.last_activity_at && (
           <p className="ops-admin-muted">
             Hoạt động gần nhất: {relativeTime(account.last_activity_at)}

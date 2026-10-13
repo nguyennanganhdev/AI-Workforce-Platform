@@ -17,6 +17,12 @@ server {
   # Docker's own DNS, asked again every few seconds: containers get a new address when they are replaced.
   resolver 127.0.0.11 valid=10s ipv6=off;
 
+  location ^~ /.well-known/acme-challenge/ {
+    root /var/www/acme;
+    default_type text/plain;
+    try_files $uri =404;
+  }
+
   # The public landing always receives the current frontend entry point.
   # Keep the browser URL at / so React selects LandingPage; old /#/... bookmarks remain resident routes.
   location = / {

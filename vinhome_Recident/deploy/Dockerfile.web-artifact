@@ -1,0 +1,7 @@
+# Package a locally built, verified dist into the existing trusted Nginx image, without registry access.
+ARG BASE_WEB_IMAGE
+FROM ${BASE_WEB_IMAGE}
+ARG APP
+RUN rm -rf /usr/share/nginx/html/*
+COPY apps/${APP}/dist /usr/share/nginx/html
+COPY deploy/nginx/${APP}.conf.template /etc/nginx/templates/default.conf.template

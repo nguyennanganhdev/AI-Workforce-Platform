@@ -117,53 +117,33 @@ Thẻ đồng ý của platform (`body.platform.kind = "approval"`, trả lời 
    - Đồng ý: ticket `closed` (như cũ) và ghi lệnh `close` cho workflow.
    - Không đồng ý: ticket mở lại (như cũ) và ghi lệnh `workflow_reply` nêu lý do để leader giao việc lại.
 
-## 6. Công cụ MCP (`/mcp` trên API, streamable HTTP, không trạng thái)
+## 6. Công cụ MCP dành riêng cho xử lý ticket đã bàn giao
 
-Platform không cho công cụ biết cư dân hay ticket. Vì vậy mọi công cụ nhận `ticket_id` do agent điền; máy chủ chỉ chấp nhận ticket có link `pending` hoặc `open` (leader giao việc ngay trong lượt đầu, trước khi cầu nối nhận được câu trả lời của lệnh `start_workflow`), và mọi thông tin cư dân, căn hộ đều suy từ ticket. Không bao giờ trả mã `VH-…`, số điện thoại, ghi chú nội bộ. Giờ in theo giờ Việt Nam dạng `HH:MM dd/MM/yyyy`. Mỗi lời gọi dưới 8 giây, dưới 256 KiB. `/mcp` mở trên dịch vụ `api` và được gateway chuyển tiếp nguyên đường dẫn, với Bearer token bắt buộc; `/api/business/mcp` vẫn trả 404.
+Catalog được thu gọn ngày 13/10/2026: **7 tools**, tại `/mcp`, streamable HTTP không trạng thái, bắt buộc Bearer token. Reception giữ interface nội bộ của mình; platform không có tool tạo ticket hay xác định lại cư dân/căn hộ.
 
-Hành động nhận thêm tham số ẩn `client_reference` (platform điền) và trả một đối tượng JSON có `status`. Một `client_reference` chỉ trả lại câu trả lời đã lưu cho đúng công cụ và đúng ticket đã dùng nó; dùng cho lời gọi khác thì bị từ chối, không làm gì.
+Domain bàn giao ticket đã có tên cư dân/quan hệ cư trú, căn/tòa/phân khu, loại và nội dung yêu cầu, ưu tiên/khẩn cấp, số ảnh và giờ tạo. Mọi tool nhận `ticket_id` từ gói bàn giao; server kiểm tra tenant và link `pending`/`open`, không nhận `user_id` hoặc căn hộ tùy chọn để mở scope. Token thuộc integration/tenant được cấu hình, không phải token riêng từng workflow.
 
-| Công cụ | Loại | Tham số agent điền | Trả về |
-|---|---|---|---|
-| `vh_ticket_get` | tra cứu | `ticket_id` | ticket (`ticket_status`), mức khẩn cấp (`is_emergency`, `severity`, `priority`), việc, người nhận, lịch hẹn, báo giá đang chờ cư dân trả lời, báo cáo nghiệm thu (`acceptance_report`: kết quả, người gửi, giờ gửi, ghi chú), số ảnh (`resident_photos`: chỉ ảnh do chính cư dân gửi; ảnh của nhân viên theo loại trước, sau, nghiệm thu), mốc tiến độ |
-| `vh_resident_context` | tra cứu | `ticket_id` | tên gọi, cách xưng hô, quan hệ với căn, căn, tòa, phân khu |
-| `vh_knowledge_search` | tra cứu | `ticket_id`, `query` | các đoạn tài liệu đúng phân khu của cư dân, kèm tên tài liệu; tìm bằng pgvector trong PostgreSQL của gói (khoảng cách cosine trong SQL) |
-| `vh_home_rules` | tra cứu | `ticket_id` | hạn mức theo phân khu |
-| `vh_debit_notes` | tra cứu | `ticket_id`, `view` | công nợ của căn (chỉ chủ hộ, người thuê) |
-| `vh_staff_available` | tra cứu | `ticket_id` | nhân viên đúng chuyên môn, đang trong ca, còn chỗ |
-| `vh_work_order_dispatch` | hành động, `tracking: events` | `ticket_id`, `description`, `staff_id?`, `appointment_at?` | `pending` + `external_job_id`; không ai rảnh: `queued`; từ chối: `failed` + lý do (việc an ninh, ticket theo phương án, đang có việc chưa xong) |
-| `vh_work_order_reschedule` | hành động | `ticket_id`, `appointment_at`, `reason` | `confirmed` |
-| `vh_ticket_cancel` | hành động | `ticket_id`, `reason` | `confirmed` hoặc `failed` |
-| `vh_ticket_add_note` | hành động | `ticket_id`, `note` | `confirmed` |
-| `vh_visitor_register` | hành động | `ticket_id`, `guest_name`, `visit_from`, `visit_to`, `purpose`, `guest_count?`, `vehicle_plate_no?` | `confirmed` kèm đã duyệt hay chờ quầy lễ tân duyệt; hoặc `failed` + lý do |
-| `vh_announcements` | tra cứu | `ticket_id` | thông báo của Ban quản lý cho tòa và phân khu của cư dân |
-| `vh_visitor_list` | tra cứu | `ticket_id` | các lượt khách của căn, kèm `visit_ref` |
-| `vh_visitor_cancel` | hành động | `ticket_id`, `visit_ref` | `confirmed` hoặc `failed` + lý do |
-| `vh_cards` | tra cứu | `ticket_id` | thẻ ra vào và thẻ xe của căn (số thẻ chỉ hiện bốn số cuối), kèm `card_ref` |
-| `vh_card_report_lost` | hành động | `ticket_id`, `card_ref` | `confirmed` (thẻ bị khóa) hoặc `failed` + lý do |
-| `vh_amenities` | tra cứu | `ticket_id` | tiện ích của phân khu căn đó và tiện ích chung toàn khu (giá, giờ mở, luật) và các lượt căn đã đặt, kèm `amenity_ref`, `booking_ref` |
-| `vh_amenity_availability` | tra cứu | `ticket_id`, `amenity_ref`, `date` | lượt còn trống trong ngày, theo khu vực |
-| `vh_amenity_book` | hành động | `ticket_id`, `amenity_ref`, `start_at`, `end_at`, `area?`, `people?` | `confirmed` nghĩa là **đã gửi thẻ**, chưa đặt chỗ (xem dưới) |
-| `vh_amenity_cancel` | hành động | `ticket_id`, `booking_ref` | `confirmed` hoặc `failed` + lý do |
-| `vh_service_requests` | tra cứu | `ticket_id` | các yêu cầu căn đã gửi quầy lễ tân và tình trạng |
-| `vh_construction` | tra cứu | `ticket_id` | quy định và giấy phép thi công của căn (chỉ chủ hộ, người thuê) |
-| `vh_my_requests` | tra cứu | `ticket_id` | các yêu cầu khác của cư dân và tình trạng, không kèm mã |
+| Công cụ | Loại | Vai trò |
+|---|---|---|
+| `vh_ticket_get` | chỉ đọc | Trạng thái hiện tại, công việc, báo giá, kết quả nghiệm thu, số ảnh và mốc tiến độ |
+| `vh_knowledge_search` | chỉ đọc | Tài liệu cần xử lý ticket trong scope của nó |
+| `vh_staff_available` | chỉ đọc | Nhân viên đúng chuyên môn/đơn vị, đang trong ca và còn năng lực |
+| `vh_work_order_dispatch` | ghi, tracking events | Tạo/giao work order cho ticket hiện hữu; trả pending/queued/failed |
+| `vh_work_order_reschedule` | ghi | Đổi lịch công việc khi trạng thái cho phép |
+| `vh_ticket_cancel` | ghi | Hủy ticket khi luật nghiệp vụ cho phép; không bỏ qua việc đã đến nơi/đang xử lý |
+| `vh_ticket_add_note` | ghi | Bổ sung thông tin cho người xử lý |
 
-**Đặt tiện ích cần cư dân tự bấm.** Một lượt đặt có thể mất phí, nên `vh_amenity_book` không đặt gì: nó ghi vào hộp chat một thẻ (tiện ích, khu vực, giờ, số người, phí) có nút "Xác nhận đặt chỗ", dùng được trong 15 phút. Cư dân bấm thì `POST /resident/platform/bookings/{card_id}/confirm` mới tạo lượt đặt, bằng đúng luật của tiện ích như khi đặt trong ứng dụng; bấm lại không tạo lượt thứ hai. Sau đó agent điều phối nhận một tin cho biết cư dân đã xác nhận và lượt đặt đang ở trạng thái nào (đã xác nhận, hoặc chờ thanh toán). Trạng thái của thẻ được đọc từ lượt đặt mỗi lần mở hộp chat, không lưu trong tin nhắn.
+Lệnh ghi nhận `client_reference` do platform điền; retry cùng reference trả kết quả đã lưu, reference dùng cho ticket/công cụ/nội dung khác bị từ chối. Mỗi lời gọi dưới 8 giây, dưới 256 KiB; không trả số điện thoại, mã VH hoặc ghi chú nội bộ.
 
-Các công cụ hành động khác trong nhóm này (hủy lượt khách, hủy lượt đặt, báo mất thẻ) làm việc như chính cư dân làm trong ứng dụng: cùng một luật, và chỉ trên những thứ thuộc căn của cư dân đó.
+Receipt từ trước migration `0017` chưa có hash nội dung: vẫn trả kết quả cũ cho cùng tool/ticket để tương thích, không áp dụng lại side effect. Bảo đảm từ chối đổi nội dung áp dụng cho receipt mới có hash.
 
-Chưa có công cụ tạo yêu cầu dịch vụ mới ở quầy (cấp thẻ, đăng ký xe): cư dân tự tạo trong ứng dụng, hoặc nói trong hộp chat để Lễ tân lập yêu cầu.
+Không cung cấp trên `/mcp`: tra lại identity/căn hộ, công nợ, khách ra vào, thẻ, booking, giấy phép, yêu cầu khác và thông báo diện rộng. Chức năng tương ứng của Reception/ứng dụng cư dân vẫn được giữ. Các thẻ booking platform cũ đang tồn tại có thể được hoàn tất theo endpoint tương thích; catalog mới không tạo thêm thẻ đó.
 
-`vh_ticket_get` có thêm khóa `status: "completed"` **chỉ khi** ticket đã `resolved` hoặc `closed`: platform coi khóa `status` ở tầng trên cùng là bằng chứng việc đã xong.
+Không có tool duyệt báo giá, tự QC hoặc xác nhận đóng thay cư dân. Báo giá do nhân viên lập, cư dân tự bấm thẻ bằng phiên của mình. `vh_ticket_get` chỉ trả `status: completed` khi ticket resolved/closed, không thay thế quyết định đóng của cư dân. Hủy thành công ghi lệnh close cho workflow; nhân viên từ chối/hết hạn lời mời thì domain tự mời người tiếp theo.
 
-`vh_ticket_cancel` hủy xong thì ghi luôn lệnh `close` (lý do `resident_cancelled`) để hộp chat trở lại với Reception. Nó từ chối khi việc đã đến nơi, đang làm hoặc đã làm xong: việc đã làm không bị bỏ bằng một câu trong chat, Ban quản lý xử lý.
+Declaration và lời dặn leader trong `deploy/platform/vinhomes-declaration.json` phải khớp catalog. Platform đã import bộ cũ cần refresh catalog và gỡ grants của tool đã loại; server không cho gọi tool cũ dù bên nhận còn cache. Không thay event schema trong đợt thu gọn này.
 
-Không có công cụ nào về báo giá. Báo giá do kỹ thuật viên lập trong app nhân viên; cư dân trả lời trên thẻ báo giá (mục 5.4); platform chỉ được báo bằng sự kiện.
-
-Khi nhân viên từ chối hoặc lời mời hết hạn, Vinhomes tự mời người kế tiếp; hết người thì báo `job.unassigned`.
-
-**Lời dặn leader** (trong `deploy/platform/vinhomes-declaration.json`), những điểm chính: chép đúng `ticket_id`; giao việc ngay ở lượt đầu; mọi lượt kết thúc bằng một tin cho cư dân; không ghi nhận, không hỏi xin đồng ý báo giá bằng lời và không dùng công cụ xin đồng ý của platform cho báo giá, chỉ giải thích và nhắc cư dân bấm trên thẻ; kết quả nghiệm thu là báo cáo của nhân viên, cư dân chưa kiểm tra, và cư dân đã có tin kết quả của cầu nối nên leader chỉ mời xác nhận, không nhắc lại con số; với yêu cầu khẩn cấp thì câu đầu tiên nói cư dân cần làm gì ngay, chỉ bằng điều tìm được trong tài liệu (số hotline), giao việc ngay, không bảo cư dân chờ và không nói Ban quản lý đã nhận tin.
+Chi tiết phạm vi/kiểm thử: [KE_HOACH_MAINTAIN_DOMAIN_20261013.md](KE_HOACH_MAINTAIN_DOMAIN_20261013.md). Test Agent/leader thật do chủ dự án thực hiện sau.
 
 ## 7. Sự kiện tiến độ (`version_mode: snapshot`)
 

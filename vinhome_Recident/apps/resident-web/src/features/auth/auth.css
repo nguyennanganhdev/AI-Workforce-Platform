@@ -543,3 +543,22 @@
     animation: none;
   }
 }
+.resident-recovery-form {
+  display: grid;
+  gap: 1rem;
+  text-align: left;
+  min-width: 0;
+}
+.resident-recovery-form label { display: grid; gap: .5rem; }
+.resident-recovery-form input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: .8rem;
+  border: 1px solid #c5cbd3;
+  border-radius: .5rem;
+  font: inherit;
+}
+.resident-recovery-form [role="alert"] { color: #a12424; }
+.resident-recovery-form button { font: inherit; cursor: pointer; border: 0; }
+.resident-recovery-form button:disabled { opacity: .6; cursor: wait; }

@@ -861,10 +861,8 @@ def test_the_mcp_server_lists_and_runs_the_tools_only_for_the_token(database, on
         assert "mcp-session-id" not in direct.headers   # stateless
 
         tools = {tool.name: tool for tool in asyncio.run(session(lambda client: client.list_tools())).tools}
-        looks = {"vh_ticket_get", "vh_resident_context", "vh_knowledge_search", "vh_home_rules", "vh_debit_notes", "vh_staff_available", "vh_announcements",
-                 "vh_visitor_list", "vh_cards", "vh_amenities", "vh_amenity_availability", "vh_service_requests", "vh_construction", "vh_my_requests"}
-        acts = {"vh_work_order_dispatch", "vh_work_order_reschedule", "vh_ticket_cancel", "vh_ticket_add_note", "vh_visitor_register",
-                "vh_visitor_cancel", "vh_card_report_lost", "vh_amenity_book", "vh_amenity_cancel"}
+        looks = {"vh_ticket_get", "vh_knowledge_search", "vh_staff_available"}
+        acts = {"vh_work_order_dispatch", "vh_work_order_reschedule", "vh_ticket_cancel", "vh_ticket_add_note"}
         # Nothing records an answer to a quote: that is the resident's own tap on the card.
         assert set(tools) == looks | acts
         for name, tool in tools.items():

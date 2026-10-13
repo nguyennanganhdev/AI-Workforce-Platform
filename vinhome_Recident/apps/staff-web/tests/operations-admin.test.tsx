@@ -76,12 +76,20 @@ async function mount(
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const parsed = new URL(String(input), "http://localhost");
     const url = parsed.pathname + parsed.search;
+    if ((!init?.method || init.method === "GET") && parsed.pathname === "/api/business/auth/onboarding-options") return Response.json({units: [{id: "apartment-1202", code: "1202", building_code: "S1"}], categories: [{id: "technical", name: "Kỹ thuật"}]});
+    if ((!init?.method || init.method === "GET") && parsed.pathname.endsWith("/onboarding")) return Response.json({residencies: [{id: "existing-home", verification_status: "verified", code: "1201", building_code: "S1"}], staff_profile: null});
     if (init?.method && init.method !== "GET")
       sent.push({
         method: init.method,
         url,
         body: init.body ? JSON.parse(String(init.body)) : undefined,
       });
+    if ((!init?.method || init.method === "GET") && parsed.pathname === "/api/business/auth/accounts") {
+      const result = await respond(parsed.pathname, init).json();
+      const needle = parsed.searchParams.get("search")?.toLowerCase();
+      const items = (result.items || []).filter((a: typeof accounts[number]) => !needle || `${a.name} ${a.email}`.toLowerCase().includes(needle));
+      return Response.json({...result, items, total: items.length, nextOffset: null});
+    }
     return respond(url, init);
   }) as typeof fetch;
   const Page =
@@ -121,7 +129,7 @@ test("the administrator finds an account, approves it and moves a manager to ano
       });
     return Response.json({ items: accounts });
   });
-  expect((await view.findByText("3 tài khoản")).textContent).toBeTruthy();
+  expect((await view.findByText("3 tài khoản phù hợp")).textContent).toBeTruthy();
   expect(
     view
       .getByRole("button", { name: /Nguyễn Văn An an@example.com/ })
@@ -135,11 +143,13 @@ test("the administrator finds an account, approves it and moves a manager to ano
   expect(view.queryByRole("button", { name: "Lưu thay đổi" })).toBeNull();
   fireEvent.click(view.getByRole("button", { name: "Hủy" }));
   await typeInto(view.getByLabelText("Tìm theo tên hoặc email"), "binh");
-  expect(view.getByText("Hiển thị 1 trên 3 tài khoản")).toBeTruthy();
+  expect(await view.findByText("Hiển thị 1–1 trên 1 tài khoản. CSV chỉ gồm trang này.")).toBeTruthy();
   fireEvent.click(
     view.getByRole("button", { name: /Trần Thị Bình binh@example.com/ }),
   );
-  fireEvent.click(await view.findByRole("button", { name: "Duyệt tài khoản" }));
+  const approve = await view.findByRole("button", { name: "Duyệt tài khoản" });
+  await waitFor(() => expect(approve.hasAttribute("disabled")).toBe(false));
+  fireEvent.click(approve);
   await waitFor(() =>
     expect(sent).toEqual([
       {

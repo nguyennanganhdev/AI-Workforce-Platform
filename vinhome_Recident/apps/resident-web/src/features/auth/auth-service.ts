@@ -53,10 +53,8 @@ export const residentAuthService: ResidentAuthService = {
     await authRequest("/auth/register", {name: fullName, email: phone.trim(), password});
     return {nextStep: "membership-pending"};
   },
-  async requestPasswordReset() {
-    throw new Error(
-      "Khôi phục mật khẩu chưa được kết nối. Chưa có mã xác minh nào được gửi.",
-    );
+  async requestPasswordReset(email) {
+    await authRequest("/auth/password-reset/request", {email: email.trim()});
   },
 };
 

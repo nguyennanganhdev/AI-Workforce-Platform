@@ -91,7 +91,8 @@ describe("Resident auth boundary", () => {
       pending = false;
       expect(await residentAuthService.signIn(valid)).toEqual({nextStep: 'verification-required'});
       expect(await residentAuthService.register(valid)).toEqual({nextStep: 'membership-pending'});
-      await expect(residentAuthService.requestPasswordReset(valid.phone)).rejects.toThrow('Chưa có mã xác minh');
+      await expect(residentAuthService.requestPasswordReset(valid.phone)).resolves.toBeUndefined();
+      expect(paths).toContain('/api/business/auth/password-reset/request');
     } finally {globalThis.fetch = original;}
   });
   test("live form validates email and the backend password minimum", () => {

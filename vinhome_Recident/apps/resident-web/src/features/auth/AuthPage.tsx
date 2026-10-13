@@ -30,6 +30,7 @@ import {
 import "./auth.css";
 import { startResidentPreview } from "./demo-access";
 import { ChooseSpace } from "./ChooseSpace";
+import { ResetPasswordPage } from "./ResetPasswordPage";
 import {
   ResidentAccountStatus,
   type ResidentPendingStatus,
@@ -83,7 +84,7 @@ export function AuthPage({
   const copy = content[mode];
   useEffect(() => {
     mounted.current = true;
-    document.title = `${copy.title} — Nhà`;
+    document.title = location.hash.startsWith("#reset-password") ? "Đặt lại mật khẩu — Vinhomes" : `${copy.title} — Vinhomes`;
     heading.current?.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });
     return () => {
@@ -188,6 +189,7 @@ export function AuthPage({
   }
 
   const fields = { values, update, blur, errorFor, disabled: pending };
+  if (location.hash.startsWith("#reset-password")) return <ResetPasswordPage />;
   if (nextStep) return <ResidentAccountStatus status={nextStep} />;
   if (choice) return <ChooseSpace operationsHref={choice} />;
   return (
@@ -254,11 +256,11 @@ export function AuthPage({
         <div className="resident-auth-body">
           {mode === "forgot-password" && (
             <p className="resident-auth-intro">
-              Hệ thống chưa hỗ trợ gửi mã khôi phục mật khẩu. Vui lòng liên hệ
-              ban quản lý để được hỗ trợ tài khoản.
+              Nhập email đăng nhập để nhận link đặt lại mật khẩu. Nếu dịch vụ email
+              chưa được cấu hình, vui lòng liên hệ quản trị viên.
             </p>
           )}
-          {(mode !== "forgot-password" || !service.identityMode) && <form
+          {<form
             onSubmit={submit}
             noValidate
             aria-label={copy.title}

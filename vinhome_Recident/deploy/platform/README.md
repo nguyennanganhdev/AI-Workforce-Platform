@@ -65,20 +65,22 @@ Kiểm tra nhanh: `dc exec platform-sync python -m vinhomes_api.platform status`
 | Quy tắc lời nói | câu trả lời an toàn; 4 nhóm cụm từ cấm: hứa khoảng thời gian, cam kết thay Ban quản lý, nói "miễn phí" khi tài liệu không ghi, hứa bồi thường hay hoàn tiền. Các quy tắc này thêm vào luật có sẵn của platform (không nói "đã xong" khi chưa có kết quả xác minh, không nói "đã đóng yêu cầu") | `route.config.rules` |
 | Hồ sơ agent | một leader `vh_dieu_phoi`, được dùng mọi công cụ `vh_*`, mức model `standard` | `profiles` |
 | Máy chủ MCP | tên `vinhomes`, streamable HTTP, không trạng thái; địa chỉ và token là tham số của `apply.py` | `mcp_server` |
-| Công cụ | 6 tra cứu, 4 hành động (bảng dưới) | `tools` |
+| Công cụ | 3 tra cứu, 4 hành động (bảng dưới) | `tools` |
 | Sự kiện tiến độ | 15 loại, kiểu phiên bản `snapshot` (bảng dưới) | `integration.event_schema` |
 
 Chỉ có một leader, không có chuyên viên: mỗi ticket là một việc điều phối, leader tự gọi công cụ. Platform không cần thêm hồ sơ nào cho luồng này.
 
 ### Công cụ
 
+Catalog ngày 13/10/2026 còn 7 tool, chỉ xử lý ticket đã bàn giao. Identity/căn hộ có sẵn trong gói domain gửi; Reception giữ tool tiếp nhận và các dịch vụ cư dân. Bên platform cần refresh catalog và gỡ grant cũ khi cập nhật declaration. Không tự áp declaration vào platform đang dùng trong đợt deploy domain.
+
 Mọi công cụ nhận `ticket_id` do agent chép từ tin nhắn đầu tiên; Vinhomes chỉ chấp nhận ticket đã bàn giao và đang mở. Hành động nhận thêm tham số ẩn `client_reference` do platform điền, và làm đúng một lần cho mỗi giá trị. Không công cụ nào đòi cư dân đồng ý ở phía platform (`requires_consent: false`). Mỗi lời gọi tối đa 8 giây.
 
 | Công cụ | Loại | Theo dõi |
 |---|---|---|
-| `vh_ticket_get`, `vh_resident_context`, `vh_knowledge_search`, `vh_home_rules`, `vh_debit_notes`, `vh_staff_available`, `vh_announcements`, `vh_visitor_list`, `vh_cards`, `vh_amenities`, `vh_amenity_availability`, `vh_service_requests`, `vh_construction`, `vh_my_requests` | tra cứu, chỉ đọc | |
+| `vh_ticket_get`, `vh_knowledge_search`, `vh_staff_available` | tra cứu, chỉ đọc | |
 | `vh_work_order_dispatch` | hành động | `events`: trả `pending` kèm `external_job_id`, tiến độ về bằng sự kiện |
-| `vh_work_order_reschedule`, `vh_ticket_cancel`, `vh_ticket_add_note`, `vh_visitor_register`, `vh_visitor_cancel`, `vh_card_report_lost`, `vh_amenity_book`, `vh_amenity_cancel` | hành động | không: trả `confirmed` hoặc `failed` ngay |
+| `vh_work_order_reschedule`, `vh_ticket_cancel`, `vh_ticket_add_note` | hành động | không: trả confirmed hoặc failed ngay |
 
 Không có công cụ nào ghi câu trả lời báo giá. Báo giá hiện thành một thẻ trong hộp chat do chính Vinhomes ghi; cư dân tự bấm Đồng ý hoặc Không đồng ý trên thẻ. Leader chỉ giải thích khi cư dân hỏi.
 

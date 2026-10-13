@@ -1,0 +1,80 @@
+name: Vinhomes domain business checks
+on:
+  pull_request:
+    paths: ['vinhome_Recident/**', '.github/workflows/vinhomes-domain.yml']
+  push:
+    branches: [dev_Vinhome]
+    paths: ['vinhome_Recident/**', '.github/workflows/vinhomes-domain.yml']
+permissions:
+  contents: read
+jobs:
+  business-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: test_owner
+          POSTGRES_PASSWORD: isolated-ci-owner
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U test_owner -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      RESIDENT_TEST_ADMIN_URL: postgresql://test_owner:isolated-ci-owner@127.0.0.1:5432/postgres
+      RESIDENT_TEST_RUNTIME_URL: postgresql://test_runtime:isolated-ci-runtime@127.0.0.1:5432/postgres
+      PGPASSWORD: isolated-ci-owner
+      VINHOMES_API_RECEPTION_URL: ''
+      VINHOMES_API_PLATFORM_URL: ''
+      VINHOMES_API_EMBEDDING_API_KEY: ''
+    defaults:
+      run:
+        working-directory: vinhome_Recident/services/vinhomes-api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[test]'
+      - name: Create restricted test role
+        run: psql -h 127.0.0.1 -U test_owner -d postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE test_runtime LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'isolated-ci-runtime'"
+      - name: Domain checks only (no Agent/model calls)
+        run: >-
+          python -m pytest -q
+          tests/test_account_onboarding.py tests/test_account_administration.py
+          tests/test_password_recovery.py tests/test_mcp_onboarding.py
+          tests/test_platform_ticket_api.py
+          tests/test_schema_contract.py tests/test_browser_origin.py
+          tests/test_sign_in_one_page.py tests/test_sign_in_doors.py tests/test_sign_in_limit.py
+          tests/test_staff_dispatch.py tests/test_staff_notifications.py
+      - name: Actual HTTP business closure and rework
+        run: python tests/run_business_http.py
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: vinhome_Recident
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: vinhome_Recident/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm exec -w @vinhomes/resident-web -- vitest run
+      - name: Staff UI tests in isolated processes
+        working-directory: vinhome_Recident/apps/staff-web
+        run: |
+          for file in tests/*.test.ts tests/*.test.tsx; do
+            [ -f "$file" ] || continue
+            npx vitest run "$file"
+          done
+      - run: npm run build
+        env:
+          VITE_ALLOW_DEMO_BACKEND: 'false'
+          VITE_ENABLE_UI_PREVIEW: 'false'

@@ -68,7 +68,7 @@ test("original resident registration submits real contract and shows pending wit
   await typeInto(page.getByLabelText('Mật khẩu', {exact: true}), 'secure-password-123');
   await typeInto(page.getByLabelText('Nhập lại mật khẩu', {exact: true}), 'secure-password-123');
   fireEvent.submit(page.container.querySelector('form')!);
-  await waitFor(() => expect(page.queryByText('Chờ liên kết căn hộ') !== null).toBe(true));
+  await waitFor(() => expect(page.queryByText('Chờ duyệt tài khoản') !== null).toBe(true));
   expect(payload.email).toBe('resident@example.test');
   expect(payload.name).toBe('Resident Name');
   expect('role' in payload).toBe(false);
@@ -87,7 +87,7 @@ test("original staff login shows backend permission denial without reading previ
   await waitFor(() => expect(page.queryByText(/Tài khoản chưa được cấp quyền nhân viên/) !== null).toBe(true));
 });
 
-test("all original resident auth screens omit retired platform links and unavailable reset submission", async () => {
+test("resident auth screens omit retired platform links and provide recovery submission", async () => {
   const {AuthPage} = await import('../../resident-web/src/features/auth/AuthPage');
   for (const mode of ['login', 'register', 'forgot-password'] as const) {
     const page = render(<AuthPage mode={mode} />);
@@ -95,8 +95,8 @@ test("all original resident auth screens omit retired platform links and unavail
     expect(page.container.querySelector('a[href*="3010"]') === null).toBe(true);
     expect(page.container.textContent?.includes('M? ?ng d?ng')).toBe(false);
     if (mode === 'forgot-password') {
-      expect(page.container.querySelector('form') === null).toBe(true);
-      expect(page.queryByText(/Hệ thống chưa hỗ trợ gửi mã khôi phục/) !== null).toBe(true);
+      expect(page.container.querySelector('form') !== null).toBe(true);
+      expect(page.queryByText(/Nhập email đăng nhập để nhận link/) !== null).toBe(true);
     }
     cleanup();
   }

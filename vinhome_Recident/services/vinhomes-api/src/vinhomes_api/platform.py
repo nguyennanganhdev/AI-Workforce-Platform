@@ -190,8 +190,13 @@ async def link_ticket(db, ticket_id) -> None:
     ticket = (await db.execute(text(f"""
         select t.channel_id,t.requester_user_id,t.title,t.description,t.request_kind,t.priority,t.severity,t.is_emergency,t.created_at,
           mu.code as management_ref,c.name as category,c.code as category_code,u.code as unit,b.name as building,z.name as zone,
+          resident.name as resident_name,
+          (select ur.relation from unit_residents ur where ur.tenant_id=t.tenant_id and ur.unit_id=t.unit_id
+            and ur.user_id=t.requester_user_id and ur.verification_status='verified' and ur.valid_from<=now()
+            and (ur.valid_to is null or ur.valid_to>now()) order by ur.verified_at desc,ur.id limit 1) as resident_relation,
           (select count(*) from ticket_files f where f.ticket_id=t.id and f.tenant_id=t.tenant_id) as photos
         from tickets t
+        join users resident on resident.id=t.requester_user_id
         join management_units mu on mu.id=t.management_unit_id and mu.tenant_id=t.tenant_id
         join units u on u.id=t.unit_id and u.tenant_id=t.tenant_id
         join buildings b on b.id=t.building_id and b.tenant_id=t.tenant_id
@@ -202,8 +207,7 @@ async def link_ticket(db, ticket_id) -> None:
     if ticket["category_code"] == "security" and ticket["request_kind"] == "incident" and not ticket["is_emergency"]:
         # Guards are sent by management alone: the coordinator could only refuse (platform_work.dispatch).
         # An emergency is told to the platform whatever its category; there the coordinator only informs.
-        # A service the resident asks for (a visitor, a card, a booking) is the coordinator's, whatever category
-        # Reception filed it under: its tools do those without sending anyone.
+        # Reception and resident services keep their own tools; platform only coordinates handed-over tickets.
         return
     fresh = await db.execute(text(f"""
         insert into platform_links(ticket_id,tenant_id,channel_id,user_id,management_ref)
@@ -220,6 +224,8 @@ async def link_ticket(db, ticket_id) -> None:
     if ticket["severity"] in SEVERITY:
         urgency += f"; mức độ nghiêm trọng: {SEVERITY[ticket['severity']]}"
     lines = [f"ticket_id: {ticket_id}",
+             "Cư dân: " + " ".join((ticket["resident_name"] or "cư dân").split()),
+             "Quan hệ cư trú: " + {"owner":"chủ hộ","tenant":"người thuê","household":"thành viên trong hộ"}.get(ticket["resident_relation"],"chưa xác định"),
              "Loại yêu cầu: " + " - ".join(part for part in (KIND.get(ticket["request_kind"]), ticket["category"]) if part),
              f"Tiêu đề: {ticket['title']}", f"Mô tả của cư dân: {ticket['description']}", f"Căn: {ticket['unit']}",
              f"Tòa: {ticket['building']}", f"Phân khu: {ticket['zone'] or 'không có'}",

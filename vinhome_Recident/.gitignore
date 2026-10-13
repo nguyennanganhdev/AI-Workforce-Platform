@@ -35,3 +35,4 @@ Thumbs.db
 deploy/deployment.env
 deploy/platform-handoff-*/
 deploy/test-accounts-*/
+deploy/nginx/gateway.tls.generated.conf.template

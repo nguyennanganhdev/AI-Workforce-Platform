@@ -345,38 +345,43 @@ async def notices(db, ticket_id) -> dict:
 
 # ---- actions ---------------------------------------------------------------------------------------------------------
 
-async def _stored(db, reference: str, tool: str, ticket_id):
+async def _stored(db, reference: str, tool: str, ticket_id, request_hash=None):
     """The answer already given for this reference, to the same tool about the same ticket only."""
-    row = (await db.execute(text(f"select ticket_id,tool,answer from platform_operations where client_reference=:ref and tenant_id={TENANT}"),
+    row = (await db.execute(text(f"select ticket_id,tool,answer,request_hash from platform_operations where client_reference=:ref and tenant_id={TENANT}"),
                             {"ref": reference})).first()
     if row is None:
         return None
     if row.tool != tool or str(row.ticket_id) != str(ticket_id).strip().lower():
         raise Refused("client_reference này đã dùng cho một lời gọi khác.")
+    if row.request_hash is not None and row.request_hash != request_hash:
+        raise Refused("client_reference này đã dùng với nội dung khác.")
     return row.answer
 
 
-async def _act(db, tool: str, ticket_id, reference, effect) -> dict:
+async def _act(db, tool: str, ticket_id, reference, effect, payload=None) -> dict:
     """Run `effect(ticket)` once for this reference. It returns the answer and, for a dispatch, the work order."""
     if not isinstance(reference, str) or not 8 <= len(reference) <= 120:
         return {"status": "failed", "reason": "Thiếu client_reference của platform."}
     try:
+        import hashlib
+        request_hash = hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(',',':'),ensure_ascii=False,default=str).encode()).hexdigest() if payload is not None else None
+        await db.execute(text("select pg_advisory_xact_lock(hashtextextended('platform-ref:'||current_setting('app.tenant_id')||':'||:ref,0))"),{"ref":reference})
         # Before the ticket is judged: a repeat gets its first answer even after the workflow ended.
-        answer = await _stored(db, reference, tool, ticket_id)
+        answer = await _stored(db, reference, tool, ticket_id, request_hash)
         if answer is None:
             ticket = await _ticket(db, ticket_id, lock=True)
             # The same call twice at once: the second waited for the ticket and finds the first one's answer.
-            answer = await _stored(db, reference, tool, ticket_id)
+            answer = await _stored(db, reference, tool, ticket_id, request_hash)
         if answer is None:
             # A refusal half way undoes what the effect already wrote.
             async with db.begin_nested():
                 await platform_client(db)
                 answer, work = await effect(ticket)
                 await db.execute(text(f"""
-                    insert into platform_operations(client_reference,tenant_id,ticket_id,tool,work_order_id,answer)
-                    values (:ref,{TENANT},:ticket,:tool,:work,cast(:answer as jsonb))
+                    insert into platform_operations(client_reference,tenant_id,ticket_id,tool,work_order_id,answer,request_hash)
+                    values (:ref,{TENANT},:ticket,:tool,:work,cast(:answer as jsonb),:hash)
                 """), {"ref": reference, "ticket": ticket["id"], "tool": tool, "work": work,
-                       "answer": json.dumps(answer, ensure_ascii=False)})
+                       "answer": json.dumps(answer, ensure_ascii=False), "hash":request_hash})
         return answer
     except Refused as no:
         return {"status": "failed", "reason": str(no)}
@@ -432,7 +437,8 @@ async def dispatch(db, ticket_id, description: str, staff_id: str | None, appoin
         return {"status": "pending", "external_job_id": str(work), "offered_to": offered["name"],
                 "offer_expires_at": _at(offered["offer_expires_at"]), "appointment": _at(at),
                 "note": "Đã mời nhân viên, đang chờ người nhận."}, work
-    return await _act(db, "vh_work_order_dispatch", ticket_id, client_reference, effect)
+    return await _act(db, "vh_work_order_dispatch", ticket_id, client_reference, effect,
+                      {"description":description,"staff_id":staff_id,"appointment_at":appointment_at})
 
 
 async def reschedule(db, ticket_id, appointment_at: str, reason: str | None, client_reference) -> dict:
@@ -465,7 +471,8 @@ async def reschedule(db, ticket_id, appointment_at: str, reason: str | None, cli
             """), {"user": holder, "event": event, "key": str(event), "payload": json.dumps({
                 "type": "work.rescheduled", "workOrderId": str(work["id"]), "ticketId": str(ticket["id"]), "appointmentAt": at.isoformat()})})
         return {"status": "confirmed", "appointment": _at(at)}, None
-    return await _act(db, "vh_work_order_reschedule", ticket_id, client_reference, effect)
+    return await _act(db, "vh_work_order_reschedule", ticket_id, client_reference, effect,
+                      {"appointment_at":appointment_at,"reason":reason})
 
 
 async def cancel(db, ticket_id, reason: str | None, client_reference) -> dict:
@@ -506,7 +513,7 @@ async def cancel(db, ticket_id, reason: str | None, client_reference) -> dict:
         # Nothing is left to coordinate: the workflow ends after this turn and the chat goes back to Reception.
         await command(db, ticket["id"], "close", {"reason": "resident_cancelled"})
         return {"status": "confirmed", "ticket_status": "cancelled", "cancelled_work_orders": len(orders)}, None
-    return await _act(db, "vh_ticket_cancel", ticket_id, client_reference, effect)
+    return await _act(db, "vh_ticket_cancel", ticket_id, client_reference, effect,{"reason":reason})
 
 
 async def add_note(db, ticket_id, note: str, client_reference) -> dict:
@@ -517,7 +524,7 @@ async def add_note(db, ticket_id, note: str, client_reference) -> dict:
             raise Refused("note cần từ 1 đến 2000 ký tự.")
         await agent_event(db, ticket["id"], CLIENT_ID, "ticket.note_added", {"note": said})
         return {"status": "confirmed"}, None
-    return await _act(db, "vh_ticket_add_note", ticket_id, client_reference, effect)
+    return await _act(db, "vh_ticket_add_note", ticket_id, client_reference, effect,{"note":note})
 
 
 # ---- offers that were turned down or ran out -------------------------------------------------------------------------

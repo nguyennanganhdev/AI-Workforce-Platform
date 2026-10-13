@@ -277,6 +277,7 @@
 }
 .ops-admin-table-footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
@@ -424,7 +425,18 @@
 .ops-admin-form {
   display: grid;
   gap: 16px;
+  min-width: 0;
 }
+.ops-admin-form fieldset {
+  min-width: 0;
+  max-width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.ops-admin-form input[type="datetime-local"] { min-width: 0; max-width: 100%; }
+.ops-admin-form label.ops-admin-check-field { display: flex; align-items: flex-start; gap: 8px; line-height: 1.5; font-weight: 400; }
+.ops-admin-check-field input[type="checkbox"] { width: auto; flex: 0 0 auto; margin-top: 3px; }
 .ops-admin-form label {
   display: grid;
   gap: 6px;

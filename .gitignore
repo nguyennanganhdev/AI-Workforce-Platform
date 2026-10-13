@@ -1,0 +1,16 @@
+# This branch owns the Vinhomes domain. Platform files left by another checkout stay local.
+/platform_VP/
+
+# Local credentials and generated verification artifacts
+.env
+.env.*
+!.env.example
+*.env
+!*.env.example
+__pycache__/
+*.py[cod]
+node_modules/
+.venv/
+.pytest_cache/
+.codex-artifacts/
+.worktrees/

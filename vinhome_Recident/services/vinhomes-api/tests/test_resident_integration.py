@@ -44,10 +44,7 @@ def create_ticket():
     unit = profile["units"][0]
     category = next(c for c in profile["categories"] if c["code"] == "technical")
     chat = call("POST", "/resident/chats", expected=201, json={"title": f"Integration {uuid4()}"})
-    message = {"text": "Kiểm tra kết nối hai ứng dụng", "client_message_id": str(uuid4())}
-    first = call("POST", f"/resident/chats/{chat['id']}/messages", expected=201, json=message)
-    assert call("POST", f"/resident/chats/{chat['id']}/messages", expected=201, json=message)["id"] == first["id"]
-    call("POST", f"/resident/chats/{chat['id']}/messages", expected=409, json={**message, "text": "Different"})
+    # Business flow only: do not send chat messages or invoke Reception/model.
     key = str(uuid4())
     upload_path = f"/resident/chats/{chat['id']}/photos?filename=intake.png&mimeType=image/png"
     photo = call("POST", upload_path, expected=201, headers={"Idempotency-Key": key}, content=image_bytes())
@@ -72,12 +69,12 @@ def create_ticket():
     return ticket["id"], category["id"]
 
 
-def finish_work(ticket_id, category_id, onsite=False):
+def finish_work(ticket_id, category_id, onsite=False, staff_user_id="local-v3-technical"):
     ticket = call("GET", f"/tickets/{ticket_id}", actor="management")["ticket"]
     order = call("POST", f"/tickets/{ticket_id}/work-orders", actor="management", expected=201,
                  json={"category_id":category_id,"required_specialty_id":category_id,"description":"Kiểm tra và xử lý ổ điện","ticket_version":ticket["version"]})
     catalog = call("GET", "/catalogs", actor="management")
-    staff = next(s for s in catalog["staff"] if s["user_id"] == "local-v3-technical")
+    staff = next(s for s in catalog["staff"] if s["user_id"] == staff_user_id)
     assignment = call("POST", f"/work-orders/{order['id']}/assignments", actor="management", expected=201,
         json={"staff_id":staff["id"],"work_order_version":order["version"],"offer_expires_at":(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat()})
     call("POST", f"/assignments/{assignment['id']}/response", actor="security", expected=403,
@@ -135,10 +132,6 @@ def finish_work(ticket_id, category_id, onsite=False):
 def test_full_confirmation_retry_and_concurrent_decisions():
     ticket, category = create_ticket()
     _, approval = finish_work(ticket, category)
-    session = call("GET", f"/tickets/{ticket}/session", actor="management")
-    assert session["awaitingManagementApproval"] is False
-    call("POST", f"/tickets/{ticket}/session/close-approval", actor="management", expected=409,
-         json={"version": session["session"]["state_version"]})
     current = call("GET", f"/resident/tickets/{ticket}")["ticket"]
     body = {"approved":True,"note":"Tôi đã kiểm tra, mọi thứ hoạt động tốt.","version":current["version"]}
     call("POST", f"/resident/approvals/{approval}/decision", expected=409,
@@ -152,16 +145,7 @@ def test_full_confirmation_retry_and_concurrent_decisions():
     winner=next(i for i,r in enumerate(responses) if r.status_code==200)
     assert decide(keys[winner]).json()==responses[winner].json()
     assert call("GET", f"/resident/tickets/{ticket}")["ticket"]["status"] == "closed"
-    # The session outlives the resident's confirmation until management approves it.
-    session = call("GET", f"/tickets/{ticket}/session", actor="management")
-    assert session["session"]["status"] == "queued" and session["awaitingManagementApproval"] is True
-    assert ticket in call("GET", "/sessions/awaiting-approval", actor="management")["ticketIds"]
-    closure = {"version": session["session"]["state_version"], "note": "Đã rà soát hồ sơ."}
-    call("POST", f"/tickets/{ticket}/session/close-approval", actor="technical", expected=403, json=closure)
-    closed = call("POST", f"/tickets/{ticket}/session/close-approval", actor="management", json=closure)
-    assert closed["session"]["status"] == "completed" and closed["session"]["closure"]["approvedBy"] == "local-v3-management"
-    assert call("POST", f"/tickets/{ticket}/session/close-approval", actor="management", json=closure) == closed
-    assert ticket not in call("GET", "/sessions/awaiting-approval", actor="management")["ticketIds"]
+    # Domain closure is authoritative; platform workflow acceptance is tested separately.
 
 
 def test_rework_preserves_history_and_returns_to_management():

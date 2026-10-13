@@ -2,7 +2,11 @@ import { infiniteQueryOptions, mutationOptions, queryOptions, type QueryClient }
 import { tryClient, type ClientOptions } from "@/lib/client";
 import { businessHeaders } from "@/lib/business-headers";
 
-export type Account = { id: string; name: string; email: string; role: string; status: string; administrator: boolean; management_unit_id: string | null };
+export type Account = { id: string; name: string; email: string; role: string; status: string; administrator: boolean; management_unit_id: string | null; has_password?: boolean; has_staff_profile?: boolean };
+export type OnboardingInput = { residency?: { unit_id: string; relation: "owner" | "tenant" | "household" }; staff_profile?: {
+  management_unit_id: string; employee_code: string; category_ids: string[]; max_concurrent_jobs: number;
+  availability: "available" | "busy" | "offline" | "on_leave"; shifts: { starts_at: string; ends_at: string }[];
+} };
 export type Unit = { id: string; code: string; name: string; status: string; buildings: string[]; staff: number; open_tickets: number;
   groups: { id: string; name: string; members: number }[] };
 export type AuditEvent = { id: string; created_at: string; event_type: string; initiator_kind: string; actor: string | null;
@@ -19,22 +23,42 @@ async function ask(path: string, options: ClientOptions, fallback: string, spoke
 export const adminKeys = { accounts: ["admin", "accounts"] as const, units: ["admin", "units"] as const,
   audit: (kind: string) => ["admin", "audit", kind] as const };
 
-export function accountsQueryOptions() {
-  return queryOptions({ queryKey: adminKeys.accounts, queryFn: async (): Promise<{ accounts: Account[]; units: { id: string; name: string }[] }> => {
-    const [accounts, units] = await Promise.all([ask("/auth/accounts", {}, "Không tải được danh sách tài khoản."),
+export function accountsQueryOptions(filters: { search?: string; role?: string; status?: string; management_unit_id?: string; offset?: number } = {}) {
+  return queryOptions({ queryKey: [...adminKeys.accounts, filters], queryFn: async (): Promise<{ accounts: Account[]; units: { id: string; name: string }[]; total: number; nextOffset: number | null }> => {
+    const query = new URLSearchParams({ limit: "50", offset: String(filters.offset || 0) });
+    for (const key of ["search", "role", "status", "management_unit_id"] as const) if (filters[key]) query.set(key, filters[key]);
+    const [accounts, units] = await Promise.all([ask(`/auth/accounts?${query}`, {}, "Không tải được danh sách tài khoản."),
       ask("/auth/management-units", {}, "Không tải được danh sách đơn vị.")]);
-    return { accounts: (await accounts.json()).items, units: (await units.json()).items };
+    const page = await accounts.json();
+    return { accounts: page.items, total: page.total ?? page.items.length, nextOffset: page.nextOffset ?? null, units: (await units.json()).items };
   } });
 }
 export function createAccountMutationOptions(queryClient: QueryClient) {
-  return mutationOptions({ mutationFn: async (body: { name: string; email: string; password: string; role: string; management_unit_id?: string }) => {
+  return mutationOptions({ mutationFn: async (body: { name: string; email: string; password: string; role: string; management_unit_id?: string } & OnboardingInput) => {
     await ask("/auth/accounts", { method: "POST", body }, "Không tạo được tài khoản. Kiểm tra email đã dùng chưa và mật khẩu đủ 12 ký tự.", true);
   }, onSuccess: () => queryClient.invalidateQueries({ queryKey: adminKeys.accounts }) });
 }
 export function updateAccountMutationOptions(queryClient: QueryClient) {
-  return mutationOptions({ mutationFn: async ({ id, ...body }: { id: string; role: string; status: "active" | "suspended"; management_unit_id?: string }) => {
+  return mutationOptions({ mutationFn: async ({ id, ...body }: { id: string; role: string; status: "active" | "suspended"; management_unit_id?: string } & OnboardingInput) => {
     await ask(`/auth/accounts/${encodeURIComponent(id)}`, { method: "PATCH", body }, "Không cập nhật được tài khoản.", true);
   }, onSuccess: () => queryClient.invalidateQueries({ queryKey: adminKeys.accounts }) });
+}
+export function onboardingOptionsQuery(search: string) {
+  return queryOptions({ queryKey: ["admin", "onboarding-options", search], queryFn: async (): Promise<{
+    units: { id: string; code: string; building_code: string | null; building_name: string | null }[];
+    categories: { id: string; name: string }[];
+  }> => (await ask(`/auth/onboarding-options?${new URLSearchParams({search})}`, {}, "Không tải được căn hộ và chuyên môn.")).json() });
+}
+export function accountOnboardingQuery(id: string) {
+  return queryOptions({ queryKey: ["admin", "onboarding", id], enabled: !!id, queryFn: async (): Promise<{
+    residencies: { id: string; unit_id: string; code: string; building_code: string; relation: string; verification_status: string }[];
+    staff_profile: NonNullable<OnboardingInput["staff_profile"]> | null;
+  }> => (await ask(`/auth/accounts/${encodeURIComponent(id)}/onboarding`, {}, "Không tải được hồ sơ tài khoản.")).json() });
+}
+export function revokeResidencyMutation(queryClient: QueryClient) {
+  return mutationOptions({ mutationFn: async ({user, id}: {user: string; id: string}) => {
+    await ask(`/auth/accounts/${encodeURIComponent(user)}/residencies/${encodeURIComponent(id)}`, {method: "DELETE"}, "Không thu hồi được quan hệ cư trú.", true);
+  }, onSuccess: () => Promise.all([queryClient.invalidateQueries({queryKey: adminKeys.accounts}), queryClient.invalidateQueries({queryKey: ["admin", "onboarding"]})]) });
 }
 /** The administrator sets a new password; every sign-in of that person ends. */
 export function resetPasswordMutationOptions() {

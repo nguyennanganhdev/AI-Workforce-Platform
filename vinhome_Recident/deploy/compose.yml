@@ -85,7 +85,7 @@ services:
   # base organisation, the sample world (built once) and its sign-ins (VINHOMES_SAMPLE_WORLD=1), the API's own role (again
   # each time, so tables of a new migration get their rights), the bucket and the API's key for it, knowledge.
   init:
-    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_IMAGE_TAG:-latest}
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_API_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
     build:
       context: ../services/vinhomes-api
     restart: 'no'
@@ -145,6 +145,13 @@ services:
       VINHOMES_API_REPAIR_CATEGORY_CODES: ${REPAIR_CATEGORY_CODES:-}
       # 1 once the web apps are only reached over https (the proxy): the session cookie is then never sent in clear.
       VINHOMES_API_SECURE_COOKIES: ${SECURE_COOKIES:-0}
+      VINHOMES_PUBLIC_URL: ${VINHOMES_PUBLIC_URL:-}
+      VINHOMES_SMTP_HOST: ${VINHOMES_SMTP_HOST:-}
+      VINHOMES_SMTP_PORT: ${VINHOMES_SMTP_PORT:-587}
+      VINHOMES_SMTP_SECURITY: ${VINHOMES_SMTP_SECURITY:-starttls}
+      VINHOMES_SMTP_FROM: ${VINHOMES_SMTP_FROM:-}
+      VINHOMES_SMTP_USERNAME: ${VINHOMES_SMTP_USERNAME:-}
+      VINHOMES_SMTP_PASSWORD: ${VINHOMES_SMTP_PASSWORD:-}
       # Photos and files are stored in a private bucket. Content always leaves through the API, which checks
       # who is asking.
       VINHOMES_API_S3_ENDPOINT: *s3-endpoint
@@ -165,7 +172,7 @@ services:
       - api-files:/var/lib/vinhomes/files
     # Set VINHOMES_API_PORT empty to run several copies (--scale api=2): each then gets a free host port.
     ports:
-      - '${VINHOMES_BIND_ADDRESS:-127.0.0.1}:${VINHOMES_API_PORT-8000}:8000'
+      - '127.0.0.1:${VINHOMES_API_PORT-8000}:8000'
     healthcheck:
       <<: *python-health
       test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/ready", timeout=5)']
@@ -173,7 +180,7 @@ services:
   # Deadlines and expiries, once a minute: warns before a request is late and says so when it is, lets unpaid
   # bookings lapse and visits nobody came to end. Safe to run twice. Same restricted database role as the API.
   scheduler:
-    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_IMAGE_TAG:-latest}
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_API_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
     restart: unless-stopped
     depends_on:
       init:
@@ -185,7 +192,7 @@ services:
   # The bridge to the AI platform: sends what residents and staff did, writes what its agent says into the
   # chat. Safe to run twice. Same restricted database role as the API. Without a platform it only waits.
   platform-sync:
-    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_IMAGE_TAG:-latest}
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_API_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
     restart: unless-stopped
     depends_on:
       init:
@@ -201,7 +208,7 @@ services:
   # Only with --profile sync: every DATA_SYNC_SECONDS, loads the export files found in DATA_SYNC_DIR with the
   # import that is also run by hand (README "Chạy với dữ liệu thật"). As the database owner, as init.
   data-sync:
-    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_IMAGE_TAG:-latest}
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_API_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
     profiles: ['sync']
     restart: unless-stopped
     depends_on:
@@ -295,7 +302,7 @@ services:
 
   # Management, administrators and staff on site: one app, each role sees its own pages.
   operations:
-    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-operations:${VINHOMES_IMAGE_TAG:-latest}
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-operations:${VINHOMES_OPERATIONS_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.web
@@ -335,25 +342,6 @@ services:
       retries: 5
       test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/']
 
-  # Server deployments only (--profile public): https on VINHOMES_DOMAIN for the apps, and /mcp for the AI
-  # platform on another server. See Caddyfile and README "Đưa lên server".
-  caddy:
-    image: caddy:2-alpine
-    profiles: ['public']
-    restart: unless-stopped
-    environment:
-      VINHOMES_DOMAIN: ${VINHOMES_DOMAIN:-localhost}
-      PLATFORM_IPS: ${PLATFORM_IPS:-0.0.0.0/0 ::/0}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-    ports:
-      - '80:80'
-      - '443:443'
-    depends_on:
-      gateway:
-        condition: service_healthy
-
 volumes:
   postgres-data:
   minio-data:
@@ -362,5 +350,3 @@ volumes:
   reception-state:
   # The backups, unless BACKUP_DIR names a host folder.
   backup-data:
-  # The certificate of the public door.
-  caddy-data:

@@ -19,6 +19,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import platform_mcp
 from .password_auth import router as password_router
+from . import password_recovery  # noqa: F401 - registers recovery routes on password_router
 from .reception_runtime_api import router as reception_runtime_router
 from .resident_api import operations_router as resident_intake_router
 from .resident_api import router as resident_contract_router

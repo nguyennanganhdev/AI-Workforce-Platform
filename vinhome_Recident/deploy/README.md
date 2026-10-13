@@ -160,29 +160,17 @@ Lưu ý: bước nạp tổ chức gốc (`seed`) luôn chạy vì lệnh `impor
 
 ## Đưa lên server
 
-Dùng khi Vinhomes chạy trên một server riêng và platform AI chạy trên server khác. Thêm dịch vụ `caddy` (profile `public`): nó là cửa duy nhất mở ra internet, tự xin và gia hạn chứng chỉ HTTPS, đưa người dùng vào các app và đưa platform vào `/mcp`. PostgreSQL, MinIO, API và Reception vẫn không có cổng ra ngoài.
+Domain dùng Nginx gateway hiện có; Caddy đã bỏ khỏi Compose. Xem [HTTPS.md](HTTPS.md) để cấp chứng chỉ, render TLS và cấu hình gia hạn. Chỉ bật Secure cookie sau khi HTTPS public hoạt động. Với một gateway trực tiếp tới API, giữ `TRUSTED_PROXY_HOPS=1`.
 
-Cần có: server có địa chỉ IP công khai, mở cổng 80 và 443, và một tên trỏ về IP đó. Chưa có tên miền thì dùng tạm tên miễn phí theo IP, ví dụ IP `203.0.113.5` thành `203-0-113-5.sslip.io`.
+Không chạy new-env hoặc seed/reset lên server đã có dữ liệu. Backup trước khi áp migration mới; chạy migration và cấp role bằng image API mới, sau đó recreate riêng dịch vụ thay đổi. Không dùng `down -v`.
 
-1. Trên server: lấy mã về, chạy `deploy/new-env.sh`, điền `OPENAI_API_KEY`.
-2. Trong `deploy/deployment.env` đặt:
+MCP cung cấp 7 tool xử lý ticket đã bàn giao. `/mcp` thiếu/sai Bearer trả 401; catalog có key hoạt động độc lập với outbound bridge. Cấu hình platform kết nối sau theo [platform/README.md](platform/README.md).
 
-   ```
-   VINHOMES_DOMAIN=<tên của server>
-   VINHOMES_ALLOWED_ORIGINS=https://<tên của server>
-   SECURE_COOKIES=1
-   PLATFORM_IPS=<IP của server platform>
-   TRUSTED_PROXY_HOPS=2
-   ```
+### Khôi phục mật khẩu
 
-   `TRUSTED_PROXY_HOPS=2` cho API biết phía trước nó có hai lớp proxy của mình (Caddy và cổng chung), để giới hạn 60 lần đăng nhập trong 5 phút tính theo địa chỉ thật của từng người. Không có Caddy thì giữ mặc định 1. Đặt sai số này thì mọi người bị tính chung một địa chỉ, hoặc người gọi tự khai được địa chỉ.
+Điền `VINHOMES_PUBLIC_URL` là HTTPS origin và các biến `VINHOMES_SMTP_*` trong env riêng; `VINHOMES_SMTP_SECURITY` chỉ nhận starttls hoặc ssl. Chưa có SMTP thì API báo chưa cấu hình, không giả báo đã gửi email. Link khôi phục có hiệu lực 15 phút, dùng một lần; token nằm trong URL fragment để tránh access log và chỉ lưu hash trong database.
 
-   `PLATFORM_IPS` để trống thì `/mcp` chỉ được bảo vệ bằng token.
-3. Khởi động: `docker compose --env-file deploy/deployment.env -f deploy/compose.yml --profile public up -d --build`.
-4. Kiểm tra từ một máy khác: `https://<tên>/login` mở được; `curl -i https://<tên>/mcp` trả 401 (từ IP của platform) hoặc 403 (từ nơi khác).
-5. Nối platform theo [platform/README.md](platform/README.md), với địa chỉ công cụ là `https://<tên>/mcp`. `VINHOMES_API_PLATFORM_URL` là địa chỉ công khai của platform.
-
-Đã kiểm tra trên máy phát triển với chứng chỉ nội bộ của Caddy: app, `/mcp` có và không có token, chặn theo IP. Chưa kiểm tra trên server thật: việc xin chứng chỉ Let's Encrypt và tên `sslip.io`.
+Đợt maintain kiểm thử bằng hộp thư giả, không gửi email thật. Cấu hình SMTP sau rồi recreate API; không cần thay provider Reception. Không in credential hoặc link reset ra log/báo cáo.
 
 ## Phát hành qua registry
 
@@ -197,7 +185,7 @@ Trên máy build (đã `docker login` vào registry): `dc build` rồi `dc push 
 
 Chỉ phát hành landing page/app cư dân: đặt `VINHOMES_RESIDENT_IMAGE_TAG=<nhãn frontend mới>`, giữ `VINHOMES_IMAGE_TAG` cho các dịch vụ còn lại. Build/push riêng `resident`, rồi trên server `dc pull resident` và `dc up -d --no-deps --no-build resident`. Bỏ giá trị riêng này để `resident` dùng lại nhãn chung; khi rollback frontend cần đổi chính `VINHOMES_RESIDENT_IMAGE_TAG`.
 
-Trên server chỉ cần các tệp `deploy/compose.yml`, `deploy/Caddyfile`, `deploy/nginx/*.template` và `deploy/deployment.env` (cùng hai giá trị trên), không cần mã nguồn: `dc pull api reception resident operations backup` rồi `dc up -d --no-build`.
+Trên server chỉ cần các tệp `deploy/compose.yml`, các overlay TLS nếu dùng, `deploy/nginx/*.template` và `deploy/deployment.env` (cùng hai giá trị trên), không cần mã nguồn: `dc pull api reception resident operations backup` rồi `dc up -d --no-build`.
 
 Quay về bản trước: đổi `VINHOMES_IMAGE_TAG` về nhãn cũ rồi `dc up -d --no-build`. Migration database không tự lùi: bản cũ vẫn chạy trên database đã thêm bảng, nhưng muốn về đúng dữ liệu cũ thì phải khôi phục từ bản sao lưu.
 
@@ -222,7 +210,7 @@ Dịch vụ này không gọi hệ thống nào ở ngoài. Nối thẳng vào h
 
 ## Một địa chỉ, một lần đăng nhập
 
-Sau khi đăng nhập, `GET /auth/session` cho biết người đó dùng không gian nào (`audiences`) và vai trò vận hành (`operationsRole`): cư dân vào `/`, quản lý vào `/operations/kanban`, nhân viên hiện trường vào `/operations/my-tasks`, quản trị viên vào `/operations/accounts`. Cả ba nơi dùng chung một cookie `vinhomes_session`.
+Sau khi đăng nhập, `GET /auth/session` cho biết người đó dùng không gian nào (`audiences`) và vai trò vận hành (`operationsRole`): cư dân vào `/resident`, quản lý vào `/operations/kanban`, nhân viên hiện trường vào `/operations/my-tasks`, quản trị viên vào `/operations/accounts`. `/` là landing công khai. Cả ba nơi dùng chung một cookie `vinhomes_session`.
 
 - `gateway` không gửi `X-Vinhomes-Surface` tới API (và bỏ giá trị trình duyệt tự gửi), nên API dùng một cookie duy nhất.
 - Quyền vẫn do vai trò trong API quyết định, không do địa chỉ truy cập; app nhân viên chỉ hiện trang hợp với vai trò.
@@ -238,3 +226,11 @@ docker build -t vinhomes-domain-reception agents/reception
 ```
 
 Lệnh `docker build` của hai app web chạy từ thư mục gốc `vinhome_Recident` (context cần thấy `package-lock.json` và `packages/`). Image web cài dependency bằng `npm ci` theo workspace nên chỉ tải gói của app đang build; cần mạng để tải `node:24-alpine` lần đầu.
+
+### VPS không tải được base image
+
+Đợt maintain dùng image API đang triển khai làm nền vì Docker Hub timeout. `deploy/Dockerfile.api-update` chỉ dùng khi base là API Python 3.12 đáng tin cậy và dependency trong `pyproject.toml` không thay đổi; recipe chép module/schema mới và chạy `pip check`. Nếu đổi dependency hoặc Python, phải build bằng Dockerfile chuẩn.
+
+Web có thể build trên máy phát triển bằng `npm ci`, `npm run typecheck`, `npm run build`, rồi đóng gói dist qua `deploy/Dockerfile.web-artifact`, truyền `BASE_WEB_IMAGE` là image Nginx đang có và `APP=resident-web` hoặc `staff-web`. File ignore riêng của recipe chỉ gửi dist và template Nginx vào build context. Giữ `VITE_ALLOW_DEMO_BACKEND=false`, `VITE_ENABLE_UI_PREVIEW=false` khi build.
+
+Không dùng tag `latest` để xác nhận phiên bản. Ghi SHA source/commit, image ID và kiểm tra HTML/assets thực tế sau recreate. `VINHOMES_API_IMAGE_TAG` áp dụng đồng thời cho API/init/scheduler/platform-sync; `VINHOMES_OPERATIONS_IMAGE_TAG` và `VINHOMES_RESIDENT_IMAGE_TAG` cho hai frontend.
