@@ -199,9 +199,11 @@ async def link_ticket(db, ticket_id) -> None:
         left join service_categories c on c.id=t.category_id and c.tenant_id=t.tenant_id
         where t.id=:id and t.tenant_id={TENANT}
     """), {"id": ticket_id})).mappings().one()
-    if ticket["category_code"] == "security" and not ticket["is_emergency"]:
+    if ticket["category_code"] == "security" and ticket["request_kind"] == "incident" and not ticket["is_emergency"]:
         # Guards are sent by management alone: the coordinator could only refuse (platform_work.dispatch).
         # An emergency is told to the platform whatever its category; there the coordinator only informs.
+        # A service the resident asks for (a visitor, a card, a booking) is the coordinator's, whatever category
+        # Reception filed it under: its tools do those without sending anyone.
         return
     fresh = await db.execute(text(f"""
         insert into platform_links(ticket_id,tenant_id,channel_id,user_id,management_ref)

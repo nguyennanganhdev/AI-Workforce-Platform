@@ -804,8 +804,9 @@ def test_dispatch_is_refused_for_plan_tickets_and_for_guard_work(database, on, m
         await link_ticket(db, ticket)
         return {}
 
-    for category, links in ((CAT_SEC, 0), (UUID(CATEGORY), 1)):
-        sql(database, "update tickets set category_id=$2 where id=$1 returning id", UUID(patrol), category)
+    # A guard incident stays with management; a service asked under the same category (a visitor, a card) is handed over.
+    for category, kind, links in ((CAT_SEC, "incident", 0), (CAT_SEC, "service_request", 1)):
+        sql(database, "update tickets set category_id=$2,request_kind=$3 where id=$1 returning id", UUID(patrol), category, kind)
         call(database, handed, patrol)
         assert sql(database, "select count(*) as n from platform_links where ticket_id=$1", UUID(patrol)) == [{"n": links}]
 
