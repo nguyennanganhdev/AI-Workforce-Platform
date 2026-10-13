@@ -256,7 +256,7 @@ services:
       timeout: 5s
 
   reception:
-    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-reception:${VINHOMES_IMAGE_TAG:-latest}
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-reception:${VINHOMES_RECEPTION_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
     build:
       context: ../agents/reception
     restart: unless-stopped
