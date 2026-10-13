@@ -97,6 +97,8 @@ Giờ phục vụ tại appointment_at được tra theo ca; current load không
 
 Request/output MCP tối đa 256 KiB; phần thực thi tool có timeout 7 giây; quota hiện tại 120 request/phút/grant/process. Host/Origin có allowlist; host public lấy từ allowed origins, tên DNS nội bộ bổ sung bằng MCP_ALLOWED_HOSTS. Điều chỉnh quota/timeout chỉ sau chốt production limits với platform.
 
+Từ bản CSKH14/10/2026, mỗi passage của `vh_knowledge_search` có `provenance` (status/issues/sources/văn bản/ngày hiệu lực/người xác nhận). `status=reference` phải được trình bày là tham khảo; cờ `unverified=false` không thay thế hồ sơ duyệt. Không tự coi phí/giờ/hotline cũ là thông tin hiện hành. Tìm kiếm vẫn giữ tenant/audience/nơi ở của ticket; embeddings dùng cấu hình riêng, cùng `text-embedding-3-large`,1536 chiều của bộ export hiện tại. Catalog vẫn7 tool.
+
 ## 7. Handover và sự kiện
 
 Outer request giữ contract partner hiện có. Text bàn giao v1.1 bổ sung handover_version, ticket_version, category_code và deadlines khi có. Không thêm JSON metadata/attachment không được partner hỗ trợ. Identity/căn hộ đã có; không xác định lại bằng tool.
