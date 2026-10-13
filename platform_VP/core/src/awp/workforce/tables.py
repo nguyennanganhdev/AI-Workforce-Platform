@@ -414,11 +414,17 @@ leases = Table(
     Column("last_run_at", Float),
 )
 
+# An uploaded image (spec A3). It belongs to one audience from the moment it is uploaded: the client, the resident and
+# the partner's own conversation id that the upload named. `conversation_id` is the platform's conversation, set when a
+# message of that conversation first carries the asset: from then on the asset lives and dies with it (retention.py).
+# `object_key` is where the bytes are in the store: made from random bytes (assets.new_key) and never shown to anybody.
 assets = Table(
     "wf_assets", metadata,
     Column("id", ID, primary_key=True),
-    Column("client_id", ID, nullable=False),
-    Column("conversation_id", ID),
+    Column("client_id", ID, nullable=False, index=True),
+    Column("external_user_id", EXT, nullable=False),
+    Column("external_conversation_id", EXT, nullable=False),
+    Column("conversation_id", ID, index=True),
     Column("object_key", Text, nullable=False),
     Column("content_type", String(64), nullable=False),
     Column("size", Integer, nullable=False),

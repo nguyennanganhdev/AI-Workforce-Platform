@@ -55,7 +55,7 @@ class CaseSay(_CaseTool):
         sources, trusted, bad = self._sources(await self._view(), cites or [])
         if bad:
             return _err(f"Cannot cite: {', '.join(bad)}. Only evidence (E..) and facts (F..) can be cited.")
-        refused = problems(text, sources, await self._rules(wf), trusted)
+        refused = problems(text, sources, await self._rules(wf), trusted, getattr(self.rt, "assets", None))
         if refused:
             return _err("Not sent, the resident has seen nothing: " + "; ".join(refused)
                         + ". Cite the item that states it, or leave it out.")

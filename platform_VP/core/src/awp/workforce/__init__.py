@@ -25,6 +25,7 @@ from .partner_hub import McpHub
 from .provider_api import build_provider
 from .reads import build_reads
 from .stream import Slots, build_stream
+from .uploads import build_uploads
 
 
 @dataclass
@@ -48,6 +49,7 @@ def build_partner(ctx: WorkforceContext) -> APIRouter:
     build_close(r, ctx)
     build_decision(r, ctx)
     build_provider(r, ctx)
+    r.include_router(build_uploads(ctx))  # image assets: an extension beyond contract v1 (spec A3)
     return r
 
 

@@ -56,6 +56,8 @@ class Runtime:
     metrics: dict = field(default_factory=lambda: {"model_calls": 0, "tool_chars_offered": 0, "tool_chars_sent": 0})
     kb_manager: Any = None  # AgentScope knowledge base manager, when the feature is on
     mcp: Any = None  # workforce.partner_hub.McpHub: the MCP clients of the routes' partner tools
+    assets: Any = None  # assets.S3Store / LocalStore: where uploaded images are kept; None when uploads are off (spec A3)
+    assets_ready: bool = False  # the store answered and its bucket exists (workforce/uploads.ensure_store)
     # The workflow engine, when one is attached: told (workflow id) that something in a room needs settling.
     turn_hook: Callable[[str], None] | None = None
     evals: Any = None  # evals.runner.EvalRunner: runs a profile version in the sandbox before it is released

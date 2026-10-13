@@ -103,6 +103,22 @@ class Settings:
     # overlap.py) becomes `reuse`; and how long one answer of the model may take.
     builder_overlap_threshold: float = 0.5
     builder_timeout_seconds: float = 90.0
+    # ---- image assets (spec A3): an extension beyond contract v1, used only by a client that has the capability attach_asset ----
+    # AWP_ASSET_BACKEND: empty = no uploads (the endpoint answers 503); `local` = files under <workspace>/assets (development,
+    # tests: its links open nothing); `s3` = MinIO or any S3 at AWP_S3_ENDPOINT, in AWP_S3_BUCKET (made at start when missing).
+    # These are the operator's: nothing a partner sends becomes an address the platform calls. AWP_S3_PUBLIC_ENDPOINT is the
+    # address put into the links handed to partner tools, when their readers reach the store by another name than the platform
+    # does. An upload is at most AWP_ASSET_MAX_BYTES; a link made for a partner tool works for AWP_ASSET_URL_TTL seconds.
+    asset_backend: str = ""
+    s3_endpoint: str = ""
+    s3_public_endpoint: str = ""
+    s3_bucket: str = ""
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_region: str = "us-east-1"
+    s3_path_style: bool = True  # /bucket/key at the endpoint (MinIO); off = bucket.host/key
+    asset_max_bytes: int = 5 * 1024 * 1024
+    asset_url_ttl: int = 900
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> "Settings":
@@ -169,4 +185,14 @@ class Settings:
             eval_parallel=int(e.get("AWP_EVAL_PARALLEL") or cls.eval_parallel),
             builder_overlap_threshold=float(e.get("AWP_BUILDER_OVERLAP_THRESHOLD") or cls.builder_overlap_threshold),
             builder_timeout_seconds=float(e.get("AWP_BUILDER_TIMEOUT_SECONDS") or cls.builder_timeout_seconds),
+            asset_backend=(e.get("AWP_ASSET_BACKEND") or "").strip().lower(),
+            s3_endpoint=(e.get("AWP_S3_ENDPOINT") or "").strip(),
+            s3_public_endpoint=(e.get("AWP_S3_PUBLIC_ENDPOINT") or "").strip(),
+            s3_bucket=(e.get("AWP_S3_BUCKET") or "").strip(),
+            s3_access_key=e.get("AWP_S3_ACCESS_KEY") or "",
+            s3_secret_key=e.get("AWP_S3_SECRET_KEY") or "",
+            s3_region=(e.get("AWP_S3_REGION") or cls.s3_region).strip(),
+            s3_path_style=(e.get("AWP_S3_PATH_STYLE", "1").lower() in {"1", "true", "yes"}),
+            asset_max_bytes=int(e.get("AWP_ASSET_MAX_BYTES") or cls.asset_max_bytes),
+            asset_url_ttl=int(e.get("AWP_ASSET_URL_TTL") or cls.asset_url_ttl),
         )

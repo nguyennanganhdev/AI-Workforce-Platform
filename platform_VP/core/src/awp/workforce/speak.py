@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from sqlalchemy import func, select
 
+from ..assets import SIGNED
 from ..guard import check_text, written_amounts
 from . import tables as t
 from .events import lock_conversation
@@ -34,10 +35,13 @@ def checked(text: str | None, limit: int) -> str:
     return text
 
 
-def problems(text: str, sources: list[str], rules, trusted: list[str]) -> list[str]:
-    """Why `text` may not reach the resident: the guard's checks, and no amount written out in words
-    (a figure the guard cannot compare with any source)."""
+def problems(text: str, sources: list[str], rules, trusted: list[str], store=None) -> list[str]:
+    """Why `text` may not reach the resident: the guard's checks, no amount written out in words (a figure the guard
+    cannot compare with any source), and no address of the image store (`store`): a link to an image is made for a
+    partner tool's argument and is never shown to a resident."""
     out = check_text(text, sources, rules, trusted)
+    if SIGNED.search(text) or (store is not None and store.mine(text)):
+        out.append("a link to an image: links are only for the arguments of partner tools, never for the resident")
     words = written_amounts(text)
     if words:
         out.append("amounts written in words (" + ", ".join(words) + "): write them as digits, exactly as the "

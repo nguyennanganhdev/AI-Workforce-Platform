@@ -73,7 +73,8 @@ class _CaseTool(ToolBase):
                 calcs.append((ref, text))
                 return
             texts.append(text)
-            if tool not in ("resident", "CaseAskConsent"):  # the resident's word, in theirs or in the form of a consent
+            # the resident's word, in theirs or in the form of a consent; and a link to an image, which proves nothing
+            if tool not in ("resident", "CaseAskConsent", "CaseAssetLink"):
                 trusted.append(unmarked(text) if ref in view.withdrawn else text)
 
         for ref in refs:
@@ -384,7 +385,7 @@ class CaseFinalize(_CaseTool):
                             "then answer; their reports wake you.")
         if not problems:
             # every outcome is checked: the text reaches the resident either way
-            problems += text_problems(answer, sources, rules, trusted)
+            problems += text_problems(answer, sources, rules, trusted, getattr(self.rt, "assets", None))
         judge = self.rt.judge
         if outcome == "resolved" and judge is not None and sources and not problems:
             p = await judge.support(answer, sources)
