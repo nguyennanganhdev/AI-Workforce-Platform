@@ -6,6 +6,7 @@ The middleware is exercised against a real :class:`Agent` driven by a
 mock model and a stand-in ``TeamSay`` tool, so the reasoning-acting
 loop is genuine while nothing touches the app service layer.
 """
+
 import itertools
 import json
 from typing import Any
@@ -17,8 +18,7 @@ from agentscope.agent import Agent, InjectionConfig, ReActConfig
 from agentscope.app._tool._team_say import STALE_CONTEXT_RESULT
 from agentscope.app.middleware import TeamMemberLoopMiddleware
 from agentscope.event import ReplyEndEvent
-from agentscope.message import TextBlock, ToolCallBlock, ToolResultState
-from agentscope.message import UserMsg
+from agentscope.message import TextBlock, ToolCallBlock, ToolResultState, UserMsg
 from agentscope.model import ChatResponse
 from agentscope.permission import (
     PermissionBehavior,
@@ -39,6 +39,7 @@ class _FakeTeamSay(ToolBase):
         "properties": {
             "to": {"type": "string"},
             "content": {"type": "string"},
+            "kind": {"type": "string"},
         },
         "required": ["content"],
     }
@@ -70,9 +71,13 @@ class _FakeTeamSay(ToolBase):
             message="allowed",
         )
 
-    async def __call__(self, content: str, to: str | None = None) -> ToolChunk:
+    async def __call__(
+        self, content: str, to: str | None = None, kind: str | None = None
+    ) -> ToolChunk:
         """Record the call and answer with the configured state."""
         self.calls.append({"to": to, "content": content})
+        if kind:
+            self.calls[-1]["kind"] = kind
         return ToolChunk(
             content=[TextBlock(text=self._output)],
             state=self._state,
@@ -130,6 +135,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         max_iters: int = 5,
         max_nudges: int = 3,
         extra_tools: list | None = None,
+        pending_question=None,
     ) -> list:
         """Drive one reply and return the streamed items."""
         toolkit = Toolkit(tools=[self.team_say, *(extra_tools or [])])
@@ -144,6 +150,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
                 TeamMemberLoopMiddleware(
                     leader_name="Leader",
                     max_nudges=max_nudges,
+                    pending_question=pending_question,
                 ),
             ],
             injection_config=InjectionConfig(inject_runtime_state=False),
@@ -152,6 +159,57 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         async for item in agent.reply_stream(UserMsg("user", "do it")):
             items.append(item)
         return items
+
+    async def test_waiting_for_user_never_calls_model_or_tools(self):
+        async def question():
+            return "Which location?"
+
+        items = await self._run([], pending_question=question)
+        self.assertEqual(self.model.cnt, 0)
+        self.assertEqual(self.team_say.calls, [])
+        self.assertEqual(
+            self._end_events(items)[0].finished_reason, ReplyFinishedReason.COMPLETED
+        )
+
+    async def test_progress_is_not_a_terminal_report(self):
+        items = await self._run(
+            [
+                _call("TeamSay", to="Leader", kind="progress", content="Checking"),
+                _text("Please wait"),
+                _call(
+                    "TeamSay",
+                    to="Peer",
+                    kind="question",
+                    content="Return the verified options",
+                ),
+                _text("Waiting for peer"),
+            ]
+        )
+        self.assertEqual(2, len(self.team_say.calls))
+        self.assertEqual("Peer", self.team_say.calls[-1]["to"])
+        self.assertEqual(
+            ReplyFinishedReason.COMPLETED, self._end_events(items)[0].finished_reason
+        )
+
+    async def test_unchanged_repeated_tool_is_not_executed_again(self):
+        tool = _OtherTool()
+        tool.name = "mcp__test__lookup"
+        items = await self._run(
+            [
+                _call(tool.name, content="same"),
+                _call(tool.name, content="same"),
+                _call(tool.name, content="same"),
+                _call(tool.name, content="same"),  # even a model ignoring tool_choice
+                _call("TeamSay", to="Leader", content="No matching external ID"),
+                _text("reported"),
+            ],
+            extra_tools=[tool],
+            max_iters=10,
+        )
+        self.assertEqual(len(tool.calls), 3)
+        self.assertEqual(
+            self._end_events(items)[0].finished_reason, ReplyFinishedReason.COMPLETED
+        )
 
     @staticmethod
     def _end_events(items: list) -> list[ReplyEndEvent]:
@@ -340,9 +398,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         )
         self.assertDictEqual(
             {
-                "reasons": [
-                    _.finished_reason for _ in self._end_events(items)
-                ],
+                "reasons": [_.finished_reason for _ in self._end_events(items)],
                 "team_say_calls": self.team_say.calls,
             },
             {

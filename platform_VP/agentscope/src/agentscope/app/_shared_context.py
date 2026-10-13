@@ -20,6 +20,7 @@ from .._logging import logger
 from .._utils._common import _generate_id
 from ..message import Msg, SystemMsg, UserMsg
 from ..model import ChatModelBase
+from ._evidence_claims import unsupported_claim_anchors
 from .message_bus import MessageBus, MessageBusKeys
 from .storage import (
     ContextDelta,
@@ -32,6 +33,7 @@ from .storage import (
     TeamHandoffRecord,
     TeamSharedContextRecord,
 )
+from .storage._model._team_context import CollaborationBranch
 
 
 class SharedContextBudgetError(RuntimeError):
@@ -59,6 +61,10 @@ class SharedContextConcurrencyError(RuntimeError):
     """A semantic update lost optimistic concurrency and must be retried."""
 
     retryable = True
+
+
+class CollaborationStoppedError(RuntimeError):
+    """A bounded internal assignment stopped, not the customer ticket."""
 
 
 class _SummaryPoint(BaseModel):
@@ -130,16 +136,32 @@ class _SummaryOutput(BaseModel):
 class SharedContextConfig:
     """Server-owned limits; Agent Builder cannot change these values."""
 
-    packet_max_tokens: int = 3000
-    history_budget_tokens: int = 2000
+    packet_max_tokens: int = 12000
+    history_budget_tokens: int = 6000
     summary_trigger_ratio: float = 0.80
     recent_history_ratio: float = 0.10
-    summary_max_ratio: float = 0.25
+    summary_max_ratio: float = 0.40
     summary_attempts: int = 2
     output_reserve_ratio: float = 0.10
     preflight_margin_tokens: int = 256
+    collaboration_max_exchanges: int = 24
+    collaboration_max_model_calls: int = 16
+    collaboration_max_tokens: int = 200_000
+    collaboration_max_active_seconds: float = 180.0
+    collaboration_max_verifications: int = 2
 
     def __post_init__(self) -> None:
+        if (
+            min(
+                self.collaboration_max_exchanges,
+                self.collaboration_max_model_calls,
+                self.collaboration_max_tokens,
+                self.collaboration_max_active_seconds,
+                self.collaboration_max_verifications,
+            )
+            <= 0
+        ):
+            raise ValueError("collaboration limits must be positive")
         if self.packet_max_tokens <= 0 or self.history_budget_tokens <= 0:
             raise ValueError("shared-context token budgets must be positive")
         if self.history_budget_tokens > self.packet_max_tokens:
@@ -160,11 +182,26 @@ class SharedContextConfig:
         """Load deployment configuration once when the service starts."""
 
         return cls(
+            collaboration_max_exchanges=int(
+                os.getenv("COLLABORATION_MAX_EXCHANGES", "24")
+            ),
+            collaboration_max_model_calls=int(
+                os.getenv("COLLABORATION_MAX_MODEL_CALLS", "16")
+            ),
+            collaboration_max_tokens=int(
+                os.getenv("COLLABORATION_MAX_TOKENS", "200000")
+            ),
+            collaboration_max_active_seconds=float(
+                os.getenv("COLLABORATION_MAX_ACTIVE_SECONDS", "180")
+            ),
+            collaboration_max_verifications=int(
+                os.getenv("COLLABORATION_MAX_VERIFICATIONS", "2")
+            ),
             packet_max_tokens=int(
-                os.getenv("SHARED_CONTEXT_PACKET_MAX_TOKENS", "3000"),
+                os.getenv("SHARED_CONTEXT_PACKET_MAX_TOKENS", "12000"),
             ),
             history_budget_tokens=int(
-                os.getenv("SHARED_CONTEXT_HISTORY_BUDGET_TOKENS", "2000"),
+                os.getenv("SHARED_CONTEXT_HISTORY_BUDGET_TOKENS", "6000"),
             ),
             summary_trigger_ratio=float(
                 os.getenv("SHARED_CONTEXT_SUMMARY_TRIGGER_RATIO", "0.80"),
@@ -173,7 +210,7 @@ class SharedContextConfig:
                 os.getenv("SHARED_CONTEXT_RECENT_HISTORY_RATIO", "0.10"),
             ),
             summary_max_ratio=float(
-                os.getenv("SHARED_CONTEXT_SUMMARY_MAX_RATIO", "0.25"),
+                os.getenv("SHARED_CONTEXT_SUMMARY_MAX_RATIO", "0.40"),
             ),
             summary_attempts=int(
                 os.getenv("SHARED_CONTEXT_SUMMARY_ATTEMPTS", "2"),
@@ -264,7 +301,9 @@ class SharedContextService:
         )
         return record
 
-    async def active_task_id(self, user_id: str, team_id: str) -> str:
+    async def active_task_id(
+        self, user_id: str, team_id: str, *, requested_task_id: str | None = None
+    ) -> str:
         """Return the durable root task for a ticket, creating it if needed."""
 
         async with self._bus.acquire_lock(
@@ -287,6 +326,13 @@ class SharedContextService:
                 changed = True
             if changed:
                 await self._commit_mutation(user_id, record)
+            if requested_task_id and requested_task_id not in record.state.tasks:
+                record.state.tasks[requested_task_id] = SharedTaskState(
+                    id=requested_task_id, objective="Assigned internal work"
+                )
+                await self._commit_mutation(user_id, record)
+            if requested_task_id:
+                return requested_task_id
             return record.state.active_task_id
 
     async def bind_scope(
@@ -418,6 +464,125 @@ class SharedContextService:
             if item.status == "active"
         ]
 
+    @staticmethod
+    def _compact_tool_facts(items: list[dict]) -> list[dict]:
+        """Lossless business-value projection; raw calls stay in source events.
+
+        Only runtime-owned MCP envelopes are normalized. IDs/timestamps inside
+        business arguments, metadata and output text are never removed.
+        """
+        projected: list[dict] = []
+        seen: dict[str, dict] = {}
+        for item in items:
+            if item["authority"] != "tool_verified" or item["kind"] != "fact":
+                projected.append(item)
+                continue
+            try:
+                value = json.loads(item["text"])
+                call, result = value["tool_call"], value["tool_result"]
+                if not call["name"].startswith("mcp__") or not isinstance(result, dict):
+                    raise ValueError("not a runtime MCP result")
+                arguments = json.loads(call["input"])
+                output = result["output"]
+                if isinstance(output, list):
+                    normalized_output: list[object] = []
+                    for block in output:
+                        compact_block = {
+                            k: v
+                            for k, v in block.items()
+                            if k not in {"id", "created_at", "finished_at"}
+                        }
+                        # MCP text blocks commonly contain another JSON
+                        # document. Parse it once so the model does not pay for
+                        # escaped/indented JSON nested inside envelope JSON.
+                        # This is lossless for business values and raw evidence
+                        # remains immutable in the source event.
+                        block_text = compact_block.get("text")
+                        if isinstance(block_text, str) and block_text.strip().startswith(
+                            ("{", "[")
+                        ):
+                            try:
+                                normalized_output.append(json.loads(block_text))
+                                continue
+                            except (TypeError, ValueError):
+                                pass
+                        normalized_output.append(compact_block)
+                    output = (
+                        normalized_output[0]
+                        if len(normalized_output) == 1
+                        else normalized_output
+                    )
+                text = SharedContextService._json(
+                    {
+                        "tool": call["name"],
+                        "arguments": arguments,
+                        "state": value["state"],
+                        "output": output,
+                        "metadata": result.get("metadata", {}),
+                    }
+                )
+            except (ValueError, TypeError, KeyError, AttributeError):
+                projected.append(item)
+                continue
+            key = SharedContextService._json([item["task_id"], text])
+            if key in seen:
+                existing = seen[key]
+                existing["equivalent_item_ids"].append(item["id"])
+                existing["source_event_ids"] = list(
+                    dict.fromkeys(
+                        [
+                            *existing["source_event_ids"],
+                            *item["source_event_ids"],
+                        ]
+                    )
+                )
+            else:
+                compact = {**item, "text": text, "equivalent_item_ids": [item["id"]]}
+                seen[key] = compact
+                projected.append(compact)
+        return projected
+
+    @staticmethod
+    def _project_represented_events(
+        events: list[SharedContextEvent],
+        active_items: list[dict],
+        projected_source_ids: set[str] | None = None,
+    ) -> tuple[list[SharedContextEvent], list[SharedContextEvent]]:
+        """Avoid sending the same authoritative payload twice to the model.
+
+        Source events remain immutable in storage.  The packet may replace a
+        raw event with its active structured item when that item carries the
+        same content, or when an MCP event has a tool-verified projection.
+        This is a model-input projection only; it never deletes evidence.
+        """
+
+        items_by_source: dict[str, list[dict]] = {}
+        projected_source_ids = projected_source_ids or set()
+        for item in active_items:
+            for source_id in item.get("source_event_ids", ()):
+                items_by_source.setdefault(source_id, []).append(item)
+
+        recent: list[SharedContextEvent] = []
+        represented: list[SharedContextEvent] = []
+        for event in events:
+            if event.id in projected_source_ids:
+                represented.append(event)
+                continue
+            source_items = items_by_source.get(event.id, ())
+            exact_copy = any(
+                item.get("text") == event.content for item in source_items
+            )
+            verified_tool_projection = event.kind == "external_event" and any(
+                item.get("kind") == "fact"
+                and item.get("authority") == "tool_verified"
+                for item in source_items
+            )
+            if exact_copy or verified_tool_projection:
+                represented.append(event)
+            else:
+                recent.append(event)
+        return recent, represented
+
     async def _tokens(self, model: ChatModelBase, text: str) -> int:
         return await model.count_tokens(
             [UserMsg(name="shared_context", content=text)],
@@ -447,6 +612,8 @@ class SharedContextService:
             "result",
             "progress",
             "requires_user_input",
+            "user_input_proposal",
+            "conflict",
             "error",
             "external_event",
             "context_update",
@@ -582,6 +749,8 @@ class SharedContextService:
                 "external_event",
                 "context_update",
                 "requires_user_input",
+                "user_input_proposal",
+                "conflict",
             }
             event = SharedContextEvent(
                 id=event_id,
@@ -619,6 +788,29 @@ class SharedContextService:
                         ),
                     )
             elif kind in {"result", "customer_reply"} and delta is None and not stale:
+                if kind == "result" and source_session_id:
+                    events_by_id = {
+                        source.id: source for source in record.state.events
+                    }
+                    for item in record.state.items:
+                        if (
+                            item.status == "active"
+                            and item.task_id == selected_task_id
+                            and item.kind == "output"
+                            and item.authority == "agent_reported"
+                            and any(
+                                (source := events_by_id.get(source_id)) is not None
+                                and source.kind == "result"
+                                and source.source_session_id == source_session_id
+                                for source_id in item.source_event_ids
+                            )
+                        ):
+                            # ``result`` is the worker's completed snapshot for
+                            # this task epoch. A later result from the same
+                            # session supersedes its older snapshot in the
+                            # model packet; immutable source events remain for
+                            # audit, summaries and explicit references.
+                            item.status = "superseded"
                 record.state.items.append(
                     SharedContextItem(
                         task_id=selected_task_id,
@@ -713,8 +905,11 @@ class SharedContextService:
                 not stale
                 and delta is None
                 and kind in {"handoff", "progress", "result"}
+                and not task.pending_question_ids
             ):
                 task.status = "running"
+            if task.pending_question_ids and task.status == "running":
+                task.status = "waiting_user"
             if not stale and task_owner_agent_id is not None:
                 task.owner_agent_id = task_owner_agent_id
             if not stale and reply_owner_agent_id is not None:
@@ -745,6 +940,8 @@ class SharedContextService:
         task_id: str | None,
         in_reply_to: str | None,
         thread_id: str | None = None,
+        *,
+        recipient_session_id: str | None = None,
     ) -> tuple[int, str | None]:
         """Resolve a parent event and derive the unforgeable next hop."""
 
@@ -770,13 +967,21 @@ class SharedContextService:
             ]
             parent = max(candidates, key=lambda item: item.revision, default=None)
         if parent is None:
-            raise ValueError("handoff parent/thread does not belong to this team")
+            if in_reply_to and recipient_session_id:
+                parent = await self._storage.get_team_handoff(
+                    user_id,
+                    hashlib.sha256(
+                        f"{in_reply_to}\0{recipient_session_id}".encode()
+                    ).hexdigest(),
+                )
+            if parent is None or parent.team_id != team_id:
+                raise ValueError("handoff parent/thread does not belong to this team")
         if task_id is not None and parent.task_id != task_id:
             raise ValueError("in_reply_to belongs to a different task")
         next_hop = parent.hop_count + 1
         if next_hop > 12:
             raise ValueError("handoff hop limit (12) exceeded")
-        return next_hop, parent.thread_id or parent.id
+        return next_hop, parent.thread_id or in_reply_to or parent.id
 
     async def register_directive(
         self,
@@ -795,6 +1000,25 @@ class SharedContextService:
 
         record = await self._load_or_create(user_id, team_id)
         return record.state.revision
+
+    async def latest_event_revision(
+        self,
+        user_id: str,
+        team_id: str,
+        task_id: str | None = None,
+    ) -> int:
+        """Return the newest durable event revision for one task."""
+
+        record = await self._load_or_create(user_id, team_id)
+        selected = task_id or record.state.active_task_id
+        return max(
+            (
+                event.revision
+                for event in record.state.events
+                if selected is None or event.task_id == selected
+            ),
+            default=0,
+        )
 
     async def pin_session_revision(
         self,
@@ -864,7 +1088,14 @@ class SharedContextService:
         ]
         delivered_handoff_ids: set[str] = set()
         for event in current:
-            if event.kind not in {"answer", "result", "requires_user_input"}:
+            if event.kind not in {
+                "answer",
+                "result",
+                "requires_user_input",
+                "user_input_proposal",
+                "conflict",
+                "error",
+            }:
                 continue
             record_id = hashlib.sha256(
                 f"{event.id}\0{leader_session_id}".encode(),
@@ -881,7 +1112,14 @@ class SharedContextService:
         result_sessions = {
             event.source_session_id
             for event in current
-            if event.kind in {"answer", "result", "requires_user_input"}
+            if event.kind
+            in {
+                "answer",
+                "result",
+                "requires_user_input",
+                "user_input_proposal",
+                "conflict",
+            }
             and event.source_session_id
             and event.id in delivered_handoff_ids
         }
@@ -890,19 +1128,640 @@ class SharedContextService:
             for event in current
             if event.kind == "error"
             and event.source_session_id
-            and event.content.startswith("WORKER_RUN_FAILED:")
+            and (
+                event.id in delivered_handoff_ids
+                or event.content.startswith("WORKER_RUN_FAILED:")
+            )
         }
         verified_events = sum(event.kind == "external_event" for event in current)
         return (
             len(result_sessions | error_sessions),
             len(error_sessions),
             verified_events,
-            task.status == "waiting_user"
+            bool(task.pending_question_ids)
             and any(
                 event.kind == "requires_user_input"
-                and event.id in delivered_handoff_ids
-                for event in current
+                and event.id in task.pending_question_ids
+                and not event.stale
+                and event.task_id == selected
+                and event.revision > latest_customer
+                and (
+                    event.source_session_id == leader_session_id
+                    or event.id in delivered_handoff_ids
+                )
+                for event in record.state.events
             ),
+        )
+
+    @staticmethod
+    def _branch(task: SharedTaskState, session_id: str) -> CollaborationBranch:
+        branch = task.collaboration.get(session_id)
+        if branch is None or branch.customer_revision != task.latest_customer_revision:
+            branch = CollaborationBranch(
+                customer_revision=task.latest_customer_revision
+            )
+            task.collaboration[session_id] = branch
+        return branch
+
+    @staticmethod
+    def _trusted_event_ids(
+        current: dict[str, SharedContextEvent],
+    ) -> set[str]:
+        """Resolve the current task's tool-to-report evidence graph."""
+
+        trusted = {
+            event.id for event in current.values() if event.kind == "external_event"
+        }
+        changed = True
+        while changed:
+            changed = False
+            for event in current.values():
+                if event.id in trusted or event.kind not in {"answer", "result"}:
+                    continue
+                same_worker_tool = any(
+                    source.kind == "external_event"
+                    and source.source_session_id == event.source_session_id
+                    for source in current.values()
+                )
+                cited_evidence = bool(event.reference_event_ids) and all(
+                    reference in trusted for reference in event.reference_event_ids
+                )
+                if same_worker_tool or cited_evidence:
+                    trusted.add(event.id)
+                    changed = True
+        return trusted
+
+    @classmethod
+    def _claim_support_texts(
+        cls,
+        record: TeamSharedContextRecord,
+        task: SharedTaskState,
+        current: dict[str, SharedContextEvent],
+        *,
+        sender: str | None = None,
+        references: tuple[str, ...] = (),
+        customer_reply: bool = False,
+    ) -> list[str]:
+        """Build exact source text allowed to support concrete claim anchors."""
+
+        support = [
+            event.content
+            for event in record.state.events
+            if event.task_id == task.id
+            and not event.stale
+            and event.kind in {"customer_message", "customer_reply"}
+        ]
+        trusted = cls._trusted_event_ids(current)
+        selected: set[str] = set()
+        if customer_reply:
+            selected.update(trusted)
+        else:
+            # Task-mode workers all receive the same authoritative shared
+            # state. Any current trusted event in that packet may therefore
+            # support a synthesis, even when the model did not copy opaque
+            # event ids into TeamSay. Explicit references still define the
+            # trust lineage used to complete a collaboration branch.
+            selected.update(trusted)
+            selected.update(
+                event.id
+                for event in current.values()
+                if event.kind == "external_event"
+                and event.source_session_id == sender
+            )
+            frontier = list(references)
+            while frontier:
+                event_id = frontier.pop()
+                if event_id in selected or event_id not in trusted:
+                    continue
+                selected.add(event_id)
+                event = current[event_id]
+                frontier.extend(event.reference_event_ids)
+                if event.source_session_id:
+                    selected.update(
+                        candidate.id
+                        for candidate in current.values()
+                        if candidate.kind == "external_event"
+                        and candidate.source_session_id == event.source_session_id
+                    )
+        support.extend(current[event_id].content for event_id in selected)
+        return support
+
+    async def unsupported_customer_reply_claims(
+        self,
+        user_id: str,
+        team_id: str,
+        content: str,
+    ) -> tuple[str, ...]:
+        """Check a Leader reply against current trusted task evidence."""
+
+        record = await self._storage.get_team_shared_context(user_id, team_id)
+        task = (
+            record.state.tasks.get(record.state.active_task_id)
+            if record and record.state.active_task_id
+            else None
+        )
+        if record is None or task is None:
+            return ()
+        current = {
+            event.id: event
+            for event in record.state.events
+            if event.task_id == task.id
+            and not event.stale
+            and event.revision > task.latest_customer_revision
+        }
+        support = self._claim_support_texts(
+            record,
+            task,
+            current,
+            customer_reply=True,
+        )
+        return unsupported_claim_anchors(content, support)
+
+    async def collaboration_pause(
+        self, user_id: str, team_id: str, session_id: str, task_id: str | None = None
+    ) -> str | None:
+        """Read-only sleep decision; no polling model and no idle-time charge."""
+        question = await self.pending_user_question(user_id, team_id)
+        if question:
+            return "awaiting_user_input"
+        record = await self._storage.get_team_shared_context(user_id, team_id)
+        task = (
+            record.state.tasks.get(task_id or record.state.active_task_id)
+            if record
+            else None
+        )
+        branch = task.collaboration.get(session_id) if task else None
+        if branch and branch.customer_revision == task.latest_customer_revision:
+            return branch.status if branch.status != "running" else None
+        return None
+
+    async def collaboration_review(
+        self, user_id: str, team_id: str, owner: str
+    ) -> list[str]:
+        """Finalize evidence-backed reports and return non-terminal branches.
+
+        A worker report used to leave its branch in ``review`` until the
+        Leader model remembered to issue one extra ``TeamSay`` resolution.
+        That made successful runs depend on prompt compliance and consumed a
+        model iteration per completed worker.  The runtime already owns the
+        evidence graph, so it can safely accept a report when the same worker
+        produced a current successful external event (or the report cites
+        current trusted evidence).  Unverified reports, conflicts and user
+        input proposals remain in ``review`` for an explicit Leader decision.
+        """
+
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._storage.get_team_shared_context(user_id, team_id)
+            task = (
+                record.state.tasks.get(record.state.active_task_id)
+                if record and record.state.active_task_id
+                else None
+            )
+            if record is None or task is None:
+                return []
+
+            current = {
+                event.id: event
+                for event in record.state.events
+                if event.task_id == task.id
+                and not event.stale
+                and event.revision > task.latest_customer_revision
+            }
+            trusted = self._trusted_event_ids(current)
+
+            mutated = False
+            for sid, branch in task.collaboration.items():
+                if (
+                    sid == owner
+                    or branch.customer_revision != task.latest_customer_revision
+                    or branch.status != "review"
+                    or branch.waiting_for
+                ):
+                    continue
+                reports = [
+                    event
+                    for event in current.values()
+                    if event.source_session_id == sid
+                    and event.kind in {"answer", "result"}
+                ]
+                if any(event.id in trusted for event in reports):
+                    branch.status = "completed"
+                    branch.reason = "current evidence-backed result accepted by runtime"
+                    mutated = True
+                    continue
+
+                # A delivered worker error is a terminal internal outcome, not
+                # an assignment that the Leader should wait 150 seconds to
+                # review.  Stop only this branch; the ticket remains open and
+                # the Leader may reassign it after other peer results arrive.
+                errors = [
+                    event
+                    for event in current.values()
+                    if event.source_session_id == sid and event.kind == "error"
+                ]
+                delivered_error = False
+                for error in errors:
+                    record_id = hashlib.sha256(
+                        f"{error.id}\0{owner}".encode(),
+                    ).hexdigest()
+                    handoff = await self._storage.get_team_handoff(
+                        user_id,
+                        record_id,
+                    )
+                    if handoff is not None and handoff.delivery_status in {
+                        "delivered",
+                        "consumed",
+                    }:
+                        delivered_error = True
+                        break
+                if delivered_error:
+                    branch.status = "stopped"
+                    branch.reason = "worker reported an error; Leader must resolve"
+                    branch.waiting_for.clear()
+                    mutated = True
+
+            if mutated:
+                await self._commit_mutation(user_id, record)
+            return [
+                sid
+                for sid, branch in task.collaboration.items()
+                if sid != owner
+                and branch.customer_revision == task.latest_customer_revision
+                and branch.status in {"running", "waiting_peer", "review"}
+            ]
+
+    async def coordinate_handoff(
+        self,
+        *,
+        user_id: str,
+        team_id: str,
+        task_id: str | None,
+        sender: str,
+        recipients: tuple[str, ...],
+        owner: str,
+        handoff_id: str,
+        kind: str,
+        content: str,
+        in_reply_to: str | None = None,
+        references: tuple[str, ...] = (),
+        resolution: str | None = None,
+        based_on_revision: int | None = None,
+        share_report: bool = True,
+        notify_owner: bool = True,
+    ) -> dict:
+        """Reserve a bounded exchange and its durable delivery routing atomically.
+
+        Receipt replay returns identical recipients so a crash before delivery
+        can retry without spending budget or losing the waiting requester.
+        """
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._load_or_create(user_id, team_id)
+            selected = task_id or record.state.active_task_id
+            if selected not in record.state.tasks:
+                record.state.tasks[selected] = SharedTaskState(
+                    id=selected, objective=content
+                )
+            task = record.state.tasks[selected]
+            if (
+                based_on_revision is not None
+                and based_on_revision < task.latest_customer_revision
+            ):
+                raise SharedContextConcurrencyError(
+                    "Reload shared context before coordinating an outdated assignment"
+                )
+            branch = self._branch(task, sender)
+            if handoff_id in branch.receipts:
+                return branch.receipts[handoff_id]
+            effective_references = tuple(
+                dict.fromkeys(
+                    (
+                        *references,
+                        *(
+                            branch.evidence_event_ids
+                            if kind in {"result", "answer"} and sender != owner
+                            else ()
+                        ),
+                    ),
+                ),
+            )
+            current = {
+                e.id: e
+                for e in record.state.events
+                if e.task_id == task.id
+                and not e.stale
+                and e.revision > task.latest_customer_revision
+            }
+            claim_rejection_reason = ""
+            if kind in {"result", "answer"} and sender != owner:
+                unsupported = unsupported_claim_anchors(
+                    content,
+                    self._claim_support_texts(
+                        record,
+                        task,
+                        current,
+                        sender=sender,
+                        references=effective_references,
+                    ),
+                )
+                if unsupported:
+                    branch.evidence_rejections += 1
+                    detail = ", ".join(unsupported[:12])
+                    if branch.evidence_rejections < 2:
+                        await self._commit_mutation(user_id, record)
+                        raise ValueError(
+                            "Evidence gate rejected unsupported concrete claims: "
+                            + detail
+                            + ". Retry once using only exact customer, MCP, or cited peer evidence.",
+                        )
+                    claim_rejection_reason = (
+                        "evidence gate rejected unsupported concrete claims twice: "
+                        + detail
+                    )
+            released = []
+            if kind == "conflict" and (
+                len(set(effective_references)) < 2
+                or any(ref not in current for ref in effective_references)
+            ):
+                raise ValueError(
+                    "Conflicts require at least two current source references"
+                )
+            if resolution:
+                if sender != owner or len(recipients) != 1:
+                    raise ValueError(
+                        "Only the reply owner may resolve one assignment at a time"
+                    )
+                target = self._branch(task, recipients[0])
+                if resolution == "complete":
+                    if target.waiting_for:
+                        raise ValueError(
+                            "Assignment still has unresolved peer dependencies"
+                        )
+                    if not effective_references or any(
+                        ref not in current for ref in effective_references
+                    ):
+                        raise ValueError(
+                            "Completion requires current-task evidence references"
+                        )
+                    evidence = [current[ref] for ref in effective_references]
+                    if not any(
+                        e.kind in {"result", "answer"}
+                        and e.source_session_id == recipients[0]
+                        for e in evidence
+                    ):
+                        raise ValueError(
+                            "Completion requires the assigned agent's result"
+                        )
+                    if not any(e.kind == "external_event" for e in evidence):
+                        raise ValueError(
+                            "Completion requires verified tool/provider evidence, not an agent assertion"
+                        )
+                    target.status = "completed"
+                elif resolution == "stop":
+                    target.status = "stopped"
+                elif resolution == "verify":
+                    if target.status == "stopped":
+                        raise ValueError(
+                            "Stopped assignment cannot be reopened without a new customer requirement"
+                        )
+                    target.verifications += 1
+                    target.status = (
+                        "running"
+                        if target.verifications
+                        <= self.config.collaboration_max_verifications
+                        else "stopped"
+                    )
+                else:
+                    raise ValueError("Unknown resolution")
+                target.reason = content
+                target.waiting_for.clear()
+                if target.status == "stopped":
+                    for sid, waiting in task.collaboration.items():
+                        missing = [
+                            qid
+                            for qid, provider in waiting.waiting_for.items()
+                            if provider == recipients[0]
+                        ]
+                        if (
+                            missing
+                            and waiting.customer_revision
+                            == task.latest_customer_revision
+                        ):
+                            for qid in missing:
+                                del waiting.waiting_for[qid]
+                            if (
+                                not waiting.waiting_for
+                                and waiting.status == "waiting_peer"
+                            ):
+                                waiting.status = "running"
+                            released.append(sid)
+            elif branch.status in {"completed", "stopped"}:
+                raise CollaborationStoppedError(branch.reason or branch.status)
+
+            # Count regardless of model-supplied thread/hop/idempotency keys.
+            evidence_revision = max(
+                (
+                    e.revision
+                    for e in current.values()
+                    if e.kind in {"external_event", "result", "answer"}
+                ),
+                default=0,
+            )
+            signature = hashlib.sha256(
+                json.dumps(
+                    [
+                        kind,
+                        recipients,
+                        " ".join(content.casefold().split()),
+                        evidence_revision,
+                    ]
+                ).encode()
+            ).hexdigest()
+            branch.signatures[signature] = branch.signatures.get(signature, 0) + 1
+            branch.exchanges += 1
+            reason = claim_rejection_reason
+            if branch.exchanges > self.config.collaboration_max_exchanges:
+                reason = "exchange limit exceeded"
+            elif branch.signatures[signature] > 2:
+                reason = "repeated exchange without new evidence"
+            if kind == "question" and sender != owner:
+                if len(recipients) != 1 or recipients[0] == owner:
+                    raise ValueError(
+                        "Peer dependency requires one concrete non-owner collaborator"
+                    )
+                visited = {sender}
+                frontier = list(recipients)
+                while frontier:
+                    peer = frontier.pop()
+                    if peer == sender:
+                        reason = "cyclic peer dependency; Leader must resolve the missing information"
+                        break
+                    if peer in visited:
+                        continue
+                    visited.add(peer)
+                    frontier.extend(self._branch(task, peer).waiting_for.values())
+                if not reason:
+                    target = self._branch(task, recipients[0])
+                    if target.status == "stopped":
+                        reason = "requested peer assignment is already stopped; Leader must resolve"
+                    else:
+                        branch.waiting_for[handoff_id] = recipients[0]
+                        branch.status = "waiting_peer"
+                        if target.status in {"review", "completed"}:
+                            target.status = "running"
+            if kind in {"user_input_proposal", "conflict"} and sender != owner:
+                branch.status = "review"
+            if kind == "handoff" and sender == owner and not resolution:
+                for sid in recipients:
+                    target = self._branch(task, sid)
+                    if target.status != "stopped":
+                        target.status = "running"
+                        target.waiting_for.clear()
+            routed = [*recipients, *released]
+            if (
+                not claim_rejection_reason
+                and kind in {"result", "answer", "error"}
+                and sender != owner
+            ):
+                if in_reply_to and in_reply_to not in current and not any(
+                    b.waiting_for.get(in_reply_to) == sender
+                    for b in task.collaboration.values()
+                ):
+                    raise ValueError("Unknown reply dependency")
+                for sid, waiting in task.collaboration.items():
+                    if waiting.customer_revision != task.latest_customer_revision:
+                        continue
+                    if not share_report and sid not in recipients:
+                        continue
+                    resolved = [
+                        qid
+                        for qid, provider in waiting.waiting_for.items()
+                        if provider == sender
+                        and (
+                            share_report
+                            or not in_reply_to
+                            or qid == in_reply_to
+                        )
+                    ]
+                    if resolved:
+                        for qid in resolved:
+                            del waiting.waiting_for[qid]
+                        if not waiting.waiting_for and waiting.status == "waiting_peer":
+                            waiting.status = "running"
+                        waiting.evidence_event_ids = tuple(
+                            dict.fromkeys(
+                                (*waiting.evidence_event_ids, handoff_id),
+                            ),
+                        )
+                        routed.append(sid)
+                if share_report and notify_owner:
+                    routed.append(owner)
+                if not branch.waiting_for:
+                    branch.status = "review"
+            if reason:
+                branch.status, branch.reason = "stopped", reason
+                branch.waiting_for.clear()
+                kind, content, routed = (
+                    "error",
+                    "WORKER_RUN_FAILED: " + reason + "; assignment incomplete.",
+                    [owner],
+                )
+                for sid, waiting in task.collaboration.items():
+                    if waiting.customer_revision != task.latest_customer_revision:
+                        continue
+                    missing = [
+                        qid
+                        for qid, provider in waiting.waiting_for.items()
+                        if provider == sender
+                    ]
+                    for qid in missing:
+                        del waiting.waiting_for[qid]
+                    if missing:
+                        routed.append(sid)
+                        if not waiting.waiting_for and waiting.status == "waiting_peer":
+                            waiting.status = "running"
+            receipt = {
+                "kind": kind,
+                "content": content,
+                "recipients": list(dict.fromkeys(s for s in routed if s != sender)),
+                "status": branch.status,
+                "reference_event_ids": list(effective_references),
+            }
+            branch.receipts[handoff_id] = receipt
+            await self._commit_mutation(user_id, record)
+            return receipt
+
+    async def measure_collaboration(
+        self,
+        user_id: str,
+        team_id: str,
+        session_id: str,
+        *,
+        tokens: int = 0,
+        model_call: int = 0,
+        active_seconds: float = 0,
+        customer_revision: int | None = None,
+        task_id: str | None = None,
+    ) -> tuple[float, int]:
+        """Meter actual active execution only; sleep/reconnect never consumes time."""
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._load_or_create(user_id, team_id)
+            task = record.state.tasks[task_id or record.state.active_task_id]
+            if (
+                customer_revision is not None
+                and customer_revision != task.latest_customer_revision
+            ):
+                raise SharedContextConcurrencyError(
+                    "Customer requirement changed during execution"
+                )
+            branch = self._branch(task, session_id)
+            branch.measured_tokens += max(0, tokens)
+            branch.model_calls += int(model_call)
+            branch.active_seconds += max(0, active_seconds)
+            reason = branch.reason if branch.status == "stopped" else ""
+            if branch.measured_tokens > self.config.collaboration_max_tokens:
+                reason = "measured token limit exceeded"
+            if branch.model_calls > self.config.collaboration_max_model_calls:
+                reason = "model call limit exceeded"
+            if branch.active_seconds >= self.config.collaboration_max_active_seconds:
+                reason = "active execution time limit exceeded"
+            if reason:
+                branch.status, branch.reason = "stopped", reason
+            await self._commit_mutation(user_id, record)
+            if reason:
+                raise CollaborationStoppedError(
+                    reason + "; internal assignment incomplete, ticket remains open"
+                )
+            return (
+                self.config.collaboration_max_active_seconds - branch.active_seconds,
+                task.latest_customer_revision,
+            )
+
+    async def pending_user_question(self, user_id: str, team_id: str) -> str | None:
+        record = await self._storage.get_team_shared_context(user_id, team_id)
+        if record is None:
+            return None
+        task = record.state.tasks.get(record.state.active_task_id)
+        if task is None or not task.pending_question_ids:
+            return None
+        return next(
+            (
+                event.content
+                for event in record.state.events
+                if event.id in task.pending_question_ids
+                and not event.stale
+                and event.task_id == task.id
+                and event.revision > task.latest_customer_revision
+            ),
+            None,
         )
 
     async def persist_handoff(self, record: TeamHandoffRecord) -> None:
@@ -1104,8 +1963,20 @@ class SharedContextService:
             for event in events
         ]
         allowed_sources = {source["id"] for source in sources}
+        # Current task dependency state already carries transient coordination,
+        # while every successful MCP envelope is retained independently as a
+        # tool_verified authoritative item. Do not force the narrative
+        # summarizer to repeat every raw provider call (including empty search
+        # attempts); its job is to preserve the remaining material history.
+        required_sources = {
+            f"event:{event.revision}"
+            for event in events
+            if event.kind
+            not in {"progress", "handoff", "question", "external_event"}
+        }
         if prior is not None:
             allowed_sources.add("previous_summary")
+            required_sources.add("previous_summary")
         citation_type = Literal[tuple(sorted(allowed_sources))]
         point_model = create_model(
             "ScopedSummaryPoint",
@@ -1141,8 +2012,13 @@ class SharedContextService:
             "facts, approvals, tool results, or business-state changes. "
             "Preserve changes and open points. Every summary point must cite "
             "exact source_event_ids from the top-level id of each "
-            "shareable_source_events entry (event:<revision>), and every "
-            "supplied event must be cited at least once. If a previous "
+            "shareable_source_events entry (event:<revision>). Every material "
+            "customer/result/conflict/error/state-change event must be cited "
+            "at least once. Transient progress, handoff and internal question "
+            "events may be omitted because current dependency state is carried "
+            "separately. Raw external_event entries may be omitted because "
+            "their lossless tool_verified projections remain in authoritative "
+            "state. If a previous "
             "summary is supplied, preserve its material information and cite "
             "the literal source ref previous_summary at least once. This "
             "operation must not call tools or perform external actions. The "
@@ -1165,7 +2041,7 @@ class SharedContextService:
                 f"\nPrevious validation error: {error}. "
                 f"Allowed source handles: {sorted(allowed_sources)}. "
                 f"Summary budget: {max_tokens} tokens. Return a schema-valid "
-                "answer covering every allowed source and no other source."
+                "answer covering every required material source and no other source."
                 if attempt
                 else ""
             )
@@ -1219,7 +2095,7 @@ class SharedContextService:
                     for source_id in point.source_event_ids
                 }
                 unknown_sources = cited_sources - allowed_sources
-                missing_sources = allowed_sources - cited_sources
+                missing_sources = required_sources - cited_sources
                 if unknown_sources or missing_sources:
                     raise SharedContextSummaryError(
                         "summary source validation failed: "
@@ -1363,6 +2239,10 @@ class SharedContextService:
             if mode == "task" and selected_task_id in record.state.tasks
             else []
         )
+        for task in tasks:
+            for branch in task.get("collaboration", {}).values():
+                branch.pop("receipts", None)
+                branch.pop("signatures", None)
         selected_event_ids = {event.id for event in events}
         active_items = [
             item
@@ -1378,6 +2258,71 @@ class SharedContextService:
                 )
             )
         ]
+        selected_task = record.state.tasks.get(selected_task_id)
+        latest_customer_revision = (
+            selected_task.latest_customer_revision if selected_task else 0
+        )
+        event_by_id = {
+            event.id: event
+            for event in record.state.events
+            if event.task_id == selected_task_id
+            and not event.stale
+            and event.revision > latest_customer_revision
+        }
+        trusted = self._trusted_event_ids(event_by_id)
+        active_source_ids = {
+            source_id
+            for item in active_items
+            for source_id in item.get("source_event_ids", ())
+        }
+        reported_sessions = {
+            event.source_session_id
+            for event in event_by_id.values()
+            if event.id in trusted
+            and event.id in active_source_ids
+            and event.kind in {"answer", "result"}
+            and event.source_session_id
+        }
+        represented_tool_source_ids: set[str] = set()
+        if reported_sessions:
+            retained_items: list[dict] = []
+            for item in active_items:
+                source_events = [
+                    event_by_id[source_id]
+                    for source_id in item.get("source_event_ids", ())
+                    if source_id in event_by_id
+                ]
+                covered_tool_fact = (
+                    item.get("authority") == "tool_verified"
+                    and item.get("kind") == "fact"
+                    and source_events
+                    and all(
+                        event.kind == "external_event"
+                        and event.source_session_id in reported_sessions
+                        for event in source_events
+                    )
+                )
+                if covered_tool_fact:
+                    represented_tool_source_ids.update(
+                        event.id for event in source_events
+                    )
+                else:
+                    retained_items.append(item)
+            active_items = retained_items
+        active_items = self._compact_tool_facts(active_items)
+        superseded_source_ids = {
+            source_id
+            for item in record.state.items
+            if item.status == "superseded"
+            and item.task_id in (None, selected_task_id)
+            for source_id in item.source_event_ids
+        }
+        superseded_source_ids.update(represented_tool_source_ids)
+        recent_events, represented_events = self._project_represented_events(
+            events,
+            active_items,
+            superseded_source_ids,
+        )
         summary = (
             record.state.summaries.get(selected_task_id)
             if selected_task_id is not None
@@ -1406,8 +2351,30 @@ class SharedContextService:
                 if mode == "task" and summary
                 else None
             ),
+            "history_projection": (
+                {
+                    "reason": "represented_by_authoritative_state",
+                    "projected_event_count": len(represented_events),
+                    "projected_revision_from": min(
+                        event.revision for event in represented_events
+                    ),
+                    "projected_revision_through": max(
+                        event.revision for event in represented_events
+                    ),
+                    "projected_ids_sha256": hashlib.sha256(
+                        self._json([event.id for event in represented_events]).encode(
+                            "utf-8"
+                        )
+                    ).hexdigest(),
+                    "raw_sources_retained": True,
+                }
+                if represented_events
+                else None
+            ),
             "history_omission": None,
-            "recent_events": [self._event_dict(event) for event in events],
+            "recent_events": [
+                self._event_dict(event) for event in recent_events
+            ],
         }
 
     async def prepare_packet(
@@ -1485,7 +2452,12 @@ class SharedContextService:
         )
         text = self._json(packet)
         tokens = await self._tokens(model, text)
-        source_event_count = len(packet["recent_events"])
+        source_event_count = len(events)
+        projected_event_count = (
+            packet["history_projection"]["projected_event_count"]
+            if packet["history_projection"]
+            else 0
+        )
         required_packet = {
             **packet,
             "summary": None,
@@ -1558,14 +2530,15 @@ class SharedContextService:
             )
             current.state.metrics.last_required_state_tokens = required_state_tokens
             current.state.metrics.last_packet_source_events = source_event_count
-            current.state.metrics.last_packet_included_events = len(
-                packet["recent_events"],
+            included_event_count = (
+                len(packet["recent_events"]) + projected_event_count
             )
-            current.state.metrics.last_packet_dropped_events = source_event_count - len(
-                packet["recent_events"]
+            current.state.metrics.last_packet_included_events = included_event_count
+            current.state.metrics.last_packet_dropped_events = (
+                source_event_count - included_event_count
             )
             current.state.metrics.total_packet_dropped_events += (
-                source_event_count - len(packet["recent_events"])
+                source_event_count - included_event_count
             )
             if budget_error is not None:
                 current.state.metrics.packet_budget_failures += 1
@@ -1597,6 +2570,9 @@ class SharedContextService:
         preflight_margin_tokens: int,
         token_counter: str,
         budget_exceeded: bool = False,
+        tool_schema_tokens: int = 0,
+        system_prompt_tokens: int = 0,
+        conversation_tokens: int = 0,
     ) -> None:
         """Persist the post-filter model-counter result for one model call."""
 
@@ -1608,6 +2584,10 @@ class SharedContextService:
             metrics = record.state.metrics
             metrics.model_calls_measured += 1
             metrics.last_total_prompt_tokens = prompt_tokens
+            metrics.total_measured_prompt_tokens += prompt_tokens
+            metrics.last_tool_schema_tokens = tool_schema_tokens
+            metrics.last_system_prompt_tokens = system_prompt_tokens
+            metrics.last_conversation_tokens = conversation_tokens
             metrics.peak_total_prompt_tokens = max(
                 metrics.peak_total_prompt_tokens,
                 prompt_tokens,
@@ -1633,6 +2613,10 @@ class SharedContextService:
             "authoritative_state as current truth; summary is narrative "
             "history only. Newer customer-confirmed items take precedence "
             "when requirements changed. Do not infer approval from summary.\n"
+            "Internal task_id, team_id, session_id and event IDs are routing "
+            "references, NOT provider ticket/booking IDs. Never substitute them "
+            "into MCP arguments unless an explicit external mapping exists. "
+            "Agent-reported narrative is not independently verified evidence.\n"
             f"{packet}\n</shared-context-packet>"
         )
 

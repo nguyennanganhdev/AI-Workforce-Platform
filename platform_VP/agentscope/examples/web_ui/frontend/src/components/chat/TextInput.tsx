@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils';
  * Represents a file that has been selected and processed (or is being processed).
  */
 interface ProcessedFile {
+	id: string;
 	/** Original file name for display */
 	name: string;
 	/** Processing status */
@@ -291,6 +292,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			selected.forEach((file) => {
 				// Insert a placeholder in processing state
 				const placeholder: ProcessedFile = {
+					id: crypto.randomUUID(),
 					name: file.name,
 					status: 'processing',
 					block: null,
@@ -304,7 +306,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 							(prev) =>
 								prev
 									.map((f) =>
-										f.name === file.name && f.status === 'processing'
+										f.id === placeholder.id && f.status === 'processing'
 											? block
 												? { ...f, status: 'done', block }
 												: null
@@ -318,7 +320,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 						// Just silently remove the entry here.
 						setFiles((prev) =>
 							prev.filter(
-								(f) => !(f.name === file.name && f.status === 'processing'),
+								(f) => f.id !== placeholder.id,
 							),
 						);
 					});
@@ -350,7 +352,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 								}
 
 								return (
-									<Attachment>
+									<Attachment key={file.id}>
 										<AttachmentMedia variant={isImage ? 'image' : 'icon'}>
 											{file.status === 'processing' ? (
 												<Loader2 className="size-3 shrink-0 animate-spin" />

@@ -103,22 +103,29 @@ async function streamRequest(path: string, options: RequestOptions = {}): Promis
 	const deadline = timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined;
 	const combined =
 		deadline && signal ? AbortSignal.any([signal, deadline]) : (deadline ?? signal);
-	const send = () =>
-		fetch(url.toString(), {
+	let sentToken: string | null = null;
+	const send = () => {
+		sentToken = accessToken;
+		return fetch(url.toString(), {
 			method,
 			headers: buildHeaders(body !== undefined),
 			body: body !== undefined ? JSON.stringify(body) : undefined,
 			signal: combined,
 			credentials: 'include',
 		});
+	};
 
 	let response: Response;
 	try {
 		response = await send();
 		if (response.status === 401 && canRefresh(path)) {
-			if (await refreshAccessToken(requestBaseUrl)) {
+			// A delayed 401 may belong to the token another request already
+			// replaced. Reuse the new token rather than rotate the cookie again.
+			if ((accessToken && accessToken !== sentToken) || await refreshAccessToken(requestBaseUrl)) {
 				response = await send();
-			} else {
+			}
+			if (response.status === 401 && (!accessToken || accessToken === sentToken)) {
+				setAccessToken(null);
 				window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
 			}
 		}

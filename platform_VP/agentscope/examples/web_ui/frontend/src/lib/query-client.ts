@@ -1,5 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 
+import { ApiError } from '@/api/client';
+
 /**
  * The app-wide query cache.
  *
@@ -23,7 +25,8 @@ export const queryClient = new QueryClient({
 			// A failed fetch surfaces in the UI as an error state with a
 			// retry button; retrying a handful of times behind the user's
 			// back only delays that.
-			retry: 1,
+			retry: (failureCount, error) =>
+				!(error instanceof ApiError && [401, 403].includes(error.status)) && failureCount < 1,
 			refetchOnWindowFocus: false,
 		},
 	},

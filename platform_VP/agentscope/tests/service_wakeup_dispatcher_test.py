@@ -326,6 +326,33 @@ class TestWakeupDispatcherDispatch(IsolatedAsyncioTestCase):
 
         self.assertEqual(chat.calls, [])
 
+    async def test_registry_race_closes_rejected_run_coroutine(self) -> None:
+        captured = []
+
+        class _RejectingRegistry:
+            def spawn(self, coro, *, session_id: str, name: str) -> None:
+                del session_id, name
+                captured.append(coro)
+                raise RuntimeError("session became active")
+
+        dispatcher = WakeupDispatcher(
+            message_bus=_FakeBus(),
+            storage=_FakeStorage(),
+            chat_service=_FakeChatService(),
+            chat_run_registry=_RejectingRegistry(),  # type: ignore[arg-type]
+        )
+        await dispatcher._dispatch_one(
+            user_id="u",
+            session_id="raced",
+            agent_id="a",
+            kind=MessageBusKeys.WAKEUP_KIND_WAKE,
+            raw_input=None,
+        )
+
+        self.assertEqual(len(captured), 1)
+        self.assertIsNone(captured[0].cr_frame)
+        await dispatcher.__aexit__()
+
     async def test_malformed_entry_skipped(self) -> None:
         """A wake-up entry missing required fields is logged and skipped,
         not raised; later valid entries still dispatch."""

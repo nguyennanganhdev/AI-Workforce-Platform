@@ -7,7 +7,9 @@ import re
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 
+from agentscope.app._evidence_claims import unsupported_claim_anchors
 from agentscope.app._shared_context import (
+    CollaborationStoppedError,
     ContextDirective,
     SharedContextBudgetError,
     SharedContextConfig,
@@ -23,7 +25,8 @@ from agentscope.app.storage import (
     TeamHandoffRecord,
     TeamSharedContextRecord,
 )
-from agentscope.message import AssistantMsg, HintBlock, SystemMsg, UserMsg
+from agentscope.message import AssistantMsg, HintBlock, SystemMsg, TextBlock, UserMsg
+from agentscope.model import ChatResponse, ChatUsage
 from agentscope.state import AgentState
 
 
@@ -31,6 +34,15 @@ class _Storage:
     def __init__(self) -> None:
         self.records: dict[tuple[str, str], TeamSharedContextRecord] = {}
         self.handoffs: dict[str, TeamHandoffRecord] = {}
+        self.sessions: dict[tuple[str, str], object] = {}
+
+    async def get_session(
+        self,
+        user_id: str,
+        _agent_id: str,
+        session_id: str,
+    ) -> object | None:
+        return self.sessions.get((user_id, session_id))
 
     async def get_team_shared_context(
         self,
@@ -113,6 +125,323 @@ class _MeasuredModel:
 
 
 class TestSharedContextService(IsolatedAsyncioTestCase):
+    async def test_stream_usage_is_charged_and_new_peer_evidence_refreshes_packet(self):
+        self.service.config = SharedContextConfig()
+        task_id = await self.service.active_task_id("u", "ticket-1")
+        await self.service.append_event(
+            user_id="u",
+            team_id="ticket-1",
+            kind="customer_message",
+            content="Compare options",
+        )
+        state = AgentState(session_id="leader-session")
+        agent = SimpleNamespace(state=state, name="Leader")
+        captured = []
+
+        async def next_handler(**kwargs):
+            captured.append(kwargs["messages"][0].get_text_content())
+
+            async def response():
+                yield ChatResponse(
+                    content=[TextBlock(text="Verified response")],
+                    is_last=True,
+                    usage=ChatUsage(input_tokens=10, output_tokens=13, time=0),
+                )
+
+            return response()
+
+        middleware = SharedContextIsolationMiddleware(
+            "task", self.service, "u", "ticket-1", task_id=task_id
+        )
+        kwargs = {
+            "messages": [SystemMsg(name="system", content="Coordinate")],
+            "tools": [],
+            "current_model": self.model,
+        }
+        for n in range(2):
+            if n:
+                await self.service.append_event(
+                    user_id="u",
+                    team_id="ticket-1",
+                    kind="external_event",
+                    content="new-provider-evidence",
+                    source_session_id="peer-session",
+                )
+            stream = await middleware.on_model_call(agent, kwargs, next_handler)
+            self.assertEqual(1, len([chunk async for chunk in stream]))
+        self.assertNotIn("new-provider-evidence", captured[0])
+        self.assertIn("new-provider-evidence", captured[1])
+        record = await self.storage.get_team_shared_context("u", "ticket-1")
+        branch = record.state.tasks[task_id].collaboration["leader-session"]
+        self.assertEqual(2, branch.model_calls)
+        self.assertEqual(
+            record.state.metrics.total_measured_prompt_tokens + 26,
+            branch.measured_tokens,
+        )
+
+    async def test_slow_model_is_cancelled_at_active_budget(self):
+        self.service.config = SharedContextConfig(collaboration_max_active_seconds=0.01)
+        state = AgentState(session_id="worker-session")
+        middleware = SharedContextIsolationMiddleware(
+            "task", self.service, "u", "ticket-1"
+        )
+
+        async def slow(**kwargs):
+            await asyncio.sleep(1)
+            self.fail("The runtime failed to cancel a slow model")
+
+        with self.assertRaises(CollaborationStoppedError):
+            await middleware.on_model_call(
+                SimpleNamespace(state=state, name="Worker"),
+                {
+                    "messages": [SystemMsg(name="system", content="Work")],
+                    "tools": [],
+                    "current_model": self.model,
+                },
+                slow,
+            )
+        record = await self.storage.get_team_shared_context("u", "ticket-1")
+        self.assertEqual(
+            "stopped",
+            record.state.tasks[record.state.active_task_id]
+            .collaboration["worker-session"]
+            .status,
+        )
+
+    async def test_leader_question_survives_late_worker_result(self):
+        await self.service.append_event(
+            user_id="u",
+            team_id="t",
+            kind="customer_message",
+            content="help",
+            source_session_id="leader",
+        )
+        await self.service.append_event(
+            user_id="u",
+            team_id="t",
+            kind="requires_user_input",
+            content="Which location?",
+            source_session_id="leader",
+        )
+        await self.service.append_event(
+            user_id="u",
+            team_id="t",
+            kind="result",
+            content="late report",
+            source_session_id="worker",
+        )
+        self.assertEqual(
+            await self.service.pending_user_question("u", "t"), "Which location?"
+        )
+        self.assertTrue(
+            (
+                await self.service.team_evidence_status(
+                    "u", "t", leader_session_id="leader"
+                )
+            )[-1]
+        )
+        await self.service.append_event(
+            user_id="u",
+            team_id="t",
+            kind="customer_message",
+            content="location A",
+            source_session_id="leader",
+        )
+        self.assertIsNone(await self.service.pending_user_question("u", "t"))
+
+    def test_compact_mcp_facts_preserves_sources_and_business_ids(self):
+        items = []
+        for index in range(20):
+            items.append(
+                {
+                    "id": f"item-{index}",
+                    "task_id": "task",
+                    "kind": "fact",
+                    "authority": "tool_verified",
+                    "source_event_ids": [f"event-{index}"],
+                    "text": json.dumps(
+                        {
+                            "state": "success",
+                            "tool_call": {
+                                "id": f"call-{index}",
+                                "name": "mcp__x__get",
+                                "input": '{"ticket_id":"external-1"}',
+                            },
+                            "tool_result": {
+                                "output": [
+                                    {
+                                        "type": "text",
+                                        "id": f"block-{index}",
+                                        "text": '{"id":"external-1","created_at":"today","status":"not found"}',
+                                    }
+                                ]
+                            },
+                        }
+                    ),
+                }
+            )
+        original = json.dumps(items)
+        projected = self.service._compact_tool_facts(items)
+        self.assertEqual(len(projected), 1)
+        self.assertEqual(len(projected[0]["source_event_ids"]), 20)
+        self.assertEqual(len(projected[0]["equivalent_item_ids"]), 20)
+        self.assertIn("external-1", projected[0]["text"])
+        self.assertIn("created_at", projected[0]["text"])
+        self.assertEqual(json.dumps(items), original)
+        changed = {**items[0], "text": items[0]["text"].replace("not found", "found")}
+        self.assertEqual(len(self.service._compact_tool_facts([*items, changed])), 2)
+        other_task = {**items[0], "task_id": "different"}
+        self.assertEqual(len(self.service._compact_tool_facts([*items, other_task])), 2)
+
+    def test_claim_gate_understands_vietnamese_amounts_and_budget_arithmetic(self):
+        support = (
+            "Ngân sách 4 triệu, cần để dư 500 nghìn.",
+            "Tổng chi phí đã xác minh là 2.720.000đ.",
+        )
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "Trần chi 3,5 triệu; còn 1.280.000đ từ ngân sách và "
+                "cao hơn mức dự phòng 780.000đ.",
+                support,
+            ),
+        )
+
+    def test_claim_gate_rejects_shifted_date_and_cross_source_time(self):
+        unsupported = unsupported_claim_anchors(
+            "Khởi hành 16/10 và khách sạn check-in lúc 14:00.",
+            ("Khởi hành ngày 17/10.",),
+        )
+        self.assertIn("date:16/10", unsupported)
+        self.assertIn("time:14:00", unsupported)
+
+    def test_claim_gate_does_not_merge_date_time_with_following_amount_or_count(self):
+        support = (
+            "Khởi hành 07:00 ngày 17/10/2026, tổng giá 840.000đ/2 người.",
+            "Bữa tối 19:30 ngày 17/10/2026, giá 960.000đ/2 người.",
+        )
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "Xe đi 07:00 ngày 17/10/2026 giá 840.000đ/2 người; "
+                "bữa tối 19:30 cùng ngày giá 960.000đ/2 người.",
+                support,
+            ),
+        )
+
+    def test_claim_gate_accepts_abbreviated_date_and_generic_service_prefix(self):
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "Xe Limousine Mây Việt Express đi 17/10. "
+                "[Source Event: abc123]",
+                (
+                    (
+                        "Nhà xe Mây Việt Express, loại xe Limousine, "
+                        "khởi hành ngày 17/10/2026."
+                    ),
+                ),
+            ),
+        )
+
+    def test_claim_gate_accepts_day_month_when_source_date_is_iso(self):
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "Kh\u1edfi h\u00e0nh ng\u00e0y 17/10.",
+                ("travel_date=2026-10-17",),
+            ),
+        )
+
+    def test_claim_gate_normalizes_time_and_generic_vehicle_suffix(self):
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "M\u00e2y Vi\u1ec7t Express Limousine kh\u1edfi h\u00e0nh l\u00fac 7:00; "
+                "M\u00e2y Vi\u1ec7t Express Gi\u01b0\u1eddng kh\u1edfi h\u00e0nh l\u00fac 5:30.",
+                (
+                    "Nh\u00e0 xe M\u00e2y Vi\u1ec7t Express c\u00f3 chuy\u1ebfn 07:00 v\u00e0 05:30.",
+                ),
+            ),
+        )
+
+    def test_claim_gate_does_not_merge_itinerary_code_into_place_name(self):
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "K\u1ebf ho\u1ea1ch \u0110\u00e0 L\u1ea1t 2N1\u0110 \u0111\u00e3 ho\u00e0n t\u1ea5t.",
+                (
+                    (
+                        "L\u1ecbch tr\u00ecnh du l\u1ecbch t\u1ea1i \u0110\u00e0 "
+                        "L\u1ea1t \u0111\u00e3 x\u00e1c minh."
+                    ),
+                ),
+            ),
+        )
+
+    def test_claim_gate_does_not_treat_headings_as_business_names(self):
+        self.assertEqual(
+            (),
+            unsupported_claim_anchors(
+                "Đánh Giá Ngân Sách – Đã Xác Minh – Đi Xe Limousine",
+                (),
+            ),
+        )
+
+    def test_packet_projects_events_already_in_authoritative_items(self):
+        events = [
+            SharedContextEvent(
+                id="customer-1",
+                revision=1,
+                task_id="task",
+                kind="customer_message",
+                content="Need a hotel",
+            ),
+            SharedContextEvent(
+                id="tool-1",
+                revision=2,
+                task_id="task",
+                kind="external_event",
+                content='{"raw":"tool envelope"}',
+            ),
+            SharedContextEvent(
+                id="question-1",
+                revision=3,
+                task_id="task",
+                kind="question",
+                content="Which hotel is available?",
+            ),
+        ]
+        items = [
+            {
+                "id": "constraint-1",
+                "task_id": "task",
+                "kind": "constraint",
+                "authority": "customer_confirmed",
+                "source_event_ids": ["customer-1"],
+                "text": "Need a hotel",
+            },
+            {
+                "id": "fact-1",
+                "task_id": "task",
+                "kind": "fact",
+                "authority": "tool_verified",
+                "source_event_ids": ["tool-1"],
+                "text": "verified hotel result",
+            },
+        ]
+
+        recent, represented = self.service._project_represented_events(
+            events,
+            items,
+        )
+
+        self.assertEqual([event.id for event in recent], ["question-1"])
+        self.assertEqual(
+            [event.id for event in represented],
+            ["customer-1", "tool-1"],
+        )
+
     def setUp(self) -> None:
         self.storage = _Storage()
         self.bus = InMemoryMessageBus()
@@ -129,6 +458,212 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
                 summary_attempts=2,
             ),
         )
+
+    async def test_worker_claim_gate_rejects_unsupported_name_before_mutation(self):
+        customer = await self.service.append_event(
+            user_id="u",
+            team_id="claim-team",
+            kind="customer_message",
+            content="Find a hotel for 2 people with a 3 million VND budget",
+            source_session_id="leader-session",
+        )
+        await self.service.append_event(
+            user_id="u",
+            team_id="claim-team",
+            task_id=customer.task_id,
+            kind="external_event",
+            content="Verified Hotel costs 1500000 VND and is available",
+            source_session_id="worker-session",
+        )
+
+        with self.assertRaisesRegex(ValueError, "name:imaginary resort"):
+            await self.service.coordinate_handoff(
+                user_id="u",
+                team_id="claim-team",
+                task_id=customer.task_id,
+                sender="worker-session",
+                recipients=("leader-session",),
+                owner="leader-session",
+                handoff_id="unsupported-report",
+                kind="result",
+                content="Imaginary Resort costs 1500000 VND and is available",
+            )
+
+        record = await self.storage.get_team_shared_context("u", "claim-team")
+        branch = record.state.tasks[customer.task_id].collaboration.get(
+            "worker-session"
+        )
+        self.assertTrue(branch is None or "unsupported-report" not in branch.receipts)
+        stopped = await self.service.coordinate_handoff(
+            user_id="u",
+            team_id="claim-team",
+            task_id=customer.task_id,
+            sender="worker-session",
+            recipients=("leader-session",),
+            owner="leader-session",
+            handoff_id="unsupported-report-2",
+            kind="result",
+            content="Imaginary Resort costs 1500000 VND and is available",
+        )
+        self.assertEqual("error", stopped["kind"])
+        self.assertEqual("stopped", stopped["status"])
+        self.assertNotIn("Imaginary Resort", stopped["content"])
+
+    async def test_worker_and_coordinator_claims_use_exact_evidence_chain(self):
+        customer = await self.service.append_event(
+            user_id="u",
+            team_id="claim-chain",
+            kind="customer_message",
+            content="Find a hotel for 2 people with a 3 million VND budget",
+            source_session_id="leader-session",
+        )
+        tool = await self.service.append_event(
+            user_id="u",
+            team_id="claim-chain",
+            task_id=customer.task_id,
+            kind="external_event",
+            content="Verified Hotel costs 1500000 VND and is available",
+            source_session_id="provider-session",
+        )
+        provider_receipt = await self.service.coordinate_handoff(
+            user_id="u",
+            team_id="claim-chain",
+            task_id=customer.task_id,
+            sender="provider-session",
+            recipients=("leader-session",),
+            owner="leader-session",
+            handoff_id="provider-report",
+            kind="result",
+            content="Verified Hotel costs 1,500,000 VND and is available",
+        )
+        self.assertEqual("review", provider_receipt["status"])
+        provider = await self.service.append_event(
+            user_id="u",
+            team_id="claim-chain",
+            task_id=customer.task_id,
+            event_id="provider-report",
+            kind="result",
+            content="Verified Hotel costs 1,500,000 VND and is available",
+            source_session_id="provider-session",
+            reference_event_ids=(tool.id,),
+        )
+        coordinator = await self.service.coordinate_handoff(
+            user_id="u",
+            team_id="claim-chain",
+            task_id=customer.task_id,
+            sender="planner-session",
+            recipients=("leader-session",),
+            owner="leader-session",
+            handoff_id="planner-report",
+            kind="result",
+            content="Choose Verified Hotel at 1,500,000 VND for 2 people",
+            references=(provider.id,),
+        )
+        self.assertEqual([provider.id], coordinator["reference_event_ids"])
+
+        with self.assertRaisesRegex(ValueError, "name:imaginary cafe"):
+            await self.service.coordinate_handoff(
+                user_id="u",
+                team_id="claim-chain",
+                task_id=customer.task_id,
+                sender="planner-session-2",
+                recipients=("leader-session",),
+                owner="leader-session",
+                handoff_id="planner-hallucination",
+                kind="result",
+                content=(
+                    "Choose Verified Hotel at 1,500,000 VND and visit "
+                    "Imaginary Cafe"
+                ),
+                references=(provider.id,),
+            )
+
+    async def test_latest_worker_result_supersedes_older_packet_snapshot(self):
+        customer = await self.service.append_event(
+            user_id="u",
+            team_id="result-snapshot",
+            kind="customer_message",
+            content="Compare current options",
+        )
+        for event_id, content in (
+            ("old-result", "Old complete result"),
+            ("new-result", "New complete result"),
+        ):
+            await self.service.append_event(
+                user_id="u",
+                team_id="result-snapshot",
+                task_id=customer.task_id,
+                event_id=event_id,
+                kind="result",
+                content=content,
+                source_session_id="worker-session",
+            )
+
+        record = await self.storage.get_team_shared_context("u", "result-snapshot")
+        outputs = [item for item in record.state.items if item.kind == "output"]
+        self.assertEqual(["superseded", "active"], [item.status for item in outputs])
+        packet, _ = await self.service.prepare_packet(
+            model=self.model,  # type: ignore[arg-type]
+            user_id="u",
+            team_id="result-snapshot",
+        )
+        self.assertIn("New complete result", packet)
+        self.assertNotIn("Old complete result", packet)
+
+    async def test_verified_worker_report_projects_covered_raw_tool_payload(self):
+        customer = await self.service.append_event(
+            user_id="u",
+            team_id="reported-tool-fact",
+            kind="customer_message",
+            content="Find a verified option",
+        )
+        await self.service.append_event(
+            user_id="u",
+            team_id="reported-tool-fact",
+            task_id=customer.task_id,
+            event_id="tool-event",
+            kind="external_event",
+            source_session_id="worker-session",
+            content=json.dumps(
+                {
+                    "state": "success",
+                    "tool_call": {
+                        "name": "mcp__demo__search",
+                        "input": "{}",
+                    },
+                    "tool_result": {
+                        "output": [
+                            {
+                                "type": "text",
+                                "text": json.dumps(
+                                    {
+                                        "name": "Verified Place",
+                                        "secret_detail": "raw-only-value",
+                                    }
+                                ),
+                            }
+                        ]
+                    },
+                }
+            ),
+        )
+        await self.service.append_event(
+            user_id="u",
+            team_id="reported-tool-fact",
+            task_id=customer.task_id,
+            event_id="worker-result",
+            kind="result",
+            source_session_id="worker-session",
+            content="Verified Place is available.",
+        )
+
+        packet, _ = await self.service.prepare_packet(
+            model=self.model,  # type: ignore[arg-type]
+            user_id="u",
+            team_id="reported-tool-fact",
+        )
+        self.assertIn("Verified Place is available", packet)
+        self.assertNotIn("raw-only-value", packet)
 
     async def test_summary_retry_receives_source_error_and_scoped_schema(self) -> None:
         prompts = []
@@ -205,6 +740,88 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         ]
         with self.assertRaisesRegex(SharedContextSummaryError, "missing=.*event:2"):
             await self.service._summarize(Model(), None, events)
+
+    async def test_summary_may_omit_transient_internal_question(self) -> None:
+        class Model(_MeasuredModel):
+            async def generate_structured_output(model, **kwargs):
+                del kwargs
+                return SimpleNamespace(
+                    content={
+                        "processed": [
+                            {
+                                "text": "Customer requirement preserved",
+                                "source_event_ids": ["event:1"],
+                            }
+                        ]
+                    }
+                )
+
+        events = [
+            SharedContextEvent(
+                id="customer",
+                revision=1,
+                task_id="task",
+                kind="customer_message",
+                content="Plan the trip",
+            ),
+            SharedContextEvent(
+                id="peer-question",
+                revision=2,
+                task_id="task",
+                kind="question",
+                content="Provide the hotel price",
+            ),
+        ]
+
+        text, _input, _output, attempts, calls = await self.service._summarize(
+            Model(), None, events
+        )
+
+        self.assertIn("customer", text)
+        self.assertNotIn("peer-question", text)
+        self.assertEqual((attempts, calls), (1, 1))
+
+    async def test_summary_may_omit_raw_tool_event_kept_as_authoritative_fact(
+        self,
+    ) -> None:
+        class Model(_MeasuredModel):
+            async def generate_structured_output(model, **kwargs):
+                del kwargs
+                return SimpleNamespace(
+                    content={
+                        "processed": [
+                            {
+                                "text": "Customer requirement preserved",
+                                "source_event_ids": ["event:1"],
+                            }
+                        ]
+                    }
+                )
+
+        events = [
+            SharedContextEvent(
+                id="customer",
+                revision=1,
+                task_id="task",
+                kind="customer_message",
+                content="Find a verified option",
+            ),
+            SharedContextEvent(
+                id="provider-call",
+                revision=2,
+                task_id="task",
+                kind="external_event",
+                content="Raw provider envelope retained in authoritative state",
+            ),
+        ]
+
+        text, _input, _output, attempts, calls = await self.service._summarize(
+            Model(), None, events
+        )
+
+        self.assertIn("customer", text)
+        self.assertNotIn("provider-call", text)
+        self.assertEqual((attempts, calls), (1, 1))
 
     def test_legacy_single_summary_migrates_to_active_task(self) -> None:
         record = TeamSharedContextRecord.model_validate(
@@ -558,16 +1175,21 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             model=InterleavedModel(), user_id="u", team_id="ticket-1"
         )
         data = json.loads(packet)
-        self.assertIn(
-            "newest-customer", {event["id"] for event in data["recent_events"]}
+        visible_source_ids = {
+            source_id
+            for item in data["authoritative_state"]["items"]
+            for source_id in item["source_event_ids"]
+        } | {event["id"] for event in data["recent_events"]}
+        self.assertIn("newest-customer", visible_source_ids)
+        record = await self.storage.get_team_shared_context("u", "ticket-1")
+        newest_revision = next(
+            event.revision
+            for event in record.state.events
+            if event.id == "newest-customer"
         )
         self.assertGreaterEqual(
             data["revision"],
-            next(
-                event["revision"]
-                for event in data["recent_events"]
-                if event["id"] == "newest-customer"
-            ),
+            newest_revision,
         )
 
     async def test_summary_with_unverifiable_sources_is_rejected(self) -> None:
@@ -1105,6 +1727,77 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         self.assertEqual(task.status, "running")
         self.assertEqual(task.pending_operation_ids, ())
 
+    async def test_initial_direct_turn_is_measured_without_creating_a_team(self):
+        agent = SimpleNamespace(state=AgentState(session_id="direct-session"))
+        middleware = SharedContextIsolationMiddleware("task", self.service, "u", None)
+        captured = {}
+
+        async def next_handler(**kwargs):
+            captured.update(kwargs)
+            return ChatResponse(content=[], is_last=True)
+
+        messages = [SystemMsg(name="system", content="direct chat")]
+        await middleware.on_model_call(
+            agent,
+            {
+                "messages": messages,
+                "tools": [],
+                "current_model": self.model,
+            },
+            next_handler,
+        )
+        self.assertEqual(captured["messages"], messages)
+        self.assertIsNone(
+            await self.storage.get_team_shared_context("u", "direct-session")
+        )
+
+    async def test_initial_leader_middleware_adopts_team_created_mid_run(self):
+        event = await self.service.append_event(
+            user_id="u",
+            team_id="ticket-1",
+            kind="customer_message",
+            content="Plan a verified trip",
+        )
+        self.storage.sessions[("u", "leader-session")] = SimpleNamespace(
+            team_id="ticket-1",
+        )
+        agent = SimpleNamespace(
+            state=AgentState(session_id="leader-session"),
+            name="Leader",
+        )
+        captured = {}
+
+        async def next_handler(**kwargs):
+            captured.update(kwargs)
+            return ChatResponse(content=[], is_last=True)
+
+        middleware = SharedContextIsolationMiddleware(
+            "task",
+            self.service,
+            "u",
+            None,
+        )
+        await middleware.on_model_call(
+            agent,
+            {
+                "messages": [SystemMsg(name="system", content="Coordinate")],
+                "tools": [],
+                "current_model": self.model,
+            },
+            next_handler,
+        )
+
+        system_text = captured["messages"][0].get_text_content() or ""
+        self.assertIn("Plan a verified trip", system_text)
+        self.assertEqual(
+            event.revision,
+            await self.service.session_revision(
+                "leader-session",
+                team_id="ticket-1",
+                task_id=event.task_id,
+            ),
+        )
+
     async def test_model_call_is_measured_after_isolation_filter(self) -> None:
         state = AgentState(session_id="session-b")
         state.reply_id = "current-reply"
@@ -1120,12 +1813,12 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             content="isolated handoff",
         )
         state.context.append(current_input)
-        agent = SimpleNamespace(state=state)
+        agent = SimpleNamespace(state=state, name="worker")
         captured: dict = {}
 
         async def next_handler(**kwargs: object) -> object:
             captured.update(kwargs)
-            return object()
+            return ChatResponse(content=[], is_last=True)
 
         middleware = SharedContextIsolationMiddleware(
             "isolated",
@@ -1158,6 +1851,16 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         record = await self.storage.get_team_shared_context("u", "ticket-1")
         self.assertEqual(record.state.metrics.model_calls_measured, 1)
         self.assertGreater(record.state.metrics.last_total_prompt_tokens, 0)
+        self.assertEqual(
+            record.state.metrics.total_measured_prompt_tokens,
+            record.state.metrics.last_total_prompt_tokens,
+        )
+        self.assertEqual(
+            record.state.metrics.last_total_prompt_tokens,
+            record.state.metrics.last_tool_schema_tokens
+            + record.state.metrics.last_system_prompt_tokens
+            + record.state.metrics.last_conversation_tokens,
+        )
         self.assertGreater(record.state.metrics.last_reserved_output_tokens, 0)
         self.assertEqual(
             record.state.metrics.last_preflight_margin_tokens,
@@ -1179,12 +1882,12 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         live_message.content.append(handoff)
         state = AgentState(session_id="session-b", context=[live_message])
         state.reply_id = "new-reply"
-        agent = SimpleNamespace(state=state)
+        agent = SimpleNamespace(state=state, name="worker")
         captured: dict = {}
 
         async def next_handler(**kwargs: object) -> object:
             captured.update(kwargs)
-            return object()
+            return ChatResponse(content=[], is_last=True)
 
         middleware = SharedContextIsolationMiddleware(
             "isolated",
@@ -1217,7 +1920,7 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         model.context_size = 20
         state = AgentState(session_id="session-b")
         state.reply_id = "current-reply"
-        agent = SimpleNamespace(state=state)
+        agent = SimpleNamespace(state=state, name="worker")
         middleware = SharedContextIsolationMiddleware(
             "task",
             self.service,
@@ -1248,12 +1951,12 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         state = AgentState(session_id="session-b")
         current = UserMsg(id="current-input", name="user", content="continue")
         state.context = [current]
-        agent = SimpleNamespace(state=state)
+        agent = SimpleNamespace(state=state, name="worker")
         captured: dict = {}
 
         async def next_handler(**kwargs: object) -> object:
             captured.update(kwargs)
-            return object()
+            return ChatResponse(content=[], is_last=True)
 
         middleware = SharedContextIsolationMiddleware(
             "task",

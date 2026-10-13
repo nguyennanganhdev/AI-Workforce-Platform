@@ -6,7 +6,9 @@ binding checks; it deliberately contains no test fallback and no provider call.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -17,6 +19,7 @@ from pydantic import Field
 from ..._workforce_policy import (
     BUSINESS_AGENT_EVIDENCE_POLICY,
     WORKFORCE_LEADER_PROMPT,
+    conversation_policy,
 )
 from ..contracts import (
     ActorContext,
@@ -254,32 +257,103 @@ class SqlRuntimeContinuation:
             shared_context_revision=shared_context_revision,
             shared_context_tokens=shared_context_tokens,
             shared_context=shared_context,
-            leader_system_prompt=WORKFORCE_LEADER_PROMPT,
-            business_agent_evidence_policy=BUSINESS_AGENT_EVIDENCE_POLICY,
+            leader_system_prompt=WORKFORCE_LEADER_PROMPT
+            + conversation_policy(
+                "partner_api",
+                aggregate.workflow.conversation_id,
+                external_ticket_id=aggregate.workflow.audience.external_ticket_id,
+            ),
+            business_agent_evidence_policy=BUSINESS_AGENT_EVIDENCE_POLICY
+            + conversation_policy(
+                "partner_api",
+                aggregate.workflow.conversation_id,
+                external_ticket_id=aggregate.workflow.audience.external_ticket_id,
+            ),
         )
 
     async def invoke_turn(self, scope, trigger, checkpoint, execution_guard):
         context = PinnedRuntimeContext.model_validate(raw_value(checkpoint))
+        audience_policy = conversation_policy(
+            "partner_api",
+            context.workflow.conversation_id,
+            external_ticket_id=context.workflow.audience.external_ticket_id,
+        )
         # The host-provided runner receives server-owned policies on every
         # partner continuation. Persisted agent/version prompts can therefore
         # never silently restore an older or weaker runtime policy.
         context = context.model_copy(
             update={
-                "leader_system_prompt": WORKFORCE_LEADER_PROMPT,
-                "business_agent_evidence_policy": (BUSINESS_AGENT_EVIDENCE_POLICY),
+                "leader_system_prompt": WORKFORCE_LEADER_PROMPT + audience_policy,
+                "business_agent_evidence_policy": BUSINESS_AGENT_EVIDENCE_POLICY
+                + audience_policy,
             },
         )
-        decision = TurnDecision.model_validate(
-            raw_value(
-                await self._leader.invoke_turn(
-                    Scope.model_validate(scope),
-                    dict(trigger),
-                    context,
-                    execution_guard,
+        scope = Scope.model_validate(scope)
+        if scope != context.workflow.scope:
+            raise PermissionError("runtime scope differs from pinned workflow")
+
+        async def invoke():
+            return TurnDecision.model_validate(
+                raw_value(
+                    await self._leader.invoke_turn(
+                        scope,
+                        dict(trigger),
+                        context,
+                        execution_guard,
+                    )
                 )
             )
+
+        if self._shared_context is None:
+            return await invoke()
+        # Aggregate host-run usage is separate from per-agent counters when
+        # the injected engine also uses the common chat middleware.
+        session = "workflow-turn:" + context.checkpoint.session_refs[0]
+        remaining, epoch = await self._shared_context.measure_collaboration(
+            scope.manager_account_id,
+            context.workflow.group_id,
+            session,
+            model_call=1,
+            task_id=context.workflow.workflow_id,
         )
-        return decision
+        started = time.monotonic()
+        decision = None
+        try:
+            async with asyncio.timeout(remaining):
+                decision = await invoke()
+            return decision
+        finally:
+            tokens = calls = 0
+            if decision is not None:
+                previous = context.checkpoint.used_budget
+                measured = decision.candidate.checkpoint.used_budget
+                if any(
+                    getattr(measured, field) < getattr(previous, field)
+                    for field in (
+                        "model_turns",
+                        "tool_calls",
+                        "input_tokens",
+                        "output_tokens",
+                    )
+                ):
+                    raise ValueError("runtime usage cannot decrease")
+                tokens = (
+                    measured.input_tokens
+                    + measured.output_tokens
+                    - previous.input_tokens
+                    - previous.output_tokens
+                )
+                calls = max(0, measured.model_turns - previous.model_turns - 1)
+            await self._shared_context.measure_collaboration(
+                scope.manager_account_id,
+                context.workflow.group_id,
+                session,
+                tokens=tokens,
+                model_call=calls,
+                active_seconds=time.monotonic() - started,
+                customer_revision=epoch,
+                task_id=context.workflow.workflow_id,
+            )
 
 
 class WorkflowContinuationJobHandler:

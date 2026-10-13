@@ -197,6 +197,29 @@ class _StubTool(ToolBase):
 class TestGetToolkitBaseAssembly(IsolatedAsyncioTestCase):
     """User-owned agent (``source="user"``) gets the full set."""
 
+    async def test_workforce_runtime_omits_unrelated_coding_and_task_tools(self):
+        for leader in (False, True):
+            agent = _make_agent()
+            agent.data.system_role = "leader" if leader else "business"
+            if not leader:
+                agent.data.tool_bindings = [{"mcp_id": "m", "tool_name": "lookup"}]
+            storage = _NoOpStorage()
+            toolkit = await get_toolkit(
+                storage=storage, workspace=_FakeWorkspace(tools=[_StubTool()]),
+                workspace_manager=FakeWorkspaceManager(),
+                scheduler_manager=SchedulerManager(storage=storage, message_bus=_NullBus(),
+                                                   workspace_manager=FakeWorkspaceManager()),
+                background_task_manager=BackgroundTaskManager(message_bus=_NullBus()),
+                message_bus=_NullBus(), user_id="u", agent_record=agent,
+                session_record=_make_session(user_id="u", agent_id=agent.id, with_model=True),
+                middlewares=[], resource_access_service=_make_access(storage),
+                team_role=None if leader else "worker",
+            )
+            names = set(_tool_names(toolkit))
+            self.assertTrue(names.isdisjoint({"stub", "TaskCreate", "TaskUpdate", "ScheduleCreate", "ToolStop"}))
+            self.assertIn("TeamSay", names)
+            self.assertNotIn("AgentCreate", names)
+
     async def test_user_agent_gets_all_sources(self) -> None:
         """A user-owned agent receives workspace, planning, scheduling,
         ToolStop, and the leader-side team tools."""

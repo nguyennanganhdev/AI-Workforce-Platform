@@ -352,18 +352,20 @@ class WakeupDispatcher:
             )
             return
 
+        run_coro = self._chat_service.run(
+            user_id=user_id,
+            session_id=session_id,
+            agent_id=agent_id,
+            input_msg=input_msg,
+        )
         try:
             self._registry.spawn(
-                self._chat_service.run(
-                    user_id=user_id,
-                    session_id=session_id,
-                    agent_id=agent_id,
-                    input_msg=input_msg,
-                ),
+                run_coro,
                 session_id=session_id,
                 name=f"{kind}-run:{session_id}",
             )
         except RuntimeError:
+            run_coro.close()
             # A local run was registered between the running-check and
             # the spawn. Re-queue so neither the carried input nor a
             # queued inbox payload is stranded — that run may already be

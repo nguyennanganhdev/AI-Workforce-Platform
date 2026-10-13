@@ -51,6 +51,13 @@ def _httpx_status_error(code: int) -> httpx.HTTPStatusError:
 class ClassifyErrorTest(unittest.TestCase):
     """Tests for the reply-error classifier."""
 
+    def test_context_budget_is_not_misreported_as_agent_setup(self):
+        from agentscope.app._shared_context import SharedContextBudgetError
+        from agentscope.app._service._errors import _classify_setup_error
+        info = _classify_setup_error(SharedContextBudgetError("private raw context"))
+        self.assertEqual(info.type, ErrorType.CONTEXT_BUDGET)
+        self.assertNotIn("private raw context", info.message)
+
     def test_status_code_mapping(self) -> None:
         """HTTP status maps to the right ErrorType from every source
         (exception ``status_code``, httpx ``response``, aiohttp

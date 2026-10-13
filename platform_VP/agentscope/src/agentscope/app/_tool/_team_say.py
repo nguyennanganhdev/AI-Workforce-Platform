@@ -9,7 +9,12 @@ from pydantic import Field
 from ...message import HintBlock, TextBlock, ToolResultState
 from ...tool import ParamsBase, ToolChunk
 from .._bus_ops import deliver_to_inbox
-from .._shared_context import ContextDirective, SharedContextService
+from .._shared_context import (
+    CollaborationStoppedError,
+    ContextDirective,
+    SharedContextConcurrencyError,
+    SharedContextService,
+)
 from .._team_turn import (
     get_team_turn,
     register_user_input_request,
@@ -26,10 +31,25 @@ from ..storage._utils import _ensure_team_members, _resolve_team_leader
 from ._constants import HANDLE_LEN
 from ._team_tool_base import _TeamToolBase
 
-
 STALE_CONTEXT_RESULT = (
     "TeamSay: result stored for audit but not shared because the customer "
     "changed the task after this agent loaded context."
+)
+
+_PROGRESS_ONLY_MARKERS = (
+    "đang tìm",
+    "đang tra cứu",
+    "đang tiến hành",
+    "đang trong quá trình",
+    "sẽ tiếp tục",
+    "sẽ cập nhật",
+    "vui lòng chờ",
+    "i am searching",
+    "i'm searching",
+    "working on",
+    "will continue",
+    "will update",
+    "please wait",
 )
 
 
@@ -57,6 +77,8 @@ class _TeamSayParams(ParamsBase):
         "result",
         "progress",
         "requires_user_input",
+        "user_input_proposal",
+        "conflict",
         "error",
     ] = Field(
         default="result",
@@ -116,6 +138,10 @@ class _TeamSayParams(ParamsBase):
             "Stable semantic key for requires_user_input, for example "
             "missing:travel_dates. Required for that kind."
         ),
+    )
+    resolution: Literal["complete", "stop", "verify"] | None = Field(
+        default=None,
+        description="Reply owner only: resolve the assignment addressed by to. complete requires current result and MCP evidence ids; stop reports incomplete; verify permits at most two checks. Never closes the ticket.",
     )
 
 
@@ -204,6 +230,12 @@ class TeamSay(_TeamToolBase):
     is_read_only: bool = True
 
     input_schema: dict = _TeamSayParams.model_json_schema()
+    # Ticket lifecycle belongs to the workflow/customer API. Keep the field
+    # on ContextDelta for other callers, but do not advertise it as a TeamSay
+    # argument an LLM may control.
+    input_schema.get("$defs", {}).get("ContextDelta", {}).get(
+        "properties", {}
+    ).pop("status", None)
 
     def __init__(
         self,
@@ -239,6 +271,8 @@ class TeamSay(_TeamToolBase):
             "result",
             "progress",
             "requires_user_input",
+            "user_input_proposal",
+            "conflict",
             "error",
         ] = "result",
         task_id: str | None = None,
@@ -252,6 +286,7 @@ class TeamSay(_TeamToolBase):
         artifact_refs: tuple[str, ...] = (),
         hop_count: int = 1,
         question_key: str | None = None,
+        resolution: Literal["complete", "stop", "verify"] | None = None,
     ) -> ToolChunk:
         """Deliver the message directly via storage + message bus.
 
@@ -275,7 +310,10 @@ class TeamSay(_TeamToolBase):
                 A confirmation containing the recipient count, or an
                 error chunk on failure.
         """
+        intent = None
         try:
+            if context_delta is not None:
+                context_delta = ContextDelta.model_validate(context_delta)
             team = await self._require_team()
             shared_context = self._shared_context or SharedContextService(
                 self._storage,
@@ -387,14 +425,54 @@ class TeamSay(_TeamToolBase):
                 storage=shared_context.storage,
                 user_id=self._user_id,
             )
-            effective_task_id = task_id or (turn.task_id if turn else None)
-            if effective_task_id is None and not (
-                context_mode == "isolated" and effective_scope == "caller"
+            if (
+                self._session_id == leader.session_id
+                and leader.agent.data.system_role == "leader"
+                and kind in {"result", "answer"}
             ):
-                effective_task_id = await shared_context.active_task_id(
+                completed, _, _, _ = await shared_context.team_evidence_status(
                     self._user_id,
                     team.id,
+                    leader_session_id=leader.session_id,
                 )
+                if not completed:
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text=(
+                                    "TeamSay: no current worker report supports a Leader result. "
+                                    "Do not invent status, prices or ETAs. Delegate with kind=handoff, "
+                                    "or ask for missing information with kind=requires_user_input."
+                                )
+                            )
+                        ],
+                        state=ToolResultState.ERROR,
+                    )
+            effective_task_id = task_id or (turn.task_id if turn else None)
+            active_task = await shared_context.active_task_id(self._user_id, team.id)
+            if effective_task_id is not None:
+                task_snapshot = await shared_context.storage.get_team_shared_context(
+                    self._user_id, team.id
+                )
+                if effective_task_id not in task_snapshot.state.tasks:
+                    raise ValueError(
+                        "task_id must be assigned by the runtime, not invented by an agent"
+                    )
+                if (
+                    self._role == "worker"
+                    and effective_task_id
+                    not in {active_task, turn.task_id if turn else None}
+                    and await shared_context.session_revision(
+                        self._session_id, team_id=team.id, task_id=effective_task_id
+                    )
+                    is None
+                ):
+                    raise ValueError("task_id is not pinned for this worker")
+            effective_task_id = await shared_context.active_task_id(
+                self._user_id,
+                team.id,
+                requested_task_id=effective_task_id,
+            )
             based_on_revision = await shared_context.session_revision(
                 self._session_id,
                 team_id=team.id,
@@ -410,6 +488,7 @@ class TeamSay(_TeamToolBase):
                     effective_task_id,
                     in_reply_to,
                     thread_id,
+                    recipient_session_id=self._session_id,
                 )
             except ValueError as exc:
                 return ToolChunk(
@@ -439,6 +518,7 @@ class TeamSay(_TeamToolBase):
                         "artifact_refs": artifact_refs,
                         "hop_count": hop_count,
                         "question_key": question_key,
+                        "resolution": resolution,
                         "context_delta": (
                             context_delta.model_dump(mode="json")
                             if context_delta
@@ -464,6 +544,46 @@ class TeamSay(_TeamToolBase):
                     ),
                     leader.name,
                 )
+
+            # Workers propose; only the current customer-facing owner can
+            # approve a question and freeze the group awaiting user input.
+            proposal = (
+                kind in {"requires_user_input", "user_input_proposal"}
+                and not is_reply_owner
+            )
+            if proposal:
+                if to != reply_owner_name:
+                    return ToolChunk(
+                        content=[
+                            TextBlock(
+                                text="Send the proposed user question to the reply owner for review."
+                            )
+                        ],
+                        state=ToolResultState.ERROR,
+                    )
+                kind = "user_input_proposal"
+            if kind == "conflict" and not is_reply_owner and to != reply_owner_name:
+                raise ValueError(
+                    "Conflicting evidence must be sent to the reply owner for review"
+                )
+            if context_delta is not None and context_delta.status is not None:
+                # A stale model/schema may still submit this server-owned
+                # field. Ignore only the lifecycle mutation and preserve the
+                # actual handoff instead of dropping the collaboration message.
+                context_delta = context_delta.model_copy(update={"status": None})
+            normalized_content = " ".join(content.casefold().split())
+            if (
+                self._role == "worker"
+                and kind in {"result", "answer"}
+                and any(
+                    marker in normalized_content
+                    for marker in _PROGRESS_ONLY_MARKERS
+                )
+            ):
+                # A future-tense promise is not completion evidence. Preserve
+                # it as optional progress and force the worker middleware to
+                # continue until it sends a concrete result/question/error.
+                kind = "progress"
 
             if kind == "requires_user_input" and is_reply_owner:
                 turn, duplicate, _first = await register_user_input_request(
@@ -628,7 +748,10 @@ class TeamSay(_TeamToolBase):
                 self._agent_id,
             )
 
-            wake = not (turn is not None and turn.status == "awaiting_user_input")
+            wake = not (
+                kind == "progress"
+                or (turn is not None and turn.status == "awaiting_user_input")
+            )
             if kind == "requires_user_input":
                 turn, duplicate, first_question = await register_user_input_request(
                     self._message_bus,
@@ -657,6 +780,93 @@ class TeamSay(_TeamToolBase):
                 wake = first_question and turn.status == "running"
 
             handoff_id = _handoff_id()
+            # Journal before changing dependencies. The existing dispatcher
+            # replays this intent after a crash between reservation and delivery.
+            intent_id = hashlib.sha256(f"{handoff_id}\0intent".encode()).hexdigest()
+            intent = await shared_context.storage.get_team_handoff(
+                self._user_id, intent_id
+            )
+            if intent is None:
+                snapshot = await shared_context.storage.get_team_shared_context(
+                    self._user_id, team.id
+                )
+                intent = TeamHandoffRecord(
+                    id=intent_id,
+                    user_id=self._user_id,
+                    team_id=team.id,
+                    handoff_id=f"intent:{handoff_id}",
+                    task_id=effective_task_id,
+                    kind=kind,
+                    source_agent_id=self._agent_id,
+                    source_session_id=self._session_id,
+                    recipient_agent_id=self._agent_id,
+                    recipient_session_id=self._session_id,
+                    idempotency_key=handoff_id,
+                    payload={
+                        "collaboration_intent": {
+                            "role": self._role,
+                            "customer_revision": snapshot.state.tasks[
+                                effective_task_id
+                            ].latest_customer_revision,
+                            "arguments": {
+                                "content": content,
+                                "to": to,
+                                "kind": kind,
+                                "task_id": effective_task_id,
+                                "context_mode": context_mode,
+                                "result_scope": effective_scope,
+                                "reference_event_ids": reference_event_ids,
+                                "context_delta": context_delta.model_dump(mode="json")
+                                if context_delta
+                                else None,
+                                "idempotency_key": handoff_id,
+                                "thread_id": thread_id,
+                                "in_reply_to": in_reply_to,
+                                "artifact_refs": artifact_refs,
+                                "question_key": question_key,
+                                "resolution": resolution,
+                            },
+                        }
+                    },
+                )
+                await shared_context.persist_handoff(intent)
+            coordination = await shared_context.coordinate_handoff(
+                user_id=self._user_id,
+                team_id=team.id,
+                task_id=effective_task_id,
+                sender=self._session_id,
+                recipients=tuple(sid for sid, _ in recipients),
+                owner=turn.reply_owner_session_id if turn else leader.session_id,
+                handoff_id=handoff_id,
+                kind=kind,
+                content=content,
+                in_reply_to=in_reply_to,
+                references=reference_event_ids,
+                resolution=resolution,
+                based_on_revision=based_on_revision,
+                share_report=effective_scope == "shared",
+                # A direct peer answer already wakes its requester and remains
+                # durable in Shared Context. Sending the same answer to the
+                # Leader inbox duplicates model work before the coordinator's
+                # final result arrives.
+                notify_owner=not (
+                    kind == "answer"
+                    and in_reply_to is not None
+                    and self._session_id != leader.session_id
+                ),
+            )
+            kind, content = coordination["kind"], coordination["content"]
+            # The server records which peer reports released this worker's
+            # dependencies. Carry that lineage into a synthesized result so
+            # evidence validation does not depend on an LLM reproducing opaque
+            # event IDs from shared context.
+            reference_event_ids = tuple(
+                coordination.get("reference_event_ids", reference_event_ids),
+            )
+            members_by_session = {sid: aid for sid, aid in directory.values()}
+            recipients = [
+                (sid, members_by_session[sid]) for sid in coordination["recipients"]
+            ]
             shared_event = None
             if effective_scope == "shared":
                 shared_event = await shared_context.append_event(
@@ -724,6 +934,8 @@ class TeamSay(_TeamToolBase):
             hint = HintBlock(
                 hint=(
                     f'<team-message from="{sender_name}" kind="{kind}">\n'
+                    f"handoff_id={handoff_id}; task_id={effective_task_id}; reply using in_reply_to={handoff_id}\n"
+                    f"reference_event_ids={json.dumps(directive_refs)}\n"
                     f"{content}\n"
                     f"</team-message>"
                 ),
@@ -854,6 +1066,7 @@ class TeamSay(_TeamToolBase):
                         ttl_secs=(MessageBusKeys.TEAM_HANDOFF_DELIVERY_TTL_SECS),
                     )
                     count += 1
+            await shared_context.mark_handoff(intent, "consumed")
             target = "broadcast" if to is None else f"member {to!r}"
             return ToolChunk(
                 content=[
@@ -861,9 +1074,26 @@ class TeamSay(_TeamToolBase):
                         text=(f"Delivered to {count} recipient(s) ({target})."),
                     ),
                 ],
+                metadata={
+                    "handoff_id": handoff_id,
+                    "kind": kind,
+                    "collaboration_status": coordination["status"],
+                },
             )
         except Exception as e:  # noqa: BLE001 - tool returns structured error
             return ToolChunk(
                 content=[TextBlock(text=f"TeamSay failed: {e}")],
                 state=ToolResultState.ERROR,
+                metadata={
+                    "retryable": not isinstance(
+                        e,
+                        (
+                            ValueError,
+                            CollaborationStoppedError,
+                            SharedContextConcurrencyError,
+                        ),
+                    )
+                }
+                if intent is not None
+                else {},
             )

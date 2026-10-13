@@ -289,6 +289,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             HandoffDispatcher(
                 message_bus=message_bus,
                 storage=shared_context_storage,
+                team_storage=storage,
             ),
         )
         await stack.enter_async_context(

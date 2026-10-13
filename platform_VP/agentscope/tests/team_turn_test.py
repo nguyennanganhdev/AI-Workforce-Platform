@@ -107,7 +107,7 @@ class TeamTurnTest(IsolatedAsyncioTestCase):
         self.assertEqual(state.pending_questions, [])
         self.assertEqual(state.task_id, "hotel-task")
 
-    async def test_no_question_does_not_pause_the_team(self) -> None:
+    async def test_completed_customer_reply_pauses_until_next_turn(self) -> None:
         await start_team_turn(
             self.bus,
             "team",
@@ -116,13 +116,14 @@ class TeamTurnTest(IsolatedAsyncioTestCase):
             customer_session_id="leader-session",
             mode="leader",
         )
-        self.assertFalse(
+        self.assertTrue(
             await mark_team_awaiting_user(
                 self.bus,
                 "team",
                 session_id="leader-session",
             ),
         )
+        self.assertTrue(await team_is_awaiting_user(self.bus, "team"))
 
     async def test_pending_question_binds_followup_to_its_task(self) -> None:
         await start_team_turn(

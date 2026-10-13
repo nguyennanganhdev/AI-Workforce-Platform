@@ -3,6 +3,8 @@
 within a team."""
 
 import json
+from collections import Counter
+from collections.abc import Awaitable
 from typing import AsyncGenerator, Callable
 
 from ..._utils._common import _json_loads_with_repair
@@ -16,6 +18,7 @@ from ...message import (
     ToolResultState,
 )
 from ...middleware import MiddlewareBase
+from ...tool import ToolChoice, ToolResponse
 from ...types import ErrorInfo, ErrorType, ReplyFinishedReason
 from .._tool._team_say import STALE_CONTEXT_RESULT
 
@@ -34,7 +37,12 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
     error path instead of looping under the session lock forever.
     """
 
-    def __init__(self, leader_name: str, max_nudges: int = 3) -> None:
+    def __init__(
+        self,
+        leader_name: str,
+        max_nudges: int = 3,
+        pending_question: Callable[[], Awaitable[str | None]] | None = None,
+    ) -> None:
         """Initialize the middleware.
 
         Args:
@@ -49,6 +57,111 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         super().__init__()
         self._leader_name: str = leader_name
         self._max_nudges: int = max_nudges
+        self._pending_question = pending_question
+        self._paused = False
+
+    @staticmethod
+    def _repeated_calls(agent: "Agent") -> set[tuple[str, str]]:
+        counts: Counter = Counter()
+        for message in agent.state.context:
+            if message.id != agent.state.reply_id or message.role != "assistant":
+                continue
+            results = {
+                b.id: b
+                for b in message.get_content_blocks()
+                if isinstance(b, ToolResultBlock)
+            }
+            for call in message.get_content_blocks():
+                if not isinstance(call, ToolCallBlock) or not (
+                    call.name.startswith("mcp__") or call.name == "Skill"
+                ):
+                    continue
+                result = results.get(call.id)
+                if result is None:
+                    continue
+                try:
+                    args = json.dumps(
+                        json.loads(call.input), sort_keys=True, ensure_ascii=False
+                    )
+                except (ValueError, TypeError):
+                    args = call.input
+                output = (
+                    result.output
+                    if isinstance(result.output, str)
+                    else [
+                        b.model_dump(
+                            mode="json", exclude={"id", "created_at", "finished_at"}
+                        )
+                        for b in result.output
+                    ]
+                )
+                counts[
+                    (call.name, args, result.state, json.dumps(output, sort_keys=True))
+                ] += 1
+        return {
+            (name, args) for (name, args, _, _), count in counts.items() if count >= 3
+        }
+
+    async def on_reasoning(self, agent, input_kwargs, next_handler):
+        self._paused = False
+        if self._pending_question and await self._pending_question():
+            self._paused = True
+            # No model call or new tool work while the customer owes an answer.
+            agent.state.append_context(
+                agent.name,
+                [
+                    HintBlock(
+                        hint="Internal assignment paused; wait for its dependency or reply-owner decision. Do not ask the customer for another agent's output."
+                    )
+                ],
+            )
+            yield agent.state.context[-1]
+            return
+        if self._repeated_calls(agent) and not self._last_tool_call_reports_to_leader(
+            agent
+        ):
+            agent.state.append_context(
+                agent.name,
+                [
+                    HintBlock(
+                        hint=(
+                            "Repeated tool calls returned identical results with no progress. "
+                            f"Call TeamSay(to={self._leader_name!r}, kind='requires_user_input' "
+                            "or 'result') now to report the blocker and missing information. "
+                            "Do not retry tools or invent an external identifier/outcome."
+                        ),
+                    )
+                ],
+            )
+            input_kwargs = {**input_kwargs, "tool_choice": ToolChoice(mode="TeamSay")}
+        async for event in next_handler(**input_kwargs):
+            yield event
+
+    async def on_acting(self, agent, input_kwargs, next_handler):
+        call = input_kwargs["tool_call"]
+        paused = bool(self._pending_question and await self._pending_question())
+        try:
+            args = json.dumps(
+                json.loads(call.input), sort_keys=True, ensure_ascii=False
+            )
+        except (ValueError, TypeError):
+            args = call.input
+        if paused or (call.name, args) in self._repeated_calls(agent):
+            yield ToolResponse(
+                content=[
+                    TextBlock(
+                        text=(
+                            "Execution paused: waiting for customer input. No tool was executed."
+                            if paused
+                            else "Repeated unchanged result: stop retrying and report the blocker via TeamSay. No tool was executed."
+                        )
+                    )
+                ],
+                state=ToolResultState.ERROR,
+            )
+            return
+        async for result in next_handler(**input_kwargs):
+            yield result
 
     def _last_tool_call_reports_to_leader(self, agent: "Agent") -> bool:
         """Whether this reply's final tool call successfully reports back.
@@ -96,9 +209,6 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 # Unparsable arguments (e.g. a truncated stream) cannot
                 # have produced a successful report.
                 return False
-            if kwargs.get("to") != self._leader_name:
-                return False
-
             result = next(
                 (
                     block
@@ -108,9 +218,19 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 ),
                 None,
             )
-            return (
-                result is not None and result.state == ToolResultState.SUCCESS
-            )
+            if result is None or result.state != ToolResultState.SUCCESS:
+                return False
+            declared_kind = kwargs.get("kind")
+            kind = result.metadata.get("kind", declared_kind or "result")
+            if kind == "progress" or not kwargs.get("to"):
+                return False
+            if kwargs.get("to") != self._leader_name and declared_kind not in {
+                "question",
+                "answer",
+                "result",
+            }:
+                return False
+            return True
 
         return False
 
@@ -135,8 +255,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 (
                     block
                     for block in blocks
-                    if isinstance(block, ToolResultBlock)
-                    and block.id == call.id
+                    if isinstance(block, ToolResultBlock) and block.id == call.id
                 ),
                 None,
             )
@@ -189,6 +308,9 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 continue
 
             # For the ReplyEndEvent
+            if self._paused:
+                yield evt
+                continue
             if self._last_tool_call_reports_to_leader(agent):
                 # The report has been delivered successfully, so let the
                 # original reply-end event escape the middleware chain.
@@ -253,7 +375,9 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 instruction = (
                     "<system-reminder>You MUST call the tool `TeamSay` "
                     "to report to the reply owner "
-                    f"{self._leader_name!r} to finish your task."
+                    f"{self._leader_name!r} with kind=result/error and evidence to finish your task. "
+                    "If missing another agent's output, use TeamSay(to=that peer, kind=question, content=a specific task) and wait. "
+                    "Progress alone is not a completed assignment. Propose only genuinely customer-owned decisions to the reply owner."
                     "</system-reminder>"
                 )
 

@@ -131,6 +131,8 @@
 			"upstream": "The upstream model service returned an error.",
 			"connection": "Could not reach the model service — network error or timeout.",
 			"internal": "An unexpected internal error occurred.",
+			"context_budget": "The required conversation context exceeds its token budget. No source history was deleted. Review context size and repeated tool calls.",
+			"collaboration_limit": "Internal coordination reached its processing limit. This assignment is incomplete; the conversation remains open.",
 			"setup": "The session could not be prepared — check the agent's model, tools and knowledge bases.",
 			"unknown": "The reply failed with an unknown error."
 		},

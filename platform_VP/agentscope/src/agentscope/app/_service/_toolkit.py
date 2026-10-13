@@ -136,20 +136,20 @@ optional):
 
     tool_groups = []
 
-    # The general tools running in the workspace
-    tools = await workspace.list_tools()
-
-    # Planning tools — always on.
-    tools += [TaskCreate(), TaskList(), TaskGet(), TaskUpdate()]
-
-    # Background-task control.
-    tools += await background_task_manager.list_tools(
-        session_id=session_record.id,
-    )
+    # Builder agents operate through their validated MCP bindings. Coding,
+    # shell/task/cron tools add schemas and encourage unrelated planning loops.
+    is_leader = agent_record.data.system_role == "leader"
+    business_runtime = is_leader or bool(agent_record.data.tool_bindings)
+    tools = [] if business_runtime else await workspace.list_tools()
+    if not business_runtime:
+        tools += [TaskCreate(), TaskList(), TaskGet(), TaskUpdate()]
+        tools += await background_task_manager.list_tools(
+            session_id=session_record.id,
+        )
 
     # Schedule control. Requires a model config on this session because
     # ``ScheduleCreate`` records it into new ``ScheduleRecord`` instances.
-    if session_record.config.chat_model_config is not None:
+    if not business_runtime and session_record.config.chat_model_config is not None:
         # Add schedule tools as a tool group
         tool_groups.append(
             ToolGroup(
@@ -268,10 +268,10 @@ time or interval"
 
     return Toolkit(
         tools=tools,
-        skills_or_loaders=await workspace.list_skills(
+        skills_or_loaders=[] if is_leader else await workspace.list_skills(
             agent_id=agent_record.id,
         ),
-        mcps=await workspace.list_mcps(
+        mcps=[] if is_leader else await workspace.list_mcps(
             agent_id=agent_record.id,
             session_id=session_record.id,
         ),

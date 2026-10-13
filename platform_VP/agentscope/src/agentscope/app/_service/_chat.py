@@ -76,7 +76,7 @@ from .._types import (
     EventProjector,
     SubAgentTemplate,
 )
-from .._workforce_policy import governed_system_prompt
+from .._workforce_policy import conversation_policy, governed_system_prompt
 from ..channel import ChatKind
 from ..message_bus import MessageBus, MessageBusKeys
 from ..middleware import (
@@ -852,6 +852,7 @@ class ChatService:
             turn_state = None
             is_reply_owner = False
             report_target_name: str | None = None
+            team_roster_names: list[str] = []
             customer_output_session_id = session_id
             worker_name: str = agent_id
             shared_input_recorded = False
@@ -1054,6 +1055,29 @@ class ChatService:
                                 except HTTPException:
                                     report_target_name = team_ctx.leader_name
 
+                        roster_leader = await _resolve_team_leader(
+                            self._storage,
+                            user_id,
+                            team,
+                        )
+                        if roster_leader is not None:
+                            team_roster_names.append(roster_leader.name)
+                        for member in await _ensure_team_members(
+                            self._storage,
+                            user_id,
+                            team,
+                        ):
+                            member_agent = await self._storage.get_agent(
+                                member.owner_id,
+                                member.agent_id,
+                            )
+                            if member_agent is None:
+                                continue
+                            name = member_agent.data.name
+                            if member.role == "invited":
+                                name += "@" + member.agent_id[:HANDLE_LEN]
+                            team_roster_names.append(name)
+
                 workspace = await self._workspace_manager.get_workspace(
                     user_id,
                     agent_id,
@@ -1146,6 +1170,9 @@ class ChatService:
                     middlewares.append(
                         TeamMemberLoopMiddleware(
                             leader_name=(report_target_name or team_ctx.leader_name),
+                            pending_question=lambda: self._shared_context.collaboration_pause(
+                                user_id, team_ctx.team_id, session_id, context_task_id,
+                            ),
                         ),
                     )
 
@@ -1365,13 +1392,10 @@ class ChatService:
                         reference_event_ids=reference_event_ids,
                         exclude_event_ids=tuple(msg.id for msg in customer_input_msgs),
                     )
-                    packet_revision = (
-                        json.loads(shared_context_packet).get("revision", 0)
-                        if shared_context_packet
-                        else await self._shared_context.current_revision(
-                            user_id,
-                            team.id,
-                        )
+                    packet_revision = await self._shared_context.latest_event_revision(
+                        user_id,
+                        team.id,
+                        context_task_id,
                     )
                     await self._shared_context.pin_session_revision(
                         session_id,
@@ -1400,8 +1424,23 @@ class ChatService:
                             team.id,
                             session_record.state.context,
                             shared_context_attachment,
+                            task_id=context_task_id,
+                            membership_storage=self._storage,
                         ),
                     )
+
+                if team is None and (
+                    agent_record.data.system_role == "leader"
+                    or agent_record.data.tool_bindings
+                ):
+                    # Measure even the initial turn, before TeamCreate exists.
+                    middlewares.append(SharedContextIsolationMiddleware(
+                        "task",
+                        self._shared_context,
+                        user_id,
+                        None,
+                        membership_storage=self._storage,
+                    ))
 
                 fallback_cfg = session_record.config.fallback_chat_model_config
                 fallback_model = (
@@ -1414,6 +1453,26 @@ class ChatService:
                 # 5. Assemble the Agent.
                 # -------------------------------------------------------------
                 attachment = f"You're within a session (id={session_id})."
+                # Workers inherit the conversation's origin, not TeamOrigin.
+                audience_session = session_record
+                if team is not None and team.session_id != session_id:
+                    audience_session = await self._storage.get_session(
+                        user_id, "", team.session_id,
+                    )
+                    if audience_session is None:
+                        raise ValueError("Team conversation session is missing")
+                source = {
+                    "user": "platform_chat", "channel": "channel",
+                }.get(audience_session.origin.type, "automation")
+                attachment += conversation_policy(source, audience_session.id)
+                if team_roster_names:
+                    attachment += (
+                        " Current team roster (use these exact handles in "
+                        "TeamSay.to): "
+                        + ", ".join(dict.fromkeys(team_roster_names))
+                        + ". Ask the responsible peer directly for an internal "
+                        "dependency; do not ask the customer to relay it."
+                    )
                 if isinstance(team_ctx, _LeaderContext):
                     attachment += (
                         " You are the only customer-facing speaker for this "
@@ -1546,6 +1605,10 @@ class ChatService:
                 # to make: these events share a channel with a live reply's,
                 # so publishing them unserialised would drop a "reply failed"
                 # into the middle of an answer another run is streaming.
+                logger.exception(
+                    "Chat setup failed for session %s, agent %s (%s)",
+                    session_id, agent_id, type(e).__name__,
+                )
                 await self._report_failure(
                     user_id,
                     session_id,
@@ -1954,18 +2017,6 @@ class ChatService:
                                 user_id,
                                 refreshed_session.team_id,
                             )
-                    if team is not None:
-                        live_turn = await get_team_turn(
-                            self._message_bus,
-                            team.id,
-                            storage=self._shared_context.storage,
-                            user_id=user_id,
-                        )
-                        is_reply_owner = (
-                            live_turn is not None
-                            and live_turn.reply_owner_session_id == session_id
-                        )
-
                     # A leader can create the team in this very reply. Seed
                     # its shared context once the team exists so the next
                     # worker starts from the same customer input.
@@ -1980,6 +2031,8 @@ class ChatService:
                                 team.id,
                             )
                         )
+                        if shared_record is not None and context_task_id is None:
+                            context_task_id = shared_record.state.active_task_id
                         existing_event_ids = (
                             {event.id for event in shared_record.state.events}
                             if shared_record is not None
@@ -1992,7 +2045,7 @@ class ChatService:
                                 f"[Customer message {msg.id} contains "
                                 "non-text content; inspect the source message.]"
                             )
-                            await self._shared_context.append_event(
+                            event = await self._shared_context.append_event(
                                 user_id=user_id,
                                 team_id=team.id,
                                 kind="customer_message",
@@ -2009,7 +2062,40 @@ class ChatService:
                                 ),
                                 reply_owner_agent_id=agent_id,
                             )
+                            context_task_id = context_task_id or event.task_id
                         shared_input_recorded = True
+
+                    if team is not None:
+                        live_turn = await get_team_turn(
+                            self._message_bus,
+                            team.id,
+                            storage=self._shared_context.storage,
+                            user_id=user_id,
+                        )
+                        if (
+                            live_turn is None
+                            and team.session_id == session_id
+                            and customer_input_msgs
+                        ):
+                            # The first Leader message can create the team
+                            # after run assembly. Establish its durable turn
+                            # before the reply completes so late workers see
+                            # the same pause barrier as every later turn.
+                            live_turn = await start_team_turn(
+                                self._message_bus,
+                                team.id,
+                                reply_owner_session_id=session_id,
+                                reply_owner_agent_id=agent_id,
+                                customer_session_id=session_id,
+                                mode="leader",
+                                task_id=context_task_id,
+                                storage=self._shared_context.storage,
+                                user_id=user_id,
+                            )
+                        is_reply_owner = (
+                            live_turn is not None
+                            and live_turn.reply_owner_session_id == session_id
+                        )
 
                     # A structured request for customer data ends this team
                     # turn. Finish the in-flight reply, then release the inbox

@@ -228,6 +228,8 @@ async def register_user_input_request(
         )
         if duplicate:
             return state, True, False
+        if state.pending_questions:
+            raise ValueError("One approved customer question is already pending; wait for its answer before asking another")
         first_question = not state.pending_questions
         state.pending_questions.append(normalised)
         state.pending_question_ids.append(
@@ -347,7 +349,6 @@ async def mark_team_awaiting_user(
         if (
             state is None
             or state.reply_owner_session_id != session_id
-            or not state.pending_questions
         ):
             return False
         state.status = "awaiting_user_input"

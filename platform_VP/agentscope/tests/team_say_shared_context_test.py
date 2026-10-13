@@ -1,6 +1,8 @@
 """TeamSay persists shared output before delivering a handoff."""
 
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import patch
 
 from agentscope.agent import ContextConfig, ReActConfig
 from agentscope.app._manager import HandoffDispatcher
@@ -164,7 +166,11 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
         directives = await self.shared.pending_directives("worker-session")
         self.assertEqual(directives[0].mode, "task")
         self.assertEqual(directives[0].task_id, record.state.active_task_id)
-        handoff = next(iter(self.storage.handoffs.values()))
+        handoff = next(
+            h
+            for h in self.storage.handoffs.values()
+            if "collaboration_intent" not in h.payload
+        )
         self.assertEqual(handoff.context_ref, directives[0].context_ref)
         self.assertEqual(handoff.context_revision, directives[0].context_revision)
         self.assertTrue(handoff.context_ref)
@@ -174,6 +180,23 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
         )
         self.assertEqual(len(inbox), 1)
 
+    async def test_system_leader_cannot_seed_unverified_result_into_worker_context(
+        self,
+    ):
+        self.storage.agents["leader"].data.system_role = "leader"
+        result = await self.tool(
+            content="Technician arrives in 30 minutes", to="Worker", kind="result"
+        )
+        self.assertEqual(result.state, "error")
+        self.assertEqual(self.storage.handoffs, {})
+        record = self.storage.context
+        self.assertTrue(record is None or not record.state.events)
+        # Coordination and clarification still work without domain evidence.
+        result = await self.tool(
+            content="Please check the request", to="Worker", kind="handoff"
+        )
+        self.assertNotEqual(result.state, "error")
+
     async def test_isolated_defaults_to_caller_scope(self) -> None:
         result = await self.tool(
             content="Independent calculation",
@@ -182,7 +205,8 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
         )
 
         self.assertNotEqual(result.state, "error")
-        self.assertIsNone(self.storage.context)
+        self.assertEqual(self.storage.context.state.events, [])
+        self.assertEqual(self.storage.context.state.items, [])
         directives = await self.shared.pending_directives("worker-session")
         self.assertEqual(directives[0].mode, "isolated")
 
@@ -198,8 +222,8 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
         record = await self.storage.get_team_shared_context("u", "ticket-1")
         self.assertEqual(len(record.state.events), 1)
         self.assertEqual(len(record.state.items), 1)
-        # Revision 1 is the durable task snapshot; revision 2 is the event.
-        self.assertEqual(record.state.revision, 2)
+        # Task snapshot, collaboration reservation, then the immutable event.
+        self.assertEqual(record.state.revision, 3)
         inbox = await self.bus.queue_drain(
             MessageBusKeys.inbox("worker-session"),
             max_count=10,
@@ -232,6 +256,56 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
         )
         self.assertEqual(1, len(recovered))
 
+    async def test_intent_recovery_uses_primary_team_membership_storage(self):
+        task_id = await self.shared.active_task_id("u", "ticket-1")
+        record = TeamHandoffRecord(
+            id="intent-record",
+            user_id="u",
+            team_id="ticket-1",
+            handoff_id="intent:handoff-1",
+            task_id=task_id,
+            kind="result",
+            source_agent_id="worker",
+            source_session_id="worker-session",
+            recipient_agent_id="worker",
+            recipient_session_id="worker-session",
+            idempotency_key="handoff-1",
+            payload={
+                "collaboration_intent": {
+                    "role": "worker",
+                    "customer_revision": 0,
+                    "arguments": {
+                        "content": "verified result",
+                        "to": "Leader",
+                        "kind": "result",
+                        "task_id": task_id,
+                    },
+                },
+            },
+        )
+        membership_storage = object()
+        captured = {}
+
+        class _RecoveredTeamSay:
+            def __init__(self, *, storage, **_kwargs):
+                captured["storage"] = storage
+
+            async def __call__(self, **_kwargs):
+                return SimpleNamespace(state="success", metadata={}, content=[])
+
+        dispatcher = HandoffDispatcher(
+            self.bus,
+            self.storage,  # type: ignore[arg-type]
+            team_storage=membership_storage,  # type: ignore[arg-type]
+        )
+        with patch(
+            "agentscope.app._manager._handoff_dispatcher.TeamSay",
+            _RecoveredTeamSay,
+        ):
+            await dispatcher._deliver(record)
+
+        self.assertIs(captured["storage"], membership_storage)
+
     async def test_handoff_inherits_the_server_bound_owner_scope(self) -> None:
         await self.shared.bind_scope(
             "u",
@@ -257,6 +331,9 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
         self.assertEqual("workflow-1", record.workflow_id)
 
     async def test_explicit_task_is_used_for_event_and_recipient(self) -> None:
+        await self.shared.active_task_id(
+            "u", "ticket-1", requested_task_id="hotel-task"
+        )
         result = await self.tool(
             content="Only the hotel subtask needs this result",
             to="Worker",

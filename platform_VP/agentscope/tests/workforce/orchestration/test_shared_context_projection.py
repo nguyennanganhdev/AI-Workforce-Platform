@@ -352,14 +352,11 @@ class PartnerSharedContextProjectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(41, context.shared_context_tokens)
         self.assertEqual(workflow.workflow_id, prepared_context.calls[0]["task_id"])
         self.assertEqual(workflow.group_id, context.shared_context["team_id"])
-        self.assertEqual(
-            WORKFORCE_LEADER_PROMPT,
-            context.leader_system_prompt,
-        )
-        self.assertEqual(
-            BUSINESS_AGENT_EVIDENCE_POLICY,
-            context.business_agent_evidence_policy,
-        )
+        self.assertTrue(context.leader_system_prompt.startswith(WORKFORCE_LEADER_PROMPT))
+        self.assertIn('"source": "partner_api"', context.leader_system_prompt)
+        self.assertIn(workflow.conversation_id, context.leader_system_prompt)
+        self.assertTrue(context.business_agent_evidence_policy.startswith(BUSINESS_AGENT_EVIDENCE_POLICY))
+        self.assertIn('"source": "partner_api"', context.business_agent_evidence_policy)
         self.assertEqual(
             workflow.workflow_id,
             context.shared_context["authoritative_state"]["tasks"][0]["id"],

@@ -7,6 +7,7 @@ from ..._logging import logger
 from .._bus_ops import deliver_to_inbox
 from .._shared_context import ContextDirective, SharedContextService
 from .._team_turn import team_is_awaiting_user
+from .._tool._team_say import TeamSay
 from ..message_bus import MessageBus, MessageBusKeys
 from ..storage import StorageBase, TeamHandoffRecord
 
@@ -19,10 +20,12 @@ class HandoffDispatcher:
         message_bus: MessageBus,
         storage: StorageBase,
         *,
+        team_storage: StorageBase | None = None,
         interval_seconds: float = 2.0,
     ) -> None:
         self._bus = message_bus
         self._storage = storage
+        self._team_storage = team_storage or storage
         self._context = SharedContextService(storage, message_bus)
         self._interval = interval_seconds
         self._task: asyncio.Task | None = None
@@ -64,6 +67,45 @@ class HandoffDispatcher:
             await self._deliver(record)
 
     async def _deliver(self, record: TeamHandoffRecord) -> None:
+        if record.delivery_status in {"consumed", "cancelled"}:
+            return
+        intent = record.payload.get("collaboration_intent")
+        if intent is not None:
+            snapshot = await self._storage.get_team_shared_context(
+                record.user_id, record.team_id
+            )
+            task = snapshot.state.tasks.get(record.task_id) if snapshot else None
+            if (
+                task is None
+                or task.latest_customer_revision != intent["customer_revision"]
+            ):
+                await self._context.mark_handoff(record, "cancelled")
+                return
+            tool = TeamSay(
+                storage=self._team_storage,
+                message_bus=self._bus,
+                workspace_manager=None,
+                user_id=record.user_id,
+                session_id=record.source_session_id,
+                agent_id=record.source_agent_id,
+                role=intent["role"],
+                shared_context_service=self._context,
+            )
+            outcome = await tool(**intent["arguments"])
+            if outcome.state == "error":
+                await self._context.mark_handoff(
+                    record,
+                    "failed" if outcome.metadata.get("retryable") else "cancelled",
+                    error=str(outcome.content),
+                )
+            return
+        snapshot = await self._storage.get_team_shared_context(
+            record.user_id, record.team_id
+        )
+        task = snapshot.state.tasks.get(record.task_id) if snapshot else None
+        if task is not None and record.context_revision < task.latest_customer_revision:
+            await self._context.mark_handoff(record, "cancelled")
+            return
         marker_key = MessageBusKeys.team_handoff_delivery(record.handoff_id)
         async with self._bus.acquire_lock(
             MessageBusKeys.team_handoff_delivery_lock(

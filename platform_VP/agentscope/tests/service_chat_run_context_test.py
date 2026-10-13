@@ -10,6 +10,8 @@ from unittest.mock import patch
 from agentscope.agent import ContextConfig, ReActConfig
 from agentscope.app._service import ChatService
 from agentscope.app.message_bus import InMemoryMessageBus
+from agentscope.event import ReplyEndEvent, ReplyStartEvent
+from agentscope.message import UserMsg
 from agentscope.app.storage import (
     AgentData,
     AgentRecord,
@@ -21,6 +23,7 @@ from agentscope.app.storage import (
     TeamSharedContextRecord,
     TeamTurnRecord,
 )
+from agentscope.types import ReplyFinishedReason
 
 
 class _Storage:
@@ -340,4 +343,130 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
             },
         )
         self.assertGreater(shared_storage.reads, 0)
+        self.assertIn('"source": "platform_chat"', equipped_system_prompts[0])
+        self.assertIn(leader_session.id, equipped_system_prompts[0])
+        self.assertIn("person typing here IS the user", equipped_system_prompts[0])
         self.assertEqual(storage.primary_shared_reads, 0)
+
+    async def test_first_leader_reply_creates_and_pauses_durable_turn(
+        self,
+    ) -> None:
+        """A team created mid-reply still gets the first-turn sleep barrier."""
+        user_id = "user-1"
+        leader_agent = AgentRecord(
+            id="agent-l",
+            user_id=user_id,
+            data=AgentData(
+                name="Leader",
+                context_config=ContextConfig(),
+                react_config=ReActConfig(),
+            ),
+        )
+        config = SessionConfig(
+            workspace_id="ws-1",
+            chat_model_config=ChatModelConfig(
+                type="test",
+                credential_id="cred-1",
+                model="m",
+                parameters={},
+            ),
+        )
+        leader_session = SessionRecord(
+            id="session-l",
+            user_id=user_id,
+            agent_id=leader_agent.id,
+            config=config,
+        )
+        team = TeamRecord(
+            id="team-1",
+            user_id=user_id,
+            session_id=leader_session.id,
+            data=TeamData(name="team"),
+        )
+        storage = _Storage(
+            sessions={leader_session.id: leader_session},
+            agents={leader_agent.id: leader_agent},
+            team=team,
+        )
+        shared_storage = _SharedStorage()
+
+        class _Agent:
+            """Create the team during the first Leader reply."""
+
+            def __init__(self, *, state: object, **_: object) -> None:
+                self.state = state
+
+            async def reply_stream(
+                self,
+                inputs: object,
+            ) -> AsyncGenerator[object, None]:
+                del inputs
+                storage.sessions[leader_session.id].team_id = team.id
+                yield ReplyStartEvent(
+                    reply_id="reply-1",
+                    session_id=leader_session.id,
+                    name="Leader",
+                )
+                yield ReplyEndEvent(
+                    reply_id="reply-1",
+                    session_id=leader_session.id,
+                    name="Leader",
+                    finished_reason=ReplyFinishedReason.COMPLETED,
+                )
+
+        async def _get_toolkit(**_: object) -> object:
+            return object()
+
+        class _Model:
+            context_size = 100_000
+
+            async def count_tokens(self, messages: list, tools: object) -> int:
+                del tools
+                return sum(len(msg.get_text_content() or "") for msg in messages)
+
+        async def _get_model(*_: object, **__: object) -> object:
+            return _Model()
+
+        class _Access:
+            async def resolve_agent(self, *_: object) -> AgentRecord:
+                return leader_agent.model_copy(deep=True)
+
+        service = ChatService(
+            storage=storage,
+            workspace_manager=_WorkspaceManager(),
+            scheduler_manager=object(),
+            background_task_manager=object(),
+            message_bus=InMemoryMessageBus(),
+            resource_access_service=_Access(),
+            custom_agent_cls=_Agent,
+            shared_context_storage=shared_storage,  # type: ignore[arg-type]
+        )
+        with (
+            patch(
+                "agentscope.app._service._chat.get_toolkit",
+                new=_get_toolkit,
+            ),
+            patch("agentscope.app._service._chat.get_model", new=_get_model),
+        ):
+            await service._run_impl(
+                user_id,
+                leader_session.id,
+                leader_agent.id,
+                UserMsg("user", "plan my trip"),
+            )
+
+        self.assertIsNotNone(shared_storage.record)
+        self.assertIsNotNone(shared_storage.team_turn)
+        assert shared_storage.record is not None
+        assert shared_storage.team_turn is not None
+        self.assertEqual(shared_storage.team_turn.status, "awaiting_user_input")
+        self.assertEqual(
+            shared_storage.team_turn.task_id,
+            shared_storage.record.state.active_task_id,
+        )
+        customer_events = [
+            event
+            for event in shared_storage.record.state.events
+            if event.kind == "customer_message"
+        ]
+        self.assertEqual(len(customer_events), 1)

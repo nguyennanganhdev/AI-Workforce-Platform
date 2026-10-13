@@ -45,6 +45,8 @@ class SharedContextEvent(BaseModel):
         "result",
         "progress",
         "requires_user_input",
+        "user_input_proposal",
+        "conflict",
         "error",
         "external_event",
         "context_update",
@@ -96,8 +98,35 @@ class SharedTaskState(BaseModel):
     latest_workflow_revision: int = Field(default=0, ge=0)
     pending_question_ids: tuple[str, ...] = Field(default=(), max_length=20)
     pending_operation_ids: tuple[str, ...] = Field(default=(), max_length=50)
+    collaboration: dict[str, "CollaborationBranch"] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class CollaborationBranch(BaseModel):
+    """Server-owned limits and dependencies for one assigned session/task epoch."""
+
+    customer_revision: int = 0
+    status: Literal["running", "waiting_peer", "review", "completed", "stopped"] = (
+        "running"
+    )
+    reason: str = ""
+    waiting_for: dict[str, str] = Field(default_factory=dict)
+    evidence_event_ids: tuple[str, ...] = Field(default=(), max_length=100)
+    """Current peer reports that satisfied this branch's dependencies.
+
+    The runtime owns this lineage. It lets a coordinating worker publish a
+    synthesis backed by peer evidence without relying on the model to copy
+    opaque event IDs into its next ``TeamSay`` call.
+    """
+    exchanges: int = 0
+    model_calls: int = 0
+    measured_tokens: int = 0
+    active_seconds: float = 0
+    verifications: int = 0
+    evidence_rejections: int = 0
+    signatures: dict[str, int] = Field(default_factory=dict)
+    receipts: dict[str, dict] = Field(default_factory=dict)
 
 
 class SharedContextSummary(BaseModel):
@@ -134,6 +163,10 @@ class SharedContextMetrics(BaseModel):
     summary_model_calls: int = Field(default=0, ge=0)
     model_calls_measured: int = Field(default=0, ge=0)
     last_total_prompt_tokens: int = Field(default=0, ge=0)
+    total_measured_prompt_tokens: int = Field(default=0, ge=0)
+    last_tool_schema_tokens: int = Field(default=0, ge=0)
+    last_system_prompt_tokens: int = Field(default=0, ge=0)
+    last_conversation_tokens: int = Field(default=0, ge=0)
     peak_total_prompt_tokens: int = Field(default=0, ge=0)
     last_model_context_size: int = Field(default=0, ge=0)
     last_reserved_output_tokens: int = Field(default=0, ge=0)
@@ -221,6 +254,8 @@ class TeamHandoffRecord(_RecordBase):
         "result",
         "progress",
         "requires_user_input",
+        "user_input_proposal",
+        "conflict",
         "error",
     ] = "result"
     source_agent_id: str
