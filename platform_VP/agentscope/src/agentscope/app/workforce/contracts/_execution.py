@@ -6,6 +6,7 @@ from enum import StrEnum
 
 from pydantic import Field, model_validator
 
+from ._assets import AssetReferenceInput
 from ._base import JsonObject, OpaqueId, WorkforceModel
 from ._identity import PartnerAudience, Scope
 
@@ -34,6 +35,7 @@ class ProviderEventEnvelope(WorkforceModel):
     provider_version: int | None = Field(default=None, ge=0)
     occurred_at: datetime
     data: JsonObject = Field(default_factory=dict)
+    attachments: tuple[AssetReferenceInput, ...] = Field(default=(), max_length=10)
 
     @model_validator(mode="after")
     def validate_correlation(self) -> "ProviderEventEnvelope":
@@ -41,6 +43,9 @@ class ProviderEventEnvelope(WorkforceModel):
             raise ValueError(
                 "external_job_id or client_reference is required",
             )
+        ids = [item.asset_id for item in self.attachments]
+        if len(ids) != len(set(ids)):
+            raise ValueError("provider attachment asset_ids must be unique")
         return self
 
 

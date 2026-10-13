@@ -154,10 +154,12 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	const toConfirmedToolCalls = useMemo(() => {
 		if (msgs.length === 0) return [];
 
-		const lastMsg = msgs[msgs.length - 1];
-		return getContentBlocks(lastMsg, 'tool_call')
-			.filter((tc) => tc.state === 'asking')
-			.map((tc) => ({ replyId: lastMsg.id, toolCall: tc }));
+		return msgs.filter((message) => message.role === 'assistant').flatMap((message) => {
+			const resolved = new Set(getContentBlocks(message, 'tool_result').map((result) => result.id));
+			return getContentBlocks(message, 'tool_call')
+				.filter((tc) => tc.state === 'asking' && !resolved.has(tc.id))
+				.map((tc) => ({ replyId: message.id, toolCall: tc }));
+		});
 	}, [msgs]);
 
 	// On an empty session the prompt and the input centre together, so every box
@@ -262,7 +264,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 				<div className="relative min-w-full max-w-full w-full">
 					<FlipCard
 						visible={toConfirmedToolCalls.length > 0 || footerSlot !== null}
-						className="absolute bottom-full left-0 right-0 mb-2 z-50"
+						className="mb-2 max-h-[45vh] overflow-y-auto"
 					>
 						{toConfirmedToolCalls.length > 0 ? (
 							<ConfirmCard

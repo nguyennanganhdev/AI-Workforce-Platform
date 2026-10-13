@@ -62,7 +62,9 @@ def main() -> int:
             "refusing to silently skip date-time validation"
         )
     if args.shared_audit:
-        from shared_boundary_audit import audit_shared_boundaries
+        from tests.workforce.orchestration.phase_a.shared_boundary_audit import (
+            audit_shared_boundaries,
+        )
 
         report = audit_shared_boundaries()
         (HANDOFF / "shared-boundary-audit.json").write_text(
@@ -71,7 +73,9 @@ def main() -> int:
         print(json.dumps(report, indent=2))
         return int(any(item["status"] == "OPEN" for item in report))
     if args.mutation_check:
-        from mutation_checks import run_mutation_checks
+        from tests.workforce.orchestration.phase_a.mutation_checks import (
+            run_mutation_checks,
+        )
 
         report = run_mutation_checks()
         (HANDOFF / "mutation-results.json").write_text(
@@ -83,8 +87,12 @@ def main() -> int:
         from agentscope.app.workforce.orchestration.phase_a import (
             phase_a_schema_bundle,
         )
-        from fixtures import phase_a_samples
-        from test_phase_a import NEGATIVE_CASES
+        from tests.workforce.orchestration.phase_a.fixtures import (
+            phase_a_samples,
+        )
+        from tests.workforce.orchestration.phase_a.test_phase_a import (
+            NEGATIVE_CASES,
+        )
 
         HANDOFF.mkdir(parents=True, exist_ok=True)
         for name, data in (

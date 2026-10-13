@@ -381,11 +381,15 @@ export function useMessages(
 			scheduleUpdate();
 
 			try {
-				await chatApi.trigger({
+				const response = await chatApi.trigger({
 					agent_id: agentId,
 					session_id: sessionId,
 					input: userMsg,
 				});
+				if (response.message) {
+					msgsRef.current = [...msgsRef.current, response.message];
+					scheduleUpdate();
+				}
 			} catch (e) {
 				setError(e as Error);
 			}
@@ -550,13 +554,18 @@ export function useMessages(
 	);
 
 	const currentKey = agentId !== null && sessionId !== null ? `${agentId}:${sessionId}` : null;
+	const awaitingConsent = msgs.some((message) => message.role === 'assistant' &&
+		message.content.some((block) => block.type === 'tool_call' &&
+			(block as ToolCallBlock).state === 'asking' &&
+			!message.content.some((result) => result.type === 'tool_result' && result.id === block.id))) ||
+		subagentHitl.some((entry) => entry.event_type === 'require_user_confirm');
 	const ownsConversation = currentKey !== null && loadedKey === currentKey;
 	const loading = currentKey !== null && !ownsConversation;
 
 	return {
 		msgs: ownsConversation ? msgs : [],
 		loading,
-		phase: ownsConversation ? phase : ('idle' as ReplyPhase),
+		phase: ownsConversation && !awaitingConsent ? phase : ('idle' as ReplyPhase),
 		error: ownsConversation ? error : null,
 		send,
 		onUserConfirm,

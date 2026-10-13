@@ -10,21 +10,23 @@ from ...agent import Agent
 from ...event import HintBlockEvent, ReplyEndEvent
 from ...message import (
     HintBlock,
+    TextBlock,
     ToolCallBlock,
     ToolResultBlock,
     ToolResultState,
 )
 from ...middleware import MiddlewareBase
 from ...types import ErrorInfo, ErrorType, ReplyFinishedReason
+from .._tool._team_say import STALE_CONTEXT_RESULT
 
 
 class TeamMemberLoopMiddleware(MiddlewareBase):
     """The team member loop engineering middleware, that requires:
 
-    1. The member should end its reply by calling `TeamSay` tool to report to
-     the team leader.
+    1. The member should end its reply by calling `TeamSay` to report to the
+     current reply owner (normally the team leader).
     2. When exceeds the max iteration numbers, the agent is guided to send
-    team leader a message to ask for permission to continue the operation.
+    reply owner a message to ask for permission to continue the operation.
 
     A member that keeps ending without reporting is nudged at most
     ``max_nudges`` times; after that the reply is released as an
@@ -37,7 +39,8 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
 
         Args:
             leader_name (`str`):
-                The name of the team leader, i.e. the only valid
+                The current reply owner's routable team name, i.e. the only
+                valid
                 ``TeamSay(to=...)`` target that counts as a report.
             max_nudges (`int`, defaults to 3):
                 How many times one reply may be forced to continue
@@ -58,8 +61,9 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         Returns:
             `bool`:
                 ``True`` when the reply's last tool call is a
-                ``TeamSay`` addressed to the leader (or broadcast) that
-                returned ``SUCCESS``.
+                ``TeamSay`` explicitly addressed to the reply owner that
+                returned ``SUCCESS``. Worker broadcasts are never valid
+                reports.
         """
         for msg in reversed(agent.state.context):
             if (
@@ -82,8 +86,8 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 continue
 
             # The last tool action must be a successful TeamSay addressed to
-            # the leader or broadcast to the whole team.  A later non-TeamSay
-            # tool therefore invalidates an earlier progress report.
+            # the reply owner. A later non-TeamSay tool therefore invalidates
+            # an earlier progress report.
             if last_tool_call.name != "TeamSay":
                 return False
             try:
@@ -92,7 +96,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 # Unparsable arguments (e.g. a truncated stream) cannot
                 # have produced a successful report.
                 return False
-            if kwargs.get("to") not in [None, self._leader_name]:
+            if kwargs.get("to") != self._leader_name:
                 return False
 
             result = next(
@@ -108,6 +112,46 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 result is not None and result.state == ToolResultState.SUCCESS
             )
 
+        return False
+
+    def _last_report_used_stale_context(self, agent: "Agent") -> bool:
+        """Whether the last TeamSay was rejected by the revision guard."""
+
+        for msg in reversed(agent.state.context):
+            if msg.id != agent.state.reply_id or msg.role != "assistant":
+                continue
+            blocks = msg.get_content_blocks()
+            call = next(
+                (
+                    block
+                    for block in reversed(blocks)
+                    if isinstance(block, ToolCallBlock)
+                ),
+                None,
+            )
+            if call is None or call.name != "TeamSay":
+                return False
+            result = next(
+                (
+                    block
+                    for block in blocks
+                    if isinstance(block, ToolResultBlock)
+                    and block.id == call.id
+                ),
+                None,
+            )
+            if result is None or result.state != ToolResultState.ERROR:
+                return False
+            output = (
+                result.output
+                if isinstance(result.output, str)
+                else "\n".join(
+                    block.text
+                    for block in result.output
+                    if isinstance(block, TextBlock)
+                )
+            )
+            return STALE_CONTEXT_RESULT in output
         return False
 
     async def on_reply(
@@ -151,6 +195,22 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 yield evt
                 continue
 
+            if self._last_report_used_stale_context(agent):
+                yield ReplyEndEvent(
+                    session_id=evt.session_id,
+                    reply_id=evt.reply_id,
+                    finished_reason=ReplyFinishedReason.ERROR,
+                    error=ErrorInfo(
+                        type=ErrorType.INTERNAL,
+                        message=(
+                            "Shared context changed while this worker was "
+                            "running. Start a fresh worker turn so it reloads "
+                            "the latest ticket context before recomputing."
+                        ),
+                    ),
+                )
+                continue
+
             if evt.finished_reason not in (
                 ReplyFinishedReason.COMPLETED,
                 ReplyFinishedReason.EXCEED_MAX_ITERS,
@@ -185,13 +245,15 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 instruction = (
                     "<system-reminder>You have reached the maximum number "
                     f"of ReAct iterations ({agent.react_config.max_iters}). "
-                    "Call `TeamSay` now to report to the leader and ask for "
+                    "Call `TeamSay` now to report to the reply owner "
+                    f"{self._leader_name!r} and ask for "
                     "permission to continue.</system-reminder>"
                 )
             else:
                 instruction = (
                     "<system-reminder>You MUST call the tool `TeamSay` "
-                    "to report to the leader to finish your task."
+                    "to report to the reply owner "
+                    f"{self._leader_name!r} to finish your task."
                     "</system-reminder>"
                 )
 

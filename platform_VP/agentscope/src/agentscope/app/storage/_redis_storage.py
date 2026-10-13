@@ -4,36 +4,39 @@
 
 import warnings
 from datetime import datetime, timedelta
-from typing import Any, TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Any, Self
 
 from pydantic import BaseModel
 
+from ...credential import CredentialBase
+from ...message import Msg
+from ...sop import SOPPhase, SOPRunState
+from ...state import AgentState
 from ._base import StorageBase
-from ._model._session import _origin_kwargs
 from ._model import (
     AgentRecord,
+    ChannelOrigin,
     ChannelRecord,
     CredentialRecord,
     KnowledgeBaseRecord,
     KnowledgeDocumentRecord,
     KnowledgeDocumentStatus,
     MCPRecord,
-    ScheduleRecord,
-    SessionRecord,
-    SessionConfig,
-    ChannelOrigin,
     ScheduleOrigin,
+    ScheduleRecord,
+    SessionConfig,
     SessionOrigin,
+    SessionRecord,
     SkillRecord,
     SOPRecord,
     SOPRunRecord,
     TeamRecord,
+    TeamSharedContextRecord,
+    TeamHandoffRecord,
+    TeamTurnRecord,
 )
+from ._model._session import _origin_kwargs
 from ._utils import _dump_with_secrets
-from ...credential import CredentialBase
-from ...message import Msg
-from ...sop import SOPPhase, SOPRunState
-from ...state import AgentState
 
 if TYPE_CHECKING:
     from redis.asyncio import ConnectionPool, Redis
@@ -126,6 +129,12 @@ class RedisStorage(StorageBase):
 
         team: str = "agentscope:user:{user_id}:team:{team_id}"
         team_index: str = "agentscope:user:{user_id}:teams"
+        team_shared_context: str = (
+            "agentscope:user:{user_id}:team:{team_id}:shared_context"
+        )
+        team_turn: str = "agentscope:user:{user_id}:team:{team_id}:turn"
+        team_handoff: str = "agentscope:user:{user_id}:team_handoff:{handoff_id}"
+        team_handoff_index: str = "agentscope:team_handoffs"
 
         knowledge_base: str = (
             "agentscope:user:{user_id}:knowledge_base:{knowledge_base_id}"
@@ -1837,6 +1846,182 @@ class RedisStorage(StorageBase):
                 records.append(TeamRecord.model_validate_json(raw))
         return records
 
+    async def upsert_team_shared_context(
+        self,
+        user_id: str,
+        record: TeamSharedContextRecord,
+    ) -> TeamSharedContextRecord:
+        """Persist context separately so roster writes cannot overwrite it."""
+        if record.user_id != user_id:
+            raise ValueError("record.user_id does not match the given user_id")
+        record.updated_at = datetime.now()
+        await self._set_with_ttl(
+            self._key(
+                self.key_config.team_shared_context,
+                user_id=user_id,
+                team_id=record.team_id,
+            ),
+            record.model_dump_json(),
+        )
+        return record
+
+    async def get_team_shared_context(
+        self,
+        user_id: str,
+        team_id: str,
+    ) -> TeamSharedContextRecord | None:
+        """Fetch owner-scoped shared context."""
+        raw = await self._client.get(
+            self._key(
+                self.key_config.team_shared_context,
+                user_id=user_id,
+                team_id=team_id,
+            ),
+        )
+        return TeamSharedContextRecord.model_validate_json(raw) if raw else None
+
+    async def compare_and_swap_team_shared_context(
+        self,
+        user_id: str,
+        record: TeamSharedContextRecord,
+        expected_revision: int,
+    ) -> bool:
+        """WATCH-based revision guard for Redis-only deployments."""
+        key = self._key(
+            self.key_config.team_shared_context,
+            user_id=user_id,
+            team_id=record.team_id,
+        )
+        for _attempt in range(3):
+            async with self._client.pipeline(transaction=True) as pipe:
+                try:
+                    await pipe.watch(key)
+                    raw = await pipe.get(key)
+                    current_revision = (
+                        TeamSharedContextRecord.model_validate_json(raw).state.revision
+                        if raw
+                        else 0
+                    )
+                    if current_revision != expected_revision:
+                        await pipe.unwatch()
+                        return False
+                    pipe.multi()
+                    pipe.set(key, record.model_dump_json())
+                    if self.key_ttl is not None:
+                        pipe.expire(key, self.key_ttl)
+                    await pipe.execute()
+                    return True
+                except _watch_error():
+                    continue
+        return False
+
+    async def delete_team_shared_context(
+        self,
+        user_id: str,
+        team_id: str,
+    ) -> bool:
+        """Delete owner-scoped shared context."""
+        deleted = await self._client.delete(
+            self._key(
+                self.key_config.team_shared_context,
+                user_id=user_id,
+                team_id=team_id,
+            ),
+        )
+        return bool(deleted)
+
+    async def upsert_team_turn(
+        self,
+        user_id: str,
+        record: TeamTurnRecord,
+    ) -> TeamTurnRecord:
+        if record.user_id != user_id:
+            raise ValueError("record.user_id does not match the given user_id")
+        record.updated_at = datetime.now()
+        await self._set_with_ttl(
+            self._key(
+                self.key_config.team_turn,
+                user_id=user_id,
+                team_id=record.team_id,
+            ),
+            record.model_dump_json(),
+        )
+        return record
+
+    async def get_team_turn(
+        self,
+        user_id: str,
+        team_id: str,
+    ) -> TeamTurnRecord | None:
+        raw = await self._client.get(
+            self._key(
+                self.key_config.team_turn,
+                user_id=user_id,
+                team_id=team_id,
+            ),
+        )
+        return TeamTurnRecord.model_validate_json(raw) if raw else None
+
+    async def upsert_team_handoff(
+        self,
+        user_id: str,
+        record: TeamHandoffRecord,
+    ) -> TeamHandoffRecord:
+        if record.user_id != user_id:
+            raise ValueError("record.user_id does not match the given user_id")
+        record.updated_at = datetime.now()
+        key = self._key(
+            self.key_config.team_handoff,
+            user_id=user_id,
+            handoff_id=record.id,
+        )
+        await self._set_with_ttl(key, record.model_dump_json())
+        await self._client.sadd(
+            self.key_config.team_handoff_index,
+            f"{user_id}\0{record.id}",
+        )
+        return record
+
+    async def get_team_handoff(
+        self,
+        user_id: str,
+        handoff_record_id: str,
+    ) -> TeamHandoffRecord | None:
+        raw = await self._client.get(
+            self._key(
+                self.key_config.team_handoff,
+                user_id=user_id,
+                handoff_id=handoff_record_id,
+            ),
+        )
+        return TeamHandoffRecord.model_validate_json(raw) if raw else None
+
+    async def list_outstanding_team_handoffs(
+        self,
+        *,
+        recipient_session_id: str | None = None,
+        limit: int = 100,
+    ) -> list[TeamHandoffRecord]:
+        values = await self._client.smembers(self.key_config.team_handoff_index)
+        records: list[TeamHandoffRecord] = []
+        for value in values:
+            user_id, separator, record_id = value.partition("\0")
+            if not separator:
+                continue
+            record = await self.get_team_handoff(user_id, record_id)
+            if record is None:
+                continue
+            if record.delivery_status not in {"pending", "delivered", "failed"}:
+                continue
+            if (
+                recipient_session_id is not None
+                and record.recipient_session_id != recipient_session_id
+            ):
+                continue
+            records.append(record)
+        records.sort(key=lambda item: item.created_at)
+        return records[:limit]
+
     async def set_session_team_id(
         self,
         user_id: str,
@@ -1948,6 +2133,33 @@ class RedisStorage(StorageBase):
 
         # Clear team_id on the leader session (idempotent)
         await self.set_session_team_id(user_id, team.session_id, None)
+
+        # Shared context has a separate key and follows the team lifecycle.
+        await self.delete_team_shared_context(user_id, team_id)
+        await self._client.delete(
+            self._key(
+                self.key_config.team_turn,
+                user_id=user_id,
+                team_id=team_id,
+            ),
+        )
+        for value in await self._client.smembers(
+            self.key_config.team_handoff_index,
+        ):
+            owner_id, separator, record_id = value.partition("\0")
+            if not separator or owner_id != user_id:
+                continue
+            handoff = await self.get_team_handoff(owner_id, record_id)
+            if handoff is None or handoff.team_id != team_id:
+                continue
+            await self._client.delete(
+                self._key(
+                    self.key_config.team_handoff,
+                    user_id=owner_id,
+                    handoff_id=record_id,
+                ),
+            )
+            await self._client.srem(self.key_config.team_handoff_index, value)
 
         # Delete the TeamRecord key + index entry
         key = self._key(

@@ -243,6 +243,18 @@ class WorkflowContinuation:
                         tx,
                         key[1],
                     )
+                    await service.project_shared_context(
+                        scope,
+                        workflow,
+                        event_id=message.message_id,
+                        kind="customer_reply",
+                        content=message.text,
+                        artifact_refs=tuple(
+                            attachment.asset_id
+                            for attachment in message.attachments
+                        ),
+                        uow=tx,
+                    )
                 event_type = "workflow.status_changed"
                 payload = {
                     "state": workflow.state.value,

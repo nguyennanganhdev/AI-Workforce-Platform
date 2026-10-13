@@ -39,7 +39,6 @@ from sqlalchemy import (
 from sqlalchemy.dialects.mysql import DATETIME as _MySQLDateTime
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-
 # Every id column is sized uniformly
 _ID_LEN = 255
 
@@ -269,6 +268,101 @@ class TeamRow(_JsonRecordMixin):
     )
 
     _indexed_fields = ("user_id", "session_id")
+
+
+class TeamSharedContextRow(_JsonRecordMixin):
+    """Shared context stored apart from roster writes and private memory."""
+
+    __tablename__ = "team_shared_contexts"
+
+    user_id: Mapped[str] = mapped_column(
+        String(_ID_LEN),
+        nullable=False,
+        index=True,
+    )
+    team_id: Mapped[str] = mapped_column(
+        String(_ID_LEN),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    state_revision: Mapped[int] = mapped_column(nullable=False, default=0, index=True)
+    tenant_id: Mapped[str | None] = mapped_column(String(_ID_LEN), index=True)
+    domain_id: Mapped[str | None] = mapped_column(String(_ID_LEN), index=True)
+    area_id: Mapped[str | None] = mapped_column(String(_ID_LEN), index=True)
+    manager_account_id: Mapped[str | None] = mapped_column(String(_ID_LEN), index=True)
+    workflow_id: Mapped[str | None] = mapped_column(String(_ID_LEN), index=True)
+
+    _indexed_fields = (
+        "user_id",
+        "team_id",
+        "tenant_id",
+        "domain_id",
+        "area_id",
+        "manager_account_id",
+        "workflow_id",
+    )
+    _index_paths: ClassVar[dict[str, str]] = {
+        "state_revision": "state.revision",
+    }
+
+
+class TeamSharedContextSnapshotRow(_JsonRecordMixin):
+    """Immutable full state captured after every semantic revision."""
+
+    __tablename__ = "team_shared_context_snapshots"
+    user_id: Mapped[str] = mapped_column(String(_ID_LEN), nullable=False, index=True)
+    team_id: Mapped[str] = mapped_column(String(_ID_LEN), nullable=False, index=True)
+    state_revision: Mapped[int] = mapped_column(nullable=False, index=True)
+
+    _indexed_fields = ("user_id", "team_id")
+    _index_paths: ClassVar[dict[str, str]] = {
+        "state_revision": "state.revision",
+    }
+    __table_args__ = (
+        UniqueConstraint(
+            "team_id",
+            "state_revision",
+            name="uq_team_shared_context_snapshot_revision",
+        ),
+    )
+
+
+class TeamTurnRow(_JsonRecordMixin):
+    """Restart-safe reply ownership and pending customer question."""
+
+    __tablename__ = "team_turns"
+
+    user_id: Mapped[str] = mapped_column(String(_ID_LEN), nullable=False, index=True)
+    team_id: Mapped[str] = mapped_column(
+        String(_ID_LEN), nullable=False, unique=True, index=True
+    )
+
+    _indexed_fields = ("user_id", "team_id")
+
+
+class TeamHandoffRow(_JsonRecordMixin):
+    """Recipient-specific durable handoff used for at-least-once delivery."""
+
+    __tablename__ = "team_handoffs"
+
+    user_id: Mapped[str] = mapped_column(String(_ID_LEN), nullable=False, index=True)
+    team_id: Mapped[str] = mapped_column(String(_ID_LEN), nullable=False, index=True)
+    handoff_id: Mapped[str] = mapped_column(String(_ID_LEN), nullable=False, index=True)
+    recipient_session_id: Mapped[str] = mapped_column(
+        String(_ID_LEN), nullable=False, index=True
+    )
+    delivery_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, index=True
+    )
+
+    _indexed_fields = (
+        "user_id",
+        "team_id",
+        "handoff_id",
+        "recipient_session_id",
+        "delivery_status",
+    )
 
 
 class KnowledgeBaseRow(_JsonRecordMixin):

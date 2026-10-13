@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """The base class for the chat models."""
+
 import asyncio
 import inspect
 import json
@@ -229,8 +230,7 @@ class ChatModelBase:
                 last_error = e
                 if attempt < self.max_retries:
                     logger.warning(
-                        "Attempt %d failed for model %s: %s. "
-                        "Retrying in %.1fs...",
+                        "Attempt %d failed for model %s: %s. Retrying in %.1fs...",
                         attempt + 1,
                         self.model,
                         str(e),
@@ -334,9 +334,7 @@ class ChatModelBase:
             return
 
         mode = tool_choice.mode
-        available_functions = [
-            tool["function"]["name"] for tool in (tools or [])
-        ]
+        available_functions = [tool["function"]["name"] for tool in (tools or [])]
 
         tool_names = tool_choice.tools
         if tool_names is not None:
@@ -351,9 +349,7 @@ class ChatModelBase:
         if mode not in _TOOL_CHOICE_LITERAL_MODES:
             # mode is a specific tool name — validate it exists
             # Fall back to all available tools when tool_names is empty or None
-            validation_scope = (
-                tool_names if tool_names else available_functions
-            )
+            validation_scope = tool_names if tool_names else available_functions
             if mode not in validation_scope:
                 raise ValueError(
                     f"Invalid tool name '{mode}' in tool_choice.mode. "
@@ -371,8 +367,7 @@ class ChatModelBase:
         messages: list[Msg],
         tools: list[dict] | None,
     ) -> int:
-        """A quick and unified method to estimate the token count of the
-        model input by dividing the total input size in bytes by 4.
+        """Count or conservatively estimate the complete model input.
 
         Note a standard way to count the tokens is first formatting the input
         messages into the API required format, then use the tokenizer of the
@@ -448,11 +443,38 @@ class ChatModelBase:
         # only a path string. Use a stable flat estimate for all DataBlocks.
         cnt += len(data_blocks) * _MULTIMODAL_DATA_BLOCK_TOKEN_ESTIMATE
 
-        # Count the text tokens
+        # Count textual payload and stable per-message protocol overhead.
+        # Provider adapters may replace ``_count_text_tokens`` with their
+        # actual tokenizer while retaining the same block/tool traversal.
         acc_text = "".join(acc_texts)
-        cnt += int(len(acc_text.encode("utf-8")) / 4 + 0.5)
+        cnt += self._count_text_tokens(acc_text)
+        cnt += self._count_protocol_tokens(messages)
 
         return cnt
+
+    def _count_text_tokens(self, text: str) -> int:
+        """Compatibility estimate for providers without a local tokenizer.
+
+        A provider adapter that knows its tokenizer must override this method.
+        The generic base cannot claim an exact or safe upper-bound count: a
+        byte-per-token fallback makes small context windows unusable and can
+        prematurely discard complete tool-call/result pairs.  The strategy is
+        therefore explicitly labelled as an estimate in metrics.
+        """
+
+        return int(len(text.encode("utf-8")) / 4 + 0.5)
+
+    def _count_protocol_tokens(self, messages: list[Msg]) -> int:
+        """Return provider-specific message-envelope overhead, if known."""
+
+        del messages
+        return 0
+
+    @property
+    def token_counting_strategy(self) -> str:
+        """Auditable identity of the counter used for budget enforcement."""
+
+        return "estimated:utf8-bytes-div-4"
 
     async def generate_structured_output(
         self,
@@ -505,11 +527,7 @@ class ChatModelBase:
             strategies = (
                 ("forced", {}, forced_tc),
                 ("auto", {}, ToolChoice(mode="auto")),
-                *(
-                    (("no_think", disable_kwargs, forced_tc),)
-                    if disable_kwargs
-                    else ()
-                ),
+                *((("no_think", disable_kwargs, forced_tc),) if disable_kwargs else ()),
                 ("none", {}, None),
             )
         else:
@@ -541,8 +559,7 @@ class ChatModelBase:
                     )
                     if name not in ("forced", "explicit"):
                         logger.info(
-                            "Structured output for %s: using fallback "
-                            "strategy '%s'.",
+                            "Structured output for %s: using fallback strategy '%s'.",
                             self.model,
                             name,
                         )
@@ -585,8 +602,7 @@ class ChatModelBase:
 
         if last_error is None:
             raise RuntimeError(
-                f"No structured-output strategy is available for "
-                f"{self.model}.",
+                f"No structured-output strategy is available for {self.model}.",
             )
         if first_error is not None and first_error is not last_error:
             raise last_error from first_error
@@ -639,9 +655,9 @@ class ChatModelBase:
         # Insert instruction to ensure llm is correctly guided
         if copied_messages[-1].role == "user":
             # Insert a user message to the last
-            copied_messages[-1].content = copied_messages[
-                -1
-            ].get_content_blocks() + [TextBlock(text=instruction)]
+            copied_messages[-1].content = copied_messages[-1].get_content_blocks() + [
+                TextBlock(text=instruction)
+            ]
         else:
             copied_messages.append(
                 UserMsg(name="user", content=[TextBlock(text=instruction)]),
@@ -691,8 +707,7 @@ class ChatModelBase:
 
         if completed_response is None or not completed_response.content:
             raise StructuredOutputError(
-                f"Failed to get the completed response from model "
-                f"{model_name}.",
+                f"Failed to get the completed response from model {model_name}.",
             )
 
         structured_output: dict[str, Any] | None = None

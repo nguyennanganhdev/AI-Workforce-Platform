@@ -11,15 +11,46 @@ Events produced by the agent are not exposed back through this method
 that wants them subscribes through the
 ``GET /sessions/{sid}/stream`` SSE endpoint.
 """
+
 import asyncio
 import inspect
 import json
 from dataclasses import dataclass
-from typing import Literal, TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
+from ..._logging import logger
+from ..._utils._common import _generate_id
+from ...agent import Agent, ModelConfig
+from ...event import (
+    AgentEvent,
+    CustomEvent,
+    ExternalExecutionResultEvent,
+    ReplyEndEvent,
+    ReplyFinishedReason,
+    ReplyStartEvent,
+    RequireExternalExecutionEvent,
+    RequireUserConfirmEvent,
+    ToolResultEndEvent,
+    UserConfirmResultEvent,
+    UserInterruptEvent,
+)
+from ...message import (
+    AssistantMsg,
+    HintBlock,
+    Msg,
+    ToolCallBlock,
+    ToolResultBlock,
+    ToolResultState,
+    UserMsg,
+)
+from ...middleware import RAGMiddleware, TTSMiddleware
+from ...model import ChatModelBase
+from ...permission import AdditionalWorkingDirectory
+from ...rag import KnowledgeBase
+from ...sop import SOPPhase
 from .._bus_ops import (
     abandon_inbox_consumer,
     deliver_to_inbox,
@@ -28,61 +59,55 @@ from .._bus_ops import (
     publish_session_event,
     register_inbox_consumer,
 )
-from ..message_bus import MessageBus, MessageBusKeys
-from ..rag.knowledge_base_manager import KnowledgeBaseManagerBase
-from ..channel import ChatKind
-from ..storage import (
-    StorageBase,
-    AgentRecord,
-    SessionNaming,
-    SessionRecord,
-    ChannelOrigin,
-    SOPOrigin,
-)
-from ..storage._utils import _resolve_team_leader
 from .._manager import BackgroundTaskManager, SchedulerManager
-from ..workspace_manager import WorkspaceManagerBase
-from ..middleware import (
-    InboxMiddleware,
-    SOPStepSubmitMiddleware,
-    StateChangeMiddleware,
-    ToolOffloadMiddleware,
-    TeamMemberLoopMiddleware,
+from .._shared_context import SharedContextBudgetError, SharedContextService
+from .._chat_consent import confirmation_still_pending
+from .._team_turn import (
+    get_team_turn,
+    mark_team_awaiting_user,
+    set_team_turn_task,
+    start_team_turn,
+    team_is_awaiting_user,
 )
-from ...middleware import TTSMiddleware, RAGMiddleware
-from ...rag import KnowledgeBase
-from ...sop import SOPPhase
+from .._tool._constants import HANDLE_LEN
 from .._types import (
     AgentMiddlewareFactory,
     AgentToolFactory,
     EventProjector,
     SubAgentTemplate,
 )
+from .._workforce_policy import governed_system_prompt
+from ..channel import ChatKind
+from ..message_bus import MessageBus, MessageBusKeys
+from ..middleware import (
+    InboxMiddleware,
+    LeaderEvidenceMiddleware,
+    SharedContextIsolationMiddleware,
+    SOPStepSubmitMiddleware,
+    StateChangeMiddleware,
+    TeamMemberLoopMiddleware,
+    ToolOffloadMiddleware,
+)
+from ..rag.knowledge_base_manager import KnowledgeBaseManagerBase
+from ..storage import (
+    AgentRecord,
+    ChannelOrigin,
+    ContextDelta,
+    SessionNaming,
+    SessionRecord,
+    SOPOrigin,
+    StorageBase,
+)
+from ..storage._utils import _ensure_team_members, _resolve_team_leader
+from ..workspace_manager import WorkspaceManagerBase
 from ._access import ResourceAccessService
+from ._errors import _classify_error, _classify_setup_error
 from ._model import get_model
-from ._tts_model import get_tts_model
-from ._toolkit import get_toolkit
+from ._projectors import SubagentHitlProjector
 from ._session_projection import SessionProjection
 from ._sop import SOPService
-from ._projectors import SubagentHitlProjector
-
-from ..._logging import logger
-from ...agent import Agent, ModelConfig
-from ...model import ChatModelBase
-from ...event import (
-    AgentEvent,
-    CustomEvent,
-    ReplyStartEvent,
-    ReplyEndEvent,
-    ReplyFinishedReason,
-    UserConfirmResultEvent,
-    ExternalExecutionResultEvent,
-    UserInterruptEvent,
-)
-from ._errors import _classify_error, _classify_setup_error
-from ..._utils._common import _generate_id
-from ...message import AssistantMsg, HintBlock, Msg, UserMsg
-from ...permission import AdditionalWorkingDirectory
+from ._toolkit import get_toolkit
+from ._tts_model import get_tts_model
 
 if TYPE_CHECKING:
     from ..channel import ChannelClients
@@ -99,6 +124,7 @@ class _LeaderContext:
 class _WorkerContext:
     """This session is a worker; its leader is fully resolved."""
 
+    team_id: str
     leader_session_id: str
     leader_agent_id: str
     leader_name: str
@@ -162,6 +188,7 @@ class ChatService:
         custom_agent_cls: type[Agent] | None = None,
         extra_projectors: list[EventProjector] | None = None,
         channel_clients: "ChannelClients | None" = None,
+        shared_context_storage: StorageBase | None = None,
     ) -> None:
         """Initialize chat service.
 
@@ -210,10 +237,8 @@ class ChatService:
                 user/session-specific tools to register in the toolkit.
             custom_subagent_templates (`dict[str, SubAgentTemplate] | None`,\
              optional):
-                Sub-agent template registry, keyed by template type.
-                Passed through to :func:`get_toolkit` so that
-                ``AgentCreate`` can route to the appropriate template
-                when a ``subagent_type`` is specified.
+                Legacy compatibility registry. Normal chat runtime ignores it
+                because agents must be published through Agent Builder.
             custom_agent_cls (`type[Agent] | None`, optional):
                 Custom :class:`Agent` subclass for assembling agents.
                 Falls back to :class:`Agent` when ``None``.
@@ -228,12 +253,21 @@ class ChatService:
                 a channel-originated session's agent that channel's
                 platform tools and chat context. Neither needs the long
                 connection, so the run gets them wherever it lands.
+            shared_context_storage (`StorageBase | None`, optional):
+                Durable backend for team shared events/state/summaries. When
+                omitted, the application ``storage`` is reused. A separate
+                SQL backend lets existing agent/session records remain in
+                Redis while shared context uses PostgreSQL.
         """
         self._storage = storage
         self._workspace_manager = workspace_manager
         self._scheduler_manager = scheduler_manager
         self._background_task_manager = background_task_manager
         self._message_bus = message_bus
+        self._shared_context = SharedContextService(
+            shared_context_storage or storage,
+            message_bus,
+        )
         self._access = resource_access_service
         self._knowledge_base_manager = knowledge_base_manager
         self._extra_agent_middlewares = extra_agent_middlewares
@@ -459,8 +493,7 @@ class ChatService:
         """
         if reply_msg.finished_reason is not None:
             logger.exception(
-                "Post-reply failure for session %r; the reply itself "
-                "completed.",
+                "Post-reply failure for session %r; the reply itself completed.",
                 session_id,
             )
             return
@@ -487,6 +520,7 @@ class ChatService:
         self,
         user_id: str,
         team_ctx: "_TeamContext | None",
+        worker_session_id: str,
         worker_name: str,
         finished_reason: ReplyFinishedReason,
         detail: str,
@@ -510,6 +544,8 @@ class ChatService:
                 The run's team identity. Anything but a
                 :class:`_WorkerContext` is a no-op — a leader or a
                 team-less session has nobody to report to.
+            worker_session_id (`str`):
+                The failed worker session used as durable evidence source.
             worker_name (`str`):
                 The failing member's display name, as the leader knows
                 it from the roster.
@@ -563,6 +599,16 @@ class ChatService:
                 session_id=team_ctx.leader_session_id,
                 agent_id=team_ctx.leader_agent_id,
                 payload=hint.model_dump(mode="json"),
+            )
+            # Publish the completion marker only after the failure notice is
+            # already durable in the Leader inbox. The evidence gate can then
+            # never wake a reasoning round that cannot read the failure yet.
+            await self._shared_context.append_event(
+                user_id=user_id,
+                team_id=team_ctx.team_id,
+                kind="error",
+                content=f"WORKER_RUN_FAILED: {reminder}",
+                source_session_id=worker_session_id,
             )
         except Exception:  # pylint: disable=broad-except
             logger.exception(
@@ -655,6 +701,7 @@ class ChatService:
         await self._notify_leader_of_failure(
             user_id,
             team_ctx,
+            session_id,
             worker_name or agent_id,
             ReplyFinishedReason.ERROR,
             _classify_setup_error(error).message,
@@ -801,7 +848,26 @@ class ChatService:
             # Bound before the try: an assembly failure reports through
             # them, and may happen before either is resolved.
             team_ctx: _TeamContext | None = None
+            team = None
+            turn_state = None
+            is_reply_owner = False
+            report_target_name: str | None = None
+            customer_output_session_id = session_id
             worker_name: str = agent_id
+            shared_input_recorded = False
+            shared_context_mode = "task"
+            shared_context_packet = ""
+            shared_context_tokens = 0
+            shared_context_attachment = ""
+            shared_context_attachment_tokens = 0
+            context_task_id: str | None = None
+            customer_input_msgs = (
+                [input_msg]
+                if isinstance(input_msg, Msg)
+                else input_msg
+                if isinstance(input_msg, list)
+                else []
+            )
 
             # Steps 1-6 assemble the run; step 7 performs it. A failure
             # here has no reply to attach to, so one is synthesized —
@@ -828,6 +894,10 @@ class ChatService:
                         status_code=404,
                         detail=f"Agent {agent_id!r} not found.",
                     ) from exc
+                runtime_system_prompt = governed_system_prompt(
+                    agent_record.data.system_role,
+                    agent_record.data.system_prompt,
+                )
                 session_record = await self._storage.get_session(
                     user_id,
                     agent_id,
@@ -837,10 +907,19 @@ class ChatService:
                     raise HTTPException(
                         status_code=404,
                         detail=(
-                            f"Session {session_id!r} not found for "
-                            f"agent {agent_id!r}."
+                            f"Session {session_id!r} not found for agent {agent_id!r}."
                         ),
                     )
+                if isinstance(
+                    input_msg, UserConfirmResultEvent,
+                ) and not confirmation_still_pending(
+                    session_record.state, input_msg,
+                ):
+                    logger.info(
+                        "Ignoring resolved/stale confirmation for session %s",
+                        session_id,
+                    )
+                    return
                 worker_name = agent_record.data.name
                 if (
                     isinstance(session_record.origin, SOPOrigin)
@@ -897,10 +976,83 @@ class ChatService:
                                 ),
                             )
                         team_ctx = _WorkerContext(
+                            team_id=team.id,
                             leader_session_id=leader.session_id,
                             leader_agent_id=leader.agent.id,
                             leader_name=leader.name,
                         )
+
+                    if team is not None:
+                        turn_state = await get_team_turn(
+                            self._message_bus,
+                            team.id,
+                            storage=self._shared_context.storage,
+                            user_id=user_id,
+                        )
+                        if (
+                            isinstance(team_ctx, _LeaderContext)
+                            and isinstance(input_msg, (Msg, list))
+                            and (
+                                turn_state is None
+                                or turn_state.status == "awaiting_user_input"
+                            )
+                        ):
+                            # Channel/partner messages do not pass through the
+                            # web chat router. A real customer message always
+                            # opens the leader's next turn and wakes the team.
+                            turn_state = await start_team_turn(
+                                self._message_bus,
+                                team.id,
+                                reply_owner_session_id=session_id,
+                                reply_owner_agent_id=agent_id,
+                                customer_session_id=session_id,
+                                mode="leader",
+                                task_id=(
+                                    turn_state.task_id
+                                    if turn_state is not None
+                                    else None
+                                ),
+                                storage=self._shared_context.storage,
+                                user_id=user_id,
+                            )
+                        if turn_state is not None:
+                            is_reply_owner = (
+                                turn_state.reply_owner_session_id == session_id
+                            )
+                            if is_reply_owner:
+                                customer_output_session_id = (
+                                    turn_state.customer_session_id
+                                )
+                            elif isinstance(team_ctx, _WorkerContext):
+                                try:
+                                    owner = await self._access.resolve_agent(
+                                        user_id,
+                                        turn_state.reply_owner_agent_id,
+                                    )
+                                    report_target_name = owner.data.name
+                                    members = await _ensure_team_members(
+                                        self._storage,
+                                        user_id,
+                                        team,
+                                    )
+                                    owner_member = next(
+                                        (
+                                            member
+                                            for member in members
+                                            if member.session_id
+                                            == turn_state.reply_owner_session_id
+                                        ),
+                                        None,
+                                    )
+                                    if (
+                                        owner_member is not None
+                                        and owner_member.role == "invited"
+                                    ):
+                                        report_target_name += (
+                                            "@" + owner_member.agent_id[:HANDLE_LEN]
+                                        )
+                                except HTTPException:
+                                    report_target_name = team_ctx.leader_name
 
                 workspace = await self._workspace_manager.get_workspace(
                     user_id,
@@ -914,9 +1066,7 @@ class ChatService:
                     session_record.state.permission_context.working_directories
                 )
                 if workspace.workdir not in working_dirs:
-                    working_dirs[
-                        workspace.workdir
-                    ] = AdditionalWorkingDirectory(
+                    working_dirs[workspace.workdir] = AdditionalWorkingDirectory(
                         path=workspace.workdir,
                         source="session",
                     )
@@ -934,8 +1084,7 @@ class ChatService:
                     await self._channel_clients.get(
                         channel_origin.channel_id,
                     )
-                    if channel_origin is not None
-                    and self._channel_clients is not None
+                    if channel_origin is not None and self._channel_clients is not None
                     else None
                 )
                 chat_kind = (
@@ -966,7 +1115,11 @@ class ChatService:
                 # in-process retrigger plumbing is needed here.
                 # -------------------------------------------------------------
                 middlewares: list = [
-                    InboxMiddleware(self._message_bus),
+                    InboxMiddleware(
+                        self._message_bus,
+                        shared_context=self._shared_context,
+                        user_id=user_id,
+                    ),
                     StateChangeMiddleware(
                         message_bus=self._message_bus,
                         session_id=session_id,
@@ -978,11 +1131,21 @@ class ChatService:
                         agent_id=agent_id,
                     ),
                 ]
+                if agent_record.data.system_role == "leader":
+                    middlewares.append(
+                        LeaderEvidenceMiddleware(
+                            self._storage,
+                            self._shared_context,
+                            user_id,
+                            agent_id,
+                            session_id,
+                        ),
+                    )
                 # Equip the member middleware for loop control
-                if isinstance(team_ctx, _WorkerContext):
+                if isinstance(team_ctx, _WorkerContext) and not is_reply_owner:
                     middlewares.append(
                         TeamMemberLoopMiddleware(
-                            leader_name=team_ctx.leader_name,
+                            leader_name=(report_target_name or team_ctx.leader_name),
                         ),
                     )
 
@@ -1034,11 +1197,9 @@ class ChatService:
                     knowledges: list[KnowledgeBase] = []
                     for kb_id in kb_cfg.knowledge_base_ids:
                         try:
-                            kb_record = (
-                                await self._access.resolve_knowledge_base(
-                                    user_id,
-                                    kb_id,
-                                )
+                            kb_record = await self._access.resolve_knowledge_base(
+                                user_id,
+                                kb_id,
                             )
                             kb_manager = self._knowledge_base_manager
                             knowledge = await kb_manager.get_knowledge(
@@ -1089,6 +1250,7 @@ class ChatService:
                     team_role=team_ctx.role if team_ctx else None,
                     channel_tools=channel_tools,
                     sop_dispatch=sop_dispatch,
+                    shared_context_service=self._shared_context,
                 )
 
                 # -------------------------------------------------------------
@@ -1098,12 +1260,148 @@ class ChatService:
                 if not model_cfg:
                     raise HTTPException(
                         status_code=404,
-                        detail=(
-                            f"No model configuration found for agent "
-                            f"{agent_id}"
-                        ),
+                        detail=(f"No model configuration found for agent {agent_id}"),
                     )
                 model = await get_model(user_id, model_cfg, self._access)
+
+                # Persist customer-visible input before any agent reasons.
+                # Message ids make retries idempotent. Team handoff wakeups
+                # carry no input_msg and select their explicit context mode.
+                if team is not None:
+                    if await self._shared_context.needs_customer_history_bootstrap(
+                        user_id,
+                        team.id,
+                    ):
+                        customer_history: list[Msg] = []
+                        before: str | None = None
+                        while True:
+                            page, has_more = await self._storage.list_messages(
+                                user_id,
+                                customer_output_session_id,
+                                limit=200,
+                                before=before,
+                            )
+                            customer_history = [*page, *customer_history]
+                            if not has_more or not page:
+                                break
+                            before = page[0].id
+                        current_input_ids = {
+                            message.id for message in customer_input_msgs
+                        }
+                        await self._shared_context.bootstrap_customer_history(
+                            user_id=user_id,
+                            team_id=team.id,
+                            messages=[
+                                message
+                                for message in customer_history
+                                if message.id not in current_input_ids
+                            ],
+                            source_session_id=customer_output_session_id,
+                            reply_owner_agent_id=(
+                                agent_id
+                                if isinstance(team_ctx, _LeaderContext)
+                                else None
+                            ),
+                        )
+
+                    context_task_id = (
+                        turn_state.task_id if turn_state is not None else None
+                    )
+                    for msg in customer_input_msgs:
+                        text = (msg.get_text_content() or "").strip() or (
+                            f"[Customer message {msg.id} contains non-text "
+                            "content; inspect the source message.]"
+                        )
+                        event = await self._shared_context.append_event(
+                            user_id=user_id,
+                            team_id=team.id,
+                            kind="customer_message",
+                            content=text,
+                            event_id=msg.id,
+                            source_message_id=msg.id,
+                            source_session_id=session_id,
+                            task_id=(
+                                msg.metadata.get("shared_context_task_id")
+                                or context_task_id
+                            ),
+                            in_reply_to=msg.metadata.get(
+                                "shared_context_in_reply_to",
+                            ),
+                            reply_owner_agent_id=agent_id,
+                        )
+                        if context_task_id is None:
+                            context_task_id = event.task_id
+                            turn_state = await set_team_turn_task(
+                                self._message_bus,
+                                team.id,
+                                event.task_id,
+                                storage=self._shared_context.storage,
+                                user_id=user_id,
+                            )
+                    shared_input_recorded = bool(customer_input_msgs)
+                    if customer_input_msgs:
+                        shared_context_mode = "task"
+                        reference_event_ids: tuple[str, ...] = ()
+                    else:
+                        (
+                            shared_context_mode,
+                            directive_task_id,
+                            reference_event_ids,
+                        ) = await self._shared_context.resolve_mode(
+                            session_id,
+                            user_id=user_id,
+                            team_id=team.id,
+                        )
+                        context_task_id = directive_task_id or context_task_id
+                    (
+                        shared_context_packet,
+                        shared_context_tokens,
+                    ) = await self._shared_context.prepare_packet(
+                        model=model,
+                        user_id=user_id,
+                        team_id=team.id,
+                        mode=shared_context_mode,
+                        task_id=context_task_id,
+                        reference_event_ids=reference_event_ids,
+                        exclude_event_ids=tuple(msg.id for msg in customer_input_msgs),
+                    )
+                    packet_revision = (
+                        json.loads(shared_context_packet).get("revision", 0)
+                        if shared_context_packet
+                        else await self._shared_context.current_revision(
+                            user_id,
+                            team.id,
+                        )
+                    )
+                    await self._shared_context.pin_session_revision(
+                        session_id,
+                        team_id=team.id,
+                        task_id=context_task_id,
+                        revision=int(packet_revision),
+                    )
+                    shared_context_attachment = self._shared_context.system_attachment(
+                        shared_context_packet,
+                        shared_context_tokens,
+                    )
+                    shared_context_attachment_tokens = await model.count_tokens(
+                        [
+                            UserMsg(
+                                name="shared_context_attachment",
+                                content=shared_context_attachment,
+                            ),
+                        ],
+                        None,
+                    )
+                    middlewares.append(
+                        SharedContextIsolationMiddleware(
+                            shared_context_mode,
+                            self._shared_context,
+                            user_id,
+                            team.id,
+                            session_record.state.context,
+                            shared_context_attachment,
+                        ),
+                    )
 
                 fallback_cfg = session_record.config.fallback_chat_model_config
                 fallback_model = (
@@ -1116,6 +1414,33 @@ class ChatService:
                 # 5. Assemble the Agent.
                 # -------------------------------------------------------------
                 attachment = f"You're within a session (id={session_id})."
+                if isinstance(team_ctx, _LeaderContext):
+                    attachment += (
+                        " You are the only customer-facing speaker for this "
+                        "team turn. Team members report internally; combine "
+                        "duplicate requests for missing information into one "
+                        "concise question. Before asking it, call "
+                        "TeamSay(kind='requires_user_input', to=null, "
+                        "content=<question>) once, then ask it in your final "
+                        "reply."
+                    )
+                elif isinstance(team_ctx, _WorkerContext):
+                    if is_reply_owner:
+                        attachment += (
+                            " The user explicitly addressed you, so you own "
+                            "the customer reply for this turn. Reply directly "
+                            "once. Other members are internal collaborators. "
+                            "Before asking the user for missing information, "
+                            "call TeamSay(kind='requires_user_input', to=null, "
+                            "content=<question>) once."
+                        )
+                    else:
+                        attachment += (
+                            " You are an internal collaborator. Never address "
+                            "the customer directly; report results or "
+                            "requires_user_input via TeamSay to the current "
+                            f"reply owner {(report_target_name or team_ctx.leader_name)!r}."
+                        )
 
                 # Channel-bound sessions: tell the agent which chat it serves.
                 if channel is not None and channel_origin is not None:
@@ -1140,8 +1465,7 @@ class ChatService:
                         )
                     elif chat_kind is ChatKind.PRIVATE:
                         attachment += (
-                            " It is a one-to-one private chat with a "
-                            "single user."
+                            " It is a one-to-one private chat with a single user."
                         )
                     if tools:
                         attachment += (
@@ -1150,22 +1474,65 @@ class ChatService:
                             f"as their target to act on this chat."
                         )
 
-                attachment = (
-                    f"<system-notification>{attachment}</system-notification>"
-                )
-                system_prompt = (
-                    agent_record.data.system_prompt + "\n\n" + attachment
-                )
+                attachment = f"<system-notification>{attachment}</system-notification>"
+                system_prompt = runtime_system_prompt + "\n\n" + attachment
 
                 agent_state = session_record.state
                 agent_state.session_id = session_id
+                context_config = agent_record.data.context_config
+                if team is not None:
+                    # Workforce turns must never silently discard old private
+                    # context when summarization fails.
+                    output_reserve_tokens = max(
+                        1,
+                        int(
+                            model.context_size
+                            * self._shared_context.config.output_reserve_ratio,
+                        ),
+                    )
+                    private_prompt_limit = (
+                        model.context_size
+                        - shared_context_attachment_tokens
+                        - output_reserve_tokens
+                        - self._shared_context.config.preflight_margin_tokens
+                    )
+                    if private_prompt_limit <= 0:
+                        raise SharedContextBudgetError(
+                            "Shared context plus the configured output reserve "
+                            "and preflight margin cannot fit this model's "
+                            "context window. Select a larger-context model or "
+                            "split the task."
+                        )
+                    safe_trigger_ratio = min(
+                        context_config.trigger_ratio,
+                        private_prompt_limit / model.context_size,
+                    )
+                    safe_reserve_ratio = min(
+                        context_config.reserve_ratio,
+                        safe_trigger_ratio * 0.5,
+                    )
+                    context_config = context_config.model_copy(
+                        update={
+                            # Trigger private-memory compression early enough
+                            # to leave measured room for the shared packet,
+                            # output reserve and runtime-state variability.
+                            "trigger_ratio": safe_trigger_ratio,
+                            "reserve_ratio": safe_reserve_ratio,
+                            "context_buffer_ratio": min(
+                                context_config.context_buffer_ratio,
+                                max(0.0, safe_trigger_ratio - 0.01),
+                            ),
+                            "compression_fallback_to_truncation": False,
+                            "compression_retry_drop_oldest": False,
+                        },
+                    )
                 agent = self._agent_cls(
                     name=agent_record.data.name,
                     system_prompt=system_prompt,
                     model=model,
                     toolkit=toolkit,
                     model_config=ModelConfig(fallback_model=fallback_model),
-                    context_config=agent_record.data.context_config,
+                    context_config=context_config,
                     react_config=agent_record.data.react_config,
                     state=agent_state,
                     middlewares=middlewares,
@@ -1193,6 +1560,189 @@ class ChatService:
             # 7. Run the agent (still under the session lock)
             # -----------------------------------------------------------------
             events_key = MessageBusKeys.session_events(session_id)
+
+            async def _publish_run_event(event: AgentEvent) -> None:
+                if (
+                    team is not None
+                    and isinstance(event, ToolResultEndEvent)
+                    and reply_msg is not None
+                ):
+                    call = next(
+                        (
+                            block
+                            for block in reply_msg.get_content_blocks()
+                            if isinstance(block, ToolCallBlock)
+                            and block.id == event.tool_call_id
+                        ),
+                        None,
+                    )
+                    result = next(
+                        (
+                            block
+                            for block in reversed(reply_msg.get_content_blocks())
+                            if isinstance(block, ToolResultBlock)
+                            and block.id == event.tool_call_id
+                        ),
+                        None,
+                    )
+                    # TeamSay and built-in tools have their own projections.
+                    # Only MCP results are automatically promoted as verified
+                    # external facts; this avoids duplicate self-reporting.
+                    if call is not None and call.name.startswith("mcp__"):
+                        exact = json.dumps(
+                            {
+                                "tool_call": call.model_dump(mode="json"),
+                                "tool_result": (
+                                    result.model_dump(mode="json") if result else None
+                                ),
+                                "state": event.state,
+                            },
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        )
+                        # A success marker without the matching result block is
+                        # not evidence. Keep it as an auditable error instead
+                        # of promoting a null payload to tool_verified.
+                        succeeded = (
+                            event.state == ToolResultState.SUCCESS
+                            and result is not None
+                        )
+                        await self._shared_context.append_event(
+                            user_id=user_id,
+                            team_id=team.id,
+                            kind=("external_event" if succeeded else "error"),
+                            content=exact,
+                            event_id=event.id,
+                            source_agent_id=agent_id,
+                            source_session_id=session_id,
+                            task_id=context_task_id,
+                            based_on_revision=(
+                                await self._shared_context.session_revision(
+                                    session_id,
+                                    team_id=team.id,
+                                    task_id=context_task_id,
+                                )
+                            ),
+                            delta=(
+                                ContextDelta(add_confirmed_facts=(exact,))
+                                if succeeded
+                                else None
+                            ),
+                        )
+                # Pending/confirmed operations are authoritative state, not
+                # narrative summary. Record their exact ids and payloads so
+                # another agent cannot infer an approval from prose. This
+                # durable write intentionally precedes SSE publication.
+                if team is not None and isinstance(
+                    event,
+                    (
+                        RequireUserConfirmEvent,
+                        RequireExternalExecutionEvent,
+                        UserConfirmResultEvent,
+                        ExternalExecutionResultEvent,
+                    ),
+                ):
+                    if isinstance(
+                        event,
+                        (RequireUserConfirmEvent, RequireExternalExecutionEvent),
+                    ):
+                        operation_ids = tuple(call.id for call in event.tool_calls)
+                        status = (
+                            "waiting_approval"
+                            if isinstance(event, RequireUserConfirmEvent)
+                            else "waiting_external"
+                        )
+                        delta = ContextDelta(
+                            status=status,
+                            add_pending_operation_ids=operation_ids,
+                        )
+                        kind = "external_event"
+                    elif isinstance(event, UserConfirmResultEvent):
+                        operation_ids = tuple(
+                            result.tool_call.id for result in event.confirm_results
+                        )
+                        decisions = tuple(
+                            json.dumps(
+                                {
+                                    "operation_id": result.tool_call.id,
+                                    "tool": result.tool_call.name,
+                                    "input": result.tool_call.input,
+                                    "confirmed": result.confirmed,
+                                },
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                                sort_keys=True,
+                            )
+                            for result in event.confirm_results
+                        )
+                        delta = ContextDelta(
+                            status="running",
+                            add_decisions=decisions,
+                            resolve_pending_operation_ids=operation_ids,
+                        )
+                        kind = "context_update"
+                    else:
+                        operation_ids = tuple(
+                            result.id for result in event.execution_results
+                        )
+                        outputs = tuple(
+                            json.dumps(
+                                result.model_dump(mode="json"),
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                                sort_keys=True,
+                            )
+                            for result in event.execution_results
+                        )
+                        delta = ContextDelta(
+                            status="running",
+                            add_confirmed_facts=outputs,
+                            resolve_pending_operation_ids=operation_ids,
+                        )
+                        kind = "external_event"
+                    await self._shared_context.append_event(
+                        user_id=user_id,
+                        team_id=team.id,
+                        kind=kind,
+                        content=json.dumps(
+                            event.model_dump(mode="json"),
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        ),
+                        event_id=event.id,
+                        source_agent_id=agent_id,
+                        source_session_id=session_id,
+                        task_id=context_task_id,
+                        based_on_revision=(
+                            None
+                            if isinstance(event, UserConfirmResultEvent)
+                            else await self._shared_context.session_revision(
+                                session_id,
+                                team_id=team.id,
+                                task_id=context_task_id,
+                            )
+                        ),
+                        delta=delta,
+                    )
+
+                payload = event.model_dump(mode="json")
+                await publish_session_event(
+                    self._message_bus,
+                    session_id,
+                    payload,
+                )
+                if customer_output_session_id != session_id:
+                    customer_payload = {**payload}
+                    if "session_id" in customer_payload:
+                        customer_payload["session_id"] = customer_output_session_id
+                    await publish_session_event(
+                        self._message_bus,
+                        customer_output_session_id,
+                        customer_payload,
+                    )
+
             # Channel-bound run: start streaming the reply back to the
             # platform chat. Delivery is plain REST, so this node does it
             # rather than handing the run to whichever one holds the
@@ -1262,11 +1812,7 @@ class ChatService:
                                 elif reply_msg is not None:
                                     reply_msg.append_event(event)
                                 try:
-                                    await publish_session_event(
-                                        self._message_bus,
-                                        session_id,
-                                        event.model_dump(mode="json"),
-                                    )
+                                    await _publish_run_event(event)
                                     await self._project_event(
                                         user_id,
                                         session_record,
@@ -1316,11 +1862,7 @@ class ChatService:
                                     ExternalExecutionResultEvent,
                                 ),
                             ):
-                                await publish_session_event(
-                                    self._message_bus,
-                                    session_id,
-                                    input_msg.model_dump(mode="json"),
-                                )
+                                await _publish_run_event(input_msg)
 
                             # Emit a synthetic REPLY_START so SSE subscribers
                             # (frontend, channel gateway) can detect the
@@ -1337,11 +1879,7 @@ class ChatService:
                                 reply_id=agent.state.reply_id,
                                 name=agent_record.data.name,
                             )
-                            await publish_session_event(
-                                self._message_bus,
-                                session_id,
-                                continuation_start.model_dump(mode="json"),
-                            )
+                            await _publish_run_event(continuation_start)
 
                             async for event in agent.reply_stream(
                                 inputs=input_msg,
@@ -1352,11 +1890,7 @@ class ChatService:
                                 if reply_msg is not None:
                                     reply_msg.append_event(event)
                                 try:
-                                    await publish_session_event(
-                                        self._message_bus,
-                                        session_id,
-                                        event.model_dump(mode="json"),
-                                    )
+                                    await _publish_run_event(event)
                                     await self._project_event(
                                         user_id,
                                         session_record,
@@ -1402,6 +1936,121 @@ class ChatService:
 
                     if reply_msg is not None:
                         reply_msgs.append(reply_msg)
+
+                    # A leader may create its team during this very reply, so
+                    # it had no team context when assembly started. Refresh
+                    # once here before applying the turn-state barrier.
+                    if team is None and reply_msg is not None:
+                        refreshed_session = await self._storage.get_session(
+                            user_id,
+                            agent_id,
+                            session_id,
+                        )
+                        if (
+                            refreshed_session is not None
+                            and refreshed_session.team_id is not None
+                        ):
+                            team = await self._storage.get_team(
+                                user_id,
+                                refreshed_session.team_id,
+                            )
+                    if team is not None:
+                        live_turn = await get_team_turn(
+                            self._message_bus,
+                            team.id,
+                            storage=self._shared_context.storage,
+                            user_id=user_id,
+                        )
+                        is_reply_owner = (
+                            live_turn is not None
+                            and live_turn.reply_owner_session_id == session_id
+                        )
+
+                    # A leader can create the team in this very reply. Seed
+                    # its shared context once the team exists so the next
+                    # worker starts from the same customer input.
+                    if (
+                        team is not None
+                        and customer_input_msgs
+                        and not shared_input_recorded
+                    ):
+                        shared_record = (
+                            await self._shared_context.storage.get_team_shared_context(
+                                user_id,
+                                team.id,
+                            )
+                        )
+                        existing_event_ids = (
+                            {event.id for event in shared_record.state.events}
+                            if shared_record is not None
+                            else set()
+                        )
+                        for msg in customer_input_msgs:
+                            if msg.id in existing_event_ids:
+                                continue
+                            text = (msg.get_text_content() or "").strip() or (
+                                f"[Customer message {msg.id} contains "
+                                "non-text content; inspect the source message.]"
+                            )
+                            await self._shared_context.append_event(
+                                user_id=user_id,
+                                team_id=team.id,
+                                kind="customer_message",
+                                content=text,
+                                event_id=msg.id,
+                                source_message_id=msg.id,
+                                source_session_id=session_id,
+                                task_id=(
+                                    msg.metadata.get("shared_context_task_id")
+                                    or context_task_id
+                                ),
+                                in_reply_to=msg.metadata.get(
+                                    "shared_context_in_reply_to",
+                                ),
+                                reply_owner_agent_id=agent_id,
+                            )
+                        shared_input_recorded = True
+
+                    # A structured request for customer data ends this team
+                    # turn. Finish the in-flight reply, then release the inbox
+                    # consumer without waking any member; queued reports stay
+                    # durable for the next explicit user message.
+                    if (
+                        team is not None
+                        and is_reply_owner
+                        and reply_msg is not None
+                        and reply_msg.finished_reason is ReplyFinishedReason.COMPLETED
+                        and await mark_team_awaiting_user(
+                            self._message_bus,
+                            team.id,
+                            session_id=session_id,
+                            storage=self._shared_context.storage,
+                            user_id=user_id,
+                        )
+                    ):
+                        await self._message_bus.registry_del(
+                            MessageBusKeys.inbox_consumer(session_id),
+                            MessageBusKeys.INBOX_CONSUMER_FIELD,
+                        )
+                        released = True
+                        break
+
+                    if (
+                        team is not None
+                        and not is_reply_owner
+                        and await team_is_awaiting_user(
+                            self._message_bus,
+                            team.id,
+                            storage=self._shared_context.storage,
+                            user_id=user_id,
+                        )
+                    ):
+                        await self._message_bus.registry_del(
+                            MessageBusKeys.inbox_consumer(session_id),
+                            MessageBusKeys.INBOX_CONSUMER_FIELD,
+                        )
+                        released = True
+                        break
 
                     # Still holding the session lock: anything that
                     # landed in the inbox after this turn's last drain
@@ -1461,6 +2110,41 @@ class ChatService:
                                 session_id,
                                 msg,
                             )
+                            if customer_output_session_id != session_id:
+                                await self._storage.upsert_message(
+                                    user_id,
+                                    customer_output_session_id,
+                                    msg.model_copy(deep=True),
+                                )
+                            if team is not None and is_reply_owner:
+                                reply_text = (msg.get_text_content() or "").strip()
+                                if reply_text:
+                                    await self._shared_context.append_event(
+                                        user_id=user_id,
+                                        team_id=team.id,
+                                        kind="customer_reply",
+                                        content=reply_text,
+                                        event_id=msg.id,
+                                        source_message_id=msg.id,
+                                        source_agent_id=agent_id,
+                                        source_session_id=session_id,
+                                        task_id=(
+                                            live_turn.task_id
+                                            if live_turn is not None
+                                            else context_task_id
+                                        ),
+                                        based_on_revision=(
+                                            await self._shared_context.session_revision(
+                                                session_id,
+                                                team_id=team.id,
+                                                task_id=(
+                                                    live_turn.task_id
+                                                    if live_turn is not None
+                                                    else context_task_id
+                                                ),
+                                            )
+                                        ),
+                                    )
                         await self._storage.update_session_state(
                             user_id=user_id,
                             agent_id=agent_id,
@@ -1486,12 +2170,12 @@ class ChatService:
                                 await self._notify_leader_of_failure(
                                     user_id,
                                     team_ctx,
+                                    session_id,
                                     worker_name,
                                     msg.finished_reason,
                                     msg.error.message
                                     if msg.error
-                                    else "The turn stopped before it "
-                                    "finished.",
+                                    else "The turn stopped before it finished.",
                                 )
 
                 persist_task = asyncio.create_task(_persist())

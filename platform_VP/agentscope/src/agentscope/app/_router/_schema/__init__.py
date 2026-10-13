@@ -14,7 +14,13 @@ from ._channel import (
 from ._chat import ChatRequest, ChatTriggerResponse
 from ._health import ComponentStatus, HealthResponse
 from ._hub import HubInfo
-from ._hub_mcp import InstallMCPRequest, MCPView, UpdateMCPRequest
+from ._hub_mcp import (
+    DirectInstallMCPRequest,
+    InstallMCPRequest,
+    MCPToolView,
+    MCPView,
+    UpdateMCPRequest,
+)
 from ._hub_skill import SkillView
 from ._workspace import (
     AddFromLibraryRequest,
@@ -106,6 +112,8 @@ __all__ = [
     # Hub
     "HubInfo",
     "InstallMCPRequest",
+    "DirectInstallMCPRequest",
+    "MCPToolView",
     "MCPView",
     "UpdateMCPRequest",
     "SkillView",

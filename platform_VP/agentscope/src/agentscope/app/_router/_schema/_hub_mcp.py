@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Schemas for installing and editing MCPs from a hub."""
-from pydantic import BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field, SecretStr, field_validator
 
 from ...storage import MCPRecord
 
@@ -22,6 +22,39 @@ class InstallMCPRequest(BaseModel):
             "The answers to the card's ``inputs_schema``, e.g. API keys."
         ),
     )
+
+
+class DirectInstallMCPRequest(BaseModel):
+    """Install a partner HTTP MCP directly from its connection details."""
+
+    name: str = Field(
+        min_length=1,
+        max_length=100,
+        pattern=r"^[a-zA-Z0-9_-]+$",
+    )
+    display_name: str | None = Field(default=None, max_length=200)
+    description: str = Field(default="", max_length=4000)
+    url: AnyHttpUrl
+    api_key: SecretStr | None = Field(default=None, max_length=8000)
+    auth_header: str = Field(default="Authorization", min_length=1, max_length=200)
+    auth_scheme: str = Field(default="Bearer", max_length=100)
+    headers: dict[str, str] = Field(default_factory=dict)
+    timeout: float = Field(default=30.0, ge=1.0, le=120.0)
+
+    @field_validator("auth_header")
+    @classmethod
+    def validate_header_name(cls, value: str) -> str:
+        if not value.replace("-", "").isalnum():
+            raise ValueError("auth_header must be an HTTP token")
+        return value
+
+
+class MCPToolView(BaseModel):
+    """One registered tool discovered from an installed MCP."""
+
+    name: str
+    description: str = ""
+    input_schema: dict = Field(default_factory=dict)
 
 
 class MCPView(BaseModel):
@@ -72,6 +105,10 @@ class MCPView(BaseModel):
         default=None,
         description="The card version installed.",
     )
+    tools: list[MCPToolView] = Field(default_factory=list)
+    catalog_revision: int = Field(default=0, ge=0)
+    last_synced_at: str | None = None
+    last_sync_error: str | None = None
 
     @classmethod
     def from_record(cls, record: MCPRecord) -> "MCPView":
@@ -99,6 +136,17 @@ class MCPView(BaseModel):
             hub_id=record.hub_id,
             card_id=record.card_id,
             version=record.version,
+            tools=[
+                MCPToolView.model_validate(item)
+                for item in record.discovered_tools
+            ],
+            catalog_revision=record.catalog_revision,
+            last_synced_at=(
+                record.last_synced_at.isoformat()
+                if record.last_synced_at is not None
+                else None
+            ),
+            last_sync_error=record.last_sync_error,
         )
 
 

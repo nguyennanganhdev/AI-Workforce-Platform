@@ -700,7 +700,7 @@
 		"loading": "Loading…",
 		"team": {
 			"membersHeading": "Members",
-			"noMembers": "No members yet — ask the leader to spawn one with AgentCreate.",
+			"noMembers": "No members yet — the leader can invite published agents when needed.",
 			"emptyTitle": "No team",
 			"emptyDescription": "This session is not part of a team. The agent forms one with TeamCreate.",
 			"running": "Running",

@@ -11,9 +11,9 @@ Verifies the assembly rules:
 - :class:`ToolStop` (from ``BackgroundTaskManager``) is always included;
 - the four ``Schedule*`` tools only when ``session.config.chat_model_config``
   is set (they need a model to fire new runs with);
-- team tools are role-gated by ``agent_record.source``: ``"team"`` →
-  one ``TeamSay`` (worker variant); anything else → the full
-  leader-side toolset of four;
+- team tools are role-gated: workers get only ``TeamSay``; leaders can create
+  teams and invite only existing published business agents. ``AgentCreate``
+  is never exposed in chat runtime;
 - caller-supplied ``extra_factory`` results land at the end.
 """
 from typing import Any
@@ -31,6 +31,7 @@ from agentscope.app.storage import (
     AgentData,
     AgentRecord,
     ChatModelConfig,
+    InviteConfig,
     SessionConfig,
     SessionRecord,
 )
@@ -138,6 +139,16 @@ class _NoOpStorage:
         return []
 
 
+class _AgentListStorage(_NoOpStorage):
+    """Storage stub exposing a controlled runtime agent catalog."""
+
+    def __init__(self, agents: list[AgentRecord]) -> None:
+        self._agents = agents
+
+    async def list_agents(self, _user_id: str) -> list[AgentRecord]:
+        return self._agents
+
+
 def _make_access(storage: Any) -> ResourceAccessService:
     """Build a :class:`ResourceAccessService` bound to ``storage`` with a
     deny-all policy for ``get_toolkit`` tests.
@@ -188,7 +199,7 @@ class TestGetToolkitBaseAssembly(IsolatedAsyncioTestCase):
 
     async def test_user_agent_gets_all_sources(self) -> None:
         """A user-owned agent receives workspace, planning, scheduling,
-        ToolStop, and the four leader-side team tools."""
+        ToolStop, and the leader-side team tools."""
         agent = _make_agent(source="user")
         session = _make_session(
             user_id="u",
@@ -245,10 +256,72 @@ class TestGetToolkitBaseAssembly(IsolatedAsyncioTestCase):
             }
             <= names,
         )
-        # Leader-side team tools (4 of them).
+        # Runtime may coordinate existing agents, but cannot create agents.
         self.assertTrue(
-            {"TeamCreate", "AgentCreate", "TeamSay", "TeamDelete"} <= names,
+            {"TeamCreate", "TeamSay", "TeamDelete"} <= names,
         )
+        self.assertNotIn("AgentCreate", names)
+
+
+class TestGetToolkitPublishedAgentCatalog(IsolatedAsyncioTestCase):
+    """Leader runtime can invite only Builder-published business agents."""
+
+    async def test_invite_catalog_excludes_draft_and_withdrawn_agents(
+        self,
+    ) -> None:
+        caller = _make_agent(source="user", name="Leader")
+        published = _make_agent(source="user", name="Published")
+        draft = _make_agent(source="user", name="Draft")
+        withdrawn = _make_agent(source="user", name="Withdrawn")
+        for agent, lifecycle in (
+            (published, "published"),
+            (draft, "draft"),
+            (withdrawn, "withdrawn"),
+        ):
+            agent.data.lifecycle_state = lifecycle
+            agent.data.invite_config = InviteConfig(
+                invitable=True,
+                invite_description=f"{agent.data.name} capability",
+            )
+        storage = _AgentListStorage([caller, published, draft, withdrawn])
+        session = _make_session(
+            user_id="u",
+            agent_id=caller.id,
+            with_model=True,
+        )
+
+        toolkit = await get_toolkit(
+            storage=storage,  # type: ignore[arg-type]
+            workspace=_FakeWorkspace(),  # type: ignore[arg-type]
+            workspace_manager=FakeWorkspaceManager(),
+            scheduler_manager=SchedulerManager(
+                storage=storage,  # type: ignore[arg-type]
+                message_bus=_NullBus(),  # type: ignore[arg-type]
+                workspace_manager=FakeWorkspaceManager(),
+            ),
+            background_task_manager=BackgroundTaskManager(
+                message_bus=_NullBus(),  # type: ignore[arg-type]
+            ),
+            message_bus=_NullBus(),  # type: ignore[arg-type]
+            user_id="u",
+            agent_record=caller,
+            session_record=session,
+            extra_factory=None,
+            middlewares=[],
+            resource_access_service=_make_access(storage),
+        )
+
+        invite = next(
+            tool
+            for group in toolkit.tool_groups
+            for tool in group.tools
+            if tool.name == "AgentInvite"
+        )
+        self.assertEqual(
+            invite.input_schema["properties"]["target"]["enum"],
+            [f"Published@{published.id[:8]}"],
+        )
+        self.assertNotIn("AgentCreate", _tool_names(toolkit))
 
 
 class TestGetToolkitWorkerVariant(IsolatedAsyncioTestCase):

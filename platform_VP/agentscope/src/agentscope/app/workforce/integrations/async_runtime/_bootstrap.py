@@ -25,12 +25,13 @@ from ...foundation._provider_auth import (
 )
 from ...foundation._route_grants import PartnerRouteGrantService
 from ...foundation.event_delivery import (
+    DurableJobService,
     DurableJobWorker,
     DurableWorkerSupervisor,
-    DurableJobService,
-    MetricSink,
     MessageBusPublicEventSignal,
     MessageBusRequestCompletionSignal,
+    MetricSink,
+    NullMetricSink,
 )
 
 
@@ -53,13 +54,8 @@ class WorkforceRuntimeAssembly:
         if not self.worker_id:
             raise ValueError("worker_id must not be empty")
         handlers = dict(self.job_handlers or {})
-        if any(
-            not key or not callable(value)
-            for key, value in handlers.items()
-        ):
-            raise ValueError(
-                "job handlers require a non-empty type and callable"
-            )
+        if any(not key or not callable(value) for key, value in handlers.items()):
+            raise ValueError("job handlers require a non-empty type and callable")
         object.__setattr__(self, "job_handlers", handlers)
         object.__setattr__(self, "routers", tuple(self.routers))
 
@@ -81,6 +77,7 @@ class WorkforceFoundation:
     public_event_signal: MessageBusPublicEventSignal
     request_completion_signal: MessageBusRequestCompletionSignal
     provider_auth: HmacProviderAuth | None
+    metrics: MetricSink
     runtime: WorkforceRuntimeAssembly | None = None
 
 
@@ -120,7 +117,9 @@ class WorkforceBootstrap(AbstractAsyncContextManager):
         self._api_key_authenticator = authenticate_provider_api_key
         self._secret_resolver = resolve_provider_signing_secret
         self._provider_clock_skew = provider_clock_skew
-        self._worker_metrics = worker_metrics
+        self._worker_metrics = (
+            worker_metrics if worker_metrics is not None else NullMetricSink()
+        )
         self._worker_idle_seconds = worker_idle_seconds
         self._worker_restart_seconds = worker_restart_seconds
         self._components: WorkforceFoundation | None = None
@@ -155,6 +154,7 @@ class WorkforceBootstrap(AbstractAsyncContextManager):
                 self.message_bus,
             ),
             provider_auth=provider_auth,
+            metrics=self._worker_metrics,
         )
         runtime = runtime_factory(foundation) if runtime_factory else None
         self._prepared = WorkforceFoundation(
@@ -168,6 +168,7 @@ class WorkforceBootstrap(AbstractAsyncContextManager):
             public_event_signal=foundation.public_event_signal,
             request_completion_signal=foundation.request_completion_signal,
             provider_auth=foundation.provider_auth,
+            metrics=foundation.metrics,
             runtime=runtime,
         )
 
@@ -186,7 +187,7 @@ class WorkforceBootstrap(AbstractAsyncContextManager):
                     worker,
                     idle_seconds=self._worker_idle_seconds,
                     restart_seconds=self._worker_restart_seconds,
-                    metrics=self._worker_metrics,
+                    metrics=self._prepared.metrics,
                 )
                 await self._supervisor.__aenter__()
         except BaseException:
@@ -207,6 +208,25 @@ class WorkforceBootstrap(AbstractAsyncContextManager):
         """Routers are stable before startup so OpenAPI sees them once."""
         runtime = self._prepared.runtime
         return () if runtime is None else runtime.routers
+
+    @property
+    def asset_store(self) -> Any | None:
+        """Return the runtime asset store so the host owns its lifecycle."""
+        runtime = self._prepared.runtime
+        if runtime is None:
+            return None
+        service = runtime.services.get("asset_service")
+        return None if service is None else service.blob_store
+
+    @property
+    def shared_context_storage(self) -> Any | None:
+        """Return the canonical context store used by partner workflows."""
+
+        runtime = self._prepared.runtime
+        if runtime is None:
+            return None
+        service = runtime.services.get("shared_context")
+        return None if service is None else service.storage
 
     @property
     def components(self) -> WorkforceFoundation:

@@ -14,6 +14,7 @@ from unittest.async_case import IsolatedAsyncioTestCase
 from utils import MockModel
 
 from agentscope.agent import Agent, InjectionConfig, ReActConfig
+from agentscope.app._tool._team_say import STALE_CONTEXT_RESULT
 from agentscope.app.middleware import TeamMemberLoopMiddleware
 from agentscope.event import ReplyEndEvent
 from agentscope.message import TextBlock, ToolCallBlock, ToolResultState
@@ -48,10 +49,15 @@ class _FakeTeamSay(ToolBase):
     is_mcp: bool = False
     mcp_name: str | None = None
 
-    def __init__(self, state: ToolResultState = ToolResultState.SUCCESS):
+    def __init__(
+        self,
+        state: ToolResultState = ToolResultState.SUCCESS,
+        output: str = "delivered",
+    ):
         super().__init__()
         self.calls: list[dict] = []
         self._state = state
+        self._output = output
 
     async def check_permissions(
         self,
@@ -68,7 +74,7 @@ class _FakeTeamSay(ToolBase):
         """Record the call and answer with the configured state."""
         self.calls.append({"to": to, "content": content})
         return ToolChunk(
-            content=[TextBlock(text="delivered")],
+            content=[TextBlock(text=self._output)],
             state=self._state,
         )
 
@@ -174,14 +180,26 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             },
         )
 
-    async def test_broadcast_report_passes_through(self) -> None:
-        """``TeamSay`` without ``to`` broadcasts and still counts."""
+    async def test_broadcast_report_is_not_accepted(self) -> None:
+        """A worker broadcast cannot satisfy the final-report contract."""
         items = await self._run(
-            [_call("TeamSay", content="done"), _text("reported")],
+            [
+                _call("TeamSay", content="done"),
+                _text("broadcast was rejected"),
+                _call("TeamSay", to="Leader", content="done"),
+                _text("reported"),
+            ],
         )
         self.assertListEqual(
             [_.finished_reason for _ in self._end_events(items)],
             [ReplyFinishedReason.COMPLETED],
+        )
+        self.assertListEqual(
+            self.team_say.calls,
+            [
+                {"to": None, "content": "done"},
+                {"to": "Leader", "content": "done"},
+            ],
         )
 
     async def test_report_to_other_member_is_not_accepted(self) -> None:
@@ -224,6 +242,27 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             [_.finished_reason for _ in ends],
             [ReplyFinishedReason.ERROR],
         )
+
+    async def test_stale_report_stops_turn_instead_of_repeating_it(self) -> None:
+        """A fresh run must reload shared context before another TeamSay."""
+
+        self.team_say = _FakeTeamSay(
+            state=ToolResultState.ERROR,
+            output=STALE_CONTEXT_RESULT,
+        )
+        items = await self._run(
+            [
+                _call("TeamSay", to="Leader", content="stale answer"),
+                _text("retry the same stale answer"),
+                _call("TeamSay", to="Leader", content="must not run"),
+            ],
+        )
+        ends = self._end_events(items)
+
+        self.assertEqual(self.model.cnt, 2)
+        self.assertEqual(len(self.team_say.calls), 1)
+        self.assertEqual(ends[-1].finished_reason, ReplyFinishedReason.ERROR)
+        self.assertIn("fresh worker turn", ends[-1].error.message)
 
     async def test_later_tool_invalidates_earlier_report(self) -> None:
         """A non-``TeamSay`` call after the report re-opens the reply."""

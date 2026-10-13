@@ -7,6 +7,7 @@ from pydantic import Field, model_validator
 
 from ...contracts import (
     AsyncProtocolSnapshotRef,
+    JsonObject,
     OpaqueId,
     RequestResult,
     RequestStatus,
@@ -18,6 +19,7 @@ from ...contracts import (
 class RequestCause(WorkforceModel):
     kind: Literal["request"]
     request_id: OpaqueId
+    asset_ids: tuple[OpaqueId, ...] = ()
 
 
 class ApprovalCause(WorkforceModel):
@@ -49,9 +51,7 @@ class WorkflowTrigger(WorkforceModel):
     trigger_id: OpaqueId
     workflow_id: OpaqueId
     cause: WorkflowCause
-    expected_state_revision: int | None = Field(
-        default=None, ge=1, strict=True
-    )
+    expected_state_revision: int | None = Field(default=None, ge=1, strict=True)
 
 
 class AgentVersionPin(WorkforceModel):
@@ -128,9 +128,7 @@ class CommandClaimResult(WorkforceModel):
     def result_shape(self) -> "CommandClaimResult":
         if self.is_new and self.status != RequestStatus.ACCEPTED:
             raise ValueError("a new claim must be accepted")
-        if (self.status == RequestStatus.COMPLETED) != (
-            self.result is not None
-        ):
+        if (self.status == RequestStatus.COMPLETED) != (self.result is not None):
             raise ValueError("only a completed claim has a required result")
         return self
 
@@ -140,6 +138,14 @@ class PinnedRuntimeContext(WorkforceModel):
 
     workflow: WorkflowRecord
     checkpoint: WorkflowCheckpoint
+    shared_context_revision: int | None = Field(default=None, ge=0)
+    shared_context_tokens: int | None = Field(default=None, ge=0)
+    shared_context: JsonObject | None = None
+    leader_system_prompt: str | None = Field(default=None, min_length=1)
+    business_agent_evidence_policy: str | None = Field(
+        default=None,
+        min_length=1,
+    )
 
     @model_validator(mode="after")
     def matching_snapshot(self) -> "PinnedRuntimeContext":
@@ -147,12 +153,8 @@ class PinnedRuntimeContext(WorkforceModel):
             raise ValueError("checkpoint belongs to a different workflow")
         if self.workflow.revision != self.checkpoint.state_revision:
             raise ValueError("checkpoint revision differs from workflow")
-        versions = tuple(
-            pin.version_id for pin in self.checkpoint.agent_version_pins
-        )
-        if len(self.workflow.version_pins) != len(
-            set(self.workflow.version_pins)
-        ):
+        versions = tuple(pin.version_id for pin in self.checkpoint.agent_version_pins)
+        if len(self.workflow.version_pins) != len(set(self.workflow.version_pins)):
             raise ValueError("workflow version pins must be unique")
         if set(self.workflow.version_pins) != set(versions):
             raise ValueError("workflow and checkpoint version pins differ")
@@ -170,9 +172,7 @@ class RuntimeTurnResult(WorkforceModel):
     @model_validator(mode="after")
     def matching_result(self) -> "RuntimeTurnResult":
         if self.checkpoint.state_revision != self.expected_state_revision + 1:
-            raise ValueError(
-                "candidate checkpoint must advance exactly one revision"
-            )
+            raise ValueError("candidate checkpoint must advance exactly one revision")
         ids = [message.message_id for message in self.result.messages]
         if len(ids) != len(set(ids)):
             raise ValueError("duplicate message_id in one candidate")

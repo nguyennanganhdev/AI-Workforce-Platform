@@ -1,3 +1,5 @@
+import type { Msg } from '@agentscope-ai/agentscope/message';
+
 import { client } from './client';
 import type { ChatRequest } from './types';
 
@@ -21,5 +23,5 @@ export const chatApi = {
 	 * @returns A confirmation object ``{ status, session_id }``.
 	 */
 	trigger: (body: ChatRequest) =>
-		client.post<{ status: string; session_id: string }>('/chat/', body),
+		client.post<{ status: string; session_id: string; message?: Msg | null }>('/chat/', body),
 };

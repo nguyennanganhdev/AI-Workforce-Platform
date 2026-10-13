@@ -3,17 +3,16 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import hashlib
-import json
 from typing import Any
 
 from ...contracts import ActorContext, RequestResult, Scope
 from ...foundation.event_delivery import DurableJob
 from ._bootstrap import WorkforceFoundation, WorkforceRuntimeAssembly
-
 
 PHASE_C_JOB_TYPES = frozenset(
     {
@@ -21,6 +20,7 @@ PHASE_C_JOB_TYPES = frozenset(
         "operation_reconcile",
         "workforce.workflow.continue",
         "workforce.lifecycle.evaluate",
+        "workforce.shared_context.project",
     }
 )
 
@@ -46,6 +46,9 @@ class PhaseCRuntimeDependencies:
     release_tool_resolver: Any
     release_policy_resolver: Any
     release_context_resolver: Any
+    shared_context: Any
+    shared_context_model_resolver: Any
+    asset_store: Any = None
     clock: Any = lambda: datetime.now(UTC)
     call_factory: Any = None
     builtins: Mapping[str, Any] | None = None
@@ -79,32 +82,28 @@ class ApprovalContinuationCommandAdapter:
         scope = Scope.model_validate(resolved["scope"])
         await self._commands.record_result(request_id, result, uow=uow)
         data = result.data
-        if data.get("status") != "approved":
-            return
         workflow_id = data.get("workflow_id")
         approval_id = data.get("approval_id")
-        if not isinstance(workflow_id, str) or not isinstance(
-            approval_id, str
-        ):
-            raise ValueError("approved result requires workflow and approval")
-        external_id = "approval-continuation-" + request_id
-        payload_hash = hashlib.sha256(
-            json.dumps(
-                [workflow_id, approval_id, request_id],
-                separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest()
-        continuation = await self._commands.claim_or_read(
-            actor,
-            external_id,
-            "approval_continuation",
-            workflow_id,
-            payload_hash,
-            uow=uow,
-        )
-        await self._workflows.enqueue_trigger(
-            scope,
-            {
+        if not isinstance(workflow_id, str) or not isinstance(approval_id, str):
+            raise ValueError("approval result requires workflow and approval")
+        trigger = None
+        if data.get("status") == "approved":
+            external_id = "approval-continuation-" + request_id
+            payload_hash = hashlib.sha256(
+                json.dumps(
+                    [workflow_id, approval_id, request_id],
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+            continuation = await self._commands.claim_or_read(
+                actor,
+                external_id,
+                "approval_continuation",
+                workflow_id,
+                payload_hash,
+                uow=uow,
+            )
+            trigger = {
                 "trigger_id": "approval-" + request_id,
                 "workflow_id": workflow_id,
                 "cause": {
@@ -112,7 +111,14 @@ class ApprovalContinuationCommandAdapter:
                     "request_id": continuation.request_id,
                     "approval_id": approval_id,
                 },
-            },
+            }
+        await self._workflows.project_workflow_event(
+            scope,
+            workflow_id,
+            event_id=request_id,
+            kind="context_update",
+            content=json.dumps(data, ensure_ascii=False, sort_keys=True),
+            continuation=trigger,
             uow=uow,
         )
 
@@ -138,9 +144,7 @@ class OperationReconcileJobHandler:
             or not timer_id
         ):
             raise ValueError("SCOPED_OPERATION_RECONCILE_JOB_REQUIRED")
-        status = await self._reconciler.reconcile(
-            job.scope, operation_id, timer_id
-        )
+        status = await self._reconciler.reconcile(job.scope, operation_id, timer_id)
         return {"operation_id": operation_id, "status": status}
 
 
@@ -165,18 +169,17 @@ def compose_phase_c_runtime(
     if services.get("uows") is not foundation.uows:
         raise ValueError("all Phase-C repositories must use foundation.uows")
     if len(routers) != 3 or any(router is None for router in routers):
-        raise ValueError(
-            "workflow, execution and release routers are all required"
-        )
+        raise ValueError("workflow, execution and release routers are all required")
     handlers = {
         "provider_event": provider_event_processor.handle_job,
         "workforce.workflow.continue": workflow_continuation_handler,
-        "operation_reconcile": OperationReconcileJobHandler(
-            operation_reconciler
-        ),
+        "operation_reconcile": OperationReconcileJobHandler(operation_reconciler),
         "workforce.lifecycle.evaluate": evaluation_handler,
     }
-    if set(handlers) != PHASE_C_JOB_TYPES or any(
+    shared_context_projector = services.get("shared_context_projector")
+    if shared_context_projector is not None:
+        handlers[shared_context_projector.job_type] = shared_context_projector
+    if not PHASE_C_JOB_TYPES.issubset(handlers) or any(
         not callable(handler) for handler in handlers.values()
     ):
         raise ValueError("Phase-C durable handler set is incomplete")
@@ -195,6 +198,21 @@ def build_phase_c_runtime(
     """Build the complete C1–C6 production graph without test fallbacks."""
     if foundation.provider_auth is None:
         raise ValueError("provider HMAC authentication must be configured")
+    if (
+        dependencies.shared_context is None
+        or not callable(getattr(dependencies.shared_context, "bind_scope", None))
+        or not callable(getattr(dependencies.shared_context, "append_event", None))
+        or getattr(dependencies.shared_context, "storage", None) is None
+    ):
+        raise ValueError(
+            "production Workforce requires the canonical SharedContextService",
+        )
+    if not callable(
+        getattr(dependencies.shared_context_model_resolver, "resolve", None),
+    ):
+        raise ValueError(
+            "production Workforce requires a pinned shared-context model resolver",
+        )
 
     # Imports remain local so the base SDK keeps its optional SQL/FastAPI
     # dependency boundary when Workforce is disabled.
@@ -205,6 +223,8 @@ def build_phase_c_runtime(
         PartnerApprovalService,
         TransactionService,
         create_repository,
+    )
+    from ...execution import (
         create_router as create_execution_router,
     )
     from ...execution.external_operations import (
@@ -236,6 +256,8 @@ def build_phase_c_runtime(
         SqlRuntimeContinuation,
         SqlWorkflowRepository,
         WorkflowContinuationJobHandler,
+    )
+    from ...orchestration import (
         create_router as create_workflow_router,
     )
     from ...orchestration.partner_events import (
@@ -243,6 +265,7 @@ def build_phase_c_runtime(
         PublicEventWriter,
     )
     from ...orchestration.workflows import (
+        WorkforceSharedContextProjector,
         WorkflowContinuation,
         WorkflowService,
     )
@@ -278,9 +301,21 @@ def build_phase_c_runtime(
         deps.leader_bootstrap_resolver,
         releases,
     )
-    operations = ExternalOperationService(
-        execution_repository, deps.clock
-    )
+    operations = ExternalOperationService(execution_repository, deps.clock)
+    asset_repository = None
+    asset_service = None
+    if deps.asset_store is not None:
+        from ...assets import SqlAssetRepository, WorkforceAssetService
+
+        asset_repository = SqlAssetRepository(uows)
+        asset_service = WorkforceAssetService(
+            asset_repository,
+            deps.asset_store,
+            foundation.partner_routing,
+            foundation.identity,
+            operations,
+            clock=deps.clock,
+        )
     protocols = RegistryExecutionProtocols(
         protocol_provider,
         execution_repository,
@@ -302,6 +337,7 @@ def build_phase_c_runtime(
         protocols,
         builtins=deps.builtins,
         call_factory=deps.call_factory,
+        assets=asset_service,
     )
 
     workflow_repository = SqlWorkflowRepository(uows, clock=deps.clock)
@@ -325,6 +361,8 @@ def build_phase_c_runtime(
         workflow_repository,
         checkpoint_repository,
         deps.leader,
+        deps.shared_context,
+        deps.shared_context_model_resolver,
     )
     workflow_service = WorkflowService(
         workflow_repository,
@@ -339,6 +377,11 @@ def build_phase_c_runtime(
         runtime,
         uows,
         deps.clock,
+        shared_context_projection=True,
+    )
+    shared_context_projector = WorkforceSharedContextProjector(
+        deps.shared_context,
+        workflow_service,
     )
     continuation = WorkflowContinuation(
         workflow_service,
@@ -357,6 +400,7 @@ def build_phase_c_runtime(
         foundation.identity,
         event_service,
         foundation.request_completion_signal,
+        assets=asset_service,
         clock=deps.clock,
     )
 
@@ -372,9 +416,13 @@ def build_phase_c_runtime(
         foundation.jobs,
         operations,
         deps.clock,
+        metrics=foundation.metrics,
+        assets=asset_service,
     )
     provider_processor = ProviderEventProcessor(
-        provider_ingress, workflow_adapter
+        provider_ingress,
+        workflow_adapter,
+        metrics=foundation.metrics,
     )
     reconciler = OperationReconciler(
         execution_repository,
@@ -385,29 +433,24 @@ def build_phase_c_runtime(
     )
 
     evaluation_repository = SqlEvaluationRepository(uows)
-    evaluation_service = AsyncEvaluationService(
-        deps.evaluation_runner, deps.clock
-    )
+    evaluation_service = AsyncEvaluationService(deps.evaluation_runner, deps.clock)
     evaluation_jobs = ReleaseAwareEvaluationJobService(
         evaluation_repository,
         foundation.jobs,
         releases,
     )
-    evaluation_handler = EvaluationJobHandler(
-        evaluation_repository, evaluation_service
-    )
+    evaluation_handler = EvaluationJobHandler(evaluation_repository, evaluation_service)
     approval_commands = ApprovalContinuationCommandAdapter(
         request_repository, workflow_service
     )
-    partner_approvals = PartnerApprovalService(
-        approvals, approval_commands
-    )
+    partner_approvals = PartnerApprovalService(approvals, approval_commands)
 
     workflow_router = create_workflow_router(
         ingress,
         event_service,
         deps.customer_dependency,
         bounded_wait_seconds=deps.bounded_wait_seconds,
+        metric_sink=foundation.metrics,
     )
     execution_router = create_execution_router(
         gateway,
@@ -418,6 +461,18 @@ def build_phase_c_runtime(
         deps.customer_dependency,
         foundation.provider_auth,
     )
+    if asset_service is not None:
+        from ...assets import (
+            create_customer_asset_router,
+            create_provider_asset_router,
+        )
+
+        workflow_router.include_router(
+            create_customer_asset_router(asset_service, deps.customer_dependency)
+        )
+        execution_router.include_router(
+            create_provider_asset_router(asset_service, foundation.provider_auth)
+        )
     release_usage = SqlWorkflowVersionUsageReader(uows)
     release_router = create_release_router(
         releases,
@@ -432,12 +487,16 @@ def build_phase_c_runtime(
         "protocols": protocols,
         "execution_repository": execution_repository,
         "gateway": gateway,
+        "asset_repository": asset_repository,
+        "asset_service": asset_service,
         "approvals": approvals,
         "operations": operations,
         "workflow_repository": workflow_repository,
         "request_repository": request_repository,
         "event_service": event_service,
         "workflow_service": workflow_service,
+        "shared_context": deps.shared_context,
+        "shared_context_projector": shared_context_projector,
         "ingress": ingress,
         "provider_ingress": provider_ingress,
         "provider_processor": provider_processor,

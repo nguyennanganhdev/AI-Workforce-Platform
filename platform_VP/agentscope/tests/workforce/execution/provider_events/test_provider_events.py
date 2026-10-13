@@ -6,6 +6,10 @@ import pytest
 from sqlalchemy import select
 
 from agentscope.app.workforce.execution import ExecutionError
+from agentscope.app.workforce.foundation import (
+    InMemoryMetricSink,
+    PROVIDER_EVENTS,
+)
 from execution_fakes import (
     PROVIDER,
     SCOPE_A,
@@ -54,6 +58,30 @@ def test_duplicate_receipt_and_id_conflict():
                     (await uow.execute(select(test_events))).mappings().all()
                 )
                 assert sum(r["id"].startswith("apply-") for r in events) == 1
+
+    run(scenario)
+
+
+def test_provider_event_outcomes_share_runtime_metric_convention():
+    async def scenario():
+        async with harness(tracking=True) as env:
+            metrics = InMemoryMetricSink()
+            env.ingress.metrics = metrics
+            env.processor.metrics = metrics
+            op = await operation(env)
+            event = event_fixture(
+                job_id=op["external_job_id"],
+                correlation=op["correlation_id"],
+            )
+            receipt = await env.ingress.accept(PROVIDER, event)
+            await env.ingress.accept(PROVIDER, event)
+            assert (
+                await env.processor.process(receipt["receipt_id"])
+                == "applied"
+            )
+            assert metrics.value(PROVIDER_EVENTS, outcome="accepted") == 1
+            assert metrics.value(PROVIDER_EVENTS, outcome="duplicate") == 1
+            assert metrics.value(PROVIDER_EVENTS, outcome="applied") == 1
 
     run(scenario)
 

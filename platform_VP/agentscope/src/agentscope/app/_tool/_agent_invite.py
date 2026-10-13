@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 """The AgentInvite tool — borrows an existing agent into the leader's team.
 
-Unlike :class:`AgentCreate`, which spawns a brand-new worker
-(``source='team'``) from a :class:`SubAgentTemplate`, this tool
-**borrows** a pre-existing user-owned agent by minting a fresh
+This tool **borrows** a pre-existing user-owned agent by minting a fresh
 team-scoped :class:`SessionRecord` on top of the *existing*
 :class:`AgentRecord`. The borrowed agent keeps its definition, including
 its system prompt and context/react configs. Workspace and model are taken
@@ -22,20 +20,22 @@ from typing import TYPE_CHECKING
 
 from pydantic import Field
 
-from ._constants import HANDLE_LEN
-from ._team_tool_base import _TeamToolBase
+from ..._utils._common import _generate_id
+from ...mcp import MCPClient
+from ...message import HintBlock, TextBlock, ToolResultState
+from ...state import AgentState
+from ...tool import ParamsBase, ToolChunk
 from .._bus_ops import deliver_to_inbox
 from ..storage import SessionConfig, TeamMember, TeamOrigin
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
-from ...message import HintBlock, TextBlock, ToolResultState
-from ...state import AgentState
-from ...tool import ToolChunk, ParamsBase
-from ..._utils._common import _generate_id
+from ._constants import HANDLE_LEN
+from ._team_tool_base import _TeamToolBase
 
 if TYPE_CHECKING:
-    from ..message_bus import MessageBus
     from .._service._access import ResourceAccessService
-    from ..storage import AgentRecord, StorageBase
+    from .._shared_context import SharedContextService
+    from ..message_bus import MessageBus
+    from ..storage import AgentRecord, StorageBase, TeamRecord
     from ..workspace_manager import WorkspaceManagerBase
 
 
@@ -90,33 +90,20 @@ class _AgentInviteParams(ParamsBase):
     )
 
 
-_DESCRIPTION_HEADER = """Borrow an existing user-owned agent into the \
+_DESCRIPTION_HEADER = """Borrow an existing published business agent into the \
 team you lead.
 
-<If ``AgentCreate`` is not available in your toolset, ignore all \
-references to it below.>
-
-## Difference From ``AgentCreate``
-- ``AgentCreate`` spins up a brand-new agent that **shares your \
-workspace**, so you and it can collaborate on files inside the same \
-working directory. ``AgentInvite`` borrows a pre-existing agent that has \
-its **own workspace** — depending on how the user has configured it, the \
-two workspaces MAY or MAY NOT expose the same filesystem, so paths you \
-hand over cannot be assumed to resolve on the invited agent's side.
-- The invited agent already has a name; you cannot rename it.
-
 ## When to Use This Tool
-- A user-owned agent already exists whose stated purpose matches a role \
-you need — reuse it instead of spawning a fresh worker with \
-``AgentCreate``.
+- A published business agent already exists whose stated purpose matches a \
+role you need.
 - You want to notify or delegate to an existing agent that specialises \
 in a specific domain.
 
 ## When NOT to Use This Tool
-- No suitable invitable agent exists — use ``AgentCreate`` instead.
-- You need to customise the member's system prompt or role for this \
-team specifically — invited members' configs are frozen; use \
-``AgentCreate`` if you need per-team customisation.
+- No suitable published agent exists — tell the user that it must first be \
+built and published through Agent Builder. Never create an agent in chat.
+- You need to customise the member's system prompt or role for this team — \
+published agent configuration is fixed for the run.
 - You are not currently leading a team. Call ``TeamCreate`` first.
 
 ## Important
@@ -160,6 +147,36 @@ class AgentInvite(_TeamToolBase):
     description: str
     input_schema: dict
 
+    async def _bootstrap_customer_history(self, team: TeamRecord) -> None:
+        """Finish the leader transcript projection before a worker wakes."""
+
+        shared = self._shared_context
+        if shared is None or not await shared.needs_customer_history_bootstrap(
+            self._user_id,
+            team.id,
+        ):
+            return
+        messages = []
+        before: str | None = None
+        while True:
+            page, has_more = await self._storage.list_messages(
+                self._user_id,
+                team.session_id,
+                limit=200,
+                before=before,
+            )
+            messages = [*page, *messages]
+            if not has_more or not page:
+                break
+            before = page[0].id
+        await shared.bootstrap_customer_history(
+            user_id=self._user_id,
+            team_id=team.id,
+            messages=messages,
+            source_session_id=team.session_id,
+            reply_owner_agent_id=self._agent_id,
+        )
+
     def __init__(
         self,
         storage: "StorageBase",
@@ -170,6 +187,7 @@ class AgentInvite(_TeamToolBase):
         agent_id: str,
         invitable_pool: list["AgentRecord"],
         resource_access_service: "ResourceAccessService | None" = None,
+        shared_context_service: "SharedContextService | None" = None,
     ) -> None:
         """Bind the base dependencies plus the invitable pool snapshot.
 
@@ -204,6 +222,7 @@ class AgentInvite(_TeamToolBase):
             user_id,
             session_id,
             agent_id,
+            shared_context_service,
         )
 
         self._pool_by_id: dict[str, "AgentRecord"] = {
@@ -241,9 +260,8 @@ class AgentInvite(_TeamToolBase):
         - ``target`` is a well-formed ``"<name>@<handle>"`` string whose
           handle prefix-matches an agent id in the current invitable
           pool.
-        - The matched agent is still ``invitable=True`` with a
-          non-empty ``invite_description`` (guards against a
-          toggle-off race between attachment and invocation).
+        - The matched agent is still a published, user-owned business agent
+          with ``invitable=True`` and a non-empty ``invite_description``.
         - The team does not already have this agent as a member (one
           borrow per agent per team).
         - The invited agent has at least one existing session to
@@ -274,6 +292,7 @@ class AgentInvite(_TeamToolBase):
             assert invited is not None  # narrows for mypy
 
             team = await self._require_leader_team("invite members")
+            await self._bootstrap_customer_history(team)
 
             # Re-fetch fresh — both the invite settings and a cross-owner
             # access grant may have changed since the toolkit snapshot
@@ -295,6 +314,9 @@ class AgentInvite(_TeamToolBase):
                     fresh = None
             if (
                 fresh is None
+                or fresh.source != "user"
+                or fresh.data.system_role != "business"
+                or fresh.data.lifecycle_state != "published"
                 or not fresh.data.invite_config.invitable
                 or not (
                     fresh.data.invite_config.invite_description or ""
@@ -302,7 +324,7 @@ class AgentInvite(_TeamToolBase):
             ):
                 return _error(
                     f"AgentInvite: agent {invited.data.name!r} is no "
-                    f"longer invitable.",
+                    f"longer invitable as a published business agent.",
                 )
             invited = fresh
 
@@ -412,6 +434,67 @@ class AgentInvite(_TeamToolBase):
                 state=worker_state,
                 origin=TeamOrigin(),
             )
+
+            # MCP declarations are session-scoped even when two sessions use
+            # the same per-agent workspace. Builder attaches the validated
+            # tool subset to the agent's primary session, so copy those
+            # declarations into this fresh team session before it can run.
+            # Skills need no copy: they are partitioned by ``agent_id`` in
+            # the shared workspace and therefore remain visible here.
+            if invited_sessions:
+                workspace = await self._workspace_manager.get_workspace(
+                    self._user_id,
+                    invited.id,
+                    borrowed.id,
+                    borrowed_workspace_id,
+                )
+                # A borrowed Builder agent has an explicit tool allowlist.
+                # Materialise the new team session without deployment-wide
+                # default MCPs before adding those selected declarations.
+                if invited.data.tool_bindings:
+                    for default_mcp in workspace.default_mcps:
+                        await workspace.remove_mcp(
+                            default_mcp.name,
+                            agent_id=invited.id,
+                            session_id=borrowed.id,
+                        )
+                mcp_specs: list[MCPClient] = []
+                if invited.data.tool_bindings:
+                    selected: dict[str, list[str]] = {}
+                    for binding in invited.data.tool_bindings:
+                        mcp_id = str(binding.get("mcp_id") or "")
+                        tool_name = str(binding.get("tool_name") or "")
+                        if mcp_id and tool_name:
+                            selected.setdefault(mcp_id, []).append(tool_name)
+                    for mcp_id, enabled_tools in selected.items():
+                        record = await self._storage.get_mcp(
+                            self._user_id,
+                            mcp_id,
+                        )
+                        if record is None or not record.enabled:
+                            raise ValueError(
+                                f"Registered MCP {mcp_id!r} is unavailable",
+                            )
+                        spec = MCPClient.model_validate(
+                            record.client.model_dump(mode="json"),
+                        )
+                        spec.enable_tools = list(dict.fromkeys(enabled_tools))
+                        mcp_specs.append(spec)
+                else:
+                    # Compatibility for manually-authored invitable agents
+                    # created before Builder persisted exact tool bindings.
+                    mcp_specs = await workspace.list_mcps(
+                        agent_id=invited.id,
+                        session_id=primary.id,
+                    )
+                for source_mcp in mcp_specs:
+                    await workspace.add_mcp(
+                        MCPClient.model_validate(
+                            source_mcp.model_dump(mode="json"),
+                        ),
+                        agent_id=invited.id,
+                        session_id=borrowed.id,
+                    )
             await self._storage.set_session_team_id(
                 self._user_id,
                 borrowed.id,

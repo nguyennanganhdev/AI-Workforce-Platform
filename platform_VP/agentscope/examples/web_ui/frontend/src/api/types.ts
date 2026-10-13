@@ -47,6 +47,17 @@ export interface AgentData {
 	context_config: ContextConfig;
 	react_config: ReActConfig;
 	invite_config: InviteConfig;
+	system_role?: 'business' | 'leader';
+	lifecycle_state?: 'draft' | 'published' | 'withdrawn';
+	build_description?: string;
+	tool_bindings?: Array<{
+		mcp_id: string;
+		mcp_name: string;
+		tool_name: string;
+		description?: string;
+	}>;
+	generated_skill?: string;
+	evaluation?: Record<string, unknown>;
 }
 
 export interface AgentView extends RecordBase {
@@ -461,6 +472,8 @@ import type { Msg } from '@agentscope-ai/agentscope/message';
 export interface ChatRequest {
 	agent_id: string;
 	session_id: string;
+	/** Explicit one-turn reply owner; plain leading @Agent Name also works. */
+	target_agent_id?: string | null;
 	input: Msg | Msg[] | UserConfirmResultEvent | ExternalExecutionResultEvent | null;
 }
 
@@ -692,6 +705,22 @@ export interface MCPView {
 	hub_id: string | null;
 	card_id: string | null;
 	version: string | null;
+	tools: Array<{ name: string; description: string; input_schema: Record<string, unknown> }>;
+	catalog_revision: number;
+	last_synced_at: string | null;
+	last_sync_error: string | null;
+}
+
+export interface DirectInstallMCPRequest {
+	name: string;
+	display_name?: string | null;
+	description?: string;
+	url: string;
+	api_key?: string | null;
+	auth_header?: string;
+	auth_scheme?: string;
+	headers?: Record<string, string>;
+	timeout?: number;
 }
 
 /**

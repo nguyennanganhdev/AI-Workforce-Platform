@@ -37,8 +37,11 @@ from .._logging import logger
 from ..mcp import MCPClient
 from ..message import ToolResultState
 from ..permission import (
-    PermissionBehavior,
     PermissionDecision,
+)
+from ..permission._mcp import (
+    mcp_tool_permission,
+    mcp_tool_requires_confirmation,
 )
 from ..tool import ToolBase, ToolChunk
 from ._gateway_shim import (
@@ -113,7 +116,13 @@ class GatewayMCPTool(ToolBase):
 
         self.is_read_only = False
         if tool.annotations and hasattr(tool.annotations, "readOnlyHint"):
-            self.is_read_only = tool.annotations.readOnlyHint or False
+            self.is_read_only = bool(tool.annotations.readOnlyHint) and not (
+                mcp_tool_requires_confirmation(
+                    tool.name,
+                    tool.annotations,
+                    self.input_schema,
+                )
+            )
 
         self._tool = tool
         self._gateway = gateway
@@ -123,17 +132,11 @@ class GatewayMCPTool(ToolBase):
         *_args: Any,
         **_kwargs: Any,
     ) -> PermissionDecision:
-        """Read-only tools auto-allow; everything else defers via
-        ``ASK``. Mirrors :meth:`MCPTool.check_permissions`.
-        """
-        if self.is_read_only:
-            return PermissionDecision(
-                behavior=PermissionBehavior.ALLOW,
-                message="This is a read-only MCP tool. Allowing execution.",
-            )
-        return PermissionDecision(
-            behavior=PermissionBehavior.ASK,
-            message="MCP tools must be explicitly allowed by the user.",
+        """Apply the same risk policy as the host-side MCP adapter."""
+        return mcp_tool_permission(
+            self._tool.name,
+            self._tool.annotations,
+            self.input_schema,
         )
 
     async def __call__(self, **kwargs: Any) -> ToolChunk:

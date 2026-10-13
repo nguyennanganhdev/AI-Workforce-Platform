@@ -8,20 +8,6 @@ tools, and caller-supplied extras — into one :class:`Toolkit`.
 """
 from typing import Any, Literal
 
-from .._manager import BackgroundTaskManager, SchedulerManager
-from ..message_bus import MessageBus
-from .._tool import (
-    SubmitHandover,
-    SubmitVerdict,
-    AgentCreate,
-    AgentInvite,
-    TeamCreate,
-    TeamDelete,
-    TeamSay,
-)
-from .._types import AgentToolFactory, SubAgentTemplate
-from ..storage import AgentRecord, SessionRecord, StorageBase
-from ..workspace_manager import WorkspaceManagerBase
 from ...middleware import MiddlewareBase
 from ...tool import (
     TaskCreate,
@@ -29,11 +15,25 @@ from ...tool import (
     TaskList,
     TaskUpdate,
     ToolBase,
-    Toolkit,
     ToolGroup,
+    Toolkit,
 )
 from ...workspace import WorkspaceBase
+from .._manager import BackgroundTaskManager, SchedulerManager
+from .._shared_context import SharedContextService
+from .._tool import (
+    AgentInvite,
+    SubmitHandover,
+    SubmitVerdict,
+    TeamCreate,
+    TeamDelete,
+    TeamSay,
+)
+from .._types import AgentToolFactory, SubAgentTemplate
 from ..access import ResourceKind
+from ..message_bus import MessageBus
+from ..storage import AgentRecord, SessionRecord, StorageBase
+from ..workspace_manager import WorkspaceManagerBase
 from ._access import ResourceAccessService
 
 
@@ -55,6 +55,7 @@ async def get_toolkit(
     team_role: Literal["leader", "worker"] | None = None,
     channel_tools: list[ToolBase] | None = None,
     sop_dispatch: str | None = None,
+    shared_context_service: SharedContextService | None = None,
 ) -> Toolkit:
     """Assemble the complete :class:`Toolkit` for one chat turn.
 
@@ -71,7 +72,8 @@ async def get_toolkit(
        session has a model configured (Schedule tools need a model to
        fire new chats with).
     5. Team tools — by caller-resolved ``team_role``: a worker gets only
-       ``TeamSay``; anyone else gets the full leader-side toolset.
+       ``TeamSay``; anyone else can create a team and invite existing
+       published business agents. Chat runtime never creates agents.
     6. Caller-supplied extras (``extra_factory``)
     7. Channel platform tools — the caller resolves them (once, shared
        with the system-prompt attachment) and passes ``channel_tools``.
@@ -116,10 +118,8 @@ async def get_toolkit(
             user/session-specific extra tools.
         sub_agent_templates (`dict[str, SubAgentTemplate] | None`, \
 optional):
-            Sub-agent template registry, keyed by template type.
-            Passed to the ``AgentCreate`` tool so it can route to
-            the appropriate template when a ``subagent_type`` is
-            specified by the leader agent.
+            Legacy compatibility input. Runtime agent creation is disabled;
+            agents must be authored and published through Agent Builder.
         team_role (`Literal["leader", "worker"] | None`, optional):
             The session's team role, resolved once by the caller.
             ``None`` means not in any team.
@@ -183,16 +183,13 @@ time or interval"
         "user_id": user_id,
         "session_id": session_record.id,
         "agent_id": agent_record.id,
+        "shared_context_service": shared_context_service,
     }
     if team_role == "worker":
         tools.append(TeamSay(**team_tool_kwargs, role="worker"))
     else:
         tools += [
             TeamCreate(**team_tool_kwargs),
-            AgentCreate(
-                **team_tool_kwargs,
-                sub_agent_templates=sub_agent_templates or {},
-            ),
             TeamSay(**team_tool_kwargs, role="leader"),
             TeamDelete(**team_tool_kwargs),
         ]
@@ -214,7 +211,11 @@ time or interval"
         invitable_pool = [
             view
             for view in visible_agents
-            if view.data.invite_config.invitable
+            if view.id != agent_record.id
+            and view.source == "user"
+            and view.data.system_role == "business"
+            and view.data.lifecycle_state == "published"
+            and view.data.invite_config.invitable
             and (view.data.invite_config.invite_description or "").strip()
         ]
         if invitable_pool:

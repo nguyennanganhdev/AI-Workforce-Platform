@@ -51,6 +51,22 @@ from ._sop import (
     SOPWorkspaceGrain,
 )
 from ._team import TeamRecord, TeamData, TeamMember
+from ._team_context import (
+    ContextDelta,
+    ContextMode,
+    ContextResultScope,
+    HandoffDeliveryStatus,
+    SharedContextEvent,
+    SharedContextItem,
+    SharedContextMetrics,
+    SharedContextSummary,
+    SharedTaskState,
+    SharedTaskStatus,
+    TeamSharedContextRecord,
+    TeamSharedContextState,
+    TeamHandoffRecord,
+    TeamTurnRecord,
+)
 from ._user import UserRecord
 
 __all__ = [
@@ -99,6 +115,20 @@ __all__ = [
     "TeamData",
     "TeamRecord",
     "TeamMember",
+    "ContextDelta",
+    "ContextMode",
+    "ContextResultScope",
+    "HandoffDeliveryStatus",
+    "SharedContextEvent",
+    "SharedContextItem",
+    "SharedContextMetrics",
+    "SharedContextSummary",
+    "SharedTaskState",
+    "SharedTaskStatus",
+    "TeamSharedContextRecord",
+    "TeamSharedContextState",
+    "TeamHandoffRecord",
+    "TeamTurnRecord",
     "UserRecord",
     "InviteConfig",
 ]

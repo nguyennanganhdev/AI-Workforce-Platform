@@ -15,24 +15,25 @@ backed by ``fakeredis``. They assert:
   of raising.
 """
 from contextlib import AsyncExitStack
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock
 
 import fakeredis.aioredis
-
 from utils import AnyString, FakeWorkspaceManager
 
 from agentscope.agent import ContextConfig, ReActConfig
+from agentscope.app._router._session import _build_team_detail
+from agentscope.app._service import ResourceAccessService
 from agentscope.app._tool import (
+    DEFAULT_SUB_AGENT_TEMPLATE,
     AgentCreate,
     AgentInvite,
-    DEFAULT_SUB_AGENT_TEMPLATE,
     TeamCreate,
     TeamDelete,
     TeamSay,
 )
 from agentscope.app._types import SubAgentTemplate
-from agentscope.app._router._session import _build_team_detail
-from agentscope.app._service import ResourceAccessService
 from agentscope.app.access import (
     ResourceAccessPolicyBase,
     ResourceKind,
@@ -40,13 +41,13 @@ from agentscope.app.access import (
 )
 from agentscope.app.message_bus import RedisMessageBus
 from agentscope.app.storage import (
-    TeamOrigin,
-    UserOrigin,
     AgentData,
     AgentRecord,
     RedisStorage,
     SessionConfig,
     StorageBase,
+    TeamOrigin,
+    UserOrigin,
 )
 from agentscope.message import ToolResultState
 from agentscope.permission import (
@@ -1338,6 +1339,7 @@ class TestAgentDataInvitableValidator(IsolatedAsyncioTestCase):
     async def test_invitable_requires_description(self) -> None:
         """``invitable=True`` with empty description fails validation."""
         from pydantic import ValidationError
+
         from agentscope.app.storage._model._agent import InviteConfig
 
         with self.assertRaises(ValidationError):
@@ -1409,6 +1411,7 @@ class _AgentInviteTestBase(_TeamToolsTestBase):
                     invitable=True,
                     invite_description="Expert on X.",
                 ),
+                lifecycle_state="published",
             ),
         )
         await self.storage.upsert_agent(self.user_id, self.monday_agent)
@@ -1416,6 +1419,18 @@ class _AgentInviteTestBase(_TeamToolsTestBase):
             user_id=self.user_id,
             agent_id=self.monday_agent.id,
             config=SessionConfig(workspace_id="ws-monday"),
+        )
+        # AgentInvite now copies the source session's MCP declarations into
+        # the borrowed team session. This fixture has no real workspace, so
+        # provide the exact no-MCP behavior needed by these routing tests.
+        self.invite_workspace = SimpleNamespace(
+            default_mcps=[],
+            list_mcps=AsyncMock(return_value=[]),
+            add_mcp=AsyncMock(),
+            remove_mcp=AsyncMock(),
+        )
+        self.workspace_manager.get_workspace = AsyncMock(  # type: ignore[method-assign]
+            return_value=self.invite_workspace,
         )
 
 
@@ -1532,6 +1547,7 @@ class TestAgentInviteCrossOwner(_AgentInviteTestBase):
                     invitable=True,
                     invite_description="Shared expert.",
                 ),
+                lifecycle_state="published",
             ),
         )
         await self.storage.upsert_agent(shared_owner, shared_agent)
@@ -1736,6 +1752,19 @@ class TestAgentInviteRejections(_AgentInviteTestBase):
         await self.storage.upsert_agent(self.user_id, stale)
 
         chunk = await self._tool(pool=[stale])(
+            target=f"Monday@{stale.id[:8]}",
+            prompt="hi",
+        )
+        self.assertDictEqual(chunk.model_dump(), self._EXPECTED_ERROR_CHUNK)
+
+    async def test_rejects_when_agent_is_withdrawn(self) -> None:
+        """A published snapshot cannot be invited after withdrawal."""
+        stale = self.monday_agent
+        tool = self._tool(pool=[stale])
+        stale.data.lifecycle_state = "withdrawn"
+        await self.storage.upsert_agent(self.user_id, stale)
+
+        chunk = await tool(
             target=f"Monday@{stale.id[:8]}",
             prompt="hi",
         )

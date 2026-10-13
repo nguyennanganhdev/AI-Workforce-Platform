@@ -2,8 +2,8 @@
 # pylint: disable=protected-access, using-constant-test
 """ChatService resolves team/channel context once and fans it out."""
 
+from collections.abc import AsyncGenerator
 from types import SimpleNamespace
-from typing import AsyncGenerator
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
@@ -18,6 +18,8 @@ from agentscope.app.storage import (
     SessionRecord,
     TeamData,
     TeamRecord,
+    TeamSharedContextRecord,
+    TeamTurnRecord,
 )
 
 
@@ -34,6 +36,9 @@ class _Storage:
         self.agents = agents
         self.team = team
         self.get_team_calls = 0
+        self.primary_shared_reads = 0
+        self.shared_context: TeamSharedContextRecord | None = None
+        self.team_turn: TeamTurnRecord | None = None
 
     async def get_session(
         self,
@@ -68,6 +73,50 @@ class _Storage:
     async def upsert_message(self, *_: object, **__: object) -> None:
         """Accept synthesized failure messages (none expected)."""
 
+    async def list_messages(self, *_: object, **__: object) -> tuple[list, bool]:
+        """The fixture has no pre-shared customer transcript."""
+        return [], False
+
+    async def get_team_shared_context(
+        self,
+        user_id: str,
+        team_id: str,
+    ) -> TeamSharedContextRecord | None:
+        """Return the detached team context used by the runtime packet."""
+        del user_id
+        self.primary_shared_reads += 1
+        if self.shared_context is None or self.shared_context.team_id != team_id:
+            return None
+        return self.shared_context.model_copy(deep=True)
+
+    async def upsert_team_shared_context(
+        self,
+        user_id: str,
+        record: TeamSharedContextRecord,
+    ) -> TeamSharedContextRecord:
+        """Persist the team context for this unit-test fake."""
+        del user_id
+        self.shared_context = record.model_copy(deep=True)
+        return record
+
+    async def compare_and_swap_team_shared_context(
+        self, _user_id: str, record: TeamSharedContextRecord, expected_revision: int
+    ) -> bool:
+        if (self.shared_context.state.revision if self.shared_context else 0) != expected_revision:
+            return False
+        self.shared_context = record.model_copy(deep=True)
+        return True
+
+    async def get_team_turn(self, _user_id: str, _team_id: str):
+        return self.team_turn.model_copy(deep=True) if self.team_turn else None
+
+    async def upsert_team_turn(self, _user_id: str, record: TeamTurnRecord):
+        self.team_turn = record.model_copy(deep=True)
+        return record
+
+    async def list_outstanding_team_handoffs(self, **_kwargs):
+        return []
+
 
 class _WorkspaceManager:
     """Return a minimal workspace handle."""
@@ -75,6 +124,53 @@ class _WorkspaceManager:
     async def get_workspace(self, *_: object, **__: object) -> object:
         """Return an inert workspace."""
         return SimpleNamespace(workdir="/tmp/agentscope-run-ctx-test")
+
+
+class _SharedStorage:
+    """Dedicated canonical store used only by SharedContextService."""
+
+    def __init__(self) -> None:
+        self.record: TeamSharedContextRecord | None = None
+        self.reads = 0
+        self.team_turn: TeamTurnRecord | None = None
+
+    async def get_team_shared_context(
+        self,
+        user_id: str,
+        team_id: str,
+    ) -> TeamSharedContextRecord | None:
+        del user_id
+        self.reads += 1
+        if self.record is None or self.record.team_id != team_id:
+            return None
+        return self.record.model_copy(deep=True)
+
+    async def upsert_team_shared_context(
+        self,
+        user_id: str,
+        record: TeamSharedContextRecord,
+    ) -> TeamSharedContextRecord:
+        del user_id
+        self.record = record.model_copy(deep=True)
+        return record
+
+    async def compare_and_swap_team_shared_context(
+        self, _user_id: str, record: TeamSharedContextRecord, expected_revision: int
+    ) -> bool:
+        if (self.record.state.revision if self.record else 0) != expected_revision:
+            return False
+        self.record = record.model_copy(deep=True)
+        return True
+
+    async def get_team_turn(self, _user_id: str, _team_id: str):
+        return self.team_turn.model_copy(deep=True) if self.team_turn else None
+
+    async def upsert_team_turn(self, _user_id: str, record: TeamTurnRecord):
+        self.team_turn = record.model_copy(deep=True)
+        return record
+
+    async def list_outstanding_team_handoffs(self, **_kwargs):
+        return []
 
 
 class TestRunContextResolution(IsolatedAsyncioTestCase):
@@ -136,13 +232,25 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
             agents={a.id: a for a in (worker_agent, leader_agent)},
             team=team,
         )
+        shared_storage = _SharedStorage()
         equipped: list[list] = []
+        equipped_context_configs: list[ContextConfig] = []
+        equipped_system_prompts: list[str] = []
 
         class _Agent:
             """Capture the middlewares; reply without doing anything."""
 
-            def __init__(self, *, middlewares: list, **_: object) -> None:
+            def __init__(
+                self,
+                *,
+                middlewares: list,
+                context_config: ContextConfig,
+                system_prompt: str,
+                **_: object,
+            ) -> None:
                 equipped.append(middlewares)
+                equipped_context_configs.append(context_config)
+                equipped_system_prompts.append(system_prompt)
 
             async def reply_stream(
                 self,
@@ -159,8 +267,15 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
             toolkit_kwargs.update(kwargs)
             return object()
 
+        class _Model:
+            context_size = 100_000
+
+            async def count_tokens(self, messages: list, tools: object) -> int:
+                del tools
+                return sum(len(msg.get_text_content() or "") for msg in messages)
+
         async def _get_model(*_: object, **__: object) -> object:
-            return object()
+            return _Model()
 
         class _Access:
             """Resolve the one worker agent."""
@@ -177,6 +292,7 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
             message_bus=InMemoryMessageBus(),
             resource_access_service=_Access(),
             custom_agent_cls=_Agent,
+            shared_context_storage=shared_storage,  # type: ignore[arg-type]
         )
         with (
             patch(
@@ -197,6 +313,15 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
                 "get_team_calls": storage.get_team_calls,
                 "team_role": toolkit_kwargs["team_role"],
                 "channel_tools": toolkit_kwargs["channel_tools"],
+                "fallback_to_truncation": equipped_context_configs[
+                    0
+                ].compression_fallback_to_truncation,
+                "retry_drop_oldest": equipped_context_configs[
+                    0
+                ].compression_retry_drop_oldest,
+                "shared_packet_in_private_system_prompt": (
+                    "<shared-context-packet" in equipped_system_prompts[0]
+                ),
                 "leader_names": [
                     mw._leader_name
                     for mws in equipped
@@ -208,6 +333,11 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
                 "get_team_calls": 1,
                 "team_role": "worker",
                 "channel_tools": [],
+                "fallback_to_truncation": False,
+                "retry_drop_oldest": False,
+                "shared_packet_in_private_system_prompt": False,
                 "leader_names": ["Leader"],
             },
         )
+        self.assertGreater(shared_storage.reads, 0)
+        self.assertEqual(storage.primary_shared_reads, 0)

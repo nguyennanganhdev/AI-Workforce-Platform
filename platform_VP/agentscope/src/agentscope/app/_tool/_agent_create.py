@@ -8,9 +8,12 @@ from typing import TYPE_CHECKING
 
 from pydantic import Field
 
-from ._team_tool_base import _TeamToolBase
-from .._types import SubAgentTemplate
+from ...message import HintBlock, TextBlock, ToolResultState
+from ...permission import PermissionContext
+from ...state import AgentState
+from ...tool import ParamsBase, ToolChunk
 from .._bus_ops import deliver_to_inbox
+from .._types import SubAgentTemplate
 from ..storage import (
     AgentData,
     AgentRecord,
@@ -19,12 +22,10 @@ from ..storage import (
     TeamOrigin,
 )
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
-from ...message import HintBlock, TextBlock, ToolResultState
-from ...permission import PermissionContext
-from ...state import AgentState
-from ...tool import ToolChunk, ParamsBase
+from ._team_tool_base import _TeamToolBase
 
 if TYPE_CHECKING:
+    from .._shared_context import SharedContextService
     from ..message_bus import MessageBus
     from ..storage import StorageBase
     from ..workspace_manager import WorkspaceManagerBase
@@ -189,6 +190,7 @@ overall communication topology unnecessarily complex.
         session_id: str,
         agent_id: str,
         sub_agent_templates: dict[str, SubAgentTemplate] | None = None,
+        shared_context_service: "SharedContextService | None" = None,
     ) -> None:
         """Bind the base dependencies plus the sub-agent templates.
 
@@ -220,6 +222,7 @@ optional):
             user_id,
             session_id,
             agent_id,
+            shared_context_service,
         )
 
         self._sub_agent_templates: dict[str, SubAgentTemplate] = dict(

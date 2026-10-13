@@ -78,6 +78,7 @@ class PartnerIngressService:
         events,
         completion_signals,
         *,
+        assets=None,
         clock=lambda: datetime.now(UTC),
         wait_slice_seconds: float = 1.0,
     ) -> None:
@@ -90,6 +91,7 @@ class PartnerIngressService:
         self.identity = identity
         self.events = events
         self.completion_signals = completion_signals
+        self.assets = assets
         self.clock = clock
         self.wait_slice_seconds = wait_slice_seconds
 
@@ -205,6 +207,9 @@ class PartnerIngressService:
                 message = {
                     "request_id": claim.request_id,
                     "text": envelope.message.text,
+                    "asset_ids": tuple(
+                        item.asset_id for item in envelope.message.attachments
+                    ),
                 }
                 if envelope.command_type == PartnerCommandType.START_WORKFLOW:
                     message.update(
@@ -236,6 +241,16 @@ class PartnerIngressService:
                 ):
                     raise WorkflowConflict(
                         "workflow route differs from authorized route"
+                    )
+                if message["asset_ids"]:
+                    if self.assets is None:
+                        raise ValueError("asset capability is not configured")
+                    await self.assets.bind_customer_assets(
+                        scope,
+                        audience,
+                        workflow.workflow_id,
+                        message["asset_ids"],
+                        tx,
                     )
                 await self.requests.attach(
                     InboundRequest(

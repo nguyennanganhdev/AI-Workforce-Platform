@@ -2,12 +2,12 @@
 """The agent storage class."""
 from typing import Literal, Self
 
-from pydantic import Field, BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from ...._utils._common import _generate_id
-from ._base import _RecordBase
 from ....agent import ContextConfig, ReActConfig
+from ._base import _RecordBase
 
 
 class InviteConfig(BaseModel):
@@ -107,6 +107,26 @@ class AgentData(BaseModel):
         description="The invite config for the agent.",
         title="Invite Config",
     )
+
+    system_role: SkipJsonSchema[Literal["business", "leader"]] = "business"
+    """Server-owned role. The fixed leader is never authored in Builder."""
+
+    lifecycle_state: SkipJsonSchema[
+        Literal["draft", "published", "withdrawn"]
+    ] = "draft"
+    """Workforce availability state, controlled by publish/withdraw actions."""
+
+    build_description: SkipJsonSchema[str] = ""
+    """Original business objective used for reuse detection."""
+
+    tool_bindings: SkipJsonSchema[list[dict]] = Field(default_factory=list)
+    """Builder-selected, server-validated MCP tool references."""
+
+    generated_skill: SkipJsonSchema[str] = ""
+    """Builder-generated SKILL.md body installed into the agent workspace."""
+
+    evaluation: SkipJsonSchema[dict] = Field(default_factory=dict)
+    """Latest immutable Builder readiness result shown before publish."""
 
 
 class AgentRecord(_RecordBase):

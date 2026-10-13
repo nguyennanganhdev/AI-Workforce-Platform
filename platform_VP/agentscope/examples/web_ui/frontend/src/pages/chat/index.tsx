@@ -17,7 +17,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { ChatViewport } from './ChatViewport';
 import type { SessionRecord, SessionSourceKind } from '@/api';
-import { AgentDialog } from '@/components/dialog/AgentDialog';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
 import { EditAgentDialog } from '@/components/dialog/EditAgentDialog';
 import { RenameSessionDialog } from '@/components/dialog/RenameSessionDialog';
@@ -243,18 +242,7 @@ const ChatPageInner = () => {
 				    agent picker and the new-session button stay put. */}
 				<SidebarContent className="my-2 overflow-hidden">
 					<SidebarGroup className="px-2 py-0">
-						<SidebarGroupLabel className="justify-between">
-							{t('common.agent')}
-							<AgentDialog onCreated={refetchAgents}>
-								<Button
-									variant="ghost"
-									size="icon-xs"
-									title={t('dialog-agent-create.title')}
-								>
-									<Plus id="tour-create-agent" className="size-3.5" />
-								</Button>
-							</AgentDialog>
-						</SidebarGroupLabel>
+						<SidebarGroupLabel>{t('common.agent')}</SidebarGroupLabel>
 						<SidebarGroupContent className="flex items-center">
 							<AgentSelect
 								className="flex-1 min-w-0"
@@ -568,7 +556,6 @@ const ChatPageInner = () => {
 				}}
 			/>
 			<ChatTourController
-				agentsCount={agents.length}
 				sessionsCount={sessions.length}
 				onEnsureSidebarOpen={() => {
 					setOpen(true);

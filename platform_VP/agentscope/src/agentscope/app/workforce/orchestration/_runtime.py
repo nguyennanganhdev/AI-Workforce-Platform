@@ -6,6 +6,7 @@ binding checks; it deliberately contains no test fallback and no provider call.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -13,6 +14,10 @@ from uuid import uuid4
 
 from pydantic import Field
 
+from ..._workforce_policy import (
+    BUSINESS_AGENT_EVIDENCE_POLICY,
+    WORKFORCE_LEADER_PROMPT,
+)
 from ..contracts import (
     ActorContext,
     PartnerAudience,
@@ -97,9 +102,7 @@ class LeaderWorkflowBootstrap:
         if command.route_id is None or command.route_revision is None:
             raise ValueError("ingress must pin the authorized route")
         seed = LeaderBootstrapSeed.model_validate(
-            raw_value(
-                await self._resolver.resolve(scope, actor, audience, uow)
-            )
+            raw_value(await self._resolver.resolve(scope, actor, audience, uow))
         )
         if seed.pattern == WorkflowPattern.RESPONSE_ONLY:
             if not seed.published_read_only:
@@ -163,19 +166,24 @@ class SqlRuntimeContinuation:
         workflows,
         checkpoints: SqlCheckpointRepository,
         leader: LeaderTurnRunner,
+        shared_context: Any | None = None,
+        shared_context_model_resolver: Any | None = None,
     ) -> None:
         self._workflows = workflows
         self._checkpoints = checkpoints
         self._leader = leader
+        self._shared_context = shared_context
+        self._shared_context_model_resolver = shared_context_model_resolver
+        if (shared_context is None) != (shared_context_model_resolver is None):
+            raise ValueError(
+                "shared context and its model resolver must be configured together",
+            )
 
-    async def persist_checkpoint(
-        self, scope, workflow_id, checkpoint, uow=None
-    ) -> str:
-        return await self._checkpoints.persist(
-            scope, workflow_id, checkpoint, uow
-        )
+    async def persist_checkpoint(self, scope, workflow_id, checkpoint, uow=None) -> str:
+        return await self._checkpoints.persist(scope, workflow_id, checkpoint, uow)
 
     async def load_pinned_context(self, scope, checkpoint):
+        scope = Scope.model_validate(scope)
         stored = await self._checkpoints.load(scope, checkpoint)
         aggregate = await self._workflows.load(scope, stored.workflow_id)
         if (
@@ -183,15 +191,84 @@ class SqlRuntimeContinuation:
             or aggregate.checkpoint != stored
         ):
             raise RuntimeError("workflow/checkpoint pin mismatch")
+        shared_context = None
+        shared_context_revision = None
+        shared_context_tokens = None
+        if self._shared_context is not None:
+            shared_record = await self._shared_context.storage.get_team_shared_context(
+                scope.manager_account_id,
+                aggregate.workflow.group_id,
+            )
+            if shared_record is None:
+                raise RuntimeError(
+                    "partner workflow shared context was not projected before "
+                    "Leader continuation",
+                )
+            expected_scope = (
+                scope.tenant_id,
+                scope.domain_id,
+                scope.area_id,
+                scope.manager_account_id,
+                aggregate.workflow.workflow_id,
+            )
+            actual_scope = (
+                shared_record.tenant_id,
+                shared_record.domain_id,
+                shared_record.area_id,
+                shared_record.manager_account_id,
+                shared_record.workflow_id,
+            )
+            if actual_scope != expected_scope:
+                raise PermissionError(
+                    "partner workflow shared context owner mismatch",
+                )
+            if aggregate.workflow.workflow_id not in shared_record.state.tasks:
+                raise RuntimeError(
+                    "partner workflow task is missing from shared context",
+                )
+            model = await self._shared_context_model_resolver.resolve(
+                scope,
+                aggregate.workflow,
+                stored,
+            )
+            if not callable(getattr(model, "count_tokens", None)):
+                raise TypeError(
+                    "shared-context model resolver returned an invalid model",
+                )
+            packet, shared_context_tokens = await self._shared_context.prepare_packet(
+                model=model,
+                user_id=scope.manager_account_id,
+                team_id=aggregate.workflow.group_id,
+                mode="task",
+                task_id=aggregate.workflow.workflow_id,
+            )
+            shared_context = json.loads(packet)
+            shared_context_revision = shared_context.get("revision")
+            if not isinstance(shared_context_revision, int):
+                raise RuntimeError(
+                    "shared-context packet is missing its pinned revision",
+                )
         return PinnedRuntimeContext(
             workflow=aggregate.workflow,
             checkpoint=stored,
+            shared_context_revision=shared_context_revision,
+            shared_context_tokens=shared_context_tokens,
+            shared_context=shared_context,
+            leader_system_prompt=WORKFORCE_LEADER_PROMPT,
+            business_agent_evidence_policy=BUSINESS_AGENT_EVIDENCE_POLICY,
         )
 
-    async def invoke_turn(
-        self, scope, trigger, checkpoint, execution_guard
-    ):
+    async def invoke_turn(self, scope, trigger, checkpoint, execution_guard):
         context = PinnedRuntimeContext.model_validate(raw_value(checkpoint))
+        # The host-provided runner receives server-owned policies on every
+        # partner continuation. Persisted agent/version prompts can therefore
+        # never silently restore an older or weaker runtime policy.
+        context = context.model_copy(
+            update={
+                "leader_system_prompt": WORKFORCE_LEADER_PROMPT,
+                "business_agent_evidence_policy": (BUSINESS_AGENT_EVIDENCE_POLICY),
+            },
+        )
         decision = TurnDecision.model_validate(
             raw_value(
                 await self._leader.invoke_turn(
@@ -223,9 +300,7 @@ class WorkflowContinuationJobHandler:
         request_id = None
         if isinstance(trigger.cause, (RequestCause, ApprovalCause)):
             request_id = trigger.cause.request_id
-            mark_running = getattr(
-                self._continuation.commands, "mark_running", None
-            )
+            mark_running = getattr(self._continuation.commands, "mark_running", None)
             if mark_running is not None:
                 await mark_running(request_id)
         try:

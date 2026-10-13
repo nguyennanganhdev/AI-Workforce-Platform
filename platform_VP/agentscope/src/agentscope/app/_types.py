@@ -87,12 +87,11 @@ class EventProjector(Protocol):
 
 
 class SubAgentTemplate(BaseModel):
-    """A reusable blueprint for sub-agent creation within a team.
+    """Legacy blueprint for low-level sub-agent creation.
 
-    Developers register one or more templates at the ``create_app`` entry
-    point. When the leader agent calls ``AgentCreate`` with a matching
-    ``subagent_type``, the template's configuration is used instead of the
-    built-in defaults.
+    Kept for source compatibility with integrations that construct
+    :class:`AgentCreate` directly. Normal chat runtime does not expose that
+    tool; business agents are authored and published through Agent Builder.
 
     The :attr:`type` field serves as the routing key — it becomes an enum
     value of the ``subagent_type`` parameter exposed to the LLM.  This is

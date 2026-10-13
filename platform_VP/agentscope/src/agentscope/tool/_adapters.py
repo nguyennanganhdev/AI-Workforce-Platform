@@ -17,6 +17,10 @@ from ..permission import (
     PermissionBehavior,
     PermissionDecision,
 )
+from ..permission._mcp import (
+    mcp_tool_permission,
+    mcp_tool_requires_confirmation,
+)
 from ._response import ToolChunk
 from ._utils import (
     _extract_func_description,
@@ -270,7 +274,13 @@ class MCPTool(ToolBase):
         # Extract is_read_only from MCP tool annotations
         self.is_read_only = False
         if tool.annotations and hasattr(tool.annotations, "readOnlyHint"):
-            self.is_read_only = tool.annotations.readOnlyHint or False
+            self.is_read_only = bool(tool.annotations.readOnlyHint) and not (
+                mcp_tool_requires_confirmation(
+                    tool.name,
+                    tool.annotations,
+                    self.input_schema,
+                )
+            )
 
         # Store MCP tool and connection info
         self._tool = tool
@@ -295,22 +305,11 @@ class MCPTool(ToolBase):
         *_args: Any,
         **_kwargs: Any,
     ) -> PermissionDecision:
-        """Check permissions for the MCP tool usage.
-
-        Default implementation allows all operations.
-
-        Returns:
-            `PermissionDecision`:
-                Permission decision (default: ask for confirmation).
-        """
-        if self.is_read_only:
-            return PermissionDecision(
-                behavior=PermissionBehavior.ALLOW,
-                message="This is a read-only MCP tool. Allowing execution.",
-            )
-        return PermissionDecision(
-            behavior=PermissionBehavior.ASK,
-            message="MCP tools must be explicitly allowed by the user.",
+        """Apply the platform's risk-based policy to this MCP operation."""
+        return mcp_tool_permission(
+            self._tool.name,
+            self._tool.annotations,
+            self.input_schema,
         )
 
     async def call(

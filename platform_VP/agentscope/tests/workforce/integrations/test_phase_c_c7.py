@@ -34,6 +34,7 @@ from agentscope.app.workforce.registry.event_protocols._tables import (
 )
 from agentscope.app.workforce.foundation import (
     DurableJob,
+    InMemoryMetricSink,
     JobOwnerKind,
 )
 from agentscope.app.workforce.integrations.async_runtime import (
@@ -55,9 +56,7 @@ class RuntimeMigrationTests(unittest.TestCase):
             / "src/agentscope/app/storage/_sql/_alembic/versions"
             / "0010_workforce_runtime.py"
         )
-        spec = importlib.util.spec_from_file_location(
-            "wf_runtime_migration", path
-        )
+        spec = importlib.util.spec_from_file_location("wf_runtime_migration", path)
         self.assertIsNotNone(spec)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -98,9 +97,7 @@ class RuntimeMigrationTests(unittest.TestCase):
         with engine.begin() as connection:
             module.op = Operations(MigrationContext.configure(connection))
             module.upgrade()
-            self.assertEqual(
-                expected, set(inspect(connection).get_table_names())
-            )
+            self.assertEqual(expected, set(inspect(connection).get_table_names()))
             module.downgrade()
             self.assertFalse(
                 expected.intersection(inspect(connection).get_table_names())
@@ -113,9 +110,7 @@ class RuntimeMigrationTests(unittest.TestCase):
             / "src/agentscope/app/storage/_sql/_alembic/versions"
             / "0011_workforce_releases.py"
         )
-        spec = importlib.util.spec_from_file_location(
-            "wf_release_migration", path
-        )
+        spec = importlib.util.spec_from_file_location("wf_release_migration", path)
         self.assertIsNotNone(spec)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -139,9 +134,7 @@ class RuntimeMigrationTests(unittest.TestCase):
             )
             module.downgrade()
             self.assertFalse(
-                set(owner.tables).intersection(
-                    inspect(connection).get_table_names()
-                )
+                set(owner.tables).intersection(inspect(connection).get_table_names())
             )
         engine.dispose()
 
@@ -156,6 +149,26 @@ class _Handler:
     async def __call__(self, job):
         del job
         return {}
+
+
+class _SharedContextProjector(_Handler):
+    job_type = "workforce.shared_context.project"
+
+
+class _SharedContext:
+    storage = object()
+
+    async def bind_scope(self, *args, **kwargs):
+        del args, kwargs
+
+    async def append_event(self, *args, **kwargs):
+        del args, kwargs
+
+
+class _SharedContextModelResolver:
+    async def resolve(self, scope, workflow, checkpoint):
+        del scope, workflow, checkpoint
+        return object()
 
 
 class _Reconciler:
@@ -203,6 +216,31 @@ class _Workflows:
 
     async def enqueue_trigger(self, scope, trigger, uow=None):
         self.calls.append((scope, trigger, uow))
+
+    async def project_workflow_event(
+        self,
+        scope,
+        workflow_id,
+        *,
+        event_id,
+        kind,
+        content,
+        artifact_refs=(),
+        continuation=None,
+        uow=None,
+    ):
+        self.calls.append(
+            {
+                "scope": scope,
+                "workflow_id": workflow_id,
+                "event_id": event_id,
+                "kind": kind,
+                "content": content,
+                "artifact_refs": artifact_refs,
+                "continuation": continuation,
+                "uow": uow,
+            },
+        )
 
 
 class RuntimeCompositionTests(unittest.IsolatedAsyncioTestCase):
@@ -252,28 +290,37 @@ class RuntimeCompositionTests(unittest.IsolatedAsyncioTestCase):
             release_tool_resolver=release_tool,
             release_policy_resolver=release_policy,
             release_context_resolver=release_context,
+            shared_context=_SharedContext(),
+            shared_context_model_resolver=_SharedContextModelResolver(),
         )
         with TemporaryDirectory() as directory:
             database = Path(directory) / "production-builder.db"
+            metrics = InMemoryMetricSink()
             bootstrap = WorkforceBootstrap(
-                database_url=(
-                    f"sqlite+aiosqlite:///{database.as_posix()}"
-                ),
+                database_url=(f"sqlite+aiosqlite:///{database.as_posix()}"),
                 message_bus=InMemoryMessageBus(),
                 authenticate_provider_api_key=authenticate_api_key,
                 resolve_provider_signing_secret=lambda reference: b"s" * 48,
                 runtime_factory=lambda foundation: build_phase_c_runtime(
                     foundation, deps
                 ),
+                worker_metrics=metrics,
             )
         runtime = bootstrap._prepared.runtime
         self.assertEqual(3, len(runtime.routers))
         self.assertEqual(PHASE_C_JOB_TYPES, set(runtime.job_handlers))
         self.assertIs(runtime.services["uows"], bootstrap._prepared.uows)
+        self.assertIs(runtime.services["shared_context"], deps.shared_context)
+        self.assertIs(
+            bootstrap.shared_context_storage,
+            deps.shared_context.storage,
+        )
         self.assertIs(
             runtime.services["published_catalog"],
             runtime.services["releases"],
         )
+        self.assertIs(runtime.services["provider_ingress"].metrics, metrics)
+        self.assertIs(runtime.services["provider_processor"].metrics, metrics)
 
     async def test_approved_result_and_wakeup_share_one_uow(self) -> None:
         commands = _Commands()
@@ -311,10 +358,52 @@ class RuntimeCompositionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("result", commands.calls[0][0])
         self.assertEqual("claim", commands.calls[1][0])
         self.assertEqual(transaction, commands.calls[1][-1])
-        self.assertEqual(transaction, workflows.calls[0][-1])
-        cause = workflows.calls[0][1]["cause"]
+        self.assertEqual(transaction, workflows.calls[0]["uow"])
+        self.assertEqual("workflow-1", workflows.calls[0]["workflow_id"])
+        self.assertEqual("context_update", workflows.calls[0]["kind"])
+        cause = workflows.calls[0]["continuation"]["cause"]
         self.assertEqual("continuation-row-1", cause["request_id"])
         self.assertEqual("approval-1", cause["approval_id"])
+
+    async def test_rejected_approval_is_projected_without_wakeup(self) -> None:
+        commands = _Commands()
+        workflows = _Workflows()
+        adapter = ApprovalContinuationCommandAdapter(commands, workflows)
+        scope = Scope(
+            tenant_id="tenant-1",
+            domain_id="domain-1",
+            area_id="area-1",
+            manager_account_id="manager-1",
+        )
+        actor = ActorContext(
+            kind="partner",
+            actor_id="customer-1",
+            partner_client_id="partner-1",
+            credential_id="key-1",
+            credential_purpose="customer_api",
+            external_user_id="resident-1",
+            authentication_source="c7-test",
+        )
+        transaction = object()
+
+        await adapter.record_approval_result(
+            actor,
+            {"scope": scope.model_dump(mode="json")},
+            "approval-command-row-2",
+            RequestResult(
+                data={
+                    "status": "rejected",
+                    "workflow_id": "workflow-1",
+                    "approval_id": "approval-2",
+                },
+            ),
+            uow=transaction,
+        )
+
+        self.assertEqual(["result"], [call[0] for call in commands.calls])
+        self.assertEqual(transaction, workflows.calls[0]["uow"])
+        self.assertEqual("context_update", workflows.calls[0]["kind"])
+        self.assertIsNone(workflows.calls[0]["continuation"])
 
     async def test_bootstrap_exposes_stable_router_and_one_uow(self) -> None:
         with TemporaryDirectory() as directory:
@@ -355,7 +444,10 @@ class RuntimeCompositionTests(unittest.IsolatedAsyncioTestCase):
         reconciler = _Reconciler()
         assembly = compose_phase_c_runtime(
             foundation,
-            services={"uows": foundation.uows},
+            services={
+                "uows": foundation.uows,
+                "shared_context_projector": _SharedContextProjector(),
+            },
             routers=(object(), object(), object()),
             provider_event_processor=_Processor(),
             workflow_continuation_handler=_Handler(),
@@ -385,9 +477,7 @@ class RuntimeCompositionTests(unittest.IsolatedAsyncioTestCase):
         )
         result = await OperationReconcileJobHandler(reconciler)(job)
         self.assertEqual("applied", result["status"])
-        self.assertEqual(
-            (scope, "operation-1", "timer-1"), reconciler.calls[0]
-        )
+        self.assertEqual((scope, "operation-1", "timer-1"), reconciler.calls[0])
 
     async def test_phase_c_registration_rejects_another_uow(self) -> None:
         foundation = object.__new__(type("Foundation", (), {}))

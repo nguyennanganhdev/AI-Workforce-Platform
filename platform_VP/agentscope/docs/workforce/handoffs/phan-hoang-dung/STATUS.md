@@ -1,5 +1,17 @@
 ﻿# Trạng thái — Phan Hoàng Dũng
 
+## Cập nhật mới nhất — D5 do Nguyễn Chí Hoàng thực hiện thay
+
+D5 full-platform/fault E2E đã được nối vào working tree sau `c588517`; không còn
+chờ Phan Hoàng Dũng. Ba full-platform cases dùng SQL/HTTP/worker thật của
+platform và deterministic test boundaries, không còn skip vì thiếu factory.
+Chi tiết: [PHASE_D_D5.md](PHASE_D_D5.md). PostgreSQL và sandbox chỉ được kết
+luận sau CI; chưa ghi output này đã merge vào `develop2`.
+
+Validation toàn suite trên working tree: **647 passed, 22 skipped, 313
+subtests passed**, không có failure/error. Các skip local chỉ thuộc browser và
+PostgreSQL; D7 CI không chấp nhận skip.
+
 Cập nhật **12/10/2026**, Asia/Saigon. Thực hiện trên working tree hiện tại;
 không commit, merge hoặc thao tác Git.
 

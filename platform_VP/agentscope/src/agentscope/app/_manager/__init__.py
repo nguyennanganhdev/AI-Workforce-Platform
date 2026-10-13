@@ -7,11 +7,13 @@ from ._wakeup_dispatcher import WakeupDispatcher
 from ._cancel_dispatcher import CancelDispatcher
 from ._chat_run_registry import ChatRunRegistry
 from ._background_task_manager import BackgroundTaskManager
+from ._handoff_dispatcher import HandoffDispatcher
 
 __all__ = [
     "BackgroundTaskManager",
     "CancelDispatcher",
     "ChatRunRegistry",
+    "HandoffDispatcher",
     "SchedulerManager",
     "WakeupDispatcher",
 ]

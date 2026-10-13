@@ -1,6 +1,7 @@
 """Public Phase-B workflow orchestration exports."""
 
 from ._continuation import ExecutionGuard, WorkflowContinuation
+from ._shared_context import WorkforceSharedContextProjector, projection_payload
 from ._models import (
     CloseMessage,
     CommittedTurnEvidence,
@@ -20,6 +21,7 @@ from ._models import (
     WorkflowQueryResult,
     WorkflowRepository,
     WorkflowReservation,
+    WorkflowTicketAlreadyBound,
 )
 from ._service import WorkflowService, advance, next_action
 
@@ -39,11 +41,14 @@ __all__ = [
     "WorkflowClosed",
     "WorkflowConflict",
     "WorkflowContinuation",
+    "WorkforceSharedContextProjector",
+    "projection_payload",
     "WorkflowLease",
     "WorkflowPattern",
     "WorkflowQueryResult",
     "WorkflowRepository",
     "WorkflowReservation",
+    "WorkflowTicketAlreadyBound",
     "WorkflowService",
     "advance",
     "next_action",

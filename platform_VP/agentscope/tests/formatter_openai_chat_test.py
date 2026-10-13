@@ -314,6 +314,32 @@ class TestOpenAIFormatter(IsolatedAsyncioTestCase):
         res = await fmt.format([])
         self.assertListEqual([], res)
 
+    async def test_chat_formatter_sanitizes_agent_name(self) -> None:
+        """Agent display names remain valid in OpenAI message history."""
+        fmt = OpenAIChatFormatter()
+        res = await fmt.format(
+            [
+                AssistantMsg(
+                    name="Workforce Leader / Travel",
+                    content=[
+                        ToolCallBlock(
+                            id="call_team",
+                            name="TeamCreate",
+                            input='{"name": "Travel"}',
+                        ),
+                        ToolResultBlock(
+                            id="call_team",
+                            name="TeamCreate",
+                            output=[TextBlock(text="Team created")],
+                            state=ToolResultState.SUCCESS,
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+        self.assertEqual(res[0]["name"], "Workforce_Leader_Travel")
+
     async def test_chat_formatter_base64_image(self) -> None:
         """Base64-encoded image is inlined as a data URI."""
         fmt = OpenAIChatFormatter()

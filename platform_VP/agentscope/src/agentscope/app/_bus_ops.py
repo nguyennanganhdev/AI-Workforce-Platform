@@ -167,6 +167,7 @@ async def deliver_to_inbox(
     session_id: str,
     agent_id: str,
     payload: dict,
+    wake: bool = True,
 ) -> None:
     """Push a payload to a session inbox and wake the session if no run
     is currently consuming it.
@@ -183,6 +184,10 @@ async def deliver_to_inbox(
         payload (`dict`):
             JSON-serialisable payload, normally a serialised
             :class:`~agentscope.message.HintBlock`.
+        wake (`bool`, defaults to ``True``):
+            Whether an idle recipient should be started immediately. Set
+            ``False`` when a team is waiting for customer input; the payload
+            stays queued and is drained on the next explicit user turn.
     """
     async with bus.acquire_lock(
         MessageBusKeys.inbox_lock(session_id),
@@ -194,7 +199,7 @@ async def deliver_to_inbox(
             MessageBusKeys.INBOX_CONSUMER_FIELD,
         )
 
-    if consumer is None:
+    if consumer is None and wake:
         await enqueue_run_trigger(
             bus,
             user_id=user_id,

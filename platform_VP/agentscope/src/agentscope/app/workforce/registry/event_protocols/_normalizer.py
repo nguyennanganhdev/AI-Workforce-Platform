@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """Deterministic mapping only; Execution owns ordering and state mutation."""
 
-from datetime import datetime
 import hashlib
 import json
+from datetime import datetime
 
 from jsonschema import Draft202012Validator
 from referencing import Registry
@@ -33,9 +33,7 @@ def normalize_event(
         raise ValueError("received_at must be timezone-aware")
     if envelope.schema_version != protocol.event_schema_version:
         raise ValueError("event schema version mismatch")
-    if protocol.ordering == "provider_version" and (
-        envelope.provider_version is None
-    ):
+    if protocol.ordering == "provider_version" and (envelope.provider_version is None):
         raise ValueError("provider_version is required")
     # Pydantic's JSON serializer may turn non-finite floats into null.
     json.dumps(envelope.data, allow_nan=False)
@@ -51,6 +49,13 @@ def normalize_event(
         mapping.data_schema,
         registry=Registry(),
     ).validate(envelope.data)
+    facts = {
+        key: envelope.data[key] for key in mapping.fact_fields if key in envelope.data
+    }
+    if envelope.attachments:
+        facts["attachments"] = [
+            item.model_dump(mode="json") for item in envelope.attachments
+        ]
     return NormalizedJobEvent(
         inbox_event_id=inbox_event_id,
         provider_integration_id=provider_integration_id,
@@ -58,11 +63,7 @@ def normalize_event(
         external_job_id=envelope.external_job_id,
         client_reference=envelope.client_reference,
         normalized_status=mapping.status,
-        facts={
-            key: envelope.data[key]
-            for key in mapping.fact_fields
-            if key in envelope.data
-        },
+        facts=facts,
         provider_version=envelope.provider_version,
         protocol_schema_hash=protocol.snapshot_ref.schema_hash,
         source_hash=hashlib.sha256(source.encode()).hexdigest(),
