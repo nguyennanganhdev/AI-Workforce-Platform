@@ -264,3 +264,33 @@ class LearningLoopTest(IsolatedAsyncioTestCase):
         self.assertFalse(ticket_succeeded(task))
         task.assignments["b"].status = "accepted"
         self.assertTrue(ticket_succeeded(task))
+
+
+class RedisMemoryStorageTest(IsolatedAsyncioTestCase):
+    async def test_redis_backend_stores_lists_and_filters_memories(self) -> None:
+        import fakeredis.aioredis
+
+        from agentscope.app.storage import RedisStorage
+
+        storage = RedisStorage.__new__(RedisStorage)
+        RedisStorage.__init__(storage)
+        storage._client = fakeredis.aioredis.FakeRedis(decode_responses=True)
+        memory = AgentMemoryService(storage)
+        added = await memory.consolidate(
+            "u",
+            "agent-1",
+            [MemoryCandidate(content="Rò nước: khoá van tổng", evidence_event_ids=["e1"])],
+            ticket_id="t",
+            model=None,
+        )
+        await memory.retire("u", "agent-1", added[0]["memory_id"])
+        await storage.upsert_agent_memory(
+            "u",
+            AgentMemoryRecord(user_id="u", agent_id="agent-1", content="Mất điện: ngắt cầu dao"),
+        )
+
+        self.assertEqual(2, len(await storage.list_agent_memories("u", "agent-1")))
+        self.assertEqual(
+            ["Mất điện: ngắt cầu dao"],
+            [m.content for m in await storage.list_agent_memories("u", "agent-1", status="active")],
+        )
