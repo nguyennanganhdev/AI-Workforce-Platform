@@ -63,7 +63,7 @@ async def table_rows(env, table):
 
 
 @asynccontextmanager
-async def c3_harness():
+async def c3_harness(*, event_mode="snapshot"):
     async with harness(tracking=True, canonical_uow=True) as env:
         async with env.engine.begin() as connection:
             await connection.run_sync(foundation_metadata.create_all)
@@ -120,7 +120,7 @@ async def c3_harness():
         env.protocols = RegistryExecutionProtocols(
             env.registry_provider, env.repo, env.auth, env.operations
         )
-        env.config = sample_protocol()
+        env.config = sample_protocol(event_mode)
         env.registry_service = env.protocols.bind(SCOPE_A).port
         await env.registry_service.publish(env.config)
         env.descriptor["async_protocol_hash"] = (

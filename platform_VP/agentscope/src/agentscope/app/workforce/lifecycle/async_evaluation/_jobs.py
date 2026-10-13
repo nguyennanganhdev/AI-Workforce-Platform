@@ -2,6 +2,8 @@
 
 from typing import Any, Dict
 
+from sqlalchemy import update
+
 from ...contracts import EvaluationSnapshot, JobPort, Scope
 from .._models import EvaluationRecord
 from ._evaluation import (
@@ -11,6 +13,8 @@ from ._evaluation import (
     grade_case,
 )
 from ._repository import SqlEvaluationRepository
+from ._repository import scoped
+from ._tables import case_runs
 from ._runtime import RuntimeEvaluationRunner
 from ._suites import LifecycleSuite
 
@@ -64,8 +68,29 @@ async def check_persisted_release(
     scope: Scope,
     evaluation_id: str,
     current: FrozenEvaluation,
+    uow: Any = None,
 ) -> EvaluationRecord:
     """Authoritative scoped prewrite hook; publishing remains a caller action."""
+    if uow is not None:
+        repository = repository.in_transaction(uow)
+        # Cancellation is mutable. Lock the cases through the publish commit
+        # so it cannot invalidate evidence between verification and activation.
+        payload = current.read(scope)
+        for case in payload["suite"]["cases"]:
+            await uow.execute(
+                update(case_runs)
+                .where(
+                    *scoped(
+                        case_runs,
+                        scope,
+                        {
+                            "snapshot_id": payload["snapshot"]["snapshot_id"],
+                            "case_id": case["case_id"],
+                        },
+                    )
+                )
+                .values(cancelled=case_runs.c.cancelled)
+            )
     record = await repository.load_record(scope, evaluation_id)
     if record is None:
         raise ValueError("INCOMPLETE_EVALUATION")

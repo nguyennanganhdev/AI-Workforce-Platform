@@ -23,6 +23,9 @@ from agentscope.app.workforce.execution import (
 from agentscope.app.workforce.lifecycle.async_evaluation import (
     get_metadata as evaluation_metadata,
 )
+from agentscope.app.workforce.lifecycle.releases import (
+    get_release_metadata,
+)
 from agentscope.app.workforce.orchestration import (
     get_metadata as orchestration_metadata,
 )
@@ -104,6 +107,44 @@ class RuntimeMigrationTests(unittest.TestCase):
             )
         engine.dispose()
 
+    def test_release_migration_matches_lifecycle_metadata(self) -> None:
+        path = (
+            Path(__file__).resolve().parents[3]
+            / "src/agentscope/app/storage/_sql/_alembic/versions"
+            / "0011_workforce_releases.py"
+        )
+        spec = importlib.util.spec_from_file_location(
+            "wf_release_migration", path
+        )
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        owner = get_release_metadata()
+        self.assertEqual(set(owner.tables), set(module.metadata.tables))
+        for name, owner_table in owner.tables.items():
+            migrated = module.metadata.tables[name]
+            self.assertEqual(list(owner_table.c.keys()), list(migrated.c.keys()))
+            self.assertEqual(
+                {item.name for item in owner_table.constraints},
+                {item.name for item in migrated.constraints},
+            )
+
+        engine = create_engine("sqlite://")
+        with engine.begin() as connection:
+            module.op = Operations(MigrationContext.configure(connection))
+            module.upgrade()
+            self.assertEqual(
+                set(owner.tables), set(inspect(connection).get_table_names())
+            )
+            module.downgrade()
+            self.assertFalse(
+                set(owner.tables).intersection(
+                    inspect(connection).get_table_names()
+                )
+            )
+        engine.dispose()
+
 
 class _Processor:
     async def handle_job(self, job):
@@ -181,6 +222,18 @@ class RuntimeCompositionTests(unittest.IsolatedAsyncioTestCase):
             del actor, approval_id, body, uow
             return {}
 
+        async def release_tool(scope, tool_version_id, uow):
+            del scope, tool_version_id, uow
+            raise AssertionError("not called while composing")
+
+        async def release_policy(scope, policy_ref, uow):
+            del scope, policy_ref, uow
+            raise AssertionError("not called while composing")
+
+        def release_context(scope):
+            del scope
+            raise AssertionError("not called while composing")
+
         deps = PhaseCRuntimeDependencies(
             tenant_resolver=tenant_resolver,
             approval_authorizer=approval_authorizer,
@@ -196,6 +249,9 @@ class RuntimeCompositionTests(unittest.IsolatedAsyncioTestCase):
             evaluation_runner=object(),
             customer_dependency=dependency,
             manager_dependency=dependency,
+            release_tool_resolver=release_tool,
+            release_policy_resolver=release_policy,
+            release_context_resolver=release_context,
         )
         with TemporaryDirectory() as directory:
             database = Path(directory) / "production-builder.db"
@@ -211,9 +267,13 @@ class RuntimeCompositionTests(unittest.IsolatedAsyncioTestCase):
                 ),
             )
         runtime = bootstrap._prepared.runtime
-        self.assertEqual(2, len(runtime.routers))
+        self.assertEqual(3, len(runtime.routers))
         self.assertEqual(PHASE_C_JOB_TYPES, set(runtime.job_handlers))
         self.assertIs(runtime.services["uows"], bootstrap._prepared.uows)
+        self.assertIs(
+            runtime.services["published_catalog"],
+            runtime.services["releases"],
+        )
 
     async def test_approved_result_and_wakeup_share_one_uow(self) -> None:
         commands = _Commands()
@@ -296,7 +356,7 @@ class RuntimeCompositionTests(unittest.IsolatedAsyncioTestCase):
         assembly = compose_phase_c_runtime(
             foundation,
             services={"uows": foundation.uows},
-            routers=(object(), object()),
+            routers=(object(), object(), object()),
             provider_event_processor=_Processor(),
             workflow_continuation_handler=_Handler(),
             operation_reconciler=reconciler,
@@ -336,7 +396,7 @@ class RuntimeCompositionTests(unittest.IsolatedAsyncioTestCase):
             compose_phase_c_runtime(
                 foundation,
                 services={"uows": object()},
-                routers=(object(), object()),
+                routers=(object(), object(), object()),
                 provider_event_processor=_Processor(),
                 workflow_continuation_handler=_Handler(),
                 operation_reconciler=_Reconciler(),

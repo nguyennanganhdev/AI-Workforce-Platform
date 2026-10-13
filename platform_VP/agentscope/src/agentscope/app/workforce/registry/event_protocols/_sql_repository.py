@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import select, update
 
 from ...contracts import (
     AsyncProtocolSnapshotRef,
@@ -153,28 +153,47 @@ class SqlAsyncProtocolRepository:
         self,
         scope: Scope,
         tool_version_id: str,
+        uow: UnitOfWork | None = None,
+        *,
+        for_update: bool = False,
     ) -> tuple[AsyncToolProtocol, bool]:
         scope = Scope.model_validate(scope)
-        async with self._uows() as uow:
-            head = await self._get_head(uow, scope, tool_version_id)
-            if head is None:
-                raise KeyError("async protocol head not found")
-            protocol = await self._load_version(
-                uow,
-                scope,
-                self._head_reference(head),
-            )
-            return protocol, bool(head["enabled"])
+        if uow is None:
+            async with self._uows() as owned:
+                return await self.get_current(
+                    scope,
+                    tool_version_id,
+                    owned,
+                    for_update=for_update,
+                )
+        sql_uow = _sql_uow(uow)
+        head = await self._get_head(
+            sql_uow,
+            scope,
+            tool_version_id,
+            for_update=for_update,
+        )
+        if head is None:
+            raise KeyError("async protocol head not found")
+        protocol = await self._load_version(
+            sql_uow,
+            scope,
+            self._head_reference(head),
+        )
+        return protocol, bool(head["enabled"])
 
     async def get_pinned(
         self,
         scope: Scope,
         snapshot: AsyncProtocolSnapshotRef,
+        uow: UnitOfWork | None = None,
     ) -> AsyncToolProtocol:
         scope = Scope.model_validate(scope)
         snapshot = AsyncProtocolSnapshotRef.model_validate(snapshot)
-        async with self._uows() as uow:
-            return await self._load_version(uow, scope, snapshot)
+        if uow is None:
+            async with self._uows() as owned:
+                return await self.get_pinned(scope, snapshot, owned)
+        return await self._load_version(_sql_uow(uow), scope, snapshot)
 
     async def set_enabled(
         self,

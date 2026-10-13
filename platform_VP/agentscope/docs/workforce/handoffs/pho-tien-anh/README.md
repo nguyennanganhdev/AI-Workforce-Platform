@@ -43,3 +43,12 @@ Các thư mục v1.4 đã chuẩn bị cho bạn:
 
 Bắt đầu bằng đọc hợp đồng 17.3–17.4, viết logic và test với fake port thuộc module mình, rồi bàn giao signature/schema/hook request cho owner cung cấp. Các fake chỉ trong test/demo, production không trả thành công giả. Mỗi người làm trong branch/worktree riêng; migration/core/shared contracts chỉ Chí Hoàng sửa.
 
+## D4 — 12/10/2026
+
+Đã triển khai code và regression SQL/mock cho publish pin, protocol pin,
+long-wait 200 ngày bằng clock, stale evaluation và archive/disable/rollback.
+Tái dùng output A/B/C5 và SQL/runtime của D2/D3. Chi tiết và bằng chứng:
+[PHASE_D_D4.md](PHASE_D_D4.md), [STATUS.md](STATUS.md).
+Metadata, signature và điểm ghép cho D5/D6:
+[INTEGRATION_REQUEST_PTA_D4.md](INTEGRATION_REQUEST_PTA_D4.md).
+

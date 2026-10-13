@@ -17,6 +17,8 @@ export function Demo() {
 				<option value="ready">Đủ capability</option><option value="reused">Đã có agent</option>
 				<option value="missing">Thiếu capability</option><option value="tracking">Theo dõi / revise</option>
 				<option value="query_only">Query-only chưa chốt event semantics</option>
+				<option value="refresh">D3 — Catalog refresh</option><option value="permission">D3 — Permission failure</option>
+				<option value="optional_missing">D3 — Optional missing</option><option value="late_confirm">D3 — Late response after cancel</option>
 			</select>
 		</div>
 		<BuilderPanel key={scenario} client={client} />

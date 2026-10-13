@@ -77,8 +77,17 @@ class ReuseMatcher:
                         message="Existing identity must be repaired; creating a clone is not allowed",
                     )
                 )
-            elif target.reuse_status == ReuseStatus.DRAFT and target.draft_id:
-                action = ReuseAction.RESUME
+            elif target.reuse_status == ReuseStatus.DRAFT:
+                if target.draft_id:
+                    action = ReuseAction.RESUME
+                else:
+                    action = ReuseAction.CLARIFY
+                    blockers.append(
+                        Blocker(
+                            code="CANDIDATE_METADATA_REQUIRED",
+                            message="Existing draft reference is required before continuing",
+                        )
+                    )
             elif target.missing_requirements or coverage_missing:
                 action = ReuseAction.REVISE
             elif target.version_id:

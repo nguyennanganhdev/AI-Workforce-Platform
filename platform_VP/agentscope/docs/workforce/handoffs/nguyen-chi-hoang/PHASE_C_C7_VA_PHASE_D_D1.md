@@ -52,6 +52,6 @@ Ngày thực hiện: **2026-10-12**. Baseline đầu vào:
 - Migration SQLite: upgrade → downgrade `0009` → upgrade head pass.
 - `compileall`, environment check và `git diff --check` pass.
 
-PostgreSQL service không chạy trong phiên local; gate thật đã được cấu hình trong
-CI và chỉ được xác nhận pass sau khi PR chạy workflow. Thay đổi hiện ở working
-tree, chưa commit/push/merge.
+Đây là snapshot kiểm thử tại thời điểm bàn giao ban đầu. C7/D1 và hai lane D2
+sau đó đã commit và merge vào `develop2@278ea4a`; PostgreSQL/Phase D gates và
+trạng thái cuối được ghi tại `../PHASE_D_SEQUENCE.md`.
