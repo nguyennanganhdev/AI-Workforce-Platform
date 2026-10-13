@@ -14,6 +14,7 @@ from ...sop import SOPPhase, SOPRunState
 from ...state import AgentState
 from ._base import StorageBase
 from ._model import (
+    AgentMemoryRecord,
     AgentRecord,
     ChannelOrigin,
     ChannelRecord,
@@ -135,6 +136,7 @@ class RedisStorage(StorageBase):
         team_turn: str = "agentscope:user:{user_id}:team:{team_id}:turn"
         team_handoff: str = "agentscope:user:{user_id}:team_handoff:{handoff_id}"
         team_handoff_index: str = "agentscope:team_handoffs"
+        agent_memories: str = "agentscope:user:{user_id}:agent:{agent_id}:memories"
 
         knowledge_base: str = (
             "agentscope:user:{user_id}:knowledge_base:{knowledge_base_id}"
@@ -1961,6 +1963,62 @@ class RedisStorage(StorageBase):
             ),
         )
         return TeamTurnRecord.model_validate_json(raw) if raw else None
+
+    async def upsert_agent_memory(
+        self,
+        user_id: str,
+        record: AgentMemoryRecord,
+    ) -> AgentMemoryRecord:
+        if record.user_id != user_id:
+            raise ValueError("record.user_id does not match the given user_id")
+        record.updated_at = datetime.now()
+        await self._client.hset(
+            self._key(
+                self.key_config.agent_memories,
+                user_id=user_id,
+                agent_id=record.agent_id,
+            ),
+            record.id,
+            record.model_dump_json(),
+        )
+        return record
+
+    async def list_agent_memories(
+        self,
+        user_id: str,
+        agent_id: str,
+        *,
+        status: str | None = None,
+        limit: int = 500,
+    ) -> list[AgentMemoryRecord]:
+        raw = await self._client.hvals(
+            self._key(
+                self.key_config.agent_memories,
+                user_id=user_id,
+                agent_id=agent_id,
+            ),
+        )
+        records = [AgentMemoryRecord.model_validate_json(item) for item in raw]
+        if status is not None:
+            records = [record for record in records if record.status == status]
+        records.sort(key=lambda record: record.created_at, reverse=True)
+        return records[:limit]
+
+    async def get_agent_memory(
+        self,
+        user_id: str,
+        agent_id: str,
+        memory_id: str,
+    ) -> AgentMemoryRecord | None:
+        raw = await self._client.hget(
+            self._key(
+                self.key_config.agent_memories,
+                user_id=user_id,
+                agent_id=agent_id,
+            ),
+            memory_id,
+        )
+        return AgentMemoryRecord.model_validate_json(raw) if raw else None
 
     async def upsert_team_handoff(
         self,

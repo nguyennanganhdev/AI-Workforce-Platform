@@ -25,6 +25,7 @@ from ....sop import SOPPhase, SOPRunState
 from ....state import AgentState
 from .._base import StorageBase
 from .._model import (
+    AgentMemoryRecord,
     AgentRecord,
     ChannelRecord,
     CredentialRecord,
@@ -48,6 +49,7 @@ from .._model._session import _origin_kwargs
 from .._utils import _dump_with_secrets
 from ._mappers import _from_record, _to_record
 from ._tables import (
+    AgentMemoryRow,
     AgentRow,
     ChannelRow,
     CredentialRow,
@@ -2086,6 +2088,57 @@ class AsyncSQLAlchemyStorage(StorageBase):
         async with self._session() as sess:
             rows = (await sess.execute(query)).scalars().all()
         return [_to_record(row, TeamHandoffRecord) for row in rows]
+
+    async def upsert_agent_memory(
+        self,
+        user_id: str,
+        record: AgentMemoryRecord,
+    ) -> AgentMemoryRecord:
+        if record.user_id != user_id:
+            raise ValueError("record.user_id does not match the given user_id")
+        await self._write_row(AgentMemoryRow, record)
+        return record
+
+    async def list_agent_memories(
+        self,
+        user_id: str,
+        agent_id: str,
+        *,
+        status: str | None = None,
+        limit: int = 500,
+    ) -> list[AgentMemoryRecord]:
+        from sqlalchemy import select
+
+        query = select(AgentMemoryRow).where(
+            AgentMemoryRow.user_id == user_id,
+            AgentMemoryRow.agent_id == agent_id,
+        )
+        if status is not None:
+            query = query.where(AgentMemoryRow.status == status)
+        query = query.order_by(AgentMemoryRow.created_at.desc()).limit(limit)
+        async with self._session() as sess:
+            rows = (await sess.execute(query)).scalars().all()
+        return [_to_record(row, AgentMemoryRecord) for row in rows]
+
+    async def get_agent_memory(
+        self,
+        user_id: str,
+        agent_id: str,
+        memory_id: str,
+    ) -> AgentMemoryRecord | None:
+        from sqlalchemy import select
+
+        async with self._session() as sess:
+            row = (
+                await sess.execute(
+                    select(AgentMemoryRow).where(
+                        AgentMemoryRow.id == memory_id,
+                        AgentMemoryRow.user_id == user_id,
+                        AgentMemoryRow.agent_id == agent_id,
+                    ),
+                )
+            ).scalar_one_or_none()
+        return _to_record(row, AgentMemoryRecord) if row is not None else None
 
     async def delete_team(self, user_id: str, team_id: str) -> bool:
         """Delete a team + role-aware member cleanup.

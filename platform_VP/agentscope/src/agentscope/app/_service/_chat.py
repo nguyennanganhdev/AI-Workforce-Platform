@@ -99,6 +99,7 @@ from ..storage import (
     SOPOrigin,
     StorageBase,
 )
+from ..storage._model._session import SessionKnowledgeConfig
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
 from ..workspace_manager import WorkspaceManagerBase
 from ._access import ResourceAccessService
@@ -310,6 +311,13 @@ class ChatService:
         )
         self._access = resource_access_service
         self._knowledge_base_manager = knowledge_base_manager
+        from .._agent_learning import AgentLearningService
+
+        self._learning = AgentLearningService(
+            storage,
+            self._shared_context,
+            workspace_manager,
+        )
         self._extra_agent_middlewares = extra_agent_middlewares
         # Probed once (the service is built once per lifespan) so legacy
         # three-argument factories keep working without the per-turn cost.
@@ -410,6 +418,64 @@ class ChatService:
                 agent_id,
                 str(e),
             )
+
+    def _learning_hook(self, user_id: str, session_record, agent_record):
+        """Callback for the Leader: learn from a verified ticket in background."""
+
+        async def models():
+            base = session_record.config.chat_model_config
+            strong = _role_model_config(base, "leader")
+            return (
+                await get_model(user_id, base, self._access),
+                await get_model(user_id, strong, self._access),
+            )
+
+        def on_verified_answer(team_id: str) -> None:
+            if os.getenv("WORKFORCE_LEARNING", "true").strip().lower() in {"0", "false", "no"}:
+                return
+            self._learning.schedule(user_id, team_id, models)
+
+        return on_verified_answer
+
+    async def _recalled_memory(
+        self,
+        user_id: str,
+        agent_id: str,
+        team,
+        session_id: str,
+        customer_input_msgs: list,
+    ) -> str:
+        """Relevant long-term memory of a business agent for this turn."""
+
+        query_parts = [msg.get_text_content() or "" for msg in customer_input_msgs]
+        if team is not None:
+            record = await self._shared_context.storage.get_team_shared_context(
+                user_id,
+                team.id,
+            )
+            task = (
+                record.state.tasks.get(record.state.active_task_id)
+                if record and record.state.active_task_id
+                else None
+            )
+            if task is not None:
+                assignment = task.assignments.get(session_id)
+                if assignment is not None:
+                    query_parts.append(assignment.goal)
+                query_parts.extend(
+                    event.content
+                    for event in record.state.events[-20:]
+                    if event.task_id == task.id and event.kind == "customer_message"
+                )
+        query = " ".join(part for part in query_parts if part)[:4000]
+        if not query.strip():
+            return ""
+        try:
+            memories = await self._learning.memory.recall(user_id, agent_id, query)
+        except Exception:  # noqa: BLE001 - memory never blocks a turn
+            logger.exception("Memory recall failed for agent %s", agent_id)
+            return ""
+        return self._learning.memory.render(memories)
 
     async def _auto_name_session(
         self,
@@ -1203,6 +1269,11 @@ class ChatService:
                             user_id,
                             agent_id,
                             session_id,
+                            on_verified_answer=self._learning_hook(
+                                user_id,
+                                session_record,
+                                agent_record,
+                            ),
                         ),
                     )
                 # Equip the member middleware for loop control
@@ -1256,6 +1327,13 @@ class ChatService:
                 # and unaware of sharing.
                 # -------------------------------------------------------------
                 kb_cfg = session_record.config.knowledge_config
+                spec_kb_ids = [
+                    str(item.get("kb_id"))
+                    for item in (agent_record.data.spec or {}).get("knowledge", [])
+                    if item.get("kb_id")
+                ]
+                if spec_kb_ids and (kb_cfg is None or not kb_cfg.knowledge_base_ids):
+                    kb_cfg = SessionKnowledgeConfig(knowledge_base_ids=spec_kb_ids)
                 if (
                     kb_cfg is not None
                     and kb_cfg.knowledge_base_ids
@@ -1583,6 +1661,17 @@ class ChatService:
                         )
 
                 attachment = f"<system-notification>{attachment}</system-notification>"
+                if (
+                    agent_record.data.system_role == "business"
+                    and (agent_record.data.spec or {}).get("memory_enabled", True)
+                ):
+                    attachment += await self._recalled_memory(
+                        user_id,
+                        agent_id,
+                        team,
+                        session_id,
+                        customer_input_msgs,
+                    )
                 system_prompt = runtime_system_prompt + "\n\n" + attachment
 
                 agent_state = session_record.state

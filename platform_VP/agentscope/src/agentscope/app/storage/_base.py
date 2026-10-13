@@ -10,6 +10,7 @@ from ...message import Msg
 from ...sop import SOPPhase, SOPRunState
 from ...state import AgentState
 from ._model import (
+    AgentMemoryRecord,
     AgentRecord,
     ChannelRecord,
     CredentialRecord,
@@ -1127,6 +1128,40 @@ class StorageBase(ABC):
         limit: int = 100,
     ) -> list[TeamHandoffRecord]:
         """List pending/delivered-but-unconsumed handoffs for recovery."""
+
+    # ------------------------------------------------------------------
+    # Agent long-term memory
+    # ------------------------------------------------------------------
+    # Concrete (not abstract) so storage doubles written before this feature
+    # keep working; both production backends override them.
+
+    async def upsert_agent_memory(
+        self,
+        user_id: str,
+        record: AgentMemoryRecord,
+    ) -> AgentMemoryRecord:
+        """Insert or replace one remembered item of an agent."""
+        raise NotImplementedError("this storage does not keep agent memory")
+
+    async def list_agent_memories(
+        self,
+        user_id: str,
+        agent_id: str,
+        *,
+        status: str | None = None,
+        limit: int = 500,
+    ) -> list[AgentMemoryRecord]:
+        """List an agent's memories, newest first."""
+        raise NotImplementedError("this storage does not keep agent memory")
+
+    async def get_agent_memory(
+        self,
+        user_id: str,
+        agent_id: str,
+        memory_id: str,
+    ) -> AgentMemoryRecord | None:
+        """Read one memory of an agent."""
+        raise NotImplementedError("this storage does not keep agent memory")
 
     # ------------------------------------------------------------------
     # Knowledge base persistence

@@ -140,6 +140,8 @@ class SharedTaskState(BaseModel):
     collaboration: dict[str, "CollaborationBranch"] = Field(default_factory=dict)
     assignments: dict[str, TaskAssignment] = Field(default_factory=dict)
     """The Leader's task ledger keyed by the member's team session id."""
+    learned_revision: int = Field(default=0, ge=0)
+    """Last event revision the learning loop has processed for this task."""
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

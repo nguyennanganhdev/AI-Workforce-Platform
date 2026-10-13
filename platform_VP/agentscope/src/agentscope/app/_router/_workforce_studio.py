@@ -32,9 +32,11 @@ from .._service._agent_studio import (
     tool_catalog,
     tool_runner,
 )
+from .._agent_memory import AgentMemoryService
 from ..deps import (
     get_current_user_id,
     get_resource_access_service,
+    get_shared_context_storage,
     get_storage,
     get_workspace_manager,
 )
@@ -501,6 +503,36 @@ async def withdraw(
         )
         await storage.upsert_agent(user_id, record)
     return _detail(record)
+
+
+@workforce_studio_router.get("/agents/{agent_id}/memories")
+async def list_memories(
+    agent_id: str,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+    shared_storage: StorageBase = Depends(get_shared_context_storage),
+) -> list[dict]:
+    await _business_agent(storage, user_id, agent_id)
+    try:
+        memories = await shared_storage.list_agent_memories(user_id, agent_id, limit=300)
+    except NotImplementedError:
+        return []
+    return [memory.model_dump(mode="json") for memory in memories]
+
+
+@workforce_studio_router.post("/agents/{agent_id}/memories/{memory_id}/retire")
+async def retire_memory(
+    agent_id: str,
+    memory_id: str,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+    shared_storage: StorageBase = Depends(get_shared_context_storage),
+) -> dict:
+    await _business_agent(storage, user_id, agent_id)
+    memory = await AgentMemoryService(shared_storage).retire(user_id, agent_id, memory_id)
+    if memory is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy ký ức")
+    return memory.model_dump(mode="json")
 
 
 @workforce_studio_router.post("/preview")

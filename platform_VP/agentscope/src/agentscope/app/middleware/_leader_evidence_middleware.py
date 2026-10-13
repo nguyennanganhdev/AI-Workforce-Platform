@@ -41,7 +41,9 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         wait_seconds: float | None = None,
         max_nudges: int = 2,
         max_rounds: int = 4,
+        on_verified_answer: Callable[[str], None] | None = None,
     ) -> None:
+        self._on_verified_answer = on_verified_answer
         self._storage = storage
         self._shared_context = shared_context
         self._user_id = user_id
@@ -563,6 +565,15 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 for text_event in buffered_text:
                     yield text_event
                 buffered_text.clear()
+                if has_current_evidence and self._on_verified_answer is not None:
+                    session = await self._storage.get_session(
+                        self._user_id, self._agent_id, self._session_id
+                    )
+                    if session is not None and session.team_id is not None:
+                        try:
+                            self._on_verified_answer(session.team_id)
+                        except Exception:  # noqa: BLE001 - learning is optional
+                            pass
                 yield event
                 continue
 

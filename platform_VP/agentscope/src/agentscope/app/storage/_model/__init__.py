@@ -51,6 +51,7 @@ from ._sop import (
     SOPWorkspaceGrain,
 )
 from ._team import TeamRecord, TeamData, TeamMember
+from ._agent_memory import AgentMemoryRecord, MemoryKind, MemoryStatus
 from ._team_context import (
     ContextDelta,
     ContextMode,
@@ -72,6 +73,9 @@ from ._team_context import (
 from ._user import UserRecord
 
 __all__ = [
+    "AgentMemoryRecord",
+    "MemoryKind",
+    "MemoryStatus",
     "AgentData",
     "AgentRecord",
     "ChannelBinding",

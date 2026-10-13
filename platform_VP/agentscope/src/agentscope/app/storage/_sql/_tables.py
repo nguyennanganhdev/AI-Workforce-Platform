@@ -365,6 +365,18 @@ class TeamHandoffRow(_JsonRecordMixin):
     )
 
 
+class AgentMemoryRow(_JsonRecordMixin):
+    """One remembered item of a business agent (long-term memory)."""
+
+    __tablename__ = "agent_memories"
+
+    user_id: Mapped[str] = mapped_column(String(_ID_LEN), nullable=False, index=True)
+    agent_id: Mapped[str] = mapped_column(String(_ID_LEN), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+
+    _indexed_fields = ("user_id", "agent_id", "status")
+
+
 class KnowledgeBaseRow(_JsonRecordMixin):
     """One row per :class:`~agentscope.app.storage.KnowledgeBaseRecord`."""
 

@@ -1866,6 +1866,28 @@ class SharedContextService:
                 await self._commit_mutation(user_id, record)
             return released
 
+    async def mark_learned(
+        self,
+        user_id: str,
+        team_id: str,
+        task_id: str,
+        revision: int,
+    ) -> None:
+        """Record that the learning loop processed ``task_id`` up to ``revision``."""
+
+        async with self._bus.acquire_lock(
+            MessageBusKeys.team_shared_context_lock(team_id),
+            ttl_secs=MessageBusKeys.TEAM_SHARED_CONTEXT_LOCK_TTL_SECS,
+        ):
+            record = await self._storage.get_team_shared_context(user_id, team_id)
+            if record is None or task_id not in record.state.tasks:
+                return
+            task = record.state.tasks[task_id]
+            if task.learned_revision >= revision:
+                return
+            task.learned_revision = revision
+            await self._commit_mutation(user_id, record)
+
     async def deliver_ready_assignments(self, user_id: str, team_id: str) -> int:
         """Release and wake queued assignments whose dependencies reported."""
 
