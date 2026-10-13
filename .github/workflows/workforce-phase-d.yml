@@ -74,7 +74,8 @@ jobs:
           docker exec "$POSTGRES_CONTAINER" createdb -U agentscope agentscope_restore_test
           docker exec "$POSTGRES_CONTAINER" pg_dump -U agentscope --format=custom --file=/tmp/workforce-phase-d.dump agentscope_test
           docker exec "$POSTGRES_CONTAINER" pg_restore -U agentscope --exit-on-error --no-owner --no-privileges --dbname=agentscope_restore_test /tmp/workforce-phase-d.dump
-          test "$(docker exec "$POSTGRES_CONTAINER" psql -U agentscope -d agentscope_restore_test -Atc 'select version_num from alembic_version')" = "0012_workforce_assets"
+          EXPECTED_HEAD="$(python -c 'from alembic.config import Config; from alembic.script import ScriptDirectory; print(ScriptDirectory.from_config(Config("src/agentscope/app/storage/_sql/_alembic/alembic.ini")).get_current_head())')"
+          test "$(docker exec "$POSTGRES_CONTAINER" psql -U agentscope -d agentscope_restore_test -Atc 'select version_num from alembic_version')" = "$EXPECTED_HEAD"
       - name: Build and lint the manager frontend
         run: |
           pnpm --dir examples/web_ui/frontend lint
