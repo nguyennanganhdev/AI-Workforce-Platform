@@ -138,7 +138,7 @@ class ChatCompletionsModel:
                 "response_format": {"type": "json_object"},
                 # Luna only supports Chat Completions function calling without reasoning.
                 **({"reasoning_effort": "none"}
-                   if self.config.provider == "openai" and self.config.model == "gpt-6-luna" else {})})
+                   if self.config.provider == "openai" and self.config.model in {"gpt-5.6-luna", "gpt-6-luna"} else {})})
             response.raise_for_status()
             payload = response.json()
             _count(payload)

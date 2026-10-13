@@ -86,8 +86,9 @@ def test_registered_model_is_isolated_per_concurrent_turn_and_resets():
     ])
 
 
-def test_luna_can_call_a_tool_with_chat_completions(monkeypatch):
-    environment(monkeypatch, RECEPTION_MODEL="gpt-6-luna")
+@pytest.mark.parametrize("model", ["gpt-5.6-luna", "gpt-6-luna"])
+def test_luna_can_call_a_tool_with_chat_completions(monkeypatch, model):
+    environment(monkeypatch, RECEPTION_MODEL=model)
 
     def provider(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
