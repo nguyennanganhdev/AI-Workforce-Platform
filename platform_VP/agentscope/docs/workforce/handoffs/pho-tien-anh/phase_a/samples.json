@@ -1,0 +1,248 @@
+{
+  "ValidationReport": {
+    "valid": true,
+    "blockers": [],
+    "tool_snapshot_hash": "tool-hash-1",
+    "protocol_hash": "protocol-hash-1",
+    "dependency_hash": "dependency-hash-1",
+    "tool_snapshots": []
+  },
+  "EvaluationSnapshot": {
+    "snapshot_id": "snapshot-1",
+    "scope": {
+      "tenant_id": "tenant-1",
+      "domain_id": "property-management",
+      "area_id": "ha-long",
+      "manager_account_id": "manager-1"
+    },
+    "agent_id": "agent-1",
+    "draft_id": "draft-1",
+    "draft_revision": 1,
+    "source_draft_hash": "draft-hash-1",
+    "candidate_version_id": "version-1",
+    "manifest": {
+      "schema_version": "1",
+      "business_profile": {
+        "profile_schema_version": "1",
+        "objective": "Theo dõi yêu cầu sửa chữa",
+        "responsibilities": [
+          "Theo dõi trạng thái"
+        ],
+        "capabilities": [
+          "repair.track"
+        ],
+        "input_contract": {},
+        "output_contract": {},
+        "business_scope": "ha-long",
+        "execution_policy": "require_approval"
+      },
+      "spec": {
+        "agent_key": "repair-assistant",
+        "name": "Trợ lý sửa chữa",
+        "capabilities": [
+          "repair.track"
+        ],
+        "system_prompt": "Hỗ trợ theo dõi yêu cầu sửa chữa trong phạm vi quản lý.",
+        "model_config_ref": {
+          "model_id": "model-1",
+          "credential_ref": "credential-ref-1"
+        }
+      },
+      "async_policy_ref": "policy-repair-v1",
+      "protocol_snapshot_hashes": [
+        "protocol-hash-1"
+      ]
+    },
+    "manifest_hash": "manifest-hash-1",
+    "tool_snapshot_hash": "tool-hash-1",
+    "test_context_hash": "context-hash-1",
+    "created_at": "2026-10-10T00:00:00Z"
+  },
+  "EvaluationCaseResult": {
+    "case_id": "case-1",
+    "status": "queued"
+  },
+  "EvaluationReport": {
+    "evaluation_id": "eval-1",
+    "agent_id": "agent-1",
+    "draft_id": "draft-1",
+    "draft_revision": 1,
+    "manifest_hash": "manifest-hash-1",
+    "snapshot_id": "snapshot-1",
+    "suite_version": "suite-v1",
+    "runtime_profile_hash": "profile-hash-1",
+    "tool_snapshot_hash": "tool-hash-1",
+    "test_context_hash": "context-hash-1",
+    "status": "queued",
+    "cases": []
+  },
+  "EvaluationRecord": {
+    "scope": {
+      "tenant_id": "tenant-1",
+      "domain_id": "property-management",
+      "area_id": "ha-long",
+      "manager_account_id": "manager-1"
+    },
+    "revision": 1,
+    "snapshot": {
+      "snapshot_id": "snapshot-1",
+      "scope": {
+        "tenant_id": "tenant-1",
+        "domain_id": "property-management",
+        "area_id": "ha-long",
+        "manager_account_id": "manager-1"
+      },
+      "agent_id": "agent-1",
+      "draft_id": "draft-1",
+      "draft_revision": 1,
+      "source_draft_hash": "draft-hash-1",
+      "candidate_version_id": "version-1",
+      "manifest": {
+        "schema_version": "1",
+        "business_profile": {
+          "profile_schema_version": "1",
+          "objective": "Theo dõi yêu cầu sửa chữa",
+          "responsibilities": [
+            "Theo dõi trạng thái"
+          ],
+          "capabilities": [
+            "repair.track"
+          ],
+          "input_contract": {},
+          "output_contract": {},
+          "business_scope": "ha-long",
+          "execution_policy": "require_approval"
+        },
+        "spec": {
+          "agent_key": "repair-assistant",
+          "name": "Trợ lý sửa chữa",
+          "capabilities": [
+            "repair.track"
+          ],
+          "system_prompt": "Hỗ trợ theo dõi yêu cầu sửa chữa trong phạm vi quản lý.",
+          "model_config_ref": {
+            "model_id": "model-1",
+            "credential_ref": "credential-ref-1"
+          }
+        },
+        "async_policy_ref": "policy-repair-v1",
+        "protocol_snapshot_hashes": [
+          "protocol-hash-1"
+        ]
+      },
+      "manifest_hash": "manifest-hash-1",
+      "tool_snapshot_hash": "tool-hash-1",
+      "test_context_hash": "context-hash-1",
+      "created_at": "2026-10-10T00:00:00Z"
+    },
+    "report": {
+      "evaluation_id": "eval-1",
+      "agent_id": "agent-1",
+      "draft_id": "draft-1",
+      "draft_revision": 1,
+      "manifest_hash": "manifest-hash-1",
+      "snapshot_id": "snapshot-1",
+      "suite_version": "suite-v1",
+      "runtime_profile_hash": "profile-hash-1",
+      "tool_snapshot_hash": "tool-hash-1",
+      "test_context_hash": "context-hash-1",
+      "status": "queued",
+      "cases": []
+    },
+    "suite_hash": "suite-hash-1",
+    "runtime_profile": {
+      "execution_mode": "mock"
+    },
+    "test_context": {
+      "protocol_refs": [
+        {
+          "protocol_id": "protocol-repair",
+          "protocol_version": "1",
+          "schema_hash": "protocol-hash-1",
+          "tool_version_id": "tool-repair-v1",
+          "capabilities": [
+            "repair.track"
+          ]
+        }
+      ],
+      "policy": {
+        "schema_version": "1",
+        "capabilities": [
+          "repair.track"
+        ],
+        "event_types": [
+          "completed"
+        ],
+        "required_facts": [
+          "status"
+        ],
+        "completion_condition": "status == completed",
+        "human_confirmation": true,
+        "timeout_behavior": "needs_attention"
+      }
+    },
+    "validation": {
+      "valid": true,
+      "blockers": [],
+      "tool_snapshot_hash": "tool-hash-1",
+      "protocol_hash": "protocol-hash-1",
+      "dependency_hash": "dependency-hash-1",
+      "tool_snapshots": []
+    },
+    "protocol_refs": [
+      {
+        "protocol_id": "protocol-repair",
+        "protocol_version": "1",
+        "schema_hash": "protocol-hash-1",
+        "tool_version_id": "tool-repair-v1",
+        "capabilities": [
+          "repair.track"
+        ]
+      }
+    ],
+    "policy_snapshot": {
+      "schema_version": "1",
+      "capabilities": [
+        "repair.track"
+      ],
+      "event_types": [
+        "completed"
+      ],
+      "required_facts": [
+        "status"
+      ],
+      "completion_condition": "status == completed",
+      "human_confirmation": true,
+      "timeout_behavior": "needs_attention"
+    },
+    "gate_config": {
+      "completion_rate": 0.9,
+      "tool_argument_rate": 0.95,
+      "hard_gate_violations": 0
+    }
+  },
+  "AsyncProtocolSnapshotRef": {
+    "protocol_id": "protocol-repair",
+    "protocol_version": "1",
+    "schema_hash": "protocol-hash-1",
+    "tool_version_id": "tool-repair-v1",
+    "capabilities": [
+      "repair.track"
+    ]
+  },
+  "AsyncHandlingPolicyProposal": {
+    "schema_version": "1",
+    "capabilities": [
+      "repair.track"
+    ],
+    "event_types": [
+      "completed"
+    ],
+    "required_facts": [
+      "status"
+    ],
+    "completion_condition": "status == completed",
+    "human_confirmation": true,
+    "timeout_behavior": "needs_attention"
+  }
+}

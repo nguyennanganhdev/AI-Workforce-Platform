@@ -1,0 +1,246 @@
+{
+  "$defs": {
+    "EventMapping": {
+      "additionalProperties": false,
+      "description": "Map one provider event type to a status and allowlisted facts.",
+      "properties": {
+        "status": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        },
+        "data_schema": {
+          "additionalProperties": true,
+          "title": "Data Schema",
+          "type": "object"
+        },
+        "fact_fields": {
+          "default": [],
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Fact Fields",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "data_schema"
+      ],
+      "title": "EventMapping",
+      "type": "object"
+    },
+    "ToolEffect": {
+      "enum": [
+        "read",
+        "write",
+        "external_operation"
+      ],
+      "title": "ToolEffect",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Versioned integration metadata configured outside prompts.",
+  "properties": {
+    "protocol_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Protocol Id",
+      "type": "string"
+    },
+    "protocol_version": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "tool_version_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Tool Version Id",
+      "type": "string"
+    },
+    "provider_integration_id": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Integration Id"
+    },
+    "effect": {
+      "$ref": "#/$defs/ToolEffect"
+    },
+    "result_mode": {
+      "enum": [
+        "terminal",
+        "pending"
+      ],
+      "title": "Result Mode",
+      "type": "string"
+    },
+    "completion_policy": {
+      "enum": [
+        "read_only_auto_close",
+        "explicit_close"
+      ],
+      "title": "Completion Policy",
+      "type": "string"
+    },
+    "requires_approval": {
+      "default": false,
+      "title": "Requires Approval",
+      "type": "boolean"
+    },
+    "client_reference_field": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Client Reference Field"
+    },
+    "external_job_id_field": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "External Job Id Field"
+    },
+    "status_field": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Status Field"
+    },
+    "status_query_tool_version_id": {
+      "anyOf": [
+        {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Status Query Tool Version Id"
+    },
+    "event_schema_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Event Schema Version",
+      "type": "string"
+    },
+    "event_mappings": {
+      "additionalProperties": {
+        "$ref": "#/$defs/EventMapping"
+      },
+      "propertyNames": {
+        "maxLength": 128,
+        "minLength": 1
+      },
+      "title": "Event Mappings",
+      "type": "object"
+    },
+    "ordering": {
+      "default": "transition_only",
+      "enum": [
+        "provider_version",
+        "transition_only"
+      ],
+      "title": "Ordering",
+      "type": "string"
+    },
+    "event_mode": {
+      "default": "snapshot",
+      "enum": [
+        "snapshot",
+        "delta"
+      ],
+      "title": "Event Mode",
+      "type": "string"
+    },
+    "transitions": {
+      "additionalProperties": {
+        "items": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "propertyNames": {
+        "maxLength": 128,
+        "minLength": 1
+      },
+      "title": "Transitions",
+      "type": "object"
+    },
+    "terminal_statuses": {
+      "default": [],
+      "items": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Terminal Statuses",
+      "type": "array"
+    },
+    "timeout_seconds": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Timeout Seconds"
+    }
+  },
+  "required": [
+    "protocol_id",
+    "protocol_version",
+    "tool_version_id",
+    "effect",
+    "result_mode",
+    "completion_policy"
+  ],
+  "title": "AsyncToolProtocol",
+  "type": "object"
+}

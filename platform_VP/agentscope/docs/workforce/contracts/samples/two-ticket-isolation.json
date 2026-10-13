@@ -1,0 +1,84 @@
+{
+  "description": "One partner user opens two independent tickets and conversations.",
+  "requests": [
+    {
+      "schema_version": "1",
+      "command_type": "start_workflow",
+      "external_request_id": "request-a-1",
+      "external_management_ref": "BQL-HL-01",
+      "external_user_id": "resident-123",
+      "external_ticket_id": "ticket-a",
+      "external_conversation_id": "chat-a",
+      "residence_id": "S1-0205",
+      "timezone": "Asia/Ho_Chi_Minh",
+      "message": {
+        "type": "text",
+        "text": "Ống nước trong căn hộ của tôi bị vỡ."
+      }
+    },
+    {
+      "schema_version": "1",
+      "command_type": "start_workflow",
+      "external_request_id": "request-b-1",
+      "external_management_ref": "BQL-HL-01",
+      "external_user_id": "resident-123",
+      "external_ticket_id": "ticket-b",
+      "external_conversation_id": "chat-b",
+      "residence_id": "S1-0205",
+      "timezone": "Asia/Ho_Chi_Minh",
+      "message": {
+        "type": "text",
+        "text": "Tôi muốn đặt xe đi sân bay sáng mai."
+      }
+    },
+    {
+      "schema_version": "1",
+      "command_type": "workflow_reply",
+      "external_request_id": "request-a-2",
+      "external_management_ref": "BQL-HL-01",
+      "external_user_id": "resident-123",
+      "external_ticket_id": "ticket-a",
+      "external_conversation_id": "chat-a",
+      "workflow_id": "workflow-a",
+      "residence_id": "S1-0205",
+      "timezone": "Asia/Ho_Chi_Minh",
+      "message": {
+        "type": "text",
+        "text": "Nước đang chảy rất mạnh."
+      }
+    },
+    {
+      "schema_version": "1",
+      "command_type": "workflow_reply",
+      "external_request_id": "request-b-2",
+      "external_management_ref": "BQL-HL-01",
+      "external_user_id": "resident-123",
+      "external_ticket_id": "ticket-b",
+      "external_conversation_id": "chat-b",
+      "workflow_id": "workflow-b",
+      "residence_id": "S1-0205",
+      "timezone": "Asia/Ho_Chi_Minh",
+      "message": {
+        "type": "text",
+        "text": "Tôi chọn chuyến xe lúc 06:30."
+      }
+    }
+  ],
+  "expected_server_bindings": [
+    {
+      "external_ticket_id": "ticket-a",
+      "external_conversation_id": "chat-a",
+      "workflow_id": "workflow-a",
+      "conversation_id": "conversation-a",
+      "group_id": "group-a"
+    },
+    {
+      "external_ticket_id": "ticket-b",
+      "external_conversation_id": "chat-b",
+      "workflow_id": "workflow-b",
+      "conversation_id": "conversation-b",
+      "group_id": "group-b"
+    }
+  ],
+  "invariant": "A reply must resolve all ticket, conversation, workflow and group identifiers from the same persisted binding before Leader dispatch."
+}

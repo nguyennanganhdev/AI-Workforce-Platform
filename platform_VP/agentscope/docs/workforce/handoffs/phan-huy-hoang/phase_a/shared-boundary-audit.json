@@ -1,0 +1,20 @@
+[
+  {
+    "model": "WorkflowRecord",
+    "field": "revision",
+    "input": true,
+    "pydantic_accepts": true,
+    "json_schema_accepts": false,
+    "status": "OPEN",
+    "owner": "NCH; canonical shared contracts unchanged by PHH"
+  },
+  {
+    "model": "ConversationEvent",
+    "field": "occurred_at",
+    "input": "2026-10-10T09:00:00",
+    "pydantic_accepts": true,
+    "json_schema_accepts": false,
+    "status": "OPEN",
+    "owner": "NCH; canonical shared contracts unchanged by PHH"
+  }
+]

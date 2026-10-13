@@ -1,0 +1,850 @@
+# -*- coding: utf-8 -*-
+"""The AgentInvite tool — borrows an existing agent into the leader's team.
+
+This tool **borrows** a pre-existing user-owned agent by minting a fresh
+team-scoped :class:`SessionRecord` on top of the *existing*
+:class:`AgentRecord`. The borrowed agent keeps its definition, including
+its system prompt and context/react configs. Workspace and model are taken
+from the *caller's* own session of that agent, so a cross-owner borrow
+never picks up the owner's MCPs, skills, cache, or session permissions.
+
+When the team is dissolved or the leader is deleted, only the borrowed
+session is cleaned up — the underlying :class:`AgentRecord` survives
+so the user can still use the agent stand-alone.
+"""
+from __future__ import annotations
+
+import copy
+import json
+import unicodedata
+from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, Field, ValidationError
+
+from ..._utils._common import _generate_id
+from ...mcp import MCPClient
+from ...message import HintBlock, TextBlock, ToolResultState
+from ...state import AgentState
+from ...tool import ParamsBase, ToolChunk
+from .._bus_ops import deliver_to_inbox, enqueue_run_trigger
+from ..storage import SessionConfig, TeamMember, TeamOrigin
+from ..storage._utils import _ensure_team_members, _resolve_team_leader
+from ._constants import HANDLE_LEN
+from ._team_tool_base import _TeamToolBase
+
+if TYPE_CHECKING:
+    from .._service._access import ResourceAccessService
+    from .._shared_context import SharedContextService
+    from ..message_bus import MessageBus
+    from ..storage import AgentRecord, StorageBase, TeamRecord
+    from ..workspace_manager import WorkspaceManagerBase
+
+
+def _display_handle(agent_id: str) -> str:
+    """Return the derived routing handle for ``agent_id``.
+
+    Kept as a tiny helper (rather than inlining ``agent_id[:HANDLE_LEN]``
+    at every call site) so a future change to how a handle is derived
+    (widening the prefix, hashing, etc.) has exactly one place to touch.
+    The length itself lives in :mod:`_constants` so ``TeamSay``'s
+    parser agrees byte-for-byte with what this producer emits.
+    """
+    return agent_id[:HANDLE_LEN]
+
+
+def _display_name(agent_name: str, agent_id: str) -> str:
+    """Format the leader-facing display / routing string.
+
+    Example: ``"Monday@9f3c1a20"``. Used by both :class:`AgentInvite`
+    (as the ``target`` enum values) and :func:`TeamSay` (as the
+    directory keys for invited members).
+    """
+    return f"{agent_name}@{_display_handle(agent_id)}"
+
+
+def _fold_text(value: str) -> str:
+    """Return an accent-insensitive form for deterministic capability checks."""
+
+    decomposed = unicodedata.normalize("NFKD", value.casefold()).replace("đ", "d")
+    return " ".join(
+        "".join(char for char in decomposed if not unicodedata.combining(char)).split()
+    )
+
+
+def _requests_calculation(value: str) -> bool:
+    """Detect an explicit cross-item calculation/reserve deliverable."""
+
+    folded = _fold_text(value)
+    return any(
+        marker in folded
+        for marker in (
+            "tinh chi phi",
+            "tinh toan",
+            "tong chi phi",
+            "can doi chi phi",
+            "chua lai",
+            "de du",
+            "du phong",
+            "calculate",
+            "calculation",
+            "total cost",
+            "cost breakdown",
+            "budget remaining",
+            "reserve",
+        )
+    )
+
+
+def _has_calculation_capability(agent: AgentRecord) -> bool:
+    """Identify a published calculation specialist from declared capability."""
+
+    tool_names = {
+        _fold_text(str(binding.get("tool_name") or ""))
+        for binding in agent.data.tool_bindings
+    }
+    if any(
+        name.startswith("calculate")
+        or "calculator" in name
+        or "arithmetic" in name
+        for name in tool_names
+    ):
+        return True
+    declared = _fold_text(
+        " ".join(
+            (
+                agent.data.name,
+                agent.data.invite_config.invite_description or "",
+                agent.data.build_description or "",
+            )
+        )
+    )
+    return any(
+        marker in declared
+        for marker in (
+            "cost calculation",
+            "calculator",
+            "tinh toan",
+            "can doi chi phi",
+        )
+    )
+
+
+class _AdditionalAssignment(BaseModel):
+    target: str = Field(min_length=1)
+    prompt: str = Field(min_length=1)
+
+
+class _AgentInviteParams(ParamsBase):
+    """Parameters for :class:`AgentInvite`.
+
+    Each assignment selects a target and task. The borrowed agent's name,
+    prompt and configuration still come from its existing AgentRecord;
+    recruitment never changes a published agent's configuration.
+    """
+
+    target: str = Field(
+        description=(
+            "The invitable agent to borrow, formatted "
+            '``"<name>@<handle>"`` (e.g. ``"Monday@9f3c1a20"``). Choose '
+            "from the enum values — each was populated from the "
+            "user's currently-invitable agents at the moment the tool "
+            "list was assembled."
+        ),
+    )
+    prompt: str = Field(
+        description=(
+            "The first task delivered to the invited agent as a user "
+            "message. Include its specific deliverable and any dependencies "
+            "on other specialists. It starts on joining and reads shared "
+            "context; do not copy the full conversation. A dependency is an "
+            "internal wait, not a request for the customer to supply peer results."
+        ),
+    )
+    additional_assignments: list[_AdditionalAssignment] = Field(
+        default_factory=list,
+        max_length=32,
+        description=(
+            "Other required specialists and their distinct tasks. Use one "
+            "batch for a multi-capability request, not just a general planner. "
+            "Each target must be a different published agent in the catalog."
+        ),
+    )
+
+
+_DESCRIPTION_HEADER = """Borrow an existing published business agent into the \
+team you lead.
+
+## When to Use This Tool
+- A published business agent already exists whose stated purpose matches a \
+role you need.
+- You want to notify or delegate to an existing agent that specialises \
+in a specific domain.
+
+## When NOT to Use This Tool
+- No suitable published agent exists — tell the user that it must first be \
+built and published through Agent Builder. Never create an agent in chat.
+- You need to customise the member's system prompt or role for this team — \
+published agent configuration is fixed for the run.
+- You are not currently leading a team. Call ``TeamCreate`` first.
+
+## Important
+- Do NOT assume the invited agent shares your filesystem. Prefer \
+self-contained messages; do not embed working-directory or file paths \
+unless you have first verified the two sides can see them.
+- If (and only if) the task genuinely requires jointly operating on the \
+same large file or complex project directory, first use ``TeamSay`` to \
+check whether the invited agent can actually see the same files (e.g. \
+by asking it to list or stat a specific path). Skip this handshake for \
+tasks where only message content matters.
+- ``TeamSay`` is the primary communication channel between you and the \
+invited agent.
+- ``TeamDelete`` does NOT delete the invited agent — only the \
+team-scoped session is cleaned up. If you invite the same agent into \
+multiple teams over time, it may retain long-term memory or files from \
+earlier collaborations with you.
+
+## Available invitable agents"""
+
+
+class AgentInvite(_TeamToolBase):
+    """Borrow one of the user's invitable agents into the current team.
+
+    The tool is only attached to the leader's toolkit when the calling
+    user has at least one agent with ``invitable=True`` and a non-empty
+    ``invite_description`` — see the toolkit assembly logic in
+    :func:`get_toolkit`. The invitable pool is captured as a **snapshot**
+    at attachment time so the tool's ``input_schema`` can enumerate
+    concrete targets; ``__call__`` re-fetches the target's record and
+    re-checks invitability before minting the session, so a race
+    between snapshot and call (e.g. the user just turned off the toggle)
+    is caught cleanly.
+    """
+
+    name: str = "AgentInvite"
+    # No leader state needed — the borrowed session starts from a
+    # fresh PermissionContext(); nothing carries over from the leader.
+    is_state_injected: bool = False
+
+    description: str
+    input_schema: dict
+
+    async def _bootstrap_customer_history(self, team: TeamRecord) -> None:
+        """Finish the leader transcript projection before a worker wakes."""
+
+        shared = self._shared_context
+        if shared is None or not await shared.needs_customer_history_bootstrap(
+            self._user_id,
+            team.id,
+        ):
+            return
+        messages = []
+        before: str | None = None
+        while True:
+            page, has_more = await self._storage.list_messages(
+                self._user_id,
+                team.session_id,
+                limit=200,
+                before=before,
+            )
+            messages = [*page, *messages]
+            if not has_more or not page:
+                break
+            before = page[0].id
+        await shared.bootstrap_customer_history(
+            user_id=self._user_id,
+            team_id=team.id,
+            messages=messages,
+            source_session_id=team.session_id,
+            reply_owner_agent_id=self._agent_id,
+        )
+
+    def __init__(
+        self,
+        storage: "StorageBase",
+        message_bus: "MessageBus",
+        workspace_manager: "WorkspaceManagerBase",
+        user_id: str,
+        session_id: str,
+        agent_id: str,
+        invitable_pool: list["AgentRecord"],
+        resource_access_service: "ResourceAccessService | None" = None,
+        shared_context_service: "SharedContextService | None" = None,
+    ) -> None:
+        """Bind the base dependencies plus the invitable pool snapshot.
+
+        Args:
+            storage (`StorageBase`):
+                Application storage backend.
+            message_bus (`MessageBus`):
+                Application message bus.
+            workspace_manager (`WorkspaceManagerBase`):
+                Assigns the borrowed session's workspace id when the
+                invited agent has no session of its own yet.
+            user_id (`str`):
+                The owner user id.
+            session_id (`str`):
+                The calling session id.
+            agent_id (`str`):
+                The calling agent id.
+            invitable_pool (`list[AgentRecord]`):
+                Snapshot of currently-invitable agents. Must be
+                non-empty — the caller skips construction otherwise. When
+                no access service is supplied, the constructor is responsible
+                for ensuring every snapshot entry is safe for the caller.
+            resource_access_service (`ResourceAccessService | None`):
+                Resolves the selected agent against the caller's current
+                access grants. ``None`` preserves direct construction for
+                owner-only integrations.
+        """
+        super().__init__(
+            storage,
+            message_bus,
+            workspace_manager,
+            user_id,
+            session_id,
+            agent_id,
+            shared_context_service,
+        )
+
+        self._pool_by_id: dict[str, "AgentRecord"] = {
+            a.id: a for a in invitable_pool
+        }
+        self._resource_access_service = resource_access_service
+
+        # Build enum + a human-readable per-target rundown for the LLM.
+        enum_values = [
+            _display_name(a.data.name, a.id) for a in invitable_pool
+        ]
+        target_lines = [
+            f"- ``{_display_name(a.data.name, a.id)!r}`` — "
+            f"{a.data.invite_config.invite_description}; tools="
+            f"{', '.join(str(b.get('tool_name', '')) for b in a.data.tool_bindings)}"
+            for a in invitable_pool
+        ]
+        self.description = (
+            _DESCRIPTION_HEADER + "\n" + "\n".join(target_lines) + "\n"
+        )
+
+        schema = copy.deepcopy(_AgentInviteParams.model_json_schema())
+        schema["properties"]["target"]["enum"] = enum_values
+        schema["$defs"]["_AdditionalAssignment"]["properties"]["target"]["enum"] = enum_values
+        self.input_schema = schema
+
+    async def _calculation_coverage_error(
+        self,
+        assignments: list[tuple[str, str]],
+        selected_agents: list[AgentRecord],
+    ) -> str | None:
+        """Require an available calculator for an explicit calculation task."""
+
+        request_text = "\n".join(prompt for _target, prompt in assignments)
+        if self._shared_context is not None:
+            team = await self._require_leader_team("invite members")
+            await self._bootstrap_customer_history(team)
+            record = await self._shared_context.storage.get_team_shared_context(
+                self._user_id,
+                team.id,
+            )
+            if record is not None:
+                customer_events = [
+                    event
+                    for event in record.state.events
+                    if event.kind == "customer_message"
+                    and (
+                        record.state.active_task_id is None
+                        or event.task_id == record.state.active_task_id
+                    )
+                ]
+                if customer_events:
+                    request_text += "\n" + max(
+                        customer_events,
+                        key=lambda event: event.revision,
+                    ).content
+        if not _requests_calculation(request_text) or any(
+            _has_calculation_capability(agent) for agent in selected_agents
+        ):
+            return None
+        candidates = [
+            _display_name(agent.data.name, agent.id)
+            for agent in self._pool_by_id.values()
+            if _has_calculation_capability(agent)
+        ]
+        if not candidates:
+            return None
+        return (
+            "AgentInvite: the request explicitly requires calculation, cost "
+            "balancing or a reserved amount, but this batch omits the available "
+            "calculation specialist. Retry one batch including one of: "
+            + ", ".join(sorted(candidates))
+            + ". Give it the total budget/reserve and make it depend on the "
+            "verified provider results."
+        )
+
+    async def __call__(
+        self,
+        target: str,
+        prompt: str,
+        additional_assignments: list[dict] | None = None,
+    ) -> ToolChunk:
+        """Validate the complete batch before inviting; keep single-call compatibility."""
+        try:
+            request = _AgentInviteParams.model_validate({
+                "target": target, "prompt": prompt,
+                "additional_assignments": additional_assignments or [],
+            })
+        except ValidationError as exc:
+            return _error(f"AgentInvite: invalid assignments: {exc}")
+        assignments = [(request.target, request.prompt), *(
+            (a.target, a.prompt) for a in request.additional_assignments
+        )]
+        selected: set[str] = set()
+        selected_agents: list[AgentRecord] = []
+        for name, _ in assignments:
+            record, error = _resolve_target(self._pool_by_id, name)
+            if error:
+                return _error(error)
+            assert record is not None
+            if record.id in selected:
+                return _error("AgentInvite: duplicate agent in assignment batch")
+            selected.add(record.id)
+            selected_agents.append(record)
+        try:
+            coverage_error = await self._calculation_coverage_error(
+                assignments,
+                selected_agents,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            return _error(f"AgentInvite: capability validation failed: {exc}")
+        if coverage_error is not None:
+            return _error(coverage_error)
+        if not request.additional_assignments:
+            return await self._invite_one(request.target, request.prompt)
+        content = []
+        invited_targets = []
+        failed_targets = []
+        staged_workers: list[tuple[str, str]] = []
+        # Queue assignments without waking workers. The full batch roster must
+        # be durable before any member tries to address a peer with TeamSay.
+        for name, task in assignments:
+            result = await self._invite_one(
+                name,
+                task,
+                wake=False,
+                staged_workers=staged_workers,
+            )
+            content.extend(result.content)
+            if result.state == ToolResultState.ERROR:
+                failed_targets.append(name)
+            else:
+                invited_targets.append(name)
+        for session_id, agent_id in staged_workers:
+            await enqueue_run_trigger(
+                self._message_bus,
+                user_id=self._user_id,
+                session_id=session_id,
+                agent_id=agent_id,
+            )
+        return ToolChunk(
+            content=content,
+            state=(ToolResultState.ERROR if failed_targets else ToolResultState.SUCCESS),
+            metadata={"invited_targets": invited_targets, "failed_targets": failed_targets},
+        )
+
+    async def _invite_one(
+        self,
+        target: str,
+        prompt: str,
+        *,
+        wake: bool = True,
+        staged_workers: list[tuple[str, str]] | None = None,
+    ) -> ToolChunk:
+        """Mint a team-scoped session on top of an existing agent record.
+
+        Preconditions (all rechecked at call time against fresh storage
+        reads):
+        - Caller's session is in a team AND is that team's leader.
+        - ``target`` is a well-formed ``"<name>@<handle>"`` string whose
+          handle prefix-matches an agent id in the current invitable
+          pool.
+        - The matched agent is still a published, user-owned business agent
+          with ``invitable=True`` and a non-empty ``invite_description``.
+        - The team does not already have this agent as a member (one
+          borrow per agent per team).
+        - The invited agent has at least one existing session to
+          inherit ``workspace_id`` / ``chat_model_config`` from — a
+          brand-new never-opened agent record is not invitable in
+          practice because it has no runtime state to reuse.
+
+        Args:
+            target (`str`):
+                The ``"<name>@<handle>"`` display string chosen from
+                the enum.
+            prompt (`str`):
+                First task delivered as a user message to the invited
+                agent.
+
+        Returns:
+            `ToolChunk`:
+                A success message containing the invited agent's
+                display name, or an error chunk on failure.
+        """
+        try:
+            invited, resolve_err = _resolve_target(
+                self._pool_by_id,
+                target,
+            )
+            if resolve_err is not None:
+                return _error(resolve_err)
+            assert invited is not None  # narrows for mypy
+
+            team = await self._require_leader_team("invite members")
+            await self._bootstrap_customer_history(team)
+
+            # Re-fetch fresh — both the invite settings and a cross-owner
+            # access grant may have changed since the toolkit snapshot
+            # was assembled. Without an access service the pool is
+            # trusted to hold only entries the caller may use.
+            access = self._resource_access_service
+            if access is None:
+                fresh = await self._storage.get_agent(
+                    invited.user_id,
+                    invited.id,
+                )
+            else:
+                fresh = await access.try_resolve_agent(
+                    self._user_id,
+                    invited.id,
+                )
+                # Same id under a different owner is a different agent.
+                if fresh is not None and fresh.user_id != invited.user_id:
+                    fresh = None
+            if (
+                fresh is None
+                or fresh.source != "user"
+                or fresh.data.system_role != "business"
+                or fresh.data.lifecycle_state != "published"
+                or not fresh.data.invite_config.invitable
+                or not (
+                    fresh.data.invite_config.invite_description or ""
+                ).strip()
+            ):
+                return _error(
+                    f"AgentInvite: agent {invited.data.name!r} is no "
+                    f"longer invitable as a published business agent.",
+                )
+            invited = fresh
+
+            # Duplicate-borrow guard — one team, one borrow per agent.
+            existing_members = await _ensure_team_members(
+                self._storage,
+                self._user_id,
+                team,
+            )
+            if any(m.agent_id == invited.id for m in existing_members):
+                return _error(
+                    f"AgentInvite: agent {invited.data.name!r} is "
+                    f"already a member of team "
+                    f"{team.data.name!r}.",
+                )
+
+            # Leader session — needed for chat-model / workspace fallback
+            # when the invited agent has no existing session, and for the
+            # sender-name in the initial team-message hint.
+            leader_session = await self._storage.get_session(
+                self._user_id,
+                "",
+                team.session_id,
+            )
+            if leader_session is None:
+                return _error(
+                    f"AgentInvite: leader session {team.session_id} "
+                    f"for team {team.id} is missing — team is in an "
+                    f"inconsistent state.",
+                )
+            leader = await _resolve_team_leader(
+                self._storage,
+                self._user_id,
+                team,
+            )
+            # Fall back to the id so a missing leader agent record does
+            # not block the invite.
+            leader_name = leader.name if leader else leader_session.agent_id
+
+            # Reuse the caller's own primary session of this agent for
+            # workspace + model, else a fresh workspace and the leader's
+            # model. The lookup is caller-scoped, so a cross-owner borrow
+            # never reuses the owner's session, MCPs, skills, or cache.
+            # The workspace is created lazily on first chat.
+            invited_sessions = await self._storage.list_sessions(
+                self._user_id,
+                invited.id,
+            )
+            if invited_sessions:
+                primary = invited_sessions[0]
+                borrowed_workspace_id = primary.config.workspace_id
+                borrowed_chat_model = (
+                    primary.config.chat_model_config
+                    or leader_session.config.chat_model_config
+                )
+                borrowed_fallback_model = (
+                    primary.config.fallback_chat_model_config
+                    or leader_session.config.fallback_chat_model_config
+                )
+            else:
+                borrowed_workspace_id = (
+                    await self._workspace_manager.assign_workspace_id(
+                        user_id=self._user_id,
+                        agent_id=invited.id,
+                        session_id=_generate_id(),
+                    )
+                )
+                borrowed_chat_model = leader_session.config.chat_model_config
+                borrowed_fallback_model = (
+                    leader_session.config.fallback_chat_model_config
+                )
+
+            # Permission context is NOT inherited from the leader.
+            # PermissionContext.working_directories and allow/deny/ask
+            # rules are anchored to the leader's workspace, which the
+            # invited agent may not share (it has its own workspace_id).
+            # Merging leader dirs / rules would advertise paths the
+            # invited agent cannot reach and pull in user confirmations
+            # granted against a different filesystem. Nor do we inherit
+            # from the invited agent's own primary session — the
+            # team-scoped conversation is a separate context; prior
+            # "user approved X" state should not silently cross over.
+            # HITL prompts in this team will re-confirm any sensitive
+            # tool call.
+            worker_state = AgentState(
+                # permission_context defaults to a fresh
+                # ``PermissionContext()``; tasks_context defaults to
+                # empty. Both are the intended reset for the borrowed
+                # session — the invited agent's main-session state
+                # stays with its own session.
+            )
+
+            invited_display = _display_name(
+                invited.data.name,
+                invited.id,
+            )
+            invited_handle = _display_handle(invited.id)
+            borrowed = await self._storage.upsert_session(
+                user_id=self._user_id,
+                agent_id=invited.id,
+                config=SessionConfig(
+                    workspace_id=borrowed_workspace_id,
+                    name=f"team:{team.id}/invited:{invited_handle}",
+                    chat_model_config=borrowed_chat_model,
+                    fallback_chat_model_config=borrowed_fallback_model,
+                ),
+                state=worker_state,
+                origin=TeamOrigin(),
+            )
+
+            # MCP declarations are session-scoped even when two sessions use
+            # the same per-agent workspace. Builder attaches the validated
+            # tool subset to the agent's primary session, so copy those
+            # declarations into this fresh team session before it can run.
+            # Skills need no copy: they are partitioned by ``agent_id`` in
+            # the shared workspace and therefore remain visible here.
+            if invited_sessions:
+                workspace = await self._workspace_manager.get_workspace(
+                    self._user_id,
+                    invited.id,
+                    borrowed.id,
+                    borrowed_workspace_id,
+                )
+                # A borrowed Builder agent has an explicit tool allowlist.
+                # Materialise the new team session without deployment-wide
+                # default MCPs before adding those selected declarations.
+                if invited.data.tool_bindings:
+                    for default_mcp in workspace.default_mcps:
+                        await workspace.remove_mcp(
+                            default_mcp.name,
+                            agent_id=invited.id,
+                            session_id=borrowed.id,
+                        )
+                mcp_specs: list[MCPClient] = []
+                if invited.data.tool_bindings:
+                    selected: dict[str, list[str]] = {}
+                    for binding in invited.data.tool_bindings:
+                        mcp_id = str(binding.get("mcp_id") or "")
+                        tool_name = str(binding.get("tool_name") or "")
+                        if mcp_id and tool_name:
+                            selected.setdefault(mcp_id, []).append(tool_name)
+                    for mcp_id, enabled_tools in selected.items():
+                        record = await self._storage.get_mcp(
+                            self._user_id,
+                            mcp_id,
+                        )
+                        if record is None or not record.enabled:
+                            raise ValueError(
+                                f"Registered MCP {mcp_id!r} is unavailable",
+                            )
+                        spec = MCPClient.model_validate(
+                            record.client.model_dump(mode="json"),
+                        )
+                        spec.enable_tools = list(dict.fromkeys(enabled_tools))
+                        mcp_specs.append(spec)
+                else:
+                    # Compatibility for manually-authored invitable agents
+                    # created before Builder persisted exact tool bindings.
+                    mcp_specs = await workspace.list_mcps(
+                        agent_id=invited.id,
+                        session_id=primary.id,
+                    )
+                for source_mcp in mcp_specs:
+                    await workspace.add_mcp(
+                        MCPClient.model_validate(
+                            source_mcp.model_dump(mode="json"),
+                        ),
+                        agent_id=invited.id,
+                        session_id=borrowed.id,
+                    )
+            await self._storage.set_session_team_id(
+                self._user_id,
+                borrowed.id,
+                team.id,
+            )
+
+            team.data.members = [
+                *existing_members,
+                TeamMember(
+                    owner_id=invited.user_id,
+                    agent_id=invited.id,
+                    session_id=borrowed.id,
+                    role="invited",
+                ),
+            ]
+            await self._storage.upsert_team(self._user_id, team)
+
+            hint = HintBlock(
+                hint=(
+                    "<system-reminder>You're now invited into a team named "
+                    f"'{team.data.name}' led by an agent named "
+                    f"'{leader_name}' in this session. All team members "
+                    f"can **ONLY** communicate through the `TeamSay` tool. "
+                    f"Once you finished the given tasks, or want to "
+                    f"communicate with the leader or team members, "
+                    f"use `TeamSay`.</system-reminder>\n"
+                    f'<team-message from="{leader_name}">\n'
+                    f"{prompt}\n"
+                    f"</team-message>"
+                ),
+                source=json.dumps(
+                    {
+                        "label": "team_message",
+                        "sublabel": leader_name,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+            await deliver_to_inbox(
+                self._message_bus,
+                user_id=self._user_id,
+                session_id=borrowed.id,
+                agent_id=invited.id,
+                payload=hint.model_dump(mode="json"),
+                wake=wake,
+            )
+            if staged_workers is not None:
+                staged_workers.append((borrowed.id, invited.id))
+
+            return ToolChunk(
+                content=[
+                    TextBlock(
+                        text=(
+                            f"Invited {invited_display!r} into team "
+                            f"{team.data.name!r}."
+                        ),
+                    ),
+                ],
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            return ToolChunk(
+                content=[TextBlock(text=f"AgentInvite failed: {e}")],
+                state=ToolResultState.ERROR,
+            )
+
+
+def _resolve_target(
+    pool_by_id: dict[str, "AgentRecord"],
+    target: str,
+) -> tuple["AgentRecord | None", str | None]:
+    """Parse a ``"<name>@<handle>"`` string and look up the pool entry.
+
+    Matches on **both** the name part and the handle so that two
+    invitable agents sharing an 8-char UUID4 prefix are still
+    disambiguated by the LLM-supplied name. Falls back to a
+    handle-only lookup when exactly one pool entry matches the handle,
+    which keeps the common single-agent case working. If two or more
+    entries share the handle AND the name does not narrow the match,
+    an ``ambiguous`` error is returned so the caller can retry.
+
+    Returns ``(record, None)`` on success or ``(None, error_message)``
+    on any parse or resolution failure.
+    """
+    if "@" not in target:
+        return None, (
+            f"AgentInvite: malformed target {target!r} — expected "
+            f'"<name>@<handle>", got no ``@`` separator.'
+        )
+    name_part, handle = target.rsplit("@", 1)
+    name_part = name_part.strip()
+    handle = handle.strip()
+    if not handle:
+        return None, (
+            f"AgentInvite: malformed target {target!r} — empty handle "
+            f"after ``@``."
+        )
+    handle_matches = [
+        record
+        for agent_id, record in pool_by_id.items()
+        if _display_handle(agent_id) == handle
+    ]
+    # Preferred: unique (name, handle) match. Guards against the rare
+    # 8-char-prefix collision on distinct agents with distinct names.
+    named_matches = [r for r in handle_matches if r.data.name == name_part]
+    if len(named_matches) == 1:
+        return named_matches[0], None
+    if len(named_matches) > 1:
+        # Same name AND same handle prefix on multiple pool entries —
+        # the display strings are indistinguishable, so no client
+        # input could disambiguate. Surface the ids so the caller can
+        # see what collided.
+        ids = sorted(r.id for r in named_matches)
+        return None, (
+            f"AgentInvite: target {target!r} is ambiguous — multiple "
+            f"invitable agents share this display string: {ids}."
+        )
+    # Fallback: no name match, but exactly one handle match — accept it.
+    if len(handle_matches) == 1:
+        return handle_matches[0], None
+    if len(handle_matches) > 1:
+        colliding = sorted(
+            _display_name(r.data.name, r.id) for r in handle_matches
+        )
+        return None, (
+            f"AgentInvite: handle {handle!r} matches multiple invitable "
+            f"agents: {colliding}. Retry with the exact display string."
+        )
+    available = sorted(
+        _display_name(a.data.name, a.id) for a in pool_by_id.values()
+    )
+    return None, (
+        f"AgentInvite: no invitable agent matches target {target!r}. "
+        f"Available: {available}."
+    )
+
+
+def _error(text: str) -> ToolChunk:
+    """Build an ``ERROR``-state :class:`ToolChunk` with a text block.
+
+    Not moved to :mod:`_team_tool_base` because that shape is specific
+    to :class:`AgentInvite`'s branchy validation path — the other team
+    tools currently inline the same pattern.
+    """
+    return ToolChunk(
+        content=[TextBlock(text=text)],
+        state=ToolResultState.ERROR,
+    )
