@@ -33,3 +33,5 @@ Thumbs.db
 
 # Deployment secrets
 deploy/deployment.env
+deploy/platform-handoff-*/
+deploy/test-accounts-*/

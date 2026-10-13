@@ -9,3 +9,7 @@
 .env
 **/.env
 deploy/deployment.env
+
+# Private deployment handoffs and test exports can contain credentials.
+deploy/platform-handoff-*/
+deploy/test-accounts-*/
