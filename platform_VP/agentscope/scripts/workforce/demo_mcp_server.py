@@ -24,8 +24,11 @@ import itertools
 import unicodedata
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 server = FastMCP("DEMO Workforce services")
+READ_ONLY = ToolAnnotations(readOnlyHint=True)
+WRITES = ToolAnnotations(readOnlyHint=False, destructiveHint=False)
 
 
 def _fold(value: str) -> str:
@@ -148,7 +151,7 @@ _booking_ids = itertools.count(1)
 BOOKINGS: dict[str, dict] = {}
 
 
-@server.tool()
+@server.tool(annotations=READ_ONLY)
 def search_hotels(
     city: str,
     guests: int,
@@ -181,7 +184,7 @@ def search_hotels(
     return {"demo": True, "city": city, "nights": nights, "guests": guests, "hotels": results}
 
 
-@server.tool()
+@server.tool(annotations=READ_ONLY)
 def get_hotel_detail(hotel_id: str) -> dict:
     """Return the full DEMO record of one hotel by its hotel_id."""
     for hotel in HOTELS:
@@ -190,7 +193,7 @@ def get_hotel_detail(hotel_id: str) -> dict:
     return {"demo": True, "error": "hotel_not_found", "hotel_id": hotel_id}
 
 
-@server.tool()
+@server.tool(annotations=READ_ONLY)
 def search_cars(origin: str, destination: str, passengers: int) -> dict:
     """Search DEMO car transfers between two places for a passenger count."""
     origin_f, destination_f = _fold(origin), _fold(destination)
@@ -204,7 +207,7 @@ def search_cars(origin: str, destination: str, passengers: int) -> dict:
     return {"demo": True, "cars": results}
 
 
-@server.tool()
+@server.tool(annotations=READ_ONLY)
 def calculate_trip_cost(
     items: list[dict],
     budget_vnd: int,
@@ -227,7 +230,7 @@ def calculate_trip_cost(
     }
 
 
-@server.tool()
+@server.tool(annotations=WRITES)
 def book_hotel(hotel_id: str, nights: int, guests: int, customer_name: str) -> dict:
     """Create a DEMO hotel booking (writes demo state; needs customer consent)."""
     hotel = next((h for h in HOTELS if h["hotel_id"] == hotel_id), None)
@@ -324,7 +327,7 @@ _work_order_ids = itertools.count(1)
 WORK_ORDERS: dict[str, dict] = {}
 
 
-@server.tool()
+@server.tool(annotations=READ_ONLY)
 def lookup_incident_type(description: str) -> dict:
     """Classify a resident's reported issue into a DEMO incident type with
     priority, SLA (hours), required technician skill and first-aid advice."""
@@ -335,14 +338,14 @@ def lookup_incident_type(description: str) -> dict:
     return {"demo": True, "code": "UNKNOWN", "label": "Chưa phân loại được", "priority": "cần BQL xem xét"}
 
 
-@server.tool()
+@server.tool(annotations=READ_ONLY)
 def check_technician_availability(skill: str, date: str) -> dict:
     """List DEMO technicians with free slots for a skill (plumber, electrician,
     hvac, cleaner) on a date (YYYY-MM-DD)."""
     return {"demo": True, "skill": skill, "date": date, "technicians": TECHNICIANS.get(skill, [])}
 
 
-@server.tool()
+@server.tool(annotations=READ_ONLY)
 def get_service_fee(incident_code: str) -> dict:
     """Return the DEMO fee policy for an incident code."""
     fee = SERVICE_FEES.get(incident_code)
@@ -351,14 +354,14 @@ def get_service_fee(incident_code: str) -> dict:
     return {"demo": True, "incident_code": incident_code, **fee}
 
 
-@server.tool()
+@server.tool(annotations=READ_ONLY)
 def get_cleaning_schedule(building: str) -> dict:
     """Return the DEMO daily cleaning schedule of a building (S1 or S2)."""
     key = building.strip().upper()
     return {"demo": True, "building": key, "schedule": CLEANING_SCHEDULE.get(key, [])}
 
 
-@server.tool()
+@server.tool(annotations=WRITES)
 def create_work_order(
     apartment: str,
     incident_code: str,

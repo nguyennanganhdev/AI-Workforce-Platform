@@ -135,17 +135,19 @@ class _WorkerContext:
 _TeamContext = _LeaderContext | _WorkerContext
 
 
-def _role_model_config(config, system_role: str):
+def _role_model_config(config, system_role: str, model_tier: str = "standard"):
     """Use a stronger model for the Leader when the deployment names one.
 
     ``WORKFORCE_LEADER_MODEL_NAME`` must be served by the same credential as
     the session's model. Planning, review and synthesis happen in the Leader,
     so that is where model quality pays off; specialists keep the session
-    model (normally a cheaper "mini" model).
+    model (normally a cheaper "mini" model) unless their Agent Spec asks for
+    the "strong" tier.
     """
 
     name = os.getenv("WORKFORCE_LEADER_MODEL_NAME", "").strip()
-    if system_role != "leader" or not name or config.model == name:
+    wants_strong = system_role == "leader" or model_tier == "strong"
+    if not wants_strong or not name or config.model == name:
         return config
     return config.model_copy(update={"model": name})
 
@@ -1330,6 +1332,7 @@ class ChatService:
                 model_cfg = _role_model_config(
                     model_cfg,
                     agent_record.data.system_role,
+                    str((agent_record.data.spec or {}).get("model_tier", "standard")),
                 )
                 model = await get_model(user_id, model_cfg, self._access)
                 _apply_prompt_cache_key(model, agent_id)

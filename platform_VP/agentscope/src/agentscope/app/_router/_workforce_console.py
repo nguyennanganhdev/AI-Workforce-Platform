@@ -16,7 +16,7 @@ from collections.abc import AsyncIterator
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ..._logging import logger
 from ..._utils._common import _generate_id
@@ -117,7 +117,20 @@ class PlannedAgent(BaseModel):
 class BuilderOutline(BaseModel):
     """The reviewable agent/team direction shown before generation."""
 
-    agents: list[PlannedAgent] = Field(min_length=1, max_length=12)
+    agents: list[PlannedAgent] = Field(default_factory=list, max_length=12)
+    clarification_question: str | None = Field(
+        default=None,
+        description=(
+            "Ask ONE question instead of guessing when the request does not say "
+            "what the agent should do or for whom; leave agents empty then."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _agents_or_question(self) -> "BuilderOutline":
+        if not self.agents and not (self.clarification_question or "").strip():
+            raise ValueError("propose at least one agent or ask a question")
+        return self
 
 
 class _BuilderMemorySummary(BaseModel):
@@ -456,14 +469,16 @@ Propose agent names and narrowly-scoped reusable business objectives only.
 Do not generate system prompts or skills yet. Respect whether the user asked
 for one agent or a team. For a team request, split independent business
 capabilities into separate agents instead of creating one monolithic agent.
-Related actions in one domain, such as hotel search and hotel booking, may stay
-in one agent. Planning, hotel, transport, calculation and technical support are
-separate domains when the registered tools support them. Select only exact
+Related actions on the same business object (search and booking of one
+resource) may stay in one agent; different capabilities backed by different
+tools become separate agents. If the request does not say what the agent
+should do or for whom, ask ONE clarification_question instead of guessing and
+leave agents empty. Keep every preference the user stated (tone, limits,
+things to avoid) in the objective. Select only exact
 suggested_tool_ids from the catalog. One tool ID may belong to only one agent
 in the whole proposal. When a specialist agent exists, assign its operational
 tools to that specialist; a planning/coordinator agent must collaborate through
-TeamSay instead of duplicating hotel, transport, restaurant, calculation or
-other specialist tools. Never invent a tool or create two agents for the same
+TeamSay instead of duplicating another specialist's tools. Never invent a tool or create two agents for the same
 capability. Incorporate the user's latest feedback into the revised outline.
 Use the language of the user's latest real request for every human-readable
 field: Vietnamese for a Vietnamese request and English for an English request.
@@ -1185,6 +1200,23 @@ async def prepare_builder(
             reserved_output_tokens,
             model.context_size,
         )
+        if not outline.agents:
+            proposal = ProposalView(
+                conversation_id=session.id,
+                status="needs_input",
+                assistant_message=outline.clarification_question or "",
+                clarification_question=outline.clarification_question,
+                chat_model_config=body.chat_model_config,
+                fixed_config=_fixed_config(),
+            )
+            await _persist_builder_turn(
+                storage,
+                user_id,
+                session.id,
+                body.message,
+                proposal,
+            )
+            return proposal
         by_id = {tool.id: tool for tool in tools}
         claimed_outline_tools: set[str] = set()
         planned_agents: list[PlannedAgentView] = []

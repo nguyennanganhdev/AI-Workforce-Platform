@@ -128,6 +128,21 @@ class AgentData(BaseModel):
     evaluation: SkipJsonSchema[dict] = Field(default_factory=dict)
     """Latest immutable Builder readiness result shown before publish."""
 
+    spec: SkipJsonSchema[dict] = Field(default_factory=dict)
+    """Published :class:`~agentscope.app._agent_spec.AgentSpec` (JSON)."""
+
+    draft_spec: SkipJsonSchema[dict | None] = None
+    """Unpublished edits from the form, the copilot or self-improvement."""
+
+    draft_meta: SkipJsonSchema[dict] = Field(default_factory=dict)
+    """Who changed the draft, why, and the last test run tied to its hash."""
+
+    versions: SkipJsonSchema[list[dict]] = Field(default_factory=list)
+    """Immutable published versions: number, spec, prompt, author, note."""
+
+    published_version: SkipJsonSchema[int] = 0
+    """The version number the runtime currently serves (0 = none)."""
+
 
 class AgentRecord(_RecordBase):
     """The agent ORM model."""

@@ -22,6 +22,7 @@ def test_leader_uses_configured_strong_model(monkeypatch: pytest.MonkeyPatch) ->
 
     assert _role_model_config(_config(), "leader").model == "gpt-strong"
     assert _role_model_config(_config(), "business").model == "gpt-mini"
+    assert _role_model_config(_config(), "business", "strong").model == "gpt-strong"
 
 
 def test_without_override_every_role_keeps_session_model(
