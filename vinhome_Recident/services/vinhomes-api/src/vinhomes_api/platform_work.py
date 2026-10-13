@@ -225,7 +225,8 @@ async def knowledge_search(db, ticket_id, query: str) -> dict:
     found = await search(db, tenant, "resident", ticket["zone_id"], ticket["building_id"], query.strip()[:1000], 5)
     return {"found": bool(found["hits"]), "passages": [
         {"document": hit["title"], "document_id":hit['documentId'],"version_id":hit['versionId'],"chunk_id":hit['chunkId'],
-         "audience":"resident","section": hit["section"], "text": hit["text"], **({"unverified": True} if hit["unverified"] else {})}
+         "audience":"resident","section": hit["section"], "text": hit["text"], "provenance":hit['provenance'],
+         **({"unverified": True} if hit["unverified"] else {})}
         for hit in found["hits"]]}
 
 

@@ -122,9 +122,13 @@ class Toolbox:
         response.raise_for_status()
         found = response.json()
         hits = [] if found.get("insufficientSources") else found.get("hits") or []
+        ranked=[]
         for hit in hits:
-            self.passages[hit["rank"]] = hit
-        return {"passages": [{"rank": h["rank"], "title": h["title"], "text": h["text"], "unverified": h["unverified"]} for h in hits],
+            hit={**hit,'rank':len(self.passages)+1}
+            self.passages[hit['rank']]=hit
+            ranked.append(hit)
+        return {"passages": [{"rank": h["rank"], "title": h["title"], "text": h["text"], "unverified": h["unverified"],
+                              "provenance": h.get('provenance',{'status':'reference','issues':['not_reviewed']})} for h in ranked],
                 **({} if hits else {"note": "Không có nguồn phù hợp."})}
 
     async def _intake(self, details: dict, kind: str, emergency: bool = False) -> dict:

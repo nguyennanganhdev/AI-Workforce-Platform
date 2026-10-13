@@ -229,3 +229,16 @@ def test_security_incident_is_handed_over_once_without_granting_dispatch(databas
             'description':'Điều động bảo vệ kiểm thử.','expected_ticket_version':snapshot['ticket_version']},True)
         assert result['error']['code']=='BUSINESS_RULE_REFUSED'
     assert sql(database,'select count(*) as n from work_orders where ticket_id=$1',ticket)[0]['n']==0
+
+
+def test_knowledge_tool_preserves_source_review_evidence(database,handed,monkeypatch):
+    import vinhomes_api.platform_work as work
+    ticket,token,_=handed
+    review={'status':'reference','issues':['not_reviewed']}
+    async def search(*args):
+        return {'hits':[{'title':'Dịch vụ','documentId':'doc','versionId':'v1','chunkId':'chunk',
+                         'section':'Dịch vụ','text':'Thông tin tham khảo.','unverified':False,'provenance':review}]}
+    monkeypatch.setattr(work,'search',search)
+    with door(database) as client:
+        result=call(client,token,'vh_knowledge_search',{'ticket_id':str(ticket),'query':'dịch vụ cư dân'})
+        assert result['passages'][0]['provenance']==review

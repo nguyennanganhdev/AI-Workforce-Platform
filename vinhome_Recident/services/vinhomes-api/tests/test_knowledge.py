@@ -98,7 +98,7 @@ def test_a_question_finds_its_document_typed_with_or_without_diacritics(database
         result = found(database, AN, question)
         assert UUID(result["retrievalRunId"]) and result["insufficientSources"] is False
         first = result["hits"][0]
-        assert set(first) == {"rank", "chunkId", "documentId", "versionId", "title", "section", "text", "unverified", "score"}  # what both Reception clients read, and the score
+        assert set(first) == {"rank", "chunkId", "documentId", "versionId", "title", "section", "text", "unverified", "score", "provenance"}
         assert (first["rank"], first["documentId"], first["versionId"], first["chunkId"]) == (1, uid("pool"), uid("pool:v1"), uid("pool:0")), question
         assert first["title"] == first["section"] == "Giờ mở cửa bể bơi" and first["text"].startswith("Bể bơi ngoài trời") and first["unverified"] is False
     off_topic = found(database, AN, "Giá vàng hôm nay bao nhiêu?")
@@ -276,3 +276,30 @@ def test_a_file_loaded_for_another_tenant_cannot_write_this_tenants_rows(databas
             asyncio.run(knowledge.load(database["admin"], write(tmp_path, [theirs]), str(other)))
         assert pool() == before and before[0]["tenant_id"] == before[0]["chunk_tenant"] == TENANT
         assert sql(database, "select count(*) as n from vh_knowledge_documents where tenant_id=$1", other)[0]["n"] == 0   # nothing of a refused file stays
+
+
+def test_natural_service_questions_find_the_overview_without_embeddings(database,tmp_path):
+    overview=document('services','Dịch vụ cư dân Sapphire đang dùng',
+        'Tra cứu thông tin tiện ích, gửi yêu cầu hỗ trợ kỹ thuật và theo dõi yêu cầu.',zone='sapphire',embedded=False)
+    noise=document('parking-noise','Nội quy trông giữ xe','Các bạn bên trong khu hỏi là gì thì xem nội quy xe.',embedded=False)
+    asyncio.run(knowledge.load(database['admin'],write(tmp_path,[overview,noise]),str(TENANT)))
+    try:
+        for question in ('Các dịch vụ bên trong cư dân là gì','cac dich vu ben trong cu dan la gi','dịch vụ cư dân'):
+            first=found(database,AN,question)['hits'][0]
+            assert first['documentId']==uid('services'),question
+            assert first['provenance']['status']=='reference'
+            assert 'not_reviewed' in first['provenance']['issues']
+    finally:
+        sql(database,'delete from vh_knowledge_documents where id=any($1::uuid[]) returning id',[UUID(uid('services')),UUID(uid('parking-noise'))])
+
+
+def test_a_document_flag_alone_does_not_make_a_source_approved():
+    from datetime import datetime,timezone
+    today=datetime.now(timezone.utc).date().isoformat()
+    assert knowledge.provenance({},False)['status']=='reference'
+    metadata={'sources':['https://example.com/notice'],'review':{'approved_by':'BQL-test','approved_at':today,
+        'effective_from':today,'document_reference':'TB-test'}}
+    assert knowledge.provenance(metadata,False)['status']=='approved'
+    assert knowledge.provenance(metadata,True)['status']=='reference'
+    metadata['review']['effective_until']='2000-01-01'
+    assert knowledge.provenance(metadata,False)['status']=='reference'

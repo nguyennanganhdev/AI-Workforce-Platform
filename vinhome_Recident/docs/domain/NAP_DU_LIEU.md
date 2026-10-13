@@ -115,6 +115,20 @@ Lệnh đọc `DATABASE_URL` (vai trò chủ sở hữu), chạy sau `migrate` v
 
 **Thêm tài liệu thật sau này.** Viết một tệp cùng dạng rồi nạp bằng `--file`. Tệp là JSON nén gzip, mỗi dòng một tài liệu:
 
+Từ bản CSKH14/10/2026, kết quả tìm có `provenance`. Cờ `unverified=false` một mình không chứng minh nguồn đã được BQL xác nhận. Tài liệu hiện hữu thiếu hồ sơ duyệt vẫn đọc được dưới nhãn tham khảo; không tự sửa phí/giờ/hotline để lấp dữ liệu.
+
+Đối với văn bản đã được đơn vị có thẩm quyền xác nhận, operator bổ sung metadata sau cùng nội dung thực tế (không dùng ví dụ này để tự duyệt tài liệu cũ):
+
+```json
+{"sources":["<URL hoặc mã nguồn lưu trữ có thể đối chiếu>"],"review":{
+  "approved_by":"<người/đơn vị xác nhận>","approved_at":"<ISO ngày xác nhận>",
+  "document_reference":"<số văn bản>","effective_from":"<ISO ngày hiệu lực>",
+  "effective_until":"<ISO ngày hết hiệu lực, bỏ trường nếu không có>"
+}}
+```
+
+Chỉ metadata đủ nguồn/mã văn bản/người và ngày duyệt/hiệu lực hiện hành, cùng `unverified=false`, mới có status `approved`. Văn bản hết hạn/chưa tới hiệu lực hoặc thiếu bằng chứng có status `reference` kèm `issues`; Reception phải nói rõ nhãn này. API chỉ đọc metadata; nạp/duyệt vẫn qua operator có quyền owner, không cấp cho model. Nạp sửa metadata giữ ID tài liệu và cập nhật version, không đổi mô hình embeddings.
+
 ```
 {"id": "<uuid>", "version_id": "<uuid>", "code": "sapphire/noi-quy.md", "title": "Nội quy Sapphire",
  "category": "resident-care", "audience": "resident", "site": "ocean-park-1", "zone": "sapphire", "buildings": ["S1.01"],

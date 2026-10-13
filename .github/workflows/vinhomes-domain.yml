@@ -47,12 +47,27 @@ jobs:
           tests/test_password_recovery.py tests/test_mcp_onboarding.py
           tests/test_platform_ticket_api.py
           tests/test_platform_mcp_v2.py
+          tests/test_knowledge.py
           tests/test_duckdns_hook.py
           tests/test_schema_contract.py tests/test_browser_origin.py
           tests/test_sign_in_one_page.py tests/test_sign_in_doors.py tests/test_sign_in_limit.py
           tests/test_staff_dispatch.py tests/test_staff_notifications.py
       - name: Actual HTTP business closure and rework
         run: python tests/run_business_http.py
+  reception-cskh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: vinhome_Recident/agents/reception
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-test.txt
+      - name: Offline model adapter and CSKH contracts only
+        run: python -m pytest -q tests/runtime/test_model_endpoint.py tests/runtime/test_cskh_contract.py
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 20

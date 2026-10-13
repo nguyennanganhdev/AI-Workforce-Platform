@@ -109,7 +109,10 @@ async def run_agent(model, toolbox: Toolbox, system: str, history: list[dict]) -
                 used = [p for p in toolbox.passages.values() if any(f in _digits(p["text"]) for f in figures)]
             # Three titles are enough to show where an answer comes from.
             titles = list(dict.fromkeys(str(passage["title"]) for passage in used))[:3]
-            return reply + ("\n(Nguồn: " + "; ".join(titles) + ")" if titles else "")
+            reference=any(p.get('unverified') or p.get('provenance',{}).get('status')=='reference' for p in used)
+            suffix=("\n(Nguồn tham khảo: " + "; ".join(titles) + "; cần xác nhận thông tin hiện hành với Ban quản lý.)"
+                    if reference else "\n(Nguồn: " + "; ".join(titles) + ")") if titles else ""
+            return reply + suffix
         if retried:
             break
         retried = True

@@ -18,8 +18,10 @@ import re
 import sys
 import unicodedata
 from array import array
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import asyncpg
 import httpx
@@ -41,6 +43,8 @@ VECTOR_WEIGHT, TEXT_WEIGHT = 0.8, 0.2
 # ("be boi mo cua may gio") embeds poorly. Only from WORDS_ALONE words on: the two words of "giá vàng" all occur
 # somewhere, and the share of the question found says nothing then.
 BLEND_FLOOR, TEXT_FLOOR, WORDS_ALONE = 0.36, 0.40, 4
+# Remove conversational filler only from lexical scoring; keep the original question for embeddings.
+QUERY_FILLER = set('cac ben trong la gi cho toi minh ban xin hoi biet ve nhung nhe the nao giup ai muon'.split())
 
 router = APIRouter(tags=["Knowledge"])
 
@@ -52,6 +56,31 @@ def fold(value: str) -> str:
 
 def words(value: str) -> list[str]:
     return re.findall(r"[^\W_]+", unicodedata.normalize("NFC", value).lower())
+
+
+def provenance(metadata: dict, unverified: bool) -> dict:
+    """Review evidence is owner-managed metadata, not a model claim or the legacy unverified flag alone."""
+    review=metadata.get('review') or {}
+    review=review if isinstance(review,dict) else {}
+    sources=metadata.get('sources') or []
+    sources=[s.strip() for s in sources if isinstance(s,str) and s.strip()] if isinstance(sources,list) else []
+    today=datetime.now(ZoneInfo('Asia/Ho_Chi_Minh')).date()
+    def day(value):
+        try:return datetime.fromisoformat(str(value).replace('Z','+00:00')).date()
+        except (ValueError,TypeError):return None
+    reviewed=day(review.get('approved_at'));effective=day(review.get('effective_from'))
+    until=day(review.get('effective_until'));issues=[]
+    if unverified:issues.append('unverified')
+    if not review.get('approved_by') or not reviewed or reviewed>today:issues.append('not_reviewed')
+    if not sources:issues.append('missing_source')
+    if not review.get('document_reference'):issues.append('missing_document_reference')
+    if not effective:issues.append('missing_effective_date')
+    elif effective>today:issues.append('not_effective_yet')
+    if review.get('effective_until') and (not until or until<today):issues.append('expired_or_invalid')
+    return {'status':'reference' if issues else 'approved','issues':issues,'sources':sources,
+            'document_reference':review.get('document_reference'),'effective_from':review.get('effective_from'),
+            'effective_until':review.get('effective_until'),'reviewed_by':review.get('approved_by'),
+            'reviewed_at':review.get('approved_at')}
 
 
 def passage(heading: str | None, body: str) -> str:
@@ -88,7 +117,8 @@ async def search(db, tenant, audience: str, zone_id, building_id, query: str, to
     result = {"retrievalRunId": str(uuid4()), "insufficientSources": True, "hits": []}
     # Some keyboards send a letter and its marks apart; the passages were embedded with them joined.
     query = unicodedata.normalize("NFC", query)
-    typed, plain = words(query), words(fold(query))
+    typed = [word for word in words(query) if fold(word) not in QUERY_FILLER]
+    plain = [fold(word) for word in typed]
     if not typed:
         return result
     # Single words as typed and without diacritics, and pairs of neighbours: a Vietnamese word is mostly two syllables.
@@ -104,7 +134,7 @@ async def search(db, tenant, audience: str, zone_id, building_id, query: str, to
     # Meaning: 1 - cosine distance; no number when the question or the passage has no vector, and the words answer.
     rows = (await db.execute(text("""
         with scope as materialized (
-            select k.id,k.document_id,d.version_id,d.title,k.heading_path,k.text_content,d.unverified,k.search_tsv,
+            select k.id,k.document_id,d.version_id,d.title,k.heading_path,k.text_content,d.unverified,d.metadata,k.search_tsv,
                    1-(k.embedding <=> cast(cast(:vector as text) as vector)) as meaning
             from vh_knowledge_chunks k join vh_knowledge_documents d on d.id=k.document_id and d.tenant_id=k.tenant_id
             where k.tenant_id=:tenant and d.audience=:audience
@@ -116,7 +146,7 @@ async def search(db, tenant, audience: str, zone_id, building_id, query: str, to
                     from terms t left join matches m on m.term=t.term group by t.term),
         scored as (select s.*,coalesce((select sum(w.weight) from matches m join weights w on w.term=m.term where m.id=s.id),0)
                               /(select sum(weight) from weights) as text_score from scope s)
-        select id,document_id,version_id,title,heading_path,text_content,unverified,
+        select id,document_id,version_id,title,heading_path,text_content,unverified,metadata,
                coalesce(:vector_weight*meaning+:text_weight*text_score,text_score) as score
         from scored
         where :vector_weight*meaning+:text_weight*text_score>=:blend_floor or (text_score>=:text_floor and (meaning is null or :many_words))
@@ -126,7 +156,8 @@ async def search(db, tenant, audience: str, zone_id, building_id, query: str, to
            "many_words": len(set(plain)) >= WORDS_ALONE, "top": top_k})).mappings().all()
     result["hits"] = [{"rank": rank, "chunkId": str(row["id"]), "documentId": str(row["document_id"]), "versionId": str(row["version_id"]),
                        "title": row["title"], "section": row["heading_path"], "text": row["text_content"],
-                       "unverified": row["unverified"], "score": round(float(row["score"]), 4)}
+                       "unverified": row["unverified"], "score": round(float(row["score"]), 4),
+                       "provenance": provenance(row['metadata'],row['unverified'])}
                       for rank, row in enumerate(rows, 1)]
     result["insufficientSources"] = not result["hits"]
     return result
