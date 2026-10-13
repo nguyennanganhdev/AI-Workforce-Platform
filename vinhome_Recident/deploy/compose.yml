@@ -275,7 +275,7 @@ services:
 
   # Residents.
   resident:
-    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-resident:${VINHOMES_IMAGE_TAG:-latest}
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-resident:${VINHOMES_RESIDENT_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.web

@@ -28,9 +28,9 @@ docker compose --env-file deploy/deployment.env -f deploy/compose.yml up -d --bu
 | `scheduler` | Mỗi phút: cảnh báo và báo quá hạn xử lý, cho đặt chỗ chưa thanh toán và lượt khách không tới hết hạn. | không |
 | `platform-sync` | Cầu nối với platform AI: gửi lệnh và sự kiện tiến độ, ghi lời của agent điều phối vào chat. Chưa khai báo platform thì chỉ chờ. | không |
 | `reception` | Agent lễ tân; gọi `api`, tìm tri thức qua `api`. | không |
-| `resident` | Ứng dụng cư dân và trang đăng nhập chung `/login`. | không |
+| `resident` | Landing page `/`, ứng dụng cư dân `/resident` và trang đăng nhập chung `/login`. | không |
 | `operations` | Ban quản lý, quản trị viên, nhân viên hiện trường. | không |
-| `gateway` | Địa chỉ duy nhất: `/` và `/login` là app cư dân, `/operations` là app nhân viên, `/api/business` là API. | `127.0.0.1:8080` |
+| `gateway` | Địa chỉ duy nhất: `/` là landing page, `/resident` là app cư dân, `/login` là đăng nhập, `/operations` là app nhân viên, `/api/business` là API. | `127.0.0.1:8080` |
 
 Database và kho ảnh không mở cổng ra ngoài. Ảnh do trình duyệt gửi đi qua API (qua `gateway`, tối đa 25 MB), API lưu vào MinIO và cũng là nơi duy nhất trả ảnh ra, sau khi kiểm tra người hỏi.
 
@@ -54,7 +54,7 @@ Mật khẩu của mọi tài khoản dưới đây là giá trị `DEMO_PASSWOR
 | `mock-dung@example.invalid` | Anh Dũng, có hai nhà (căn hộ và villa) | App cư dân |
 
 - Việc sửa chữa mới chỉ được mời tới kỹ thuật viên đang trong ca, còn chỗ và không dở tay việc khác. Trong thế giới mẫu đó là chín người ở bảng trên, mỗi ca ba người (đuôi email đều là `@example.invalid`); sáu kỹ thuật viên còn lại đã kín việc nên không có tài khoản.
-- Mọi người đăng nhập ở `/login`. Tài khoản vừa là cư dân vừa là nhân viên được hỏi chọn nơi vào.
+- Trang chủ `/` mở công khai, không gọi API dữ liệu cư dân. Mọi người đăng nhập ở `/login`; cư dân được chuyển đến `/resident`. Liên kết cũ `/#/...` vẫn mở đúng app cư dân. Tài khoản vừa là cư dân vừa là nhân viên được hỏi chọn nơi vào.
 - API cũng nhận số điện thoại gõ kiểu Việt Nam (`0901000001`, `0901 000 001`, `+84901000001`), nhưng **trang đăng nhập hiện chỉ cho gõ email**, nên khi demo hãy dùng email ở bảng trên.
 - Thế giới mẫu được dựng **một lần**, ngày tháng tính theo ngày dựng. Các lần khởi động sau giữ nguyên nó cùng mọi việc mọi người đã làm; muốn có thế giới mới thì đặt lại (xem dưới).
 - `DEMO_PASSWORD` chỉ được dùng **một lần cho mỗi tài khoản**. Sửa nó sau khi đã chạy không đổi mật khẩu đã có; muốn đổi thì đăng nhập rồi đổi mật khẩu, hoặc đặt lại thế giới mẫu.
@@ -192,6 +192,8 @@ VINHOMES_IMAGE_TAG=2026-10-12
 ```
 
 Trên máy build (đã `docker login` vào registry): `dc build` rồi `dc push api reception resident operations backup`.
+
+Chỉ phát hành landing page/app cư dân: đặt `VINHOMES_RESIDENT_IMAGE_TAG=<nhãn frontend mới>`, giữ `VINHOMES_IMAGE_TAG` cho các dịch vụ còn lại. Build/push riêng `resident`, rồi trên server `dc pull resident` và `dc up -d --no-deps --no-build resident`. Bỏ giá trị riêng này để `resident` dùng lại nhãn chung; khi rollback frontend cần đổi chính `VINHOMES_RESIDENT_IMAGE_TAG`.
 
 Trên server chỉ cần các tệp `deploy/compose.yml`, `deploy/Caddyfile`, `deploy/nginx/*.template` và `deploy/deployment.env` (cùng hai giá trị trên), không cần mã nguồn: `dc pull api reception resident operations backup` rồi `dc up -d --no-build`.
 

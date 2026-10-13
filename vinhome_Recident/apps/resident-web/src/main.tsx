@@ -1,12 +1,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "@fontsource-variable/inter";
-import { App } from "./app/App";
-import { ConnectedApp } from "./app/ConnectedApp";
-import { AuthPage } from "./features/auth/AuthPage";
 import { isResidentPreview } from "./features/auth/demo-access";
-import { ResidentAccountStatus } from "./features/auth/ResidentAccountStatus";
 import "./styles.css";
+import { isLandingRoute } from "./features/landing/routes";
+
+const LandingPage = React.lazy(() => import("./features/landing/LandingPage").then((module) => ({ default: module.LandingPage })));
+const App = React.lazy(() => import("./app/App").then((module) => ({ default: module.App })));
+const ConnectedApp = React.lazy(() => import("./app/ConnectedApp").then((module) => ({ default: module.ConnectedApp })));
+const AuthPage = React.lazy(() => import("./features/auth/AuthPage").then((module) => ({ default: module.AuthPage })));
+const ResidentAccountStatus = React.lazy(() => import("./features/auth/ResidentAccountStatus").then((module) => ({ default: module.ResidentAccountStatus })));
 
 const authModes = ["login", "register", "forgot-password"] as const;
 const authMode = authModes.find(
@@ -32,14 +35,18 @@ const preview = isResidentPreview();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
+    <React.Suspense fallback={<main aria-busy="true" style={{ padding: "48px" }}>Đang tải…</main>}>
     {authMode ? (
-      <AuthPage key={authMode} mode={authMode} onAuthenticated={() => location.assign('/')} />
+      <AuthPage key={authMode} mode={authMode} onAuthenticated={() => location.assign('/resident')} />
     ) : status ? (
       <ResidentAccountStatus status={status} preview />
     ) : preview ? (
       <App />
-    ) : legacyAuth ? null : (
+    ) : legacyAuth ? null : isLandingRoute(location.pathname, location.hash) ? (
+      <LandingPage />
+    ) : (
       <ConnectedApp />
     )}
+    </React.Suspense>
   </React.StrictMode>,
 );

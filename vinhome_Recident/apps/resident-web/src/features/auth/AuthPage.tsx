@@ -196,7 +196,7 @@ export function AuthPage({
         className="resident-auth-story"
         aria-label="Nhà, không gian dành cho cư dân"
       >
-        <a href="/#/" className="resident-auth-wordmark">
+        <a href="/" className="resident-auth-wordmark">
           <span>
             <IconHome size={25} stroke={1.8} />
           </span>
@@ -229,10 +229,10 @@ export function AuthPage({
         <header className="resident-auth-hero">
           <div className="resident-auth-topbar">
             <a
-              href={mode === "login" ? "/#/" : "/login"}
+              href={mode === "login" ? "/" : "/login"}
               className="resident-auth-back"
               aria-label={
-                mode === "login" ? "Về trang Trợ lý" : "Quay lại đăng nhập"
+                mode === "login" ? "Về trang chủ" : "Quay lại đăng nhập"
               }
             >
               <IconArrowLeft size={23} />
