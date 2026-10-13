@@ -139,7 +139,10 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         captured = []
 
         async def next_handler(**kwargs):
-            captured.append(kwargs["messages"][0].get_text_content())
+            # The packet is the trailing message; the system prompt stays a
+            # stable, cacheable prefix.
+            self.assertEqual("Coordinate", kwargs["messages"][0].get_text_content())
+            captured.append(kwargs["messages"][-1].get_text_content())
 
             async def response():
                 yield ChatResponse(
@@ -1787,8 +1790,10 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             next_handler,
         )
 
-        system_text = captured["messages"][0].get_text_content() or ""
-        self.assertIn("Plan a verified trip", system_text)
+        packet_text = captured["messages"][-1].get_text_content() or ""
+        self.assertEqual("shared_context", captured["messages"][-1].name)
+        self.assertIn("Plan a verified trip", packet_text)
+        self.assertEqual("Coordinate", captured["messages"][0].get_text_content())
         self.assertEqual(
             event.revision,
             await self.service.session_revision(
@@ -1979,6 +1984,6 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         )
 
         visible_system = captured["messages"][0].get_text_content() or ""
-        self.assertIn("private system", visible_system)
-        self.assertIn("shared state", visible_system)
+        self.assertEqual("private system", visible_system)
+        self.assertIn("shared state", captured["messages"][-1].get_text_content() or "")
         self.assertNotIn("shared state", original_system.get_text_content() or "")

@@ -134,6 +134,7 @@ jobs:
           tests/leader_evidence_middleware_test.py
           tests/service_chat_run_context_test.py
           tests/workforce_provider_usage_test.py
+          tests/workforce_model_routing_test.py
           -q -rs --junitxml=.artifacts/phase-d/collaboration.xml
       - name: Build D7 release-candidate report
         if: always()

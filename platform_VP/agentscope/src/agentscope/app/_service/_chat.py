@@ -15,6 +15,7 @@ that wants them subscribes through the
 import asyncio
 import inspect
 import json
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -132,6 +133,43 @@ class _WorkerContext:
 
 
 _TeamContext = _LeaderContext | _WorkerContext
+
+
+def _role_model_config(config, system_role: str):
+    """Use a stronger model for the Leader when the deployment names one.
+
+    ``WORKFORCE_LEADER_MODEL_NAME`` must be served by the same credential as
+    the session's model. Planning, review and synthesis happen in the Leader,
+    so that is where model quality pays off; specialists keep the session
+    model (normally a cheaper "mini" model).
+    """
+
+    name = os.getenv("WORKFORCE_LEADER_MODEL_NAME", "").strip()
+    if system_role != "leader" or not name or config.model == name:
+        return config
+    return config.model_copy(update={"model": name})
+
+
+def _apply_prompt_cache_key(model: ChatModelBase, agent_id: str) -> None:
+    """Opt-in OpenAI ``prompt_cache_key`` routing per agent.
+
+    Requests with the same key are routed to the same cache, which raises the
+    hit rate of the stable prefix (policy, role, tool schemas). Off by
+    default because some OpenAI-compatible gateways reject unknown fields.
+    """
+
+    if os.getenv("WORKFORCE_PROMPT_CACHE_KEY", "").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+    }:
+        return
+    if not hasattr(model, "extra_body"):
+        return
+    model.extra_body = {
+        **(model.extra_body or {}),
+        "prompt_cache_key": f"workforce:{agent_id}",
+    }
 
 
 class _SessionTitle(BaseModel):
@@ -1289,7 +1327,12 @@ class ChatService:
                         status_code=404,
                         detail=(f"No model configuration found for agent {agent_id}"),
                     )
+                model_cfg = _role_model_config(
+                    model_cfg,
+                    agent_record.data.system_role,
+                )
                 model = await get_model(user_id, model_cfg, self._access)
+                _apply_prompt_cache_key(model, agent_id)
 
                 # Persist customer-visible input before any agent reasons.
                 # Message ids make retries idempotent. Team handoff wakeups
