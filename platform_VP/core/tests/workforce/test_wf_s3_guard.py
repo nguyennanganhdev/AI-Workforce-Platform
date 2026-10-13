@@ -33,7 +33,7 @@ def test_a_done_claim_needs_a_tool_result_on_every_route(tmp_path):
         refused = room.say("Your pipe has been repaired.", cites=["E1"])  # E1: only what the resident wrote
         assert not ok(refused) and "not done, booked or confirmed" in refused[0]
         assert not ok(room.say("The pipe is fixed."))
-        assert ok(room.say("Nothing is done yet; a plumber will come."))  # saying what is NOT done is fine
+        assert ok(room.say("Nothing is done yet; a plumber will come. Shall I go on?", "reply"))  # what is NOT done is fine
         said = evidence(w, room, "lookup_ticket", "T-1001: leaking pipe, status completed")  # words are not proof
         assert not ok(room.say("Your pipe has been repaired.", cites=[said]))
         done = evidence(w, room, "partner_hotel", verified("completed") + "T-1001: leaking pipe, status completed")
@@ -116,6 +116,7 @@ def test_the_leader_may_say_at_most_five_things_to_one_message(tmp_path):
     with world(tmp_path, scripts.interactive) as w:
         room, _ = started(w)  # one is said already
         for i in range(4):
+            evidence(w, room, "lookup_ticket", f"note {'n' * (i + 1)}")  # something new to tell each time
             assert ok(room.say(f"Line number {'x' * i}."))
         out = room.say("One more line.")
         assert not ok(out) and "already sent 5 messages" in out[0]

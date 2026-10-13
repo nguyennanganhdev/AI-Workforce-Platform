@@ -6,7 +6,7 @@ writes outside these tools is ever shown.
 """
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from ..guard import check_text, written_amounts
 from . import tables as t
@@ -54,6 +54,16 @@ async def chain_says(db, workflow_id: str) -> list[str]:
             t.messages.c.workflow_id == workflow_id, t.messages.c.sender == "assistant",
             t.messages.c.expects.is_not(None), t.messages.c.sequence > start)
             .order_by(t.messages.c.sequence))).scalars())
+
+
+async def last_say_at(db, workflow_id: str) -> float | None:
+    """When the leader last spoke to the resident in the current chain (None: not yet)."""
+    async with db.engine.connect() as conn:
+        cycle = await cycle_job(conn, workflow_id)
+        start = cycle["payload"].get("start_seq", 0) if cycle else 0
+        return (await conn.execute(select(func.max(t.messages.c.created_at)).where(
+            t.messages.c.workflow_id == workflow_id, t.messages.c.sender == "assistant",
+            t.messages.c.expects.is_not(None), t.messages.c.sequence > start))).scalar()
 
 
 async def publish(db, workflow_id: str, text: str, *, expects: str, outcome: str | None = None,
