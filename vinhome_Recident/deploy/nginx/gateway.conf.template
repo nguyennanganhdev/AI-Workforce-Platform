@@ -17,6 +17,22 @@ server {
   # Docker's own DNS, asked again every few seconds: containers get a new address when they are replaced.
   resolver 127.0.0.11 valid=10s ipv6=off;
 
+  # The public landing always receives the current frontend entry point.
+  # Keep the browser URL at / so React selects LandingPage; old /#/... bookmarks remain resident routes.
+  location = / {
+    set $gw_landing http://resident:3011;
+    proxy_pass $gw_landing/index.html;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header If-Modified-Since "";
+    proxy_set_header If-None-Match "";
+    proxy_hide_header ETag;
+    proxy_hide_header Last-Modified;
+    proxy_hide_header Cache-Control;
+    add_header Cache-Control "no-store" always;
+  }
+
   # The tools of the AI platform's agent are not for browsers: the platform calls the API's own address.
   location ~ ^/api/business/mcp(/|$) {
     return 404;
