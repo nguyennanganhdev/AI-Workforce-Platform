@@ -60,7 +60,8 @@ def test_a_question_followed_by_an_informing_line_still_waits_for_the_answer(tmp
 
     with world(tmp_path, script) as w:
         _, r = w.flow.begin()
-        assert texts(r) == ["What time suits you?", "Our office closes in the evening."]
+        # the informing line brings nothing new (no tool result since the question), so it is not sent
+        assert texts(r) == ["What time suits you?"]
         assert (r["workflow_state"], r["next_action"]) == ("awaiting_user", "submit_reply")
 
 
@@ -343,7 +344,7 @@ def test_a_looping_leader_cannot_flood_the_resident(tmp_path):
         w.flow.start()
         w.quiet(60)
         wid = w.sql("select id from wf_workflows")[0][0]
-        assert len(said(w, wid)) == 5
+        assert len(said(w, wid)) == 1  # one line; every further one has nothing new to tell
 
 
 def test_the_leader_cannot_say_the_same_thing_twice_in_a_row(tmp_path):

@@ -33,6 +33,7 @@ from ..casefile import build_view
 from ..guard import figures_missing
 from ..guard import figures_text
 from . import tables as t
+from .schemas import NONCE_ARG as NONCE
 from .common import iso, now
 from .events import emit, lock_conversation
 from .lookup import route_of, workflow_of_case
@@ -189,7 +190,9 @@ class ConsentGate:
             return f"Not asked: the arguments are longer than {MAX_ARGUMENTS} characters."
         shown = summary_of(call.name, args, tools[call.name])
         known = [i.data.get("text", "") for i in await self.rt.cases.items(self.b.case_id, kinds=("evidence", "fact"))]
-        missing = figures_missing(figures_text({"text": shown["text"], "arguments": shown["arguments"]}), known)
+        # the nonce is the platform's own argument (ledger.NONCE): a label for a deliberate repeat, not a figure
+        stated = {k: v for k, v in shown["arguments"].items() if k != NONCE}
+        missing = figures_missing(figures_text({"text": shown["text"], "arguments": stated}), known)
         if missing:
             return ("Not asked, the resident has seen nothing: figures not found in the evidence of the case: "
                     + ", ".join(missing[:5]) + ". Look them up first, or leave them out.")

@@ -77,7 +77,7 @@ def test_say_accepts_a_figure_the_resident_gave_when_it_is_cited(tmp_path):
         second = w.flow.reply(start, first, **REPLY)[0].json()
         room = Room(w, second["workflow_id"])
         assert not ok(room.say("You said 14."))  # the same words, uncited
-        assert ok(room.say("You said 14.", cites=["E2"]))  # E2: what the resident wrote (tool resident)
+        assert ok(room.say("You said 14. Is that right?", "reply", cites=["E2"]))  # E2: what the resident wrote
         # the resident's word is a source for figures, never proof that a system did something
         assert not ok(room.say("Your pipe is fixed.", cites=["E2"]))
 

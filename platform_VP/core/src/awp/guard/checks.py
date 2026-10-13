@@ -79,6 +79,24 @@ def written_amounts(text: str) -> list[str]:
     return sorted({m.group().lower() for m in _AMOUNT_WORDS.finditer(text)})
 
 
+# "I cannot confirm that it has been booked" denies the claim, it does not make it. A phrase counts only when no
+# negation stands before it in its own clause (a comma or a full stop ends the clause: "No worries, it has been
+# fixed" is still a claim). Found with a real model: refusing the honest sentence pushed it to a vaguer, wrong one.
+_NEGATION = re.compile(r"\b(?:not|cannot|unable|never|no|without|whether|chưa|không|chẳng|chua|khong)\b|n't\b", re.I)
+_CLAUSE_END = re.compile(r"[.!?;,:\n]")
+
+
+def claims(low: str, phrase: str) -> bool:
+    """Does `low` (lower case) state `phrase`, rather than deny it?"""
+    at = low.find(phrase)
+    while at != -1:
+        clause = _CLAUSE_END.split(low[:at])[-1]
+        if not _NEGATION.search(clause):
+            return True
+        at = low.find(phrase, at + 1)
+    return False
+
+
 @dataclass
 class PhraseRule:
     """Forbid `phrases` unless the trusted evidence contains one of `unless`."""
@@ -118,7 +136,7 @@ def check_text(text: str, sources: list[str], rules: Rules | None = None,
             if re.search(rf"\b{re.escape(w.lower())}\b", low):
                 problems.append(f"uses an internal word: {w}")
         for rule in rules.phrase_rules:
-            hit = next((p for p in rule.phrases if p.lower() in low), None)
+            hit = next((p for p in rule.phrases if claims(low, p.lower())), None)
             if hit and not any(u.lower() in evidence for u in rule.unless):
                 problems.append(f"{rule.reason} (phrase: '{hit}')")
     return problems

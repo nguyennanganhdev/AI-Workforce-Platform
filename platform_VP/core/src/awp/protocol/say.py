@@ -11,7 +11,7 @@ from pydantic import Field
 from agentscope.tool import ParamsBase, ToolChunk
 
 from ..workforce.lookup import workflow_of_case
-from ..workforce.speak import EXPECTS, MAX_SAYS, BadText, chain_says, checked, problems, publish
+from ..workforce.speak import EXPECTS, MAX_SAYS, BadText, chain_says, checked, last_say_at, problems, publish
 from ..workforce.workflows import IllegalTransition
 from .tools import _CaseTool, _err, _ok
 
@@ -54,15 +54,23 @@ class CaseSay(_CaseTool):
             return _err("You already said exactly this to the resident. Say something new or stop.")
         sources, trusted, bad = self._sources(await self._view(), cites or [])
         if bad:
-            return _err(f"Cannot cite: {', '.join(bad)}.")
+            return _err(f"Cannot cite: {', '.join(bad)}. Only evidence (E..) and facts (F..) can be cited.")
         refused = problems(text, sources, await self._rules(wf), trusted, getattr(self.rt, "assets", None))
         if refused:
             return _err("Not sent, the resident has seen nothing: " + "; ".join(refused)
                         + ". Cite the item that states it, or leave it out.")
+        if said and expects == "none":
+            # A real model kept re-sending "still pending" in one turn. Informing again needs something new to
+            # inform about: a tool result or an event recorded since the last message.
+            last = await last_say_at(self.rt.db, wf["id"]) or 0
+            if not any(i.created_at > last for i in await self.rt.cases.items(self.b.case_id, kinds=("evidence",))):
+                return _err("Nothing new has happened since your last message to the resident, so there is nothing "
+                            "to tell them. End your turn now.")
         try:
             sent = await publish(self.rt.db, wf["id"], text, expects=expects, limit=limit)
         except IllegalTransition:
             return _err("The workflow is closed or blocked. Stop working on it.")
         except BadText as e:
             return _err(str(e))
-        return _ok(f"Sent to the resident as {sent['message_id']}" + (f"; you expect their {expects}." if expects != "none" else "."))
+        return _ok(f"Sent to the resident as {sent['message_id']}" + (f"; you expect their {expects}." if expects != "none" else ".")
+                   + " End your turn now unless a tool still has to run.")
