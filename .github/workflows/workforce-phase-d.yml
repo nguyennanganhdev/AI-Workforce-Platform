@@ -3,9 +3,9 @@ name: Workforce Phase D Gate
 on:
   pull_request:
     paths:
-      - "platform_VP/agentscope/src/agentscope/app/workforce/**"
+      - "platform_VP/agentscope/src/agentscope/app/**"
       - "platform_VP/agentscope/src/agentscope/app/storage/_sql/_alembic/**"
-      - "platform_VP/agentscope/tests/workforce/**"
+      - "platform_VP/agentscope/tests/**"
       - "platform_VP/agentscope/scripts/workforce/**"
       - "platform_VP/agentscope/deploy/workforce/**"
       - "platform_VP/agentscope/examples/web_ui/frontend/**"
@@ -120,6 +120,21 @@ jobs:
       - name: Run D5 full-platform and fault E2E
         continue-on-error: true
         run: python -m pytest tests/workforce/e2e --import-mode=importlib -q -rs --junitxml=.artifacts/phase-d/e2e.xml
+      - name: Run console and evaluation tooling gates
+        continue-on-error: true
+        run: python -m pytest tests/workforce/console tests/workforce/eval --import-mode=importlib -q -rs --junitxml=.artifacts/phase-d/console.xml
+      - name: Run team collaboration and shared-context gates
+        continue-on-error: true
+        run: >-
+          python -m pytest
+          tests/team_collaboration_test.py
+          tests/team_member_middleware_test.py
+          tests/team_say_shared_context_test.py
+          tests/team_shared_context_test.py
+          tests/leader_evidence_middleware_test.py
+          tests/service_chat_run_context_test.py
+          tests/workforce_provider_usage_test.py
+          -q -rs --junitxml=.artifacts/phase-d/collaboration.xml
       - name: Build D7 release-candidate report
         if: always()
         env:
@@ -137,7 +152,7 @@ jobs:
             --require orchestration.xml \
             --require execution.xml \
             --require integrations.xml \
-            --require e2e.xml
+            --require e2e.xml             --require console.xml             --require collaboration.xml
       - name: Upload D7 evidence
         if: always()
         uses: actions/upload-artifact@v4
