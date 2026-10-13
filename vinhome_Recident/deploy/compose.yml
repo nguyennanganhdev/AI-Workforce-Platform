@@ -125,7 +125,7 @@ services:
         python -m vinhomes_api.knowledge load
 
   api:
-    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_IMAGE_TAG:-latest}
+    image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_API_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
     build:
       context: ../services/vinhomes-api
     restart: unless-stopped

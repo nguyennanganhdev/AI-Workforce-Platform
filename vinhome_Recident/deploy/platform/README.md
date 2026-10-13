@@ -23,6 +23,8 @@ dc exec postgres psql -U vinhomes_owner vinhomes -c "select code, name from mana
 
 (`dc` là `docker compose --env-file deploy/deployment.env -f deploy/compose.yml`.)
 
+MCP có thể onboarding trước khi Vinhomes gọi API platform: chỉ cần đặt token riêng `VINHOMES_API_PLATFORM_MCP_TOKEN` (tối thiểu 32 ký tự), giữ `VINHOMES_API_PLATFORM_URL` trống. API và gateway phục vụ `/mcp`, cho phép `initialize` và `tools/list` sau xác thực Bearer. Token rỗng thì endpoint API tắt; sai hoặc thiếu token thì trả 401. Công cụ nghiệp vụ vẫn yêu cầu `ticket_id` có link bàn giao hợp lệ, không cấp quyền truy cập chỉ bằng một ID tùy ý. Dùng HTTPS hoặc tunnel SSH/VPN khi truyền token; key này không phải customer/provider key do platform cấp ở bước sau.
+
 **2. Người vận hành platform** chạy `apply.py` (cần Python 3.11 trở lên và gói `httpx`). Khóa quản trị và token đưa qua biến môi trường, không gõ trên dòng lệnh:
 
 ```powershell
@@ -48,7 +50,7 @@ Route chưa xác nhận thì platform từ chối mọi yêu cầu của Ban qu�
 
 Kiểm tra nhanh: `dc exec platform-sync python -m vinhomes_api.platform status` cho biết cầu nối bật hay tắt, hai khóa có được platform nhận không, và số link, lệnh, sự kiện đang chờ theo trạng thái.
 
-Địa chỉ MCP đưa cho platform là địa chỉ của chính dịch vụ `api` (`…/mcp`). Cổng chung và hai web không mở đường này: `/api/business/mcp` luôn trả 404.
+Địa chỉ MCP đưa cho platform là `/mcp` của API hoặc gateway (`…/mcp`). `/api/business/mcp` vẫn trả 404; giao diện web không dùng token này.
 
 ## Bảng bàn giao
 

@@ -17,7 +17,7 @@ Cập nhật 11/10/2026 (tối). Thay cho bản kế hoạch `KE_HOACH_NOI_WORKF
 
 ## 2. Bật và tắt
 
-Cầu nối chỉ hoạt động khi `VINHOMES_API_PLATFORM_URL` có giá trị. Để trống thì hệ thống chạy đúng như trước (mọi kiểm thử cũ không đổi).
+Cầu nối nghiệp vụ chỉ hoạt động khi `VINHOMES_API_PLATFORM_URL` có giá trị. Để trống thì Vinhomes không gửi yêu cầu/sự kiện sang platform. MCP bật độc lập khi có `VINHOMES_API_PLATFORM_MCP_TOKEN`: platform có thể xác thực và khám phá công cụ trước khi cấu hình cầu nối.
 
 | Biến (dịch vụ `api` và `platform-sync`) | Ý nghĩa |
 |---|---|
@@ -119,7 +119,7 @@ Thẻ đồng ý của platform (`body.platform.kind = "approval"`, trả lời 
 
 ## 6. Công cụ MCP (`/mcp` trên API, streamable HTTP, không trạng thái)
 
-Platform không cho công cụ biết cư dân hay ticket. Vì vậy mọi công cụ nhận `ticket_id` do agent điền; máy chủ chỉ chấp nhận ticket có link `pending` hoặc `open` (leader giao việc ngay trong lượt đầu, trước khi cầu nối nhận được câu trả lời của lệnh `start_workflow`), và mọi thông tin cư dân, căn hộ đều suy từ ticket. Không bao giờ trả mã `VH-…`, số điện thoại, ghi chú nội bộ. Giờ in theo giờ Việt Nam dạng `HH:MM dd/MM/yyyy`. Mỗi lời gọi dưới 8 giây, dưới 256 KiB. `/mcp` chỉ mở ở địa chỉ của dịch vụ `api`; cổng chung trả 404 cho `/api/business/mcp`.
+Platform không cho công cụ biết cư dân hay ticket. Vì vậy mọi công cụ nhận `ticket_id` do agent điền; máy chủ chỉ chấp nhận ticket có link `pending` hoặc `open` (leader giao việc ngay trong lượt đầu, trước khi cầu nối nhận được câu trả lời của lệnh `start_workflow`), và mọi thông tin cư dân, căn hộ đều suy từ ticket. Không bao giờ trả mã `VH-…`, số điện thoại, ghi chú nội bộ. Giờ in theo giờ Việt Nam dạng `HH:MM dd/MM/yyyy`. Mỗi lời gọi dưới 8 giây, dưới 256 KiB. `/mcp` mở trên dịch vụ `api` và được gateway chuyển tiếp nguyên đường dẫn, với Bearer token bắt buộc; `/api/business/mcp` vẫn trả 404.
 
 Hành động nhận thêm tham số ẩn `client_reference` (platform điền) và trả một đối tượng JSON có `status`. Một `client_reference` chỉ trả lại câu trả lời đã lưu cho đúng công cụ và đúng ticket đã dùng nó; dùng cho lời gọi khác thì bị từ chối, không làm gì.
 

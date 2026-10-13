@@ -32,6 +32,8 @@ docker compose --env-file deploy/deployment.env -f deploy/compose.yml up -d --bu
 | `operations` | Ban quản lý, quản trị viên, nhân viên hiện trường. | không |
 | `gateway` | Địa chỉ duy nhất: `/` là landing page, `/resident` là app cư dân, `/login` là đăng nhập, `/operations` là app nhân viên, `/api/business` là API. | `127.0.0.1:8080` |
 
+Gateway cũng chuyển `/mcp` tới API cho platform. Chỉ cấu hình `VINHOMES_API_PLATFORM_MCP_TOKEN` là đủ để onboarding/discovery; không cần bật cầu nối `VINHOMES_API_PLATFORM_URL`. Mọi yêu cầu MCP phải có `Authorization: Bearer <token>`; key không nằm trong frontend. `/api/business/mcp` và `/mcp/` không phải endpoint MCP. Khi gateway mở công khai, dùng HTTPS hoặc kết nối riêng/tunnel để token không đi qua HTTP Internet.
+
 Database và kho ảnh không mở cổng ra ngoài. Ảnh do trình duyệt gửi đi qua API (qua `gateway`, tối đa 25 MB), API lưu vào MinIO và cũng là nơi duy nhất trả ảnh ra, sau khi kiểm tra người hỏi.
 
 API chạy bằng vai trò database `vinhomes_api`: không phải chủ database, không vượt được phân quyền theo dòng. Chỉ `init` dùng vai trò chủ.

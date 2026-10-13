@@ -1,8 +1,8 @@
 """The tools the platform's coordinator calls, served at /mcp (docs/domain/NOI_WORKFORCE_V1.md section 6).
 
 Streamable HTTP without sessions: the platform opens a new one for every call. Every request must carry
-`Authorization: Bearer <VINHOMES_API_PLATFORM_MCP_TOKEN>`. The path exists only while the bridge is on and has a
-token. A tool is a thin shell: platform_work does the work, in one transaction scoped to the configured tenant.
+`Authorization: Bearer <VINHOMES_API_PLATFORM_MCP_TOKEN>`. A configured token enables discovery independently of
+the outbound platform bridge. A tool is a thin shell: platform_work does the work, in one transaction scoped to the configured tenant.
 An answer is one line of text: JSON, or for a look-up that was refused the reason in plain words.
 """
 
@@ -22,7 +22,6 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from . import platform_work as work
-from .platform import enabled
 
 log = logging.getLogger("vinhomes_api.platform_mcp")
 READ = ToolAnnotations(readOnlyHint=True)
@@ -201,9 +200,9 @@ def build(app) -> FastMCP:
 
 
 def mount(app) -> None:
-    """Serve the tools at /mcp when the bridge is on and has a token; otherwise the path does not exist."""
+    """Serve /mcp with a token, including during onboarding before the outbound bridge is configured."""
     token = os.getenv("VINHOMES_API_PLATFORM_MCP_TOKEN", "").strip()
-    if not enabled() or not token:
+    if not token:
         return
     if len(token) < 32:
         raise ValueError("VINHOMES_API_PLATFORM_MCP_TOKEN requires at least 32 characters")
