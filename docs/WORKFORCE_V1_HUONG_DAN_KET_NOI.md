@@ -1,6 +1,6 @@
 # Workforce v1: hướng dẫn nối một đối tác
 
-Cập nhật: 10/10/2026 (phase P4). Viết cho **người vận hành platform** (làm các bước admin) và **người tích hợp phía đối tác** (gọi API công khai). Hợp đồng là `docs/contract/CONTRACT_TICH_HOP_DOI_TAC.md` (bản `1.3-draft`); tài liệu này chỉ nói *làm thế nào*. API cũ (`/platform/v1/intake`, webhook, khóa dịch vụ `AWP_SERVICE_KEYS`) không còn: đối tác chỉ dùng `/workforce/v1`.
+Cập nhật: 13/10/2026 (phase P4; mục 8, gửi ảnh, thêm ở P5c). Viết cho **người vận hành platform** (làm các bước admin) và **người tích hợp phía đối tác** (gọi API công khai). Hợp đồng là `docs/contract/CONTRACT_TICH_HOP_DOI_TAC.md` (bản `1.3-draft`); tài liệu này chỉ nói *làm thế nào*. API cũ (`/platform/v1/intake`, webhook, khóa dịch vụ `AWP_SERVICE_KEYS`) không còn: đối tác chỉ dùng `/workforce/v1`.
 
 Mọi bước admin dưới đây (mục 1 đến 5) cũng làm được trên console quản trị tại `$P/console` (đăng nhập bằng khóa admin; `docs/WORKFORCE_V1_VAN_HANH.md` mục 10): console gọi đúng các API này, nên các lệnh `curl` vẫn là tài liệu chuẩn. Riêng tạo và sửa hồ sơ agent bằng JSON (bước 1) chỉ có ở API; trên console, hồ sơ được tạo qua "Tạo agent qua chat".
 
@@ -173,3 +173,61 @@ Gửi lại phải giữ nguyên `external_event_id` và nội dung (trùng cùn
 | 202 thay vì 200 | Lượt chưa xong trong `wait_seconds`: đọc `GET requests/{id}`, history hoặc SSE; không có "202 rồi 200" trên cùng POST. |
 | Sự kiện provider `quarantined` | Chưa nối được operation (tool chưa lưu mã job, `client_reference` sai, key không phủ route); quá `AWP_WF_QUARANTINE_SECONDS` (3600) thì `UNMATCHED_EVENT`. |
 | Workflow `needs_attention` | `GET /platform/v1/wf/workflows/{id}` cho `attention_reason`: `leader_silent`, `engine_error`, `operation_unknown`, `external_timeout`, `stalled`, `provider_gap`… Người vận hành `resolve`. |
+
+## 8. Gửi ảnh: PHẦN MỞ RỘNG NGOÀI HỢP ĐỒNG V1 (chỉ dùng khi đối tác đã đồng ý)
+
+**Đọc trước.** Hợp đồng `1.3-draft` chỉ chuẩn hóa tin nhắn chữ; mục 6.2 của nó nói: "Ảnh/file cần asset upload contract riêng và chỉ tham chiếu bằng `asset_id`... Gửi attachment khi chưa được cấp capability trả `422 UNSUPPORTED_MESSAGE_PART`". Mục này mô tả phần "contract riêng" đó **như platform đang làm**. Nó **không nằm trong hợp đồng**, tắt với mọi client cho tới khi người vận hành bật, và hình dạng của nó (tên trường, mã lỗi, giới hạn) có thể đổi khi hai bên chốt contract ảnh chính thức. Với client chưa bật, không gì khác hợp đồng: tin `type: image` nhận `422 UNSUPPORTED_MESSAGE_PART`.
+
+**Bật (người vận hành).** Platform phải có kho ảnh (`docs/WORKFORCE_V1_VAN_HANH.md` mục 12). Rồi cấp capability cho client và cấp quyền cho khóa:
+
+```
+curl -X PATCH $P/platform/v1/wf/clients/{client_id} -H "Authorization: Bearer $ADMIN" -H "Content-Type: application/json" \
+  -d '{"capabilities": ["attach_asset"]}'                       # tắt lại: {"capabilities": []}  (có hiệu lực ngay)
+curl -X POST $P/platform/v1/wf/clients/{client_id}/keys -H "Authorization: Bearer $ADMIN" -H "Content-Type: application/json" \
+  -d '{"operations": ["submit_request","reply","read_result","receive_events","submit_consent","close_workflow","attach_asset"]}'
+```
+
+Cần **cả hai**: capability trên client và operation `attach_asset` trên khóa. Trên console: màn Đối tác, dòng "Gửi ảnh" của client, và ô `attach_asset` khi tạo khóa.
+
+**Bước 1, đối tác tải ảnh lên** (thân request là chính các byte của ảnh, không phải JSON, không phải multipart; ba id nằm trong query):
+
+```
+curl -X POST "$P/workforce/v1/partner/assets?external_request_id=up-0001&external_user_id=resident-123&external_conversation_id=vh-chat-789" \
+  -H "Authorization: ApiKey dp_<id>.<secret>" -H "Content-Type: image/jpeg" --data-binary @anh.jpg
+# → 201 {"asset_id": "ast_…", "content_type": "image/jpeg", "size": 183422, "sha256": "…",
+#        "external_user_id": "resident-123", "external_conversation_id": "vh-chat-789", "created_at": "…Z"}
+```
+
+**Bước 2, gửi tin nhắn mang ảnh** (trong `start_workflow` hoặc `workflow_reply`, mọi trường khác y như hợp đồng 9.1/9.2):
+
+```
+"message": {"type": "image", "asset_id": "ast_…", "text": "Nước rò ở chỗ này."}        # text là tùy chọn
+```
+
+Quy tắc:
+
+- **Ảnh thuộc về đúng bộ ba đã khai lúc tải lên**: client của khóa, `external_user_id`, `external_conversation_id`. Tin nhắn chỉ mang được ảnh khi cả ba trùng. Ảnh của cư dân khác, của hộp chat khác, của client khác, hay mã không tồn tại đều nhận **cùng một** `404 NOT_FOUND` (không lộ ảnh có tồn tại hay không). Một ảnh dùng lại được trong nhiều tin của cùng hộp chat, không dùng được ở hộp chat khác: tải lại.
+- **Loại ảnh xét theo các byte đầu của tệp**, không theo header `Content-Type` (header bị bỏ qua): PNG, JPEG, WebP, GIF. Thứ khác → `422 VALIDATION_FAILED` (`errors[0].field = body`). Platform không giải mã, không thu nhỏ, không quét nội dung ảnh.
+- **Tối đa 5 MiB** (`AWP_ASSET_MAX_BYTES`) → `413 PAYLOAD_TOO_LARGE`, cắt ngay khi đang đọc. Khóa, quyền và capability được xét **trước** khi đọc byte nào của thân.
+- **Idempotent** theo `(client, external_request_id)`, chung không gian id với mọi lệnh khác của hợp đồng 9.1: gửi lại đúng upload đó (cùng byte, cùng bộ id) trả `201` với đúng `asset_id` cũ; cùng id mà khác byte hoặc khác bộ id, hoặc id đã dùng cho một request/quyết định/close → `409 IDEMPOTENCY_CONFLICT`.
+- **Một tin nhắn mang một ảnh.** Nhiều ảnh là nhiều tin. Không có `asset_ids`, không có `url`: trường lạ → `422`. **Platform không bao giờ tải một địa chỉ**: ảnh chỉ vào bằng upload, và một URL viết trong `text` chỉ là chữ.
+- **Câu trả lời không bao giờ nói ảnh nằm ở đâu.** Snapshot (`messages[].asset_ids`, chỉ có ở tin mang ảnh) và history (`request.accepted` có `payload.asset_ids`) chỉ nêu `asset_id`. Không có API cho đối tác tải ảnh về: họ đã có ảnh.
+- **Agent không nhìn thấy ảnh.** Leader được báo "cư dân gửi N ảnh" kèm `asset_id`, loại và kích thước; nó không mô tả được nội dung ảnh. Điều nó làm được là chuyển ảnh cho phía đối tác: gọi `CaseAssetLink(asset_id)` lấy một link GET ký sẵn, sống `AWP_ASSET_URL_TTL` giây (mặc định 900), cho đúng một ảnh của chính workflow đó, và đặt link vào **tham số một tool MCP của đối tác** (ví dụ `note` hay `photo_url` của tool gọi thợ). **MCP server của đối tác nên tải ảnh ngay khi nhận lời gọi** rồi tự lưu, đừng chuyển link đi tiếp: link hết hạn. Link mang tên máy kho ảnh mà platform được cấu hình (`AWP_S3_PUBLIC_ENDPOINT`); hai bên phải thống nhất địa chỉ đó tới được từ MCP server của đối tác.
+- Cư dân không bao giờ nhận link: tin nhắn của agent có link bị cổng chặn, và bản xin đồng ý (`approval.summary.arguments`) ghi `[image link]` ở chỗ có link.
+- **Giữ bao lâu**: ảnh bị xóa khỏi kho `AWP_CLOSED_RETENTION_DAYS` (90) ngày sau khi workflow của hộp chat đó đóng (không bao giờ khi workflow còn mở, và không khi còn operation chưa kết thúc); ảnh tải lên mà không gửi trong tin nào bị xóa sau cùng số ngày đó. Tin nhắn vẫn giữ `asset_id`.
+
+| Lỗi | Khi nào |
+|---|---|
+| `403 PERMISSION_DENIED`, `details.operation = attach_asset` | Khóa không có operation `attach_asset` |
+| `403 PERMISSION_DENIED`, `details.capability = attach_asset` | Client chưa được bật gửi ảnh (upload) |
+| `422 UNSUPPORTED_MESSAGE_PART`, `details.part_type = image` | Tin `type: image` của client chưa được bật; mọi `type` khác `text`/`image` luôn nhận mã này |
+| `422 VALIDATION_FAILED` | Thiếu/sai một trong ba id của query; thân không phải một trong bốn loại ảnh; phần `message` sai dạng (`asset_id` không đúng `ast_` + 32 ký tự hex, có trường lạ) |
+| `413 PAYLOAD_TOO_LARGE` | Ảnh lớn hơn giới hạn |
+| `404 NOT_FOUND`, `details.field = message.asset_id` | `asset_id` không phải ảnh của đúng client + cư dân + hộp chat này |
+| `409 IDEMPOTENCY_CONFLICT` | `external_request_id` đã dùng cho một upload khác hoặc một lệnh khác |
+| `503 INTERNAL_ERROR`, `details.reason = asset_store_unavailable` (`retryable: true`) | Kho ảnh tạm không trả lời: gửi lại cùng `external_request_id` |
+| `503 INTERNAL_ERROR`, `details.reason = asset_store_not_configured` | Platform này không có kho ảnh: hỏi người vận hành |
+
+Thứ tự kiểm của upload: khóa → operation → capability → ba id → có kho → kích thước (khi đọc) → loại ảnh → idempotency → ghi. Một upload bị từ chối không để lại gì.
+
+Mẫu mã chạy được cho cả hai bước: `platform_VP/deploy/smoke.py` (hàm `upload`, `assets`, `start_body`).

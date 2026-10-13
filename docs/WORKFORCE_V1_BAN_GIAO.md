@@ -1,6 +1,6 @@
 # Workforce v1: tài liệu bàn giao (Docker)
 
-Cập nhật: 12/10/2026 (bước B4; Redis và hai bản sao API thêm ở P5b). Viết cho hai người đọc:
+Cập nhật: 13/10/2026 (bước B4; Redis và hai bản sao API thêm ở P5b; MinIO lưu ảnh và phép thử tải thêm ở P5c). Viết cho hai người đọc:
 
 - **Người vận hành platform**: chạy, dừng, nâng cấp, sao lưu, xoay khóa, xử lý workflow cần người (mục 1 đến 9).
 - **Người tích hợp phía đối tác**: gọi API công khai `/workforce/v1` (mục 10).
@@ -19,13 +19,13 @@ Tài liệu này nói về *chạy platform bằng Docker trên một máy*. Ý 
 | `api` | `awp-platform:<tag>` | Platform: `/workforce/v1` (đối tác), `/platform/v1` (admin, manager), `/console` (trang quản trị), engine workflow và các vòng quét nền, tất cả trong một tiến trình | **đang dùng** |
 | `api2` | `awp-platform:<tag>` | Bản sao thứ hai của `api` (cùng image, cùng cấu hình, cùng DB, Redis và volume workspace), chỉ với `--profile two` | tùy chọn |
 | `fake-model`, `fake-mcp` | `awp-platform:<tag>` | Model kịch bản và MCP mẫu, chỉ với `--profile demo` | chỉ để thử |
-| `minio` | `cgr.dev/chainguard/minio` | Có trong compose dưới profile `not-wired` | **chưa nối: mã chưa đọc biến S3 nào** |
+| `minio` | `cgr.dev/chainguard/minio` | Kho ảnh cư dân gửi (`AWP_S3_*`), chỉ dùng cho client được bật capability `attach_asset` (phần mở rộng ngoài hợp đồng v1). API tự tạo bucket lúc khởi động; bucket riêng tư, ảnh chỉ ra ngoài qua link ký có hạn | **đang dùng** (từ P5c) |
 
 Image `awp-platform` (`platform_VP/Dockerfile`): `python:3.12-slim`, cài `awp` và AgentScope từ nguồn trong repo, 102 gói bên thứ ba ghim phiên bản và hash ở `deploy/requirements.lock` (đúng phiên bản của venv phát triển), chạy bằng user `awp` (uid 10001), không chứa bí mật. Thư mục duy nhất tiến trình ghi là `/var/lib/awp` (volume `workspaces`).
 
-Cổng trên máy chủ, **tất cả chỉ bind `127.0.0.1`**: API `8800`, bản sao thứ hai `8801`, PostgreSQL `5590` (đổi trong `deploy/.env`: `AWP_HOST_PORT`, `AWP_HOST_PORT2`, `AWP_PG_HOST_PORT`). Redis không publish cổng nào. MinIO `9190`/`9191` chỉ khi bật profile `not-wired`. Muốn cho máy khác gọi tới thì đặt một reverse proxy có TLS phía trước; platform không tự làm TLS.
+Cổng trên máy chủ, **tất cả chỉ bind `127.0.0.1`**: API `8800`, bản sao thứ hai `8801`, PostgreSQL `5590` (đổi trong `deploy/.env`: `AWP_HOST_PORT`, `AWP_HOST_PORT2`, `AWP_PG_HOST_PORT`). Redis không publish cổng nào. MinIO: cổng S3 `9190` (`AWP_MINIO_HOST_PORT`); trang quản trị riêng của MinIO (9001) không publish. Muốn cho máy khác gọi tới thì đặt một reverse proxy có TLS phía trước; platform không tự làm TLS.
 
-Tên project compose là `awp-platform`: container `awp-platform-<dịch vụ>-1`, volume `awp-platform_pgdata`, `awp-platform_redisdata`, `awp-platform_workspaces`.
+Tên project compose là `awp-platform`: container `awp-platform-<dịch vụ>-1`, volume `awp-platform_pgdata`, `awp-platform_redisdata`, `awp-platform_workspaces`, `awp-platform_miniodata`.
 
 **Hai bản sao.** `docker compose --profile two up -d` chạy thêm `api2`. Hai bản sao ngang hàng: request, sự kiện provider và luồng SSE vào bản nào cũng được, và khi một bản chết bản kia nhận việc đang dở của nó sau `AWP_WF_LEASE_SECONDS` (60 giây). Trước chúng cần một reverse proxy chia tải (compose này không có); client SSE bị đứt thì nối lại, vào bản nào cũng được, bằng `Last-Event-ID`. Thêm bản sao thứ ba là thêm một service như `api2`. Chi tiết và giới hạn: `docs/WORKFORCE_V1_VAN_HANH.md` mục 11.
 
@@ -38,7 +38,7 @@ cd platform_VP/deploy
 python init_env.py                 # sinh deploy/.env: khóa admin, AWP_SECRET_KEY, mật khẩu DB; in khóa admin MỘT lần
 # sửa deploy/models.yaml (script chép từ core/models.example.yaml) và thêm khóa model vào deploy/.env, ví dụ OPENAI_API_KEY=...
 docker compose build               # image awp-platform:<AWP_IMAGE_TAG>
-docker compose up -d               # postgres, redis -> migrate -> api   (thêm --profile two để có bản sao thứ hai)
+docker compose up -d               # postgres, redis, minio -> migrate -> api   (thêm --profile two để có bản sao thứ hai)
 docker compose ps                  # api phải (healthy), migrate phải Exited (0)
 curl http://127.0.0.1:8800/platform/v1/health
 ```
@@ -53,11 +53,11 @@ curl http://127.0.0.1:8800/platform/v1/health
 python init_env.py --demo
 docker compose build
 docker compose --profile demo up -d
-python smoke.py --docker           # 22 bước, in PASS/FAIL từng bước
+python smoke.py --docker           # 24 bước, in PASS/FAIL từng bước
 docker compose --profile demo down -v
 ```
 
-`smoke.py` đi hết hướng dẫn nối bằng HTTP: trang console lấy từ container, hồ sơ leader, đánh giá, cổng phát hành, client, khóa, manager, integration, route, bật MCP và phát hiện tool, kích hoạt tool, đối tác xác nhận route, `start_workflow`, SSE, approval, sự kiện provider có chữ ký, xác nhận, đóng, rồi kiểm rằng không gì xảy ra hai lần. Nó tạo dữ liệu thử (client `Smoke partner …`, hồ sơ `smoke_leader_…`) trong tenant của khóa admin: **đừng chạy trên database production**.
+`smoke.py` đi hết hướng dẫn nối bằng HTTP: trang console lấy từ container, hồ sơ leader, đánh giá, cổng phát hành, client, khóa, manager, integration, route, bật MCP và phát hiện tool, kích hoạt tool, đối tác xác nhận route, tải một ảnh lên (phần mở rộng: bị từ chối khi chưa bật capability, bật, tải, tải lại), `start_workflow` với tin nhắn kèm ảnh, SSE, approval, kiểm rằng ảnh tới đối tác bằng link ký và không ở đâu khác, sự kiện provider có chữ ký, xác nhận, đóng, rồi kiểm rằng không gì xảy ra hai lần. Nó tạo dữ liệu thử (client `Smoke partner …`, hồ sơ `smoke_leader_…`) trong tenant của khóa admin: **đừng chạy trên database production**.
 
 ## 3. Dừng, khởi động lại, xem log
 
@@ -183,7 +183,8 @@ Hai trạng thái gần giống nhưng **không** xử lý bằng `resolve` (l�
 
 - **Nhiều bản sao cần Redis.** Với `AWP_REDIS_URL` (compose đặt sẵn) chạy được nhiều tiến trình API trên một database; đã chạy thật hai. Bỏ `AWP_REDIS_URL` thì chỉ được một tiến trình: tiến trình thứ hai từ chối khởi động, và sau một lần chết đột ngột tiến trình lên lại chờ tối đa 60 giây. Vẫn tính riêng theo từng tiến trình: rate limit theo khóa API, cache danh sách tool của MCP, cờ "vụ đã hết ngân sách".
 - **Phục hồi sau khi một bản sao chết mất tới một lease** (60 giây mặc định) cho việc bản sao đó đang làm dở. Một tiến trình *treo* lâu hơn lease mà chưa chết bị coi là đã chết (hiếm; có thể làm một tin bị nói hai lần).
-- **Không lưu ảnh/tệp.** Mã chưa có cấu hình S3 nào; MinIO trong compose chưa được dùng (`aioboto3` chưa có trong image).
+- **Ảnh là phần mở rộng ngoài hợp đồng v1**, tắt cho tới khi bật capability `attach_asset` cho từng client (`docs/WORKFORCE_V1_VAN_HANH.md` mục 12, hướng dẫn nối mục 8). Chỉ bốn loại ảnh (PNG, JPEG, WebP, GIF, xét theo byte đầu), mỗi ảnh tối đa 5 MiB, mỗi tin nhắn một ảnh. **Model không nhìn thấy ảnh** (chỉ biết có ảnh và mã của nó); ảnh chỉ để chuyển cho phía đối tác qua tham số tool. Link trong compose mang tên `minio:9000`: đối tác ở ngoài mạng compose cần `AWP_S3_PUBLIC_ENDPOINT` và một reverse proxy (chưa thử). Compose dùng khóa root của MinIO. Không có hạn mức dung lượng theo client (chỉ có rate limit của khóa).
+- **Sức tải đã đo** (model kịch bản): 20 workflow cùng lúc đi hết trong khoảng 25 giây trên hai tiến trình API (PostgreSQL + Redis), khoảng 40 giây trên một tiến trình SQLite; một lượt của leader tốn 0,3 đến 0,9 giây CPU của một tiến trình (`docs/WORKFORCE_V1_KIEM_THU_TUAN_THU.md`, mục "Tải"). Chưa đo với model thật, chưa đo quá 20.
 - **Workspace là volume cục bộ** của một máy: các bản sao phải ở trên cùng máy (hoặc dùng chung một đĩa, chưa kiểm).
 - **Không TLS, không cân bằng tải**: cổng chỉ ở `127.0.0.1`; hai bản sao là hai cổng, chia tải là việc của reverse proxy đặt phía trước. Console phải được phục vụ qua HTTPS khi ra khỏi máy phát triển (khóa nằm trong header của mọi lời gọi).
 - **Nâng cấp có thời gian ngừng** (migration chạy trước khi API mới lên; nâng cấp lần lượt từng bản sao trên hai phiên bản mã chưa được thử, đừng làm khi bản mới có migration).
@@ -205,6 +206,7 @@ Hai trạng thái gần giống nhưng **không** xử lý bằng `resolve` (l�
 - `smoke.py` (B4): 21/21 bước qua HTTP, gồm đánh giá thật trong sandbox, phát hành qua cổng, kho tool tự phát hiện từ MCP, hành động cần cư dân đồng ý, sự kiện provider có chữ ký (chữ ký sai bị 401), idempotency của request, quyết định và sự kiện, đóng bởi đối tác.
 - Giết tiến trình API bằng SIGKILL hai lần giữa một workflow (lúc chờ cư dân đồng ý, lúc chờ đối tác): workflow tiếp tục đúng trạng thái, MCP mẫu được gọi đúng một lần, không sự kiện hay tin nhắn nào lặp.
 - **P5b, image `0.2.0`, Redis đã nối, hai bản sao** (mục 10 của `SMOKE_RESULT.md`): `smoke.py` 22/22 bước (thêm bước console) qua bản sao 1 trong khi luồng SSE đọc từ bản sao 2; một bản sao bị `docker kill -s KILL` **ngay trong lời gọi đối tác đã được cư dân duyệt** và không lên lại, workflow đi hết qua bản sao còn lại, đối tác giữ đúng một job, không tin hay sự kiện nào lặp. Chạy cả hai chiều (giết bản đang chạy lượt; giết bản giữ job).
+- **P5c, image `0.3.0`, MinIO đã nối** (mục 11 của `SMOKE_RESULT.md`): `smoke.py` 24/24 bước; ảnh tải lên nằm trong bucket do API tự tạo, tin nhắn kèm ảnh mở workflow, leader kịch bản lấy link ký và đưa vào tool của đối tác, **MCP mẫu tải được đúng ảnh đó qua link** (cùng sha256), còn snapshot, history, bản xin đồng ý và hồ sơ vụ không chứa link nào.
 - Tắt êm bằng SIGTERM, có và không có luồng SSE mở.
 - Ba lệnh sao lưu ở mục 5.
 
@@ -215,10 +217,10 @@ Hai trạng thái gần giống nhưng **không** xử lý bằng `resolve` (l�
 - **Model thật.** Mọi "leader" trong smoke và trong bộ test là kịch bản. Chưa biết model thật có gọi đúng tool, có xin đồng ý, có nói đúng tiếng Việt, tốn bao nhiêu. `smoke.py` chạy được với model thật (bỏ `--demo`, khai model trong `deploy/models.yaml`) nhưng **chưa ai chạy**, và các kiểm tra của nó viết cho câu trả lời kịch bản nên có thể đỏ với model thật dù hệ thống đúng.
 - **MCP thật và backend thật của đối tác.** Chỉ có server mẫu ba tool.
 - **Hạ tầng production**: TLS, reverse proxy, giám sát, cảnh báo, tải, nhiều máy, PostgreSQL được quản lý, giới hạn tài nguyên container.
-- **MinIO / lưu ảnh**: chưa nối trong mã. **Hơn hai bản sao, nhiều máy, mất Redis hay PostgreSQL giữa chừng**: chưa thử.
+- **Ảnh với đối tác thật**: link qua reverse proxy/TLS, S3 không phải MinIO (AWS, kiểu virtual-host chỉ có test với máy chủ giả), ảnh lớn gần 5 MiB qua mạng chậm, model đọc ảnh (không làm). **Mất MinIO giữa chừng**: chỉ có test "kho không trả lời" (upload trả 503, workflow chữ chạy tiếp), chưa thử trên Docker. **Hơn hai bản sao, nhiều máy, mất Redis hay PostgreSQL giữa chừng**: chưa thử.
 - **Giết giữa một lời gọi model** hoặc **giữa commit và giao SSE** trên container thật: chỉ có trong bộ test giết tiến trình (tiến trình thật, không phải container). Trên Docker mới giết ở một điểm (trong lời gọi đã duyệt). Giết đúng giữa một giao dịch database đang ghi: chưa thử ở đâu.
 - **Khôi phục từ bản sao lưu, nâng cấp, rollback, xoay khóa** trên stack Docker: có quy trình viết ở trên, chưa diễn tập.
-- **Tải**: smoke chạy từng workflow một.
+- **Tải với model thật, và quá 20 workflow cùng lúc**: phép thử tải (bộ test, không phải Docker) dùng model kịch bản trả lời tức thì; smoke chạy từng workflow một.
 
 ## 10. Cho người tích hợp phía đối tác
 
@@ -242,11 +244,11 @@ Một thay đổi, trong `platform_VP/core/src/awp/__main__.py`: `uvicorn.run(..
 | Tệp | Việc |
 |---|---|
 | `platform_VP/Dockerfile`, `platform_VP/.dockerignore` | Image |
-| `platform_VP/deploy/compose.yml` | Các dịch vụ (Redis đã nối; `api2` ở profile `two`) |
+| `platform_VP/deploy/compose.yml` | Các dịch vụ (Redis và MinIO đã nối; `api2` ở profile `two`) |
 | `platform_VP/deploy/.env.example`, `init_env.py` | Biến môi trường và sinh bí mật |
 | `platform_VP/deploy/requirements.in`, `requirements.lock` | Phụ thuộc trực tiếp và bản ghim (cách sinh lại ở đầu tệp lock) |
 | `platform_VP/deploy/models.demo.yaml`, `demo/fake_model.py`, `demo/fake_mcp.py` | Profile demo |
-| `platform_VP/deploy/smoke.py`, `SMOKE_RESULT.md` | Script khói (`--sse-base`, `--failover-to`, `--kill` cho hai bản sao) và kết quả các lần chạy 12/10/2026 |
+| `platform_VP/deploy/smoke.py`, `SMOKE_RESULT.md` | Script khói (`--sse-base`, `--failover-to`, `--kill` cho hai bản sao; từ P5c có bước tải ảnh và bước "ảnh tới đối tác chỉ bằng link") và kết quả các lần chạy 12 và 13/10/2026 |
 | `docs/openapi.json` | OpenAPI xuất từ container |
 
 ## 13. Tài liệu liên quan

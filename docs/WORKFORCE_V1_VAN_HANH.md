@@ -1,6 +1,6 @@
 # Workforce v1: sổ tay vận hành
 
-Cập nhật: 12/10/2026 (phase P5: PostgreSQL, migration, retention; P5b: Redis và nhiều tiến trình, mục 11). Viết cho **người vận hành platform**. Cách nối một đối tác (client, khóa, route, MCP, integration) ở `docs/WORKFORCE_V1_HUONG_DAN_KET_NOI.md`; tài liệu này nói về *chạy* platform: biến môi trường, cơ sở dữ liệu, migration, bí mật, sao lưu và các vòng quét nền.
+Cập nhật: 13/10/2026 (phase P5: PostgreSQL, migration, retention; P5b: Redis và nhiều tiến trình, mục 11; P5c: lưu ảnh trên MinIO/S3, mục 12, và phép thử tải 20 workflow, mục 13). Viết cho **người vận hành platform**. Cách nối một đối tác (client, khóa, route, MCP, integration) ở `docs/WORKFORCE_V1_HUONG_DAN_KET_NOI.md`; tài liệu này nói về *chạy* platform: biến môi trường, cơ sở dữ liệu, migration, bí mật, sao lưu và các vòng quét nền.
 
 ## 1. Những gì cần có
 
@@ -8,7 +8,7 @@ Cập nhật: 12/10/2026 (phase P5: PostgreSQL, migration, retention; P5b: Redis
 |---|---|---|
 | Cơ sở dữ liệu | SQLite (`sqlite+aiosqlite:///./awp.db`), tự tạo bảng | **PostgreSQL 16** (`postgresql+asyncpg://…`), bảng tạo bằng migration |
 | Bus phiên (AgentScope) | `InMemoryMessageBus` (mặc định, khi không đặt `AWP_REDIS_URL`) | **Redis** (`AWP_REDIS_URL=redis://:mật-khẩu@host:6379/0`) là điều kiện để chạy **nhiều tiến trình**: không có nó, tiến trình thứ hai trên cùng DB từ chối khởi động. Chi tiết ở mục 11. |
-| Lưu ảnh (A3) | chưa có | MinIO/S3 (phần S7 sau) |
+| Lưu ảnh (A3: phần mở rộng ngoài hợp đồng v1, chỉ cho client được bật) | tắt, hoặc một thư mục (`AWP_ASSET_BACKEND=local`: link của nó không mở được từ đâu cả) | MinIO hoặc S3 bất kỳ (`AWP_ASSET_BACKEND=s3`), mục 12 |
 | Python | 3.11 | 3.11 |
 
 Cài driver: `pip install "awp[postgres]"` (asyncpg) và `"awp[redis]"` (redis). Trong venv của repo (`platform_VP/agentscope/.venv`, tạo bằng `uv`, không có pip) đã cài asyncpg 0.32.0 bằng: `uv pip install --python platform_VP/agentscope/.venv/Scripts/python.exe asyncpg`.
@@ -36,6 +36,12 @@ Bắt buộc (trừ `AWP_DEV_OPEN=1`): `AWP_ADMIN_KEYS`, `AWP_SECRET_KEY`. Tất
 | `AWP_WF_RATE_PER_MINUTE` | 600 | Số request mỗi phút của một khóa API, **tính riêng trong từng tiến trình** (N bản sao cho phép N lần con số này). |
 | `AWP_EVAL_GATE` | `1` | Cổng phát hành: version chỉ được `publish` khi lần đánh giá gần nhất của đúng version đó đạt, hoặc có `override_reason`. **Để `1` ở production**; `0` chỉ cho máy phát triển không có model. |
 | `AWP_EVAL_CASE_TIMEOUT_SECONDS`, `AWP_EVAL_CASE_BUDGET_USD`, `AWP_EVAL_CASE_BUDGET_TOKENS`, `AWP_EVAL_PARALLEL` | 180, 0.5, 400000, 2 | Giới hạn của một ca đánh giá (thời gian, ngân sách) và số lần chạy đánh giá đồng thời **của một tenant**, tính trên mọi tiến trình (mỗi tenant có chỗ riêng; mục 9). |
+| `AWP_ASSET_BACKEND` | trống | Nơi lưu ảnh cư dân gửi (mục 12). Trống: không nhận ảnh (endpoint upload trả `503`). `local`: thư mục `<AWP_WORKSPACE_DIR>/assets`, chỉ cho máy phát triển và test. `s3`: MinIO hoặc S3. Giá trị khác làm tiến trình không khởi động. |
+| `AWP_S3_ENDPOINT`, `AWP_S3_BUCKET`, `AWP_S3_ACCESS_KEY`, `AWP_S3_SECRET_KEY`, `AWP_S3_REGION` | trống, trống, trống, trống, `us-east-1` | Bắt buộc khi backend là `s3` (thiếu một cái thì không khởi động). Endpoint là `http(s)://host[:port]`, không có đường dẫn. Bucket được tạo lúc khởi động nếu chưa có. **Đây là cấu hình của người vận hành**: không giá trị nào đối tác, cư dân hay model gửi được biến thành địa chỉ platform gọi tới. |
+| `AWP_S3_PUBLIC_ENDPOINT` | trống (= `AWP_S3_ENDPOINT`) | Địa chỉ ghi vào link ký gửi cho tool của đối tác, khi phía đối tác tới kho ảnh bằng tên khác với tên platform dùng (reverse proxy có TLS trước MinIO). Chữ ký bao cả tên máy, nên link không sửa tên sau khi ký được. |
+| `AWP_S3_PATH_STYLE` | `1` | `1`: `/bucket/key` tại endpoint (MinIO). `0`: `bucket.host/key`. |
+| `AWP_ASSET_MAX_BYTES` | 5242880 (5 MiB) | Kích thước tối đa của một ảnh; vượt là `413`, bị cắt ngay lúc đang đọc. |
+| `AWP_ASSET_URL_TTL` | 900 | Số giây một link ký cho tool của đối tác còn mở được (tối đa 604800). Backend của đối tác nên tải ảnh ngay khi nhận link, đừng giữ link. |
 | `AWP_BUILDER_OVERLAP_THRESHOLD`, `AWP_BUILDER_TIMEOUT_SECONDS` | 0.5, 90 | Ngưỡng trùng (0..1) để builder đổi `create` thành `reuse` (điểm cao hơn trong hai điểm: `handles` riêng, và `handles` + `mission`); thời gian tối đa cho một câu trả lời của model builder. |
 
 Hợp đồng (mục 12) đòi giữ event tối thiểu 90 ngày sau close và dedupe tối thiểu 180 ngày, "trừ thỏa thuận khác". Đặt thấp hơn là một ngoại lệ hợp đồng phải được ghi lại; platform chỉ ghi cảnh báo lúc khởi động.
@@ -97,8 +103,9 @@ Mỗi tiến trình chạy một vòng quét mỗi 2 giây (`build_app(sweep_eve
 1. **Event công khai** của hội thoại mà *mọi* workflow đã đóng quá `AWP_EVENT_RETENTION_DAYS` ngày: xóa, để lại tombstone và đặt `purged_through` (cursor cũ trả `410 EVENT_CURSOR_EXPIRED`, snapshot vẫn đọc được). Event mới nhất của hội thoại luôn ở lại.
 2. **Hộp thư provider** (`wf_provider_inbox`) quá `AWP_INBOX_RETENTION_DAYS` ngày, chỉ các biên nhận đã có kết cục (`applied`, `duplicate`, `rejected`, `needs_attention`).
 3. **Job và lượt chạy đã kết thúc** (`done`/`failed`, `completed`/`error`/`interrupted`) của workflow đã đóng quá `AWP_CLOSED_RETENTION_DAYS` ngày.
+4. **Ảnh** (mục 12; chỉ khi có kho ảnh): ảnh của hội thoại mà mọi workflow đã đóng quá `AWP_CLOSED_RETENTION_DAYS` ngày: xóa object khỏi kho rồi mới xóa dòng `wf_assets` (kho lỗi thì dòng ở lại, lần dọn sau làm tiếp). Ảnh đã tải lên mà không bao giờ được gửi trong tin nhắn nào bị xóa sau cùng số ngày đó kể từ lúc tải, trừ khi hội thoại nó được tải cho còn workflow đang mở. Tin nhắn vẫn giữ `asset_id` (dấu vết rằng đã có ảnh), không giữ ảnh.
 
-**Không bao giờ dọn**: workflow đang mở và mọi thứ của nó; workflow đã đóng còn operation `intent`/`sent`/`pending`/`unknown` (event, biên nhận, job, lượt chạy của nó); biên nhận đang xử lý (`accepted`, `processing`, `quarantined`); job `queued`/`dispatched` và lượt `running`; tombstone.
+**Không bao giờ dọn**: workflow đang mở và mọi thứ của nó (kể cả ảnh); workflow đã đóng còn operation `intent`/`sent`/`pending`/`unknown` (event, biên nhận, job, lượt chạy của nó); biên nhận đang xử lý (`accepted`, `processing`, `quarantined`); job `queued`/`dispatched` và lượt `running`; tombstone.
 
 Muốn giữ vô hạn một loại dữ liệu: đặt số ngày của nó là `0`. Muốn tắt cả lịch: `AWP_RETENTION_EVERY_SECONDS=0`. Xem lần dọn gần nhất: `select name, owner, last_run_at from wf_leases`.
 
@@ -199,3 +206,52 @@ docker rm -f awp-test-pg awp-test-redis
 ```
 
 18 test, khoảng 5 phút, chạy tuần tự (không `-n`). Thiếu một trong hai biến thì cả bộ tự bỏ qua, nên lần chạy mặc định (SQLite) và lần chạy PostgreSQL thường không đụng tới nó. Khi một test đỏ, phần cuối log của từng tiến trình API được in ra. Các test của `tests/workforce/test_wf_p5b_fleet.py` cần Redis thật chỉ cần `AWP_TEST_REDIS_URL`.
+
+## 12. Lưu ảnh trên MinIO/S3 (P5c; phần mở rộng ngoài hợp đồng v1)
+
+**Là gì.** Hợp đồng v1 chỉ có tin nhắn chữ và nói ảnh "cần asset upload contract riêng" (mục 6.2). Platform có sẵn phần đó, tắt với mọi client cho tới khi người vận hành bật capability `attach_asset` cho client (console, màn Đối tác, dòng "Gửi ảnh"; hoặc `PATCH /platform/v1/wf/clients/{client_id}` với `{"capabilities": ["attach_asset"]}`). Cách đối tác dùng: `docs/WORKFORCE_V1_HUONG_DAN_KET_NOI.md` mục 8. **Chỉ bật khi đối tác đã đồng ý với phần mở rộng này.**
+
+**Kho.** Một bucket riêng tư trên MinIO hoặc S3 bất kỳ (client S3 nằm trong `awp/assets.py`: tự ký AWS Signature V4 qua `httpx`, không thêm thư viện; sáu lời gọi: HEAD/PUT bucket, PUT/GET/HEAD/DELETE object, cộng link GET ký sẵn). Platform là bên duy nhất ghi. Object được đặt tên `<client_id>/<40 ký tự hex ngẫu nhiên>.<png|jpg|webp|gif>`: không có gì người gọi chọn nằm trong tên, và tên đó không bao giờ ra khỏi platform (API công khai, snapshot, history chỉ có `asset_id`).
+
+**Bucket được tạo lúc khởi động** nếu chưa có (hai bản sao cùng tạo cũng không sao). Kho không trả lời lúc khởi động thì platform **vẫn lên** (ghi một dòng lỗi `asset store not ready`), các upload trả `503` `retryable` cho tới khi kho trả lời; workflow chữ không bị ảnh hưởng.
+
+**Ai đọc được ảnh.** Không ai, trừ qua link ký: leader gọi tool `CaseAssetLink(asset_id)` (chỉ có khi client được bật và có kho) để lấy một link GET sống `AWP_ASSET_URL_TTL` giây cho đúng một ảnh của chính workflow đó, và đưa link vào tham số một tool của đối tác (ví dụ ảnh cho thợ). Link không bao giờ tới cư dân: `CaseSay`/`CaseFinalize`/`CaseAskConsent` từ chối chữ có link, bản tóm tắt xin đồng ý ghi `[image link]` thay cho link, hồ sơ vụ ghi "đã tạo link tới ảnh X" **không kèm chữ ký**. Link đầy đủ chỉ nằm trong ngữ cảnh của model (kho phiên của AgentScope) và trong `wf_operations.arguments` (để gửi lại đúng yêu cầu sau crash); cả hai hết giá trị sau TTL. Model **không nhìn thấy ảnh**: nó chỉ được báo "cư dân gửi N ảnh" và các `asset_id`.
+
+**Tài khoản của platform trên MinIO.** Compose dùng cặp khóa root của MinIO cho gọn (một máy). Ngoài một máy: tạo một user MinIO chỉ có quyền trên bucket đó (`s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket`/`s3:CreateBucket` nếu muốn platform tự tạo bucket) và đưa khóa của nó vào `AWP_S3_ACCESS_KEY`/`AWP_S3_SECRET_KEY`.
+
+**Link cho đối tác ở ngoài mạng compose.** Link mang tên máy của `AWP_S3_ENDPOINT` (trong compose là `http://minio:9000`, chỉ container cùng mạng mở được). Đối tác thật cần một địa chỉ họ tới được: đặt reverse proxy có TLS trước MinIO và khai `AWP_S3_PUBLIC_ENDPOINT=https://…`. Chưa thử qua proxy thật.
+
+**SSRF.** Endpoint S3 là biến môi trường của người vận hành, đọc một lần lúc khởi động; platform không bao giờ tải một URL nằm trong tin nhắn, trong tên trường hay trong câu trả lời của model (có test: một máy chủ đếm lượt gọi nhận 0 lượt). Người sửa được `deploy/.env` vốn đã có mọi quyền của platform, nên không có kiểm "địa chỉ nội bộ" cho endpoint này (khác với URL MCP của đối tác, là dữ liệu do admin nhập qua API và có kiểm).
+
+**Sao lưu.** Ảnh nằm trong volume `awp-platform_miniodata` (compose) hoặc bucket của bạn; sao lưu cùng lúc với database nếu cần giữ ảnh (dòng `wf_assets` trỏ tới object bằng tên). Mất object mà còn dòng: `CaseAssetLink` vẫn tạo link, link trả 404; lần dọn kế tiếp vẫn xóa được dòng.
+
+**Rác có thể có.** Tiến trình chết đúng giữa lúc đã ghi object và chưa ghi dòng `wf_assets` để lại một object không dòng nào trỏ tới (tối đa `AWP_ASSET_MAX_BYTES` mỗi cái). Không có công cụ dọn; tìm bằng cách so danh sách object của bucket với `select object_key from wf_assets`.
+
+**Xem nhanh.** `select count(*), sum(size) from wf_assets` (bao nhiêu ảnh, bao nhiêu byte); `… where conversation_id is null` (đã tải lên, chưa gửi trong tin nào).
+
+### Chạy các test cần MinIO thật
+
+```
+docker run -d --name awp-test-minio -p 127.0.0.1:59000:9000 -e MINIO_ROOT_USER=awptest -e MINIO_ROOT_PASSWORD=awptest-secret-key \
+  cgr.dev/chainguard/minio:latest server /data          # (Git Bash trên Windows: đặt MSYS_NO_PATHCONV=1 trước lệnh)
+export AWP_TEST_S3_ENDPOINT=http://127.0.0.1:59000 AWP_TEST_S3_ACCESS_KEY=awptest AWP_TEST_S3_SECRET_KEY=awptest-secret-key
+cd platform_VP/core && PYTHONPATH=src ../agentscope/.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider \
+  tests/workforce/test_wf_assets_store.py tests/workforce/test_wf_assets_flow.py
+docker rm -f awp-test-minio
+```
+
+Không đặt `AWP_TEST_S3_ENDPOINT` thì năm test đó tự bỏ qua (có ghi lý do); phần còn lại (bộ ký so với ví dụ của AWS, một máy chủ S3 giả kiểm chữ ký của từng request, kho thư mục, API, luồng agent, retention) nằm trong lần chạy mặc định.
+
+## 13. Phép thử tải: 20 workflow cùng lúc (P5c)
+
+`tests/workforce/test_wf_load.py` chạy 20 workflow đồng thời qua API HTTP thật, mỗi workflow của một cư dân khác nhau trên hai route, mỗi cái đi đủ: hỏi → trả lời → xin đồng ý → duyệt → hai sự kiện provider có chữ ký → hỏi xác nhận → đóng; trong lúc đó mỗi hội thoại có một luồng SSE đang mở và chính luồng đó dẫn dắt bước kế tiếp (không thăm dò). Sau đó kiểm: không lẫn (mọi event của một hội thoại mang đúng conversation/ticket/user/workflow của nó; leader kịch bản tự khai mọi mã ticket nó từng thấy trong phiên), `sequence` 1..n không hở và luồng SSE bằng đúng history, mỗi workflow đúng một hành động ở đối tác (một reference, gọi một lần), mọi request `completed`, mọi workflow `closed`, không job nào còn chờ, tổng thời gian có chặn trên.
+
+```
+# một tiến trình, SQLite (nằm trong lần chạy mặc định, marker slow; -s để in số liệu)
+cd platform_VP/core && PYTHONPATH=src ../agentscope/.venv/Scripts/python.exe -m pytest -q -s -p no:cacheprovider tests/workforce/test_wf_load.py -k one_process
+# hai tiến trình thật, PostgreSQL + Redis (cùng điều kiện với bộ multiproc ở mục 11)
+export AWP_TEST_PG_URL=postgresql://awp:awp@127.0.0.1:55432/postgres AWP_TEST_REDIS_URL=redis://127.0.0.1:56379/0
+PYTHONPATH=src ../agentscope/.venv/Scripts/python.exe -m pytest -q -s -p no:cacheprovider tests/workforce/test_wf_load.py -k two_processes
+```
+
+Đặt `AWP_LOAD_REPORT=<tệp>` để ghi số liệu mỗi lần chạy thành một dòng JSON. Số liệu đo được và cách đọc chúng: `docs/WORKFORCE_V1_KIEM_THU_TUAN_THU.md`, mục "Tải". Tóm tắt để định cỡ: với model kịch bản (trả lời tức thì), một lượt của leader tốn khoảng 0,3 đến 0,9 giây CPU của **một** tiến trình API (Python, một nhân), nên 20 lượt cùng lúc trên hai tiến trình xếp hàng khoảng 4 đến 7 giây; thêm bản sao là thêm nhân. Với model thật, thời gian model trả lời (vài giây đến vài chục giây, không tốn CPU của platform) sẽ lấn át con số này.
