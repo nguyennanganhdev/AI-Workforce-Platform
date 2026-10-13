@@ -695,6 +695,23 @@
     },
     "InboundReceipt": {
       "$defs": {
+        "AssetReferenceInput": {
+          "additionalProperties": false,
+          "description": "Stable reference carried by chat/events; never accepts an arbitrary URL.",
+          "properties": {
+            "asset_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_id"
+          ],
+          "title": "AssetReferenceInput",
+          "type": "object"
+        },
         "AssistantMessage": {
           "additionalProperties": false,
           "properties": {
@@ -721,6 +738,15 @@
               "minLength": 1,
               "title": "Text",
               "type": "string"
+            },
+            "attachments": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AssetReferenceInput"
+              },
+              "maxItems": 10,
+              "title": "Attachments",
+              "type": "array"
             },
             "created_at": {
               "format": "date-time",
@@ -1005,6 +1031,23 @@
     },
     "PartnerRequestEnvelope": {
       "$defs": {
+        "AssetReferenceInput": {
+          "additionalProperties": false,
+          "description": "Stable reference carried by chat/events; never accepts an arbitrary URL.",
+          "properties": {
+            "asset_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_id"
+          ],
+          "title": "AssetReferenceInput",
+          "type": "object"
+        },
         "PartnerCommandType": {
           "enum": [
             "start_workflow",
@@ -1026,6 +1069,15 @@
               "minLength": 1,
               "title": "Text",
               "type": "string"
+            },
+            "attachments": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AssetReferenceInput"
+              },
+              "maxItems": 10,
+              "title": "Attachments",
+              "type": "array"
             }
           },
           "required": [
@@ -1213,6 +1265,23 @@
     },
     "RequestResult": {
       "$defs": {
+        "AssetReferenceInput": {
+          "additionalProperties": false,
+          "description": "Stable reference carried by chat/events; never accepts an arbitrary URL.",
+          "properties": {
+            "asset_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_id"
+          ],
+          "title": "AssetReferenceInput",
+          "type": "object"
+        },
         "AssistantMessage": {
           "additionalProperties": false,
           "properties": {
@@ -1239,6 +1308,15 @@
               "minLength": 1,
               "title": "Text",
               "type": "string"
+            },
+            "attachments": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AssetReferenceInput"
+              },
+              "maxItems": 10,
+              "title": "Attachments",
+              "type": "array"
             },
             "created_at": {
               "format": "date-time",
@@ -1408,6 +1486,16 @@
               "minLength": 1,
               "title": "Request Id",
               "type": "string"
+            },
+            "asset_ids": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Asset Ids",
+              "type": "array"
             }
           },
           "required": [
@@ -1659,6 +1747,16 @@
               "minLength": 1,
               "title": "Request Id",
               "type": "string"
+            },
+            "asset_ids": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Asset Ids",
+              "type": "array"
             }
           },
           "required": [
@@ -1863,6 +1961,23 @@
     },
     "CommandClaimResult": {
       "$defs": {
+        "AssetReferenceInput": {
+          "additionalProperties": false,
+          "description": "Stable reference carried by chat/events; never accepts an arbitrary URL.",
+          "properties": {
+            "asset_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_id"
+          ],
+          "title": "AssetReferenceInput",
+          "type": "object"
+        },
         "AssistantMessage": {
           "additionalProperties": false,
           "properties": {
@@ -1889,6 +2004,15 @@
               "minLength": 1,
               "title": "Text",
               "type": "string"
+            },
+            "attachments": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AssetReferenceInput"
+              },
+              "maxItems": 10,
+              "title": "Attachments",
+              "type": "array"
             },
             "created_at": {
               "format": "date-time",
@@ -2189,6 +2313,16 @@
               "minLength": 1,
               "title": "Request Id",
               "type": "string"
+            },
+            "asset_ids": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Asset Ids",
+              "type": "array"
             }
           },
           "required": [
@@ -2652,6 +2786,23 @@
           "title": "ApprovalCause",
           "type": "object"
         },
+        "AssetReferenceInput": {
+          "additionalProperties": false,
+          "description": "Stable reference carried by chat/events; never accepts an arbitrary URL.",
+          "properties": {
+            "asset_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_id"
+          ],
+          "title": "AssetReferenceInput",
+          "type": "object"
+        },
         "AssistantMessage": {
           "additionalProperties": false,
           "properties": {
@@ -2678,6 +2829,15 @@
               "minLength": 1,
               "title": "Text",
               "type": "string"
+            },
+            "attachments": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AssetReferenceInput"
+              },
+              "maxItems": 10,
+              "title": "Attachments",
+              "type": "array"
             },
             "created_at": {
               "format": "date-time",
@@ -2796,6 +2956,16 @@
               "minLength": 1,
               "title": "Request Id",
               "type": "string"
+            },
+            "asset_ids": {
+              "default": [],
+              "items": {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              "title": "Asset Ids",
+              "type": "array"
             }
           },
           "required": [
@@ -3157,6 +3327,25 @@
       "type": "object"
     },
     "assistant.message": {
+      "$defs": {
+        "AssetReferenceInput": {
+          "additionalProperties": false,
+          "description": "Stable reference carried by chat/events; never accepts an arbitrary URL.",
+          "properties": {
+            "asset_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_id"
+          ],
+          "title": "AssetReferenceInput",
+          "type": "object"
+        }
+      },
       "additionalProperties": false,
       "properties": {
         "message_id": {
@@ -3170,6 +3359,14 @@
           "minLength": 1,
           "title": "Text",
           "type": "string"
+        },
+        "attachments": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AssetReferenceInput"
+          },
+          "title": "Attachments",
+          "type": "array"
         }
       },
       "required": [
@@ -3233,6 +3430,25 @@
       "type": "object"
     },
     "operation.status_changed": {
+      "$defs": {
+        "AssetReferenceInput": {
+          "additionalProperties": false,
+          "description": "Stable reference carried by chat/events; never accepts an arbitrary URL.",
+          "properties": {
+            "asset_id": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_id"
+          ],
+          "title": "AssetReferenceInput",
+          "type": "object"
+        }
+      },
       "additionalProperties": false,
       "properties": {
         "operation_type": {
@@ -3266,6 +3482,14 @@
           ],
           "default": null,
           "title": "External Reference"
+        },
+        "attachments": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AssetReferenceInput"
+          },
+          "title": "Attachments",
+          "type": "array"
         }
       },
       "required": [

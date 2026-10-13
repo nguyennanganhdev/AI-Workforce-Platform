@@ -9,7 +9,7 @@ import uvicorn
 from fastapi.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
 
-from agentscope.app import BusinessService, SubAgentTemplate, create_app
+from agentscope.app import BusinessService, create_app
 from agentscope.app.auth import AuthService
 from agentscope.app.channel import (
     DingTalkChannel,
@@ -17,15 +17,14 @@ from agentscope.app.channel import (
     FeishuChannel,
 )
 from agentscope.app.hub import ClawSkillHub, GitHubMCPHub
-from agentscope.app.message_bus import InMemoryMessageBus
+from agentscope.app.message_bus import RedisMessageBus
 from agentscope.app.rag.blob_store import S3BlobStore
 from agentscope.app.rag.knowledge_base_manager import CollectionPerKbManager
-from agentscope.app.storage import RedisStorage
+from agentscope.app.storage import AsyncSQLAlchemyStorage, RedisStorage
 from agentscope.app.workspace_manager import LocalWorkspaceManager
 from agentscope.credential import OpenAICredential
 from agentscope.embedding import OpenAIEmbeddingModel
 from agentscope.mcp import HttpMCPConfig, MCPClient, StdioMCPConfig
-from agentscope.permission import PermissionContext, PermissionMode
 from agentscope.rag import ApproxTokenChunker, QdrantStore
 
 default_mcps = [
@@ -66,6 +65,30 @@ storage = RedisStorage(
     password=os.getenv("REDIS_PASSWORD") or None,
 )
 
+shared_context_backend = os.getenv(
+    "SHARED_CONTEXT_STORAGE_BACKEND",
+    "sql" if os.getenv("AGENTSCOPE_SQL_URL") else "primary",
+).strip().lower()
+if shared_context_backend == "sql":
+    shared_context_sql_url = os.getenv("AGENTSCOPE_SQL_URL")
+    if not shared_context_sql_url:
+        raise RuntimeError(
+            "SHARED_CONTEXT_STORAGE_BACKEND=sql requires AGENTSCOPE_SQL_URL",
+        )
+    # Alembic is the schema owner. Keeping create_tables disabled prevents a
+    # web replica from racing another replica during startup.
+    shared_context_storage = AsyncSQLAlchemyStorage(
+        shared_context_sql_url,
+        create_tables=False,
+        auto_migrate=False,
+    )
+elif shared_context_backend == "primary":
+    shared_context_storage = storage
+else:
+    raise RuntimeError(
+        "SHARED_CONTEXT_STORAGE_BACKEND must be 'sql' or 'primary'",
+    )
+
 s3_endpoint = os.getenv("S3_ENDPOINT")
 s3_enabled = os.getenv("S3_ENABLED", "false").lower() in {
     "1",
@@ -76,6 +99,7 @@ blob_store = (
     S3BlobStore(
         bucket=os.getenv("S3_BUCKET", "agentscope"),
         endpoint_url=s3_endpoint,
+        public_endpoint_url=os.getenv("S3_PUBLIC_ENDPOINT") or None,
         region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
         aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
@@ -140,18 +164,18 @@ if os.getenv("AUTH_ENABLED", "false").lower() in {"1", "true", "yes"}:
 
 app = create_app(
     storage=storage,
+    shared_context_storage=shared_context_storage,
     auth_service=auth_service,
     business_service=business_service,
-    message_bus=InMemoryMessageBus(),
-    # -- To use a Redis-backed message bus instead (recommended for
-    # -- multi-process / production deployments), uncomment the lines
-    # -- below and replace the InMemoryMessageBus() above:
-    #
-    # from agentscope.app.message_bus import RedisMessageBus
-    # message_bus=RedisMessageBus(
-    #     host="localhost",
-    #     port=6379,
-    # ),
+    # Inbox, wake-up, context-mode directives and their distributed locks
+    # must survive process boundaries; the same Redis deployment may back
+    # StorageBase while these keys remain transport-only and namespaced.
+    message_bus=RedisMessageBus(
+        host=os.getenv("REDIS_HOST", "localhost"),
+        port=int(os.getenv("REDIS_PORT", "6379")),
+        db=int(os.getenv("REDIS_DB", "0")),
+        password=os.getenv("REDIS_PASSWORD") or None,
+    ),
     workspace_manager=LocalWorkspaceManager(
         basedir=os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
@@ -177,44 +201,6 @@ app = create_app(
     # only raises the rate limit.
     mcp_hubs=[GitHubMCPHub()],
     skill_hubs=[ClawSkillHub(api_token=os.getenv("CLAWHUB_API_TOKEN"))],
-    # Customize your own subagent templates
-    custom_subagent_templates=[
-        SubAgentTemplate(
-            type="explorer",
-            description=(
-                "Read-only agents specialized in exploration tasks. It can "
-                "read files but cannot modify, create, or delete them. Use "
-                "this agent type when you need to investigate the codebase, "
-                "understand its structure, or gather information from files "
-                "to support planning—without making any changes."
-            ),
-            system_prompt_template="""You are {member_name}, an explorer \
-agent in team '{team_name}' led by {leader_name}.
-
-Team purpose: {team_description}
-
-Your role: {member_description}
-
-## Responsibilities
-- Complete the exploration tasks assigned by the team leader.
-- You are read-only: you may inspect files and the codebase, but you must \
-never modify, create, or delete anything.
-
-## Reporting
-- Always report the task result back to {leader_name} using the TeamSay \
-tool, whether the task succeeds or fails.
-- Keep your private reasoning private; only share conclusions and findings \
-that the leader needs.
-
-Note: `TeamSay` is your ONLY channel to communicate with {leader_name} and \
-the other team members. Any other output you produce is invisible to them, \
-so anything you want them to see MUST be sent through `TeamSay`.""",
-            permission_context=PermissionContext(
-                # Read-only
-                mode=PermissionMode.EXPLORE,
-            ),
-        ),
-    ],
     # Automatic conversation-memory middleware is intentionally disabled.
     # Only AREA_MANAGER-approved candidates are embedded by BusinessService.
     extra_middlewares=[

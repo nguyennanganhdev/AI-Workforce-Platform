@@ -1,8 +1,9 @@
 """Full-platform acceptance requires the integrated test factory.
 
-Set WORKFORCE_E2E_FACTORY to module:function returning an async context manager
-whose client is the composed app with DB/worker and mock providers.
-No replacement Customer API/runtime is implemented in this owner's fixtures.
+Set WORKFORCE_E2E_FACTORY to module:function to override the repository's
+release-candidate mock factory with a deployment/sandbox factory.  The default
+factory composes the real DB, worker and HTTP workflow path with deterministic
+model/provider boundaries.
 """
 
 import asyncio
@@ -13,13 +14,9 @@ import pytest
 
 from async_partners import CustomerBackend
 
-FACTORY = os.environ.get("WORKFORCE_E2E_FACTORY")
-pytestmark = pytest.mark.skipif(
-    not FACTORY,
-    reason=(
-        "C7 application composition factory not supplied via "
-        "WORKFORCE_E2E_FACTORY; C6 SQL slice runs in test_phase_c_c6.py"
-    ),
+FACTORY = os.environ.get(
+    "WORKFORCE_E2E_FACTORY",
+    "tests.workforce.fixtures.release_candidate_factory:factory",
 )
 
 

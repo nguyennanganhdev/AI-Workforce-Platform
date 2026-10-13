@@ -51,6 +51,95 @@ class MessageBusKeys:  # pylint: disable=too-many-public-methods
     running."""
 
     # ------------------------------------------------------------------
+    # Team turn ownership. One compact value controls who may answer the
+    # customer and whether background workers may be woken.
+    # ------------------------------------------------------------------
+
+    _TEAM_TURN_NS = "agentscope:team:turn:{team_id}"
+    _TEAM_TURN_LOCK = "agentscope:team:turn:lock:{team_id}"
+    TEAM_TURN_FIELD: Final = "state"
+    TEAM_TURN_TTL_SECS: Final = 86_400
+    TEAM_TURN_LOCK_TTL_SECS: Final = 10
+
+    @classmethod
+    def team_turn(cls, team_id: str) -> str:
+        """Registry namespace holding one team's current turn state."""
+        return cls._TEAM_TURN_NS.format(team_id=team_id)
+
+    @classmethod
+    def team_turn_lock(cls, team_id: str) -> str:
+        """Lock serialising question dedupe and turn transitions."""
+        return cls._TEAM_TURN_LOCK.format(team_id=team_id)
+
+    # ------------------------------------------------------------------
+    # Durable shared context coordination. The data itself lives in the
+    # configured StorageBase backend; the bus only serialises writers and
+    # carries short-lived per-session handoff directives.
+    # ------------------------------------------------------------------
+
+    _TEAM_SHARED_CONTEXT_LOCK = "agentscope:team:shared_context:lock:{team_id}"
+    _TEAM_HISTORY_BOOTSTRAP_LOCK = (
+        "agentscope:team:shared_context:bootstrap:lock:{team_id}"
+    )
+    _TEAM_SUMMARY_LOCK = "agentscope:team:summary:lock:{team_id}:{task_id}"
+    _TEAM_CONTEXT_DIRECTIVES_NS = "agentscope:team:context:{session_id}"
+    _TEAM_HANDOFF_DELIVERY_NS = "agentscope:team:handoff:{handoff_id}"
+    _TEAM_SESSION_CONTEXT_NS = "agentscope:team:session_context:{session_id}"
+    _TEAM_HANDOFF_DELIVERY_LOCK = (
+        "agentscope:team:handoff:lock:{handoff_id}:{session_id}"
+    )
+    TEAM_SHARED_CONTEXT_LOCK_TTL_SECS: Final = 30
+    TEAM_HISTORY_BOOTSTRAP_LOCK_TTL_SECS: Final = 60
+    TEAM_CONTEXT_DIRECTIVE_TTL_SECS: Final = 86_400
+    TEAM_HANDOFF_DELIVERY_TTL_SECS: Final = 604_800
+    TEAM_HANDOFF_DELIVERY_LOCK_TTL_SECS: Final = 30
+    TEAM_SESSION_CONTEXT_TTL_SECS: Final = 86_400
+
+    @classmethod
+    def team_shared_context_lock(cls, team_id: str) -> str:
+        """Lock serialising one team's shared-context revisions."""
+        return cls._TEAM_SHARED_CONTEXT_LOCK.format(team_id=team_id)
+
+    @classmethod
+    def team_history_bootstrap_lock(cls, team_id: str) -> str:
+        """Lock the whole one-time customer-history projection."""
+
+        return cls._TEAM_HISTORY_BOOTSTRAP_LOCK.format(team_id=team_id)
+
+    @classmethod
+    def team_summary_lock(cls, team_id: str, task_id: str) -> str:
+        """Serialise compaction without blocking shared-context appends."""
+        return cls._TEAM_SUMMARY_LOCK.format(team_id=team_id, task_id=task_id)
+
+    @classmethod
+    def team_context_directives(cls, session_id: str) -> str:
+        """Pending context-mode directives for one target session."""
+        return cls._TEAM_CONTEXT_DIRECTIVES_NS.format(session_id=session_id)
+
+    @classmethod
+    def team_handoff_delivery(cls, handoff_id: str) -> str:
+        """Recipient delivery markers for an idempotent team handoff."""
+        return cls._TEAM_HANDOFF_DELIVERY_NS.format(handoff_id=handoff_id)
+
+    @classmethod
+    def team_session_context(cls, session_id: str) -> str:
+        """Last context revision actually prepared for one agent session."""
+
+        return cls._TEAM_SESSION_CONTEXT_NS.format(session_id=session_id)
+
+    @classmethod
+    def team_handoff_delivery_lock(
+        cls,
+        handoff_id: str,
+        session_id: str,
+    ) -> str:
+        """Serialise retry delivery of one handoff to one recipient."""
+        return cls._TEAM_HANDOFF_DELIVERY_LOCK.format(
+            handoff_id=handoff_id,
+            session_id=session_id,
+        )
+
+    # ------------------------------------------------------------------
     # Cross-session UI projection — a generic per-session Redis-hash
     # store onto which one session can project UI cards owned by another
     # (e.g. a team member's pending HITL request projected onto its

@@ -22,6 +22,8 @@ import { ChatPage } from '@/pages/chat';
 import { CredentialPage } from '@/pages/credential';
 import { KnowledgePage } from '@/pages/knowledge';
 import { SchedulePage } from '@/pages/schedule';
+import { AgentBuilderPage } from '@/pages/workforce/builder';
+import { LeaderPage } from '@/pages/workforce/leader';
 
 const router = createBrowserRouter([
 	{
@@ -35,7 +37,9 @@ const router = createBrowserRouter([
 				// last-resort catch-all for AppLayout/AppSidebar crashes.
 				errorElement: <RouteError />,
 				children: [
-					{ path: '/', element: <Navigate to="/chat" replace /> },
+					{ path: '/', element: <Navigate to="/workforce/leader" replace /> },
+					{ path: '/workforce/leader', element: <LeaderPage /> },
+					{ path: '/workforce/builder', element: <AgentBuilderPage /> },
 					{
 						path: '/chat/:agentId?/:sessionId?/:memberId?',
 						element: <ChatPage />,

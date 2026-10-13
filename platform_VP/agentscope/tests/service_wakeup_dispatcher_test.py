@@ -16,8 +16,10 @@ Verifies the four behaviours that callers rely on:
 """
 import asyncio
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from typing import Any, AsyncGenerator, Callable
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock, patch
 
 from agentscope.app._manager import ChatRunRegistry, WakeupDispatcher
 from agentscope.app.message_bus import MessageBus, MessageBusKeys
@@ -324,6 +326,33 @@ class TestWakeupDispatcherDispatch(IsolatedAsyncioTestCase):
 
         self.assertEqual(chat.calls, [])
 
+    async def test_registry_race_closes_rejected_run_coroutine(self) -> None:
+        captured = []
+
+        class _RejectingRegistry:
+            def spawn(self, coro, *, session_id: str, name: str) -> None:
+                del session_id, name
+                captured.append(coro)
+                raise RuntimeError("session became active")
+
+        dispatcher = WakeupDispatcher(
+            message_bus=_FakeBus(),
+            storage=_FakeStorage(),
+            chat_service=_FakeChatService(),
+            chat_run_registry=_RejectingRegistry(),  # type: ignore[arg-type]
+        )
+        await dispatcher._dispatch_one(
+            user_id="u",
+            session_id="raced",
+            agent_id="a",
+            kind=MessageBusKeys.WAKEUP_KIND_WAKE,
+            raw_input=None,
+        )
+
+        self.assertEqual(len(captured), 1)
+        self.assertIsNone(captured[0].cr_frame)
+        await dispatcher.__aexit__()
+
     async def test_malformed_entry_skipped(self) -> None:
         """A wake-up entry missing required fields is logged and skipped,
         not raised; later valid entries still dispatch."""
@@ -397,6 +426,43 @@ class TestWakeupDispatcherDispatch(IsolatedAsyncioTestCase):
                 },
             ],
         )
+
+    async def test_team_waiting_for_user_suppresses_automatic_wake(self) -> None:
+        """Queued internal work stays asleep until the customer's turn."""
+
+        class _TeamStorage(_FakeStorage):
+            async def get_session(
+                self,
+                _user_id: str,
+                _agent_id: str,
+                _session_id: str,
+            ) -> object:
+                return SimpleNamespace(team_id="team")
+
+        bus = _FakeBus()
+        chat = _FakeChatService()
+        waiting = AsyncMock(return_value=True)
+
+        with patch(
+            "agentscope.app._manager._wakeup_dispatcher."
+            "team_is_awaiting_user",
+            waiting,
+        ):
+            async with WakeupDispatcher(
+                message_bus=bus,
+                storage=_TeamStorage(),
+                chat_service=chat,
+                chat_run_registry=ChatRunRegistry(),
+            ):
+                await bus.queue_push(
+                    MessageBusKeys.wakeup_queue(),
+                    {"user_id": "u", "session_id": "sleep", "agent_id": "a"},
+                )
+                await bus.publish(MessageBusKeys.wakeup_signal(), {})
+                await asyncio.sleep(0.05)
+
+        self.assertEqual(chat.calls, [])
+        waiting.assert_awaited_once_with(bus, "team")
 
     async def test_resume_idle_spawns_with_parsed_event(self) -> None:
         """A ``resume`` trigger for an idle session spawns a run whose

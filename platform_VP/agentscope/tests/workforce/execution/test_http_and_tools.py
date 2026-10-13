@@ -55,9 +55,7 @@ class Commands:
         )
 
     async def authorize_approval(self, actor, approval_id, body, uow):
-        record = await self.env.repo.get(
-            "approvals", approval_id, uow, SCOPE_A
-        )
+        record = await self.env.repo.get("approvals", approval_id, uow, SCOPE_A)
         audience = record["audience_ref"]
         for field in (
             "external_user_id",
@@ -76,11 +74,7 @@ class Commands:
         assert isinstance(actor, ActorContext)
         key = "command-" + request_id
         rows = (
-            (
-                await uow.execute(
-                    select(test_events).where(test_events.c.id == key)
-                )
-            )
+            (await uow.execute(select(test_events).where(test_events.c.id == key)))
             .mappings()
             .all()
         )
@@ -205,8 +199,7 @@ def test_provider_http_raw_auth_precedes_parse_and_ack_is_durable():
                 receipt = response.json()
                 await env.processor.process(receipt["receipt_id"])
                 response = await client.get(
-                    "/workforce/v1/provider/event-receipts/"
-                    + receipt["receipt_id"],
+                    "/workforce/v1/provider/event-receipts/" + receipt["receipt_id"],
                     headers=headers,
                 )
                 assert response.json()["ingestion_status"] == "quarantined"
@@ -231,16 +224,15 @@ def test_http_execution_owner_and_no_public_execute_endpoint():
             ) as client:
                 response = await client.get("/workforce/v1/executions/call-A")
                 assert response.status_code == 404
-                response = await client.post(
-                    "/workforce/v1/executions", json=call
-                )
+                response = await client.post("/workforce/v1/executions", json=call)
                 assert response.status_code == 404
 
     run(scenario)
 
 
 @pytest.mark.parametrize("typed_claim", [False, True])
-def test_partner_consent_shared_idempotency_and_ticket_binding(typed_claim):
+@pytest.mark.parametrize("chat_consent", [False, True])
+def test_partner_consent_shared_idempotency_and_ticket_binding(typed_claim, chat_consent):
     async def scenario():
         async with harness() as env:
             env.runtime.contexts["run-A"]["allowed_decider"] = {
@@ -270,18 +262,19 @@ def test_partner_consent_shared_idempotency_and_ticket_binding(typed_claim):
                 ),
                 base_url="http://test",
             ) as client:
-                path = (
-                    "/workforce/v1/partner/approvals/"
-                    + approval["id"]
-                    + "/decision"
-                )
+                path = "/workforce/v1/partner/approvals/" + approval["id"]
+                path += "/chat" if chat_consent else "/decision"
+                if chat_consent:
+                    body.pop("decision")
+                    body["message"] = "Tôi xác nhận"
+                    ambiguous = await client.post(path, json={**body, "message": "đồng ý nhưng đổi ngày"})
+                    assert ambiguous.status_code == 422
+                    assert env.provider.calls == 0
                 response = await client.post(
                     path, json={**body, "external_ticket_id": "TICKET-B"}
                 )
                 assert response.status_code == 409
-                response = await client.post(
-                    path, json={**body, "quote_ref": "stale"}
-                )
+                response = await client.post(path, json={**body, "quote_ref": "stale"})
                 assert response.status_code == 409
                 first = await client.post(path, json=body)
                 replay = await client.post(path, json=body)
@@ -292,13 +285,10 @@ def test_partner_consent_shared_idempotency_and_ticket_binding(typed_claim):
                 assert denied_replay.status_code == 403
                 assert env.provider.calls == 0
                 env.runtime.active = True
-                conflict = await client.post(
-                    path, json={**body, "decision": "reject"}
-                )
+                changed = {"message": "hủy"} if chat_consent else {"decision": "reject"}
+                conflict = await client.post(path, json={**body, **changed})
                 assert conflict.status_code == 409
-                manager_path = (
-                    "/workforce/v1/approvals/" + approval["id"] + "/decision"
-                )
+                manager_path = "/workforce/v1/approvals/" + approval["id"] + "/decision"
                 denied = await client.post(
                     manager_path,
                     json={
@@ -311,9 +301,7 @@ def test_partner_consent_shared_idempotency_and_ticket_binding(typed_claim):
                 result = await env.gateway.execute(
                     SCOPE_A, {**call_fixture(), "approval_id": approval["id"]}
                 )
-                assert (
-                    result["status"] == "succeeded" and env.provider.calls == 1
-                )
+                assert result["status"] == "succeeded" and env.provider.calls == 1
 
     run(scenario)
 
@@ -365,8 +353,7 @@ def test_prepare_toolkit_contains_only_pinned_guarded_bindings():
             tool = await toolkit.get_tool(env.descriptor["llm_alias"])
             chunk = await tool(room="FAKE-seaview")
             assert (
-                "awaiting_approval" in chunk.content[0].text
-                and env.provider.calls == 0
+                "awaiting_approval" in chunk.content[0].text and env.provider.calls == 0
             )
 
     run(scenario)
@@ -376,15 +363,11 @@ def test_real_stdio_mcp_mock_schema_and_idempotency():
     async def scenario():
         from agentscope.mcp import MCPClient, StdioMCPConfig
 
-        script = (
-            Path(__file__).resolve().parents[1] / "fixtures" / "mock_mcp.py"
-        )
+        script = Path(__file__).resolve().parents[1] / "fixtures" / "mock_mcp.py"
         client = MCPClient(
             name="FAKE-stdio",
             is_stateful=True,
-            mcp_config=StdioMCPConfig(
-                command=sys.executable, args=[str(script)]
-            ),
+            mcp_config=StdioMCPConfig(command=sys.executable, args=[str(script)]),
         )
         await client.connect()
         try:
@@ -399,9 +382,9 @@ def test_real_stdio_mcp_mock_schema_and_idempotency():
             async with harness() as env:
                 env.descriptor["input_schema"] = booking.input_schema
                 env.descriptor["schema_hash"] = digest(booking.input_schema)
-                env.runtime.spec["tool_bindings"][0]["schema_hash"] = (
-                    env.descriptor["schema_hash"]
-                )
+                env.runtime.spec["tool_bindings"][0]["schema_hash"] = env.descriptor[
+                    "schema_hash"
+                ]
 
                 class JsonProjector:
                     async def project(self, scope, descriptor, chunk):
@@ -420,11 +403,66 @@ def test_real_stdio_mcp_mock_schema_and_idempotency():
                 call = call_fixture()
                 call = await approved_call(env, call)
                 result = await env.gateway.execute(SCOPE_A, call)
-                assert (
-                    result["status"] == "succeeded"
-                    and result["output"]["fixture"]
-                )
+                assert result["status"] == "succeeded" and result["output"]["fixture"]
         finally:
             await client.close()
+
+    run(scenario)
+
+
+def test_async_operation_materializes_required_asset_urls_after_reservation():
+    async def scenario():
+        async with harness(tracking=True) as env:
+            schema = {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "room",
+                    "idempotency_key",
+                    "asset_ids",
+                    "asset_downloads",
+                ],
+                "properties": {
+                    "room": {"type": "string"},
+                    "client_reference": {"type": "string"},
+                    "idempotency_key": {"type": "string"},
+                    "asset_ids": {"type": "array", "items": {"type": "string"}},
+                    "asset_downloads": {"type": "array"},
+                },
+            }
+            env.descriptor["input_schema"] = schema
+            env.descriptor["schema_hash"] = digest(schema)
+            env.descriptor["capabilities"].append("asset_download_v1")
+            env.runtime.spec["tool_bindings"][0]["schema_hash"] = digest(schema)
+            env.provider.schema = schema
+
+            class Assets:
+                calls = 0
+
+                async def materialize_for_provider(
+                    self, scope, context, descriptor, arguments
+                ):
+                    del scope, descriptor
+                    self.calls += 1
+                    assert context["workflow_id"] == "workflow-A"
+                    assert arguments["client_reference"]
+                    return {
+                        **arguments,
+                        "asset_downloads": [
+                            {
+                                "asset_id": "asset-1",
+                                "download_url": "https://signed.invalid/asset-1",
+                            }
+                        ],
+                    }
+
+            assets = Assets()
+            env.gateway.assets = assets
+            call = call_fixture()
+            call["arguments"]["asset_ids"] = ["asset-1"]
+            call = await approved_call(env, call)
+            result = await env.gateway.execute(SCOPE_A, call)
+            assert result["status"] == "succeeded"
+            assert assets.calls == 1
 
     run(scenario)

@@ -9,9 +9,15 @@ from typing import Any
 from pydantic import ValidationError
 
 from ..contracts import ActorContext, CloseWorkflowCommand
+from ..execution._utils import ExecutionError
 from ._ingress import receipt_http_status
 from .partner_events import EventCursorExpired
-from .workflows import WorkflowBindingMismatch, WorkflowClosed, WorkflowConflict
+from .workflows import (
+    WorkflowBindingMismatch,
+    WorkflowClosed,
+    WorkflowConflict,
+    WorkflowTicketAlreadyBound,
+)
 
 
 def create_router(
@@ -31,10 +37,11 @@ def create_router(
 
     from fastapi import APIRouter, Depends, Header, Query, Request
     from fastapi.responses import JSONResponse, StreamingResponse
+
     from ..foundation.event_delivery import (
-        NullMetricSink,
         SSE_CONNECTIONS,
         SSE_REPLAYS,
+        NullMetricSink,
     )
 
     globals()["Request"] = Request
@@ -64,6 +71,8 @@ def create_router(
     async def respond(action):
         try:
             return await action()
+        except ExecutionError as error:
+            return JSONResponse(error.public(), status_code=error.status)
         except EventCursorExpired:
             return JSONResponse(
                 {
@@ -77,6 +86,11 @@ def create_router(
         except WorkflowBindingMismatch:
             return JSONResponse(
                 {"error": {"code": "WORKFLOW_BINDING_MISMATCH"}},
+                status_code=409,
+            )
+        except WorkflowTicketAlreadyBound:
+            return JSONResponse(
+                {"error": {"code": "TICKET_ALREADY_BOUND"}},
                 status_code=409,
             )
         except PermissionError:
@@ -197,9 +211,7 @@ def create_router(
                 metrics.increment(
                     SSE_REPLAYS,
                     labels={
-                        "cursor_source": (
-                            "last_event_id" if last_event_id else "query"
-                        )
+                        "cursor_source": ("last_event_id" if last_event_id else "query")
                     },
                 )
             return StreamingResponse(

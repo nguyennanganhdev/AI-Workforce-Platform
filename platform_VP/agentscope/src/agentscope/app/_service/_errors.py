@@ -35,6 +35,9 @@ _NETWORK_EXC_NAMES: frozenset[str] = frozenset(
 )
 
 _GENERIC_MESSAGE: dict[ErrorType, str] = {
+    ErrorType.COLLABORATION_LIMIT: (
+        "Internal coordination reached its processing limit. This assignment is incomplete; the conversation remains open."
+    ),
     ErrorType.AUTHENTICATION: (
         "Authentication failed — check the model's API key / credential."
     ),
@@ -51,6 +54,10 @@ _GENERIC_MESSAGE: dict[ErrorType, str] = {
         "Could not reach the model service — network error or timeout."
     ),
     ErrorType.INTERNAL: "An unexpected internal error occurred.",
+    ErrorType.CONTEXT_BUDGET: (
+        "The required conversation context exceeds its token budget. "
+        "No source history was deleted. Review context size and repeated tool calls."
+    ),
     ErrorType.SETUP: (
         "The session could not be prepared — check the agent's model, "
         "tools and knowledge bases."
@@ -114,6 +121,10 @@ def _is_network_error(e: BaseException) -> bool:
 def _classify_type(e: Exception) -> ErrorType:
     """Map an exception to an :class:`ErrorType` without importing any
     provider SDK."""
+    if any(type(exc).__name__ == "CollaborationStoppedError" for exc in _causes(e)):
+        return ErrorType.COLLABORATION_LIMIT
+    if any(type(exc).__name__ == "SharedContextBudgetError" for exc in _causes(e)):
+        return ErrorType.CONTEXT_BUDGET
     status = _extract_status(e)
     if status is not None:
         if status in _STATUS_MAP:

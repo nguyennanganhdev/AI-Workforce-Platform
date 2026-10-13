@@ -63,6 +63,7 @@ Các endpoint trên dành cho area manager của platform, không thuộc contra
 
 Tool/policy catalog vẫn là module-owned dependency được inject vào composition;
 adapter production bắt buộc resolver của owner đọc/lock bằng UOW được truyền.
-Không nhét credential, Scope hay policy từ request body. Không thêm phase D5/D6/
-D7; các live sandbox/model/provider deployment là kiểm chứng vận hành sau code,
-không phải lý do để đổi contract D4.
+Không nhét credential, Scope hay policy từ request body. Phạm vi của riêng D4
+không triển khai D5/D6/D7; các bước đó tiếp tục sau D4 theo
+`../PHASE_D_SEQUENCE.md`. Live sandbox/model/provider deployment là kiểm chứng
+vận hành, không phải lý do để đổi contract D4.

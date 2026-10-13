@@ -201,7 +201,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 	// parent's refetch to keep its copy in sync.
 	//
 	// Surfacing the team panel here is what makes a team visible at all
-	// — `TeamCreate` / `AgentCreate` / `AgentInvite` are agent tools, so
+	// — `TeamCreate` / `AgentInvite` are agent tools, so
 	// the user never opened a dialog that could have opened the panel.
 	// `team_updated` also fires on `TeamDelete` and carries no payload,
 	// hence checking the refetched list rather than opening blindly.
@@ -354,6 +354,28 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 	// eagerly on first render, so a later `const` would still be in
 	// the temporal dead zone.
 	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
+	const completeTeamMention = useCallback(
+		(input: string): string | null => {
+			if (!input.startsWith('@') || input.includes('\n')) return null;
+			const names = [
+				...(view?.team?.leader_agent ? [view.team.leader_agent.data.name] : []),
+				...(view?.team?.members.map(({ agent }) => agent.data.name) ?? []),
+			];
+			const candidate = view?.team?.members
+				.map(({ agent }) => {
+					const duplicate =
+						names.filter(
+							(name) => name.toLocaleLowerCase() === agent.data.name.toLocaleLowerCase(),
+						).length > 1;
+					return `@${agent.data.name}${duplicate ? `@${agent.id.slice(0, 8)}` : ''} `;
+				})
+				.find((mention) =>
+					mention.toLocaleLowerCase().startsWith(input.toLocaleLowerCase()),
+				);
+			return candidate ? input + candidate.slice(input.length) : null;
+		},
+		[view?.team?.leader_agent, view?.team?.members],
+	);
 
 	const { status: workspaceStatus, refetch: refetchWorkspaceStatus } = useWorkspaceStatus(
 		agentId,
@@ -851,6 +873,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 									phase={phase}
 									disabled={selectedModel === null}
 									onSend={send}
+									autoComplete={completeTeamMention}
 									onUserConfirm={onUserConfirm}
 									onInterrupt={interrupt}
 									// cwd={

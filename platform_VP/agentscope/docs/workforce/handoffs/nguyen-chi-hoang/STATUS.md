@@ -1,6 +1,24 @@
 # Trạng thái — Nguyễn Chí Hoàng
 
-## Cập nhật mới nhất — tích hợp cuối Phase D/D4 — 2026-10-12
+## Cập nhật mới nhất — D6/D7 thay toàn đội — 2026-10-12
+
+Nguyễn Chí Hoàng đã triển khai phần code/tài liệu còn lại của D5–D7 trên working
+tree sau `dev_TeamHoang@c588517`: full E2E factory, contract
+`TICKET_ALREADY_BOUND`, shared provider metrics, proxy/alert/runbook,
+backup-restore CI, frontend/browser gate và JUnit Release Candidate report.
+Chi tiết: [PHASE_D_D6_D7.md](PHASE_D_D6_D7.md) và
+[../PHASE_D_SEQUENCE.md](../PHASE_D_SEQUENCE.md).
+
+Validation local cuối: **647 passed, 22 skipped, 313 subtests passed**, không có
+failure/error; frontend lint/build pass. D7 local report trả fail đúng thiết kế
+vì 22 skip hạ tầng và sandbox `NOT_VERIFIED`. CI mới cung cấp PostgreSQL 17 và
+Chromium, đồng thời fail nếu thiếu report hoặc còn skip.
+
+Trạng thái Git chính xác: **chưa tự xác nhận merge vào `develop2` và chưa có kết
+quả GitHub CI của commit mới**. Sandbox đối tác chưa được cấp nên evidence phải
+ghi `NOT_VERIFIED`; không tuyên bố production pass.
+
+## Lịch sử — tích hợp cuối Phase D/D4 — 2026-10-12
 
 Baseline đầu vào là `develop2@35cec29`: C7/D1/D2, D3 và D4 đã merge. Nguyễn
 Chí Hoàng đã ghép xong phần production còn thiếu sau PR #73 gồm migration

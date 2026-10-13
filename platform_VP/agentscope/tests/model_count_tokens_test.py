@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """Tests for the fallback chat model token estimation."""
+
 from unittest.async_case import IsolatedAsyncioTestCase
 
 from utils import MockModel
 
+from agentscope.credential import OpenAICredential
 from agentscope.message import (
     Base64Source,
     DataBlock,
@@ -11,6 +13,8 @@ from agentscope.message import (
     URLSource,
     UserMsg,
 )
+from agentscope.model import OpenAIChatModel
+from agentscope.model._token_counting import count_openai_text
 
 
 class ModelCountTokensTest(IsolatedAsyncioTestCase):
@@ -82,3 +86,24 @@ class ModelCountTokensTest(IsolatedAsyncioTestCase):
 
         self.assertEqual(base64_tokens, 2000)
         self.assertEqual(url_tokens, 2000)
+
+    async def test_openai_uses_model_tokenizer_and_audited_envelope(self) -> None:
+        """OpenAI preflight is tokenizer-based, not the generic estimate."""
+
+        model = OpenAIChatModel(
+            credential=OpenAICredential(api_key="test"),
+            model="gpt-4o",
+            stream=False,
+        )
+        text = 'Xin chào — structured JSON: {"area":"Hà Nội"}'
+
+        tokens = await model.count_tokens(
+            [UserMsg(name="user", content=text)],
+            None,
+        )
+
+        self.assertEqual(count_openai_text("gpt-4o", text) + 7, tokens)
+        self.assertEqual(
+            "tiktoken:gpt-4o+protocol-envelope-v1",
+            model.token_counting_strategy,
+        )

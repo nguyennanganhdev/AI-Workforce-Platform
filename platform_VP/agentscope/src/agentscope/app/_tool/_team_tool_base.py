@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Base class shared by the team tools."""
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ...permission import (
     PermissionBehavior,
@@ -10,6 +10,7 @@ from ...permission import (
 from ...tool import ToolBase
 
 if TYPE_CHECKING:
+    from .._shared_context import SharedContextService
     from ..message_bus import MessageBus
     from ..storage import StorageBase, TeamRecord
     from ..workspace_manager import WorkspaceManagerBase
@@ -53,6 +54,7 @@ class _TeamToolBase(ToolBase):
         user_id: str,
         session_id: str,
         agent_id: str,
+        shared_context_service: "SharedContextService | None" = None,
     ) -> None:
         """Bind request-scoped identifiers and shared dependencies.
 
@@ -78,6 +80,7 @@ class _TeamToolBase(ToolBase):
         self._user_id = user_id
         self._session_id = session_id
         self._agent_id = agent_id
+        self._shared_context = shared_context_service
 
     async def _require_team(self) -> "TeamRecord":
         """Return this session's team, read fresh at call time.

@@ -1,5 +1,5 @@
 import { client } from './client';
-import type { MCPView, UpdateMCPRequest } from './types';
+import type { DirectInstallMCPRequest, MCPView, UpdateMCPRequest } from './types';
 
 /**
  * The user's own library of installed MCPs, which is where a hub install
@@ -8,6 +8,12 @@ import type { MCPView, UpdateMCPRequest } from './types';
  */
 export const mcpApi = {
 	list: () => client.get<MCPView[]>('/mcp'),
+
+	installDirect: (body: DirectInstallMCPRequest) =>
+		client.post<MCPView>('/mcp', body, undefined, { silent: true }),
+
+	sync: (mcpId: string) =>
+		client.post<MCPView>(`/mcp/${encodeURIComponent(mcpId)}/sync`, null),
 
 	/**
 	 * Renames, enables/disables, or re-keys it. Changing `values` is a

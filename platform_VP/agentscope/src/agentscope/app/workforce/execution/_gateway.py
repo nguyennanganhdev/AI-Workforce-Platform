@@ -3,9 +3,8 @@
 Single internal tool execution gateway; never exposed as a public MCP API.
 """
 
-from typing import Any
-
 import asyncio
+from typing import Any
 
 from ..contracts import Scope
 from ._calculator import calculate
@@ -29,12 +28,14 @@ class ExecutionGateway:
         protocols: Any,
         builtins: Any = None,
         call_factory: Any = None,
+        assets: Any = None,
     ) -> None:
         self.policy, self.transactions, self.mcp = policy, transactions, mcp
         self.operations, self.protocols = operations, protocols
         self.repo = transactions.repo
         self.builtins = {"builtin.money.v1": calculate, **(builtins or {})}
         self.call_factory = call_factory
+        self.assets = assets
 
     async def execute(self, scope: Any, request: Any) -> Any:
         """Durable intent precedes network; replay returns persisted state."""
@@ -49,15 +50,13 @@ class ExecutionGateway:
                 request["arguments"],
                 "TOOL_INPUT_INVALID",
             )
-        if request.get(
-            "arguments_hash", digest(request["arguments"])
-        ) != digest(request["arguments"]):
+        if request.get("arguments_hash", digest(request["arguments"])) != digest(
+            request["arguments"]
+        ):
             raise ExecutionError("ARGUMENTS_HASH_MISMATCH", 422)
         # Return existing outcomes without fetching a possibly expired quote.
         async with self.repo.transaction() as uow:
-            previous = await self.repo.get(
-                "calls", request["call_id"], uow, scope
-            )
+            previous = await self.repo.get("calls", request["call_id"], uow, scope)
         if previous and previous["status"] not in {
             "proposed",
             "awaiting_approval",
@@ -82,9 +81,7 @@ class ExecutionGateway:
             if protocol_hash(protocol) != descriptor["async_protocol_hash"]:
                 raise ExecutionError("ASYNC_PROTOCOL_PIN_MISMATCH", 403)
         async with self.repo.transaction() as uow:
-            context, descriptor = await self.policy.check(
-                scope, request, uow=uow
-            )
+            context, descriptor = await self.policy.check(scope, request, uow=uow)
             if digest(descriptor) != descriptor_hash:
                 raise ExecutionError("CATALOG_CHANGED")
             call, dispatch = await self.transactions.reserve(
@@ -97,17 +94,21 @@ class ExecutionGateway:
                 )
             arguments = request["arguments"]
             if operation:
-                arguments = self.operations.create_arguments(
-                    operation, arguments
-                )
-                validate(
-                    descriptor["input_schema"], arguments, "TOOL_INPUT_INVALID"
-                )
+                arguments = self.operations.create_arguments(operation, arguments)
         if not dispatch:
             return call
         sent = False
         output, error, status, external_id = None, None, "failed", None
         try:
+            if descriptor["source_kind"] == "mcp" and self.assets is not None:
+                arguments = await self.assets.materialize_for_provider(
+                    scope, context, descriptor, arguments
+                )
+                validate(
+                    descriptor["input_schema"],
+                    arguments,
+                    "TOOL_INPUT_INVALID",
+                )
             if descriptor["source_kind"] == "builtin":
                 handler = self.builtins.get(descriptor["tool_version_id"])
                 if handler is None:
@@ -135,9 +136,7 @@ class ExecutionGateway:
                     sent = True
                     output = await invoke()
             output = freeze(output)
-            validate(
-                descriptor.get("output_schema"), output, "TOOL_OUTPUT_INVALID"
-            )
+            validate(descriptor.get("output_schema"), output, "TOOL_OUTPUT_INVALID")
             status = "succeeded"
             external_id = (
                 output.get("external_transaction_id")
@@ -163,9 +162,7 @@ class ExecutionGateway:
             # timeout or network error cannot prove the provider did nothing.
             status = "unknown" if sent and effect in SIDE_EFFECTS else "failed"
             error = (
-                exc.code
-                if isinstance(exc, ExecutionError)
-                else "PROVIDER_CALL_FAILED"
+                exc.code if isinstance(exc, ExecutionError) else "PROVIDER_CALL_FAILED"
             )
             output = None
         return await self._finish(
@@ -186,10 +183,8 @@ class ExecutionGateway:
             if operation:
                 if status == "succeeded":
                     try:
-                        result = (
-                            await self.protocols.normalize_creation_result(
-                                operation["protocol"], output
-                            )
+                        result = await self.protocols.normalize_creation_result(
+                            operation["protocol"], output
                         )
                     except (ExecutionError, KeyError, ValueError):
                         status, output, error = (

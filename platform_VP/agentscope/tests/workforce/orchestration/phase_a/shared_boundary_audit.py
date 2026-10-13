@@ -11,7 +11,7 @@ from agentscope.app.workforce.contracts import (
     ConversationEvent,
     WorkflowRecord,
 )
-from fixtures import phase_a_samples
+from tests.workforce.orchestration.phase_a.fixtures import phase_a_samples
 
 
 def audit_shared_boundaries() -> list[dict[str, Any]]:

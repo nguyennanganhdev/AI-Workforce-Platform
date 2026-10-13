@@ -25,6 +25,7 @@ from ._models import (
     WorkflowQueryResult,
     WorkflowRepository,
     WorkflowReservation,
+    WorkflowTicketAlreadyBound,
     parse_aggregate,
     raw_value,
     require_binding,
@@ -95,6 +96,7 @@ class WorkflowService:
         uows: UnitOfWorkFactory,
         clock: Callable[[], datetime],
         ids: Callable[[], str] = lambda: uuid4().hex,
+        shared_context_projection: bool = False,
     ) -> None:
         self.repository = repository
         self.bootstrap = bootstrap
@@ -106,6 +108,47 @@ class WorkflowService:
         self.uows = uows
         self.clock = clock
         self.ids = ids
+        self.shared_context_projection = shared_context_projection
+
+    async def project_shared_context(
+        self,
+        scope,
+        workflow,
+        *,
+        event_id: str,
+        kind: str,
+        content: str,
+        artifact_refs: tuple[str, ...] = (),
+        continuation: Mapping[str, object] | None = None,
+        uow,
+    ) -> bool:
+        """Write a retryable projection job in the caller's transaction."""
+
+        if not self.shared_context_projection:
+            return False
+        from ._shared_context import projection_payload
+
+        await self.jobs.enqueue(
+            scope,
+            "workforce.shared_context.project",
+            {
+                **projection_payload(
+                    workflow,
+                    event_id=event_id,
+                    kind=kind,
+                    content=content,
+                    artifact_refs=artifact_refs,
+                ),
+                **(
+                    {"continuation": dict(continuation)}
+                    if continuation is not None
+                    else {}
+                ),
+            },
+            f"shared-context:{workflow.workflow_id}:{kind}:{event_id}",
+            uow,
+        )
+        return True
 
     async def _in_transaction(self, uow, callback):
         if uow is not None:
@@ -131,7 +174,7 @@ class WorkflowService:
             )
             aggregate = reservation.aggregate
             if not reservation.created:
-                raise WorkflowConflict(
+                raise WorkflowTicketAlreadyBound(
                     "ticket or conversation already bound; use workflow_reply"
                 )
             record = require_binding(aggregate, scope, audience)
@@ -167,15 +210,27 @@ class WorkflowService:
                 tx,
                 command.request_id,
             )
-            await self.enqueue_trigger(
+            trigger = WorkflowTrigger(
+                trigger_id=self.ids(),
+                workflow_id=record.workflow_id,
+                cause=RequestCause(
+                    kind="request",
+                    request_id=command.request_id,
+                    asset_ids=command.asset_ids,
+                ),
+            ).model_dump(mode="json")
+            deferred = await self.project_shared_context(
                 scope,
-                WorkflowTrigger(
-                    trigger_id=self.ids(),
-                    workflow_id=record.workflow_id,
-                    cause=RequestCause(kind="request", request_id=command.request_id),
-                ).model_dump(mode="json"),
-                tx,
+                aggregate.workflow,
+                event_id=command.request_id,
+                kind="customer_message",
+                content=command.text,
+                artifact_refs=command.asset_ids,
+                continuation=trigger,
+                uow=tx,
             )
+            if not deferred:
+                await self.enqueue_trigger(scope, trigger, tx)
             return aggregate.workflow
 
         return await self._in_transaction(uow, execute)
@@ -242,15 +297,27 @@ class WorkflowService:
                 tx,
                 command.request_id,
             )
-            await self.enqueue_trigger(
+            trigger = WorkflowTrigger(
+                trigger_id=self.ids(),
+                workflow_id=workflow_id,
+                cause=RequestCause(
+                    kind="request",
+                    request_id=command.request_id,
+                    asset_ids=command.asset_ids,
+                ),
+            ).model_dump(mode="json")
+            deferred = await self.project_shared_context(
                 scope,
-                WorkflowTrigger(
-                    trigger_id=self.ids(),
-                    workflow_id=workflow_id,
-                    cause=RequestCause(kind="request", request_id=command.request_id),
-                ).model_dump(mode="json"),
-                tx,
+                candidate.workflow,
+                event_id=command.request_id,
+                kind="customer_message",
+                content=command.text,
+                artifact_refs=command.asset_ids,
+                continuation=trigger,
+                uow=tx,
             )
+            if not deferred:
+                await self.enqueue_trigger(scope, trigger, tx)
             return candidate.workflow
 
         return await self._in_transaction(uow, execute)
@@ -278,6 +345,40 @@ class WorkflowService:
                 f"workflow:{digest}",
                 tx,
             )
+
+        return await self._in_transaction(uow, execute)
+
+    async def project_workflow_event(
+        self,
+        scope,
+        workflow_id: str,
+        *,
+        event_id: str,
+        kind: str,
+        content: str,
+        artifact_refs: tuple[str, ...] = (),
+        continuation: Mapping[str, object] | None = None,
+        uow=None,
+    ) -> bool:
+        """Project any authenticated partner command before its continuation."""
+
+        async def execute(tx):
+            aggregate = parse_aggregate(
+                await self.repository.load(scope, workflow_id, tx),
+            )
+            deferred = await self.project_shared_context(
+                scope,
+                aggregate.workflow,
+                event_id=event_id,
+                kind=kind,
+                content=content,
+                artifact_refs=artifact_refs,
+                continuation=continuation,
+                uow=tx,
+            )
+            if continuation is not None and not deferred:
+                await self.enqueue_trigger(scope, continuation, tx)
+            return deferred
 
         return await self._in_transaction(uow, execute)
 
@@ -370,9 +471,38 @@ class WorkflowService:
                     "status_schema": (operation.protocol_snapshot.protocol_version),
                     "status": event.normalized_status,
                     "external_reference": operation.external_job_id,
+                    "attachments": event.facts.get("attachments", []),
                 },
                 tx,
                 event.inbox_event_id,
+            )
+            trigger = WorkflowTrigger(
+                trigger_id=self.ids(),
+                workflow_id=record.workflow_id,
+                cause=ExternalEventCause(
+                    kind="external_event",
+                    cause_event_id=event.inbox_event_id,
+                    operation_id=operation_ref,
+                ),
+            ).model_dump(mode="json")
+            deferred = await self.project_shared_context(
+                scope,
+                candidate.workflow,
+                event_id=event.inbox_event_id,
+                kind="external_event",
+                content=json.dumps(
+                    event.model_dump(mode="json"),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                artifact_refs=tuple(
+                    item
+                    for item in event.facts.get("attachments", [])
+                    if isinstance(item, str)
+                ),
+                continuation=trigger,
+                uow=tx,
             )
             await self.events.write(
                 candidate.workflow,
@@ -384,19 +514,8 @@ class WorkflowService:
                 tx,
                 event.inbox_event_id,
             )
-            await self.enqueue_trigger(
-                scope,
-                WorkflowTrigger(
-                    trigger_id=self.ids(),
-                    workflow_id=record.workflow_id,
-                    cause=ExternalEventCause(
-                        kind="external_event",
-                        cause_event_id=event.inbox_event_id,
-                        operation_id=operation_ref,
-                    ),
-                ).model_dump(mode="json"),
-                tx,
-            )
+            if not deferred:
+                await self.enqueue_trigger(scope, trigger, tx)
             return candidate.workflow
 
         return await self._in_transaction(uow, execute)
@@ -485,6 +604,20 @@ class WorkflowService:
                 tx,
                 result.timer_id,
             )
+            deferred = await self.project_shared_context(
+                scope,
+                candidate.workflow,
+                event_id=result.timer_id,
+                kind="external_event",
+                content=json.dumps(
+                    result.model_dump(mode="json"),
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                continuation=trigger.model_dump(mode="json"),
+                uow=tx,
+            )
             await self.events.write(
                 candidate.workflow,
                 "workflow.status_changed",
@@ -495,11 +628,8 @@ class WorkflowService:
                 tx,
                 result.timer_id,
             )
-            await self.enqueue_trigger(
-                scope,
-                trigger.model_dump(mode="json"),
-                tx,
-            )
+            if not deferred:
+                await self.enqueue_trigger(scope, trigger.model_dump(mode="json"), tx)
             return candidate.workflow
 
         return await self._in_transaction(uow, execute)
@@ -578,6 +708,23 @@ class WorkflowService:
                 },
                 tx,
                 parsed.external_request_id,
+            )
+            await self.project_shared_context(
+                scope,
+                candidate.workflow,
+                event_id=parsed.external_request_id,
+                kind="context_update",
+                content=json.dumps(
+                    {
+                        "action": "workflow_closed",
+                        "reason": parsed.reason,
+                        "stop_tracking_only": parsed.stop_tracking_only,
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                uow=tx,
             )
             return candidate.workflow
 

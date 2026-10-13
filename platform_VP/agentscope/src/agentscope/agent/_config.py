@@ -165,6 +165,17 @@ class ContextConfig(BaseModel):
     """Whether to fall back to context truncation when the summary generation
     fails."""
 
+    compression_retry_drop_oldest: bool = Field(
+        default=True,
+        description=(
+            "Whether a compression request that exceeds the model context may "
+            "retry after removing its oldest source messages. Disable this "
+            "for audited runtimes where every compressed source must remain "
+            "present in the summarizer input."
+        ),
+    )
+    """Whether compression may retry with a lossy source subset."""
+
     compression_tool_enabled: bool = Field(
         default=False,
         description=(

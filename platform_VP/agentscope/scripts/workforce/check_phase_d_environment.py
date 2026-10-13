@@ -42,7 +42,7 @@ def main() -> int:
     )
     scripts = ScriptDirectory.from_config(config)
     heads = scripts.get_heads()
-    if heads != ["0011_workforce_releases"]:
+    if heads != ["0012_workforce_assets"]:
         failures.append(f"unexpected Alembic heads: {heads!r}")
 
     postgres = os.getenv("WORKFORCE_TEST_POSTGRES_URL")

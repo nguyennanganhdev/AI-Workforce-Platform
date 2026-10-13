@@ -1,16 +1,15 @@
 # -*- coding: utf-8 -*-
 """AgentScope app factory."""
-import secrets
-from typing import Type, TYPE_CHECKING, Any
 
+import secrets
+from typing import TYPE_CHECKING, Any, Type
+
+from .._logging import logger
+from .._version import __version__
+from ..agent import Agent
+from ..credential import CredentialBase, CredentialFactory
+from ..rag import ApproxTokenChunker, ChunkerBase, ParserBase, TextParser
 from ._lifespan import lifespan
-from .access import DenyAllResourceAccessPolicy, ResourceAccessPolicyBase
-from .auth import AuthService
-from .business import BusinessService
-from .hub import HubBase, HubError, MCPHubBase, SkillHubBase
-from .rag.blob_store import BlobStoreBase, LocalBlobStore
-from .rag.knowledge_base_manager import KnowledgeBaseManagerBase
-from .workspace_manager import WorkspaceManagerBase
 from ._router import (
     agent_router,
     auth_router,
@@ -18,30 +17,31 @@ from ._router import (
     channel_router,
     chat_router,
     credential_router,
+    embedding_model_router,
     health_router,
     hub_router,
     knowledge_base_router,
-    embedding_model_router,
     mcp_router,
     model_router,
-    tts_model_router,
     schedule_router,
     session_router,
     skill_router,
     sop_router,
+    tts_model_router,
+    workforce_console_router,
     workspace_router,
 )
 from ._types import AgentMiddlewareFactory, AgentToolFactory, SubAgentTemplate
+from .access import DenyAllResourceAccessPolicy, ResourceAccessPolicyBase
+from .auth import AuthService
+from .business import BusinessService
 from .channel import ChannelBase, ChannelTypeRegistry
+from .hub import HubBase, HubError, MCPHubBase, SkillHubBase
 from .message_bus import MessageBus
+from .rag.blob_store import BlobStoreBase, LocalBlobStore
+from .rag.knowledge_base_manager import KnowledgeBaseManagerBase
 from .storage import StorageBase
-from ..agent import Agent
-from ..credential import CredentialFactory, CredentialBase
-from ..rag import ApproxTokenChunker, ChunkerBase, ParserBase, TextParser
-
-from .._logging import logger
-from .._version import __version__
-
+from .workspace_manager import WorkspaceManagerBase
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -105,6 +105,7 @@ def create_app(
     auth_service: AuthService | None = None,
     business_service: BusinessService | None = None,
     workforce_bootstrap: Any | None = None,
+    shared_context_storage: StorageBase | None = None,
     download_secret: str | None = None,
     title: str = "AgentScope",
     version: str = __version__,
@@ -139,6 +140,11 @@ def create_app(
         storage (`StorageBase`):
             The storage backend.  Its lifecycle (``__aenter__`` /
             ``__aexit__``) is managed by the app lifespan.
+        shared_context_storage (`StorageBase | None`, optional):
+            Optional dedicated durable backend for team shared context. Its
+            lifecycle is managed by the app when it differs from ``storage``.
+            This allows PostgreSQL shared state with Redis agent/session
+            storage and message transport.
         message_bus (`MessageBus`):
             The live message bus used for cross-session inbox delivery
             and idle-session triggers. Required — the bus is intentionally
@@ -247,14 +253,9 @@ def create_app(
             user-specific credentials).  The returned tools are added to
             the workspace-derived tools in the toolkit's ``"basic"`` group.
         custom_subagent_templates (`list[SubAgentTemplate] | None`, optional):
-            Reusable blueprints for sub-agent creation within teams.
-            Each template defines a sub-agent *type* (e.g. ``"researcher"``,
-            ``"coder"``) with pre-configured system prompt, context config,
-            ReAct config, permission context, and task context. When
-            registered, the ``AgentCreate`` tool exposes a
-            ``subagent_type`` parameter so the leader agent can route to
-            the appropriate template.  See
-            :class:`~agentscope.app._types.SubAgentTemplate` for details.
+            Legacy compatibility registry for integrations that construct
+            ``AgentCreate`` directly. Normal chat runtime does not expose
+            agent creation; use Agent Builder to publish business agents.
         custom_agent_cls (`Type[Agent] | None`, optional):
             A custom :class:`~agentscope.agent.Agent` subclass to use
             when assembling agents.  When ``None`` (default), the
@@ -312,6 +313,7 @@ def create_app(
 
     # Attach shared state that lifespan and dependencies read from app.state
     app.state.storage = storage
+    app.state.shared_context_storage = shared_context_storage or storage
     app.state.auth_service = auth_service
     app.state.business_service = business_service
     if (
@@ -320,6 +322,24 @@ def create_app(
     ):
         raise ValueError(
             "workforce_bootstrap must use create_app's message_bus",
+        )
+    if (
+        workforce_bootstrap is not None
+        and getattr(workforce_bootstrap, "asset_store", None) is not None
+        and workforce_bootstrap.asset_store is not blob_store
+    ):
+        raise ValueError(
+            "Workforce asset_store must be the blob_store passed to create_app",
+        )
+    if (
+        workforce_bootstrap is not None
+        and getattr(workforce_bootstrap, "shared_context_storage", None) is not None
+        and workforce_bootstrap.shared_context_storage
+        is not app.state.shared_context_storage
+    ):
+        raise ValueError(
+            "Workforce and direct chat must use the same "
+            "shared_context_storage instance",
         )
     app.state.workforce_bootstrap = workforce_bootstrap
     app.state.workforce = None
@@ -356,9 +376,7 @@ def create_app(
 
     if knowledge_base_manager is not None:
         app.state.knowledge_parsers = (
-            knowledge_parsers
-            if knowledge_parsers is not None
-            else [TextParser()]
+            knowledge_parsers if knowledge_parsers is not None else [TextParser()]
         )
         chunker_classes = list(
             knowledge_chunkers
@@ -386,9 +404,7 @@ def create_app(
             seen_chunker_types[cls.chunker_type] = cls
         app.state.knowledge_chunkers = chunker_classes
         app.state.blob_store = (
-            blob_store
-            if blob_store is not None
-            else LocalBlobStore(root_dir="./blobs")
+            blob_store if blob_store is not None else LocalBlobStore(root_dir="./blobs")
         )
     else:
         app.state.knowledge_parsers = knowledge_parsers
@@ -435,6 +451,7 @@ def create_app(
         tts_model_router,
         embedding_model_router,
         channel_router,
+        workforce_console_router,
     ):
         app.include_router(router)
 

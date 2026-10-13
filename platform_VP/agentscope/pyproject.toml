@@ -30,6 +30,10 @@ dependencies = [
     "httpx",
     "numpy",
     "openai",
+    # Provider tokenizer used for preflight context-budget enforcement on
+    # OpenAI/OpenAI-compatible chat models.  This avoids the old byte/4
+    # estimate for the platform's default provider.
+    "tiktoken>=0.8",
     "python-datauri",
     "opentelemetry-api>=1.39.0",
     "opentelemetry-sdk>=1.39.0",
@@ -44,6 +48,9 @@ dependencies = [
     "tree_sitter",
     "tree_sitter_bash",
     "jsonschema",
+    # Required for JSON Schema ``date-time`` format checks.  Without this
+    # optional backend, FormatChecker silently treats RFC3339 values as valid.
+    "rfc3339-validator",
     "pypdf",
     # The IANA timezone database, which is absent on Windows and slim images
     "tzdata",

@@ -8,11 +8,12 @@ import type {
 	ReplyStartEvent,
 	UserConfirmResultEvent,
 } from '@agentscope-ai/agentscope/event';
-import { appendEvent, AssistantMsg, UserMsg } from '@agentscope-ai/agentscope/message';
+import { AssistantMsg, UserMsg } from '@agentscope-ai/agentscope/message';
 import type { Msg, ContentBlock } from '@agentscope-ai/agentscope/message';
 import type { ToolCallBlock } from '@agentscope-ai/agentscope/message';
 import { useState, useCallback, useRef, useEffect } from 'react';
 
+import { appendChatEvent } from '../utils/appendChatEvent';
 import { sessionApi, takeFreshlyCreated } from '@/api';
 import { chatApi } from '@/api';
 import { useAudioManager } from '@/context/AudioContext';
@@ -227,7 +228,7 @@ export function useMessages(
 			} else {
 				if (currentReplyRef.current) {
 					const reply = currentReplyRef.current;
-					appendEvent(reply, event);
+					appendChatEvent(reply, event);
 					// ``appendEvent`` mutates in place, which would leave
 					// every Msg identical across renders and force the whole
 					// list to re-render on each delta. Republish just the
@@ -381,11 +382,15 @@ export function useMessages(
 			scheduleUpdate();
 
 			try {
-				await chatApi.trigger({
+				const response = await chatApi.trigger({
 					agent_id: agentId,
 					session_id: sessionId,
 					input: userMsg,
 				});
+				if (response.message) {
+					msgsRef.current = [...msgsRef.current, response.message];
+					scheduleUpdate();
+				}
 			} catch (e) {
 				setError(e as Error);
 			}
@@ -550,13 +555,18 @@ export function useMessages(
 	);
 
 	const currentKey = agentId !== null && sessionId !== null ? `${agentId}:${sessionId}` : null;
+	const awaitingConsent = msgs.some((message) => message.role === 'assistant' &&
+		message.content.some((block) => block.type === 'tool_call' &&
+			(block as ToolCallBlock).state === 'asking' &&
+			!message.content.some((result) => result.type === 'tool_result' && result.id === block.id))) ||
+		subagentHitl.some((entry) => entry.event_type === 'require_user_confirm');
 	const ownsConversation = currentKey !== null && loadedKey === currentKey;
 	const loading = currentKey !== null && !ownsConversation;
 
 	return {
 		msgs: ownsConversation ? msgs : [],
 		loading,
-		phase: ownsConversation ? phase : ('idle' as ReplyPhase),
+		phase: ownsConversation && !awaitingConsent ? phase : ('idle' as ReplyPhase),
 		error: ownsConversation ? error : null,
 		send,
 		onUserConfirm,

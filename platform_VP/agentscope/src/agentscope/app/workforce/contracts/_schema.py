@@ -3,6 +3,13 @@
 
 from pydantic import BaseModel
 
+from ._assets import (
+    AssetDownloadGrant,
+    AssetProjection,
+    AssetUploadSession,
+    CustomerAssetUploadRequest,
+    ProviderAssetUploadRequest,
+)
 from ._batch import AgentBuildBatch
 from ._catalog import McpConnection, PartnerMcpDefinition, ToolDescriptor
 from ._conversation import (
@@ -35,7 +42,6 @@ from ._partner_routing import (
 )
 from ._reuse import ReuseCheck, ReuseDecision
 
-
 CONTRACT_SCHEMA_VERSION = "1"
 
 SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
@@ -43,6 +49,11 @@ SCHEMA_MODELS: tuple[type[BaseModel], ...] = (
     ActorContext,
     VerifiedProviderContext,
     PartnerAudience,
+    CustomerAssetUploadRequest,
+    ProviderAssetUploadRequest,
+    AssetUploadSession,
+    AssetProjection,
+    AssetDownloadGrant,
     RouteConfirmation,
     RouteConfirmationResult,
     ResidenceSync,

@@ -1,12 +1,14 @@
-# -*- coding: utf-8 -*-
 """The Redis-backed message bus implementation."""
 import asyncio
 import json
+import time
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
-from typing import Any, Callable, Self, TYPE_CHECKING
+from types import TracebackType
+from typing import TYPE_CHECKING, Any, Self
 
+from ..._logging import logger
 from ._base import MessageBus
 
 if TYPE_CHECKING:
@@ -42,6 +44,16 @@ _REGISTRY_POP_LUA = """
 local value = redis.call('HGET', KEYS[1], ARGV[1])
 if value then redis.call('HDEL', KEYS[1], ARGV[1]) end
 return value
+"""
+
+_LOCK_RENEW_LUA = """
+if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+return redis.call('EXPIRE', KEYS[1], ARGV[2])
+"""
+
+_LOCK_RELEASE_LUA = """
+if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+return redis.call('DEL', KEYS[1])
 """
 
 
@@ -166,7 +178,7 @@ class RedisMessageBus(MessageBus):  # pylint: disable=too-many-public-methods
         self,
         exc_type: type[BaseException] | None,
         exc_value: BaseException | None,
-        traceback: Any,
+        traceback: TracebackType | None,
     ) -> None:
         """Exit the async context manager and release resources.
 
@@ -175,7 +187,7 @@ class RedisMessageBus(MessageBus):  # pylint: disable=too-many-public-methods
                 Exception class raised inside the context, if any.
             exc_value (`BaseException | None`):
                 Exception instance raised inside the context, if any.
-            traceback (`Any`):
+            traceback (`TracebackType | None`):
                 Traceback associated with the exception, if any.
         """
         await self.aclose()
@@ -663,18 +675,75 @@ class RedisMessageBus(MessageBus):  # pylint: disable=too-many-public-methods
             `None`: while the lock is held.
         """
         token = uuid.uuid4().hex
+
+        async def _release_owned() -> None:
+            try:
+                released = await self._client.eval(
+                    _LOCK_RELEASE_LUA,
+                    1,
+                    key,
+                    token,
+                )
+                if not released:
+                    logger.warning(
+                        "Redis lock %s was no longer owned during release.",
+                        key,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                # The lease is still a bounded crash-safety fallback.
+                logger.warning(
+                    "Failed to release Redis lock %s; waiting for lease "
+                    "expiry: %s",
+                    key,
+                    exc,
+                )
+
+        async def _settle_cancelled_acquire(operation: asyncio.Task) -> None:
+            result = await asyncio.gather(operation, return_exceptions=True)
+            if result and result[0] is True:
+                await _release_owned()
+
+        wait_started = time.monotonic()
         # Acquire (poll until success).
         while True:
-            ok = await self._client.set(key, token, nx=True, ex=ttl_secs)
+            # Cancellation can arrive after Redis accepted SET but before the
+            # client delivered its response. Shield and settle that ambiguous
+            # operation; otherwise the caller never enters the context manager
+            # and its finally block cannot release the orphaned lease.
+            set_task = asyncio.create_task(
+                self._client.set(key, token, nx=True, ex=ttl_secs),
+            )
+            try:
+                ok = await asyncio.shield(set_task)
+            except asyncio.CancelledError:
+                settle_task = asyncio.create_task(
+                    _settle_cancelled_acquire(set_task),
+                )
+                try:
+                    await asyncio.shield(settle_task)
+                except asyncio.CancelledError:
+                    await settle_task
+                raise
             if ok:
                 break
             await asyncio.sleep(self._LOCK_RETRY_DELAY_SECS)
+        waited = time.monotonic() - wait_started
+        if waited >= 1.0:
+            logger.warning("Waited %.3fs to acquire Redis lock %s.", waited, key)
 
         # Heartbeat: renew TTL every ttl/2 seconds.
         async def _heartbeat() -> None:
             while True:
                 await asyncio.sleep(max(1.0, ttl_secs / 2))
-                await self._client.expire(key, ttl_secs)
+                renewed = await self._client.eval(
+                    _LOCK_RENEW_LUA,
+                    1,
+                    key,
+                    token,
+                    ttl_secs,
+                )
+                if not renewed:
+                    return
 
         hb_task = asyncio.create_task(
             _heartbeat(),
@@ -684,21 +753,20 @@ class RedisMessageBus(MessageBus):  # pylint: disable=too-many-public-methods
         try:
             yield
         finally:
-            hb_task.cancel()
+            async def _cleanup() -> None:
+                hb_task.cancel()
+                await asyncio.gather(hb_task, return_exceptions=True)
+                # Compare-and-delete atomically. Shielded cleanup matters for
+                # tool offload: cancellation must not strand a 30-second lock
+                # that blocks every other collaborator in the same team.
+                await _release_owned()
+
+            cleanup_task = asyncio.create_task(_cleanup())
             try:
-                await hb_task
+                await asyncio.shield(cleanup_task)
             except asyncio.CancelledError:
-                pass
-            # Release: only delete if the value still matches our
-            # token. Failures are swallowed (the lease may have
-            # expired naturally, in which case there is nothing to
-            # do).
-            try:
-                current = await self._client.get(key)
-                if current == token:
-                    await self._client.delete(key)
-            except Exception:  # pylint: disable=broad-except
-                pass
+                await cleanup_task
+                raise
 
     async def is_locked(self, key: str) -> bool:
         """Return whether ``key`` currently holds a lock.

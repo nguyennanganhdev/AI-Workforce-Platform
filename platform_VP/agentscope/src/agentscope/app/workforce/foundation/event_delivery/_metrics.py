@@ -13,6 +13,7 @@ WORKER_ITERATIONS = "workforce_worker_iterations_total"
 WORKER_RESTARTS = "workforce_worker_restarts_total"
 SSE_CONNECTIONS = "workforce_sse_connections_total"
 SSE_REPLAYS = "workforce_sse_replays_total"
+PROVIDER_EVENTS = "workforce_provider_events_total"
 
 
 class MetricSink(Protocol):
@@ -72,6 +73,7 @@ __all__ = [
     "InMemoryMetricSink",
     "MetricSink",
     "NullMetricSink",
+    "PROVIDER_EVENTS",
     "SSE_CONNECTIONS",
     "SSE_REPLAYS",
     "WORKER_ITERATIONS",

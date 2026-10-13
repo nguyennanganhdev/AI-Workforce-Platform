@@ -1,20 +1,20 @@
 # -*- coding: utf-8 -*-
 """Proposed public payload allowlist; canonical envelope remains shared."""
 
-from datetime import datetime
 import re
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BeforeValidator, Field
 
 from ...contracts import (
+    AssetReferenceInput,
     ConversationEvent,
     OpaqueId,
     ShortCode,
     WorkflowState,
     WorkforceModel,
 )
-
 
 PUBLIC_TIMESTAMP_PATTERN = (
     r"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}"
@@ -26,9 +26,7 @@ def timestamp_input(value: object) -> object:
     """Wire timestamps are strings, never implicit epoch numbers."""
     if not isinstance(value, (str, datetime)):
         raise ValueError("timestamp requires a string or aware datetime")
-    if isinstance(value, str) and not re.fullmatch(
-        PUBLIC_TIMESTAMP_PATTERN, value
-    ):
+    if isinstance(value, str) and not re.fullmatch(PUBLIC_TIMESTAMP_PATTERN, value):
         raise ValueError("timestamp requires RFC 3339 with timezone")
     return value
 
@@ -62,6 +60,7 @@ class TicketStatusPayload(WorkforceModel):
 class AssistantMessagePayload(WorkforceModel):
     message_id: OpaqueId
     text: str = Field(min_length=1, max_length=20_000)
+    attachments: tuple[AssetReferenceInput, ...] = ()
 
 
 class ApprovalRequiredPayload(WorkforceModel):
@@ -80,6 +79,7 @@ class OperationStatusPayload(WorkforceModel):
     status_schema: ShortCode
     status: ShortCode
     external_reference: OpaqueId | None = None
+    attachments: tuple[AssetReferenceInput, ...] = ()
 
 
 class WorkflowAwaitingUserPayload(WorkforceModel):
@@ -120,8 +120,6 @@ def validate_public_event(event: ConversationEvent) -> ConversationEvent:
     ConversationEvent.model_validate(dict(event))
     model = PUBLIC_PAYLOAD_MODELS.get(event.event_type)
     if model is None:
-        raise ValueError(
-            "event type is not in the public contract section 9.7"
-        )
+        raise ValueError("event type is not in the public contract section 9.7")
     model.model_validate(event.payload)
     return event

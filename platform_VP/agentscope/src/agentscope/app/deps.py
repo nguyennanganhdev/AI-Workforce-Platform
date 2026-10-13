@@ -133,6 +133,12 @@ async def get_storage(request: Request) -> StorageBase:
     return request.app.state.storage
 
 
+async def get_shared_context_storage(request: Request) -> StorageBase:
+    """Return the durable store used for team/ticket shared state."""
+
+    return request.app.state.shared_context_storage
+
+
 async def get_message_bus(request: Request) -> MessageBus:
     """Return the application-wide message bus.
 

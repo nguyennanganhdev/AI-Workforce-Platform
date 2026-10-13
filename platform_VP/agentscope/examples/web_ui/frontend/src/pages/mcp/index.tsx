@@ -1,9 +1,22 @@
-import { Blocks, Check, Download, Pencil, Plug, Trash2, TriangleAlert } from 'lucide-react';
+import {
+	Blocks,
+	Check,
+	ChevronDown,
+	ChevronUp,
+	Download,
+	Pencil,
+	Plug,
+	PlugZap,
+	RefreshCw,
+	Trash2,
+	TriangleAlert,
+} from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { hubApi } from '@/api';
+import { hubApi, mcpApi } from '@/api';
 import type { HubInfo, MCPCard, MCPView } from '@/api';
+import { DirectMCPDialog } from '@/components/dialog/DirectMCPDialog.tsx';
 import { InstallMCPDialog } from '@/components/dialog/InstallMCPDialog.tsx';
 import { ResourceDetailDrawer } from '@/components/drawer/ResourceDetailDrawer.tsx';
 import { LoadMore } from '@/components/hub/LoadMore.tsx';
@@ -331,11 +344,14 @@ interface MinePanelProps {
 	loading: boolean;
 	onEdit: (mcp: MCPView) => void;
 	onRemove: (mcpId: string) => void;
+	onAddDirect: () => void;
+	onSync: (mcpId: string) => void;
 }
 
-function MinePanel({ mcps, loading, onEdit, onRemove }: MinePanelProps) {
+function MinePanel({ mcps, loading, onEdit, onRemove, onAddDirect, onSync }: MinePanelProps) {
 	const { t } = useTranslation();
 	const [query, setQuery] = useState('');
+	const [expandedMcpId, setExpandedMcpId] = useState<string | null>(null);
 
 	// Filtered client-side: the library is the user's own and small, so a
 	// round trip per keystroke would buy nothing.
@@ -364,6 +380,17 @@ function MinePanel({ mcps, loading, onEdit, onRemove }: MinePanelProps) {
 					: undefined
 			}
 		>
+			<div className="mb-3 flex items-center justify-between border-b px-4 pb-3">
+				<div>
+					<p className="text-sm font-medium">MCP Catalog của platform</p>
+					<p className="text-xs text-muted-foreground">
+						Cài MCP đối tác để Builder có thể chọn tool đã đăng ký.
+					</p>
+				</div>
+				<Button size="sm" onClick={onAddDirect}>
+					<PlugZap /> Kết nối MCP đối tác
+				</Button>
+			</div>
 			{loading ? (
 				<div className="flex justify-center py-10">
 					<Spinner />
@@ -436,11 +463,38 @@ function MinePanel({ mcps, loading, onEdit, onRemove }: MinePanelProps) {
 									))}
 								</ItemTitle>
 								<ItemDescription className="line-clamp-1">
-									{mcp.description}
+									{mcp.description} · {mcp.tools.length} tool đã đăng ký
 								</ItemDescription>
+								{expandedMcpId === mcp.id && (
+									<div className="mt-3 grid gap-2 border-t pt-3">
+										{mcp.tools.map((tool) => (
+											<div key={tool.name} className="rounded-lg bg-muted/45 px-3 py-2">
+												<p className="font-mono text-xs font-medium">{tool.name}</p>
+												{tool.description && (
+													<p className="mt-1 text-xs text-muted-foreground">
+														{tool.description}
+													</p>
+												)}
+												<details className="mt-2 text-xs text-muted-foreground">
+													<summary className="cursor-pointer">Input schema</summary>
+													<pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-md border bg-background p-2 font-mono text-[11px]">
+														{JSON.stringify(tool.input_schema, null, 2)}
+													</pre>
+												</details>
+											</div>
+										))}
+										{mcp.tools.length === 0 && (
+											<p className="text-xs text-muted-foreground">
+												MCP chưa đồng bộ được tool. Hãy bấm đồng bộ lại.
+											</p>
+										)}
+									</div>
+								)}
 							</ItemContent>
 
-							<ItemActions className="gap-1">
+							<ItemActions
+								className={cn('gap-1', expandedMcpId === mcp.id && 'self-start')}
+							>
 								{mcp.version && (
 									<span className="text-xs text-muted-foreground whitespace-nowrap">
 										{mcp.version}
@@ -457,6 +511,26 @@ function MinePanel({ mcps, loading, onEdit, onRemove }: MinePanelProps) {
 										<Pencil />
 									</Button>
 								)}
+								<Button
+									size="sm"
+									variant="ghost"
+									className="text-muted-foreground"
+									onClick={() =>
+										setExpandedMcpId((current) => (current === mcp.id ? null : mcp.id))
+									}
+								>
+									{expandedMcpId === mcp.id ? <ChevronUp /> : <ChevronDown />}
+									{expandedMcpId === mcp.id ? 'Thu lại' : 'Xem tools'}
+								</Button>
+								<Button
+									size="icon-sm"
+									variant="ghost"
+									className="text-muted-foreground"
+									onClick={() => onSync(mcp.id)}
+									title="Đồng bộ lại tool"
+								>
+									<RefreshCw />
+								</Button>
 								<Button
 									size="icon-sm"
 									variant="ghost"
@@ -489,6 +563,11 @@ export function MCPHubPage() {
 	// the card has to be fetched before the dialog can render its inputs.
 	const [editing, setEditing] = useState<MCPView | null>(null);
 	const [editingCard, setEditingCard] = useState<MCPCard | null>(null);
+	const [directOpen, setDirectOpen] = useState(false);
+	const syncMcp = async (mcpId: string) => {
+		await mcpApi.sync(mcpId);
+		await refetchMcps();
+	};
 
 	useEffect(() => {
 		if (!editing?.hub_id || !editing.card_id) return;
@@ -636,6 +715,8 @@ export function MCPHubPage() {
 						loading={mcpsLoading}
 						onEdit={setEditing}
 						onRemove={remove}
+						onAddDirect={() => setDirectOpen(true)}
+						onSync={syncMcp}
 					/>
 				)}
 			</main>
@@ -649,6 +730,11 @@ export function MCPHubPage() {
 						setEditingCard(null);
 					}
 				}}
+				onInstalled={refetchMcps}
+			/>
+			<DirectMCPDialog
+				open={directOpen}
+				onOpenChange={setDirectOpen}
 				onInstalled={refetchMcps}
 			/>
 		</div>

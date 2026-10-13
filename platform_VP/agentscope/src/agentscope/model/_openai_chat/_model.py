@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """The OpenAI Chat Completions model implementation."""
+
 import base64
 from collections import OrderedDict
 from datetime import datetime
@@ -15,6 +16,10 @@ from ..._utils._common import _generate_id, _flatten_json_schema
 from .._base import ChatModelBase, _TOOL_CHOICE_LITERAL_MODES
 from .._model_response import ChatResponse
 from .._model_usage import ChatUsage
+from .._token_counting import (
+    count_openai_text,
+    openai_token_counting_strategy,
+)
 from ...credential import OpenAICredential
 from ...formatter import FormatterBase, OpenAIChatFormatter
 from ...message import (
@@ -110,6 +115,19 @@ class OpenAIChatModel(ChatModelBase):
 
     type: Literal["openai_chat"] = "openai_chat"
     """The type of the chat model."""
+
+    def _count_text_tokens(self, text: str) -> int:
+        return count_openai_text(self.model, text)
+
+    def _count_protocol_tokens(self, messages: list[Msg]) -> int:
+        # OpenAI chat messages carry a small model-family envelope in addition
+        # to lexical tokens.  The lexical portion is tokenizer exact; this
+        # stable allowance is deliberately visible through the strategy name.
+        return len(messages) * 4 + 3
+
+    @property
+    def token_counting_strategy(self) -> str:
+        return openai_token_counting_strategy(self.model) + "+protocol-envelope-v1"
 
     def __init__(
         self,
@@ -240,10 +258,7 @@ class OpenAIChatModel(ChatModelBase):
         if self.parameters.top_p is not None:
             kwargs["top_p"] = self.parameters.top_p
 
-        if (
-            self.parameters.thinking_enable
-            and self.parameters.reasoning_effort
-        ):
+        if self.parameters.thinking_enable and self.parameters.reasoning_effort:
             kwargs["reasoning_effort"] = self.parameters.reasoning_effort
 
         if self.parameters.voice is not None:
@@ -281,9 +296,7 @@ class OpenAIChatModel(ChatModelBase):
 
         audio_cfg = kwargs.get("audio")
         audio_fmt = (
-            audio_cfg.get("format", "wav")
-            if isinstance(audio_cfg, dict)
-            else "wav"
+            audio_cfg.get("format", "wav") if isinstance(audio_cfg, dict) else "wav"
         )
 
         if self.stream:
@@ -396,14 +409,10 @@ class OpenAIChatModel(ChatModelBase):
                 if delta_audio is not None:
                     if isinstance(delta_audio, dict):
                         audio_chunk = delta_audio.get("data", "") or ""
-                        transcript_chunk = (
-                            delta_audio.get("transcript", "") or ""
-                        )
+                        transcript_chunk = delta_audio.get("transcript", "") or ""
                     else:
                         audio_chunk = getattr(delta_audio, "data", "") or ""
-                        transcript_chunk = (
-                            getattr(delta_audio, "transcript", "") or ""
-                        )
+                        transcript_chunk = getattr(delta_audio, "transcript", "") or ""
                     if transcript_chunk:
                         delta_text += transcript_chunk
                     if audio_chunk:
@@ -478,9 +487,7 @@ class OpenAIChatModel(ChatModelBase):
             `ChatResponse`:
                 A single ``ChatResponse`` with ``is_last=True``.
         """
-        content_blocks: List[
-            TextBlock | ToolCallBlock | ThinkingBlock | DataBlock
-        ] = []
+        content_blocks: List[TextBlock | ToolCallBlock | ThinkingBlock | DataBlock] = []
 
         if response.choices:
             choice = response.choices[0]
@@ -502,9 +509,7 @@ class OpenAIChatModel(ChatModelBase):
                     audio_transcript = audio_obj.get("transcript", "")
                 else:
                     audio_data = getattr(audio_obj, "data", "") or ""
-                    audio_transcript = (
-                        getattr(audio_obj, "transcript", "") or ""
-                    )
+                    audio_transcript = getattr(audio_obj, "transcript", "") or ""
                 if not choice.message.content and audio_transcript:
                     content_blocks.append(TextBlock(text=audio_transcript))
                 if audio_data:

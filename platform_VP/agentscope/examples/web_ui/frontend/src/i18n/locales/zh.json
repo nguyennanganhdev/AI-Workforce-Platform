@@ -700,7 +700,7 @@
 		"loading": "加载中…",
 		"team": {
 			"membersHeading": "成员",
-			"noMembers": "还没有成员——让队长用 AgentCreate 添加一个。",
+			"noMembers": "还没有成员——队长会在需要时邀请已发布的智能体。",
 			"emptyTitle": "没有团队",
 			"emptyDescription": "当前会话不属于任何团队。agent 会用 TeamCreate 建立团队。",
 			"running": "运行中",

@@ -13,4 +13,14 @@ export { knowledgeBaseApi } from './knowledgeBase';
 export { channelApi } from './channel';
 export { healthApi } from './health';
 export { authApi } from './auth';
+export { workforceApi } from './workforce';
+export type {
+	BuilderConversationSummary,
+	BuilderMessage,
+	BuilderProposal,
+	BuilderTool,
+	LeaderSession,
+	ProposedAgent,
+	WorkforceAgent,
+} from './workforce';
 export type { AreaOption, AuthUser, DomainOption, LoginRequest, RegisterRequest } from './auth';

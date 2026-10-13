@@ -8,7 +8,6 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 OpaqueId = Annotated[str, Field(min_length=1, max_length=200)]
 ShortCode = Annotated[str, Field(min_length=1, max_length=128)]
 JsonObject = dict[str, Any]

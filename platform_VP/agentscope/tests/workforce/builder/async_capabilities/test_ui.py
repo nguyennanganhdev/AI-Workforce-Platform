@@ -1,6 +1,7 @@
 """Optional live demo UI tests. Start the owned Vite demo server first.
 
-Requires Playwright in the test environment and installed Microsoft Edge.
+Requires Playwright and an installed Chromium browser in the test environment.
+Set BUILDER_UI_BROWSER_CHANNEL only when a named browser channel is desired.
 No provider/model calls; the page uses generated fake proposal fixtures only.
 """
 
@@ -18,7 +19,11 @@ class BuilderUiTests(unittest.TestCase):
         from playwright.sync_api import sync_playwright
 
         cls.runtime = sync_playwright().start()
-        cls.browser = cls.runtime.chromium.launch(channel="msedge", headless=True)
+        channel = os.environ.get("BUILDER_UI_BROWSER_CHANNEL")
+        options = {"headless": True}
+        if channel:
+            options["channel"] = channel
+        cls.browser = cls.runtime.chromium.launch(**options)
 
     @classmethod
     def tearDownClass(cls):

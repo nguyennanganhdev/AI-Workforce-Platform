@@ -73,9 +73,18 @@ class ProviderEventIngress:
         jobs: Any,
         operations: Any,
         clock: Any = utc_now,
+        *,
+        metrics: Any = None,
+        assets: Any = None,
     ) -> None:
         self.repo, self.auth, self.protocols = repository, auth, protocols
         self.jobs, self.operations, self.clock = jobs, operations, clock
+        if metrics is None:
+            from ...foundation.event_delivery import NullMetricSink
+
+            metrics = NullMetricSink()
+        self.metrics = metrics
+        self.assets = assets
 
     async def accept(
         self,
@@ -125,15 +134,16 @@ class ProviderEventIngress:
             await self.auth.authorize_integration(
                 principal, "publish_job_event", uow=uow
             )
-            stored = await self.repo.insert_once(
-                "inbox", record, namespace, uow
-            )
+            if self.assets is not None:
+                await self.assets.validate_provider_event_assets(
+                    verified_principal, envelope, uow
+                )
+            stored = await self.repo.insert_once("inbox", record, namespace, uow)
             # Accept pre-Phase-A rows only when their normalized business
             # envelope is identical. Never overwrite the original audit hash.
             if (
                 stored["payload_hash"] != source_hash
-                and digest(canonical_envelope(stored["envelope"]))
-                != source_hash
+                and digest(canonical_envelope(stored["envelope"])) != source_hash
             ):
                 raise ExecutionError("EVENT_ID_CONFLICT")
             duplicate = stored["id"] != record["id"]
@@ -148,6 +158,12 @@ class ProviderEventIngress:
                     stored["id"],
                     uow=uow,
                 )
+        from ...foundation.event_delivery import PROVIDER_EVENTS
+
+        self.metrics.increment(
+            PROVIDER_EVENTS,
+            labels={"outcome": "duplicate" if duplicate else "accepted"},
+        )
         return receipt_projection(stored, duplicate)
 
     async def read_receipt(self, principal: Any, receipt_id: Any) -> Any:
@@ -162,9 +178,7 @@ class ProviderEventIngress:
                 {
                     "id": receipt_id,
                     "tenant_id": principal["tenant_id"],
-                    "provider_integration_id": principal[
-                        "provider_integration_id"
-                    ],
+                    "provider_integration_id": principal["provider_integration_id"],
                 },
                 uow,
             )

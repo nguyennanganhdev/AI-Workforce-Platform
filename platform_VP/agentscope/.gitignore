@@ -159,6 +159,7 @@ uv.lock
 *.local
 .eslintcache
 .vite/
+.artifacts/
 npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*

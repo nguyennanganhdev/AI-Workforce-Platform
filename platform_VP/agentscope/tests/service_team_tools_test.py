@@ -15,24 +15,26 @@ backed by ``fakeredis``. They assert:
   of raising.
 """
 from contextlib import AsyncExitStack
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock
 
 import fakeredis.aioredis
-
 from utils import AnyString, FakeWorkspaceManager
 
 from agentscope.agent import ContextConfig, ReActConfig
+from agentscope.app._router._session import _build_team_detail
+from agentscope.app._service import ResourceAccessService
+from agentscope.app._shared_context import SharedContextService
 from agentscope.app._tool import (
+    DEFAULT_SUB_AGENT_TEMPLATE,
     AgentCreate,
     AgentInvite,
-    DEFAULT_SUB_AGENT_TEMPLATE,
     TeamCreate,
     TeamDelete,
     TeamSay,
 )
 from agentscope.app._types import SubAgentTemplate
-from agentscope.app._router._session import _build_team_detail
-from agentscope.app._service import ResourceAccessService
 from agentscope.app.access import (
     ResourceAccessPolicyBase,
     ResourceKind,
@@ -40,13 +42,13 @@ from agentscope.app.access import (
 )
 from agentscope.app.message_bus import RedisMessageBus
 from agentscope.app.storage import (
-    TeamOrigin,
-    UserOrigin,
     AgentData,
     AgentRecord,
     RedisStorage,
     SessionConfig,
     StorageBase,
+    TeamOrigin,
+    UserOrigin,
 )
 from agentscope.message import ToolResultState
 from agentscope.permission import (
@@ -998,7 +1000,7 @@ class TestTeamSay(_TeamToolsTestBase):
                 ],
                 "state": "running",
                 "is_last": True,
-                "metadata": {},
+                "metadata": {"handoff_id": AnyString(), "kind": "result", "collaboration_status": "running"},
                 "id": AnyString(),
             },
         )
@@ -1066,7 +1068,7 @@ class TestTeamSay(_TeamToolsTestBase):
                 ],
                 "state": "running",
                 "is_last": True,
-                "metadata": {},
+                "metadata": {"handoff_id": AnyString(), "kind": "result", "collaboration_status": "running"},
                 "id": AnyString(),
             },
         )
@@ -1338,6 +1340,7 @@ class TestAgentDataInvitableValidator(IsolatedAsyncioTestCase):
     async def test_invitable_requires_description(self) -> None:
         """``invitable=True`` with empty description fails validation."""
         from pydantic import ValidationError
+
         from agentscope.app.storage._model._agent import InviteConfig
 
         with self.assertRaises(ValidationError):
@@ -1409,6 +1412,7 @@ class _AgentInviteTestBase(_TeamToolsTestBase):
                     invitable=True,
                     invite_description="Expert on X.",
                 ),
+                lifecycle_state="published",
             ),
         )
         await self.storage.upsert_agent(self.user_id, self.monday_agent)
@@ -1417,9 +1421,120 @@ class _AgentInviteTestBase(_TeamToolsTestBase):
             agent_id=self.monday_agent.id,
             config=SessionConfig(workspace_id="ws-monday"),
         )
+        # AgentInvite now copies the source session's MCP declarations into
+        # the borrowed team session. This fixture has no real workspace, so
+        # provide the exact no-MCP behavior needed by these routing tests.
+        self.invite_workspace = SimpleNamespace(
+            default_mcps=[],
+            list_mcps=AsyncMock(return_value=[]),
+            add_mcp=AsyncMock(),
+            remove_mcp=AsyncMock(),
+        )
+        self.workspace_manager.get_workspace = AsyncMock(  # type: ignore[method-assign]
+            return_value=self.invite_workspace,
+        )
 
 
 class TestAgentInviteSuccess(_AgentInviteTestBase):
+    async def test_explicit_cost_request_requires_available_calculator(self):
+        """An incomplete invite batch cannot silently omit cost calculation."""
+        calculator = _make_agent_record(self.user_id, "Cost Calculation Agent")
+        calculator.data.lifecycle_state = "published"
+        calculator.data.invite_config = (
+            self.monday_agent.data.invite_config.model_copy(
+                update={"invite_description": "Cost calculation expert."},
+            )
+        )
+        calculator.data.build_description = "Calculate and balance total costs."
+        await self.storage.upsert_agent(self.user_id, calculator)
+        await self.storage.upsert_session(
+            user_id=self.user_id,
+            agent_id=calculator.id,
+            config=SessionConfig(workspace_id="ws-calculator"),
+        )
+        leader = await self.storage.get_session(
+            self.user_id,
+            self.leader_agent.id,
+            self.leader_session.id,
+        )
+        shared = SharedContextService(self.storage, self.bus)
+        await shared.append_event(
+            user_id=self.user_id,
+            team_id=leader.team_id,
+            kind="customer_message",
+            content=(
+                "Tính chi phí ba dịch vụ trong ngân sách 4 triệu và chừa "
+                "lại 500 nghìn."
+            ),
+        )
+        tool = AgentInvite(
+            storage=self.storage,
+            message_bus=self.bus,
+            workspace_manager=self.workspace_manager,
+            user_id=self.user_id,
+            session_id=self.leader_session.id,
+            agent_id=self.leader_agent.id,
+            invitable_pool=[self.monday_agent, calculator],
+            shared_context_service=shared,
+        )
+
+        result = await tool(
+            target=f"Monday@{self.monday_agent.id[:8]}",
+            prompt="Coordinate the provider results.",
+        )
+
+        self.assertEqual(result.state, ToolResultState.ERROR)
+        self.assertIn("omits the available calculation specialist", result.content[0].text)
+        team = await self.storage.get_team(self.user_id, leader.team_id)
+        self.assertEqual(team.data.members, [])
+
+    async def test_batch_preserves_all_four_members_and_dispatches_once(self):
+        pool = [self.monday_agent]
+        for name in ("Search specialist", "Resource specialist", "Calculator"):
+            record = _make_agent_record(self.user_id, name)
+            record.data.lifecycle_state = "published"
+            record.data.invite_config = self.monday_agent.data.invite_config.model_copy()
+            await self.storage.upsert_agent(self.user_id, record)
+            pool.append(record)
+        tool = AgentInvite(
+            storage=self.storage, message_bus=self.bus,
+            workspace_manager=self.workspace_manager, user_id=self.user_id,
+            session_id=self.leader_session.id, agent_id=self.leader_agent.id,
+            invitable_pool=pool,
+        )
+        names = [f"{a.data.name}@{a.id[:8]}" for a in pool]
+        result = await tool(
+            target=names[0], prompt="Coordinate verified findings",
+            additional_assignments=[{"target": name, "prompt": "Your distinct task"}
+                                    for name in names[1:]],
+        )
+        self.assertEqual(result.state, ToolResultState.SUCCESS)
+        self.assertEqual(result.metadata["invited_targets"], names)
+        session = await self.storage.get_session(self.user_id, "", self.leader_session.id)
+        team = await self.storage.get_team(self.user_id, session.team_id)
+        self.assertEqual({m.agent_id for m in team.data.members}, {a.id for a in pool})
+        self.assertEqual(len({m.session_id for m in team.data.members}), 4)
+        wakeups = await self.bus.dequeue_wakeups(max_count=10)
+        self.assertEqual(
+            {item["session_id"] for item in wakeups},
+            {member.session_id for member in team.data.members},
+        )
+
+    async def test_duplicate_batch_is_rejected_before_any_invite(self):
+        target = f"Monday@{self.monday_agent.id[:8]}"
+        tool = AgentInvite(
+            storage=self.storage, message_bus=self.bus,
+            workspace_manager=self.workspace_manager, user_id=self.user_id,
+            session_id=self.leader_session.id, agent_id=self.leader_agent.id,
+            invitable_pool=[self.monday_agent],
+        )
+        result = await tool(target=target, prompt="one", additional_assignments=[
+            {"target": target, "prompt": "two"},
+        ])
+        self.assertEqual(result.state, ToolResultState.ERROR)
+        sessions = await self.storage.list_sessions(self.user_id, self.monday_agent.id)
+        self.assertEqual(len(sessions), 1)
+
     """Happy-path: leader borrows Monday; borrowed session is minted
     on top of Monday's existing AgentRecord and joins the team as an
     invited member."""
@@ -1532,6 +1647,7 @@ class TestAgentInviteCrossOwner(_AgentInviteTestBase):
                     invitable=True,
                     invite_description="Shared expert.",
                 ),
+                lifecycle_state="published",
             ),
         )
         await self.storage.upsert_agent(shared_owner, shared_agent)
@@ -1736,6 +1852,19 @@ class TestAgentInviteRejections(_AgentInviteTestBase):
         await self.storage.upsert_agent(self.user_id, stale)
 
         chunk = await self._tool(pool=[stale])(
+            target=f"Monday@{stale.id[:8]}",
+            prompt="hi",
+        )
+        self.assertDictEqual(chunk.model_dump(), self._EXPECTED_ERROR_CHUNK)
+
+    async def test_rejects_when_agent_is_withdrawn(self) -> None:
+        """A published snapshot cannot be invited after withdrawal."""
+        stale = self.monday_agent
+        tool = self._tool(pool=[stale])
+        stale.data.lifecycle_state = "withdrawn"
+        await self.storage.upsert_agent(self.user_id, stale)
+
+        chunk = await tool(
             target=f"Monday@{stale.id[:8]}",
             prompt="hi",
         )

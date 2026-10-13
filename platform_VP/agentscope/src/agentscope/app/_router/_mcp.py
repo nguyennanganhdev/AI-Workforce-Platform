@@ -6,17 +6,98 @@ This is the user-level collection an install lands in, distinct from
 Installing from a hub only writes here; putting an MCP into a workspace
 stays a separate, explicit act.
 """
+import asyncio
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 
+from ..._utils._common import _describe_exception
+from ...mcp import HttpMCPConfig, MCPClient
+from .._service import MCPRenderError, render_mcp
 from ..deps import get_current_user_id, get_mcp_hubs, get_storage
 from ..hub import MCPHubBase
-from .._service import MCPRenderError, render_mcp
-from ..storage import StorageBase
-from ...mcp import MCPClient
-from ._schema import MCPView, UpdateMCPRequest
+from ..storage import MCPRecord, StorageBase
+from ._schema import DirectInstallMCPRequest, MCPView, UpdateMCPRequest
 
 mcp_router = APIRouter(prefix="/mcp", tags=["mcp"])
+
+
+async def _discover_tools(client: MCPClient, timeout: float) -> list[dict]:
+    """Return a bounded, JSON-safe MCP catalog snapshot."""
+    try:
+        async with asyncio.timeout(timeout):
+            raw_tools = await client.list_raw_tools()
+    finally:
+        if client.is_stateful and client.is_connected:
+            await client.close()
+    return [
+        {
+            "name": tool.name,
+            "description": tool.description or "",
+            "input_schema": tool.inputSchema or {},
+        }
+        for tool in raw_tools
+    ]
+
+
+@mcp_router.post("", status_code=status.HTTP_201_CREATED)
+async def install_direct_mcp(
+    body: DirectInstallMCPRequest,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+) -> MCPView:
+    """Connect, discover and register a partner HTTP MCP."""
+    headers = dict(body.headers)
+    if body.api_key:
+        value = body.api_key.get_secret_value()
+        if body.auth_scheme.strip():
+            value = f"{body.auth_scheme.strip()} {value}"
+        headers[body.auth_header] = value
+    client = MCPClient(
+        name=body.name,
+        is_stateful=False,
+        mcp_config=HttpMCPConfig(
+            url=str(body.url),
+            headers=headers or None,
+            timeout=body.timeout,
+        ),
+    )
+    try:
+        tools = await _discover_tools(client, body.timeout)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Không thể kết nối hoặc đọc danh sách tool từ MCP: "
+                f"{_describe_exception(exc)}"
+            ),
+        ) from exc
+    if not tools:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="MCP kết nối được nhưng không công bố tool nào.",
+        )
+    record = MCPRecord(
+        user_id=user_id,
+        client=client,
+        values={"auth_header": body.auth_header},
+        display_name=body.display_name or body.name,
+        description=body.description,
+        url=str(body.url),
+        tags=["partner", "direct"],
+        discovered_tools=tools,
+        catalog_revision=1,
+        last_synced_at=datetime.now(UTC),
+    )
+    try:
+        await storage.upsert_mcp(user_id, record)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    return MCPView.from_record(record)
 
 
 @mcp_router.get("")
@@ -30,6 +111,37 @@ async def list_mcps(
         (MCPView.from_record(r) for r in records),
         key=lambda view: view.name,
     )
+
+
+@mcp_router.post("/{mcp_id}/sync")
+async def sync_mcp_tools(
+    mcp_id: str,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+) -> MCPView:
+    """Refresh the registered tool catalog for one installed MCP."""
+    record = await storage.get_mcp(user_id, mcp_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="MCP not found")
+    if not record.enabled:
+        raise HTTPException(status_code=409, detail="MCP is disabled")
+    try:
+        record.discovered_tools = await _discover_tools(
+            MCPClient.model_validate(record.client.model_dump(mode="json")),
+            float(record.client.mcp_config.timeout or 30.0),
+        )
+        record.catalog_revision += 1
+        record.last_synced_at = datetime.now(UTC)
+        record.last_sync_error = None
+    except Exception as exc:
+        record.last_sync_error = _describe_exception(exc)
+        await storage.upsert_mcp(user_id, record)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Không thể đồng bộ MCP: {record.last_sync_error}",
+        ) from exc
+    await storage.upsert_mcp(user_id, record)
+    return MCPView.from_record(record)
 
 
 @mcp_router.patch("/{mcp_id}")

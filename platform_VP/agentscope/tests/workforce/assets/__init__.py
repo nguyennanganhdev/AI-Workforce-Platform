@@ -1,0 +1,1 @@
+"""Workforce asset tests."""

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """S3-compatible implementation of :class:`BlobStoreBase`.
 
 Works against any service that implements the S3 wire protocol —
@@ -20,11 +19,13 @@ bounded by ``UPLOAD_MAX_BYTES`` well below that ceiling, so a single
 ``upload_fileobj`` call (which uses multipart internally when the
 body is large enough) is sufficient.
 """
+
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import IO, Any, AsyncIterator
+from types import TracebackType
+from typing import IO, Any, Self
 
 from ._base import AsyncReadable, BlobStoreBase
-
 
 _SCHEME = "s3://"
 
@@ -63,6 +64,7 @@ class S3BlobStore(BlobStoreBase):
         *,
         region_name: str | None = None,
         endpoint_url: str | None = None,
+        public_endpoint_url: str | None = None,
         aws_access_key_id: str | None = None,
         aws_secret_access_key: str | None = None,
         session_token: str | None = None,
@@ -86,6 +88,11 @@ class S3BlobStore(BlobStoreBase):
                 real AWS S3. Examples: ``http://minio:9000``,
                 ``https://<account>.r2.cloudflarestorage.com``,
                 ``https://oss-cn-hangzhou.aliyuncs.com``.
+            public_endpoint_url (`str | None`, optional):
+                Endpoint embedded in presigned upload/download URLs. Use this
+                when the API reaches MinIO as ``http://minio:9000`` but partner
+                backends reach it through a public HTTPS host. Normal S3 calls
+                continue to use ``endpoint_url``.
             aws_access_key_id (`str | None`, optional):
                 Static credential. Prefer leaving this ``None`` and letting
                 the IAM role / environment chain resolve credentials when
@@ -117,6 +124,7 @@ class S3BlobStore(BlobStoreBase):
         self._bucket = bucket
         self._region_name = region_name
         self._endpoint_url = endpoint_url
+        self._public_endpoint_url = public_endpoint_url
         self._aws_access_key_id = aws_access_key_id
         self._aws_secret_access_key = aws_secret_access_key
         self._session_token = session_token
@@ -129,11 +137,9 @@ class S3BlobStore(BlobStoreBase):
         # clients hold an aiohttp connection pool tied to a loop, and
         # the per-call cost is negligible compared to the network
         # round-trip.
-        self._session: (
-            aioboto3.Session | None
-        ) = None  # type: ignore[name-defined]
+        self._session: aioboto3.Session | None = None  # type: ignore[name-defined]
 
-    async def __aenter__(self) -> "S3BlobStore":
+    async def __aenter__(self) -> Self:
         try:
             import aioboto3
         except ImportError as e:
@@ -150,11 +156,11 @@ class S3BlobStore(BlobStoreBase):
         self,
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
-        exc_tb: Any,
+        exc_tb: TracebackType | None,
     ) -> None:
         self._session = None
 
-    def _client(self) -> Any:
+    def _client(self, *, public: bool = False) -> Any:
         """Open a fresh S3 client context manager for one call."""
         if self._session is None:
             raise RuntimeError(
@@ -164,7 +170,11 @@ class S3BlobStore(BlobStoreBase):
         return self._session.client(
             "s3",
             region_name=self._region_name,
-            endpoint_url=self._endpoint_url,
+            endpoint_url=(
+                self._public_endpoint_url
+                if public and self._public_endpoint_url is not None
+                else self._endpoint_url
+            ),
             aws_access_key_id=self._aws_access_key_id,
             aws_secret_access_key=self._aws_secret_access_key,
             aws_session_token=self._session_token,
@@ -251,19 +261,109 @@ class S3BlobStore(BlobStoreBase):
         params: dict[str, str] = {"Bucket": bucket, "Key": key}
         if download_name:
             safe_name = (
-                download_name.replace('"', "")
-                .replace("\r", "")
-                .replace("\n", "")
+                download_name.replace('"', "").replace("\r", "").replace("\n", "")
             )
-            params["ResponseContentDisposition"] = (
-                f'attachment; filename="{safe_name}"'
-            )
-        async with self._client() as s3:
+            params["ResponseContentDisposition"] = f'attachment; filename="{safe_name}"'
+        async with self._client(public=True) as s3:
             return await s3.generate_presigned_url(
                 "get_object",
                 Params=params,
                 ExpiresIn=expires_in,
             )
+
+    async def presign_put(
+        self,
+        key: str,
+        *,
+        content_type: str,
+        metadata: dict[str, str] | None = None,
+        expires_in: int = 900,
+    ) -> tuple[str, str, dict[str, str]]:
+        """Create a constrained direct-upload URL for a private object.
+
+        The returned headers are part of the signature and therefore must be
+        sent unchanged by the uploader.  ``Content-Length`` is deliberately
+        verified after upload because S3 presigned PUT does not portably bind
+        it across all S3-compatible implementations.
+        """
+        if not key or key.startswith("/") or ".." in key.split("/"):
+            raise ValueError("unsafe S3 object key")
+        if not 1 <= expires_in <= 3600:
+            raise ValueError("upload expires_in must be between 1 and 3600")
+        params: dict[str, Any] = {
+            "Bucket": self._bucket,
+            "Key": key,
+            "ContentType": content_type,
+        }
+        headers = {"Content-Type": content_type}
+        if metadata:
+            params["Metadata"] = metadata
+            headers.update(
+                {f"x-amz-meta-{name}": value for name, value in metadata.items()}
+            )
+        async with self._client(public=True) as s3:
+            url = await s3.generate_presigned_url(
+                "put_object",
+                Params=params,
+                ExpiresIn=expires_in,
+                HttpMethod="PUT",
+            )
+        return f"{_SCHEME}{self._bucket}/{key}", url, headers
+
+    async def promote(
+        self,
+        source_uri: str,
+        destination_key: str,
+        *,
+        content_type: str,
+        metadata: dict[str, str] | None = None,
+    ) -> str:
+        """Copy a staged upload to the immutable application-owned key.
+
+        A presigned PUT URL cannot be revoked before it expires.  Workforce
+        assets are therefore uploaded to a staging key and copied here after
+        validation.  Every later download points at the copied key, so reuse
+        of the old upload URL cannot mutate an already-finalized asset.
+        """
+        source_bucket, source_key = self._parse_uri(source_uri)
+        if source_bucket != self._bucket:
+            raise ValueError("cannot promote an object from another bucket")
+        if (
+            not destination_key
+            or destination_key.startswith("/")
+            or ".." in destination_key.split("/")
+        ):
+            raise ValueError("unsafe S3 destination key")
+        params: dict[str, Any] = {
+            "Bucket": self._bucket,
+            "Key": destination_key,
+            "CopySource": {"Bucket": source_bucket, "Key": source_key},
+            "ContentType": content_type,
+            "MetadataDirective": "REPLACE",
+        }
+        if metadata:
+            params["Metadata"] = metadata
+        async with self._client() as s3:
+            await s3.copy_object(**params)
+        return f"{_SCHEME}{self._bucket}/{destination_key}"
+
+    async def stat(self, uri: str) -> dict[str, Any] | None:
+        """Return trusted object metadata, or ``None`` when it is missing."""
+        bucket, key = self._parse_uri(uri)
+        async with self._client() as s3:
+            try:
+                head = await s3.head_object(Bucket=bucket, Key=key)
+            except Exception as exc:
+                code = getattr(exc, "response", {}).get("Error", {}).get("Code")
+                if code in {"404", "NoSuchKey", "NotFound"}:
+                    return None
+                raise
+        return {
+            "byte_size": int(head["ContentLength"]),
+            "content_type": head.get("ContentType") or "application/octet-stream",
+            "metadata": dict(head.get("Metadata") or {}),
+            "etag": str(head.get("ETag") or "").strip('"') or None,
+        }
 
     @asynccontextmanager
     async def open(  # type: ignore[override]
@@ -329,7 +429,7 @@ class S3BlobStore(BlobStoreBase):
             try:
                 await s3.head_object(Bucket=self._bucket, Key=key)
                 return True
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 # botocore's ClientError has ``response["Error"]["Code"]``
                 # of "404" or "NoSuchKey" for missing objects; we
                 # treat anything that isn't a successful HEAD as
@@ -337,9 +437,7 @@ class S3BlobStore(BlobStoreBase):
                 # local backend's permissive contract. A genuinely
                 # broken backend (auth failure, network) will surface
                 # on the next read/write.
-                code = (
-                    getattr(exc, "response", {}).get("Error", {}).get("Code")
-                )
+                code = getattr(exc, "response", {}).get("Error", {}).get("Code")
                 if code in {"404", "NoSuchKey", "NotFound"}:
                     return False
                 raise

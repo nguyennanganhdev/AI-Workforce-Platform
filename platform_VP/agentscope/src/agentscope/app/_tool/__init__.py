@@ -12,9 +12,11 @@ Task series, …) in two ways:
    ``TeamDelete``, which delegates to :class:`SessionService`.
 2. **Visibility depends on the session's team role, not the agent's
    source field** — a session that is not in any team OR that is its
-   team's leader gets the full leader-side toolset (``TeamCreate /
-   AgentCreate / TeamSay / TeamDelete``, plus ``AgentInvite`` when the
-   user has any invitable agents). A session that is a worker in some
+   team's leader gets ``TeamCreate / TeamSay / TeamDelete``, plus
+   ``AgentInvite`` when the user has published, invitable business agents.
+   ``AgentCreate`` remains importable for legacy integrations and direct
+   tests but is deliberately not registered in chat runtime. A session that
+   is a worker in some
    team gets only ``TeamSay``. This session-level distinction is what
    lets a borrowed ("invited") agent's session see worker-only tools
    even though the underlying ``AgentRecord`` still has
@@ -22,10 +24,8 @@ Task series, …) in two ways:
    from storage at ``__call__`` time and fails clearly if its
    precondition is not met.
 
-   The benefit is that a single chat run can ``TeamCreate`` and then
-   ``AgentCreate`` immediately afterward — there is no toolkit
-   refresh point because the toolkit never changed; only the
-   underlying storage state did, which the next tool reads fresh.
+   A single chat run can ``TeamCreate`` and then ``AgentInvite`` immediately;
+   each tool reads the latest storage state, so no toolkit refresh is needed.
 
 Which subset is attached is decided by the caller-resolved team role
 that :func:`get_toolkit` receives; there is no separate "team tool

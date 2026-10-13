@@ -1,20 +1,20 @@
-# event_delivery — API/event/workflow v1.4
+# Event delivery operations — Phase D
 
-Chủ sở hữu: **Nguyễn Chí Hoàng**. Branch: `feat/wf-foundation`.
-Task bổ sung của owner: **NCH-13–NCH-16**; chọn phần tương ứng phạm vi folder dưới đây.
+Chủ sở hữu: **Nguyễn Chí Hoàng**.
 
-Đọc [kế hoạch triển khai](../../../docs/workforce/KE_HOACH_TRIEN_KHAI.md) và [bàn giao cá nhân](../../../docs/workforce/handoffs/nguyen-chi-hoang/README.md) trước khi code. Đặc tả chung nằm ở mục 17; ranh giới ownership ở 5.3 và task chi tiết trong phần mang tên owner. Các đường dẫn link tính từ folder này.
+Thư mục này chứa tài liệu vận hành và cấu hình mẫu cho Customer API, SSE,
+durable worker và Provider Event. Platform không chủ động gọi HTTP sang backend
+đối tác; đối tác POST vào platform và theo dõi sự kiện qua SSE.
 
-Phạm vi: Tên folder là scaffold cũ. Runbook SSE/proxy/recovery/provider-key rotation/restore; giá trị thật cấu hình khi triển khai. Không có outbound HTTP delivery.
+Các artifact hiện có:
 
-File dự kiến khi triển khai: `RUNBOOK.md`, `proxy.example.conf`. Đây chỉ là gợi ý chia file; chưa có code được tạo trong folder.
+- `proxy.example.conf`: cấu hình Nginx giữ kết nối SSE, không buffer/cache và
+  truyền `Last-Event-ID`.
+- `alerts.example.yml`: quy ước alert cho worker restart, durable job,
+  provider quarantine và worker không tiến triển.
+- `RUNBOOK.md`: migration, backup/restore, restart/recovery, replay SSE,
+  rotation key và rollback.
+- `RELEASE_CHECKLIST.md`: điều kiện bắt buộc để chốt D7 Release Candidate.
 
-Nguyên tắc triển khai:
-
-- Một role AREA_MANAGER, Scope đủ tenant/domain/area/manager và audience cư dân; không route theo payload tự khai.
-- Dùng DTO/ports chung; không import private service hoặc ghi bảng module khác.
-- Customer request/reply POST ưu tiên `200`, chỉ `202/watch_request` khi hết thời gian chờ; response luôn có `workflow_state` và `next_action`. Response-only read-only có thể auto-close; interactive dùng reply/approval/explicit close; Provider Event/SSE tracking chỉ dùng khi operation thật sự pending.
-- Tự viết test trong vùng test được giao, dùng fake port khi module khác chưa có. Chỉ đánh dấu live integration khi có bằng chứng thật.
-- Cần đổi contract/migration/core/global frontend thì ghi INTEGRATION_REQUEST trong handoff; Chí Hoàng tích hợp file chung.
-
-Thư mục được giữ trong Git bằng README này để thành viên bắt đầu code song song. Chưa triển khai API, worker, migration hay test; không tạo stub thành công trong production.
+Giá trị trong các file là mẫu triển khai, không chứa credential thật. Khi đưa
+lên môi trường cụ thể phải thay host, TLS, retention và ngưỡng alert theo SLO.

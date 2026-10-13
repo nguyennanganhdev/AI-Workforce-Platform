@@ -19,8 +19,11 @@ need no dialect-specific timezone handling.
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Self
 
+from ....credential import CredentialBase
+from ....message import Msg
+from ....sop import SOPPhase, SOPRunState
+from ....state import AgentState
 from .._base import StorageBase
-from .._model._session import _origin_kwargs
 from .._model import (
     AgentRecord,
     ChannelRecord,
@@ -30,18 +33,21 @@ from .._model import (
     KnowledgeDocumentStatus,
     MCPRecord,
     ScheduleRecord,
-    SessionRecord,
     SessionConfig,
     SessionOrigin,
+    SessionRecord,
     SkillRecord,
     SOPRecord,
     SOPRunRecord,
     TeamRecord,
+    TeamSharedContextRecord,
+    TeamHandoffRecord,
+    TeamTurnRecord,
 )
+from .._model._session import _origin_kwargs
 from .._utils import _dump_with_secrets
 from ._mappers import _from_record, _to_record
 from ._tables import (
-    _Base,
     AgentRow,
     ChannelRow,
     CredentialRow,
@@ -55,11 +61,12 @@ from ._tables import (
     SOPRow,
     SOPRunRow,
     TeamRow,
+    TeamSharedContextRow,
+    TeamSharedContextSnapshotRow,
+    TeamHandoffRow,
+    TeamTurnRow,
+    _Base,
 )
-from ....credential import CredentialBase
-from ....message import Msg
-from ....sop import SOPPhase, SOPRunState
-from ....state import AgentState
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import (
@@ -663,6 +670,30 @@ class AsyncSQLAlchemyStorage(StorageBase):
                 SessionRow.user_id == user_id,
             )
             .values(team_id=None, updated_at=_utcnow()),
+        )
+        await sess.execute(
+            delete(TeamSharedContextRow).where(
+                TeamSharedContextRow.team_id == team_id,
+                TeamSharedContextRow.user_id == user_id,
+            ),
+        )
+        await sess.execute(
+            delete(TeamSharedContextSnapshotRow).where(
+                TeamSharedContextSnapshotRow.team_id == team_id,
+                TeamSharedContextSnapshotRow.user_id == user_id,
+            ),
+        )
+        await sess.execute(
+            delete(TeamTurnRow).where(
+                TeamTurnRow.team_id == team_id,
+                TeamTurnRow.user_id == user_id,
+            ),
+        )
+        await sess.execute(
+            delete(TeamHandoffRow).where(
+                TeamHandoffRow.team_id == team_id,
+                TeamHandoffRow.user_id == user_id,
+            ),
         )
         await sess.execute(
             delete(TeamRow).where(
@@ -1862,6 +1893,199 @@ class AsyncSQLAlchemyStorage(StorageBase):
                 .all()
             )
         return [_to_record(r, TeamRecord) for r in rows]
+
+    async def upsert_team_shared_context(
+        self,
+        user_id: str,
+        record: TeamSharedContextRecord,
+    ) -> TeamSharedContextRecord:
+        """Persist context separately so roster writes cannot overwrite it."""
+        if record.user_id != user_id:
+            raise ValueError("record.user_id does not match the given user_id")
+        await self._write_row(TeamSharedContextRow, record)
+        return record
+
+    async def get_team_shared_context(
+        self,
+        user_id: str,
+        team_id: str,
+    ) -> TeamSharedContextRecord | None:
+        """Fetch owner-scoped shared context."""
+        from sqlalchemy import select
+
+        async with self._session() as sess:
+            row = (
+                await sess.execute(
+                    select(TeamSharedContextRow).where(
+                        TeamSharedContextRow.user_id == user_id,
+                        TeamSharedContextRow.team_id == team_id,
+                    ),
+                )
+            ).scalar_one_or_none()
+        return (
+            _to_record(row, TeamSharedContextRecord)
+            if row is not None
+            else None
+        )
+
+    async def compare_and_swap_team_shared_context(
+        self,
+        user_id: str,
+        record: TeamSharedContextRecord,
+        expected_revision: int,
+    ) -> bool:
+        """CAS current state and append its immutable revision snapshot."""
+        import hashlib
+
+        from sqlalchemy import select, update
+        from sqlalchemy.exc import IntegrityError
+
+        if record.user_id != user_id:
+            raise ValueError("record.user_id does not match the given user_id")
+        if record.state.revision != expected_revision + 1:
+            raise ValueError("CAS record revision must advance exactly once")
+        record.updated_at = _utcnow()
+        record.created_at = _to_naive_utc(record.created_at)
+        row = _from_record(TeamSharedContextRow, record)
+        values = {
+            "updated_at": row.updated_at,
+            "payload": row.payload,
+            "user_id": row.user_id,
+            "team_id": row.team_id,
+            "state_revision": row.state_revision,
+            "tenant_id": row.tenant_id,
+            "domain_id": row.domain_id,
+            "area_id": row.area_id,
+            "manager_account_id": row.manager_account_id,
+            "workflow_id": row.workflow_id,
+        }
+        async with self._session() as sess:
+            try:
+                result = await sess.execute(
+                    update(TeamSharedContextRow)
+                    .where(
+                        TeamSharedContextRow.id == record.id,
+                        TeamSharedContextRow.user_id == user_id,
+                        TeamSharedContextRow.team_id == record.team_id,
+                        TeamSharedContextRow.state_revision == expected_revision,
+                    )
+                    .values(**values),
+                )
+                if result.rowcount != 1:
+                    exists = await sess.scalar(
+                        select(TeamSharedContextRow.id).where(
+                            TeamSharedContextRow.id == record.id,
+                        ),
+                    )
+                    if exists is not None:
+                        await sess.rollback()
+                        return False
+                    sess.add(row)
+                    await sess.flush()
+                snapshot = _from_record(TeamSharedContextSnapshotRow, record)
+                snapshot.id = hashlib.sha256(
+                    f"{record.team_id}\0{record.state.revision}".encode(),
+                ).hexdigest()
+                sess.add(snapshot)
+                await sess.commit()
+                return True
+            except IntegrityError:
+                await sess.rollback()
+                return False
+
+    async def delete_team_shared_context(
+        self,
+        user_id: str,
+        team_id: str,
+    ) -> bool:
+        """Delete owner-scoped shared context."""
+        from sqlalchemy import delete
+
+        async with self._session() as sess:
+            result = await sess.execute(
+                delete(TeamSharedContextRow).where(
+                    TeamSharedContextRow.user_id == user_id,
+                    TeamSharedContextRow.team_id == team_id,
+                ),
+            )
+            await sess.commit()
+        return result.rowcount > 0
+
+    async def upsert_team_turn(
+        self,
+        user_id: str,
+        record: TeamTurnRecord,
+    ) -> TeamTurnRecord:
+        if record.user_id != user_id:
+            raise ValueError("record.user_id does not match the given user_id")
+        await self._write_row(TeamTurnRow, record)
+        return record
+
+    async def get_team_turn(
+        self,
+        user_id: str,
+        team_id: str,
+    ) -> TeamTurnRecord | None:
+        from sqlalchemy import select
+
+        async with self._session() as sess:
+            row = (
+                await sess.execute(
+                    select(TeamTurnRow).where(
+                        TeamTurnRow.user_id == user_id,
+                        TeamTurnRow.team_id == team_id,
+                    ),
+                )
+            ).scalar_one_or_none()
+        return _to_record(row, TeamTurnRecord) if row is not None else None
+
+    async def upsert_team_handoff(
+        self,
+        user_id: str,
+        record: TeamHandoffRecord,
+    ) -> TeamHandoffRecord:
+        if record.user_id != user_id:
+            raise ValueError("record.user_id does not match the given user_id")
+        await self._write_row(TeamHandoffRow, record)
+        return record
+
+    async def get_team_handoff(
+        self,
+        user_id: str,
+        handoff_record_id: str,
+    ) -> TeamHandoffRecord | None:
+        from sqlalchemy import select
+
+        async with self._session() as sess:
+            row = (
+                await sess.execute(
+                    select(TeamHandoffRow).where(
+                        TeamHandoffRow.id == handoff_record_id,
+                        TeamHandoffRow.user_id == user_id,
+                    ),
+                )
+            ).scalar_one_or_none()
+        return _to_record(row, TeamHandoffRecord) if row is not None else None
+
+    async def list_outstanding_team_handoffs(
+        self,
+        *,
+        recipient_session_id: str | None = None,
+        limit: int = 100,
+    ) -> list[TeamHandoffRecord]:
+        from sqlalchemy import select
+
+        query = select(TeamHandoffRow).where(
+            TeamHandoffRow.delivery_status.in_(("pending", "delivered", "failed")),
+        )
+        if recipient_session_id is not None:
+            query = query.where(
+                TeamHandoffRow.recipient_session_id == recipient_session_id,
+            )
+        query = query.order_by(TeamHandoffRow.created_at).limit(limit)
+        async with self._session() as sess:
+            rows = (await sess.execute(query)).scalars().all()
+        return [_to_record(row, TeamHandoffRecord) for row in rows]
 
     async def delete_team(self, user_id: str, team_id: str) -> bool:
         """Delete a team + role-aware member cleanup.

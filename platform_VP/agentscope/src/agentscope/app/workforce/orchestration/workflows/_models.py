@@ -34,6 +34,10 @@ class WorkflowBindingMismatch(WorkflowConflict):
     """An authorized customer supplied a different immutable ticket tuple."""
 
 
+class WorkflowTicketAlreadyBound(WorkflowConflict):
+    """A new start command targeted an existing ticket/conversation binding."""
+
+
 class WorkflowPattern(StrEnum):
     RESPONSE_ONLY = "response_only"
     INTERACTIVE = "interactive"
@@ -95,6 +99,7 @@ class TurnDecision(WorkforceModel):
 class StartMessage(WorkforceModel):
     request_id: str = Field(min_length=1, max_length=200)
     text: str = Field(min_length=1, max_length=20_000)
+    asset_ids: tuple[str, ...] = Field(default=(), max_length=10)
     route_id: str | None = Field(default=None, min_length=1, max_length=200)
     route_revision: int | None = Field(default=None, strict=True, ge=1)
 
@@ -102,6 +107,8 @@ class StartMessage(WorkforceModel):
     def complete_route_pin(self) -> "StartMessage":
         if (self.route_id is None) != (self.route_revision is None):
             raise ValueError("route_id and route_revision must be supplied together")
+        if len(self.asset_ids) != len(set(self.asset_ids)):
+            raise ValueError("asset_ids must be unique")
         return self
 
 

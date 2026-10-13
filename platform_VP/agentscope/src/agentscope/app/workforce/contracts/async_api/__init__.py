@@ -24,6 +24,7 @@ from .._execution import (
     ProviderEventEnvelope,
     ProviderEventReceipt,
 )
+from .._identity import VerifiedProviderContext
 from .._ports import (
     AsyncProtocolPort,
     ConversationEventPort,
@@ -37,7 +38,6 @@ from .._ports import (
     RuntimeContinuationPort,
     WorkflowPort,
 )
-from .._identity import VerifiedProviderContext
 
 __all__ = [
     "AsyncProtocolPort",

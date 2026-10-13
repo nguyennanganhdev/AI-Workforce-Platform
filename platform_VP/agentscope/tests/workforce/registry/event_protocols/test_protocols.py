@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """Phase-A executable protocol handoff and fake-port contract checks."""
 
-from datetime import UTC, datetime
 import json
-from pathlib import Path
 import unittest
+from datetime import UTC, datetime
+from pathlib import Path
 
-from jsonschema import Draft202012Validator, ValidationError as SchemaError
+from jsonschema import Draft202012Validator
+from jsonschema import ValidationError as SchemaError
 from pydantic import ValidationError
 
 from agentscope.app.workforce.contracts import (
@@ -22,6 +23,7 @@ from agentscope.app.workforce.registry.event_protocols import (
     AsyncToolProtocol,
     EventMapping,
 )
+
 from .fakes import FakeAsyncProtocolPort
 
 
@@ -190,9 +192,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         ):
             with self.subTest(schema=schema):
                 config = self.protocol.model_dump(mode="json")
-                config["event_mappings"][self.event.event_type][
-                    "data_schema"
-                ] = schema
+                config["event_mappings"][self.event.event_type]["data_schema"] = schema
                 protocol = AsyncToolProtocol.model_validate(config)
                 fake = FakeAsyncProtocolPort(
                     self.scope,
@@ -334,6 +334,21 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first.protocol_schema_hash, ref.schema_hash)
         self.assertNotIn("scope", first.model_dump())
         self.assertNotEqual(first.occurred_at, first.received_at)
+
+    async def test_normalization_preserves_verified_asset_references(self) -> None:
+        event = ProviderEventEnvelope.model_validate(
+            self.event.model_dump()
+            | {"attachments": ({"asset_id": "asset-provider-1"},)}
+        )
+        normalized = await self.fake.normalize_verified_event(
+            self.provider,
+            self.protocol.snapshot_ref,
+            event,
+        )
+        self.assertEqual(
+            normalized.facts["attachments"],
+            [{"asset_id": "asset-provider-1"}],
+        )
 
     async def test_normalization_keeps_order_metadata(
         self,

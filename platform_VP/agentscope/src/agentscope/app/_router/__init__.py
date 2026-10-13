@@ -18,6 +18,7 @@ from ._sop import sop_router
 from ._model import model_router
 from ._tts_model import tts_model_router
 from ._workspace import workspace_router
+from ._workforce_console import workforce_console_router
 
 __all__ = [
     "agent_router",
@@ -38,4 +39,5 @@ __all__ = [
     "skill_router",
     "sop_router",
     "workspace_router",
+    "workforce_console_router",
 ]

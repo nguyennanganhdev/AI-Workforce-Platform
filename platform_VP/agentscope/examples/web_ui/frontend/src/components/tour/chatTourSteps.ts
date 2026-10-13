@@ -8,16 +8,6 @@ export const buildChatTour = (t: TFunction): Tour => ({
 	steps: [
 		{
 			icon: null,
-			title: t('tour.createAgent.title'),
-			content: t('tour.createAgent.content'),
-			selector: '#tour-create-agent',
-			side: 'bottom',
-			showControls: false,
-			pointerPadding: 8,
-			pointerRadius: 16,
-		},
-		{
-			icon: null,
 			title: t('tour.createSession.title'),
 			content: t('tour.createSession.content'),
 			selector: '#tour-create-session',

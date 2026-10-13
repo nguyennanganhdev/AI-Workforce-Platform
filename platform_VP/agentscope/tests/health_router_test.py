@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Health router test case — readiness reporting, without any I/O."""
+
 import tempfile
+from types import SimpleNamespace
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
 
@@ -109,3 +111,21 @@ class HealthRouterTest(IsolatedAsyncioTestCase):
         self.assertEqual(body["components"]["chat_service"], "not_ready")
         # Eagerly attached state survives — the report pinpoints the gap.
         self.assertEqual(body["components"]["storage"], "ok")
+
+    def test_workforce_cannot_use_a_different_shared_context_store(self) -> None:
+        """Partner and direct chat must have one context source of truth."""
+
+        with tempfile.TemporaryDirectory() as workdir:
+            storage, bus = _fake_backends()
+            bootstrap = SimpleNamespace(
+                message_bus=bus,
+                asset_store=None,
+                shared_context_storage=object(),
+            )
+            with self.assertRaisesRegex(ValueError, "same shared_context_storage"):
+                create_app(
+                    storage=storage,
+                    message_bus=bus,
+                    workspace_manager=LocalWorkspaceManager(workdir),
+                    workforce_bootstrap=bootstrap,
+                )

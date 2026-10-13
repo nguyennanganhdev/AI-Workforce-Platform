@@ -21,7 +21,7 @@ import {
 	Loader2,
 	TriangleAlert,
 } from 'lucide-react';
-import * as mime from 'mime-types';
+import mime from 'mime';
 import { memo, useEffect, useRef, useState } from 'react';
 
 import { renderToolCall } from './tool-renderers';
@@ -624,7 +624,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 								<AttachmentTitle>{block.name}</AttachmentTitle>
 								<AttachmentDescription>
 									{(
-										mime.extension(block.source.media_type) || 'bin'
+										mime.getExtension(block.source.media_type) || 'bin'
 									).toUpperCase()}
 								</AttachmentDescription>
 							</AttachmentContent>
@@ -640,7 +640,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 								<AttachmentTitle>{block.name}</AttachmentTitle>
 								<AttachmentDescription>
 									{(
-										mime.extension(block.source.media_type) || 'bin'
+										mime.getExtension(block.source.media_type) || 'bin'
 									).toUpperCase()}
 								</AttachmentDescription>
 							</AttachmentContent>
@@ -657,7 +657,7 @@ export function ASBlock({ block, ...props }: ASBlockProps) {
 								<AttachmentTitle>{block.name}</AttachmentTitle>
 								<AttachmentDescription>
 									{(
-										mime.extension(block.source.media_type) || 'bin'
+										mime.getExtension(block.source.media_type) || 'bin'
 									).toUpperCase()}
 								</AttachmentDescription>
 							</AttachmentContent>
