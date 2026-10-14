@@ -124,7 +124,6 @@ class CollaborationBranch(BaseModel):
     measured_tokens: int = 0
     active_seconds: float = 0
     verifications: int = 0
-    evidence_rejections: int = 0
     signatures: dict[str, int] = Field(default_factory=dict)
     receipts: dict[str, dict] = Field(default_factory=dict)
 
@@ -228,12 +227,12 @@ class TeamTurnRecord(_RecordBase):
     user_id: str
     team_id: str
     turn_id: str
-    mode: Literal["leader", "direct_mention"] = "leader"
+    mode: Literal["leader", "direct_mention", "specialist_question"] = "leader"
     reply_owner_session_id: str
     reply_owner_agent_id: str
     customer_session_id: str
     task_id: str | None = None
-    status: Literal["running", "awaiting_user_input"] = "running"
+    status: Literal["running", "awaiting_user_input", "completed"] = "running"
     pending_question_ids: tuple[str, ...] = ()
     pending_question_keys: tuple[str, ...] = ()
 

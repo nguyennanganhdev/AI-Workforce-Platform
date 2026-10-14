@@ -6,7 +6,7 @@ import {
 	type TextBlock,
 	type ToolCallBlock,
 } from '@agentscope-ai/agentscope/message';
-import { GitBranch, TriangleAlert } from 'lucide-react';
+import { GitBranch, TriangleAlert, X } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '../ui/button';
@@ -74,7 +74,8 @@ interface ChatContentProps {
 	 */
 	phase: ReplyPhase;
 	disabled: boolean;
-	onSend: (content: ContentBlock[]) => void;
+	onSend: (content: ContentBlock[], targetAgentId?: string) => void;
+	teamChat?: boolean;
 	onUserConfirm: (
 		toolCall: ToolCallBlock,
 		confirm: boolean,
@@ -117,6 +118,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	phase,
 	disabled,
 	onSend,
+	teamChat = false,
 	onUserConfirm,
 	autoComplete,
 	className,
@@ -132,6 +134,18 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 	onRefreshGit,
 }) => {
 	const { t, i18n } = useTranslation();
+	const visibleMsgs = useMemo(() => teamChat ? msgs.flatMap((message) => {
+		if (message.role !== 'assistant') return [message];
+		const content = message.content.filter((block) => block.type !== 'hint' && block.type !== 'thinking');
+		if (content.length === 0 && message.finished_reason && message.finished_reason !== ReplyFinishedReason.ERROR) return [];
+		return [{ ...message, content }];
+	}) : msgs, [msgs, teamChat]);
+	const [replyTarget, setReplyTarget] = useState<{ agentId: string; name: string } | null>(null);
+	useEffect(() => setReplyTarget(null), [sessionId]);
+	const handleSend = (content: ContentBlock[]) => {
+		onSend(content, replyTarget?.agentId);
+		setReplyTarget(null);
+	};
 	// Only a session that finished loading with nothing in it is empty.
 	// Treating "no messages yet" as empty would flash the greeting over
 	// every session that does have history.
@@ -185,8 +199,8 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 					<MessageScroller>
 						<MessageScrollerViewport>
 							<MessageScrollerContent>
-								{msgs.map((message, index) => {
-									const previous = msgs[index - 1];
+								{visibleMsgs.map((message, index) => {
+									const previous = visibleMsgs[index - 1];
 									const at = new Date(message.created_at);
 									const previousAt = previous
 										? new Date(previous.finished_at ?? previous.created_at)
@@ -210,6 +224,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 											<ASMessageBubble
 												message={message}
 												onUserConfirm={onUserConfirm}
+												onReplyTo={teamChat ? (targetAgentId, name) => setReplyTarget({ agentId: targetAgentId, name }) : undefined}
 											/>
 										</MessageScrollerItem>
 									);
@@ -262,6 +277,12 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 
 			{loading ? null : (
 				<div className="relative min-w-full max-w-full w-full">
+					{replyTarget && (
+						<div className="mb-2 flex items-center justify-between rounded-xl bg-muted px-3 py-2 text-sm">
+							<span>Trả lời {replyTarget.name}</span>
+							<Button variant="ghost" size="icon-xs" aria-label="Hủy trả lời agent" onClick={() => setReplyTarget(null)}><X /></Button>
+						</div>
+					)}
 					<FlipCard
 						visible={toConfirmedToolCalls.length > 0 || footerSlot !== null}
 						className="mb-2 max-h-[45vh] overflow-y-auto"
@@ -290,7 +311,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 				    pill's corners cutting into it. */}
 					<TextInput
 						className="min-w-full max-w-full w-full rounded-[32px] bg-muted p-1"
-						onSend={onSend}
+						onSend={handleSend}
 						disabled={disabled}
 						autoComplete={autoComplete}
 						allowedInputTypes={allowedInputTypes}

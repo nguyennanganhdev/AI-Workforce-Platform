@@ -1,6 +1,5 @@
-"""Hold a delegated Leader reply until workers provide current evidence."""
+"""Coordinate Workforce Leader turns without validating business claims."""
 
-import asyncio
 import json
 from collections.abc import AsyncGenerator, Callable
 
@@ -27,7 +26,7 @@ from ..storage import StorageBase
 
 
 class LeaderEvidenceMiddleware(MiddlewareBase):
-    """Prevent a Leader from finishing a delegated turn without evidence."""
+    """Keep Leader delegation and finalization event-driven."""
 
     def __init__(
         self,
@@ -67,6 +66,10 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     continue
                 result = results.get(call.id)
                 if result is not None and call.name == "AgentInvite":
+                    started = result.metadata.get("started_targets")
+                    if isinstance(started, list):
+                        targets.update(str(t).strip().casefold() for t in started)
+                        continue
                     actual = result.metadata.get("invited_targets")
                     if isinstance(actual, list):
                         targets.update(str(t).strip().casefold() for t in actual)
@@ -93,34 +96,6 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                     targets.add(target.strip().casefold())
         return len(targets)
 
-    async def _status(self) -> tuple[bool, int, int, int, bool]:
-        session = await self._storage.get_session(
-            self._user_id,
-            self._agent_id,
-            self._session_id,
-        )
-        if session is None or session.team_id is None:
-            return False, 0, 0, 0, False
-        (
-            completed,
-            errors,
-            verified,
-            waiting,
-        ) = await self._shared_context.team_evidence_status(
-            self._user_id,
-            session.team_id,
-            leader_session_id=self._session_id,
-        )
-        return True, completed, errors, verified, waiting
-
-    async def _ready(self, expected: int) -> bool:
-        del expected
-        team_exists, completed, errors, _verified, waiting = await self._status()
-        pending = await self._review() if team_exists and not waiting else []
-        return team_exists and not pending and (
-            waiting or completed > 0 or errors > 0
-        )
-
     async def _review(self) -> list[str]:
         session = await self._storage.get_session(
             self._user_id, self._agent_id, self._session_id
@@ -130,17 +105,6 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         return await self._shared_context.collaboration_review(
             self._user_id, session.team_id, self._session_id
         )
-
-    async def _wait_until_ready(self, expected: int) -> bool:
-        deadline = asyncio.get_running_loop().time() + self._wait_seconds
-        while True:
-            if await self._ready(expected):
-                return True
-            if await self._pending_consent():
-                return True
-            if asyncio.get_running_loop().time() >= deadline:
-                return False
-            await asyncio.sleep(0.5)
 
     async def _pending_consent(self) -> bool:
         return bool(
@@ -162,20 +126,51 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             self._user_id, session.team_id
         )
 
-    async def _unsupported_claims(self, content: str) -> tuple[str, ...]:
+    async def _workers_running(self) -> bool:
+        """Sleep for active work, but allow the Leader to review peer reports."""
+
         session = await self._storage.get_session(
             self._user_id, self._agent_id, self._session_id
         )
         if session is None or session.team_id is None:
-            return ()
-        return await self._shared_context.unsupported_customer_reply_claims(
-            self._user_id,
-            session.team_id,
-            content,
+            return False
+        record = await self._shared_context.storage.get_team_shared_context(
+            self._user_id, session.team_id
         )
+        task = record.state.tasks.get(record.state.active_task_id) if record else None
+        return bool(task and any(
+            sid != self._session_id
+            and branch.customer_revision == task.latest_customer_revision
+            and branch.status in {"running", "waiting_peer"}
+            for sid, branch in task.collaboration.items()
+        ))
 
-    async def _has_unseen_evidence(self) -> bool:
-        """Detect facts that arrived after the model input was pinned."""
+    async def on_reasoning(self, agent, input_kwargs, next_handler):
+        """Stop this run after delegation; a peer reply starts a fresh run."""
+
+        question = await self._question()
+        expected = self._expected_reports(agent)
+        await self._review()
+        if expected or question or await self._workers_running():
+            agent.state.append_context(
+                agent.name,
+                [
+                    HintBlock(
+                        hint=(
+                            "Delegated work is now owned by another participant. "
+                            "End this run without another model call. A later "
+                            "peer reply or customer answer will start a fresh run."
+                        ),
+                    ),
+                ],
+            )
+            yield agent.state.context[-1]
+            return
+        async for event in next_handler(**input_kwargs):
+            yield event
+
+    async def _has_unseen_context(self) -> bool:
+        """Detect team updates that arrived after the model input was pinned."""
 
         session = await self._storage.get_session(
             self._user_id,
@@ -202,6 +197,34 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         )
         return latest > seen
 
+    async def _seal_final_answer(self) -> bool:
+        """Freeze exactly the Shared Context revision used for synthesis."""
+
+        session = await self._storage.get_session(
+            self._user_id,
+            self._agent_id,
+            self._session_id,
+        )
+        if session is None or session.team_id is None:
+            return True
+        task_id = await self._shared_context.active_task_id(
+            self._user_id,
+            session.team_id,
+        )
+        seen = await self._shared_context.session_revision(
+            self._session_id,
+            team_id=session.team_id,
+            task_id=task_id,
+        )
+        if seen is None:
+            return False
+        return await self._shared_context.seal_final_answer(
+            self._user_id,
+            session.team_id,
+            self._session_id,
+            expected_event_revision=seen,
+        )
+
     @staticmethod
     def _replacement(agent: Agent, event: ReplyEndEvent, text: str):
         block_id = _generate_id()
@@ -226,8 +249,8 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
             "",
         )
         if any(ord(char) > 127 for char in latest):
-            return "Nhóm chưa hoàn tất yêu cầu trong giới hạn xử lý hiện tại và chưa có đủ kết quả đã xác minh. Vui lòng thử lại; hệ thống sẽ tiếp tục trong đúng ticket này và không giả định kết quả còn thiếu."
-        return "The team did not finish within this processing window and has insufficient verified results. Please retry; the system will continue in this ticket without inventing missing outcomes."
+            return "Nhóm chưa hoàn tất yêu cầu trong giới hạn xử lý hiện tại. Vui lòng thử lại; hệ thống sẽ tiếp tục trong đúng ticket này."
+        return "The team did not finish within this processing window. Please retry; the system will continue in this ticket."
 
     @staticmethod
     def _buffered_text(events: list[object]) -> str:
@@ -251,111 +274,27 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         ).strip()
 
     @staticmethod
-    def _safe_without_evidence(text: str) -> bool:
-        """Allow greetings, clarification and explicit no-evidence replies."""
+    def _is_customer_intake(text: str) -> bool:
+        """Return whether the fixed Leader is asking for customer input."""
 
         normalized = " ".join(text.casefold().split())
-        if not normalized:
-            return True
-        no_evidence_markers = (
-            "không thể xác minh",
-            "chưa thể xác minh",
-            "không tìm thấy dữ liệu",
-            "chưa tìm thấy dữ liệu",
-            "không thể truy xuất",
-            "chưa thể truy xuất",
-            "thiếu agent",
-            "thiếu công cụ",
-            "không có agent",
-            "chưa có agent",
-            "không có công cụ",
-            "chưa có công cụ",
-            "cannot verify",
-            "could not verify",
-            "unable to retrieve",
-            "no matching data",
-            "missing agent",
-            "missing tool",
-            "no suitable agent",
-            "no suitable tool",
-            "no published agent",
-        )
-        if any(marker in normalized for marker in no_evidence_markers):
-            return True
-        platform_markers = (
-            "agent builder",
-            "mcp",
-            "platform",
-            "cài đặt",
-            "settings",
-        )
-        if any(marker in normalized for marker in platform_markers):
-            return True
-        # A clarification may contain several questions and finish with a
-        # polite sentence, so checking only the final character rejects valid
-        # Vietnamese/English intake turns.  It is safe when it actually asks
-        # the customer, contains no externally verifiable claim, and does not
-        # assert a concrete price/address/availability.
-        if "?" in text:
-            # A model sometimes restates a fully actionable request, promises
-            # to start, then asks an explicitly optional preference.  That is
-            # a deferral, not required intake: withhold it so the next
-            # reasoning round must delegate to the available specialists.
-            optional_deferral_markers = (
-                "có muốn ưu tiên",
-                "nếu không có yêu cầu thêm",
-                "nếu không có ưu tiên",
-                "bạn có ưu tiên nào",
-                "would you prefer",
-                "do you have any preference",
-                "if you have no preference",
-                "if there are no other requirements",
-            )
-            if any(marker in normalized for marker in optional_deferral_markers):
-                return False
-            risky = any(
-                marker in normalized
-                for marker in (
-                    " vnđ",
-                    " vnd",
-                    " usd",
-                    "địa chỉ",
-                    "address",
-                    "còn phòng",
-                    "available",
-                )
-            )
-            clarification_markers = (
-                "bạn",
-                "anh/chị",
-                "vui lòng",
-                "cho biết",
-                "xác nhận",
-                "you",
-                "could you",
+        return "?" in text or any(
+            marker in normalized
+            for marker in (
+                "bạn cung cấp",
+                "bạn cho biết",
+                "vui lòng cung cấp",
+                "vui lòng cho biết",
+                "hãy cung cấp",
+                "hãy cho biết",
                 "please provide",
-                "what ",
-                "where ",
-                "when ",
-                "which ",
-                "how many",
+                "please tell me",
+                "could you provide",
+                "could you tell me",
             )
-            return not risky and any(
-                marker in normalized for marker in clarification_markers
-            )
-        greeting_words = {
-            "chào",
-            "xin chào",
-            "hello",
-            "hi",
-            "cảm ơn",
-            "thank you",
-            "thanks",
-        }
-        return len(normalized) <= 160 and any(
-            normalized.startswith(word) for word in greeting_words
         )
 
+    @staticmethod
     @staticmethod
     def _nudge(agent: Agent, message: str) -> None:
         agent.state.cur_iter = min(
@@ -368,7 +307,7 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 HintBlock(
                     hint=f"<system-reminder>{message}</system-reminder>",
                     source=json.dumps(
-                        {"label": "System", "sublabel": "Evidence Gate"},
+                        {"label": "System", "sublabel": "Team Coordination"},
                     ),
                 ),
             ],
@@ -380,11 +319,9 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
         input_kwargs: dict,
         next_handler: Callable[..., AsyncGenerator],
     ) -> AsyncGenerator:
-        """Buffer customer text and retry after worker evidence arrives."""
+        """Buffer customer text and validate only settled Leader replies."""
 
         nudges = 0
-        dispatched = False
-        resynthesis_requested = False
         buffered_text: list[object] = []
 
         def discard_text():
@@ -417,47 +354,39 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 yield event
                 continue
 
-            question = await self._question()
-            if question:
-                discard_text()
-                for replacement in self._replacement(agent, event, question):
-                    yield replacement
-                continue
-
             expected = self._expected_reports(agent)
-            pending_assignments = await self._review()
-            dispatched = dispatched or expected > 0 or bool(pending_assignments)
-            current_text = self._buffered_text(buffered_text)
-            _team_exists, completed, errors, _verified, waiting = await self._status()
-            has_current_evidence = completed > 0 or errors > 0 or waiting
-
-            if dispatched and not resynthesis_requested:
-                # Even if the worker finished quickly, this text was authored
-                # before its report reached the Leader's model context. Drop
-                # it and force a fresh reasoning round after the inbox drain.
-                ready = await self._wait_until_ready(max(expected, 1))
+            await self._review()
+            question = await self._question()
+            if expected or question or await self._workers_running():
+                # Delegation and specialist-owned clarification are terminal
+                # for this run. The recipient/customer response will wake a
+                # new run with a fresh Shared Context snapshot.
                 discard_text()
-                if await self._pending_consent():
-                    # The structured pending action is already presented in
-                    # chat. Parking for consent is successful orchestration,
-                    # not missing evidence and not a reason to retry workers.
-                    yield event
-                    continue
-                if not ready:
-                    # Never promise a later update unless a durable workflow
-                    # owns that delivery. A bounded timeout is incomplete.
+                yield event.model_copy(
+                    update={
+                        "finished_reason": ReplyFinishedReason.COMPLETED,
+                        "error": None,
+                    }
+                )
+                return
+
+            current_text = self._buffered_text(buffered_text)
+            if self._is_customer_intake(current_text):
+                discard_text()
+                if nudges >= self._max_nudges:
                     for replacement in self._replacement(
                         agent, event, self._incomplete_text(agent)
                     ):
                         yield replacement
                     continue
-                resynthesis_requested = True
                 nudges += 1
                 self._nudge(
                     agent,
-                    "Read the newly arrived worker reports from the inbox and "
-                    "shared context. Then answer the customer using only that "
-                    "current evidence. Do not emit a progress placeholder.",
+                    "The fixed Workforce Leader must not ask the customer for "
+                    "task-specific information. Create the team if needed and "
+                    "delegate intake to the single best-matched specialist. "
+                    "Only that specialist may call "
+                    "TeamSay(kind=requires_user_input) and ask the customer.",
                 )
                 continue
 
@@ -477,7 +406,7 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 ):
                     yield replacement
                 continue
-            if await self._has_unseen_evidence():
+            if await self._has_unseen_context():
                 discard_text()
                 if nudges >= self._max_nudges:
                     for replacement in self._replacement(
@@ -488,24 +417,13 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 nudges += 1
                 self._nudge(
                     agent,
-                    "New verified team evidence arrived after the previous "
+                    "New team context arrived after the previous "
                     "model snapshot. Re-read Shared Context and synthesize "
                     "one complete customer answer from the newest revision. "
                     "Do not emit an intermediate progress update.",
                 )
                 continue
-            safe_without_evidence = self._safe_without_evidence(current_text)
-            # A long factual answer does not become a safe clarification just
-            # because it ends with "Which option do you want?".  Validate
-            # concrete anchors for every non-empty reply.  The support set also
-            # contains customer-confirmed messages, so repeating dates/budgets
-            # while asking a real clarification remains valid.
-            unsupported = (
-                await self._unsupported_claims(current_text)
-                if current_text
-                else ()
-            )
-            if unsupported:
+            if not await self._seal_final_answer():
                 discard_text()
                 if nudges >= self._max_nudges:
                     for replacement in self._replacement(
@@ -516,43 +434,15 @@ class LeaderEvidenceMiddleware(MiddlewareBase):
                 nudges += 1
                 self._nudge(
                     agent,
-                    "Evidence Gate rejected unsupported concrete names or "
-                    "numbers: "
-                    + ", ".join(unsupported[:12])
-                    + ". Rewrite the customer answer using only exact names, "
-                    "numbers and facts present in current verified reports. "
-                    "Do not add examples from model memory.",
+                    "The team state changed before finalization or still "
+                    "contains open work. Re-read Shared Context, wait for "
+                    "settled assignments, then synthesize again.",
                 )
                 continue
-            if has_current_evidence or safe_without_evidence:
-                for text_event in buffered_text:
-                    yield text_event
-                buffered_text.clear()
-                yield event
-                continue
-
-            discard_text()
-            if nudges >= self._max_nudges:
-                for replacement in self._replacement(
-                    agent, event, self._incomplete_text(agent)
-                ):
-                    yield replacement
-                continue
-
-            nudges += 1
-            self._nudge(
-                agent,
-                (
-                    "This customer-facing answer has no current worker or MCP "
-                    "evidence. Delegate the domain task to a published agent, "
-                    "ask one concise REQUIRED clarification question, or explicitly say "
-                    "that the capability/data cannot be verified. Never supply "
-                    "names, prices, addresses, availability or recommendations "
-                    "from model memory. If the user already supplied the core "
-                    "inputs needed for read-only lookup, delegate now; do not "
-                    "delay work to ask optional preferences."
-                ),
-            )
+            for text_event in buffered_text:
+                yield text_event
+            buffered_text.clear()
+            yield event
 
 
 __all__ = ["LeaderEvidenceMiddleware"]

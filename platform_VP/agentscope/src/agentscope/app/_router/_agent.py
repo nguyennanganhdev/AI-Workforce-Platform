@@ -5,8 +5,10 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 
-from ...agent import ContextConfig, ReActConfig
 from ..._utils._common import _flatten_json_schema
+from ...agent import ContextConfig, ReActConfig
+from .._service import AgentView, ResourceAccessService, SessionService
+from .._workforce_policy import governed_system_prompt
 from ..access import ResourceKind
 from ..deps import (
     get_current_user_id,
@@ -14,16 +16,15 @@ from ..deps import (
     get_session_service,
     get_storage,
 )
+from ..storage import AgentData, AgentRecord, StorageBase
 from ._schema import (
     AgentSchemaResponse,
     AgentSchemaV2Response,
-    ListAgentsResponse,
     CreateAgentRequest,
     CreateAgentResponse,
+    ListAgentsResponse,
     UpdateAgentRequest,
 )
-from .._service import AgentView, ResourceAccessService, SessionService
-from ..storage import StorageBase, AgentData, AgentRecord
 
 agent_router = APIRouter(
     prefix="/agent",
@@ -159,6 +160,12 @@ async def list_agents(
             All visible agent records paired with per-viewer editability.
     """
     entries = await access.list_resource(user_id, ResourceKind.AGENT)
+    for entry in entries:
+        if entry.data.system_role == "leader":
+            entry.data.system_prompt = governed_system_prompt(
+                "leader",
+                entry.data.system_prompt,
+            )
     return ListAgentsResponse(agents=entries, total=len(entries))
 
 
@@ -251,6 +258,11 @@ async def update_agent(
     )
 
     updates = body.model_dump(exclude_none=True)
+    if existing.data.system_role == "leader":
+        updates["system_prompt"] = governed_system_prompt(
+            "leader",
+            existing.data.system_prompt,
+        )
     # ``model_copy(update=...)`` skips validators; re-run
     # ``AgentData.model_validate`` on the merged shape so the
     # ``invite_config`` sub-model's ``invitable ⇒ non-empty description``

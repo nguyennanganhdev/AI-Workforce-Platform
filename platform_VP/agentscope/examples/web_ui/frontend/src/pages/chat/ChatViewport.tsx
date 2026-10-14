@@ -69,6 +69,8 @@ interface ChatViewportProps {
 	 * workspace drive every control rendered here.
 	 */
 	sessionId: string | null;
+	/** Read-only team-member inspection: poll history and never open an SSE stream. */
+	readOnly?: boolean;
 	/**
 	 * Optional hook invoked when a server-side change to this session
 	 * or its team arrives on the SSE stream. The outer page owns the
@@ -168,7 +170,12 @@ function closePanelInLayout(layout: PanelKey[][], key: PanelKey): PanelKey[][] {
  *   session is selected yet.
  * @returns The right-side main JSX of the chat page.
  */
-export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatViewportProps) {
+export function ChatViewport({
+	agentId,
+	sessionId,
+	readOnly = false,
+	onSessionsChanged,
+}: ChatViewportProps) {
 	const { t } = useTranslation();
 	const { sessions, refetch: refetchSessions } = useSessions(agentId);
 	const { groups } = useAvailableModels();
@@ -246,6 +253,8 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 		},
 		[sessionId],
 	);
+	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
+	const isTeamChat = !!view?.team && view.team.team.session_id === sessionId;
 
 	const {
 		msgs,
@@ -257,6 +266,8 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 		subagentHitl,
 		interrupt,
 	} = useMessages(agentId, sessionId, {
+		stream: !readOnly,
+		teamChat: isTeamChat,
 		onTeamUpdated: handleTeamUpdated,
 		onStateUpdated: handleStateUpdated,
 		onSessionUpdated: handleSessionUpdated,
@@ -272,7 +283,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 		uploadSkill,
 		addSkillsFromLibrary,
 		removeSkill,
-	} = useWorkspace(agentId, sessionId);
+	} = useWorkspace(readOnly ? null : agentId, readOnly ? null : sessionId);
 	const { knowledgeBases, loading: knowledgeBasesLoading } = useKnowledgeBases();
 	const { schema: kbMiddlewareSchema } = useKnowledgeBaseMiddlewareSchema();
 
@@ -326,7 +337,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 	 */
 	const patchConfig = useCallback(
 		async (body: UpdateSessionRequest, apply: () => void) => {
-			if (!sessionId || !agentId) return;
+			if (readOnly || !sessionId || !agentId) return;
 			setConfigPending(true);
 			try {
 				await sessionApi.update(sessionId, agentId, body);
@@ -338,7 +349,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 				setConfigPending(false);
 			}
 		},
-		[sessionId, agentId, refetchSessions],
+		[readOnly, sessionId, agentId, refetchSessions],
 	);
 
 	const handleKnowledgeConfigChange = useCallback(
@@ -353,7 +364,6 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 	// Declared above `panels` — the memo factory reads `view.team`
 	// eagerly on first render, so a later `const` would still be in
 	// the temporal dead zone.
-	const view = sessions.find((v) => v.session.id === sessionId) ?? null;
 	const completeTeamMention = useCallback(
 		(input: string): string | null => {
 			if (!input.startsWith('@') || input.includes('\n')) return null;
@@ -361,8 +371,12 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 				...(view?.team?.leader_agent ? [view.team.leader_agent.data.name] : []),
 				...(view?.team?.members.map(({ agent }) => agent.data.name) ?? []),
 			];
-			const candidate = view?.team?.members
-				.map(({ agent }) => {
+			const candidates = [
+				...(view?.team?.leader_agent ? [view.team.leader_agent] : []),
+				...(view?.team?.members.map(({ agent }) => agent) ?? []),
+			];
+			const candidate = candidates
+				.map((agent) => {
 					const duplicate =
 						names.filter(
 							(name) => name.toLocaleLowerCase() === agent.data.name.toLocaleLowerCase(),
@@ -374,12 +388,12 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 				);
 			return candidate ? input + candidate.slice(input.length) : null;
 		},
-		[view?.team?.leader_agent, view?.team?.members],
+		[view],
 	);
 
 	const { status: workspaceStatus, refetch: refetchWorkspaceStatus } = useWorkspaceStatus(
-		agentId,
-		sessionId,
+		readOnly ? null : agentId,
+		readOnly ? null : sessionId,
 		view?.session.config.cwd ?? null,
 	);
 
@@ -615,7 +629,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 
 		if (sessionModel) {
 			setSelectedModel(sessionModel);
-		} else {
+		} else if (!readOnly) {
 			const firstModel = getFirstAvailableModel();
 			if (firstModel) {
 				setSelectedModel(firstModel);
@@ -641,7 +655,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 		setSelectedFallbackModel(view.session.config.fallback_chat_model_config ?? null);
 		setSelectedTTSModel(view.session.config.tts_model_config ?? null);
 		setSelectedKnowledgeConfig(view.session.config.knowledge_config ?? null);
-	}, [view, groups, sessionId, agentId]);
+	}, [view, groups, sessionId, agentId, readOnly]);
 
 	// Sync selectedPermissionMode when the session changes. Same
 	// loading-window guard as above — don't reset the displayed mode
@@ -714,7 +728,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 		// Bypasses `patchConfig`: the dialog shows the failure inline and
 		// stays open on it, so the toast would be a duplicate and the
 		// swallowed rejection would let the dialog close as if it worked.
-		if (!sessionId || !agentId) return;
+		if (readOnly || !sessionId || !agentId) return;
 		setConfigPending(true);
 		try {
 			await sessionApi.update(sessionId, agentId, { cwd: next }, { silent: true });
@@ -742,6 +756,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 							<div className="flex flex-row gap-x-2 justify-between">
 								<div className="flex min-w-0 flex-row items-center gap-x-1">
 									<SidebarTrigger className="md:hidden" />
+									{isTeamChat && <Badge variant="secondary"><UsersRound className="size-3" /> Chat chung của team</Badge>}
 									{/* The open session, named opposite its own
 									    settings. The sidebar is the only other
 									    place the name appears, and it collapses
@@ -763,6 +778,9 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 											{view?.session.config.name}
 										</span>
 									)}
+									{readOnly ? (
+										<Badge variant="secondary">{t('common.readOnly')}</Badge>
+									) : null}
 								</div>
 								{/* Never squeezed by a long session name: the
 								    name truncates instead. */}
@@ -775,7 +793,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 										onChange={handleLlmChange}
 										onAddCredential={() => setCredentialOpen(true)}
 										refetchTrigger={credentialRefetchTrigger}
-										disabled={configPending}
+										disabled={readOnly || configPending}
 									/>
 									<ModelParametersPopover
 										selectedModel={selectedModel}
@@ -785,14 +803,14 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 										onFallbackChange={handleFallbackChange}
 										selectedTTSModel={selectedTTSModel}
 										onTTSChange={handleTTSChange}
-										disabled={configPending}
+										disabled={readOnly || configPending}
 									/>
 									<PermissionModeSelect
 										id="tour-permission-mode"
 										variant={'ghost'}
 										className="font-mono text-muted-foreground hover:text-foreground"
 										value={selectedPermissionMode}
-										disabled={!sessionId || configPending}
+										disabled={readOnly || !sessionId || configPending}
 										onChange={handlePermissionModeChange}
 									/>
 									<DropdownMenu>
@@ -863,6 +881,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 								<ChatContent
 									className={'max-w-[var(--chat-content-w)] w-full'}
 									msgs={msgs}
+									teamChat={isTeamChat}
 									loading={messagesLoading}
 									agentId={agentId}
 									sessionId={sessionId}
@@ -871,7 +890,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 									git={workspaceStatus?.git ?? null}
 									onRefreshGit={refetchWorkspaceStatus}
 									phase={phase}
-									disabled={selectedModel === null}
+									disabled={readOnly || selectedModel === null}
 									onSend={send}
 									autoComplete={completeTeamMention}
 									onUserConfirm={onUserConfirm}

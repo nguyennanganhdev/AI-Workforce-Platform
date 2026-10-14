@@ -11,6 +11,7 @@ import json
 import os
 import re
 import tarfile
+import unicodedata
 from collections import defaultdict
 from collections.abc import AsyncIterator
 from typing import Literal
@@ -30,6 +31,7 @@ from .._workforce_policy import (
     WORKFORCE_LEADER_PROMPT,
     governed_system_prompt,
 )
+from ..access import ResourceKind
 from ..deps import (
     get_current_user_id,
     get_resource_access_service,
@@ -42,6 +44,7 @@ from ..storage import (
     ChatModelConfig,
     InviteConfig,
     SessionConfig,
+    SessionKnowledgeConfig,
     SessionRecord,
     StorageBase,
 )
@@ -87,13 +90,28 @@ class BuilderTool(BaseModel):
     description: str = ""
 
 
+class BuilderKnowledgeBase(BaseModel):
+    """One exact knowledge-base reference that the model may select."""
+
+    id: str
+    name: str
+    description: str = ""
+
+
 class GeneratedAgent(BaseModel):
-    """The only three business artifacts Builder is allowed to author."""
+    """Business artifacts the Builder is allowed to author."""
 
     name: str = Field(min_length=1, max_length=100)
     objective: str = Field(min_length=1, max_length=4000)
+    execution_mode: Literal["context_only", "tool_backed"] = Field(
+        description=(
+            "context_only uses customer input, retrieved knowledge and peer "
+            "results; tool_backed requires at least one selected MCP tool."
+        ),
+    )
     system_prompt: str = Field(min_length=20, max_length=30000)
     selected_tool_ids: list[str] = Field(default_factory=list)
+    selected_knowledge_base_ids: list[str] = Field(default_factory=list)
     skill_name: str = Field(min_length=1, max_length=100)
     skill_markdown: str = Field(min_length=20, max_length=50000)
 
@@ -112,6 +130,7 @@ class PlannedAgent(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     objective: str = Field(min_length=1, max_length=4000)
     suggested_tool_ids: list[str] = Field(default_factory=list)
+    suggested_knowledge_base_ids: list[str] = Field(default_factory=list)
 
 
 class BuilderOutline(BaseModel):
@@ -160,13 +179,16 @@ class PlannedAgentView(BaseModel):
     name: str
     objective: str
     suggested_tools: list[BuilderTool] = Field(default_factory=list)
+    suggested_knowledge_bases: list[BuilderKnowledgeBase] = Field(default_factory=list)
 
 
 class ProposedAgentView(BaseModel):
     name: str
     objective: str
+    execution_mode: Literal["context_only", "tool_backed"] = "tool_backed"
     system_prompt: str
     selected_tools: list[BuilderTool]
+    selected_knowledge_bases: list[BuilderKnowledgeBase] = Field(default_factory=list)
     skill_name: str
     skill_markdown: str
     evaluation: dict
@@ -191,6 +213,14 @@ class PublishRequest(BaseModel):
     conversation_id: str
     proposal_id: str
     expected_revision: int = Field(ge=1)
+    knowledge_base_selections: list[list[str]] | None = Field(
+        default=None,
+        max_length=12,
+        description=(
+            "Final per-agent knowledge-base ids, aligned with proposal.agents. "
+            "When omitted, the Builder suggestions are used."
+        ),
+    )
 
 
 class PublishedAgent(BaseModel):
@@ -212,8 +242,10 @@ class WorkforceAgentView(BaseModel):
     agent_id: str
     name: str
     objective: str
+    execution_mode: Literal["context_only", "tool_backed"] | None = None
     lifecycle_state: Literal["draft", "published", "withdrawn"]
     tool_count: int
+    knowledge_base_count: int
     evaluation: dict
 
 
@@ -239,6 +271,25 @@ class BuilderConversationView(BaseModel):
     title: str
     messages: list[BuilderMessageView]
     proposal: ProposalView | None = None
+
+
+class MCPToolGroupView(BaseModel):
+    mcp_id: str
+    mcp_name: str
+    tools: list[BuilderTool]
+
+
+class AgentToolSettingsView(BaseModel):
+    agent_id: str
+    selected_tool_ids: list[str]
+    mcps: list[MCPToolGroupView]
+    selected_knowledge_base_ids: list[str] = Field(default_factory=list)
+    knowledge_bases: list[BuilderKnowledgeBase] = Field(default_factory=list)
+
+
+class UpdateAgentToolsRequest(BaseModel):
+    selected_tool_ids: list[str] = Field(default_factory=list, max_length=500)
+    selected_knowledge_base_ids: list[str] | None = Field(default=None, max_length=100)
 
 
 _proposal_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -335,6 +386,17 @@ def _claim_exclusive_tool_ids(
     return exclusive, invalid, duplicates
 
 
+def _execution_mode_matches_tools(
+    execution_mode: Literal["context_only", "tool_backed"],
+    selected_tools: list[BuilderTool],
+) -> bool:
+    """Keep no-tool reasoning explicit without weakening operational agents."""
+
+    if execution_mode == "context_only":
+        return not selected_tools
+    return bool(selected_tools)
+
+
 def _select_model_name(
     credential_type: str,
     model_names: list[str],
@@ -408,6 +470,263 @@ async def _catalog(storage: StorageBase, user_id: str) -> list[BuilderTool]:
     return catalog
 
 
+async def _knowledge_catalog(
+    access: ResourceAccessService,
+    user_id: str,
+) -> list[BuilderKnowledgeBase]:
+    """Return the caller-visible KB allowlist exposed to Agent Builder."""
+
+    return [
+        BuilderKnowledgeBase(
+            id=view.id,
+            name=view.name,
+            description=view.description,
+        )
+        for view in await access.list_resource(
+            user_id,
+            ResourceKind.KNOWLEDGE_BASE,
+        )
+    ]
+
+
+def _group_tool_catalog(catalog: list[BuilderTool]) -> list[MCPToolGroupView]:
+    """Group the flat Builder allowlist for the settings accordion."""
+
+    groups: dict[str, MCPToolGroupView] = {}
+    for tool in catalog:
+        group = groups.setdefault(
+            tool.mcp_id,
+            MCPToolGroupView(
+                mcp_id=tool.mcp_id,
+                mcp_name=tool.mcp_name,
+                tools=[],
+            ),
+        )
+        group.tools.append(tool)
+    return list(groups.values())
+
+
+def _resolve_selected_tools(
+    catalog: list[BuilderTool],
+    requested_ids: list[str],
+) -> tuple[list[BuilderTool], list[str]]:
+    """Resolve a unique selection and report stale or invented tool ids."""
+
+    by_id = {tool.id: tool for tool in catalog}
+    unique = list(dict.fromkeys(requested_ids))
+    return (
+        [by_id[tool_id] for tool_id in unique if tool_id in by_id],
+        [tool_id for tool_id in unique if tool_id not in by_id],
+    )
+
+
+def _resolve_selected_knowledge_bases(
+    catalog: list[BuilderKnowledgeBase],
+    requested_ids: list[str],
+) -> tuple[list[BuilderKnowledgeBase], list[str]]:
+    """Resolve unique KB ids against the Builder's authorized catalog."""
+
+    by_id = {knowledge.id: knowledge for knowledge in catalog}
+    unique = list(dict.fromkeys(requested_ids))
+    return (
+        [by_id[kb_id] for kb_id in unique if kb_id in by_id],
+        [kb_id for kb_id in unique if kb_id not in by_id],
+    )
+
+
+def _fold_for_capability_match(value: str) -> str:
+    """Normalize catalog and request text for deterministic coverage checks."""
+
+    value = unicodedata.normalize("NFKD", value.casefold()).replace("đ", "d")
+    value = "".join(char for char in value if not unicodedata.combining(char))
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", value).split())
+
+
+def _attraction_tools_requested(
+    transcript: str,
+    tools: list[BuilderTool],
+) -> list[BuilderTool]:
+    """Return attraction tools only when the user's request asks for them."""
+
+    request = _fold_for_capability_match(transcript)
+    requested = any(
+        phrase in request
+        for phrase in (
+            "dia diem vui choi",
+            "diem vui choi",
+            "tham quan",
+            "attraction",
+            "sightseeing",
+            "things to do",
+        )
+    )
+    if not requested:
+        return []
+    return [
+        tool
+        for tool in tools
+        if "attraction"
+        in _fold_for_capability_match(
+            f"{tool.tool_name} {tool.description}",
+        )
+    ]
+
+
+def _ensure_attraction_outline_coverage(
+    outline: BuilderOutline,
+    transcript: str,
+    tools: list[BuilderTool],
+) -> BuilderOutline:
+    """Materialize an explicitly requested attraction capability boundary."""
+
+    attraction_tools = _attraction_tools_requested(transcript, tools)
+    if not attraction_tools:
+        return outline
+    attraction_ids = {tool.id for tool in attraction_tools}
+    agents = [agent.model_copy(deep=True) for agent in outline.agents]
+    specialist = next(
+        (
+            agent
+            for agent in agents
+            if any(
+                phrase in _fold_for_capability_match(
+                    f"{agent.name} {agent.objective}",
+                )
+                for phrase in (
+                    "dia diem vui choi",
+                    "diem vui choi",
+                    "tham quan",
+                    "attraction",
+                    "sightseeing",
+                )
+            )
+        ),
+        None,
+    )
+    if specialist is None:
+        vietnamese = _response_language(transcript) == "vi"
+        specialist = PlannedAgent(
+            name=(
+                "Agent Địa Điểm Vui Chơi"
+                if vietnamese
+                else "Attraction Specialist"
+            ),
+            objective=(
+                "Tìm kiếm, kiểm tra và xử lý riêng các lựa chọn địa điểm vui "
+                "chơi bằng dữ liệu công cụ đã xác minh."
+                if vietnamese
+                else "Search, verify, and handle attraction options using "
+                "verified tool data."
+            ),
+        )
+        agents.append(specialist)
+
+    for agent in agents:
+        agent.suggested_tool_ids = [
+            tool_id
+            for tool_id in agent.suggested_tool_ids
+            if tool_id not in attraction_ids or agent is specialist
+        ]
+    specialist.suggested_tool_ids = list(
+        dict.fromkeys(
+            (*specialist.suggested_tool_ids, *(tool.id for tool in attraction_tools)),
+        ),
+    )
+    return outline.model_copy(update={"agents": agents})
+
+
+def _ensure_attraction_generation_coverage(
+    generation: BuilderGeneration,
+    transcript: str,
+    tools: list[BuilderTool],
+    reply_language: Literal["vi", "en"],
+) -> BuilderGeneration:
+    """Keep the generated configuration aligned with the approved boundary."""
+
+    attraction_tools = _attraction_tools_requested(transcript, tools)
+    if not attraction_tools:
+        return generation
+    attraction_ids = {tool.id for tool in attraction_tools}
+    agents = [agent.model_copy(deep=True) for agent in generation.agents]
+    specialist = next(
+        (
+            agent
+            for agent in agents
+            if any(
+                phrase in _fold_for_capability_match(
+                    f"{agent.name} {agent.objective}",
+                )
+                for phrase in (
+                    "dia diem vui choi",
+                    "diem vui choi",
+                    "tham quan",
+                    "attraction",
+                    "sightseeing",
+                )
+            )
+        ),
+        None,
+    )
+    if specialist is None:
+        if reply_language == "vi":
+            specialist = GeneratedAgent(
+                name="Agent Địa Điểm Vui Chơi",
+                objective=(
+                    "Tìm kiếm, kiểm tra và xử lý riêng các lựa chọn địa điểm "
+                    "vui chơi bằng dữ liệu công cụ đã xác minh."
+                ),
+                execution_mode="tool_backed",
+                system_prompt=(
+                    "Bạn phụ trách địa điểm vui chơi. Dùng đúng công cụ được "
+                    "gắn để tra cứu dữ liệu thực, trình bày lựa chọn trước và "
+                    "chỉ đặt vé sau yêu cầu cùng xác nhận rõ ràng của khách."
+                ),
+                selected_tool_ids=[],
+                skill_name="dia-diem-vui-choi",
+                skill_markdown=(
+                    "# Quy trình\n\nTra cứu rộng theo dữ kiện khách đã cung cấp, "
+                    "kiểm tra lựa chọn bằng công cụ, rồi báo cáo kết quả đã xác minh."
+                ),
+            )
+        else:
+            specialist = GeneratedAgent(
+                name="Attraction Specialist",
+                objective=(
+                    "Search, verify, and handle attraction options using "
+                    "verified tool data."
+                ),
+                execution_mode="tool_backed",
+                system_prompt=(
+                    "Own attraction work. Use the assigned tools for live data, "
+                    "present options first, and book only after an explicit "
+                    "customer request and confirmation."
+                ),
+                selected_tool_ids=[],
+                skill_name="attraction-options",
+                skill_markdown=(
+                    "# Workflow\n\nSearch from customer-provided constraints, "
+                    "verify options with tools, then report exact evidence."
+                ),
+            )
+        agents.append(specialist)
+
+    for agent in agents:
+        agent.selected_tool_ids = [
+            tool_id
+            for tool_id in agent.selected_tool_ids
+            if tool_id not in attraction_ids or agent is specialist
+        ]
+        if agent is not specialist and not agent.selected_tool_ids:
+            agent.execution_mode = "context_only"
+    specialist.execution_mode = "tool_backed"
+    specialist.selected_tool_ids = list(
+        dict.fromkeys(
+            (*specialist.selected_tool_ids, *(tool.id for tool in attraction_tools)),
+        ),
+    )
+    return generation.model_copy(update={"agents": agents})
+
+
 async def _builder_structured_call(
     model: ChatModelBase,
     messages: list[Msg],
@@ -443,6 +762,7 @@ async def _builder_structured_call(
 async def _outline(
     transcript: str,
     tools: list[BuilderTool],
+    knowledge_bases: list[BuilderKnowledgeBase],
     model: ChatModelBase,
     config: ChatModelConfig,
 ) -> tuple[BuilderOutline, int, int]:
@@ -451,20 +771,36 @@ async def _outline(
         [tool.model_dump(mode="json") for tool in tools],
         ensure_ascii=False,
     )
+    knowledge_json = json.dumps(
+        [knowledge.model_dump(mode="json") for knowledge in knowledge_bases],
+        ensure_ascii=False,
+    )
     instructions = """You are the planning stage of Agent Builder.
 Propose agent names and narrowly-scoped reusable business objectives only.
 Do not generate system prompts or skills yet. Respect whether the user asked
 for one agent or a team. For a team request, split independent business
 capabilities into separate agents instead of creating one monolithic agent.
 Related actions in one domain, such as hotel search and hotel booking, may stay
-in one agent. Planning, hotel, transport, calculation and technical support are
-separate domains when the registered tools support them. Select only exact
+in one agent. Planning, hotel, transport, attraction/sightseeing, calculation
+and technical support are separate domains when the registered tools support
+them. Every capability explicitly requested by the user and supported by the
+catalog must appear in the outline. Select only exact
 suggested_tool_ids from the catalog. One tool ID may belong to only one agent
 in the whole proposal. When a specialist agent exists, assign its operational
 tools to that specialist; a planning/coordinator agent must collaborate through
 TeamSay instead of duplicating hotel, transport, restaurant, calculation or
-other specialist tools. Never invent a tool or create two agents for the same
-capability. Incorporate the user's latest feedback into the revised outline.
+other specialist tools. An agent may intentionally have no suggested tools when
+it only plans, summarizes, compares supplied values, answers from runtime-
+retrieved knowledge-base context, or combines verified peer results. Live
+search, availability, status, booking and other external actions still require
+matching registered tools. Never invent a tool or create two agents for the
+same capability. Incorporate the user's latest feedback into the revised outline.
+Select only exact suggested_knowledge_base_ids from the knowledge-base catalog.
+Use each knowledge base's description to decide whether it supplies stable
+internal/reference knowledge needed by that agent. Knowledge bases may be shared
+by multiple agents when their objectives genuinely require the same reference
+material. Do not select a knowledge base for live availability, current status,
+booking or another external action that requires a registered tool.
 Use the language of the user's latest real request for every human-readable
 field: Vietnamese for a Vietnamese request and English for an English request.
 Write naturally and clearly, as a helpful human collaborator would.
@@ -481,15 +817,24 @@ Write naturally and clearly, as a helpful human collaborator would.
                     SystemMsg(
                         name="agent_builder",
                         content=(
-                            instructions + "\nRegistered tool catalog:\n" + tool_json
+                            instructions
+                            + "\nRegistered tool catalog:\n"
+                            + tool_json
+                            + "\nKnowledge-base catalog:\n"
+                            + knowledge_json
                         ),
                     ),
                     UserMsg(name="area_manager", content=transcript),
                 ],
                 BuilderOutline,
             )
-        return (
+        outline = _ensure_attraction_outline_coverage(
             BuilderOutline.model_validate(response.content),
+            transcript,
+            tools,
+        )
+        return (
+            outline,
             prompt_tokens,
             reserved_output_tokens,
         )
@@ -541,6 +886,7 @@ def _raise_builder_model_error(exc: Exception, config: ChatModelConfig) -> None:
 async def _generate(
     message: str,
     tools: list[BuilderTool],
+    knowledge_bases: list[BuilderKnowledgeBase],
     model: ChatModelBase,
     config: ChatModelConfig,
     reply_language: Literal["vi", "en"],
@@ -549,16 +895,33 @@ async def _generate(
         [tool.model_dump(mode="json") for tool in tools],
         ensure_ascii=False,
     )
+    knowledge_json = json.dumps(
+        [knowledge.model_dump(mode="json") for knowledge in knowledge_bases],
+        ensure_ascii=False,
+    )
     instructions = """You are Agent Builder, not the runtime Leader.
 The conversation contains an outline approved by the area manager. Generate
 exactly those reusable independent business agents; do not merge their
 capabilities into one agent. A team request is only a batch creation shortcut;
 do not pre-bind a permanent team or a ticket. You may author ONLY: name, objective,
-system_prompt, selected_tool_ids and one reusable SKILL.md. Select only exact
-tool IDs in the supplied catalog. A tool ID may appear in only one generated
-agent. Give each operational tool to the narrowest specialist that owns that
-capability; a planning/coordinator agent must call that specialist through
-TeamSay instead of receiving a duplicate tool. Never output or modify model parameters,
+execution_mode, system_prompt, selected_tool_ids, selected_knowledge_base_ids and
+one reusable SKILL.md.
+Set execution_mode=context_only only when the agent can complete its work from
+customer input, runtime-retrieved knowledge-base context and verified peer
+results without live lookup or external action; it must then select no MCP tool.
+Set execution_mode=tool_backed for live search, availability, status, booking or
+other external actions; it must select at least one exact tool ID from the
+supplied catalog. A tool ID may appear in only one generated agent. Give each
+operational tool to the narrowest specialist that owns that capability; a
+planning/coordinator agent must call that specialist through TeamSay instead of
+receiving a duplicate tool. Select only exact knowledge-base IDs from the
+supplied knowledge-base catalog, using their descriptions to match stable
+internal/reference knowledge to the agent's objective. A knowledge base may be
+used by more than one agent when genuinely relevant. The system prompt must tell
+the runtime agent to use search_knowledge for facts likely stored in its equipped
+knowledge bases, MCP tools for live state or external actions, and both in that
+order when reference context is needed before a live operation. Never output or
+modify model parameters,
 context limits, ReAct settings, timeouts, credentials, permissions or publish
 policy. The system prompt must explain when to communicate with another agent
 through TeamSay, but must not hard-code a particular future ticket. If the
@@ -593,7 +956,11 @@ LANGUAGE AND VOICE:
                     SystemMsg(
                         name="agent_builder",
                         content=(
-                            instructions + "\nRegistered tool catalog:\n" + tool_json
+                            instructions
+                            + "\nRegistered tool catalog:\n"
+                            + tool_json
+                            + "\nKnowledge-base catalog:\n"
+                            + knowledge_json
                         ),
                     ),
                     UserMsg(name="area_manager", content=message),
@@ -645,6 +1012,7 @@ async def _primary_session(
     agent_id: str,
     model_config: ChatModelConfig,
     name: str,
+    knowledge_base_ids: list[str] | None = None,
 ):
     sessions = await storage.list_sessions(user_id, agent_id)
     if sessions:
@@ -661,6 +1029,14 @@ async def _primary_session(
             workspace_id=workspace_id,
             name=name,
             chat_model_config=model_config,
+            knowledge_config=(
+                SessionKnowledgeConfig(
+                    knowledge_base_ids=knowledge_base_ids,
+                    parameters={"mode": "agentic"},
+                )
+                if knowledge_base_ids
+                else None
+            ),
         ),
     )
 
@@ -1129,6 +1505,32 @@ async def get_builder_conversation(
     )
 
 
+@workforce_console_router.delete(
+    "/builder/conversations/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_builder_conversation(
+    conversation_id: str,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+) -> None:
+    session = await storage.get_session(
+        user_id,
+        _BUILDER_AGENT_ID,
+        conversation_id,
+    )
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy hội thoại Agent Builder.",
+        )
+    await storage.delete_session(
+        user_id,
+        _BUILDER_AGENT_ID,
+        conversation_id,
+    )
+
+
 @workforce_console_router.post("/builder/prepare", response_model=ProposalView)
 async def prepare_builder(
     body: PrepareRequest,
@@ -1148,6 +1550,7 @@ async def prepare_builder(
         previous_transcript or body.message,
     )
     tools = await _catalog(storage, user_id)
+    knowledge_bases = await _knowledge_catalog(access, user_id)
     model = await get_model(user_id, body.chat_model_config, access)
     transcript = await _prepare_builder_memory(
         model=model,
@@ -1163,6 +1566,7 @@ async def prepare_builder(
             outline, prompt_tokens, reserved_output_tokens = await _outline(
                 transcript,
                 tools,
+                knowledge_bases,
                 model,
                 body.chat_model_config,
             )
@@ -1186,6 +1590,7 @@ async def prepare_builder(
             model.context_size,
         )
         by_id = {tool.id: tool for tool in tools}
+        knowledge_by_id = {knowledge.id: knowledge for knowledge in knowledge_bases}
         claimed_outline_tools: set[str] = set()
         planned_agents: list[PlannedAgentView] = []
         for agent in outline.agents:
@@ -1199,6 +1604,13 @@ async def prepare_builder(
                     name=agent.name,
                     objective=agent.objective,
                     suggested_tools=[by_id[tool_id] for tool_id in tool_ids],
+                    suggested_knowledge_bases=[
+                        knowledge_by_id[kb_id]
+                        for kb_id in dict.fromkeys(
+                            agent.suggested_knowledge_base_ids,
+                        )
+                        if kb_id in knowledge_by_id
+                    ],
                 ),
             )
         summary = "\n".join(
@@ -1240,6 +1652,7 @@ async def prepare_builder(
         generation, prompt_tokens, reserved_output_tokens = await _generate(
             transcript,
             tools,
+            knowledge_bases,
             model,
             body.chat_model_config,
             reply_language,
@@ -1255,6 +1668,12 @@ async def prepare_builder(
             budget_exceeded=True,
         )
         raise
+    generation = _ensure_attraction_generation_coverage(
+        generation,
+        transcript,
+        tools,
+        reply_language,
+    )
     await _record_builder_prompt_measurement(
         storage,
         user_id,
@@ -1297,6 +1716,10 @@ async def prepare_builder(
             claimed_tool_ids,
         )
         selected = [by_id[item] for item in exclusive_tool_ids]
+        selected_knowledge, invalid_knowledge_ids = _resolve_selected_knowledge_bases(
+            knowledge_bases,
+            agent.selected_knowledge_base_ids,
+        )
         reuse = max(
             existing,
             key=lambda item: _similarity(
@@ -1317,7 +1740,11 @@ async def prepare_builder(
             "system_prompt": len(agent.system_prompt.strip()) >= 80,
             "registered_tools": not invalid,
             "exclusive_tool_assignment": not duplicate_tool_ids,
-            "capability_has_tools": bool(selected),
+            "registered_knowledge_bases": not invalid_knowledge_ids,
+            "execution_mode_matches_tools": _execution_mode_matches_tools(
+                agent.execution_mode,
+                selected,
+            ),
             "skill": len(agent.skill_markdown.strip()) >= 40,
         }
         passed = all(checks.values()) or reuse_score >= 0.72
@@ -1326,11 +1753,13 @@ async def prepare_builder(
             ProposedAgentView(
                 name=agent.name,
                 objective=agent.objective,
+                execution_mode=agent.execution_mode,
                 system_prompt=governed_system_prompt(
                     "business",
                     agent.system_prompt,
                 ),
                 selected_tools=selected,
+                selected_knowledge_bases=selected_knowledge,
                 skill_name=_slug(agent.skill_name),
                 skill_markdown=_normalise_skill(agent),
                 evaluation={
@@ -1339,7 +1768,9 @@ async def prepare_builder(
                     "checks": checks,
                     "invalid_tool_ids": invalid,
                     "duplicate_tool_ids": duplicate_tool_ids,
+                    "invalid_knowledge_base_ids": invalid_knowledge_ids,
                     "reuse_similarity": round(reuse_score, 2),
+                    "execution_mode": agent.execution_mode,
                 },
                 reuse_agent_id=(reuse.id if reuse_score >= 0.72 else None),
                 reuse_agent_name=(
@@ -1385,6 +1816,7 @@ async def publish_builder(
     user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
+    access: ResourceAccessService = Depends(get_resource_access_service),
 ) -> PublishResponse:
     async with _proposal_locks[user_id]:
         session = await storage.get_session(
@@ -1433,12 +1865,55 @@ async def publish_builder(
                     + ", ".join(sorted(duplicate_tools))
                 ),
             )
+        if body.knowledge_base_selections is not None and len(
+            body.knowledge_base_selections
+        ) != len(proposal.agents):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Danh sách Knowledge Base không khớp với proposal.",
+            )
+        knowledge_catalog = await _knowledge_catalog(access, user_id)
+        for index, item in enumerate(proposal.agents):
+            requested_ids = (
+                body.knowledge_base_selections[index]
+                if body.knowledge_base_selections is not None
+                else [knowledge.id for knowledge in item.selected_knowledge_bases]
+            )
+            selected_knowledge, invalid_knowledge = _resolve_selected_knowledge_bases(
+                knowledge_catalog,
+                requested_ids,
+            )
+            if invalid_knowledge:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=(
+                        "Knowledge Base không tồn tại hoặc không còn quyền truy cập: "
+                        + ", ".join(invalid_knowledge)
+                    ),
+                )
+            item.selected_knowledge_bases = selected_knowledge
         proposal.status = "published"
 
     model_config = proposal.chat_model_config
     result: list[PublishedAgent] = []
     for item in proposal.agents:
         if item.reuse_agent_id:
+            reused_record = await storage.get_agent(user_id, item.reuse_agent_id)
+            if reused_record is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Agent được đề xuất tái sử dụng không còn tồn tại.",
+                )
+            reused_record.data.knowledge_base_ids = [
+                knowledge.id for knowledge in item.selected_knowledge_bases
+            ]
+            await storage.upsert_agent(user_id, reused_record)
+            await _replace_agent_session_knowledge(
+                storage,
+                user_id,
+                reused_record,
+                reused_record.data.knowledge_base_ids,
+            )
             result.append(
                 PublishedAgent(
                     agent_id=item.reuse_agent_id,
@@ -1466,6 +1941,10 @@ async def publish_builder(
                 lifecycle_state="published",
                 build_description=item.objective,
                 tool_bindings=bindings,
+                knowledge_base_ids=[
+                    knowledge.id for knowledge in item.selected_knowledge_bases
+                ],
+                execution_mode=item.execution_mode,
                 generated_skill=item.skill_markdown,
                 evaluation=item.evaluation,
             ),
@@ -1478,6 +1957,7 @@ async def publish_builder(
             record.id,
             model_config,
             "Builder primary session",
+            [knowledge.id for knowledge in item.selected_knowledge_bases],
         )
         workspace = await workspace_manager.get_workspace(
             user_id,
@@ -1548,6 +2028,143 @@ async def publish_builder(
     return PublishResponse(agents=result)
 
 
+async def _builder_managed_agent(
+    storage: StorageBase,
+    user_id: str,
+    agent_id: str,
+) -> AgentRecord:
+    record = await storage.get_agent(user_id, agent_id)
+    if (
+        record is None
+        or record.source != "user"
+        or record.data.system_role != "business"
+    ):
+        raise HTTPException(status_code=404, detail="Business agent not found")
+    if record.data.execution_mode is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Agent này không được quản lý bởi Agent Builder.",
+        )
+    return record
+
+
+async def _replace_agent_workspace_mcps(
+    storage: StorageBase,
+    workspace_manager: WorkspaceManagerBase,
+    user_id: str,
+    record: AgentRecord,
+    selected: list[BuilderTool],
+) -> None:
+    """Make every existing session use exactly the saved MCP tool allowlist."""
+
+    selected_by_mcp: dict[str, list[str]] = defaultdict(list)
+    for tool in selected:
+        selected_by_mcp[tool.mcp_id].append(tool.tool_name)
+
+    clients: list[MCPClient] = []
+    for mcp_id, tool_names in selected_by_mcp.items():
+        mcp_record = await storage.get_mcp(user_id, mcp_id)
+        if mcp_record is None or not mcp_record.enabled:
+            raise HTTPException(
+                status_code=409,
+                detail=f"MCP {mcp_id} không còn khả dụng.",
+            )
+        client = MCPClient.model_validate(
+            mcp_record.client.model_dump(mode="json"),
+        )
+        client.enable_tools = list(dict.fromkeys(tool_names))
+        clients.append(client)
+
+    for session in await storage.list_sessions(user_id, record.id):
+        workspace = await workspace_manager.get_workspace(
+            user_id,
+            record.id,
+            session.id,
+            session.config.workspace_id,
+        )
+        current = await workspace.list_mcps(
+            agent_id=record.id,
+            session_id=session.id,
+        )
+        names = {client.name for client in [*current, *workspace.default_mcps]}
+        for name in names:
+            await workspace.remove_mcp(
+                name,
+                agent_id=record.id,
+                session_id=session.id,
+            )
+        for client in clients:
+            await workspace.add_mcp(
+                MCPClient.model_validate(client.model_dump(mode="json")),
+                agent_id=record.id,
+                session_id=session.id,
+            )
+
+
+async def _replace_agent_session_knowledge(
+    storage: StorageBase,
+    user_id: str,
+    record: AgentRecord,
+    knowledge_base_ids: list[str],
+) -> None:
+    """Apply the agent's default KB binding to every existing session."""
+
+    knowledge_config = (
+        SessionKnowledgeConfig(
+            knowledge_base_ids=knowledge_base_ids,
+            parameters={"mode": "agentic"},
+        )
+        if knowledge_base_ids
+        else None
+    )
+    for session in await storage.list_sessions(user_id, record.id):
+        config = session.config.model_copy(deep=True)
+        config.knowledge_config = knowledge_config
+        await storage.upsert_session(
+            user_id=user_id,
+            agent_id=record.id,
+            session_id=session.id,
+            config=config,
+        )
+
+
+async def _agent_tool_settings(
+    storage: StorageBase,
+    access: ResourceAccessService,
+    user_id: str,
+    record: AgentRecord,
+) -> AgentToolSettingsView:
+    catalog = await _catalog(storage, user_id)
+    knowledge_bases = await _knowledge_catalog(access, user_id)
+    groups_by_mcp = {group.mcp_id: group for group in _group_tool_catalog(catalog)}
+    groups = [
+        MCPToolGroupView(
+            mcp_id=mcp.id,
+            mcp_name=mcp.display_name or mcp.client.name,
+            tools=(groups_by_mcp[mcp.id].tools if mcp.id in groups_by_mcp else []),
+        )
+        for mcp in await storage.list_mcps(user_id)
+        if mcp.enabled
+    ]
+    available = {tool.id for tool in catalog}
+    selected_ids = [
+        str(binding.get("id") or "")
+        or f"{binding.get('mcp_id', '')}:{binding.get('tool_name', '')}"
+        for binding in record.data.tool_bindings
+    ]
+    return AgentToolSettingsView(
+        agent_id=record.id,
+        selected_tool_ids=[tool_id for tool_id in selected_ids if tool_id in available],
+        mcps=groups,
+        selected_knowledge_base_ids=[
+            kb_id
+            for kb_id in getattr(record.data, "knowledge_base_ids", [])
+            if kb_id in {knowledge.id for knowledge in knowledge_bases}
+        ],
+        knowledge_bases=knowledge_bases,
+    )
+
+
 @workforce_console_router.get("/agents", response_model=list[WorkforceAgentView])
 async def list_workforce_agents(
     user_id: str = Depends(get_current_user_id),
@@ -1558,13 +2175,96 @@ async def list_workforce_agents(
             agent_id=record.id,
             name=record.data.name,
             objective=record.data.build_description,
+            execution_mode=record.data.execution_mode,
             lifecycle_state=record.data.lifecycle_state,
             tool_count=len(record.data.tool_bindings),
+            knowledge_base_count=len(record.data.knowledge_base_ids),
             evaluation=record.data.evaluation,
         )
         for record in await storage.list_agents(user_id)
         if record.source == "user" and record.data.system_role == "business"
     ]
+
+
+@workforce_console_router.get(
+    "/agents/{agent_id}/tools",
+    response_model=AgentToolSettingsView,
+)
+async def get_agent_tool_settings(
+    agent_id: str,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+    access: ResourceAccessService = Depends(get_resource_access_service),
+) -> AgentToolSettingsView:
+    record = await _builder_managed_agent(storage, user_id, agent_id)
+    return await _agent_tool_settings(storage, access, user_id, record)
+
+
+@workforce_console_router.patch(
+    "/agents/{agent_id}/tools",
+    response_model=AgentToolSettingsView,
+)
+async def update_agent_tool_settings(
+    agent_id: str,
+    body: UpdateAgentToolsRequest,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+    workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
+    access: ResourceAccessService = Depends(get_resource_access_service),
+) -> AgentToolSettingsView:
+    record = await _builder_managed_agent(storage, user_id, agent_id)
+    selected, invalid = _resolve_selected_tools(
+        await _catalog(storage, user_id),
+        body.selected_tool_ids,
+    )
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Tool không tồn tại hoặc MCP đang tắt: " + ", ".join(invalid),
+        )
+
+    selected_knowledge = None
+    if body.selected_knowledge_base_ids is not None:
+        selected_knowledge, invalid_knowledge = _resolve_selected_knowledge_bases(
+            await _knowledge_catalog(access, user_id),
+            body.selected_knowledge_base_ids,
+        )
+        if invalid_knowledge:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "Knowledge Base không tồn tại hoặc không còn quyền truy cập: "
+                    + ", ".join(invalid_knowledge)
+                ),
+            )
+
+    await _replace_agent_workspace_mcps(
+        storage,
+        workspace_manager,
+        user_id,
+        record,
+        selected,
+    )
+    record.data.tool_bindings = [tool.model_dump(mode="json") for tool in selected]
+    if selected_knowledge is not None:
+        record.data.knowledge_base_ids = [
+            knowledge.id for knowledge in selected_knowledge
+        ]
+        await _replace_agent_session_knowledge(
+            storage,
+            user_id,
+            record,
+            record.data.knowledge_base_ids,
+        )
+    record.data.execution_mode = "tool_backed" if selected else "context_only"
+    record.data.evaluation = {
+        **record.data.evaluation,
+        "execution_mode": record.data.execution_mode,
+        "tool_bindings_modified": True,
+        "knowledge_bindings_modified": selected_knowledge is not None,
+    }
+    await storage.upsert_agent(user_id, record)
+    return await _agent_tool_settings(storage, access, user_id, record)
 
 
 @workforce_console_router.post(
@@ -1590,8 +2290,10 @@ async def change_agent_lifecycle(
         agent_id=record.id,
         name=record.data.name,
         objective=record.data.build_description,
+        execution_mode=record.data.execution_mode,
         lifecycle_state=record.data.lifecycle_state,
         tool_count=len(record.data.tool_bindings),
+        knowledge_base_count=len(record.data.knowledge_base_ids),
         evaluation=record.data.evaluation,
     )
 

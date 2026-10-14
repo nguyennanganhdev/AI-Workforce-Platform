@@ -7,9 +7,15 @@ from collections import Counter
 from collections.abc import Awaitable
 from typing import AsyncGenerator, Callable
 
-from ..._utils._common import _json_loads_with_repair
+from ..._utils._common import _generate_id, _json_loads_with_repair
 from ...agent import Agent
-from ...event import HintBlockEvent, ReplyEndEvent
+from ...event import (
+    HintBlockEvent,
+    ReplyEndEvent,
+    TextBlockDeltaEvent,
+    TextBlockEndEvent,
+    TextBlockStartEvent,
+)
 from ...message import (
     HintBlock,
     TextBlock,
@@ -21,6 +27,7 @@ from ...middleware import MiddlewareBase
 from ...tool import ToolChoice, ToolResponse
 from ...types import ErrorInfo, ErrorType, ReplyFinishedReason
 from .._tool._team_say import STALE_CONTEXT_RESULT
+from ._leader_evidence_middleware import LeaderEvidenceMiddleware
 
 
 class TeamMemberLoopMiddleware(MiddlewareBase):
@@ -42,6 +49,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         leader_name: str,
         max_nudges: int = 3,
         pending_question: Callable[[], Awaitable[str | None]] | None = None,
+        require_report: bool = True,
     ) -> None:
         """Initialize the middleware.
 
@@ -59,6 +67,7 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
         self._max_nudges: int = max_nudges
         self._pending_question = pending_question
         self._paused = False
+        self._require_report = require_report
 
     @staticmethod
     def _repeated_calls(agent: "Agent") -> set[tuple[str, str]]:
@@ -117,6 +126,17 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
             )
             yield agent.state.context[-1]
             return
+        if (
+            self._last_tool_call_reports_to_leader(agent)
+            or LeaderEvidenceMiddleware._expected_reports(agent)
+        ):
+            self._paused = True
+            agent.state.append_context(
+                agent.name,
+                [HintBlock(hint="Message delivered. End this run; a later reply or mention starts a fresh run.")],
+            )
+            yield agent.state.context[-1]
+            return
         if self._repeated_calls(agent) and not self._last_tool_call_reports_to_leader(
             agent
         ):
@@ -126,8 +146,10 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                     HintBlock(
                         hint=(
                             "Repeated tool calls returned identical results with no progress. "
-                            f"Call TeamSay(to={self._leader_name!r}, kind='requires_user_input' "
-                            "or 'result') now to report the blocker and missing information. "
+                            "Call TeamSay(to=null, kind='requires_user_input') "
+                            "for genuinely customer-owned missing information, or "
+                            f"TeamSay(to={self._leader_name!r}, kind='result') "
+                            "to report the blocker. "
                             "Do not retry tools or invent an external identifier/outcome."
                         ),
                     )
@@ -139,7 +161,11 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
 
     async def on_acting(self, agent, input_kwargs, next_handler):
         call = input_kwargs["tool_call"]
-        paused = bool(self._pending_question and await self._pending_question())
+        pause_reason = await self._pending_question() if self._pending_question else None
+        # Finish the independent requests already generated in this batch.
+        paused = bool(pause_reason) and not (
+            pause_reason == "waiting_peer" and call.name == "TeamSay"
+        )
         try:
             args = json.dumps(
                 json.loads(call.input), sort_keys=True, ensure_ascii=False
@@ -222,9 +248,14 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 return False
             declared_kind = kwargs.get("kind")
             kind = result.metadata.get("kind", declared_kind or "result")
+            if kind == "requires_user_input" and self._is_null_target(
+                kwargs.get("to"),
+            ):
+                return True
             if kind == "progress" or not kwargs.get("to"):
                 return False
             if kwargs.get("to") != self._leader_name and declared_kind not in {
+                "handoff",
                 "question",
                 "answer",
                 "result",
@@ -233,6 +264,68 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
             return True
 
         return False
+
+    @staticmethod
+    def _is_null_target(value: object) -> bool:
+        """Accept JSON null and the common model string spellings equally."""
+
+        return value is None or (
+            isinstance(value, str)
+            and value.strip().casefold() in {"null", "none"}
+        )
+
+    @staticmethod
+    def _pending_customer_question(agent: "Agent") -> str | None:
+        """Return the last successfully registered direct customer question."""
+
+        for msg in reversed(agent.state.context):
+            if msg.id != agent.state.reply_id or msg.role != "assistant":
+                continue
+            blocks = msg.get_content_blocks()
+            call = next(
+                (
+                    block
+                    for block in reversed(blocks)
+                    if isinstance(block, ToolCallBlock)
+                ),
+                None,
+            )
+            if call is None or call.name != "TeamSay":
+                return None
+            try:
+                kwargs = _json_loads_with_repair(call.input)
+            except Exception:  # pylint: disable=broad-except
+                return None
+            result = next(
+                (
+                    block
+                    for block in blocks
+                    if isinstance(block, ToolResultBlock) and block.id == call.id
+                ),
+                None,
+            )
+            if (
+                result is not None
+                and result.state == ToolResultState.SUCCESS
+                and result.metadata.get("kind", kwargs.get("kind"))
+                == "requires_user_input"
+                and TeamMemberLoopMiddleware._is_null_target(kwargs.get("to"))
+            ):
+                content = kwargs.get("content")
+                return content.strip() if isinstance(content, str) else None
+            return None
+        return None
+
+    @staticmethod
+    def _reply_has_customer_question(agent: "Agent", question: str) -> bool:
+        normalized = " ".join(question.casefold().split())
+        return any(
+            isinstance(block, TextBlock)
+            and normalized in " ".join(block.text.casefold().split())
+            for msg in agent.state.context
+            if msg.id == agent.state.reply_id and msg.role == "assistant"
+            for block in msg.get_content_blocks()
+        )
 
     def _last_report_used_stale_context(self, agent: "Agent") -> bool:
         """Whether the last TeamSay was rejected by the revision guard."""
@@ -308,12 +401,41 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 continue
 
             # For the ReplyEndEvent
+            question = self._pending_customer_question(agent)
+            if question and not self._reply_has_customer_question(
+                agent,
+                question,
+            ):
+                block_id = _generate_id()
+                agent.state.append_context(
+                    agent.name,
+                    [TextBlock(id=block_id, text=question)],
+                )
+                yield TextBlockStartEvent(
+                    reply_id=evt.reply_id,
+                    block_id=block_id,
+                )
+                yield TextBlockDeltaEvent(
+                    reply_id=evt.reply_id,
+                    block_id=block_id,
+                    delta=question,
+                )
+                yield TextBlockEndEvent(
+                    reply_id=evt.reply_id,
+                    block_id=block_id,
+                    text=question,
+                )
             if self._paused:
                 yield evt
                 continue
             if self._last_tool_call_reports_to_leader(agent):
                 # The report has been delivered successfully, so let the
                 # original reply-end event escape the middleware chain.
+                yield evt
+                continue
+
+            if not self._require_report:
+                # An explicitly mentioned agent can answer the user directly.
                 yield evt
                 continue
 
@@ -375,9 +497,10 @@ class TeamMemberLoopMiddleware(MiddlewareBase):
                 instruction = (
                     "<system-reminder>You MUST call the tool `TeamSay` "
                     "to report to the reply owner "
-                    f"{self._leader_name!r} with kind=result/error and evidence to finish your task. "
+                    f"{self._leader_name!r} with kind=result/error to finish your task. "
                     "If missing another agent's output, use TeamSay(to=that peer, kind=question, content=a specific task) and wait. "
-                    "Progress alone is not a completed assignment. Propose only genuinely customer-owned decisions to the reply owner."
+                    "Progress alone is not a completed assignment. For genuinely customer-owned missing information, "
+                    "use TeamSay(to=null, kind=requires_user_input) and ask the customer directly."
                     "</system-reminder>"
                 )
 

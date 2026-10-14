@@ -7,7 +7,6 @@ import re
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 
-from agentscope.app._evidence_claims import unsupported_claim_anchors
 from agentscope.app._shared_context import (
     CollaborationStoppedError,
     ContextDirective,
@@ -293,101 +292,6 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         other_task = {**items[0], "task_id": "different"}
         self.assertEqual(len(self.service._compact_tool_facts([*items, other_task])), 2)
 
-    def test_claim_gate_understands_vietnamese_amounts_and_budget_arithmetic(self):
-        support = (
-            "Ngân sách 4 triệu, cần để dư 500 nghìn.",
-            "Tổng chi phí đã xác minh là 2.720.000đ.",
-        )
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "Trần chi 3,5 triệu; còn 1.280.000đ từ ngân sách và "
-                "cao hơn mức dự phòng 780.000đ.",
-                support,
-            ),
-        )
-
-    def test_claim_gate_rejects_shifted_date_and_cross_source_time(self):
-        unsupported = unsupported_claim_anchors(
-            "Khởi hành 16/10 và khách sạn check-in lúc 14:00.",
-            ("Khởi hành ngày 17/10.",),
-        )
-        self.assertIn("date:16/10", unsupported)
-        self.assertIn("time:14:00", unsupported)
-
-    def test_claim_gate_does_not_merge_date_time_with_following_amount_or_count(self):
-        support = (
-            "Khởi hành 07:00 ngày 17/10/2026, tổng giá 840.000đ/2 người.",
-            "Bữa tối 19:30 ngày 17/10/2026, giá 960.000đ/2 người.",
-        )
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "Xe đi 07:00 ngày 17/10/2026 giá 840.000đ/2 người; "
-                "bữa tối 19:30 cùng ngày giá 960.000đ/2 người.",
-                support,
-            ),
-        )
-
-    def test_claim_gate_accepts_abbreviated_date_and_generic_service_prefix(self):
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "Xe Limousine Mây Việt Express đi 17/10. "
-                "[Source Event: abc123]",
-                (
-                    (
-                        "Nhà xe Mây Việt Express, loại xe Limousine, "
-                        "khởi hành ngày 17/10/2026."
-                    ),
-                ),
-            ),
-        )
-
-    def test_claim_gate_accepts_day_month_when_source_date_is_iso(self):
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "Kh\u1edfi h\u00e0nh ng\u00e0y 17/10.",
-                ("travel_date=2026-10-17",),
-            ),
-        )
-
-    def test_claim_gate_normalizes_time_and_generic_vehicle_suffix(self):
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "M\u00e2y Vi\u1ec7t Express Limousine kh\u1edfi h\u00e0nh l\u00fac 7:00; "
-                "M\u00e2y Vi\u1ec7t Express Gi\u01b0\u1eddng kh\u1edfi h\u00e0nh l\u00fac 5:30.",
-                (
-                    "Nh\u00e0 xe M\u00e2y Vi\u1ec7t Express c\u00f3 chuy\u1ebfn 07:00 v\u00e0 05:30.",
-                ),
-            ),
-        )
-
-    def test_claim_gate_does_not_merge_itinerary_code_into_place_name(self):
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "K\u1ebf ho\u1ea1ch \u0110\u00e0 L\u1ea1t 2N1\u0110 \u0111\u00e3 ho\u00e0n t\u1ea5t.",
-                (
-                    (
-                        "L\u1ecbch tr\u00ecnh du l\u1ecbch t\u1ea1i \u0110\u00e0 "
-                        "L\u1ea1t \u0111\u00e3 x\u00e1c minh."
-                    ),
-                ),
-            ),
-        )
-
-    def test_claim_gate_does_not_treat_headings_as_business_names(self):
-        self.assertEqual(
-            (),
-            unsupported_claim_anchors(
-                "Đánh Giá Ngân Sách – Đã Xác Minh – Đi Xe Limousine",
-                (),
-            ),
-        )
-
     def test_packet_projects_events_already_in_authoritative_items(self):
         events = [
             SharedContextEvent(
@@ -459,7 +363,7 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             ),
         )
 
-    async def test_worker_claim_gate_rejects_unsupported_name_before_mutation(self):
+    async def test_worker_report_is_not_semantically_validated(self):
         customer = await self.service.append_event(
             user_id="u",
             team_id="claim-team",
@@ -476,40 +380,49 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
             source_session_id="worker-session",
         )
 
-        with self.assertRaisesRegex(ValueError, "name:imaginary resort"):
-            await self.service.coordinate_handoff(
-                user_id="u",
-                team_id="claim-team",
-                task_id=customer.task_id,
-                sender="worker-session",
-                recipients=("leader-session",),
-                owner="leader-session",
-                handoff_id="unsupported-report",
-                kind="result",
-                content="Imaginary Resort costs 1500000 VND and is available",
-            )
-
-        record = await self.storage.get_team_shared_context("u", "claim-team")
-        branch = record.state.tasks[customer.task_id].collaboration.get(
-            "worker-session"
-        )
-        self.assertTrue(branch is None or "unsupported-report" not in branch.receipts)
-        stopped = await self.service.coordinate_handoff(
+        receipt = await self.service.coordinate_handoff(
             user_id="u",
             team_id="claim-team",
             task_id=customer.task_id,
             sender="worker-session",
             recipients=("leader-session",),
             owner="leader-session",
-            handoff_id="unsupported-report-2",
+            handoff_id="unchecked-report",
             kind="result",
             content="Imaginary Resort costs 1500000 VND and is available",
         )
-        self.assertEqual("error", stopped["kind"])
-        self.assertEqual("stopped", stopped["status"])
-        self.assertNotIn("Imaginary Resort", stopped["content"])
 
-    async def test_worker_and_coordinator_claims_use_exact_evidence_chain(self):
+        record = await self.storage.get_team_shared_context("u", "claim-team")
+        branch = record.state.tasks[customer.task_id].collaboration.get(
+            "worker-session"
+        )
+        self.assertIn("unchecked-report", branch.receipts)
+        self.assertEqual("result", receipt["kind"])
+        self.assertIn("Imaginary Resort", receipt["content"])
+
+    async def test_worker_progress_is_not_semantically_validated(self):
+        customer = await self.service.append_event(
+            user_id="u",
+            team_id="progress-claim-team",
+            kind="customer_message",
+            content="Plan a beach trip",
+            source_session_id="leader-session",
+        )
+
+        receipt = await self.service.coordinate_handoff(
+            user_id="u",
+            team_id="progress-claim-team",
+            task_id=customer.task_id,
+            sender="worker-session",
+            recipients=("leader-session",),
+            owner="leader-session",
+            handoff_id="unchecked-progress",
+            kind="progress",
+            content="I will add Imaginary Resort to the itinerary",
+        )
+        self.assertEqual("progress", receipt["kind"])
+
+    async def test_worker_and_coordinator_preserve_reference_chain(self):
         customer = await self.service.append_event(
             user_id="u",
             team_id="claim-chain",
@@ -561,22 +474,22 @@ class TestSharedContextService(IsolatedAsyncioTestCase):
         )
         self.assertEqual([provider.id], coordinator["reference_event_ids"])
 
-        with self.assertRaisesRegex(ValueError, "name:imaginary cafe"):
-            await self.service.coordinate_handoff(
-                user_id="u",
-                team_id="claim-chain",
-                task_id=customer.task_id,
-                sender="planner-session-2",
-                recipients=("leader-session",),
-                owner="leader-session",
-                handoff_id="planner-hallucination",
-                kind="result",
-                content=(
-                    "Choose Verified Hotel at 1,500,000 VND and visit "
-                    "Imaginary Cafe"
-                ),
-                references=(provider.id,),
-            )
+        unchecked = await self.service.coordinate_handoff(
+            user_id="u",
+            team_id="claim-chain",
+            task_id=customer.task_id,
+            sender="planner-session-2",
+            recipients=("leader-session",),
+            owner="leader-session",
+            handoff_id="planner-unchecked",
+            kind="result",
+            content=(
+                "Choose Verified Hotel at 1,500,000 VND and visit "
+                "Imaginary Cafe"
+            ),
+            references=(provider.id,),
+        )
+        self.assertIn("Imaginary Cafe", unchecked["content"])
 
     async def test_latest_worker_result_supersedes_older_packet_snapshot(self):
         customer = await self.service.append_event(
