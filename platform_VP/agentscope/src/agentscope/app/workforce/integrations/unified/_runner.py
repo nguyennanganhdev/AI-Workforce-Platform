@@ -14,6 +14,7 @@ tickets of the same customer never share context.
 from __future__ import annotations
 
 import asyncio
+import base64
 import os
 import time
 from collections.abc import Callable
@@ -24,7 +25,7 @@ from sqlalchemy import select
 
 from ....._logging import logger
 from .....event import ConfirmResult, UserConfirmResultEvent
-from .....message import TextBlock, UserMsg
+from .....message import Base64Source, DataBlock, TextBlock, UserMsg
 from ...._chat_consent import pending_chat_actions, resolve_chat_consent
 from ...contracts import AssistantMessage, RequestResult, WorkflowState
 from ...orchestration._tables import workflow_inputs
@@ -32,6 +33,9 @@ from ...orchestration.workflows import TurnDecision
 from ...orchestration.workflows.phase_a import RuntimeTurnResult
 
 LEADER_VERSION_ID = "console-leader"
+# The end user's photos shown to the route leader per turn, and their size cap.
+MAX_IMAGES_PER_TURN = 4
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
 def _text_of(message: Any) -> str:
@@ -64,12 +68,55 @@ class ChatLeaderTurnRunner:
         self._case = case
         self._approvals = approvals
         self._clock = clock
+        # The blob store of partner assets; None: photos are not offered.
+        self._images: Any = None
         self._wait_seconds = (
             float(os.getenv("WORKFORCE_LEADER_WAIT_SECONDS", "240"))
             if wait_seconds is None
             else wait_seconds
         )
         self._app: Any = None
+
+    def attach_images(self, blob_store: Any) -> None:
+        self._images = blob_store
+
+    async def _new_images(self, workflow_id: str) -> list[DataBlock]:
+        """The end user's photos bound to this workflow not shown yet."""
+
+        if self._images is None or self._case is None:
+            return []
+        from ...assets._tables import assets
+
+        store = self._case.store
+        shown = {entry["text"] for entry in await store.entries(workflow_id, kind="image")}
+        async with self._uows() as uow:
+            rows = (
+                await uow.execute(
+                    select(assets.c.id, assets.c.object_uri, assets.c.content_type, assets.c.filename, assets.c.actual_size)
+                    .where(
+                        assets.c.workflow_id == workflow_id,
+                        assets.c.origin == "customer",
+                        assets.c.status == "active",
+                    )
+                    .order_by(assets.c.created_at),
+                )
+            ).mappings().all()
+        blocks: list[DataBlock] = []
+        for row in rows:
+            if len(blocks) >= MAX_IMAGES_PER_TURN or row["id"] in shown:
+                continue
+            if not str(row["content_type"]).startswith("image/") or (row["actual_size"] or 0) > MAX_IMAGE_BYTES:
+                continue
+            async with self._images.open(row["object_uri"]) as body:
+                data = await body.read()
+            blocks.append(
+                DataBlock(
+                    source=Base64Source(data=base64.b64encode(data).decode("ascii"), media_type=row["content_type"]),
+                    name=row["filename"],
+                ),
+            )
+            await store.append(workflow_id, "image", row["id"])
+        return blocks
 
     def attach_case(self, case: Any, approvals: Any) -> None:
         self._case = case
@@ -436,8 +483,11 @@ class ChatLeaderTurnRunner:
             text = await self._input_text(workflow.workflow_id, trigger)
             if text:
                 parts.append(text)
+            images = await self._new_images(workflow.workflow_id)
+            if images:
+                parts.append(f"(Hệ thống) Người dùng gửi kèm {len(images)} ảnh bên dưới.")
             if parts:
-                message = UserMsg(name="customer", content=[TextBlock(text="\n\n".join(parts))])
+                message = UserMsg(name="customer", content=[TextBlock(text="\n\n".join(parts)), *images])
                 await state.chat_service.run(user_id, session.id, agent_id, message)
                 ran = True
         # The turn is over: a later wake-up (a member's late report) has no

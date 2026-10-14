@@ -261,8 +261,10 @@ class _Leader:
         self.runner = runner
         self.scripts = []
         self.inputs = []
+        self.messages = []
 
     async def run(self, user_id, session_id, agent_id, input_msg):
+        self.messages.append(input_msg)
         self.inputs.append(getattr(input_msg, "get_text_content", lambda: str(input_msg))())
         middleware = (await self.runner.case_middlewares(user_id, agent_id, session_id))[0]
         tools = {tool.name: tool for tool in await middleware.list_tools()}
@@ -303,7 +305,9 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
             f"sqlite+aiosqlite:///{(Path(self.temp.name) / 'case.sqlite3').as_posix()}",
         )
         async with self.engine.begin() as connection:
-            for meta in (foundation_metadata, get_execution_metadata(), get_metadata(), unified_metadata()):
+            from agentscope.app.workforce.assets._tables import metadata as asset_metadata
+
+            for meta in (foundation_metadata, get_execution_metadata(), get_metadata(), unified_metadata(), asset_metadata):
                 await connection.run_sync(meta.create_all)
             await connection.execute(
                 text("CREATE TABLE partner_api_clients (id TEXT PRIMARY KEY, tenant_id TEXT, status TEXT)"),
@@ -525,6 +529,51 @@ class UnifiedPartnerCaseTest(_CaseHarness):
             await client.post("/workforce/v1/partner/requests", json=self._start())
             self.assertEqual("succeeded", await self._run())
         self.assertEqual(["team-9"], scheduled)
+
+    async def test_the_end_users_photos_reach_the_leader_once(self):
+        from contextlib import asynccontextmanager
+
+        from agentscope.app.workforce.assets._tables import assets
+        from agentscope.message import DataBlock
+
+        class Blobs:
+            @asynccontextmanager
+            async def open(self, uri):
+                yield SimpleNamespace(read=lambda: _bytes())
+
+        async def _bytes():
+            return b"\x89PNG fake"
+
+        self.runner.attach_images(Blobs())
+
+        async def say(tools):
+            await call(tools, "CaseSay", text="Tôi đã xem ảnh của anh/chị.", expects="none")
+
+        self.leader.scripts = [say, say]
+        async with self._client() as client:
+            started = (await client.post("/workforce/v1/partner/requests", json=self._start())).json()
+            async with self.uows() as uow:
+                for asset_id, kind in (("as-photo", "image/png"), ("as-pdf", "application/pdf")):
+                    await uow.execute(insert(assets).values(
+                        id=asset_id, tenant_id="tenant-1", domain_id="domain-1", area_id="area-1",
+                        manager_account_id="manager-1", origin="customer", status="active", partner_client_id="partner-1",
+                        external_user_id="resident-1", external_ticket_id="T-77", external_conversation_id="chat-9:T-77",
+                        workflow_id=started["workflow_id"], object_uri=f"s3://b/{asset_id}", filename=f"{asset_id}.bin",
+                        content_type=kind, expected_size=10, actual_size=10, upload_expires_at=NOW, created_at=NOW,
+                        updated_at=NOW,
+                    ))
+                await uow.commit()
+            self.assertEqual("succeeded", await self._run())
+            reply = self._start(request_id="vh-cmd-2", text_value="Anh xem ảnh giúp")
+            reply.update(command_type="workflow_reply", workflow_id=started["workflow_id"])
+            await client.post("/workforce/v1/partner/requests", json=reply)
+            self.assertEqual("succeeded", await self._run())
+        first, second = self.leader.messages
+        images = [block for block in first.content if isinstance(block, DataBlock)]
+        self.assertEqual(1, len(images))  # the PDF is not an image
+        self.assertEqual("image/png", images[0].source.media_type)
+        self.assertIn("gửi kèm 1 ảnh", first.get_text_content())
+        self.assertFalse([block for block in second.content if isinstance(block, DataBlock)])
 
     async def test_staff_progress_reaches_the_room_of_the_ticket(self):
         async def first_turn(tools):

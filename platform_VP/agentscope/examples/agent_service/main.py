@@ -213,7 +213,8 @@ if unified_mode_enabled():
     def _unified_runtime(foundation):
         runner = ChatLeaderTurnRunner(foundation.uows)
         partner_runner["runner"] = runner
-        return build_unified_runtime(foundation, runner)
+        # Partner photos live in the same S3/MinIO store as knowledge documents.
+        return build_unified_runtime(foundation, runner, asset_store=blob_store)
 
     workforce_bootstrap = WorkforceBootstrap(
         database_url=os.environ["AGENTSCOPE_SQL_URL"],

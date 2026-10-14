@@ -427,8 +427,14 @@ def build_unified_runtime(
     ids: Callable[[], str] = lambda: uuid4().hex,
     bounded_wait_seconds: float = 8.0,
     heartbeat_seconds: float = 15.0,
+    asset_store: Any = None,
 ) -> WorkforceRuntimeAssembly:
-    """Production graph for unified mode (see the module docstring)."""
+    """Production graph for unified mode (see the module docstring).
+
+    ``asset_store`` (the S3/MinIO blob store): partners upload the end user's
+    photos (``/partner/assets``), attach them to a message, and the route
+    leader sees them.
+    """
 
     uows = foundation.uows
     workflows = SqlWorkflowRepository(uows, clock=clock, ids=ids)
@@ -468,6 +474,19 @@ def build_unified_runtime(
         lease_seconds=lease,
     )
     handler = WorkflowContinuationJobHandler(continuation, worker_id=UNIFIED_JOB_WORKER)
+    asset_service = None
+    if asset_store is not None:
+        from ...assets import SqlAssetRepository, WorkforceAssetService
+
+        asset_service = WorkforceAssetService(
+            SqlAssetRepository(uows),
+            asset_store,
+            foundation.partner_routing,
+            foundation.identity,
+            None,  # provider uploads are not offered in unified mode
+            clock=clock,
+        )
+        runner.attach_images(asset_store)
     ingress = PartnerIngressService(
         workflow_service,
         requests,
@@ -477,6 +496,7 @@ def build_unified_runtime(
         event_service,
         foundation.request_completion_signal,
         clock=clock,
+        assets=asset_service,
     )
     writer = PublicEventWriter(event_service, clock, ids)
     approvals.attach_events(writer)
@@ -497,6 +517,10 @@ def build_unified_runtime(
         customer,
         bounded_wait_seconds=bounded_wait_seconds,
     )
+    if asset_service is not None:
+        from ...assets import create_customer_asset_router
+
+        router.include_router(create_customer_asset_router(asset_service, customer))
     return WorkforceRuntimeAssembly(
         services={
             "workflow_service": workflow_service,
