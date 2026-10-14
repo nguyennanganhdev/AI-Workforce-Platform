@@ -196,6 +196,28 @@ async def send_commands(engine: AsyncEngine, client: Platform, wait: bool = True
 
 # ---- 2. events -----------------------------------------------------------------------------------------------------
 
+async def refresh_request_results(db, client: Platform, link) -> None:
+    """202 is accepted, not finished. Persist the final outcome for turn UI/metrics."""
+    commands = (await db.execute(text(f"""
+        select id,result->>'request_id' as request_id from platform_commands
+        where ticket_id=:ticket and tenant_id={TENANT} and status='done'
+          and result->>'request_id' is not null
+          and result->>'request_status' in ('accepted','running','deferred')
+          and next_attempt_at<=now() order by created_at,id for update skip locked
+    """), {"ticket": link["ticket_id"]})).mappings().all()
+    for command in commands:
+        try:
+            answer = await client.result(command["request_id"], link["user_id"])
+        except (httpx.HTTPError, PlatformError):
+            await db.execute(text("update platform_commands set next_attempt_at=now()+interval '30 seconds' where id=:id"), {"id":command["id"]})
+            continue
+        await db.execute(text("""update platform_commands set result=cast(:result as jsonb),
+            next_attempt_at=now()+interval '3 seconds' where id=:id"""),
+            {"id":command["id"],"result":json.dumps(answer,ensure_ascii=False)})
+        # The event log supplies the same messages; post_chat deduplicates them.
+        await apply_result(db, link, answer)
+
+
 async def _read(engine: AsyncEngine, client: Platform, tenant: str, ticket: str) -> None:
     async with _scoped(engine, tenant) as db:
         # Whoever holds the link applies its events; a second worker skips it this pass. Not a full row lock:
@@ -206,6 +228,7 @@ async def _read(engine: AsyncEngine, client: Platform, tenant: str, ticket: str)
         """), {"ticket": ticket})).mappings().first()
         if link is None:
             return
+        await refresh_request_results(db, client, link)
         cursor = link["cursor"]
         while True:
             try:

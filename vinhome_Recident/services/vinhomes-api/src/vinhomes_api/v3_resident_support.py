@@ -74,12 +74,13 @@ async def turn_state(channel_id: str, scope: Scope):
             and r.visibility in ('room','customer')) or (pc.status='done' and pc.result->>'request_status'='completed'
               and (jsonb_array_length(coalesce(pc.result->'result'->'messages','[]'::jsonb))>0
                 or pc.result->>'workflow_state'='awaiting_approval')) as answered,
-          (pc.status='failed' or pc.result->'result'->'data'->>'outcome'='fallback') as platform_failed,
+          (pc.status='failed' or pc.result->>'request_status' in ('failed','blocked')
+            or pc.result->'result'->'data'->>'outcome'='fallback') as platform_failed,
           d.status,d.resident_progress,d.expires_at,
           exists(select 1 from tickets t join platform_links p on p.ticket_id=t.id and p.tenant_id=t.tenant_id
             where t.channel_id=m.channel_id and p.status='open') as handed_over,
           extract(epoch from coalesce(d.finished_at,case when pc.result->>'request_status'='completed'
-            then pc.updated_at end,now())-m.created_at)*1000 as elapsed_ms
+            then coalesce(nullif(pc.result->>'completed_at','')::timestamptz,pc.updated_at) end,now())-m.created_at)*1000 as elapsed_ms
         from messages m left join delegations d on d.channel_id=m.channel_id
           and d.tenant_id=m.tenant_id and d.idempotency_key='reception-turn:'||m.id::text
         left join lateral (

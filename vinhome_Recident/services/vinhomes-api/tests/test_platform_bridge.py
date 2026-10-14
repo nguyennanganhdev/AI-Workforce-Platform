@@ -116,6 +116,15 @@ class FakePlatform:
                 "receipt_id": receipt["receipt_id"], "external_event_id": receipt["external_event_id"], "ingestion_status": "applied",
                 "normalized_status": "x", "received_at": NOW, "applied_at": NOW, "error": None, "note": None})
         if request.method == "GET":
+            if path.startswith("/partner/requests/"):
+                known = next((value[2] for value in self.done.values() if value[2].get('request_id')==path.rsplit('/',1)[1]),None)
+                if known is None:
+                    return refusal(404,"RESOURCE_NOT_FOUND")
+                flow = self.flows[known['workflow_id']]
+                if request.url.params.get('external_user_id')!=flow['user']:
+                    return refusal(404,"RESOURCE_NOT_FOUND")
+                return httpx.Response(200,json={**known,'request_status':'completed','workflow_state':flow['state'],
+                    'workflow_revision':flow['revision'],'result':{'messages':flow['messages']}})
             flow = next((f for f in self.flows.values() if f["conversation_id"] == path.split("/")[3]), None)
             if flow is None or request.url.params.get("external_user_id") != flow["user"]:
                 return refusal(404, "NOT_FOUND")
@@ -469,8 +478,9 @@ def test_messages_of_an_answer_reach_the_chat_once_also_after_they_come_again_as
         assert [m["body"]["text"] for m in shown if m["sender_client_id"] == "platform"] == said
 
 
-def test_platform_reply_ends_the_resident_turn_indicator(database, on):
-    fake = FakePlatform()
+@pytest.mark.parametrize('synchronous',[True,False])
+def test_platform_reply_ends_the_resident_turn_indicator(database, on, synchronous):
+    fake = FakePlatform(wait=synchronous)
     with resident(database) as c:
         channel, ticket, flow = started(database, c, fake)
         say(c, channel, "Công việc đang tới đâu rồi?")
@@ -487,7 +497,8 @@ def test_a_202_is_followed_through_the_event_log_page_by_page(database, on):
         sync(database, fake)
         row = link(database, ticket)
         flow = fake.flows[row["workflow_id"]]
-        assert json.loads(commands(database, ticket)[0]["result"])["result"] is None
+        final = json.loads(commands(database, ticket)[0]["result"])
+        assert final["request_status"] == "completed" and final["result"]["messages"]
         assert len(flow["events"]) > 4 and len([call for call in fake.calls if call[1].endswith("/event-history")]) >= 3
         # The answer knew the workflow as "active"; the events moved it on and the older picture did not win.
         assert (row["status"], row["state"], row["next_action"], row["revision"]) == ("open", "awaiting_user", "submit_reply", flow["revision"])

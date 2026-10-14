@@ -146,6 +146,9 @@ class Platform:
         """start_workflow or workflow_reply. 200 when the turn ended in time, 202 (result null) when it did not: same body."""
         return await self._call("POST", "/partner/requests", json=body, timeout=httpx.Timeout(WAIT_SECONDS, connect=5))
 
+    async def result(self, request_id: str, user_id: str) -> dict:
+        return await self._call("GET", f"/partner/requests/{request_id}", params={"external_user_id": user_id})
+
     async def decide(self, approval_id: str, body: dict) -> dict:
         return await self._call("POST", f"/partner/approvals/{approval_id}/decision", json=body)
 
