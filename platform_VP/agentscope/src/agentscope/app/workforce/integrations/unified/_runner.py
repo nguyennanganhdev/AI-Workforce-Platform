@@ -147,6 +147,17 @@ class ChatLeaderTurnRunner:
         self._app = app
         if self._case is not None:
             self._case.bind(app)
+        app.state.partner_quality = self.quality
+
+    async def quality(self, manager_account_id: str, days: int = 30) -> dict:
+        """Outcomes, message quality and cost of the manager's partner tickets."""
+
+        from ._quality import ticket_quality
+
+        state = self._state()
+        return await ticket_quality(
+            self._uows, state.storage, state.shared_context_storage, manager_account_id, days=days,
+        )
 
     # ------------------------------------------------------------------ deps
 

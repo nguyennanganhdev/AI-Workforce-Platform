@@ -563,6 +563,45 @@ class UnifiedPartnerCaseTest(_CaseHarness):
         # Cancelled: nothing learned; confirmed: the room teaches its agents.
         self.assertEqual(["team-9"], scheduled)
 
+    async def test_quality_counts_outcomes_refusals_and_cost(self):
+        from agentscope.app.workforce.integrations.unified._quality import ticket_quality
+
+        async def summary(tools):
+            for session in self.storage.sessions.values():
+                session.team_id = "team-1"
+            await call(tools, "CaseSay", text="Việc này được miễn phí.", expects="none")  # refused
+            await call(tools, "CaseSay", text="Đã xong, bạn xác nhận giúp tôi.", expects="confirmation")
+
+        self.leader.scripts = [summary]
+        async with self._client() as client:
+            started = (await client.post("/workforce/v1/partner/requests", json=self._start())).json()
+            self.assertEqual("succeeded", await self._run())
+            items = await self._history(client, started["conversation_id"])
+            revision = [i["payload"]["revision"] for i in items if i["event_type"] == "workflow.status_changed"][-1]
+            closed = await client.post(f"/workforce/v1/partner/workflows/{started['workflow_id']}/close", json={
+                "schema_version": "1", "external_request_id": "close-1", "external_user_id": "resident-1",
+                "external_ticket_id": "T-77", "external_conversation_id": "chat-9:T-77",
+                "expected_revision": revision, "reason": "resident_confirmed",
+            })
+            self.assertEqual("closed", closed.json()["workflow_state"], closed.text)
+        usage = {
+            "leader": SimpleNamespace(model="gpt-5.5", input_tokens=10_000, cached_input_tokens=8_000, output_tokens=500),
+            "member": SimpleNamespace(model="gpt-5.4-mini", input_tokens=4_000, cached_input_tokens=0, output_tokens=200),
+        }
+
+        async def room(*_args):
+            return SimpleNamespace(state=SimpleNamespace(metrics=SimpleNamespace(provider_usage=usage)))
+
+        quality = await ticket_quality(self.uows, self.storage, SimpleNamespace(get_team_shared_context=room), "manager-1")
+        self.assertEqual(
+            (1, 1, 1, 1, 1, 0.5),
+            (quality["tickets"], quality["closed_confirmed"], quality["first_time_confirmed"],
+             quality["messages_sent"], quality["messages_refused"], quality["refusal_rate"]),
+        )
+        # gpt-5.5: 2,000×5 + 8,000×0.5 + 500×30; mini: 4,000×0.75 + 200×4.5 (per 1M tokens).
+        self.assertAlmostEqual((10_000 + 4_000 + 15_000 + 3_000 + 900) / 1_000_000, quality["est_cost_usd"])
+        self.assertEqual(round(8_000 / 14_000, 3), quality["cache_rate"])
+
     async def test_the_end_users_photos_reach_the_leader_once(self):
         from contextlib import asynccontextmanager
 

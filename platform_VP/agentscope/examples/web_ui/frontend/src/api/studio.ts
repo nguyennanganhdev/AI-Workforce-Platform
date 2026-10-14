@@ -217,6 +217,26 @@ export interface AgentActivity {
 	last_at: string | null;
 }
 
+/** Outcomes, message quality and cost of the manager's partner tickets. */
+export interface TicketQuality {
+	days: number;
+	tickets: number;
+	open: number;
+	needs_attention: number;
+	closed_confirmed: number;
+	closed_other: number;
+	first_time_confirmed: number;
+	messages_sent: number;
+	messages_refused: number;
+	refusal_rate: number;
+	input_tokens: number;
+	cached_input_tokens: number;
+	output_tokens: number;
+	cache_rate: number;
+	est_cost_usd: number | null;
+	cost_per_confirmed_usd: number | null;
+}
+
 export interface PartnerRoute {
 	route_id: string;
 	partner_client_id: string;
@@ -232,6 +252,7 @@ const agentPath = (id: string) => `${base}/agents/${encodeURIComponent(id)}`;
 export const studioApi = {
 	listAgents: () => client.get<AgentSummary[]>(`${base}/agents`),
 	activity: () => client.get<AgentActivity[]>(`${base}/activity`),
+	quality: (days = 30) => client.get<TicketQuality>(`${base}/quality`, { days: String(days) }),
 	getAgent: (id: string) => client.get<AgentDetail>(agentPath(id)),
 	create: (body: { template_id?: string; clone_from?: string; spec?: AgentSpec }) =>
 		client.post<AgentDetail>(`${base}/agents`, body),
