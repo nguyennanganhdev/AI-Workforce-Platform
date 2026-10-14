@@ -119,6 +119,22 @@ class UnifiedOnboardingTest(unittest.IsolatedAsyncioTestCase):
         await self.engine.dispose()
         self.temp.cleanup()
 
+    async def test_operator_verification_approves_a_waiting_account(self):
+        async with self.engine.begin() as connection:
+            await connection.execute(text("UPDATE auth_users SET status = 'pending' WHERE id = 'manager-1'"))
+        verified = await self.client.post(
+            "/workforce/v1/admin/memberships/verify",
+            json={"manager_account_id": "manager-1"},
+            headers={"X-Provisioning-Secret": "provision-me"},
+        )
+        self.assertEqual(200, verified.status_code, verified.text)
+        async with self.engine.connect() as connection:
+            account = (await connection.execute(text("SELECT status FROM auth_users WHERE id = 'manager-1'"))).scalar()
+            membership = (await connection.execute(
+                text("SELECT status FROM wf_manager_memberships WHERE manager_account_id = 'manager-1'"),
+            )).scalar()
+        self.assertEqual(("active", "verified"), (account, membership))
+
     async def test_admin_verify_manager_grant_partner_confirm_then_route_resolves(self):
         denied = await self.client.post(
             "/workforce/v1/admin/memberships/verify",

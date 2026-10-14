@@ -262,22 +262,23 @@ def onboarding_router(foundation: WorkforceFoundation) -> APIRouter:
             manager_account_id=row["manager_account_id"],
         )
         if row["status"] == "verified":
-            revision = row["revision"]
-        else:
+            return {"status": "verified", "revision": row["revision"]}
+        async with foundation.uows() as uow:
+            # The operator's verification also approves an account waiting
+            # for it (verification needs an active account).
+            await uow.execute(
+                text("UPDATE auth_users SET status = 'active' WHERE id = :id AND status = 'pending'"),
+                {"id": row["manager_account_id"]},
+            )
             try:
                 revision = await foundation.management_verification.verify(
                     scope,
                     int(row["revision"]),
                     "provisioning",
+                    uow,
                 )
             except (ValueError, PermissionError) as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
-        # The operator's verification also approves an account waiting for it.
-        async with foundation.uows() as uow:
-            await uow.execute(
-                text("UPDATE auth_users SET status = 'active' WHERE id = :id AND status = 'pending'"),
-                {"id": row["manager_account_id"]},
-            )
             await uow.commit()
         return {"status": "verified", "revision": revision}
 
