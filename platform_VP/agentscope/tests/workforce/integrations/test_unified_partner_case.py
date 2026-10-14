@@ -15,7 +15,7 @@ import os
 import tempfile
 import time
 import unittest
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -357,7 +357,8 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
         uows = SqlAlchemyUnitOfWorkFactory(async_sessionmaker(self.engine, expire_on_commit=False))
         self.uows = uows
         bus = InMemoryMessageBus()
-        jobs = DurableJobService(SqlDurableJobRepository(uows))
+        # No delay between attempts: a retried turn runs on the next worker step.
+        jobs = DurableJobService(SqlDurableJobRepository(uows), retry_base=timedelta(0))
         foundation = SimpleNamespace(
             uows=uows,
             jobs=jobs,
@@ -610,6 +611,30 @@ class UnifiedPartnerCaseTest(_CaseHarness):
         # gpt-5.5: 2,000×5 + 8,000×0.5 + 500×30; mini: 4,000×0.75 + 200×4.5 (per 1M tokens).
         self.assertAlmostEqual((10_000 + 4_000 + 15_000 + 3_000 + 900) / 1_000_000, quality["est_cost_usd"])
         self.assertEqual(round(8_000 / 14_000, 3), quality["cache_rate"])
+
+    async def test_a_transient_model_error_retries_the_turn_without_resending_the_input(self):
+        async def provider_down(tools):
+            # The chat runtime stored the input, then the reply ended on a 429.
+            self.storage.messages.append(SimpleNamespace(id=self.leader.messages[-1].id, usage=None, error=None))
+            self.storage.messages.append(
+                SimpleNamespace(id="reply-err", usage=None, error=SimpleNamespace(type="rate_limit")),
+            )
+
+        async def answers(tools):
+            await call(tools, "CaseSay", text="Yêu cầu đã được tiếp nhận.", expects="none")
+
+        self.leader.scripts = [provider_down, answers]
+        async with self._client() as client:
+            started = (await client.post("/workforce/v1/partner/requests", json=self._start())).json()
+            self.assertEqual("retry_scheduled", (await self.worker.run_once()).status)
+            self.assertEqual("succeeded", await self._run())
+            result = (await client.get(f"/workforce/v1/partner/requests/{started['request_id']}",
+                                       params={"external_user_id": "resident-1"})).json()
+        first, retry = self.leader.messages
+        self.assertTrue(first.id.endswith(":input"))
+        self.assertTrue(retry.id.endswith(":retry1"))
+        self.assertIn("Lượt trước bị lỗi model", retry.get_text_content())
+        self.assertEqual(["Yêu cầu đã được tiếp nhận."], [m["text"] for m in result["result"]["messages"]])
 
     async def test_the_end_users_photos_reach_the_leader_once(self):
         from contextlib import asynccontextmanager

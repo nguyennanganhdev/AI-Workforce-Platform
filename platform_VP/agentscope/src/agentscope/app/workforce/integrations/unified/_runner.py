@@ -36,6 +36,10 @@ LEADER_VERSION_ID = "console-leader"
 # The end user's photos shown to the route leader per turn, and their size cap.
 MAX_IMAGES_PER_TURN = 4
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+# Turn retries after a transient model error (rate limit, provider 5xx,
+# network); a model without credit is not retried.
+MAX_MODEL_RETRIES = 2
+TRANSIENT_ERRORS = {"rate_limit", "upstream", "connection"}
 
 
 def ticket_title(text: str | None, fields: list[str]) -> str:
@@ -256,6 +260,18 @@ class ChatLeaderTurnRunner:
         messages, _ = await lister(user_id, session_id, limit=500)
         usages = [m.usage for m in messages if m.id not in before and getattr(m, "usage", None)]
         return sum(u.input_tokens for u in usages), sum(u.output_tokens for u in usages)
+
+    async def _transient_model_error(self, user_id: str, session_id: str, before: set[str]) -> bool:
+        """Whether this turn's Leader reply ended on a provider error worth retrying."""
+
+        lister = getattr(self._state().storage, "list_messages", None)
+        if lister is None:
+            return False
+        messages, _ = await lister(user_id, session_id, limit=500)
+        return any(
+            m.id not in before and getattr(getattr(m, "error", None), "type", None) in TRANSIENT_ERRORS
+            for m in messages
+        )
 
     async def _member_tokens(self, user_id: str, session_id: str, leader_agent_id: str) -> tuple[int, int]:
         """(input, output) tokens the room's members used so far (leader excluded)."""
@@ -536,6 +552,17 @@ class ChatLeaderTurnRunner:
                     await self._wait_for_say(workflow.workflow_id, trigger_id)
                 ran = True
             approval_ids = [item for item in approval_ids if item != cause["approval_id"]]
+        elif f"{trigger_id}:input" in before_ids:
+            # A retry after a transient model error: the input is already in
+            # the session; resending it would duplicate it.
+            attempt = len(await store.entries(workflow.workflow_id, kind="model_error", trigger_id=trigger_id))
+            message = UserMsg(
+                id=f"{trigger_id}:retry{attempt}",
+                name="customer",
+                content=[TextBlock(text="(Hệ thống) Lượt trước bị lỗi model nên chưa trả lời. Tiếp tục xử lý yêu cầu ở trên.")],
+            )
+            await state.chat_service.run(user_id, session.id, agent_id, message)
+            ran = True
         else:
             parts = []
             heard = await store.take_pending(workflow.workflow_id)
@@ -550,7 +577,9 @@ class ChatLeaderTurnRunner:
             if images:
                 parts.append(f"(Hệ thống) Người dùng gửi kèm {len(images)} ảnh bên dưới.")
             if parts:
-                message = UserMsg(name="customer", content=[TextBlock(text="\n\n".join(parts)), *images])
+                message = UserMsg(
+                    id=f"{trigger_id}:input", name="customer", content=[TextBlock(text="\n\n".join(parts)), *images],
+                )
                 await state.chat_service.run(user_id, session.id, agent_id, message)
                 ran = True
         # The turn is over: a later wake-up (a member's late report) has no
@@ -561,8 +590,14 @@ class ChatLeaderTurnRunner:
         spent_in = leader_in + max(0, members_after[0] - members_before[0])
         spent_out = leader_out + max(0, members_after[1] - members_before[1])
 
-        says =await store.entries(workflow.workflow_id, kind="say", trigger_id=trigger_id)
+        says = await store.entries(workflow.workflow_id, kind="say", trigger_id=trigger_id)
         rejected = await store.entries(workflow.workflow_id, kind="rejected", trigger_id=trigger_id)
+        if ran and not says and await self._transient_model_error(user_id, session.id, before_ids):
+            failures = await store.entries(workflow.workflow_id, kind="model_error", trigger_id=trigger_id)
+            if len(failures) < MAX_MODEL_RETRIES:
+                await store.append(workflow.workflow_id, "model_error", "transient", trigger_id=trigger_id)
+                # The durable job retries the turn (see the retry branch above).
+                raise RuntimeError("transient model error; the partner turn is retried")
         messages = [
             AssistantMessage(
                 message_id=f"{trigger_id}:say:{item['seq']}",
