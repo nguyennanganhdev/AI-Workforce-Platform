@@ -15,8 +15,8 @@ class AuthUser:
     username: str
     status: str
     role: str
-    domain_id: str
-    area_id: str
+    domain_id: str | None
+    area_id: str | None
     created_at: datetime
     updated_at: datetime
     last_login_at: datetime | None = None

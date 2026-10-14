@@ -437,6 +437,12 @@ class ChatService:
 
         return on_verified_answer
 
+    def schedule_learning(self, user_id: str, session_record, team_id: str) -> None:
+        """Learn from a finished ticket's room in background (same loop as the
+        console Leader's verified answers)."""
+
+        self._learning_hook(user_id, session_record, None)(team_id)
+
     async def _recalled_memory(
         self,
         user_id: str,

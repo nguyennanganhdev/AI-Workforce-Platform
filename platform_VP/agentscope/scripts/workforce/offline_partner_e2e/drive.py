@@ -29,6 +29,8 @@ BASE = os.getenv("E2E_PLATFORM", "http://127.0.0.1:8000")
 ENV = dict(re.findall(r"^([A-Z0-9_]+)=(.*)$", (HERE.parents[2] / ".env").read_text(encoding="utf-8"), re.M))
 SECRET = {"X-Provisioning-Secret": ENV["PARTNER_API_PROVISIONING_SECRET"]}
 RUN = uuid.uuid4().hex[:6]
+# One BQL account per area: each run registers in an area of its own.
+AREA = f"e2e-{RUN}"
 EMAIL, PASSWORD = f"e2e.manager.{RUN}@example.com", "E2e-password-" + RUN
 DECLARATION = {
     "declaration": "e2e-v1",
@@ -65,12 +67,14 @@ def step(text):
 
 with httpx.Client(base_url=BASE, timeout=180) as http:
     step("manager + fake-model credential")
-    check(http.post("/auth/register", json={"email": EMAIL, "username": f"e2e_{RUN}", "password": PASSWORD,
-                                            "domain_id": "vinhomes", "area_id": "ocean-park-2"}), 201)
+    check(http.post("/workforce/v1/admin/areas", headers=SECRET,
+                    json={"domain_id": "vinhomes", "area_id": AREA, "name": f"E2E {RUN}"}), 201)
+    me = check(http.post("/auth/register", json={"email": EMAIL, "username": f"e2e_{RUN}", "password": PASSWORD,
+                                                 "domain_id": "vinhomes", "area_id": AREA}), 201)
+    # The operator's verification approves the waiting account, then it can sign in.
+    check(http.post("/workforce/v1/admin/memberships/verify", headers=SECRET, json={"manager_account_id": me["id"]}), 200)
     token = check(http.post("/auth/login", json={"tenant_id": "default", "identity": EMAIL, "password": PASSWORD}), 200)["access_token"]
     auth = {"Authorization": "Bearer " + token}
-    me = check(http.get("/auth/me", headers=auth), 200)
-    check(http.post("/workforce/v1/admin/memberships/verify", headers=SECRET, json={"manager_account_id": me["id"]}), 200)
     check(http.post("/credential/", headers=auth, json={"data": {
         "type": "openai_credential", "name": "Fake model", "api_key": "fake-key", "base_url": "http://host.docker.internal:18080/v1"}}), 201)
 

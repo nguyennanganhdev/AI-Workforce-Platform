@@ -15,6 +15,7 @@ export { healthApi } from './health';
 export { authApi } from './auth';
 export { workforceApi } from './workforce';
 export { studioApi } from './studio';
+export { adminApi } from './admin';
 export type * from './studio';
 export type {
 	BuilderConversationSummary,

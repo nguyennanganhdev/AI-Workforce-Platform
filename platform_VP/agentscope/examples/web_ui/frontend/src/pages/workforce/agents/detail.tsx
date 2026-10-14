@@ -1,4 +1,4 @@
-import { ArrowLeft, FlaskConical, History, Rocket, RotateCcw, Save, Sparkles, Undo2 } from 'lucide-react';
+import { ArrowLeft, FlaskConical, History, Rocket, RotateCcw, Save, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -28,6 +28,14 @@ import type {
 } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -59,6 +67,7 @@ export function AgentDetailPage() {
 	const [spec, setSpec] = useState<AgentSpec | null>(null);
 	const [dirty, setDirty] = useState(false);
 	const [busy, setBusy] = useState<string | null>(null);
+	const [confirmRemove, setConfirmRemove] = useState(false);
 	const [catalog, setCatalog] = useState<CatalogTool[]>([]);
 	const [bases, setBases] = useState<KnowledgeBaseView[]>([]);
 	const [memories, setMemories] = useState<AgentMemory[]>([]);
@@ -176,6 +185,18 @@ export function AgentDetailPage() {
 		if (value) apply(value);
 	};
 
+	const remove = async () => {
+		const done = await run('remove', async () => {
+			await studioApi.remove(agentId);
+			return true;
+		});
+		setConfirmRemove(false);
+		if (done) {
+			toast.success('Đã gỡ agent.');
+			navigate('/workforce/agents');
+		}
+	};
+
 	const retireMemory = async (memoryId: string) => {
 		await run('memory', () => studioApi.retireMemory(agentId, memoryId));
 		loadMemories();
@@ -227,6 +248,15 @@ export function AgentDetailPage() {
 								Ngừng phát hành
 							</Button>
 						)}
+						<Button
+							size="sm"
+							variant="ghost"
+							className="text-destructive"
+							onClick={() => setConfirmRemove(true)}
+							disabled={busy !== null}
+						>
+							<Trash2 /> Gỡ agent
+						</Button>
 						{!detail.can_publish && detail.publish_blocker && (
 							<span className="text-xs text-muted-foreground">{detail.publish_blocker}</span>
 						)}
@@ -324,6 +354,26 @@ export function AgentDetailPage() {
 						<TabsContent value="knowledge" className="space-y-4">
 							<Section title="Kho kiến thức" hint="Agent tra cứu tài liệu ở đây thay vì nhồi vào prompt.">
 								<KnowledgeEditor items={spec.knowledge} bases={bases} onChange={(items) => update('knowledge', items)} />
+							</Section>
+							<Section title="Skill" hint="Skill trong thư viện của bạn; được cài vào agent khi phát hành. Nhờ copilot thêm, ví dụ: dùng skill đọc ảnh khi cư dân gửi ảnh.">
+								<div className="space-y-2">
+									{spec.skills.map((skill) => (
+										<div key={skill.skill_id} className="flex items-start gap-2 rounded-xl border border-border/70 p-2 text-sm">
+											<div className="min-w-0 flex-1">
+												<p className="font-medium">{skill.name || skill.skill_id}</p>
+												{skill.use_when && <p className="text-xs text-muted-foreground">Dùng khi: {skill.use_when}</p>}
+											</div>
+											<Button
+												size="xs"
+												variant="ghost"
+												onClick={() => update('skills', spec.skills.filter((item) => item.skill_id !== skill.skill_id))}
+											>
+												Bỏ
+											</Button>
+										</div>
+									))}
+									{spec.skills.length === 0 && <p className="text-xs text-muted-foreground">Chưa gắn skill nào.</p>}
+								</div>
 							</Section>
 						</TabsContent>
 
@@ -466,6 +516,25 @@ export function AgentDetailPage() {
 			<aside className="flex w-[380px] shrink-0 flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
 				<CopilotPanel turns={turns} busy={busy === 'copilot'} onSend={sendCopilot} />
 			</aside>
+			<Dialog open={confirmRemove} onOpenChange={setConfirmRemove}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Gỡ agent {spec.name}?</DialogTitle>
+						<DialogDescription>
+							Agent, các phiên bản và phiên làm việc của nó bị xoá vĩnh viễn. Ticket đang mời agent này sẽ
+							không còn thành viên này. Agent đang được tuyến đối tác dùng thì không gỡ được.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setConfirmRemove(false)} disabled={busy !== null}>
+							Huỷ
+						</Button>
+						<Button variant="destructive" onClick={remove} disabled={busy !== null}>
+							{busy === 'remove' ? <Spinner /> : <Trash2 />} Gỡ agent
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }

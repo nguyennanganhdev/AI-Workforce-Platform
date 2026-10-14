@@ -67,6 +67,7 @@ from agentscope.app.workforce.integrations.unified._tables import (
     routes,
 )
 from agentscope.app.workforce.orchestration import get_metadata
+from agentscope.app.workforce.orchestration._tables import workflow_checkpoints
 from agentscope.mcp import HttpMCPConfig, MCPClient
 from agentscope.message import TextBlock, ToolResultState
 from agentscope.tool import MCPTool, ToolChunk
@@ -177,6 +178,7 @@ class _Storage:
 
     def __init__(self):
         self.sessions = {}
+        self.messages = []  # every session's messages; enough for token counting
         self.mcp = SimpleNamespace(
             id="mcp-1",
             enabled=True,
@@ -220,6 +222,9 @@ class _Storage:
     async def get_session(self, user_id, agent_id, session_id):
         return self.sessions.get(session_id)
 
+    async def list_messages(self, user_id, session_id, limit=200):
+        return list(self.messages), None
+
     async def upsert_session(self, user_id, agent_id, config, state=None, session_id=None, **_):
         session = self.sessions.get(session_id) or _Session(
             id=session_id,
@@ -256,8 +261,10 @@ class _Leader:
         self.runner = runner
         self.scripts = []
         self.inputs = []
+        self.messages = []
 
     async def run(self, user_id, session_id, agent_id, input_msg):
+        self.messages.append(input_msg)
         self.inputs.append(getattr(input_msg, "get_text_content", lambda: str(input_msg))())
         middleware = (await self.runner.case_middlewares(user_id, agent_id, session_id))[0]
         tools = {tool.name: tool for tool in await middleware.list_tools()}
@@ -298,7 +305,9 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
             f"sqlite+aiosqlite:///{(Path(self.temp.name) / 'case.sqlite3').as_posix()}",
         )
         async with self.engine.begin() as connection:
-            for meta in (foundation_metadata, get_execution_metadata(), get_metadata(), unified_metadata()):
+            from agentscope.app.workforce.assets._tables import metadata as asset_metadata
+
+            for meta in (foundation_metadata, get_execution_metadata(), get_metadata(), unified_metadata(), asset_metadata):
                 await connection.run_sync(meta.create_all)
             await connection.execute(
                 text("CREATE TABLE partner_api_clients (id TEXT PRIMARY KEY, tenant_id TEXT, status TEXT)"),
@@ -446,6 +455,18 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
 
 
 class UnifiedPartnerCaseTest(_CaseHarness):
+    async def test_an_agent_a_partner_route_uses_cannot_be_removed(self):
+        [guard] = self.runner._app.state.agent_delete_guards
+        async with self.uows() as uow:
+            await uow.execute(update(routes).where(routes.c.route_id == "route-1").values(
+                config={"rules": RULES, "member_agents": {"member-kt": {"name": "KyThuat", "tools": []}}},
+            ))
+            await uow.commit()
+        self.assertTrue(await guard("manager-1", "leader-vh"))
+        self.assertTrue(await guard("manager-1", "member-kt"))
+        self.assertIsNone(await guard("manager-1", "agent-other"))
+        self.assertIsNone(await guard("manager-2", "leader-vh"))
+
     async def test_silent_chat_failure_is_not_a_successful_customer_turn(self):
         async def failed_before_reply(_tools):
             return None
@@ -472,6 +493,123 @@ class UnifiedPartnerCaseTest(_CaseHarness):
         async with self.uows() as uow:
             operation = (await uow.execute(select(operations).where(operations.c.client_reference == reference))).mappings().one()
         self.assertEqual(("arrived", 40, "WO-1"), (operation["status"], operation["rank"], operation["external_job_id"]))
+
+    async def test_a_turn_adds_its_tokens_to_the_workflow_budget(self):
+        from agentscope.message import Usage
+
+        async def first_turn(tools):
+            self.storage.messages.append(SimpleNamespace(id="m-1", usage=Usage(input_tokens=1200, output_tokens=80)))
+            await call(tools, "CaseSay", text="Yêu cầu đã được tiếp nhận.", expects="none")
+
+        self.storage.messages.append(SimpleNamespace(id="m-old", usage=Usage(input_tokens=999, output_tokens=9)))
+        self.leader.scripts = [first_turn]
+        async with self._client() as client:
+            started = (await client.post("/workforce/v1/partner/requests", json=self._start())).json()
+            self.assertEqual("succeeded", await self._run())
+        async with self.uows() as uow:
+            payload = (await uow.execute(
+                select(workflow_checkpoints.c.payload)
+                .where(workflow_checkpoints.c.workflow_id == started["workflow_id"])
+                .order_by(workflow_checkpoints.c.state_revision.desc()),
+            )).scalars().first()
+        budget = payload["used_budget"]
+        self.assertEqual((1200, 80), (budget["input_tokens"], budget["output_tokens"]))
+
+    async def test_a_result_with_a_room_teaches_its_agents(self):
+        scheduled = []
+
+        async def summary(tools):
+            for session in self.storage.sessions.values():
+                session.team_id = "team-9"  # the leader opened a room earlier
+            await call(tools, "CaseSay", text="Nhân viên đã báo xong, anh/chị xác nhận giúp tôi.", expects="confirmation")
+
+        self.leader.schedule_learning = lambda user_id, session, team_id: scheduled.append(team_id)
+        self.leader.scripts = [summary]
+        async with self._client() as client:
+            await client.post("/workforce/v1/partner/requests", json=self._start())
+            self.assertEqual("succeeded", await self._run())
+        self.assertEqual(["team-9"], scheduled)
+
+    async def test_the_end_users_photos_reach_the_leader_once(self):
+        from contextlib import asynccontextmanager
+
+        from agentscope.app.workforce.assets._tables import assets
+        from agentscope.message import DataBlock
+
+        class Blobs:
+            @asynccontextmanager
+            async def open(self, uri):
+                yield SimpleNamespace(read=lambda: _bytes())
+
+        async def _bytes():
+            return b"\x89PNG fake"
+
+        self.runner.attach_images(Blobs())
+
+        async def say(tools):
+            await call(tools, "CaseSay", text="Tôi đã xem ảnh của anh/chị.", expects="none")
+
+        self.leader.scripts = [say, say]
+        async with self._client() as client:
+            started = (await client.post("/workforce/v1/partner/requests", json=self._start())).json()
+            async with self.uows() as uow:
+                for asset_id, kind in (("as-photo", "image/png"), ("as-pdf", "application/pdf")):
+                    await uow.execute(insert(assets).values(
+                        id=asset_id, tenant_id="tenant-1", domain_id="domain-1", area_id="area-1",
+                        manager_account_id="manager-1", origin="customer", status="active", partner_client_id="partner-1",
+                        external_user_id="resident-1", external_ticket_id="T-77", external_conversation_id="chat-9:T-77",
+                        workflow_id=started["workflow_id"], object_uri=f"s3://b/{asset_id}", filename=f"{asset_id}.bin",
+                        content_type=kind, expected_size=10, actual_size=10, upload_expires_at=NOW, created_at=NOW,
+                        updated_at=NOW,
+                    ))
+                await uow.commit()
+            self.assertEqual("succeeded", await self._run())
+            reply = self._start(request_id="vh-cmd-2", text_value="Anh xem ảnh giúp")
+            reply.update(command_type="workflow_reply", workflow_id=started["workflow_id"])
+            await client.post("/workforce/v1/partner/requests", json=reply)
+            self.assertEqual("succeeded", await self._run())
+        first, second = self.leader.messages
+        images = [block for block in first.content if isinstance(block, DataBlock)]
+        self.assertEqual(1, len(images))  # the PDF is not an image
+        self.assertEqual("image/png", images[0].source.media_type)
+        self.assertIn("gửi kèm 1 ảnh", first.get_text_content())
+        self.assertFalse([block for block in second.content if isinstance(block, DataBlock)])
+
+    async def test_staff_progress_reaches_the_room_of_the_ticket(self):
+        async def first_turn(tools):
+            await call(tools, "vh_work_order_dispatch", ticket_id="T-77", description="Sửa rò nước")
+            await call(tools, "CaseSay", text="Yêu cầu đã được gửi cho nhân viên.", expects="none")
+
+        self.leader.scripts = [first_turn]
+        shared = []
+
+        class Shared:
+            def __init__(self, *_args):
+                pass
+
+            async def append_event(self, **event):
+                shared.append(event)
+
+        async def in_room(*_args):
+            return SimpleNamespace(team_id="team-1")
+
+        async with self._client() as client:
+            await client.post("/workforce/v1/partner/requests", json=self._start())
+            self.assertEqual("succeeded", await self._run())
+            reference = next(args for name, args in self.mcp_calls if name == "vh_work_order_dispatch")["client_reference"]
+            raw, headers = signed({
+                "schema_version": "1", "external_event_id": "ev-room", "external_job_id": "WO-1",
+                "client_reference": reference, "event_type": "job.accepted", "provider_version": 2,
+                "occurred_at": "2026-10-20T02:00:00.000000Z", "data": {"staff_name": "Bình", "eta": "09:30 20/10/2026"},
+            })
+            with patch("agentscope.app._shared_context.SharedContextService", Shared), \
+                    patch.object(self.storage, "get_session", in_room):
+                accepted = await client.post("/workforce/v1/provider/job-events", content=raw, headers=headers)
+        self.assertEqual("applied", accepted.json()["ingestion_status"])
+        [event] = shared
+        self.assertEqual(("team-1", "external_event"), (event["team_id"], event["kind"]))
+        self.assertIn("job.accepted", event["content"])
+        self.assertIn("Bình", event["content"])
 
     async def test_dispatch_progress_events_result_and_close_like_the_vinhomes_bridge(self):
         async def first_turn(tools):

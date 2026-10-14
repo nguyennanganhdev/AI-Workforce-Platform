@@ -190,6 +190,12 @@ class MembershipVerifyRequest(BaseModel):
     manager_account_id: str = Field(min_length=1, max_length=255)
 
 
+class AreaRequest(BaseModel):
+    domain_id: str = Field(min_length=2, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]+$")
+    area_id: str = Field(min_length=2, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]+$")
+    name: str = Field(min_length=1, max_length=255)
+
+
 def onboarding_router(foundation: WorkforceFoundation) -> APIRouter:
     """Three-party route grant: admin verifies, manager grants, partner confirms."""
 
@@ -202,6 +208,30 @@ def onboarding_router(foundation: WorkforceFoundation) -> APIRouter:
     )
 
     router = APIRouter(prefix="/workforce/v1", tags=["workforce-onboarding"])
+
+    @router.post("/admin/areas", status_code=status.HTTP_201_CREATED)
+    async def create_area(
+        body: AreaRequest,
+        x_provisioning_secret: str | None = Header(default=None, alias="X-Provisioning-Secret"),
+        business: Any = Depends(get_business_service),
+    ) -> dict:
+        """Operator tooling: add an area to an existing domain (provisioning secret)."""
+
+        try:
+            business.verify_provisioning_secret(x_provisioning_secret)
+        except Exception as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        async with foundation.uows() as uow:
+            owner = (await uow.execute(text("SELECT domain_id FROM areas WHERE id = :a"), {"a": body.area_id})).scalar()
+            if owner is not None and owner != body.domain_id:
+                raise HTTPException(status_code=409, detail="this area id belongs to another domain")
+            if owner is None:
+                await uow.execute(
+                    text("INSERT INTO areas (id, domain_id, name, status) VALUES (:a, :d, :n, 'active')"),
+                    {"a": body.area_id, "d": body.domain_id, "n": body.name},
+                )
+                await uow.commit()
+        return {"domain_id": body.domain_id, "area_id": body.area_id, "created": owner is None}
 
     @router.post("/admin/memberships/verify")
     async def verify_membership(
@@ -233,14 +263,23 @@ def onboarding_router(foundation: WorkforceFoundation) -> APIRouter:
         )
         if row["status"] == "verified":
             return {"status": "verified", "revision": row["revision"]}
-        try:
-            revision = await foundation.management_verification.verify(
-                scope,
-                int(row["revision"]),
-                "provisioning",
+        async with foundation.uows() as uow:
+            # The operator's verification also approves an account waiting
+            # for it (verification needs an active account).
+            await uow.execute(
+                text("UPDATE auth_users SET status = 'active' WHERE id = :id AND status = 'pending'"),
+                {"id": row["manager_account_id"]},
             )
-        except (ValueError, PermissionError) as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+            try:
+                revision = await foundation.management_verification.verify(
+                    scope,
+                    int(row["revision"]),
+                    "provisioning",
+                    uow,
+                )
+            except (ValueError, PermissionError) as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            await uow.commit()
         return {"status": "verified", "revision": revision}
 
     @router.post("/manager/partner-routes", status_code=status.HTTP_201_CREATED)
@@ -427,8 +466,14 @@ def build_unified_runtime(
     ids: Callable[[], str] = lambda: uuid4().hex,
     bounded_wait_seconds: float = 8.0,
     heartbeat_seconds: float = 15.0,
+    asset_store: Any = None,
 ) -> WorkforceRuntimeAssembly:
-    """Production graph for unified mode (see the module docstring)."""
+    """Production graph for unified mode (see the module docstring).
+
+    ``asset_store`` (the S3/MinIO blob store): partners upload the end user's
+    photos (``/partner/assets``), attach them to a message, and the route
+    leader sees them.
+    """
 
     uows = foundation.uows
     workflows = SqlWorkflowRepository(uows, clock=clock, ids=ids)
@@ -444,7 +489,8 @@ def build_unified_runtime(
     )
     store = CaseStore(uows)
     approvals = CaseApprovals(uows)
-    runner.attach_case(CaseRuntime(store), approvals)
+    case_runtime = CaseRuntime(store)
+    runner.attach_case(case_runtime, approvals)
     workflow_service = WorkflowService(
         workflows,
         LeaderWorkflowBootstrap(UnifiedBootstrapResolver(ids), clock=clock, ids=ids),
@@ -467,6 +513,19 @@ def build_unified_runtime(
         lease_seconds=lease,
     )
     handler = WorkflowContinuationJobHandler(continuation, worker_id=UNIFIED_JOB_WORKER)
+    asset_service = None
+    if asset_store is not None:
+        from ...assets import SqlAssetRepository, WorkforceAssetService
+
+        asset_service = WorkforceAssetService(
+            SqlAssetRepository(uows),
+            asset_store,
+            foundation.partner_routing,
+            foundation.identity,
+            None,  # provider uploads are not offered in unified mode
+            clock=clock,
+        )
+        runner.attach_images(asset_store)
     ingress = PartnerIngressService(
         workflow_service,
         requests,
@@ -476,6 +535,7 @@ def build_unified_runtime(
         event_service,
         foundation.request_completion_signal,
         clock=clock,
+        assets=asset_service,
     )
     writer = PublicEventWriter(event_service, clock, ids)
     approvals.attach_events(writer)
@@ -487,6 +547,7 @@ def build_unified_runtime(
         writer,
         ids,
         requests=requests,
+        share=case_runtime.share_progress,
     )
     customer = partner_customer_dependency()
     router = create_router(
@@ -495,6 +556,10 @@ def build_unified_runtime(
         customer,
         bounded_wait_seconds=bounded_wait_seconds,
     )
+    if asset_service is not None:
+        from ...assets import create_customer_asset_router
+
+        router.include_router(create_customer_asset_router(asset_service, customer))
     return WorkforceRuntimeAssembly(
         services={
             "workflow_service": workflow_service,

@@ -101,19 +101,34 @@ export function AuthPage({ onAuthenticated }: Props) {
 		setSubmitting(true);
 		setErrorMessage('');
 		try {
-			const user =
-				mode === 'login'
-					? await authApi.login({ identity: identity.trim(), password })
-					: await authApi.registerAndLogin({
-							email: email.trim(),
-							username: username.trim(),
-							password,
-							domain_id: domainId,
-							area_id: areaId,
-						});
+			if (mode !== 'login') {
+				const registered = await authApi.register({
+					email: email.trim(),
+					username: username.trim(),
+					password,
+					domain_id: domainId,
+					area_id: areaId,
+				});
+				if (registered.status === 'pending') {
+					// A BQL account waits for the platform or domain admin.
+					setMode('login');
+					setIdentity(username.trim());
+					setPassword('');
+					setErrorMessage('Đã gửi đăng ký. Tài khoản BQL của khu này đang chờ quản trị duyệt; bạn đăng nhập được sau khi được duyệt.');
+					return;
+				}
+			}
+			const user = await authApi.login({
+				identity: mode === 'login' ? identity.trim() : username.trim(),
+				password,
+			});
 			onAuthenticated(user);
 		} catch (error) {
-			if (error instanceof ApiError && error.status === 503) {
+			if (error instanceof ApiError && error.status === 403) {
+				setErrorMessage('Tài khoản đang chờ quản trị duyệt. Vui lòng thử lại sau khi được duyệt.');
+			} else if (error instanceof ApiError && error.status === 409 && mode !== 'login') {
+				setErrorMessage('Không đăng ký được: email/tên đăng nhập đã có, hoặc khu này đã có tài khoản BQL (mỗi khu một tài khoản).');
+			} else if (error instanceof ApiError && error.status === 503) {
 				setErrorMessage(t('auth.authenticationDisabled'));
 			} else {
 				setErrorMessage(formatApiErrorForAlert(error));

@@ -197,12 +197,17 @@ async def apply_bindings(
     user_id: str,
     record: AgentRecord,
     spec: AgentSpec,
+    install_skill: Any = None,
+    previous: AgentSpec | None = None,
 ) -> None:
     """Point the agent's primary session at exactly the spec's tools/knowledge.
 
     Team sessions copy MCP declarations from the primary session when the
     agent is invited, so new tickets pick up the change; running tickets keep
-    what they started with.
+    what they started with. Skills live in the agent's workspace (shared by
+    its team sessions): ``install_skill(workspace, skill_id)`` adds one from
+    the library; skills the previous version listed and this one does not are
+    removed.
     """
 
     sessions = await storage.list_sessions(user_id, record.id)
@@ -234,6 +239,13 @@ async def apply_bindings(
         client.enable_tools = list(dict.fromkeys(names))
         client.confirm_tools = confirm.get(mcp_id) or None
         await workspace.add_mcp(client, agent_id=record.id, session_id=primary.id)
+    wanted = {item.skill_id: item for item in spec.skills}
+    if install_skill is not None:
+        for skill_id in wanted:
+            await install_skill(workspace, skill_id)
+    for item in previous.skills if previous is not None else []:
+        if item.skill_id not in wanted and item.name:
+            await workspace.remove_skill(item.name, agent_id=record.id)
     knowledge_ids = [item.kb_id for item in spec.knowledge]
     config = primary.config
     if knowledge_ids:
@@ -283,6 +295,29 @@ async def tool_catalog(storage: StorageBase, user_id: str) -> dict[str, dict]:
     return catalog
 
 
+async def knowledge_catalog(storage: StorageBase, user_id: str) -> dict[str, dict]:
+    """The manager's knowledge bases keyed by id (what the Builder may attach)."""
+
+    return {
+        record.id: {"kb_id": record.id, "name": record.data.name, "description": record.data.description}
+        for record in await storage.list_knowledge_bases(user_id)
+    }
+
+
+async def skill_catalog(storage: StorageBase, user_id: str) -> dict[str, dict]:
+    """The manager's enabled library skills keyed by id."""
+
+    return {
+        record.id: {
+            "skill_id": record.id,
+            "name": record.name,
+            "description": record.description or record.display_name or "",
+        }
+        for record in await storage.list_skills(user_id)
+        if getattr(record, "enabled", True)
+    }
+
+
 def tool_runner(storage: StorageBase, user_id: str, spec: AgentSpec):
     """Return an async callable that runs one of the spec's tools by name."""
 
@@ -328,6 +363,7 @@ class CopilotOperation(BaseModel):
             "set: the new field value. add/update: the item. Items: rules "
             "{text, level: must|should}; escalation {when, to}; tools "
             "{tool_id, use_when, requires_consent}; knowledge {kb_id, use_for}; "
+            "skills {skill_id, use_when}; "
             "collaborates {capability, ask_when}; examples {user, agent}; tests "
             "{scenario, expected, must_include[], must_not_include[], expect_tool}; "
             "scope_in/scope_out: a string."
@@ -364,6 +400,9 @@ How to work:
 - Keep everything the manager did not ask to change. Never remove locked rules.
 - Only use tool ids that exist in the TOOL CATALOG; never invent tools. If the
   needed capability is missing, say which tool must be added.
+- Attach a KNOWLEDGE BASE when its content is what the agent must answer from
+  (procedures, prices, policies), and a SKILL from the SKILL LIBRARY when it fits
+  a task of the agent; say why in use_for / use_when. Only use listed ids.
 - When creating an agent from a description, also fill name, description,
   goal, audience and tone, and add 3-5 tests (scenario + expected behaviour)
   that cover the rules, an out-of-scope request and a case needing consent.
@@ -400,7 +439,8 @@ async def copilot_turn(
     spec: AgentSpec,
     message: str,
     catalog: dict[str, dict],
-    knowledge: list[dict] | None = None,
+    knowledge: dict[str, dict] | None = None,
+    skills: dict[str, dict] | None = None,
 ) -> tuple[CopilotReply, AgentSpec, list[dict]]:
     """Interpret one manager message as a patch on ``spec``.
 
@@ -420,7 +460,9 @@ async def copilot_turn(
         + "\n\nTOOL CATALOG:\n"
         + json.dumps(tools, ensure_ascii=False)[:20000]
         + "\n\nKNOWLEDGE BASES:\n"
-        + json.dumps(knowledge or [], ensure_ascii=False)[:4000]
+        + json.dumps(list((knowledge or {}).values()), ensure_ascii=False)[:6000]
+        + "\n\nSKILL LIBRARY:\n"
+        + json.dumps(list((skills or {}).values()), ensure_ascii=False)[:6000]
     )
     response = await model.generate_structured_output(
         messages=[
@@ -442,6 +484,15 @@ async def copilot_turn(
                     "mcp_name": meta["mcp_name"],
                     "tool_name": meta["tool_name"],
                 }
+        elif operation.field in {"knowledge", "skills"} and operation.op in {"add", "update"} and isinstance(
+            operation.value, dict,
+        ):
+            key = "kb_id" if operation.field == "knowledge" else "skill_id"
+            meta = ((knowledge if operation.field == "knowledge" else skills) or {}).get(
+                str(operation.value.get(key) or ""),
+            )
+            if meta is not None:
+                operation.value = {**operation.value, "name": meta["name"]}
     patched = spec
     rejected: list[str] = []
     for operation in operations:
@@ -449,6 +500,14 @@ async def copilot_turn(
             tool_id = str((operation.value or {}).get("tool_id") or "")
             if tool_id not in catalog:
                 rejected.append(f"tool {tool_id or '?'} không có trong kho tool")
+                continue
+        if operation.field in {"knowledge", "skills"} and operation.op == "add":
+            key = "kb_id" if operation.field == "knowledge" else "skill_id"
+            listed = (knowledge if operation.field == "knowledge" else skills) or {}
+            item_id = str((operation.value or {}).get(key) or "")
+            if item_id not in listed:
+                where = "kho kiến thức" if operation.field == "knowledge" else "thư viện skill"
+                rejected.append(f"{item_id or '?'} không có trong {where}")
                 continue
         try:
             patched = apply_operations(patched, [operation], author="builder")
@@ -461,12 +520,77 @@ async def copilot_turn(
     return reply, patched, changes
 
 
+class PlannedAgent(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    role: str = Field(description="What this agent does in the team, one sentence.")
+    brief: str = Field(description="The description the copilot builds this agent from.")
+
+
+class CompositionPlan(BaseModel):
+    mode: Literal["single", "team"]
+    reason: str = Field(description="Why one agent or a team, in the manager's language; 1-2 sentences.")
+    agents: list[PlannedAgent] = Field(min_length=1, max_length=5)
+
+
+_PLAN_INSTRUCTIONS = """You plan the agents a manager needs on a business AI platform.
+Ticket handling works like this: a fixed Leader receives each request, invites
+the published business agents it needs into the ticket's room, and they report
+back. Decide from the manager's description, the tools, knowledge bases and
+skills available:
+- "single" when one agent with one coherent job and toolset is enough.
+- "team" (2-5 agents) only when the work splits into specialities that need
+  different tools or knowledge, or one agent's result is another's input (for
+  example: lookup, then calculation). Do not split for its own sake.
+Give each agent a short name, its role and a brief that says what it does,
+which tools / knowledge / skills it should use, and which teammate it hands to.
+Write in the manager's language."""
+
+
+async def plan_composition(
+    *,
+    model: ChatModelBase,
+    description: str,
+    catalog: dict[str, dict],
+    knowledge: dict[str, dict],
+    skills: dict[str, dict],
+    allow_team: bool,
+) -> CompositionPlan:
+    """One agent, or a team of agents, for a plain-language description."""
+
+    if not allow_team:
+        return CompositionPlan(
+            mode="single", reason="", agents=[PlannedAgent(name="Agent mới", role="", brief=description)],
+        )
+    tools = [
+        {k: v for k, v in tool.items() if k in {"tool_id", "tool_name", "description", "read_only"}}
+        for tool in catalog.values()
+    ]
+    context = (
+        _PLAN_INSTRUCTIONS
+        + "\n\nTOOL CATALOG:\n" + json.dumps(tools, ensure_ascii=False)[:12000]
+        + "\n\nKNOWLEDGE BASES:\n" + json.dumps(list(knowledge.values()), ensure_ascii=False)[:4000]
+        + "\n\nSKILL LIBRARY:\n" + json.dumps(list(skills.values()), ensure_ascii=False)[:4000]
+    )
+    response = await model.generate_structured_output(
+        messages=[UserMsg(name="system_context", content=context), UserMsg(name="manager", content=description)],
+        structured_model=CompositionPlan,
+    )
+    plan = CompositionPlan.model_validate(response.content)
+    if plan.mode == "single":
+        plan.agents = plan.agents[:1]
+    return plan
+
+
 __all__ = [
+    "CompositionPlan",
     "CopilotReply",
     "apply_bindings",
     "copilot_turn",
     "draft_spec",
     "ensure_spec",
+    "knowledge_catalog",
+    "plan_composition",
+    "skill_catalog",
     "last_test_for",
     "materialize",
     "published_spec",

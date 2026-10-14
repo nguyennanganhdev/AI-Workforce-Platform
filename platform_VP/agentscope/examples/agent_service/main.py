@@ -157,6 +157,9 @@ if os.getenv("AUTH_ENABLED", "false").lower() in {"1", "true", "yes"}:
         ),
         cookie_secure=os.getenv("AUTH_COOKIE_SECURE", "true").lower()
         in {"1", "true", "yes"},
+        # New BQL accounts wait for an administrator; one per area.
+        require_approval=os.getenv("AUTH_REGISTRATION_APPROVAL", "true").lower()
+        in {"1", "true", "yes"},
     )
     memory_embedding_model = None
     memory_embedding_key = os.getenv("MEMORY_EMBEDDING_API_KEY") or os.getenv(
@@ -213,7 +216,8 @@ if unified_mode_enabled():
     def _unified_runtime(foundation):
         runner = ChatLeaderTurnRunner(foundation.uows)
         partner_runner["runner"] = runner
-        return build_unified_runtime(foundation, runner)
+        # Partner photos live in the same S3/MinIO store as knowledge documents.
+        return build_unified_runtime(foundation, runner, asset_store=blob_store)
 
     workforce_bootstrap = WorkforceBootstrap(
         database_url=os.environ["AGENTSCOPE_SQL_URL"],

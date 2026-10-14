@@ -394,7 +394,9 @@ class PartnerOnboarding:
             ][:60],
             prompt_override=leader_prompt(profile),
             model_tier=tier,
-            memory_enabled=False,
+            # Experience recalled with its source; rules stay the partner's own
+            # (a rerun of the declaration would overwrite self-made rules).
+            memory_enabled=bool(profile.get("memory", True)),
             self_improve=False,
         )
         agents = await storage.list_agents(body.manager_account_id)

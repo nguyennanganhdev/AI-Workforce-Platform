@@ -34,6 +34,12 @@ export interface SpecKnowledge {
 	use_for: string;
 }
 
+export interface SpecSkill {
+	skill_id: string;
+	name: string;
+	use_when: string;
+}
+
 export interface SpecCollaborator {
 	id: string;
 	capability: string;
@@ -68,6 +74,7 @@ export interface AgentSpec {
 	escalation: SpecEscalation[];
 	tools: SpecTool[];
 	knowledge: SpecKnowledge[];
+	skills: SpecSkill[];
 	collaborates: SpecCollaborator[];
 	examples: SpecExample[];
 	tests: SpecTest[];
@@ -149,6 +156,12 @@ export interface CopilotResult {
 	agent: AgentDetail;
 }
 
+export interface ComposeResult extends CopilotResult {
+	plan: { mode: 'single' | 'team'; reason: string; agents: { name: string; role: string }[] } | null;
+	agents: AgentDetail[];
+	test_reports: Record<string, TestReport>;
+}
+
 export interface CatalogTool {
 	tool_id: string;
 	mcp_id: string;
@@ -197,10 +210,12 @@ export const studioApi = {
 	getAgent: (id: string) => client.get<AgentDetail>(agentPath(id)),
 	create: (body: { template_id?: string; clone_from?: string; spec?: AgentSpec }) =>
 		client.post<AgentDetail>(`${base}/agents`, body),
-	compose: (description: string, templateId?: string) =>
-		client.post<CopilotResult>(`${base}/agents/compose`, {
+	compose: (description: string, templateId?: string, options: { allowTeam?: boolean; runTests?: boolean } = {}) =>
+		client.post<ComposeResult>(`${base}/agents/compose`, {
 			description,
 			template_id: templateId,
+			allow_team: options.allowTeam ?? false,
+			run_tests: options.runTests ?? false,
 		}),
 	saveDraft: (id: string, spec: AgentSpec, note = '') =>
 		client.put<AgentDetail>(`${agentPath(id)}/draft`, { spec, note }),
@@ -213,6 +228,7 @@ export const studioApi = {
 	rollback: (id: string, version: number) =>
 		client.post<AgentDetail>(`${agentPath(id)}/rollback`, { version }),
 	withdraw: (id: string) => client.post<AgentDetail>(`${agentPath(id)}/withdraw`),
+	remove: (id: string) => client.delete(agentPath(id)),
 	templates: () => client.get<AgentTemplate[]>(`${base}/templates`),
 	tools: () => client.get<CatalogTool[]>(`${base}/tools`),
 	memories: (id: string) => client.get<AgentMemory[]>(`${agentPath(id)}/memories`),

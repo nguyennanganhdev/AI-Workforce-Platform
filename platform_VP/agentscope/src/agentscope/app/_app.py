@@ -11,6 +11,7 @@ from ..credential import CredentialBase, CredentialFactory
 from ..rag import ApproxTokenChunker, ChunkerBase, ParserBase, TextParser
 from ._lifespan import lifespan
 from ._router import (
+    admin_router,
     agent_router,
     auth_router,
     business_router,
@@ -435,6 +436,7 @@ def create_app(
 
     # Built-in routers
     for router in (
+        admin_router,
         auth_router,
         business_router,
         agent_router,

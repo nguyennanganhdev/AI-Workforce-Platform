@@ -77,6 +77,10 @@ def main() -> int:
         )
         check(registered, 201, 409)
         print("Tài khoản quản lý:", "đã tạo" if registered.status_code == 201 else "đã có")
+        if registered.status_code == 201:
+            # A new BQL account waits for approval; the operator's verification approves it.
+            check(http.post("/workforce/v1/admin/memberships/verify", headers=provisioning,
+                            json={"manager_account_id": registered.json()["id"]}), 200, 404)
         token = check(
             http.post("/auth/login", json={"tenant_id": env.get("AUTH_DEFAULT_TENANT_ID", "default"), "identity": args.email, "password": password}),
             200,

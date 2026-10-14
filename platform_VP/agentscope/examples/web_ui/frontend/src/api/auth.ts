@@ -7,8 +7,8 @@ export interface AuthUser {
 	username: string;
 	status: string;
 	role: string;
-	domain_id: string;
-	area_id: string;
+	domain_id: string | null;
+	area_id: string | null;
 }
 
 export interface DomainOption {

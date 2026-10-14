@@ -8,6 +8,7 @@ import { studioApi } from '@/api';
 import type { AgentSummary, AgentTemplate } from '@/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
 	Dialog,
 	DialogContent,
@@ -42,6 +43,8 @@ function CreateAgentDialog({
 	const [templates, setTemplates] = useState<AgentTemplate[]>([]);
 	const [description, setDescription] = useState('');
 	const [templateId, setTemplateId] = useState<string | undefined>();
+	const [allowTeam, setAllowTeam] = useState(true);
+	const [runTests, setRunTests] = useState(false);
 	const [busy, setBusy] = useState(false);
 
 	useEffect(() => {
@@ -96,10 +99,26 @@ function CreateAgentDialog({
 								</Button>
 							))}
 						</div>
+						<div className="flex flex-wrap gap-4 text-xs">
+							<label className="flex items-center gap-2">
+								<Checkbox checked={allowTeam} onCheckedChange={(value) => setAllowTeam(value === true)} />
+								Cho Builder chia thành nhóm agent nếu việc gồm nhiều chuyên môn
+							</label>
+							<label className="flex items-center gap-2">
+								<Checkbox checked={runTests} onCheckedChange={(value) => setRunTests(value === true)} />
+								Chạy kiểm thử ngay (gọi model thật)
+							</label>
+						</div>
 						<Button
 							disabled={busy || description.trim().length < 3}
 							onClick={() =>
-								go(async () => (await studioApi.compose(description.trim(), templateId)).agent)
+								go(async () => {
+									const result = await studioApi.compose(description.trim(), templateId, { allowTeam, runTests });
+									if (result.agents.length > 1) {
+										toast.success(result.reply.assistant_message);
+									}
+									return result.agent;
+								})
 							}
 						>
 							{busy ? <Spinner /> : <Sparkles />} Để Builder soạn bản nháp
