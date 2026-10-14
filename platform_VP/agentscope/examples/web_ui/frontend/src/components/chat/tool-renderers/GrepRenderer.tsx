@@ -1,4 +1,5 @@
-import { getResultText, parseInput, toolArgClass, toolLabelClass } from './_shared';
+import { toolArgClass, toolLabelClass } from './_shared';
+import { getResultText, parseInput } from './_shared-utils';
 import type { ToolRenderer } from './types';
 
 function getPattern(input: string): string {

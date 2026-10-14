@@ -25,7 +25,8 @@ import mime from 'mime';
 import { memo, useEffect, useRef, useState } from 'react';
 
 import { renderToolCall } from './tool-renderers';
-import { countDiffStats, DiffStats, getResultDiff } from './tool-renderers/_shared';
+import { DiffStats } from './tool-renderers/_shared';
+import { countDiffStats, getResultDiff } from './tool-renderers/_shared-utils';
 import type { TFunction, ToolCallWithResult } from './tool-renderers/types';
 import { Markdown } from '@/components/markdown';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -46,7 +47,7 @@ import {
 	CollapsibleTrigger,
 } from '@/components/ui/collapsible.tsx';
 import { Message, MessageFooter, MessageContent } from '@/components/ui/message';
-import { useAudioBlock, useReplayController } from '@/context/AudioContext';
+import { useAudioBlock, useReplayController } from '@/context/audio-context';
 import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
 import { copyToClipboard, formatNumber, formatTime } from '@/utils/common';

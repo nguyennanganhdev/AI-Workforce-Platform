@@ -1,11 +1,5 @@
-import {
-	FramedFileBody,
-	getResultText,
-	toolArgClass,
-	toolLabelClass,
-	tryGetFileName,
-	tryGetFilePath,
-} from './_shared';
+import { FramedFileBody, toolArgClass, toolLabelClass } from './_shared';
+import { getResultText, tryGetFileName, tryGetFilePath } from './_shared-utils';
 import { defaultRenderBody } from './DefaultRenderer';
 import { DiffPreview } from './DiffPreview';
 import type { ToolRenderer } from './types';

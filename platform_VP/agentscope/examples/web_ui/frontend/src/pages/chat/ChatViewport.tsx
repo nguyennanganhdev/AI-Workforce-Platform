@@ -546,7 +546,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 			if (card) return card;
 		}
 		return null;
-	}, [groups, selectedModel?.type, selectedModel?.model]);
+	}, [groups, selectedModel]);
 
 	/**
 	 * Pick the first model the available-models endpoint surfaces, used
@@ -556,7 +556,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 	 * @returns The first available `ChatModelConfig`, or `null` when
 	 *   no credentials / models are configured.
 	 */
-	const getFirstAvailableModel = (): ChatModelConfig | null => {
+	const getFirstAvailableModel = useCallback((): ChatModelConfig | null => {
 		const firstType = Object.keys(groups)[0];
 		if (!firstType) return null;
 		const items = groups[firstType];
@@ -572,7 +572,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 			model: modelName,
 			parameters: {},
 		};
-	};
+	}, [groups]);
 
 	// Seed tasks + permission from the session snapshot ONCE per
 	// session, then leave them to the CustomEvent(name="state_updated")
@@ -642,7 +642,7 @@ export function ChatViewport({ agentId, sessionId, onSessionsChanged }: ChatView
 		setSelectedFallbackModel(view.session.config.fallback_chat_model_config ?? null);
 		setSelectedTTSModel(view.session.config.tts_model_config ?? null);
 		setSelectedKnowledgeConfig(view.session.config.knowledge_config ?? null);
-	}, [view, groups, sessionId, agentId]);
+	}, [view, sessionId, agentId, getFirstAvailableModel, refetchSessions]);
 
 	// Sync selectedPermissionMode when the session changes. Same
 	// loading-window guard as above — don't reset the displayed mode
