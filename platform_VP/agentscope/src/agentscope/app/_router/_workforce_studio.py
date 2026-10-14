@@ -9,7 +9,7 @@ import asyncio
 import os
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from ..._utils._common import _generate_id
@@ -19,14 +19,19 @@ from .._agent_templates import TEMPLATES, template_list
 from .._service import ResourceAccessService, get_model
 from .._service._agent_eval import MIN_TESTS_TO_PUBLISH, PASS_THRESHOLD, run_spec_tests
 from .._service._agent_studio import (
+    CompositionPlan,
     CopilotReply,
     apply_bindings,
     copilot_turn,
     draft_spec,
     ensure_spec,
+    knowledge_catalog,
     last_test_for,
     materialize,
+    plan_composition,
+    published_spec,
     record_test_run,
+    skill_catalog,
     runtime_prompt,
     set_draft,
     tool_catalog,
@@ -36,6 +41,9 @@ from .._agent_memory import AgentMemoryService
 from ..deps import (
     get_current_user_id,
     get_resource_access_service,
+    get_session_service,
+    get_skill_hubs,
+    get_workspace_service,
     get_shared_context_storage,
     get_storage,
     get_workspace_manager,
@@ -101,6 +109,10 @@ class CreateAgentRequest(BaseModel):
 class ComposeRequest(BaseModel):
     description: str = Field(min_length=3, max_length=8000)
     template_id: str | None = None
+    allow_team: bool = False
+    """Let the Builder split the description into a team of agents."""
+    run_tests: bool = False
+    """Run each new agent's tests right away (real model)."""
 
 
 class DraftRequest(BaseModel):
@@ -116,6 +128,13 @@ class CopilotView(BaseModel):
     reply: CopilotReply
     changes: list[dict]
     agent: AgentDetailView
+
+
+class ComposeView(CopilotView):
+    plan: CompositionPlan | None = None
+    agents: list[AgentDetailView] = []
+    """Every agent created (the first is ``agent``)."""
+    test_reports: dict[str, dict] = {}
 
 
 class PublishRequest(BaseModel):
@@ -320,15 +339,16 @@ async def create_agent(
     return _detail(record)
 
 
-@workforce_studio_router.post("/agents/compose", response_model=CopilotView)
+@workforce_studio_router.post("/agents/compose", response_model=ComposeView)
 async def compose_agent(
     body: ComposeRequest,
     user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
     access: ResourceAccessService = Depends(get_resource_access_service),
-) -> CopilotView:
-    """Create a draft agent from a plain-language description."""
+) -> ComposeView:
+    """Create draft agents from a plain-language description: one, or a team
+    when ``allow_team`` and the work splits into specialities."""
 
     base = (
         TEMPLATES[body.template_id]["spec"].model_copy(deep=True)
@@ -337,14 +357,57 @@ async def compose_agent(
     )
     _, copilot_model = await _models(storage, user_id, access)
     catalog = await tool_catalog(storage, user_id)
-    reply, spec, changes = await copilot_turn(
+    knowledge = await knowledge_catalog(storage, user_id)
+    skills = await skill_catalog(storage, user_id)
+    plan = await plan_composition(
         model=copilot_model,
-        spec=base,
-        message="Tạo agent theo mô tả sau:\n" + body.description,
+        description=body.description,
         catalog=catalog,
+        knowledge=knowledge,
+        skills=skills,
+        allow_team=body.allow_team,
     )
-    record = await _create_record(storage, workspace_manager, user_id, spec)
-    return CopilotView(reply=reply, changes=changes, agent=_detail(record))
+    team = [agent.name for agent in plan.agents]
+    created: list[AgentRecord] = []
+    first: tuple[CopilotReply, list[dict]] | None = None
+    for planned in plan.agents:
+        message = "Tạo agent theo mô tả sau:\n" + planned.brief
+        if len(team) > 1:
+            message += (
+                f"\n\nAgent này là {planned.name} ({planned.role}) trong nhóm: " + ", ".join(team)
+                + ". Ghi các đồng đội vào collaborates."
+            )
+            base = base.model_copy(update={"name": planned.name})
+        reply, spec, changes = await copilot_turn(
+            model=copilot_model, spec=base, message=message,
+            catalog=catalog, knowledge=knowledge, skills=skills,
+        )
+        if len(spec.tests) < MIN_TESTS_TO_PUBLISH:
+            # Publishing needs tests; ask once for the missing ones.
+            _, spec, _ = await copilot_turn(
+                model=copilot_model, spec=spec,
+                message=f"Thêm kịch bản kiểm thử cho đủ ít nhất {MIN_TESTS_TO_PUBLISH} kịch bản, mỗi kịch bản có kỳ vọng rõ.",
+                catalog=catalog, knowledge=knowledge, skills=skills,
+            )
+            changes = [change.model_dump(mode="json") for change in diff_specs(base, spec)]
+        created.append(await _create_record(storage, workspace_manager, user_id, spec))
+        first = first or (reply, changes)
+    reports: dict[str, dict] = {}
+    if body.run_tests:
+        for record in created:
+            spec = draft_spec(record)
+            if spec.tests:
+                reports[record.id] = await _run_and_record(storage, user_id, access, record.id, spec)
+        created = [await _business_agent(storage, user_id, record.id) for record in created]
+    reply, changes = first
+    if plan.mode == "team" and len(created) > 1:
+        reply.assistant_message = (
+            f"Tạo nhóm {len(created)} agent ({', '.join(team)}): {plan.reason} " + reply.assistant_message
+        )
+    details = [_detail(record) for record in created]
+    return ComposeView(
+        reply=reply, changes=changes, agent=details[0], plan=plan, agents=details, test_reports=reports,
+    )
 
 
 @workforce_studio_router.get("/agents/{agent_id}", response_model=AgentDetailView)
@@ -401,6 +464,8 @@ async def copilot(
         spec=draft_spec(record),
         message=body.message,
         catalog=await tool_catalog(storage, user_id),
+        knowledge=await knowledge_catalog(storage, user_id),
+        skills=await skill_catalog(storage, user_id),
     )
     async with _locks[agent_id]:
         record = await _business_agent(storage, user_id, agent_id)
@@ -421,6 +486,10 @@ async def run_tests(
     spec = draft_spec(record)
     if not spec.tests:
         raise HTTPException(status_code=409, detail="Agent chưa có kịch bản kiểm thử.")
+    return await _run_and_record(storage, user_id, access, agent_id, spec)
+
+
+async def _run_and_record(storage, user_id, access, agent_id: str, spec: AgentSpec) -> dict:
     model, judge_model = await _models(storage, user_id, access, spec)
     report = await run_spec_tests(
         spec=spec,
@@ -444,6 +513,7 @@ async def run_tests(
 async def publish(
     agent_id: str,
     body: PublishRequest,
+    request: Request,
     user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
@@ -456,8 +526,12 @@ async def publish(
             raise HTTPException(status_code=409, detail=blocker)
         report = last_test_for(record, spec)
         author = (record.data.draft_meta or {}).get("author", "manager")
+        previous = published_spec(record) if record.data.published_version else None
         materialize(record, spec, author=author, note=body.note, evaluation=report)
-        await apply_bindings(storage, workspace_manager, user_id, record, spec)
+        await apply_bindings(
+            storage, workspace_manager, user_id, record, spec,
+            install_skill=_skill_installer(request, storage, user_id, agent_id), previous=previous,
+        )
         await storage.upsert_agent(user_id, record)
     return _detail(record)
 
@@ -466,6 +540,7 @@ async def publish(
 async def rollback(
     agent_id: str,
     body: RollbackRequest,
+    request: Request,
     user_id: str = Depends(get_current_user_id),
     storage: StorageBase = Depends(get_storage),
     workspace_manager: WorkspaceManagerBase = Depends(get_workspace_manager),
@@ -476,6 +551,7 @@ async def rollback(
         if target is None:
             raise HTTPException(status_code=404, detail="Không có phiên bản này")
         spec = AgentSpec.model_validate(target["spec"])
+        previous = published_spec(record) if record.data.published_version else None
         materialize(
             record,
             spec,
@@ -483,7 +559,10 @@ async def rollback(
             note=body.note or f"Quay về phiên bản {body.version}",
             evaluation=None,
         )
-        await apply_bindings(storage, workspace_manager, user_id, record, spec)
+        await apply_bindings(
+            storage, workspace_manager, user_id, record, spec,
+            install_skill=_skill_installer(request, storage, user_id, agent_id), previous=previous,
+        )
         await storage.upsert_agent(user_id, record)
     return _detail(record)
 
@@ -503,6 +582,50 @@ async def withdraw(
         )
         await storage.upsert_agent(user_id, record)
     return _detail(record)
+
+
+def _skill_installer(request: Request, storage: StorageBase, user_id: str, agent_id: str):
+    """Put one library skill into the agent's workspace (re-fetched from its hub)."""
+
+    async def install(workspace, skill_id: str) -> None:
+        record = await storage.get_skill(user_id, skill_id)
+        if record is None:
+            raise HTTPException(status_code=409, detail=f"Skill {skill_id} không còn trong thư viện.")
+        present = {getattr(item, "name", item) for item in await workspace.list_skills(agent_id=agent_id)}
+        if record.name in present:
+            return
+        hub = (await get_skill_hubs(request)).get(record.hub_id or "")
+        if hub is None:
+            raise HTTPException(status_code=409, detail=f"Hub của skill {record.name} không còn đăng ký.")
+        archive = await hub.download(user_id, record.card_id or record.name, record.version)
+        service = await get_workspace_service(request)
+        await service.install_skill(workspace, archive.stream, archive.format, record.name, agent_id=agent_id)
+
+    return install
+
+
+@workforce_studio_router.delete("/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_agent(
+    agent_id: str,
+    request: Request,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+    session_service=Depends(get_session_service),
+) -> None:
+    """Remove a business agent and its sessions.
+
+    Refused while something still depends on it: each guard on
+    ``app.state.agent_delete_guards`` (e.g. a partner route that uses the
+    agent as its leader or member) returns why, or ``None``.
+    """
+
+    async with _locks[agent_id]:
+        await _business_agent(storage, user_id, agent_id)
+        for guard in getattr(request.app.state, "agent_delete_guards", None) or []:
+            reason = await guard(user_id, agent_id)
+            if reason:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=reason)
+        await session_service.delete_agent(user_id, agent_id)
 
 
 @workforce_studio_router.get("/agents/{agent_id}/memories")

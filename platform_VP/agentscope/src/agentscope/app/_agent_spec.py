@@ -54,6 +54,13 @@ class SpecKnowledge(BaseModel):
     use_for: str = Field(default="", max_length=1000)
 
 
+class SpecSkill(BaseModel):
+    skill_id: str = Field(min_length=1, max_length=200)
+    """The id of a skill in the manager's skill library."""
+    name: str = ""
+    use_when: str = Field(default="", max_length=1000)
+
+
 class SpecCollaborator(BaseModel):
     id: str = Field(default_factory=_generate_id)
     capability: str = Field(min_length=1, max_length=300)
@@ -94,6 +101,7 @@ class AgentSpec(BaseModel):
     escalation: list[SpecEscalation] = Field(default_factory=list, max_length=30)
     tools: list[SpecTool] = Field(default_factory=list, max_length=60)
     knowledge: list[SpecKnowledge] = Field(default_factory=list, max_length=20)
+    skills: list[SpecSkill] = Field(default_factory=list, max_length=20)
     collaborates: list[SpecCollaborator] = Field(default_factory=list, max_length=20)
     examples: list[SpecExample] = Field(default_factory=list, max_length=20)
     tests: list[SpecTest] = Field(default_factory=list, max_length=30)
@@ -176,6 +184,17 @@ def render_prompt(spec: AgentSpec) -> str:
                         f"{item.name or item.kb_id}"
                         + (f": use for {item.use_for}" if item.use_for else "")
                         for item in spec.knowledge
+                    ],
+                ),
+            )
+        if spec.skills:
+            sections.append(
+                "SKILLS\n"
+                + _bullets(
+                    [
+                        f"{item.name or item.skill_id}"
+                        + (f": use when {item.use_when}" if item.use_when else "")
+                        for item in spec.skills
                     ],
                 ),
             )
@@ -268,6 +287,7 @@ _LIST_FIELDS = {
     "escalation",
     "tools",
     "knowledge",
+    "skills",
     "collaborates",
     "examples",
     "tests",
@@ -283,7 +303,7 @@ class SpecChange(BaseModel):
 
 def _item_key(field: str, item: Any) -> str:
     if isinstance(item, dict):
-        for key in ("id", "tool_id", "kb_id"):
+        for key in ("id", "tool_id", "kb_id", "skill_id"):
             if item.get(key):
                 return str(item[key])
         return json.dumps(item, sort_keys=True, ensure_ascii=False)
@@ -410,6 +430,7 @@ __all__ = [
     "SpecOperation",
     "SpecPatchError",
     "SpecRule",
+    "SpecSkill",
     "SpecTest",
     "SpecTool",
     "apply_operations",

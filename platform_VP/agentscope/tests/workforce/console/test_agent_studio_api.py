@@ -37,6 +37,14 @@ class _Workspace:
         self.mcps.setdefault((agent_id, session_id), []).append(client)
         return client
 
+    skills: dict = {}
+
+    async def list_skills(self, *, agent_id=None):
+        return list(self.skills.get(agent_id, []))
+
+    async def remove_skill(self, name, *, agent_id=None):
+        self.skills[agent_id] = [s for s in self.skills.get(agent_id, []) if s != name]
+
 
 class _WorkspaceManager:
     def __init__(self) -> None:
@@ -100,6 +108,17 @@ class _Storage:
     async def list_mcps(self, _user):
         return [self.mcp]
 
+    async def list_knowledge_bases(self, _user):
+        return [SimpleNamespace(id="kb-1", data=SimpleNamespace(name="Quy trình kỹ thuật", description="SOP sửa chữa"))]
+
+    async def get_skill(self, _user, skill_id):
+        return SimpleNamespace(id="sk-1", name="photo-check", hub_id="hub", card_id="card", version="1") \
+            if skill_id == "sk-1" else None
+
+    async def list_skills(self, _user):
+        return [SimpleNamespace(id="sk-1", name="photo-check", description="Đọc ảnh hiện trường", display_name=None,
+                                enabled=True)]
+
 
 class _Model:
     """Answers scenarios, passes judgements and proposes copilot patches."""
@@ -107,6 +126,7 @@ class _Model:
     def __init__(self) -> None:
         self.copilot_operations: list[dict] = []
         self.judge_pass = True
+        self.plan: dict | None = None
 
     async def __call__(self, messages, tools=None, tool_choice=None, **_):
         return ChatResponse(content=[TextBlock(text="Hãy khoá van tổng trước.")], is_last=True)
@@ -114,6 +134,8 @@ class _Model:
     async def generate_structured_output(self, messages, structured_model, **_):
         if structured_model.__name__ == "_Judgement":
             return SimpleNamespace(content={"passed": self.judge_pass, "reason": "ok"})
+        if structured_model.__name__ == "CompositionPlan":
+            return SimpleNamespace(content=self.plan)
         return SimpleNamespace(
             content={
                 "assistant_message": "Đã thêm luật.",
@@ -203,6 +225,106 @@ def test_template_agent_lifecycle_test_publish_copilot_rollback(env) -> None:
     assert rolled["published_version"] == 3
     assert "Không báo giá khi chưa có ảnh" not in storage.agents[agent_id].data.system_prompt
     assert [v["version"] for v in rolled["versions"]] == [3, 2, 1]
+
+
+def test_an_agent_is_removed_unless_something_still_uses_it(env) -> None:
+    from agentscope.app.deps import get_session_service
+
+    client, storage, _model, _manager = env
+    removed = []
+
+    class Sessions:
+        async def delete_agent(self, user_id, agent_id):
+            removed.append(agent_id)
+            return storage.agents.pop(agent_id, None) is not None
+
+    client.app.dependency_overrides[get_session_service] = lambda: Sessions()
+    used = client.post(f"{BASE}/agents", json={"template_id": "resident_technical"}).json()["agent_id"]
+    free = client.post(f"{BASE}/agents", json={"template_id": "travel_cost"}).json()["agent_id"]
+
+    async def partner_route(user_id, agent_id):
+        return "Agent đang được tuyến đối tác dùng." if agent_id == used else None
+
+    client.app.state.agent_delete_guards = [partner_route]
+    refused = client.delete(f"{BASE}/agents/{used}")
+    assert refused.status_code == 409 and "tuyến đối tác" in refused.json()["detail"]
+    assert client.delete(f"{BASE}/agents/{free}").status_code == 204
+    assert removed == [free]
+    assert client.get(f"{BASE}/agents/{free}").status_code == 404
+    assert client.delete(f"{BASE}/agents/{free}").status_code == 404
+
+
+def test_copilot_attaches_only_listed_knowledge_and_skills(env) -> None:
+    client, _storage, model, _manager = env
+    agent_id = client.post(f"{BASE}/agents", json={"template_id": "resident_technical"}).json()["agent_id"]
+    model.copilot_operations = [
+        {"op": "add", "field": "knowledge", "value": {"kb_id": "kb-1", "use_for": "quy trình sửa"}},
+        {"op": "add", "field": "skills", "value": {"skill_id": "sk-1", "use_when": "cư dân gửi ảnh"}},
+        {"op": "add", "field": "skills", "value": {"skill_id": "sk-made-up"}},
+    ]
+    answer = client.post(f"{BASE}/agents/{agent_id}/copilot", json={"message": "dùng quy trình và đọc ảnh"}).json()
+    draft = answer["agent"]["draft"]
+    assert [(k["kb_id"], k["name"]) for k in draft["knowledge"]] == [("kb-1", "Quy trình kỹ thuật")]
+    assert [(s["skill_id"], s["name"]) for s in draft["skills"]] == [("sk-1", "photo-check")]
+    assert "sk-made-up" in answer["reply"]["assistant_message"]
+
+
+def test_a_description_can_become_a_tested_team(env) -> None:
+    client, storage, model, _manager = env
+    model.plan = {
+        "mode": "team",
+        "reason": "Tra cứu và tính phí là hai việc nối nhau.",
+        "agents": [
+            {"name": "TraCuu", "role": "tra cứu sự cố", "brief": "Phân loại sự cố bằng lookup_incident_type."},
+            {"name": "TinhPhi", "role": "tính phí", "brief": "Tính phí từ kết quả tra cứu."},
+        ],
+    }
+    model.copilot_operations = [
+        {"op": "add", "field": "tests", "value": {"scenario": f"Tình huống {i}", "expected": "Làm đúng vai"}}
+        for i in range(3)
+    ]
+    composed = client.post(
+        f"{BASE}/agents/compose",
+        json={"description": "Nhận báo sự cố, tra loại sự cố rồi tính phí", "allow_team": True, "run_tests": True},
+    )
+    assert composed.status_code == 200, composed.text
+    body = composed.json()
+    assert body["plan"]["mode"] == "team" and [a["draft"]["name"] for a in body["agents"]] == ["TraCuu", "TinhPhi"]
+    assert len(storage.agents) == 2
+    assert all(len(a["draft"]["tests"]) >= 3 for a in body["agents"])
+    assert set(body["test_reports"]) == {a["agent_id"] for a in body["agents"]}
+    assert all(a["can_publish"] for a in body["agents"])
+    assert "nhóm 2 agent" in body["reply"]["assistant_message"]
+
+
+def test_publishing_installs_the_spec_skills_and_removes_dropped_ones(env) -> None:
+    client, _storage, model, manager = env
+    workspace = manager.workspace
+    workspace.skills = {}
+
+    class Hub:
+        async def download(self, user_id, card_id, version):
+            return SimpleNamespace(stream=b"zip", format="zip")
+
+    class Service:
+        async def install_skill(self, ws, stream, fmt, name, agent_id=None):
+            ws.skills.setdefault(agent_id, []).append(name)
+
+    # Read lazily from app.state, only when a spec lists skills.
+    client.app.state.skill_hubs = {"hub": Hub()}
+    client.app.state.workspace_service = Service()
+    agent_id = client.post(f"{BASE}/agents", json={"template_id": "resident_technical"}).json()["agent_id"]
+    model.copilot_operations = [{"op": "add", "field": "skills", "value": {"skill_id": "sk-1"}}]
+    client.post(f"{BASE}/agents/{agent_id}/copilot", json={"message": "đọc ảnh"})
+    client.post(f"{BASE}/agents/{agent_id}/tests/run")
+    published = client.post(f"{BASE}/agents/{agent_id}/publish", json={})
+    assert published.status_code == 200, published.text
+    assert workspace.skills[agent_id] == ["photo-check"]
+    model.copilot_operations = [{"op": "remove", "field": "skills", "item_id": "sk-1"}]
+    client.post(f"{BASE}/agents/{agent_id}/copilot", json={"message": "bỏ đọc ảnh"})
+    client.post(f"{BASE}/agents/{agent_id}/tests/run")
+    assert client.post(f"{BASE}/agents/{agent_id}/publish", json={}).status_code == 200
+    assert workspace.skills[agent_id] == []
 
 
 def test_failed_tests_block_publishing(env) -> None:

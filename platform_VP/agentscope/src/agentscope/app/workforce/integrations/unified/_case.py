@@ -132,6 +132,21 @@ class CaseStore:
             ).mappings().first()
         return dict(row) if row else None
 
+    async def routes_using(self, manager_account_id: str, agent_id: str) -> list[str]:
+        """Routes of this manager whose leader or declared member is the agent."""
+        async with self._uows() as uow:
+            rows = (
+                await uow.execute(
+                    select(routes.c.route_id, routes.c.leader_agent_id, routes.c.config).where(
+                        routes.c.manager_account_id == manager_account_id,
+                    ),
+                )
+            ).all()
+        return [
+            route_id for route_id, leader, config in rows
+            if leader == agent_id or agent_id in ((config or {}).get("member_agents") or {})
+        ]
+
     async def session_of_workflow(self, workflow_id: str) -> dict | None:
         async with self._uows() as uow:
             row = (
@@ -743,6 +758,20 @@ class CaseRuntime:
 
     def bind(self, app: Any) -> None:
         self._app = app
+        guards = getattr(app.state, "agent_delete_guards", None)
+        if guards is None:
+            guards = app.state.agent_delete_guards = []
+        if self._delete_guard not in guards:
+            guards.append(self._delete_guard)
+
+    async def _delete_guard(self, user_id: str, agent_id: str) -> str | None:
+        used = await self.store.routes_using(user_id, agent_id)
+        if not used:
+            return None
+        return (
+            "Agent đang được tuyến đối tác dùng làm leader hoặc thành viên. "
+            "Bỏ agent khỏi khai báo của đối tác và onboard lại trước khi gỡ."
+        )
 
     @property
     def _storage(self) -> Any:

@@ -446,6 +446,18 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
 
 
 class UnifiedPartnerCaseTest(_CaseHarness):
+    async def test_an_agent_a_partner_route_uses_cannot_be_removed(self):
+        [guard] = self.runner._app.state.agent_delete_guards
+        async with self.uows() as uow:
+            await uow.execute(update(routes).where(routes.c.route_id == "route-1").values(
+                config={"rules": RULES, "member_agents": {"member-kt": {"name": "KyThuat", "tools": []}}},
+            ))
+            await uow.commit()
+        self.assertTrue(await guard("manager-1", "leader-vh"))
+        self.assertTrue(await guard("manager-1", "member-kt"))
+        self.assertIsNone(await guard("manager-1", "agent-other"))
+        self.assertIsNone(await guard("manager-2", "leader-vh"))
+
     async def test_silent_chat_failure_is_not_a_successful_customer_turn(self):
         async def failed_before_reply(_tools):
             return None
