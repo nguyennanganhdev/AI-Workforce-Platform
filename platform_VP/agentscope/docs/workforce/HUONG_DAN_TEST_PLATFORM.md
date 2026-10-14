@@ -1,6 +1,6 @@
 # Hướng dẫn test platform sau P0–P3 và 11 vấn đề còn lại
 
-Cập nhật 14/10/2026 · Nhánh `feat/wf-remaining` (xếp chồng trên `feat/wf-p0-p3`, PR vào `develop2`) · Người đọc: PM/tester
+Cập nhật 14/10/2026 · Nhánh `develop2` (đã gồm PR #76, #79, #80) · Người đọc: PM/tester
 
 Tài liệu này để **người** chạy thử platform với model thật. Mọi test tự động
 (unit/integration, build frontend) đã chạy và pass; phần dưới đây là những gì
@@ -429,6 +429,70 @@ python scripts/workforce/partner_sandbox_check.py --base-url http://127.0.0.1:80
 dòng cuối ghi "pending human review". Kết quả local **không** dùng làm bằng
 chứng sandbox.
 
+### 7.9 Nối Vinhome thật ở máy local (develop2 + dev_Vinhome)
+
+Đã dựng ngày 14/10, platform từ `develop2@f92613f7`, Vinhome từ
+`dev_Vinhome@ad811bf0`.
+
+1. **Vinhome:** worktree sạch `E:\AI-Workforce-Platform-vinhome-dev`.
+   - Build image với `VINHOMES_IMAGE_TAG=dev-ad811bf0`; image `:latest` cũ được
+     giữ lại để quay về.
+   - `deploy/deployment.env` (không commit) cần:
+     - `MCP_ALLOWED_HOSTS=api:8000`, vì MCP của Vinhome từ chối Host lạ (421);
+     - key OpenAI còn hiệu lực cho Lễ tân, nếu không Lễ tân trả
+       `MODEL_UNAVAILABLE`.
+   - Chạy:
+     ```bash
+     docker compose -p vinhomes-domain --env-file deployment.env -f compose.yml up -d
+     ```
+2. **Platform:** `.env` có
+   - `PARTNER_DOCKER_NETWORK=vinhomes-domain_default`;
+   - `COMPOSE_FILE=compose.yaml;compose.partner-network.yaml`.
+
+   Bật Vinhome **trước**, vì platform tham gia mạng của Vinhome với tên
+   `awp-platform`.
+3. **Onboard** bằng bộ khai báo của Vinhome (`onboard_partner.py`):
+   - `--mcp-url http://api:8000/mcp`;
+   - `--partner-url http://awp-platform:8000`;
+   - `--management-refs local-management`.
+
+   Chạy lại sau mỗi lần Vinhome đổi khai báo: route giữ nguyên trạng thái
+   active, tool và cấu hình (gồm `mcp_grants`) được cập nhật, leader lên
+   version mới.
+
+**Đạt khi:**
+
+- `python -m vinhomes_api.platform status` (trong `api`) báo `bridge: on`, và
+  cả hai khoá đều `accepted`.
+- Route có **7 tool**, integration có **15 loại sự kiện**.
+- Một phiếu sửa chữa chạy trọn luồng:
+  1. Lễ tân tạo phiếu.
+  2. Leader gọi `vh_ticket_get`, `vh_staff_available`,
+     `vh_work_order_dispatch` qua grant riêng của phiếu
+     (`POST /platform/mcp-grants` 200), rồi chào cư dân.
+  3. Nhận việc, đang đến, đã đến: cư dân nhận các tin mẫu (không qua model).
+  4. Báo giá: leader giải thích, cư dân tự bấm Đồng ý.
+  5. Kết quả: leader tổng kết theo đúng số liệu sự kiện, hiện nút
+     **Xác nhận hoàn thành**.
+  6. Cư dân xác nhận: phiếu `closed`, workflow `closed`.
+
+**Lượt chạy ngày 14/10 (model thật, phiếu `VH-B16166573360`, sửa rò nước):**
+
+- Cư dân gõ yêu cầu và bấm duyệt, xác nhận trên giao diện web cư dân; thao tác
+  của nhân viên đi qua API nhân viên (dữ liệu giả lập).
+- Kết quả: đạt cả 6 bước trên. Leader chạy 3 lượt, mỗi lượt khoảng 25–30k
+  token vào và 140–320 token ra.
+- Ảnh chụp và driver nằm ở `.artifacts/vinhome-local/flow-20261014/`
+  (không commit).
+
+Lỗi phía Vinhome thấy trong lượt chạy, không phải lỗi platform:
+
+| Lỗi | Hệ quả | Chỗ cần sửa |
+|---|---|---|
+| Thẻ nháp phiếu (`ticket_draft`) được lưu như tin của cư dân. `turn-state` lấy tin cuối của cư dân là thẻ này | Sau khi platform đã trả lời, cư dân vẫn thấy "Đang chờ phản hồi từ bộ phận xử lý". Sau 3 phút đổi thành "Trợ lý chưa hoàn tất phản hồi" | `services/vinhomes-api/src/vinhomes_api/v3_resident_support.py`, hàm `turn_state`: chỉ xét tin có chữ của cư dân |
+| `job.result_published` gửi `photo_count: 2` dù nhân viên nộp 3 ảnh (ảnh nghiệm thu có purpose `other`) | Leader nói đúng theo sự kiện ("2 ảnh"), nhưng con số lệch với chi tiết phiếu | Phần sinh sự kiện kết quả của Vinhome |
+| Snapshot: Vinhome đọc `approvals`, hợp đồng trả `pending_approvals` | Chưa ảnh hưởng, vì 7 tool đều `requires_consent=false` | `vinhomes_api/platform.py` `apply_snapshot`, khi nào bật approval của platform |
+
 ---
 
 ## 8. Xử lý sự cố
@@ -444,3 +508,6 @@ chứng sandbox.
 | Backend không khởi động, báo `WORKFORCE_PARTNER_API=true requires…` | Cần `AUTH_ENABLED=true` và `AGENTSCOPE_SQL_URL` |
 | Ticket đối tác bị 403/404 | Membership đã `verified`? Tuyến đã `active`? `external_management_ref` trùng mã toà của tuyến? |
 | Request đối tác đứng ở `accepted`/`running` | Xem log backend: key model sai, hoặc quản lý chưa có agent nào đã phát hành |
+| `docker compose up` báo thiếu mạng `vinhomes-domain_default` | Bật stack Vinhome trước (mục 7.9) |
+| Onboarding trả `MCP_UNREACHABLE` | Vinhome thiếu `MCP_ALLOWED_HOSTS=api:8000`, hoặc sai MCP token |
+| Cư dân nhận "Xin lỗi, tôi chưa xử lý được tin nhắn này" ngay sau khi gửi | Lễ tân của Vinhome không gọi được model (`MODEL_UNAVAILABLE` trong log `reception`): kiểm tra key và `RECEPTION_MODEL_BASE_URL` |
