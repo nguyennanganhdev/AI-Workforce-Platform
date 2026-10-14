@@ -160,12 +160,14 @@ export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => 
 									<div key={area.id} className="flex items-center gap-2">
 										<span>{area.name}</span>
 										<span className="text-xs text-muted-foreground">({area.id})</span>
-										{area.manager ? (
-											<Badge variant={area.manager_status === 'active' ? 'default' : 'secondary'}>
-												BQL {area.manager} · {area.manager_status === 'active' ? 'đang hoạt động' : 'chờ duyệt'}
+										{area.managers.map((manager) => (
+											<Badge key={manager.id} variant={manager.status === 'active' ? 'default' : 'secondary'}>
+												BQL {manager.username} · {manager.status === 'active' ? 'đang hoạt động' : 'chờ duyệt'}
 											</Badge>
-										) : (
-											<Badge variant="outline">chưa có BQL</Badge>
+										))}
+										{area.managers.length === 0 && <Badge variant="outline">chưa có BQL</Badge>}
+										{area.managers.length > 1 && (
+											<Badge variant="destructive">nhiều BQL (tạo trước quy tắc một BQL/khu)</Badge>
 										)}
 									</div>
 								))}

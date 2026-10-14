@@ -117,7 +117,7 @@ async def _run(url: str) -> None:
             assert (await http.put("/admin/domains/dom-new", headers=root, json={"name": "Mới"})).status_code == 200
             directory = (await http.get("/admin/directory", headers=root)).json()
             area1 = next(a for d in directory if d["id"] == "dom-a" for a in d["areas"] if a["id"] == "area-1")
-            assert (area1["manager"], area1["manager_status"]) == ("bql-one", "active")
+            assert [(m["username"], m["status"]) for m in area1["managers"]] == [("bql-one", "active")]
             assert {d["id"] for d in (await http.get("/admin/directory", headers=domain_admin)).json()} == {"dom-a"}
 
         engine = create_async_engine(url)

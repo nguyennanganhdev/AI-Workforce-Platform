@@ -916,17 +916,38 @@ class AuthService(AbstractAsyncContextManager):
             areas = (
                 await connection.execute(
                     text(
-                        "SELECT a.id, a.domain_id, a.name, a.status, u.username AS manager, u.status AS manager_status "
-                        "FROM areas a JOIN business_domains d ON d.id = a.domain_id "
-                        "LEFT JOIN auth_users u ON u.domain_id = a.domain_id AND u.area_id = a.id "
-                        "AND u.role = 'AREA_MANAGER' AND u.status IN ('pending', 'active') "
+                        "SELECT a.id, a.domain_id, a.name, a.status FROM areas a "
+                        "JOIN business_domains d ON d.id = a.domain_id "
                         f"WHERE d.tenant_id = :t{only} ORDER BY a.domain_id, a.id",
                     ),
                     params,
                 )
             ).mappings().all()
+            managers = (
+                await connection.execute(
+                    text(
+                        "SELECT u.id, u.username, u.status, u.domain_id, u.area_id FROM auth_users u "
+                        "WHERE u.tenant_id = :t AND u.role = 'AREA_MANAGER' AND u.status IN ('pending', 'active') "
+                        "ORDER BY u.created_at",
+                    ),
+                    params,
+                )
+            ).mappings().all()
+        # Accounts made before the one-BQL-per-area rule may share an area: list them all.
+        by_area: dict[tuple, list[dict]] = {}
+        for manager in managers:
+            by_area.setdefault((manager["domain_id"], manager["area_id"]), []).append(
+                {"id": manager["id"], "username": manager["username"], "status": manager["status"]},
+            )
         return [
-            {**dict(domain), "areas": [dict(area) for area in areas if area["domain_id"] == domain["id"]]}
+            {
+                **dict(domain),
+                "areas": [
+                    {**dict(area), "managers": by_area.get((area["domain_id"], area["id"]), [])}
+                    for area in areas
+                    if area["domain_id"] == domain["id"]
+                ],
+            }
             for domain in domains
         ]
 

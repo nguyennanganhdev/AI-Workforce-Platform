@@ -17,8 +17,7 @@ export interface DirectoryArea {
 	domain_id: string;
 	name: string;
 	status: string;
-	manager: string | null;
-	manager_status: string | null;
+	managers: { id: string; username: string; status: string }[];
 }
 
 export interface DirectoryDomain {
