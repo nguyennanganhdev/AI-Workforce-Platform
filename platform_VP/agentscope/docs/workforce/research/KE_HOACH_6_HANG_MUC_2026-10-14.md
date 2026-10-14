@@ -33,3 +33,14 @@ Mọi điểm "hiện trạng" đã kiểm trong code, không dựa vào báo c�
 | 6 | Vai trò, duyệt đăng ký, một BQL mỗi khu | Đăng ký mới chờ duyệt; admin duyệt trên màn hình; khu đã có BQL thì từ chối đăng ký thứ hai |
 
 Mỗi bước có test tự động; bước nào dùng model thật thì PM chạy.
+
+## Kết quả (nhánh `feat/wf-studio-roles`)
+
+| # | Đã làm | Kiểm chứng | Còn lại |
+|---|---|---|---|
+| 1 | Sự kiện tiến độ staff (có chữ ký) ghi vào Shared Context của phòng, thành viên đọc được | Test tích hợp; offline E2E phòng xử lý đạt | Model thật chưa chọn lập phòng ở 2 phiếu thử; chờ PM quyết cách thúc (model mạnh / luật bắt buộc) |
+| 2 | Token phiếu đối tác vào sổ workflow (leader + thành viên); agent đối tác bật bộ nhớ có nguồn; phiếu có phòng học khi leader mời xác nhận | Test tích hợp | Phiếu không có phòng chưa có nguồn học; tab Hoạt động chưa làm |
+| 3 | Builder thấy kho kiến thức và thư viện skill, chỉ gắn id có thật; spec có `skills` (cài khi phát hành); "Mô tả bằng lời" lập kế hoạch một agent hay một nhóm 2–5 | Test API Studio | Chất lượng với model thật do PM kiểm |
+| 4 | Nút "Gỡ agent" (chặn khi tuyến đối tác dùng); mỗi agent tạo từ mô tả có ≥ 3 kịch bản, tuỳ chọn chạy kiểm thử ngay | Test API Studio; ảnh UI | — |
+| 5 | API tải ảnh của đối tác trong unified (MinIO); ảnh của người dùng vào lượt của leader (≤ 4 ảnh, ≤ 5 MB) | Test tích hợp | Vinhome chưa gửi ảnh qua API này; `S3_PUBLIC_ENDPOINT` phải là địa chỉ đối tác tới được |
+| 6 | Ba vai trò; đăng ký BQL chờ duyệt, mỗi khu một BQL; trang Quản trị; CLI tạo quản trị platform | Test vai trò trên DB đã migrate; ảnh UI | Tài khoản cũ cùng khu được giữ và gắn cờ trên trang Quản trị |
