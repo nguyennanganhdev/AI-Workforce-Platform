@@ -185,7 +185,7 @@ def onboarding_router(foundation: WorkforceFoundation) -> APIRouter:
 
         try:
             business.verify_provisioning_secret(x_provisioning_secret)
-        except Exception as exc:  # noqa: BLE001 - mapped to 403
+        except Exception as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         async with foundation.uows() as uow:
             row = (

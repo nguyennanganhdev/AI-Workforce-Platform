@@ -7,11 +7,13 @@ writes the Leader's reply the way the real service persists it.
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 from unittest.mock import patch
 
 from fastapi import FastAPI
@@ -119,7 +121,7 @@ class _ChatService:
 
 
 class _Workspace:
-    default_mcps = []
+    default_mcps: ClassVar[list] = []
 
 
 class _WorkspaceManager:
@@ -300,3 +302,54 @@ class UnifiedPartnerModeTest(unittest.IsolatedAsyncioTestCase):
                 headers={"X-External-User-Id": "someone-else"},
             )
         self.assertIn(response.status_code, (401, 403))
+
+    async def test_sandbox_script_drives_the_whole_contract(self):
+        import argparse
+        import asyncio
+        import importlib.util
+
+        from agentscope.app._router._business import get_partner_principal
+
+        root = Path(__file__).resolve().parents[3]
+        spec = importlib.util.spec_from_file_location(
+            "partner_sandbox_check",
+            root / "scripts/workforce/partner_sandbox_check.py",
+        )
+        script = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(script)
+
+        app = FastAPI()
+        for router in self.assembly.routers:
+            app.include_router(router)
+        app.dependency_overrides[get_partner_principal] = lambda: PartnerPrincipal(
+            key_id="key-1", client_id="partner-1", tenant_id="tenant-1", domain_id="domain-1"
+        )
+        stop = asyncio.Event()
+
+        async def worker():
+            while not stop.is_set():
+                if (await self.worker.run_once()).status == "idle":
+                    await asyncio.sleep(0.05)
+
+        task = asyncio.create_task(worker())
+        with tempfile.TemporaryDirectory() as out:
+            args = argparse.Namespace(
+                base_url="https://platform.test",
+                api_key="unused",
+                management_ref="tower-a",
+                external_user_id="resident-1",
+                message="Vỡ ống nước",
+                reply="Căn S1-1205",
+                timeout=20,
+                output=out,
+            )
+            code = await script.run(args, transport=ASGITransport(app=app))
+            evidence = next(Path(out).glob("*/evidence.json")).read_text(encoding="utf-8")
+        stop.set()
+        await task
+
+        steps = {step["step"]: step["ok"] for step in json.loads(evidence)["steps"]}
+        for name in ("start_workflow", "read_result", "idempotent_retry", "event_history", "workflow_reply", "close_workflow"):
+            self.assertTrue(steps.get(name), (name, steps))
+        self.assertIn("sse_replay", steps)
+        self.assertIn(code, (0, 1))

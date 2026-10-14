@@ -23,8 +23,8 @@ from typing import Any
 from sqlalchemy import select
 
 from ....._logging import logger
-from ...._chat_consent import pending_chat_actions, resolve_chat_consent
 from .....message import TextBlock, UserMsg
+from ...._chat_consent import pending_chat_actions, resolve_chat_consent
 from ...contracts import AssistantMessage, RequestResult, WorkflowState
 from ...orchestration._tables import workflow_inputs
 from ...orchestration.workflows import TurnDecision

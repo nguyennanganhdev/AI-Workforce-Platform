@@ -7,12 +7,13 @@ partner's tickets to exactly that manager.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -24,7 +25,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from agentscope.app._router._business import get_partner_principal
 from agentscope.app.business import PartnerPrincipal
 from agentscope.app.deps import get_business_service, get_current_principal
-from agentscope.app.workforce.contracts import ActorContext, ActorKind, CredentialPurpose
+from agentscope.app.workforce.contracts import (
+    ActorContext,
+    ActorKind,
+    CredentialPurpose,
+)
 from agentscope.app.workforce.foundation import SqlAlchemyUnitOfWorkFactory
 from agentscope.app.workforce.foundation._identity import (
     ManagementVerificationService,
@@ -48,7 +53,8 @@ class UnifiedOnboardingTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temp = tempfile.TemporaryDirectory()
         url = f"sqlite+aiosqlite:///{(Path(self.temp.name) / 'onboarding.sqlite3').as_posix()}"
-        subprocess.run(
+        await asyncio.to_thread(
+            subprocess.run,
             [
                 sys.executable,
                 "-m",
@@ -68,12 +74,16 @@ class UnifiedOnboardingTest(unittest.IsolatedAsyncioTestCase):
             for statement in (
                 "INSERT INTO business_domains VALUES ('domain-1','tenant-1','Vinhomes','active')",
                 "INSERT INTO areas VALUES ('area-1','domain-1','Tower A','active')",
-                "INSERT INTO auth_users (id, tenant_id, email, username, password_hash, status,"
-                " created_at, updated_at, role, domain_id, area_id) VALUES ('manager-1','tenant-1',"
-                " 'm@example.com','manager','x','active', :now, :now, 'AREA_MANAGER','domain-1','area-1')",
-                "INSERT INTO wf_manager_memberships (id, tenant_id, domain_id, area_id,"
-                " manager_account_id, status, revision, created_at, updated_at) VALUES"
-                " ('mem-1','tenant-1','domain-1','area-1','manager-1','pending_verification',1,:now,:now)",
+                (
+                    "INSERT INTO auth_users (id, tenant_id, email, username, password_hash, status,"
+                    " created_at, updated_at, role, domain_id, area_id) VALUES ('manager-1','tenant-1',"
+                    " 'm@example.com','manager','x','active', :now, :now, 'AREA_MANAGER','domain-1','area-1')"
+                ),
+                (
+                    "INSERT INTO wf_manager_memberships (id, tenant_id, domain_id, area_id,"
+                    " manager_account_id, status, revision, created_at, updated_at) VALUES"
+                    " ('mem-1','tenant-1','domain-1','area-1','manager-1','pending_verification',1,:now,:now)"
+                ),
                 "INSERT INTO partner_api_clients VALUES ('partner-1','tenant-1','domain-1','Partner','active',:now)",
             ):
                 await connection.execute(text(statement), {"now": NOW})
