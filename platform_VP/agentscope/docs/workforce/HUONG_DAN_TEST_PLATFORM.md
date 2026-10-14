@@ -41,11 +41,20 @@ Giữ các biến đang dùng (AUTH_*, PARTNER_*, OPENAI_*...). Thêm:
 **Cách A — Docker (khuyến nghị):**
 
 ```bash
-docker compose up -d --build
+docker compose --profile demo up -d --build           # app + web + MCP demo + Postgres/Redis/MinIO
+python scripts/workforce/bootstrap_demo.py --env-file .env
 ```
 
-Container `app` tự chạy `alembic upgrade head` — database lên tới
-`0016_agent_memories` (bảng bộ nhớ agent mới).
+- Project Docker: `awp-develop2` (đặt trong `.env`), không đụng các stack khác.
+- Web: `http://localhost:5173` · API: `http://localhost:8000`.
+- Container `app` tự chạy `alembic upgrade head`.
+- `bootstrap_demo.py` **không gọi model**. Script tạo sẵn tài khoản quản lý
+  khu vực, credential OpenAI (lấy key trong `.env`), MCP demo
+  (`http://demo-mcp:8765/mcp`), key đối tác và tuyến `tower-a`. Mật khẩu và
+  key nằm trong `.artifacts/demo-access/ACCESS.md` (không commit). Chạy lại
+  script thì bước nào đã có sẽ được bỏ qua.
+- Đổi cổng API thì sửa `WEB_API_BASE_URL` và build lại `web`.
+- Dừng: `docker compose --profile demo down` (thêm `-v` nếu muốn xoá dữ liệu).
 
 **Cách B — chạy tay:**
 
@@ -64,23 +73,29 @@ Trang **Credential** → thêm credential OpenAI-compatible (API key + base URL
 gateway). Kiểm tra model `WORKFORCE_MODEL_NAME` và `WORKFORCE_LEADER_MODEL_NAME`
 đều có trong danh sách model của credential.
 
-**Tình trạng lúc kiểm tra (14/10):** worktree `develop2` chưa có `.env` — đã
-tạo `platform_VP/agentscope/.env` với secret ngẫu nhiên, cổng không trùng các
-stack khác (Postgres 5442, Redis 6390, MinIO 9200/9201) và
-`WORKFORCE_MODEL_NAME=gpt-5.4-mini`, `WORKFORCE_LEADER_MODEL_NAME=gpt-5.5`.
-`OPENAI_API_KEY` **đang để trống**: hai key tìm thấy trong máy (gateway
-OpenAI-compatible và DashScope) đều bị **401**. Trước khi test:
+**Đã gắn (14/10):** key OpenAI lấy từ
+`vinhome_Recident/agents/reception/.env` (endpoint OpenAI chính thức), ghi vào
+`platform_VP/agentscope/.env` (file gitignored). Key liệt kê được 133 model
+(chỉ gọi `/models`, không tốn token). Phân loại model:
 
-1. Lấy key còn hạn, điền vào `.env` **và** thêm credential ở trang Credential
-   (workforce lấy model từ credential trong app, không chỉ từ `.env`).
-2. Kiểm tra key và tên model (không in key ra màn hình):
-   ```bash
-   curl -s -o /dev/null -w "%{http_code}\n" "$OPENAI_BASE_URL/models" -H "Authorization: Bearer $OPENAI_API_KEY"
-   curl -s "$OPENAI_BASE_URL/models" -H "Authorization: Bearer $OPENAI_API_KEY" | grep -oE "gpt-5\.4-mini|gpt-5\.5" | sort -u
-   ```
-   **Đạt khi:** lệnh 1 in `200`; lệnh 2 in cả hai tên model. Thiếu model nào thì
-   đổi biến tương ứng sang model gateway có.
-3. Ảnh `minio/minio` chưa có trong máy; `docker compose up` sẽ phải tải về.
+| Vai | Model | Lý do |
+|---|---|---|
+| Model nền: agent chuyên môn, tóm tắt context, ReMe | `gpt-5.4-mini` | Rẻ, gọi tool tốt |
+| Model cao: Leader lập kế hoạch/phản biện, copilot Studio, người chấm kiểm thử, agent đặt mức "mạnh", người chấm eval | `gpt-5.5` | Model mạnh nhất có model card trong fork |
+| Không dùng | `gpt-5.6-luna/sol/terra` | Chưa rõ thứ hạng; Luna từ chối gọi tool qua Chat Completions nếu không tắt reasoning (đã gặp ở Reception) |
+| Không dùng | `gpt-5.5-pro`, `gpt-5.4-pro` | Rất đắt, không cần cho demo |
+
+Với Docker, `bootstrap_demo.py` tự thêm credential OpenAI cho tài khoản quản
+lý. Nếu tự tạo tài khoản khác thì vào trang **Credential**, thêm credential
+OpenAI với cùng key.
+
+Muốn tự kiểm tra key (không in key ra màn hình):
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"
+```
+
+**Đạt khi:** in `200`.
 
 ### 1.5 Server MCP demo (dữ liệu giả, có nhãn DEMO)
 
@@ -93,7 +108,9 @@ python scripts/workforce/demo_mcp_server.py --host 0.0.0.0 --port 8765
 
 Trang **MCP** → thêm MCP qua URL:
 
-- Docker: `http://host.docker.internal:8765/mcp`
+- Docker với `--profile demo`: đã có service `demo-mcp`, `bootstrap_demo.py`
+  tự thêm `http://demo-mcp:8765/mcp` (không cần mở terminal riêng)
+- Docker, chạy MCP trên máy: `http://host.docker.internal:8765/mcp`
 - Chạy tay: `http://127.0.0.1:8765/mcp`
 
 **Đạt khi:** MCP hiện đủ 10 tool: `search_hotels`, `get_hotel_detail`,
