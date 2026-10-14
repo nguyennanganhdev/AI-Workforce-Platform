@@ -11,8 +11,8 @@ Verifies the assembly rules:
 - :class:`ToolStop` (from ``BackgroundTaskManager``) is always included;
 - the four ``Schedule*`` tools only when ``session.config.chat_model_config``
   is set (they need a model to fire new runs with);
-- team tools are role-gated: workers get only ``TeamSay``; leaders can create
-  teams and invite only existing published business agents. ``AgentCreate``
+- team tools are identity- and role-gated: only the fixed leader can manage a
+  team; business agents get ``TeamSay`` only while in a team. ``AgentCreate``
   is never exposed in chat runtime;
 - caller-supplied ``extra_factory`` results land at the end.
 """
@@ -20,6 +20,7 @@ from typing import Any
 from unittest import IsolatedAsyncioTestCase
 
 from utils import FakeWorkspaceManager
+
 from agentscope.agent import ContextConfig, ReActConfig
 from agentscope.app._manager import (
     BackgroundTaskManager,
@@ -35,6 +36,7 @@ from agentscope.app.storage import (
     SessionConfig,
     SessionRecord,
 )
+from agentscope.mcp import HttpMCPConfig, MCPClient
 from agentscope.tool import ToolBase
 
 
@@ -205,24 +207,100 @@ class TestGetToolkitBaseAssembly(IsolatedAsyncioTestCase):
                 agent.data.tool_bindings = [{"mcp_id": "m", "tool_name": "lookup"}]
             storage = _NoOpStorage()
             toolkit = await get_toolkit(
-                storage=storage, workspace=_FakeWorkspace(tools=[_StubTool()]),
+                storage=storage,
+                workspace=_FakeWorkspace(tools=[_StubTool()]),
                 workspace_manager=FakeWorkspaceManager(),
-                scheduler_manager=SchedulerManager(storage=storage, message_bus=_NullBus(),
-                                                   workspace_manager=FakeWorkspaceManager()),
-                background_task_manager=BackgroundTaskManager(message_bus=_NullBus()),
-                message_bus=_NullBus(), user_id="u", agent_record=agent,
-                session_record=_make_session(user_id="u", agent_id=agent.id, with_model=True),
-                middlewares=[], resource_access_service=_make_access(storage),
+                scheduler_manager=SchedulerManager(
+                    storage=storage,
+                    message_bus=_NullBus(),
+                    workspace_manager=FakeWorkspaceManager(),
+                ),
+                background_task_manager=BackgroundTaskManager(
+                    message_bus=_NullBus(),
+                ),
+                message_bus=_NullBus(),
+                user_id="u",
+                agent_record=agent,
+                session_record=_make_session(
+                    user_id="u",
+                    agent_id=agent.id,
+                    with_model=True,
+                ),
+                middlewares=[],
+                resource_access_service=_make_access(storage),
                 team_role=None if leader else "worker",
             )
             names = set(_tool_names(toolkit))
-            self.assertTrue(names.isdisjoint({"stub", "TaskCreate", "TaskUpdate", "ScheduleCreate", "ToolStop"}))
+            self.assertTrue(
+                names.isdisjoint(
+                    {
+                        "stub",
+                        "TaskCreate",
+                        "TaskUpdate",
+                        "ScheduleCreate",
+                        "ToolStop",
+                    },
+                ),
+            )
             self.assertIn("TeamSay", names)
+            manager_tools = {"TeamCreate", "TeamDelete", "AgentInvite"}
+            if leader:
+                self.assertTrue({"TeamCreate", "TeamDelete"} <= names)
+            else:
+                self.assertTrue(manager_tools.isdisjoint(names))
             self.assertNotIn("AgentCreate", names)
+
+    async def test_toolless_builder_agent_keeps_restricted_runtime(self):
+        agent = _make_agent()
+        agent.data.execution_mode = "context_only"
+        agent.data.evaluation = {
+            "passed": True,
+            "execution_mode": "context_only",
+        }
+        storage = _NoOpStorage()
+        default_mcp = MCPClient(
+            name="default-search",
+            is_stateful=False,
+            mcp_config=HttpMCPConfig(url="https://example.test/mcp"),
+        )
+        toolkit = await get_toolkit(
+            storage=storage,
+            workspace=_FakeWorkspace(
+                tools=[_StubTool()],
+                mcps=[default_mcp],
+            ),
+            workspace_manager=FakeWorkspaceManager(),
+            scheduler_manager=SchedulerManager(
+                storage=storage,
+                message_bus=_NullBus(),
+                workspace_manager=FakeWorkspaceManager(),
+            ),
+            background_task_manager=BackgroundTaskManager(message_bus=_NullBus()),
+            message_bus=_NullBus(),
+            user_id="u",
+            agent_record=agent,
+            session_record=_make_session(
+                user_id="u",
+                agent_id=agent.id,
+                with_model=True,
+            ),
+            middlewares=[],
+            resource_access_service=_make_access(storage),
+            team_role="worker",
+        )
+
+        names = set(_tool_names(toolkit))
+        self.assertTrue(
+            names.isdisjoint(
+                {"stub", "TaskCreate", "TaskUpdate", "ScheduleCreate", "ToolStop"},
+            ),
+        )
+        self.assertIn("TeamSay", names)
+        self.assertEqual(toolkit.tool_groups[0].mcps, [])
 
     async def test_user_agent_gets_all_sources(self) -> None:
         """A user-owned agent receives workspace, planning, scheduling,
-        ToolStop, and the leader-side team tools."""
+        and ToolStop, but no team tools while standalone."""
         agent = _make_agent(source="user")
         session = _make_session(
             user_id="u",
@@ -279,9 +357,11 @@ class TestGetToolkitBaseAssembly(IsolatedAsyncioTestCase):
             }
             <= names,
         )
-        # Runtime may coordinate existing agents, but cannot create agents.
+        # A standalone business agent cannot create or coordinate a team.
         self.assertTrue(
-            {"TeamCreate", "TeamSay", "TeamDelete"} <= names,
+            {"TeamCreate", "TeamSay", "TeamDelete", "AgentInvite"}.isdisjoint(
+                names,
+            ),
         )
         self.assertNotIn("AgentCreate", names)
 
@@ -293,6 +373,7 @@ class TestGetToolkitPublishedAgentCatalog(IsolatedAsyncioTestCase):
         self,
     ) -> None:
         caller = _make_agent(source="user", name="Leader")
+        caller.data.system_role = "leader"
         published = _make_agent(source="user", name="Published")
         draft = _make_agent(source="user", name="Draft")
         withdrawn = _make_agent(source="user", name="Withdrawn")

@@ -22,5 +22,20 @@
 		"createAccount": "Tạo tài khoản",
 		"connectedTo": "Máy chủ:",
 		"authenticationDisabled": "Backend chưa bật xác thực. Hãy đặt AUTH_ENABLED=true rồi khởi động lại backend."
+	},
+	"common": {
+		"leader": "Trưởng nhóm",
+		"team": "Nhóm"
+	},
+	"panel": {
+		"team": {
+			"membersHeading": "Thành viên",
+			"noMembers": "Chưa có thành viên. Leader sẽ mời agent phù hợp khi cần.",
+			"emptyTitle": "Chưa có team",
+			"emptyDescription": "Phiên này chưa thuộc team nào. Leader sẽ tạo team khi yêu cầu cần nhiều agent.",
+			"running": "Đang chạy",
+			"idle": "Chưa hoạt động",
+			"missingSession": "Chưa có phiên"
+		}
 	}
 }

@@ -19,6 +19,7 @@ import {
 	FileText,
 	FileVideo2,
 	Loader2,
+	Reply,
 	TriangleAlert,
 } from 'lucide-react';
 import mime from 'mime';
@@ -390,6 +391,7 @@ function summarizeToolGroup(calls: ToolCallWithResult[], t: TFunction) {
 
 interface MessageBubbleProps {
 	message: Msg;
+	onReplyTo?: (agentId: string, name: string) => void;
 	onUserConfirm: (
 		toolCallBlock: ToolCallBlock,
 		confirm: boolean,
@@ -415,11 +417,13 @@ interface MessageBubbleProps {
  * When `content` is empty and the message is still running, the bubble
  * body is omitted entirely so only the bottom status row renders.
  */
-function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
+function ASMessageBubbleComponent({ message, onReplyTo }: MessageBubbleProps) {
 	const isUser = message.role === 'user';
 	const { t } = useTranslation();
 
-	const isRunning = !message.finished_at;
+	// A terminal reason is authoritative even for legacy rows that were
+	// persisted before their finished_at timestamp was repaired.
+	const isRunning = !message.finished_at && !message.finished_reason;
 	const hasUsage =
 		!!message.usage &&
 		((message.usage.input_tokens ?? 0) > 0 || (message.usage.output_tokens ?? 0) > 0);
@@ -448,15 +452,45 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 		.filter((b): b is TextBlock => b.type === 'text')
 		.map((b) => b.text)
 		.join('\n\n');
+	const teamAgentId = message.metadata?.team_agent_id;
+	const communications = message.content.flatMap((block) => {
+		if (block.type !== 'tool_call' || block.name !== 'TeamSay') return [];
+		try {
+			const payload = JSON.parse(block.input) as { to?: string | null; kind?: string; content?: string };
+			if (!payload.content || plainText.includes(payload.content.trim())) return [];
+			const result = message.content.find((item) => item.type === 'tool_result' && item.id === block.id) as ToolResultBlock | undefined;
+			return [{ id: block.id, ...payload, failed: result?.state === 'error' }];
+		} catch {
+			return [];
+		}
+	});
 
 	const startMs = new Date(message.created_at).getTime();
-	const endMs = isRunning ? now : new Date(message.finished_at!).getTime();
+	const terminalTime =
+		message.finished_at ??
+		[...message.content].reverse().find((block) => block.finished_at)?.finished_at ??
+		message.created_at;
+	const endMs = isRunning ? now : new Date(terminalTime).getTime();
 	const elapsedSeconds = Math.max(0, (endMs - startMs) / 1000);
 	const elapsedText = formatTime(elapsedSeconds);
 
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
 			<MessageContent>
+				{!isUser && message.name && (
+					<div className="px-2 pt-2 text-sm font-medium text-muted-foreground" data-agent-name={message.name}>
+						{message.name}
+					</div>
+				)}
+				{communications.map((communication) => (
+					<div key={communication.id} className="mx-2 my-2 rounded-xl border border-border px-3 py-2">
+						<div className="mb-1 text-xs text-muted-foreground">
+							→ {communication.to && !['null', 'none'].includes(communication.to) ? communication.to.split('@')[0] : 'Khách hàng'}
+							{communication.failed ? ' · Gửi thất bại' : ''}
+						</div>
+						<Markdown>{communication.content}</Markdown>
+					</div>
+				))}
 				{blocks
 					.filter((block) => block.type !== 'data')
 					.map((block, index) => (
@@ -523,6 +557,11 @@ function ASMessageBubbleComponent({ message }: MessageBubbleProps) {
 							))}
 						</Badge>
 						{plainText && <CopyButton text={plainText} />}
+						{onReplyTo && typeof teamAgentId === 'string' && (
+							<Button variant="ghost" size="xs" onClick={() => onReplyTo(teamAgentId, message.name)} aria-label={`Trả lời ${message.name}`}>
+								<Reply className="size-3" /> Trả lời
+							</Button>
+						)}
 					</MessageFooter>
 				)}
 			</MessageContent>

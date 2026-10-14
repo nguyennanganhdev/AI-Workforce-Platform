@@ -27,7 +27,12 @@ from ...message import HintBlock, TextBlock, ToolResultState
 from ...state import AgentState
 from ...tool import ParamsBase, ToolChunk
 from .._bus_ops import deliver_to_inbox, enqueue_run_trigger
-from ..storage import SessionConfig, TeamMember, TeamOrigin
+from ..storage import (
+    SessionConfig,
+    SessionKnowledgeConfig,
+    TeamMember,
+    TeamOrigin,
+)
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
 from ._constants import HANDLE_LEN
 from ._team_tool_base import _TeamToolBase
@@ -82,6 +87,7 @@ def _requests_calculation(value: str) -> bool:
             "tinh toan",
             "tong chi phi",
             "can doi chi phi",
+            "ngan sach",
             "chua lai",
             "de du",
             "du phong",
@@ -89,6 +95,7 @@ def _requests_calculation(value: str) -> bool:
             "calculation",
             "total cost",
             "cost breakdown",
+            "budget",
             "budget remaining",
             "reserve",
         )
@@ -131,7 +138,14 @@ def _has_calculation_capability(agent: AgentRecord) -> bool:
 
 class _AdditionalAssignment(BaseModel):
     target: str = Field(min_length=1)
-    prompt: str = Field(min_length=1)
+    prompt: str = Field(
+        min_length=1,
+        description=(
+            "Team-role briefing for a dormant roster member. Adding this "
+            "member does not start its run; a specialist wakes it later with "
+            "a concrete TeamSay question or handoff."
+        ),
+    )
 
 
 class _AgentInviteParams(ParamsBase):
@@ -164,9 +178,10 @@ class _AgentInviteParams(ParamsBase):
         default_factory=list,
         max_length=32,
         description=(
-            "Other required specialists and their distinct tasks. Use one "
-            "batch for a multi-capability request, not just a general planner. "
-            "Each target must be a different published agent in the catalog."
+            "Other required specialists to add to the roster without starting "
+            "them. Use prompt only as a short role briefing. The primary target "
+            "is the single starting agent and chooses which peer to wake through "
+            "TeamSay as dependencies emerge. Each target must be different."
         ),
     )
 
@@ -423,14 +438,15 @@ class AgentInvite(_TeamToolBase):
         invited_targets = []
         failed_targets = []
         staged_workers: list[tuple[str, str]] = []
-        # Queue assignments without waking workers. The full batch roster must
-        # be durable before any member tries to address a peer with TeamSay.
-        for name, task in assignments:
+        # Build the complete roster first, but start only the primary target.
+        # Dormant peers are awakened later by the first relevant TeamSay.
+        for index, (name, task) in enumerate(assignments):
             result = await self._invite_one(
                 name,
                 task,
                 wake=False,
                 staged_workers=staged_workers,
+                start_task=index == 0,
             )
             content.extend(result.content)
             if result.state == ToolResultState.ERROR:
@@ -447,7 +463,13 @@ class AgentInvite(_TeamToolBase):
         return ToolChunk(
             content=content,
             state=(ToolResultState.ERROR if failed_targets else ToolResultState.SUCCESS),
-            metadata={"invited_targets": invited_targets, "failed_targets": failed_targets},
+            metadata={
+                "invited_targets": invited_targets,
+                "started_targets": invited_targets[:1]
+                if assignments and assignments[0][0] in invited_targets
+                else [],
+                "failed_targets": failed_targets,
+            },
         )
 
     async def _invite_one(
@@ -457,6 +479,7 @@ class AgentInvite(_TeamToolBase):
         *,
         wake: bool = True,
         staged_workers: list[tuple[str, str]] | None = None,
+        start_task: bool = True,
     ) -> ToolChunk:
         """Mint a team-scoped session on top of an existing agent record.
 
@@ -636,18 +659,22 @@ class AgentInvite(_TeamToolBase):
                     name=f"team:{team.id}/invited:{invited_handle}",
                     chat_model_config=borrowed_chat_model,
                     fallback_chat_model_config=borrowed_fallback_model,
+                    knowledge_config=(
+                        SessionKnowledgeConfig(
+                            knowledge_base_ids=invited.data.knowledge_base_ids,
+                            parameters={"mode": "agentic"},
+                        )
+                        if invited.data.knowledge_base_ids
+                        else None
+                    ),
                 ),
                 state=worker_state,
                 origin=TeamOrigin(),
             )
 
-            # MCP declarations are session-scoped even when two sessions use
-            # the same per-agent workspace. Builder attaches the validated
-            # tool subset to the agent's primary session, so copy those
-            # declarations into this fresh team session before it can run.
-            # Skills need no copy: they are partitioned by ``agent_id`` in
-            # the shared workspace and therefore remain visible here.
-            if invited_sessions:
+            # MCP declarations are session-scoped. Builder agents rebuild
+            # their saved allowlist; legacy agents copy an existing session.
+            if invited.data.execution_mode is not None or invited_sessions:
                 workspace = await self._workspace_manager.get_workspace(
                     self._user_id,
                     invited.id,
@@ -657,7 +684,7 @@ class AgentInvite(_TeamToolBase):
                 # A borrowed Builder agent has an explicit tool allowlist.
                 # Materialise the new team session without deployment-wide
                 # default MCPs before adding those selected declarations.
-                if invited.data.tool_bindings:
+                if invited.data.execution_mode is not None:
                     for default_mcp in workspace.default_mcps:
                         await workspace.remove_mcp(
                             default_mcp.name,
@@ -665,7 +692,7 @@ class AgentInvite(_TeamToolBase):
                             session_id=borrowed.id,
                         )
                 mcp_specs: list[MCPClient] = []
-                if invited.data.tool_bindings:
+                if invited.data.execution_mode is not None:
                     selected: dict[str, list[str]] = {}
                     for binding in invited.data.tool_bindings:
                         mcp_id = str(binding.get("mcp_id") or "")
@@ -714,23 +741,36 @@ class AgentInvite(_TeamToolBase):
                     agent_id=invited.id,
                     session_id=borrowed.id,
                     role="invited",
+                    description=(
+                        invited.data.invite_config.invite_description or ""
+                    ).strip(),
                 ),
             ]
             await self._storage.upsert_team(self._user_id, team)
 
-            hint = HintBlock(
-                hint=(
-                    "<system-reminder>You're now invited into a team named "
-                    f"'{team.data.name}' led by an agent named "
-                    f"'{leader_name}' in this session. All team members "
-                    f"can **ONLY** communicate through the `TeamSay` tool. "
-                    f"Once you finished the given tasks, or want to "
-                    f"communicate with the leader or team members, "
-                    f"use `TeamSay`.</system-reminder>\n"
+            reminder = (
+                "<system-reminder>You're now invited into a team named "
+                f"'{team.data.name}' led by an agent named "
+                f"'{leader_name}' in this session. All team members "
+                "can **ONLY** communicate through the `TeamSay` tool. "
+                "Read the current team roster and Shared Context before "
+                "choosing a collaborator.</system-reminder>\n"
+            )
+            if start_task:
+                message = (
                     f'<team-message from="{leader_name}">\n'
                     f"{prompt}\n"
-                    f"</team-message>"
-                ),
+                    "</team-message>"
+                )
+            else:
+                message = (
+                    "<system-reminder>You are a dormant roster member. Do not "
+                    "start work from this membership notice. Wait until a team "
+                    "member sends you a concrete TeamSay request. Your roster "
+                    f"briefing is: {prompt}</system-reminder>"
+                )
+            hint = HintBlock(
+                hint=reminder + message,
                 source=json.dumps(
                     {
                         "label": "team_message",
@@ -745,9 +785,9 @@ class AgentInvite(_TeamToolBase):
                 session_id=borrowed.id,
                 agent_id=invited.id,
                 payload=hint.model_dump(mode="json"),
-                wake=wake,
+                wake=wake and start_task,
             )
-            if staged_workers is not None:
+            if staged_workers is not None and start_task:
                 staged_workers.append((borrowed.id, invited.id))
 
             return ToolChunk(
@@ -755,7 +795,12 @@ class AgentInvite(_TeamToolBase):
                     TextBlock(
                         text=(
                             f"Invited {invited_display!r} into team "
-                            f"{team.data.name!r}."
+                            f"{team.data.name!r}"
+                            + (
+                                " and started its assignment."
+                                if start_task
+                                else " as a dormant roster member."
+                            )
                         ),
                     ),
                 ],

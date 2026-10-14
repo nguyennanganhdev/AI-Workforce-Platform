@@ -19,6 +19,7 @@ from .._team_turn import (
     get_team_turn,
     register_user_input_request,
     reject_user_input_request,
+    return_team_reply_to_leader,
 )
 from ..message_bus import MessageBusKeys
 from ..storage import (
@@ -43,6 +44,13 @@ _PROGRESS_ONLY_MARKERS = (
     "đang trong quá trình",
     "sẽ tiếp tục",
     "sẽ cập nhật",
+    "sẽ lên lịch",
+    "sẽ phối hợp",
+    "sẽ tổng hợp",
+    "sẽ gửi",
+    "will prepare",
+    "will coordinate",
+    "will collect",
     "vui lòng chờ",
     "i am searching",
     "i'm searching",
@@ -65,9 +73,10 @@ class _TeamSayParams(ParamsBase):
     to: str | None = Field(
         default=None,
         description=(
-            "Recipient member name. Pass ``null`` (the default) to "
-            "broadcast to every other member of the team. To address "
-            "a specific peer use that member's name."
+            "Recipient member handle. Leaders may pass ``null`` to broadcast. "
+            "Workers must use a specific roster handle except when "
+            "``kind=requires_user_input``: then ``null`` transfers temporary "
+            "customer-clarification ownership and does not broadcast."
         ),
     )
     kind: Literal[
@@ -136,12 +145,17 @@ class _TeamSayParams(ParamsBase):
         max_length=255,
         description=(
             "Stable semantic key for requires_user_input, for example "
-            "missing:travel_dates. Required for that kind."
+            "missing:account_id. Optional; the runtime derives one from "
+            "the question text when omitted."
         ),
     )
     resolution: Literal["complete", "stop", "verify"] | None = Field(
         default=None,
-        description="Reply owner only: resolve the assignment addressed by to. complete requires current result and MCP evidence ids; stop reports incomplete; verify permits at most two checks. Never closes the ticket.",
+        description=(
+            "Reply owner only: resolve the assignment addressed by to. "
+            "complete marks the assignment finished; stop reports incomplete; "
+            "verify permits at most two checks. Never closes the ticket."
+        ),
     )
 
 
@@ -170,21 +184,21 @@ it again — just wait for its reply.
 - **DO NOT** reply to a member's report message unless you have further \
 questions or requirements. ``TeamSay`` is for coordination, not chit-chat — \
 your top priority is to complete the overall task.
-- Before asking the customer for missing information, call this tool once with
-  ``kind="requires_user_input"``, ``content=<the consolidated question>`` and
-  ``to=null``. As reply owner this records the wait state; it does not
-  broadcast the question. Then ask that question in your final reply.
+- The fixed Workforce Leader never asks for task-specific missing information.
+  Delegate intake to the responsible specialist; that specialist can ask the
+  customer directly and returns completed work for final synthesis.
 - Normal team work uses ``context_mode="task"`` and
   ``result_scope="shared"`` so later members receive important results.
   Use ``isolated`` only for an independent side question; it defaults to a
   caller-only result. Use ``references`` with explicit source event ids when
-  the recipient needs only those sources. Put verified facts/decisions and
+  the recipient needs only those sources. Put relevant facts/decisions and
   superseded item ids in ``context_delta``; never put private reasoning there.
 - Use ``kind="handoff"`` for assignments and ``question``/``answer`` for a
   linked peer exchange. Preserve ``thread_id`` and ``in_reply_to``; the runtime
   caps one chain at 12 hops.
-- For ``requires_user_input``, provide a stable ``question_key`` describing
-  the missing information. The runtime deduplicates by this key, not wording.
+- For ``requires_user_input``, you may provide a stable ``question_key``
+  describing the missing information. Otherwise the runtime deduplicates from
+  the normalized question text.
 """
 
 _WORKER_DESCRIPTION = """Send an internal message to one team member.
@@ -195,9 +209,16 @@ tool to report your results back to the reply owner named in your runtime \
 instructions. The reply owner is waiting \
 for your report — do not end your turn without sending it.
 - Share intermediate findings with one specific collaborator.
-- If customer information is missing, call this exactly once with
-  ``to=<reply owner name>`` and ``kind="requires_user_input"``. Propose one
-  concise question, then stop. The reply owner is customer-facing.
+- Use ``kind="question"`` when your own work needs the peer's answer; you will
+  wait for it. A peer may ask you back for clarification, and the runtime will
+  wake you to answer before you return to your existing wait.
+- Use ``kind="handoff"`` for a separate remaining deliverable you do not own.
+  The selected peer becomes active and is tracked independently.
+- If genuinely customer-owned information is missing, call this exactly once
+  with ``to=null`` and ``kind="requires_user_input"``. This makes you the
+  temporary customer-facing owner for the clarification. Ask the same concise
+  question naturally in your final reply. After the customer answers, finish
+  your task and report the result to the Leader for synthesis.
 
 ## When NOT to Use This Tool
 - You want to talk to yourself — use your own reasoning.
@@ -206,7 +227,7 @@ for your report — do not end your turn without sending it.
 - Normal task results should remain ``context_mode="task"`` and
   ``result_scope="shared"``. Use ``isolated`` for a truly independent side
   question, and publish a caller-only result into shared state later only when
-  it becomes evidence for the group. Never share private reasoning.
+  it becomes relevant to the group. Never share private reasoning.
 """
 
 
@@ -312,6 +333,14 @@ class TeamSay(_TeamToolBase):
         """
         intent = None
         try:
+            if (
+                kind == "requires_user_input"
+                and isinstance(to, str)
+                and to.strip().casefold() in {"null", "none"}
+            ):
+                # Some models serialize a nullable target as the string
+                # "null". For a customer question its intent is unambiguous.
+                to = None
             if context_delta is not None:
                 context_delta = ContextDelta.model_validate(context_delta)
             team = await self._require_team()
@@ -342,19 +371,6 @@ class TeamSay(_TeamToolBase):
             effective_scope: ContextResultScope = result_scope or (
                 "caller" if context_mode == "isolated" else "shared"
             )
-            if kind == "requires_user_input" and not question_key:
-                return ToolChunk(
-                    content=[
-                        TextBlock(
-                            text=(
-                                "TeamSay: requires_user_input requires a "
-                                "stable semantic question_key."
-                            ),
-                        ),
-                    ],
-                    state=ToolResultState.ERROR,
-                )
-
             # Build a (name -> (session_id, agent_id)) directory. The
             # leader is always in the directory under its plain agent
             # name; workers come from the team's members roster via
@@ -378,6 +394,23 @@ class TeamSay(_TeamToolBase):
                         TextBlock(
                             text=(
                                 f"TeamSay: leader records missing for team {team.id}."
+                            ),
+                        ),
+                    ],
+                    state=ToolResultState.ERROR,
+                )
+            if (
+                self._role == "leader"
+                and leader.agent.data.system_role == "leader"
+                and kind == "requires_user_input"
+            ):
+                return ToolChunk(
+                    content=[
+                        TextBlock(
+                            text=(
+                                "TeamSay: the Workforce Leader does not ask "
+                                "task-specific customer questions. Delegate "
+                                "intake to the responsible specialist."
                             ),
                         ),
                     ],
@@ -425,29 +458,6 @@ class TeamSay(_TeamToolBase):
                 storage=shared_context.storage,
                 user_id=self._user_id,
             )
-            if (
-                self._session_id == leader.session_id
-                and leader.agent.data.system_role == "leader"
-                and kind in {"result", "answer"}
-            ):
-                completed, _, _, _ = await shared_context.team_evidence_status(
-                    self._user_id,
-                    team.id,
-                    leader_session_id=leader.session_id,
-                )
-                if not completed:
-                    return ToolChunk(
-                        content=[
-                            TextBlock(
-                                text=(
-                                    "TeamSay: no current worker report supports a Leader result. "
-                                    "Do not invent status, prices or ETAs. Delegate with kind=handoff, "
-                                    "or ask for missing information with kind=requires_user_input."
-                                )
-                            )
-                        ],
-                        state=ToolResultState.ERROR,
-                    )
             effective_task_id = task_id or (turn.task_id if turn else None)
             active_task = await shared_context.active_task_id(self._user_id, team.id)
             if effective_task_id is not None:
@@ -545,11 +555,21 @@ class TeamSay(_TeamToolBase):
                     leader.name,
                 )
 
-            # Workers propose; only the current customer-facing owner can
-            # approve a question and freeze the group awaiting user input.
+            # A worker may take temporary reply ownership solely to obtain
+            # customer-owned information. Addressing the current owner keeps
+            # the legacy proposal/review path for non-Workforce callers.
+            direct_specialist_question = (
+                self._role == "worker"
+                and kind in {"requires_user_input", "user_input_proposal"}
+                and not is_reply_owner
+                and to is None
+            )
+            if direct_specialist_question:
+                kind = "requires_user_input"
             proposal = (
                 kind in {"requires_user_input", "user_input_proposal"}
                 and not is_reply_owner
+                and not direct_specialist_question
             )
             if proposal:
                 if to != reply_owner_name:
@@ -564,7 +584,7 @@ class TeamSay(_TeamToolBase):
                 kind = "user_input_proposal"
             if kind == "conflict" and not is_reply_owner and to != reply_owner_name:
                 raise ValueError(
-                    "Conflicting evidence must be sent to the reply owner for review"
+                    "Conflicting results must be sent to the reply owner for review"
                 )
             if context_delta is not None and context_delta.status is not None:
                 # A stale model/schema may still submit this server-owned
@@ -580,12 +600,15 @@ class TeamSay(_TeamToolBase):
                     for marker in _PROGRESS_ONLY_MARKERS
                 )
             ):
-                # A future-tense promise is not completion evidence. Preserve
+                # A future-tense promise is not a completed result. Preserve
                 # it as optional progress and force the worker middleware to
                 # continue until it sends a concrete result/question/error.
                 kind = "progress"
 
-            if kind == "requires_user_input" and is_reply_owner:
+            if kind == "requires_user_input" and (
+                is_reply_owner or direct_specialist_question
+            ):
+                question_id = _handoff_id()
                 turn, duplicate, _first = await register_user_input_request(
                     self._message_bus,
                     team.id,
@@ -598,30 +621,56 @@ class TeamSay(_TeamToolBase):
                         else leader.session_id
                     ),
                     task_id=effective_task_id,
-                    question_id=_handoff_id(),
+                    question_id=question_id,
                     question_key=question_key,
                     storage=shared_context.storage,
                     user_id=self._user_id,
+                    specialist_owner_session_id=(
+                        self._session_id if direct_specialist_question else None
+                    ),
+                    specialist_owner_agent_id=(
+                        self._agent_id if direct_specialist_question else None
+                    ),
                 )
                 if not duplicate and effective_scope == "shared":
-                    question_event = await shared_context.append_event(
-                        user_id=self._user_id,
-                        team_id=team.id,
-                        kind="requires_user_input",
-                        content=content,
-                        event_id=_handoff_id(),
-                        task_id=effective_task_id,
-                        source_agent_id=self._agent_id,
-                        source_session_id=self._session_id,
-                        thread_id=thread_id,
-                        in_reply_to=in_reply_to,
-                        artifact_refs=artifact_refs,
-                        hop_count=hop_count,
-                        reply_owner_agent_id=self._agent_id,
-                        based_on_revision=based_on_revision,
-                        reference_event_ids=reference_event_ids,
-                        delta=context_delta,
-                    )
+                    try:
+                        question_event = await shared_context.append_event(
+                            user_id=self._user_id,
+                            team_id=team.id,
+                            kind="requires_user_input",
+                            content=content,
+                            event_id=question_id,
+                            task_id=effective_task_id,
+                            source_agent_id=self._agent_id,
+                            source_session_id=self._session_id,
+                            thread_id=thread_id,
+                            in_reply_to=in_reply_to,
+                            artifact_refs=artifact_refs,
+                            hop_count=hop_count,
+                            reply_owner_agent_id=self._agent_id,
+                            based_on_revision=based_on_revision,
+                            reference_event_ids=reference_event_ids,
+                            delta=context_delta,
+                        )
+                    except Exception:
+                        await reject_user_input_request(
+                            self._message_bus,
+                            team.id,
+                            question_id,
+                            storage=shared_context.storage,
+                            user_id=self._user_id,
+                        )
+                        if direct_specialist_question:
+                            await return_team_reply_to_leader(
+                                self._message_bus,
+                                team.id,
+                                specialist_session_id=self._session_id,
+                                leader_session_id=leader.session_id,
+                                leader_agent_id=leader.agent.id,
+                                storage=shared_context.storage,
+                                user_id=self._user_id,
+                            )
+                        raise
                     if question_event.stale:
                         await reject_user_input_request(
                             self._message_bus,
@@ -654,6 +703,7 @@ class TeamSay(_TeamToolBase):
                             ),
                         ),
                     ],
+                    metadata={"kind": "requires_user_input"},
                 )
 
             if self._role == "worker" and to is None:
@@ -856,10 +906,8 @@ class TeamSay(_TeamToolBase):
                 ),
             )
             kind, content = coordination["kind"], coordination["content"]
-            # The server records which peer reports released this worker's
-            # dependencies. Carry that lineage into a synthesized result so
-            # evidence validation does not depend on an LLM reproducing opaque
-            # event IDs from shared context.
+            # Carry server-owned dependency lineage into synthesized results
+            # without requiring the model to reproduce opaque event IDs.
             reference_event_ids = tuple(
                 coordination.get("reference_event_ids", reference_event_ids),
             )
@@ -903,6 +951,20 @@ class TeamSay(_TeamToolBase):
                             storage=shared_context.storage,
                             user_id=self._user_id,
                         )
+                    if (
+                        turn is not None
+                        and turn.mode == "specialist_question"
+                        and turn.reply_owner_session_id == self._session_id
+                    ):
+                        await return_team_reply_to_leader(
+                            self._message_bus,
+                            team.id,
+                            specialist_session_id=self._session_id,
+                            leader_session_id=leader.session_id,
+                            leader_agent_id=leader.agent.id,
+                            storage=shared_context.storage,
+                            user_id=self._user_id,
+                        )
                     return ToolChunk(
                         content=[
                             TextBlock(
@@ -916,6 +978,23 @@ class TeamSay(_TeamToolBase):
                         ],
                         state=ToolResultState.ERROR,
                     )
+
+            if (
+                turn is not None
+                and turn.mode == "specialist_question"
+                and turn.reply_owner_session_id == self._session_id
+                and to == leader.name
+                and kind in {"result", "error"}
+            ):
+                await return_team_reply_to_leader(
+                    self._message_bus,
+                    team.id,
+                    specialist_session_id=self._session_id,
+                    leader_session_id=leader.session_id,
+                    leader_agent_id=leader.agent.id,
+                    storage=shared_context.storage,
+                    user_id=self._user_id,
+                )
 
             directive_refs = reference_event_ids
             if context_mode == "references" and shared_event is not None:

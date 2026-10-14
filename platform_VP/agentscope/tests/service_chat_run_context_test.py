@@ -9,9 +9,14 @@ from unittest.mock import patch
 
 from agentscope.agent import ContextConfig, ReActConfig
 from agentscope.app._service import ChatService
-from agentscope.app.message_bus import InMemoryMessageBus
-from agentscope.event import ReplyEndEvent, ReplyStartEvent
-from agentscope.message import UserMsg
+from agentscope.app._bus_ops import deliver_to_inbox
+from agentscope.app.message_bus import InMemoryMessageBus, MessageBusKeys
+from agentscope.event import (
+    HintBlockEvent, ReplyEndEvent, ReplyStartEvent,
+    TextBlockStartEvent, TextBlockDeltaEvent, TextBlockEndEvent,
+    ThinkingBlockStartEvent, ThinkingBlockDeltaEvent, ThinkingBlockEndEvent,
+)
+from agentscope.message import HintBlock, UserMsg
 from agentscope.app.storage import (
     AgentData,
     AgentRecord,
@@ -19,6 +24,7 @@ from agentscope.app.storage import (
     SessionConfig,
     SessionRecord,
     TeamData,
+    TeamMember,
     TeamRecord,
     TeamSharedContextRecord,
     TeamTurnRecord,
@@ -42,6 +48,7 @@ class _Storage:
         self.primary_shared_reads = 0
         self.shared_context: TeamSharedContextRecord | None = None
         self.team_turn: TeamTurnRecord | None = None
+        self.messages = {}
 
     async def get_session(
         self,
@@ -73,8 +80,8 @@ class _Storage:
     async def update_session_state(self, *_: object, **__: object) -> None:
         """Accept the post-run state persistence."""
 
-    async def upsert_message(self, *_: object, **__: object) -> None:
-        """Accept synthesized failure messages (none expected)."""
+    async def upsert_message(self, user_id, session_id, message) -> None:
+        self.messages[(session_id, message.id)] = message.model_copy(deep=True)
 
     async def list_messages(self, *_: object, **__: object) -> tuple[list, bool]:
         """The fixture has no pre-shared customer transcript."""
@@ -179,6 +186,93 @@ class _SharedStorage:
 class TestRunContextResolution(IsolatedAsyncioTestCase):
     """Team identity is read once and shared by toolkit + middleware."""
 
+    async def test_worker_feed_is_shared_and_racing_reply_starts_fresh_run(self):
+        worker = AgentRecord(id="worker", user_id="u", data=AgentData(
+            name="Hotel", context_config=ContextConfig(), react_config=ReActConfig(),
+        ))
+        leader = AgentRecord(id="leader", user_id="u", data=AgentData(
+            name="Leader", context_config=ContextConfig(), react_config=ReActConfig(),
+        ))
+        config = SessionConfig(workspace_id="ws", chat_model_config=ChatModelConfig(
+            type="test", credential_id="cred", model="test", parameters={},
+        ))
+        worker_session = SessionRecord(id="worker-session", user_id="u", agent_id=worker.id,
+                                       team_id="team", config=config)
+        leader_session = SessionRecord(id="leader-session", user_id="u", agent_id=leader.id,
+                                       team_id="team", config=config)
+        team = TeamRecord(id="team", user_id="u", session_id=leader_session.id,
+                          data=TeamData(name="Trip", members=[TeamMember(
+                              owner_id="u", agent_id=worker.id, session_id=worker_session.id,
+                              role="created", description="Hotels",
+                          )]))
+        storage = _Storage({s.id: s for s in (worker_session, leader_session)},
+                           {a.id: a for a in (worker, leader)}, team)
+        shared_storage = _SharedStorage()
+        bus = InMemoryMessageBus()
+        reply_count = 0
+
+        class _Agent:
+            def __init__(self, *, state, **kwargs):
+                self.state = state
+                self.name = "Hotel"
+
+            async def reply_stream(self, inputs):
+                nonlocal reply_count
+                reply_count += 1
+                yield ReplyStartEvent(session_id=worker_session.id, reply_id="reply", name="Hotel")
+                yield HintBlockEvent(reply_id="reply", block_id="hint", hint="private assignment")
+                yield ThinkingBlockStartEvent(reply_id="reply", block_id="thinking")
+                yield ThinkingBlockDeltaEvent(reply_id="reply", block_id="thinking", delta="private reasoning")
+                yield ThinkingBlockEndEvent(reply_id="reply", block_id="thinking")
+                yield TextBlockStartEvent(reply_id="reply", block_id="text")
+                yield TextBlockDeltaEvent(reply_id="reply", block_id="text", delta="Hotel options ready")
+                yield TextBlockEndEvent(reply_id="reply", block_id="text", text="Hotel options ready")
+                # A fast peer responds before this run releases the consumer.
+                await deliver_to_inbox(bus, user_id="u", session_id=worker_session.id,
+                                       agent_id=worker.id, payload=HintBlock(hint="peer response").model_dump(mode="json"))
+                yield ReplyEndEvent(session_id=worker_session.id, reply_id="reply")
+
+        class _Model:
+            context_size = 100_000
+
+            async def count_tokens(self, messages, tools):
+                return sum(len(msg.get_text_content() or "") for msg in messages)
+
+        class _Access:
+            async def resolve_agent(self, *args):
+                return worker.model_copy(deep=True)
+
+        async def _model(*args, **kwargs):
+            return _Model()
+
+        async def _toolkit(**kwargs):
+            return object()
+
+        service = ChatService(storage=storage, workspace_manager=_WorkspaceManager(),
+                              scheduler_manager=object(), background_task_manager=object(),
+                              message_bus=bus, resource_access_service=_Access(),
+                              custom_agent_cls=_Agent, shared_context_storage=shared_storage)
+        with patch("agentscope.app._service._chat.get_toolkit", new=_toolkit), \
+             patch("agentscope.app._service._chat.get_model", new=_model):
+            await service._run_impl("u", worker_session.id, worker.id, None)
+
+        self.assertEqual(reply_count, 1)
+        projected = storage.messages[(leader_session.id, "reply")]
+        self.assertEqual(projected.name, "Hotel")
+        self.assertEqual(projected.get_text_content(), "Hotel options ready")
+        self.assertEqual(projected.metadata["team_agent_id"], worker.id)
+        self.assertFalse(projected.get_content_blocks("thinking"))
+        self.assertFalse(projected.get_content_blocks("hint"))
+        feed = [payload for _, payload in await bus.log_read(MessageBusKeys.session_events(leader_session.id))]
+        self.assertEqual(feed[0]["type"], "REPLY_START")
+        reply_events = [event for event in feed if event.get("reply_id") == "reply"]
+        self.assertEqual(reply_events[-1]["type"], "REPLY_END")
+        self.assertFalse(any(event["type"].startswith("THINKING") or event["type"] == "HINT_BLOCK" for event in feed))
+        wakeups = await bus.queue_drain(MessageBusKeys.wakeup_queue())
+        self.assertEqual(len(wakeups), 1)
+        self.assertEqual(wakeups[0][1]["session_id"], worker_session.id)
+        self.assertFalse(await bus.is_locked(MessageBusKeys.session_lock(worker_session.id)))
+
     async def test_worker_run_fetches_team_once(self) -> None:
         """One ``get_team`` read serves both consumers of the role."""
         user_id = "user-1"
@@ -197,6 +291,16 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
             user_id=user_id,
             data=AgentData(
                 name="Leader",
+                context_config=ContextConfig(),
+                react_config=ReActConfig(),
+            ),
+        )
+        peer_agent = AgentRecord(
+            id="agent-p",
+            user_id=user_id,
+            source="team",
+            data=AgentData(
+                name="pricing",
                 context_config=ContextConfig(),
                 react_config=ReActConfig(),
             ),
@@ -228,11 +332,31 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
             id="team-1",
             user_id=user_id,
             session_id=leader_session.id,
-            data=TeamData(name="team"),
+            data=TeamData(
+                name="team",
+                members=[
+                    TeamMember(
+                        owner_id=user_id,
+                        agent_id=worker_agent.id,
+                        session_id=worker_session.id,
+                        role="created",
+                        description="Finds inventory.",
+                    ),
+                    TeamMember(
+                        owner_id=user_id,
+                        agent_id=peer_agent.id,
+                        session_id="session-p",
+                        role="created",
+                        description="Calculates and compares prices.",
+                    ),
+                ],
+            ),
         )
         storage = _Storage(
             sessions={s.id: s for s in (worker_session, leader_session)},
-            agents={a.id: a for a in (worker_agent, leader_agent)},
+            agents={
+                a.id: a for a in (worker_agent, leader_agent, peer_agent)
+            },
             team=team,
         )
         shared_storage = _SharedStorage()
@@ -346,12 +470,15 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
         self.assertIn('"source": "platform_chat"', equipped_system_prompts[0])
         self.assertIn(leader_session.id, equipped_system_prompts[0])
         self.assertIn("person typing here IS the user", equipped_system_prompts[0])
+        self.assertIn("Finds inventory.", equipped_system_prompts[0])
+        self.assertIn("Calculates and compares prices.", equipped_system_prompts[0])
+        self.assertIn('"handle": "pricing"', equipped_system_prompts[0])
         self.assertEqual(storage.primary_shared_reads, 0)
 
-    async def test_first_leader_reply_creates_and_pauses_durable_turn(
+    async def test_first_leader_reply_creates_turn_without_false_customer_wait(
         self,
     ) -> None:
-        """A team created mid-reply still gets the first-turn sleep barrier."""
+        """An empty delegation reply must not pause peer wakeups as customer intake."""
         user_id = "user-1"
         leader_agent = AgentRecord(
             id="agent-l",
@@ -459,7 +586,7 @@ class TestRunContextResolution(IsolatedAsyncioTestCase):
         self.assertIsNotNone(shared_storage.team_turn)
         assert shared_storage.record is not None
         assert shared_storage.team_turn is not None
-        self.assertEqual(shared_storage.team_turn.status, "awaiting_user_input")
+        self.assertEqual(shared_storage.team_turn.status, "running")
         self.assertEqual(
             shared_storage.team_turn.task_id,
             shared_storage.record.state.active_task_id,

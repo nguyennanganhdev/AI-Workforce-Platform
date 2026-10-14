@@ -50,7 +50,9 @@ export interface AgentData {
 	system_role?: 'business' | 'leader';
 	lifecycle_state?: 'draft' | 'published' | 'withdrawn';
 	build_description?: string;
+	execution_mode?: 'context_only' | 'tool_backed' | null;
 	tool_bindings?: Array<{
+		id?: string;
 		mcp_id: string;
 		mcp_name: string;
 		tool_name: string;

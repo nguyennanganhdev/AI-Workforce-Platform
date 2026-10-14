@@ -1,8 +1,17 @@
-import { CircleAlert, Loader2, Save } from 'lucide-react';
+import {
+	ChevronDown,
+	ChevronRight,
+	CircleAlert,
+	Database,
+	Loader2,
+	Save,
+	Wrench,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import type { AgentView, ContextConfig, InviteConfig, ReActConfig } from '@/api';
+import { workforceApi } from '@/api';
+import type { AgentToolSettings, AgentView, ContextConfig, InviteConfig, ReActConfig } from '@/api';
 import {
 	AgentFormFields,
 	defaultAgentFormValues,
@@ -12,6 +21,8 @@ import {
 import type { SchemaFormValue } from '@/components/form/SchemaForm';
 import { Alert, AlertDescription } from '@/components/ui/alert.tsx';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
 	Dialog,
 	DialogContent,
@@ -38,6 +49,14 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 	const [submitting, setSubmitting] = useState(false);
 	const [values, setValues] = useState<AgentFormValues | null>(null);
 	const [errorMsg, setErrorMsg] = useState('');
+	const [toolSettings, setToolSettings] = useState<AgentToolSettings | null>(null);
+	const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set());
+	const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<Set<string>>(
+		new Set(),
+	);
+	const [openMcps, setOpenMcps] = useState<Set<string>>(new Set());
+	const [toolsLoading, setToolsLoading] = useState(false);
+	const builderManaged = agent.data.execution_mode != null;
 
 	useEffect(() => {
 		if (!open || !schema) {
@@ -64,6 +83,37 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 		setErrorMsg('');
 	}, [open, schema, agent]);
 
+	useEffect(() => {
+		if (!open || !builderManaged) {
+			setToolSettings(null);
+			setSelectedToolIds(new Set());
+			setSelectedKnowledgeBaseIds(new Set());
+			setOpenMcps(new Set());
+			setToolsLoading(false);
+			return;
+		}
+		let active = true;
+		setToolsLoading(true);
+		workforceApi
+			.getAgentTools(agent.id)
+			.then((settings) => {
+				if (!active) return;
+				setToolSettings(settings);
+				setSelectedToolIds(new Set(settings.selected_tool_ids));
+				setSelectedKnowledgeBaseIds(new Set(settings.selected_knowledge_base_ids));
+				setErrorMsg('');
+			})
+			.catch((error) => {
+				if (active) setErrorMsg(formatApiErrorForAlert(error));
+			})
+			.finally(() => {
+				if (active) setToolsLoading(false);
+			});
+		return () => {
+			active = false;
+		};
+	}, [open, builderManaged, agent.id]);
+
 	const handleChange = (section: AgentSection, key: string, value: SchemaFormValue) => {
 		setErrorMsg('');
 		setValues((prev) =>
@@ -78,6 +128,13 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 		setErrorMsg('');
 		setSubmitting(true);
 		try {
+			if (builderManaged && toolSettings) {
+				await workforceApi.updateAgentTools(
+					agent.id,
+					[...selectedToolIds],
+					[...selectedKnowledgeBaseIds],
+				);
+			}
 			await update(
 				agent.id,
 				{
@@ -99,10 +156,11 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 	};
 
 	const nameValid = !!(values?.identity.name as string | undefined)?.trim();
+	const toolsReady = !builderManaged || (!toolsLoading && toolSettings !== null);
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="!w-[500px] !max-w-[500px]">
+			<DialogContent className="!w-[680px] !max-w-[calc(100vw-2rem)]">
 				<DialogHeader>
 					<DialogTitle>{t('dialog-agent-edit.title')}</DialogTitle>
 					<DialogDescription className="sr-only">
@@ -114,6 +172,174 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 						<AgentFormFields schema={schema} values={values} onChange={handleChange} />
 					) : (
 						<p className="text-muted-foreground text-sm">{t('common.loading')}</p>
+					)}
+					{builderManaged && (
+						<section className="mt-6 border-t pt-5">
+							<div className="mb-3 flex items-start gap-2">
+								<Wrench className="mt-0.5 size-4 text-primary" />
+								<div>
+									<h3 className="text-sm font-medium">Tool của MCP</h3>
+									<p className="text-xs text-muted-foreground">
+										Mở từng MCP để chọn chính xác những tool agent được phép sử
+										dụng.
+									</p>
+								</div>
+							</div>
+							{toolsLoading ? (
+								<div className="flex items-center gap-2 rounded-lg border p-3 text-sm text-muted-foreground">
+									<Loader2 className="size-4 animate-spin" /> Đang tải danh sách
+									MCP…
+								</div>
+							) : toolSettings?.mcps.length ? (
+								<div className="space-y-2">
+									{toolSettings.mcps.map((mcp) => {
+										const expanded = openMcps.has(mcp.mcp_id);
+										const selectedCount = mcp.tools.filter((tool) =>
+											selectedToolIds.has(tool.id),
+										).length;
+										return (
+											<Collapsible
+												key={mcp.mcp_id}
+												open={expanded}
+												onOpenChange={(next) =>
+													setOpenMcps((current) => {
+														const copy = new Set(current);
+														if (next) copy.add(mcp.mcp_id);
+														else copy.delete(mcp.mcp_id);
+														return copy;
+													})
+												}
+												className="overflow-hidden rounded-lg border"
+											>
+												<CollapsibleTrigger asChild>
+													<button
+														type="button"
+														className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-muted/50"
+													>
+														{expanded ? (
+															<ChevronDown className="size-4" />
+														) : (
+															<ChevronRight className="size-4" />
+														)}
+														<span className="flex-1 font-medium">
+															{mcp.mcp_name}
+														</span>
+														<span className="text-xs text-muted-foreground">
+															{selectedCount}/{mcp.tools.length} tool
+														</span>
+													</button>
+												</CollapsibleTrigger>
+												<CollapsibleContent className="border-t bg-muted/15 p-2">
+													<div className="space-y-1">
+														{mcp.tools.map((tool) => (
+															<label
+																key={tool.id}
+																className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-background"
+															>
+																<Checkbox
+																	checked={selectedToolIds.has(
+																		tool.id,
+																	)}
+																	onCheckedChange={(checked) =>
+																		setSelectedToolIds(
+																			(current) => {
+																				const copy =
+																					new Set(
+																						current,
+																					);
+																				if (
+																					checked === true
+																				)
+																					copy.add(
+																						tool.id,
+																					);
+																				else
+																					copy.delete(
+																						tool.id,
+																					);
+																				return copy;
+																			},
+																		)
+																	}
+																	className="mt-0.5"
+																/>
+																<span className="min-w-0">
+																	<span className="block font-mono text-xs font-medium">
+																		{tool.tool_name}
+																	</span>
+																	{tool.description && (
+																		<span className="mt-0.5 block text-xs text-muted-foreground">
+																			{tool.description}
+																		</span>
+																	)}
+																</span>
+															</label>
+														))}
+													</div>
+												</CollapsibleContent>
+											</Collapsible>
+										);
+									})}
+								</div>
+							) : (
+								<p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+									Chưa có MCP đang bật hoặc MCP chưa công bố tool nào.
+								</p>
+							)}
+							<div className="mb-3 mt-6 flex items-start gap-2 border-t pt-5">
+								<Database className="mt-0.5 size-4 text-primary" />
+								<div>
+									<h3 className="text-sm font-medium">Knowledge Base mặc định</h3>
+									<p className="text-xs text-muted-foreground">
+										Các KB này được gắn vào mọi session mới của agent ở chế độ
+										agentic.
+									</p>
+								</div>
+							</div>
+							{toolsLoading ? (
+								<div className="flex items-center gap-2 rounded-lg border p-3 text-sm text-muted-foreground">
+									<Loader2 className="size-4 animate-spin" /> Đang tải Knowledge
+									Base…
+								</div>
+							) : toolSettings?.knowledge_bases.length ? (
+								<div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border p-2">
+									{toolSettings.knowledge_bases.map((knowledge) => (
+										<label
+											key={knowledge.id}
+											className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-muted/50"
+										>
+											<Checkbox
+												checked={selectedKnowledgeBaseIds.has(knowledge.id)}
+												onCheckedChange={(checked) =>
+													setSelectedKnowledgeBaseIds((current) => {
+														const copy = new Set(current);
+														if (checked === true)
+															copy.add(knowledge.id);
+														else copy.delete(knowledge.id);
+														return copy;
+													})
+												}
+												className="mt-0.5"
+											/>
+											<span className="min-w-0">
+												<span className="block text-xs font-medium">
+													{knowledge.name}
+												</span>
+												{knowledge.description && (
+													<span className="mt-0.5 block text-xs text-muted-foreground">
+														{knowledge.description}
+													</span>
+												)}
+											</span>
+										</label>
+									))}
+								</div>
+							) : (
+								<p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+									Chưa có Knowledge Base nào để gắn cho agent.
+								</p>
+							)}
+						</section>
 					)}
 				</div>
 				{errorMsg && (
@@ -135,7 +361,7 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 					</Button>
 					<Button
 						onClick={handleSubmit}
-						disabled={!nameValid || submitting || !schema || !values}
+						disabled={!nameValid || submitting || !schema || !values || !toolsReady}
 					>
 						{submitting ? (
 							<Loader2 className="size-3.5 animate-spin" />

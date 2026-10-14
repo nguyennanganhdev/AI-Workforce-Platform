@@ -16,6 +16,8 @@ export { authApi } from './auth';
 export { workforceApi } from './workforce';
 export type {
 	BuilderConversationSummary,
+	AgentToolSettings,
+	BuilderKnowledgeBase,
 	BuilderMessage,
 	BuilderProposal,
 	BuilderTool,

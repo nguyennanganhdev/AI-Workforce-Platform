@@ -483,6 +483,7 @@ optional):
                     agent_id=worker_agent.id,
                     session_id=worker_session.id,
                     role="created",
+                    description=description,
                 ),
             ]
             await self._storage.upsert_team(self._user_id, team)

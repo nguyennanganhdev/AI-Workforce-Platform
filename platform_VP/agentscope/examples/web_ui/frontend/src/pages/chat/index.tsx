@@ -504,6 +504,7 @@ const ChatPageInner = () => {
 				<ChatViewport
 					agentId={effectiveAgentId}
 					sessionId={effectiveSessionId}
+					readOnly={focusedMember !== null}
 					onSessionsChanged={refetchSessions}
 				/>
 			</div>

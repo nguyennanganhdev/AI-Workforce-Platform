@@ -180,22 +180,20 @@ class TestTeamSaySharedContext(IsolatedAsyncioTestCase):
         )
         self.assertEqual(len(inbox), 1)
 
-    async def test_system_leader_cannot_seed_unverified_result_into_worker_context(
+    async def test_system_leader_result_is_not_semantically_validated(
         self,
     ):
         self.storage.agents["leader"].data.system_role = "leader"
         result = await self.tool(
             content="Technician arrives in 30 minutes", to="Worker", kind="result"
         )
-        self.assertEqual(result.state, "error")
-        self.assertEqual(self.storage.handoffs, {})
-        record = self.storage.context
-        self.assertTrue(record is None or not record.state.events)
-        # Coordination and clarification still work without domain evidence.
-        result = await self.tool(
-            content="Please check the request", to="Worker", kind="handoff"
-        )
         self.assertNotEqual(result.state, "error")
+        self.assertTrue(self.storage.handoffs)
+        record = self.storage.context
+        self.assertEqual(
+            "Technician arrives in 30 minutes",
+            record.state.events[-1].content,
+        )
 
     async def test_isolated_defaults_to_caller_scope(self) -> None:
         result = await self.tool(

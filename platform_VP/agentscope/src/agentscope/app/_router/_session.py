@@ -321,7 +321,15 @@ async def create_session(
             is not visible to the caller.
     """
     # Agent must be visible to the caller (own or shared).
-    await access.resolve_agent(user_id, body.agent_id)
+    agent_record = await access.resolve_agent(user_id, body.agent_id)
+
+    knowledge_config = body.knowledge_config
+    default_knowledge_ids = getattr(agent_record.data, "knowledge_base_ids", [])
+    if "knowledge_config" not in body.model_fields_set and default_knowledge_ids:
+        knowledge_config = SessionKnowledgeConfig(
+            knowledge_base_ids=default_knowledge_ids,
+            parameters={"mode": "agentic"},
+        )
 
     await _ensure_credential_exists(access, user_id, body.chat_model_config)
     await _ensure_credential_exists(
@@ -333,7 +341,7 @@ async def create_session(
     await _ensure_knowledge_bases_exist(
         access,
         user_id,
-        body.knowledge_config,
+        knowledge_config,
     )
 
     # Resolve the workspace binding for this session. Explicit
@@ -356,7 +364,7 @@ async def create_session(
             chat_model_config=body.chat_model_config,
             fallback_chat_model_config=body.fallback_chat_model_config,
             tts_model_config=body.tts_model_config,
-            knowledge_config=body.knowledge_config,
+            knowledge_config=knowledge_config,
             # A caller that named the session owns that name; anything
             # else starts on the creation timestamp and is the server's
             # to replace once the conversation says what it is about.

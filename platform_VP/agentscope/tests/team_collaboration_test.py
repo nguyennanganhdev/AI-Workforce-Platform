@@ -88,6 +88,7 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             content="Two options were returned",
             in_reply_to=question.metadata["handoff_id"],
         )
+
         self.assertIsNone(
             await self.service.collaboration_pause("u", "ticket-1", "worker-session")
         )
@@ -105,6 +106,84 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             if item.id == answer.metadata["handoff_id"]
         )
         self.assertEqual("answer", event.kind)
+
+    async def test_reply_owner_also_sleeps_after_asking_peer(self):
+        question = await self.say(
+            "leader", to="Worker", kind="question", content="Look up available options",
+        )
+        self.assertEqual("waiting_peer", await self.service.collaboration_pause(
+            "u", "ticket-1", "leader-session",
+        ))
+        await self.say("worker", to="Leader", kind="answer", content="Options returned",
+                       in_reply_to=question.metadata["handoff_id"])
+        self.assertFalse(self.branch("leader").waiting_for)
+
+    async def test_terminal_peer_failure_releases_waiting_requester(self):
+        await self.service.append_event(
+            user_id="u",
+            team_id="ticket-1",
+            task_id=self.task,
+            kind="external_event",
+            content='{"verified_total":2720000}',
+            source_session_id="peer-session",
+        )
+        await self.say(
+            "worker",
+            to="Peer",
+            kind="question",
+            content="Calculate the total from verified values",
+        )
+
+        released = await self.service.stop_failed_branch(
+            "u",
+            "ticket-1",
+            "peer-session",
+            "provider rate limited",
+        )
+
+        self.assertEqual(("worker-session",), released)
+        self.assertEqual("stopped", self.branch("peer").status)
+        self.assertEqual("running", self.branch("worker").status)
+        self.assertEqual({}, self.branch("worker").waiting_for)
+        self.assertEqual(
+            ('{"verified_total":2720000}',),
+            await self.service.current_tool_evidence_for_session(
+                "u",
+                "ticket-1",
+                "peer-session",
+            ),
+        )
+
+    async def test_outbound_assignment_is_not_semantically_validated(self):
+        receipt = await self.service.coordinate_handoff(
+            user_id="u",
+            team_id="ticket-1",
+            task_id=self.task,
+            sender="worker-session",
+            recipients=("peer-session",),
+            owner="leader-session",
+            handoff_id="unchecked-constraints",
+            kind="question",
+            content=(
+                "Search flights from Hà Nội for 1 người with a "
+                "500.000 VND category budget"
+            ),
+        )
+        self.assertEqual("waiting_peer", receipt["status"])
+
+    async def test_worker_handoff_activates_only_the_selected_peer(self):
+        await self.say(
+            "worker",
+            to="Peer",
+            kind="handoff",
+            content="Handle the remaining specialist lookup",
+        )
+
+        self.assertEqual("running", self.branch("peer").status)
+        pending = await self.service.collaboration_review(
+            "u", "ticket-1", "leader-session"
+        )
+        self.assertIn("peer-session", pending)
 
     async def test_shared_peer_answer_releases_all_waiters_for_that_provider(self):
         first = await self.say(
@@ -202,16 +281,97 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual("error", second.state)
         self.assertEqual(1, len(self.storage.turn.pending_question_ids))
 
-    async def test_cyclic_dependency_stops_branch_and_notifies_owner_and_waiter(self):
-        await self.say("worker", to="Peer", kind="question", content="Need your data")
-        result = await self.say(
-            "peer", to="Worker", kind="question", content="Need yours first"
+    async def test_specialist_asks_customer_then_returns_result_to_leader(self):
+        question = await self.say(
+            "worker",
+            to="null",
+            kind="requires_user_input",
+            content="Which account should I inspect?",
         )
-        self.assertEqual("error", result.metadata["kind"])
-        self.assertEqual("stopped", self.branch("peer").status)
+        self.assertEqual("requires_user_input", question.metadata["kind"])
+        self.assertEqual("specialist_question", self.storage.turn.mode)
+        self.assertEqual("worker-session", self.storage.turn.reply_owner_session_id)
+
+        from agentscope.app._team_turn import start_team_turn
+
+        await start_team_turn(
+            self.bus,
+            "ticket-1",
+            reply_owner_session_id="worker-session",
+            reply_owner_agent_id="worker",
+            customer_session_id="leader-session",
+            mode="specialist_question",
+            task_id=self.task,
+            storage=self.storage,
+            user_id="u",
+        )
+        await self.say(
+            "worker",
+            to="Leader",
+            kind="result",
+            content="Account A has been inspected; no issue was found.",
+        )
+        self.assertEqual("leader", self.storage.turn.mode)
+        self.assertEqual("leader-session", self.storage.turn.reply_owner_session_id)
+
+    async def test_fixed_workforce_leader_cannot_ask_customer_question(self):
+        self.storage.agents["leader"].data.system_role = "leader"
+        result = await self.tool("leader")(
+            kind="requires_user_input",
+            question_key="missing:anything",
+            content="What is missing?",
+        )
+        self.assertEqual("error", result.state)
+        self.assertIn("does not ask", result.content[0].text)
+
+    async def test_failed_specialist_question_restores_leader_ownership(self):
+        with patch.object(
+            self.service,
+            "append_event",
+            side_effect=RuntimeError("write failed"),
+        ):
+            result = await self.tool("worker")(
+                kind="requires_user_input",
+                question_key="missing:account",
+                content="Which account should I inspect?",
+            )
+
+        self.assertEqual("error", result.state)
+        self.assertEqual("leader", self.storage.turn.mode)
+        self.assertEqual("leader-session", self.storage.turn.reply_owner_session_id)
+        self.assertEqual((), self.storage.turn.pending_question_ids)
+
+    async def test_peer_can_ask_back_then_both_dependencies_settle(self):
+        first = await self.say(
+            "worker", to="Peer", kind="question", content="Need your data"
+        )
+        back = await self.say(
+            "peer", to="Worker", kind="question", content="Which scope applies?"
+        )
+        self.assertEqual("waiting_peer", self.branch("peer").status)
         self.assertEqual("running", self.branch("worker").status)
-        self.assertIn("cyclic", self.branch("peer").reason)
-        self.assertEqual("running", self.storage.context.state.tasks[self.task].status)
+        self.assertEqual(1, len(self.branch("worker").waiting_for))
+
+        await self.say(
+            "worker",
+            to="Peer",
+            kind="answer",
+            content="Use the current customer scope",
+            in_reply_to=back.metadata["handoff_id"],
+        )
+        self.assertEqual("waiting_peer", self.branch("worker").status)
+        self.assertEqual("running", self.branch("peer").status)
+
+        await self.say(
+            "peer",
+            to="Worker",
+            kind="answer",
+            content="The requested data is ready",
+            in_reply_to=first.metadata["handoff_id"],
+        )
+        self.assertEqual("review", self.branch("peer").status)
+        self.assertEqual("running", self.branch("worker").status)
+        self.assertEqual({}, self.branch("worker").waiting_for)
 
     async def test_exchange_limit_cannot_be_bypassed_with_new_thread_or_key(self):
         self.service.config = replace(
@@ -268,34 +428,25 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual((0, 0, 0, False), (completed, errors, verified, waiting))
         self.assertEqual([], await self.bus.dequeue_wakeups(max_count=10))
 
-    async def test_complete_needs_current_evidence_does_not_close_ticket(self):
+    async def test_planner_promise_does_not_finish_its_assignment(self):
+        report = await self.say(
+            "worker", to="Leader", kind="result",
+            content="Tôi sẽ lên lịch trình sơ bộ và phối hợp lấy giá từng dịch vụ.",
+        )
+        self.assertEqual("progress", report.metadata["kind"])
+        self.assertEqual("running", self.branch("worker").status)
+
+    async def test_complete_does_not_require_evidence_or_close_ticket(self):
         result = await self.say(
             "worker", to="Leader", kind="result", content="Option available"
         )
-        refused = await self.tool("leader")(
+        completed = await self.tool("leader")(
             to="Worker",
             kind="handoff",
             content="Enough",
             resolution="complete",
-            reference_event_ids=(result.metadata["handoff_id"],),
         )
-        self.assertEqual("error", refused.state)
-        await self.service.append_event(
-            user_id="u",
-            team_id="ticket-1",
-            kind="external_event",
-            content="Verified option",
-            event_id="tool-1",
-            source_session_id="worker-session",
-        )
-        await self.say(
-            "leader",
-            to="Worker",
-            kind="handoff",
-            content="Enough verified information",
-            resolution="complete",
-            reference_event_ids=(result.metadata["handoff_id"], "tool-1"),
-        )
+        self.assertEqual("running", completed.state)
         self.assertEqual("completed", self.branch("worker").status)
         self.assertEqual("running", self.storage.context.state.tasks[self.task].status)
         await self.service.append_event(
@@ -312,26 +463,91 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual(1, self.branch("worker").exchanges)
         self.assertEqual(self.task, self.storage.context.state.active_task_id)
 
-    async def test_review_auto_completes_only_current_tool_backed_result(self):
-        result = await self.say(
-            "worker", to="Leader", kind="result", content="Option available"
-        )
-        self.assertEqual("review", self.branch("worker").status)
-        self.assertEqual(
-            ["worker-session"],
-            await self.service.collaboration_review(
-                "u", "ticket-1", "leader-session"
-            ),
-        )
-
+    async def test_final_answer_seals_one_revision_and_follow_up_reopens_it(self):
         await self.service.append_event(
             user_id="u",
             team_id="ticket-1",
             task_id=self.task,
             kind="external_event",
-            content="Verified option",
-            event_id="tool-result",
+            content="Verified current result",
+            event_id="seal-tool-result",
             source_session_id="worker-session",
+        )
+        await self.say(
+            "worker", to="Leader", kind="result", content="Verified current result"
+        )
+        self.assertEqual(
+            [],
+            await self.service.collaboration_review(
+                "u", "ticket-1", "leader-session"
+            ),
+        )
+        revision = await self.service.latest_event_revision(
+            "u", "ticket-1", self.task
+        )
+        self.assertFalse(
+            await self.service.seal_final_answer(
+                "u",
+                "ticket-1",
+                "leader-session",
+                expected_event_revision=revision - 1,
+            )
+        )
+        self.assertTrue(
+            await self.service.seal_final_answer(
+                "u",
+                "ticket-1",
+                "leader-session",
+                expected_event_revision=revision,
+            )
+        )
+        self.assertEqual(
+            "completed", self.storage.context.state.tasks[self.task].status
+        )
+        await self.service.append_event(
+            user_id="u",
+            team_id="ticket-1",
+            task_id=self.task,
+            kind="customer_reply",
+            content="Final synthesized answer",
+            event_id="sealed-customer-reply",
+            source_session_id="leader-session",
+        )
+
+        blocked = await self.tool("worker")(
+            to="Peer", kind="question", content="Late extra work"
+        )
+        self.assertEqual("error", blocked.state)
+        await self.service.append_event(
+            user_id="u",
+            team_id="ticket-1",
+            kind="customer_message",
+            content="Please handle one more requirement",
+            event_id="customer-after-seal",
+        )
+        self.assertEqual("running", self.storage.context.state.tasks[self.task].status)
+        await self.say(
+            "worker", to="Peer", kind="question", content="Handle the new requirement"
+        )
+
+    async def test_review_auto_completes_any_delivered_result(self):
+        result = await self.say(
+            "worker", to="Leader", kind="result", content="Option available"
+        )
+        self.assertEqual("review", self.branch("worker").status)
+        self.assertEqual(
+            [],
+            await self.service.collaboration_review(
+                "u", "ticket-1", "leader-session"
+            ),
+        )
+        self.assertEqual("completed", self.branch("worker").status)
+        self.assertIn("accepted", self.branch("worker").reason)
+        self.assertEqual(result.metadata["kind"], "result")
+
+    async def test_review_accepts_result_without_tool_source(self):
+        await self.say(
+            "worker", to="Leader", kind="result", content="Planner proposal"
         )
 
         self.assertEqual(
@@ -341,21 +557,24 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             ),
         )
         self.assertEqual("completed", self.branch("worker").status)
-        self.assertIn("evidence-backed", self.branch("worker").reason)
-        self.assertEqual(result.metadata["kind"], "result")
 
-    async def test_review_keeps_unverified_report_for_leader(self):
+    async def test_review_accepts_supported_context_only_planning_result(self):
+        self.storage.agents["worker"].data.execution_mode = "context_only"
         await self.say(
-            "worker", to="Leader", kind="result", content="Unverified proposal"
+            "worker",
+            to="Leader",
+            kind="result",
+            content="Use a two-step plan based on the current customer constraints.",
         )
 
         self.assertEqual(
-            ["worker-session"],
+            [],
             await self.service.collaboration_review(
                 "u", "ticket-1", "leader-session"
             ),
         )
-        self.assertEqual("review", self.branch("worker").status)
+        self.assertEqual("completed", self.branch("worker").status)
+        self.assertIn("accepted", self.branch("worker").reason)
 
     async def test_delivered_worker_error_stops_branch_without_blocking_leader(self):
         report = await self.say(
@@ -613,29 +832,14 @@ class TestCollaboration(IsolatedAsyncioTestCase):
             self.storage.context.state.tasks[self.task].pending_question_ids or None
         )
 
-    async def test_conflict_requires_two_real_sources(self):
-        failed = await self.tool("worker")(
+    async def test_conflict_does_not_require_source_references(self):
+        accepted = await self.tool("worker")(
             to="Leader",
             kind="conflict",
             content="They disagree",
             reference_event_ids=("invented-a", "invented-b"),
         )
-        self.assertEqual("error", failed.state)
-        for n in (1, 2):
-            await self.service.append_event(
-                user_id="u",
-                team_id="ticket-1",
-                kind="external_event",
-                content=f"Provider value {n}",
-                event_id=f"source-{n}",
-            )
-        await self.say(
-            "worker",
-            to="Leader",
-            kind="conflict",
-            content="Values disagree",
-            reference_event_ids=("source-1", "source-2"),
-        )
+        self.assertEqual("running", accepted.state)
         self.assertEqual("review", self.branch("worker").status)
         self.assertIsNone(await self.service.pending_user_question("u", "ticket-1"))
 
