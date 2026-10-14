@@ -32,22 +32,29 @@ nginx dùng chung image Vinhome đã có.
    ```
 4. Tạo tài khoản quản lý demo, credential OpenAI và MCP demo bằng
    `scripts/workforce/bootstrap_demo.py` (chạy trong container `app`).
-5. Onboard Vinhome từ bộ khai báo của chính Vinhome
+5. MCP của Vinhome chống DNS-rebinding: Host `api:8000` phải nằm trong danh
+   sách cho phép. Thêm `MCP_ALLOWED_HOSTS=api:8000` vào
+   `/opt/vinhomes/deploy/deployment.env`. Compose của Vinhome đưa biến này vào
+   `VINHOMES_API_MCP_ALLOWED_HOSTS`; đây là cấu hình có sẵn, không sửa code.
+   Sau đó khởi động lại `api` như bước 7. Thiếu bước này thì onboarding trả
+   `MCP_UNREACHABLE` (421 Invalid Host header).
+6. Onboard Vinhome từ bộ khai báo của chính Vinhome
    (`/opt/vinhomes/deploy/platform/vinhomes-declaration.json`) bằng
    `scripts/workforce/onboard_partner.py`. Các tham số:
    - `--mcp-url http://api:8000/mcp`;
    - `--partner-url http://awp-platform:8000`;
    - `--management-refs local-management`;
    - MCP token lấy từ `VINHOMES_API_PLATFORM_MCP_TOKEN` của Vinhome.
-6. Dán 5 dòng của `platform.env` vào `/opt/vinhomes/deploy/deployment.env`
-   (đã sao lưu bản cũ), rồi khởi động lại đúng hai service của Vinhome, **giữ
-   đúng tag image đang chạy**:
+7. Dán 5 dòng của `platform.env` vào `/opt/vinhomes/deploy/deployment.env`
+   (bản cũ: `deployment.env.bak-awp-20261014`), rồi khởi động lại đúng hai
+   service của Vinhome, **giữ đúng tag image đang chạy** (ngày 14/10:
+   `staff-mcp-20261014-1d76ea3c`; tag trong `deployment.env` đã cũ):
    ```bash
    cd /opt/vinhomes/deploy
-   VINHOMES_IMAGE_TAG=<tag đang chạy> docker compose --env-file deployment.env \
+   VINHOMES_API_IMAGE_TAG=<tag đang chạy> docker compose --env-file deployment.env \
      -f compose.yml -f compose.tls.yml up -d --no-deps api platform-sync
    ```
-7. Xác nhận route bằng khoá khách hàng, rồi kiểm tra trạng thái:
+8. Xác nhận route bằng khoá khách hàng, rồi kiểm tra trạng thái:
    ```bash
    docker compose ... exec platform-sync python -m vinhomes_api.platform confirm-routes --route local-management=<route_id>:<revision>
    docker compose ... exec platform-sync python -m vinhomes_api.platform status
@@ -74,3 +81,12 @@ Tài khoản quản lý demo và các khoá nằm trong
 - **Tắt nối:** để `VINHOMES_API_PLATFORM_URL=` trống trong `deployment.env` rồi
   làm lại bước 6. Cầu nối Vinhome tắt, Lễ tân xử lý như trước.
 - **Gỡ platform:** `docker compose ... down` (thêm `-v` nếu muốn xoá dữ liệu).
+
+## Ghi chú ngày 14/10
+
+- 2 liên kết thử cũ (12/10, tài khoản `mock-an`) có workflow nằm trên platform
+  thử trước đây. Cầu nối đọc lại chúng mỗi giây và nhận 404, nên đã được đặt
+  `platform_links.status='closed'`. Hai phiếu vẫn mở, Lễ tân xử lý như thường.
+- Kết quả kiểm tra: route `local-management` **active**; cầu nối **bật**
+  (`http://awp-platform:8000`); khoá khách hàng và khoá provider **được chấp
+  nhận**.

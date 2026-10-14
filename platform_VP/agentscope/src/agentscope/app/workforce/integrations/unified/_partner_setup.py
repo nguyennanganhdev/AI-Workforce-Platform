@@ -125,6 +125,10 @@ class PartnerOnboarding:
         if domain != scope.domain_id:
             raise OnboardingError(409, "DOMAIN_MISMATCH", {"manager_domain": scope.domain_id})
         keys: dict[str, str] = {}
+        # Everything that can fail on the partner's side comes first: keys are
+        # shown once, so none may be issued by a run that then fails.
+        mcp_record = await self._mcp(body, declaration, storage)
+        tools = self._tools(declaration, mcp_record, leader.get("tools_allow") or ["*"])
 
         client_id = await self._client(scope, f"{client_decl['name']} ({body.environment})")
         new_client = client_id is None
@@ -161,8 +165,6 @@ class PartnerOnboarding:
                 kept = tuple(k.split(".")[0].removeprefix("dp_") for k in (keys["customer_key"], provider.api_key))
                 await business.revoke_client_keys(client_id=client_id, keep=kept)
 
-        mcp_record = await self._mcp(body, declaration, storage)
-        tools = self._tools(declaration, mcp_record, leader.get("tools_allow") or ["*"])
         agent_id, version = await self._leader(body, leader, tools, mcp_record, storage, workspace_manager)
         await self._schema(scope, client_id, integration_id, declaration)
 

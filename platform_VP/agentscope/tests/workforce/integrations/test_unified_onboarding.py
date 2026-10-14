@@ -431,3 +431,21 @@ class PartnerOnboardingTest(UnifiedOnboardingTest):
             await self.business.authenticate_partner_api_key(keys["customer_key"])
         await self.business.authenticate_partner_api_key(renewed["customer_key"])
         await self.business.authenticate_partner_api_key(renewed["provider_key"])
+
+    async def test_an_unreachable_mcp_issues_no_keys(self):
+        from unittest.mock import patch
+
+        from agentscope.app._router import _mcp
+
+        async def down(client, timeout):
+            raise ConnectionError("partner MCP is down")
+
+        with patch.object(_mcp, "_discover_tools", down):
+            failed = await self._onboard()
+        self.assertEqual(502, failed.status_code)
+        self.assertEqual("MCP_UNREACHABLE", failed.json()["error"]["code"])
+        async with self.engine.connect() as connection:
+            clients = (await connection.execute(text("SELECT count(*) FROM partner_api_clients"))).scalar()
+        self.assertEqual(1, clients)  # only the fixture's client
+        first = (await self._onboard()).json()
+        self.assertIn("customer_key", first["keys"])
