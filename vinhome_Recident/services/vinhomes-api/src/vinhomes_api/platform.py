@@ -268,10 +268,11 @@ async def divert(db, actor_id: str, channel_id: str, message_text: str, file_ids
     # Only what is known here: whether management was reached is Reception's turn, which has not run yet.
     said = "\n".join(part for part in (
         f"Cư dân vừa báo tình huống khẩn cấp ({EMERGENCY[kind]}). Lời cư dân:" if kind else "",
-        message_text, f"Cư dân gửi thêm {len(photos)} ảnh." if photos else "",
-        f"source_message_id: {source_message_id}" if source_message_id else "") if part)
+        message_text, f"Cư dân gửi thêm {len(photos)} ảnh." if photos else "") if part)
     if not said:
         return True  # only photos the request already holds: nothing new to tell
+    if source_message_id:
+        said += f"\nsource_message_id: {source_message_id}"
     # `own`: Reception answers an emergency in the chat itself, so a silent coordinator leaves nobody unanswered.
     await command(db, ticket["ticket_id"], "workflow_reply", {"text": said, **({"own": True} if kind else {})})
     return kind is None

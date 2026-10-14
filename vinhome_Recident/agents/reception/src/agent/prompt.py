@@ -76,7 +76,7 @@ def system_prompt(resident: dict, homes: list[dict], open_request: dict | None, 
                             "dang_cho": waiting.get(open_request.get("pending"))} if open_request else None,
         # What the backend just did with this message for the open request.
         "vua_luu": {"anh_them": added.get("attached", 0), "da_chuyen_cau_tra_loi": added.get("delivered") is True} if added else None,
-        "danh_muc_dich_vu": [{"code": c["code"], "name": {'technical':'Kỹ thuật','security':'An ninh'}.get(c['code'],c['name'])} for c in categories],
+        "danh_muc_dich_vu": [{"code": c["code"], "name": {'technical':'Kỹ thuật','security':'An ninh','sanitation':'Vệ sinh'}.get(c['code'],c['name'])} for c in categories],
         "kha_nang_ung_dung": ["Tra cứu thông tin, nội quy, thủ tục và tiện ích theo nơi ở",
                               "Tiếp nhận phản ánh thuộc các nhóm dịch vụ đang bật",
                               "Theo dõi và đề nghị hủy yêu cầu đang mở trong cuộc trò chuyện"],

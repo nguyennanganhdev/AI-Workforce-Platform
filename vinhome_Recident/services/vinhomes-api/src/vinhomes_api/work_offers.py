@@ -10,6 +10,8 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import text
 
+from .staff_scope import STAFF_TICKET_SCOPE
+
 TENANT = "nullif(current_setting('app.tenant_id',true),'')::uuid"
 # How long an offered job waits for the technician before management has to step in.
 OFFER_HOURS = 24
@@ -54,6 +56,7 @@ async def offer_work(db, ticket_id: UUID, work_order_id: UUID, agent_id: str, st
           where a.staff_id=sp.id and o.status not in ('completed','cancelled','rejected')
             and (a.status='accepted' or (a.status='offered' and a.offer_expires_at>now()))) busy
         where sp.tenant_id={TENANT} and sp.active and sp.availability='available'
+          and {STAFF_TICKET_SCOPE}
           and sp.management_unit_id=t.management_unit_id and busy.load<sp.max_concurrent_jobs
           and exists (select 1 from staff_specialties ss where ss.staff_id=sp.id and ss.tenant_id=sp.tenant_id
             and ss.category_id=w.category_id and ss.active)

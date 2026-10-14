@@ -162,3 +162,11 @@ Dùng khi một hệ thống khác (hoặc người vận hành) xuất dữ li�
 - **Xem lượt gần nhất:** tệp `.sync-state.json` trong thư mục (thời điểm, đạt hay không, lỗi nếu có) và `docker compose logs data-sync`.
 
 Bộ đồng bộ không gọi hệ thống nào ở ngoài. Nối với hệ thống quản lý cư dân thật nghĩa là viết thêm bước lấy dữ liệu từ hệ thống đó ra các tệp này.
+
+## Bổ sung Vệ sinh và phạm vi nhân viên (2026-10-14)
+
+Bộ nhập nhận thêm `service_categories.csv` (`code,name`) và `management_coverage.csv` (`management_code,category_code,building_code,valid_from`). Các mã triển khai: `technical`, `security`, `sanitation`. Nạp category trước tuyến, rồi nhân sự/ca. Tuyến phải nêu đơn vị, tòa, thời điểm có timezone; tuyến đã thuộc đơn vị khác bị từ chối để tránh âm thầm đổi quyền điều phối. Bộ nhập chỉ thêm, không dùng để chuyển tuyến hoặc sửa hồ sơ đã có.
+
+`staff.csv` có thêm `building_codes`, phân cách `|`. Nhân viên `sanitation` bắt buộc nêu tòa rõ ràng; chuyên môn tra theo category đang bật trong DB. Không tự gán nhân viên kỹ thuật sang vệ sinh. Giữ hành vi cũ cho dữ liệu technical/security chưa có cột này; với nhân sự mới nên luôn nêu phạm vi. `shifts.csv` dùng `starts_at,ends_at` có timezone, không tạo ca vô hạn.
+
+Các mẫu tại `deploy/data-templates/`. `resident-service-catalog.csv` là bảng **thu thập và xét duyệt nội dung**, không phải file được importer tự nạp: cần đối chiếu nguồn, chuyển thành tài liệu/chunk knowledge, điền `metadata.sources` và `metadata.review` trước khi phát hành là thông tin chính thức. Trường giá, giờ, hotline chưa xác nhận phải để thiếu và yêu cầu bổ sung, không điền dữ liệu demo. Schema review hiện tại gồm `approved_by`, `approved_at`, `document_reference`, `effective_from`, `effective_until` (nếu có); ngày dùng ISO `YYYY-MM-DD`.

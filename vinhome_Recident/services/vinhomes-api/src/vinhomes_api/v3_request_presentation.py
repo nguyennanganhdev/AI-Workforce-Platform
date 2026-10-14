@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from .v3_audit import audit
 from .v3_auth import TICKET_VISIBILITY, scoped_connection
+from .staff_scope import STAFF_TICKET_SCOPE
 from .v3_mutations import management_access, record_event, visible_ticket
 
 router = APIRouter(tags=["Vinhomes request presentation"])
@@ -167,6 +168,7 @@ async def offer_planned_work(db, ticket_id: UUID, work_order_id: UUID, plan) -> 
         join tickets t on t.id=:ticket and t.tenant_id=sp.tenant_id
         join work_orders w on w.id=:work and w.ticket_id=t.id and w.tenant_id=t.tenant_id
         where sp.id=cast(:staff as uuid) and sp.tenant_id={TENANT} and sp.active
+          and {STAFF_TICKET_SCOPE}
           and sp.management_unit_id=t.management_unit_id and sp.availability='available'
           and exists(select 1 from staff_specialties ss where ss.staff_id=sp.id and ss.tenant_id=sp.tenant_id
             and ss.category_id=w.category_id and ss.active)

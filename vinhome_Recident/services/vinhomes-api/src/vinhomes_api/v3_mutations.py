@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from .v3_auth import TICKET_VISIBILITY, scoped_connection
+from .staff_scope import STAFF_TICKET_SCOPE
 
 router = APIRouter(tags=["Vinhomes V3 commands"])
 Scope = Annotated[tuple[AsyncConnection, str, bool], Depends(scoped_connection, scope="function")]
@@ -629,20 +630,22 @@ async def create_assignment(work_order_id: UUID, body: AssignmentCreate,
     """), {"id": work_order_id})
     if active_offer.first() is not None:
         raise HTTPException(409, "Work order already has an active assignment")
-    staff = await scope[0].execute(text("""
+    staff = await scope[0].execute(text(f"""
         select sp.max_concurrent_jobs from staff_profiles sp
+        join tickets t on t.id=:ticket_id and t.tenant_id=sp.tenant_id
         where sp.id=:staff_id and sp.active and sp.availability='available'
           and sp.management_unit_id=cast(:management_unit_id as uuid)
+          and {STAFF_TICKET_SCOPE}
           and exists (select 1 from staff_specialties ss where ss.staff_id=sp.id
             and ss.tenant_id=sp.tenant_id and ss.category_id=:category_id and ss.active)
           and exists (select 1 from staff_shifts sh where sh.staff_id=sp.id
             and sh.tenant_id=sp.tenant_id and sh.status='available' and sh.starts_at<=now() and sh.ends_at>now())
         for update of sp
-    """), {"staff_id": body.staff_id, "category_id": order["category_id"],
+    """), {"ticket_id":ticket["id"],"staff_id": body.staff_id, "category_id": order["category_id"],
            "management_unit_id": ticket["management_unit_id"]})
     staff_row = staff.mappings().first()
     if staff_row is None:
-        raise HTTPException(422, "Staff member is inactive or lacks this specialty")
+        raise HTTPException(422, "Staff member is inactive, outside this scope or lacks this specialty")
     load = await scope[0].execute(text("""
         select count(*) from work_assignments a join work_orders w on w.id=a.work_order_id and w.tenant_id=a.tenant_id
         where a.staff_id=:staff_id and w.status not in ('completed','cancelled','rejected')

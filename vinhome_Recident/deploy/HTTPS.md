@@ -79,3 +79,22 @@ Script dùng thư mục chứng chỉ `/srv/vinhomes-tls` và deploy hook chỉ 
 Nguồn kỹ thuật: [Nginx HTTPS](https://nginx.org/en/docs/http/configuring_https_servers.html), [Certbot webroot và renewal](https://eff-certbot.readthedocs.io/en/stable/using.html#webroot), [Let's Encrypt challenge types](https://letsencrypt.org/docs/challenge-types/).
 
 Nếu CA không truy cập được challenge dù kiểm tra nội bộ đạt, chưa coi HTTPS hoàn tất. Giữ bản HTTP trước đó và cấu hình cookie phù hợp, báo rõ phần mạng/xác minh còn vướng; không dùng chứng chỉ tự ký để thay nghiệm thu public.
+
+## Nghiệm thu trực tiếp 2026-10-14: CHƯA ĐẠT
+
+VPS `103.238.235.156`, Certbot 2.9.0: `renew --dry-run` DNS-01 thất bại vì HTTPS DuckDNS API timeout, TXT rỗng. Thử từng IPv4 do DNS local, 1.1.1.1 và 8.8.8.8 trả về đều timeout ở TCP443. HTTPS Let’s Encrypt staging hoạt động; OUTPUT policy ACCEPT, không thấy rule OUTPUT chặn DuckDNS.
+
+Challenge HTTP-01 trả 200 và đúng nội dung từ máy triển khai qua IP và tên miền, nhưng `certbot reconfigure --webroot` bị CA báo `Timeout during connect`. Reconfigure không thành công nên **không đổi cấu hình renewal đã lưu**; chứng chỉ đang phục vụ được giữ nguyên. Đây là bằng chứng cần nhà cung cấp kiểm tra tuyến/ACL/anti-DDoS quốc tế, chưa đủ kết luận chắc chắn lỗi thuộc nhà cung cấp.
+
+Yêu cầu nhà cung cấp kiểm tra: outbound TCP443 tới `www.duckdns.org`, `duckdns.org`; inbound TCP80 tới challenge từ mạng xác minh của CA, và TCP443 cho ứng dụng. Các IP DNS chỉ là snapshot, không ghim chúng trong `/etc/hosts`. Không gửi token DuckDNS trong ticket hỗ trợ, không chuyển API có token sang HTTP, không tắt kiểm tra TLS.
+
+Sau khi mạng hoạt động, cài bản script mới rồi chạy trực tiếp:
+
+```bash
+/usr/local/sbin/vinhomes-renew-tls dry-run
+systemctl status vinhomes-tls-renew.timer --no-pager
+```
+
+Chỉ nghiệm thu khi dry-run exit0 và log nêu mô phỏng gia hạn thành công. Nếu chọn HTTP-01, chạy `certbot reconfigure --cert-name vinhome-platform.duckdns.org --webroot -w /srv/vinhomes-acme --preferred-challenges http --non-interactive --config-dir /srv/vinhomes-tls --work-dir /srv/vinhomes-certbot-work --logs-dir /srv/vinhomes-certbot-logs` thành công trước khi dry-run. Không ghi đè renewal file bằng tay để bỏ qua bước xác minh. [Certbot reconfigure](https://eff-certbot.readthedocs.io/en/stable/using.html#modifying-the-renewal-configuration-of-existing-certificates).
+
+Log riêng trên VPS: `/opt/vinhomes/audits/tls-staff-20261014/`, gồm lần DNS-01 và HTTP-01. Timer active không thay cho kết quả này.

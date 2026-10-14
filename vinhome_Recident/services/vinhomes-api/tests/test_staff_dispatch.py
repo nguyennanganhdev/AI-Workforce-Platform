@@ -86,6 +86,21 @@ def test_manual_dispatch_rejects_a_worker_without_the_work_specialty(database):
             "status": "accepted", "eta_at": datetime.now(UTC).isoformat()}).status_code == 403
 
 
+def test_dispatch_never_assigns_work_outside_the_workers_active_scope(database):
+    staff = sql(database, "select id from staff_profiles where user_id='local-v3-technical'")[0]["id"]
+    order, _ = approved_order(database)
+    roles = sql(database, """update scoped_user_roles set valid_to=now()-interval '1 second'
+        where membership_id in(select id from tenant_memberships where user_id='local-v3-technical')
+          and role_code='staff' and valid_to is null returning id""")
+    try:
+        refused = offer(database, order, staff)
+        assert refused.status_code == 422, refused.text
+        assert sql(database, "select status from work_orders where id=$1", UUID(order["id"])) == [{"status": "queued"}]
+    finally:
+        for role in roles:
+            sql(database, "update scoped_user_roles set valid_to=null where id=$1 returning id", role["id"])
+
+
 def test_accepted_jobs_queue_and_concurrent_starts_allow_only_one_active_order(database):
     sql(database, "update staff_profiles set max_concurrent_jobs=2 where user_id='local-v3-technical' returning id")
     staff = sql(database, "select id from staff_profiles where user_id='local-v3-technical'")[0]["id"]

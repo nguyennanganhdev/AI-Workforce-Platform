@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from test_domain_database import operation
 from test_integration_auth import person
 from test_knowledge import DOCUMENTS, write
-from test_platform_bridge import FakePlatform, chat, commands, link, say, sync
+from test_platform_bridge import FakePlatform, chat, commands, link, resident_reply_text, say, sync
 from test_platform_bridge import on as on  # noqa: PLC0414 -- pytest fixture export
 from test_platform_bridge import turns as turns  # noqa: PLC0414 -- pytest fixture export
 from test_resident_contract import CATEGORY, TENANT, image, key, sql
@@ -109,18 +109,18 @@ def decide(database, ticket, approval, approved, note):
         return c.post(f"/resident/approvals/{approval}/decision", headers=key(), json={"version": version, "approved": approved, "note": note})
 
 
-def hand_over(c, words="Đèn phòng khách không sáng", plan=False):
+def hand_over(c, words="Đèn phòng khách không sáng", plan=False, category=CATEGORY, item="đèn phòng khách", symptom="không sáng"):
     """Reception files the request from the chat; with the bridge on, the ticket is linked to the platform."""
     place = operation(c, "get_verified_resident_context")[0]["residences"][0]
     channel = c.post("/resident/chats", json={"title": "Công cụ của trợ lý"}).json()["id"]
     message = say(c, channel, words)
     draft, _ = operation(c, "create_ticket_draft", {
         "channel_id": channel, "domain_id": place["domain_id"], "building_id": place["building_id"],
-        "unit_id": place["unit_id"], "category_id": CATEGORY})
+        "unit_id": place["unit_id"], "category_id": category})
     target = {"channel_id": channel, "draft_id": draft["draftId"]}
     operation(c, "update_ticket_incident", {**target, "fields": {"source_message_id": message, "facts": [
-        {"key": "symptom", "value": "không sáng", "source": "customer_report", "source_message_id": message},
-        {"key": "item", "value": "đèn phòng khách", "source": "customer_report", "source_message_id": message}]}})
+        {"key": "symptom", "value": symptom, "source": "customer_report", "source_message_id": message},
+        {"key": "item", "value": item, "source": "customer_report", "source_message_id": message}]}})
     operation(c, "submit_ticket_assessment", {**target, "assessment": {"priority": "high", "severity": "minor", "reason": "Cư dân báo"}})
     handoff, _ = operation(c, "handoff_ticket", {**target, "plan_required": plan})
     assert handoff["accepted"], handoff
@@ -258,21 +258,51 @@ def test_a_ticket_the_platform_is_not_working_on_is_refused_by_every_tool(databa
 
 # ---- the whole job ----------------------------------------------------------------------------------------------------
 
-def test_a_job_from_dispatch_to_the_residents_confirmation_is_reported_in_order(database, on):
+
+def test_mcp_does_not_offer_to_a_worker_who_cannot_read_the_ticket(database, on):
+    on_shift(database, HOA)
+    _, ticket = started(database, FakePlatform())
+    roles = sql(database, """update scoped_user_roles set valid_to=now()-interval '1 second'
+        where membership_id in(select id from tenant_memberships where user_id=$1)
+          and role_code='staff' and valid_to is null returning id""", HOA)
+    try:
+        assert call(database, work.staff_available, ticket)["staff"] == []
+        queued = call(database, work.dispatch, ticket, "Công việc trong phạm vi tòa nhà", None, None, ref())
+        assert queued["status"] == "queued" and offers(database, queued["external_job_id"]) == []
+        put_down(database, queued["external_job_id"])
+    finally:
+        for role in roles:
+            sql(database, "update scoped_user_roles set valid_to=null where id=$1 returning id", role["id"])
+
+@pytest.mark.parametrize("category_code", ["technical", "sanitation"])
+def test_a_job_from_dispatch_to_the_residents_confirmation_is_reported_in_order(database, on, category_code):
+    cleaning = category_code == "sanitation"
+    description = "Vệ sinh sàn hành lang trước căn hộ" if cleaning else "Thay bóng đèn phòng khách"
+    material = "Dung dịch vệ sinh" if cleaning else "Bóng LED"
+    material_unit = "chai" if cleaning else "cái"
+    result_note = "Đã vệ sinh sàn, khu vực sạch và khô" if cleaning else "Đã thay 2 bóng LED, đèn sáng tốt"
     fake = FakePlatform()
     on_shift(database, HOA)
-    channel, ticket = started(database, fake)
+    category = CATEGORY
+    if category_code == "sanitation":
+        category = str(uuid4())
+        sql(database, "insert into service_categories(id,tenant_id,code,name) values($1,$2,'sanitation','Vệ sinh') returning id", UUID(category), TENANT)
+        sql(database, """insert into management_coverage(tenant_id,management_unit_id,scope_id,service_category_id,valid_from,priority)
+            select tenant_id,management_unit_id,scope_id,$1,valid_from,priority from management_coverage where service_category_id=$2 returning id""", UUID(category), UUID(CATEGORY))
+        sql(database, """insert into staff_specialties(tenant_id,staff_id,category_id,proficiency)
+            select tenant_id,id,$1,'standard' from staff_profiles where user_id=$2 returning staff_id""", UUID(category), HOA)
+    channel, ticket = started(database, fake, category=category, **({"words":"Sàn hành lang trước căn hộ bị bẩn", "item":"sàn hành lang", "symptom":"bị bẩn"} if cleaning else {}))
     dispatch = ref()
-    answer = call(database, work.dispatch, ticket, "Thay bóng đèn phòng khách", None, None, dispatch)
+    answer = call(database, work.dispatch, ticket, description, None, None, dispatch)
     assert answer["status"] == "pending" and answer["offered_to"] == "Kỹ thuật viên Hoa" and re.fullmatch(WHEN, answer["offer_expires_at"])
     job = answer["external_job_id"]
     # The same reference again: the stored answer, and nothing done twice.
-    assert call(database, work.dispatch, ticket, "Thay bóng đèn phòng khách", None, None, dispatch) == answer
+    assert call(database, work.dispatch, ticket, description, None, None, dispatch) == answer
     # The reference of one call answers that call only: another tool gets no stored answer and does nothing.
     stray = call(database, work.add_note, ticket, "Gọi trước khi đến", dispatch)
     assert stray["status"] == "failed" and "external_job_id" not in stray and events(database, ticket, "ticket.note_added") == []
     assert sql(database, "select id,status,description from work_orders where ticket_id=$1", UUID(ticket)) == [
-        {"id": UUID(job), "status": "offered", "description": "Thay bóng đèn phòng khách"}]
+        {"id": UUID(job), "status": "offered", "description": description}]
     assert len(offers(database, job)) == 1 and len(events(database, ticket, "work_order.created")) == 1
     [stored] = sql(database, "select tool,work_order_id,answer from platform_operations where client_reference=$1", dispatch)
     assert (stored["tool"], stored["work_order_id"], json.loads(stored["answer"])) == ("vh_work_order_dispatch", UUID(job), answer)
@@ -293,13 +323,13 @@ def test_a_job_from_dispatch_to_the_residents_confirmation_is_reported_in_order(
             order = moved.json()
         proposed = worker.post(f"/work-orders/{job}/repair-proposal", json={
             "version": order["version"], "note": "Thay bóng LED mới, nội bộ: gọi 0901234567", "labor_cost": 50000, "warranty_months": 3,
-            "lines": [{"name": "Bóng LED", "quantity": "2", "unit": "cái", "unit_price": 75000}]})
+            "lines": [{"name": material, "quantity": "2", "unit": material_unit, "unit_price": 75000}]})
         assert proposed.status_code == 201, proposed.text
 
     seen = call(database, work.ticket_get, ticket)   # `call` also checks the staff member's note with a phone number stays out
     quote = seen["quote"]
-    assert quote == {"warranty_months": 3, "total": 200000, "items": [
-        {"label": "Bóng LED (2 cái)", "amount": 150000}, {"label": "Tiền công", "amount": 50000}]}
+    assert quote == {"approval_id":proposed.json()["id"],"expires_at":None,"warranty_months": 3, "total": 200000, "items": [
+        {"label": f"{material} (2 {material_unit})", "amount": 150000}, {"label": "Tiền công", "amount": 50000}]}
     [shown] = seen["work_orders"]
     assert (shown["work_status"], shown["staff_name"], shown["offer"]) == ("awaiting_approval", "Kỹ thuật viên Hoa", "accepted")
     assert re.fullmatch(WHEN, shown["eta"]) and re.fullmatch(WHEN, shown["arrived_at"]) and shown["acceptance_report"] is None
@@ -330,7 +360,7 @@ def test_a_job_from_dispatch_to_the_residents_confirmation_is_reported_in_order(
         started_ = advance(worker, order, "in_progress")
         assert started_.status_code == 200, started_.text
         accept_at = f"/work-orders/{job}/onsite-acceptance"
-        said = {"version": started_.json()["version"], "note": "Đã thay 2 bóng LED, đèn sáng tốt"}
+        said = {"version": started_.json()["version"], "note": result_note}
         assert worker.post(accept_at, json=said).status_code == 409   # not finished yet
         for purpose in ("before", "after"):
             photo(worker, ticket, job, mine["assignment_id"], purpose)
@@ -371,7 +401,7 @@ def test_a_job_from_dispatch_to_the_residents_confirmation_is_reported_in_order(
     # Kept as what it is: the report of the technician who did the job, with their note and how many photos of the
     # result. Nothing says the resident checked. Then the usual publication: resolved, and the resident is asked.
     check = sql(database, "select outcome,checked_by,note,criteria from vh_qc_results where work_order_id=$1", UUID(job))
-    assert [(c["outcome"], c["checked_by"], c["note"]) for c in check] == [("pass", HOA, "Đã thay 2 bóng LED, đèn sáng tốt")]
+    assert [(c["outcome"], c["checked_by"], c["note"]) for c in check] == [("pass", HOA, result_note)]
     assert json.loads(check[0]["criteria"]) == [{"name": "acceptance_report", "result": "pass", "photos": 2}]
     assert events(database, ticket, "work_order.qc_recorded")[0]["payload"]["channel"] == "acceptance_report"
     assert sql(database, "select status from tickets where id=$1", UUID(ticket)) == [{"status": "resolved"}]
@@ -387,7 +417,7 @@ def test_a_job_from_dispatch_to_the_residents_confirmation_is_reported_in_order(
     assert len(sql(database, "select 1 as x from ticket_files where ticket_id=$1", UUID(ticket))) == 3 and final["resident_photos"] == 0
     report = shown["acceptance_report"]
     assert {**report, "reported_at": None} == {"result": "pass", "reported_by": "Kỹ thuật viên Hoa", "reported_at": None,
-                                                "note": "Đã thay 2 bóng LED, đèn sáng tốt"}
+                                                "note": result_note}
     assert re.fullmatch(WHEN, report["reported_at"]) and "acceptance" not in shown and "onsite" not in json.dumps(final)
     assert "Nhân viên gửi kết quả nghiệm thu" in [m["what"] for m in final["milestones"]]
 
@@ -403,12 +433,12 @@ def test_a_job_from_dispatch_to_the_residents_confirmation_is_reported_in_order(
     got = [r["body"] for r in fake.received.values()]
     assert [b["event_type"] for b in got] == [r["event_type"] for r in sent] and all(b["client_reference"] == dispatch for b in got)
     assert sent[1]["data"]["staff_name"] == "Kỹ thuật viên Hoa" and re.fullmatch(WHEN, sent[1]["data"]["eta"])
-    assert sent[4]["data"] == quote and sent[5]["data"] == {}
-    assert sent[8]["data"] == {"summary": "Nhân viên đã làm xong và gửi kết quả nghiệm thu. Ghi chú của nhân viên: Đã thay 2 bóng LED, đèn sáng tốt",
+    assert sent[4]["data"] == {k:quote[k] for k in ("items","total","warranty_months")} and sent[5]["data"] == {}
+    assert sent[8]["data"] == {"summary": f"Nhân viên đã làm xong và gửi kết quả nghiệm thu. Ghi chú của nhân viên: {result_note}",
                                "photo_count": 2, "reported_by": "Kỹ thuật viên Hoa"}
     # The resident has the result in the chat from the bridge itself, once, whatever the coordinator goes on to say.
     assert [m["text"] for m in chat(database, channel) if "platform" not in m][-1:] == [
-        "Nhân viên đã làm xong và gửi kết quả nghiệm thu. Ghi chú của nhân viên: Đã thay 2 bóng LED, đèn sáng tốt\n"
+        f"Nhân viên đã làm xong và gửi kết quả nghiệm thu. Ghi chú của nhân viên: {result_note}\n"
         "Người gửi: Kỹ thuật viên Hoa. Số ảnh kết quả: 2.\nBạn xem rồi bấm Xác nhận hoàn thành hoặc Chưa đạt ngay trong hộp chat này."]
     with person(database, AN) as c:
         assert next(x for x in c.get("/resident/chats").json()["items"] if x["id"] == channel)["confirm_close"] is True
@@ -538,7 +568,8 @@ def test_an_emergency_is_handed_over_with_its_level_and_guard_work_is_still_not_
         message = say(c, channel, "Ổ điện phòng khách đang bốc khói")
         told = commands(database, ticket)[-1]
         assert told["kind"] == "workflow_reply" and told["body"]["text"].startswith("Cư dân vừa báo tình huống khẩn cấp (cháy hoặc khói).")
-        assert told["body"]["text"].endswith("Lời cư dân:\nỔ điện phòng khách đang bốc khói") and told["body"]["own"] is True
+        assert resident_reply_text(told["body"]["text"]).endswith("Lời cư dân:\nỔ điện phòng khách đang bốc khói") and told["body"]["own"] is True
+        assert told["body"]["text"].endswith("source_message_id: "+message)
         escalated, _ = operation(c, "escalate_emergency", {"ticket_id": ticket, "reason": "Cư dân báo ổ điện bốc khói", "source_message_id": message})
         assert escalated["isEmergency"] is True
     seen = call(database, work.ticket_get, ticket)
@@ -591,7 +622,7 @@ def test_photos_sent_after_the_hand_over_are_counted_by_the_ticket_look_up(datab
             sent.append(photo_.json()["id"])
         posted = c.post(f"/resident/chats/{channel}/messages", json={"text": "Ảnh chỗ hỏng đây ạ", "client_message_id": str(uuid4()), "file_ids": sent})
         assert posted.status_code == 201, posted.text
-    assert commands(database, ticket)[-1]["body"] == {"text": "Ảnh chỗ hỏng đây ạ\nCư dân gửi thêm 2 ảnh."}
+    assert resident_reply_text(commands(database, ticket)[-1]["body"]["text"]) == "Ảnh chỗ hỏng đây ạ\nCư dân gửi thêm 2 ảnh."
     assert call(database, work.ticket_get, ticket)["resident_photos"] == 2
     assert [e["payload"] for e in events(database, ticket, "ticket.conversation_images_attached")] == [{"fileIds": sent}]
 
@@ -701,6 +732,7 @@ def test_reschedule_note_and_cancel_do_their_work_once_and_refuse_once_staff_is_
     channel, ticket = started(database, fake)
     morning = (datetime.now(VN) + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
     evening = morning.replace(hour=18, minute=30)
+    sql(database, "update staff_shifts set ends_at=$1 where staff_id=(select id from staff_profiles where user_id=$2) and status='available' returning id", evening+timedelta(hours=1), HOA)
     assert call(database, work.reschedule, ticket, evening.isoformat(), "x", ref())["status"] == "failed"   # nothing to move yet
     for bad in ("hôm qua", "2020-01-01T09:00:00+07:00"):
         refused = call(database, work.dispatch, ticket, "Thay bóng đèn", None, bad, ref())
@@ -872,13 +904,13 @@ def test_the_mcp_server_lists_and_runs_the_tools_only_for_the_token(database, on
             assert "$ref" not in json.dumps(tool.inputSchema) and len(tool.description) <= 1000
 
         seen = asyncio.run(session(lambda client: client.call_tool("vh_ticket_get", {"ticket_id": ticket})))
-        assert not seen.isError and json.loads(seen.content[0].text)["ticket_status"] in ("open", "triaging")
+        assert seen.isError and seen.structuredContent["error"]["code"] == "TICKET_GRANT_REQUIRED"
         unknown = asyncio.run(session(lambda client: client.call_tool("vh_ticket_get", {"ticket_id": str(uuid4())})))
-        assert not unknown.isError and "ticket_id" in unknown.content[0].text and not unknown.content[0].text.startswith("{")
+        assert unknown.isError and unknown.structuredContent["error"]["code"] == "TICKET_GRANT_REQUIRED"
         for _ in range(2):   # the same reference twice
             done = asyncio.run(session(lambda client: client.call_tool("vh_ticket_add_note", {
                 "ticket_id": ticket, "note": "Cư dân dặn gọi trước khi đến", "client_reference": note})))
-            assert not done.isError and json.loads(done.content[0].text) == {"status": "confirmed"}
+            assert done.isError and done.structuredContent["error"]["code"] == "TICKET_GRANT_REQUIRED"
         refused = asyncio.run(session(lambda client: client.call_tool("vh_ticket_cancel", {
             "ticket_id": str(uuid4()), "reason": "thử", "client_reference": ref()})))
         answer = json.loads(refused.content[0].text)
@@ -886,7 +918,7 @@ def test_the_mcp_server_lists_and_runs_the_tools_only_for_the_token(database, on
     finally:
         server.should_exit = True
         thread.join(timeout=10)
-    assert [e["payload"] for e in events(database, ticket, "ticket.note_added")] == [{"note": "Cư dân dặn gọi trước khi đến"}]
+    assert events(database, ticket, "ticket.note_added") == []
 
 
 def test_a_visitor_is_announced_once_under_the_rules_of_the_zone_and_the_notices_are_those_of_the_home(database, on):

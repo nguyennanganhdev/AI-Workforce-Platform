@@ -362,6 +362,13 @@ def link(database, ticket):
     return sql(database, "select * from platform_links where ticket_id=$1", UUID(ticket))[0]
 
 
+def resident_reply_text(value):
+    """V2 carries the original message id for authorization; keep checking the exact resident text."""
+    words, separator, source = value.rpartition("\nsource_message_id: ")
+    assert separator and str(UUID(source)) == source
+    return words
+
+
 def commands(database, ticket):
     rows = sql(database, "select * from platform_commands where ticket_id=$1 order by created_at,id", UUID(ticket))
     return [{**row, "body": json.loads(row["body"])} for row in rows]
@@ -505,10 +512,10 @@ def test_a_later_message_goes_to_the_platform_and_an_emergency_goes_to_reception
         say(c, channel, "Khi nào thợ đến?")
         assert turns == ["Light is broken"]
         reply = commands(database, ticket)[-1]
-        assert (reply["kind"], reply["status"], reply["body"]) == ("workflow_reply", "pending", {"text": "Khi nào thợ đến?"})
+        assert (reply["kind"], reply["status"], resident_reply_text(reply["body"]["text"])) == ("workflow_reply", "pending", "Khi nào thợ đến?")
         sync(database, fake)
         sent = fake.posts("/partner/requests")[-1]
-        assert (sent["command_type"], sent["workflow_id"], sent["message"]["text"]) == ("workflow_reply", flow["workflow_id"], "Khi nào thợ đến?")
+        assert (sent["command_type"], sent["workflow_id"], resident_reply_text(sent["message"]["text"])) == ("workflow_reply", flow["workflow_id"], "Khi nào thợ đến?")
         assert chat(database, channel)[-1]["text"] == "Khoảng 15 giờ hôm nay bạn nhé."
 
         # Danger is handled here, at once, as before; the coordinator is told of it in one fixed sentence that claims
@@ -517,14 +524,14 @@ def test_a_later_message_goes_to_the_platform_and_an_emergency_goes_to_reception
         assert turns == ["Light is broken", "Bếp nhà tôi đang cháy"]
         told = commands(database, ticket)[-1]
         assert (told["kind"], told["status"], len(commands(database, ticket))) == ("workflow_reply", "pending", 3)
-        assert told["body"] == {"own": True, "text": "Cư dân vừa báo tình huống khẩn cấp (cháy hoặc khói). Lời cư dân:\nBếp nhà tôi đang cháy"}
+        assert told["body"]["own"] is True and resident_reply_text(told["body"]["text"]) == "Cư dân vừa báo tình huống khẩn cấp (cháy hoặc khói). Lời cư dân:\nBếp nhà tôi đang cháy"
         # A burnt-out bulb is no emergency: it is the coordinator's alone.
         say(c, channel, "Bóng đèn phòng khách bị cháy rồi")
-        assert len(turns) == 2 and commands(database, ticket)[-1]["body"] == {"text": "Bóng đèn phòng khách bị cháy rồi"}
+        assert len(turns) == 2 and resident_reply_text(commands(database, ticket)[-1]["body"]["text"]) == "Bóng đèn phòng khách bị cháy rồi"
         fake.replies = [[], ["Tôi sẽ báo nhân viên mang bóng mới."]]
         sync(database, fake)
         sync(database, fake)
-        assert flow["texts"][-2].startswith("Cư dân vừa báo tình huống khẩn cấp") and flow["texts"][-1] == "Bóng đèn phòng khách bị cháy rồi"
+        assert flow["texts"][-2].startswith("Cư dân vừa báo tình huống khẩn cấp") and resident_reply_text(flow["texts"][-1]) == "Bóng đèn phòng khách bị cháy rồi"
         # Reception answered the emergency in the chat: a coordinator that says nothing leaves no "no answer" line.
         assert SILENT_TEXT not in [m["text"] for m in chat(database, channel)]
 
@@ -570,14 +577,14 @@ def test_photos_in_a_handed_over_chat_join_the_request_and_are_told_to_the_coord
 
         # Photos without a word: still the coordinator's chat, and Reception is not asked.
         alone = send("")
-        assert (alone["kind"], alone["body"]) == ("workflow_reply", {"text": "Cư dân gửi thêm 1 ảnh."})
+        assert (alone["kind"], resident_reply_text(alone["body"]["text"])) == ("workflow_reply", "Cư dân gửi thêm 1 ảnh.")
         # The same photo again adds nothing: the coordinator is told only of photos the request did not hold yet.
-        assert send("Vết nứt ở đây ạ")["body"] == {"text": "Vết nứt ở đây ạ"}
+        assert resident_reply_text(send("Vết nứt ở đây ạ")["body"]["text"]) == "Vết nứt ở đây ạ"
         assert send("") == commands(database, ticket)[-1] and len(commands(database, ticket)) == 3
         assert turns == ["Light is broken"]
         sync(database, fake)
         sync(database, fake)
-        assert flow["texts"][-2:] == ["Cư dân gửi thêm 1 ảnh.", "Vết nứt ở đây ạ"]
+        assert [resident_reply_text(v) for v in flow["texts"][-2:]] == ["Cư dân gửi thêm 1 ảnh.", "Vết nứt ở đây ạ"]
         # The photo is the request's own, once, with the ticket event staff read in the request.
         held = sql(database, "select file_id,purpose,uploaded_by from ticket_files where ticket_id=$1", UUID(ticket))
         assert held == [{"file_id": UUID(photo.json()["id"]), "purpose": "issue", "uploaded_by": "local-v3-resident"}]
@@ -590,7 +597,7 @@ def test_photos_in_a_handed_over_chat_join_the_request_and_are_told_to_the_coord
         sql(database, "update tickets set status='resolved',resolved_at=now() where id=$1 returning id", UUID(ticket))
         late = c.post(f"/resident/chats/{channel}/photos?filename=b.png&mimeType=image/png", content=image(), headers=key())
         sent = c.post(f"/resident/chats/{channel}/messages", json={"text": "", "client_message_id": str(uuid4()), "file_ids": [late.json()["id"]]})
-        assert sent.status_code == 201 and commands(database, ticket)[-1]["body"] == {"text": "Cư dân gửi thêm 1 ảnh."}
+        assert sent.status_code == 201 and resident_reply_text(commands(database, ticket)[-1]["body"]["text"]) == "Cư dân gửi thêm 1 ảnh."
         assert {row["file_id"] for row in sql(database, "select file_id from ticket_files where ticket_id=$1", UUID(ticket))} == {
             UUID(photo.json()["id"]), UUID(late.json()["id"])}
         assert len(sql(database, "select 1 as x from ticket_events where ticket_id=$1 and event_type='ticket.conversation_images_attached'", UUID(ticket))) == 2
@@ -610,7 +617,7 @@ def test_the_resident_can_write_while_the_worker_waits_for_the_platform(database
             sync(database, fake)
         finally:
             pool.shutdown(wait=False)
-        assert sent and commands(database, ticket)[-1]["body"] == {"text": "Còn ai ở đó không?"}
+        assert sent and resident_reply_text(commands(database, ticket)[-1]["body"]["text"]) == "Còn ai ở đó không?"
 
 
 def test_the_loop_serves_other_chats_while_one_command_waits_for_the_coordinator(database, on):
@@ -710,7 +717,7 @@ def test_a_reply_waits_while_an_approval_is_pending_and_the_decision_goes_first(
         retry_now(database)
         sync(database, fake)
         assert [x["status"] for x in commands(database, ticket)] == ["done", "done", "done"]
-        assert flow["texts"][-1] == "Giá đó có gồm công không?"
+        assert resident_reply_text(flow["texts"][-1]) == "Giá đó có gồm công không?"
         resolved = [m for m in chat(database, channel) if m.get("platform", {}).get("status") == "approved"]
         # The outcome is the same card again, so the app can show the question with its answer.
         assert len(resolved) == 1 and resolved[0]["text"]

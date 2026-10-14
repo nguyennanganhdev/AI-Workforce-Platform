@@ -47,6 +47,39 @@ def tables(database):
     return {n: sql(database, f"select count(*) as n from {n}")[0]["n"] for n in names}
 
 
+def test_sanitation_import_requires_explicit_buildings_and_creates_scoped_staff(database, tmp_path):
+    files = {
+        "service_categories": [["code", "name"], ["sanitation", "Vệ sinh"]],
+        "staff": [["employee_code", "name", "role", "specialties", "building_codes", "user_id"],
+                  ["IMP-SAN1", "Vệ sinh kiểm thử", "staff", "sanitation", "", "imp-sanitation"]],
+    }
+    write(tmp_path, files)
+    before = tables(database)
+    _, problems = asyncio.run(load(database["admin"], str(tmp_path), False))
+    assert problems and "building_codes" in problems[0]
+    assert tables(database) == before
+    assert not sql(database, "select id from service_categories where code='sanitation'")
+
+    building = sql(database, "select code from buildings where tenant_id=$1 order by code limit 1", TENANT)[0]["code"]
+    management = sql(database, "select code from management_units where tenant_id=$1 order by code limit 1", TENANT)[0]["code"]
+    files["staff"][1][4] = building
+    files["management_coverage"] = [["management_code", "category_code", "building_code", "valid_from"],
+                                    [management, "sanitation", building, "2026-10-14T08:00:00+07:00"]]
+    write(tmp_path, files)
+    _, problems = asyncio.run(load(database["admin"], str(tmp_path), True))
+    assert problems == [] and tables(database) == before
+    _, problems = asyncio.run(load(database["admin"], str(tmp_path), False))
+    assert problems == []
+    assert sql(database, """select c.code from staff_specialties s join staff_profiles p on p.id=s.staff_id
+        join service_categories c on c.id=s.category_id where p.user_id='imp-sanitation'""") == [{"code": "sanitation"}]
+    assert sql(database, """select b.code from scoped_user_roles r join tenant_memberships m on m.id=r.membership_id
+        join access_scopes s on s.id=r.scope_id join buildings b on b.id=s.building_id
+        where m.user_id='imp-sanitation' and r.role_code='staff'""") == [{"code": building}]
+    after = tables(database)
+    _, problems = asyncio.run(load(database["admin"], str(tmp_path), False))
+    assert problems == [] and tables(database) == after
+
+
 def test_a_load_adds_what_was_supplied_and_a_second_load_adds_nothing(database, tmp_path):
     write(tmp_path)
     before = tables(database)

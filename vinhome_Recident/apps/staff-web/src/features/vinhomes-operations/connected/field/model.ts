@@ -37,8 +37,8 @@ export function stepOf(state: string, ready = false): number {
 
 /** The state in the worker's words, then what they are asked to do next. */
 export const STATE: Record<string, { label: string; next: string; guide: string }> = {
-  queued: { label: "Chờ phân công", next: "", guide: "Ban quản lý đang phân công công việc này." },
-  offered: { label: "Việc mới giao", next: "Nhận việc", guide: "Xem phản ánh của cư dân, hẹn thời gian đến rồi nhận việc. Nếu không nhận được, từ chối để Ban quản lý giao người khác." },
+  queued: { label: "Chờ phân công", next: "", guide: "Bộ phận điều phối đang phân công công việc này." },
+  offered: { label: "Việc mới giao", next: "Nhận việc", guide: "Xem phản ánh của cư dân, hẹn thời gian đến rồi nhận việc. Nếu không nhận được, từ chối để bộ phận điều phối giao người khác." },
   accepted: { label: "Đã nhận · Chờ bắt đầu", next: "Bắt đầu di chuyển", guide: "Việc đã được giữ trong hàng đợi của bạn. Khi xong việc hiện tại, bắt đầu di chuyển để cư dân biết bạn đang đến." },
   en_route: { label: "Đang di chuyển", next: "Tôi đã đến", guide: "Đến đúng vị trí phản ánh rồi bấm xác nhận." },
   arrived: { label: "Khảo sát hiện trường", next: "Gửi phương án cho cư dân", guide: "Kiểm tra thực tế, ghi hiện trạng và chi phí để cư dân xem trước khi xử lý." },

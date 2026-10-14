@@ -18,12 +18,12 @@ import asyncpg
 
 from .mock_data import CAT_SEC, CAT_TECH, DOMAIN, MANAGEMENT, SITE, TENANT, uid
 
-ORDER = ["buildings", "units", "zone_settings", "residents", "staff", "shifts", "vehicles", "cards", "debit_notes", "debit_note_lines",
+ORDER = ["service_categories", "buildings", "management_coverage", "units", "zone_settings", "residents", "staff", "shifts", "vehicles", "cards", "debit_notes", "debit_note_lines",
          "amenities", "handbook", "policies", "announcements"]
 # The rules a zone may set (table zone_settings): whole numbers, except the purposes of visits that need no approval.
 ZONE_NUMBERS = ["visit_max_waiting", "visit_max_days_ahead", "visit_max_hours", "visit_auto_approve_max_guests", "visit_early_minutes",
                 "card_limit_resident", "card_limit_vehicle", "amenity_payment_hold_minutes"]
-CATEGORY = {"technical": CAT_TECH, "security": CAT_SEC}
+CATEGORIES = ("technical", "security", "sanitation")
 PATHS = {
     "paid": ["issued", "paid"], "partially_paid": ["issued", "partially_paid"], "overdue": ["issued", "overdue"],
     "issued": ["issued"], "draft": [], "cancelled": ["cancelled"],
@@ -93,6 +93,30 @@ class Loader:
 
     # ---- one method per file ----
 
+    async def service_categories(self, row):
+        code, name = self.need(row, "code", "name")
+        if code not in CATEGORIES:
+            raise BadRow("category code must be technical, security or sanitation")
+        await self.c.execute("""insert into service_categories(id,tenant_id,code,name)
+            select $1,$2,$3,$4 where not exists(select 1 from service_categories where tenant_id=$2 and code=$3)""",
+            uid("import", "category", code), TENANT, code, name)
+        self.count("service_categories")
+
+    async def management_coverage(self, row):
+        management, category, building, start = self.need(row, "management_code", "category_code", "building_code", "valid_from")
+        manager = await self.one("management", "select id from management_units where tenant_id=$1 and code=$2 and status='active'", TENANT, management)
+        category_id = await self.one("category", "select id from service_categories where tenant_id=$1 and code=$2 and enabled", TENANT, category)
+        scope = await self.one("building scope", """select s.id from access_scopes s join buildings b on b.id=s.building_id and b.tenant_id=s.tenant_id
+            where s.tenant_id=$1 and s.kind='building' and b.code=$2""", TENANT, building)
+        existing = await self.c.fetch("""select management_unit_id from management_coverage
+            where tenant_id=$1 and scope_id=$2 and service_category_id=$3 and valid_to is null""", TENANT, scope, category_id)
+        if any(r["management_unit_id"] != manager for r in existing):
+            raise BadRow("coverage already belongs to another management unit; review routing before changing it")
+        if not existing:
+            await self.c.execute("""insert into management_coverage(id,tenant_id,management_unit_id,scope_id,service_category_id,valid_from)
+                values($1,$2,$3,$4,$5,$6)""", uid("import", "coverage", building, category_id), TENANT, manager, scope, category_id, self.stamp(start))
+        self.count("management_coverage")
+
     async def buildings(self, row):
         code, name, zone = self.need(row, "code", "name", "zone_code")
         zone_id = await self.one("zone", "select id from zones where site_id=$1 and code=$2", SITE, zone)
@@ -143,15 +167,22 @@ class Loader:
         if role not in ("staff", "management"):
             raise BadRow("role must be staff or management")
         specialties = [s for s in (row.get("specialties") or "").split("|") if s]
-        if any(s not in CATEGORY for s in specialties):
-            raise BadRow("specialties are technical and/or security, separated by |")
+        if any(s not in CATEGORIES for s in specialties):
+            raise BadRow("specialties are technical, security and/or sanitation, separated by |")
+        buildings = [b for b in (row.get("building_codes") or "").split("|") if b]
+        if "sanitation" in specialties and not buildings:
+            raise BadRow("sanitation staff require explicit building_codes, separated by |")
+        for building in buildings:
+            await self.one("building", "select id from buildings where tenant_id=$1 and code=$2", TENANT, building)
         user = await self.person(name, row.get("phone"), row.get("email"), row.get("user_id"))
         staff_id = uid("import", "staff", code)
         await self.c.execute("insert into staff_profiles(id,tenant_id,user_id,management_unit_id,employee_code,availability,max_concurrent_jobs) values($1,$2,$3,$4,$5,$6,3) on conflict do nothing",
                              staff_id, TENANT, user, MANAGEMENT, code, row.get("availability") or "available")
         for s in specialties:
-            await self.c.execute("insert into staff_specialties(tenant_id,staff_id,category_id,proficiency) values($1,$2,$3,'standard') on conflict do nothing", TENANT, staff_id, CATEGORY[s])
-        scopes = await self.c.fetch("select id from access_scopes where tenant_id=$1 and kind='building'", TENANT)
+            category = await self.one("category", "select id from service_categories where tenant_id=$1 and code=$2 and enabled", TENANT, s)
+            await self.c.execute("insert into staff_specialties(tenant_id,staff_id,category_id,proficiency) values($1,$2,$3,'standard') on conflict do nothing", TENANT, staff_id, category)
+        scopes = await self.c.fetch("""select s.id from access_scopes s join buildings b on b.id=s.building_id and b.tenant_id=s.tenant_id
+            where s.tenant_id=$1 and s.kind='building' and ($2::text[]='{}' or b.code=any($2::text[]))""", TENANT, buildings)
         for scope in scopes:
             await self.c.execute("insert into scoped_user_roles(id,tenant_id,membership_id,scope_id,role_code,granted_by,valid_from) values($1,$2,$3,$4,$5,'local-v3-admin',now()) on conflict(id) do nothing",
                                  uid("import", "role", user, scope["id"], role), TENANT, uid("membership", user), scope["id"], role)

@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { IconTrash } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MATERIAL_CATALOG, formatVnd } from "../lib/field-flow";
+import { formatVnd } from "../lib/field-flow";
 
 export type QuoteInput = {
   lines: { name: string; quantity: string; unit: string; unit_price: number }[];
@@ -62,30 +62,9 @@ export function QuoteForm({
           </div>
         </div>
       ))}
-      <select
-        aria-label="Thêm vật tư"
-        className="h-[44px] w-full rounded-lg border border-dashed border-input bg-background px-3 text-base text-foreground"
-        value=""
-        onChange={(e) => {
-          const item = MATERIAL_CATALOG.find((m) => m.code === e.target.value);
-          setLines((all) => [
-            ...all,
-            item
-              ? { name: item.name, quantity: "1", unit: item.unit, unit_price: item.unit_price }
-              : { name: "", quantity: "1", unit: "cái", unit_price: 0 },
-          ]);
-        }}
-      >
-        <option value="" disabled>
-          Thêm vật tư…
-        </option>
-        {MATERIAL_CATALOG.map((m) => (
-          <option key={m.code} value={m.code}>
-            {m.name} ({formatVnd(m.unit_price)}/{m.unit})
-          </option>
-        ))}
-        <option value="manual">Vật tư khác (nhập tay)</option>
-      </select>
+      <p className="text-sm leading-relaxed text-muted-foreground">Chưa có bảng phí chính thức được nạp. Nhập vật tư và chi phí đã xác nhận cho công việc này; cư dân sẽ xem và quyết định trên báo giá.</p>
+      <Button type="button" variant="outline" className="min-h-[44px]" disabled={disabled}
+        onClick={() => setLines((all) => [...all, { name: "", quantity: "1", unit: "cái", unit_price: 0 }])}>Thêm vật tư</Button>
       <div className="grid grid-cols-2 gap-3">
         <label className={caption} htmlFor={`${fieldId}-labor`}>
           Tiền công (đ)

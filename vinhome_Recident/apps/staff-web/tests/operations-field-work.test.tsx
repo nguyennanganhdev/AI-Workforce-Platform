@@ -21,6 +21,17 @@ const ticket = (over: Partial<FieldTicket> = {}): FieldTicket => ({ id: "t1", co
 const order = (over: Partial<FieldOrder> = {}): FieldOrder => ({ id: "o1", ticket_id: "t1", status: "accepted", version: 3, description: "", assignment_id: "a1", assignment_status: "accepted", ...over });
 const photo = (purpose: string, work_order_id = "o1"): FieldPhoto => ({ id: `${work_order_id}-${purpose}`, name: `${purpose}.png`, purpose, work_order_id, src: `/files/${work_order_id}-${purpose}` });
 
+test("connected quotes require staff-entered materials rather than the unapproved demo price list", async () => {
+  const { QuoteForm } = await import("../src/features/vinhomes-operations/connected/RepairQuote");
+  const view = render(<QuoteForm disabled={false} onSubmit={() => undefined} />);
+  expect(view.getByText(/Chưa có bảng phí chính thức/)).toBeTruthy();
+  expect(view.queryByRole("combobox", { name: "Thêm vật tư" })).toBeNull();
+  fireEvent.click(view.getByRole("button", { name: "Thêm vật tư" }));
+  expect((view.getByLabelText("Tên vật tư") as HTMLInputElement).value).toBe("");
+  expect((view.getByLabelText("Đơn giá") as HTMLInputElement).value).toBe("0");
+  expect(view.container.textContent).not.toContain("Van khóa DN15");
+});
+
 test("a job moves through four steps, and what was sent in waits for the resident before it is history", () => {
   expect(stepOf("offered")).toBe(0);
   expect(stepOf("en_route")).toBe(1);

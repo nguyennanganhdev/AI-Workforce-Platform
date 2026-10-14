@@ -18,6 +18,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 from .knowledge import search
+from .staff_scope import STAFF_TICKET_SCOPE
 from .platform import ACTIVE, CLIENT_ID, TENANT, VN, _quote, command, platform_client, vn_time
 from .platform import booking_card, post_chat
 from .resident_services import (BookingCreate, VisitorCreate, amenities, announcements, availability, balance, cancel_booking,
@@ -364,6 +365,7 @@ async def staff_available(db, ticket_id, appointment_at: str | None = None) -> d
     # Who offer_work would consider: of the ticket's unit, with the specialty, on shift now and with room for a job.
     rows = (await db.execute(text(f"""
         select sp.id,u.name,ss.proficiency,sp.max_concurrent_jobs,busy.load,sh.ends_at from staff_profiles sp
+        join tickets t on t.id=:ticket and t.tenant_id=sp.tenant_id
         join users u on u.id=sp.user_id and u.status='active'
         join staff_specialties ss on ss.staff_id=sp.id and ss.tenant_id=sp.tenant_id and ss.category_id=:category and ss.active
         cross join lateral (select max(x.ends_at) as ends_at from staff_shifts x where x.staff_id=sp.id and x.tenant_id=sp.tenant_id
@@ -373,8 +375,9 @@ async def staff_available(db, ticket_id, appointment_at: str | None = None) -> d
           where a.staff_id=sp.id and o.status not in {ENDED}
             and (a.status='accepted' or (a.status='offered' and a.offer_expires_at>now()))) busy
         where sp.tenant_id={TENANT} and sp.active and sp.availability='available' and sp.management_unit_id=:unit
+          and {STAFF_TICKET_SCOPE}
           and sh.ends_at is not null and busy.load<sp.max_concurrent_jobs order by busy.load,sp.id
-    """), {"category": ticket["category_id"], "unit": ticket["management_unit_id"],"at":at})).mappings().all()
+    """), {"ticket":ticket["id"],"category": ticket["category_id"], "unit": ticket["management_unit_id"],"at":at})).mappings().all()
     return {"specialty": ticket["category"],"checked_for":at.isoformat() if at else datetime.now(VN).isoformat(),
             "reservation_confirmed":False,"availability_basis":"shift_at_requested_time_and_current_load","staff": [
         {"staff_id": str(r["id"]), "name": r["name"], "proficiency": r["proficiency"], "active_jobs": r["load"],

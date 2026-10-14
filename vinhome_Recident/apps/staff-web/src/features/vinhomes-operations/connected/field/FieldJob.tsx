@@ -116,7 +116,7 @@ function FieldStep({ order, ticket, photos, busy, request, actions, planned, req
             <legend className="text-sm font-medium text-foreground">Bạn sẽ đến sau</legend>
             <div className="mt-2 grid grid-cols-4 gap-2">
               {ETA.map((value) => (
-                <button key={value} type="button" aria-pressed={eta === value} onClick={() => setEta(value)}
+                <button key={value} type="button" aria-pressed={eta === value} disabled={busy} onClick={() => setEta(value)}
                   className={cn("h-[44px] rounded-lg border text-sm font-medium", eta === value ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground")}>{minutes(value)}</button>
               ))}
             </div>
@@ -137,7 +137,7 @@ function FieldStep({ order, ticket, photos, busy, request, actions, planned, req
               ))}
             </div>
           </fieldset>
-          {reason === "OTHER" && <Textarea aria-label="Lý do khác" rows={2} maxLength={500} placeholder="Ghi rõ lý do để Ban quản lý giao người khác" value={note} onChange={(e) => setNote(e.target.value)} />}
+          {reason === "OTHER" && <Textarea aria-label="Lý do khác" rows={2} maxLength={500} placeholder="Ghi rõ lý do để bộ phận điều phối giao người khác" value={note} onChange={(e) => setNote(e.target.value)} />}
           <Button variant="destructive" className={primary} disabled={busy || !refusal} onClick={() => actions.reject(order, refusal)}>Xác nhận từ chối</Button>
           <Button variant="ghost" className="h-[44px] w-full" disabled={busy} onClick={() => setRejecting(false)}>Quay lại</Button>
         </>
@@ -155,7 +155,7 @@ function FieldStep({ order, ticket, photos, busy, request, actions, planned, req
       {state === "arrived" && (!planned || needsRevision || quoting) && (
         <>
           <label className="text-sm font-medium text-foreground" htmlFor={noteId}>Hiện trạng và cách xử lý
-            <Textarea id={noteId} className="mt-1.5 text-base" rows={3} maxLength={2000} placeholder="Ví dụ: dây cấp dưới chậu bị nứt, cần thay dây mới." value={note} onChange={(e) => setNote(e.target.value)} />
+            <Textarea id={noteId} className="mt-1.5 text-base" rows={3} maxLength={2000} placeholder="Hiện trạng, phạm vi công việc và cách xử lý dự kiến." value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
           <QuoteForm disabled={busy || note.trim().length < 8} onSubmit={(quote) => actions.quote(order, note.trim(), quote)} />
           {note.trim().length < 8 && <p className="text-xs text-muted-foreground">Ghi hiện trạng (ít nhất 8 ký tự) trước khi gửi phương án.</p>}
