@@ -855,12 +855,32 @@ class UnifiedPartnerApprovalTest(_CaseHarness):
         self.assertEqual("awaiting_user", state)
 
 
+def _unsaid_case(said: bool = False):
+    async def answer():
+        return said
+
+    return SimpleNamespace(rules={}, said=answer)
+
+
 class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
+    async def test_after_the_turns_message_the_leader_cannot_try_another(self):
+        from agentscope.app.workforce.integrations.unified._case import PartnerCaseMiddleware
+
+        middleware = PartnerCaseMiddleware(_unsaid_case(said=True), [SimpleNamespace(name="vh_ticket_get")])
+        seen = {}
+
+        async def next_handler(**kwargs):
+            seen.update(kwargs)
+
+        offered = [{"type": "function", "function": {"name": n}} for n in ("CaseSay", "CaseFinalize", "vh_ticket_get")]
+        await middleware.on_model_call(None, {"tools": offered}, next_handler)
+        self.assertEqual(["vh_ticket_get"], [tool["function"]["name"] for tool in seen["tools"]])
+
     async def test_the_route_leader_sees_only_case_and_declared_tools(self):
         from agentscope.app.workforce.integrations.unified._case import PartnerCaseMiddleware
 
         middleware = PartnerCaseMiddleware(
-            SimpleNamespace(rules={}),
+            _unsaid_case(),
             [SimpleNamespace(name="vh_ticket_get")],
         )
         seen = {}
@@ -906,7 +926,7 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
             },
         }
         middleware = PartnerCaseMiddleware(
-            SimpleNamespace(rules={}), [SimpleNamespace(name="vh_ticket_get")], members,
+            _unsaid_case(), [SimpleNamespace(name="vh_ticket_get")], members,
         )
         seen = {}
 

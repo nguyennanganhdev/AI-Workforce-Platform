@@ -659,6 +659,10 @@ class PartnerCaseMiddleware(MiddlewareBase):
         allowed = {"CaseSay", "CaseFinalize", *(tool.name for tool in self._tools)}
         if self._members:
             allowed.update(TEAM_TOOLS)
+        if await self._case.said():
+            # The turn's one message is out: offering CaseSay again only
+            # invites refused retries (each a model call).
+            allowed -= {"CaseSay", "CaseFinalize"}
         tools = []
         for schema in input_kwargs.get("tools") or []:
             name = _schema_name(schema)
