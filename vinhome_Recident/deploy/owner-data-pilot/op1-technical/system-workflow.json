@@ -1,0 +1,24 @@
+{
+  "kind": "software_workflow_proposal",
+  "operational_policy_approved": false,
+  "site_code": "ocean-park-1",
+  "category_code": "technical",
+  "missing_owner_values": ["zone_code", "building_code", "operator", "units", "residencies", "staff", "shifts", "fees", "operating_hours", "SLA", "safety_rules", "acceptance_criteria"],
+  "ownership": {
+    "domain": ["source_data", "resident_identity_and_scope", "staff_UI", "resident_decisions", "evidence_storage", "ticket_scoped_MCP"],
+    "platform": ["session", "dispatch_orchestration", "progress_management", "resident_progress_messages", "escalation"]
+  },
+  "steps": [
+    {"code": "intake", "actor": "reception", "rule": "Tiếp nhận nguyên văn, xác định nhu cầu; không tự tạo thông tin cư trú còn thiếu."},
+    {"code": "handoff", "actor": "domain", "rule": "Đóng gói ticket và bàn giao Platform khi tuyến đã cấu hình."},
+    {"code": "dispatch", "actor": "platform", "rule": "Xin grant đúng ticket, kiểm tra nhân sự, gọi MCP giao việc."},
+    {"code": "respond", "actor": "staff", "rule": "Nhận với ETA hoặc từ chối có lý do qua UI Domain; Domain gửi sự kiện về Platform."},
+    {"code": "travel_and_arrive", "actor": "staff", "rule": "Cập nhật di chuyển/đến nơi; Platform quản lý tiến độ và phản hồi cư dân."},
+    {"code": "assess", "actor": "staff", "rule": "Gửi phương án/chi phí; cần cư dân quyết định theo luồng duyệt hiện có."},
+    {"code": "execute", "actor": "staff", "rule": "Thực hiện trong phạm vi đã đồng ý; thay đổi phương án cần quyết định phù hợp."},
+    {"code": "evidence", "actor": "staff", "rule": "Gửi ảnh trước/sau và kết quả; Domain chuyển sự kiện cho Platform."},
+    {"code": "completion", "actor": "resident", "rule": "Platform cập nhật cho cư dân; cư dân xác nhận hoàn thành hoặc yêu cầu xử lý lại."}
+  ],
+  "source_basis": ["User-approved Platform-owned service workflow", "vinhome_Recident/docs/domain/PLATFORM_OWNED_SERVICE_ACCEPTANCE_20261014.md"],
+  "notes": "Khung luồng phần mềm, không chứa cam kết phí/giờ/SLA, hướng dẫn sửa chữa hay xác nhận đơn vị vận hành."
+}

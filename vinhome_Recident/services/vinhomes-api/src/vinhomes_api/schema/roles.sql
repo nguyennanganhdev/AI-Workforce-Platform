@@ -8,6 +8,8 @@ GRANT INSERT,UPDATE ON unit_residents,staff_profiles,staff_specialties,staff_shi
 GRANT INSERT,UPDATE,DELETE ON password_reset_tokens TO :role;
 GRANT INSERT,UPDATE ON accounts, users, tenant_memberships, scoped_user_roles, access_scopes TO :role;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO :role;
+-- Owner CSV staging contains personal records; neither the API, Reception nor MCP can read it.
+REVOKE ALL ON owner_operational_batches,owner_operational_records FROM :role;
 GRANT INSERT, UPDATE ON channels, channel_memberships, messages, integration_clients, tickets, ticket_events, ticket_routing_history, ticket_assessments, ticket_triage_decisions, ticket_triage_reviews, work_orders, work_assignments, work_approvals, service_interruptions, interruption_scopes, notification_deliveries, evidence_items, execution_principals, files, file_objects, ticket_files, vh_qc_results, vh_cleaning_plans, vh_security_checkpoints, vh_security_incidents, vh_security_handovers, vh_contractor_updates, vh_budget_approvals, vh_command_receipt, security_cameras, security_emergency_contacts, security_alerts, security_alert_deliveries, users, tenant_memberships, account_reviews, scoped_user_roles, audit_events, vh_ticket_plans, vh_assets, vh_sensor_readings, vh_technical_measurements, vh_maintenance_records, vh_operational_requests, vh_report_exports, vh_conversation_uploads TO :role;
 GRANT SELECT, INSERT ON vh_qc_redo_orders TO :role;
 GRANT DELETE ON channel_memberships TO :role;

@@ -1,5 +1,7 @@
 # Bàn giao dữ liệu vận hành OP1/2/3
 
+**Pilot mới:** bắt đầu bằng [bộ OP1/Kỹ thuật schema v2](../owner-data-pilot/op1-technical/README.md) với một phân khu/tòa, SOP cư dân/nhân viên, bằng chứng có hash và nhập staging riêng. Bộ v1 bên dưới giữ tương thích cho bàn giao nhiều khu; không tự chuyển thành dữ liệu vận hành hoặc dùng importer legacy.
+
 Các CSV trong thư mục này chỉ có tiêu đề, **không có người, căn/lô hay ca giả**. Sao chép cả thư mục sang vị trí riêng ngoài Git, ví dụ `E:\Vinhomes-Deploy\owner-data-private`, rồi điền dữ liệu được đơn vị vận hành cho phép bàn giao. Không ghi mật khẩu, CCCD, số tài khoản hoặc ảnh giấy tờ vào CSV.
 
 Nếu chưa có dữ liệu được xác nhận, bắt đầu từ [bộ 113 mục đề xuất chờ đơn vị vận hành đối soát](../owner-data-proposals/20261014/README.md). Bộ đề xuất có dữ liệu tham khảo và câu hỏi cần chốt; bộ CSV vận hành bên dưới chỉ dùng sau khi nhận được hồ sơ thật.

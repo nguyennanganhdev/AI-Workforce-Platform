@@ -1,0 +1,21 @@
+{
+  "schema_version": 2,
+  "bundle_code": "op1-technical-pilot",
+  "version": "draft-1",
+  "data_mode": "owner_candidate",
+  "site_codes": [
+    "ocean-park-1"
+  ],
+  "data_owner": "",
+  "exported_at": "",
+  "document_reference": "",
+  "pilot": {
+    "site_code": "ocean-park-1",
+    "zone_code": "",
+    "building_code": "",
+    "category_codes": [
+      "technical"
+    ]
+  },
+  "source_documents": []
+}
