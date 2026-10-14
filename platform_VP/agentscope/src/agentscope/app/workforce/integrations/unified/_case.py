@@ -578,7 +578,7 @@ PARTNER_CASE_POLICY = """PARTNER CASE POLICY (server-owned; overrides conflictin
 PARTNER_TEAM_POLICY = """PHÒNG XỬ LÝ (chỉ lập khi cần):
 - Phiếu cần đánh giá chuyên môn hoặc ý kiến thứ hai: TeamCreate rồi AgentInvite đúng agent chuyên môn, giao việc rõ (cần kiểm tra gì, trả về gì). Phiếu đơn giản thì tự làm, không lập phòng.
 - Thành viên không nói với người dùng. Họ báo lại bằng TeamSay kèm mã E.. của kết quả công cụ họ gọi. Bạn kiểm báo cáo rồi tự gửi người dùng MỘT tin bằng CaseSay, cites đúng các mã E.. đó.
-- Khi đã giao việc cho thành viên, chờ họ báo rồi mới gửi tin cho người dùng.
+- Khi đã giao việc cho thành viên, chờ họ báo rồi mới giao việc cho nhân viên và gửi tin cho người dùng: dùng đánh giá của họ để mô tả việc.
 - Phòng giữ suốt phiếu: lượt sau dùng TeamSay với thành viên đã có, không lập phòng mới.
 """
 
@@ -660,9 +660,10 @@ class PartnerCaseMiddleware(MiddlewareBase):
         if self._members:
             allowed.update(TEAM_TOOLS)
         if await self._case.said():
-            # The turn's one message is out: offering CaseSay again only
-            # invites refused retries (each a model call).
-            allowed -= {"CaseSay", "CaseFinalize"}
+            # The turn's one message is out: anything more (another say, a
+            # re-read woken by room traffic) is a model call for nothing.
+            # The runtime accepts members' evidence-backed reports itself.
+            return await next_handler(tools=[])
         tools = []
         for schema in input_kwargs.get("tools") or []:
             name = _schema_name(schema)
