@@ -69,4 +69,22 @@ Ruff đạt trên module/test Asset mới; Python thay đổi qua syntax/import 
 - Runtime tiếp tục dùng Compose tại `E:\AI-Workforce-Platform-vinhome-dev\vinhome_Recident\deploy\compose.yml`; mã sửa/commit nằm ở checkout `E:\AI-Workforce-Platform`, nhánh `dev_Vinhome`.
 - Từ container Domain, đọc OpenAPI của Platform local thành công (HTTP 200), có đủ upload-session, complete và download-url endpoints của Partner Asset API. Đây là bằng chứng kết nối/discovery; chưa chứng minh quyền upload, signed storage URL hoặc luồng gửi ảnh thật đã đạt.
 
-**Không cập nhật VPS và không gọi Agent thật.** 145 kiểm thử ở trên dùng PostgreSQL riêng và transport/model giả lập. Nghiệm thu tiếp theo do người dùng thực hiện: hội thoại hai hạng mục với Reception thật, gửi ảnh ban đầu/ảnh bổ sung và kiểm tra attachments trong session Platform local. Cần xác minh cả grant và đường signed upload tới storage trong luồng thật trước khi kết luận nghiệm thu hai hệ thống hoàn chỉnh.
+Tại thời điểm nghiệm thu local, chưa cập nhật VPS và không gọi Agent thật. 145 kiểm thử ở trên dùng PostgreSQL riêng và transport/model giả lập. Nghiệm thu tiếp theo do người dùng thực hiện: hội thoại hai hạng mục với Reception thật, gửi ảnh ban đầu/ảnh bổ sung và kiểm tra attachments trong session Platform local. Cần xác minh cả grant và đường signed upload tới storage trong luồng thật trước khi kết luận nghiệm thu hai hệ thống hoàn chỉnh.
+
+## Cập nhật VPS ngày 15/10/2026
+
+Theo yêu cầu tiếp theo của người dùng, đã triển khai cùng tag/image đã kiểm thử lên **https://vinhome-platform.duckdns.org** (VPS `103.238.235.156`). API, Reception, scheduler và platform-sync chạy image mới; API/Reception healthy, API `/ready` HTTP 200. Source trong container VPS khớp **124 file API + 37 file Reception**, không sai khác.
+
+- Database đang hoạt động được xác định từ cấu hình API: `vinhomes_clean_20261014_a08369c0`. Không dùng database `vinhomes` cũ của container và không chuyển dữ liệu test local lên VPS.
+- Backup trước thay đổi: **6.258.469 bytes**, SHA-256 `4832567c5b5f8f096e3a87640e8e3f211200ed4fbc2640ef41f16025aa0c30dd`; xác minh PGDMP và `pg_restore --list`, chưa full restore thử. Có bản cấu hình và image cũ để rollback.
+- Checksum nội dung migrations đã áp dụng khớp bản mới theo cùng cách chuẩn hóa newline của migration runner. Áp dụng **0022 + 0023** và runtime grants; không seed/bootstrap/import/reset.
+- Fingerprint **129 bảng hiện có** trước/sau migration, trước khi khởi động lại, khớp hoàn toàn. Giữ 1 user/account admin, 113 owner data records và cấu hình tích hợp; không tạo cư dân, căn hộ, staff hoặc ticket giả.
+- RLS bật và FORCE trên các bảng có tenant_id; runtime API có quyền INSERT mapping ảnh nhưng không SELECT private owner staging.
+- Giữ nguyên các giá trị cấu hình runtime, model/key Reception và các container PostgreSQL, MinIO, backup, resident, operations, gateway. Reload nginx của gateway/resident/operations sau đổi API để cập nhật upstream DNS.
+- Phát hiện và bổ sung thiếu sót đóng gói: `platform-sync` cần đọc ảnh trước upload nhưng chưa có cấu hình storage. Đã thêm endpoint/access/secret/bucket/region giống API và mount thư mục ảnh read-only. Chỉ recreate worker này lần bổ sung; xác minh provider `s3` và đọc trạng thái bucket thành công. Không đổi credential hiện có hoặc dữ liệu storage. Compose trong repository cũng được sửa để các lần triển khai sau có cấu hình này.
+- Đối chiếu artifact frontend đang chạy: **31 file resident + 58 file staff**, khớp release frontend hiện có. Không có thay đổi frontend mới cần build trong đợt này. HTML trả ra công khai ở `/` và `/operations/` khớp artifact.
+- Kiểm tra HTTPS công khai: `/`, `/login`, `/operations/` HTTP 200; `/api/business/resident/me` và `/mcp` không có xác thực trả JSON HTTP 401 theo quyền. Đây là smoke check, chưa phải kiểm thử đăng nhập/hội thoại tương tác.
+
+Release/backup/bằng chứng VPS: `/opt/vinhomes/releases/fix-reception-assets-20261015-24b13b5847f0/`. Bản riêng local: `E:\Vinhomes-Deploy\reception-assets-20261015\vps-release`.
+
+**Giới hạn nghiệm thu:** không gọi Agent/model thật. Cấu hình kết nối Platform trong database VPS hiện `enabled=false`, chưa có URL; giữ nguyên, không thay bằng địa chỉ Platform local. Vì vậy chưa nghiệm thu gửi ticket/ảnh tới Platform thật trên VPS. Code, schema và cấu hình storage của Domain đã sẵn sàng; cần cấu hình endpoint/key/route/grant Platform đúng môi trường và kiểm thử hai backend thật sau khi bật tích hợp.

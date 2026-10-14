@@ -209,6 +209,14 @@ services:
     environment:
       <<: *platform
       DATABASE_URL: *api-db
+      # The bridge reads verified resident images before uploading them to the Platform Asset API.
+      VINHOMES_API_S3_ENDPOINT: *s3-endpoint
+      VINHOMES_API_S3_ACCESS_KEY: *s3-access
+      VINHOMES_API_S3_SECRET_KEY: *s3-secret
+      VINHOMES_API_S3_BUCKET: *s3-bucket
+      VINHOMES_API_S3_REGION: ${S3_REGION:-us-east-1}
+    volumes:
+      - api-files:/var/lib/vinhomes/files:ro
     # A platform on this machine is reached as host.docker.internal; Docker on Linux needs the name spelled out.
     extra_hosts:
       - 'host.docker.internal:host-gateway'
