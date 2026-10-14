@@ -1035,6 +1035,13 @@ class SqlEventRepository:
             for event in events
             if event.event_type == "assistant.message"
         )
+        # A pending approval carries what its approval.required event said,
+        # so a partner that lost its cursor can still decide it.
+        required = {
+            event.payload["approval_id"]: event.payload
+            for event in events
+            if event.event_type == "approval.required"
+        }
         return ConversationSnapshot(
             conversation_id=record.conversation_id,
             external_conversation_id=(
@@ -1054,6 +1061,7 @@ class SqlEventRepository:
             messages=messages,
             pending_approvals=tuple(
                 {
+                    **required.get(approval_id, {}),
                     "workflow_id": record.workflow_id,
                     "approval_id": approval_id,
                     "status": "pending",
