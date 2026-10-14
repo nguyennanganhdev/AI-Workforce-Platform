@@ -2,6 +2,8 @@
 
 **Pilot mới:** bắt đầu bằng [bộ OP1/Kỹ thuật schema v2](../owner-data-pilot/op1-technical/README.md) với một phân khu/tòa, SOP cư dân/nhân viên, bằng chứng có hash và nhập staging riêng. Bộ v1 bên dưới giữ tương thích cho bàn giao nhiều khu; không tự chuyển thành dữ liệu vận hành hoặc dùng importer legacy.
 
+**Cập nhật 15/10/2026:** bộ pilot đã có candidate S1.01 và 12 dòng địa bàn/luồng phần mềm được điền trước; mở `owner-data-pilot/op1-technical/missing-data.csv` để xem 108 trường/hạng mục cần owner bổ sung. Bộ v1 trong thư mục này vẫn là mẫu trống; không sao chép candidate thành hồ sơ đã xác nhận. Đã bổ sung 4 tài liệu công khai có nguồn vào kho tra cứu Domain, không tạo cư dân/staff/ca hoặc kích hoạt dịch vụ thật.
+
 Các CSV trong thư mục này chỉ có tiêu đề, **không có người, căn/lô hay ca giả**. Sao chép cả thư mục sang vị trí riêng ngoài Git, ví dụ `E:\Vinhomes-Deploy\owner-data-private`, rồi điền dữ liệu được đơn vị vận hành cho phép bàn giao. Không ghi mật khẩu, CCCD, số tài khoản hoặc ảnh giấy tờ vào CSV.
 
 Nếu chưa có dữ liệu được xác nhận, bắt đầu từ [bộ 113 mục đề xuất chờ đơn vị vận hành đối soát](../owner-data-proposals/20261014/README.md). Bộ đề xuất có dữ liệu tham khảo và câu hỏi cần chốt; bộ CSV vận hành bên dưới chỉ dùng sau khi nhận được hồ sơ thật.

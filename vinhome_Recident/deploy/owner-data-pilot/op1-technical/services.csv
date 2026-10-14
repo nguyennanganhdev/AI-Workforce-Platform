@@ -1,1 +1,4 @@
 ﻿site_code,zone_code,building_code,service_code,title,category_code,operator_code,eligibility,fee_policy,fee_amount,currency,fee_unit,vat_policy,operating_hours,warranty_policy,booking_policy,cancellation_policy,contact_reference,document_reference,approved_by,approved_at,effective_from,effective_until
+ocean-park-1,ref-the-sapphire-1,S1.01,proposal-technical-electrical,Đề xuất tiếp nhận sự cố điện và chiếu sáng,technical,,,,,VND,,,,,,,,SYSTEM-WORKFLOW-PROPOSAL-20261015,,,,
+ocean-park-1,ref-the-sapphire-1,S1.01,proposal-technical-water,Đề xuất tiếp nhận sự cố cấp thoát nước,technical,,,,,VND,,,,,,,,SYSTEM-WORKFLOW-PROPOSAL-20261015,,,,
+ocean-park-1,ref-the-sapphire-1,S1.01,proposal-technical-hvac,Đề xuất tiếp nhận sự cố điều hòa và thông gió,technical,,,,,VND,,,,,,,,SYSTEM-WORKFLOW-PROPOSAL-20261015,,,,

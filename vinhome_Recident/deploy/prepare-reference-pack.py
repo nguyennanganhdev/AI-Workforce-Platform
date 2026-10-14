@@ -5,8 +5,30 @@ import gzip
 import hashlib
 import json
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 from uuid import NAMESPACE_URL, uuid5
+
+
+def official_source(url):
+    address = urlsplit(url)
+    if (
+        address.scheme != "https"
+        or address.username
+        or address.password
+        or address.fragment
+    ):
+        return False
+    host = address.hostname or ""
+    return (
+        host == "vinhomes.vn"
+        or host.endswith(".vinhomes.vn")
+        or (
+            host == "play.google.com"
+            and address.path == "/store/apps/details"
+            and parse_qs(address.query).get("id") == ["com.vinhomes.resident"]
+            and set(parse_qs(address.query)) <= {"id", "hl"}
+        )
+    )
 
 
 def compile_records(rows):
@@ -20,16 +42,9 @@ def compile_records(rows):
             raise SystemExit(
                 "Only explicitly scoped public reference records are accepted."
             )
-        if not row["sources"] or any(
-            urlsplit(u).scheme != "https"
-            or not (
-                (urlsplit(u).hostname or "") == "vinhomes.vn"
-                or (urlsplit(u).hostname or "").endswith(".vinhomes.vn")
-            )
-            for u in row["sources"]
-        ):
+        if not row["sources"] or any(not official_source(u) for u in row["sources"]):
             raise SystemExit(
-                "Each record requires an official HTTPS Vinhomes source URL."
+                "Each record requires an official HTTPS Vinhomes source or the exact Vinhomes Resident app listing."
             )
         # Old packs keep the same document IDs. New catalog entries need their own stable key.
         record_code = row.get("record_code", "amenities")
@@ -73,6 +88,17 @@ def compile_records(rows):
                     "operator": None,
                     "booking_policy": None,
                     "cancellation_policy": None,
+                    **(
+                        {
+                            key: row[key]
+                            for key in (
+                                "applicability",
+                                "source_updated_at",
+                                "source_snapshot_sha256",
+                            )
+                            if key in row
+                        }
+                    ),
                 },
                 "chunks": [
                     {

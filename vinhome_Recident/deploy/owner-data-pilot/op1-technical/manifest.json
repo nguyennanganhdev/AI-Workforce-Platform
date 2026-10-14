@@ -1,21 +1,39 @@
 {
   "schema_version": 2,
   "bundle_code": "op1-technical-pilot",
-  "version": "draft-1",
+  "version": "reference-draft-20261015",
   "data_mode": "owner_candidate",
   "site_codes": [
     "ocean-park-1"
   ],
   "data_owner": "",
-  "exported_at": "",
+  "exported_at": "2026-10-14T21:57:12.352067+00:00",
   "document_reference": "",
   "pilot": {
     "site_code": "ocean-park-1",
-    "zone_code": "",
-    "building_code": "",
+    "zone_code": "ref-the-sapphire-1",
+    "building_code": "S1.01",
     "category_codes": [
       "technical"
     ]
   },
-  "source_documents": []
+  "source_documents": [
+    {
+      "document_reference": "PUBLIC-OP1-GEOGRAPHY-20261015",
+      "file": "evidence/public-geography.json",
+      "sha256": "dd3eb4780ae18327caf1a7f548ae467fefa3cb54f7c36f68812ee08e91a2025a"
+    },
+    {
+      "document_reference": "SYSTEM-WORKFLOW-PROPOSAL-20261015",
+      "file": "evidence/software-workflow.json",
+      "sha256": "41322050f1ca9d872784188069152e8fe0d154a206c12c9abffc08ac5438acda"
+    }
+  ],
+  "prefill": {
+    "status": "pending_owner_review",
+    "zone_code_kind": "internal_reference",
+    "building_code_kind": "public_source",
+    "master_activation": false,
+    "policy_activation": false
+  }
 }

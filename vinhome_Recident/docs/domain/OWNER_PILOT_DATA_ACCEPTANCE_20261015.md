@@ -4,7 +4,7 @@
 
 Người dùng chọn OP1/Kỹ thuật trước và xác nhận **chưa có dữ liệu thật**. Lượt này hoàn thiện bộ đầu vào, kiểm tra chất lượng và nhập staging riêng; kiểm thử bằng dữ liệu giả trong PostgreSQL tạm. Không nạp cư dân, căn, nhân viên, ca trực, biểu phí hoặc SOP giả vào VPS. Không chạy Agent/model hay gọi nhà cung cấp thật.
 
-Đã bổ sung [bộ pilot schema v2](../../deploy/owner-data-pilot/op1-technical/README.md): 10 CSV, manifest phạm vi một phân khu/tòa và nguồn bằng chứng; khung luồng phần mềm để soạn SOP. Bản riêng để điền nằm tại `E:\Vinhomes-Deploy\owner-pilot-20261015\input`. Các CSV chỉ có header; mã tòa/phân khu, hồ sơ cá nhân, phí/giờ/SLA đều chưa được tự điền.
+Giai đoạn tạo khung ban đầu đã bổ sung [bộ pilot schema v2](../../deploy/owner-data-pilot/op1-technical/README.md): 10 CSV, manifest phạm vi một phân khu/tòa và nguồn bằng chứng; khung luồng phần mềm để soạn SOP. Bản trống riêng nằm tại `E:\Vinhomes-Deploy\owner-pilot-20261015\input`. **Cập nhật tiếp ngày 15/10:** CSV trong repo đã điền candidate địa bàn và khung luồng phần mềm theo nghiên cứu; xem mục cập nhật bên dưới. Hồ sơ cá nhân, phí/giờ/SLA và xác nhận owner không được tự tạo.
 
 ## Thay đổi đã thực hiện
 
@@ -35,10 +35,20 @@ Container PostgreSQL test và volume ẩn danh riêng đã được gỡ sau ki�
 
 ## Giới hạn và bước tiếp theo
 
-**Đây là nghiệm thu chất lượng đầu vào và staging; chưa phải nghiệm thu dịch vụ thật hay kết nối Platform thật.** Migration/module mới ở source nhánh `dev_Vinhome`, chưa triển khai lên VPS trong lượt này.
+**Đây là nghiệm thu chất lượng đầu vào và staging; chưa phải nghiệm thu dịch vụ thật hay kết nối Platform thật.** Lượt tạo khung ban đầu chưa triển khai lên VPS. Trong đợt cập nhật Docker tiếp theo, migration 0022/0023 đã được áp dụng trên local và VPS; hai bảng staging hiện có nhưng chưa có batch vận hành thật.
 
 Chưa có publisher từ staging sang master, tài khoản/quyền và knowledge vận hành. Cần thiết kế bước đối soát/publish trên bộ dữ liệu thật, xử lý mapping với địa bàn tham khảo hiện có, version/hiệu lực và thu hồi dữ liệu cũ; không dùng importer legacy một site để bỏ qua việc này.
 
 Tiếp theo cần đơn vị chủ dữ liệu cung cấp một tòa đã chọn: mã master và căn, cư trú đã xác minh, nhân viên/ca/dự phòng, tuyến Platform, dịch vụ/phí/giờ/bảo hành/đặt-hủy, SOP/SLA và hồ sơ nguồn được phép bàn giao. Sau đó kiểm tra staging → đối soát/publish → quyền → luồng resident/staff → nối hai backend Platform/Domain. BQL sử dụng Platform; cư dân giữ quyền quyết định phương án/chi phí và kết quả.
 
-Platform nhận ngữ cảnh ticket và MCP grant; không nhận gói CSV hoặc hồ sơ xác minh hàng loạt. Khi mở rộng OP2/3 cần nâng profile v2 và nghiệm thu từng phạm vi; không chỉ đổi `site_codes` để bỏ giới hạn pilot. Tài liệu/database nghiệm thu ngày 14/10 là snapshot lượt trước, chưa bao gồm hai bảng staging mới trên VPS.
+Platform nhận ngữ cảnh ticket và MCP grant; không nhận gói CSV hoặc hồ sơ xác minh hàng loạt. Khi mở rộng OP2/3 cần nâng profile v2 và nghiệm thu từng phạm vi; không chỉ đổi `site_codes` để bỏ giới hạn pilot. Tài liệu/database nghiệm thu ngày 14/10 là snapshot lượt trước; không dùng thay kiểm kê hiện tại.
+
+## Cập nhật nghiên cứu và dữ liệu ngày 15/10
+
+- Đã kiểm kê riêng database local `vinhomes` (dữ liệu test) và VPS `vinhomes_clean_20261014_a08369c0` (dữ liệu đã dọn). Không chuyển cư dân/staff test từ local sang VPS.
+- Đã điền candidate **OP1 → The Sapphire 1 → S1.01**, tái sử dụng địa bàn công khai đã có, không nhân bản master hay kích hoạt tòa. Có 12 dòng đề xuất trong 5 dataset; 5 dataset hồ sơ thật vẫn trống. `missing-data.csv` chỉ rõ 108 trường/hạng mục cần đối soát. Khung SOP không có SLA/an toàn/giá/owner approval tự tạo; validator tiếp tục từ chối nhập vận hành.
+- Đã nghiên cứu và nạp 4 tài liệu reference mới: Sapphire cơ bản, Sapphire tối thiểu, bàn giao thô căn thương mại OP1 và kênh Vinhomes Resident chính thức. PDF không có ngày hiệu lực xác minh, không gán thiết bị/bảo hành cho từng căn; kênh ứng dụng thương hiệu không đồng nghĩa tính năng/API của Domain AI này. Nguồn và hash snapshot có trong [gói JSON](../../deploy/reference-data/op1-technical-public-20261015.json).
+- VPS hiện **302 tài liệu / 786 chunks**; local **168 / 652**. Nhập lại không trùng; tra cứu bằng quyền runtime thấy tài liệu OP1, OP2/3 không thấy các tài liệu mới này. Không gọi Agent/model/embedding.
+- **82 kiểm thử đạt**, gồm pilot, nguồn/compile mới, candidate thiếu hồ sơ, staging, MCP v2, knowledge và schema. Runtime/DB được backup trước import; hồ sơ cũ giữ nguyên, ngoại trừ timestamp heartbeat worker cập nhật độc lập đã đối chiếu từ backup.
+
+Xem [báo cáo dữ liệu và phần thiếu](DOMAIN_DATA_COMPLETION_ACCEPTANCE_20261015.md) và [nghiên cứu nguồn](RESEARCH_DOMAIN_DATA_COMPLETION_20261015.md). **Chưa đủ dữ liệu để bật dịch vụ thật hoặc tạo tài khoản cư dân/staff thật**; chưa có publisher từ staging sang master. Bổ sung tài liệu tham khảo không thay điều kiện này.

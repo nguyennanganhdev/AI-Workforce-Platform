@@ -1,6 +1,10 @@
 # Pilot dữ liệu OP1 — Kỹ thuật
 
-Phạm vi đã chốt với người dùng: **OP1, một phân khu, một tòa, Kỹ thuật**. Chưa có dữ liệu thật; mã phân khu/tòa trong manifest để trống. Không tự chọn tòa hoặc coi tên phân khu tham khảo là mã master chính thức. Các CSV chỉ có header, chưa có người/căn/ca/giá/SLA giả. Bộ trống phải báo `valid=false`.
+Phạm vi pilot: **OP1, một phân khu, một tòa, Kỹ thuật**. Theo yêu cầu tự nghiên cứu và điền dữ liệu ngày 15/10/2026, bộ trong repo đã được điền trước **candidate The Sapphire 1 → S1.01** từ nguồn công khai chính thức. Đây là phạm vi đề xuất để đối soát, chưa được đơn vị vận hành xác nhận. `ref-the-sapphire-1` là mã tham chiếu nội bộ, không phải mã master chính thức; `S1.01` là mã tòa có trong nguồn công khai.
+
+Hiện có **12 dòng đề xuất**: 1 phân khu, 1 tòa, 1 tuyến chưa gán đơn vị/Platform, 3 nhóm tiếp nhận Kỹ thuật (điện, nước, điều hòa/thông gió) và 6 khung SOP phần mềm (cư dân/staff). 5 CSV `operators`, `units`, `residents`, `staff`, `shifts` vẫn chỉ có header vì chưa có hồ sơ thật. Không tạo người/căn/ca/giá/SLA giả. Phí, giờ, an toàn, chuyển cấp và SLA chưa xác minh giữ trống; `approved_by`, `approved_at`, `effective_from` không tự điền.
+
+Mở [missing-data.csv](missing-data.csv) để đối soát **108 trường/hạng mục còn thiếu**; [candidate-summary.json](candidate-summary.json) lưu số lượng và hash nguồn. Bộ này **phải trả `valid=false`**, không được nhập staging/publish thành vận hành khi chưa bổ sung hồ sơ. [Nghiên cứu nguồn](../../../docs/domain/RESEARCH_DOMAIN_DATA_COMPLETION_20261015.md) phân biệt dữ kiện công khai và phần cần owner xác nhận.
 
 Đây là **schema v2 dành riêng pilot**, không thay bộ v1 nhiều khu. Cần hoàn thiện và nghiệm thu pilot trước khi thiết kế mở rộng phạm vi v2 sang OP2/3. `data_mode=owner_candidate` nghĩa là dữ liệu đề nghị tiếp nhận, chưa phải chứng nhận của đơn vị vận hành.
 
@@ -21,7 +25,7 @@ Mỗi dòng giữ các trường `document_reference`, `approved_by`, `approved_
 
 `sops.csv`: mã/tên SOP, dịch vụ, audience `resident`/`staff`, loại yêu cầu `incident`/`service_request`, mức ưu tiên; SLA phản hồi/xử lý tính bằng phút; thông tin cần tiếp nhận; an toàn; chuyển cấp; bằng chứng; tiêu chí nghiệm thu; các bước thực hiện. `clock_policy=elapsed` dùng thời gian liên tục; chưa hỗ trợ tính SLA theo lịch làm việc. `approval_policy=resident_quote_and_completion` giữ bước cư dân đồng ý phương án/chi phí và kết quả, không thêm bước BQL duyệt ticket tại Domain.
 
-`system-workflow.json` là mô tả luồng phần mềm để soạn SOP, **không phải SOP vận hành đã được xác nhận**. Không sao chép thành quy định hiện hành khi chưa được đối soát. Phí, giờ và SLA còn trống phải để người chủ dữ liệu quyết định.
+`system-workflow.json` và 6 dòng `sops.csv` là mô tả luồng phần mềm để soạn SOP, **không phải SOP vận hành đã được xác nhận**. Ba dòng `services.csv` là nhóm tiếp nhận đề xuất, chưa chứng minh đơn vị quản lý cung cấp hoặc báo giá dịch vụ. Không sao chép thành quy định hiện hành khi chưa được đối soát. Phí, giờ, SLA, an toàn, chuyển cấp và tiêu chí kỹ thuật còn thiếu phải để người chủ dữ liệu quyết định.
 
 ## Hồ sơ nguồn và tính toàn vẹn
 
@@ -43,10 +47,12 @@ Lấy hash bằng `Get-FileHash -Algorithm SHA256`. Mỗi `document_reference` t
 
 ## Tạo và kiểm tra bản riêng
 
-Bản sẵn để điền trên máy: `E:\Vinhomes-Deploy\owner-pilot-20261015\input`. Để tạo bản khác, chạy từ gốc repo:
+Bản trống ban đầu: `E:\Vinhomes-Deploy\owner-pilot-20261015\input`. Bản candidate đã điền: `E:\Vinhomes-Deploy\data-completion-20261015\candidate` và các CSV trong thư mục repo này. Để tạo bản khác, chạy từ gốc repo:
 
 ```powershell
 python vinhome_Recident/deploy/prepare-owner-pilot.py --output E:\Vinhomes-Deploy\op1-owner-private
+# Hoặc điền trước địa bàn tham khảo và khung luồng phần mềm; không tạo owner approval:
+python vinhome_Recident/deploy/prepare-owner-pilot.py --output E:\Vinhomes-Deploy\op1-reference-candidate --reference-catalog vinhome_Recident/deploy/reference-data/owner-public-catalog-20261014.json --building-code S1.01
 python vinhome_Recident/deploy/validate-owner-data.py --folder E:\Vinhomes-Deploy\op1-owner-private
 ```
 
