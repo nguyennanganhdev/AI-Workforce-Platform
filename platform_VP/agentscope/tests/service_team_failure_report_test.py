@@ -27,6 +27,8 @@ from agentscope.app.storage import (
     SessionRecord,
     TeamData,
     TeamRecord,
+    TeamSharedContextRecord,
+    TeamTurnRecord,
 )
 from agentscope.event import ReplyEndEvent, ReplyStartEvent
 from agentscope.message import AssistantMsg, ToolCallBlock, ToolCallState
@@ -48,6 +50,8 @@ class _Storage:
         self.agents = agents
         self.team = team
         self.fail_writes = False
+        self.shared_context: TeamSharedContextRecord | None = None
+        self.team_turn: TeamTurnRecord | None = None
 
     async def get_session(
         self,
@@ -84,6 +88,47 @@ class _Storage:
         """Accept persisted replies, or fail them on demand."""
         if self.fail_writes:
             raise RuntimeError("storage is down")
+
+    async def list_messages(self, *_: object, **__: object) -> tuple[list, bool]:
+        """This focused fixture has no historical customer messages."""
+        return [], False
+
+    async def get_team_shared_context(
+        self,
+        _user_id: str,
+        team_id: str,
+    ) -> TeamSharedContextRecord | None:
+        """Return the shared context used by the team runtime."""
+        if self.shared_context is None or self.shared_context.team_id != team_id:
+            return None
+        return self.shared_context.model_copy(deep=True)
+
+    async def upsert_team_shared_context(
+        self,
+        _user_id: str,
+        record: TeamSharedContextRecord,
+    ) -> TeamSharedContextRecord:
+        """Persist shared state independently of this test's reply failure."""
+        self.shared_context = record.model_copy(deep=True)
+        return record
+
+    async def compare_and_swap_team_shared_context(
+        self, _user_id: str, record: TeamSharedContextRecord, expected_revision: int
+    ) -> bool:
+        if (self.shared_context.state.revision if self.shared_context else 0) != expected_revision:
+            return False
+        self.shared_context = record.model_copy(deep=True)
+        return True
+
+    async def get_team_turn(self, _user_id: str, _team_id: str):
+        return self.team_turn.model_copy(deep=True) if self.team_turn else None
+
+    async def upsert_team_turn(self, _user_id: str, record: TeamTurnRecord):
+        self.team_turn = record.model_copy(deep=True)
+        return record
+
+    async def list_outstanding_team_handoffs(self, **_kwargs):
+        return []
 
 
 class _WorkspaceManager:
@@ -207,7 +252,22 @@ class TeamFailureReportTest(IsolatedAsyncioTestCase):
         async def _get_model(*_: object, **__: object) -> object:
             if model_fails:
                 raise RuntimeError("no credential for the worker")
-            return object()
+
+            class _MeasuredModel:
+                context_size = 100_000
+
+                async def count_tokens(
+                    self,
+                    messages: list,
+                    tools: object,
+                ) -> int:
+                    del tools
+                    return sum(
+                        len(message.get_text_content() or "")
+                        for message in messages
+                    )
+
+            return _MeasuredModel()
 
         if workspace_fails:
             self.workspace_manager = _FailingWorkspaceManager()
@@ -296,8 +356,8 @@ class TeamFailureReportTest(IsolatedAsyncioTestCase):
                     "type whether to retry — with this member or a fresh "
                     "one — or to raise it with the user: invalid "
                     "credentials or an exhausted quota will fail the "
-                    "same way again. Assume no usable output unless the "
-                    "member reported partial results earlier."
+                    "same way again. No successful tool result was "
+                    "preserved for this run."
                     "</system-reminder>"
                 ),
                 "source": json.dumps(
@@ -330,7 +390,8 @@ class TeamFailureReportTest(IsolatedAsyncioTestCase):
                     "Do not silently re-dispatch it: ask the user what "
                     "should happen to the task, or ask the member how "
                     "far it got. Left unresolved, the member is stranded "
-                    "with work nobody is tracking.</system-reminder>"
+                    "with work nobody is tracking. No successful tool "
+                    "result was preserved for this run.</system-reminder>"
                 ),
                 "source": json.dumps(
                     {"label": "System", "sublabel": "Reminder"},
@@ -384,9 +445,8 @@ class TeamFailureReportTest(IsolatedAsyncioTestCase):
                     "Judge from the error type whether to retry — with "
                     "this member or a fresh one — or to raise it with "
                     "the user: invalid credentials or an exhausted quota "
-                    "will fail the same way again. Assume no usable "
-                    "output unless the member reported partial results "
-                    "earlier.</system-reminder>"
+                    "will fail the same way again. No successful tool "
+                    "result was preserved for this run.</system-reminder>"
                 ),
                 "source": json.dumps(
                     {"label": "System", "sublabel": "Reminder"},

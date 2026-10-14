@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """Scoped MCP client lifetime and schema-checked output projection."""
 
-from typing import Any
-
 from contextlib import asynccontextmanager
+from typing import Any
 
 from ..contracts import Scope
 from ._utils import ExecutionError, freeze
@@ -36,15 +35,16 @@ class McpAdapter:
         self.idempotency_fields = dict(idempotency_fields or {})
 
     def model_input_schema(self, descriptor: Any) -> Any:
-        """Hide server-injected idempotency fields from model arguments."""
+        """Hide server-injected fields from model arguments."""
         schema = freeze(descriptor["input_schema"])
+        fields = {"asset_downloads"}
         field = self.idempotency_fields.get(descriptor["tool_version_id"])
         if field:
+            fields.add(field)
+        for field in fields:
             schema.get("properties", {}).pop(field, None)
             if "required" in schema:
-                schema["required"] = [
-                    k for k in schema["required"] if k != field
-                ]
+                schema["required"] = [k for k in schema["required"] if k != field]
         return schema
 
     def validate_model_input(self, descriptor: Any, arguments: Any) -> None:
@@ -52,6 +52,8 @@ class McpAdapter:
         Reject caller-selected idempotency even with permissive MCP schemas.
         """
         field = self.idempotency_fields.get(descriptor["tool_version_id"])
+        if "asset_downloads" in arguments:
+            raise ExecutionError("ASSET_DOWNLOADS_SERVER_OWNED", 422)
         if field and field in arguments:
             raise ExecutionError("IDEMPOTENCY_FIELD_SERVER_OWNED", 422)
         validate(
@@ -85,13 +87,12 @@ class McpAdapter:
             descriptor["credential_ref"],
             context["mode"],
         )
-        if context["mode"] == "evaluation" and credential[
-            "environment"
-        ] not in {"mock", "sandbox"}:
+        if context["mode"] == "evaluation" and credential["environment"] not in {
+            "mock",
+            "sandbox",
+        }:
             raise ExecutionError("EVAL_PRODUCTION_CREDENTIAL_FORBIDDEN", 403)
-        async with self.client_factory(
-            scope, descriptor, credential
-        ) as client:
+        async with self.client_factory(scope, descriptor, credential) as client:
             tool = await client.get_tool(descriptor["provider_tool_name"])
             if tool.input_schema != descriptor["input_schema"]:
                 raise ExecutionError("MCP_SCHEMA_DRIFT", 403)

@@ -8,20 +8,6 @@ tools, and caller-supplied extras — into one :class:`Toolkit`.
 """
 from typing import Any, Literal
 
-from .._manager import BackgroundTaskManager, SchedulerManager
-from ..message_bus import MessageBus
-from .._tool import (
-    SubmitHandover,
-    SubmitVerdict,
-    AgentCreate,
-    AgentInvite,
-    TeamCreate,
-    TeamDelete,
-    TeamSay,
-)
-from .._types import AgentToolFactory, SubAgentTemplate
-from ..storage import AgentRecord, SessionRecord, StorageBase
-from ..workspace_manager import WorkspaceManagerBase
 from ...middleware import MiddlewareBase
 from ...tool import (
     TaskCreate,
@@ -29,11 +15,25 @@ from ...tool import (
     TaskList,
     TaskUpdate,
     ToolBase,
-    Toolkit,
     ToolGroup,
+    Toolkit,
 )
 from ...workspace import WorkspaceBase
+from .._manager import BackgroundTaskManager, SchedulerManager
+from .._shared_context import SharedContextService
+from .._tool import (
+    AgentInvite,
+    SubmitHandover,
+    SubmitVerdict,
+    TeamCreate,
+    TeamDelete,
+    TeamSay,
+)
+from .._types import AgentToolFactory, SubAgentTemplate
 from ..access import ResourceKind
+from ..message_bus import MessageBus
+from ..storage import AgentRecord, SessionRecord, StorageBase
+from ..workspace_manager import WorkspaceManagerBase
 from ._access import ResourceAccessService
 
 
@@ -55,6 +55,7 @@ async def get_toolkit(
     team_role: Literal["leader", "worker"] | None = None,
     channel_tools: list[ToolBase] | None = None,
     sop_dispatch: str | None = None,
+    shared_context_service: SharedContextService | None = None,
 ) -> Toolkit:
     """Assemble the complete :class:`Toolkit` for one chat turn.
 
@@ -70,8 +71,10 @@ async def get_toolkit(
        :meth:`SchedulerManager.list_tools`). Only attached when the
        session has a model configured (Schedule tools need a model to
        fire new chats with).
-    5. Team tools — by caller-resolved ``team_role``: a worker gets only
-       ``TeamSay``; anyone else gets the full leader-side toolset.
+    5. Team tools — only the fixed Workforce Leader can create/delete a team
+       and invite published business agents. A business agent receives only
+       ``TeamSay`` while participating in a team, and no team tools while
+       standalone. Chat runtime never creates agents.
     6. Caller-supplied extras (``extra_factory``)
     7. Channel platform tools — the caller resolves them (once, shared
        with the system-prompt attachment) and passes ``channel_tools``.
@@ -116,10 +119,8 @@ async def get_toolkit(
             user/session-specific extra tools.
         sub_agent_templates (`dict[str, SubAgentTemplate] | None`, \
 optional):
-            Sub-agent template registry, keyed by template type.
-            Passed to the ``AgentCreate`` tool so it can route to
-            the appropriate template when a ``subagent_type`` is
-            specified by the leader agent.
+            Legacy compatibility input. Runtime agent creation is disabled;
+            agents must be authored and published through Agent Builder.
         team_role (`Literal["leader", "worker"] | None`, optional):
             The session's team role, resolved once by the caller.
             ``None`` means not in any team.
@@ -136,20 +137,27 @@ optional):
 
     tool_groups = []
 
-    # The general tools running in the workspace
-    tools = await workspace.list_tools()
-
-    # Planning tools — always on.
-    tools += [TaskCreate(), TaskList(), TaskGet(), TaskUpdate()]
-
-    # Background-task control.
-    tools += await background_task_manager.list_tools(
-        session_id=session_record.id,
+    # Builder agents operate through their validated MCP bindings. Coding,
+    # shell/task/cron tools add schemas and encourage unrelated planning loops.
+    is_leader = agent_record.data.system_role == "leader"
+    # The Builder execution contract identifies authored business agents even
+    # when their intentional effective MCP set is empty (for example a planner
+    # or a knowledge-base answerer). Keep them inside the restricted runtime.
+    business_runtime = (
+        is_leader
+        or bool(agent_record.data.tool_bindings)
+        or agent_record.data.execution_mode is not None
     )
+    tools = [] if business_runtime else await workspace.list_tools()
+    if not business_runtime:
+        tools += [TaskCreate(), TaskList(), TaskGet(), TaskUpdate()]
+        tools += await background_task_manager.list_tools(
+            session_id=session_record.id,
+        )
 
     # Schedule control. Requires a model config on this session because
     # ``ScheduleCreate`` records it into new ``ScheduleRecord`` instances.
-    if session_record.config.chat_model_config is not None:
+    if not business_runtime and session_record.config.chat_model_config is not None:
         # Add schedule tools as a tool group
         tool_groups.append(
             ToolGroup(
@@ -174,8 +182,9 @@ time or interval"
             ),
         )
 
-    # Team tools by caller-resolved role; non-team sessions get the
-    # leader set (each leader tool rechecks its precondition at call time).
+    # Team creation and membership management belong only to the fixed
+    # Workforce Leader. Business agents may communicate only after they have
+    # joined a team; standalone business agents receive no team tools.
     team_tool_kwargs: dict[str, Any] = {
         "storage": storage,
         "message_bus": message_bus,
@@ -183,16 +192,11 @@ time or interval"
         "user_id": user_id,
         "session_id": session_record.id,
         "agent_id": agent_record.id,
+        "shared_context_service": shared_context_service,
     }
-    if team_role == "worker":
-        tools.append(TeamSay(**team_tool_kwargs, role="worker"))
-    else:
+    if is_leader:
         tools += [
             TeamCreate(**team_tool_kwargs),
-            AgentCreate(
-                **team_tool_kwargs,
-                sub_agent_templates=sub_agent_templates or {},
-            ),
             TeamSay(**team_tool_kwargs, role="leader"),
             TeamDelete(**team_tool_kwargs),
         ]
@@ -214,7 +218,11 @@ time or interval"
         invitable_pool = [
             view
             for view in visible_agents
-            if view.data.invite_config.invitable
+            if view.id != agent_record.id
+            and view.source == "user"
+            and view.data.system_role == "business"
+            and view.data.lifecycle_state == "published"
+            and view.data.invite_config.invitable
             and (view.data.invite_config.invite_description or "").strip()
         ]
         if invitable_pool:
@@ -225,6 +233,8 @@ time or interval"
                     resource_access_service=resource_access_service,
                 ),
             )
+    elif team_role is not None:
+        tools.append(TeamSay(**team_tool_kwargs, role="worker"))
 
     # A step's turn gets one submit tool: handover until something has
     # been handed over, verdict after.
@@ -265,14 +275,35 @@ time or interval"
     if channel_tools:
         tools += channel_tools
 
+    workspace_mcps = [] if is_leader else await workspace.list_mcps(
+        agent_id=agent_record.id,
+        session_id=session_record.id,
+    )
+    if agent_record.data.execution_mode is not None:
+        allowed_by_mcp: dict[str, list[str]] = {}
+        for binding in agent_record.data.tool_bindings:
+            mcp_name = str(binding.get("mcp_name") or "")
+            tool_name = str(binding.get("tool_name") or "")
+            if mcp_name and tool_name:
+                allowed_by_mcp.setdefault(mcp_name, []).append(tool_name)
+        workspace_mcps = [
+            client.model_copy(
+                update={
+                    "enable_tools": list(
+                        dict.fromkeys(allowed_by_mcp[client.name]),
+                    ),
+                },
+                deep=True,
+            )
+            for client in workspace_mcps
+            if client.name in allowed_by_mcp
+        ]
+
     return Toolkit(
         tools=tools,
-        skills_or_loaders=await workspace.list_skills(
+        skills_or_loaders=[] if is_leader else await workspace.list_skills(
             agent_id=agent_record.id,
         ),
-        mcps=await workspace.list_mcps(
-            agent_id=agent_record.id,
-            session_id=session_record.id,
-        ),
+        mcps=workspace_mcps,
         tool_groups=tool_groups,
     )

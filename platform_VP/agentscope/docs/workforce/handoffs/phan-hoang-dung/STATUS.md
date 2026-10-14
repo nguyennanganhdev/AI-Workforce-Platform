@@ -1,96 +1,101 @@
-# Trạng thái — Phan Hoàng Dũng
+﻿# Trạng thái — Phan Hoàng Dũng
 
-Ngày: **11/10/2026**, Asia/Saigon. Nhánh: **feat/wf-execution**.
-Baseline: **67ff871**, đã chứa C1 `a4c2fdd` và C2 `b9feee2` trên
-`develop2`. Thay đổi C3 lần này chưa commit/push.
+## Cập nhật mới nhất — D5 do Nguyễn Chí Hoàng thực hiện thay
 
-## Kết luận phạm vi
+D5 full-platform/fault E2E đã được nối vào working tree sau `c588517`; không còn
+chờ Phan Hoàng Dũng. Ba full-platform cases dùng SQL/HTTP/worker thật của
+platform và deterministic test boundaries, không còn skip vì thiếu factory.
+Chi tiết: [PHASE_D_D5.md](PHASE_D_D5.md). PostgreSQL và sandbox chỉ được kết
+luận sau CI; chưa ghi output này đã merge vào `develop2`.
 
-- Phase A/B đã bàn giao; tài liệu lịch sử:
-  [PHASE_A.md](PHASE_A.md), [PHASE_B.md](PHASE_B.md).
-- **Lane C3 của Dũng đã hoàn thiện:** Provider ingress ↔ Operation ↔ Protocol
-  dùng auth/UOW/jobs C1 và Registry SQL C2 thật; chi tiết
-  [PHASE_C_C3.md](PHASE_C_C3.md).
-- Chỉ kết luận lane Dũng; không đánh dấu C3 Builder của Nghĩa hoàn thành.
-  C4 Workflow/POST/Leader/event log/SSE, C6 E2E toàn lát cắt và C7
-  composition/migration/CI chưa được nghiệm thu trong lượt này.
-- Verified context, exact resolver và canonical UOW consumer đã được nối;
-  không còn báo thiếu output C1/C2 này.
+Validation toàn suite trên working tree: **647 passed, 22 skipped, 313
+subtests passed**, không có failure/error. Các skip local chỉ thuộc browser và
+PostgreSQL; D7 CI không chấp nhận skip.
 
-## Tasks C3 và đầu ra
+Cập nhật **12/10/2026**, Asia/Saigon. Thực hiện trên working tree hiện tại;
+không commit, merge hoặc thao tác Git.
 
-| Tasks | Đã thực hiện trong C3 | Giới hạn |
-|---|---|---|
-| PHD-14 | Dùng Registry SQL exact detail pin cho operation/create result; bind theo đủ Scope | Runtime/tool catalog/MCP trong test vẫn là dependencies giả |
-| PHD-15 | Persist full VerifiedProviderContext; request-local loader đọc inbox thật; re-authorize credential; worker handler kiểm tra provider namespace | Workflow apply sink thật thuộc C4 |
-| PHD-16 | Query/transition dùng exact pin kể cả current bị đổi hoặc disable; scoped durable query timer, giữ TimerCause | MCP query transport và canonical query hook chưa phải live integration |
-| PHD-17, kiểm tra C3 | Signed provider HTTP, durable worker thật, rollback/retry, early correlation, hai manager xen kẽ | Chưa làm C6 full-platform E2E |
+## Kết luận mới nhất — Phase D / D3 lượt 1
 
-## Owned paths và exports
+**Đã hoàn thành D3 lượt 1 trong môi trường SQL/mock hiện có:**
+8 E2E mới và 3 regression Execution mới pass, **zero xfail**.
+Ba PostgreSQL crash gates đã viết nhưng skip vì chưa có dedicated DSN.
+Không coi skip hoặc SQLite là bằng chứng PostgreSQL concurrency/failover.
 
-Chỉ thay đổi:
-`src/agentscope/app/workforce/execution/**`,
-`tests/workforce/{execution,fixtures}/**`,
-`docs/workforce/handoffs/phan-hoang-dung/**`.
-Không sửa contracts/Foundation/Registry/Orchestration, migration, root bootstrap
-hoặc dependency manifests.
+Theo xác nhận của người dùng, Phase C và D2 đã xong; D3 tiêu thụ output C7/D1,
+Registry D2 và Orchestration D2 trong code hiện tại. Không sửa bảng điều phối
+chung hoặc kết luận trạng thái merge của đội.
 
-- `create_repository(session_factory=None, *, uow_factory=None)`: C3 dùng
-  canonical UOW factory C1; giữ compatibility với session factory cũ.
-- Mới `external_operations.RegistryExecutionProtocols`: bind public Registry
-  service/resolver theo Scope; không query trực tiếp bảng Registry.
-- Mới loader nội bộ `provider_events/_context.py`: đối chiếu stored
-  context/envelope/receipt/time/Scope/pin, re-authorize trong apply UOW.
-- Ingress persist full server-only verified context; job payload chỉ tham chiếu
-  receipt, không mang provider-controlled Scope hoặc signing secret.
-- `ProviderEventProcessor.handle_job(job)`: callable Foundation JobHandler,
-  kiểm tra namespace với inbox rồi trả receipt/outcome.
-- HTTP sanitize PermissionError từ C1: authentication sai trả 401,
-  thiếu operation trả 403.
-- Tests mới `test_execution_c3.py`, fixture `phase_c_fakes.py`; fixture cũ thêm
-  tùy chọn canonical UOW và nhận normalization UOW.
+Chi tiết file, assertions, lệnh chạy và giới hạn:
+[PHASE_D_D3.md](PHASE_D_D3.md). Bàn giao D4/CI:
+[INTEGRATION_REQUEST_PHD_D3.md](INTEGRATION_REQUEST_PHD_D3.md).
 
-Không thêm bảng/cột: provider_ref nằm trong JSON payload của inbox hiện có.
-Metadata sáu bảng Execution bàn giao cho C7 qua `execution.get_metadata()`.
+## Phạm vi D3 đã thực hiện
 
-## Producer thật và test dependencies
+- Duplicate, out-of-order snapshot và terminal barrier.
+- Crash sau ACK/trước apply, trong UOW trước commit, sau commit/trước complete
+  job; reconnect SQL, worker/service mới, lease reclaim và old-fence rejection.
+- Unknown sau timeout-after-write: event hoặc durable query phục hồi operation
+  mà không gọi provider create lần hai, không tạo inbox giả cho query.
+- Delta gap qua query theo exact pin đã disable; quarantine recovery bằng
+  explicit durable job sau khi xác minh/bổ sung dependency.
+- Bốn owner xử lý xen kẽ; chống read/query khác manager/area/domain/tenant,
+  correlation chéo và job namespace giả.
+- Supervisor phục hồi lỗi claim; history/SSE/evidence sau recovery khớp DB.
 
-| Thành phần | Trạng thái kiểm chứng |
+Chỉ thay đổi `tests/workforce/execution/**`, `tests/workforce/e2e/**`,
+`tests/workforce/fixtures/**` và handoff cá nhân. Không phát hiện lỗi production
+cần sửa qua các ca D3 này; không thay source của owner khác, contracts,
+metadata/migration, CI, root composition, frontend hoặc dependency manifests.
+Không tạo NEXT_STEPS.
+
+Các file Python bàn giao:
+
+- `tests/workforce/fixtures/sql_ticket_slice.py`
+- `tests/workforce/fixtures/phase_d_execution.py`
+- `tests/workforce/fixtures/phase_c_fakes.py`
+- `tests/workforce/e2e/async_tickets/test_phase_c_c6.py`
+- `tests/workforce/e2e/async_tickets/test_phase_d_d3.py`
+- `tests/workforce/e2e/async_tickets/test_phase_d_d3_postgres.py`
+- `tests/workforce/execution/provider_events/test_phase_d_d3.py`
+
+## Validation mới nhất
+
+| Suite | Kết quả |
 |---|---|
-| C1 auth | HmacProviderAuth + SQL credential repository thật; API-key authenticator/secret resolver là test dependencies |
-| C1 UOW/jobs/worker | Canonical UOW + SQL job repository + service + worker thật, cùng DB test |
-| C2 Registry | SqlAsyncProtocolRepository/Provider/service thật; publish/current/old-pin lookup bằng SQLite |
-| Execution | HTTP/ingress/repository/operation/processor/reconciler/adapters thật |
-| Workflow | Fake sink của Dũng dùng shared DTO/PHH schemas, ghi SQL trong caller UOW; không thay implementation C4 |
-| Provider/MCP/runtime/catalog | Fake backend/ports của owned tests; không có sandbox/model/booking thật |
+| D3 E2E SQLite + PostgreSQL gate | **8 passed, 3 skipped, 3 subtests passed** |
+| Execution toàn bộ, gồm 3 tests D3 mới | **112 passed, 1 PostgreSQL skipped** |
+| Foundation Phase C/D1 + Registry D2 + Orchestration D2 | **44 passed, 1 PostgreSQL skipped, 76 subtests passed** |
+| C6 sau khi tách helpers dùng chung | **11/11 pass**, PostgreSQL C6 skip |
+| Ruff E/F 79 cột trên 7 Python files thay đổi | **Pass** |
 
-## Bằng chứng kiểm tra ngày 11/10/2026
+Ba lỗi decode SSE trong test D3 mới ở lượt ghép đầu đã sửa; toàn bộ D3 E2E
+sau sửa đạt 8/8. Không có lỗi còn mở hoặc strict xfail trong các ca D3 local.
+Không cộng các tests deselected vào kết quả pass.
 
-- Execution/E2E slice + Foundation contracts + Registry:
-  **150 passed, 5 skipped, 76 subtests passed**, gồm **22 tests C3** mới.
-- Foundation Phase B + C1: **20 passed**.
-- Workflow Phase B: **14 passed** bằng unittest discover.
-- Ruff E/F 79 cột: pass. Mypy: **28 source files**, pass.
-- Các lệnh chạy lại, test collection notes và invariants tại
-  [PHASE_C_C3.md](PHASE_C_C3.md). Frontend không thay đổi.
+## Còn cần output/môi trường
 
-Hai skip PostgreSQL cần dedicated `WORKFORCE_TEST_POSTGRES_URL`; ba skip
-full-platform cần `WORKFORCE_E2E_FACTORY`. Không tính skip là pass hoặc coi
-SQLite là bằng chứng PostgreSQL locks/races.
+1. **Nguyễn Chí Hoàng / CI:** thêm D3 và PostgreSQL gates vào workflow chung.
+   CI hiện chưa chạy các files D3 mới; DSN local chưa có. Signature/lệnh và
+   điều kiện nghiệm thu tại request D3, không tự sửa CI ngoài ownership.
+2. **Phó Tiến Anh / D4:** tiêu thụ fixtures và bằng chứng fault/pin/unknown;
+   tiếp tục publish pin, long wait, stale evaluation, archive/rollback trong
+   Lifecycle. D3 của Hữu Nghĩa và D4 không thuộc kết luận hoàn thành này.
+3. **Live/sandbox:** chưa có endpoint/credential/kịch bản provider được cấp.
+   Không nghiệm thu MD hoặc production từ mock tests.
 
-Đã kiểm tra signature/timestamp/body Scope sai, duplicate receipt, revoke trước
-apply, enqueue failure sau SQL insert, sink rollback + after-commit callback,
-loader metadata forgery, exact old pin sau drift/disable, hai manager xen kẽ,
-early event và query timer không tạo provider inbox giả.
+Crash harness dùng cancellation tại fault boundaries và SQL reconnect, chưa
+phải kill/restart cả app process hoặc DB server. Recovery quarantine trong
+bằng chứng là explicit JobPort dispatch; không tuyên bố periodic scanner/TTL
+cleanup đã được triển khai. Leader/catalog/quote/HITL/MCP/auth credential
+resolver là test ports; SQL/HMAC/Registry/Execution/Workflow/jobs/history/SSE
+và evidence chạy implementations đã bàn giao.
 
-## Integration requests còn cần owner
+## Lịch sử bàn giao
 
-- [C3 → C4/C7](INTEGRATION_REQUEST_PHD_C3.md): Workflow sink/hooks trong caller
-  UOW; đăng ký worker/router bằng dependencies thật; gom metadata vào migration
-  additive và quyết định xử lý inbox legacy thiếu verified context.
-- [Contract Phase A/B](INTEGRATION_REQUEST_PHD-01_PHASE_A.md): chỉ giữ các
-  quyết định shared còn mở; đã cập nhật phần context/resolver/UOW được giải quyết.
-
-Không tự backfill credential/signing-key/authentication time cho inbox cũ,
-không triển khai thay C4/C7 hoặc bắt đầu C6 khi các bước trước chưa bàn giao.
-
+- Phase A/B: [PHASE_A.md](PHASE_A.md), [PHASE_B.md](PHASE_B.md).
+- C3: [PHASE_C_C3.md](PHASE_C_C3.md),
+  [INTEGRATION_REQUEST_PHD_C3.md](INTEGRATION_REQUEST_PHD_C3.md).
+- C6 đã đạt 11 tests, zero xfail sau sửa query-after-revoke và binding mismatch:
+  [PHASE_C_C6.md](PHASE_C_C6.md). C7 hiện đã có approval continuation/query
+  handler và composition; yêu cầu CI/PostgreSQL mới theo request D3.

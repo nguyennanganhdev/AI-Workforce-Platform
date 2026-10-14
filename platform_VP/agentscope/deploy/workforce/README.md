@@ -4,7 +4,9 @@ Owner của file gốc và cấu hình dùng chung: **Nguyễn Chí Hoàng**.
 
 Đọc [kế hoạch triển khai và phân công sáu thành viên](../../docs/workforce/KE_HOACH_TRIEN_KHAI.md). Các thư mục con có README ghi rõ owner; không suy ra quyền sửa mọi thư mục con từ quyền sở hữu thư mục gốc.
 
-Đây là khung thư mục được chuẩn bị để làm song song. Chưa có runtime, script, migration hay kiểm thử Workforce được triển khai tại đây.
+Thư mục ban đầu được chuẩn bị để chia lane song song; hiện đã có artifact vận
+hành Phase D trong `event_delivery/`. Runtime, migration và test nằm tại các
+module chuyên trách, không được suy ra trạng thái chỉ từ README gốc này.
 
 Mọi thay đổi hợp đồng, dependency, migration, CI và route composition phải được tích hợp tập trung theo mục 5 và mục 14 của kế hoạch.
 
@@ -25,5 +27,6 @@ Folder con mới thuộc phạm vi này:
 
 - [event_delivery/](event_delivery/README.md) — Runbook/proxy/retry/rotation/restore; giá trị thật cấu hình khi triển khai.
 
-Đây là phạm vi cần code/test. Chưa có Customer API, Provider Event API, SSE worker, migration hoặc UI mới được triển khai bởi README này.
+README này mô tả phạm vi/ownership, không phải bằng chứng hoàn tất. Trạng thái
+code và test được chốt bởi handoff Phase D cùng workflow CI.
 

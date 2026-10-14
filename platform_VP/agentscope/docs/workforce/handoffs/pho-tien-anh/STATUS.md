@@ -1,6 +1,6 @@
 # Trạng thái bàn giao — Phó Tiến Anh
 
-Ngày đối chiếu: 10/10/2026. Branch: `feat/wf-lifecycle`.
+Ngày cập nhật: 12/10/2026.
 
 ## Phạm vi nghiệm thu
 
@@ -123,17 +123,142 @@ Builder/Registry; Black --check, Flake8, TypeScript build và scoped ESLint pass
 Không sửa README bàn giao, không commit. Runtime/DB/provider/live và browser
 QA vẫn chưa chạy; không nâng trạng thái nghiệm thu C/D từ tests Phase B.
 
-## Điều phối Phase C — cập nhật từ C1 ngày 2026-10-11
+## Điều phối Phase C — gate C5 đã hoàn thành
 
-Bạn là owner **C5**, chỉ bắt đầu sau C4 của Phan Huy Hoàng đã merge. Khi đó
-runtime thật phải có workflow/checkpoint/continuation/event output; không nối
-eval vào fake runner Phase B rồi coi là C5 hoàn thành.
+Phó Tiến Anh là owner **C5**. C5 đã bắt đầu sau khi C4 của Phan Huy Hoàng merge
+và đã dùng workflow/checkpoint/continuation/event output thật; không coi fake
+runner Phase B là nghiệm thu C5.
 
 C1 đã cung cấp canonical UOW/jobs/auth/bootstrap; C2/C3 sẽ cung cấp protocol và
 Builder/Execution thật. C5 nối eval đa lượt với chính runtime/guard production,
 inject mock provider/fixed clock nhưng dùng cùng checkpoint, approval và tool
 policy. Persist evidence/report theo scope, giữ version/hash pin và chặn publish
 khi report stale hoặc hard gate fail. Bàn giao schema/index cho migration C7 và
-runtime evidence exports cho E2E C6.
+runtime evidence exports cho E2E C6. Các đầu ra này hiện đã được bàn giao.
 
 Theo dõi gate tại [../PHASE_C_SEQUENCE.md](../PHASE_C_SEQUENCE.md).
+
+## Tín hiệu đầu vào C5 từ C4 — 2026-10-11
+
+C4 đã cung cấp `LeaderTurnRunner`, `SqlRuntimeContinuation`,
+`CommittedTurnEvidence` và `RuntimeEvidenceWriter` cùng checkpoint/guard/event
+thật. Khi commit C4 đã merge vào `develop2`, C5 có thể bắt đầu theo
+`../phan-huy-hoang/INTEGRATION_REQUEST_PHH_C4.md`; không cần chờ thêm fake
+workflow. Migration/composition production vẫn thuộc C7 và không phải blocker
+cho việc nối evaluation runtime trong test C5.
+
+## C5 — HOÀN THÀNH VÀ ĐÃ MERGE — 11/10/2026
+
+Đã hoàn thiện code và SQL/runtime integration tests cho **eval đa lượt nối
+seam runtime C4**.
+
+- Tái dùng Phase A/B: scoped validator, immutable frozen snapshot, deterministic
+  grading, hard gates và shared report/UI shape; không sửa shared DTO/schema A.
+- Tái dùng C1 canonical SQL UOW/jobs/worker; C2 SQL protocol provider và exact
+  refs; C3 Builder policy shape và Execution guard/approval/gateway; C4
+  SqlRuntimeContinuation/LeaderTurnRunner/WorkflowContinuation/context/evidence.
+- Thêm `RuntimeEvaluationRunner`, `RuntimeCaseDriver`, `RuntimeObservation`,
+  `RuntimeAudit`, `SqlRuntimeEvidenceWriter`, `SqlEvaluationRepository`,
+  `EvaluationJobService`, `EvaluationJobHandler`, `check_persisted_release`,
+  `get_metadata`, `phase_c_schema_bundle`. Type hints dùng `typing`.
+- Persist frozen input/job cùng UOW; bind case trong bootstrap UOW trước job
+  commit; evidence cùng checkpoint/public result UOW. Step/result/report
+  immutable/hash, full Scope, replay và cancel marker; không giữ transaction
+  qua model/provider. Publish hook đọc lại runtime evidence, chặn fake report,
+  thiếu/tampered/cancelled evidence, stale input và hard gates.
+- Suite `pta-lifecycle-2`: giữ operation refs/confirmation sau close và chạy
+  Leader khi timer có trigger theo C4 mặc định. Frozen suite cũ không thay đổi.
+  Sửa test policy legacy sau khi đối chiếu schema BHN C3; không nới validator.
+
+Kết quả: **22 tests C5 pass**; nhóm Lifecycle/Foundation/Builder/Registry/C4
+**167 passed, 5 skipped, 178 subtests passed**; Execution/E2E hiện có
+**112 passed, 4 skipped**; workflow A/B **14 unittest tests pass**.
+Black vùng thay đổi, Flake8, mypy **9 source files**, schema/DDL PostgreSQL và
+SQLite compile, lazy import và diff check pass. Black toàn test folder còn
+báo baseline `test_phase_a.py` chưa formatted; giữ nguyên file đó.
+
+Mock/live: Workflow SQL/checkpoint/lease/guard, Foundation UOW/jobs và
+Execution approval/policy/transactions/gateway thật trên SQLite. Scripted
+Leader adapter/model, MCP provider, catalog/authority/quote/HITL/secret resolver
+là test doubles, nằm trong tests; không dùng FakeRunner Phase B. C5 provider
+events là normalized stimuli, không giả inbox/HTTP đã chạy. Test SQL reload /
+injected cancellation không phải process kill/restart hoặc PostgreSQL race.
+
+Skips: 4 Builder UI cần demo đang chạy/`BUILDER_UI_TEST_URL`, 2 PostgreSQL gates cần dedicated DSN và 3
+full-platform E2E cần factory composition. Chưa chạy concrete AgentScope
+Leader/session production, provider/model/live sandbox, HTTP/UI deployment,
+long-wait retention/publish race D. Không đánh dấu toàn bộ PTA-01–PTA-16 xong.
+
+C6 dùng exports runtime/evidence và thay test stimuli bằng provider ingress
+thật. C7 gom metadata 4 bảng/index, job handler, concrete Leader/driver và
+API/UI composition. C5 đã merge qua PR #64, vì vậy không còn là source chỉ nằm
+trong working tree. Phó Tiến Anh không còn đầu việc C5, trừ khi C6 phát hiện lỗi
+tích hợp cần trả lại đúng owner.
+
+Chi tiết và lệnh tái chạy: [PHASE_C_C5.md](PHASE_C_C5.md).
+Schema/index/signature bàn giao: [INTEGRATION_REQUEST_PTA_C5.md](INTEGRATION_REQUEST_PTA_C5.md)
+và [phase_c/schemas.json](phase_c/schemas.json).
+
+Rà soát lại C5: chặn ghi đè scope trong khóa truy vấn; đối chiếu identity/revision của payload evidence với hàng SQL; chặn evidence mới và stimulus tiếp theo khi case đã hủy. Bổ sung ba regression tests; chạy lại nhóm Lifecycle/Foundation/Builder/Registry/C4: 167 passed, 5 skipped, 178 subtests passed. Black vùng thay đổi, Flake8 và mypy đều pass. Kết quả Execution/E2E và unittest ở trên là lần kiểm chứng trước.
+
+## D4 — Code và regression SQL/mock hoàn thành — 12/10/2026
+
+**Cập nhật sau merge:** D4 đã merge qua PR #73 vào `develop2@35cec29`.
+Foundation migration, manager API/auth, production composition, transactional
+validator, usage reader và CI D4 đã được Nguyễn Chí Hoàng hoàn thành, commit và
+merge qua commit/PR chứa cập nhật status này; xem
+`../nguyen-chi-hoang/PHASE_D_D4_INTEGRATION.md`. Các số liệu/giới hạn bên dưới
+là snapshot trước lượt tích hợp này.
+
+Tiếp nối A/B/C5 và đầu ra D2/D3, thực hiện publish pin, protocol pin, long-wait,
+stale evaluation, archive/disable/revoke và rollback trong phạm vi Lifecycle.
+Không thay source/shared contract/migration/CI hoặc fixture của owner khác.
+
+- `lifecycle/releases/`: `SqlReleaseService`, `ReleaseSelection`,
+  `ReleaseContext`, `PublishedVersion`, `ReleaseValidator`,
+  `PinnedVersionAuthorization`, `VersionUsageReader`, `get_release_metadata`,
+  `phase_d_schema_bundle`. Type hints dùng `typing`, SQL imports lazy.
+- Explicit publish đúng selections, CAS candidate/deployment, revalidation
+  current dependencies và C5 committed evidence trong cùng UOW. Một item stale
+  rollback cả danh sách. Immutable version giữ candidate ID/hash; lost-response
+  replay không tạo version mới. Edit và evaluation cancellation bị serialize
+  với release commit. Membership recheck cũng áp dụng với idempotent replay.
+- `stage_candidate(..., uow=...)` ghép canonical draft write, không tự commit.
+  Không coi staging là full DraftPort/business-key reservation/deduplication.
+- Rollback chỉ đổi head sau ownership/compatibility check. Archive ngăn chọn
+  mới, giữ old pin; disable/revoke chặn model/tool trước resume, PHH commit
+  blocked_authorization. Provider fact sau revoke vẫn persist, không public
+  message/wakeup. Không ghi wf_workflows/checkpoint của PHH.
+- Giữ immutable version/eval vô thời hạn, không purge/TTL. Usage/checkpoint
+  references đọc qua injected port của PHH; không suy đoán usage từ tuổi record.
+
+Kiểm chứng trên checkout hiện tại:
+
+| Nhóm | Kết quả |
+|---|---|
+| D4 mới, nằm trong nhóm Lifecycle | **28 pass, 4 PostgreSQL gates skip** |
+| Lifecycle/Foundation/Builder/Registry/C4 | **233 passed, 17 skipped, 213 subtests passed** |
+| Execution/E2E C6/D3 | **134 passed, 8 skipped, 3 subtests passed** |
+| Workflow A/B, unittest discovery có `-t .` | **14 tests pass** |
+| Black / Flake8 `--max-line-length=88` / mypy 8 source files | Pass |
+| JSON Schema artifact / DDL hai dialect / lazy DTO import | Pass |
+
+Lệnh và ma trận: [PHASE_D_D4.md](PHASE_D_D4.md),
+`tests/workforce/lifecycle/releases/README.md`. Discovery unittest cũ thiếu
+`-t .` không load được relative imports; đã sửa lệnh, không sửa source PHH.
+Skips gồm 4 D4 PostgreSQL, 2 PostgreSQL Registry/Execution, 4 C6/D3 PostgreSQL,
+12 Builder browser/demo và 3 full-platform factory. Không tính skip là pass.
+
+Long-wait dùng clock tiến 200 ngày, dispose/reconnect SQL pool và worker mới
+từ fixture D3. Sau publish v2/rollback/archive/protocol revise+disable, pending
+workflow vẫn pin v1/protocol/session cũ; signed provider event resume một lần,
+không lặp create, idle/duplicate không thêm calls. Đây là SQL/mock với real
+HMAC/HTTP/inbox/checkpoint/guard/evidence, scripted model/provider và test
+tool/policy/usage adapters; không phải 200 ngày chờ thật/process kill/live sandbox.
+
+Metadata bốn bảng, schema `pta-release-1` và signature được bàn giao tại
+[INTEGRATION_REQUEST_PTA_D4.md](INTEGRATION_REQUEST_PTA_D4.md),
+[phase_d/schemas.json](phase_d/schemas.json). Cần Foundation additive migration,
+manager auth/API + catalog/bootstrap wiring, owner transactional dependency
+adapter và usage reader trước production. PostgreSQL DSN chưa được cấp; D5/D6/D7,
+sandbox và canonical concurrent-build uniqueness chưa được nghiệm thu từ D4.

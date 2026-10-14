@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """The OpenAI formatter for agentscope."""
 import base64
+import re
 from abc import ABC
 from fnmatch import fnmatch
 from typing import Any
@@ -26,6 +27,11 @@ from ..message import (
 class _OpenAIFormatterBase(FormatterBase, ABC):
     """Base class for OpenAI formatters, providing shared data block
     formatting logic."""
+
+    @staticmethod
+    def _format_message_name(name: str) -> str:
+        """Return a message name accepted by the OpenAI Chat API."""
+        return re.sub(r"[\s<|\\/>]+", "_", name)
 
     def _format_openai_data_block(
         self,
@@ -291,7 +297,7 @@ class OpenAIChatFormatter(_OpenAIFormatterBase):
                     if content_blocks or tool_calls:
                         msg_openai = {
                             "role": msg.role,
-                            "name": msg.name,
+                            "name": self._format_message_name(msg.name),
                             "content": content_blocks or None,
                         }
                         if tool_calls:
@@ -343,7 +349,7 @@ class OpenAIChatFormatter(_OpenAIFormatterBase):
                     if content_blocks or tool_calls:
                         msg_openai_flush = {
                             "role": msg.role,
-                            "name": msg.name,
+                            "name": self._format_message_name(msg.name),
                             "content": content_blocks or None,
                         }
                         if tool_calls:
@@ -403,7 +409,7 @@ class OpenAIChatFormatter(_OpenAIFormatterBase):
 
             msg_openai = {
                 "role": msg.role,
-                "name": msg.name,
+                "name": self._format_message_name(msg.name),
                 "content": content_blocks or None,
             }
 

@@ -1,6 +1,16 @@
 # -*- coding: utf-8 -*-
 """Stable Workforce DTO, error, schema, and port exports."""
 
+from ._assets import (
+    AssetDownloadGrant,
+    AssetOrigin,
+    AssetProjection,
+    AssetReferenceInput,
+    AssetStatus,
+    AssetUploadSession,
+    CustomerAssetUploadRequest,
+    ProviderAssetUploadRequest,
+)
 from ._base import (
     JsonObject,
     OpaqueId,
@@ -134,6 +144,12 @@ __all__ = [
     "SCHEMA_MODELS",
     "ActorContext",
     "ActorKind",
+    "AssetDownloadGrant",
+    "AssetOrigin",
+    "AssetProjection",
+    "AssetReferenceInput",
+    "AssetStatus",
+    "AssetUploadSession",
     "AgentBuildBatch",
     "AgentManifest",
     "AgentReusePort",
@@ -151,6 +167,7 @@ __all__ = [
     "BusinessProfile",
     "CloseWorkflowCommand",
     "ConnectionStatus",
+    "CustomerAssetUploadRequest",
     "ConversationEvent",
     "ConversationEventPort",
     "ConversationSnapshot",
@@ -190,6 +207,7 @@ __all__ = [
     "PartnerRouteStatus",
     "PartnerRoutingPort",
     "ProviderAuthPort",
+    "ProviderAssetUploadRequest",
     "ProviderEventEnvelope",
     "ProviderEventIngressPort",
     "ProviderEventReceipt",

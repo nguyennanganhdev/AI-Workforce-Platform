@@ -11,9 +11,22 @@ from .._utils import ExecutionError, digest, value
 class ProviderEventProcessor:
     """Job leases live in Foundation; row locks/CAS protect operation facts."""
 
-    def __init__(self, ingress: Any, workflow: Any) -> None:
+    def __init__(self, ingress: Any, workflow: Any, *, metrics: Any = None) -> None:
         self.ingress, self.workflow = ingress, workflow
         self.repo, self.operations = ingress.repo, ingress.operations
+        if metrics is None:
+            metrics = getattr(ingress, "metrics", None)
+        if metrics is None:
+            from ...foundation.event_delivery import NullMetricSink
+
+            metrics = NullMetricSink()
+        self.metrics = metrics
+
+    def _record(self, status: str) -> str:
+        from ...foundation.event_delivery import PROVIDER_EVENTS
+
+        self.metrics.increment(PROVIDER_EVENTS, labels={"outcome": status})
+        return status
 
     async def _outcome(
         self, row: Any, status: Any, error: Any, uow: Any
@@ -61,14 +74,14 @@ class ProviderEventProcessor:
                 principal, "process_job_event", uow=uow
             )
             if row["ingestion_status"] in {"applied", "ignored"}:
-                return row["ingestion_status"]
+                return self._record(row["ingestion_status"])
             try:
                 op = await self.operations.resolve(principal, envelope, uow)
                 if op is None:
                     await self._outcome(
                         row, "quarantined", "OPERATION_NOT_BOUND", uow
                     )
-                    return "quarantined"
+                    return self._record("quarantined")
                 if not op["protocol"].get("provider_events"):
                     raise ExecutionError("PROVIDER_EVENTS_NOT_SUPPORTED", 403)
                 event = await self.ingress.protocols.normalize_verified_event(
@@ -98,12 +111,12 @@ class ProviderEventProcessor:
                 if version is not None and last is not None:
                     if version < last:
                         await self._outcome(row, "ignored", None, uow)
-                        return "ignored"
+                        return self._record("ignored")
                     if version == last:
                         if content_hash != op["last_source_hash"]:
                             raise ExecutionError("PROVIDER_VERSION_CONFLICT")
                         await self._outcome(row, "ignored", None, uow)
-                        return "ignored"
+                        return self._record("ignored")
                 expected = (
                     (last + 1)
                     if last is not None
@@ -116,12 +129,12 @@ class ProviderEventProcessor:
                 )
                 if transition == "stale":
                     await self._outcome(row, "ignored", None, uow)
-                    return "ignored"
+                    return self._record("ignored")
                 if transition != "apply":
                     raise ExecutionError("PROVIDER_TRANSITION_CONFLICT")
             except ExecutionError as error:
                 await self._outcome(row, "quarantined", error.code, uow)
-                return "quarantined"
+                return self._record("quarantined")
             op.update(
                 external_job_id=envelope.get("external_job_id")
                 or op["external_job_id"],
@@ -139,4 +152,4 @@ class ProviderEventProcessor:
                 op["scope"], op, event, uow=uow
             )
             await self._outcome(row, "applied", None, uow)
-        return "applied"
+        return self._record("applied")

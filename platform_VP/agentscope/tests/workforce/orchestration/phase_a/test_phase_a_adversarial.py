@@ -28,7 +28,7 @@ from agentscope.app.workforce.orchestration.workflows.phase_a import (
     WorkflowTrigger,
     RuntimeTurnResult,
 )
-from fixtures import phase_a_samples
+from tests.workforce.orchestration.phase_a.fixtures import phase_a_samples
 
 
 def assert_rejected(
@@ -50,7 +50,9 @@ class PhaseAAdversarial(unittest.TestCase):
         self.assertTrue(checker.conforms("2026-10-10T09:00:00Z", "date-time"))
 
     def test_each_workflow_guard_has_a_negative_witness(self) -> None:
-        from mutation_checks import run_mutation_checks
+        from tests.workforce.orchestration.phase_a.mutation_checks import (
+            run_mutation_checks,
+        )
 
         report = run_mutation_checks()
         self.assertGreater(report["count"], 0)

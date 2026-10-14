@@ -28,7 +28,7 @@ from agentscope.app.workforce.orchestration.workflows.phase_a import (
     WorkflowTrigger,
     cause_key,
 )
-from fixtures import phase_a_samples
+from tests.workforce.orchestration.phase_a.fixtures import phase_a_samples
 
 
 HANDOFF = (

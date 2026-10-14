@@ -644,7 +644,7 @@ class Agent:
             )
 
         except Exception as error:
-            if context_overflow:
+            if context_overflow and cfg.compression_retry_drop_oldest:
                 logger.warning(
                     "Failed to compress context, which may be caused by "
                     "insufficient reserved context for compression. "

@@ -1,10 +1,21 @@
 # Bàn giao — Bùi Hữu Nghĩa
 
+**2026-10-12 — D3 consumer đã merge vào `develop2`:** missing-capability,
+reuse và concurrent-build regressions trên baseline `278ea4a` chứa C7/D0–D2.
+Có **34 backend + 8 browser checks pass**; sửa DRAFT thiếu draft_id bị đề xuất
+reuse/revise sai. Xem [PHASE_D_D3.md](PHASE_D_D3.md),
+[TEST_MATRIX_D3.md](TEST_MATRIX_D3.md) và [PLAN_D3.md](PLAN_D3.md).
+Implementation `f1f195f` đã merge qua PR
+[#71](https://github.com/nguyennanganhdev/AI-Workforce-Platform/pull/71) tại
+`58c00f2`; Builder D3 đã được thêm vào workflow Phase D. Không tuyên bố
+PostgreSQL canonical-write hoặc full production Builder.
+[Request phối hợp D3](INTEGRATION_REQUEST_BHN_D3.md).
+
 Phase B bổ sung đã có capability checks/UI với fake ports. Xem [PHASE_B.md](PHASE_B.md), [STATUS.md](STATUS.md) và [integration requests hiện tại](INTEGRATION_REQUEST_BHN_PHASE_B.md). Policy đã đồng bộ theo Tiến Anh; chưa xác nhận production integration hoặc hoàn thành toàn bộ BHN-01–14.
 
 Branch đề xuất: `feat/wf-builder`. Đầu việc: **BHN-01–BHN-14**.
 
-Triển khai C3 ngày 2026-10-11 đã thu gọn đúng trình tự chung: **Protocol validation ↔ Builder**, dùng C1/C2 và Phase B. C3 ban đầu đã commit/push `304c39a`, mở PR #62; bản sửa review hiện chưa commit/push, có **26 C3 + 31 Builder A/B tests pass**, sẵn sàng bàn giao review lại. Đã chặn protocol effect/mode mismatch trước confirm và dedup bindings giữ đủ capability coverage. Không triển khai SQL session/generator/journal, không chờ C5/full Builder production hoặc nhận task Phase D. Xem [PHASE_C_C3.md](PHASE_C_C3.md), [PLAN_C3.md](PLAN_C3.md) và [điểm nối C3](INTEGRATION_REQUEST_BHN_C3.md) cho bằng chứng và giới hạn thật/fake.
+Triển khai C3 ngày 2026-10-11 đã thu gọn đúng trình tự chung: **Protocol validation ↔ Builder**, dùng C1/C2 và Phase B. Lane C3 này đã sửa theo review và merge qua PR #62; có **26 C3 + 31 Builder A/B tests pass** tại lần bàn giao. Đã chặn protocol effect/mode mismatch trước confirm và dedup bindings giữ đủ capability coverage. Không triển khai SQL session/generator/journal hoặc nhận task Phase D. Xem [PHASE_C_C3.md](PHASE_C_C3.md), [PLAN_C3.md](PLAN_C3.md), [điểm nối C3](INTEGRATION_REQUEST_BHN_C3.md) và [trạng thái toàn chuỗi](../PHASE_C_SEQUENCE.md) cho bằng chứng và giới hạn thật/fake.
 
 Phạm vi: chat tạo một/nhiều agent độc lập, phát hiện trùng, chọn tool và sinh manifest từng agent.
 

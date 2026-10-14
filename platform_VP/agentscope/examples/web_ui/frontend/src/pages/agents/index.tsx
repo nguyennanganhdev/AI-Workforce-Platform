@@ -1,11 +1,10 @@
-import { Building2, Library, List, Plus, Workflow } from 'lucide-react';
+import { Library, List, Plus, Workflow } from 'lucide-react';
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 
 import { AgentGraph } from './AgentGraph';
 import { AgentLibrary } from './AgentLibrary';
 import { AgentList } from './AgentList';
-import { AgentOffice } from './AgentOffice';
 import type { AgentView } from '@/api';
 import { AgentDialog } from '@/components/dialog/AgentDialog';
 import { DeleteDialog } from '@/components/dialog/DeleteDialog';
@@ -19,7 +18,6 @@ import { useTranslation } from '@/i18n/useI18n';
 
 const VIEWS = [
 	{ key: 'graph', icon: Workflow },
-	{ key: 'office', icon: Building2 },
 	{ key: 'list', icon: List },
 	{ key: 'library', icon: Library },
 ] as const;
@@ -27,10 +25,9 @@ const VIEWS = [
 type View = (typeof VIEWS)[number]['key'];
 
 /**
- * Agent management: one set of agents, four ways of looking at it.
+ * Agent management: one set of agents, three ways of looking at it.
  *
  * - **Sơ đồ** — the agents as a topology around the Leader.
- * - **Văn phòng** — the agents as people in an office, on a demo script.
  * - **Danh sách** — the same agents as a table, with edit and delete.
  * - **Thư viện** — what the agents can be given.
  *
@@ -68,6 +65,8 @@ export function AgentsPage() {
 			onDelete={setDeleting}
 		/>
 	);
+
+	if (urlView === 'office') return <Navigate to="/chat" replace />;
 
 	return (
 		<div className="flex size-full">
@@ -111,9 +110,6 @@ export function AgentsPage() {
 						) : (
 							<AgentGraph agents={agents} onChat={openChat} onEdit={openEdit} />
 						))}
-					{view === 'office' && settled && (
-						<AgentOffice agents={agents} onChat={openChat} onEdit={openEdit} />
-					)}
 				</div>
 			</main>
 

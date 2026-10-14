@@ -6,6 +6,7 @@ from enum import StrEnum
 
 from pydantic import Field, model_validator
 
+from ._assets import AssetReferenceInput
 from ._base import JsonObject, OpaqueId, ShortCode, WorkforceModel
 from ._errors import PublicError
 from ._identity import PartnerAudience, Scope
@@ -51,6 +52,14 @@ class NextAction(StrEnum):
 class TextMessageInput(WorkforceModel):
     type: str = Field(pattern="^text$")
     text: str = Field(min_length=1, max_length=20_000)
+    attachments: tuple[AssetReferenceInput, ...] = Field(default=(), max_length=10)
+
+    @model_validator(mode="after")
+    def unique_attachments(self) -> "TextMessageInput":
+        ids = [item.asset_id for item in self.attachments]
+        if len(ids) != len(set(ids)):
+            raise ValueError("message attachment asset_ids must be unique")
+        return self
 
 
 class PartnerRequestEnvelope(WorkforceModel):
@@ -120,6 +129,7 @@ class AssistantMessage(WorkforceModel):
     workflow_id: OpaqueId
     sender: str = Field(default="assistant", pattern="^assistant$")
     text: str = Field(min_length=1, max_length=20_000)
+    attachments: tuple[AssetReferenceInput, ...] = Field(default=(), max_length=10)
     created_at: datetime
 
 
@@ -151,11 +161,15 @@ class InboundReceipt(WorkforceModel):
         if self.workflow_state == WorkflowState.CLOSED:
             if self.next_action != NextAction.NONE:
                 raise ValueError("closed workflow requires next_action=none")
-        if self.request_status in {
-            RequestStatus.ACCEPTED,
-            RequestStatus.QUEUED,
-            RequestStatus.RUNNING,
-        } and self.next_action != NextAction.WATCH_REQUEST:
+        if (
+            self.request_status
+            in {
+                RequestStatus.ACCEPTED,
+                RequestStatus.QUEUED,
+                RequestStatus.RUNNING,
+            }
+            and self.next_action != NextAction.WATCH_REQUEST
+        ):
             raise ValueError(
                 "pending request requires next_action=watch_request",
             )

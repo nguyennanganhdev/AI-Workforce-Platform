@@ -18,9 +18,10 @@ handled:
 - ``resume`` (a parked HITL run being fed its result): carries the
   event the parked run is waiting for.
 
-No kind is ever dropped. A trigger whose session still holds its run
-lock is re-queued after a short backoff until the lock frees, then
-spawned.
+Input-carrying triggers are never dropped. A trigger whose session still
+holds its run lock is re-queued after a short backoff until the lock frees,
+then spawned. A plain inbox wake is intentionally suppressed while its team
+is waiting for customer input; the inbox remains durable for the next turn.
 
 All bus keys live on the :class:`MessageBus` base class (see
 ``enqueue_wakeup`` / ``enqueue_input``, ``dequeue_wakeups``,
@@ -43,6 +44,7 @@ from ...message import Msg
 from ...types import ErrorInfo, ErrorType, ReplyFinishedReason
 from ..message_bus import MessageBusKeys
 from .._bus_ops import enqueue_run_trigger, publish_session_event
+from .._team_turn import team_is_awaiting_user
 
 if TYPE_CHECKING:
     from ..message_bus import MessageBus
@@ -297,10 +299,12 @@ class WakeupDispatcher:
         # BG-task completion callback or a schedule trigger) will still
         # arrive here. Drop it rather than letting ChatService.run crash
         # on a missing storage record.
-        if (
-            await self._storage.get_session(user_id, agent_id, session_id)
-            is None
-        ):
+        session = await self._storage.get_session(
+            user_id,
+            agent_id,
+            session_id,
+        )
+        if session is None:
             logger.warning(
                 "WakeupDispatcher: dropping %s trigger for session %s "
                 "(agent %s, user %s) — session no longer exists in "
@@ -328,18 +332,40 @@ class WakeupDispatcher:
             )
             return
 
+        # Automatic inbox wakeups must not restart a team after its reply
+        # owner has asked/answered the customer. The inbox remains durable and
+        # will be drained when the next explicit user message starts a turn.
+        # Resume/message triggers carry external input and are never dropped.
+        if (
+            kind == MessageBusKeys.WAKEUP_KIND_WAKE
+            and getattr(session, "team_id", None) is not None
+            and await team_is_awaiting_user(
+                self._bus,
+                session.team_id,
+            )
+        ):
+            logger.info(
+                "WakeupDispatcher: keeping session %s asleep; team %s is "
+                "awaiting customer input.",
+                session_id,
+                session.team_id,
+            )
+            return
+
+        run_coro = self._chat_service.run(
+            user_id=user_id,
+            session_id=session_id,
+            agent_id=agent_id,
+            input_msg=input_msg,
+        )
         try:
             self._registry.spawn(
-                self._chat_service.run(
-                    user_id=user_id,
-                    session_id=session_id,
-                    agent_id=agent_id,
-                    input_msg=input_msg,
-                ),
+                run_coro,
                 session_id=session_id,
                 name=f"{kind}-run:{session_id}",
             )
         except RuntimeError:
+            run_coro.close()
             # A local run was registered between the running-check and
             # the spawn. Re-queue so neither the carried input nor a
             # queued inbox payload is stranded — that run may already be

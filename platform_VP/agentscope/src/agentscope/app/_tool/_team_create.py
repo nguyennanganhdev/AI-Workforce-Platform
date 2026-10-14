@@ -38,11 +38,11 @@ return its team id.
 ## When to Use This Tool
 Use this tool when the task you've been given is best decomposed into \
 parallel sub-tasks executed by multiple specialised agents (members) \
-under your coordination. After creating the team, use ``AgentCreate`` to \
-spawn each member with its own role, prompt, and permission mode. NOTE: \
-the ``prompt`` you pass to ``AgentCreate`` is delivered to that member \
-automatically, so do **NOT** call ``TeamSay`` right after ``AgentCreate`` — \
-just wait for the members to report back.
+under your coordination. After creating the team, use ``AgentInvite`` to \
+invite only existing published business agents. The ``prompt`` passed to \
+``AgentInvite`` is delivered as the member's first task automatically, so do \
+not repeat it with ``TeamSay``. If no suitable agent is available, tell the \
+user that the capability must first be built and published in Agent Builder.
 
 ## When NOT to Use This Tool
 - The task is small enough to handle yourself.
@@ -133,8 +133,9 @@ one team at a time.
                     TextBlock(
                         text=(
                             f"Team {team.id} ({team.data.name}) created. "
-                            f"You are the leader. Use AgentCreate to add "
-                            f"members, then TeamSay to coordinate them."
+                            f"You are the leader. Use AgentInvite to add "
+                            f"existing published agents, then TeamSay to "
+                            f"coordinate them."
                         ),
                     ),
                 ],

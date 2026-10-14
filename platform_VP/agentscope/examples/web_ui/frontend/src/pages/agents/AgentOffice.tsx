@@ -1,5 +1,25 @@
-import { FileText, Mail, MessageCircle, Pause, Pencil, Play, RotateCcw, User, Users, X } from 'lucide-react';
-import { memo, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+	FileText,
+	Mail,
+	MessageCircle,
+	Pause,
+	Pencil,
+	Play,
+	RotateCcw,
+	User,
+	Users,
+	X,
+} from 'lucide-react';
+import {
+	memo,
+	type ReactNode,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from 'react';
 
 import { type GraphAgent, toGraphAgents } from './graph-model';
 import {
@@ -19,6 +39,7 @@ import {
 import type { AgentView } from '@/api';
 import { Button } from '@/components/ui/button';
 import { ClayAvatar, clayTone } from '@/components/ui/clay-avatar';
+import type { SessionOfficeSnapshot } from '@/features/workforce/session-office/model';
 import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
 import './agent-graph.css';
@@ -31,7 +52,15 @@ import './agent-office.css';
 type Faces = { top: string; left: string; right: string };
 
 /** The three visible faces of a floor-standing box, as SVG point lists. */
-function box(P: Projection, x: number, y: number, w: number, d: number, h: number, lift = 0): Faces {
+function box(
+	P: Projection,
+	x: number,
+	y: number,
+	w: number,
+	d: number,
+	h: number,
+	lift = 0,
+): Faces {
 	const pt = (px: number, py: number, z: number) => {
 		const { sx, sy } = P.at({ x: px, y: py }, z);
 		return `${sx},${sy}`;
@@ -39,8 +68,18 @@ function box(P: Projection, x: number, y: number, w: number, d: number, h: numbe
 	const top = lift + h;
 	return {
 		top: [pt(x, y, top), pt(x + w, y, top), pt(x + w, y + d, top), pt(x, y + d, top)].join(' '),
-		left: [pt(x, y + d, lift), pt(x + w, y + d, lift), pt(x + w, y + d, top), pt(x, y + d, top)].join(' '),
-		right: [pt(x + w, y, lift), pt(x + w, y + d, lift), pt(x + w, y + d, top), pt(x + w, y, top)].join(' '),
+		left: [
+			pt(x, y + d, lift),
+			pt(x + w, y + d, lift),
+			pt(x + w, y + d, top),
+			pt(x, y + d, top),
+		].join(' '),
+		right: [
+			pt(x + w, y, lift),
+			pt(x + w, y + d, lift),
+			pt(x + w, y + d, top),
+			pt(x + w, y, top),
+		].join(' '),
 	};
 }
 
@@ -122,7 +161,10 @@ function deskPiece(P: Projection, key: string, at: Point, palette: Palette, desk
 				{working &&
 					[0.35, 0.55, 0.75].map((f) => {
 						const a = P.at({ x: at.x - 0.3, y: at.y - 0.22 }, H + 3 + 27 * f);
-						const b = P.at({ x: at.x + 0.3 - f * 0.25, y: at.y - 0.22 }, H + 3 + 27 * f);
+						const b = P.at(
+							{ x: at.x + 0.3 - f * 0.25, y: at.y - 0.22 },
+							H + 3 + 27 * f,
+						);
 						return (
 							<line
 								key={f}
@@ -174,7 +216,14 @@ function plantPiece(P: Projection, key: string, at: Point): Piece {
 }
 
 /** A glass partition, one tile at a time so each piece sorts against people on its own. */
-function glassRun(P: Projection, key: string, axis: 'x' | 'y', fixed: number, from: number, to: number): Piece[] {
+function glassRun(
+	P: Projection,
+	key: string,
+	axis: 'x' | 'y',
+	fixed: number,
+	from: number,
+	to: number,
+): Piece[] {
 	const pieces: Piece[] = [];
 	for (let start = from; start < to - 0.001; start += 1) {
 		const end = Math.min(to, start + 1);
@@ -201,7 +250,11 @@ function buildPieces(P: Projection, layout: Layout): Piece[] {
 	pieces.push(...glassRun(P, 'mw-x-b', 'x', rooms.meeting.x1, 3, rooms.meeting.y1));
 	pieces.push(...glassRun(P, 'mw-y', 'y', rooms.meeting.y1, 0, rooms.meeting.x1));
 	const table = box(P, 1.4, 1.85, 3.4, 1.3, 20);
-	pieces.push({ key: 'table', depth: 3.1 + 2.5, draw: () => <Box faces={table} palette={WHITE} /> });
+	pieces.push({
+		key: 'table',
+		depth: 3.1 + 2.5,
+		draw: () => <Box faces={table} palette={WHITE} />,
+	});
 	layout.seats.forEach((seat, index) => pieces.push(chairPiece(P, `seat-${index}`, seat.at)));
 	pieces.push(chairPiece(P, 'seat-head', layout.head.at));
 	pieces.push(plantPiece(P, 'plant-meeting', { x: 5.45, y: 0.55 }));
@@ -209,7 +262,9 @@ function buildPieces(P: Projection, layout: Layout): Piece[] {
 	// Your office.
 	pieces.push(...glassRun(P, 'aw-x-a', 'x', rooms.approval.x0, 0, 2.5));
 	pieces.push(...glassRun(P, 'aw-x-b', 'x', rooms.approval.x0, 3.5, rooms.approval.y1));
-	pieces.push(...glassRun(P, 'aw-y', 'y', rooms.approval.y1, rooms.approval.x0, rooms.approval.x1));
+	pieces.push(
+		...glassRun(P, 'aw-y', 'y', rooms.approval.y1, rooms.approval.x0, rooms.approval.x1),
+	);
 	pieces.push(deskPiece(P, 'desk-you', layout.approval.desk, WOOD));
 	pieces.push(chairPiece(P, 'chair-you', layout.approval.user));
 	pieces.push(plantPiece(P, 'plant-you', { x: 15.5, y: 0.5 }));
@@ -221,7 +276,11 @@ function buildPieces(P: Projection, layout: Layout): Piece[] {
 	// Reception.
 	const { counter } = layout.reception;
 	const counterBox = box(P, counter.x - 1, counter.y - 0.4, 2, 0.8, 30);
-	pieces.push({ key: 'counter', depth: counter.x + counter.y, draw: () => <Box faces={counterBox} palette={MINT} /> });
+	pieces.push({
+		key: 'counter',
+		depth: counter.x + counter.y,
+		draw: () => <Box faces={counterBox} palette={MINT} />,
+	});
 	pieces.push(plantPiece(P, 'plant-reception', { x: 5, y: layout.depth - 0.6 }));
 
 	// Open desks.
@@ -260,20 +319,47 @@ const Floor = memo(function Floor({ P, layout }: { P: Projection; layout: Layout
 	return (
 		<svg className="absolute inset-0" width={P.width} height={P.height} aria-hidden="true">
 			{/* Back walls. */}
-			<polygon points={poly(P, [[0, 0], [0, D], [0, D, WALL_H], [0, 0, WALL_H]])} fill="#ebe5da" />
 			<polygon
-				points={poly(P, [[0, 0], [FLOOR_W, 0], [FLOOR_W, 0, WALL_H], [0, 0, WALL_H]])}
+				points={poly(P, [
+					[0, 0],
+					[0, D],
+					[0, D, WALL_H],
+					[0, 0, WALL_H],
+				])}
+				fill="#ebe5da"
+			/>
+			<polygon
+				points={poly(P, [
+					[0, 0],
+					[FLOOR_W, 0],
+					[FLOOR_W, 0, WALL_H],
+					[0, 0, WALL_H],
+				])}
 				fill="#f5f0e8"
 			/>
 			<polyline
-				points={poly(P, [[0, D, WALL_H], [0, 0, WALL_H], [FLOOR_W, 0, WALL_H]])}
+				points={poly(P, [
+					[0, D, WALL_H],
+					[0, 0, WALL_H],
+					[FLOOR_W, 0, WALL_H],
+				])}
 				fill="none"
 				stroke="#d8cfc0"
 				strokeWidth={5}
 				strokeLinejoin="round"
 			/>
 			{/* Whiteboard in the meeting room, with the plan on it. */}
-			<polygon points={poly(P, [[1.4, 0, 30], [4.6, 0, 30], [4.6, 0, 78], [1.4, 0, 78]])} fill="#fff" stroke="#c9ccd6" strokeWidth={2} />
+			<polygon
+				points={poly(P, [
+					[1.4, 0, 30],
+					[4.6, 0, 30],
+					[4.6, 0, 78],
+					[1.4, 0, 78],
+				])}
+				fill="#fff"
+				stroke="#c9ccd6"
+				strokeWidth={2}
+			/>
 			{[
 				[1.7, 2.3, 66, '#ffd166'],
 				[2.5, 3.1, 66, '#9ce3d5'],
@@ -298,20 +384,47 @@ const Floor = memo(function Floor({ P, layout }: { P: Projection; layout: Layout
 				[11.8, 15.2],
 			].map(([x0, x1]) => (
 				<g key={x0}>
-					<polygon points={poly(P, [[x0, 0, 30], [x1, 0, 30], [x1, 0, 82], [x0, 0, 82]])} fill="#d9ecff" stroke="#c4d3e6" strokeWidth={3} />
-					<line {...seg(P, { x: (x0 + x1) / 2, y: 0 }, 30, 82)} stroke="#c4d3e6" strokeWidth={3} />
+					<polygon
+						points={poly(P, [
+							[x0, 0, 30],
+							[x1, 0, 30],
+							[x1, 0, 82],
+							[x0, 0, 82],
+						])}
+						fill="#d9ecff"
+						stroke="#c4d3e6"
+						strokeWidth={3}
+					/>
+					<line
+						{...seg(P, { x: (x0 + x1) / 2, y: 0 }, 30, 82)}
+						stroke="#c4d3e6"
+						strokeWidth={3}
+					/>
 				</g>
 			))}
 			{/* The way in, by reception. */}
 			<polygon
-				points={poly(P, [[0, door.y - 0.6, 0], [0, door.y + 0.6, 0], [0, door.y + 0.6, 66], [0, door.y - 0.6, 66]])}
+				points={poly(P, [
+					[0, door.y - 0.6, 0],
+					[0, door.y + 0.6, 0],
+					[0, door.y + 0.6, 66],
+					[0, door.y - 0.6, 66],
+				])}
 				fill="#c9a27c"
 				stroke="#b08a66"
 				strokeWidth={2}
 			/>
 
 			{/* Floor and rooms. */}
-			<polygon points={poly(P, [[0, 0], [FLOOR_W, 0], [FLOOR_W, D], [0, D]])} fill="#faf7f2" />
+			<polygon
+				points={poly(P, [
+					[0, 0],
+					[FLOOR_W, 0],
+					[FLOOR_W, D],
+					[0, D],
+				])}
+				fill="#faf7f2"
+			/>
 			<polygon points={rect(layout.rooms.meeting)} fill="#eef2ff" />
 			<polygon points={rect(layout.rooms.approval)} fill="#fff4dc" />
 			<polygon points={rect(layout.rooms.reception)} fill="#e9f7f1" />
@@ -320,10 +433,23 @@ const Floor = memo(function Floor({ P, layout }: { P: Projection; layout: Layout
 			</g>
 			{/* Floor edge, so the slab reads as a slab. */}
 			<polygon
-				points={poly(P, [[FLOOR_W, 0], [FLOOR_W, D], [FLOOR_W, D, -14], [FLOOR_W, 0, -14]])}
+				points={poly(P, [
+					[FLOOR_W, 0],
+					[FLOOR_W, D],
+					[FLOOR_W, D, -14],
+					[FLOOR_W, 0, -14],
+				])}
 				fill="#e3dbcd"
 			/>
-			<polygon points={poly(P, [[0, D], [FLOOR_W, D], [FLOOR_W, D, -14], [0, D, -14]])} fill="#ece5d8" />
+			<polygon
+				points={poly(P, [
+					[0, D],
+					[FLOOR_W, D],
+					[FLOOR_W, D, -14],
+					[0, D, -14],
+				])}
+				fill="#ece5d8"
+			/>
 		</svg>
 	);
 });
@@ -381,11 +507,16 @@ function Person({
 }) {
 	const { sx, sy } = P.at(actor.pos);
 	const walking = actor.path.length > 0;
-	const depth = actor.kind === 'mail' ? 999_999 : Math.round((actor.pos.x + actor.pos.y) * 100) + 1;
+	const depth =
+		actor.kind === 'mail' ? 999_999 : Math.round((actor.pos.x + actor.pos.y) * 100) + 1;
 
 	if (actor.kind === 'mail') {
 		return (
-			<div className="of-mail absolute" style={{ left: sx, top: sy - 46, zIndex: depth }} aria-hidden="true">
+			<div
+				className="of-mail absolute"
+				style={{ left: sx, top: sy - 46, zIndex: depth }}
+				aria-hidden="true"
+			>
 				<Mail className="size-4" />
 			</div>
 		);
@@ -426,7 +557,11 @@ function Person({
 							className="flex size-10 items-center justify-center rounded-full border-2 border-white text-white"
 							style={{ background: BODY[actor.kind] }}
 						>
-							{actor.kind === 'user' ? <User className="size-5" /> : <Users className="size-5" />}
+							{actor.kind === 'user' ? (
+								<User className="size-5" />
+							) : (
+								<Users className="size-5" />
+							)}
 						</span>
 					)}
 				</span>
@@ -448,7 +583,10 @@ function Person({
 				</span>
 			)}
 			{actor.status === 'off' && <span className="of-zz">Zz</span>}
-			<span className={cn('of-name', actor.kind === 'leader' && 'of-name-leader')} title={actor.status === 'off' ? offLabel : undefined}>
+			<span
+				className={cn('of-name', actor.kind === 'leader' && 'of-name-leader')}
+				title={actor.status === 'off' ? offLabel : undefined}
+			>
 				{actor.name}
 			</span>
 		</Tag>
@@ -472,30 +610,23 @@ function Bubble({ actor, P }: { actor: Actor; P: Projection }) {
 const FLOAT =
 	'rounded-full border border-[var(--cue-border,#e8e8e8)] bg-white/90 shadow-[0_2px_8px_rgba(0,0,0,0.06)] backdrop-blur';
 
-function useOffice(agents: GraphAgent[], resetKey: number) {
+function useOffice(
+	agents: GraphAgent[],
+	resetKey: number,
+	sessionId?: string,
+	motion: 'demo' | 'events' = 'demo',
+) {
 	const layout = useMemo(() => buildLayout(agents), [agents]);
 	const [sim, setSim] = useState<OfficeSim | null>(null);
-	const [, setFrame] = useState(0);
 
 	useEffect(() => {
 		const next = new OfficeSim();
 		populate(next, layout, agents);
 		setSim(next);
-		void runDemo(next, layout, agents);
+		if (motion === 'demo') void runDemo(next, layout, agents);
 
-		let last = performance.now();
-		let raf = requestAnimationFrame(function loop(now) {
-			// A hidden tab sends one huge step on return; cap it.
-			next.tick(Math.min(now - last, 64));
-			last = now;
-			setFrame((frame) => (frame + 1) % 1_000_000);
-			raf = requestAnimationFrame(loop);
-		});
-		return () => {
-			cancelAnimationFrame(raf);
-			next.abort();
-		};
-	}, [layout, agents, resetKey]);
+		return () => next.abort();
+	}, [layout, agents, resetKey, sessionId, motion]);
 
 	return { layout, sim };
 }
@@ -514,48 +645,50 @@ function useFit(width: number, height: number) {
 		return () => observer.disconnect();
 	}, []);
 	const scale = Math.min(box.w / width, box.h / height, 1.3);
-	return [ref, { scale, left: (box.w - width * scale) / 2, top: (box.h - height * scale) / 2 }] as const;
+	return [
+		ref,
+		{ scale, left: (box.w - width * scale) / 2, top: (box.h - height * scale) / 2 },
+	] as const;
 }
 
 export function AgentOffice({
 	agents: apiAgents,
+	session,
 	onChat,
 	onEdit,
 }: {
 	agents: AgentView[];
+	session?: SessionOfficeSnapshot;
 	onChat: (agent: AgentView) => void;
 	onEdit: (agent: AgentView) => void;
 }) {
-	const { t } = useTranslation();
-	const { agents, sample } = useMemo(() => toGraphAgents(apiAgents), [apiAgents]);
+	const { agents: catalog, sample } = useMemo(() => toGraphAgents(apiAgents), [apiAgents]);
+	// Roster metadata stays stable while statuses/messages change, so the map is not rebuilt.
+	const rosterKey = session
+		? JSON.stringify(
+				session.participants
+					.filter((p) => p.id !== LEADER_ID)
+					.map(({ id, name, role }) => ({ id, name, role })),
+			)
+		: null;
+	const agents = useMemo<GraphAgent[]>(
+		() =>
+			rosterKey === null
+				? catalog
+				: (JSON.parse(rosterKey) as { id: string; name: string; role: string }[]).map(
+						(agent) => ({ ...agent, invitable: true, real: null }),
+					),
+		[catalog, rosterKey],
+	);
 	const [resetKey, setResetKey] = useState(0);
-	const { layout, sim } = useOffice(agents, resetKey);
+	const { layout, sim } = useOffice(agents, resetKey, session?.id, session?.motion);
 	const P = useMemo(() => projection(layout.depth), [layout.depth]);
 	const pieces = useMemo(() => buildPieces(P, layout), [P, layout]);
 	const [fitRef, fit] = useFit(P.width, P.height);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
-	const [, rerender] = useState(0);
-
-	if (!sim) return null;
-	const actors = [...sim.actors.values()];
-	const selected = selectedId === LEADER_ID ? null : agents.find((agent) => agent.id === selectedId);
-	const selectedActor = selectedId ? sim.actors.get(selectedId) : undefined;
-
-	const toggle = () => {
-		sim.togglePlaying();
-		rerender((n) => n + 1);
-	};
-	const cycleSpeed = () => {
-		sim.cycleSpeed();
-		rerender((n) => n + 1);
-	};
-
-	const rooms = [
-		{ key: 'meeting', at: { x: 3, y: 4.55 } },
-		{ key: 'approval', at: { x: 13.6, y: 4.1 } },
-		{ key: 'reception', at: { x: 2.8, y: layout.depth - 0.55 } },
-		{ key: 'workspace', at: { x: 11, y: 5.45 } },
-	];
+	useEffect(() => {
+		if (sim && session?.motion === 'events') sim.applySession(session, layout);
+	}, [session, sim, layout]);
 
 	return (
 		<div className="relative size-full overflow-hidden bg-[#f3f1ec]">
@@ -570,48 +703,195 @@ export function AgentOffice({
 						transform: `scale(${fit.scale})`,
 					}}
 				>
-					<Floor P={P} layout={layout} />
-					{rooms.map((room) => {
-						const { sx, sy } = P.at(room.at);
-						return (
-							<span key={room.key} className="of-room" style={{ left: sx, top: sy }}>
-								{t(`agents.office.rooms.${room.key}`)}
-							</span>
-						);
-					})}
-					{pieces.map((piece) => (
-						<PieceLayer
-							key={piece.key}
+					{sim && <OfficeMap P={P} layout={layout} pieces={pieces} sim={sim} />}
+					{sim && (
+						<OfficeActors
 							P={P}
-							piece={piece}
-							working={!!piece.desk && sim.actors.get(piece.desk)?.status === 'working'}
+							sim={sim}
+							selectedId={selectedId}
+							setSelectedId={setSelectedId}
 						/>
-					))}
-					{actors.map((actor) => (
-						<Person
-							key={actor.id}
-							actor={actor}
-							P={P}
-							selected={actor.id === selectedId}
-							onSelect={() => setSelectedId(actor.id === selectedId ? null : actor.id)}
-							offLabel={t('agents.graph.notInvitable')}
-						/>
-					))}
-					<div className="absolute inset-0" style={{ zIndex: 1_000_000, pointerEvents: 'none' }}>
-						{actors.map((actor) => (
-							<Bubble key={actor.id} actor={actor} P={P} />
-						))}
-					</div>
+					)}
 				</div>
 			</div>
 
+			{sim && (
+				<OfficeChrome
+					session={session}
+					sim={sim}
+					agents={agents}
+					sample={sample}
+					selectedId={selectedId}
+					setSelectedId={setSelectedId}
+					onChat={onChat}
+					onEdit={onEdit}
+					onRestart={() => setResetKey((key) => key + 1)}
+				/>
+			)}
+		</div>
+	);
+}
+
+/** Fragments preserve the common stacking context for furniture and people. */
+const OfficeMap = memo(function OfficeMap({
+	P,
+	layout,
+	pieces,
+	sim,
+}: {
+	P: Projection;
+	layout: Layout;
+	pieces: Piece[];
+	sim: OfficeSim;
+}) {
+	const { t } = useTranslation();
+	const rooms = [
+		{ key: 'meeting', at: { x: 3, y: 4.55 } },
+		{ key: 'approval', at: { x: 13.6, y: 4.1 } },
+		{ key: 'reception', at: { x: 2.8, y: layout.depth - 0.55 } },
+		{ key: 'workspace', at: { x: 11, y: 5.45 } },
+	];
+
+	return (
+		<>
+			<Floor P={P} layout={layout} />
+			{rooms.map((room) => {
+				const { sx, sy } = P.at(room.at);
+				return (
+					<span key={room.key} className="of-room" style={{ left: sx, top: sy }}>
+						{t(`agents.office.rooms.${room.key}`)}
+					</span>
+				);
+			})}
+			{pieces.map((piece) =>
+				piece.desk ? (
+					<OfficeFurniture key={piece.key} P={P} piece={piece} sim={sim} />
+				) : (
+					<PieceLayer key={piece.key} P={P} piece={piece} working={false} />
+				),
+			)}
+		</>
+	);
+});
+
+function OfficeFurniture({ P, piece, sim }: { P: Projection; piece: Piece; sim: OfficeSim }) {
+	const working = useSyncExternalStore(
+		sim.subscribe,
+		() => !!piece.desk && sim.actors.get(piece.desk)?.status === 'working',
+	);
+	return <PieceLayer P={P} piece={piece} working={working} />;
+}
+
+function OfficeActors({
+	P,
+	sim,
+	selectedId,
+	setSelectedId,
+}: {
+	P: Projection;
+	sim: OfficeSim;
+	selectedId: string | null;
+	setSelectedId: (id: string | null) => void;
+}) {
+	const { t } = useTranslation();
+	const [, setFrame] = useState(0);
+	useEffect(() => {
+		let last = performance.now();
+		let raf = requestAnimationFrame(function loop(now) {
+			// Cap elapsed time when returning from a hidden tab.
+			sim.tick(Math.min(now - last, 64));
+			last = now;
+			sim.publish();
+			if (sim.playing) setFrame((frame) => (frame + 1) % 1_000_000);
+			raf = requestAnimationFrame(loop);
+		});
+		return () => cancelAnimationFrame(raf);
+	}, [sim]);
+	const actors = [...sim.actors.values()];
+	return (
+		<>
+			{actors.map((actor) => (
+				<Person
+					key={actor.id}
+					actor={actor}
+					P={P}
+					selected={actor.id === selectedId}
+					onSelect={() => setSelectedId(actor.id === selectedId ? null : actor.id)}
+					offLabel={t('agents.graph.notInvitable')}
+				/>
+			))}
+			<div className="absolute inset-0" style={{ zIndex: 1_000_000, pointerEvents: 'none' }}>
+				{actors.map((actor) => (
+					<Bubble key={actor.id} actor={actor} P={P} />
+				))}
+			</div>
+		</>
+	);
+}
+
+function OfficeChrome({
+	session,
+	sim,
+	agents,
+	sample,
+	selectedId,
+	setSelectedId,
+	onChat,
+	onEdit,
+	onRestart,
+}: {
+	session?: SessionOfficeSnapshot;
+	sim: OfficeSim;
+	agents: GraphAgent[];
+	sample: boolean;
+	selectedId: string | null;
+	setSelectedId: (id: string | null) => void;
+	onChat: (agent: AgentView) => void;
+	onEdit: (agent: AgentView) => void;
+	onRestart: () => void;
+}) {
+	const { t } = useTranslation();
+	// Primitive snapshot stays equal during movement; only visible UI changes trigger a render.
+	useSyncExternalStore(sim.subscribe, () => {
+		const actor = selectedId ? sim.actors.get(selectedId) : undefined;
+		return JSON.stringify([
+			sim.phase,
+			sim.playing,
+			sim.speed,
+			sim.log.map((entry) => entry.text),
+			actor?.name,
+			actor ? (actor.path.length ? 'walking' : actor.status) : null,
+		]);
+	});
+	const selected =
+		selectedId === LEADER_ID ? null : agents.find((agent) => agent.id === selectedId);
+	const selectedActor = selectedId ? sim.actors.get(selectedId) : undefined;
+	const toggle = () => {
+		sim.togglePlaying();
+		sim.publish();
+	};
+	const cycleSpeed = () => {
+		sim.cycleSpeed();
+		sim.publish();
+	};
+	return (
+		<>
 			{/* Chrome. */}
 			<div className="absolute top-3 right-4 left-4 flex flex-wrap items-center gap-2">
 				<span className="flex h-8 items-center gap-2 rounded-full bg-[#fff4dc] px-3 text-[12px] font-medium text-[#8a5a00]">
 					<span className="size-1.5 rounded-full bg-[#d99a00]" />
-					{t(sample ? 'agents.office.sampleAll' : 'agents.office.sample')}
+					{session
+						? session.motion === 'demo'
+							? 'Chuyển động văn phòng mô phỏng'
+							: 'Hoạt động của phiên'
+						: t(sample ? 'agents.office.sampleAll' : 'agents.office.sample')}
 				</span>
-				<span className={cn(FLOAT, 'flex h-8 items-center gap-2 px-3 text-[12px] font-medium')}>
+				<span
+					className={cn(
+						FLOAT,
+						'flex h-8 items-center gap-2 px-3 text-[12px] font-medium',
+					)}
+				>
 					<span
 						className={cn(
 							'relative size-2 rounded-full',
@@ -620,52 +900,64 @@ export function AgentOffice({
 					/>
 					{t(`agents.office.phase.${sim.phase}`)}
 				</span>
-				<div className={cn(FLOAT, 'ml-auto flex items-center gap-0.5 p-0.5')}>
-					<Button
-						variant="ghost"
-						size="icon-sm"
-						className="rounded-full"
-						tooltip={t(sim.playing ? 'agents.office.pause' : 'agents.office.play')}
-						aria-label={t(sim.playing ? 'agents.office.pause' : 'agents.office.play')}
-						onClick={toggle}
-					>
-						{sim.playing ? <Pause /> : <Play />}
-					</Button>
-					<Button
-						variant="ghost"
-						size="sm"
-						className="h-7 rounded-full px-2 text-[12px] tabular-nums"
-						tooltip={t('agents.office.speed')}
-						onClick={cycleSpeed}
-					>
-						{sim.speed}×
-					</Button>
-					<Button
-						variant="ghost"
-						size="icon-sm"
-						className="rounded-full"
-						tooltip={t('agents.office.restart')}
-						aria-label={t('agents.office.restart')}
-						onClick={() => setResetKey((key) => key + 1)}
-					>
-						<RotateCcw />
-					</Button>
-				</div>
+				{session?.motion !== 'events' && (
+					<div className={cn(FLOAT, 'ml-auto flex items-center gap-0.5 p-0.5')}>
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							className="rounded-full"
+							tooltip={t(sim.playing ? 'agents.office.pause' : 'agents.office.play')}
+							aria-label={t(
+								sim.playing ? 'agents.office.pause' : 'agents.office.play',
+							)}
+							onClick={toggle}
+						>
+							{sim.playing ? <Pause /> : <Play />}
+						</Button>
+						<Button
+							variant="ghost"
+							size="sm"
+							className="h-7 rounded-full px-2 text-[12px] tabular-nums"
+							tooltip={t('agents.office.speed')}
+							onClick={cycleSpeed}
+						>
+							{sim.speed}×
+						</Button>
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							className="rounded-full"
+							tooltip={t('agents.office.restart')}
+							aria-label={t('agents.office.restart')}
+							onClick={onRestart}
+						>
+							<RotateCcw />
+						</Button>
+					</div>
+				)}
 			</div>
 
 			{/* What just happened, newest last. */}
 			<section
 				aria-label={t('agents.office.log')}
-				className="absolute right-4 bottom-4 w-[280px] rounded-[18px] border border-[var(--cue-border,#e8e8e8)] bg-white/92 p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] backdrop-blur"
+				className={cn(
+					'absolute right-4 bottom-4 w-[280px] rounded-[18px] border border-[var(--cue-border,#e8e8e8)] bg-white/92 p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] backdrop-blur',
+					// The adjacent session transcript already shows this activity on small screens.
+					session && 'max-md:hidden',
+				)}
 			>
-				<h2 className="mb-2 text-[12px] font-semibold text-muted-foreground">{t('agents.office.log')}</h2>
+				<h2 className="mb-2 text-[12px] font-semibold text-muted-foreground">
+					{t('agents.office.log')}
+				</h2>
 				<ol className="flex flex-col gap-1.5" aria-live="polite">
 					{sim.log.map((entry, index) => (
 						<li
 							key={entry.id}
 							className={cn(
 								'of-log flex gap-2 text-[12px]/4',
-								index === sim.log.length - 1 ? 'text-foreground' : 'text-muted-foreground',
+								index === sim.log.length - 1
+									? 'text-foreground'
+									: 'text-muted-foreground',
 							)}
 						>
 							<span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-current opacity-60" />
@@ -678,9 +970,15 @@ export function AgentOffice({
 			{selectedActor && (selected || selectedId === LEADER_ID) && (
 				<section className="ag-panel-in absolute bottom-4 left-4 flex w-[280px] flex-col gap-3 rounded-[20px] border border-[var(--cue-border,#e8e8e8)] bg-white p-4 shadow-[var(--cue-shadow-float,0_8px_32px_rgba(0,0,0,0.1))]">
 					<header className="flex items-start gap-3">
-						<ClayAvatar id={selectedId === LEADER_ID ? 'leader' : selectedId!} label={selectedActor.name} size={40} />
+						<ClayAvatar
+							id={selectedId === LEADER_ID ? 'leader' : selectedId!}
+							label={selectedActor.name}
+							size={40}
+						/>
 						<div className="min-w-0 flex-1">
-							<h2 className="truncate text-[15px]/6 font-semibold">{selectedActor.name}</h2>
+							<h2 className="truncate text-[15px]/6 font-semibold">
+								{selectedActor.name}
+							</h2>
 							<p className="text-[12px]/4 text-muted-foreground">
 								{selectedId === LEADER_ID
 									? t('agents.graph.leaderNote')
@@ -697,15 +995,26 @@ export function AgentOffice({
 						</Button>
 					</header>
 					<p className="text-[12px] text-muted-foreground">
-						{t(`agents.office.status.${selectedActor.path.length ? 'walking' : selectedActor.status}`)}
+						{t(
+							`agents.office.status.${selectedActor.path.length ? 'walking' : selectedActor.status}`,
+						)}
 					</p>
 					{selected?.real && (
 						<div className="flex gap-2">
-							<Button size="sm" className="flex-1" onClick={() => onChat(selected.real!)}>
+							<Button
+								size="sm"
+								className="flex-1"
+								onClick={() => onChat(selected.real!)}
+							>
 								<MessageCircle />
 								{t('agents.list.chat')}
 							</Button>
-							<Button size="sm" variant="outline" className="flex-1" onClick={() => onEdit(selected.real!)}>
+							<Button
+								size="sm"
+								variant="outline"
+								className="flex-1"
+								onClick={() => onEdit(selected.real!)}
+							>
 								<Pencil />
 								{t('agents.list.edit')}
 							</Button>
@@ -713,6 +1022,6 @@ export function AgentOffice({
 					)}
 				</section>
 			)}
-		</div>
+		</>
 	);
 }

@@ -376,6 +376,43 @@ class ToolkitSkillViewerTest(IsolatedAsyncioTestCase):
             },
         )
 
+    async def test_call_skill_viewer_loads_each_skill_once_per_session(
+        self,
+    ) -> None:
+        """A repeated Skill call reuses the session's loaded instructions."""
+        skill = _make_skill("my_skill")
+        skill.markdown = "# My Skill\nInstructions"
+        toolkit = Toolkit(skills_or_loaders=[MockSkillLoader([skill])])
+        state = AgentState()
+
+        async def call(active_toolkit: Toolkit, call_id: str) -> ToolResponse:
+            response = None
+            async for result in active_toolkit.call_tool(
+                ToolCallBlock(
+                    id=call_id,
+                    name="Skill",
+                    input=json.dumps({"skill": "my_skill"}),
+                ),
+                state,
+            ):
+                if isinstance(result, ToolResponse):
+                    response = result
+            assert response is not None
+            return response
+
+        first = await call(toolkit, "first")
+        repeated = await call(
+            Toolkit(skills_or_loaders=[MockSkillLoader([skill])]),
+            "repeated",
+        )
+
+        self.assertEqual(first.content[0].text, "# My Skill\nInstructions")
+        self.assertEqual(
+            repeated.content[0].text,
+            "Skill 'my_skill' is already loaded in this session. "
+            "Reuse its previous instructions.",
+        )
+
     async def test_skill_viewer_uses_active_tool_group_skills(self) -> None:
         """Test that activated custom-group skills expose SkillViewer."""
         skill = _make_skill("repair_skill")

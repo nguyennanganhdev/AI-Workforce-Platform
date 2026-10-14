@@ -180,7 +180,42 @@ def create_router(
 
         return await respond(action)
 
+    @router.post("/partner/approvals/{approval_id}/chat", status_code=202)
+    async def partner_chat_decision(
+        approval_id: str,
+        request: Request,
+        actor: Any = Depends(customer_dependency),
+    ) -> Any:
+        """Accept explicit chat consent with unchanged audience/hash checks."""
+        async def action() -> Any:
+            body = chat_decision_body(await request.json(), approval_id)
+            check_decision(body, partner=True)
+            return await partner_approvals.decide(
+                actor, approval_id, PartnerApprovalDecision.model_validate(body),
+            )
+
+        return await respond(action)
+
     return router
+
+
+def chat_decision_body(body: Any, approval_id: str) -> dict:
+    """Translate explicit prose only; selection/conditional prose is not consent."""
+    from ..._chat_consent import parse_chat_consent
+
+    if not isinstance(body, dict) or "decision" in body:
+        raise ExecutionError("APPROVAL_DECISION_INVALID", 422)
+    payload = dict(body)
+    message = payload.pop("message", None)
+    if not isinstance(message, str) or len(message) > 2000:
+        raise ExecutionError("APPROVAL_CHAT_CLARIFICATION_REQUIRED", 422)
+    parsed = parse_chat_consent(message)
+    if parsed is None or parsed[1] not in {
+        None, approval_id.casefold(), approval_id[-8:].casefold(),
+    }:
+        raise ExecutionError("APPROVAL_CHAT_CLARIFICATION_REQUIRED", 422)
+    payload["decision"] = "approve" if parsed[0] else "reject"
+    return payload
 
 
 def check_decision(body: Any, partner: Any) -> Any:

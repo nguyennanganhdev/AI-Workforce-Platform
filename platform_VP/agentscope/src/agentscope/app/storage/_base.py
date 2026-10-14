@@ -5,7 +5,10 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import Any, Self
 
-
+from ...credential import CredentialBase
+from ...message import Msg
+from ...sop import SOPPhase, SOPRunState
+from ...state import AgentState
 from ._model import (
     AgentRecord,
     ChannelRecord,
@@ -15,18 +18,17 @@ from ._model import (
     KnowledgeDocumentStatus,
     MCPRecord,
     ScheduleRecord,
-    SessionRecord,
     SessionConfig,
     SessionOrigin,
+    SessionRecord,
     SkillRecord,
     SOPRecord,
     SOPRunRecord,
     TeamRecord,
+    TeamSharedContextRecord,
+    TeamHandoffRecord,
+    TeamTurnRecord,
 )
-from ...credential import CredentialBase
-from ...message import Msg
-from ...sop import SOPPhase, SOPRunState
-from ...state import AgentState
 
 
 class StorageBase(ABC):
@@ -1051,6 +1053,80 @@ class StorageBase(ABC):
                 ``True`` if the team record existed and was deleted,
                 ``False`` if not found.
         """
+
+    @abstractmethod
+    async def upsert_team_shared_context(
+        self,
+        user_id: str,
+        record: TeamSharedContextRecord,
+    ) -> TeamSharedContextRecord:
+        """Persist one team's durable shared-context state."""
+
+    @abstractmethod
+    async def get_team_shared_context(
+        self,
+        user_id: str,
+        team_id: str,
+    ) -> TeamSharedContextRecord | None:
+        """Return a team's shared context, scoped to its owner."""
+
+    @abstractmethod
+    async def compare_and_swap_team_shared_context(
+        self,
+        user_id: str,
+        record: TeamSharedContextRecord,
+        expected_revision: int,
+    ) -> bool:
+        """Persist only if the database still has ``expected_revision``."""
+
+    @abstractmethod
+    async def delete_team_shared_context(
+        self,
+        user_id: str,
+        team_id: str,
+    ) -> bool:
+        """Delete shared context without deleting the owning team."""
+
+    @abstractmethod
+    async def upsert_team_turn(
+        self,
+        user_id: str,
+        record: TeamTurnRecord,
+    ) -> TeamTurnRecord:
+        """Persist the current customer-facing turn for restart recovery."""
+
+    @abstractmethod
+    async def get_team_turn(
+        self,
+        user_id: str,
+        team_id: str,
+    ) -> TeamTurnRecord | None:
+        """Return the durable turn state for a team."""
+
+    @abstractmethod
+    async def upsert_team_handoff(
+        self,
+        user_id: str,
+        record: TeamHandoffRecord,
+    ) -> TeamHandoffRecord:
+        """Persist one recipient-specific handoff before realtime delivery."""
+
+    @abstractmethod
+    async def get_team_handoff(
+        self,
+        user_id: str,
+        handoff_record_id: str,
+    ) -> TeamHandoffRecord | None:
+        """Read a durable handoff by its recipient-specific record id."""
+
+    @abstractmethod
+    async def list_outstanding_team_handoffs(
+        self,
+        *,
+        recipient_session_id: str | None = None,
+        limit: int = 100,
+    ) -> list[TeamHandoffRecord]:
+        """List pending/delivered-but-unconsumed handoffs for recovery."""
 
     # ------------------------------------------------------------------
     # Knowledge base persistence

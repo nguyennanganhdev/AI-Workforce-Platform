@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """The installed-MCP record."""
+from datetime import datetime
+
 from pydantic import Field, computed_field
 
-from ._base import _RecordBase
 from ....mcp import MCPClient
+from ._base import _RecordBase
 
 
 class MCPRecord(_RecordBase):
@@ -86,3 +88,15 @@ class MCPRecord(_RecordBase):
     enabled: bool = Field(default=True)
     """Whether the MCP should be present in the user's workspaces. A
     disabled record is kept so re-enabling does not lose its config."""
+
+    discovered_tools: list[dict] = Field(default_factory=list)
+    """Secret-free tool snapshots captured during catalog sync."""
+
+    catalog_revision: int = Field(default=0, ge=0)
+    """Monotonic local revision of :attr:`discovered_tools`."""
+
+    last_synced_at: datetime | None = None
+    """When tool discovery last completed successfully."""
+
+    last_sync_error: str | None = Field(default=None, max_length=2000)
+    """Sanitized latest discovery error, never a credential payload."""

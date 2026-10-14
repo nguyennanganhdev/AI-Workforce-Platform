@@ -11,6 +11,7 @@ import {
 	type MockEvent,
 } from './chat-mock-data';
 import { Enter, FlyIn } from './motion';
+import { mockOfficeSnapshot } from './office-adapter';
 import { Participants } from './participants';
 import { durationOf } from './playback';
 import { AgentSticker, StateBadge, TranscriptEvent } from './transcript';
@@ -22,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { WorkforceApprovalCard } from '@/features/workforce/approvals';
-import { useCueTheme } from '@/hooks/useCueTheme';
+import { SessionWorkspace } from '@/features/workforce/session-office/SessionWorkspace';
 import { cn } from '@/lib/utils';
 import 'streamdown/styles.css';
 
@@ -180,18 +181,20 @@ function Gate({
  * script demonstrates.
  *
  * Fills its parent. The chat page shows it in place of the real chat while
- * the account has no agent to talk to; {@link MockChatPage} shows it with no
- * sign-in at all.
+ * the account has no agent to talk to, or a sample conversation is selected.
  */
 export function MockChat({
 	notice,
 	footer,
 	headerActions,
 	conversationId,
+	onConversationChange,
 	hideSidebar = false,
 }: {
 	/** Opens this conversation and keeps it open, e.g. one picked elsewhere. */
 	conversationId?: string;
+	/** Allows the app chat route to own selection without changing the playback script. */
+	onConversationChange?: (id: string) => void;
 	/** Just the transcript, for a page that brings its own sidebar. */
 	hideSidebar?: boolean;
 	/** Beside the mark at the top of the sidebar, e.g. the "+" menu. */
@@ -327,7 +330,10 @@ export function MockChat({
 										(its.events ?? conversation.events).slice(0, its.count),
 									)}
 									active={conversation.id === active.id}
-									onSelect={() => setActiveId(conversation.id)}
+									onSelect={() => {
+										setActiveId(conversation.id);
+										onConversationChange?.(conversation.id);
+									}}
 								/>
 							);
 						})}
@@ -409,45 +415,49 @@ export function MockChat({
 					</Button>
 				</header>
 
-				<div className="min-h-0 flex-1 overflow-y-auto">
-					<div className="flex w-full max-w-3xl flex-col gap-6 px-4 py-4">
-						{shown.map((event, index) =>
-							event.kind === 'gate' ? null : (
-								// Only the event that just arrived rises in; reopening a
-								// conversation draws its history still.
-								<Enter
-									key={event.id}
-									animate={play.busy && index === shown.length - 1}
-								>
-									<TranscriptEvent
-										event={event}
-										running={play.busy && index === shown.length - 1}
-										typedText={typed[event.id]}
-									/>
+				<SessionWorkspace
+					snapshot={mockOfficeSnapshot(active.id, participants, shown, play.busy)}
+				>
+					<div className="min-h-0 flex-1 overflow-y-auto">
+						<div className="flex w-full max-w-3xl flex-col gap-6 px-4 py-4">
+							{shown.map((event, index) =>
+								event.kind === 'gate' ? null : (
+									// Only the event that just arrived rises in; reopening a
+									// conversation draws its history still.
+									<Enter
+										key={event.id}
+										animate={play.busy && index === shown.length - 1}
+									>
+										<TranscriptEvent
+											event={event}
+											running={play.busy && index === shown.length - 1}
+											typedText={typed[event.id]}
+										/>
+									</Enter>
+								),
+							)}
+							{gate && (
+								<Enter key={gate.id} animate>
+									<Gate gate={gate} onAdvance={advance} onReject={reject} />
 								</Enter>
-							),
-						)}
-						{gate && (
-							<Enter key={gate.id} animate>
-								<Gate gate={gate} onAdvance={advance} onReject={reject} />
-							</Enter>
-						)}
-						<div ref={transcriptEnd} />
+							)}
+							<div ref={transcriptEnd} />
+						</div>
 					</div>
-				</div>
 
-				{/* Open only while the session is waiting for a reply — the one
+					{/* Open only while the session is waiting for a reply — the one
 				    state in which a real session accepts a message. Attaching is
 				    off: the mock has nowhere to upload to. */}
-				<TextInput
-					key={`${active.id}:${gate?.id ?? 'closed'}`}
-					className="w-full shrink-0 px-4 pb-4"
-					placeholder={composerHint}
-					disabled={gate?.action !== 'reply'}
-					onSend={handleSend}
-					allowedInputTypes={[]}
-					fileProcessor={async () => null}
-				/>
+					<TextInput
+						key={`${active.id}:${gate?.id ?? 'closed'}`}
+						className="w-full shrink-0 px-4 pb-4"
+						placeholder={composerHint}
+						disabled={gate?.action !== 'reply'}
+						onSend={handleSend}
+						allowedInputTypes={[]}
+						fileProcessor={async () => null}
+					/>
+				</SessionWorkspace>
 			</main>
 
 			<Participants
@@ -455,19 +465,6 @@ export function MockChat({
 				agents={participants}
 				activeAgent={activeAgent}
 			/>
-		</div>
-	);
-}
-
-/**
- * The mock on its own, with no app shell around it and no sign-in — `App`
- * serves it at `/mock/chat` ahead of the auth check.
- */
-export function MockChatPage() {
-	useCueTheme();
-	return (
-		<div className="h-screen bg-canvas">
-			<MockChat />
 		</div>
 	);
 }

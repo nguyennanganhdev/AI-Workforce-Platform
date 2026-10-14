@@ -75,11 +75,12 @@ def lifecycle_suite() -> LifecycleSuite:
             provider_confirmed=confirmed,
         )
 
-    closed = turn("close", WorkflowState.CLOSED, NextAction.NONE, llm=0)
+    closed = turn("close", WorkflowState.CLOSED, NextAction.NONE, llm=0, confirmed=True)
+    tracking_closed = closed.model_copy(update={"tracking_records": 1})
     waiting = WorkflowState.WAITING_EXTERNAL_EVENT
     watch = NextAction.WATCH_EVENTS
     return LifecycleSuite(
-        suite_version="pta-lifecycle-1",
+        suite_version="pta-lifecycle-2",
         cases=(
             LifecycleCase(
                 case_id="response-only",
@@ -139,7 +140,7 @@ def lifecycle_suite() -> LifecycleSuite:
                         tracking=1,
                         confirmed=True,
                     ),
-                    closed,
+                    tracking_closed,
                 ),
             ),
             LifecycleCase(
@@ -161,7 +162,7 @@ def lifecycle_suite() -> LifecycleSuite:
                         llm=0,
                         tracking=1,
                     ),
-                    turn("timer-query-pending", waiting, watch, llm=0, tracking=1),
+                    turn("timer-query-pending", waiting, watch, tracking=1),
                     turn(
                         "completed",
                         WorkflowState.AWAITING_CONFIRMATION,
@@ -169,7 +170,7 @@ def lifecycle_suite() -> LifecycleSuite:
                         tracking=1,
                         confirmed=True,
                     ),
-                    closed,
+                    tracking_closed,
                 ),
             ),
             LifecycleCase(

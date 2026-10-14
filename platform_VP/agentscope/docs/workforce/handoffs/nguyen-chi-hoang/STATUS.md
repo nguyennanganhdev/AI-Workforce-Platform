@@ -1,8 +1,45 @@
 # Trạng thái — Nguyễn Chí Hoàng
 
-Tên thành viên / branch / baseline được kiểm tra: Nguyễn Chí Hoàng /
-`dev_TeamHoang` / `develop2@848740498c92894c074cf264f6ce6307a2dfb9cc`.
-Working tree hiện chứa PHH Phase B và NCH Phase C/C1 chưa commit.
+## Cập nhật mới nhất — D6/D7 thay toàn đội — 2026-10-12
+
+Nguyễn Chí Hoàng đã triển khai phần code/tài liệu còn lại của D5–D7 trên working
+tree sau `dev_TeamHoang@c588517`: full E2E factory, contract
+`TICKET_ALREADY_BOUND`, shared provider metrics, proxy/alert/runbook,
+backup-restore CI, frontend/browser gate và JUnit Release Candidate report.
+Chi tiết: [PHASE_D_D6_D7.md](PHASE_D_D6_D7.md) và
+[../PHASE_D_SEQUENCE.md](../PHASE_D_SEQUENCE.md).
+
+Validation local cuối: **647 passed, 22 skipped, 313 subtests passed**, không có
+failure/error; frontend lint/build pass. D7 local report trả fail đúng thiết kế
+vì 22 skip hạ tầng và sandbox `NOT_VERIFIED`. CI mới cung cấp PostgreSQL 17 và
+Chromium, đồng thời fail nếu thiếu report hoặc còn skip.
+
+Trạng thái Git chính xác: **chưa tự xác nhận merge vào `develop2` và chưa có kết
+quả GitHub CI của commit mới**. Sandbox đối tác chưa được cấp nên evidence phải
+ghi `NOT_VERIFIED`; không tuyên bố production pass.
+
+## Lịch sử — tích hợp cuối Phase D/D4 — 2026-10-12
+
+Baseline đầu vào là `develop2@35cec29`: C7/D1/D2, D3 và D4 đã merge. Nguyễn
+Chí Hoàng đã ghép xong phần production còn thiếu sau PR #73 gồm migration
+`0011_workforce_releases`, manager API/auth, transactional release validator,
+published catalog/Leader bootstrap, exact workflow/checkpoint usage reader và CI
+D4/PostgreSQL. Trạng thái bàn giao: **đã commit và đã merge vào `develop2`**
+qua commit/PR chứa chính cập nhật status này. Xem
+[PHASE_D_D4_INTEGRATION.md](PHASE_D_D4_INTEGRATION.md) và
+[../PHASE_D_SEQUENCE.md](../PHASE_D_SEQUENCE.md).
+
+Các đoạn trạng thái cũ bên dưới được giữ làm lịch sử theo từng mốc; không được
+dùng thay cho cập nhật mới nhất này.
+
+Tên thành viên: Nguyễn Chí Hoàng. Baseline chung hiện tại:
+`develop2@5e66ea0`.
+
+**Snapshot lịch sử trước PR C7/D1/D2:** C1–C6 đã merge; C7/D1 và hai lane D2
+đang được triển khai tại thời điểm ghi. Các phần này sau đó đã commit và merge
+vào `develop2@278ea4a`. Chi tiết tại
+[PHASE_C_C7_VA_PHASE_D_D1.md](PHASE_C_C7_VA_PHASE_D_D1.md) và trạng thái cuối
+tại [../PHASE_D_SEQUENCE.md](../PHASE_D_SEQUENCE.md).
 
 Task IDs đã hoàn thành theo nhịp: NCH-01; contract khởi động NCH-02/NCH-13;
 Phase B độc lập của NCH-14; và output C1 thuộc NCH-03/05/06/08/12/14/15 gồm
@@ -42,11 +79,13 @@ không thêm dependency.
 
 Integration requests còn mở: xem `INTEGRATION_REQUEST_NCH_PHASE_A.md`; các yêu cầu này phục vụ phase sau và không chặn contract hiện tại.
 
-Live verification còn thiếu: FastAPI route, PostgreSQL transaction/uniqueness, Redis server thật, provider signature, AgentScope continuation và browser UI runtime. MessageBus in-memory, SSE encoder/replay service và TypeScript transport đã có test/type/lint cục bộ.
+Live verification còn thiếu sau C7/D1: CI PostgreSQL của PR, Redis multi-process,
+provider sandbox thật và browser E2E. FastAPI router mounting, SQL composition,
+worker registration, SSE reconnect/replay và C6 runtime slice đã có test cục bộ.
 
-Việc tiếp theo theo đúng tuần tự: merge PHH Phase B + C1 thành baseline chung,
-sau đó Nguyễn Phương Đông thực hiện C2. Nguyễn Chí Hoàng không nhảy tới C7
-trước C2–C6; chỉ review schema/hook additive và giữ migration chain ổn định.
+Snapshot trình tự tại thời điểm đó: C1–C6 đã merge; C7/D1 và hai lane D2 đang
+chờ merge. Mốc này đã được đóng tại `develop2@278ea4a`; xem cập nhật mới nhất ở
+đầu file.
 
 ## Cập nhật Phase B
 
@@ -69,3 +108,12 @@ trước C2–C6; chỉ review schema/hook additive và giữ migration chain �
 - `VerifiedProviderContext` đã chốt server-only. Phase C của Dũng phải persist
   đủ context này (không rút còn dict thiếu credential/signing key) trước khi
   re-authorize provider event sau dequeue.
+
+## Lịch sử điều phối sau khi C5 merge — 2026-10-11
+
+- C5 đã merge qua PR #64 tại
+  `830cdacd56f868d509d208b91b9a6bc29d70c935`.
+- Điều kiện lịch sử là C7 chỉ mở sau C6. Điều kiện này đã được thỏa khi PR #67
+  merge vào `develop2@5e66ea0`.
+- Kết quả C7/D1 hiện tại được ghi riêng tại
+  [PHASE_C_C7_VA_PHASE_D_D1.md](PHASE_C_C7_VA_PHASE_D_D1.md).

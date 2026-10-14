@@ -24,7 +24,6 @@ import { ChannelPage } from '@/pages/channel';
 import { ChatPage } from '@/pages/chat';
 import { CredentialPage } from '@/pages/credential';
 import { KnowledgePage } from '@/pages/knowledge';
-import { MockChatPage } from '@/pages/mock';
 import { SchedulePage } from '@/pages/schedule';
 
 const router = createBrowserRouter([
@@ -42,6 +41,7 @@ const router = createBrowserRouter([
 				errorElement: <RouteError />,
 				children: [
 					{ path: '/', element: <Navigate to="/chat" replace /> },
+					{ path: '/mock/chat', element: <Navigate to="/chat" replace /> },
 					{
 						path: '/chat/:agentId?/:sessionId?/:memberId?',
 						element: <ChatPage />,
@@ -104,12 +104,6 @@ function App() {
 			window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpired);
 		};
 	}, []);
-
-	// The mock chat screen runs on sample data and talks to no backend, so it
-	// is served ahead of the auth check — it has to open with no server up.
-	if (window.location.pathname === '/mock/chat') {
-		return <MockChatPage />;
-	}
 
 	if (authStatus === 'checking') {
 		return (

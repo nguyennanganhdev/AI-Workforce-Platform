@@ -245,7 +245,14 @@ class ValidationTests(unittest.TestCase):
                 change(data)
                 self.assertIn(blocker, validate(data)[0].blockers)
 
-    def test_builder_query_only_dialect_explicit(self) -> None:
+    def test_current_builder_policy_dialect_and_query_only_block(self) -> None:
+        # C3 aligned Builder with the PTA policy fields. Validate its actual
+        # public schema; legacy query_status/empty semantics are not supported.
+        data = fixture()
+        data["policy_schema"] = "bhn-phase-a-1"
+        self.assertTrue(validate(data)[0].valid)
+        data["policy"].update(timeout_seconds=60, timeout_behavior="query_status")
+        self.assertIn("INVALID_POLICY", validate(data)[0].blockers)
         data = fixture()
         protocol = data["protocols"][0].model_copy(update={"event_mappings": {}})
         data["protocols"] = [protocol]
@@ -259,7 +266,7 @@ class ValidationTests(unittest.TestCase):
             required_facts=[],
         )
         data["policy_schema"] = "bhn-phase-a-1"
-        self.assertTrue(validate(data)[0].valid)
+        self.assertIn("INVALID_POLICY", validate(data)[0].blockers)
         data["policy_schema"] = "pta-phase-a-1"
         self.assertIn("INVALID_POLICY", validate(data)[0].blockers)
 

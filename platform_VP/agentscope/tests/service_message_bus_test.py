@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # pylint: disable=protected-access
 """Tests for :class:`RedisMessageBus` and the domain helpers on the base
 :class:`MessageBus` class.
@@ -327,6 +326,50 @@ class TestLockPrimitive(IsolatedAsyncioTestCase):
             order,
             ["first-in", "first-out", "second-in"],
         )
+
+    async def test_cancelled_holder_releases_lock_immediately(self) -> None:
+        entered = asyncio.Event()
+
+        async def _holder() -> None:
+            async with self.bus.acquire_lock("cancelled", ttl_secs=30):
+                entered.set()
+                await asyncio.Event().wait()
+
+        holder = asyncio.create_task(_holder())
+        await entered.wait()
+        holder.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await holder
+
+        self.assertFalse(await self.bus.is_locked("cancelled"))
+        async with asyncio.timeout(0.5):
+            async with self.bus.acquire_lock("cancelled", ttl_secs=30):
+                self.assertTrue(await self.bus.is_locked("cancelled"))
+
+    async def test_cancel_during_ambiguous_set_releases_acquired_lock(self) -> None:
+        acquired = asyncio.Event()
+        return_result = asyncio.Event()
+        original_set = self.fr.set
+
+        async def _set_then_pause(*args, **kwargs):
+            result = await original_set(*args, **kwargs)
+            acquired.set()
+            await return_result.wait()
+            return result
+
+        async def _holder() -> None:
+            async with self.bus.acquire_lock("ambiguous", ttl_secs=30):
+                self.fail("cancelled acquisition must not enter the body")
+
+        with patch.object(self.fr, "set", side_effect=_set_then_pause):
+            holder = asyncio.create_task(_holder())
+            await asyncio.wait_for(acquired.wait(), timeout=1.0)
+            holder.cancel()
+            return_result.set()
+            with self.assertRaises(asyncio.CancelledError):
+                await asyncio.wait_for(holder, timeout=1.0)
+
+        self.assertFalse(await self.bus.is_locked("ambiguous"))
 
 
 class TestSessionRunAutoTrimsLog(IsolatedAsyncioTestCase):

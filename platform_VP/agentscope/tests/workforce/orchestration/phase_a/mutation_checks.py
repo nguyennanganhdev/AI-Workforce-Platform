@@ -14,8 +14,12 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from fixtures import phase_a_samples
-from test_phase_a import NEGATIVE_CASES, MODELS, mutate
+from tests.workforce.orchestration.phase_a.fixtures import phase_a_samples
+from tests.workforce.orchestration.phase_a.test_phase_a import (
+    MODELS,
+    NEGATIVE_CASES,
+    mutate,
+)
 
 
 SOURCE = (

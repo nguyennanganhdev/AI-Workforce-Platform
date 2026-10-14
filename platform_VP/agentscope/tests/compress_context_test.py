@@ -2847,6 +2847,44 @@ class ContextCompressionTest(IsolatedAsyncioTestCase):
 
         self.assertEqual(agent.state, expected_state)
 
+    async def test_audited_compression_does_not_retry_without_oldest_sources(
+        self,
+    ) -> None:
+        """Audited runtimes fail intact instead of summarizing a source suffix."""
+
+        model = RecordingStructuredMockModel(
+            context_size=100,
+            fail_structured_output_times=1,
+            force_compression_overflow=True,
+        )
+        agent = Agent(
+            name="Friday",
+            system_prompt="0" * 80,
+            model=model,
+            context_config=ContextConfig(
+                trigger_ratio=0.7,
+                reserve_ratio=0.4,
+                compression_fallback_to_truncation=False,
+                compression_retry_drop_oldest=False,
+            ),
+            state=AgentState(
+                session_id="123",
+                context=[
+                    UserMsg("User", "1" * 120, id="1"),
+                    AssistantMsg("Friday", "2" * 40, id="2"),
+                    UserMsg("User", "3" * 40, id="3"),
+                ],
+            ),
+            toolkit=Toolkit(),
+        )
+        expected_state = agent.state.model_copy(deep=True)
+
+        with self.assertRaisesRegex(RuntimeError, "simulated compression overflow"):
+            await agent.compress_context()
+
+        self.assertEqual(agent.state, expected_state)
+        self.assertEqual(len(model.recorded_structured_messages), 1)
+
     async def test_offload_reminder_is_not_duplicated(self) -> None:
         """Repeated fallback preserves one reminder for a stable path."""
         reminder = (

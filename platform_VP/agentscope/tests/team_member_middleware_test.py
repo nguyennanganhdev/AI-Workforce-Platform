@@ -6,6 +6,7 @@ The middleware is exercised against a real :class:`Agent` driven by a
 mock model and a stand-in ``TeamSay`` tool, so the reasoning-acting
 loop is genuine while nothing touches the app service layer.
 """
+
 import itertools
 import json
 from typing import Any
@@ -14,10 +15,10 @@ from unittest.async_case import IsolatedAsyncioTestCase
 from utils import MockModel
 
 from agentscope.agent import Agent, InjectionConfig, ReActConfig
+from agentscope.app._tool._team_say import STALE_CONTEXT_RESULT
 from agentscope.app.middleware import TeamMemberLoopMiddleware
-from agentscope.event import ReplyEndEvent
-from agentscope.message import TextBlock, ToolCallBlock, ToolResultState
-from agentscope.message import UserMsg
+from agentscope.event import ReplyEndEvent, TextBlockDeltaEvent
+from agentscope.message import TextBlock, ToolCallBlock, ToolResultState, UserMsg
 from agentscope.model import ChatResponse
 from agentscope.permission import (
     PermissionBehavior,
@@ -38,6 +39,7 @@ class _FakeTeamSay(ToolBase):
         "properties": {
             "to": {"type": "string"},
             "content": {"type": "string"},
+            "kind": {"type": "string"},
         },
         "required": ["content"],
     }
@@ -48,10 +50,15 @@ class _FakeTeamSay(ToolBase):
     is_mcp: bool = False
     mcp_name: str | None = None
 
-    def __init__(self, state: ToolResultState = ToolResultState.SUCCESS):
+    def __init__(
+        self,
+        state: ToolResultState = ToolResultState.SUCCESS,
+        output: str = "delivered",
+    ):
         super().__init__()
         self.calls: list[dict] = []
         self._state = state
+        self._output = output
 
     async def check_permissions(
         self,
@@ -64,11 +71,15 @@ class _FakeTeamSay(ToolBase):
             message="allowed",
         )
 
-    async def __call__(self, content: str, to: str | None = None) -> ToolChunk:
+    async def __call__(
+        self, content: str, to: str | None = None, kind: str | None = None
+    ) -> ToolChunk:
         """Record the call and answer with the configured state."""
         self.calls.append({"to": to, "content": content})
+        if kind:
+            self.calls[-1]["kind"] = kind
         return ToolChunk(
-            content=[TextBlock(text="delivered")],
+            content=[TextBlock(text=self._output)],
             state=self._state,
         )
 
@@ -124,6 +135,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         max_iters: int = 5,
         max_nudges: int = 3,
         extra_tools: list | None = None,
+        pending_question=None,
     ) -> list:
         """Drive one reply and return the streamed items."""
         toolkit = Toolkit(tools=[self.team_say, *(extra_tools or [])])
@@ -138,6 +150,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
                 TeamMemberLoopMiddleware(
                     leader_name="Leader",
                     max_nudges=max_nudges,
+                    pending_question=pending_question,
                 ),
             ],
             injection_config=InjectionConfig(inject_runtime_state=False),
@@ -146,6 +159,57 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         async for item in agent.reply_stream(UserMsg("user", "do it")):
             items.append(item)
         return items
+
+    async def test_waiting_for_user_never_calls_model_or_tools(self):
+        async def question():
+            return "Which location?"
+
+        items = await self._run([], pending_question=question)
+        self.assertEqual(self.model.cnt, 0)
+        self.assertEqual(self.team_say.calls, [])
+        self.assertEqual(
+            self._end_events(items)[0].finished_reason, ReplyFinishedReason.COMPLETED
+        )
+
+    async def test_progress_is_not_a_terminal_report(self):
+        items = await self._run(
+            [
+                _call("TeamSay", to="Leader", kind="progress", content="Checking"),
+                _text("Please wait"),
+                _call(
+                    "TeamSay",
+                    to="Peer",
+                    kind="question",
+                    content="Return the verified options",
+                ),
+                _text("Waiting for peer"),
+            ]
+        )
+        self.assertEqual(2, len(self.team_say.calls))
+        self.assertEqual("Peer", self.team_say.calls[-1]["to"])
+        self.assertEqual(
+            ReplyFinishedReason.COMPLETED, self._end_events(items)[0].finished_reason
+        )
+
+    async def test_unchanged_repeated_tool_is_not_executed_again(self):
+        tool = _OtherTool()
+        tool.name = "mcp__test__lookup"
+        items = await self._run(
+            [
+                _call(tool.name, content="same"),
+                _call(tool.name, content="same"),
+                _call(tool.name, content="same"),
+                _call(tool.name, content="same"),  # even a model ignoring tool_choice
+                _call("TeamSay", to="Leader", content="No matching external ID"),
+                _text("reported"),
+            ],
+            extra_tools=[tool],
+            max_iters=10,
+        )
+        self.assertEqual(len(tool.calls), 3)
+        self.assertEqual(
+            self._end_events(items)[0].finished_reason, ReplyFinishedReason.COMPLETED
+        )
 
     @staticmethod
     def _end_events(items: list) -> list[ReplyEndEvent]:
@@ -168,20 +232,56 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
                 "team_say_calls": self.team_say.calls,
             },
             {
-                "model_calls": 2,
+                "model_calls": 1,
                 "reasons": [ReplyFinishedReason.COMPLETED],
                 "team_say_calls": [{"to": "Leader", "content": "done"}],
             },
         )
 
-    async def test_broadcast_report_passes_through(self) -> None:
-        """``TeamSay`` without ``to`` broadcasts and still counts."""
+    async def test_registered_customer_question_is_emitted_without_model_text(
+        self,
+    ) -> None:
         items = await self._run(
-            [_call("TeamSay", content="done"), _text("reported")],
+            [
+                _call(
+                    "TeamSay",
+                    to="null",
+                    kind="requires_user_input",
+                    content="Bạn xuất phát từ đâu và có bao nhiêu người?",
+                ),
+                _text("Đã đăng ký câu hỏi."),
+            ],
+        )
+
+        self.assertIn(
+            "Bạn xuất phát từ đâu và có bao nhiêu người?",
+            [item.delta for item in items if isinstance(item, TextBlockDeltaEvent)],
+        )
+        self.assertEqual(
+            ReplyFinishedReason.COMPLETED,
+            self._end_events(items)[0].finished_reason,
+        )
+
+    async def test_broadcast_report_is_not_accepted(self) -> None:
+        """A worker broadcast cannot satisfy the final-report contract."""
+        items = await self._run(
+            [
+                _call("TeamSay", content="done"),
+                _text("broadcast was rejected"),
+                _call("TeamSay", to="Leader", content="done"),
+                _text("reported"),
+            ],
         )
         self.assertListEqual(
             [_.finished_reason for _ in self._end_events(items)],
             [ReplyFinishedReason.COMPLETED],
+        )
+        self.assertListEqual(
+            self.team_say.calls,
+            [
+                {"to": None, "content": "done"},
+                {"to": "Leader", "content": "done"},
+            ],
         )
 
     async def test_report_to_other_member_is_not_accepted(self) -> None:
@@ -225,8 +325,29 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             [ReplyFinishedReason.ERROR],
         )
 
-    async def test_later_tool_invalidates_earlier_report(self) -> None:
-        """A non-``TeamSay`` call after the report re-opens the reply."""
+    async def test_stale_report_stops_turn_instead_of_repeating_it(self) -> None:
+        """A fresh run must reload shared context before another TeamSay."""
+
+        self.team_say = _FakeTeamSay(
+            state=ToolResultState.ERROR,
+            output=STALE_CONTEXT_RESULT,
+        )
+        items = await self._run(
+            [
+                _call("TeamSay", to="Leader", content="stale answer"),
+                _text("retry the same stale answer"),
+                _call("TeamSay", to="Leader", content="must not run"),
+            ],
+        )
+        ends = self._end_events(items)
+
+        self.assertEqual(self.model.cnt, 2)
+        self.assertEqual(len(self.team_say.calls), 1)
+        self.assertEqual(ends[-1].finished_reason, ReplyFinishedReason.ERROR)
+        self.assertIn("fresh worker turn", ends[-1].error.message)
+
+    async def test_successful_report_prevents_another_model_round(self) -> None:
+        """A successful report releases the run before another tool is planned."""
         note = _OtherTool()
         items = await self._run(
             [
@@ -242,7 +363,26 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
             [_.finished_reason for _ in self._end_events(items)],
             [ReplyFinishedReason.COMPLETED],
         )
+        self.assertEqual(len(self.team_say.calls), 1)
+        self.assertEqual(self.model.cnt, 1)
+
+    async def test_partial_peer_batch_ends_without_retrying_or_losing_requests(self):
+        class _PartialTeamSay(_FakeTeamSay):
+            async def __call__(self, content, to=None, kind=None):
+                result = await super().__call__(content, to, kind)
+                if to == "Missing":
+                    result.state = ToolResultState.ERROR
+                return result
+
+        self.team_say = _PartialTeamSay()
+        batch = ChatResponse(content=[
+            *_call("TeamSay", to="Peer", kind="question", content="Find options").content,
+            *_call("TeamSay", to="Missing", kind="question", content="Find alternatives").content,
+        ], is_last=True)
+        items = await self._run([batch, _text("should not run")])
+        self.assertEqual(self.model.cnt, 1)
         self.assertEqual(len(self.team_say.calls), 2)
+        self.assertEqual(self._end_events(items)[0].finished_reason, ReplyFinishedReason.COMPLETED)
 
     async def test_silent_worker_is_failed_after_max_nudges(self) -> None:
         """A worker that never reports fails instead of looping."""
@@ -301,9 +441,7 @@ class TeamMemberLoopMiddlewareTest(IsolatedAsyncioTestCase):
         )
         self.assertDictEqual(
             {
-                "reasons": [
-                    _.finished_reason for _ in self._end_events(items)
-                ],
+                "reasons": [_.finished_reason for _ in self._end_events(items)],
                 "team_say_calls": self.team_say.calls,
             },
             {

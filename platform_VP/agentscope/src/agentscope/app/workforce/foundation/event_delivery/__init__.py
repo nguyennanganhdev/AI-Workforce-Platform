@@ -22,6 +22,17 @@ from ._worker import (
     WorkerOutcome,
     WorkerOutcomeStatus,
 )
+from ._metrics import (
+    InMemoryMetricSink,
+    MetricSink,
+    NullMetricSink,
+    PROVIDER_EVENTS,
+    SSE_CONNECTIONS,
+    SSE_REPLAYS,
+    WORKER_ITERATIONS,
+    WORKER_RESTARTS,
+)
+from ._supervisor import DurableWorkerSupervisor
 
 __all__ = [
     "ConversationSseService",
@@ -29,6 +40,7 @@ __all__ = [
     "DurableJobRepository",
     "DurableJobService",
     "DurableJobWorker",
+    "DurableWorkerSupervisor",
     "JobClaim",
     "JobLeaseLostError",
     "JobNamespaceError",
@@ -40,4 +52,12 @@ __all__ = [
     "SseFrame",
     "WorkerOutcome",
     "WorkerOutcomeStatus",
+    "InMemoryMetricSink",
+    "MetricSink",
+    "NullMetricSink",
+    "PROVIDER_EVENTS",
+    "SSE_CONNECTIONS",
+    "SSE_REPLAYS",
+    "WORKER_ITERATIONS",
+    "WORKER_RESTARTS",
 ]

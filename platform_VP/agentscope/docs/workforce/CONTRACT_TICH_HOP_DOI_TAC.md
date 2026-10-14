@@ -1,8 +1,8 @@
 # Contract API do AI Workforce Platform cung cấp cho đối tác
 
-Ngày ban hành: 09/10/2026. Cập nhật: 10/10/2026.
+Ngày ban hành: 09/10/2026. Cập nhật: 12/10/2026.
 
-Phiên bản contract: `1.3-draft` — đồng bộ kế hoạch 1.4.3; đây là đặc tả mục tiêu, chưa xác nhận API đã triển khai.
+Phiên bản contract: `1.4` — bổ sung Asset API hai chiều cho ảnh gắn với ticket. Việc sử dụng trên môi trường cụ thể còn phụ thuộc migration database và cấu hình S3/MinIO của môi trường đó.
 
 Base path: `/workforce/v1`
 
@@ -176,7 +176,7 @@ Platform kiểm tra HMAC-SHA256 constant-time. Clock skew mặc định tối đ
 
 Giới hạn production được ghi trong onboarding. Vượt giới hạn trả `413` hoặc `429`.
 
-V1 chuẩn hóa message text. Ảnh/file cần asset upload contract riêng và chỉ tham chiếu bằng `asset_id`. Platform không tải URL tùy ý nằm trong message. Gửi attachment khi chưa được cấp capability trả `422 UNSUPPORTED_MESSAGE_PART`.
+V1 hỗ trợ text và ảnh JPEG/PNG/GIF/WebP qua Asset API. JSON message/event chỉ tham chiếu bằng `asset_id`; không gửi base64 và platform không tải URL tùy ý nằm trong message. Tối đa 10 ảnh mỗi message/event, tối đa 20 MiB mỗi ảnh. URL upload/download là URL ký ngắn hạn và không được lưu để tái sử dụng.
 
 ### 6.3. Error response
 
@@ -323,6 +323,162 @@ Response `200` khi cập nhật hoặc `201` khi tạo:
 ```
 
 `PUT` idempotent. Platform kiểm tra route thuộc đúng client/domain và còn active. Request có residence/ref/user không khớp bị từ chối. Đổi route không chuyển các workflow cũ sang manager mới.
+
+### 8.3. Asset API cho ảnh hai chiều
+
+Ảnh luôn được upload vào private storage của platform trước. App/mobile không gọi Asset API bằng secret; backend đối tác là bên giữ credential và gọi API. `upload_url` và `download_url` là URL ký ngắn hạn, chỉ dùng đúng method/header được trả về.
+
+#### 8.3.1. Khách hàng upload ảnh
+
+Backend khách hàng xin upload session:
+
+```http
+POST /workforce/v1/partner/assets/upload-sessions
+Authorization: ApiKey dp_<customer-key-id>.<secret>
+Content-Type: application/json
+```
+
+```json
+{
+  "schema_version": "1",
+  "external_management_ref": "BQL-OP1-A",
+  "external_user_id": "resident-123",
+  "external_ticket_id": "ticket-water-001",
+  "external_conversation_id": "chat-water-001",
+  "filename": "broken-pipe.png",
+  "content_type": "image/png",
+  "byte_size": 124530
+}
+```
+
+Platform trả `201`:
+
+```json
+{
+  "asset_id": "asset_01",
+  "upload_method": "PUT",
+  "upload_url": "https://minio.example/...signature...",
+  "required_headers": {
+    "Content-Type": "image/png",
+    "x-amz-meta-asset-id": "asset_01"
+  },
+  "expires_at": "2026-10-12T08:15:00Z",
+  "complete_url": "/workforce/v1/partner/assets/asset_01/complete"
+}
+```
+
+Backend dùng `PUT upload_url`, gửi raw bytes và đúng toàn bộ `required_headers`; không gửi `Authorization` của platform vào MinIO. Upload xong phải finalize. Khi finalize, platform kiểm tra size/MIME/metadata/chữ ký file rồi chuyển object khỏi vùng staging sang key bất biến; vì vậy URL PUT cũ không thể thay đổi asset đã được ticket sử dụng:
+
+```http
+POST /workforce/v1/partner/assets/asset_01/complete?external_user_id=resident-123&external_conversation_id=chat-water-001&external_ticket_id=ticket-water-001
+Authorization: ApiKey dp_<customer-key-id>.<secret>
+```
+
+Platform chỉ kích hoạt asset khi object tồn tại, kích thước/content type/metadata đúng và chữ ký file đúng JPEG/PNG/GIF/WebP. Sau đó request/reply chat tham chiếu:
+
+```json
+"message": {
+  "type": "text",
+  "text": "Ống nước nhà tôi bị vỡ như trong ảnh.",
+  "attachments": [
+    {"asset_id": "asset_01"}
+  ]
+}
+```
+
+Mọi `asset_id` phải cùng `partner_client_id`, user, ticket, conversation và route với request. Platform bind asset vào đúng `workflow_id`; dùng asset của ticket A trong ticket B trả lỗi `ASSET_BINDING_MISMATCH`.
+
+#### 8.3.2. Platform chuyển ảnh tới MCP/backend nghiệp vụ
+
+Đối tác không nhận URI MinIO nội bộ. Tool MCP có xử lý ảnh phải khai báo capability `asset_download_v1` và input schema phải có field dành riêng `asset_downloads`. Agent chỉ chọn `asset_id`; ngay trước network call, platform tự chèn:
+
+```json
+{
+  "asset_downloads": [
+    {
+      "asset_id": "asset_01",
+      "filename": "broken-pipe.png",
+      "content_type": "image/png",
+      "byte_size": 124530,
+      "download_url": "https://minio.example/...short-lived-signature...",
+      "expires_at": "2026-10-12T08:05:00Z"
+    }
+  ]
+}
+```
+
+Backend nghiệp vụ tải ngay trong thời hạn rồi lưu sang storage của mình nếu app nhân viên cần hiển thị lâu dài. URL ký không phải định danh asset, không được ghi vào ticket để tái dùng, không được log và không được gửi ngược trong provider event.
+
+#### 8.3.3. Nhân viên/provider gửi ảnh ngược về khách hàng
+
+Backend provider xin upload session bằng API key + HMAC giống Provider Event API. Body phải correlation đúng operation đã được platform tạo:
+
+```http
+POST /workforce/v1/provider/assets/upload-sessions
+Authorization: ApiKey dp_<provider-key-id>.<secret>
+X-Partner-Timestamp: 1791792000
+X-Partner-Key-Id: provider-signing-key-01
+X-Partner-Signature: v1=<hmac-của-raw-body>
+Content-Type: application/json
+```
+
+```json
+{
+  "schema_version": "1",
+  "client_reference": "corr-platform-001",
+  "external_job_id": "repair-job-889",
+  "filename": "repair-completed.jpg",
+  "content_type": "image/jpeg",
+  "byte_size": 350120
+}
+```
+
+Provider upload bằng URL trả về rồi finalize. Request finalize không có body nên chữ ký là HMAC của `<unix_timestamp>.`:
+
+```http
+POST /workforce/v1/provider/assets/asset_02/complete
+Authorization: ApiKey dp_<provider-key-id>.<secret>
+X-Partner-Timestamp: 1791792010
+X-Partner-Key-Id: provider-signing-key-01
+X-Partner-Signature: v1=<hmac-của-timestamp-và-body-rỗng>
+```
+
+Khi gửi trạng thái, provider tham chiếu asset ở top-level; không đặt URL trong `data`:
+
+```json
+{
+  "schema_version": "1",
+  "external_event_id": "evt-repair-04",
+  "external_job_id": "repair-job-889",
+  "client_reference": "corr-platform-001",
+  "event_type": "repair.completed",
+  "provider_version": 4,
+  "occurred_at": "2026-10-12T08:20:00Z",
+  "data": {"note": "Đã sửa xong"},
+  "attachments": [
+    {"asset_id": "asset_02"}
+  ]
+}
+```
+
+Platform kiểm tra asset cùng provider integration, operation và workflow trước khi ghi inbox. SSE/history trả `attachments` trong `operation.status_changed`. Backend khách hàng lấy URL tải ngắn hạn bằng:
+
+```http
+POST /workforce/v1/partner/assets/asset_02/download-url?external_user_id=resident-123&external_conversation_id=chat-water-001&external_ticket_id=ticket-water-001
+Authorization: ApiKey dp_<customer-key-id>.<secret>
+```
+
+Response chứa `asset_id`, metadata, `download_url`, `expires_at`. Backend khách hàng tải ảnh sang storage của mình hoặc proxy cho app; app không được giữ URL quá `expires_at`.
+
+#### 8.3.4. Retry và lỗi asset
+
+- Xin upload session lại tạo `asset_id` mới; không reuse session hết hạn.
+- Finalize cùng `asset_id` đã active là idempotent.
+- Không retry với bytes khác trên cùng asset sau khi finalize.
+- `410 ASSET_UPLOAD_SESSION_EXPIRED`: xin session mới.
+- `422 ASSET_UPLOAD_MISMATCH`: size/type/metadata/chữ ký file sai; upload lại bằng asset mới.
+- `403 ASSET_BINDING_MISMATCH` hoặc `PROVIDER_ASSET_BINDING_MISMATCH`: dừng và sửa mapping ticket/operation; không thử asset ID khác bằng cách đoán.
+- `422 TOOL_ASSET_CAPABILITY_MISSING`: MCP tool chưa công bố contract nhận ảnh; phải cập nhật MCP/tool schema rồi registry lại.
 
 ## 9. Customer API
 
@@ -787,6 +943,21 @@ HTTP/1.1 202 Accepted
 
 Approval phải thuộc đúng audience/external ticket/conversation/workflow/run/call, chưa hết hạn và khớp arguments/quote. Credential đối tác không được approve thay cư dân khác hoặc lấy approval của hộp chat A dùng cho B. Provider status event không thay thế consent.
 
+#### Xác nhận qua hội thoại (không cần nút Yes/No)
+
+Chatbot hiển thị các phương án có dữ liệu xác thực để khách chọn. Khi platform trả approval đang chờ, chatbot trình bày đúng nội dung thao tác, chi phí/điều kiện trong quote rồi nhận lời xác nhận trong chat. Việc chọn phương án chưa tự động cấp quyền thực hiện một thao tác khác hoặc thay đổi giá.
+
+```http
+POST /workforce/v1/partner/approvals/{approval_id}/chat
+Authorization: ApiKey dp_<key-id>.<secret>
+Content-Type: application/json
+```
+
+Body giữ nguyên các trường định danh, `expected_revision`, `arguments_hash`, `quote_ref` ở ví dụ trên; thay trường `decision` bằng `message`, ví dụ `"message": "Tôi xác nhận"` hoặc `"message": "hủy"`. Không gửi đồng thời `decision` và `message`. Response `202` và toàn bộ kiểm tra/idempotency giống endpoint `/decision`. `202` xác nhận đã nhận consent; kết quả thực thi được nhận qua request/event của workflow.
+
+Endpoint chỉ nhận lời xác nhận/từ chối rõ ràng, không điều kiện. “Đồng ý nhưng đổi ngày”, “tôi chọn phương án 1”, hoặc mã approval không khớp trả `422 APPROVAL_CHAT_CLARIFICATION_REQUIRED` và không thực hiện. Nếu có nhiều thao tác, chatbot phải hỏi rõ thao tác nào và gửi tới đúng `approval_id`; có thể gửi `"xác nhận <approval_id>"`. Không suy diễn approval từ tin nhắn provider hoặc từ LLM. Muốn đổi thông tin đã chốt, reject approval cũ và yêu cầu phương án/quote mới.
+
+
 ### 9.9. Đóng workflow
 
 Khi cư dân xác nhận đã hoàn thành, backend khách hàng gửi command tới đúng workflow đang gắn với ticket. Quyền: `close_workflow`, đúng audience.
@@ -1232,6 +1403,8 @@ Cư dân xác nhận; backend khách hàng gửi POST close ở mục 9.9 với 
 - [ ] Có fallback event history/snapshot.
 - [ ] Approval và close gắn đúng workflow/user/revision.
 - [ ] Hai SSE của hai hộp chat lưu cursor riêng và kiểm tra external_ticket_id trước khi cập nhật UI.
+- [ ] Ảnh được xin upload session, PUT đúng headers, finalize rồi mới đưa `asset_id` vào message; không gửi base64/URL ngoài.
+- [ ] Khi nhận asset từ SSE/result, gọi download-url với đúng user/ticket/conversation và tải trước `expires_at`.
 
 ### 14.2. Backend nghiệp vụ/provider khi có external tracking
 
@@ -1244,6 +1417,8 @@ Cư dân xác nhận; backend khách hàng gửi POST close ở mục 9.9 với 
 - [ ] Provider version tăng theo job hoặc có transition/reconcile rule.
 - [ ] Signature được tính trên raw body.
 - [ ] Không gửi manager/conversation/workflow ID tự khai.
+- [ ] Ảnh nhân viên được upload/finalize theo đúng `external_job_id`/`client_reference`, rồi chỉ gửi `asset_id` ở top-level `attachments`.
+- [ ] Backend tải `asset_downloads` từ tool call ngay trong TTL và lưu vào storage của mình nếu cần hiển thị lâu dài.
 
 ### 14.3. Kiểm thử chung trước production
 
@@ -1259,6 +1434,8 @@ Cư dân xác nhận; backend khách hàng gửi POST close ở mục 9.9 với 
 - [ ] Sai signature, revoked key và wrong route/audience.
 - [ ] Hai manager cùng area và hai người dùng/audience không lẫn dữ liệu.
 - [ ] Hai integration có status schema khác nhau không làm Workflow core hardcode trạng thái của một ngành.
+- [ ] Ảnh khách → MCP/provider và ảnh provider → SSE → khách đều đúng ticket; thử chéo ticket phải bị từ chối.
+- [ ] Upload sai byte size, MIME hoặc file signature bị từ chối; URL hết hạn không dùng lại được.
 - [ ] Evidence sandbox được ghi riêng; mock pass không được ghi là production pass.
 
 ## 15. Thông tin cần điền khi onboarding

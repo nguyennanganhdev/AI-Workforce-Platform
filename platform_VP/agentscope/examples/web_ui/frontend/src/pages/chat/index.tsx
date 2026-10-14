@@ -51,6 +51,8 @@ import {
 	useSidebar,
 } from '@/components/ui/sidebar';
 import { AudioProvider } from '@/context/AudioContext';
+import { previewOfficeSnapshot } from '@/features/workforce/session-office/preview-adapter';
+import { SessionWorkspace } from '@/features/workforce/session-office/SessionWorkspace';
 import { useAgents } from '@/hooks/useAgents';
 import { useGroupChats } from '@/hooks/useGroupChats';
 import { useSessions } from '@/hooks/useSessions';
@@ -109,8 +111,10 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	const queryClient = useQueryClient();
 	// A sample conversation open in place of the chat. It rides in the query
 	// string, so picking any real row (a plain path) closes it.
-	const [searchParams, setSearchParams] = useSearchParams();
-	const demoId = searchParams.get('demo');
+	const [searchParams] = useSearchParams();
+	const requestedDemo = searchParams.get('demo');
+	const demoId =
+		MOCK_CONVERSATIONS.find((conversation) => conversation.id === requestedDemo)?.id ?? null;
 	const { agents, refetch: refetchAgents, remove: removeAgent } = useAgents();
 	const {
 		sessions,
@@ -165,26 +169,26 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	// from another page, or from a new tab — reopens it instead of
 	// making them pick the same pair again.
 	useEffect(() => {
-		if (!urlAgentId || !urlSessionId) return;
+		if (demoId || !urlAgentId || !urlSessionId) return;
 		localStorage.setItem(LAST_AGENT_KEY, urlAgentId);
 		localStorage.setItem(LAST_SESSION_KEY, urlSessionId);
-	}, [urlAgentId, urlSessionId]);
+	}, [demoId, urlAgentId, urlSessionId]);
 
 	// Redirect: URL is missing an agent → reopen the last one viewed,
 	// falling back to the first, and rewrite the URL in-place (replace
 	// so we don't pollute history).
 	useEffect(() => {
-		if (urlAgentId || agents.length === 0) return;
+		if (demoId || urlAgentId || agents.length === 0) return;
 		const remembered = localStorage.getItem(LAST_AGENT_KEY);
 		const agent = agents.find((a) => a.id === remembered) ?? agents[0];
 		navigate(`/chat/${agent.id}`, { replace: true });
-	}, [agents, urlAgentId, navigate]);
+	}, [demoId, agents, urlAgentId, navigate]);
 
 	// Redirect: URL has an agent but no session, or its sessionId no
 	// longer exists for this agent → reopen the last session viewed
 	// under *this* agent, falling back to the newest one.
 	useEffect(() => {
-		if (!urlAgentId || sessions.length === 0) return;
+		if (demoId || !urlAgentId || sessions.length === 0) return;
 		const matches = urlSessionId && sessions.some((v) => v.session.id === urlSessionId);
 		if (matches) return;
 		const remembered =
@@ -197,7 +201,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 				newestFirst(a.session.created_at, b.session.created_at),
 			)[0];
 		navigate(`/chat/${urlAgentId}/${view.session.id}`, { replace: true });
-	}, [urlAgentId, urlSessionId, sessions, navigate]);
+	}, [demoId, urlAgentId, urlSessionId, sessions, navigate]);
 
 	/**
 	 * Create a new session under the currently selected agent and
@@ -227,12 +231,13 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	// list to pick from. Once per agent, so a failure does not loop.
 	const autoStarted = useRef<Set<string>>(new Set());
 	useEffect(() => {
-		if (!urlAgentId || !selectedAgent || sessionsLoading || sessions.length > 0) return;
+		if (demoId || !urlAgentId || !selectedAgent || sessionsLoading || sessions.length > 0)
+			return;
 		if (autoStarted.current.has(urlAgentId)) return;
 		autoStarted.current.add(urlAgentId);
 		void handleCreateSession();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [urlAgentId, selectedAgent, sessionsLoading, sessions.length]);
+	}, [demoId, urlAgentId, selectedAgent, sessionsLoading, sessions.length]);
 
 	const handleAgentCreated = async (agentId: string) => {
 		await refetchAgents();
@@ -539,7 +544,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 							active={demoId === conversation.id}
 							preview={previewOf(conversation.events)}
 							onSelect={() => {
-								setSearchParams({ demo: conversation.id });
+								navigate(`/chat?demo=${encodeURIComponent(conversation.id)}`);
 								setOpenMobile(false);
 							}}
 						/>
@@ -552,42 +557,63 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 			</Sidebar>
 			<div className="flex flex-1 min-w-0">
 				{demoId ? (
-					<MockChat key={demoId} conversationId={demoId} hideSidebar />
+					<MockChat conversationId={demoId} hideSidebar />
 				) : (
-					<ChatViewport
-						agentId={effectiveAgentId}
-						sessionId={effectiveSessionId}
-						onSessionsChanged={refetchSessions}
-						agentName={
-							focusedMember?.agent.data.name ??
-							(activeGroup ? activeGroup.name : agentName)
-						}
-						headerSlot={
-							focusedMember ? undefined : activeGroup ? (
-								// A group's header names it, then who leads and how many
-								// are in it; its one chat needs no switcher.
-								<span className="flex min-w-0 items-center gap-1.5 px-2 text-[13px]/[18px] text-[var(--cue-text-tertiary,var(--muted-foreground))]">
-									<Users className="size-3.5 shrink-0" />
-									<span className="truncate">
-										{t('groupChat.headerNote', {
-											leader: agentName,
-											count: activeGroup.memberIds.length + 1,
-										})}
-									</span>
-								</span>
-							) : (
-								sessionSwitcher
-							)
-						}
-						onOpenAgentSettings={
-							!focusedMember && selectedAgent?.editable
-								? () => {
-										setTargetAgent(selectedAgent);
-										setEditOpen(true);
-									}
+					<SessionWorkspace
+						snapshot={
+							effectiveSessionId
+								? previewOfficeSnapshot(
+										`${effectiveAgentId}:${effectiveSessionId}`,
+										focusedMember
+											? [focusedMember.agent]
+											: [
+													...(selectedAgent ? [selectedAgent] : []),
+													...(currentView?.team?.members.map(
+														(member) => member.agent,
+													) ?? []),
+													...agents.filter((agent) =>
+														activeGroup?.memberIds.includes(agent.id),
+													),
+												],
+									)
 								: undefined
 						}
-					/>
+					>
+						<ChatViewport
+							agentId={effectiveAgentId}
+							sessionId={effectiveSessionId}
+							onSessionsChanged={refetchSessions}
+							agentName={
+								focusedMember?.agent.data.name ??
+								(activeGroup ? activeGroup.name : agentName)
+							}
+							headerSlot={
+								focusedMember ? undefined : activeGroup ? (
+									// A group's header names it, then who leads and how many
+									// are in it; its one chat needs no switcher.
+									<span className="flex min-w-0 items-center gap-1.5 px-2 text-[13px]/[18px] text-[var(--cue-text-tertiary,var(--muted-foreground))]">
+										<Users className="size-3.5 shrink-0" />
+										<span className="truncate">
+											{t('groupChat.headerNote', {
+												leader: agentName,
+												count: activeGroup.memberIds.length + 1,
+											})}
+										</span>
+									</span>
+								) : (
+									sessionSwitcher
+								)
+							}
+							onOpenAgentSettings={
+								!focusedMember && selectedAgent?.editable
+									? () => {
+											setTargetAgent(selectedAgent);
+											setEditOpen(true);
+										}
+									: undefined
+							}
+						/>
+					</SessionWorkspace>
 				)}
 			</div>
 			{targetAgent && (
@@ -712,6 +738,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 
 export const ChatPage = () => {
 	const navigate = useNavigate();
+	const [searchParams] = useSearchParams();
 	const { t } = useTranslation();
 	const { agents, loading, refetch } = useAgents();
 	const [quickAgentOpen, setQuickAgentOpen] = useState(false);
@@ -729,6 +756,8 @@ export const ChatPage = () => {
 		return (
 			<>
 				<MockChat
+					conversationId={searchParams.get('demo') ?? undefined}
+					onConversationChange={(id) => navigate(`/chat?demo=${encodeURIComponent(id)}`)}
 					footer={<AccountMenu showSettings />}
 					headerActions={
 						<NewChatMenu

@@ -1,4 +1,5 @@
 import type { GraphAgent } from './graph-model';
+import type { SessionOfficeSnapshot } from '@/features/workforce/session-office/model';
 
 /**
  * The office view: the same agents as the graph, drawn as people in an
@@ -148,7 +149,12 @@ export function buildLayout(agents: GraphAgent[]): Layout {
 			desk: { x: 13.5, y: 1.5 },
 			user: { x: 13.5, y: 0.75 },
 			visit: approvalVisit,
-			chain: [approvalVisit, { x: 11.9, y: 3 }, { x: 10.3, y: 3 }, { x: 10.3, y: CORRIDOR_Y }],
+			chain: [
+				approvalVisit,
+				{ x: 11.9, y: 3 },
+				{ x: 10.3, y: 3 },
+				{ x: 10.3, y: CORRIDOR_Y },
+			],
 		},
 		reception: {
 			counter: { x: 2.8, y: depth - 3.3 },
@@ -205,7 +211,16 @@ export type Actor = {
 
 export type LogEntry = { id: number; time: number; text: string };
 
-export type Phase = 'idle' | 'request' | 'call' | 'meeting' | 'return' | 'work' | 'collab' | 'approval' | 'done';
+export type Phase =
+	| 'idle'
+	| 'request'
+	| 'call'
+	| 'meeting'
+	| 'return'
+	| 'work'
+	| 'collab'
+	| 'approval'
+	| 'done';
 
 class Aborted extends Error {}
 
@@ -214,6 +229,46 @@ class Aborted extends Error {}
  * a paused scene holds mid-stride and the script waits with it.
  */
 export class OfficeSim {
+	private listeners = new Set<() => void>();
+
+	/** UI subscribers choose their own snapshot, excluding frame-by-frame positions. */
+	subscribe = (listener: () => void) => {
+		this.listeners.add(listener);
+		return () => {
+			this.listeners.delete(listener);
+		};
+	};
+
+	publish() {
+		this.listeners.forEach((listener) => listener());
+	}
+
+	/** Replace presentation state without starting the standalone demo. */
+	applySession(snapshot: SessionOfficeSnapshot, layout: Layout) {
+		const leader = snapshot.participants.find((participant) => participant.id === LEADER_ID);
+		if (!leader) this.actors.delete(LEADER_ID);
+		else if (!this.actors.has(LEADER_ID))
+			this.add({
+				id: LEADER_ID,
+				kind: 'leader',
+				name: leader.name,
+				pos: layout.leader.chair,
+				status: 'idle',
+			});
+		for (const actor of this.actors.values()) {
+			const participant = snapshot.participants.find((p) => p.id === actor.id);
+			actor.status = participant?.status ?? 'idle';
+			actor.bubble = participant?.message
+				? { text: participant.message, until: Infinity }
+				: null;
+		}
+		this.phase = snapshot.phase;
+		this.log = snapshot.activity
+			.slice(-6)
+			.map((entry, index) => ({ id: index, time: 0, text: entry.text }));
+		this.publish();
+	}
+
 	actors = new Map<string, Actor>();
 	log: LogEntry[] = [];
 	phase: Phase = 'idle';
@@ -224,9 +279,11 @@ export class OfficeSim {
 	private timers: { at: number; resolve: () => void }[] = [];
 	private logId = 0;
 
-	add(actor: Omit<Actor, 'path' | 'bubble' | 'onArrive' | 'carrying' | 'facing' | 'speed'> & {
-		speed?: number;
-	}) {
+	add(
+		actor: Omit<Actor, 'path' | 'bubble' | 'onArrive' | 'carrying' | 'facing' | 'speed'> & {
+			speed?: number;
+		},
+	) {
 		this.actors.set(actor.id, {
 			path: [],
 			bubble: null,
@@ -351,9 +408,18 @@ export class OfficeSim {
 /* ------------------------------------------------------------------ */
 
 const REQUESTS = [
-	{ ask: 'Căn A-1203 mất điện từ sáng, nhờ ban quản lý xử lý gấp!', task: 'sự cố điện căn A-1203' },
-	{ ask: 'Tôi muốn đặt lịch bảo trì điều hòa, chi phí khoảng bao nhiêu?', task: 'bảo trì điều hòa' },
-	{ ask: 'Thang máy tòa B kêu to bất thường, nhờ kiểm tra giúp.', task: 'kiểm tra thang máy tòa B' },
+	{
+		ask: 'Căn A-1203 mất điện từ sáng, nhờ ban quản lý xử lý gấp!',
+		task: 'sự cố điện căn A-1203',
+	},
+	{
+		ask: 'Tôi muốn đặt lịch bảo trì điều hòa, chi phí khoảng bao nhiêu?',
+		task: 'bảo trì điều hòa',
+	},
+	{
+		ask: 'Thang máy tòa B kêu to bất thường, nhờ kiểm tra giúp.',
+		task: 'kiểm tra thang máy tòa B',
+	},
 ];
 
 export const LEADER_ID = 'leader';
@@ -382,17 +448,35 @@ async function scenario(sim: OfficeSim, layout: Layout, agents: GraphAgent[], ro
 
 	// 1. A resident brings a request to the front desk.
 	sim.note('Cư dân gửi yêu cầu tới quầy tiếp nhận', 'request');
-	sim.add({ id: RESIDENT_ID, kind: 'resident', name: 'Cư dân', pos: reception.door, status: 'idle', speed: 2 });
+	sim.add({
+		id: RESIDENT_ID,
+		kind: 'resident',
+		name: 'Cư dân',
+		pos: reception.door,
+		status: 'idle',
+		speed: 2,
+	});
 	await sim.walk(RESIDENT_ID, [{ x: 1.4, y: reception.door.y }, reception.front]);
 	await sim.say(RESIDENT_ID, request.ask, 2800);
-	sim.add({ id: MAIL_ID, kind: 'mail', name: '', pos: reception.counter, status: 'idle', speed: 9 });
+	sim.add({
+		id: MAIL_ID,
+		kind: 'mail',
+		name: '',
+		pos: reception.counter,
+		status: 'idle',
+		speed: 9,
+	});
 	const leaving = sim.walk(RESIDENT_ID, [{ x: 1.4, y: reception.door.y }, reception.door]);
 	await sim.walk(MAIL_ID, [layout.leader.chair]);
 	sim.remove(MAIL_ID);
 	void leaving.then(() => sim.remove(RESIDENT_ID)).catch(() => undefined);
 
 	if (team.length === 0) {
-		await sim.say(LEADER_ID, 'Chưa có agent nào bật “Cho phép được mời”, mình chưa giao việc được.', 3600);
+		await sim.say(
+			LEADER_ID,
+			'Chưa có agent nào bật “Cho phép được mời”, mình chưa giao việc được.',
+			3600,
+		);
 		return;
 	}
 
@@ -405,7 +489,11 @@ async function scenario(sim: OfficeSim, layout: Layout, agents: GraphAgent[], ro
 	await Promise.all([
 		sim.walk(LEADER_ID, route(layout.leader.chain, layout.head.chain)),
 		...team.map((agent, index) =>
-			sim.walk(agent.id, route(layout.desks.get(agent.id)!.chain, layout.seats[index].chain), index * 260),
+			sim.walk(
+				agent.id,
+				route(layout.desks.get(agent.id)!.chain, layout.seats[index].chain),
+				index * 260,
+			),
 		),
 	]);
 
@@ -413,7 +501,9 @@ async function scenario(sim: OfficeSim, layout: Layout, agents: GraphAgent[], ro
 	sim.note('Leader giao việc trong phòng họp', 'meeting');
 	await sim.say(LEADER_ID, `Yêu cầu từ cư dân: ${request.task}. Mình chia việc nhé.`, 2400);
 	for (const agent of assignees) {
-		const job = agent.role ? agent.role.charAt(0).toLowerCase() + agent.role.slice(1) : 'phụ trách phần liên quan';
+		const job = agent.role
+			? agent.role.charAt(0).toLowerCase() + agent.role.slice(1)
+			: 'phụ trách phần liên quan';
 		await sim.say(LEADER_ID, `${short(agent.name)}: ${job}.`, 2100);
 		await sim.say(agent.id, 'Rõ, để em lo!', 1200);
 	}
@@ -427,7 +517,11 @@ async function scenario(sim: OfficeSim, layout: Layout, agents: GraphAgent[], ro
 		sim.walk(LEADER_ID, route(layout.head.chain, layout.leader.chain), 400),
 		...team.map((agent, index) =>
 			sim
-				.walk(agent.id, route(layout.seats[index].chain, layout.desks.get(agent.id)!.chain), index * 200)
+				.walk(
+					agent.id,
+					route(layout.seats[index].chain, layout.desks.get(agent.id)!.chain),
+					index * 200,
+				)
 				.then(() => {
 					if (assignees.includes(agent)) sim.actors.get(agent.id)!.status = 'working';
 				}),
@@ -473,7 +567,13 @@ async function scenario(sim: OfficeSim, layout: Layout, agents: GraphAgent[], ro
 
 /** Seat everyone at their desk. */
 export function populate(sim: OfficeSim, layout: Layout, agents: GraphAgent[]) {
-	sim.add({ id: LEADER_ID, kind: 'leader', name: 'Leader', pos: layout.leader.chair, status: 'idle' });
+	sim.add({
+		id: LEADER_ID,
+		kind: 'leader',
+		name: 'Leader',
+		pos: layout.leader.chair,
+		status: 'idle',
+	});
 	sim.add({ id: USER_ID, kind: 'user', name: 'Bạn', pos: layout.approval.user, status: 'idle' });
 	agents.forEach((agent) =>
 		sim.add({

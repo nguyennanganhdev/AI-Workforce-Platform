@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """The OpenAI Responses API chat model implementation."""
+
 from collections import OrderedDict
 from datetime import datetime
 from typing import Literal, Any, AsyncGenerator, List, TYPE_CHECKING, Type
@@ -11,6 +12,10 @@ from ..._utils._common import _generate_id
 from .._base import ChatModelBase, _TOOL_CHOICE_LITERAL_MODES
 from .._model_response import ChatResponse
 from .._model_usage import ChatUsage
+from .._token_counting import (
+    count_openai_text,
+    openai_token_counting_strategy,
+)
 from ...credential import OpenAICredential
 from ...formatter import FormatterBase, OpenAIResponseFormatter
 from ...message import Msg, ThinkingBlock, ToolCallBlock, TextBlock
@@ -102,6 +107,18 @@ class OpenAIResponseModel(ChatModelBase):
 
     type: Literal["openai_response"] = "openai_response"
     """The type of the chat model."""
+
+    def _count_text_tokens(self, text: str) -> int:
+        return count_openai_text(self.model, text)
+
+    def _count_protocol_tokens(self, messages: list[Msg]) -> int:
+        # The Responses wire format also wraps each input message.  Keep the
+        # allowance conservative without applying it to unrelated providers.
+        return len(messages) * 4 + 3
+
+    @property
+    def token_counting_strategy(self) -> str:
+        return openai_token_counting_strategy(self.model) + "+protocol-envelope-v1"
 
     def __init__(
         self,
@@ -218,10 +235,7 @@ class OpenAIResponseModel(ChatModelBase):
         if self.parameters.temperature is not None:
             api_kwargs["temperature"] = self.parameters.temperature
 
-        if (
-            self.parameters.thinking_enable
-            and self.parameters.reasoning_effort
-        ):
+        if self.parameters.thinking_enable and self.parameters.reasoning_effort:
             api_kwargs["reasoning"] = {
                 "effort": self.parameters.reasoning_effort,
             }
@@ -359,9 +373,7 @@ class OpenAIResponseModel(ChatModelBase):
                         usage = ChatUsage(
                             input_tokens=u.input_tokens,
                             output_tokens=u.output_tokens,
-                            time=(
-                                datetime.now() - start_datetime
-                            ).total_seconds(),
+                            time=(datetime.now() - start_datetime).total_seconds(),
                             cache_input_tokens=getattr(
                                 details,
                                 "cached_tokens",
@@ -515,9 +527,7 @@ class OpenAIResponseModel(ChatModelBase):
 
         fmt_tools = None
         if tools:
-            fmt_tools = [
-                {"type": "function", **tool["function"]} for tool in tools
-            ]
+            fmt_tools = [{"type": "function", **tool["function"]} for tool in tools]
 
         if not tool_choice:
             return fmt_tools, None
@@ -532,8 +542,7 @@ class OpenAIResponseModel(ChatModelBase):
                 "type": "allowed_tools",
                 "mode": mode,
                 "tools": [
-                    {"type": "function", "name": name}
-                    for name in tool_choice.tools
+                    {"type": "function", "name": name} for name in tool_choice.tools
                 ],
             }
 

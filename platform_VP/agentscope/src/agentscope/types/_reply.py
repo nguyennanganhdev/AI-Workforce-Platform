@@ -36,6 +36,10 @@ class ErrorType(StrEnum):
     """Network error / timeout — no HTTP status available."""
     INTERNAL = "internal"
     """Framework bug or otherwise unexpected exception."""
+    CONTEXT_BUDGET = "context_budget"
+    """Required context cannot fit without losing authoritative information."""
+    COLLABORATION_LIMIT = "collaboration_limit"
+    """An internal assignment exhausted its bounded processing budget."""
     SETUP = "setup"
     """The run failed before the agent replied at all — assembling the
     agent, its toolkit, its knowledge bases, or resolving its model."""

@@ -9,13 +9,14 @@ from ._manager import (
     BackgroundTaskManager,
     CancelDispatcher,
     ChatRunRegistry,
+    HandoffDispatcher,
     SchedulerManager,
     WakeupDispatcher,
 )
 from ._service import (
     ChannelService,
-    CredentialBindingService,
     ChatService,
+    CredentialBindingService,
     IndexSweeper,
     IndexTaskConsumer,
     IndexWorker,
@@ -46,6 +47,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     lifecycle of their own and are constructed inline.
     """
     storage = app.state.storage
+    shared_context_storage = app.state.shared_context_storage
     message_bus = app.state.message_bus
     workspace_manager = app.state.workspace_manager
     knowledge_base_manager = app.state.knowledge_base_manager
@@ -60,12 +62,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     async with AsyncExitStack() as stack:
         await stack.enter_async_context(storage)
+        if shared_context_storage is not storage:
+            await stack.enter_async_context(shared_context_storage)
         await stack.enter_async_context(message_bus)
         await stack.enter_async_context(workspace_manager)
         if auth_service is not None:
             await stack.enter_async_context(auth_service)
         if business_service is not None:
             await stack.enter_async_context(business_service)
+        # Workforce asset routes/workers may use the same private blob store.
+        # Enter it before Workforce so no startup worker can observe an
+        # uninitialized S3/MinIO client.
+        if blob_store is not None:
+            await stack.enter_async_context(blob_store)
         if workforce_bootstrap is not None:
             await stack.enter_async_context(workforce_bootstrap)
             app.state.workforce = workforce_bootstrap.components
@@ -74,9 +83,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             # ``KnowledgeBaseManagerBase.__aenter__`` enters the bound
             # vector store too, so a single context covers both.
             await stack.enter_async_context(knowledge_base_manager)
-        if blob_store is not None:
-            await stack.enter_async_context(blob_store)
-
         # Hubs live as long as the process so each can hold one client
         # to its registry, instead of re-handshaking per catalog page.
         for hub in (
@@ -186,6 +192,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             custom_subagent_templates=app.state.custom_subagent_templates,
             custom_agent_cls=app.state.custom_agent_cls,
             channel_clients=channel_clients,
+            shared_context_storage=shared_context_storage,
         )
         app.state.chat_service = chat_service
 
@@ -278,6 +285,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Dispatchers need live references somewhere, or they would be
         # garbage-collected; the AsyncExitStack holds those references
         # for us, so we don't need local bindings or app.state slots.
+        await stack.enter_async_context(
+            HandoffDispatcher(
+                message_bus=message_bus,
+                storage=shared_context_storage,
+                team_storage=storage,
+            ),
+        )
         await stack.enter_async_context(
             WakeupDispatcher(
                 message_bus=message_bus,
