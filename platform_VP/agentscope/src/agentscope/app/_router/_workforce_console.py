@@ -1612,6 +1612,21 @@ async def change_agent_lifecycle(
     record = await storage.get_agent(user_id, agent_id)
     if record is None or record.data.system_role != "business":
         raise HTTPException(status_code=404, detail="Business agent not found")
+    # Imported here: the studio service imports this module's fixed configs.
+    from .._service._agent_studio import ensure_spec
+
+    ensure_spec(record)
+    if body.state == "published" and not record.data.published_version:
+        # Only re-activation of an already published, versioned agent is a
+        # toggle. A first publication must go through Agent Studio, where it
+        # is tested and recorded as a version.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Agent chưa có phiên bản đã kiểm thử. Hãy phát hành ở trang "
+                "Quản lý agent."
+            ),
+        )
     record.data.lifecycle_state = body.state
     record.data.invite_config = InviteConfig(
         invitable=body.state == "published",

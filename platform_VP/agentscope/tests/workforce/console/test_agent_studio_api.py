@@ -139,6 +139,9 @@ def env(monkeypatch):
     monkeypatch.setattr(studio, "_model_config", fake_config)
     app = FastAPI()
     app.include_router(studio.workforce_studio_router)
+    from agentscope.app._router._workforce_console import workforce_console_router
+
+    app.include_router(workforce_console_router)
     app.dependency_overrides[get_current_user_id] = lambda: "u"
     app.dependency_overrides[get_storage] = lambda: storage
     app.dependency_overrides[get_workspace_manager] = lambda: manager
@@ -274,3 +277,18 @@ async def _scenario_runs_read_tools_and_simulates_writes() -> None:
     result = report["results"][0]
     assert result["passed"] is True
     assert {c["name"]: c["executed"] for c in result["tool_calls"]} == {"lookup": True, "create_order": False}
+
+
+def test_legacy_toggle_only_reactivates_a_versioned_agent(env) -> None:
+    client, _storage, _model, _manager = env
+    agent_id = client.post(f"{BASE}/agents", json={"template_id": "resident_technical"}).json()["agent_id"]
+    toggle = f"/workforce/console/agents/{agent_id}/lifecycle"
+
+    assert client.post(toggle, json={"state": "published"}).status_code == 409
+
+    client.post(f"{BASE}/agents/{agent_id}/tests/run")
+    assert client.post(f"{BASE}/agents/{agent_id}/publish", json={}).status_code == 200
+    assert client.post(toggle, json={"state": "draft"}).status_code == 200
+    reactivated = client.post(toggle, json={"state": "published"})
+    assert reactivated.status_code == 200
+    assert reactivated.json()["lifecycle_state"] == "published"
