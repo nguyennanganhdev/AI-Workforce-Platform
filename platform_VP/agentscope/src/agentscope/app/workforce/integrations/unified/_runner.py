@@ -296,7 +296,27 @@ class ChatLeaderTurnRunner:
         if reason not in success:
             logger.info("Partner case %s closed (%s): nothing learned", workflow_id, reason)
             return
-        await self._learn_from_room(binding["manager_account_id"], binding["agent_id"], binding["session_id"])
+        user_id = binding["manager_account_id"]
+        await self._score_recalled_memory(user_id, binding, workflow_id)
+        await self._learn_from_room(user_id, binding["agent_id"], binding["session_id"])
+
+    async def _score_recalled_memory(self, user_id: str, binding: dict, workflow_id: str) -> None:
+        """Memories recalled in this ticket count as helpful when the end user
+        confirmed at the first invitation, harmful when they rejected first."""
+
+        state = self._state()
+        record = getattr(state.chat_service, "record_ticket_outcome", None)
+        session = await state.storage.get_session(user_id, binding["agent_id"], binding["session_id"])
+        team_id = getattr(session, "team_id", None)
+        if record is None or not team_id:
+            return
+        invitations = [
+            entry for entry in await self._case.store.entries(workflow_id, kind="say")
+            if entry["expects"] == "confirmation"
+        ]
+        retired = await record(user_id, team_id, len(invitations) <= 1)
+        if retired:
+            logger.info("Partner case %s: retired memories %s", workflow_id, retired)
 
     async def _messages_after(self, user_id: str, session_id: str, message_id: str) -> list[Any]:
         storage = self._state().storage

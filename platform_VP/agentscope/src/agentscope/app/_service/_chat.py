@@ -488,6 +488,16 @@ class ChatService:
 
         self._learning_hook(user_id, session_record, None)(team_id)
 
+    async def record_ticket_outcome(self, user_id: str, team_id: str, success: bool) -> list[str]:
+        """Score the memories the ticket's agents recalled (see
+        :meth:`AgentMemoryService.record_outcome`); returns retired ids."""
+
+        team = await self._storage.get_team(user_id, team_id)
+        if team is None:
+            return []
+        agent_ids = [member.agent_id for member in await _ensure_team_members(self._storage, user_id, team)]
+        return await self._learning.memory.record_outcome(user_id, agent_ids, team_id, success)
+
     async def _recalled_memory(
         self,
         user_id: str,
@@ -522,7 +532,9 @@ class ChatService:
         if not query.strip():
             return ""
         try:
-            memories = await self._learning.memory.recall(user_id, agent_id, query)
+            memories = await self._learning.memory.recall(
+                user_id, agent_id, query, ticket=team.id if team is not None else None,
+            )
         except Exception:  # noqa: BLE001 - memory never blocks a turn
             logger.exception("Memory recall failed for agent %s", agent_id)
             return ""

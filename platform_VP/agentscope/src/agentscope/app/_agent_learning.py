@@ -46,6 +46,8 @@ ModelFactory = Callable[[], Awaitable[tuple[ChatModelBase, ChatModelBase]]]
 
 SELF_UPDATE_COOLDOWN = timedelta(hours=24)
 _SUCCESS = {"verified", "accepted"}
+# Events whose content the platform verified: tool results and the customer.
+_VERIFIED_KINDS = {"external_event", "customer_message"}
 _BLOCKING = {"queued", "assigned", "challenged", "stopped", "failed"}
 
 
@@ -85,7 +87,8 @@ def _ticket_digest(state: Any, task: Any, agent_id: str, session_id: str) -> tup
     ids = {event.id for event in events}
     lines: list[str] = []
     for event in [e for e in events if e.kind in {"customer_message", "customer_reply"}][-3:]:
-        lines.append(f"[{event.id}] KHÁCH: {event.content[:800]}")
+        who = "KHÁCH" if event.kind == "customer_message" else "TRẢ LỜI KHÁCH"
+        lines.append(f"[{event.id}] {who}: {event.content[:800]}")
     assignment = task.assignments.get(session_id)
     if assignment is not None:
         lines.append(f"NHIỆM VỤ: {assignment.goal[:800]}")
@@ -210,8 +213,16 @@ class AgentLearningService:
                     )
                     for item in learning.memories
                 ]
-                # Provenance gate: an item without a real source is dropped.
-                candidates = [c for c in candidates if c.evidence_event_ids]
+                # Provenance gate: an item without a real source is dropped,
+                # and a fact must rest on a tool result or the customer's own
+                # words, never on an agent's report (a wrong fact is copied
+                # into later tickets).
+                verified = {e.id for e in record.state.events if e.kind in _VERIFIED_KINDS}
+                candidates = [
+                    c for c in candidates
+                    if c.evidence_event_ids
+                    and (c.kind != "fact" or all(i in verified for i in c.evidence_event_ids))
+                ]
                 result["memories"] = await self._memory.consolidate(
                     user_id,
                     agent.id,

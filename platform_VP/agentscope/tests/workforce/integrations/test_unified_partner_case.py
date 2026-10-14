@@ -542,7 +542,14 @@ class UnifiedPartnerCaseTest(_CaseHarness):
                 session.team_id = "team-9"  # the leader opened a room earlier
             await call(tools, "CaseSay", text="Nhân viên đã báo xong, bạn xác nhận giúp tôi.", expects="confirmation")
 
+        scored = []
+
+        async def record_ticket_outcome(user_id, team_id, success):
+            scored.append((team_id, success))
+            return []
+
         self.leader.schedule_learning = lambda user_id, session, team_id: scheduled.append(team_id)
+        self.leader.record_ticket_outcome = record_ticket_outcome
         self.leader.scripts = [summary, summary]
         async with self._client() as client:
             for request_id, ticket, reason in (("vh-cmd-1", "T-77", "resident_cancelled"), ("vh-cmd-2", "T-78", "resident_confirmed")):
@@ -560,8 +567,10 @@ class UnifiedPartnerCaseTest(_CaseHarness):
                     "expected_revision": revision, "reason": reason,
                 })
                 self.assertEqual("closed", closed.json()["workflow_state"], closed.text)
-        # Cancelled: nothing learned; confirmed: the room teaches its agents.
+        # Cancelled: nothing learned; confirmed: the room teaches its agents, and
+        # the memories it recalled count as helpful (confirmed at the first ask).
         self.assertEqual(["team-9"], scheduled)
+        self.assertEqual([("team-9", True)], scored)
 
     async def test_quality_counts_outcomes_refusals_and_cost(self):
         from agentscope.app.workforce.integrations.unified._quality import ticket_quality
