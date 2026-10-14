@@ -25,6 +25,7 @@ from agentscope.app.workforce.integrations.async_runtime import WorkforceBootstr
 from agentscope.app.workforce.integrations.unified import (
     ChatLeaderTurnRunner,
     build_unified_runtime,
+    resolve_signing_secret,
     unified_mode_enabled,
 )
 from agentscope.app.workspace_manager import LocalWorkspaceManager
@@ -218,7 +219,19 @@ if unified_mode_enabled():
         database_url=os.environ["AGENTSCOPE_SQL_URL"],
         message_bus=message_bus,
         runtime_factory=_unified_runtime,
+        # Provider events (contract section 10): API key + HMAC signing key.
+        authenticate_provider_api_key=business_service.authenticate_partner_api_key,
+        resolve_provider_signing_secret=resolve_signing_secret,
     )
+
+
+async def _partner_case_middlewares(user_id, agent_id, session_id):
+    """Case tools for sessions of partner workflows; nothing elsewhere."""
+    runner = partner_runner.get("runner")
+    if runner is None:
+        return []
+    return await runner.case_middlewares(user_id, agent_id, session_id)
+
 
 app = create_app(
     storage=storage,
@@ -227,6 +240,7 @@ app = create_app(
     business_service=business_service,
     message_bus=message_bus,
     workforce_bootstrap=workforce_bootstrap,
+    extra_agent_middlewares=_partner_case_middlewares,
     workspace_manager=LocalWorkspaceManager(
         basedir=os.path.join(
             os.path.dirname(os.path.abspath(__file__)),

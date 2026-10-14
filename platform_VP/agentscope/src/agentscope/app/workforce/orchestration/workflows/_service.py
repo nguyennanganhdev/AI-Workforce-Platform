@@ -20,11 +20,14 @@ from ._models import (
     WorkflowAggregate,
     WorkflowAuthorization,
     WorkflowBootstrap,
+    WorkflowApprovalPending,
     WorkflowClosed,
     WorkflowConflict,
+    WorkflowNotReadyToClose,
     WorkflowQueryResult,
     WorkflowRepository,
     WorkflowReservation,
+    WorkflowRevisionConflict,
     WorkflowTicketAlreadyBound,
     parse_aggregate,
     raw_value,
@@ -654,25 +657,33 @@ class WorkflowService:
             )
             record = require_binding(aggregate, scope, audience)
             await self.authorization.authorize(scope, actor, audience, "close", tx)
-            if record.revision != parsed.expected_revision:
-                raise WorkflowConflict("close revision conflict")
             if record.state == WorkflowState.CLOSED:
                 return record
+            if record.revision != parsed.expected_revision:
+                raise WorkflowRevisionConflict(
+                    "close revision conflict", record.revision
+                )
             checkpoint = aggregate.checkpoint
             if checkpoint.pending_approval_ids and not parsed.stop_tracking_only:
-                raise WorkflowConflict("pending approval prevents completion close")
+                raise WorkflowApprovalPending(
+                    "pending approval prevents completion close"
+                )
             pending_operations = []
             for ref in checkpoint.operation_refs:
                 operation = await self.operations.get(scope, ref, tx)
                 if await self.operations.is_pending(operation, tx):
                     pending_operations.append(ref)
             if pending_operations and not parsed.stop_tracking_only:
-                raise WorkflowConflict("pending operation requires stop_tracking_only")
+                raise WorkflowNotReadyToClose(
+                    "pending operation requires stop_tracking_only"
+                )
             if (
                 record.state != WorkflowState.AWAITING_CONFIRMATION
                 and not parsed.stop_tracking_only
             ):
-                raise WorkflowConflict("workflow is not ready for completion close")
+                raise WorkflowNotReadyToClose(
+                    "workflow is not ready for completion close"
+                )
             candidate = advance(
                 aggregate,
                 self.clock,

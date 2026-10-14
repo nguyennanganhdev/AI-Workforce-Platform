@@ -31,6 +31,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 
@@ -59,6 +60,10 @@ from ...orchestration import (
 from ...orchestration.partner_events import ConversationEventService, PublicEventWriter
 from ...orchestration.workflows import WorkflowContinuation, WorkflowService
 from ..async_runtime._bootstrap import WorkforceFoundation, WorkforceRuntimeAssembly
+from ._approvals import ApprovalError, CaseApprovals, DecisionBody
+from ._case import CaseRuntime, CaseStore
+from ._partner_setup import OnboardingError, OnboardingRequest, PartnerOnboarding
+from ._provider import ProviderError, UnifiedProviderEvents
 from ._runner import LEADER_VERSION_ID, ChatLeaderTurnRunner
 
 UNIFIED_JOB_WORKER = "workforce-unified"
@@ -189,7 +194,12 @@ def onboarding_router(foundation: WorkforceFoundation) -> APIRouter:
     """Three-party route grant: admin verifies, manager grants, partner confirms."""
 
     from ...._router._business import get_partner_principal
-    from ....deps import get_business_service, get_current_principal
+    from ....deps import (
+        get_business_service,
+        get_current_principal,
+        get_storage,
+        get_workspace_manager,
+    )
 
     router = APIRouter(prefix="/workforce/v1", tags=["workforce-onboarding"])
 
@@ -303,6 +313,106 @@ def onboarding_router(foundation: WorkforceFoundation) -> APIRouter:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return route.model_dump(mode="json")
 
+    @router.post("/admin/partner-onboarding")
+    async def partner_onboarding(
+        body: OnboardingRequest,
+        x_provisioning_secret: str | None = Header(default=None, alias="X-Provisioning-Secret"),
+        business: Any = Depends(get_business_service),
+        storage: Any = Depends(get_storage),
+        workspace_manager: Any = Depends(get_workspace_manager),
+    ) -> Any:
+        """Create/update a partner from its declaration (keys shown once)."""
+
+        from ...._router._mcp import _discover_tools
+
+        try:
+            business.verify_provisioning_secret(x_provisioning_secret)
+        except Exception as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        onboarding = PartnerOnboarding(
+            foundation,
+            lambda client: _discover_tools(client, float(client.mcp_config.timeout or 30.0)),
+        )
+        try:
+            return await onboarding.run(body, business, storage, workspace_manager)
+        except OnboardingError as exc:
+            return JSONResponse(
+                {"error": {"code": exc.code, "details": exc.details}},
+                status_code=exc.status,
+            )
+
+    return router
+
+
+def partner_case_router(
+    ingress: Any,
+    workflow_service: Any,
+    approvals: CaseApprovals,
+    provider: UnifiedProviderEvents,
+    customer: Any,
+    ids: Callable[[], str],
+) -> APIRouter:
+    """Approval decisions (contract 9.8) and provider events (section 10)."""
+
+    from ...orchestration.workflows._models import parse_aggregate
+
+    router = APIRouter(prefix="/workforce/v1", tags=["workforce-partner-case"])
+
+    def error(status_code: int, code: str, details: Any = None) -> JSONResponse:
+        body: dict = {"code": code, "retryable": status_code >= 500}
+        if details:
+            body["details"] = details
+        return JSONResponse({"error": body}, status_code=status_code)
+
+    @router.post("/partner/approvals/{approval_id}/decision", status_code=202)
+    async def decide(approval_id: str, request: Request, principal: Any = Depends(customer)) -> Any:
+        try:
+            body = DecisionBody.model_validate(await request.json())
+        except ValueError:
+            return error(422, "REQUEST_BODY_INVALID")
+        actor = principal
+        try:
+            original = await ingress.requests.resolve_workflow_request(
+                actor, body.workflow_id, body.external_user_id
+            )
+            aggregate = parse_aggregate(
+                await workflow_service.repository.load(original.scope, body.workflow_id)
+            )
+            answer = await approvals.decide(
+                approval_id,
+                body,
+                actor,
+                workflow=aggregate.workflow,
+                requests=ingress.requests,
+                workflows=workflow_service,
+                trigger_ids=lambda: "approval-" + ids(),
+            )
+        except ApprovalError as exc:
+            return error(exc.status, exc.code, exc.details)
+        except PermissionError:
+            return error(403, "AUTHORIZATION_DENIED")
+        except KeyError:
+            return error(404, "RESOURCE_NOT_FOUND")
+        return JSONResponse(answer, status_code=202)
+
+    @router.post("/provider/job-events", status_code=202)
+    async def job_events(request: Request) -> Any:
+        raw = await request.body()
+        if len(raw) > 262_144:
+            return error(413, "PAYLOAD_TOO_LARGE")
+        try:
+            status_code, body = await provider.accept(raw, dict(request.headers))
+        except ProviderError as exc:
+            return error(exc.status, exc.code, exc.details)
+        return JSONResponse(body, status_code=status_code)
+
+    @router.get("/provider/event-receipts/{receipt_id}")
+    async def event_receipt(receipt_id: str, request: Request) -> Any:
+        try:
+            return await provider.receipt(receipt_id, dict(request.headers))
+        except ProviderError as exc:
+            return error(exc.status, exc.code, exc.details)
+
     return router
 
 
@@ -332,6 +442,9 @@ def build_unified_runtime(
         uows,
         heartbeat_seconds=heartbeat_seconds,
     )
+    store = CaseStore(uows)
+    approvals = CaseApprovals(uows)
+    runner.attach_case(CaseRuntime(store), approvals)
     workflow_service = WorkflowService(
         workflows,
         LeaderWorkflowBootstrap(UnifiedBootstrapResolver(ids), clock=clock, ids=ids),
@@ -364,10 +477,22 @@ def build_unified_runtime(
         foundation.request_completion_signal,
         clock=clock,
     )
+    writer = PublicEventWriter(event_service, clock, ids)
+    approvals.attach_events(writer)
+    provider = UnifiedProviderEvents(
+        uows,
+        getattr(foundation, "provider_auth", None),
+        store,
+        workflow_service,
+        writer,
+        ids,
+        requests=requests,
+    )
+    customer = partner_customer_dependency()
     router = create_router(
         ingress,
         event_service,
-        partner_customer_dependency(),
+        customer,
         bounded_wait_seconds=bounded_wait_seconds,
     )
     return WorkforceRuntimeAssembly(
@@ -377,7 +502,11 @@ def build_unified_runtime(
             "event_service": event_service,
             "runner": runner,
         },
-        routers=(router, onboarding_router(foundation)),
+        routers=(
+            router,
+            onboarding_router(foundation),
+            partner_case_router(ingress, workflow_service, approvals, provider, customer, ids),
+        ),
         job_handlers={handler.job_type: handler},
         worker_id=UNIFIED_JOB_WORKER,
     )
