@@ -232,7 +232,7 @@ class TeamTurnRecord(_RecordBase):
     reply_owner_agent_id: str
     customer_session_id: str
     task_id: str | None = None
-    status: Literal["running", "awaiting_user_input"] = "running"
+    status: Literal["running", "awaiting_user_input", "completed"] = "running"
     pending_question_ids: tuple[str, ...] = ()
     pending_question_keys: tuple[str, ...] = ()
 

@@ -44,7 +44,7 @@ from ...message import Msg
 from ...types import ErrorInfo, ErrorType, ReplyFinishedReason
 from ..message_bus import MessageBusKeys
 from .._bus_ops import enqueue_run_trigger, publish_session_event
-from .._team_turn import team_is_awaiting_user
+from .._team_turn import team_is_paused
 
 if TYPE_CHECKING:
     from ..message_bus import MessageBus
@@ -339,14 +339,14 @@ class WakeupDispatcher:
         if (
             kind == MessageBusKeys.WAKEUP_KIND_WAKE
             and getattr(session, "team_id", None) is not None
-            and await team_is_awaiting_user(
+            and await team_is_paused(
                 self._bus,
                 session.team_id,
             )
         ):
             logger.info(
                 "WakeupDispatcher: keeping session %s asleep; team %s is "
-                "awaiting customer input.",
+                "paused until the next customer turn.",
                 session_id,
                 session.team_id,
             )

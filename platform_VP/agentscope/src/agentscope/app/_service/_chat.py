@@ -64,11 +64,11 @@ from .._chat_consent import confirmation_still_pending
 from .._manager import BackgroundTaskManager, SchedulerManager
 from .._shared_context import SharedContextBudgetError, SharedContextService
 from .._team_turn import (
+    finish_team_turn,
     get_team_turn,
-    mark_team_awaiting_user,
     set_team_turn_task,
     start_team_turn,
-    team_is_awaiting_user,
+    team_is_paused,
 )
 from .._tool._constants import HANDLE_LEN
 from .._types import (
@@ -1078,7 +1078,8 @@ class ChatService:
                             and isinstance(input_msg, (Msg, list))
                             and (
                                 turn_state is None
-                                or turn_state.status == "awaiting_user_input"
+                                or turn_state.status
+                                in {"awaiting_user_input", "completed"}
                             )
                         ):
                             # Channel/partner messages do not pass through the
@@ -2251,10 +2252,11 @@ class ChatService:
                             and live_turn.reply_owner_session_id == session_id
                         )
 
-                    # A structured request for customer data ends this team
-                    # turn. Finish the in-flight reply, then release the inbox
-                    # consumer without waking any member; queued reports stay
-                    # durable for the next explicit user message.
+                    # A customer-facing answer closes this team turn. Only a
+                    # registered specialist question becomes
+                    # ``awaiting_user_input``; an ordinary final answer becomes
+                    # ``completed``. Both keep late internal work asleep until
+                    # the next explicit customer message.
                     if (
                         team is not None
                         and is_reply_owner
@@ -2262,7 +2264,7 @@ class ChatService:
                         and reply_msg.finished_reason is ReplyFinishedReason.COMPLETED
                         and bool((reply_msg.get_text_content() or "").strip())
                         and not LeaderEvidenceMiddleware._expected_reports(agent)
-                        and await mark_team_awaiting_user(
+                        and await finish_team_turn(
                             self._message_bus,
                             team.id,
                             session_id=session_id,
@@ -2280,7 +2282,7 @@ class ChatService:
                     if (
                         team is not None
                         and not is_reply_owner
-                        and await team_is_awaiting_user(
+                        and await team_is_paused(
                             self._message_bus,
                             team.id,
                             storage=self._shared_context.storage,

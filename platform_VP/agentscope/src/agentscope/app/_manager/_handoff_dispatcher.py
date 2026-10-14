@@ -6,7 +6,7 @@ from typing import Self
 from ..._logging import logger
 from .._bus_ops import deliver_to_inbox
 from .._shared_context import ContextDirective, SharedContextService
-from .._team_turn import team_is_awaiting_user
+from .._team_turn import team_is_paused
 from .._tool._team_say import TeamSay
 from ..message_bus import MessageBus, MessageBusKeys
 from ..storage import StorageBase, TeamHandoffRecord
@@ -136,7 +136,7 @@ class HandoffDispatcher:
                     hop_count=record.hop_count,
                 ),
             )
-            wake = not await team_is_awaiting_user(
+            wake = not await team_is_paused(
                 self._bus,
                 record.team_id,
                 storage=self._storage,

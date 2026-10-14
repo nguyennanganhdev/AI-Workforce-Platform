@@ -283,7 +283,7 @@ export function useMessages(
 		let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
 		(async () => {
-			const loadHistory = async (silent = false) => {
+			const loadHistory = async (silent = false, reconcile = false) => {
 				try {
 					const { messages, is_running } = await sessionApi.messages(
 						sessionId,
@@ -292,7 +292,35 @@ export function useMessages(
 						{ signal: controller.signal, silent },
 					);
 					if (cancelled) return;
-					msgsRef.current = messages;
+					if (reconcile) {
+						const localById = new Map(msgsRef.current.map((message) => [message.id, message]));
+						const persistedIds = new Set(messages.map((message) => message.id));
+						const newestPersisted = Math.max(
+							0,
+							...messages.map((message) => new Date(message.created_at).getTime()),
+						);
+						msgsRef.current = [
+							...messages.map((message) => {
+								const local = localById.get(message.id);
+								return !local || message.finished_at || message.finished_reason
+									? message
+									: local;
+							}),
+							...msgsRef.current.filter(
+								(message) =>
+									!persistedIds.has(message.id) &&
+									(runningRepliesRef.current.has(message.id) ||
+										new Date(message.created_at).getTime() >= newestPersisted),
+							),
+						];
+						for (const message of messages) {
+							if (message.finished_at || message.finished_reason) {
+								runningRepliesRef.current.delete(message.id);
+							}
+						}
+					} else {
+						msgsRef.current = messages;
+					}
 					// If a reply is in flight (running on a worker) OR the
 					// tail msg is parked on a pending tool_call (awaiting
 					// user confirmation / external execution), initialise the
@@ -300,7 +328,7 @@ export function useMessages(
 					// available immediately — otherwise a fresh page load
 					// while parked leaves the UI stuck on ``idle`` with no
 					// way to abort.
-					const tail = messages[messages.length - 1];
+					const tail = msgsRef.current[msgsRef.current.length - 1];
 					const inProgress = is_running || hasPendingToolCall(tail);
 					setPhase(inProgress ? 'streaming' : 'idle');
 					if (inProgress) {
@@ -339,31 +367,48 @@ export function useMessages(
 				await loadHistory();
 			}
 
-			// Observer views refresh with short requests instead of consuming
-			// another long-lived browser connection.
-			if (!stream) {
+			// Observer views poll instead of streaming. Team chat also reconciles
+			// periodically so a dropped terminal SSE event cannot leave a stale
+			// spinner after every member has already finished.
+			if (!stream || optionsRef.current?.teamChat) {
 				const poll = async () => {
-					await loadHistory(true);
+					await loadHistory(true, stream);
 					if (!cancelled) pollTimer = setTimeout(() => void poll(), 1_500);
 				};
 				if (!cancelled) pollTimer = setTimeout(() => void poll(), 1_500);
+			}
+			if (!stream) {
 				return;
 			}
 
-			// 2. Open SSE long connection for live events
-			try {
-				for await (const event of sessionApi.streamEvents(
-					sessionId,
-					agentId,
-					controller.signal,
-				)) {
-					if (cancelled) break;
-					processEvent(event);
+			// 2. Keep the live stream connected. Every reconnect first reconciles
+			// persisted history, which closes replies whose REPLY_END was missed.
+			while (!cancelled) {
+				try {
+					for await (const event of sessionApi.streamEvents(
+						sessionId,
+						agentId,
+						controller.signal,
+					)) {
+						if (cancelled) break;
+						processEvent(event);
+					}
+				} catch (e) {
+					if ((e as Error).name !== 'AbortError' && !cancelled) {
+						setError(e as Error);
+					}
 				}
-			} catch (e) {
-				if ((e as Error).name !== 'AbortError' && !cancelled) {
-					setError(e as Error);
-				}
+				if (cancelled) break;
+				await loadHistory(true, true);
+				await new Promise<void>((resolve) => {
+					const finishWait = () => {
+						clearTimeout(reconnectTimer);
+						controller.signal.removeEventListener('abort', finishWait);
+						resolve();
+					};
+					const reconnectTimer = setTimeout(finishWait, 1_500);
+					controller.signal.addEventListener('abort', finishWait, { once: true });
+				});
 			}
 		})();
 

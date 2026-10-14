@@ -8,12 +8,13 @@ from agentscope.app._router._chat import (
 )
 from agentscope.app._team_turn import (
     build_customer_ticket_context,
+    finish_team_turn,
     get_team_turn,
-    mark_team_awaiting_user,
     register_user_input_request,
     return_team_reply_to_leader,
     start_team_turn,
     team_is_awaiting_user,
+    team_is_paused,
 )
 from agentscope.app.message_bus import InMemoryMessageBus
 from agentscope.message import AssistantMsg, UserMsg
@@ -78,14 +79,14 @@ class TeamTurnTest(IsolatedAsyncioTestCase):
         )
 
         self.assertFalse(
-            await mark_team_awaiting_user(
+            await finish_team_turn(
                 self.bus,
                 "team",
                 session_id="other-session",
             ),
         )
         self.assertTrue(
-            await mark_team_awaiting_user(
+            await finish_team_turn(
                 self.bus,
                 "team",
                 session_id="hotel-session",
@@ -108,7 +109,7 @@ class TeamTurnTest(IsolatedAsyncioTestCase):
         self.assertEqual(state.pending_questions, [])
         self.assertEqual(state.task_id, "hotel-task")
 
-    async def test_completed_customer_reply_pauses_until_next_turn(self) -> None:
+    async def test_completed_reply_without_question_does_not_pause_team(self) -> None:
         await start_team_turn(
             self.bus,
             "team",
@@ -118,13 +119,16 @@ class TeamTurnTest(IsolatedAsyncioTestCase):
             mode="leader",
         )
         self.assertTrue(
-            await mark_team_awaiting_user(
+            await finish_team_turn(
                 self.bus,
                 "team",
                 session_id="leader-session",
             ),
         )
-        self.assertTrue(await team_is_awaiting_user(self.bus, "team"))
+        self.assertFalse(await team_is_awaiting_user(self.bus, "team"))
+        self.assertTrue(await team_is_paused(self.bus, "team"))
+        state = await get_team_turn(self.bus, "team")
+        self.assertEqual(state.status, "completed")
 
     async def test_pending_question_binds_followup_to_its_task(self) -> None:
         await start_team_turn(
