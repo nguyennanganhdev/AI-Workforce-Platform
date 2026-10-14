@@ -225,7 +225,7 @@ class C6SliceTests(SqlTicketSliceSupport, unittest.IsolatedAsyncioTestCase):
 
     async def test_duplicate_late_conflict_and_bad_signature(self):
         driver = self.driver
-        backend, workflow_id, operation = await self.create_operation()
+        _backend, workflow_id, operation = await self.create_operation()
         event = self.event(operation, "complete", 4, "completed")
         raw = json.dumps(event).encode()
         headers = driver.signed(raw)

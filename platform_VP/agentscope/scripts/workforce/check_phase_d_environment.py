@@ -6,12 +6,11 @@ from __future__ import annotations
 import importlib
 import json
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-
 
 REQUIRED_MODULES = (
     "aiosqlite",

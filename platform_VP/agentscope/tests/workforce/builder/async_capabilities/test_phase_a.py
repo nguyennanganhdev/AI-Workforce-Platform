@@ -135,7 +135,7 @@ class PhaseATests(unittest.IsolatedAsyncioTestCase):
         tool = ToolDescriptor(tool_id="tool", tool_version_id="v1", source_kind="builtin", provider_tool_name="lookup", llm_alias="lookup", input_schema={}, schema_hash="hash", capabilities=("lookup",), effect="read", available=True)
         registry = FakeRegistry(self.scope, (tool,))
         self.assertIsInstance(registry, RegistryPort)
-        tools, cursor = await registry.list_available_tools(self.scope, capabilities=[c.capability for c in req.capabilities if c.required])
+        tools, _cursor = await registry.list_available_tools(self.scope, capabilities=[c.capability for c in req.capabilities if c.required])
         self.assertEqual(tools, (tool,))
         other = self.scope.model_copy(update={"manager_account_id": "manager-b"})
         self.assertEqual(await registry.list_available_tools(other), ((), None))
