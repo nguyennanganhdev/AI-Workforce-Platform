@@ -41,7 +41,11 @@ from .._service import (
 )
 from ..message_bus import MessageBus, MessageBusKeys
 from .._bus_ops import enqueue_run_trigger
-from .._chat_consent import pending_chat_actions, resolve_chat_consent
+from .._chat_consent import (
+    parse_chat_consent,
+    pending_chat_actions,
+    resolve_chat_consent,
+)
 from .._team_turn import get_team_turn, start_team_turn
 from .._tool._constants import HANDLE_LEN
 from ..storage import StorageBase
@@ -148,12 +152,17 @@ async def chat(
     # User prose is resolved by the server against stored ASKING calls, never
     # by an LLM or a client-supplied tool payload. Each decision grants one call.
     if isinstance(request.input, Msg) and not request.new_task:
+        consent = parse_chat_consent(request.input.get_text_content() or "")
         pending = await pending_chat_actions(
             storage, user_id, request.agent_id, request.session_id,
         )
+        if request.target_agent_id:
+            pending = [
+                item
+                for item in pending
+                if item.agent_id == request.target_agent_id
+            ]
         if pending:
-            if request.target_agent_id:
-                pending = [item for item in pending if item.agent_id == request.target_agent_id]
             resolved = resolve_chat_consent(request.input, pending)
             if resolved is not None:
                 action, decision = resolved
@@ -172,20 +181,10 @@ async def chat(
                 # This also prevents a normal message from entering a parked
                 # worker and causing the old "received no event" reply failure.
                 text = (
-                    "Mình chưa thực hiện thao tác đang chờ xác nhận. "
-                    "Bạn hãy kiểm tra thông tin ở trên rồi nhắn “xác nhận” "
-                    "để thực hiện, hoặc “hủy” để không thực hiện. "
-                    "Nếu có nhiều thao tác, thêm mã của thao tác sau câu trả lời. "
-                    "Nếu muốn đổi phương án, hãy hủy thao tác cũ trước nhé.\n"
-                    + "\n".join(f"• {item.tool_call.name}: {item.tool_call.id[-8:]}" for item in pending)
+                    "Đang có thao tác chờ quyết định và hệ thống chưa thực hiện "
+                    "thao tác đó. Vui lòng bấm “Xác nhận” hoặc “Từ chối” trên "
+                    "thẻ thao tác trước khi gửi yêu cầu khác."
                 )
-                if not any(ord(char) > 127 for char in request.input.get_text_content() or ""):
-                    text = (
-                        "The action has not been executed. Review its details, then type "
-                        "'confirm' or 'cancel'. For multiple actions, include its code. "
-                        "Cancel the old action before changing the option.\n"
-                        + "\n".join(f"• {item.tool_call.name}: {item.tool_call.id[-8:]}" for item in pending)
-                    )
                 answer = AssistantMsg(name="System", content=text)
                 await storage.upsert_message(user_id, request.session_id, request.input)
                 await storage.upsert_message(user_id, request.session_id, answer)
@@ -193,6 +192,22 @@ async def chat(
                     status="awaiting_confirmation", session_id=request.session_id,
                     message=answer,
                 )
+        elif consent is not None:
+            answer = AssistantMsg(
+                name="System",
+                content=(
+                    "Hiện không có thao tác nào đang chờ xác nhận hoặc từ chối. "
+                    "Hệ thống chưa thực hiện thêm nghiệp vụ nào. Vui lòng nêu rõ "
+                    "thao tác bạn muốn thực hiện."
+                ),
+            )
+            await storage.upsert_message(user_id, request.session_id, request.input)
+            await storage.upsert_message(user_id, request.session_id, answer)
+            return ChatTriggerResponse(
+                status="no_pending_confirmation",
+                session_id=request.session_id,
+                message=answer,
+            )
 
     # ------------------------------------------------------------------
     # HITL resume — route to the owning session, then enqueue.

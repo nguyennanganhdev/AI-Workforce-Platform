@@ -5,13 +5,11 @@ import {
 	CalendarClock,
 	Check,
 	ChevronDown,
-	Ellipsis,
 	type LucideIcon,
 	MessageSquarePlus,
 	Pencil,
 	Plus,
 	Search,
-	Settings2,
 	Trash2,
 	Users,
 } from 'lucide-react';
@@ -115,7 +113,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	const requestedDemo = searchParams.get('demo');
 	const demoId =
 		MOCK_CONVERSATIONS.find((conversation) => conversation.id === requestedDemo)?.id ?? null;
-	const { agents, refetch: refetchAgents, remove: removeAgent } = useAgents();
+	const { agents, refetch: refetchAgents } = useAgents();
 	const {
 		sessions,
 		loading: sessionsLoading,
@@ -129,7 +127,6 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	/** The agent an edit / delete from a row's menu applies to. */
 	const [targetAgent, setTargetAgent] = useState<AgentView | null>(null);
 	const [editOpen, setEditOpen] = useState(false);
-	const [deleteOpen, setDeleteOpen] = useState(false);
 	const [renameOpen, setRenameOpen] = useState(false);
 	const [renameSession, setRenameSession] = useState<SessionRecord | null>(null);
 	const [deleteSessionOpen, setDeleteSessionOpen] = useState(false);
@@ -246,12 +243,6 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 		setOpenMobile(false);
 	};
 
-	const handleAgentDeleted = async (agentId: string) => {
-		if (agentId === urlAgentId) navigate('/chat', { replace: true });
-		await refetchAgents();
-		onAgentsChanged();
-	};
-
 	const handleDeleteSession = async (sessionId: string) => {
 		await removeSession(sessionId);
 		removeGroupChat(sessionId);
@@ -268,16 +259,12 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 		await updateSession(renameSession.id, { name });
 	};
 
-	// Agents and group chats share one list, most recently touched first,
-	// like Cue's conversation list. A group whose leader is gone is dropped.
+	// Show group conversations here; agents remain accessible through search.
 	const agentById = new Map(agents.map((a) => [a.id, a]));
 	const activeGroup = groupChats.find((g) => g.sessionId === urlSessionId) ?? null;
-	const rows = [
-		...agents.map((agent) => ({ kind: 'agent' as const, agent, at: agent.updated_at })),
-		...groupChats
-			.filter((group) => agentById.has(group.agentId))
-			.map((group) => ({ kind: 'group' as const, group, at: group.createdAt })),
-	].sort((a, b) => newestFirst(a.at, b.at));
+	const visibleGroups = groupChats
+		.filter((group) => agentById.has(group.agentId))
+		.sort((a, b) => newestFirst(a.createdAt, b.createdAt));
 	/** Leader first, then the members; names from the live agent list. */
 	const groupMembers = (group: GroupChat) =>
 		[group.agentId, ...group.memberIds].map((id) => ({
@@ -314,7 +301,7 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 	}, []);
 
 	const openAgent = (agentId: string) => {
-		if (agentId !== urlAgentId) navigate(`/chat/${agentId}`);
+		if (demoId || agentId !== urlAgentId) navigate(`/chat/${agentId}`);
 		setOpenMobile(false);
 	};
 
@@ -433,99 +420,37 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 						</Button>
 					</div>
 				</SidebarHeader>
-				{/* One 60px row per agent or group chat, most recent first. */}
+				{/* Group conversations, most recent first; sample conversations below. */}
 				<SidebarContent className="no-scrollbar gap-0 px-2 pb-2">
-					{rows.map((row) => {
-						if (row.kind === 'group') {
-							const { group } = row;
-							const active = !demoId && group.sessionId === urlSessionId;
-							const members = groupMembers(group);
-							return (
-								<ChatRow
-									key={`g:${group.sessionId}`}
-									avatarId={group.agentId}
-									avatar={<GroupAvatar members={members} />}
-									title={group.name}
-									time={sessionTime(group.createdAt)}
-									active={active}
-									status={active ? (currentView?.status ?? 'idle') : 'idle'}
-									icon={<Users className="size-3.5 shrink-0" />}
-									preview={members.map((m) => m.name).join(', ')}
-									onSelect={() => {
-										navigate(`/chat/${group.agentId}/${group.sessionId}`);
-										setOpenMobile(false);
-									}}
-									actions={
-										<Button
-											variant="ghost"
-											size="icon-sm"
-											className="bg-[var(--cue-bg-subtle,var(--accent))] text-muted-foreground"
-											aria-label={t('groupChat.delete')}
-											title={t('groupChat.delete')}
-											onClick={() => setGroupToDelete(group)}
-										>
-											<Trash2 />
-										</Button>
-									}
-								/>
-							);
-						}
-						const { agent } = row;
-						const active = !demoId && agent.id === urlAgentId && !activeGroup;
+					{visibleGroups.map((group) => {
+						const active = !demoId && group.sessionId === urlSessionId;
+						const members = groupMembers(group);
 						return (
 							<ChatRow
-								key={agent.id}
-								avatarId={agent.id}
-								avatarLabel={agent.data.name}
-								title={agent.data.name}
-								time={sessionTime(agent.updated_at)}
+								key={`g:${group.sessionId}`}
+								avatarId={group.agentId}
+								avatar={<GroupAvatar members={members} />}
+								title={group.name}
+								time={sessionTime(group.createdAt)}
 								active={active}
 								status={active ? (currentView?.status ?? 'idle') : 'idle'}
-								preview={
-									(active && sessionTitle(currentView?.session.config.name)) ||
-									t('chat.session.previewAgent', { name: agent.data.name })
-								}
-								onSelect={() => openAgent(agent.id)}
+								icon={<Users className="size-3.5 shrink-0" />}
+								preview={members.map((m) => m.name).join(', ')}
+								onSelect={() => {
+									navigate(`/chat/${group.agentId}/${group.sessionId}`);
+									setOpenMobile(false);
+								}}
 								actions={
-									agent.editable ? (
-										<DropdownMenu>
-											<DropdownMenuTrigger asChild>
-												<Button
-													variant="ghost"
-													size="icon-sm"
-													className="bg-[var(--cue-bg-subtle,var(--accent))] text-muted-foreground"
-													aria-label={t('agent-menu.settings')}
-												>
-													<Ellipsis />
-												</Button>
-											</DropdownMenuTrigger>
-											<DropdownMenuContent
-												className="w-auto"
-												side="right"
-												align="start"
-											>
-												<DropdownMenuItem
-													onClick={() => {
-														setTargetAgent(agent);
-														setEditOpen(true);
-													}}
-												>
-													<Settings2 />
-													{t('agent-menu.settings')}
-												</DropdownMenuItem>
-												<DropdownMenuItem
-													variant="destructive"
-													onClick={() => {
-														setTargetAgent(agent);
-														setDeleteOpen(true);
-													}}
-												>
-													<Trash2 />
-													{t('agent-menu.delete')}
-												</DropdownMenuItem>
-											</DropdownMenuContent>
-										</DropdownMenu>
-									) : undefined
+									<Button
+										variant="ghost"
+										size="icon-sm"
+										className="bg-[var(--cue-bg-subtle,var(--accent))] text-muted-foreground"
+										aria-label={t('groupChat.delete')}
+										title={t('groupChat.delete')}
+										onClick={() => setGroupToDelete(group)}
+									>
+										<Trash2 />
+									</Button>
 								}
 							/>
 						);
@@ -623,20 +548,6 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 						onOpenChange={setEditOpen}
 						agent={targetAgent}
 						onUpdated={refetchAgents}
-					/>
-					<DeleteDialog
-						open={deleteOpen}
-						onOpenChange={setDeleteOpen}
-						title={t('common.deleteTitle', {
-							entity: t('dialog-agent-delete.entity'),
-							name: targetAgent.data.name,
-						})}
-						description={t('common.deleteDescription')}
-						confirmLabel={t('dialog-agent-delete.confirm')}
-						onConfirm={async () => {
-							await removeAgent(targetAgent.id);
-							await handleAgentDeleted(targetAgent.id);
-						}}
 					/>
 				</>
 			)}

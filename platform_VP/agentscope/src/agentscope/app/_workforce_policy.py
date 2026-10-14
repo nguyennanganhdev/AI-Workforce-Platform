@@ -120,6 +120,13 @@ BUSINESS_AGENT_EVIDENCE_POLICY = """WORKFORCE RUNTIME EXECUTION POLICY:
 - Advice, search, comparison and recommendation requests are read-only. Run a
   booking, payment, cancellation or other external mutation only after the
   customer explicitly requests that exact action and runtime consent succeeds.
+- Only the runtime may request confirmation for a concrete pending tool call.
+  Never ask the customer to type a confirmation or repeat consent in prose.
+- A successful mutation tool result completes that action. Report its exact
+  status and do not ask for the same action again. Offer a next action only when
+  this agent has a matching tool. In particular, `unpaid_demo` means the booking
+  succeeded but payment is unavailable in the demo; state that plainly and do
+  not ask the customer to confirm payment.
 """
 
 

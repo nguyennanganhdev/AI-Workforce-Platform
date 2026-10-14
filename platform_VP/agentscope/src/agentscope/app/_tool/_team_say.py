@@ -772,15 +772,16 @@ class TeamSay(_TeamToolBase):
                     ],
                     state=ToolResultState.ERROR,
                 )
-            if turn is not None and turn.status == "awaiting_user_input":
+            if turn is not None and turn.status != "running":
                 reporting_to_owner = self._role == "worker" and to == reply_owner_name
                 if not reporting_to_owner:
                     return ToolChunk(
                         content=[
                             TextBlock(
                                 text=(
-                                    "TeamSay: the team is waiting for customer "
-                                    "input. Do not start more collaboration."
+                                    "TeamSay: this team turn is paused. Do not "
+                                    "start more collaboration until the next "
+                                    "customer turn."
                                 ),
                             ),
                         ],
@@ -800,7 +801,7 @@ class TeamSay(_TeamToolBase):
 
             wake = not (
                 kind == "progress"
-                or (turn is not None and turn.status == "awaiting_user_input")
+                or (turn is not None and turn.status != "running")
             )
             if kind == "requires_user_input":
                 turn, duplicate, first_question = await register_user_input_request(
@@ -880,13 +881,27 @@ class TeamSay(_TeamToolBase):
                     },
                 )
                 await shared_context.persist_handoff(intent)
+            # A specialist owns only the temporary customer clarification.
+            # Its terminal reply must still settle the peer that requested it.
+            coordination_owner_session_id = (
+                leader.session_id
+                if (
+                    turn is not None
+                    and turn.mode == "specialist_question"
+                    and turn.reply_owner_session_id == self._session_id
+                    and kind in {"result", "answer", "error"}
+                )
+                else turn.reply_owner_session_id
+                if turn is not None
+                else leader.session_id
+            )
             coordination = await shared_context.coordinate_handoff(
                 user_id=self._user_id,
                 team_id=team.id,
                 task_id=effective_task_id,
                 sender=self._session_id,
                 recipients=tuple(sid for sid, _ in recipients),
-                owner=turn.reply_owner_session_id if turn else leader.session_id,
+                owner=coordination_owner_session_id,
                 handoff_id=handoff_id,
                 kind=kind,
                 content=content,
@@ -983,8 +998,7 @@ class TeamSay(_TeamToolBase):
                 turn is not None
                 and turn.mode == "specialist_question"
                 and turn.reply_owner_session_id == self._session_id
-                and to == leader.name
-                and kind in {"result", "error"}
+                and kind in {"result", "answer", "error"}
             ):
                 await return_team_reply_to_leader(
                     self._message_bus,

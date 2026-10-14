@@ -252,6 +252,8 @@ def test_runtime_prompt_policy_overrides_stale_leader_and_wraps_business() -> No
     )
     assert "Follow the authored business role" in governed
     assert "booking, payment, cancellation" in governed
+    assert "Never ask the customer to type a confirmation" in governed
+    assert "`unpaid_demo` means the booking" in governed
 
 
 def test_builder_claims_each_tool_for_only_one_agent() -> None:

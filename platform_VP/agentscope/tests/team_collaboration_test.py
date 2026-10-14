@@ -314,6 +314,69 @@ class TestCollaboration(IsolatedAsyncioTestCase):
         self.assertEqual("leader", self.storage.turn.mode)
         self.assertEqual("leader-session", self.storage.turn.reply_owner_session_id)
 
+    async def test_specialist_result_resumes_the_waiting_requester(self):
+        request = await self.say(
+            "worker",
+            to="Peer",
+            kind="question",
+            content="Find the available flights",
+        )
+        await self.say(
+            "peer",
+            to="null",
+            kind="requires_user_input",
+            content="Which travel date should I use?",
+        )
+
+        from agentscope.app._team_turn import finish_team_turn, start_team_turn
+
+        await start_team_turn(
+            self.bus,
+            "ticket-1",
+            reply_owner_session_id="peer-session",
+            reply_owner_agent_id="peer",
+            customer_session_id="leader-session",
+            mode="specialist_question",
+            task_id=self.task,
+            storage=self.storage,
+            user_id="u",
+        )
+        await self.bus.queue_drain(
+            MessageBusKeys.wakeup_queue(),
+            max_count=10,
+        )
+
+        await self.say(
+            "peer",
+            to="Worker",
+            kind="result",
+            content="Two matching flights were found",
+            in_reply_to=request.metadata["handoff_id"],
+        )
+
+        self.assertFalse(
+            await finish_team_turn(
+                self.bus,
+                "ticket-1",
+                session_id="peer-session",
+                storage=self.storage,
+                user_id="u",
+            ),
+        )
+        self.assertEqual({}, self.branch("worker").waiting_for)
+        self.assertEqual("running", self.branch("worker").status)
+        self.assertEqual("leader", self.storage.turn.mode)
+        self.assertEqual("running", self.storage.turn.status)
+        self.assertEqual("leader-session", self.storage.turn.reply_owner_session_id)
+        wakeups = await self.bus.queue_drain(
+            MessageBusKeys.wakeup_queue(),
+            max_count=10,
+        )
+        self.assertIn(
+            "worker-session",
+            {payload["session_id"] for _entry_id, payload in wakeups},
+        )
+
     async def test_fixed_workforce_leader_cannot_ask_customer_question(self):
         self.storage.agents["leader"].data.system_role = "leader"
         result = await self.tool("leader")(

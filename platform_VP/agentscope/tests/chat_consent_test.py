@@ -171,6 +171,37 @@ class ChatConsentTests(IsolatedAsyncioTestCase):
         enqueue.assert_not_awaited()
         self.assertEqual(storage.upsert_message.await_count, 2)
 
+    async def test_consent_without_pending_action_never_reaches_an_agent(self):
+        storage = SimpleNamespace(upsert_message=AsyncMock())
+        with (
+            patch(
+                "agentscope.app._router._chat.pending_chat_actions",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "agentscope.app._router._chat.enqueue_run_trigger",
+                AsyncMock(),
+            ) as enqueue,
+        ):
+            response = await chat(
+                ChatRequest(
+                    agent_id="leader",
+                    session_id="ticket",
+                    input=UserMsg(name="user", content="Xác nhận"),
+                ),
+                "user",
+                object(),
+                object(),
+                object(),
+                storage,
+                object(),
+            )
+
+        self.assertEqual(response.status, "no_pending_confirmation")
+        self.assertIn("không có thao tác nào", response.message.get_text_content())
+        self.assertEqual(storage.upsert_message.await_count, 2)
+        enqueue.assert_not_awaited()
+
     def test_partner_chat_preserves_all_binding_and_hash_fields(self):
         body = {
             "message": "xác nhận 12345678",

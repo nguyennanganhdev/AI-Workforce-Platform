@@ -27,7 +27,7 @@ class TeamTurnState(BaseModel):
     reply_owner_agent_id: str
     customer_session_id: str
     task_id: str | None = None
-    status: Literal["running", "awaiting_user_input"] = "running"
+    status: Literal["running", "awaiting_user_input", "completed"] = "running"
     pending_questions: list[str] = Field(default_factory=list)
     pending_question_ids: list[str] = Field(default_factory=list)
 
@@ -380,7 +380,7 @@ async def set_team_turn_task(
         return state
 
 
-async def mark_team_awaiting_user(
+async def finish_team_turn(
     bus: MessageBus,
     team_id: str,
     *,
@@ -388,7 +388,8 @@ async def mark_team_awaiting_user(
     storage: StorageBase | None = None,
     user_id: str | None = None,
 ) -> bool:
-    """Pause the team when its current reply owner has answered once."""
+    """Close the owner's reply, waiting only for a registered question."""
+
     async with bus.acquire_lock(
         MessageBusKeys.team_turn_lock(team_id),
         ttl_secs=MessageBusKeys.TEAM_TURN_LOCK_TTL_SECS,
@@ -399,12 +400,13 @@ async def mark_team_awaiting_user(
             storage=storage,
             user_id=user_id,
         )
-        if (
-            state is None
-            or state.reply_owner_session_id != session_id
-        ):
+        if state is None or state.reply_owner_session_id != session_id:
             return False
-        state.status = "awaiting_user_input"
+        state.status = (
+            "awaiting_user_input"
+            if state.pending_question_ids
+            else "completed"
+        )
         await _put_team_turn(
             bus,
             team_id,
@@ -430,3 +432,21 @@ async def team_is_awaiting_user(
         user_id=user_id,
     )
     return state is not None and state.status == "awaiting_user_input"
+
+
+async def team_is_paused(
+    bus: MessageBus,
+    team_id: str,
+    *,
+    storage: StorageBase | None = None,
+    user_id: str | None = None,
+) -> bool:
+    """Return whether automatic collaboration must wait for a new user turn."""
+
+    state = await get_team_turn(
+        bus,
+        team_id,
+        storage=storage,
+        user_id=user_id,
+    )
+    return state is not None and state.status != "running"

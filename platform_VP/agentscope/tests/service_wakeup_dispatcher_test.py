@@ -445,7 +445,7 @@ class TestWakeupDispatcherDispatch(IsolatedAsyncioTestCase):
 
         with patch(
             "agentscope.app._manager._wakeup_dispatcher."
-            "team_is_awaiting_user",
+            "team_is_paused",
             waiting,
         ):
             async with WakeupDispatcher(
