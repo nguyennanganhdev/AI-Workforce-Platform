@@ -388,6 +388,10 @@ def main() -> None:
     args = parser.parse_args()
     server.settings.host = args.host
     server.settings.port = args.port
+    if args.host not in {"127.0.0.1", "localhost", "::1"}:
+        # Reached by service name (e.g. http://demo-mcp:8765/mcp inside
+        # Docker), so the loopback-only Host check would refuse every call.
+        server.settings.transport_security.enable_dns_rebinding_protection = False
     server.run(transport="streamable-http")
 
 
