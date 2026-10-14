@@ -329,12 +329,14 @@ class CaseStore:
 class _Case:
     """What the tools of one session need to know at call time."""
 
-    def __init__(self, store: CaseStore, session: dict, route: dict) -> None:
+    def __init__(self, store: CaseStore, session: dict, route: dict, on_say: Callable | None = None) -> None:
         self.store = store
         self.workflow_id = session["workflow_id"]
         self.session_id = session["session_id"]
         self.route = route
         self.rules = (route.get("config") or {}).get("rules") or {}
+        # Tells the ticket's room what the end user was sent.
+        self.on_say = on_say
 
     async def trigger_id(self) -> str:
         current = await self.store.session(self.session_id)
@@ -431,6 +433,8 @@ class _CaseTool(ToolBase):
             expects=expects,
             outcome=outcome,
         )
+        if case.on_say is not None:
+            await case.on_say(text)
         return ToolChunk(
             content=[TextBlock(text="Đã gửi cho người dùng. Kết thúc lượt ngay, không gửi thêm tin.")],
             state=ToolResultState.SUCCESS,
@@ -780,6 +784,12 @@ class CaseRuntime:
         state in Shared Context like any other fact.
         """
 
+        line = "Tiến độ từ hệ thống đối tác: " + text
+        await self._share(workflow_id, "external_event", line, fact=True)
+
+    async def _share(self, workflow_id: str, kind: str, text: str, fact: bool = False) -> None:
+        """One event in the ticket's room, when the Leader opened one."""
+
         if self._app is None:
             return
         binding = await self.store.session_of_workflow(workflow_id)
@@ -789,20 +799,19 @@ class CaseRuntime:
         user_id, agent_id = binding["manager_account_id"], binding["agent_id"]
         record = await state.storage.get_session(user_id, agent_id, binding["session_id"])
         team_id = getattr(record, "team_id", None)
-        if not team_id:
+        if not team_id or getattr(state, "shared_context_storage", None) is None:
             return
         from ...._shared_context import SharedContextService
         from ....storage._model._team_context import ContextDelta
 
-        line = "Tiến độ từ hệ thống đối tác: " + text
         await SharedContextService(state.shared_context_storage, state.message_bus).append_event(
             user_id=user_id,
             team_id=team_id,
-            kind="external_event",
-            content=line,
+            kind=kind,
+            content=text,
             source_agent_id=agent_id,
             source_session_id=binding["session_id"],
-            delta=ContextDelta(add_confirmed_facts=(line,)),
+            delta=ContextDelta(add_confirmed_facts=(text,)) if fact else None,
         )
 
     async def _delete_guard(self, user_id: str, agent_id: str) -> str | None:
@@ -829,7 +838,12 @@ class CaseRuntime:
         route = await self.store.route(session["route_id"])
         if route is None:
             return []
-        case = _Case(self.store, session, route)
+        workflow_id = session["workflow_id"]
+
+        async def said(text: str) -> None:
+            await self._share(workflow_id, "customer_reply", text)
+
+        case = _Case(self.store, session, route, on_say=said)
         members = _members(route)
         waiter = self._waiter(user_id, agent_id, session_id) if members else None
         # The Leader holds no partner tool: the room's members do the work.

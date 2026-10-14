@@ -23,6 +23,9 @@ export type {
 	BuilderProposal,
 	BuilderTool,
 	LeaderSession,
+	RoomEntry,
+	RoomParticipant,
+	RoomView,
 	ProposedAgent,
 	WorkforceAgent,
 } from './workforce';

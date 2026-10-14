@@ -38,6 +38,20 @@ MAX_IMAGES_PER_TURN = 4
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
+def ticket_title(text: str | None, fields: list[str]) -> str:
+    """A readable ticket name from the handover's ``field: value`` lines the
+    partner declared (route config ``ticket_title_fields``)."""
+
+    values = {}
+    for line in (text or "").splitlines():
+        key, sep, value = line.partition(":")
+        if sep and value.strip():
+            values.setdefault(key.strip().casefold(), value.strip())
+    parts = [values[field.casefold()] for field in fields if field.casefold() in values]
+    title = " · ".join(parts)
+    return title if len(title) <= 80 else title[:79].rstrip() + "…"
+
+
 def _text_of(message: Any) -> str:
     if message.role != "assistant":
         return ""
@@ -375,7 +389,9 @@ class ChatLeaderTurnRunner:
 
     # ------------------------------------------------------- partner case
 
-    async def _case_session(self, user_id: str, scope: Any, workflow: Any, route: dict, session_ref: str) -> Any:
+    async def _case_session(
+        self, user_id: str, scope: Any, workflow: Any, route: dict, session_ref: str, text: str | None = None,
+    ) -> Any:
         """The ticket's own session of the manager's Leader (the console
         Leader): the ticket shows on the Leader page with its room."""
 
@@ -388,13 +404,13 @@ class ChatLeaderTurnRunner:
         session = await storage.get_session(user_id, leader.id, session_ref)
         if session is not None:
             return session
-        ticket = workflow.audience.external_ticket_id or workflow.workflow_id
+        fields = (route.get("config") or {}).get("ticket_title_fields") or []
         session = await storage.upsert_session(
             user_id=user_id,
             agent_id=leader.id,
             config=SessionConfig(
                 workspace_id=session_ref,
-                name=f"Phiếu đối tác {ticket}",
+                name=ticket_title(text, fields) or "Phiếu đối tác",
                 chat_model_config=primary.config.chat_model_config,
             ),
             session_id=session_ref,
@@ -434,8 +450,9 @@ class ChatLeaderTurnRunner:
         user_id = scope.manager_account_id
         workflow = context.workflow
         store = self._case.store
+        text = await self._input_text(workflow.workflow_id, trigger)
         session = await self._case_session(
-            user_id, scope, workflow, route, context.checkpoint.session_refs[0],
+            user_id, scope, workflow, route, context.checkpoint.session_refs[0], text,
         )
         agent_id = session.agent_id
         trigger_id = trigger["trigger_id"]
@@ -479,7 +496,6 @@ class ChatLeaderTurnRunner:
                     "(Hệ thống) Sự kiện mới của việc đang theo dõi:\n"
                     + "\n".join(f"E{item['seq']}: {item['text']}" for item in heard),
                 )
-            text = await self._input_text(workflow.workflow_id, trigger)
             if text:
                 parts.append(text)
             images = await self._new_images(workflow.workflow_id)

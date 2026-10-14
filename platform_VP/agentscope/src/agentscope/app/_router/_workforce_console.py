@@ -33,6 +33,7 @@ from .._workforce_policy import (
 from ..deps import (
     get_current_user_id,
     get_resource_access_service,
+    get_shared_context_storage,
     get_storage,
     get_workspace_manager,
 )
@@ -1788,4 +1789,151 @@ async def create_leader_ticket(
         agent_id=leader.id,
         session_id=session.id,
         name=session.config.name,
+    )
+
+
+# ---------------------------------------------------------------- room view
+
+_HANDLE = re.compile(r"@[0-9a-f]{6,}$")
+_ROOM_TEXT = 1500
+
+
+def _display(name: str) -> str:
+    """An agent's name without the room handle (``KyThuat@7d00a7e0``)."""
+    return _HANDLE.sub("", name or "").strip()
+
+
+class RoomParticipant(BaseModel):
+    agent_id: str
+    name: str
+    model: str = ""
+    calls: int = 0
+    input_tokens: int = 0
+    cached_input_tokens: int = 0
+    output_tokens: int = 0
+
+
+class RoomEntry(BaseModel):
+    at: str
+    kind: str
+    """assign | result | question | answer | progress | error | tool |
+    partner_event | customer | reply"""
+    sender: str
+    to: str = ""
+    text: str
+    after: list[str] = []
+
+
+class RoomView(BaseModel):
+    participants: list[RoomParticipant]
+    timeline: list[RoomEntry]
+    packet_tokens: int = 0
+    peak_packet_tokens: int = 0
+    packet_budget: int = 0
+
+
+def _room_tool_line(content: str) -> str:
+    """One line for a tool result in the room: the call, not the payload."""
+    try:
+        value = json.loads(content)
+        call = value["tool_call"]
+        return f"{call['name'].split('__')[-1]} {call.get('input') or ''}"[:200]
+    except (ValueError, KeyError, TypeError):
+        return content.split("\n", 1)[0][:200]
+
+
+@workforce_console_router.get("/sessions/{session_id}/room", response_model=RoomView)
+async def session_room(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+    storage: StorageBase = Depends(get_storage),
+    shared_storage: StorageBase = Depends(get_shared_context_storage),
+) -> RoomView:
+    """The ticket's room as people read it: who assigned what to whom, who
+    reported what, and what each agent spent on this ticket."""
+
+    from .._shared_context import SharedContextConfig
+
+    session = await storage.get_session(user_id, "", session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not session.team_id:
+        return RoomView(participants=[], timeline=[])
+    record = await shared_storage.get_team_shared_context(user_id, session.team_id)
+    team = await storage.get_team(user_id, session.team_id)
+    if record is None or team is None:
+        return RoomView(participants=[], timeline=[])
+    state = record.state
+    leader_session = await storage.get_session(user_id, "", team.session_id)
+    leader_agent = (
+        await storage.get_agent(user_id, leader_session.agent_id) if leader_session else None
+    )
+    leader = leader_agent.data.name if leader_agent else "Leader"
+    names: dict[str, str] = {}
+    if leader_agent:
+        names[leader_agent.id] = leader
+    for agent_id, usage in state.metrics.provider_usage.items():
+        names.setdefault(agent_id, _display(usage.agent_name))
+    by_session: dict[str, str] = {}
+    timeline: list[RoomEntry] = []
+    for task in state.tasks.values():
+        for assignment_session, assignment in task.assignments.items():
+            name = _display(assignment.agent_name) or names.get(assignment.agent_id, "")
+            names.setdefault(assignment.agent_id, name)
+            by_session[assignment_session] = name
+        for assignment in task.assignments.values():
+            timeline.append(RoomEntry(
+                at=assignment.created_at.isoformat(),
+                kind="assign",
+                sender=leader,
+                to=_display(assignment.agent_name),
+                text=assignment.goal[:_ROOM_TEXT],
+                after=[by_session.get(item, "") for item in assignment.depends_on],
+            ))
+    for event in state.events:
+        if event.stale:
+            continue
+        sender = names.get(event.source_agent_id or "", "") or by_session.get(event.source_session_id or "", "")
+        at = event.created_at.isoformat()
+        if event.kind == "customer_message":
+            timeline.append(RoomEntry(at=at, kind="customer", sender="Người dùng", to=leader,
+                                      text=event.content[:_ROOM_TEXT]))
+        elif event.kind == "customer_reply":
+            timeline.append(RoomEntry(at=at, kind="reply", sender=leader, to="Người dùng",
+                                      text=event.content[:_ROOM_TEXT]))
+        elif event.kind == "external_event":
+            if event.source_session_id == team.session_id:
+                timeline.append(RoomEntry(at=at, kind="partner_event", sender="Hệ thống đối tác",
+                                          text=event.content[:_ROOM_TEXT]))
+            else:
+                timeline.append(RoomEntry(at=at, kind="tool", sender=sender,
+                                          text=_room_tool_line(event.content)))
+        elif event.kind in {"result", "answer", "question", "progress", "error", "conflict",
+                            "requires_user_input", "user_input_proposal"}:
+            timeline.append(RoomEntry(
+                at=at,
+                kind=event.kind,
+                sender=sender,
+                to=leader if sender != leader else "",
+                text=event.content[:_ROOM_TEXT],
+            ))
+    timeline.sort(key=lambda entry: entry.at)
+    participants = [
+        RoomParticipant(
+            agent_id=agent_id,
+            name=names.get(agent_id) or _display(usage.agent_name),
+            model=usage.model,
+            calls=usage.calls,
+            input_tokens=usage.input_tokens,
+            cached_input_tokens=usage.cached_input_tokens,
+            output_tokens=usage.output_tokens,
+        )
+        for agent_id, usage in state.metrics.provider_usage.items()
+    ]
+    return RoomView(
+        participants=participants,
+        timeline=timeline,
+        packet_tokens=state.metrics.last_packet_tokens,
+        peak_packet_tokens=state.metrics.peak_packet_tokens,
+        packet_budget=SharedContextConfig.from_env().packet_max_tokens,
     )

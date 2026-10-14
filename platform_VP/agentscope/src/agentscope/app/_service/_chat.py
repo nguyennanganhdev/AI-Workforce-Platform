@@ -993,6 +993,9 @@ class ChatService:
             shared_context_attachment = ""
             shared_context_attachment_tokens = 0
             context_task_id: str | None = None
+            # A partner ticket's Leader speaks through CaseSay only; the case
+            # runtime records what it sent (see the case middleware).
+            partner_case = False
             customer_input_msgs = (
                 [input_msg]
                 if isinstance(input_msg, Msg)
@@ -1303,7 +1306,6 @@ class ChatService:
                     extras = list(await self._extra_agent_middlewares(*factory_args))
                 # A partner ticket's Leader waits for its room in its own case
                 # middleware and learns when the ticket's result is out.
-                partner_case = False
                 for extra in extras:
                     if await extra.get_middleware_key() == "partner_case":
                         partner_case = True
@@ -2402,7 +2404,7 @@ class ChatService:
                                     customer_output_session_id,
                                     msg.model_copy(deep=True),
                                 )
-                            if team is not None and is_reply_owner:
+                            if team is not None and is_reply_owner and not partner_case:
                                 reply_text = (msg.get_text_content() or "").strip()
                                 if reply_text:
                                     await self._shared_context.append_event(

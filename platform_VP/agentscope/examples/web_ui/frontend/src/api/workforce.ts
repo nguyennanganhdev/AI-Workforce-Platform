@@ -78,6 +78,34 @@ export interface WorkforceAgent {
 	evaluation: Record<string, unknown>;
 }
 
+/** A ticket's room as people read it (GET /workforce/console/sessions/{id}/room). */
+export interface RoomEntry {
+	at: string;
+	kind: string;
+	sender: string;
+	to: string;
+	text: string;
+	after: string[];
+}
+
+export interface RoomParticipant {
+	agent_id: string;
+	name: string;
+	model: string;
+	calls: number;
+	input_tokens: number;
+	cached_input_tokens: number;
+	output_tokens: number;
+}
+
+export interface RoomView {
+	participants: RoomParticipant[];
+	timeline: RoomEntry[];
+	packet_tokens: number;
+	peak_packet_tokens: number;
+	packet_budget: number;
+}
+
 export interface LeaderSession {
 	agent_id: string;
 	session_id: string;
@@ -120,4 +148,6 @@ export const workforceApi = {
 		),
 	bootstrapLeader: () => client.get<LeaderSession>('/workforce/console/leader/bootstrap'),
 	createTicket: () => client.post<LeaderSession>('/workforce/console/leader/tickets'),
+	room: (sessionId: string) =>
+		client.get<RoomView>(`/workforce/console/sessions/${encodeURIComponent(sessionId)}/room`),
 };

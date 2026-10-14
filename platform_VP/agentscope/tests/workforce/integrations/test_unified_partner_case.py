@@ -349,7 +349,8 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
                     route_id="route-1", tenant_id="tenant-1", partner_client_id="partner-1",
                     manager_account_id="manager-1", leader_agent_id="leader-vh", integration_id="pi-1",
                     config={"rules": RULES, "policy": {"approval_ttl_seconds": 600},
-                            "member_agents": {"leader-vh": COORDINATOR}}, tools=TOOLS,
+                            "member_agents": {"leader-vh": COORDINATOR},
+                            "ticket_title_fields": ["Mô tả của cư dân", "Căn"]}, tools=TOOLS,
                     created_at=NOW, updated_at=NOW,
                 ),
             )
@@ -620,6 +621,7 @@ class UnifiedPartnerCaseTest(_CaseHarness):
                 "client_reference": reference, "event_type": "job.accepted", "provider_version": 2,
                 "occurred_at": "2026-10-20T02:00:00.000000Z", "data": {"staff_name": "Bình", "eta": "09:30 20/10/2026"},
             })
+            self.runner._app.state.shared_context_storage = object()
             with patch("agentscope.app._shared_context.SharedContextService", Shared), \
                     patch.object(self.storage, "get_session", in_room):
                 accepted = await client.post("/workforce/v1/provider/job-events", content=raw, headers=headers)
@@ -628,6 +630,37 @@ class UnifiedPartnerCaseTest(_CaseHarness):
         self.assertEqual(("team-1", "external_event"), (event["team_id"], event["kind"]))
         self.assertIn("job.accepted", event["content"])
         self.assertIn("Bình", event["content"])
+
+    async def test_the_message_sent_is_the_rooms_reply(self):
+        shared = []
+
+        class Shared:
+            def __init__(self, *_args):
+                pass
+
+            async def append_event(self, **event):
+                shared.append(event)
+
+        async def say(tools):
+            for session in self.storage.sessions.values():
+                session.team_id = "team-1"
+            await call(tools, "CaseSay", text="Thợ đã nhận việc, bạn chờ thông báo tiếp nhé.", expects="none")
+
+        async def no_context(*_args):
+            return None
+
+        self.leader.scripts = [say]
+        self.runner._app.state.shared_context_storage = SimpleNamespace(get_team_shared_context=no_context)
+        with patch("agentscope.app._shared_context.SharedContextService", Shared):
+            async with self._client() as client:
+                await client.post("/workforce/v1/partner/requests", json=self._start())
+                self.assertEqual("succeeded", await self._run())
+        [event] = shared
+        self.assertEqual(
+            ("customer_reply", "Thợ đã nhận việc, bạn chờ thông báo tiếp nhé."),
+            (event["kind"], event["content"]),
+        )
+        self.assertIsNone(event["delta"])
 
     async def test_dispatch_progress_events_result_and_close_like_the_vinhomes_bridge(self):
         async def first_turn(tools):
@@ -680,7 +713,7 @@ class UnifiedPartnerCaseTest(_CaseHarness):
             self.assertEqual("awaiting_user", result["workflow_state"])
             # The ticket is a session of the console Leader: the Leader page lists it.
             [ticket] = self.storage.sessions.values()
-            self.assertEqual(("leader-console", "Phiếu đối tác T-77"), (ticket.agent_id, ticket.config.name))
+            self.assertEqual(("leader-console", "Rò nước bồn rửa · S1-1205"), (ticket.agent_id, ticket.config.name))
             self.assertEqual(1, len(result["result"]["messages"]))
             self.assertIn("đang chờ người nhận", result["result"]["messages"][0]["text"])
 
@@ -1048,6 +1081,18 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
         offered = [{"type": "function", "function": {"name": n}} for n in ("TeamSay", "CaseSay", "vh_ticket_get", "Bash")]
         await member.on_model_call(None, {"tools": offered}, next_handler)
         self.assertEqual(["TeamSay", "vh_ticket_get"], [t["function"]["name"] for t in seen["tools"]])
+
+
+class TicketTitleTest(unittest.TestCase):
+    def test_the_declared_fields_name_the_ticket(self):
+        from agentscope.app.workforce.integrations.unified._runner import ticket_title
+
+        self.assertEqual("Rò nước bồn rửa · S1-1205", ticket_title(HANDOVER, ["Mô tả của cư dân", "căn"]))
+        self.assertEqual("", ticket_title(HANDOVER, []))
+        self.assertEqual("", ticket_title(None, ["Căn"]))
+        long = ticket_title("Tiêu đề: " + "x" * 200, ["Tiêu đề"])
+        self.assertEqual(80, len(long))
+        self.assertTrue(long.endswith("…"))
 
 
 class PartnerFactTest(unittest.TestCase):
