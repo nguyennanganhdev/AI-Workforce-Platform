@@ -1,29 +1,46 @@
-# Session office
+# Shared session presentation
 
-`SessionWorkspace` keeps Chat mounted, defaults to Chat and stores the view preference
-under a namespaced session ID. Only the visible office is mounted. The small chat in
-Office uses the same composer, approvals and playback as the full Chat view.
+Both mock replay and backend sessions use `ChatContent` (SDK message bubbles,
+tool-call/results, reasoning, composer and stop button) inside `SessionWorkspace`.
+The workspace keeps Chat mounted and mounts the office only while visible.
 
-`SessionOfficeSnapshot` is the presentation boundary. It contains participant identity,
-status, current speech, phase and recent activity. It has no transport or backend types.
+## Sources and contracts
 
-- `pages/mock/office-adapter.ts` supplies the session roster from existing mock chat events.
-  Chat scripts remain unchanged.
-- `preview-adapter.ts` supplies known members of real backend sessions. Chat continues
-  to use the existing authenticated API and SSE connections.
-- Both adapters select `motion: 'demo'` to preserve the original office choreography,
-  including walking, meetings, work, approvals, pause, speed and restart. These are
-  explicitly labeled simulated movements, independent of actual backend execution.
-- `motion: 'events'` is the integration boundary for a future backend activity adapter;
-  this disables the demo and applies snapshot state through `OfficeSim.applySession`.
-  Network calls do not belong in drawing components.
+- `../session/presentation.ts`: `SessionPresentation` contains SDK `Msg[]`, explicit
+  participant IDs, active agent and lifecycle phase. `officeFromSession` derives the
+  office from this model, deduplicating message IDs for snapshot/reconnect updates.
+- `pages/mock/session-adapter.ts`: translates the existing script into SDK messages.
+  Scripts, branching, approvals and timings remain local fixtures; no fake backend
+  requests or database writes. The existing Workforce approval card and reply/provider
+  gates use local callbacks. These are not fabricated agent-tool approval events.
+- `../session/live-adapter.ts`: consumes the already-open `useMessages` history/SSE,
+  `SessionView.status` and team roster inside `ChatViewport`. No second SSE stream.
+  Pending confirmation/external execution takes priority over running. Tool results
+  clear stale pending calls. Loading a different session hides previous messages.
 
-There is no standalone unauthenticated mock page. `/mock/chat` is a legacy redirect
-to `/chat` behind the normal auth flow. Existing sample conversations remain available
-inside the normal chat page, with their existing scripts.
+Both sources select `motion: 'events'`: working screens, speech and activity reflect
+chat, with no unrelated meetings or handoffs. Explicit movement events can be added
+later; text is never interpreted as a command to animate a meeting. The standalone
+`runDemo` remains available internally but is not used by session workspaces.
 
-Only the view preference persists across reloads. Mock playback remains in-memory as
-before. `/agents/office` redirects to `/chat`, where a session can be selected.
+## Limits
 
-Validation: `node --experimental-strip-types --test tests/session-office.test.mjs`
-from the frontend directory (Node 24).
+The current backend stream belongs to the owner of the viewed session. Other team
+members are displayed, but their live status is not invented from names or the owner's
+status. Per-member activity needs explicit backend events or a separate subscription.
+The backend does not expose all mock workflow gates on the same stream yet. Mock
+provider delivery and workforce approval gates remain clearly local simulations.
+
+The tab preference persists per session; mock playback is in memory. `/mock/chat`
+remains a redirect through normal authentication; there is no public mock route.
+
+## Validation
+
+From frontend, Node 24:
+
+```sh
+node --experimental-strip-types tests/session-presentation.test.mjs
+node --experimental-strip-types tests/session-office.test.mjs
+pnpm exec tsc -b
+pnpm run build
+```

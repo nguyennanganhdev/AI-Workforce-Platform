@@ -49,8 +49,6 @@ import {
 	useSidebar,
 } from '@/components/ui/sidebar';
 import { AudioProvider } from '@/context/AudioContext';
-import { previewOfficeSnapshot } from '@/features/workforce/session-office/preview-adapter';
-import { SessionWorkspace } from '@/features/workforce/session-office/SessionWorkspace';
 import { useAgents } from '@/hooks/useAgents';
 import { useGroupChats } from '@/hooks/useGroupChats';
 import { useSessions } from '@/hooks/useSessions';
@@ -484,61 +482,40 @@ const ChatPageInner = ({ onAgentsChanged }: { onAgentsChanged: () => void }) => 
 				{demoId ? (
 					<MockChat conversationId={demoId} hideSidebar />
 				) : (
-					<SessionWorkspace
-						snapshot={
-							effectiveSessionId
-								? previewOfficeSnapshot(
-										`${effectiveAgentId}:${effectiveSessionId}`,
-										focusedMember
-											? [focusedMember.agent]
-											: [
-													...(selectedAgent ? [selectedAgent] : []),
-													...(currentView?.team?.members.map(
-														(member) => member.agent,
-													) ?? []),
-													...agents.filter((agent) =>
-														activeGroup?.memberIds.includes(agent.id),
-													),
-												],
-									)
+					<ChatViewport
+						agentId={effectiveAgentId}
+						sessionId={effectiveSessionId}
+						onSessionsChanged={refetchSessions}
+						agentName={
+							focusedMember?.agent.data.name ??
+							(activeGroup ? activeGroup.name : agentName)
+						}
+						headerSlot={
+							focusedMember ? undefined : activeGroup ? (
+								// A group's header names it, then who leads and how many
+								// are in it; its one chat needs no switcher.
+								<span className="flex min-w-0 items-center gap-1.5 px-2 text-[13px]/[18px] text-[var(--cue-text-tertiary,var(--muted-foreground))]">
+									<Users className="size-3.5 shrink-0" />
+									<span className="truncate">
+										{t('groupChat.headerNote', {
+											leader: agentName,
+											count: activeGroup.memberIds.length + 1,
+										})}
+									</span>
+								</span>
+							) : (
+								sessionSwitcher
+							)
+						}
+						onOpenAgentSettings={
+							!focusedMember && selectedAgent?.editable
+								? () => {
+										setTargetAgent(selectedAgent);
+										setEditOpen(true);
+									}
 								: undefined
 						}
-					>
-						<ChatViewport
-							agentId={effectiveAgentId}
-							sessionId={effectiveSessionId}
-							onSessionsChanged={refetchSessions}
-							agentName={
-								focusedMember?.agent.data.name ??
-								(activeGroup ? activeGroup.name : agentName)
-							}
-							headerSlot={
-								focusedMember ? undefined : activeGroup ? (
-									// A group's header names it, then who leads and how many
-									// are in it; its one chat needs no switcher.
-									<span className="flex min-w-0 items-center gap-1.5 px-2 text-[13px]/[18px] text-[var(--cue-text-tertiary,var(--muted-foreground))]">
-										<Users className="size-3.5 shrink-0" />
-										<span className="truncate">
-											{t('groupChat.headerNote', {
-												leader: agentName,
-												count: activeGroup.memberIds.length + 1,
-											})}
-										</span>
-									</span>
-								) : (
-									sessionSwitcher
-								)
-							}
-							onOpenAgentSettings={
-								!focusedMember && selectedAgent?.editable
-									? () => {
-											setTargetAgent(selectedAgent);
-											setEditOpen(true);
-										}
-									: undefined
-							}
-						/>
-					</SessionWorkspace>
+					/>
 				)}
 			</div>
 			{targetAgent && (

@@ -1,7 +1,8 @@
 /** Presentation contract. Adapters translate mock playback or backend events into this snapshot. */
 export interface SessionOfficeSnapshot {
 	id: string;
-	source: 'mock' | 'preview';
+	source: 'mock' | 'preview' | 'live';
+	statusLabel?: string;
 	/** Demo preserves the original office choreography; events applies backend-derived positions/status later. */
 	motion: 'demo' | 'events';
 	participants: {

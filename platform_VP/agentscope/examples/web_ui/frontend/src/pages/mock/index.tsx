@@ -1,6 +1,6 @@
 import type { ContentBlock } from '@agentscope-ai/agentscope/message';
 import { Pin, RadioTower, RotateCcw, Search } from 'lucide-react';
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 
 import {
 	MOCK_AGENTS,
@@ -10,19 +10,20 @@ import {
 	type MockConversation,
 	type MockEvent,
 } from './chat-mock-data';
-import { Enter, FlyIn } from './motion';
-import { mockOfficeSnapshot } from './office-adapter';
+import { FlyIn } from './motion';
 import { Participants } from './participants';
 import { durationOf } from './playback';
-import { AgentSticker, StateBadge, TranscriptEvent } from './transcript';
+import { mockSessionPresentation } from './session-adapter';
+import { AgentSticker, StateBadge } from './transcript';
+import { ChatContent } from '@/components/chat/ChatContent';
 import { ChoiceCard } from '@/components/chat/ChoiceCard';
-import { TextInput } from '@/components/chat/TextInput';
 import { Brand } from '@/components/layout/Brand';
 import { SELECTED_ROW } from '@/components/layout/selected-row';
 import { Button } from '@/components/ui/button';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { WorkforceApprovalCard } from '@/features/workforce/approvals';
+import { officeFromSession } from '@/features/workforce/session/presentation';
 import { SessionWorkspace } from '@/features/workforce/session-office/SessionWorkspace';
 import { cn } from '@/lib/utils';
 import 'streamdown/styles.css';
@@ -34,6 +35,7 @@ import 'streamdown/styles.css';
 interface Playback {
 	count: number;
 	busy: boolean;
+	paused?: boolean;
 	/** Replaces the conversation's own script once a branch is taken (a refused approval). */
 	events?: MockEvent[];
 }
@@ -210,15 +212,14 @@ export function MockChat({
 	const [playback, setPlayback] = useState<Record<string, Playback>>({});
 	/** What was typed into the composer in place of a scripted reply, by event id. */
 	const [typed, setTyped] = useState<Record<string, string>>({});
-	const transcriptEnd = useRef<HTMLDivElement>(null);
 
 	const active = MOCK_CONVERSATIONS.find((c) => c.id === activeId) ?? MOCK_CONVERSATIONS[0];
 	const play = playback[active.id] ?? START;
 	const events = play.events ?? active.events;
-	const shown = useMemo(() => events.slice(0, play.count), [events, play.count]);
+	const shown = events.slice(0, play.count);
 	const current = shown[shown.length - 1];
 	const gate = current.kind === 'gate' && !play.busy ? current : null;
-	const finished = !play.busy && !gate;
+	const finished = !play.busy && !gate && !play.paused;
 
 	const participants = participantsOf(shown, play.busy);
 	const activeAgent = play.busy && 'agent' in current ? (current.agent ?? null) : null;
@@ -253,11 +254,6 @@ export function MockChat({
 		return () => clearTimeout(timer);
 	}, [active, play.busy, play.count, current]);
 
-	// Keep the newest event in view.
-	useEffect(() => {
-		transcriptEnd.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
-	}, [activeId, play.count, play.busy]);
-
 	/** Past the gate, onto whatever the script has after it. */
 	const advance = () =>
 		update(active.id, (prev) => ({ ...prev, count: prev.count + 1, busy: true }));
@@ -283,15 +279,26 @@ export function MockChat({
 		advance();
 	};
 
-	const composerHint = finished
-		? 'Kịch bản đã kết thúc. Bấm “Phát lại” để xem từ đầu.'
-		: gate?.action === 'reply'
-			? 'Nhập câu trả lời…'
-			: gate?.action === 'provider'
-				? 'Phiên đang chờ cập nhật từ nhà cung cấp…'
-				: gate?.action === 'approval'
-					? 'Phiên đang chờ đồng ý giao dịch…'
-					: 'Agent đang xử lý…';
+	const composerHint = play.paused
+		? 'Đã tạm dừng. Bấm Tiếp tục để chạy tiếp.'
+		: finished
+			? 'Kịch bản đã kết thúc. Bấm “Phát lại” để xem từ đầu.'
+			: gate?.action === 'reply'
+				? 'Nhập câu trả lời…'
+				: gate?.action === 'provider'
+					? 'Phiên đang chờ cập nhật từ nhà cung cấp…'
+					: gate?.action === 'approval'
+						? 'Phiên đang chờ đồng ý giao dịch…'
+						: 'Agent đang xử lý…';
+
+	const presentation = mockSessionPresentation(
+		active.id,
+		participants,
+		shown,
+		play.busy,
+		typed,
+		play.paused,
+	);
 
 	return (
 		<div className="flex size-full">
@@ -407,7 +414,13 @@ export function MockChat({
 						size="sm"
 						onClick={() => {
 							update(active.id, () => START);
-							setTyped({});
+							setTyped((previous) =>
+								Object.fromEntries(
+									Object.entries(previous).filter(
+										([id]) => !events.some((event) => event.id === id),
+									),
+								),
+							);
 						}}
 					>
 						<RotateCcw />
@@ -415,47 +428,46 @@ export function MockChat({
 					</Button>
 				</header>
 
-				<SessionWorkspace
-					snapshot={mockOfficeSnapshot(active.id, participants, shown, play.busy)}
-				>
-					<div className="min-h-0 flex-1 overflow-y-auto">
-						<div className="flex w-full max-w-3xl flex-col gap-6 px-4 py-4">
-							{shown.map((event, index) =>
-								event.kind === 'gate' ? null : (
-									// Only the event that just arrived rises in; reopening a
-									// conversation draws its history still.
-									<Enter
-										key={event.id}
-										animate={play.busy && index === shown.length - 1}
-									>
-										<TranscriptEvent
-											event={event}
-											running={play.busy && index === shown.length - 1}
-											typedText={typed[event.id]}
-										/>
-									</Enter>
-								),
-							)}
-							{gate && (
-								<Enter key={gate.id} animate>
-									<Gate gate={gate} onAdvance={advance} onReject={reject} />
-								</Enter>
-							)}
-							<div ref={transcriptEnd} />
-						</div>
-					</div>
-
-					{/* Open only while the session is waiting for a reply — the one
-				    state in which a real session accepts a message. Attaching is
-				    off: the mock has nowhere to upload to. */}
-					<TextInput
-						key={`${active.id}:${gate?.id ?? 'closed'}`}
-						className="w-full shrink-0 px-4 pb-4"
-						placeholder={composerHint}
+				<SessionWorkspace snapshot={officeFromSession(presentation)}>
+					<ChatContent
+						msgs={presentation.messages}
+						phase={play.busy ? 'streaming' : 'idle'}
 						disabled={gate?.action !== 'reply'}
 						onSend={handleSend}
+						onInterrupt={() =>
+							update(active.id, (prev) => ({ ...prev, busy: false, paused: true }))
+						}
+						onUserConfirm={async () => {}}
+						footerSlot={
+							gate ? (
+								<Gate
+									key={`${active.id}:${gate.id}`}
+									gate={gate}
+									onAdvance={advance}
+									onReject={reject}
+								/>
+							) : play.paused ? (
+								<Button
+									onClick={() =>
+										update(active.id, (prev) => ({
+											...prev,
+											busy: true,
+											paused: false,
+										}))
+									}
+								>
+									Tiếp tục
+								</Button>
+							) : null
+						}
+						composerPlaceholder={composerHint}
+						showWorkspace={false}
 						allowedInputTypes={[]}
 						fileProcessor={async () => null}
+						agentId={null}
+						sessionId={null}
+						cwd={null}
+						onCwdChange={() => {}}
 					/>
 				</SessionWorkspace>
 			</main>

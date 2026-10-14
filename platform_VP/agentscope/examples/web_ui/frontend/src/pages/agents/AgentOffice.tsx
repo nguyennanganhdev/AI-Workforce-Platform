@@ -898,7 +898,7 @@ function OfficeChrome({
 							sim.phase === 'idle' ? 'bg-[#b5b5b5]' : 'ag-ping bg-[#34c759]',
 						)}
 					/>
-					{t(`agents.office.phase.${sim.phase}`)}
+					{session?.statusLabel ?? t(`agents.office.phase.${sim.phase}`)}
 				</span>
 				{session?.motion !== 'events' && (
 					<div className={cn(FLOAT, 'ml-auto flex items-center gap-0.5 p-0.5')}>

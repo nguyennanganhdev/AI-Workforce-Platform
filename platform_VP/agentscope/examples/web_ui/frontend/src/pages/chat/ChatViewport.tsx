@@ -50,6 +50,9 @@ import {
 	ResizablePanelGroup,
 } from '@/components/ui/resizable.tsx';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import { liveSessionPresentation } from '@/features/workforce/session/live-adapter';
+import { officeFromSession } from '@/features/workforce/session/presentation';
+import { SessionWorkspace } from '@/features/workforce/session-office/SessionWorkspace';
 import { useAvailableModels } from '@/hooks/useAvailableModels';
 import { useKnowledgeBaseMiddlewareSchema } from '@/hooks/useKnowledgeBaseMiddlewareSchema';
 import { useKnowledgeBases } from '@/hooks/useKnowledgeBases';
@@ -751,288 +754,314 @@ export function ChatViewport({
 		);
 	};
 
+	const office =
+		sessionId && agentId
+			? officeFromSession(
+					liveSessionPresentation({
+						id: `${agentId}:${sessionId}`,
+						ownerId: agentId,
+						ownerName: agentName ?? 'Agent',
+						agents: [
+							...(view?.team?.leader_agent ? [view.team.leader_agent] : []),
+							...(view?.team?.members.map((member) => member.agent) ?? []),
+						],
+						messages: msgs,
+						replyPhase: phase,
+						status: view?.status,
+						awaitingApproval: subagentHitl.length > 0,
+						loading: messagesLoading,
+					}),
+				)
+			: undefined;
+
 	return (
 		<>
-			<main className="flex size-full">
-				<ResizablePanelGroup orientation="horizontal">
-					<ResizablePanel className="flex flex-1 bg-background" minSize="24rem">
-						<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-hidden">
-							{/* 48px header, no rule under it: the agent on the left
+			<SessionWorkspace snapshot={office}>
+				<main className="flex size-full">
+					<ResizablePanelGroup orientation="horizontal">
+						<ResizablePanel className="flex flex-1 bg-background" minSize="24rem">
+							<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-hidden">
+								{/* 48px header, no rule under it: the agent on the left
 							    (opens its settings), the session's own controls and
 							    the side-panel toggles on the right. */}
-							<div className="flex h-12 shrink-0 flex-row items-center justify-between gap-x-2 px-2">
-								<div className="flex min-w-0 flex-row items-center gap-x-1">
-									<SidebarTrigger className="md:hidden" />
-									{agentId && (
-										<button
-											type="button"
-											onClick={onOpenAgentSettings}
-											disabled={!onOpenAgentSettings}
-											title={
-												onOpenAgentSettings
-													? t('chat.header.openProfile', {
-															name: agentName ?? '',
-														})
-													: undefined
-											}
-											className="flex h-8 min-w-0 items-center gap-2 rounded-lg px-2 enabled:hover:bg-[var(--cue-bg-subtle,var(--accent))]"
-										>
-											<ClayAvatar
-												id={agentId}
-												label={agentName || undefined}
-												size={20}
-											/>
-											<span className="truncate text-[17px]/6 font-medium text-foreground">
-												{agentName}
-											</span>
-										</button>
-									)}
-									{/* The open session's name, after the agent. Withheld
+								<div className="flex h-12 shrink-0 flex-row items-center justify-between gap-x-2 px-2">
+									<div className="flex min-w-0 flex-row items-center gap-x-1">
+										<SidebarTrigger className="md:hidden" />
+										{agentId && (
+											<button
+												type="button"
+												onClick={onOpenAgentSettings}
+												disabled={!onOpenAgentSettings}
+												title={
+													onOpenAgentSettings
+														? t('chat.header.openProfile', {
+																name: agentName ?? '',
+															})
+														: undefined
+												}
+												className="flex h-8 min-w-0 items-center gap-2 rounded-lg px-2 enabled:hover:bg-[var(--cue-bg-subtle,var(--accent))]"
+											>
+												<ClayAvatar
+													id={agentId}
+													label={agentName || undefined}
+													size={20}
+												/>
+												<span className="truncate text-[17px]/6 font-medium text-foreground">
+													{agentName}
+												</span>
+											</button>
+										)}
+										{/* The open session's name, after the agent. Withheld
 									    until the session has something in it: an
 									    untouched one is still named after the timestamp
 									    it was created at. */}
-									{headerSlot ??
-										(msgs.length > 0 && view?.session.config.name && (
-											<span
-												className="truncate text-[13px]/[18px] text-[var(--cue-text-tertiary,var(--muted-foreground))]"
-												title={view.session.config.name}
-											>
-												{view.session.config.name}
-											</span>
-										))}
-								</div>
-								{/* Never squeezed by a long session name: the
+										{headerSlot ??
+											(msgs.length > 0 && view?.session.config.name && (
+												<span
+													className="truncate text-[13px]/[18px] text-[var(--cue-text-tertiary,var(--muted-foreground))]"
+													title={view.session.config.name}
+												>
+													{view.session.config.name}
+												</span>
+											))}
+									</div>
+									{/* Never squeezed by a long session name: the
 								    name truncates instead. */}
-								<div className="flex shrink-0 flex-row items-center gap-x-1">
-									<LlmSelect
-										id="tour-llm-select"
-										variant="ghost"
-										className="text-[13px] text-muted-foreground hover:text-foreground"
-										value={selectedModel}
-										onChange={handleLlmChange}
-										onAddCredential={() => setCredentialOpen(true)}
-										refetchTrigger={credentialRefetchTrigger}
-										disabled={configPending}
-									/>
-									<ModelParametersPopover
-										selectedModel={selectedModel}
-										modelCard={selectedModelCard}
-										onChange={handleParametersChange}
-										selectedFallbackModel={selectedFallbackModel}
-										onFallbackChange={handleFallbackChange}
-										selectedTTSModel={selectedTTSModel}
-										onTTSChange={handleTTSChange}
-										disabled={configPending}
-									/>
-									<PermissionModeSelect
-										id="tour-permission-mode"
-										variant={'ghost'}
-										className="text-[13px] text-muted-foreground hover:text-foreground"
-										value={selectedPermissionMode}
-										disabled={!sessionId || configPending}
-										onChange={handlePermissionModeChange}
-									/>
-									{/* Quick toggles for the two panels used most —
+									<div className="flex shrink-0 flex-row items-center gap-x-1">
+										<LlmSelect
+											id="tour-llm-select"
+											variant="ghost"
+											className="text-[13px] text-muted-foreground hover:text-foreground"
+											value={selectedModel}
+											onChange={handleLlmChange}
+											onAddCredential={() => setCredentialOpen(true)}
+											refetchTrigger={credentialRefetchTrigger}
+											disabled={configPending}
+										/>
+										<ModelParametersPopover
+											selectedModel={selectedModel}
+											modelCard={selectedModelCard}
+											onChange={handleParametersChange}
+											selectedFallbackModel={selectedFallbackModel}
+											onFallbackChange={handleFallbackChange}
+											selectedTTSModel={selectedTTSModel}
+											onTTSChange={handleTTSChange}
+											disabled={configPending}
+										/>
+										<PermissionModeSelect
+											id="tour-permission-mode"
+											variant={'ghost'}
+											className="text-[13px] text-muted-foreground hover:text-foreground"
+											value={selectedPermissionMode}
+											disabled={!sessionId || configPending}
+											onChange={handlePermissionModeChange}
+										/>
+										{/* Quick toggles for the two panels used most —
 									    team (who is working) and plan (what they are
 									    doing) — then the full list behind the menu. An
 									    open panel's toggle keeps a grey fill. */}
-									<Button
-										variant="ghost"
-										size="icon"
-										aria-label={t('common.team')}
-										title={t('common.team')}
-										aria-pressed={isPanelOpen('team')}
-										className="aria-pressed:bg-[var(--cue-bg-subtle,var(--accent))]"
-										onClick={() => togglePanel('team')}
-									>
-										<SquareUser className="size-5" />
-									</Button>
-									<Button
-										variant="ghost"
-										size="icon"
-										aria-label={t('panel.plan.title')}
-										title={t('panel.plan.title')}
-										aria-pressed={isPanelOpen('plan')}
-										className="aria-pressed:bg-[var(--cue-bg-subtle,var(--accent))]"
-										onClick={() => togglePanel('plan')}
-									>
-										<ListTodo className="size-5" />
-									</Button>
-									<DropdownMenu>
-										<DropdownMenuTrigger asChild>
-											<Button
-												variant="ghost"
-												size="icon"
-												aria-label={t('chat.header.panels')}
-												title={t('chat.header.panels')}
-												className={
-													panelLayout.length > 0
-														? 'bg-[var(--cue-bg-subtle,var(--accent))]'
-														: undefined
-												}
-											>
-												<PanelRight className="size-5" />
-											</Button>
-										</DropdownMenuTrigger>
-										<DropdownMenuContent align="end" className="w-auto">
-											<DropdownMenuCheckboxItem
-												checked={isPanelOpen('plan')}
-												onCheckedChange={() => togglePanel('plan')}
-												onSelect={(e) => e.preventDefault()}
-											>
-												<ListTodo />
-												{t('panel.plan.title')}
-											</DropdownMenuCheckboxItem>
-											<DropdownMenuCheckboxItem
-												checked={isPanelOpen('mcp')}
-												onCheckedChange={() => togglePanel('mcp')}
-												onSelect={(e) => e.preventDefault()}
-											>
-												<MCPSvg className="size-4" />
-												MCP
-											</DropdownMenuCheckboxItem>
-											<DropdownMenuCheckboxItem
-												checked={isPanelOpen('skill')}
-												onCheckedChange={() => togglePanel('skill')}
-												onSelect={(e) => e.preventDefault()}
-											>
-												<BookText />
-												{t('panel.skill.title')}
-											</DropdownMenuCheckboxItem>
-											<DropdownMenuCheckboxItem
-												checked={isPanelOpen('permission')}
-												onCheckedChange={() => togglePanel('permission')}
-												onSelect={(e) => e.preventDefault()}
-											>
-												<ShieldCheck />
-												{t('panel.permission.title')}
-											</DropdownMenuCheckboxItem>
-											<DropdownMenuCheckboxItem
-												checked={isPanelOpen('knowledge')}
-												onCheckedChange={() => togglePanel('knowledge')}
-												onSelect={(e) => e.preventDefault()}
-											>
-												<Database />
-												{t('panel.knowledge.title')}
-											</DropdownMenuCheckboxItem>
-											<DropdownMenuCheckboxItem
-												checked={isPanelOpen('team')}
-												onCheckedChange={() => togglePanel('team')}
-												onSelect={(e) => e.preventDefault()}
-											>
-												<UsersRound />
-												{t('common.team')}
-											</DropdownMenuCheckboxItem>
-										</DropdownMenuContent>
-									</DropdownMenu>
+										<Button
+											variant="ghost"
+											size="icon"
+											aria-label={t('common.team')}
+											title={t('common.team')}
+											aria-pressed={isPanelOpen('team')}
+											className="aria-pressed:bg-[var(--cue-bg-subtle,var(--accent))]"
+											onClick={() => togglePanel('team')}
+										>
+											<SquareUser className="size-5" />
+										</Button>
+										<Button
+											variant="ghost"
+											size="icon"
+											aria-label={t('panel.plan.title')}
+											title={t('panel.plan.title')}
+											aria-pressed={isPanelOpen('plan')}
+											className="aria-pressed:bg-[var(--cue-bg-subtle,var(--accent))]"
+											onClick={() => togglePanel('plan')}
+										>
+											<ListTodo className="size-5" />
+										</Button>
+										<DropdownMenu>
+											<DropdownMenuTrigger asChild>
+												<Button
+													variant="ghost"
+													size="icon"
+													aria-label={t('chat.header.panels')}
+													title={t('chat.header.panels')}
+													className={
+														panelLayout.length > 0
+															? 'bg-[var(--cue-bg-subtle,var(--accent))]'
+															: undefined
+													}
+												>
+													<PanelRight className="size-5" />
+												</Button>
+											</DropdownMenuTrigger>
+											<DropdownMenuContent align="end" className="w-auto">
+												<DropdownMenuCheckboxItem
+													checked={isPanelOpen('plan')}
+													onCheckedChange={() => togglePanel('plan')}
+													onSelect={(e) => e.preventDefault()}
+												>
+													<ListTodo />
+													{t('panel.plan.title')}
+												</DropdownMenuCheckboxItem>
+												<DropdownMenuCheckboxItem
+													checked={isPanelOpen('mcp')}
+													onCheckedChange={() => togglePanel('mcp')}
+													onSelect={(e) => e.preventDefault()}
+												>
+													<MCPSvg className="size-4" />
+													MCP
+												</DropdownMenuCheckboxItem>
+												<DropdownMenuCheckboxItem
+													checked={isPanelOpen('skill')}
+													onCheckedChange={() => togglePanel('skill')}
+													onSelect={(e) => e.preventDefault()}
+												>
+													<BookText />
+													{t('panel.skill.title')}
+												</DropdownMenuCheckboxItem>
+												<DropdownMenuCheckboxItem
+													checked={isPanelOpen('permission')}
+													onCheckedChange={() =>
+														togglePanel('permission')
+													}
+													onSelect={(e) => e.preventDefault()}
+												>
+													<ShieldCheck />
+													{t('panel.permission.title')}
+												</DropdownMenuCheckboxItem>
+												<DropdownMenuCheckboxItem
+													checked={isPanelOpen('knowledge')}
+													onCheckedChange={() => togglePanel('knowledge')}
+													onSelect={(e) => e.preventDefault()}
+												>
+													<Database />
+													{t('panel.knowledge.title')}
+												</DropdownMenuCheckboxItem>
+												<DropdownMenuCheckboxItem
+													checked={isPanelOpen('team')}
+													onCheckedChange={() => togglePanel('team')}
+													onSelect={(e) => e.preventDefault()}
+												>
+													<UsersRound />
+													{t('common.team')}
+												</DropdownMenuCheckboxItem>
+											</DropdownMenuContent>
+										</DropdownMenu>
+									</div>
 								</div>
-							</div>
-							<div className="relative flex min-h-0 flex-1 overflow-hidden">
-								<ChatContent
-									className="w-full"
-									agentName={agentName}
-									msgs={msgs}
-									loading={messagesLoading}
-									agentId={agentId}
-									sessionId={sessionId}
-									cwd={view?.session.config.cwd ?? null}
-									onCwdChange={handleCwdChange}
-									git={workspaceStatus?.git ?? null}
-									onRefreshGit={refetchWorkspaceStatus}
-									phase={phase}
-									disabled={selectedModel === null}
-									onSend={send}
-									onUserConfirm={onUserConfirm}
-									onInterrupt={interrupt}
-									// cwd={
-									// 	{cwd: view?.session.config.cwd, git: {
-									// 		branch: 'main',
-									// 		deletion: 0,
-									// 		addition: 0,
-									// 	}}
-									// }
-									footerSlot={
-										subagentHitl.length > 0 ? (
-											<SubagentHitlCard
-												key={`${subagentHitl[0].worker_session_id}:${subagentHitl[0].reply_id}`}
-												entry={subagentHitl[0]}
-												onConfirm={(toolCall, confirm, rules) =>
-													onSubagentConfirm(
-														subagentHitl[0],
-														toolCall,
-														confirm,
-														rules,
-													)
-												}
-											/>
-										) : null
-									}
-									allowedInputTypes={(
-										selectedModelCard?.input_types ?? []
-									).filter(
-										(t) =>
-											/^(image|video|audio|text)\/.+/.test(t) ||
-											t === 'application/pdf' ||
-											t.startsWith('application/vnd.') ||
-											t.startsWith('application/msword') ||
-											t.startsWith('application/vnd.openxmlformats'),
-									)}
-									fileProcessor={async (file) => {
-										const filePath = (file as File & { path?: string }).path;
-										if (filePath) {
+								<div className="relative flex min-h-0 flex-1 overflow-hidden">
+									<ChatContent
+										className="w-full"
+										agentName={agentName}
+										msgs={msgs}
+										loading={messagesLoading}
+										agentId={agentId}
+										sessionId={sessionId}
+										cwd={view?.session.config.cwd ?? null}
+										onCwdChange={handleCwdChange}
+										git={workspaceStatus?.git ?? null}
+										onRefreshGit={refetchWorkspaceStatus}
+										phase={phase}
+										disabled={selectedModel === null}
+										onSend={send}
+										onUserConfirm={onUserConfirm}
+										onInterrupt={interrupt}
+										// cwd={
+										// 	{cwd: view?.session.config.cwd, git: {
+										// 		branch: 'main',
+										// 		deletion: 0,
+										// 		addition: 0,
+										// 	}}
+										// }
+										footerSlot={
+											subagentHitl.length > 0 ? (
+												<SubagentHitlCard
+													key={`${subagentHitl[0].worker_session_id}:${subagentHitl[0].reply_id}`}
+													entry={subagentHitl[0]}
+													onConfirm={(toolCall, confirm, rules) =>
+														onSubagentConfirm(
+															subagentHitl[0],
+															toolCall,
+															confirm,
+															rules,
+														)
+													}
+												/>
+											) : null
+										}
+										allowedInputTypes={(
+											selectedModelCard?.input_types ?? []
+										).filter(
+											(t) =>
+												/^(image|video|audio|text)\/.+/.test(t) ||
+												t === 'application/pdf' ||
+												t.startsWith('application/vnd.') ||
+												t.startsWith('application/msword') ||
+												t.startsWith('application/vnd.openxmlformats'),
+										)}
+										fileProcessor={async (file) => {
+											const filePath = (file as File & { path?: string })
+												.path;
+											if (filePath) {
+												return {
+													id: crypto.randomUUID(),
+													type: 'data' as const,
+													source: {
+														type: 'url' as const,
+														url: `file://${filePath}`,
+														media_type:
+															file.type || 'application/octet-stream',
+													},
+													name: file.name,
+													created_at: new Date().toISOString(),
+												};
+											}
+											if (file.type === 'text/plain') {
+												const text = await file.text();
+												return {
+													id: crypto.randomUUID(),
+													type: 'text' as const,
+													text: `[File: ${file.name}]\n${text}`,
+													created_at: new Date().toISOString(),
+												};
+											}
+											const buffer = await file.arrayBuffer();
+											const bytes = new Uint8Array(buffer);
+											let binary = '';
+											for (let i = 0; i < bytes.byteLength; i++) {
+												binary += String.fromCharCode(bytes[i]);
+											}
+											const base64 = btoa(binary);
 											return {
 												id: crypto.randomUUID(),
 												type: 'data' as const,
 												source: {
-													type: 'url' as const,
-													url: `file://${filePath}`,
+													type: 'base64' as const,
 													media_type:
 														file.type || 'application/octet-stream',
+													data: base64,
 												},
 												name: file.name,
 												created_at: new Date().toISOString(),
 											};
-										}
-										if (file.type === 'text/plain') {
-											const text = await file.text();
-											return {
-												id: crypto.randomUUID(),
-												type: 'text' as const,
-												text: `[File: ${file.name}]\n${text}`,
-												created_at: new Date().toISOString(),
-											};
-										}
-										const buffer = await file.arrayBuffer();
-										const bytes = new Uint8Array(buffer);
-										let binary = '';
-										for (let i = 0; i < bytes.byteLength; i++) {
-											binary += String.fromCharCode(bytes[i]);
-										}
-										const base64 = btoa(binary);
-										return {
-											id: crypto.randomUUID(),
-											type: 'data' as const,
-											source: {
-												type: 'base64' as const,
-												media_type: file.type || 'application/octet-stream',
-												data: base64,
-											},
-											name: file.name,
-											created_at: new Date().toISOString(),
-										};
-									}}
-								/>
+										}}
+									/>
+								</div>
 							</div>
-						</div>
-					</ResizablePanel>
-					{/* The side panels push the chat narrower rather than
+						</ResizablePanel>
+						{/* The side panels push the chat narrower rather than
 					    covering it; a 1px rule separates them. */}
-					{panelLayout.length > 0 && (
-						<ResizableHandle className="w-px bg-[var(--cue-divider,var(--border))]" />
-					)}
-					<PanelDock layout={panelLayout} panels={panels} onClosePanel={closePanel} />
-				</ResizablePanelGroup>
-			</main>
+						{panelLayout.length > 0 && (
+							<ResizableHandle className="w-px bg-[var(--cue-divider,var(--border))]" />
+						)}
+						<PanelDock layout={panelLayout} panels={panels} onClosePanel={closePanel} />
+					</ResizablePanelGroup>
+				</main>
+			</SessionWorkspace>
 			<CreateCredentialDialog
 				open={credentialOpen}
 				onOpenChange={setCredentialOpen}

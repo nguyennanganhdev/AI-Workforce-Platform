@@ -63,6 +63,8 @@ function markerStamp(at: Date, previous: Date, language: string): string {
 }
 
 interface ChatContentProps {
+	composerPlaceholder?: string;
+	showWorkspace?: boolean;
 	msgs: Msg[];
 	/**
 	 * Whether the history for the currently selected session is still on
@@ -118,6 +120,8 @@ interface ChatContentProps {
 
 const ChatContentComponent: React.FC<ChatContentProps> = ({
 	msgs,
+	composerPlaceholder,
+	showWorkspace = true,
 	loading = false,
 	phase,
 	disabled,
@@ -315,9 +319,10 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 					<TextInput
 						className="w-full"
 						placeholder={
-							agentName
+							composerPlaceholder ??
+							(agentName
 								? t('chat.messagePlaceholder', { name: agentName })
-								: undefined
+								: undefined)
 						}
 						onSend={onSend}
 						disabled={disabled}
@@ -328,12 +333,14 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 						onInterrupt={onInterrupt}
 						headerSlot={
 							<div className="flex w-full items-center justify-between pb-1.5 text-[13px] text-muted-foreground">
-								<WorkingDirectoryDialog
-									agentId={agentId}
-									sessionId={sessionId}
-									value={cwd}
-									onChange={onCwdChange}
-								/>
+								{showWorkspace && (
+									<WorkingDirectoryDialog
+										agentId={agentId}
+										sessionId={sessionId}
+										value={cwd}
+										onChange={onCwdChange}
+									/>
+								)}
 								{git && (
 									<Button
 										className="font-mono"
