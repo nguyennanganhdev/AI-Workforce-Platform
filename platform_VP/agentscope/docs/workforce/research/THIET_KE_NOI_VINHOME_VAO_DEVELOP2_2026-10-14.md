@@ -41,8 +41,8 @@ Gói Vinhome trên VPS (`https://vinhome-platform.duckdns.org`) nối vào devel
 3. **Trạng thái sau lượt:**
    - `reply` → `awaiting_user`;
    - `confirmation` → `awaiting_confirmation`;
-   - `none` → `waiting_external_event` khi còn việc đang theo dõi, nếu không thì
-     `awaiting_user`;
+   - `none` → `awaiting_user` (người dùng vẫn nhắn được; sự kiện vẫn đánh thức
+     leader — xem mục "Giới hạn");
    - tool cần đồng ý đang chờ → `awaiting_approval`.
 4. **Sự kiện provider** (`POST /provider/job-events`,
    `GET /provider/event-receipts/{id}`): bảng sự kiện của integration lấy từ
@@ -85,8 +85,14 @@ bảng riêng `wf_unified_*`, và không đụng tới đường Phase C.
 
 ## Giới hạn đã biết
 
-- Trigger sự kiện bị engine dùng chung **hoãn** khi workflow đang chờ người dùng.
-  Sự kiện đánh thức bị hoãn sẽ được đưa vào lượt kế tiếp, khi người dùng nhắn.
+- Engine dùng chung chỉ cho `waiting_external_event` khi có operation của
+  Phase C, và hoãn trigger loại `external_event` khi workflow chờ người dùng.
+  Vì vậy:
+  - sự kiện có cờ `wake` được tạo thành một request nội bộ (`claim_or_read`,
+    giống cách Phase C làm cho approval continuation). Request cause không bị
+    hoãn, nên leader được gọi ngay;
+  - khi còn việc đang theo dõi, workflow ở `awaiting_user` chứ không phải
+    `waiting_external_event`. Cầu nối Vinhome xử lý trạng thái này bình thường.
 - Không làm `/partner/approvals/{id}/chat` (Vinhome không dùng).
 - Snapshot vẫn trả `pending_approvals` (Vinhome đọc `approvals`, chỉ dùng khi
   cursor hết hạn).

@@ -43,6 +43,7 @@ from agentscope.app.workforce.integrations.unified import (
     ChatLeaderTurnRunner,
     build_unified_runtime,
 )
+from agentscope.app.workforce.integrations.unified import get_metadata as unified_metadata
 from agentscope.app.workforce.integrations.unified import _runner as runner_module
 from agentscope.app.workforce.orchestration import get_metadata
 from agentscope.message import AssistantMsg, TextBlock
@@ -139,6 +140,7 @@ class UnifiedPartnerModeTest(unittest.IsolatedAsyncioTestCase):
             await connection.run_sync(foundation_metadata.create_all)
             await connection.run_sync(get_execution_metadata().create_all)
             await connection.run_sync(get_metadata().create_all)
+            await connection.run_sync(unified_metadata().create_all)
             await connection.execute(
                 text("CREATE TABLE partner_api_clients (id TEXT PRIMARY KEY, tenant_id TEXT, status TEXT)"),
             )
