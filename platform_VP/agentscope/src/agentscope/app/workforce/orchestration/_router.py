@@ -13,9 +13,12 @@ from ..execution._utils import ExecutionError
 from ._ingress import receipt_http_status
 from .partner_events import EventCursorExpired
 from .workflows import (
+    WorkflowApprovalPending,
     WorkflowBindingMismatch,
     WorkflowClosed,
     WorkflowConflict,
+    WorkflowNotReadyToClose,
+    WorkflowRevisionConflict,
     WorkflowTicketAlreadyBound,
 )
 
@@ -107,7 +110,31 @@ def create_router(
             return JSONResponse(
                 {"error": {"code": "PAYLOAD_TOO_LARGE"}}, status_code=413
             )
-        except (WorkflowClosed, WorkflowConflict):
+        except WorkflowClosed:
+            return JSONResponse(
+                {"error": {"code": "WORKFLOW_CLOSED"}}, status_code=409
+            )
+        except WorkflowRevisionConflict as error:
+            return JSONResponse(
+                {
+                    "error": {
+                        "code": "REVISION_CONFLICT",
+                        "message": "Reload the workflow and decide again.",
+                        "details": {"current_revision": error.current_revision},
+                    }
+                },
+                status_code=409,
+            )
+        except WorkflowNotReadyToClose:
+            return JSONResponse(
+                {"error": {"code": "WORKFLOW_NOT_READY_TO_CLOSE"}},
+                status_code=409,
+            )
+        except WorkflowApprovalPending:
+            return JSONResponse(
+                {"error": {"code": "APPROVAL_PENDING"}}, status_code=409
+            )
+        except WorkflowConflict:
             return JSONResponse(
                 {
                     "error": {

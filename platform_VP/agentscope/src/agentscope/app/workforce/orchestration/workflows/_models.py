@@ -30,6 +30,22 @@ class WorkflowClosed(WorkflowConflict):
     """The requested action cannot be applied to a closed workflow."""
 
 
+class WorkflowRevisionConflict(WorkflowConflict):
+    """The caller's expected revision is not the workflow's current one."""
+
+    def __init__(self, message: str, current_revision: int) -> None:
+        super().__init__(message)
+        self.current_revision = current_revision
+
+
+class WorkflowNotReadyToClose(WorkflowConflict):
+    """A completion close before confirmation or with tracked work open."""
+
+
+class WorkflowApprovalPending(WorkflowConflict):
+    """A completion close while an approval still waits for a decision."""
+
+
 class WorkflowBindingMismatch(WorkflowConflict):
     """An authorized customer supplied a different immutable ticket tuple."""
 

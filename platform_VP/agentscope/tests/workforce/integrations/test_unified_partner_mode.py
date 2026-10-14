@@ -294,6 +294,48 @@ class UnifiedPartnerModeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["Vỡ ống nước dưới bồn rửa!", "Căn S1-1205"], self.chat.inputs)
         self.assertEqual(1, len(self.console.sessions))
 
+    async def test_close_errors_use_the_contract_codes(self):
+        async with self._client() as client:
+            first = (
+                await client.post(
+                    "/workforce/v1/partner/requests",
+                    json=self._envelope("req-1", "Vỡ ống nước dưới bồn rửa!"),
+                )
+            ).json()
+            await self.worker.run_once()
+            state = (
+                await client.get(
+                    f"/workforce/v1/partner/requests/{first['request_id']}",
+                    params={"external_user_id": "resident-1"},
+                )
+            ).json()
+
+            def close(request_id, revision):
+                return client.post(
+                    f"/workforce/v1/partner/workflows/{first['workflow_id']}/close",
+                    json={
+                        "schema_version": "1",
+                        "external_request_id": request_id,
+                        "external_user_id": "resident-1",
+                        "external_ticket_id": "ticket-1",
+                        "external_conversation_id": "chat-1",
+                        "expected_revision": revision,
+                        "reason": "resolved",
+                    },
+                )
+
+            not_ready = await close("close-1", state["workflow_revision"])
+            stale = await close("close-2", state["workflow_revision"] + 5)
+
+        self.assertEqual("awaiting_user", state["workflow_state"])
+        self.assertEqual(409, not_ready.status_code)
+        self.assertEqual("WORKFLOW_NOT_READY_TO_CLOSE", not_ready.json()["error"]["code"])
+        self.assertEqual("REVISION_CONFLICT", stale.json()["error"]["code"])
+        self.assertEqual(
+            state["workflow_revision"],
+            stale.json()["error"]["details"]["current_revision"],
+        )
+
     async def test_end_user_comes_from_query_or_body_as_in_the_contract(self):
         async with self._client() as client:
             missing = await client.get("/workforce/v1/partner/requests/unknown")

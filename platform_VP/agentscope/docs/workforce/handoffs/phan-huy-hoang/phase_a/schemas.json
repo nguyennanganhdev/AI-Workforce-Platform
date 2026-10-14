@@ -3442,6 +3442,46 @@
       "type": "object"
     },
     "approval.required": {
+      "$defs": {
+        "ApprovalSummary": {
+          "additionalProperties": false,
+          "properties": {
+            "text": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            },
+            "items": {
+              "default": [],
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "maxItems": 50,
+              "title": "Items",
+              "type": "array"
+            },
+            "total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Total"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "title": "ApprovalSummary",
+          "type": "object"
+        }
+      },
       "additionalProperties": false,
       "properties": {
         "approval_id": {
@@ -3451,16 +3491,61 @@
           "type": "string"
         },
         "summary": {
-          "maxLength": 2000,
-          "minLength": 1,
-          "title": "Summary",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/ApprovalSummary"
+            }
+          ],
+          "title": "Summary"
         },
         "expires_at": {
           "format": "date-time",
           "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:[Zz]|[+-]\\d{2}:\\d{2})$",
           "title": "Expires At",
           "type": "string"
+        },
+        "arguments_hash": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Arguments Hash"
+        },
+        "expected_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Revision"
+        },
+        "quote_ref": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quote Ref"
         }
       },
       "required": [
