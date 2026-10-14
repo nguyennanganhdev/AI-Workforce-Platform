@@ -274,7 +274,9 @@ async def divert(db, actor_id: str, channel_id: str, message_text: str, file_ids
     if source_message_id:
         said += f"\nsource_message_id: {source_message_id}"
     # `own`: Reception answers an emergency in the chat itself, so a silent coordinator leaves nobody unanswered.
-    await command(db, ticket["ticket_id"], "workflow_reply", {"text": said, **({"own": True} if kind else {})})
+    await command(db, ticket["ticket_id"], "workflow_reply", {"text": said,
+        **({"source_message_id": str(source_message_id)} if source_message_id else {}),
+        **({"own": True} if kind else {})})
     return kind is None
 
 

@@ -469,6 +469,16 @@ def test_messages_of_an_answer_reach_the_chat_once_also_after_they_come_again_as
         assert [m["body"]["text"] for m in shown if m["sender_client_id"] == "platform"] == said
 
 
+def test_platform_reply_ends_the_resident_turn_indicator(database, on):
+    fake = FakePlatform()
+    with resident(database) as c:
+        channel, ticket, flow = started(database, c, fake)
+        say(c, channel, "Công việc đang tới đâu rồi?")
+        assert c.get(f"/resident/chats/{channel}/turn-state").json()["status"] == "waiting_platform"
+        sync(database, fake)
+        assert c.get(f"/resident/chats/{channel}/turn-state").json()["status"] == "completed"
+
+
 def test_a_202_is_followed_through_the_event_log_page_by_page(database, on):
     fake = FakePlatform(wait=False, page=2)
     fake.replies = [["Tôi đã nhận yêu cầu.", "Kỹ thuật viên sẽ liên hệ trong ít phút."]]

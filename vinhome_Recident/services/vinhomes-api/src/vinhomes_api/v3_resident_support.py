@@ -71,18 +71,31 @@ async def turn_state(channel_id: str, scope: Scope):
     row = (await scope[0].execute(text("""
         select m.id,m.created_at,
           exists(select 1 from messages r where r.channel_id=m.channel_id and r.reply_to_id=m.id
-            and r.visibility in ('room','customer')) as answered,
+            and r.visibility in ('room','customer')) or (pc.status='done' and pc.result->>'request_status'='completed'
+              and (jsonb_array_length(coalesce(pc.result->'result'->'messages','[]'::jsonb))>0
+                or pc.result->>'workflow_state'='awaiting_approval')) as answered,
+          (pc.status='failed' or pc.result->'result'->'data'->>'outcome'='fallback') as platform_failed,
           d.status,d.resident_progress,d.expires_at,
           exists(select 1 from tickets t join platform_links p on p.ticket_id=t.id and p.tenant_id=t.tenant_id
             where t.channel_id=m.channel_id and p.status='open') as handed_over,
-          extract(epoch from now()-m.created_at)*1000 as elapsed_ms
+          extract(epoch from coalesce(d.finished_at,case when pc.result->>'request_status'='completed'
+            then pc.updated_at end,now())-m.created_at)*1000 as elapsed_ms
         from messages m left join delegations d on d.channel_id=m.channel_id
           and d.tenant_id=m.tenant_id and d.idempotency_key='reception-turn:'||m.id::text
+        left join lateral (
+          select c.status,c.result,c.updated_at from platform_commands c
+          join platform_links l on l.ticket_id=c.ticket_id and l.tenant_id=c.tenant_id
+          where l.channel_id=m.channel_id and c.tenant_id=m.tenant_id and c.kind='workflow_reply'
+            and (c.body->>'source_message_id'=m.id::text
+              or right(c.body->>'text',length('source_message_id: '||m.id::text))='source_message_id: '||m.id::text)
+          order by c.created_at desc,c.id desc limit 1
+        ) pc on true
         where m.channel_id=:id and m.sender_kind='user' and m.sender_user_id=:actor
         order by m.seq desc limit 1
     """), {"id":channel_id,"actor":scope[1]})).mappings().first()
     if not row: return {"status":"idle","steps":[]}
-    status = "completed" if row['answered'] else "waiting_platform" if row['handed_over'] else \
+    status = "unavailable" if row['platform_failed'] else "completed" if row['answered'] else \
+        "waiting_platform" if row['handed_over'] and row['elapsed_ms']<=180000 else \
         "unavailable" if row['status'] in ('failed','revoked','finished') or row['elapsed_ms']>180000 else \
         "processing" if row['status']=='active' else "queued"
     return {"messageId":str(row['id']),"status":status,"startedAt":row['created_at'],
