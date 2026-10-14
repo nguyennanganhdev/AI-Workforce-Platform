@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
+import { PartnerRoutesDialog } from './partner-routes';
 import { studioApi } from '@/api';
 import type { AgentSummary, AgentTemplate } from '@/api';
 import { Badge } from '@/components/ui/badge';
@@ -175,9 +176,12 @@ export function AgentManagementPage() {
 							Sửa agent bằng form hoặc nhờ Builder copilot; mọi thay đổi được kiểm thử và lưu thành phiên bản.
 						</p>
 					</div>
-					<Button onClick={() => setCreating(true)}>
-						<Plus /> Tạo agent
-					</Button>
+					<div className="flex gap-2">
+						<PartnerRoutesDialog />
+						<Button onClick={() => setCreating(true)}>
+							<Plus /> Tạo agent
+						</Button>
+					</div>
 				</header>
 				<div className="min-h-0 flex-1 overflow-y-auto p-4">
 					{agents === null ? (

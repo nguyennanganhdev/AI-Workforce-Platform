@@ -237,6 +237,30 @@ def onboarding_router(foundation: WorkforceFoundation) -> APIRouter:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return route.model_dump(mode="json")
 
+    @router.get("/manager/partner-routes")
+    async def list_routes(principal: Any = Depends(get_current_principal)) -> list[dict]:
+        """Routes the signed-in area manager has granted, newest first."""
+
+        from ...foundation._route_grants import PartnerRouteGrantService
+        from ...foundation._tables import partner_manager_routes
+
+        try:
+            scope = await foundation.identity.resolve_manager(principal)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        async with foundation.uows() as uow:
+            rows = (
+                await uow.execute(
+                    select(partner_manager_routes)
+                    .where(
+                        partner_manager_routes.c.manager_account_id
+                        == scope.manager_account_id,
+                    )
+                    .order_by(partner_manager_routes.c.created_at.desc()),
+                )
+            ).mappings().all()
+        return [PartnerRouteGrantService._model(row).model_dump(mode="json") for row in rows]
+
     @router.post("/partner/routes/{route_id}/confirm")
     async def confirm_route(
         route_id: str,

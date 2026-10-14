@@ -131,6 +131,9 @@ class UnifiedOnboardingTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(201, granted.status_code, granted.text)
         route = granted.json()
+        listed = await self.client.get("/workforce/v1/manager/partner-routes")
+        self.assertEqual([route["route_id"]], [item["route_id"] for item in listed.json()])
+        self.assertEqual("pending_confirmation", listed.json()[0]["status"])
 
         confirmed = await self.client.post(
             f"/workforce/v1/partner/routes/{route['route_id']}/confirm",
