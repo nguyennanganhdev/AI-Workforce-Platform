@@ -114,8 +114,18 @@ describe("Resident auth boundary", () => {
     const staff = await signInAs({ operationsRole: "staff", audiences: ["operations"] });
     expect(staff.result).toEqual({ nextStep: "operations", operationsPath: "/operations/my-tasks" });
     expect(staff.paths.includes("/api/business/resident/me")).toBe(false);
-    const manager = await signInAs({ operationsRole: "management", audiences: ["operations"] });
-    expect(manager.result).toEqual({ nextStep: "operations", operationsPath: "/operations/kanban" });
+  });
+  test("retired management accounts display the backend refusal instead of entering Domain operations",async () => {
+    const original=globalThis.fetch;
+    const paths:string[]=[];
+    globalThis.fetch=(async (url:RequestInfo|URL) => {
+      paths.push(String(url));
+      return Response.json({detail:"Tài khoản Ban quản lý sử dụng Platform."},{status:403});
+    }) as typeof fetch;
+    try {
+      await expect(residentAuthService.signIn(valid)).rejects.toThrow("Tài khoản Ban quản lý sử dụng Platform.");
+      expect(paths).toEqual(["/api/business/auth/login"]);
+    } finally {globalThis.fetch=original;}
   });
   test("a resident stays in the resident app, and an account that is both is asked where to go", async () => {
     expect((await signInAs({ operationsRole: null, audiences: ["resident"] }, [{ id: "u1" }])).result).toEqual({ nextStep: "ready" });

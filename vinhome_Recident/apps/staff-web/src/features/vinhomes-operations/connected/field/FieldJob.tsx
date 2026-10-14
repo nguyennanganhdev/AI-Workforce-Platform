@@ -132,12 +132,12 @@ function FieldStep({ order, ticket, photos, busy, request, actions, planned, req
             <div className="mt-2 flex flex-col gap-2">
               {REJECTIONS.map(([code, label]) => (
                 <label key={code} className={cn("flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm text-foreground", reason === code ? "border-primary bg-primary/5" : "border-border")}>
-                  <input type="radio" name={`reject-${order.id}`} value={code} checked={reason === code} onChange={() => setReason(code)} />{label}
+                  <input type="radio" name={`reject-${order.id}`} value={code} checked={reason === code} disabled={busy} onChange={() => setReason(code)} />{label}
                 </label>
               ))}
             </div>
           </fieldset>
-          {reason === "OTHER" && <Textarea aria-label="Lý do khác" rows={2} maxLength={500} placeholder="Ghi rõ lý do để bộ phận điều phối giao người khác" value={note} onChange={(e) => setNote(e.target.value)} />}
+          {reason === "OTHER" && <Textarea aria-label="Lý do khác" disabled={busy} rows={2} maxLength={500} placeholder="Ghi rõ lý do để bộ phận điều phối giao người khác" value={note} onChange={(e) => setNote(e.target.value)} />}
           <Button variant="destructive" className={primary} disabled={busy || !refusal} onClick={() => actions.reject(order, refusal)}>Xác nhận từ chối</Button>
           <Button variant="ghost" className="h-[44px] w-full" disabled={busy} onClick={() => setRejecting(false)}>Quay lại</Button>
         </>
@@ -155,7 +155,7 @@ function FieldStep({ order, ticket, photos, busy, request, actions, planned, req
       {state === "arrived" && (!planned || needsRevision || quoting) && (
         <>
           <label className="text-sm font-medium text-foreground" htmlFor={noteId}>Hiện trạng và cách xử lý
-            <Textarea id={noteId} className="mt-1.5 text-base" rows={3} maxLength={2000} placeholder="Hiện trạng, phạm vi công việc và cách xử lý dự kiến." value={note} onChange={(e) => setNote(e.target.value)} />
+            <Textarea id={noteId} disabled={busy} className="mt-1.5 text-base" rows={3} maxLength={2000} placeholder="Hiện trạng, phạm vi công việc và cách xử lý dự kiến." value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
           <QuoteForm disabled={busy || note.trim().length < 8} onSubmit={(quote) => actions.quote(order, note.trim(), quote)} />
           {note.trim().length < 8 && <p className="text-xs text-muted-foreground">Ghi hiện trạng (ít nhất 8 ký tự) trước khi gửi phương án.</p>}
@@ -171,10 +171,12 @@ function FieldStep({ order, ticket, photos, busy, request, actions, planned, req
 
       {state === "in_progress" && (
         <>
-          <Shots title="Ảnh trước khi xử lý" photos={before} disabled={busy} onAdd={(file) => actions.photo(order, file, "before", note.trim())} />
-          <Shots title="Ảnh sau khi xử lý" photos={after} disabled={busy} onAdd={(file) => actions.photo(order, file, "after", note.trim())} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Shots title="Ảnh trước khi xử lý" photos={before} disabled={busy} onAdd={(file) => actions.photo(order, file, "before", note.trim())} />
+            <Shots title="Ảnh sau khi xử lý" photos={after} disabled={busy} onAdd={(file) => actions.photo(order, file, "after", note.trim())} />
+          </div>
           <label className="text-sm font-medium text-foreground" htmlFor={noteId}>Ghi chú kết quả <span className="font-normal text-muted-foreground">(không bắt buộc)</span>
-            <Textarea id={noteId} className="mt-1.5 text-base" rows={2} maxLength={2000} placeholder="Việc đã làm, lưu ý cho cư dân hoặc Ban quản lý" value={note} onChange={(e) => setNote(e.target.value)} />
+            <Textarea id={noteId} disabled={busy} className="mt-1.5 text-base" rows={2} maxLength={2000} placeholder="Việc đã làm và lưu ý cho cư dân hoặc bộ phận điều phối" value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
           <Button className={primary} disabled={busy || !ready} onClick={() => actions.advance(order, "completed", note.trim())}>{text.next}</Button>
           {!ready && <p role="status" className="text-sm leading-relaxed text-muted-foreground">Cần ít nhất 1 ảnh trước và 1 ảnh sau khi xử lý của việc này để gửi kết quả.</p>}
@@ -192,7 +194,7 @@ function FieldStep({ order, ticket, photos, busy, request, actions, planned, req
         <>
           <Shots title="Ảnh nghiệm thu" photos={verification} disabled={busy} onAdd={(file) => actions.photo(order, file, "verification", "")} />
           <label className="text-sm font-medium text-foreground" htmlFor={noteId}>Ghi chú nghiệm thu <span className="font-normal text-muted-foreground">(không bắt buộc)</span>
-            <Textarea id={noteId} className="mt-1.5 text-base" rows={2} maxLength={2000} value={acceptanceNote} onChange={(e) => setAcceptanceNote(e.target.value)} />
+            <Textarea id={noteId} disabled={busy} className="mt-1.5 text-base" rows={2} maxLength={2000} value={acceptanceNote} onChange={(e) => setAcceptanceNote(e.target.value)} />
           </label>
           <Button className={primary} disabled={busy || !verification.length} onClick={() => actions.acceptance?.(order, acceptanceNote.trim())}>Gửi kết quả nghiệm thu</Button>
           {!verification.length && <p role="status" className="text-sm leading-relaxed text-muted-foreground">Cần ít nhất 1 ảnh nghiệm thu để gửi kết quả.</p>}
@@ -234,10 +236,14 @@ export function FieldJob({ ticket, place, orders, plan, requiresPlan = !!plan, p
         <p className="flex items-start gap-1.5 text-sm text-muted-foreground"><IconMapPin aria-hidden="true" className="mt-0.5 size-4 shrink-0" stroke={1.75} />{place}</p>
       </header>
 
+      <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+      <div className="flex min-w-0 flex-col gap-4">
       {!orders.length && <p role="status" className="rounded-xl border border-border bg-background p-4 text-sm leading-relaxed text-muted-foreground">Việc này không còn được giao cho bạn. Quay lại danh sách để xem công việc hiện tại.</p>}
       {orders.map((order) => <FieldStep key={order.id} order={order} ticket={ticket} photos={photos.filter((p) => p.work_order_id === order.id)} busy={busy} request={request} actions={actions}
         planned={!!plan} requiresPlan={requiresPlan} currentWork={currentWork?.orderId !== order.id ? currentWork : undefined} />)}
 
+      </div>
+      <aside aria-label="Thông tin công việc" className="flex min-w-0 flex-col gap-4">
       <Section title="Cư dân phản ánh">
         <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">{ticket.description || ticket.title}</p>
         {reported.length > 0 && <div className="flex flex-wrap gap-2"><Photos photos={reported} /></div>}
@@ -258,6 +264,8 @@ export function FieldJob({ ticket, place, orders, plan, requiresPlan = !!plan, p
           </dl>
         </Section>
       )}
+      </aside>
+      </div>
     </article>
   );
 }

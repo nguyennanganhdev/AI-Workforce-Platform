@@ -21,6 +21,31 @@ const ticket = (over: Partial<FieldTicket> = {}): FieldTicket => ({ id: "t1", co
 const order = (over: Partial<FieldOrder> = {}): FieldOrder => ({ id: "o1", ticket_id: "t1", status: "accepted", version: 3, description: "", assignment_id: "a1", assignment_status: "accepted", ...over });
 const photo = (purpose: string, work_order_id = "o1"): FieldPhoto => ({ id: `${work_order_id}-${purpose}`, name: `${purpose}.png`, purpose, work_order_id, src: `/files/${work_order_id}-${purpose}` });
 
+test("long queues are searchable by apartment, prioritize urgent work and clear an empty search",async () => {
+  const {FieldWorkList}=await import("../src/features/vinhomes-operations/connected/field/FieldWorkList");
+  const tickets=Array.from({length:8},(_,i) => ticket({id:`t${i}`,title:`Công việc ${i}`,unit_code:`120${i}`,priority:i===7 ? "critical" : "normal"}));
+  const orders=tickets.map(t => order({id:`o-${t.id}`,ticket_id:t.id,status:"queued",assignment_status:"offered"}));
+  const view=render(<FieldWorkList tickets={tickets} orders={orders} buildings={[]} onOpen={() => undefined} />);
+  expect(view.getAllByRole("button")[0].textContent).toContain("Công việc 7");
+  fireEvent.change(view.getByRole("searchbox",{name:"Tìm công việc"}),{target:{value:"1203"}});
+  expect(view.getByText("Công việc 3")).toBeTruthy();
+  expect(view.queryByText("Công việc 7")).toBeNull();
+  fireEvent.change(view.getByRole("searchbox"),{target:{value:"không có"}});
+  expect(view.getByText("Không tìm thấy việc phù hợp")).toBeTruthy();
+  fireEvent.click(view.getByRole("button",{name:"Xóa tìm kiếm"}));
+  expect(view.getByText("Công việc 7")).toBeTruthy();
+});
+
+test("staff cannot change report inputs while the current update is saving",async () => {
+  const {FieldJob}=await import("../src/features/vinhomes-operations/connected/field/FieldJob");
+  const actions:FieldActions={accept:()=>undefined,reject:()=>undefined,advance:()=>undefined,quote:()=>undefined,consent:()=>undefined,photo:()=>undefined};
+  const view=render(<FieldJob ticket={ticket()} place="S1.01" orders={[order({status:"in_progress"})]} photos={[]} conversation={[]}
+    busy request={async () => ({approvals:[]}) as never} actions={actions} onBack={()=>undefined} />);
+  expect((view.getByLabelText(/Ghi chú kết quả/) as HTMLTextAreaElement).disabled).toBe(true);
+  expect((view.getByLabelText("Thêm ảnh trước khi xử lý") as HTMLInputElement).disabled).toBe(true);
+  expect((view.getByRole("button",{name:"Gửi kết quả"}) as HTMLButtonElement).disabled).toBe(true);
+});
+
 test("connected quotes require staff-entered materials rather than the unapproved demo price list", async () => {
   const { QuoteForm } = await import("../src/features/vinhomes-operations/connected/RepairQuote");
   const view = render(<QuoteForm disabled={false} onSubmit={() => undefined} />);

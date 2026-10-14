@@ -15,7 +15,8 @@ const seconds = (ms: number) => `${(Math.max(0,ms)/1000).toLocaleString("vi-VN",
 export function ProcessingStatus({ turn }: { turn?: TurnState }) {
   const [now,setNow]=useState(Date.now());
   useEffect(() => { const timer=setInterval(() => setNow(Date.now()),1000); return () => clearInterval(timer); },[]);
-  const elapsed=turn?.startedAt ? now-Date.parse(turn.startedAt) : turn?.elapsedMs ?? 0;
+  const started=turn?.startedAt ? Date.parse(turn.startedAt) : NaN;
+  const elapsed=Number.isFinite(started) ? Math.max(0,now-started) : turn?.elapsedMs ?? 0;
   const stage=turn?.steps.at(-1)?.stage;
   const text=turn?.status === "waiting_platform" ? "Đang chờ phản hồi từ bộ phận xử lý" :
     turn?.status === "queued" ? "Tin nhắn đã gửi, đang chờ trợ lý" : labels[stage ?? "responding"];
@@ -37,8 +38,21 @@ export function MessageDetails({ message }: { message: ChatMessage }) {
   const stages=(info?.steps ?? []).filter((s,i,a) => i===0 || s.stage!==a[i-1].stage);
   const time=message.createdAt && !Number.isNaN(Date.parse(message.createdAt)) ?
     new Date(message.createdAt).toLocaleTimeString("vi-VN",{hour:"2-digit",minute:"2-digit"}) : "";
-  return <>
-    {!!info?.citations?.length && <div className="reception-sources" aria-label="Nguồn trả lời">
+  return <div className="message-footer">
+    <div className="message-meta">
+      {time && <time dateTime={message.createdAt}>{time}</time>}
+      {message.role==="resident" ? <span><IconCheck size={14} aria-hidden="true" />{message.delivery==="answered" ? "Đã phản hồi" : "Đã gửi"}</span> : <>
+        {!!message.text && <button type="button" aria-label="Sao chép câu trả lời" title="Sao chép câu trả lời" onClick={async () => {
+          try { await navigator.clipboard.writeText(message.text);setCopy("Đã sao chép"); }
+          catch {setCopy("Không sao chép được. Bạn có thể chọn nội dung để sao chép.");}
+        }}><IconCopy size={15} aria-hidden="true" /></button>}
+      </>}
+    </div>
+    {message.role==="assistant" && (!!info?.citations?.length || !!stages.length || typeof info?.latencyMs==="number") && <details className="message-insights">
+      <summary><IconBook2 size={15} aria-hidden="true" /><span>{info?.citations?.length ? `Nguồn & chi tiết (${info.citations.length})` : "Chi tiết phản hồi"}</span><IconChevronDown size={15} aria-hidden="true" /></summary>
+      <div className="message-insights-content">
+      {typeof info?.latencyMs==="number" && <p className="reception-latency"><IconClock size={14} aria-hidden="true" />Thời gian xử lý: {seconds(info.latencyMs)}</p>}
+      {!!info?.citations?.length && <div className="reception-sources" aria-label="Nguồn trả lời">
       <span className="reception-sources-label"><IconBook2 size={15} aria-hidden="true" /> Nguồn trả lời</span>
       {info.citations.map((source,i) => <details key={`${source.documentId ?? source.title}-${i}`}>
         <summary><span>{source.title}</span><small>{source.status==="approved" ? "Đã xác nhận" : "Tham khảo"}</small><IconChevronDown size={16} aria-hidden="true" /></summary>
@@ -49,18 +63,10 @@ export function MessageDetails({ message }: { message: ChatMessage }) {
           {source.status!=="approved" && <p>Thông tin tham khảo; cần xác nhận nội dung hiện hành với Ban quản lý.</p>}
         </div>
       </details>)}
-    </div>}
-    <div className="message-meta">
-      {time && <time dateTime={message.createdAt}>{time}</time>}
-      {message.role==="resident" ? <span><IconCheck size={14} aria-hidden="true" />{message.delivery==="answered" ? "Đã phản hồi" : "Đã gửi"}</span> : <>
-        {typeof info?.latencyMs==="number" && <span title="Thời gian xử lý phía trợ lý"><IconClock size={14} aria-hidden="true" />{seconds(info.latencyMs)}</span>}
-        {!!stages.length && <details className="reception-activity"><summary>Hoạt động <IconChevronDown size={14} aria-hidden="true" /></summary><ol>{stages.map((s,i) => <li key={i}>{labels[s.stage]}</li>)}</ol></details>}
-        {!!message.text && <button type="button" aria-label="Sao chép câu trả lời" onClick={async () => {
-          try { await navigator.clipboard.writeText(message.text);setCopy("Đã sao chép"); }
-          catch {setCopy("Không sao chép được. Bạn có thể chọn nội dung để sao chép.");}
-        }}><IconCopy size={15} aria-hidden="true" /></button>}
-      </>}
-    </div>
+      </div>}
+      {!!stages.length && <div className="reception-activity"><p>Hoạt động của trợ lý</p><ol>{stages.map((s,i) => <li key={i}>{labels[s.stage]}</li>)}</ol></div>}
+      </div>
+    </details>}
     {copy && <p className="copy-status" role="status">{copy}</p>}
-  </>;
+  </div>;
 }

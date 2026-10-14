@@ -130,8 +130,8 @@ export function App({ live }: { live?: ConnectedResident }) {
   }, []);
   useEffect(() => {
     document.title = `${titles[route.page]} | Vinhomes`;
-    scroll.current?.scrollTo({ top: 0 });
     if (previousPage.current !== route.page) title.current?.focus();
+    scroll.current?.scrollTo({ top: route.page === "assistant" && route.conversation ? scroll.current.scrollHeight : 0 });
     previousPage.current = route.page;
   }, [route.page, route.id, route.conversation]);
   // Keep the last message visible as the keyboard or composer changes height.
@@ -387,8 +387,8 @@ export function App({ live }: { live?: ConnectedResident }) {
               <IconArrowLeft size={21} />
             </button>
             <div>
-              <strong>Cuộc trò chuyện</strong>
-              <span>Lịch sử và bản nháp được giữ lại</span>
+              <strong>{state.conversations?.find(c => c.id === state.activeConversationId)?.title || "Cuộc trò chuyện"}</strong>
+              <span>Trợ lý cư dân Vinhomes</span>
             </div>
           </div>
         )}

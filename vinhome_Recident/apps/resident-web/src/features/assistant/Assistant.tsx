@@ -14,6 +14,7 @@ import {
   IconPaperclip,
   IconPlus,
   IconMessageCircle,
+  IconLoader2,
   IconX,
 } from "@tabler/icons-react";
 import "./assistant-home.css";
@@ -77,7 +78,7 @@ export function Assistant({
   onCancelDraft,
 }: AssistantProps) {
   const end = useRef<HTMLDivElement>(null);
-  const prevMessages = useRef(state.messages.length);
+  const prevMessages = useRef<number | null>(null);
   const follow = useRef(true);
   const [newMessages,setNewMessages] = useState(false);
   useEffect(() => {
@@ -90,7 +91,7 @@ export function Assistant({
   useEffect(() => {
     if (conversation && prevMessages.current !== state.messages.length) {
       if (follow.current) end.current?.scrollIntoView({
-        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+        behavior: prevMessages.current === null || matchMedia("(prefers-reduced-motion: reduce)").matches
           ? "instant"
           : "smooth",
         block: "end",
@@ -152,10 +153,7 @@ export function Assistant({
       )}
       {started && (
         <>
-          <div className="chat-day">
-            <span>Cuộc trò chuyện của bạn</span>
-          </div>
-          <div className="chat-intro">
+          {!state.messages.length && <div className="chat-intro">
             <span className="assistant-avatar">
               <IconMessageCircle size={21} />
             </span>
@@ -163,7 +161,7 @@ export function Assistant({
               <strong>Trợ lý cư dân Vinhomes</strong>
               <p>Mình sẵn sàng lắng nghe. Bạn cần hỗ trợ gì hôm nay?</p>
             </div>
-          </div>
+          </div>}
           <div
             className="messages"
             role="log"
@@ -200,7 +198,7 @@ export function Assistant({
                             target="_blank"
                             rel="noreferrer"
                           >
-                            <img src={photo.url} alt={photo.name} />
+                            <img src={photo.url} alt={photo.name} loading="lazy" />
                           </a>
                         ))}
                       </div>
@@ -287,7 +285,7 @@ export function Assistant({
           Hủy phản ánh đang soạn
         </button>
       )}
-      {started && !state.draft && (
+      {started && !state.draft && (requestId || offerForm || !connected) && (
         <div className="suggestion-row">
           {!connected && (
             <button onClick={() => onSend("Báo sự cố")}>
@@ -295,10 +293,10 @@ export function Assistant({
               Báo sự cố
             </button>
           )}
-          <button onClick={() => onSend("Xem yêu cầu của tôi")}>
+          {requestId && <button type="button" onClick={() => onOpen(requestId)}>
             <IconClipboardList size={15} />
             Xem tiến độ
-          </button>
+          </button>}
           {offerForm && (
             <button onClick={onForm}>
               <IconClipboardList size={15} />
@@ -360,7 +358,7 @@ function DraftCard({
       {fields}
       <p className="small muted">
         {connected
-          ? "Phản ánh sẽ được gửi tới Ban quản lý."
+          ? "Phản ánh sẽ được gửi tới bộ phận điều phối để xử lý."
           : "Bản trải nghiệm · Chỉ lưu trên thiết bị này."}
       </p>
       <button
@@ -405,15 +403,26 @@ export function Composer({
   }, [text, photos, onInputChange]);
   const [error, setError] = useState("");
   const [reading, setReading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const sendLock = useRef(false);
   const input = useRef<HTMLInputElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   async function send(event?: FormEvent) {
     event?.preventDefault();
-    if (busy || reading || (!text.trim() && !photos.length)) return;
-    if (await onSend(text, photos)) {
-      setText("");
-      setPhotos([]);
-      setError("");
+    if (sendLock.current || busy || reading || (!text.trim() && !photos.length)) return;
+    sendLock.current = true;
+    setSending(true);
+    setError("");
+    try {
+      if (await onSend(text, photos)) {
+        setText("");
+        setPhotos([]);
+      }
+    } catch {
+      setError("Chưa gửi được tin nhắn. Nội dung và ảnh vẫn được giữ lại, bạn thử gửi lại nhé.");
+    } finally {
+      sendLock.current = false;
+      setSending(false);
     }
   }
   useEffect(() => {
@@ -437,6 +446,8 @@ export function Composer({
             <div key={photo.id}>
               <img src={photo.url} alt={photo.name} />
               <button
+                type="button"
+                disabled={sending || reading}
                 aria-label={`Bỏ ảnh ${photo.name}`}
                 onClick={() =>
                   setPhotos(photos.filter((p) => p.id !== photo.id))
@@ -457,7 +468,7 @@ export function Composer({
           accept="image/jpeg,image/png,image/webp"
           multiple
           tabIndex={-1}
-          disabled={reading || busy}
+          disabled={reading || busy || sending}
           onChange={async (event) => {
             const files = Array.from(event.target.files ?? []);
             event.target.value = "";
@@ -483,7 +494,7 @@ export function Composer({
           className="attach-button"
           type="button"
           aria-label="Đính kèm ảnh (tối đa 3 ảnh, 10 MB mỗi ảnh; tự động thu nhỏ)"
-          disabled={reading || busy}
+          disabled={reading || busy || sending}
           onClick={() => input.current?.click()}
         >
           <IconPaperclip size={23} stroke={1.7} />
@@ -499,6 +510,7 @@ export function Composer({
           }
           value={text}
           maxLength={2000}
+          disabled={sending}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (
@@ -516,14 +528,14 @@ export function Composer({
           className="send-button"
           type="submit"
           aria-label="Gửi tin nhắn"
-          disabled={busy || reading || (!text.trim() && !photos.length)}
+          disabled={busy || reading || sending || (!text.trim() && !photos.length)}
         >
-          <IconArrowUp size={21} stroke={2} />
+          {sending ? <IconLoader2 className="reception-spinner" size={21} aria-hidden="true" /> : <IconArrowUp size={21} stroke={2} aria-hidden="true" />}
         </button>
       </form>
-      {(reading || busy || !connected) && (
+      {(reading || sending || !connected) && (
         <p className="composer-caption" role="status">
-          {reading ? "Đang đọc ảnh…" : busy ? "Đang gửi tin nhắn…" : "Bản trải nghiệm · Chưa gửi thông tin đến Ban quản lý"}
+          {reading ? "Đang đọc ảnh…" : sending ? "Đang gửi tin nhắn…" : "Bản trải nghiệm · Chưa gửi thông tin đến Ban quản lý"}
         </p>
       )}
     </div>

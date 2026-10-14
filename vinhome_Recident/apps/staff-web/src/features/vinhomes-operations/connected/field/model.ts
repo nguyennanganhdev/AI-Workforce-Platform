@@ -44,7 +44,7 @@ export const STATE: Record<string, { label: string; next: string; guide: string 
   arrived: { label: "Khảo sát hiện trường", next: "Gửi phương án cho cư dân", guide: "Kiểm tra thực tế, ghi hiện trạng và chi phí để cư dân xem trước khi xử lý." },
   awaiting_approval: { label: "Chờ cư dân đồng ý", next: "Bắt đầu xử lý", guide: "Chỉ bắt đầu khi cư dân đã đồng ý phương án và chi phí." },
   in_progress: { label: "Đang xử lý", next: "Gửi kết quả", guide: "Chụp ảnh trước khi xử lý, thực hiện công việc, chụp ảnh sau khi xử lý rồi gửi kết quả." },
-  completed: { label: "Đã gửi kết quả", next: "", guide: "Ban quản lý nghiệm thu, sau đó cư dân xác nhận hoàn tất." },
+  completed: { label: "Đã gửi kết quả", next: "", guide: "Bộ phận điều phối kiểm tra kết quả, sau đó cư dân xác nhận hoàn tất." },
   cancelled: { label: "Đã hủy", next: "", guide: "Công việc này đã được hủy." },
 };
 export const stateText = (state: string) => STATE[state] || { label: "Đang xử lý", next: "", guide: "" };

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { IconChevronRight, IconClipboardCheck, IconMapPin } from "@tabler/icons-react";
+import { IconChevronRight, IconClipboardCheck, IconMapPin, IconSearch } from "@tabler/icons-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -12,8 +12,9 @@ const EMPTY: Record<FieldTab, [string, string]> = {
   waiting: ["Không có việc chờ xác nhận", "Việc đã gửi kết quả nằm ở đây cho tới khi cư dân xác nhận."],
   history: ["Chưa có việc đã hoàn tất", "Việc cư dân đã xác nhận sẽ được lưu ở đây."],
 };
-// A history short enough to read at a glance needs no search box.
+// Short lists need no search box; every long queue can be searched.
 const SEARCHABLE = 7;
+const PRIORITY: Record<string,number> = {critical:0,high:1,normal:2,low:3};
 
 function JobCard({ row, place, onOpen }: { row: Row; place: string; onOpen: () => void }) {
   const text = stateText(row.state);
@@ -61,7 +62,12 @@ export function FieldWorkList({ tickets, orders, buildings, history = false, onO
   const count = (tab: FieldTab) => rows.filter((r) => r.tab === tab).length;
   const tab = picked || TABS.map(([id]) => id).find((id) => id !== "history" && count(id)) || "new";
   const wanted = query.trim().toLocaleLowerCase("vi");
-  const shown = rows.filter((r) => r.tab === tab && `${r.ticket.title} ${r.order.description} ${placeOf(r.ticket, buildings)}`.toLocaleLowerCase("vi").includes(wanted));
+  const shown = rows.filter((r) => r.tab === tab && `${r.ticket.title} ${r.order.description} ${placeOf(r.ticket, buildings)}`.toLocaleLowerCase("vi").includes(wanted))
+    .sort((a,b) => {
+      const priority = (value: string) => PRIORITY[value] ?? 2;
+      return (["new","doing"].includes(tab) ? priority(a.ticket.priority)-priority(b.ticket.priority) : 0)
+        || b.ticket.updated_at.localeCompare(a.ticket.updated_at);
+    });
   return (
     <section aria-label="Việc của tôi" className="flex min-w-0 flex-col gap-4">
       <header><h1 className="pt-1 text-2xl font-semibold tracking-tight text-foreground">Việc của tôi</h1>
@@ -78,18 +84,23 @@ export function FieldWorkList({ tickets, orders, buildings, history = false, onO
           </TabsTrigger>
         ))}
       </TabsList>
-      {tab === "history" && count("history") >= SEARCHABLE && (
-        <input type="search" aria-label="Tìm trong lịch sử" placeholder="Tìm theo nội dung hoặc vị trí" value={query} onChange={(e) => setQuery(e.target.value)}
-          className="h-[44px] w-full rounded-lg border border-input bg-background px-3 text-base text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring" />
+      {count(tab) >= SEARCHABLE && (
+        <label className="flex min-h-12 items-center gap-2 rounded-lg border border-input bg-background px-3 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
+          <IconSearch className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <input type="search" aria-label={tab === "history" ? "Tìm trong lịch sử" : "Tìm công việc"} placeholder="Tìm nội dung, tòa hoặc căn hộ" value={query} onChange={(e) => setQuery(e.target.value)}
+            className="min-h-12 min-w-0 w-full bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground" />
+        </label>
       )}
-      <TabsContent value={tab} className="flex flex-col gap-3">
-        {tab === "new" && count("doing") > 0 && <p className="rounded-lg border border-border bg-background p-3 text-sm leading-relaxed text-muted-foreground">Bạn có thể nhận việc mới vào hàng đợi. Hoàn tất việc đang làm trước khi bắt đầu việc tiếp theo.</p>}
+      {wanted && <p role="status" className="text-sm text-muted-foreground">{shown.length} công việc phù hợp</p>}
+      <TabsContent value={tab} className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
+        {tab === "new" && count("doing") > 0 && <p className="rounded-lg border border-border bg-background p-3 text-sm leading-relaxed text-muted-foreground lg:col-span-2">Bạn có thể nhận việc mới vào hàng đợi. Hoàn tất việc đang làm trước khi bắt đầu việc tiếp theo.</p>}
         {shown.map((row) => <JobCard key={row.order.id} row={row} place={placeOf(row.ticket, buildings)} onOpen={() => onOpen(row.ticket.id, row.order.id)} />)}
         {!shown.length && (
-          <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
+          <div className="flex flex-col items-center gap-2 px-6 py-14 text-center lg:col-span-2">
             <IconClipboardCheck aria-hidden="true" className="size-9 text-muted-foreground" stroke={1.25} />
             <h2 className="text-base font-semibold text-foreground">{wanted ? "Không tìm thấy việc phù hợp" : EMPTY[tab][0]}</h2>
             <p className="max-w-xs text-sm text-muted-foreground">{wanted ? "Thử từ khóa khác." : EMPTY[tab][1]}</p>
+            {wanted && <button type="button" className="mt-2 min-h-11 rounded-lg border border-border px-4 text-sm font-medium text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setQuery("")}>Xóa tìm kiếm</button>}
           </div>
         )}
       </TabsContent>
