@@ -258,8 +258,9 @@ class FakePlatform:
             "messages": [{"message_id": "msg_user", "workflow_id": flow["workflow_id"], "sender": "user", "text": "(cư dân)",
                           "created_at": NOW}, *flow["messages"]],
             "has_more_messages": False,
-            "approvals": [{**{k: v for k, v in a.items() if k != "status"}, "workflow_id": flow["workflow_id"], "status": "pending",
-                           "tool_name": "x", "expected_revision": flow["revision"]} for a in flow["approvals"] if a["status"] == "pending"],
+            # The contract's field: each pending approval is its approval.required payload with its workflow and status.
+            "pending_approvals": [{**{k: v for k, v in a.items() if k != "status"}, "workflow_id": flow["workflow_id"], "status": "pending",
+                                   "expected_revision": flow["revision"]} for a in flow["approvals"] if a["status"] == "pending"],
             "snapshot_cursor": flow["events"][-1]["event_id"] if flow["events"] else None})
 
     def job_event(self, request, body):
@@ -487,6 +488,15 @@ def test_platform_reply_ends_the_resident_turn_indicator(database, on, synchrono
         assert c.get(f"/resident/chats/{channel}/turn-state").json()["status"] == "waiting_platform"
         sync(database, fake)
         assert c.get(f"/resident/chats/{channel}/turn-state").json()["status"] == "completed"
+
+
+def test_the_ticket_draft_card_is_not_the_residents_turn(database, on):
+    # Reception writes the draft card under the resident's name; the turn the indicator follows is what they typed.
+    with resident(database) as c:
+        channel, _ = hand_over(c)
+        [typed] = sql(database, "select id from messages where channel_id=$1 and sender_kind='user' and body->>'text'=$2",
+                      channel, "Light is broken")
+        assert c.get(f"/resident/chats/{channel}/turn-state").json()["messageId"] == str(typed["id"])
 
 
 def test_a_202_is_followed_through_the_event_log_page_by_page(database, on):

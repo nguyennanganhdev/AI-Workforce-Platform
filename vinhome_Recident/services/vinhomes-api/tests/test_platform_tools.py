@@ -440,8 +440,9 @@ def test_a_job_from_dispatch_to_the_residents_confirmation_is_reported_in_order(
     assert [b["event_type"] for b in got] == [r["event_type"] for r in sent] and all(b["client_reference"] == dispatch for b in got)
     assert sent[1]["data"]["staff_name"] == "Kỹ thuật viên Hoa" and re.fullmatch(WHEN, sent[1]["data"]["eta"])
     assert sent[4]["data"] == {k:quote[k] for k in ("items","total","warranty_months","approval_id")} and sent[5]["data"] == {}
+    # photo_count is what the resident will see in the request: the technician's before, after and verification photos.
     assert sent[8]["data"] == {"summary": f"Nhân viên đã làm xong và gửi kết quả nghiệm thu. Ghi chú của nhân viên: {result_note}",
-                               "photo_count": 2, "reported_by": "Kỹ thuật viên Hoa"}
+                               "photo_count": 3, "reported_by": "Kỹ thuật viên Hoa"}
     with person(database, AN) as c:
         assert len(c.get(f"/resident/tickets/{ticket}").json()["photos"]) == 3
         assert all(c.get(f"/resident/photos/{fid}").status_code == 200 for fid in file_ids)

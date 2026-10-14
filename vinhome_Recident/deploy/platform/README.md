@@ -101,7 +101,7 @@ Mọi sự kiện mang `client_reference` của lần giao việc. "Tin mẫu" l
 | `job.quote_rejected` | 50 | | Đã ghi nhận bạn không đồng ý với báo giá. | đánh thức |
 | `job.started` | 60 | | Nhân viên đã bắt đầu làm việc. | |
 | `job.completed` | 70 | | Nhân viên báo đã làm xong phần việc và sẽ gửi kết quả nghiệm thu để bạn xem. | |
-| `job.result_published` | 90 | `summary`, `photo_count` (số nguyên), `reported_by` | | kết thúc `completed`, đánh thức, bằng chứng |
+| `job.result_published` | 90 | `summary`, `photo_count` (số ảnh của nhân viên mà cư dân xem được: trước, sau, nghiệm thu), `reported_by` | | kết thúc `completed`, đánh thức, bằng chứng |
 | `job.cancelled` | 90 | `reason` | | kết thúc `cancelled`, đánh thức |
 
 `items` là danh sách `{label, amount}`, `total` bằng tổng các `amount`. `job.quote_ready` không đánh thức leader và không có tin mẫu: cư dân đã có thẻ báo giá; sự kiện chỉ để leader có số liệu khi cư dân hỏi. Cư dân trả lời báo giá thành hai loại sự kiện vì tin mẫu của platform không rẽ nhánh được; chỉ lần từ chối đánh thức leader. `job.result_published` là kết quả nghiệm thu do nhân viên gửi (`reported_by` là tên nhân viên, hoặc "Ban quản lý" khi Ban quản lý tự nghiệm thu); cư dân xác nhận sau đó, trên chat. `photo_count` là số ảnh kết quả (ảnh sau và ảnh nghiệm thu). Vinhomes tự ghi một tin nêu kết quả vào hộp chat; leader chỉ cần mời cư dân xác nhận. Giờ (`eta`, `appointment`) là chữ dạng `HH:MM dd/MM/yyyy`, giờ Việt Nam. `job.completed` mang trạng thái `work_done` chứ không phải `completed`: việc chỉ được coi là xong khi có `job.result_published`.
