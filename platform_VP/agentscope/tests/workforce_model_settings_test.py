@@ -42,3 +42,29 @@ class PrivateContextCapTest(TestCase):
             self.assertEqual(0.9, _private_context_ratio(8000))
         with patch.dict(os.environ, {"WORKFORCE_PRIVATE_CONTEXT_TOKENS": "0"}):
             self.assertEqual(0.9, _private_context_ratio(1_050_000))
+
+
+class BackgroundTierTest(TestCase):
+    def test_structured_calls_try_flex_then_fall_back(self) -> None:
+        import asyncio
+
+        from agentscope.app._service._chat import _background
+
+        class Model:
+            extra_body = {"prompt_cache_key": "k"}
+            tiers: list = []
+
+            async def generate_structured_output(self, **_):
+                self.tiers.append((self.extra_body or {}).get("service_tier"))
+                if (self.extra_body or {}).get("service_tier") == "flex":
+                    raise RuntimeError("429 Resource Unavailable")
+                return "ok"
+
+        model = Model()
+        with patch.dict(os.environ, {"WORKFORCE_BACKGROUND_SERVICE_TIER": "flex"}):
+            wrapped = _background(model)
+        self.assertEqual("ok", asyncio.run(wrapped.generate_structured_output(messages=[])))
+        self.assertEqual(["flex", None], model.tiers)
+        self.assertEqual({"prompt_cache_key": "k"}, model.extra_body)  # restored
+        with patch.dict(os.environ, {"WORKFORCE_BACKGROUND_SERVICE_TIER": ""}):
+            self.assertIs(model, _background(model))

@@ -194,6 +194,44 @@ def _partner_fact(call: ToolCallBlock, result: ToolResultBlock) -> str:
     return text[:_PARTNER_FACT_CHARS] + " …(rút gọn; bản đầy đủ theo mã E ở đầu)"
 
 
+class _FlexFirst:
+    """A model whose structured-output calls (memory extraction and
+    consolidation, test judging: background work nobody waits for) run on
+    OpenAI Flex at half price, falling back to the standard tier when a Flex
+    call fails (slow capacity returns 429). Streamed agent calls keep the
+    standard tier. ``WORKFORCE_BACKGROUND_SERVICE_TIER``: ``flex`` (default)
+    or empty to turn it off."""
+
+    def __init__(self, model: ChatModelBase) -> None:
+        self._model = model
+
+    def __getattr__(self, name: str):
+        return getattr(self._model, name)
+
+    async def __call__(self, *args, **kwargs):
+        return await self._model(*args, **kwargs)
+
+    async def generate_structured_output(self, *args, **kwargs):
+        model = self._model
+        standard = model.extra_body
+        model.extra_body = {**(standard or {}), "service_tier": "flex"}
+        try:
+            return await model.generate_structured_output(*args, **kwargs)
+        except Exception:  # noqa: BLE001 - retried on the standard tier
+            logger.info("Flex call failed; retrying on the standard tier", exc_info=True)
+            model.extra_body = standard
+            return await model.generate_structured_output(*args, **kwargs)
+        finally:
+            model.extra_body = standard
+
+
+def _background(model: ChatModelBase) -> ChatModelBase:
+    tier = os.getenv("WORKFORCE_BACKGROUND_SERVICE_TIER", "flex").strip().lower()
+    if tier != "flex" or not hasattr(model, "extra_body"):
+        return model
+    return _FlexFirst(model)  # type: ignore[return-value]
+
+
 def _private_context_ratio(context_size: int) -> float:
     """``WORKFORCE_PRIVATE_CONTEXT_TOKENS`` (default 16,000) as a ratio of
     the model's window, for the private-history compression trigger."""
@@ -471,8 +509,8 @@ class ChatService:
             base = session_record.config.chat_model_config
             strong = _role_model_config(base, "leader")
             return (
-                await get_model(user_id, base, self._access),
-                await get_model(user_id, strong, self._access),
+                _background(await get_model(user_id, base, self._access)),
+                _background(await get_model(user_id, strong, self._access)),
             )
 
         def on_verified_answer(team_id: str) -> None:
