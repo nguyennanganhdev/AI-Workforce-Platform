@@ -1815,11 +1815,14 @@ class ChatService:
                     # Only MCP results are automatically promoted as verified
                     # external facts; this avoids duplicate self-reporting.
                     # A wrapped MCP call (a partner's declared tool) marks
-                    # its result ``external_evidence``.
+                    # its result ``external_evidence``; only a member's
+                    # counts: it backs its report, while a partner leader
+                    # already has its own results and would flood the room.
                     if call is not None and (
                         call.name.startswith("mcp__")
                         or (
                             result is not None
+                            and isinstance(team_ctx, _WorkerContext)
                             and (result.metadata or {}).get("external_evidence")
                         )
                     ):
