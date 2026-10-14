@@ -71,6 +71,21 @@ def mcp_snapshot(ticket_id):
     return value['structuredContent']
 
 
+def publish_platform_confirmation(ticket_id):
+    """Simulate Platform publishing its confirmation step, only in the disposable HTTP test DB."""
+    owner=os.environ['VINHOMES_MCP_TEST_OWNER_URL']
+    parts=urlsplit(owner)
+    assert parts.hostname in ('127.0.0.1','localhost') and parts.path.startswith('/maintain_flow_test_')
+    async def publish():
+        import asyncpg
+        db=await asyncpg.connect(owner)
+        try:
+            assert await db.fetchval("select status='resolved' from tickets where id=$1",UUID(ticket_id))
+            await db.execute("update platform_links set state='awaiting_confirmation',next_action='confirm_close' where ticket_id=$1",UUID(ticket_id))
+        finally:await db.close()
+    asyncio.run(publish())
+
+
 def create_ticket():
     profile = call("GET", "/resident/me")
     unit = profile["units"][0]
@@ -169,6 +184,10 @@ def test_full_confirmation_retry_and_concurrent_decisions():
         assert snapshot['ticket_status']=='resolved' and snapshot['confirmation']=={'result_published':True,'waiting_for_resident':True,'resident_accepted':False,'ticket_closed':False}
     current = call("GET", f"/resident/tickets/{ticket}")["ticket"]
     body = {"approved":True,"note":"Tôi đã kiểm tra, mọi thứ hoạt động tốt.","version":current["version"]}
+    if snapshot:
+        call("POST", f"/resident/approvals/{approval}/decision", expected=409,
+             headers={"Idempotency-Key":str(uuid4())},json=body)
+        publish_platform_confirmation(ticket)
     call("POST", f"/resident/approvals/{approval}/decision", expected=409,
          headers={"Idempotency-Key":str(uuid4())},json={**body,"version":body["version"]-1})
     keys = [str(uuid4()), str(uuid4())]
