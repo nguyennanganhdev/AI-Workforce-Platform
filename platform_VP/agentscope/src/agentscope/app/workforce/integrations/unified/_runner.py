@@ -396,8 +396,11 @@ class ChatLeaderTurnRunner:
                 message = UserMsg(name="customer", content=[TextBlock(text="\n\n".join(parts))])
                 await state.chat_service.run(user_id, session.id, agent_id, message)
                 ran = True
+        # The turn is over: a later wake-up (a member's late report) has no
+        # turn to speak through; the next trigger reads what it said.
+        await store.set_trigger(session.id, None)
 
-        says = await store.entries(workflow.workflow_id, kind="say", trigger_id=trigger_id)
+        says =await store.entries(workflow.workflow_id, kind="say", trigger_id=trigger_id)
         rejected = await store.entries(workflow.workflow_id, kind="rejected", trigger_id=trigger_id)
         messages = [
             AssistantMessage(

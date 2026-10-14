@@ -10,7 +10,9 @@ updates, idempotently:
   when ``new_keys`` asks for fresh ones; old keys are then revoked);
 * the partner's MCP in the area manager's library (tools discovered);
 * the route leader as an Agent Studio agent (a new version only when the
-  declaration changed; open tickets keep the version they started with);
+  declaration changed; open tickets keep the version they started with), and
+  one invitable agent per ``role: "member"`` profile, which the leader may
+  invite into the ticket's room (with a subset of the route's tools);
 * the provider event schema of the integration;
 * one route per management ref, pending until the partner confirms it.
 """
@@ -165,7 +167,19 @@ class PartnerOnboarding:
                 kept = tuple(k.split(".")[0].removeprefix("dp_") for k in (keys["customer_key"], provider.api_key))
                 await business.revoke_client_keys(client_id=client_id, keep=kept)
 
-        agent_id, version = await self._leader(body, leader, tools, mcp_record, storage, workspace_manager)
+        agent_id, version = await self._agent(body, leader, tools, mcp_record, storage, workspace_manager)
+        members = []
+        for profile in (p for p in profiles if p.get("role") == "member"):
+            member_tools = self._tools(declaration, mcp_record, profile.get("tools_allow") or [])
+            outside = sorted({t["name"] for t in member_tools} - {t["name"] for t in tools})
+            if outside:
+                # A member works under the ticket's grant, which covers the route's tools only.
+                raise OnboardingError(422, "DECLARATION_INVALID", {"member": profile.get("key"), "tools_outside_route": outside})
+            member_id, member_version = await self._agent(
+                body, profile, member_tools, mcp_record, storage, workspace_manager, invitable=True,
+            )
+            members.append({"agent_id": member_id, "name": str(profile["name"])[:100], "version": member_version,
+                            "tools": [t["name"] for t in member_tools]})
         await self._schema(scope, client_id, integration_id, declaration)
 
         operations = [
@@ -176,7 +190,7 @@ class PartnerOnboarding:
         out_routes = []
         for ref in dict.fromkeys(item.strip() for item in body.management_refs if item.strip()):
             route = await self._route(scope, client_id, ref, operations)
-            await self._route_settings(route, scope, client_id, agent_id, integration_id, route_decl, tools)
+            await self._route_settings(route, scope, client_id, agent_id, integration_id, route_decl, tools, members)
             out_routes.append(
                 {
                     "management_ref": ref,
@@ -192,6 +206,7 @@ class PartnerOnboarding:
             "leader_version": version,
             "mcp": {"name": mcp_record.client.name, "tools": len(mcp_record.discovered_tools)},
             "tools": [tool["name"] for tool in tools],
+            "members": members,
             "routes": out_routes,
             "keys": keys,
         }
@@ -345,7 +360,9 @@ class PartnerOnboarding:
             raise OnboardingError(422, "TOOL_NOT_FOUND", missing)
         return tools
 
-    async def _leader(self, body, profile, tools, mcp_record, storage, workspace_manager) -> tuple[str, int]:
+    async def _agent(
+        self, body, profile, tools, mcp_record, storage, workspace_manager, *, invitable: bool = False,
+    ) -> tuple[str, int]:
         from ...._agent_spec import AgentSpec, SpecEscalation, SpecTool
         from ...._router._workforce_studio import _create_record
         from ...._service._agent_studio import materialize, set_draft
@@ -395,8 +412,11 @@ class PartnerOnboarding:
             set_draft(record, spec, author="manager", note="Onboarding đối tác")
             materialize(record, spec, author="manager", note="Onboarding đối tác", evaluation=None)
         # A route leader answers its own partner tickets; the console Leader
-        # must not borrow it (its tools need the partner case runtime).
-        record.data.invite_config.invitable = False
+        # must not borrow it (its tools need the partner case runtime). A
+        # member is invited by the route leader into a ticket's room.
+        if invitable:
+            record.data.invite_config.invite_description = spec.description or spec.name
+        record.data.invite_config.invitable = invitable
         await storage.upsert_agent(body.manager_account_id, record)
         return record.id, int(record.data.published_version)
 
@@ -450,7 +470,7 @@ class PartnerOnboarding:
             raise OnboardingError(409, "ROUTE_REFUSED", str(exc)) from exc
         return {"id": route.route_id, "revision": route.revision, "status": getattr(route.status, "value", route.status)}
 
-    async def _route_settings(self, route, scope, client_id, agent_id, integration_id, route_decl, tools) -> None:
+    async def _route_settings(self, route, scope, client_id, agent_id, integration_id, route_decl, tools, members) -> None:
         now = _now()
         values = {
             "tenant_id": scope.tenant_id,
@@ -458,7 +478,11 @@ class PartnerOnboarding:
             "manager_account_id": scope.manager_account_id,
             "leader_agent_id": agent_id,
             "integration_id": integration_id,
-            "config": route_decl.get("config") or {},
+            # member_agents: who the leader may invite, with their tools (platform-owned key).
+            "config": {
+                **(route_decl.get("config") or {}),
+                "member_agents": {m["agent_id"]: {"name": m["name"], "tools": m["tools"]} for m in members},
+            },
             "tools": tools,
             "updated_at": now,
         }

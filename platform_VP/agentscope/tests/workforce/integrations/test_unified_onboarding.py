@@ -432,6 +432,36 @@ class PartnerOnboardingTest(UnifiedOnboardingTest):
         await self.business.authenticate_partner_api_key(renewed["customer_key"])
         await self.business.authenticate_partner_api_key(renewed["provider_key"])
 
+    async def test_member_profiles_become_agents_the_route_leader_may_invite(self):
+        import copy
+        import json
+
+        declaration = copy.deepcopy(DECLARATION)
+        declaration["profiles"].append({
+            "key": "vh_ky_thuat", "name": "KyThuatVinhomes", "role": "member",
+            "mission": "đánh giá kỹ thuật của sự cố", "tools_allow": ["vh_ticket_get"],
+        })
+        answer = await self._onboard(declaration=declaration)
+        self.assertEqual(200, answer.status_code, answer.text)
+        [member] = answer.json()["members"]
+        self.assertEqual(("KyThuatVinhomes", ["vh_ticket_get"]), (member["name"], member["tools"]))
+        agent = self.storage.agents[member["agent_id"]]
+        self.assertTrue(agent.data.invite_config.invitable)
+        self.assertEqual("đánh giá kỹ thuật của sự cố", agent.data.invite_config.invite_description)
+        self.assertFalse(self.storage.agents[answer.json()["leader_agent_id"]].data.invite_config.invitable)
+        async with self.engine.connect() as connection:
+            config = (await connection.execute(text("SELECT config FROM wf_unified_routes"))).scalar()
+        config = json.loads(config) if isinstance(config, str) else config
+        self.assertEqual(
+            {member["agent_id"]: {"name": "KyThuatVinhomes", "tools": ["vh_ticket_get"]}},
+            config["member_agents"],
+        )
+        # A member works under the ticket's grant, which covers the route's tools only.
+        declaration["profiles"][0]["tools_allow"] = ["vh_ticket_get"]
+        declaration["profiles"][1]["tools_allow"] = ["vh_work_order_dispatch"]
+        refused = await self._onboard(declaration=declaration)
+        self.assertEqual(422, refused.status_code, refused.text)
+
     async def test_an_unreachable_mcp_issues_no_keys(self):
         from unittest.mock import patch
 

@@ -7,6 +7,12 @@ platform fills the hidden ``client_reference``), and cites the evidence
 labels ``E<n>`` that every tool result and provider event carries.
 Everything here is per session and only attached to sessions of partner
 workflows (see :class:`CaseRuntime.middlewares`).
+
+When the route declares member agents, the leader may open the ticket's room
+(``TeamCreate`` / ``AgentInvite``) and wait for their reports within its turn.
+Members call their share of the route's tools under the ticket's grant, so
+their results are evidence the leader can cite; only the leader speaks to the
+end user.
 """
 
 from __future__ import annotations
@@ -26,6 +32,7 @@ from sqlalchemy import and_, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 
 from ....._logging import logger
+from .....event import ReplyEndEvent, ReplyFinishedReason
 from .....message import TextBlock, ToolResultState
 from .....middleware import MiddlewareBase
 from .....permission import PermissionBehavior, PermissionDecision
@@ -34,6 +41,9 @@ from ...orchestration._tables import partner_requests, workflow_inputs
 from ._tables import case_entries, case_sessions, operations, routes
 
 EXPECTS = ("none", "reply", "confirmation")
+TEAM_TOOLS = ("TeamCreate", "AgentInvite", "TeamSay", "TeamDelete")
+# Rounds of member reports the leader may wait for within one turn.
+MAX_TEAM_ROUNDS = 4
 MAX_TEXT = 4000
 EVIDENCE_TEXT = 6000
 LABEL = re.compile(r"^E(\d+)$")
@@ -317,6 +327,10 @@ class _Case:
         current = await self.store.session(self.session_id)
         return (current or {}).get("trigger_id") or "unknown"
 
+    async def said(self) -> bool:
+        """Whether the current turn already sent its one message."""
+        return bool(await self.store.entries(self.workflow_id, kind="say", trigger_id=await self.trigger_id()))
+
     async def client_reference(self, tool: str, arguments: dict) -> str:
         canonical = json.dumps(arguments, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         seed = f"{self.workflow_id}|{await self.trigger_id()}|{tool}|{canonical}"
@@ -369,6 +383,10 @@ class _CaseTool(ToolBase):
         ]
         text = (text or "").strip()
         problems: list[str] = []
+        if trigger_id == "unknown":
+            # A late wake-up (a member's report after the turn ended) has no
+            # turn to deliver through; the next turn reads the report.
+            problems.append("Không có lượt nào đang mở; tin này sẽ không tới người dùng. Kết thúc, không gửi.")
         if already:
             problems.append("Lượt này đã gửi một tin cho người dùng. Kết thúc lượt, không gửi thêm.")
         if not text:
@@ -512,7 +530,13 @@ class PartnerTool(ToolBase):
             f"{self.name}: {text}"[:EVIDENCE_TEXT],
             trigger_id=await self._case.trigger_id(),
         )
-        return ToolChunk(content=[TextBlock(text=f"E{label}: {text}")], state=state)
+        # A call to the partner's MCP under another name: in a ticket's room
+        # its result is verified evidence like any MCP result (see ChatService).
+        return ToolChunk(
+            content=[TextBlock(text=f"E{label}: {text}")],
+            state=state,
+            metadata={"external_evidence": True},
+        )
 
     async def _track(self, reference: str, text: str) -> None:
         try:
@@ -536,31 +560,128 @@ PARTNER_CASE_POLICY = """PARTNER CASE POLICY (server-owned; overrides conflictin
 """
 
 
+PARTNER_TEAM_POLICY = """PHÒNG XỬ LÝ (chỉ lập khi cần):
+- Phiếu cần đánh giá chuyên môn hoặc ý kiến thứ hai: TeamCreate rồi AgentInvite đúng agent chuyên môn, giao việc rõ (cần kiểm tra gì, trả về gì). Phiếu đơn giản thì tự làm, không lập phòng.
+- Thành viên không nói với người dùng. Họ báo lại bằng TeamSay kèm mã E.. của kết quả công cụ họ gọi. Bạn kiểm báo cáo rồi tự gửi người dùng MỘT tin bằng CaseSay, cites đúng các mã E.. đó.
+- Khi đã giao việc cho thành viên, chờ họ báo rồi mới gửi tin cho người dùng.
+- Phòng giữ suốt phiếu: lượt sau dùng TeamSay với thành viên đã có, không lập phòng mới.
+"""
+
+PARTNER_MEMBER_POLICY = """PARTNER CASE MEMBER POLICY (server-owned; overrides conflicting instructions above):
+- Bạn là thành viên phòng xử lý một phiếu của đối tác, do trợ lý điều phối (leader) lập. Bạn không nói với người dùng; chỉ leader gửi tin cho họ.
+- Mỗi kết quả công cụ bắt đầu bằng mã E.. (ví dụ "E7: ..."). Báo lại leader bằng TeamSay: kết luận ngắn và các mã E.. chứa dữ liệu bạn dùng.
+- Không đoán. Thiếu dữ liệu thì nói rõ thiếu gì.
+- Không tự điền client_reference: platform điền.
+"""
+
+TEAM_NUDGE = (
+    "Thành viên đã báo về. Đọc báo cáo của họ trong hộp thư và Shared Context, "
+    "kiểm từng điểm, rồi gửi người dùng MỘT tin bằng CaseSay với cites là các mã E.. "
+    "trong báo cáo. Không gửi tin chờ."
+)
+
+# Where AgentInvite lists its targets (see _tool/_agent_invite.py).
+_INVITE_ENUMS = (
+    ("properties", "target"),
+    ("properties", "depends_on", "items"),
+    ("$defs", "_AdditionalAssignment", "properties", "target"),
+    ("$defs", "_AdditionalAssignment", "properties", "depends_on", "items"),
+)
+
+
+def _schema_name(schema: dict) -> str | None:
+    return (schema.get("function") or {}).get("name") or schema.get("name")
+
+
+def _invite_only(schema: dict, names: set[str]) -> dict | None:
+    """AgentInvite limited to the route's member agents (None: no one left)."""
+
+    schema = json.loads(json.dumps(schema))
+    holder = schema["function"] if "function" in schema else schema
+    parameters = holder.get("parameters") or holder.get("input_schema") or {}
+    for path in _INVITE_ENUMS:
+        node = parameters
+        for key in path:
+            node = node.get(key) if isinstance(node, dict) else None
+        if isinstance(node, dict) and isinstance(node.get("enum"), list):
+            node["enum"] = [value for value in node["enum"] if value in names]
+    target = (parameters.get("properties") or {}).get("target") or {}
+    if not target.get("enum"):
+        return None
+    holder["description"] = "\n".join(
+        line for line in str(holder.get("description") or "").splitlines()
+        if not line.startswith("- ``") or any(repr(name) in line for name in names)
+    )
+    return schema
+
+
 class PartnerCaseMiddleware(MiddlewareBase):
     """Case tools + policy for one partner workflow session."""
 
-    def __init__(self, case: _Case, tools: list[ToolBase]) -> None:
+    def __init__(
+        self,
+        case: _Case,
+        tools: list[ToolBase],
+        members: dict[str, dict] | None = None,
+        waiter: Any = None,
+    ) -> None:
         super().__init__()
         self._case = case
         self._tools = tools
+        # AgentInvite target name -> member entry; empty: the leader works alone.
+        self._members = members or {}
+        # A LeaderEvidenceMiddleware used for its wait/nudge helpers only.
+        self._waiter = waiter
 
     async def list_tools(self) -> list[ToolBase]:
         return [CaseSay(self._case), CaseFinalize(self._case), *self._tools]
 
     async def on_model_call(self, agent: Any, input_kwargs: dict, next_handler: Any) -> Any:
-        """The route leader sees only its case tools and the declared tools.
-
-        The toolkit also offers team tools (TeamCreate, TeamSay, AgentInvite)
-        to any session outside a team; a partner leader works alone.
+        """The route leader sees its case tools, the declared tools and, when
+        the route declares members, the team tools limited to those members.
         """
 
         allowed = {"CaseSay", "CaseFinalize", *(tool.name for tool in self._tools)}
-
-        def name(schema: dict) -> str | None:
-            return (schema.get("function") or {}).get("name") or schema.get("name")
-
-        tools = [schema for schema in input_kwargs.get("tools") or [] if name(schema) in allowed]
+        if self._members:
+            allowed.update(TEAM_TOOLS)
+        tools = []
+        for schema in input_kwargs.get("tools") or []:
+            name = _schema_name(schema)
+            if name not in allowed:
+                continue
+            if name == "AgentInvite":
+                schema = _invite_only(schema, set(self._members))
+                if schema is None:
+                    continue
+            tools.append(schema)
         return await next_handler(tools=tools)
+
+    async def on_reply(self, agent: Any, input_kwargs: dict, next_handler: Any) -> Any:
+        """After dispatching to members, wait for their reports within the
+        turn, then let the leader answer (the console Leader's mechanism)."""
+
+        if self._waiter is None:
+            async for event in next_handler(**input_kwargs):
+                yield event
+            return
+        waiter = self._waiter
+        seen, rounds = 0, 0
+        deadline = asyncio.get_running_loop().time() + waiter._wait_seconds  # noqa: SLF001
+        async for event in next_handler(**input_kwargs):
+            finished = isinstance(event, ReplyEndEvent) and event.finished_reason in (
+                ReplyFinishedReason.COMPLETED,
+                ReplyFinishedReason.EXCEED_MAX_ITERS,
+            )
+            if finished and rounds < MAX_TEAM_ROUNDS:
+                expected = waiter._expected_reports(agent)  # noqa: SLF001
+                if expected > seen and not await self._case.said():
+                    seen = expected
+                    ready = await waiter._wait_until_ready(expected, deadline)  # noqa: SLF001
+                    if ready and not await waiter._pending_consent():  # noqa: SLF001
+                        rounds += 1
+                        waiter._nudge(agent, TEAM_NUDGE)  # noqa: SLF001
+                        continue
+            yield event
 
     async def on_system_prompt(self, agent: Any, current_prompt: str) -> str:
         from ...._workforce_policy import BUSINESS_AGENT_EVIDENCE_POLICY
@@ -571,10 +692,46 @@ class PartnerCaseMiddleware(MiddlewareBase):
             "- Không viết: " + ", ".join(f'"{p}"' for p in rule.get("phrases") or []) + f" ({rule.get('reason', '')})"
             for rule in rules
         )
-        return prompt + "\n\n" + PARTNER_CASE_POLICY + (("\n" + banned) if banned else "")
+        team = ("\n" + PARTNER_TEAM_POLICY) if self._members else ""
+        return prompt + "\n\n" + PARTNER_CASE_POLICY + team + (("\n" + banned) if banned else "")
 
     async def get_middleware_key(self) -> str:
         return "partner_case"
+
+
+class PartnerMemberMiddleware(MiddlewareBase):
+    """A member of a partner ticket's room: its share of the route's tools,
+    under the ticket's grant; it reports to the leader, never to the user."""
+
+    def __init__(self, case: _Case, tools: list[ToolBase]) -> None:
+        super().__init__()
+        self._case = case
+        self._tools = tools
+
+    async def list_tools(self) -> list[ToolBase]:
+        return list(self._tools)
+
+    async def on_model_call(self, agent: Any, input_kwargs: dict, next_handler: Any) -> Any:
+        allowed = {"TeamSay", *(tool.name for tool in self._tools)}
+        tools = [schema for schema in input_kwargs.get("tools") or [] if _schema_name(schema) in allowed]
+        return await next_handler(tools=tools)
+
+    async def on_system_prompt(self, agent: Any, current_prompt: str) -> str:
+        from ...._workforce_policy import BUSINESS_AGENT_EVIDENCE_POLICY
+
+        prompt = current_prompt.replace(BUSINESS_AGENT_EVIDENCE_POLICY, "").rstrip()
+        return prompt + "\n\n" + PARTNER_MEMBER_POLICY
+
+    async def get_middleware_key(self) -> str:
+        return "partner_case_member"
+
+
+def _members(route: dict) -> dict[str, dict]:
+    """AgentInvite target name -> member entry, for the route's member agents."""
+    from ...._tool._agent_invite import _display_name
+
+    agents = (route.get("config") or {}).get("member_agents") or {}
+    return {_display_name(entry["name"], agent_id): entry for agent_id, entry in agents.items()}
 
 
 class CaseRuntime:
@@ -592,16 +749,59 @@ class CaseRuntime:
         return getattr(getattr(self._app, "state", None), "storage", None)
 
     async def middlewares(self, user_id: str, agent_id: str, session_id: str, *_: Any) -> list[MiddlewareBase]:
+        if self._storage is None:
+            return []
         session = await self.store.session(session_id)
-        if session is None or session["agent_id"] != agent_id or self._storage is None:
+        if session is None:
+            return await self._member(user_id, agent_id, session_id)
+        if session["agent_id"] != agent_id:
             return []
         route = await self.store.route(session["route_id"])
         if route is None:
             return []
         case = _Case(self.store, session, route)
-        return [PartnerCaseMiddleware(case, await self._tools(user_id, case, route))]
+        members = _members(route)
+        waiter = self._waiter(user_id, agent_id, session_id) if members else None
+        return [PartnerCaseMiddleware(case, await self._tools(user_id, case, route), members, waiter)]
 
-    async def _tools(self, user_id: str, case: _Case, route: dict) -> list[ToolBase]:
+    def _waiter(self, user_id: str, agent_id: str, session_id: str) -> Any:
+        from ...._shared_context import SharedContextService
+        from ....middleware._leader_evidence_middleware import LeaderEvidenceMiddleware
+
+        state = self._app.state
+        shared = SharedContextService(state.shared_context_storage, state.message_bus)
+        return LeaderEvidenceMiddleware(state.storage, shared, user_id, agent_id, session_id)
+
+    async def _member(self, user_id: str, agent_id: str, session_id: str) -> list[MiddlewareBase]:
+        """A session in the room of a partner ticket, of a declared member."""
+
+        record = await self._storage.get_session(user_id, agent_id, session_id)
+        team_id = getattr(record, "team_id", None)
+        if record is None or not team_id:
+            return []
+        team = await self._storage.get_team(user_id, team_id)
+        leader = await self.store.session(team.session_id) if team is not None else None
+        if leader is None:
+            return []
+        route = await self.store.route(leader["route_id"])
+        agents = ((route or {}).get("config") or {}).get("member_agents") or {}
+        member = agents.get(agent_id)
+        if member is None:
+            return []
+        # Like the leader, a member reaches the partner only through the case
+        # tools (the ticket's grant), never through the shared MCP binding.
+        workspace = await self._app.state.workspace_manager.get_workspace(
+            user_id, agent_id, record.id, record.config.workspace_id,
+        )
+        for client in await workspace.list_mcps(agent_id=agent_id, session_id=record.id):
+            await workspace.remove_mcp(client.name, agent_id=agent_id, session_id=record.id)
+        for default_mcp in workspace.default_mcps:
+            await workspace.remove_mcp(default_mcp.name, agent_id=agent_id, session_id=record.id)
+        case = _Case(self.store, leader, route)
+        tools = await self._tools(user_id, case, route, only=set(member.get("tools") or []))
+        return [PartnerMemberMiddleware(case, tools)]
+
+    async def _tools(self, user_id: str, case: _Case, route: dict, only: set[str] | None = None) -> list[ToolBase]:
         from .....mcp import MCPClient
 
         tools: list[ToolBase] = []
@@ -609,7 +809,7 @@ class CaseRuntime:
         transports: dict[str, Any] = {}
         for spec in route.get("tools") or []:
             mcp_id = spec.get("mcp_id")
-            if not mcp_id:
+            if not mcp_id or (only is not None and spec.get("name") not in only):
                 continue
             if mcp_id not in clients:
                 record = await self._storage.get_mcp(user_id, mcp_id)
@@ -648,6 +848,7 @@ class CaseRuntime:
 
 
 __all__ = [
+    "PartnerMemberMiddleware",
     "CaseFinalize",
     "CaseRuntime",
     "CaseSay",

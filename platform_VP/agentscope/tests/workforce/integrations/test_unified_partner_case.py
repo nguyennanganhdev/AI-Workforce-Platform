@@ -677,6 +677,14 @@ class UnifiedPartnerApprovalTest(_CaseHarness):
                 required = next(item for item in items if item["event_type"] == "approval.required")["payload"]
                 state = [i["payload"]["state"] for i in items if i["event_type"] == "workflow.status_changed"][-1]
                 self.assertEqual("awaiting_approval", state)
+                # A partner that lost its cursor gets from the snapshot what its decision must carry.
+                snapshot_url = f"/workforce/v1/partner/conversations/{started['conversation_id']}"
+                snapshot = await client.get(snapshot_url, params={"external_user_id": "resident-1"})
+                self.assertEqual(200, snapshot.status_code, snapshot.text)
+                self.assertEqual(
+                    [{**required, "workflow_id": started["workflow_id"], "status": "pending"}],
+                    snapshot.json()["pending_approvals"],
+                )
                 body = {
                     "schema_version": "1",
                     "external_request_id": "vh-decision-1",
@@ -699,6 +707,8 @@ class UnifiedPartnerApprovalTest(_CaseHarness):
                 self.assertEqual(202, again.status_code)
                 self.assertEqual("succeeded", await self._run())
                 items = await self._history(client, started["conversation_id"])
+                snapshot = await client.get(snapshot_url, params={"external_user_id": "resident-1"})
+                self.assertEqual([], snapshot.json()["pending_approvals"])
         kinds = [item["event_type"] for item in items]
         self.assertIn("approval.resolved", kinds)
         texts = [i["payload"].get("text") for i in items if i["event_type"] == "assistant.message"]
@@ -731,6 +741,126 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
             ["CaseSay", "CaseFinalize", "vh_ticket_get"],
             [tool["function"]["name"] for tool in seen["tools"]],
         )
+
+    async def test_with_declared_members_the_leader_may_open_a_room_with_them_only(self):
+        import copy
+
+        from agentscope.app._tool._agent_invite import _AgentInviteParams, _display_name
+        from agentscope.app.workforce.integrations.unified._case import PartnerCaseMiddleware, _members
+
+        route = {"config": {"member_agents": {"a-kt": {"name": "KyThuatVinhomes", "tools": ["vh_ticket_get"]}}}}
+        members = _members(route)
+        names = [_display_name("KyThuatVinhomes", "a-kt"), _display_name("Travel", "a-x")]
+        self.assertEqual([names[0]], list(members))
+        # The toolkit's AgentInvite lists every invitable agent of the manager.
+        parameters = copy.deepcopy(_AgentInviteParams.model_json_schema())
+        parameters["properties"]["target"]["enum"] = list(names)
+        parameters["properties"]["depends_on"]["items"]["enum"] = list(names)
+        extra = parameters["$defs"]["_AdditionalAssignment"]["properties"]
+        extra["target"]["enum"] = list(names)
+        extra["depends_on"]["items"]["enum"] = list(names)
+        invite = {
+            "type": "function",
+            "function": {
+                "name": "AgentInvite",
+                "description": "Invite.\n" + "\n".join(f"- ``{name!r}`` — x; tools=" for name in names),
+                "parameters": parameters,
+            },
+        }
+        middleware = PartnerCaseMiddleware(
+            SimpleNamespace(rules={}), [SimpleNamespace(name="vh_ticket_get")], members,
+        )
+        seen = {}
+
+        async def next_handler(**kwargs):
+            seen.update(kwargs)
+
+        offered = [
+            {"type": "function", "function": {"name": name}}
+            for name in ("TeamCreate", "TeamSay", "TeamDelete", "CaseSay", "vh_ticket_get", "Bash")
+        ] + [invite]
+        await middleware.on_model_call(None, {"tools": offered}, next_handler)
+        kept = {tool["function"]["name"]: tool for tool in seen["tools"]}
+        self.assertEqual({"TeamCreate", "TeamSay", "TeamDelete", "CaseSay", "vh_ticket_get", "AgentInvite"}, set(kept))
+        limited = kept["AgentInvite"]["function"]
+        self.assertEqual([names[0]], limited["parameters"]["properties"]["target"]["enum"])
+        self.assertEqual(
+            [names[0]],
+            limited["parameters"]["$defs"]["_AdditionalAssignment"]["properties"]["target"]["enum"],
+        )
+        self.assertNotIn("Travel", limited["description"])
+        self.assertEqual(names, invite["function"]["parameters"]["properties"]["target"]["enum"])  # not mutated
+        prompt = await middleware.on_system_prompt(None, "Bạn là điều phối.")
+        self.assertIn("PHÒNG XỬ LÝ", prompt)
+
+    async def test_a_declared_member_in_the_ticket_room_gets_its_tools_under_the_case(self):
+        from agentscope.app.workforce.integrations.unified._case import CaseRuntime, PartnerMemberMiddleware
+
+        leader = {"session_id": "s-leader", "workflow_id": "wf-1", "route_id": "r-1", "agent_id": "a-leader"}
+        route = {
+            "route_id": "r-1",
+            "config": {"member_agents": {"a-kt": {"name": "KyThuatVinhomes", "tools": ["vh_ticket_get"]}}},
+        }
+
+        class Store:
+            async def session(self, session_id):
+                return leader if session_id == "s-leader" else None
+
+            async def route(self, route_id):
+                return route
+
+        removed = []
+
+        class Workspace:
+            default_mcps = [SimpleNamespace(name="default")]
+
+            async def list_mcps(self, agent_id, session_id):
+                return [SimpleNamespace(name="vinhomes")]
+
+            async def remove_mcp(self, name, agent_id, session_id):
+                removed.append((name, agent_id, session_id))
+
+        sessions = {
+            "s-kt": SimpleNamespace(id="s-kt", team_id="team-1", config=SimpleNamespace(workspace_id="w")),
+            "s-other": SimpleNamespace(id="s-other", team_id=None, config=SimpleNamespace(workspace_id="w")),
+        }
+
+        class Storage:
+            async def get_session(self, user_id, agent_id, session_id):
+                return sessions.get(session_id)
+
+            async def get_team(self, user_id, team_id):
+                return SimpleNamespace(session_id="s-leader")
+
+        async def get_workspace(*_args):
+            return Workspace()
+
+        runtime = CaseRuntime(Store())
+        runtime.bind(SimpleNamespace(state=SimpleNamespace(
+            storage=Storage(), workspace_manager=SimpleNamespace(get_workspace=get_workspace),
+        )))
+        asked = {}
+
+        async def tools(user_id, case, route_, only=None):
+            asked.update(workflow=case.workflow_id, only=only)
+            return [SimpleNamespace(name="vh_ticket_get")]
+
+        runtime._tools = tools
+        [member] = await runtime.middlewares("u", "a-kt", "s-kt")
+        self.assertIsInstance(member, PartnerMemberMiddleware)
+        self.assertEqual({"workflow": "wf-1", "only": {"vh_ticket_get"}}, asked)
+        self.assertEqual({"vinhomes", "default"}, {name for name, *_ in removed})
+        # Not a declared member, or not in a team: nothing.
+        self.assertEqual([], await runtime.middlewares("u", "a-travel", "s-kt"))
+        self.assertEqual([], await runtime.middlewares("u", "a-kt", "s-other"))
+        seen = {}
+
+        async def next_handler(**kwargs):
+            seen.update(kwargs)
+
+        offered = [{"type": "function", "function": {"name": n}} for n in ("TeamSay", "CaseSay", "vh_ticket_get", "Bash")]
+        await member.on_model_call(None, {"tools": offered}, next_handler)
+        self.assertEqual(["TeamSay", "vh_ticket_get"], [t["function"]["name"] for t in seen["tools"]])
 
 
 class CheckSayTest(unittest.TestCase):

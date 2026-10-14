@@ -1808,7 +1808,15 @@ class ChatService:
                     # TeamSay and built-in tools have their own projections.
                     # Only MCP results are automatically promoted as verified
                     # external facts; this avoids duplicate self-reporting.
-                    if call is not None and call.name.startswith("mcp__"):
+                    # A wrapped MCP call (a partner's declared tool) marks
+                    # its result ``external_evidence``.
+                    if call is not None and (
+                        call.name.startswith("mcp__")
+                        or (
+                            result is not None
+                            and (result.metadata or {}).get("external_evidence")
+                        )
+                    ):
                         exact = json.dumps(
                             {
                                 "tool_call": call.model_dump(mode="json"),
