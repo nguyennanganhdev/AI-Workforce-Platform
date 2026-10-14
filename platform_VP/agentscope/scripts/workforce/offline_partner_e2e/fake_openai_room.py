@@ -42,7 +42,7 @@ def _last_tool(messages):
 
 
 def _ticket(messages) -> str:
-    found = re.search(r"ticket_id: ?(T-[\w-]+)", json.dumps(messages, ensure_ascii=False))
+    found = re.search(r"ticket_id: ?([A-Za-z0-9][\w-]*)", json.dumps(messages, ensure_ascii=False))
     return found.group(1) if found else "unknown"
 
 
