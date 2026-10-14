@@ -334,7 +334,9 @@ async def load(url: str, folder: str, dry_run: bool, ended: list = (), back: lis
     conn = await asyncpg.connect(url.replace("postgresql+asyncpg:", "postgresql:", 1))
     try:
         if not await conn.fetchval("select 1 from tenants where id=$1", TENANT):
-            raise SystemExit("Run `database seed` first: the import adds to the base sample.")
+            raise SystemExit("Run `database bootstrap` first: the import requires an existing tenant.")
+        if await conn.fetchval("select count(*) from sites where tenant_id=$1", TENANT) != 1:
+            raise SystemExit("Legacy import requires exactly one site. Multi-site owner data needs explicit site-scoped validation; nothing was imported.")
         tx = conn.transaction()
         await tx.start()
         await conn.execute("select set_config('app.tenant_id',$1,true)", str(TENANT))

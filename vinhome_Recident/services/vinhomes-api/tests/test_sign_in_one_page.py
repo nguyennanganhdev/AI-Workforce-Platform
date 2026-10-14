@@ -14,16 +14,17 @@ def test_the_session_tells_which_app_each_kind_of_person_goes_on_to(database):
         on conflict do nothing""", admin["id"], password_hash(admin_password))
     sql(database, "update tenant_memberships set status='active' where user_id=$1 and tenant_id=$2", admin["id"], TENANT)
     password = secrets.token_urlsafe(16)
-    emails = {role: f"{role}-{secrets.token_hex(4)}@example.com" for role in ("customer", "staff", "management")}
+    emails = {role: f"{role}-{secrets.token_hex(4)}@example.com" for role in ("customer", "staff")}
     with door(database) as c:
         assert sign_in(c, admin["email"], admin_password) == 200
         for role, email in emails.items():
             made = c.post("/auth/accounts", json={"name": f"Người {role}", "email": email, "password": password, "role": role})
             assert made.status_code == 201, made.text
+        assert c.post("/auth/accounts", json={"name":"BQL dùng Platform","email":"management@example.invalid","password":password,"role":"management"}).status_code==422
         session = c.get("/auth/session").json()
         assert session["operationsRole"] == "admin" and "operations" in session["audiences"]               # 1: an administrator
 
-    expected = {"customer": (None, ["resident"]), "staff": ("staff", ["operations"]), "management": ("management", ["operations"])}
+    expected = {"customer": (None, ["resident"]), "staff": ("staff", ["operations"])}
     for role, email in emails.items():
         with door(database) as c:
             assert sign_in(c, email, password) == 200                                                        # 2: the same door for everyone

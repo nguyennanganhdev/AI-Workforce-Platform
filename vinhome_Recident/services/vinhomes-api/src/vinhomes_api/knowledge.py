@@ -105,7 +105,7 @@ async def embed(texts: list[str], timeout: float) -> list[bytes]:
     return vectors
 
 
-async def search(db, tenant, audience: str, zone_id, building_id, query: str, top_k: int) -> dict:
+async def search(db, tenant, audience: str, zone_id, building_id, query: str, top_k: int, *, site_id=None) -> dict:
     """The passages of the tenant written for this audience and this place that best match the question.
 
     Place: documents of the whole site always, plus those of `zone_id`, plus those of `building_id` in it.
@@ -138,6 +138,11 @@ async def search(db, tenant, audience: str, zone_id, building_id, query: str, to
                    1-(k.embedding <=> cast(cast(:vector as text) as vector)) as meaning
             from vh_knowledge_chunks k join vh_knowledge_documents d on d.id=k.document_id and d.tenant_id=k.tenant_id
             where k.tenant_id=:tenant and d.audience=:audience
+              and d.site_id=coalesce(cast(:site as uuid),
+                    (select site_id from zones where tenant_id=:tenant and id=cast(:zone as uuid)),
+                    (select site_id from buildings where tenant_id=:tenant and id=cast(:building as uuid)),
+                    (select (array_agg(id))[1] from sites where tenant_id=:tenant having count(*)=1))
+              and coalesce(d.metadata->>'retrieval_status','reference') <> 'quarantined'
               and (d.zone_id is null or (d.zone_id=cast(:zone as uuid)
                    and (d.building_ids is null or cast(:building as uuid)=any(d.building_ids))))),
         terms as (select term from unnest(cast(:terms as text[])) term),
@@ -151,7 +156,7 @@ async def search(db, tenant, audience: str, zone_id, building_id, query: str, to
         from scored
         where :vector_weight*meaning+:text_weight*text_score>=:blend_floor or (text_score>=:text_floor and (meaning is null or :many_words))
         order by score desc,id limit :top
-    """), {"tenant": tenant, "audience": audience, "zone": zone_id, "building": building_id, "terms": terms, "vector": vector,
+    """), {"tenant": tenant, "audience": audience, "site": site_id, "zone": zone_id, "building": building_id, "terms": terms, "vector": vector,
            "vector_weight": VECTOR_WEIGHT, "text_weight": TEXT_WEIGHT, "blend_floor": BLEND_FLOOR, "text_floor": TEXT_FLOOR,
            "many_words": len(set(plain)) >= WORDS_ALONE, "top": top_k})).mappings().all()
     result["hits"] = [{"rank": rank, "chunkId": str(row["id"]), "documentId": str(row["document_id"]), "versionId": str(row["version_id"]),
@@ -172,23 +177,26 @@ class SearchBody(BaseModel):
 async def search_for_resident(body: SearchBody, scope: DelegatedScope):
     """What Reception may quote to the resident of this turn: resident documents of the place they live in."""
     db, run = scope
-    homes = {(row["zone_id"], row["building_id"]) for row in (await db.execute(text("""
-        select u.zone_id,u.building_id from unit_residents ur join units u on u.id=ur.unit_id and u.tenant_id=ur.tenant_id
+    homes = {(row["site_id"], row["zone_id"], row["building_id"]) for row in (await db.execute(text("""
+        select u.site_id,u.zone_id,u.building_id from unit_residents ur join units u on u.id=ur.unit_id and u.tenant_id=ur.tenant_id
         where ur.tenant_id=:tenant and ur.user_id=:user and ur.verification_status='verified'
           and ur.valid_from<=now() and (ur.valid_to is null or ur.valid_to>now())
     """), {"tenant": run["tenant_id"], "user": run["user_id"]})).mappings()}
-    if len({zone for zone, _ in homes}) > 1:
+    if len({(site,zone) for site, zone, _ in homes}) > 1:
         # Homes in several zones: the request filed from this conversation says which one is meant. Until there
         # is one, only what holds for the whole site is safe to quote.
         filed = (await db.execute(text("""
-            select zone_id,building_id from tickets where tenant_id=:tenant and channel_id=:channel and unit_id is not null
+            select site_id,zone_id,building_id from tickets where tenant_id=:tenant and channel_id=:channel and unit_id is not null
             order by created_at desc limit 1
         """), {"tenant": run["tenant_id"], "channel": run["channel_id"]})).first()
-        homes = {tuple(filed)} if filed is not None and tuple(filed) in homes else {(None, None)}
-    zone = next(iter(homes))[0] if homes else None
+        sites = {home[0] for home in homes}
+        common_site = next(iter(sites)) if len(sites)==1 else None
+        homes = {tuple(filed)} if filed is not None and tuple(filed) in homes else {(common_site, None, None)}
+    site = next(iter(homes))[0] if homes else None
+    zone = next(iter(homes))[1] if homes else None
     # Several buildings of one zone: only what holds for the whole zone is safe to quote.
-    building = next(iter(homes))[1] if len(homes) == 1 else None
-    return await search(db, run["tenant_id"], "resident", zone, building, body.query, body.topK)
+    building = next(iter(homes))[2] if len(homes) == 1 else None
+    return await search(db, run["tenant_id"], "resident", zone, building, body.query, body.topK, site_id=site)
 
 
 def read(path: Path) -> list[dict]:
@@ -205,7 +213,7 @@ async def load(url: str, path: Path, tenant: str) -> dict:
     try:
         async with connection.transaction():
             await connection.execute("select set_config('app.tenant_id',$1,true)", tenant)
-            sites = {row["code"] for row in await connection.fetch("select code from sites where tenant_id=$1", UUID(tenant))}
+            sites = {row["code"]:row["id"] for row in await connection.fetch("select code,id from sites where tenant_id=$1", UUID(tenant))}
             zones = {row["code"]: row["id"] for row in await connection.fetch("select code,id from zones where tenant_id=$1", UUID(tenant))}
             buildings = {row["code"]: row for row in await connection.fetch("select code,id,zone_id from buildings where tenant_id=$1", UUID(tenant))}
             loaded = []
@@ -226,16 +234,16 @@ async def load(url: str, path: Path, tenant: str) -> dict:
                     raise SystemExit(f"{document['code']}: its ids already belong to another tenant's knowledge. Nothing was loaded; give this tenant's copy its own ids.")
                 loaded.append(UUID(document["id"]))
                 counts["changed"] += len(await connection.fetch("""
-                    insert into vh_knowledge_documents as d(id,tenant_id,code,version_id,title,category,audience,zone_id,building_ids,unverified,metadata)
-                    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
+                    insert into vh_knowledge_documents as d(id,tenant_id,code,version_id,title,category,audience,zone_id,building_ids,unverified,metadata,site_id)
+                    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12)
                     on conflict (id) do update set code=excluded.code,version_id=excluded.version_id,title=excluded.title,category=excluded.category,
-                        audience=excluded.audience,zone_id=excluded.zone_id,building_ids=excluded.building_ids,unverified=excluded.unverified,metadata=excluded.metadata
-                    where d.tenant_id=excluded.tenant_id and (d.code,d.version_id,d.title,d.category,d.audience,d.zone_id,d.building_ids,d.unverified,d.metadata)
-                        is distinct from (excluded.code,excluded.version_id,excluded.title,excluded.category,excluded.audience,excluded.zone_id,excluded.building_ids,excluded.unverified,excluded.metadata)
+                        audience=excluded.audience,zone_id=excluded.zone_id,building_ids=excluded.building_ids,unverified=excluded.unverified,metadata=excluded.metadata,site_id=excluded.site_id
+                    where d.tenant_id=excluded.tenant_id and (d.code,d.version_id,d.title,d.category,d.audience,d.zone_id,d.building_ids,d.unverified,d.metadata,d.site_id)
+                        is distinct from (excluded.code,excluded.version_id,excluded.title,excluded.category,excluded.audience,excluded.zone_id,excluded.building_ids,excluded.unverified,excluded.metadata,excluded.site_id)
                     returning id
                 """, UUID(document["id"]), UUID(tenant), document["code"], UUID(document["version_id"]), document["title"], document["category"], document["audience"],
                     zones[zone] if zone else None, [buildings[code]["id"] for code in towers] or None, bool(document.get("unverified")),
-                    json.dumps(document.get("metadata") or {}, ensure_ascii=False)))
+                    json.dumps(document.get("metadata") or {}, ensure_ascii=False), sites[document["site"]]))
                 await connection.execute("delete from vh_knowledge_chunks where tenant_id=$3 and document_id=$1 and id<>all($2::uuid[])",
                                          UUID(document["id"]), [UUID(c["id"]) for c in chunks], UUID(tenant))
                 for chunk in chunks:

@@ -14,7 +14,7 @@ from vinhomes_api.password_auth import sign_in_name
 
 def test_a_first_password_is_given_once_and_never_replaced(database):
     first, later = secrets.token_urlsafe(16), secrets.token_urlsafe(16)
-    people = ["local-v3-resident", "management@example.invalid"]            # by id and by email
+    people = ["local-v3-resident", "technical@example.invalid"]            # by id and by email
     assert asyncio.run(tool.accounts(database["admin"], people, first)) == (people, [])
     stored = sql(database, "select password from accounts where user_id='local-v3-resident' and provider_id='vinhomes-password-v1'")
     assert len(stored) == 1 and stored[0]["password"].startswith("scrypt-v1$") and first not in stored[0]["password"]
@@ -23,13 +23,13 @@ def test_a_first_password_is_given_once_and_never_replaced(database):
     with door(database) as c:
         assert sign_in(c, "resident@example.invalid", later) == 401
         assert sign_in(c, "resident@example.invalid", first) == 200
-        assert sign_in(c, "management@example.invalid", first) == 200
+        assert sign_in(c, "technical@example.invalid", first) == 200
     # one unknown name stops the whole run
     with pytest.raises(SystemExit, match="nobody-here"):
-        asyncio.run(tool.accounts(database["admin"], ["local-v3-technical", "nobody-here"], first))
-    assert not sql(database, "select 1 from accounts where user_id='local-v3-technical'")
+        asyncio.run(tool.accounts(database["admin"], ["local-v3-security", "nobody-here"], first))
+    assert not sql(database, "select 1 from accounts where user_id='local-v3-security'")
     with pytest.raises(SystemExit, match="12 to 128"):
-        asyncio.run(tool.accounts(database["admin"], ["local-v3-technical"], "short"))
+        asyncio.run(tool.accounts(database["admin"], ["local-v3-security"], "short"))
 
 
 def test_the_first_administrator_is_created_from_nothing(database):

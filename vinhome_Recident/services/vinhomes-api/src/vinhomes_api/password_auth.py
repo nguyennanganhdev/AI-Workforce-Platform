@@ -115,6 +115,25 @@ async def context(db, request: Request, actor: str = ""):
                      {"tenant":str(request.app.state.settings.tenant_id),"actor":actor})
 
 
+async def require_domain_account(db, request: Request, user_id: str):
+    """Historical BQL identities belong in Platform; they confer no Domain login rights.
+
+    A person who also has an explicit resident/staff grant keeps that separate Domain access.
+    Pending resident registration remains available. Never upgrade a former manager to admin.
+    """
+    blocked = (await db.execute(text("""
+        select exists(select 1 from scoped_user_roles r join tenant_memberships m on m.id=r.membership_id
+                      where m.user_id=:user and r.tenant_id=cast(:tenant as uuid) and r.role_code='management')
+          and not exists(select 1 from platform_admins where user_id=:user)
+          and not exists(select 1 from scoped_user_roles r join tenant_memberships m on m.id=r.membership_id
+                         where m.user_id=:user and m.status='active' and r.tenant_id=cast(:tenant as uuid)
+                           and r.role_code in ('customer','staff') and r.valid_from<=now()
+                           and (r.valid_to is null or r.valid_to>now()))
+    """), {"user":user_id,"tenant":str(request.app.state.settings.tenant_id)})).scalar_one()
+    if blocked:
+        raise HTTPException(403, "Vai trò Ban quản lý đã chuyển sang Platform. Vui lòng dùng tài khoản Platform do đơn vị vận hành cấp.")
+
+
 async def authenticated_user(request: Request) -> dict:
     engine = enabled(request)
     token = request.cookies.get(cookie(request), "")
@@ -132,6 +151,7 @@ async def authenticated_user(request: Request) -> dict:
                                       {"id":user["id"],"tenant":str(request.app.state.settings.tenant_id)})).scalar_one_or_none()
         if membership not in {"active","pending"}:
             raise HTTPException(403, "Tài khoản không còn thuộc phạm vi hệ thống.")
+        await require_domain_account(db,request,user["id"])
         return dict(user)
 
 
@@ -177,6 +197,7 @@ async def login(body: Credentials, request: Request, response: Response):
             valid = await asyncio.to_thread(check_password,body.password,encoded)
         if not user or not valid:
             raise HTTPException(401, "Tên đăng nhập hoặc mật khẩu không đúng.")
+        await require_domain_account(db,request,user["id"])
         token = secrets.token_urlsafe(32)
         old = request.cookies.get(cookie(request), "")
         if old:
@@ -202,7 +223,7 @@ async def session(request: Request, response: Response):
         """), {"id":user["id"], "tenant":str(request.app.state.settings.tenant_id)})).scalars())
     # One sign-in page serves everyone; this says which app each person goes on to. Someone with no role yet
     # (just registered, waiting to be linked to a home) belongs to the resident app.
-    operations_role = "admin" if is_admin else "management" if "management" in roles else "staff" if "staff" in roles else None
+    operations_role = "admin" if is_admin else "staff" if "staff" in roles else None
     audiences = (["resident"] if "customer" in roles or operations_role is None else []) + (["operations"] if operations_role else [])
     response.headers["Cache-Control"] = "no-store"
     return {"user":user, "membershipStatus":membership_status, "administrator":is_admin,
@@ -227,14 +248,14 @@ async def administrator(request: Request):
 
 
 class AccountCreate(Registration):
-    role: Literal["customer","staff","management"]
+    role: Literal["customer","staff"]
     management_unit_id: UUID | None = None
     residency: onboarding.Residency | None = None
     staff_profile: onboarding.StaffProfile | None = None
 
 
 class AccountAccess(BaseModel):
-    role: Literal["customer","staff","management"]
+    role: Literal["customer","staff"]
     status: Literal["active","suspended"]
     # A management account works within one unit: its tickets, its room and its agents.
     # Without a unit it keeps the whole tenant, as before.
@@ -244,8 +265,10 @@ class AccountAccess(BaseModel):
 
 
 async def grant_access(db,request:Request,user_id:str,actor:str,role:str,status:str,unit:UUID|None=None,record_review:bool=False):
-    if unit is not None and role not in {"management", "staff"}:
-        raise HTTPException(422,"Chỉ Ban quản lý và nhân viên được gắn với đơn vị quản lý.")
+    if role not in {"customer", "staff"}:
+        raise HTTPException(422,"Domain chỉ cấp vai trò cư dân hoặc nhân viên. Ban quản lý sử dụng Platform.")
+    if unit is not None and role != "staff":
+        raise HTTPException(422,"Chỉ nhân viên được gắn với đơn vị quản lý tại Domain.")
     await context(db,request,actor)
     tenant = str(request.app.state.settings.tenant_id)
     member = (await db.execute(text("select id from tenant_memberships where user_id=:user and tenant_id=cast(:tenant as uuid) for update"),{"user":user_id,"tenant":tenant})).scalar_one_or_none()

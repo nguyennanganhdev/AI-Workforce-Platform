@@ -245,7 +245,7 @@ async def account_history(user_id: str, scope: Scope) -> dict[str, object]:
 
 
 class RoleGrant(BaseModel):
-    role_code: Literal["customer", "staff", "management"]
+    role_code: Literal["customer", "staff"]
     scope_id: UUID
 
 

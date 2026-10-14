@@ -69,11 +69,12 @@ async def scoped_connection(request: Request, x_demo_actor: str | None = Header(
                         join tenant_memberships m on m.id=r.membership_id and m.tenant_id=r.tenant_id
                         where m.user_id=:user_id and m.status='active'
                           and r.tenant_id=cast(:tenant_id as uuid)
-                          and r.role_code in ('management','staff')
+                          and (r.role_code='staff' or (:demo and r.role_code='management'))
                           and r.valid_from<=now() and (r.valid_to is null or r.valid_to>now())
                         limit 1
                     """),
-                    {"user_id": actor_id, "tenant_id": str(settings.tenant_id)},
+                    # Legacy managers exist only in explicit loopback development fixtures.
+                    {"user_id": actor_id, "tenant_id": str(settings.tenant_id), "demo": settings.demo_mode or bool(settings.dev_user_id)},
                 )
                 if grant.first() is None:
                     raise HTTPException(403, "Operations role required")

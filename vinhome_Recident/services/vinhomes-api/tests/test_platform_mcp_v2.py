@@ -235,7 +235,9 @@ def test_knowledge_tool_preserves_source_review_evidence(database,handed,monkeyp
     import vinhomes_api.platform_work as work
     ticket,token,_=handed
     review={'status':'reference','issues':['not_reviewed']}
-    async def search(*args):
+    expected_site=sql(database,'select site_id from tickets where id=$1',ticket)[0]['site_id']
+    async def search(*args,site_id=None):
+        assert site_id==expected_site
         return {'hits':[{'title':'Dịch vụ','documentId':'doc','versionId':'v1','chunkId':'chunk',
                          'section':'Dịch vụ','text':'Thông tin tham khảo.','unverified':False,'provenance':review}]}
     monkeypatch.setattr(work,'search',search)

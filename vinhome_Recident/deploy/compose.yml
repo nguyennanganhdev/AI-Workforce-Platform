@@ -20,8 +20,8 @@ x-python-health: &python-health
 
 # Built from the passwords in the env file, so the file holds no URL. The three *_URL / S3_ENDPOINT variables
 # are only set to use a database or an S3 service that runs somewhere else.
-x-owner-db: &owner-db ${MIGRATION_DATABASE_URL:-postgresql://vinhomes_owner:${POSTGRES_PASSWORD}@postgres:5432/vinhomes}
-x-api-db: &api-db ${VINHOMES_API_DATABASE_URL:-postgresql+asyncpg://vinhomes_api:${API_DB_PASSWORD}@postgres:5432/vinhomes}
+x-owner-db: &owner-db ${MIGRATION_DATABASE_URL:-postgresql://vinhomes_owner:${POSTGRES_PASSWORD}@postgres:5432/${VINHOMES_DATABASE_NAME:-vinhomes}}
+x-api-db: &api-db ${VINHOMES_API_DATABASE_URL:-postgresql+asyncpg://vinhomes_api:${API_DB_PASSWORD}@postgres:5432/${VINHOMES_DATABASE_NAME:-vinhomes}}
 # The one tenant of this package: the base organisation, the sample world, the first accounts and the knowledge are its.
 x-tenant: &tenant 11111111-1111-5111-a111-111111111111
 x-s3-endpoint: &s3-endpoint ${S3_ENDPOINT:-http://minio:9000}
@@ -84,8 +84,8 @@ services:
 
   # Prepares the database and the bucket, then stops; runs again on every start and changes nothing that is
   # already there. Runs as the database owner; the API itself never gets that role. In order: the schema, the
-  # base organisation, the sample world (built once) and its sign-ins (VINHOMES_SAMPLE_WORLD=1), the API's own role (again
-  # each time, so tables of a new migration get their rights), the bucket and the API's key for it, knowledge.
+  # minimal organisation (explicit sample mode is only for development), API rights and storage.
+  # Knowledge is loaded only when explicitly requested; normal restarts keep owner-managed review metadata.
   init:
     image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_API_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
     build:
@@ -99,7 +99,8 @@ services:
     environment:
       DATABASE_URL: *owner-db
       API_DB_PASSWORD: ${API_DB_PASSWORD:?API database password required (run deploy/new-env)}
-      VINHOMES_SAMPLE_WORLD: ${VINHOMES_SAMPLE_WORLD:-1}
+      VINHOMES_SAMPLE_WORLD: ${VINHOMES_SAMPLE_WORLD:-0}
+      VINHOMES_LOAD_KNOWLEDGE: ${VINHOMES_LOAD_KNOWLEDGE:-0}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-}
       VINHOMES_API_TENANT_ID: *tenant
       VINHOMES_API_S3_ENDPOINT: *s3-endpoint
@@ -116,7 +117,11 @@ services:
       - -ec
       - |
         python -m vinhomes_api.database migrate
-        python -m vinhomes_api.database seed
+        if [ "$$VINHOMES_SAMPLE_WORLD" = 1 ]; then
+          python -m vinhomes_api.database seed
+        else
+          python -m vinhomes_api.database bootstrap
+        fi
         if [ "$$VINHOMES_SAMPLE_WORLD" = 1 ]; then python -m vinhomes_api.database mock --profile standard; fi
         python -m vinhomes_api.database role --role vinhomes_api --password-env API_DB_PASSWORD
         python -m vinhomes_api.storage_setup
@@ -124,7 +129,7 @@ services:
           python -m vinhomes_api.database accounts --password-env DEMO_PASSWORD \
             --users local-v3-admin,mock-minh,mock-hoa,mock-giang,mock-an,mock-binh,mock-dung,mock-s02,mock-s03,mock-s09,mock-s11,mock-s12,mock-s18,mock-s20,mock-s21
         fi
-        python -m vinhomes_api.knowledge load
+        if [ "$$VINHOMES_LOAD_KNOWLEDGE" = 1 ]; then python -m vinhomes_api.knowledge load; fi
 
   api:
     image: ${VINHOMES_IMAGE_PREFIX:-vinhomes-domain}-api:${VINHOMES_API_IMAGE_TAG:-${VINHOMES_IMAGE_TAG:-latest}}
@@ -269,6 +274,7 @@ services:
       RECEPTION_KNOWLEDGE_URL: ${RECEPTION_KNOWLEDGE_URL-http://api:8000}
       RECEPTION_MODEL: ${RECEPTION_MODEL:-gpt-5.4-mini}
       RECEPTION_AGENT: ${RECEPTION_AGENT:-loop}
+      RECEPTION_STATE_PATH: ${RECEPTION_STATE_PATH:-/var/lib/reception/reception.sqlite3}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?model key required, paste it in deploy/deployment.env}
       # Another vendor for this role: its provider name, its own key, and an address only for `custom`.
       RECEPTION_MODEL_PROVIDER: ${RECEPTION_MODEL_PROVIDER:-}

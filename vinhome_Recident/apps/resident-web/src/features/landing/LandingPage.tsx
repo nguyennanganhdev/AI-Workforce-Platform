@@ -109,7 +109,7 @@ export function LandingPage() {
                 <h3>Dành cho đội ngũ vận hành</h3>
                 <p>Tiếp nhận yêu cầu, điều phối công việc và cập nhật kết quả theo quyền được cấp.</p>
                 <a className="landing-access-link" href={operationsUrl("/operations")}>Vào cổng vận hành <IconArrowRight aria-hidden="true" size={20} /></a>
-                <span className="landing-access-note">Ban quản lý, nhân viên và quản trị viên</span>
+                <span className="landing-access-note">Nhân viên và quản trị Domain · Ban quản lý sử dụng Platform</span>
               </article>
             </div>
           </div>

@@ -29,9 +29,9 @@ def rows(result: object) -> list[dict[str, object]]:
 def wrong_door(door: str, role: str) -> str | None:
     """Why this role does not sign in at this front door. A door that names nothing serves every role."""
     if door == "field" and role != "staff":
-        return "Địa chỉ này dành cho nhân viên hiện trường. Ban quản lý và quản trị đăng nhập ở địa chỉ của Ban quản lý."
+        return "Địa chỉ này dành cho nhân viên hiện trường. Quản trị viên sử dụng cổng quản trị Domain."
     if door == "operations" and role == "staff":
-        return "Địa chỉ này dành cho Ban quản lý. Nhân viên hiện trường đăng nhập ở địa chỉ dành cho nhân viên."
+        return "Địa chỉ này dành cho quản trị Domain. Nhân viên đăng nhập ở cổng nhân viên; Ban quản lý sử dụng Platform."
     return None
 
 

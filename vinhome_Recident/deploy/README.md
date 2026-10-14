@@ -13,7 +13,7 @@ docker compose --env-file deploy/deployment.env -f deploy/compose.yml up -d --bu
 ```
 
 - Lệnh thứ nhất tạo `deploy/deployment.env` với các bí mật ngẫu nhiên (mật khẩu database, khóa MinIO, khóa ký, mật khẩu của các tài khoản mẫu). Tệp này không được commit. Chạy lại thì lệnh **từ chối ghi đè**: bí mật trong tệp là bí mật mà database và kho ảnh đã được tạo cùng.
-- Việc duy nhất phải tự làm là dán `OPENAI_API_KEY`. Thiếu thì compose dừng ngay và nêu tên biến.
+- Điền `OPENAI_API_KEY`, tạo admin riêng và cung cấp dữ liệu vận hành đã xác nhận. Mặc định production không tạo tài khoản/căn hộ/giao dịch mẫu (`VINHOMES_SAMPLE_WORLD=0`), không tự nạp lại tri thức (`VINHOMES_LOAD_KNOWLEDGE=0`).
 - Mở `http://localhost:8080`. Lần đầu cần tải image và build hai app web nên mất vài phút; bước chuẩn bị dữ liệu mất khoảng nửa phút.
 - Đổi cổng: sửa `GATEWAY_PORT` **và** `VINHOMES_ALLOWED_ORIGINS` cùng lúc (đăng nhập kiểm tra địa chỉ trình duyệt đang dùng). Nếu máy đã có chương trình khác dùng cổng 8000, sửa `VINHOMES_API_PORT`; cổng này chỉ để gọi thẳng API khi cần, người dùng không đi qua nó.
 
@@ -23,13 +23,13 @@ docker compose --env-file deploy/deployment.env -f deploy/compose.yml up -d --bu
 |---|---|---|
 | `postgres` | Toàn bộ dữ liệu nghiệp vụ và kho tri thức (image `pgvector/pgvector:pg17`: PostgreSQL có sẵn pgvector, dùng để tìm tri thức theo nghĩa). Volume `postgres-data`. | không |
 | `minio` | Ảnh và tệp, trong một bucket riêng tư. Volume `minio-data`. | không |
-| `init` | Chạy một lần mỗi khi khởi động rồi dừng: tạo/nâng schema, nạp tổ chức gốc, dựng thế giới mẫu, tạo vai trò database của API, tạo bucket và khóa riêng của API, tạo tài khoản đăng nhập đầu tiên, nạp tri thức. Chạy lại không thêm, không ghi đè gì. | không |
+| `init` | Nâng schema, bootstrap tổ chức và ba hồ sơ dự án tham chiếu, cấp quyền API, chuẩn bị storage. Chỉ tạo fixture khi bật sample mode; chỉ nạp tri thức khi yêu cầu rõ ràng. Không tự tạo admin/người dùng production. | không |
 | `api` | Backend nghiệp vụ; chờ `init` xong. | `127.0.0.1:8000` |
 | `scheduler` | Mỗi phút: cảnh báo và báo quá hạn xử lý, cho đặt chỗ chưa thanh toán và lượt khách không tới hết hạn. | không |
 | `platform-sync` | Cầu nối với platform AI: gửi lệnh và sự kiện tiến độ, ghi lời của agent điều phối vào chat. Chưa khai báo platform thì chỉ chờ. | không |
 | `reception` | Agent lễ tân; gọi `api`, tìm tri thức qua `api`. | không |
 | `resident` | Landing page `/`, ứng dụng cư dân `/resident` và trang đăng nhập chung `/login`. | không |
-| `operations` | Ban quản lý, quản trị viên, nhân viên hiện trường. | không |
+| `operations` | Quản trị Domain và nhân viên hiện trường. BQL sử dụng Platform. | không |
 | `gateway` | Địa chỉ duy nhất: `/` là landing page, `/resident` là app cư dân, `/login` là đăng nhập, `/operations` là app nhân viên, `/api/business` là API. | `127.0.0.1:8080` |
 
 Gateway cũng chuyển `/mcp` tới API cho platform. Chỉ cấu hình `VINHOMES_API_PLATFORM_MCP_TOKEN` là đủ để onboarding/discovery; không cần bật cầu nối `VINHOMES_API_PLATFORM_URL`. Mọi yêu cầu MCP phải có `Authorization: Bearer <token>`; key không nằm trong frontend. `/api/business/mcp` và `/mcp/` không phải endpoint MCP. Khi gateway mở công khai, dùng HTTPS hoặc kết nối riêng/tunnel để token không đi qua HTTP Internet.
@@ -38,14 +38,15 @@ Database và kho ảnh không mở cổng ra ngoài. Ảnh do trình duyệt g�
 
 API chạy bằng vai trò database `vinhomes_api`: không phải chủ database, không vượt được phân quyền theo dòng. Chỉ `init` dùng vai trò chủ.
 
-## Đăng nhập thế giới mẫu
+## Đăng nhập thế giới mẫu (chỉ môi trường phát triển)
+
+Phần này chỉ áp dụng khi chủ động bật `VINHOMES_SAMPLE_WORLD=1` trên database thử riêng. Tài khoản BQL mẫu không còn được cấp quyền đăng nhập Domain; BQL dùng Platform. Không dùng bộ tài khoản này để nghiệm thu dữ liệu vận hành thật.
 
 Mật khẩu của mọi tài khoản dưới đây là giá trị `DEMO_PASSWORD` trong `deploy/deployment.env`. Tên đăng nhập là email:
 
 | Tên đăng nhập | Người | Vào đâu |
 |---|---|---|
 | `local-v3-admin@example.invalid` | Quản trị viên | Quản lý tài khoản |
-| `mock-minh@example.invalid` | Quản lý Minh (Ban quản lý) | Bảng công việc |
 | `mock-hoa@example.invalid` | Kỹ thuật viên Hoa, ca 06:00 đến 14:00 | Việc của tôi |
 | `mock-s09@…`, `mock-s18@…` | hai kỹ thuật viên nữa của ca 06:00 đến 14:00 | Việc của tôi |
 | `mock-s02@…`, `mock-s11@…`, `mock-s20@…` | kỹ thuật viên ca 14:00 đến 22:00 | Việc của tôi |
@@ -84,14 +85,14 @@ dc logs -f api
 dc exec postgres psql -U vinhomes_owner vinhomes
 ```
 
-**Đặt lại thế giới mẫu** (xóa toàn bộ dữ liệu và ảnh, dựng lại từ đầu; bí mật giữ nguyên):
+**Đặt lại thế giới mẫu trên môi trường phát triển riêng** (xóa dữ liệu và ảnh của stack đó; không chạy trên VPS đang vận hành):
 
 ```powershell
 dc down -v
 dc up -d
 ```
 
-**Hệ thống dựng trước tối 11/10/2026** phải làm đúng bước đặt lại này một lần. Tệp `0013_knowledge.sql` đã đổi (vector chuyển sang cột pgvector); database đã chạy bản cũ sẽ làm `init` dừng với câu "0013_knowledge.sql was changed after it was applied" và `api` không khởi động. `dc down -v` xóa mọi dữ liệu đã nhập tay trong database mẫu (ví dụ ca trực thêm cho nhân viên) và ảnh đã tải lên; cần giữ thì sao lưu trước (ngay dưới). Các khóa platform trong `deployment.env` vẫn dùng được, không phải khai báo lại với platform.
+Nếu một migration cũ bị đổi checksum, dừng và đối chiếu bản đã chạy; không sửa checksum hoặc xóa volume để vượt qua kiểm tra. Với dữ liệu cần giữ, backup và chuẩn bị database riêng theo [hướng dẫn làm sạch](../docs/domain/OWNER_DATA_REQUIREMENTS_20261014.md#làm-sạch-và-quay-lại), kiểm chứng trước khi chuyển URL.
 
 **Sao lưu và khôi phục.** Dịch vụ `backup` tự chạy mỗi ngày lúc `BACKUP_HOUR` giờ (mặc định 2 giờ sáng, giờ Việt Nam): một bản dump database (giữ `BACKUP_KEEP` bản mới nhất, mặc định 7) và một bản sao mọi tệp của kho ảnh. Nơi lưu là volume `backup-data`, hoặc thư mục trên máy chủ nếu đặt `BACKUP_DIR`. Lần sao lưu gần nhất hỏng thì `dc ps` báo `backup` là `unhealthy` và `dc logs backup` nói vì sao.
 
@@ -132,21 +133,17 @@ Mặc định tắt: `VINHOMES_API_PLATFORM_URL` trống thì hệ thống chạ
 
 ## Chạy với dữ liệu thật
 
-1. Trong `deploy/deployment.env` đặt `VINHOMES_SAMPLE_WORLD=0` **trước lần chạy đầu tiên** (hoặc `dc down -v` rồi chạy lại). Khi đó `init` không dựng thế giới mẫu và không tạo tài khoản mẫu.
+1. Giữ `VINHOMES_SAMPLE_WORLD=0`, `VINHOMES_LOAD_KNOWLEDGE=0` trước lần chạy đầu tiên. Nếu đã có dữ liệu mẫu, backup và chuẩn bị database sạch riêng; không dùng `dc down -v` trên production.
 2. `dc up -d --build`.
 3. Tạo quản trị viên đầu tiên. Mật khẩu (12 đến 128 ký tự) đưa qua biến môi trường để không nằm trong lịch sử lệnh:
 
 ```powershell
-$env:ADMIN_PASSWORD = '...'
+$env:ADMIN_PASSWORD = [System.Net.NetworkCredential]::new('', (Read-Host 'Mật khẩu admin mới' -AsSecureString)).Password
 dc run --rm -e ADMIN_PASSWORD init python -m vinhomes_api.database accounts --create-admin ten@congty.vn --password-env ADMIN_PASSWORD
+Remove-Item Env:\ADMIN_PASSWORD
 ```
 
-4. Nạp dữ liệu của khu đô thị theo [docs/domain/NAP_DU_LIEU.md](../docs/domain/NAP_DU_LIEU.md): đặt các tệp CSV vào một thư mục rồi
-
-```powershell
-dc run --rm -v ${PWD}/du-lieu:/data:ro init python -m vinhomes_api.database import --dir /data --dry-run
-dc run --rm -v ${PWD}/du-lieu:/data:ro init python -m vinhomes_api.database import --dir /data
-```
+4. Chuẩn bị bộ dữ liệu theo [yêu cầu bàn giao OP1/2/3](../docs/domain/OWNER_DATA_REQUIREMENTS_20261014.md). Importer trong [NAP_DU_LIEU](../docs/domain/NAP_DU_LIEU.md) là bản legacy một site; sẽ từ chối tenant có ba site. Cần hoàn thiện staging/import theo `site_code` trước khi nạp master/roster thật. Không dùng seed làm dữ liệu thay thế.
 
 5. Cho người đã nạp mật khẩu đầu tiên (theo mã người dùng hoặc email, cách nhau dấu phẩy). Người đã có mật khẩu được giữ nguyên; một tên không tồn tại thì lệnh dừng và không đổi gì:
 
@@ -154,7 +151,9 @@ dc run --rm -v ${PWD}/du-lieu:/data:ro init python -m vinhomes_api.database impo
 dc run --rm -e FIRST_PASSWORD init python -m vinhomes_api.database accounts --users a@congty.vn,b@congty.vn --password-env FIRST_PASSWORD
 ```
 
-Lưu ý: bước nạp tổ chức gốc (`seed`) luôn chạy vì lệnh `import` xây trên nó (khu Ocean Park 1, các phân khu, Ban quản lý). Nó hiện mang theo vài người và yêu cầu mẫu (`local-v3-*`, `faker-resident-*`); những người này không có mật khẩu nên không đăng nhập được, nhưng yêu cầu mẫu vẫn hiện ở màn hình Ban quản lý. Tách tổ chức gốc khỏi dữ liệu mẫu là việc chưa làm.
+Bootstrap production đã tách khỏi seed: không sinh cư dân, nhân sự, căn hộ, giao dịch hoặc SLA giả. Các hồ sơ dự án công khai là tham chiếu, không chứng nhận đơn vị/phạm vi vận hành. `management_units` là cấu hình tổ chức/route, không phải role đăng nhập BQL.
+
+Gói [tiện ích tham khảo OP1/2/3](reference-data/ocean-city-public-20261014.json) có URL nguồn chính thức, không có phí/giờ/quyền booking tự tạo. `prepare-reference-pack.py` chuyển JSON sang gzip JSONL cho `vinhomes_api.knowledge load --file ...`; nạp thủ công với scope đúng site, giữ trạng thái `reference`. Không bật auto-load để ghi đè review của chủ dữ liệu.
 
 **Database hoặc kho S3 có sẵn ở nơi khác.** Bỏ dấu `#` ở cuối `deployment.env`: `MIGRATION_DATABASE_URL` (chủ database, dạng `postgresql://`), `VINHOMES_API_DATABASE_URL` (vai trò `vinhomes_api` với `API_DB_PASSWORD`, dạng `postgresql+asyncpg://`), `S3_ENDPOINT`. Với S3 riêng, khóa `S3_ACCESS_KEY`/`S3_SECRET_KEY` phải có sẵn ở đó và đặt `MINIO_ROOT_USER=` (trống). PostgreSQL ở nơi khác phải có pgvector: người quản trị ở đó chạy `create extension vector` trong database **trước** lần khởi động đầu tiên (chỉ superuser tạo được extension này; dịch vụ PostgreSQL thuê ngoài gọi nó là `vector`), nếu không `init` dừng ở `0013_knowledge.sql`. Hai container `postgres` và `minio` vẫn khởi động nhưng không được dùng. Cách này mới được kiểm tra ở mức cấu hình, chưa chạy thật.
 

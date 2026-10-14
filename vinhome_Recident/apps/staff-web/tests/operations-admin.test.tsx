@@ -54,11 +54,8 @@ const accounts = [
     management_unit_id: null,
   },
 ];
-async function choose(
-  view: ReturnType<typeof render>,
-  label: string,
-  option: string,
-) {
+
+async function choose(view: ReturnType<typeof render>, label: string, option: string) {
   const { default: userEvent } = await import("@testing-library/user-event");
   const user = userEvent.setup({ document });
   await user.click(view.getByRole("combobox", { name: label }));
@@ -117,7 +114,7 @@ async function mount(
   };
 }
 
-test("the administrator finds an account, approves it and moves a manager to another unit", async () => {
+test("the administrator approves a resident but cannot grant the retired management role", async () => {
   const { view, sent } = await mount("AccountsPage", (url, init) => {
     if (init?.method === "PATCH") return Response.json({ ok: true });
     if (url.endsWith("/auth/management-units"))
@@ -163,19 +160,13 @@ test("the administrator finds an account, approves it and moves a manager to ano
   fireEvent.click(
     await view.findByRole("button", { name: /Nguyễn Văn An an@example.com/ }),
   );
-  await choose(view, "Đơn vị quản lý", "BQL Ruby");
-  fireEvent.click(view.getByRole("button", { name: "Lưu thay đổi" }));
-  await waitFor(() =>
-    expect(sent[1]).toEqual({
-      method: "PATCH",
-      url: "/api/business/auth/accounts/u1",
-      body: {
-        role: "management",
-        status: "active",
-        management_unit_id: "unit-2",
-      },
-    }),
-  );
+  const { default: userEvent } = await import("@testing-library/user-event");
+  const user = userEvent.setup({ document });
+  await user.click(view.getByRole("combobox", { name: "Vai trò tài khoản" }));
+  expect(view.queryByRole("option", { name: "Ban quản lý" })).toBeNull();
+  expect(view.getByRole("option", { name: "Cư dân" })).toBeTruthy();
+  expect(view.getByRole("option", { name: "Nhân viên" })).toBeTruthy();
+  expect(sent).toHaveLength(1);
 });
 
 test("the administrator sets a new password for a person who lost theirs, never for an administrator", async () => {

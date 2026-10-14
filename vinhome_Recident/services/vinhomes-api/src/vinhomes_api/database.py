@@ -188,7 +188,7 @@ async def accounts(url: str, users: list[str], password: str, admin_email: str |
                     raise SystemExit(f"{email} already belongs to someone who is not an administrator: nothing was changed.")
                 if not found:
                     if not await connection.fetchval("select 1 from tenants where id=$1::uuid", tenant):
-                        raise SystemExit(f"Tenant {tenant} does not exist: run `seed` first.")
+                        raise SystemExit(f"Tenant {tenant} does not exist: run `bootstrap` first.")
                     user = str(uuid4())
                     await connection.execute("insert into users(id,email,name,status) values($1,$2,'Quản trị viên','active')", user, email)
                     await connection.execute("insert into tenant_memberships(tenant_id,user_id,status,joined_at) values($1::uuid,$2,'active',now())", tenant, user)
@@ -221,7 +221,7 @@ def main(argv: list[str] | None = None) -> int:
     c = commands.add_parser("create")
     c.add_argument("--admin-url", default=from_env, required=from_env is None)
     c.add_argument("--name", required=True)
-    for name in ("migrate", "seed"):
+    for name in ("migrate", "seed", "bootstrap"):
         commands.add_parser(name).add_argument("--url", default=from_env, required=from_env is None)
     k = commands.add_parser("mock")
     k.add_argument("--url", default=from_env, required=from_env is None)
@@ -265,6 +265,9 @@ def main(argv: list[str] | None = None) -> int:
         print("applied: " + ", ".join(done) if done else "up to date")
     elif args.command == "seed":
         print("loaded: " + ", ".join(asyncio.run(seed(args.url))))
+    elif args.command == "bootstrap":
+        from .bootstrap import bootstrap
+        print(json.dumps(asyncio.run(bootstrap(args.url))))
     elif args.command == "mock":
         from .mock_data import build
         print("built: " + (", ".join(f"{k}={v}" for k, v in asyncio.run(build(args.url, args.profile, args.seed)).items()) or "nothing, the sample world is already there"))

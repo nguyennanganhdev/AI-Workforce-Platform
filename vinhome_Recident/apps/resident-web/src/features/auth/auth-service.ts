@@ -7,7 +7,7 @@ export type ResidentAuthResult = {
   operationsPath?: string;
 };
 /** One sign-in page serves residents and staff: the operations app opens on the page that fits the role. */
-const operationsHome: Record<string, string> = { management: "/operations/kanban", staff: "/operations/my-tasks" };
+const operationsHome: Record<string, string> = { staff: "/operations/my-tasks" };
 
 /** Address of a page of the operations app: the same host in a deployment, VITE_OPERATIONS_URL or the next port in development. */
 export function operationsUrl(path: string): string {

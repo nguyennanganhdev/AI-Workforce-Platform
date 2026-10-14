@@ -35,7 +35,6 @@ import { OnboardingFields } from "./OnboardingFields";
 const ROLES: Record<string, string> = {
   customer: "Cư dân",
   staff: "Nhân viên",
-  management: "Ban quản lý",
 };
 const STATUS: Record<string, string> = {
   active: "Hoạt động",
@@ -43,7 +42,7 @@ const STATUS: Record<string, string> = {
   suspended: "Đã khóa",
 };
 const roleOf = (account: Account) =>
-  account.administrator ? "Quản trị viên" : ROLES[account.role] || account.role;
+  account.administrator ? "Quản trị viên" : account.role === "management" ? "BQL đã chuyển sang Platform" : ROLES[account.role] || account.role;
 type EnrichedAccount = Account & {
   last_activity_at?: string | null;
   apartment_scope?: string | null;
@@ -433,30 +432,6 @@ export function AccountsPage() {
     </AdminPage>
   );
 }
-function UnitField({
-  value,
-  units,
-  onChange,
-}: {
-  value: string;
-  units: Units;
-  onChange: (unit: string) => void;
-}) {
-  return (
-    <label>
-      Đơn vị quản lý
-      <AdminSelect
-        label="Đơn vị quản lý"
-        value={value}
-        onChange={onChange}
-        options={[
-          { value: "", label: "Toàn khu" },
-          ...units.map((unit) => ({ value: unit.id, label: unit.name })),
-        ]}
-      />
-    </label>
-  );
-}
 function NewAccount({ units, onClose }: { units: Units; onClose: () => void }) {
   const queryClient = useQueryClient();
   const create = useMutation(createAccountMutationOptions(queryClient));
@@ -465,7 +440,6 @@ function NewAccount({ units, onClose }: { units: Units; onClose: () => void }) {
     email: "",
     password: "",
     role: "customer",
-    unit: "",
   });
   const [onboarding, setOnboarding] = useState<OnboardingInput>({});
   const [onboardingReady, setOnboardingReady] = useState(true);
@@ -481,9 +455,6 @@ function NewAccount({ units, onClose }: { units: Units; onClose: () => void }) {
         password: form.password,
         role: form.role,
         ...onboarding,
-        ...(form.role === "management" && form.unit
-          ? { management_unit_id: form.unit }
-          : {}),
       });
       onClose();
     } catch {}
@@ -491,7 +462,7 @@ function NewAccount({ units, onClose }: { units: Units; onClose: () => void }) {
   return (
     <AdminDrawer
       title="Tạo tài khoản"
-      description={form.role === "staff" ? "Nhân viên cần hồ sơ, chuyên môn và ca làm để nhận việc." : form.role === "customer" ? "Cư dân cần xác minh căn hộ trước khi gửi phản ánh." : "Chọn phạm vi đơn vị quản lý phù hợp."}
+      description={form.role === "staff" ? "Nhân viên cần hồ sơ, chuyên môn và ca làm để nhận việc." : "Cư dân cần xác minh căn hộ trước khi gửi phản ánh. Ban quản lý sử dụng Platform."}
       onClose={onClose}
       busy={create.isPending}
       footer={
@@ -562,13 +533,6 @@ function NewAccount({ units, onClose }: { units: Units; onClose: () => void }) {
             onChange={(role) => setForm({ ...form, role })}
           />
         </label>
-        {form.role === "management" && (
-          <UnitField
-            value={form.unit}
-            units={units}
-            onChange={(unit) => setForm({ ...form, unit })}
-          />
-        )}{" "}
         <OnboardingFields role={form.role} units={units} value={onboarding} onChange={setOnboarding} onReady={setOnboardingReady} busy={create.isPending} />
         {create.error && (
           <p role="alert" className="ops-admin-error">
@@ -600,7 +564,6 @@ function AccountEditor({
   const [removing, setRemoving] = useState(false);
   const [password, setPassword] = useState("");
   const [role, setRole] = useState(account.role);
-  const [unit, setUnit] = useState(account.management_unit_id || "");
   const [confirming, setConfirming] = useState(false);
   const [onboarding, setOnboarding] = useState<OnboardingInput>({});
   const [onboardingReady, setOnboardingReady] = useState(true);
@@ -611,7 +574,6 @@ function AccountEditor({
         role,
         status,
         ...(status === "active" ? onboarding : {}),
-        ...(role === "management" && unit ? { management_unit_id: unit } : {}),
       });
       onClose();
     } catch {}
@@ -692,14 +654,6 @@ function AccountEditor({
                 options={roleOptions}
               />
             </label>
-            {role === "management" && (
-              <>
-                <UnitField value={unit} units={units} onChange={setUnit} />
-                <p className="ops-admin-muted">
-                  Đổi đơn vị sẽ chuyển tài khoản sang nhóm của đơn vị mới.
-                </p>
-              </>
-            )}
           </>
         )}
         {account.apartment_scope && <p>{account.apartment_scope}</p>}

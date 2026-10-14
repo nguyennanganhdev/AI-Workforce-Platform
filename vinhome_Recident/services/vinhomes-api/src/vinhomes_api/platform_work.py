@@ -80,7 +80,7 @@ async def _ticket(db, ticket_id, lock: bool = False) -> dict:
     except ValueError:
         raise Refused(UNKNOWN) from None
     row = (await db.execute(text(f"""
-        select t.id,t.status,t.version,t.last_event_seq,t.requester_user_id,t.unit_id,t.building_id,t.zone_id,t.management_unit_id,
+        select t.id,t.status,t.version,t.last_event_seq,t.requester_user_id,t.unit_id,t.building_id,t.zone_id,t.site_id,t.management_unit_id,
           t.category_id,c.code as category_code,c.name as category
         from tickets t join platform_links l on l.ticket_id=t.id and l.tenant_id=t.tenant_id
         left join service_categories c on c.id=t.category_id and c.tenant_id=t.tenant_id
@@ -223,7 +223,7 @@ async def knowledge_search(db, ticket_id, query: str) -> dict:
     if not (query or "").strip():
         raise Refused("Cần nội dung để tìm trong tài liệu.")
     tenant = (await db.execute(text(f"select {TENANT}"))).scalar_one()
-    found = await search(db, tenant, "resident", ticket["zone_id"], ticket["building_id"], query.strip()[:1000], 5)
+    found = await search(db, tenant, "resident", ticket["zone_id"], ticket["building_id"], query.strip()[:1000], 5, site_id=ticket["site_id"])
     return {"found": bool(found["hits"]), "passages": [
         {"document": hit["title"], "document_id":hit['documentId'],"version_id":hit['versionId'],"chunk_id":hit['chunkId'],
          "audience":"resident","section": hit["section"], "text": hit["text"], "provenance":hit['provenance'],

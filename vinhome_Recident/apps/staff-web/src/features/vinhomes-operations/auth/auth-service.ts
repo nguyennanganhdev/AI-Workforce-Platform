@@ -36,11 +36,11 @@ export const staffAuthService: StaffAuthService = {
         await fetch("/api/business/auth/logout", {method: "POST", credentials: "include"}).catch(() => undefined);
         throw new Error(refusal.message);
       }
-      throw new Error("Tài khoản chưa được cấp quyền nhân viên/BQL. Liên hệ quản trị viên để được hỗ trợ.");
+      throw new Error("Tài khoản chưa được cấp quyền nhân viên hoặc quản trị Domain. Ban quản lý sử dụng Platform.");
     }
     if (!me.ok) throw new Error("Không tải được quyền truy cập. Vui lòng thử đăng nhập lại.");
     const identity = await me.json();
-    if (identity.dataMode !== "database" || !["admin", "management", "staff"].includes(identity.role))
+    if (identity.dataMode !== "database" || !["admin", "staff"].includes(identity.role))
       throw new Error("Danh tính hoặc chế độ backend không hợp lệ.");
     return {role: identity.role};
   },
