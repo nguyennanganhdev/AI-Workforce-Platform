@@ -1,0 +1,38 @@
+{
+  "schema_version": "owner-proposal-v1",
+  "prepared_on": "2026-10-14",
+  "site_codes": [
+    "ocean-park-1",
+    "ocean-park-2",
+    "ocean-park-3"
+  ],
+  "review_status": "pending_owner_review",
+  "operational_import_allowed": false,
+  "data_owner": null,
+  "document_reference": null,
+  "source_catalog_sha256": "650411be6452469b0ab2f46ad428f8252f5523e822854a62cf3929b7fa375aae",
+  "counts": {
+    "geography": 55,
+    "services": 34,
+    "staffing_requirements": 9,
+    "data_requests": 15
+  },
+  "total_proposals": 113,
+  "files": {
+    "ocean-park-1/geography.csv": "29edeb19f76c370310be62086f2c96287df4a7b4dfcd110b76529f502a09ba7e",
+    "ocean-park-1/services.csv": "b56e933d2c78554d76eac24efa19c73c4be73691ab89a5fa2cbe22b5ca8a064a",
+    "ocean-park-1/staffing_requirements.csv": "5b6e1d3851c4c71636e714bad2352346bd35c97b9ea6021d8b13cf308b78660d",
+    "ocean-park-1/data_requests.csv": "e6b8999fd8e56b1f23050bc4d76d272068656645a29fb927f61972a4d060a591",
+    "ocean-park-2/geography.csv": "26f6be139288a1c0544484a46749b84309be06c679a529bbbfe83e6271ba9931",
+    "ocean-park-2/services.csv": "0c0edbc0c32cff3a9dc0d705bf034e33f1bd9e0bcd383982e9f8a320b30cadb4",
+    "ocean-park-2/staffing_requirements.csv": "b9c659c3b6e167b7c2344afb6330ce548c500a51d685ba30cced0b090e917534",
+    "ocean-park-2/data_requests.csv": "1c80c2abd6fcece51126aac41ba14914ca59eda7777442761e8c03c10d4dfa97",
+    "ocean-park-3/geography.csv": "a947f24cbe45debfec6d05fbe5014430a3a2bb599e89602ae6c6de7c51f4324d",
+    "ocean-park-3/services.csv": "2be25fb87ea95da219f4488333249fd08ef2f8b63515dd828af3fd3d12ac4127",
+    "ocean-park-3/staffing_requirements.csv": "779a9023ec9cde6bc73bb487a7fe97a72a12b45caff089512f0a4ab89e2d4bbe",
+    "ocean-park-3/data_requests.csv": "b4f802ea3c97773e9d0e7e5c327860b60f9151054ccd19c3f0d39690bf980aea",
+    "review-register.csv": "ac72f04ebc59a636a62ef87fba787d0a3e1a292e746cbe0835d0ac9d0dbf37d7",
+    "proposals.jsonl": "8826aaa0595137fc08fe1ee2384a025bd31818a91626a4ea3dc2d70355ce023c"
+  },
+  "note": "Đây là hồ sơ đề xuất chờ đối soát; sửa CSV không tự duyệt, cấp quyền hoặc ghi database."
+}

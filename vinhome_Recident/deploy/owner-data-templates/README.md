@@ -2,6 +2,8 @@
 
 Các CSV trong thư mục này chỉ có tiêu đề, **không có người, căn/lô hay ca giả**. Sao chép cả thư mục sang vị trí riêng ngoài Git, ví dụ `E:\Vinhomes-Deploy\owner-data-private`, rồi điền dữ liệu được đơn vị vận hành cho phép bàn giao. Không ghi mật khẩu, CCCD, số tài khoản hoặc ảnh giấy tờ vào CSV.
 
+Nếu chưa có dữ liệu được xác nhận, bắt đầu từ [bộ 113 mục đề xuất chờ đơn vị vận hành đối soát](../owner-data-proposals/20261014/README.md). Bộ đề xuất có dữ liệu tham khảo và câu hỏi cần chốt; bộ CSV vận hành bên dưới chỉ dùng sau khi nhận được hồ sơ thật.
+
 ## Điền và kiểm tra
 
 1. `manifest.json`: chọn `site_codes` thuộc `ocean-park-1`, `ocean-park-2`, `ocean-park-3`; điền đơn vị chủ dữ liệu, ngày xuất có múi giờ, phiên bản và mã biên bản bàn giao. Có thể kiểm tra từng khu trước bằng cách chỉ chọn khu đó.
