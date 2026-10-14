@@ -190,6 +190,12 @@ class MembershipVerifyRequest(BaseModel):
     manager_account_id: str = Field(min_length=1, max_length=255)
 
 
+class AreaRequest(BaseModel):
+    domain_id: str = Field(min_length=2, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]+$")
+    area_id: str = Field(min_length=2, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]+$")
+    name: str = Field(min_length=1, max_length=255)
+
+
 def onboarding_router(foundation: WorkforceFoundation) -> APIRouter:
     """Three-party route grant: admin verifies, manager grants, partner confirms."""
 
@@ -202,6 +208,30 @@ def onboarding_router(foundation: WorkforceFoundation) -> APIRouter:
     )
 
     router = APIRouter(prefix="/workforce/v1", tags=["workforce-onboarding"])
+
+    @router.post("/admin/areas", status_code=status.HTTP_201_CREATED)
+    async def create_area(
+        body: AreaRequest,
+        x_provisioning_secret: str | None = Header(default=None, alias="X-Provisioning-Secret"),
+        business: Any = Depends(get_business_service),
+    ) -> dict:
+        """Operator tooling: add an area to an existing domain (provisioning secret)."""
+
+        try:
+            business.verify_provisioning_secret(x_provisioning_secret)
+        except Exception as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        async with foundation.uows() as uow:
+            owner = (await uow.execute(text("SELECT domain_id FROM areas WHERE id = :a"), {"a": body.area_id})).scalar()
+            if owner is not None and owner != body.domain_id:
+                raise HTTPException(status_code=409, detail="this area id belongs to another domain")
+            if owner is None:
+                await uow.execute(
+                    text("INSERT INTO areas (id, domain_id, name, status) VALUES (:a, :d, :n, 'active')"),
+                    {"a": body.area_id, "d": body.domain_id, "n": body.name},
+                )
+                await uow.commit()
+        return {"domain_id": body.domain_id, "area_id": body.area_id, "created": owner is None}
 
     @router.post("/admin/memberships/verify")
     async def verify_membership(
@@ -232,15 +262,23 @@ def onboarding_router(foundation: WorkforceFoundation) -> APIRouter:
             manager_account_id=row["manager_account_id"],
         )
         if row["status"] == "verified":
-            return {"status": "verified", "revision": row["revision"]}
-        try:
-            revision = await foundation.management_verification.verify(
-                scope,
-                int(row["revision"]),
-                "provisioning",
+            revision = row["revision"]
+        else:
+            try:
+                revision = await foundation.management_verification.verify(
+                    scope,
+                    int(row["revision"]),
+                    "provisioning",
+                )
+            except (ValueError, PermissionError) as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+        # The operator's verification also approves an account waiting for it.
+        async with foundation.uows() as uow:
+            await uow.execute(
+                text("UPDATE auth_users SET status = 'active' WHERE id = :id AND status = 'pending'"),
+                {"id": row["manager_account_id"]},
             )
-        except (ValueError, PermissionError) as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+            await uow.commit()
         return {"status": "verified", "revision": revision}
 
     @router.post("/manager/partner-routes", status_code=status.HTTP_201_CREATED)

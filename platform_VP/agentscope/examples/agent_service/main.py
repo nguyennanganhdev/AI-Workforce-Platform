@@ -157,6 +157,9 @@ if os.getenv("AUTH_ENABLED", "false").lower() in {"1", "true", "yes"}:
         ),
         cookie_secure=os.getenv("AUTH_COOKIE_SECURE", "true").lower()
         in {"1", "true", "yes"},
+        # New BQL accounts wait for an administrator; one per area.
+        require_approval=os.getenv("AUTH_REGISTRATION_APPROVAL", "true").lower()
+        in {"1", "true", "yes"},
     )
     memory_embedding_model = None
     memory_embedding_key = os.getenv("MEMORY_EMBEDDING_API_KEY") or os.getenv(
