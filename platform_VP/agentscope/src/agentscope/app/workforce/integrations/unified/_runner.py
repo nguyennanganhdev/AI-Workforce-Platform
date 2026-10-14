@@ -409,7 +409,7 @@ class ChatLeaderTurnRunner:
             for item in says
         ]
         rules = (route.get("config") or {}).get("rules") or {}
-        if not says and rejected and rules.get("safe_reply"):
+        if not says and ran and rules.get("safe_reply"):
             messages = [
                 AssistantMessage(
                     message_id=f"{trigger_id}:safe",
@@ -432,6 +432,8 @@ class ChatLeaderTurnRunner:
 
         if approval_ids:
             next_state = WorkflowState.AWAITING_APPROVAL
+        elif ran and not says:
+            next_state = WorkflowState.NEEDS_ATTENTION
         elif says and says[-1]["expects"] == "reply":
             next_state = WorkflowState.AWAITING_USER
         elif says and says[-1]["expects"] == "confirmation":
@@ -464,7 +466,10 @@ class ChatLeaderTurnRunner:
                 trigger_id=trigger_id,
                 expected_state_revision=workflow.revision,
                 checkpoint=checkpoint,
-                result=RequestResult(messages=tuple(messages)),
+                result=RequestResult(messages=tuple(messages), data=(
+                    {"outcome": "fallback", "error_code": "PARTNER_TURN_NO_PUBLIC_REPLY"}
+                    if ran and not says and not approval_ids else {}
+                )),
             ),
             next_state=next_state,
         )

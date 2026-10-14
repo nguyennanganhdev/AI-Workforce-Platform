@@ -4,7 +4,8 @@ FROM python:3.11-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    TIKTOKEN_CACHE_DIR=/opt/tiktoken-cache
 
 # Node/npm/npx are required by the default Playwright MCP server.
 COPY --from=node-runtime /usr/local/ /usr/local/
@@ -20,6 +21,10 @@ COPY . .
 # Install only the extras used by the Agent Service and Compose services.
 RUN python -m pip install --no-cache-dir \
     -e ".[service,storage-redis,storage-s3,storage-postgres,auth,channel,vdb-qdrant]"
+
+# Token counting must work with no network at runtime (including the first request).
+RUN python -c "import tiktoken; [tiktoken.get_encoding(name) for name in ('o200k_base', 'cl100k_base')]" \
+    && chmod -R a+rX /opt/tiktoken-cache
 
 WORKDIR /app/examples/agent_service
 

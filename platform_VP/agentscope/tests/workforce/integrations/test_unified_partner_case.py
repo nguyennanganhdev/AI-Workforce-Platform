@@ -446,6 +446,19 @@ class _CaseHarness(unittest.IsolatedAsyncioTestCase):
 
 
 class UnifiedPartnerCaseTest(_CaseHarness):
+    async def test_silent_chat_failure_is_not_a_successful_customer_turn(self):
+        async def failed_before_reply(_tools):
+            return None
+        self.leader.scripts = [failed_before_reply]
+        async with self._client() as client:
+            started = (await client.post("/workforce/v1/partner/requests", json=self._start())).json()
+            await self._run()
+            result = (await client.get(f"/workforce/v1/partner/requests/{started['request_id']}",
+                params={"external_user_id": "resident-1"})).json()
+        self.assertEqual("needs_attention", result["workflow_state"])
+        self.assertEqual("fallback", result["result"]["data"]["outcome"])
+        self.assertEqual(RULES["safe_reply"], result["result"]["messages"][0]["text"])
+
     async def test_early_progress_is_not_orphaned_or_rolled_back_by_dispatch_response(self):
         self.early_progress = True
         async def dispatch(tools):
@@ -614,7 +627,7 @@ class UnifiedPartnerCaseTest(_CaseHarness):
                 )
             ).json()
         self.assertEqual([RULES["safe_reply"]], [m["text"] for m in result["result"]["messages"]])
-        self.assertEqual("awaiting_user", result["workflow_state"])
+        self.assertEqual("needs_attention", result["workflow_state"])
 
 
 class UnifiedPartnerApprovalTest(_CaseHarness):
