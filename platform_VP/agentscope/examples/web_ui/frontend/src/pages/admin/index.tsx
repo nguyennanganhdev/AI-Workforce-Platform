@@ -157,7 +157,7 @@ export function AdminPage({ user, onLogout }: { user: AuthUser; onLogout: () => 
 							</div>
 							<div className="mt-2 grid gap-1 text-sm md:grid-cols-2">
 								{domain.areas.map((area) => (
-									<div key={area.id} className="flex items-center gap-2">
+									<div key={area.id} className="flex min-w-0 flex-wrap items-center gap-1.5">
 										<span>{area.name}</span>
 										<span className="text-xs text-muted-foreground">({area.id})</span>
 										{area.managers.map((manager) => (
