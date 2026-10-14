@@ -144,6 +144,7 @@ services:
       VINHOMES_API_DATABASE_URL: *api-db
       VINHOMES_API_TENANT_ID: *tenant
       VINHOMES_API_PASSWORD_AUTH: '1'
+      VINHOMES_TRAVEL_MOCK_ENABLED: ${VINHOMES_TRAVEL_MOCK_ENABLED:-0}
       VINHOMES_API_RESIDENT_SIGNING_KEY: ${RESIDENT_SIGNING_KEY:?32 byte hex key required}
       # Reception reaches this API with the service token and a short-lived delegation signed with the key.
       VINHOMES_API_RECEPTION_SERVICE_TOKEN: ${RECEPTION_SERVICE_TOKEN:?Reception token required}

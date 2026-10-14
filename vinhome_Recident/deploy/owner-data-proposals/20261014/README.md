@@ -1,10 +1,12 @@
 # Bộ dữ liệu đề xuất OP1/2/3 — chờ đơn vị vận hành xác nhận
 
-Ngày chuẩn bị: **14/10/2026**. Đây là hồ sơ đối soát, không phải dữ liệu đã được đơn vị vận hành duyệt. Không có tài khoản, người, căn/lô, ca trực, mức phí hoặc giờ phục vụ được tự tạo. Không nạp bộ này vào production.
+Ngày chuẩn bị: **14/10/2026**. Đây là hồ sơ đối soát, không phải dữ liệu đã được đơn vị vận hành duyệt. Không có tài khoản, người, căn/lô, ca trực, mức phí hoặc giờ phục vụ được tự tạo. Không dùng bộ này để tự kích hoạt vận hành hoặc cấp quyền; việc đăng ký danh mục vào DB phải đi qua module `owner_review` và biên bản duyệt gắn với hash snapshot.
+
+**Cập nhật theo yêu cầu duyệt của người dùng:** [project-approval.json](project-approval.json) ghi nhận việc cho phép đăng ký 113 mục vào database. Bảng duyệt hiện có `decision=project_approved`, người xác nhận được ghi theo vai trò người yêu cầu triển khai. Đây là chấp thuận triển khai danh mục; không điền hoặc chứng nhận các dữ kiện vận hành đang thiếu. Module `owner_review` nhập snapshot với kiểm tra hash, lưu nguồn/biên bản duyệt; địa bàn để inactive và catalog dịch vụ chưa bật vận hành. Không dùng importer legacy hoặc sửa trạng thái JSON để tự cấp quyền.
 
 ## Mở file nào trước
 
-Mở **`review-register.csv`** bằng Excel hoặc trình đọc CSV UTF-8. Lọc `site_code` để xem từng khu và `dataset` để xem từng nhóm. Bảng có **113 mục**; mọi `decision` đang là `pending`, người duyệt và ngày duyệt để trống.
+Mở **`review-register.csv`** bằng Excel hoặc trình đọc CSV UTF-8. Lọc `site_code` để xem từng khu và `dataset` để xem từng nhóm. Bảng có **113 mục** đã chấp thuận ghi nhận vào DB ở cấp dự án; cần tiếp tục đối soát từng trường vận hành còn thiếu với đơn vị sở hữu dữ liệu.
 
 | Khu | Địa bàn tham khảo | Dịch vụ/tiện ích đề xuất | Yêu cầu bố trí nhân sự | Yêu cầu cấp dữ liệu |
 |---|---:|---:|---:|---:|

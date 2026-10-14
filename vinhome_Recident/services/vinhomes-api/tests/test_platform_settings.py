@@ -153,7 +153,8 @@ def test_mcp_export_is_explicit_private_and_audited(database, monkeypatch):
             assert token in bundle.read('vinhomes-mcp.secret.env').decode()
             config = json.loads(bundle.read('mcp-server.json'))
             assert config['url'] == 'https://vinhomes.example.com/mcp'
-            assert len(config['tools']) == 7 and token not in bundle.read('mcp-server.json').decode()
+            from vinhomes_api.platform_access import TOOLS
+            assert set(config['tools']) == set(TOOLS) and token not in bundle.read('mcp-server.json').decode()
         assert sql(database, "SELECT id FROM audit_events WHERE event_type='platform_connection.mcp_exported'")
 
 

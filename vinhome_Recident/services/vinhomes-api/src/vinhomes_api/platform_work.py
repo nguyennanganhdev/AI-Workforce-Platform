@@ -195,6 +195,11 @@ async def action_policy(db,ticket) -> dict:
         'vh_work_order_reschedule': None if active and any(w['status'] in ('queued','offered','accepted') for w in orders) else 'NO_RESCHEDULABLE_WORK',
         'vh_ticket_cancel': 'TICKET_FINAL' if not active else 'SECURITY_MANAGEMENT_ONLY' if any(w['category']=='security' for w in orders) else 'WORK_ALREADY_ON_SITE' if any(w['status'] in ('arrived','in_progress','completed') for w in orders) else None,
         'vh_ticket_add_note':None if active or ticket['status']=='resolved' else 'TICKET_FINAL'}
+    if ticket['category_code']=='travel':
+        blockers['vh_work_order_dispatch']='TRAVEL_USE_BOOKING_TOOLS'
+        blockers['vh_work_order_reschedule']='TRAVEL_USE_BOOKING_TOOLS'
+        if (await db.execute(text(f"select 1 from travel_mock_bookings where tenant_id={TENANT} and ticket_id=:id and status='confirmed' limit 1"),{'id':ticket['id']})).first():
+            blockers['vh_ticket_cancel']='TRAVEL_CANCEL_BOOKINGS_FIRST'
     return {'version':'ticket-policy-v1','requires_plan':planned,'actions':{k:{'allowed':v is None,'blocked_reason':v} for k,v in blockers.items()},
         'resident_approval_required_for':['quote','completion'],'security_dispatch':'management_only'}
 
@@ -359,6 +364,8 @@ async def debts(db, ticket_id, view: str) -> dict:
 
 async def staff_available(db, ticket_id, appointment_at: str | None = None) -> dict:
     ticket = await _ticket(db, ticket_id)
+    if ticket['category_code']=='travel':
+        raise Refused('Travel dùng công cụ đặt chỗ mô phỏng, không giao nhân viên kỹ thuật.','TRAVEL_USE_BOOKING_TOOLS')
     at=_appointment(appointment_at)
     if ticket["category_id"] is None:
         raise Refused("Yêu cầu chưa được phân loại nên chưa biết cần chuyên môn nào.")
@@ -445,6 +452,8 @@ async def _act(db, tool: str, ticket_id, reference, effect, payload=None, expect
 async def dispatch(db, ticket_id, description: str, staff_id: str | None, appointment_at: str | None, client_reference, expected_version=None) -> dict:
     """Create the work and offer it. Its id is the platform's job id: staff progress is reported under this call."""
     async def effect(ticket):
+        if ticket['category_code']=='travel':
+            raise Refused('Travel dùng công cụ đặt chỗ mô phỏng, không tạo work order.','TRAVEL_USE_BOOKING_TOOLS')
         text_ = (description or "").strip()
         if not 1 <= len(text_) <= 2000:
             raise Refused("description cần từ 1 đến 2000 ký tự, nói rõ việc cần làm.")
@@ -553,6 +562,8 @@ async def reschedule(db, ticket_id, appointment_at: str, reason: str | None, cli
 async def cancel(db, ticket_id, reason: str | None, client_reference, expected_version=None,source_message_id=None) -> dict:
     """The resident no longer wants the request: the ticket, its unfinished work and the offers end together."""
     async def effect(ticket):
+        if ticket['category_code']=='travel' and (await db.execute(text(f"select 1 from travel_mock_bookings where tenant_id={TENANT} and ticket_id=:id and status='confirmed' limit 1"),{'id':ticket['id']})).first():
+            raise Refused('Cần hủy booking với sự đồng ý của cư dân trước khi hủy ticket.','TRAVEL_CANCEL_BOOKINGS_FIRST')
         await resident_source(db,ticket,source_message_id)
         why = (reason or "").strip()[:2000] or "Cư dân đề nghị hủy yêu cầu."
         # TICKET_TRANSITIONS: only these may become cancelled.

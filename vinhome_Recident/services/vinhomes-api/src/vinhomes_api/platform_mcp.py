@@ -27,6 +27,8 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from . import platform_work as work
+from . import travel
+from .travel_models import Kind
 from .platform_access import ACCESS,find_grant,authorize
 
 log = logging.getLogger("vinhomes_api.platform_mcp")
@@ -183,6 +185,51 @@ def build(app) -> FastMCP:
                                  expected_ticket_version: Annotated[int | None,Field(ge=0)]=None) -> ToolReply:
         """Add to the request something the resident said that the staff should know."""
         return await run(True,'vh_ticket_add_note',work.add_note,ticket_id,note,client_reference,expected_ticket_version)
+
+    @mcp.tool(annotations=READ)
+    async def vh_travel_catalog(ticket_id: Ticket) -> ToolReply:
+        """MOCK ONLY: available hotel cities, bus routes and restaurant cuisines for this travel ticket. No real provider."""
+        return await run(False,'vh_travel_catalog',travel.catalog,ticket_id)
+
+    @mcp.tool(annotations=READ)
+    async def vh_travel_search(ticket_id: Ticket, kind: Kind, criteria: Annotated[dict,Field(max_length=20)]) -> ToolReply:
+        """MOCK ONLY. Hotel criteria: city/check_in/check_out/guests/rooms; bus: origin/destination/travel_date/passengers;
+        restaurant: city/reservation_date/reservation_time/party_size. Dates YYYY-MM-DD. No resident identity inputs."""
+        return await run(False,'vh_travel_search',travel.search,ticket_id,kind,criteria)
+
+    @mcp.tool(annotations=READ)
+    async def vh_travel_details(ticket_id: Ticket, kind: Kind, service_id: Annotated[str,Field(min_length=1,max_length=120)]) -> ToolReply:
+        """MOCK ONLY: read a hotel_id, trip_id or restaurant_id obtained from search."""
+        return await run(False,'vh_travel_details',travel.details,ticket_id,kind,service_id)
+
+    @mcp.tool(annotations=READ)
+    async def vh_travel_availability(ticket_id: Ticket, kind: Kind, selection: Annotated[dict,Field(max_length=15)]) -> ToolReply:
+        """MOCK ONLY. Hotel selection: hotel_id/room_type_id/check_in/check_out/guests/rooms;
+        bus: trip_id/travel_date/seats; restaurant: restaurant_id/reservation_date/reservation_time/party_size."""
+        return await run(False,'vh_travel_availability',travel.availability,ticket_id,kind,selection)
+
+    @mcp.tool()
+    async def vh_travel_prepare(ticket_id: Ticket, kind: Kind, operation: Annotated[str,Field(pattern='^(book|cancel)$')],
+            selection: Annotated[dict,Field(max_length=15)], client_reference: Reference,
+            expected_ticket_version: Annotated[int,Field(ge=0)]) -> ToolReply:
+        """MOCK ONLY: prepare a 15-minute proposal, never book/cancel. book uses availability selection;
+        cancel uses booking_ref/reason from this ticket. Platform must publish approval.required with returned
+        quote_ref/arguments_hash/summary/expires_at and its own revision, then wait for the resident's decision."""
+        return await run(True,'vh_travel_prepare',travel.prepare,ticket_id,kind,operation,selection,client_reference,expected_ticket_version)
+
+    @mcp.tool()
+    async def vh_travel_commit(ticket_id: Ticket, intent_id: Annotated[str,Field(max_length=120)],
+            approval_id: Annotated[str,Field(min_length=1,max_length=200)], client_reference: Reference,
+            expected_ticket_version: Annotated[int,Field(ge=0)]) -> ToolReply:
+        """MOCK ONLY: book or cancel exactly the approved intent. Requires the resident's own local decision,
+        matching quote/hash, current ticket version and unexpired quote. No real payment/provider calls.
+        Retry with the SAME client_reference, intent_id and approval_id. Domain queues progress to Platform."""
+        return await run(True,'vh_travel_commit',travel.commit,ticket_id,intent_id,approval_id,client_reference,expected_ticket_version)
+
+    @mcp.tool(annotations=READ)
+    async def vh_travel_bookings(ticket_id: Ticket) -> ToolReply:
+        """MOCK ONLY: durable bookings of this ticket; never search by phone or list other residents' bookings."""
+        return await run(False,'vh_travel_bookings',travel.bookings,ticket_id)
 
     return mcp
 

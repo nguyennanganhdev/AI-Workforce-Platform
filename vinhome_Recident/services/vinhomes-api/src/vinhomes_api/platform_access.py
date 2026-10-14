@@ -21,7 +21,9 @@ from pydantic import BaseModel,Field
 from .platform import TENANT
 
 TOOLS=('vh_ticket_get','vh_knowledge_search','vh_staff_available','vh_work_order_dispatch',
-       'vh_work_order_reschedule','vh_ticket_cancel','vh_ticket_add_note')
+       'vh_work_order_reschedule','vh_ticket_cancel','vh_ticket_add_note',
+       'vh_travel_catalog','vh_travel_search','vh_travel_details','vh_travel_availability',
+       'vh_travel_prepare','vh_travel_commit','vh_travel_bookings')
 ACCESS: ContextVar[dict | None] = ContextVar('vinhomes_mcp_access',default=None)
 router=APIRouter(tags=['Platform control-plane'])
 
@@ -53,7 +55,7 @@ class GrantRequest(BaseModel):
     external_request_id: UUID
     workflow_id: str=Field(min_length=1,max_length=200)
     grant_request_id: UUID
-    tools: list[str]=Field(min_length=1,max_length=7)
+    tools: list[str]=Field(min_length=1,max_length=len(TOOLS))
     ttl_seconds: int=Field(default=3600,ge=60,le=86400)
 
 

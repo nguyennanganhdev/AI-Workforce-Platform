@@ -31,8 +31,10 @@
     "ocean-park-3/services.csv": "2be25fb87ea95da219f4488333249fd08ef2f8b63515dd828af3fd3d12ac4127",
     "ocean-park-3/staffing_requirements.csv": "779a9023ec9cde6bc73bb487a7fe97a72a12b45caff089512f0a4ab89e2d4bbe",
     "ocean-park-3/data_requests.csv": "b4f802ea3c97773e9d0e7e5c327860b60f9151054ccd19c3f0d39690bf980aea",
-    "review-register.csv": "ac72f04ebc59a636a62ef87fba787d0a3e1a292e746cbe0835d0ac9d0dbf37d7",
+    "review-register.csv": "cdc352e1ca01de71d38e426d13a5a8a36802fb4d3fbd7648b5f1f59d66ac0e89",
     "proposals.jsonl": "8826aaa0595137fc08fe1ee2384a025bd31818a91626a4ea3dc2d70355ce023c"
   },
-  "note": "Đây là hồ sơ đề xuất chờ đối soát; sửa CSV không tự duyệt, cấp quyền hoặc ghi database."
+  "note": "Đây là hồ sơ đề xuất chờ đối soát; sửa CSV không tự duyệt, cấp quyền hoặc ghi database.",
+  "project_approval_file": "project-approval.json",
+  "project_approval_status": "approved_for_database_registration"
 }

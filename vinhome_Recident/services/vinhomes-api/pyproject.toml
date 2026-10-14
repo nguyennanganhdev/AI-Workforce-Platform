@@ -28,7 +28,7 @@ test = ["httpx>=0.27,<1", "pytest>=8,<10"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-vinhomes_api = ["demo_ui/*.html", "demo_ui/*.css", "demo_ui/*.js", "schema/roles.sql", "schema/migrations/*.sql", "schema/seed/*.sql", "schema/reference/*.json", "schema/knowledge/*.jsonl.gz"]
+vinhomes_api = ["demo_ui/*.html", "demo_ui/*.css", "demo_ui/*.js", "schema/roles.sql", "schema/migrations/*.sql", "schema/seed/*.sql", "schema/reference/*.json", "schema/knowledge/*.jsonl.gz", "mock_travel/PROVENANCE.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
