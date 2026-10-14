@@ -110,7 +110,27 @@ blob_store = (
     else None
 )
 
-vector_store = QdrantStore(location=":memory:")
+# Knowledge-base vectors must survive a restart, otherwise every uploaded
+# document silently stops being searchable. Use a Qdrant server when
+# KNOWLEDGE_VECTOR_URL is set; otherwise an on-disk Qdrant next to the agent
+# workspaces (a mounted volume in compose). KNOWLEDGE_VECTOR_PATH=:memory:
+# restores the old throwaway behaviour for local experiments.
+_vector_url = os.getenv("KNOWLEDGE_VECTOR_URL", "").strip()
+_vector_path = os.getenv("KNOWLEDGE_VECTOR_PATH", "").strip() or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "workspaces",
+    "_knowledge_vectors",
+)
+if _vector_url:
+    vector_store = QdrantStore(
+        url=_vector_url,
+        api_key=os.getenv("KNOWLEDGE_VECTOR_API_KEY") or None,
+    )
+elif _vector_path == ":memory:":
+    vector_store = QdrantStore(location=":memory:")
+else:
+    os.makedirs(_vector_path, exist_ok=True)
+    vector_store = QdrantStore(path=_vector_path)
 
 auth_service = None
 business_service = None
@@ -184,7 +204,7 @@ app = create_app(
         # The default MCP servers that will be added into the workspace
         default_mcps=default_mcps,
     ),
-    # Knowledge base feature — backed by an in-memory Qdrant store. The
+    # Knowledge base feature — backed by a persistent Qdrant store. The
     # CollectionPerKbManager allocates one collection per knowledge base,
     # so any embedding dimension is allowed.
     knowledge_base_manager=CollectionPerKbManager(
