@@ -3,6 +3,20 @@
 Người đọc: người vận hành platform · VPS `103.238.235.156` (Vinhome:
 `https://vinhome-platform.duckdns.org`).
 
+> **Trạng thái từ 14/10/2026 16:21: platform đã được gỡ khỏi VPS.** PM quyết
+> định VPS chỉ chạy domain Vinhome; platform được test ở máy dev trước (xem
+> `HUONG_DAN_TEST_PLATFORM.md` mục 8). Đã làm:
+> - `docker compose -p awp-platform down` và xoá image platform;
+> - **giữ** volume `awp-platform_*` và `/opt/awp-platform/app` để có thể
+>   khôi phục;
+> - tắt cầu nối Vinhome bằng `VINHOMES_API_PLATFORM_URL=` (bản trước:
+>   `deployment.env.bak-before-platform-removal-20261014`), rồi khởi động lại
+>   `api` và `platform-sync`.
+>
+> Muốn chạy lại trên VPS: `docker load` image mới, `docker compose up -d` trong
+> `/opt/awp-platform/app`, đặt lại URL rồi khởi động lại hai service như bước 7.
+> Phần dưới đây mô tả cách đã làm ngày 14/10.
+
 ## Bố trí
 
 | Thứ | Ở đâu |
