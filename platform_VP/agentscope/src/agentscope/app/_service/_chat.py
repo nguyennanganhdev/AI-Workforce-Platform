@@ -1276,7 +1276,19 @@ class ChatService:
                         agent_id=agent_id,
                     ),
                 ]
-                if agent_record.data.system_role == "leader":
+                extras: list = []
+                if self._extra_agent_middlewares is not None:
+                    factory_args: tuple = (user_id, agent_id, session_id)
+                    if self._middlewares_take_workspace:
+                        factory_args += (workspace,)
+                    extras = list(await self._extra_agent_middlewares(*factory_args))
+                # A partner ticket's Leader waits for its room in its own case
+                # middleware and learns when the ticket's result is out.
+                partner_case = False
+                for extra in extras:
+                    if await extra.get_middleware_key() == "partner_case":
+                        partner_case = True
+                if agent_record.data.system_role == "leader" and not partner_case:
                     middlewares.append(
                         LeaderEvidenceMiddleware(
                             self._storage,
@@ -1307,13 +1319,7 @@ class ChatService:
                 if sop_dispatch is not None:
                     middlewares.append(SOPStepSubmitMiddleware())
 
-                if self._extra_agent_middlewares is not None:
-                    factory_args: tuple = (user_id, agent_id, session_id)
-                    if self._middlewares_take_workspace:
-                        factory_args += (workspace,)
-                    middlewares.extend(
-                        await self._extra_agent_middlewares(*factory_args),
-                    )
+                middlewares.extend(extras)
 
                 # -------------------------------------------------------------
                 # 2b. TTS middleware — inject when the session has a TTS
