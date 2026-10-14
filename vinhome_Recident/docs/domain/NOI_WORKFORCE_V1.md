@@ -1,5 +1,7 @@
 # Nối Vinhomes với platform (Workforce v1): thiết kế đã duyệt
 
+> **Cập nhật 14/10/2026:** Luồng hiện hành và nghiệm thu nằm tại [Platform quản lý tiến độ dịch vụ](PLATFORM_OWNED_SERVICE_ACCEPTANCE_20261014.md). Platform điều phối toàn bộ sau bàn giao; domain lưu dữ liệu, thực thi quyền và render quyết định cư dân sau xác nhận của Platform. Phần thiết kế 11/10 bên dưới là baseline; các mô tả khác về phát báo giá/kết quả trực tiếp hoặc tự stop_tracking được thay thế bởi bản cập nhật 14/10. Runtime Platform hiện dùng nhánh `feat/wf-partner-case` tại checkout develop2.
+
 Cập nhật 11/10/2026 (tối). Thay cho bản kế hoạch `KE_HOACH_NOI_WORKFORCE_V1.md` (10/10). Hợp đồng của platform: `docs/contract/CONTRACT_TICH_HOP_DOI_TAC.md` bản `1.3-draft` và mã ở nhánh `feat/platform-core` (`platform_VP/core/src/awp/workforce`). Vinhomes chỉ dùng platform như một đối tác: không sửa gì bên platform.
 
 ## 1. Quyết định của chủ sản phẩm (11/10)
