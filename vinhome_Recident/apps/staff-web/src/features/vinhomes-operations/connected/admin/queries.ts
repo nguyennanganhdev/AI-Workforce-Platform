@@ -22,12 +22,15 @@ export async function adminRequest<T>(
     headers: businessHeaders(),
   });
   const body = await response.json().catch(() => null);
-  if (!response.ok)
-    throw new Error(
+  if (!response.ok) {
+    const error = new Error(
       typeof body?.detail === "string"
         ? body.detail
         : "Không thực hiện được thao tác. Thử lại hoặc liên hệ quản trị viên.",
     );
+    throw Object.assign(error, { fieldErrors: Object.fromEntries((Array.isArray(body?.errors) ? body.errors : [])
+      .map((item: {field: string; message: string}) => [item.field, item.message])) });
+  }
   return body as T;
 }
 export const overviewOptions = () =>

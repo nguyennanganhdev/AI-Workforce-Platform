@@ -260,6 +260,9 @@ async def http_error(request: Request, exc: StarletteHTTPException) -> JSONRespo
 
 
 async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    if request.url.path.startswith('/admin/platform-connection'):
+        return JSONResponse(status_code=422, content={'detail': 'Kiểm tra lại các trường cấu hình.', 'errors': [
+            {'field': str(item['loc'][-1]), 'message': item['msg']} for item in exc.errors()]}, headers={'Cache-Control': 'no-store'})
     if request.url.path.startswith("/integration/v1"):
         from .integration import integration_error
         return integration_error(request, 422, "The request does not match the contract",

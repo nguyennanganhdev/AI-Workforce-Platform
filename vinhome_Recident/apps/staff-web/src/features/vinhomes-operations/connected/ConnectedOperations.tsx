@@ -9,7 +9,7 @@ import {
 import { UrbanOperationsShell as ConnectedOperationsShell } from '../layout/urban-operations-shell';
 import { WorkspaceFrame } from "../workspace/WorkspaceFrame";
 import { AccountsPage } from "./admin/Accounts";
-import { AdminOverviewPage, AuditPage, UnitsPage } from "./admin/Platform";
+import { AdminOverviewPage, AuditPage, UnitsPage, PlatformConnectionPage } from "./admin/Platform";
 import { overviewOptions } from './admin/queries';
 import "./connected.css";
 import { FieldJob, type FieldActions } from "./field/FieldJob";
@@ -331,7 +331,7 @@ export function ConnectedOperations() {
     ...(adminSummary.data?.pending_accounts ? [{id:'accounts-pending',title:`${adminSummary.data.pending_accounts} tài khoản chờ duyệt`,note:'Xem hồ sơ đăng ký để quyết định.',to:'/operations/accounts',count:adminSummary.data.pending_accounts}] : [])];
   // The administrator's own pages: what it sets up for management to work with.
   const adminPage = me?.role !== "admin" ? null : path === '' ? <AdminOverviewPage /> : path === "accounts" ? <AccountsPage /> : path === "units" ? <UnitsPage />
-    : path === "audit" ? <AuditPage /> : null;
+    : path === "audit" ? <AuditPage /> : path === "platform-connection" ? <PlatformConnectionPage /> : null;
   const selected = detail?.ticket;
   const currentJob = ownJobs.find((j) => active(stateOf(j)));
   const ownSelected = detail?.workOrders.flatMap((order) => {
@@ -445,6 +445,7 @@ export function ConnectedOperations() {
       banner={me?.role === "staff" ? (selected ? notices.filter((n) => n.id !== focusedOrder?.id) : []) : undefined}
       alerts={tickets.filter(t => t.priority === 'critical' && !['closed', 'cancelled'].includes(t.status)).map(t => ({id: t.id, title: t.title, location_json: {towerCode: catalog?.buildings.find(b => b.id === t.building_id)?.code}}))}>
       {!me ? <div className="flex flex-col gap-4">{banners}{!error && <p role="status" className="p-4 text-sm text-muted-foreground">Đang tải tài khoản và công việc…</p>}</div> : path === 'reports' && management ? <LiveReportsPage buildings={catalog?.buildings || []} categories={catalog?.serviceCategories || []} />
+        : ["accounts", "units", "audit", "platform-connection"].includes(path) && me.role !== "admin" ? <p role="alert" className="rounded-xl border border-border bg-background p-4">Trang này dành cho quản trị viên hệ thống.</p>
         : adminPage ? adminPage : me?.role === "staff" ? (
           <div className="flex flex-col gap-4">
             {banners}

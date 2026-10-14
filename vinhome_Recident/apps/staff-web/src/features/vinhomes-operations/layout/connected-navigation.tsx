@@ -3,14 +3,14 @@ import { IconLogout } from '@tabler/icons-react';
 import { Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarMenuBadge, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import type { ReactNode } from 'react';
 
-export type NavigationPage = 'kanban' | 'reports' | 'accounts' | 'units' | 'audit' | 'my-tasks';
+export type NavigationPage = '' | 'kanban' | 'reports' | 'accounts' | 'units' | 'audit' | 'my-tasks' | 'platform-connection';
 type Item = { page: NavigationPage; label: string; icon: ReactNode; count?: number };
 export function ConnectedNavigation({ name, role, page, work, setup }: { name: string; role: string; page: string; work: Item[]; setup: Item[] }) {
   const { setOpenMobile } = useSidebar();
   const group = (title: string, items: Item[]) => items.length > 0 && <SidebarGroup>
     <SidebarGroupLabel>{title}</SidebarGroupLabel>
     <SidebarMenu>{items.map(item => <SidebarMenuItem key={item.page}>
-      <SidebarMenuButton isActive={page === item.page} render={<Link to={`/operations/${item.page}`} />} onClick={() => setOpenMobile(false)} className="min-h-10 text-sm">
+      <SidebarMenuButton isActive={page === item.page} render={<Link to={item.page ? `/operations/${item.page}` : '/operations'} />} onClick={() => setOpenMobile(false)} className="min-h-11 text-sm">
         {item.icon}<span>{item.label}</span>
       </SidebarMenuButton>
       {!!item.count && <SidebarMenuBadge>{item.count}</SidebarMenuBadge>}

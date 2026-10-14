@@ -179,6 +179,8 @@ def create_app(settings: V3Settings | None = None) -> FastAPI:
     app.include_router(resident_interactions_router)
     from .v3_admin import router as admin_router
     app.include_router(admin_router)
+    from .platform_settings import router as platform_settings_router
+    app.include_router(platform_settings_router)
     app.include_router(integration_router)
     app.include_router(integration_cases_router)
     app.include_router(knowledge_router)

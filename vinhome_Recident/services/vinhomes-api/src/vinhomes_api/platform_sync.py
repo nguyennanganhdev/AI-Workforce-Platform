@@ -18,6 +18,7 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 
 import httpx
 from sqlalchemy import text
@@ -40,9 +41,12 @@ CLOSE_TRIES = 5
 # Receipts the platform has not finished with.
 WAITING = "('accepted','processing','quarantined')"
 _sending: dict[str, asyncio.Task] = {}  # ticket id -> its command on the wire, in this process
+_run_tenant: ContextVar[str | None] = ContextVar('platform_sync_tenant', default=None)
 
 
 async def _tenants(engine: AsyncEngine) -> list[str]:
+    if _run_tenant.get() is not None:
+        return [_run_tenant.get()]
     async with engine.connect() as probe:
         return [str(row[0]) for row in await probe.execute(text("select id from tenants where status='active'"))]
 
@@ -465,25 +469,66 @@ async def run(engine: AsyncEngine, client: Platform) -> None:
         await asyncio.sleep(max(EVERY_SECONDS, read / READS_PER_SECOND))
 
 
-async def _main(url: str, bridge: Bridge) -> None:
-    engine, client = create_async_engine(url, pool_pre_ping=True, pool_size=MAX_SENDING + 2), Platform(bridge)
+async def configured_pass(engine: AsyncEngine, clients: dict, retired: list) -> None:
+    """Reload tenant settings each pass; keep in-flight commands on their original transport."""
+    from .platform_settings import load_bridge, row
+    for tenant in await _tenants(engine):
+        async with _scoped(engine, tenant) as db:
+            bridge = await load_bridge(db)
+            saved = await row(db)
+            if saved:
+                await db.execute(text(f"""UPDATE platform_connection_settings
+                    SET worker_seen_at=now(),worker_version=version WHERE tenant_id={TENANT}
+                    AND (worker_seen_at IS NULL OR worker_seen_at<now()-interval '15 seconds' OR worker_version IS DISTINCT FROM version)
+                """))
+        old = clients.get(tenant)
+        if old and old.bridge != bridge:
+            retired.append(clients.pop(tenant))
+            old = None
+        if bridge is None:
+            continue
+        client = old or Platform(bridge)
+        clients[tenant] = client
+        token = _run_tenant.set(tenant)
+        try:
+            await queue_progress(engine)
+            await close_ended(engine)
+            await send_commands(engine, client, wait=False)
+            await read_events(engine, client)
+            await send_progress(engine, client)
+        finally:
+            _run_tenant.reset(token)
+    if not _sending:
+        for client in retired:
+            await client.aclose()
+        retired.clear()
+
+
+async def _main(url: str) -> None:
+    engine = create_async_engine(url, pool_pre_ping=True, pool_size=MAX_SENDING + 2)
+    clients, retired = {}, []
     try:
-        await run(engine, client)
+        while True:
+            try:
+                await configured_pass(engine, clients, retired)
+            except Exception:
+                # Do not log credentials or exception bodies from settings/network responses.
+                log.error('Platform configuration/sync unavailable; retrying')
+            await asyncio.sleep(EVERY_SECONDS)
     finally:
-        await client.aclose()
+        if _sending:
+            await asyncio.gather(*_sending.values(), return_exceptions=True)
+        for client in [*clients.values(), *retired]:
+            await client.aclose()
         await engine.dispose()
 
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    url, bridge = os.environ.get("DATABASE_URL"), Bridge.from_env()
+    url = os.environ.get("DATABASE_URL")
     if not url:
         raise SystemExit("DATABASE_URL is not set")
-    if bridge is None:
-        # Not an error: the service is part of the stack whether or not a platform is connected.
-        log.info("VINHOMES_API_PLATFORM_URL is not set: nothing to do")
-        return 0
-    asyncio.run(_main(url.replace("postgresql://", "postgresql+asyncpg://", 1), bridge))
+    asyncio.run(_main(url.replace("postgresql://", "postgresql+asyncpg://", 1)))
     return 0
 
 

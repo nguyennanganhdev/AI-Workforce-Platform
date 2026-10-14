@@ -188,7 +188,9 @@ async def command(db, ticket_id, kind: str, body: dict) -> None:
 
 async def link_ticket(db, ticket_id) -> None:
     """Hand a new ticket to the platform, in the transaction that created it. Called again for the same ticket: nothing."""
-    if not enabled():
+    from .platform_settings import connection_enabled, lock
+    await lock(db)
+    if not await connection_enabled(db):
         return
     ticket = (await db.execute(text(f"""
         select t.channel_id,t.requester_user_id,t.title,t.description,t.request_kind,t.priority,t.severity,t.is_emergency,t.created_at,t.version,t.response_due_at,t.resolution_due_at,
@@ -207,6 +209,8 @@ async def link_ticket(db, ticket_id) -> None:
         left join service_categories c on c.id=t.category_id and c.tenant_id=t.tenant_id
         where t.id=:id and t.tenant_id={TENANT}
     """), {"id": ticket_id})).mappings().one()
+    if not await connection_enabled(db, ticket['management_ref']):
+        return
     # Every handed-over category reaches the platform. Receiving a session does not grant
     # permission to dispatch guards or bypass the domain's business approval rules.
     fresh = await db.execute(text(f"""
@@ -253,7 +257,8 @@ async def divert(db, actor_id: str, channel_id: str, message_text: str, file_ids
     An emergency goes both ways: Reception handles it here, at once, as before, and the coordinator is told.
     A message written after the request or its workflow ended is Reception's alone.
     """
-    if not enabled():
+    from .platform_settings import connection_enabled
+    if not await connection_enabled(db):
         return False
     ticket = (await db.execute(text(f"""
         select l.ticket_id from platform_links l join tickets t on t.id=l.ticket_id and t.tenant_id=l.tenant_id
@@ -673,8 +678,28 @@ def event_body(row) -> bytes:
 
 # ---- operator commands -------------------------------------------------------------------------------------------
 
+async def _operator_bridge() -> Bridge | None:
+    url = os.environ.get('DATABASE_URL')
+    if not url:
+        return Bridge.from_env()
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from .platform_settings import load_bridge
+    from .database import TENANT as DEFAULT_TENANT
+    engine = create_async_engine(url.replace('postgresql://', 'postgresql+asyncpg://', 1))
+    try:
+        async with engine.begin() as db:
+            await db.execute(text("SELECT set_config('app.tenant_id',:tenant,true)"),
+                             {'tenant': os.getenv('VINHOMES_API_TENANT_ID') or DEFAULT_TENANT})
+            return await load_bridge(db)
+    finally:
+        await engine.dispose()
+
+
 async def _confirm_routes(routes: list[str]) -> int:
-    platform, failed = Platform(Bridge.from_env()), 0
+    bridge = await _operator_bridge()
+    if bridge is None:
+        raise SystemExit('Platform bridge is disabled')
+    platform, failed = Platform(bridge), 0
     try:
         for item in routes:
             management_ref, _, rest = item.partition("=")
@@ -693,9 +718,9 @@ async def _confirm_routes(routes: list[str]) -> int:
 
 
 async def _status() -> int:
-    bridge = Bridge.from_env()
+    bridge = await _operator_bridge()
     if bridge is None:
-        print("bridge: off (VINHOMES_API_PLATFORM_URL is not set)")
+        print("bridge: off (disabled in admin settings or environment)")
         return 0
     print("bridge: on,", bridge.url, "| MCP token:", "set" if bridge.mcp_token else "not set")
     platform = Platform(bridge)
@@ -742,8 +767,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "status":
         return asyncio.run(_status())
-    if Bridge.from_env() is None:
-        raise SystemExit("VINHOMES_API_PLATFORM_URL is not set")
     return asyncio.run(_confirm_routes(args.route))
 
 

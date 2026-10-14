@@ -12,7 +12,7 @@ function Hex([int]$count) {
     $random.GetBytes($bytes)
     return -join ($bytes | ForEach-Object { $_.ToString('x2') })
 }
-$long = 'POSTGRES_PASSWORD=', 'API_DB_PASSWORD=', 'MINIO_ROOT_PASSWORD=', 'S3_SECRET_KEY=', 'RESIDENT_SIGNING_KEY=', 'RECEPTION_DELEGATION_KEY=', 'RECEPTION_SERVICE_TOKEN=', 'VINHOMES_API_PLATFORM_MCP_TOKEN='
+$long = 'POSTGRES_PASSWORD=', 'API_DB_PASSWORD=', 'MINIO_ROOT_PASSWORD=', 'S3_SECRET_KEY=', 'RESIDENT_SIGNING_KEY=', 'RECEPTION_DELEGATION_KEY=', 'RECEPTION_SERVICE_TOKEN=', 'VINHOMES_API_PLATFORM_MCP_TOKEN=', 'VINHOMES_API_CONFIG_ENCRYPTION_KEY='
 $lines = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'deployment.env.example')) -split "`r?`n" | ForEach-Object {
     if ($long -contains $_) { $_ + (Hex 32) } elseif ($_ -eq 'DEMO_PASSWORD=') { $_ + (Hex 8) } else { $_ }
 }

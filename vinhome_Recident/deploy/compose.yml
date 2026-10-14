@@ -40,6 +40,8 @@ x-platform: &platform
   VINHOMES_API_PLATFORM_SIGNING_SECRET: ${VINHOMES_API_PLATFORM_SIGNING_SECRET:-}
   # What the platform must send to call the tools at /mcp.
   VINHOMES_API_PLATFORM_MCP_TOKEN: ${VINHOMES_API_PLATFORM_MCP_TOKEN:-}
+  VINHOMES_API_CONFIG_ENCRYPTION_KEY: ${VINHOMES_API_CONFIG_ENCRYPTION_KEY:-}
+  VINHOMES_PLATFORM_ALLOWED_HOSTS: ${VINHOMES_PLATFORM_ALLOWED_HOSTS:-awp-platform,host.docker.internal}
 
 services:
   # All business data. The knowledge passages are searched through pgvector (0013_knowledge.sql), which this
@@ -204,7 +206,7 @@ services:
     # A platform on this machine is reached as host.docker.internal; Docker on Linux needs the name spelled out.
     extra_hosts:
       - 'host.docker.internal:host-gateway'
-    command: ['sh', '-c', 'if [ -z "$$VINHOMES_API_PLATFORM_URL" ]; then exec sleep infinity; fi; exec python -m vinhomes_api.platform_sync']
+    command: ['python', '-m', 'vinhomes_api.platform_sync']
 
   # Only with --profile sync: every DATA_SYNC_SECONDS, loads the export files found in DATA_SYNC_DIR with the
   # import that is also run by hand (README "Chạy với dữ liệu thật"). As the database owner, as init.

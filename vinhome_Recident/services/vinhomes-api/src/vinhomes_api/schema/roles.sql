@@ -30,5 +30,6 @@ GRANT INSERT ON message_files TO :role;
 GRANT INSERT,UPDATE ON platform_links, platform_commands, platform_inbox, platform_approvals, platform_operations, platform_outbox TO :role;
 -- Trusted platform control-plane issues grants automatically; only the operator may revoke via DB.
 GRANT SELECT,INSERT ON platform_mcp_grants TO :role;
+GRANT INSERT,UPDATE ON platform_connection_settings TO :role;
 GRANT DELETE ON users, accounts, tenant_memberships, scoped_user_roles, workspace_members TO :role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO :role;

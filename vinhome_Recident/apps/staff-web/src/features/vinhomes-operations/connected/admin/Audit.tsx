@@ -23,6 +23,7 @@ import { filteredAuditOptions, type EnrichedAudit } from "./queries";
 // What a person reads in the trail. Keys are the first word of an event ("visitor_pass.created" -> visitor_pass) and the
 // kind of thing it was done to; each is something the domain records.
 export const KIND: Record<string, string> = {
+  platform_connection: "Kết nối Platform",
   access_card: "Thẻ ra vào",
   account: "Tài khoản",
   amenity_booking: "Đặt tiện ích",
@@ -46,6 +47,10 @@ export const KIND: Record<string, string> = {
   visitor_pass: "Khách đến thăm",
 };
 export const EVENT: Record<string, string> = {
+  "platform_connection.updated": "Cập nhật kết nối Platform",
+  "platform_connection.checked": "Kiểm tra kết nối Platform",
+  "platform_connection.route_confirmed": "Xác nhận tuyến Platform",
+  "platform_connection.mcp_exported": "Xuất bộ kết nối MCP",
   "access_card.reported_lost": "Báo mất thẻ",
   "account.deleted": "Xóa tài khoản",
   "account.password_reset": "Đặt lại mật khẩu",

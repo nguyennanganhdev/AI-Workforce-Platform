@@ -23,6 +23,7 @@ import { Route as AuthedOperationsEvidenceRouteImport } from './routes/_authed/o
 import { Route as AuthedOperationsIncidentsRouteImport } from './routes/_authed/operations/incidents'
 import { Route as AuthedOperationsKanbanRouteImport } from './routes/_authed/operations/kanban'
 import { Route as AuthedOperationsMyTasksRouteImport } from './routes/_authed/operations/my-tasks'
+import { Route as AuthedOperationsPlatformConnectionRouteImport } from './routes/_authed/operations/platform-connection'
 import { Route as AuthedOperationsQcRouteImport } from './routes/_authed/operations/qc'
 import { Route as AuthedOperationsReportsRouteImport } from './routes/_authed/operations/reports'
 import { Route as AuthedOperationsSanitationRouteImport } from './routes/_authed/operations/sanitation'
@@ -107,6 +108,12 @@ const AuthedOperationsMyTasksRoute = AuthedOperationsMyTasksRouteImport.update({
   path: '/my-tasks',
   getParentRoute: () => AuthedOperationsRouteRoute,
 } as any)
+const AuthedOperationsPlatformConnectionRoute =
+  AuthedOperationsPlatformConnectionRouteImport.update({
+    id: '/platform-connection',
+    path: '/platform-connection',
+    getParentRoute: () => AuthedOperationsRouteRoute,
+  } as any)
 const AuthedOperationsQcRoute = AuthedOperationsQcRouteImport.update({
   id: '/qc',
   path: '/qc',
@@ -160,6 +167,7 @@ export interface FileRoutesByFullPath {
   '/operations/incidents': typeof AuthedOperationsIncidentsRoute
   '/operations/kanban': typeof AuthedOperationsKanbanRoute
   '/operations/my-tasks': typeof AuthedOperationsMyTasksRoute
+  '/operations/platform-connection': typeof AuthedOperationsPlatformConnectionRoute
   '/operations/qc': typeof AuthedOperationsQcRoute
   '/operations/reports': typeof AuthedOperationsReportsRoute
   '/operations/sanitation': typeof AuthedOperationsSanitationRoute
@@ -182,6 +190,7 @@ export interface FileRoutesByTo {
   '/operations/incidents': typeof AuthedOperationsIncidentsRoute
   '/operations/kanban': typeof AuthedOperationsKanbanRoute
   '/operations/my-tasks': typeof AuthedOperationsMyTasksRoute
+  '/operations/platform-connection': typeof AuthedOperationsPlatformConnectionRoute
   '/operations/qc': typeof AuthedOperationsQcRoute
   '/operations/reports': typeof AuthedOperationsReportsRoute
   '/operations/sanitation': typeof AuthedOperationsSanitationRoute
@@ -206,6 +215,7 @@ export interface FileRoutesById {
   '/_authed/operations/incidents': typeof AuthedOperationsIncidentsRoute
   '/_authed/operations/kanban': typeof AuthedOperationsKanbanRoute
   '/_authed/operations/my-tasks': typeof AuthedOperationsMyTasksRoute
+  '/_authed/operations/platform-connection': typeof AuthedOperationsPlatformConnectionRoute
   '/_authed/operations/qc': typeof AuthedOperationsQcRoute
   '/_authed/operations/reports': typeof AuthedOperationsReportsRoute
   '/_authed/operations/sanitation': typeof AuthedOperationsSanitationRoute
@@ -231,6 +241,7 @@ export interface FileRouteTypes {
     | '/operations/incidents'
     | '/operations/kanban'
     | '/operations/my-tasks'
+    | '/operations/platform-connection'
     | '/operations/qc'
     | '/operations/reports'
     | '/operations/sanitation'
@@ -253,6 +264,7 @@ export interface FileRouteTypes {
     | '/operations/incidents'
     | '/operations/kanban'
     | '/operations/my-tasks'
+    | '/operations/platform-connection'
     | '/operations/qc'
     | '/operations/reports'
     | '/operations/sanitation'
@@ -276,6 +288,7 @@ export interface FileRouteTypes {
     | '/_authed/operations/incidents'
     | '/_authed/operations/kanban'
     | '/_authed/operations/my-tasks'
+    | '/_authed/operations/platform-connection'
     | '/_authed/operations/qc'
     | '/_authed/operations/reports'
     | '/_authed/operations/sanitation'
@@ -391,6 +404,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedOperationsMyTasksRouteImport
       parentRoute: typeof AuthedOperationsRouteRoute
     }
+    '/_authed/operations/platform-connection': {
+      id: '/_authed/operations/platform-connection'
+      path: '/platform-connection'
+      fullPath: '/operations/platform-connection'
+      preLoaderRoute: typeof AuthedOperationsPlatformConnectionRouteImport
+      parentRoute: typeof AuthedOperationsRouteRoute
+    }
     '/_authed/operations/qc': {
       id: '/_authed/operations/qc'
       path: '/qc'
@@ -454,6 +474,7 @@ interface AuthedOperationsRouteRouteChildren {
   AuthedOperationsIncidentsRoute: typeof AuthedOperationsIncidentsRoute
   AuthedOperationsKanbanRoute: typeof AuthedOperationsKanbanRoute
   AuthedOperationsMyTasksRoute: typeof AuthedOperationsMyTasksRoute
+  AuthedOperationsPlatformConnectionRoute: typeof AuthedOperationsPlatformConnectionRoute
   AuthedOperationsQcRoute: typeof AuthedOperationsQcRoute
   AuthedOperationsReportsRoute: typeof AuthedOperationsReportsRoute
   AuthedOperationsSanitationRoute: typeof AuthedOperationsSanitationRoute
@@ -475,6 +496,8 @@ const AuthedOperationsRouteRouteChildren: AuthedOperationsRouteRouteChildren = {
   AuthedOperationsIncidentsRoute: AuthedOperationsIncidentsRoute,
   AuthedOperationsKanbanRoute: AuthedOperationsKanbanRoute,
   AuthedOperationsMyTasksRoute: AuthedOperationsMyTasksRoute,
+  AuthedOperationsPlatformConnectionRoute:
+    AuthedOperationsPlatformConnectionRoute,
   AuthedOperationsQcRoute: AuthedOperationsQcRoute,
   AuthedOperationsReportsRoute: AuthedOperationsReportsRoute,
   AuthedOperationsSanitationRoute: AuthedOperationsSanitationRoute,

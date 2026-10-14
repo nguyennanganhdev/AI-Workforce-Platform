@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "@tanstack/react-router";
-import { IconBuildingCommunity, IconChartBar, IconChecklist, IconHistory, IconUsers } from "@tabler/icons-react";
+import { IconBuildingCommunity, IconChartBar, IconChecklist, IconHistory, IconUsers, IconPlugConnected, IconLayoutDashboard } from "@tabler/icons-react";
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { ConnectedNavigation, type NavigationPage } from './connected-navigation';
 import { FieldShell } from "./field-shell";
@@ -22,6 +22,7 @@ export const connectedPages: Record<string, string> = {
   accounts: "Tài khoản",
   units: "Đơn vị quản lý",
   audit: "Nhật ký",
+  "platform-connection": "Kết nối Platform",
   security: "An ninh hiện trường",
   sanitation: "Vệ sinh",
   contractor: "Nhà thầu",
@@ -37,6 +38,7 @@ const managementNav: {page:NavigationPage; icon:ReactNode}[] = [
 const adminNav: {page:NavigationPage; icon:ReactNode}[] = [
   { page: "accounts", icon: <IconUsers className="size-4" stroke={1.75} /> },
   { page: "units", icon: <IconBuildingCommunity className="size-4" stroke={1.75} /> },
+  { page: "platform-connection", icon: <IconPlugConnected className="size-4" stroke={1.75} /> },
   { page: "audit", icon: <IconHistory className="size-4" stroke={1.75} /> },
 ];
 
@@ -70,7 +72,7 @@ export function ConnectedOperationsShell({
 }) {
   const [open, setOpen] = useState(() => { try { return localStorage.getItem('operations.navigation') !== 'closed'; } catch { return true; } });
   const toggle = (value: boolean) => { setOpen(value); try { localStorage.setItem('operations.navigation', value ? 'open' : 'closed'); } catch { /* Navigation still works without storage. */ } };
-  const path = useLocation().pathname.split("/")[2] || (management ? "kanban" : "");
+  const path = useLocation().pathname.split("/")[2] || (administrator ? "" : management ? "kanban" : "");
   const roleLabel = administrator ? "Quản trị hệ thống" : management ? "Ban quản lý" : "Nhân viên hiện trường";
   useEffect(() => {
     document.title = `${notices.length ? `(${notices.length}) ` : ""}Vinhomes · ${field ? "Việc của tôi" : "Quản lý vận hành"}`;
@@ -83,7 +85,7 @@ export function ConnectedOperationsShell({
       className="operations-app connected-shell notranslate flex h-[100dvh] min-h-0 w-full overflow-hidden font-sans"
     >
       <ConnectedNavigation name={name || 'Đang tải tài khoản…'} role={roleLabel} page={path}
-        work={(management ? managementNav : []).map(({page,icon}) => ({page,icon,label:connectedPages[page],count:page === 'kanban' ? notices.length : undefined}))}
+        work={[...(administrator ? [{page: '' as const, icon: <IconLayoutDashboard className="size-4" stroke={1.75} />}]: []), ...(management ? managementNav : [])].map(({page,icon}) => ({page,icon,label:connectedPages[page],count:page === 'kanban' ? notices.length : undefined}))}
         setup={administrator ? adminNav.map(({page,icon}) => ({page,icon,label:connectedPages[page]})) : []} />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <div className="connected-header"><SidebarTrigger aria-label={open ? 'Ẩn thanh điều hướng' : 'Hiện thanh điều hướng'} />

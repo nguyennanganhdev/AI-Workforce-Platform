@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useLocation } from '@tanstack/react-router';
-import { Bell, Building2, ChartColumn, History, Inbox, LayoutGrid, Search, Users } from 'lucide-react';
+import { Bell, Building2, ChartColumn, History, Inbox, LayoutGrid, Search, Users, Cable } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
@@ -10,7 +10,7 @@ import { UrbanNavigation, type UrbanNavItem } from './urban-navigation';
 import { ConnectedOperationsShell as LegacyShell, type ShellNotice } from './connected-operations-shell';
 import '../connected/foundation.css';
 
-const titles: Record<string, string> = { '': 'Tổng quan', kanban: 'Yêu cầu', reports: 'Báo cáo', accounts: 'Tài khoản', units: 'Đơn vị quản lý', audit: 'Nhật ký' };
+const titles: Record<string, string> = { '': 'Tổng quan', kanban: 'Yêu cầu', reports: 'Báo cáo', accounts: 'Tài khoản', units: 'Đơn vị quản lý', audit: 'Nhật ký', 'platform-connection': 'Kết nối Platform' };
 const icon = (Component: typeof Bell) => <Component size={16} strokeWidth={1.75} />;
 export function UrbanOperationsShell({ name, email, management, administrator = false, field = false, alerts = [], notices = [], flush = false, banner, children, unit, buildingCount, searchItems = [] }: {
   name?: string; email?: string; management: boolean; administrator?: boolean; field?: boolean;
@@ -41,7 +41,7 @@ export function UrbanOperationsShell({ name, email, management, administrator = 
   ];
   const setup: UrbanNavItem[] = administrator ? [
     { page: 'accounts', label: 'Tài khoản', icon: icon(Users), count: countFor('accounts') },
-    { page: 'units', label: 'Đơn vị quản lý', icon: icon(Building2) }, { page: 'audit', label: 'Nhật ký', icon: icon(History) },
+    { page: 'units', label: 'Đơn vị quản lý', icon: icon(Building2) }, { page: 'platform-connection', label: 'Kết nối Platform', icon: icon(Cable) }, { page: 'audit', label: 'Nhật ký', icon: icon(History) },
   ] : [];
   const needle = query.trim().toLocaleLowerCase('vi');
   const navResults = [...work, ...setup].filter(item => item.label.toLocaleLowerCase('vi').includes(needle));
