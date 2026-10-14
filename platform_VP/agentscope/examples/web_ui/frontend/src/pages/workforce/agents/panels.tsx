@@ -170,13 +170,24 @@ export function TestReportView({ report }: { report: TestReport }) {
 		<div className="space-y-3">
 			<div className="flex flex-wrap items-center gap-2 text-sm">
 				<Badge variant={report.publishable ? 'default' : 'destructive'}>
-					{report.passed}/{report.total} đạt ({Math.round(report.pass_rate * 100)}%)
+					{report.errors
+						? `Chưa chạy được ${report.errors}/${report.total} kịch bản`
+						: `${report.passed}/${report.total} đạt (${Math.round(report.pass_rate * 100)}%)`}
 				</Badge>
 				<span className="text-xs text-muted-foreground">
 					{new Date(report.ran_at).toLocaleString('vi-VN')} ·{' '}
-					{report.publishable ? 'đủ điều kiện phát hành' : 'chưa đủ điều kiện phát hành'}
+					{report.errors
+						? 'lỗi model, không phải lỗi của agent'
+						: report.publishable
+							? 'đủ điều kiện phát hành'
+							: 'chưa đủ điều kiện phát hành'}
 				</span>
 			</div>
+			{report.model_error && (
+				<p className="rounded-lg border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+					{report.model_error}
+				</p>
+			)}
 			{report.results.map((result) => (
 				<div key={result.test_id} className="space-y-2 rounded-xl border border-border/70 p-3 text-sm">
 					<div className="flex items-start gap-2">

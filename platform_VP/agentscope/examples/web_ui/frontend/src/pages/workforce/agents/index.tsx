@@ -117,6 +117,8 @@ function CreateAgentDialog({
 									if (result.agents.length > 1) {
 										toast.success(result.reply.assistant_message);
 									}
+									const failed = Object.values(result.test_reports).find((report) => report.errors);
+									if (failed) toast.error(`Chưa kiểm thử được: ${failed.model_error}`);
 									return result.agent;
 								})
 							}
@@ -246,7 +248,11 @@ export function AgentManagementPage() {
 										</TableCell>
 										<TableCell>{agent.published_version ? `v${agent.published_version}` : '—'}</TableCell>
 										<TableCell>
-											{agent.last_test ? `${agent.last_test.passed}/${agent.last_test.total}` : '—'}
+											{agent.last_test
+												? agent.last_test.errors
+													? 'lỗi model'
+													: `${agent.last_test.passed}/${agent.last_test.total}`
+												: '—'}
 										</TableCell>
 										<TableCell>{agent.tool_count}</TableCell>
 										<TableCell>

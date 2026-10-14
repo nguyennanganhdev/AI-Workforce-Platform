@@ -165,7 +165,7 @@ def _summary(record: AgentRecord) -> AgentSummaryView:
         last_test=(record.data.draft_meta or {}).get("last_test")
         and {
             k: record.data.draft_meta["last_test"].get(k)
-            for k in ("pass_rate", "passed", "total", "ran_at", "publishable")
+            for k in ("pass_rate", "passed", "total", "ran_at", "publishable", "errors", "model_error")
         },
     )
 
@@ -181,6 +181,11 @@ def _publish_blocker(record: AgentRecord, spec: AgentSpec) -> str:
     report = last_test_for(record, spec)
     if report is None:
         return "Hãy chạy kiểm thử cho bản nháp hiện tại trước khi phát hành."
+    if report.get("errors"):
+        return (
+            f"Chưa kiểm thử được {report['errors']}/{report.get('total')} kịch bản: "
+            f"{report.get('model_error')} Chạy lại kiểm thử sau khi sửa."
+        )
     if not report.get("publishable"):
         return (
             f"Kiểm thử đạt {report.get('passed')}/{report.get('total')}; "

@@ -127,8 +127,11 @@ class _Model:
         self.copilot_operations: list[dict] = []
         self.judge_pass = True
         self.plan: dict | None = None
+        self.call_error: Exception | None = None
 
     async def __call__(self, messages, tools=None, tool_choice=None, **_):
+        if self.call_error is not None:
+            raise self.call_error
         return ChatResponse(content=[TextBlock(text="Hãy khoá van tổng trước.")], is_last=True)
 
     async def generate_structured_output(self, messages, structured_model, **_):
@@ -337,6 +340,24 @@ def test_failed_tests_block_publishing(env) -> None:
 
     assert report["publishable"] is False
     assert response.status_code == 409
+
+
+def test_a_model_without_credit_is_reported_not_scored(env) -> None:
+    client, _storage, model, _manager = env
+    agent_id = client.post(f"{BASE}/agents", json={"template_id": "travel_cost"}).json()["agent_id"]
+
+    class OutOfCredit(Exception):
+        status_code = 429
+        code = "insufficient_quota"
+
+    model.call_error = OutOfCredit("You exceeded your current quota")
+    report = client.post(f"{BASE}/agents/{agent_id}/tests/run").json()
+    detail = client.get(f"{BASE}/agents/{agent_id}").json()
+
+    assert report["publishable"] is False
+    assert report["errors"] == report["total"] == 3
+    assert "hết credit" in report["model_error"]
+    assert detail["publish_blocker"].startswith("Chưa kiểm thử được 3/3 kịch bản: Tài khoản model hết credit")
 
 
 def test_copilot_cannot_add_a_tool_missing_from_the_catalog(env) -> None:

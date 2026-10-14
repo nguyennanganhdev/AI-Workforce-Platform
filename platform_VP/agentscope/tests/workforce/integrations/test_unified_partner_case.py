@@ -1050,6 +1050,21 @@ class PartnerToolsOnlyTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["TeamSay", "vh_ticket_get"], [t["function"]["name"] for t in seen["tools"]])
 
 
+class PartnerFactTest(unittest.TestCase):
+    def test_a_partner_result_enters_the_room_as_a_labelled_preview(self):
+        from agentscope.app._service._chat import _PARTNER_FACT_CHARS, _partner_fact
+        from agentscope.message import ToolCallBlock, ToolResultBlock
+
+        call = ToolCallBlock(id="c1", name="vh_ticket_get", input='{"ticket_id": "T-77"}')
+        short = ToolResultBlock(id="c1", name="vh_ticket_get", output=[TextBlock(text='E4: {"ticket_status": "open"}')])
+        self.assertEqual('vh_ticket_get {"ticket_id": "T-77"}\nE4: {"ticket_status": "open"}', _partner_fact(call, short))
+        long = ToolResultBlock(id="c1", name="vh_ticket_get", output="E5: " + "x" * 5000)
+        fact = _partner_fact(call, long)
+        self.assertIn("E5: ", fact)
+        self.assertTrue(fact.endswith("bản đầy đủ theo mã E ở đầu)"))
+        self.assertLess(len(fact), _PARTNER_FACT_CHARS + 60)
+
+
 class CheckSayTest(unittest.TestCase):
     def test_figures_must_be_cited_or_said_by_the_user(self):
         self.assertEqual([], check_say("Thợ đến lúc 09:30.", ["E2"], {}, {"E2": "eta 09:30"}, []))

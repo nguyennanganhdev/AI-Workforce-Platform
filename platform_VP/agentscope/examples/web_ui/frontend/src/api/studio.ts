@@ -109,6 +109,9 @@ export interface TestReport {
 	total: number;
 	passed: number;
 	pass_rate: number;
+	/** Scenarios the model could not play (no credit, bad key…): not a verdict on the agent. */
+	errors?: number;
+	model_error?: string | null;
 	publishable: boolean;
 	results: TestResult[];
 }
@@ -132,7 +135,14 @@ export interface AgentSummary {
 	rule_count: number;
 	learned_rule_count: number;
 	test_count: number;
-	last_test: { pass_rate: number; passed: number; total: number; ran_at: string; publishable: boolean } | null;
+	last_test: {
+		pass_rate: number;
+		passed: number;
+		total: number;
+		ran_at: string;
+		publishable: boolean;
+		errors?: number;
+	} | null;
 }
 
 export interface AgentDetail {

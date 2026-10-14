@@ -42,6 +42,7 @@ from ...message import (
     AssistantMsg,
     HintBlock,
     Msg,
+    TextBlock,
     ToolCallBlock,
     ToolResultBlock,
     ToolResultState,
@@ -173,6 +174,24 @@ def _apply_prompt_cache_key(model: ChatModelBase, agent_id: str) -> None:
         **(model.extra_body or {}),
         "prompt_cache_key": f"workforce:{agent_id}",
     }
+
+
+# A partner tool's result in the room: what every member and the Leader
+# re-read on each call, so a preview; the full text is in the ticket's case
+# log under the same E label (the label the Leader cites).
+_PARTNER_FACT_CHARS = 1200
+
+
+def _partner_fact(call: ToolCallBlock, result: ToolResultBlock) -> str:
+    output = result.output
+    if not isinstance(output, str):
+        output = "\n".join(
+            block.text for block in output if isinstance(block, TextBlock)
+        )
+    text = f"{call.name} {call.input}\n{output}"
+    if len(text) <= _PARTNER_FACT_CHARS:
+        return text
+    return text[:_PARTNER_FACT_CHARS] + " …(rút gọn; bản đầy đủ theo mã E ở đầu)"
 
 
 class _SessionTitle(BaseModel):
@@ -1824,15 +1843,16 @@ class ChatService:
                     # its result ``external_evidence``; only a member's
                     # counts: it backs its report, while a partner leader
                     # already has its own results and would flood the room.
+                    partner_evidence = (
+                        call is not None
+                        and result is not None
+                        and isinstance(team_ctx, _WorkerContext)
+                        and bool((result.metadata or {}).get("external_evidence"))
+                    )
                     if call is not None and (
-                        call.name.startswith("mcp__")
-                        or (
-                            result is not None
-                            and isinstance(team_ctx, _WorkerContext)
-                            and (result.metadata or {}).get("external_evidence")
-                        )
+                        call.name.startswith("mcp__") or partner_evidence
                     ):
-                        exact = json.dumps(
+                        exact = _partner_fact(call, result) if partner_evidence else json.dumps(
                             {
                                 "tool_call": call.model_dump(mode="json"),
                                 "tool_result": (
