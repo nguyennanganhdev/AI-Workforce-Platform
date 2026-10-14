@@ -92,6 +92,7 @@ async def turn_state(channel_id: str, scope: Scope):
           order by c.created_at desc,c.id desc limit 1
         ) pc on true
         where m.channel_id=:id and m.sender_kind='user' and m.sender_user_id=:actor
+          and coalesce(m.body->>'type','')<>'ticket_draft'
         order by m.seq desc limit 1
     """), {"id":channel_id,"actor":scope[1]})).mappings().first()
     if not row: return {"status":"idle","steps":[]}

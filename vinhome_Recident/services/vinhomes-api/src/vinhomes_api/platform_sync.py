@@ -282,8 +282,9 @@ async def _context(db, event) -> dict:
         # About the ticket, not one job: it reports the finished job the platform dispatched and was not yet told of.
         result = (await db.execute(text(f"""
             select w.id as work_order_id,
+              -- The photos the resident will see in the request (platform_publication.RESULT_PHOTO_VISIBLE).
               (select count(*) from evidence_items e where e.work_order_id=w.id and e.tenant_id=w.tenant_id and e.status='active'
-                 and e.purpose in ('after','verification')) as photo_count,
+                 and e.purpose in ('before','after','verification')) as photo_count,
               q.reported_by,q.note
             from work_orders w join platform_operations po on po.work_order_id=w.id and po.tenant_id=w.tenant_id
             left join lateral (select case when x.criteria->0->>'name'='acceptance_report' then x.note end as note,

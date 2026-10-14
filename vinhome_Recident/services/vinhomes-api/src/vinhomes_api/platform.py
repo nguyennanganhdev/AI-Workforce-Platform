@@ -439,8 +439,10 @@ async def apply_snapshot(db, link, snapshot: dict) -> str | None:
     for message in snapshot.get("messages") or []:
         if message.get("sender") == "assistant" and str(message.get("text") or "").strip():
             await post_chat(db, link, message["message_id"], {"text": message["text"]})
-    for approval in snapshot.get("approvals") or []:
-        await ask_approval(db, link, approval)
+    # Each carries its approval.required payload; one with only its id cannot be decided, so it shows no card.
+    for approval in snapshot.get("pending_approvals") or []:
+        if "summary" in approval:
+            await ask_approval(db, link, approval)
     return snapshot.get("snapshot_cursor")
 
 
@@ -624,7 +626,7 @@ def _published(payload: dict, context: dict):
 
 def result_text(data: dict) -> str:
     """The chat line of a published result, from the same data the platform is sent (job.result_published)."""
-    return (f"{data['summary']}\nNgười gửi: {data['reported_by']}. Số ảnh kết quả: {data['photo_count']}.\n"
+    return (f"{data['summary']}\nNgười gửi: {data['reported_by']}. Số ảnh của nhân viên: {data['photo_count']}.\n"
             "Bạn xem rồi bấm Xác nhận hoàn thành hoặc Chưa đạt ngay trong hộp chat này.")
 
 
