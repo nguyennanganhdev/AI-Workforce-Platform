@@ -168,7 +168,47 @@
 			"emptyNoAgent": "Hãy chọn tác nhân AI trước.",
 			"emptyHasAgent": "Tạo phiên để bắt đầu trò chuyện.",
 			"today": "Hôm nay",
-			"earlier": "Trước đó"
+			"earlier": "Trước đó",
+			"search": "Tìm cuộc trò chuyện",
+			"searchPlaceholder": "Tìm cuộc trò chuyện…",
+			"recent": "Trò chuyện gần đây",
+			"results": "Kết quả",
+			"noResults": "Không có cuộc trò chuyện nào khớp “{{query}}”.",
+			"previewAgent": "Agent: {{name}}",
+			"previewRunning": "Đang xử lý…",
+			"previewAwaiting": "Đang chờ bạn",
+			"demoSection": "Kịch bản mẫu",
+			"newMenu": "Tạo mới",
+			"newAgent": "Agent mới",
+			"close": "Đóng"
+		},
+		"header": {
+			"openProfile": "Mở cài đặt của {{name}}",
+			"panels": "Bảng bên"
+		},
+		"messagePlaceholder": "Nhắn cho {{name}}",
+		"onboarding": {
+			"greeting": "Chào {{name}}, rất vui được gặp bạn. Mình ở đây để giúp.",
+			"greetingNoName": "Chào bạn, rất vui được gặp bạn. Mình ở đây để giúp.",
+			"question": "Bạn muốn bắt đầu với việc nào?",
+			"hint": "Không có lựa chọn phù hợp? Cứ gõ câu trả lời của bạn.",
+			"continue": "Tiếp tục",
+			"options": [
+				"Tìm sự kiện và hoạt động quanh đây cho cuối tuần này",
+				"Lên thực đơn bữa tối trong tuần kèm danh sách đi chợ",
+				"Xem lịch của tôi và gợi ý một kế hoạch tuần hợp lý",
+				"Tóm tắt các email cần chú ý và liệt kê việc cần làm tiếp",
+				"So sánh vài lựa chọn cho một sản phẩm hoặc dịch vụ tôi đang cân nhắc"
+			]
+		},
+		"agents": {
+			"label": "Agent",
+			"emptyTitle": "Chưa có agent",
+			"emptyDescription": "Bấm + để tạo agent đầu tiên.",
+			"sessions": "Phiên trò chuyện",
+			"renameSession": "Đổi tên phiên này",
+			"deleteSession": "Xoá phiên này",
+			"chatsOf": "Trò chuyện với {{name}}"
 		}
 	},
 	"shell": {
@@ -1007,5 +1047,61 @@
 		"empty": "Thư mục này trống",
 		"pressEnter": "Nhấn Enter để kiểm tra đường dẫn trước",
 		"gitTooltip": "{{staged}} đã stage · {{unstaged}} đã sửa · {{untracked}} chưa theo dõi\nSố dòng không bao gồm tệp chưa được theo dõi"
+	},
+	"quickAgent": {
+		"title": "Agent mới",
+		"description": "Đặt tên và mô tả việc agent sẽ làm. Mọi thiết lập khác dùng mặc định.",
+		"templates": "Bắt đầu nhanh",
+		"name": "Tên",
+		"namePlaceholder": "Ví dụ: Mia",
+		"role": "Agent này giúp gì?",
+		"rolePlaceholder": "Nói cho agent biết cách làm việc, ưu tiên điều gì và cần tránh điều gì.",
+		"advanced": "Tùy chỉnh nâng cao",
+		"create": "Tạo agent",
+		"creating": "Đang tạo…",
+		"presets": {
+			"assistant": {
+				"name": "Trợ lý cá nhân",
+				"prompt": "Bạn là trợ lý cá nhân thân thiện. Giúp người dùng sắp xếp lịch, tóm tắt thông tin và lên kế hoạch việc cần làm. Trả lời ngắn gọn, hỏi lại khi thiếu thông tin."
+			},
+			"reception": {
+				"name": "Lễ tân",
+				"prompt": "Bạn là lễ tân của ban quản lý toà nhà. Tiếp nhận yêu cầu của cư dân, hỏi đủ thông tin (căn hộ, sự cố, thời gian) và chuyển đúng bộ phận. Luôn lịch sự, rõ ràng."
+			},
+			"technician": {
+				"name": "Kỹ thuật",
+				"prompt": "Bạn là nhân viên kỹ thuật điện nước. Chẩn đoán sự cố từ mô tả của cư dân, hướng dẫn xử lý tạm thời an toàn và tạo yêu cầu sửa chữa khi cần."
+			},
+			"planner": {
+				"name": "Lập kế hoạch",
+				"prompt": "Bạn giúp lập kế hoạch chuyến đi và sự kiện: hỏi ngân sách, số người, thời gian, rồi đề xuất phương án cụ thể kèm chi phí ước tính."
+			}
+		}
+	},
+	"groupChat": {
+		"menuAgent": "Tạo agent",
+		"menuGroup": "Tạo nhóm chat",
+		"title": "Nhóm chat mới",
+		"description": "Chọn các agent sẽ cùng làm việc. Trưởng nhóm điều phối và giao việc cho các thành viên.",
+		"name": "Tên nhóm",
+		"namePlaceholder": "Ví dụ: Đội chăm sóc cư dân",
+		"members": "Thành viên",
+		"selected": "Đã chọn {{count}}",
+		"searchPlaceholder": "Tìm agent…",
+		"leader": "Trưởng nhóm",
+		"makeLeader": "Đặt làm trưởng nhóm",
+		"goal": "Nhóm này làm gì? (không bắt buộc)",
+		"goalPlaceholder": "Mục tiêu chung của nhóm, ví dụ: tiếp nhận và xử lý yêu cầu sửa chữa của cư dân.",
+		"willEnable": "Sẽ bật “Cho phép được mời” cho {{names}} để trưởng nhóm mời được vào nhóm.",
+		"blocked": "Không mời được {{names}}: agent chưa bật “Cho phép được mời” và bạn không có quyền sửa.",
+		"notEnough": "Cần ít nhất 2 agent để lập nhóm, bạn đang có {{count}}.",
+		"needTwo": "Chọn ít nhất 2 agent",
+		"create": "Tạo nhóm",
+		"creating": "Đang tạo…",
+		"delete": "Xóa nhóm",
+		"entity": "nhóm chat",
+		"kickoff": "Đây là nhóm chat “{{name}}”.{{goal}} Hãy dùng TeamCreate để lập nhóm với bạn là trưởng nhóm, rồi dùng AgentInvite để mời các thành viên: {{members}}. Khi đủ thành viên, hãy giới thiệu ngắn gọn nhóm và chờ yêu cầu của tôi.",
+		"kickoffGoal": " Mục tiêu: {{goal}}.",
+		"headerNote": "Trưởng nhóm {{leader}} · {{count}} agent"
 	}
 }

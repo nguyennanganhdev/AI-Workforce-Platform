@@ -28,14 +28,22 @@ import { formatApiErrorForAlert } from '@/lib/api-error';
 
 interface Props {
 	onCreated?: () => void;
-	children: ReactNode;
+	/** The trigger. Omit it and drive `open` from outside instead (e.g. a menu item). */
+	children?: ReactNode;
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
 }
 
-export function AgentDialog({ onCreated, children }: Props) {
+export function AgentDialog({ onCreated, children, open: controlledOpen, onOpenChange }: Props) {
 	const { create } = useAgents();
 	const { t } = useTranslation();
 	const { schema } = useAgentSchema();
-	const [open, setOpen] = useState(false);
+	const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+	const open = controlledOpen ?? uncontrolledOpen;
+	const setOpen = (next: boolean) => {
+		setUncontrolledOpen(next);
+		onOpenChange?.(next);
+	};
 	const [submitting, setSubmitting] = useState(false);
 	const [values, setValues] = useState<AgentFormValues | null>(null);
 	const [errorMsg, setErrorMsg] = useState('');
@@ -88,7 +96,7 @@ export function AgentDialog({ onCreated, children }: Props) {
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger asChild>{children}</DialogTrigger>
+			{children && <DialogTrigger asChild>{children}</DialogTrigger>}
 			<DialogContent className="!w-[500px] !max-w-[500px]">
 				{/* The sticker follows the name as it is typed, so the author sees
 				    which role badge the agent will carry before creating it. */}
@@ -96,10 +104,12 @@ export function AgentDialog({ onCreated, children }: Props) {
 					<ClayAvatar id={name || 'new-agent'} label={name || undefined} size={44} />
 					<div className="flex min-w-0 flex-col gap-1">
 						<DialogTitle>{t('dialog-agent-create.title')}</DialogTitle>
-						<DialogDescription>{t('dialog-agent-create.description')}</DialogDescription>
+						<DialogDescription>
+							{t('dialog-agent-create.description')}
+						</DialogDescription>
 					</div>
 				</DialogHeader>
-				<div className="no-scrollbar -mx-4 max-h-[75vh] overflow-y-auto px-4">
+				<div className="no-scrollbar -mx-6 max-h-[75vh] overflow-y-auto px-6">
 					{schema && values ? (
 						<AgentFormFields schema={schema} values={values} onChange={handleChange} />
 					) : (

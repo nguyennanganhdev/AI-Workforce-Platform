@@ -1,6 +1,7 @@
 import { UserRound } from 'lucide-react';
 
 import { MOCK_AGENTS, type MockAgentId, type MockConversation } from './chat-mock-data';
+import { FlyIn } from './motion';
 import { AgentSticker } from './transcript';
 
 /**
@@ -24,21 +25,17 @@ export function Participants({
 	return (
 		<aside
 			aria-label="Đối tượng tham gia cuộc trò chuyện"
-			className="clay-panel flex w-[280px] shrink-0 flex-col gap-5 overflow-y-auto rounded-[16px] bg-canvas p-4 text-sidebar-foreground max-lg:hidden"
+			className="cue-column flex w-[320px] shrink-0 flex-col gap-5 overflow-y-auto border-l border-sidebar-border p-4 text-sidebar-foreground max-lg:hidden"
 		>
 			<section className="flex flex-col gap-2.5">
-				<h2 className="text-[12px]/[16px] font-semibold text-muted-foreground">
-					Người yêu cầu
-				</h2>
+				<h2 className="text-[13px]/[18px] text-muted-foreground">Người yêu cầu</h2>
 				<div className="flex items-center gap-3">
 					{/* A person, so a plain tile rather than a robot sticker. */}
-					<span className="flex size-9 shrink-0 items-center justify-center rounded-[13px] bg-[var(--sunken)] text-[var(--ink-2)] shadow-[var(--clay-sunken)]">
+					<span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[var(--cue-avatar-user,#e5484d)] text-white">
 						<UserRound className="size-4" />
 					</span>
 					<div className="min-w-0">
-						<p className="truncate text-[14px]/[20px] font-semibold">
-							{requester.name}
-						</p>
+						<p className="truncate text-[15px]/5 font-medium">{requester.name}</p>
 						<p className="truncate text-[12px]/[16px] text-muted-foreground">
 							{requester.note}
 						</p>
@@ -47,7 +44,7 @@ export function Participants({
 			</section>
 
 			<section className="flex flex-col gap-2.5">
-				<h2 className="flex items-center gap-2 text-[12px]/[16px] font-semibold text-muted-foreground">
+				<h2 className="flex items-center gap-2 text-[13px]/[18px] text-muted-foreground">
 					Agent đang tham gia
 					<span className="rounded-full bg-[var(--sunken)] px-1.5 text-[var(--ink-2)]">
 						{agents.length}
@@ -68,20 +65,22 @@ export function Participants({
 										className="absolute bottom-0 left-[17px] top-9 w-px bg-[var(--line-warm)]"
 									/>
 								)}
-								<AgentSticker
-									agent={agent}
-									size={36}
-									working={agent === activeAgent}
-								/>
+								<FlyIn agent={agent}>
+									<AgentSticker
+										agent={agent}
+										size={36}
+										working={agent === activeAgent}
+									/>
+								</FlyIn>
 								<div className="min-w-0 flex-1">
-									<p className="truncate text-[14px]/[20px] font-semibold">
+									<p className="truncate text-[15px]/5 font-medium">
 										{MOCK_AGENTS[agent].name}
 									</p>
 									<p className="text-[12px]/[16px] text-muted-foreground">
 										{MOCK_AGENTS[agent].role}
 									</p>
 									{agent === activeAgent && (
-										<span className="mt-1 inline-flex h-[22px] items-center gap-1.5 rounded-full bg-[var(--violet-soft)] px-2.5 text-[12px]/[16px] font-semibold text-[var(--violet-ink)]">
+										<span className="cue-fade mt-1 inline-flex h-[22px] items-center gap-1.5 rounded-full bg-[var(--violet-soft)] px-2.5 text-[12px]/[16px] font-semibold text-[var(--violet-ink)]">
 											<span className="size-1.5 animate-pulse rounded-full bg-current" />
 											đang xử lý
 										</span>

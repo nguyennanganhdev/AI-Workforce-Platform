@@ -67,10 +67,10 @@ export function AgentsPage() {
 	);
 
 	return (
-		<div className="flex size-full p-2">
-			<main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
+		<div className="flex size-full">
+			<main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
 				<header className="flex min-h-[52px] shrink-0 flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
-					<h1 className="text-[16px]/[24px] font-semibold">{t('agents.title')}</h1>
+					<h1 className="text-[17px]/6 font-semibold">{t('agents.title')}</h1>
 					<Tabs value={view} onValueChange={(next) => navigate(`/agents/${next}`)}>
 						<TabsList>
 							{VIEWS.map(({ key, icon: Icon }) => (

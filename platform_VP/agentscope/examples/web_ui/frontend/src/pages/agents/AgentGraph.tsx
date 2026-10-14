@@ -1,7 +1,6 @@
 import {
 	Background,
 	BackgroundVariant,
-	BaseEdge,
 	EdgeLabelRenderer,
 	getBezierPath,
 	Handle,
@@ -21,12 +20,13 @@ import {
 	Minus,
 	Pencil,
 	Plus,
+	Scan,
 	ShieldCheck,
 	UserRound,
 	UsersRound,
 	X,
 } from 'lucide-react';
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, memo, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
 	buildGraph,
@@ -44,34 +44,49 @@ import { ClayAvatar } from '@/components/ui/clay-avatar';
 import { useTranslation } from '@/i18n/useI18n';
 import { cn } from '@/lib/utils';
 import '@xyflow/react/dist/style.css';
+import './agent-graph.css';
 
-/** The ports edges attach to: small, round, and not something to drag from. */
-const PORT = '!size-2 !border !border-[var(--line)] !bg-[var(--raised)]';
+/** Ports stay invisible: edges meet the card's edge, there is nothing to drag. */
+const PORT = '!size-1 !min-h-0 !min-w-0 !border-0 !bg-transparent';
 
-/** Selected is the action colour plus a soft ring, so it is not colour alone. */
-const SELECTED = 'border-[var(--action)] ring-[3px] ring-[var(--action-soft)]';
+/** White card, hairline border, lifting a little on hover. */
+const CARD =
+	'ag-card rounded-2xl border border-[var(--cue-border,#e8e8e8)] bg-white transition-[box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-[0_6px_24px_rgba(0,0,0,0.08)]';
 
-/** Who sends requests in: dashed, because it is outside the platform. */
-const EntryNode = memo(function EntryNode({
-	data,
-	selected,
-}: NodeProps<FlowNode & { data: EntryData }>) {
+const stage = (delay: number) => ({ '--ag-delay': `${delay}ms` }) as CSSProperties;
+
+/** Three moving bars: shown while an agent has sessions running. */
+function Activity() {
+	return (
+		<span className="ag-eq" aria-hidden="true">
+			<i />
+			<i />
+			<i />
+		</span>
+	);
+}
+
+/** Who sends requests in: a person, so a round tile rather than a sticker. */
+const EntryNode = memo(function EntryNode({ data }: NodeProps<FlowNode & { data: EntryData }>) {
 	const Icon = data.icon === 'resident' ? UsersRound : UserRound;
 	return (
 		<div
-			className={cn(
-				'flex w-[168px] items-center gap-2.5 rounded-[var(--r-tile)] border border-dashed border-[var(--ink-3)] bg-[var(--surface)] px-3 py-2',
-				selected && SELECTED,
-			)}
+			className={cn('ag-node-in flex w-[184px] items-center gap-3 px-3 py-2.5', CARD)}
+			style={stage(data.delay)}
 		>
-			<span className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-[var(--sunken)] text-[var(--ink-2)]">
+			<span
+				className={cn(
+					'flex size-9 shrink-0 items-center justify-center rounded-full',
+					data.icon === 'manager'
+						? 'bg-[var(--cue-avatar-user,#e5484d)] text-white'
+						: 'bg-[var(--cue-bg-subtle,#f4f4f4)] text-[var(--cue-text-secondary,#6b6b6b)]',
+				)}
+			>
 				<Icon className="size-4" />
 			</span>
 			<span className="min-w-0">
-				<span className="block truncate text-[13px]/[20px] font-semibold">
-					{data.title}
-				</span>
-				<span className="block truncate text-[12px]/[16px] text-muted-foreground">
+				<span className="block truncate text-[14px]/5 font-semibold">{data.title}</span>
+				<span className="block truncate text-[12px]/4 text-[var(--cue-text-secondary,#6b6b6b)]">
 					{data.note}
 				</span>
 			</span>
@@ -85,125 +100,149 @@ const EntryNode = memo(function EntryNode({
 	);
 });
 
-const AgentNode = memo(function AgentNode({
-	data,
-	selected,
-}: NodeProps<FlowNode & { data: AgentData }>) {
+const AgentNode = memo(function AgentNode({ data }: NodeProps<FlowNode & { data: AgentData }>) {
 	const { t } = useTranslation();
 	const { agent, metrics } = data;
+	const busy = metrics.running > 0;
 	return (
-		<div
-			className={cn(
-				'w-[224px] rounded-[var(--r-tile)] border border-white bg-[var(--raised)] shadow-[var(--clay-bubble)]',
-				selected && SELECTED,
-			)}
-		>
+		<div className={cn('ag-node-in w-[248px] p-3', CARD)} style={stage(data.delay)}>
 			<Handle type="target" position={Position.Left} className={PORT} isConnectable={false} />
-			<div className="flex items-center gap-2.5 px-3 py-2.5">
-				<ClayAvatar
-					id={agent.id}
-					label={agent.name}
-					size={36}
-					working={metrics.running > 0}
-				/>
+			<div className="flex items-center gap-3">
+				<span className="relative shrink-0">
+					<ClayAvatar id={agent.id} label={agent.name} size={40} />
+					{/* Green and breathing: working. Grey: not yet open to the Leader. */}
+					<span
+						className={cn(
+							'absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 border-white',
+							busy
+								? 'ag-ping bg-[var(--cue-success,#34c759)]'
+								: agent.invitable
+									? 'bg-[#cfcfcf]'
+									: 'bg-[var(--amber-ink,#8a5a00)]',
+						)}
+					/>
+				</span>
 				<span className="min-w-0 flex-1">
-					<span className="block truncate text-[13px]/[20px] font-semibold">
-						{agent.name}
-					</span>
-					<span className="block truncate text-[12px]/[16px] text-muted-foreground">
+					<span className="block truncate text-[14px]/5 font-semibold">{agent.name}</span>
+					<span className="block truncate text-[12px]/4 text-[var(--cue-text-secondary,#6b6b6b)]">
 						{agent.role || t('agents.list.noDescription')}
 					</span>
 				</span>
-				{/* Green: reachable. Grey: not yet open to the Leader. */}
-				<span
-					className={cn(
-						'size-2 shrink-0 rounded-full',
-						agent.invitable ? 'bg-[var(--mint-ink)]' : 'bg-[var(--ink-3)]',
-					)}
-				/>
 			</div>
-			<div className="flex items-center justify-between gap-2 border-t border-[var(--line-warm)] px-3 py-1.5 text-[12px]/[16px]">
-				<span className="rounded-full bg-[var(--sunken)] px-2 py-0.5 text-[var(--ink-2)]">
+			<div className="mt-3 flex items-center justify-between gap-2 text-[12px]/4">
+				<span
+					className={
+						agent.invitable
+							? 'text-[var(--cue-text-tertiary,#a8a8a8)]'
+							: 'font-medium text-[var(--amber-ink,#8a5a00)]'
+					}
+				>
 					{agent.invitable ? t('agents.graph.invitable') : t('agents.graph.notInvitable')}
 				</span>
-				{metrics.running > 0 ? (
-					<span className="font-semibold text-[var(--violet-ink)]">
+				{busy ? (
+					<span className="inline-flex h-6 items-center gap-1.5 rounded-full bg-[var(--cue-blue-soft,#e8f1fd)] px-2.5 font-semibold text-[var(--cue-blue,#2f80ed)]">
+						<Activity />
 						{t('agents.graph.sessionCount', { count: metrics.running })}
 					</span>
 				) : (
-					<span className="text-[var(--ink-3)]">{t('agents.graph.idle')}</span>
+					<span className="inline-flex h-6 items-center rounded-full bg-[var(--cue-bg-subtle,#f4f4f4)] px-2.5 text-[var(--cue-text-secondary,#6b6b6b)]">
+						{t('agents.graph.idle')}
+					</span>
 				)}
 			</div>
 		</div>
 	);
 });
 
-/** The Leader: the one emphasised element on the canvas. */
+/** The Leader: the one dark element on the canvas, ringed in light while it works. */
 const SupervisorNode = memo(function SupervisorNode({
 	data,
-	selected,
 }: NodeProps<FlowNode & { data: SupervisorData }>) {
 	const { t } = useTranslation();
+	const busy = data.running > 0;
 	return (
-		<div
-			className={cn(
-				'w-[236px] rounded-[var(--r-tile)] border border-[var(--ink)] bg-[var(--ink)] text-white shadow-[0_5px_0_#1d2538]',
-				selected && SELECTED,
-			)}
-		>
-			<Handle type="target" position={Position.Left} className={PORT} isConnectable={false} />
-			<div className="flex items-center gap-2.5 px-3 py-2.5">
-				<ClayAvatar id="leader" label="Leader" size={36} working={data.running > 0} />
-				<span className="min-w-0 flex-1">
-					<span className="block truncate text-[13px]/[20px] font-semibold">
-						{data.title}
-					</span>
-					<span className="block truncate text-[12px]/[16px] text-white/70">
-						{data.note}
-					</span>
-				</span>
+		<div className="ag-node-in" style={stage(data.delay)}>
+			<div className="ag-leader" data-idle={busy ? undefined : ''}>
+				<div
+					className={cn(
+						'ag-card w-[260px] rounded-[20px] border border-white/10 bg-[#1a1a1a] p-3.5 text-white',
+					)}
+				>
+					<Handle
+						type="target"
+						position={Position.Left}
+						className={PORT}
+						isConnectable={false}
+					/>
+					<div className="flex items-center gap-3">
+						<ClayAvatar id="leader" label="Leader" size={44} />
+						<span className="min-w-0 flex-1">
+							<span className="block truncate text-[15px]/5 font-semibold">
+								{data.title}
+							</span>
+							<span className="block truncate text-[12px]/4 text-white/60">
+								{data.note}
+							</span>
+						</span>
+					</div>
+					<div className="mt-3 flex items-center justify-between rounded-xl bg-white/[0.06] px-3 py-2 text-[12px]/4">
+						<span className="flex items-center gap-2 text-white/70">
+							<span
+								className={cn(
+									'size-2 rounded-full',
+									busy
+										? 'ag-ping relative bg-[var(--cue-success,#34c759)]'
+										: 'bg-white/30',
+								)}
+							/>
+							{busy ? t('agents.graph.legendLive') : t('agents.graph.idle')}
+						</span>
+						<span className="font-semibold tabular-nums">
+							{t('agents.graph.sessionCount', { count: data.running })}
+						</span>
+					</div>
+					<Handle
+						type="source"
+						position={Position.Right}
+						className={PORT}
+						isConnectable={false}
+					/>
+					<Handle
+						id="bottom"
+						type="source"
+						position={Position.Bottom}
+						className={PORT}
+						isConnectable={false}
+					/>
+				</div>
 			</div>
-			<div className="border-t border-white/15 px-3 py-1.5 text-right text-[12px]/[16px] text-white/80">
-				{t('agents.graph.sessionCount', { count: data.running })}
-			</div>
-			<Handle
-				type="source"
-				position={Position.Right}
-				className={PORT}
-				isConnectable={false}
-			/>
-			<Handle
-				id="bottom"
-				type="source"
-				position={Position.Bottom}
-				className={PORT}
-				isConnectable={false}
-			/>
 		</div>
 	);
 });
 
 /** Where a person has to decide before anything is written. */
-const HumanNode = memo(function HumanNode({
-	data,
-	selected,
-}: NodeProps<FlowNode & { data: HumanData }>) {
+const HumanNode = memo(function HumanNode({ data }: NodeProps<FlowNode & { data: HumanData }>) {
 	return (
 		<div
 			className={cn(
-				'flex w-[184px] items-center gap-2.5 rounded-[var(--r-tile)] border border-[#f0d9a8] bg-[var(--amber-soft)] px-3 py-2 text-[var(--amber-ink)]',
-				selected && SELECTED,
+				'ag-node-in flex w-[208px] items-center gap-3 px-3 py-2.5',
+				CARD,
+				'border-[#f3e2bd] bg-[var(--amber-soft,#fdf4e3)]',
 			)}
+			style={stage(data.delay)}
 		>
 			<Handle type="target" position={Position.Top} className={PORT} isConnectable={false} />
-			<span className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-white/70">
+			<span className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-[var(--amber-ink,#8a5a00)]">
 				<ShieldCheck className="size-4" />
+				{data.count > 0 && (
+					<span className="ag-ping absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-[#e8a317] text-[10px] font-bold text-white">
+						<span className="relative z-10">{data.count}</span>
+					</span>
+				)}
 			</span>
-			<span className="min-w-0">
-				<span className="block truncate text-[13px]/[20px] font-semibold">
-					{data.title}
-				</span>
-				<span className="block truncate text-[12px]/[16px]">{data.note}</span>
+			<span className="min-w-0 text-[var(--amber-ink,#8a5a00)]">
+				<span className="block truncate text-[14px]/5 font-semibold">{data.title}</span>
+				<span className="block truncate text-[12px]/4 opacity-80">{data.note}</span>
 			</span>
 		</div>
 	);
@@ -216,12 +255,18 @@ const nodeTypes: NodeTypes = {
 	human: HumanNode,
 };
 
-const EDGE_COLOUR = { live: '#65588b', human: '#b07a12', idle: '#b9c2d6' } as const;
+const EDGE_COLOUR = { live: '#2f80ed', human: '#e8a317', idle: '#d4d4d4' } as const;
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** A bezier whose look says what is happening on it; live ones carry travelling dots. */
+/**
+ * A bezier whose look says what is happening on it. A live edge draws itself
+ * in, then carries a bright streak and a glowing dot along it, Leader to
+ * agent; one waiting on a person does the same, slower, in amber. An idle one
+ * is a faint dashed line that only fades in.
+ */
 function FlowEdgeView({
+	id,
 	sourceX,
 	sourceY,
 	sourcePosition,
@@ -237,41 +282,104 @@ function FlowEdgeView({
 		targetX,
 		targetY,
 		targetPosition,
+		curvature: 0.4,
 	});
 	const state = data?.state ?? 'idle';
 	const colour = EDGE_COLOUR[state];
+	const style = stage(data?.delay ?? 0);
+	const moving = state !== 'idle' && !prefersReducedMotion();
+	const duration = state === 'human' ? 3.2 : 2;
 	return (
 		<>
-			<BaseEdge
-				path={path}
-				style={{
-					stroke: colour,
-					strokeWidth: state === 'idle' ? 1.5 : 2,
-					strokeDasharray: state === 'idle' ? '4 5' : undefined,
-				}}
-			/>
-			{state === 'live' &&
-				!prefersReducedMotion() &&
-				[0, 1.2].map((delay) => (
-					<circle key={delay} r="3" fill={colour}>
-						<animateMotion
-							dur="2.4s"
-							begin={`${delay}s`}
-							repeatCount="indefinite"
-							path={path}
+			<g className="ag-edge" style={style}>
+				{state === 'idle' ? (
+					<path
+						d={path}
+						fill="none"
+						stroke={colour}
+						strokeWidth={1.25}
+						strokeDasharray="3 5"
+						className="ag-edge-fade"
+					/>
+				) : (
+					<>
+						{/* A wide pale track under the line: the edge's glow. */}
+						<path
+							d={path}
+							fill="none"
+							stroke={colour}
+							strokeOpacity={0.14}
+							strokeWidth={7}
+							strokeLinecap="round"
+							pathLength={1}
+							className="ag-edge-draw"
 						/>
-					</circle>
-				))}
+						<path
+							d={path}
+							fill="none"
+							stroke={colour}
+							strokeWidth={1.75}
+							pathLength={1}
+							className="ag-edge-draw"
+						/>
+						{moving && (
+							<path
+								d={path}
+								fill="none"
+								stroke="#ffffff"
+								strokeOpacity={0.85}
+								strokeWidth={1.75}
+								strokeLinecap="round"
+								pathLength={1}
+								className={cn('ag-edge-streak', state === 'human' && 'ag-slow')}
+							/>
+						)}
+						{moving &&
+							// A negative begin starts the second dot halfway along, so
+							// neither waits parked at the canvas origin; the group
+							// fades in once the edge has drawn.
+							[0, duration / 2].map((begin) => (
+								<g key={begin} className="ag-edge-dots">
+									<circle r="6" fill={colour} opacity="0.18">
+										<animateMotion
+											dur={`${duration}s`}
+											begin={`${-begin}s`}
+											repeatCount="indefinite"
+											path={path}
+										/>
+									</circle>
+									<circle r="2.5" fill={colour}>
+										<animateMotion
+											dur={`${duration}s`}
+											begin={`${-begin}s`}
+											repeatCount="indefinite"
+											path={path}
+										/>
+									</circle>
+								</g>
+							))}
+					</>
+				)}
+			</g>
 			{data?.label && (
 				<EdgeLabelRenderer>
 					<span
-						className="pointer-events-none absolute rounded-full border border-white bg-[var(--raised)] px-2 py-0.5 text-[12px]/[16px] font-semibold shadow-[var(--clay-bubble)]"
+						data-edge={id}
+						className="ag-label pointer-events-none absolute"
 						style={{
 							transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-							color: colour,
 						}}
 					>
-						{data.label}
+						<span
+							className="ag-node-in flex h-6 items-center gap-1.5 rounded-full border border-[var(--cue-border,#e8e8e8)] bg-white px-2.5 text-[11px]/4 font-semibold text-[var(--cue-text,#1a1a1a)] shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
+							style={stage((data.delay ?? 0) + 500)}
+						>
+							<span
+								className="size-1.5 rounded-full"
+								style={{ background: colour }}
+							/>
+							{data.label}
+						</span>
 					</span>
 				</EdgeLabelRenderer>
 			)}
@@ -281,8 +389,9 @@ function FlowEdgeView({
 
 const edgeTypes: EdgeTypes = { flow: FlowEdgeView };
 
-const PILL =
-	'inline-flex h-7 items-center gap-1.5 rounded-full border border-white bg-[var(--raised)] px-3 text-[12px]/[16px] shadow-[var(--clay-bubble)]';
+/** The floating chrome: white, hairline, the one soft shadow things that float get. */
+const FLOAT =
+	'rounded-full border border-[var(--cue-border,#e8e8e8)] bg-white/90 shadow-[0_2px_8px_rgba(0,0,0,0.06)] backdrop-blur';
 
 /** Zoom, fit, and what the three edge styles mean. Must render inside `ReactFlow`. */
 function Controls() {
@@ -293,52 +402,47 @@ function Controls() {
 		{ label: t('agents.graph.legendHuman'), colour: EDGE_COLOUR.human, dashed: false },
 		{ label: t('agents.graph.legendIdle'), colour: EDGE_COLOUR.idle, dashed: true },
 	];
+	const tools = [
+		{ label: t('agents.graph.zoomIn'), icon: Plus, run: () => zoomIn({ duration: 200 }) },
+		{ label: t('agents.graph.zoomOut'), icon: Minus, run: () => zoomOut({ duration: 200 }) },
+		{
+			label: t('agents.graph.fit'),
+			icon: Scan,
+			run: () => fitView({ padding: 0.2, duration: 400 }),
+		},
+	];
 	return (
 		<Panel position="bottom-left" className="flex items-end gap-3">
-			<div className="flex flex-col gap-1">
-				<Button
-					variant="outline"
-					size="icon"
-					tooltip={t('agents.graph.zoomIn')}
-					aria-label={t('agents.graph.zoomIn')}
-					onClick={() => zoomIn()}
-				>
-					<Plus />
-				</Button>
-				<Button
-					variant="outline"
-					size="icon"
-					tooltip={t('agents.graph.zoomOut')}
-					aria-label={t('agents.graph.zoomOut')}
-					onClick={() => zoomOut()}
-				>
-					<Minus />
-				</Button>
-				<Button
-					variant="outline"
-					size="icon"
-					tooltip={t('agents.graph.fit')}
-					aria-label={t('agents.graph.fit')}
-					onClick={() => fitView({ padding: 0.2 })}
-				>
-					<Maximize />
-				</Button>
+			<div className={cn(FLOAT, 'flex flex-col rounded-2xl p-1')}>
+				{tools.map(({ label, icon: Icon, run }) => (
+					<Button
+						key={label}
+						variant="ghost"
+						size="icon-sm"
+						tooltip={label}
+						aria-label={label}
+						onClick={run}
+					>
+						<Icon />
+					</Button>
+				))}
 			</div>
-			<ul className={cn(PILL, 'h-8 gap-4')}>
+			<ul className={cn(FLOAT, 'flex h-9 items-center gap-4 px-4 text-[12px]/4')}>
 				{legend.map((item) => (
 					<li
 						key={item.label}
-						className="flex items-center gap-1.5 text-muted-foreground"
+						className="flex items-center gap-2 text-[var(--cue-text-secondary,#6b6b6b)]"
 					>
-						<svg width="22" height="4" aria-hidden="true">
+						<svg width="20" height="4" aria-hidden="true">
 							<line
-								x1="0"
+								x1="1"
 								y1="2"
-								x2="22"
+								x2="19"
 								y2="2"
 								stroke={item.colour}
 								strokeWidth="2"
-								strokeDasharray={item.dashed ? '4 4' : undefined}
+								strokeLinecap="round"
+								strokeDasharray={item.dashed ? '3 4' : undefined}
 							/>
 						</svg>
 						{item.label}
@@ -375,7 +479,7 @@ function Inspector({
 		<Panel position="top-right" className="w-[300px]">
 			<section
 				aria-label={title}
-				className="flex flex-col gap-4 rounded-[var(--r-card)] border border-white bg-[var(--raised)] p-4 shadow-[var(--clay)]"
+				className="ag-panel-in flex flex-col gap-4 rounded-[20px] border border-[var(--cue-border,#e8e8e8)] bg-white p-4 shadow-[var(--cue-shadow-float,0_8px_32px_rgba(0,0,0,0.1))]"
 			>
 				<header className="flex items-start gap-3">
 					{agent && <ClayAvatar id={agent.id} label={agent.name} size={40} />}
@@ -411,9 +515,9 @@ function Inspector({
 						].map(([label, value]) => (
 							<div
 								key={label}
-								className="rounded-[var(--r-chip)] bg-[var(--sunken)] px-1 py-2"
+								className="rounded-xl bg-[var(--cue-bg-subtle,#f4f4f4)] px-1 py-2.5"
 							>
-								<dd className="text-[16px]/[24px] font-semibold tabular-nums">
+								<dd className="text-[18px]/[24px] font-semibold tabular-nums">
 									{value}
 								</dd>
 								<dt className="text-[12px]/[16px] text-muted-foreground">
@@ -478,6 +582,7 @@ export function AgentGraph({
 	const { t } = useTranslation();
 	const container = useRef<HTMLDivElement>(null);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
+	const [hoverId, setHoverId] = useState<string | null>(null);
 	const [fullscreen, setFullscreen] = useState(false);
 
 	const model = useMemo(() => {
@@ -485,10 +590,41 @@ export function AgentGraph({
 		return { ...buildGraph(graphAgents, t), sample, count: graphAgents.length };
 	}, [agents, t]);
 
-	const nodes = useMemo(
-		() => model.nodes.map((node) => ({ ...node, selected: node.id === selectedId })),
-		[model.nodes, selectedId],
-	);
+	// Hovering (or, failing that, selecting) a node puts the focus on it: its
+	// own edges and neighbours stay, everything else steps back.
+	const focusId = hoverId ?? selectedId;
+	const neighbours = useMemo(() => {
+		if (!focusId) return null;
+		const ids = new Set([focusId]);
+		for (const edge of model.edges) {
+			if (edge.source === focusId) ids.add(edge.target);
+			if (edge.target === focusId) ids.add(edge.source);
+		}
+		return ids;
+	}, [focusId, model.edges]);
+
+	// The dimming is a stylesheet, not node data: handing React Flow new node
+	// objects on every hover makes it re-measure them, and it hides a node
+	// until it has.
+	const focusStyle = useMemo(() => {
+		if (!focusId || !neighbours) return '';
+		const nodes = model.nodes
+			.filter((node) => !neighbours.has(node.id))
+			.map((node) => `.react-flow__node[data-id="${node.id}"]`);
+		const edges = model.edges
+			.filter((edge) => edge.source !== focusId && edge.target !== focusId)
+			.flatMap((edge) => [
+				`[data-testid="rf__edge-${edge.id}"]`,
+				`.ag-label[data-edge="${edge.id}"]`,
+			]);
+		const selectors = [...nodes, ...edges];
+		return selectors.length ? `${selectors.join(',')}{opacity:.28}` : '';
+	}, [focusId, neighbours, model.nodes, model.edges]);
+
+	// Selection too: a dark hairline plus a soft halo, so it is not colour alone.
+	const selectStyle = selectedId
+		? `.react-flow__node[data-id="${selectedId}"] .ag-card{border-color:#1a1a1a;box-shadow:0 0 0 4px rgba(0,0,0,.06)}`
+		: '';
 	const selected = model.nodes.find((node) => node.id === selectedId) ?? null;
 
 	useEffect(() => {
@@ -510,9 +646,10 @@ export function AgentGraph({
 	};
 
 	return (
-		<div ref={container} className="size-full bg-[var(--surface)]">
+		<div ref={container} className="size-full bg-white">
+			{(focusStyle || selectStyle) && <style>{focusStyle + selectStyle}</style>}
 			<ReactFlow<FlowNode, FlowEdge>
-				nodes={nodes}
+				nodes={model.nodes}
 				edges={model.edges}
 				nodeTypes={nodeTypes}
 				edgeTypes={edgeTypes}
@@ -525,35 +662,48 @@ export function AgentGraph({
 				maxZoom={1.5}
 				onNodeClick={(_event, node) => setSelectedId(node.id)}
 				onPaneClick={() => setSelectedId(null)}
+				onNodeMouseEnter={(_event, node) => setHoverId(node.id)}
+				onNodeMouseLeave={() => setHoverId(null)}
+				proOptions={{ hideAttribution: true }}
 			>
-				<Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#d9d5ca" />
+				<Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="#e3e3e3" />
 
 				<Panel position="top-left" className="flex flex-wrap items-center gap-2">
 					{/* Said first and in the warning tone: the numbers on this
 					    canvas are not measurements. */}
-					<span
-						className={cn(
-							PILL,
-							'border-[#f0d9a8] bg-[var(--amber-soft)] font-semibold text-[var(--amber-ink)]',
-						)}
-					>
+					<span className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[var(--amber-soft,#fdf4e3)] px-3 text-[12px]/4 font-medium text-[var(--amber-ink,#8a5a00)]">
 						<span className="size-1.5 rounded-full bg-current" />
 						{model.sample ? t('agents.graph.sampleAll') : t('agents.graph.sample')}
 					</span>
-					<span className={PILL}>
-						{t('agents.graph.agentCount', { count: model.count })}
-					</span>
-					<span className={PILL}>
-						{t('agents.graph.running', { count: model.totalRunning })}
-					</span>
-					<span className={PILL}>
-						{t('agents.graph.response', { seconds: model.averageResponse.toFixed(1) })}
-					</span>
+					{/* The three figures as one strip, live ones marked by a breathing dot. */}
+					<div className={cn(FLOAT, 'flex h-8 items-center px-1 text-[12px]/4')}>
+						<span className="px-3">
+							{t('agents.graph.agentCount', { count: model.count })}
+						</span>
+						<span className="h-3.5 w-px bg-[var(--cue-border,#e8e8e8)]" />
+						<span className="flex items-center gap-2 px-3">
+							{model.totalRunning > 0 && (
+								<span className="ag-ping relative size-1.5 rounded-full bg-[var(--cue-success,#34c759)]" />
+							)}
+							{t('agents.graph.running', { count: model.totalRunning })}
+						</span>
+						<span className="h-3.5 w-px bg-[var(--cue-border,#e8e8e8)]" />
+						<span className="px-3">
+							{t('agents.graph.response', {
+								seconds: model.averageResponse.toFixed(1),
+							})}
+						</span>
+					</div>
 				</Panel>
 
 				{/* Moves aside when the inspector takes the top-right corner. */}
 				<Panel position={selected ? 'bottom-right' : 'top-right'}>
-					<Button variant="outline" size="sm" onClick={toggleFullscreen}>
+					<Button
+						variant="outline"
+						size="sm"
+						className="bg-white/90 backdrop-blur"
+						onClick={toggleFullscreen}
+					>
 						{fullscreen ? <Minimize /> : <Maximize />}
 						{fullscreen
 							? t('agents.graph.exitFullscreen')

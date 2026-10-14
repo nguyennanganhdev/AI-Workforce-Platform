@@ -17,6 +17,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select';
+import { useCueTheme } from '@/hooks/useCueTheme';
 import { useTranslation } from '@/i18n/useI18n';
 import { formatApiErrorForAlert } from '@/lib/api-error';
 
@@ -27,6 +28,7 @@ interface Props {
 type Mode = 'login' | 'register';
 
 export function AuthPage({ onAuthenticated }: Props) {
+	useCueTheme();
 	const { t } = useTranslation();
 	const [mode, setMode] = useState<Mode>('login');
 	const [identity, setIdentity] = useState('');
@@ -128,30 +130,29 @@ export function AuthPage({ onAuthenticated }: Props) {
 
 	return (
 		<div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas px-4 py-10">
-			<div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.16),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.12),transparent_30%)]" />
 			<div className="relative grid w-full max-w-4xl gap-8 lg:grid-cols-[1fr_420px] lg:items-center">
 				<div className="hidden space-y-5 lg:block">
-					<div className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
+					<div className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
 						<AgentScope className="size-7" />
 					</div>
 					<div className="space-y-3">
-						<p className="text-sm font-semibold uppercase tracking-[0.22em] text-primary">
+						<p className="text-[13px]/[18px] font-medium text-muted-foreground">
 							{t('auth.brand')}
 						</p>
-						<h1 className="max-w-xl text-4xl font-semibold tracking-tight">
+						<h1 className="max-w-xl text-[34px]/[42px] font-semibold tracking-tight">
 							{t('auth.heroTitle')}
 						</h1>
-						<p className="max-w-lg text-base leading-7 text-muted-foreground">
+						<p className="max-w-lg text-[15px]/[22px] text-muted-foreground">
 							{t('auth.heroDescription')}
 						</p>
 					</div>
 					<div className="flex items-center gap-2 text-sm text-muted-foreground">
-						<ShieldCheck className="size-4 text-primary" />
+						<ShieldCheck className="size-4 text-[var(--cue-success,currentColor)]" />
 						{t('auth.securityHint')}
 					</div>
 				</div>
 
-				<Card className="border-border/70 bg-background/95 shadow-xl backdrop-blur">
+				<Card className="rounded-3xl border border-[var(--cue-border,var(--border))] bg-background p-2 shadow-[var(--cue-shadow-float,none)] ring-0">
 					<CardHeader className="space-y-4">
 						<div className="flex items-center gap-3 lg:hidden">
 							<div className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
@@ -160,7 +161,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 							<span className="font-semibold">AgentScope</span>
 						</div>
 						<div>
-							<CardTitle>
+							<CardTitle className="text-[17px]/6 font-semibold">
 								{mode === 'login' ? t('auth.loginTitle') : t('auth.registerTitle')}
 							</CardTitle>
 							<CardDescription className="mt-1.5">
@@ -169,19 +170,21 @@ export function AuthPage({ onAuthenticated }: Props) {
 									: t('auth.registerDescription')}
 							</CardDescription>
 						</div>
-						<div className="grid grid-cols-2 rounded-lg bg-muted p-1">
+						<div className="grid grid-cols-2 rounded-full bg-[var(--cue-bg-subtle,var(--muted))] p-1">
 							<Button
 								type="button"
-								variant={mode === 'login' ? 'default' : 'ghost'}
+								variant={mode === 'login' ? 'outline' : 'ghost'}
 								size="sm"
+								className="rounded-full border-transparent data-[variant=outline]:shadow-[0_1px_2px_rgba(0,0,0,.06)]"
 								onClick={() => switchMode('login')}
 							>
 								{t('auth.login')}
 							</Button>
 							<Button
 								type="button"
-								variant={mode === 'register' ? 'default' : 'ghost'}
+								variant={mode === 'register' ? 'outline' : 'ghost'}
 								size="sm"
+								className="rounded-full border-transparent data-[variant=outline]:shadow-[0_1px_2px_rgba(0,0,0,.06)]"
 								onClick={() => switchMode('register')}
 							>
 								{t('auth.register')}
@@ -318,6 +321,7 @@ export function AuthPage({ onAuthenticated }: Props) {
 
 								<Button
 									type="submit"
+									size="lg"
 									className="w-full"
 									disabled={
 										submitting ||

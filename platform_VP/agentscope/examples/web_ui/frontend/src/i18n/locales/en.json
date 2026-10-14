@@ -168,7 +168,47 @@
 			"emptyNoAgent": "Select an agent first.",
 			"emptyHasAgent": "Create a session to start chatting.",
 			"today": "Today",
-			"earlier": "Earlier"
+			"earlier": "Earlier",
+			"search": "Search chats",
+			"searchPlaceholder": "Search chats…",
+			"recent": "Recent chats",
+			"results": "Results",
+			"noResults": "No chats match “{{query}}”.",
+			"previewAgent": "Agent: {{name}}",
+			"previewRunning": "Working on it…",
+			"previewAwaiting": "Waiting for you",
+			"demoSection": "Sample cases",
+			"newMenu": "New",
+			"newAgent": "New agent",
+			"close": "Close"
+		},
+		"header": {
+			"openProfile": "Open {{name}}’s settings",
+			"panels": "Side panels"
+		},
+		"messagePlaceholder": "Message {{name}}",
+		"onboarding": {
+			"greeting": "Hi {{name}}, glad to meet you. I’m here to help.",
+			"greetingNoName": "Hi, glad to meet you. I’m here to help.",
+			"question": "Which would you like to start with?",
+			"hint": "No desired options? Just type your reply.",
+			"continue": "Continue",
+			"options": [
+				"Find local events and activities for this weekend",
+				"Make a weeknight meal plan with a matching grocery list",
+				"Review my calendar and suggest a realistic weekly plan",
+				"Summarize emails that need my attention and list next steps",
+				"Compare a few options for a product or service I’m considering"
+			]
+		},
+		"agents": {
+			"label": "Agents",
+			"emptyTitle": "No agents yet",
+			"emptyDescription": "Press + to create your first agent.",
+			"sessions": "Chats",
+			"renameSession": "Rename this chat",
+			"deleteSession": "Delete this chat",
+			"chatsOf": "Chats with {{name}}"
 		}
 	},
 	"shell": {
@@ -1007,5 +1047,61 @@
 		"empty": "This folder is empty",
 		"pressEnter": "Press Enter to check this path first",
 		"gitTooltip": "{{staged}} staged · {{unstaged}} modified · {{untracked}} untracked\nLine counts exclude untracked files"
+	},
+	"quickAgent": {
+		"title": "New agent",
+		"description": "Name it and say what it does. Everything else uses defaults.",
+		"templates": "Quick start",
+		"name": "Name",
+		"namePlaceholder": "e.g. Mia",
+		"role": "What does this agent help with?",
+		"rolePlaceholder": "Tell the agent how to work, what to prioritize, and what to avoid.",
+		"advanced": "Advanced settings",
+		"create": "Create agent",
+		"creating": "Creating…",
+		"presets": {
+			"assistant": {
+				"name": "Personal assistant",
+				"prompt": "You are a friendly personal assistant. Help the user organise their schedule, summarise information and plan to-dos. Keep answers short and ask when information is missing."
+			},
+			"reception": {
+				"name": "Receptionist",
+				"prompt": "You are the building management receptionist. Take residents’ requests, collect the details (unit, issue, time) and route them to the right team. Always be polite and clear."
+			},
+			"technician": {
+				"name": "Technician",
+				"prompt": "You are a plumbing and electrical technician. Diagnose issues from residents’ descriptions, give safe interim guidance and file a repair request when needed."
+			},
+			"planner": {
+				"name": "Planner",
+				"prompt": "You help plan trips and events: ask for budget, headcount and dates, then propose a concrete plan with estimated costs."
+			}
+		}
+	},
+	"groupChat": {
+		"menuAgent": "Create agent",
+		"menuGroup": "Create group chat",
+		"title": "New group chat",
+		"description": "Pick the agents that will work together. The leader coordinates and hands work to the members.",
+		"name": "Group name",
+		"namePlaceholder": "e.g. Resident care team",
+		"members": "Members",
+		"selected": "{{count}} selected",
+		"searchPlaceholder": "Search agents…",
+		"leader": "Leader",
+		"makeLeader": "Make leader",
+		"goal": "What is this group for? (optional)",
+		"goalPlaceholder": "The group's shared goal, e.g. take in and handle residents' repair requests.",
+		"willEnable": "“Allow invites” will be turned on for {{names}} so the leader can bring them in.",
+		"blocked": "Can't invite {{names}}: invites are off and you can't edit this agent.",
+		"notEnough": "A group needs at least 2 agents; you have {{count}}.",
+		"needTwo": "Pick at least 2 agents",
+		"create": "Create group",
+		"creating": "Creating…",
+		"delete": "Delete group",
+		"entity": "group chat",
+		"kickoff": "This is the group chat “{{name}}”.{{goal}} Use TeamCreate to form the team with you as its leader, then AgentInvite to bring in: {{members}}. Once everyone has joined, briefly introduce the team and wait for my request.",
+		"kickoffGoal": " Goal: {{goal}}.",
+		"headerNote": "Led by {{leader}} · {{count}} agents"
 	}
 }

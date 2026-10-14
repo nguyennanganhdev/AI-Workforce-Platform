@@ -35,7 +35,7 @@ export function AgentLibrary() {
 						<button
 							type="button"
 							onClick={() => navigate(path)}
-							className="group flex w-full items-center gap-3 rounded-[var(--r-tile)] border border-white bg-[var(--raised)] p-4 text-left shadow-[var(--clay-bubble)] hover:bg-[var(--action-soft)]"
+							className="group flex w-full items-center gap-3 rounded-[var(--r-tile)] border border-[var(--line)] bg-[var(--raised)] p-4 text-left shadow-[var(--clay-bubble)] hover:bg-[var(--action-soft)]"
 						>
 							<span className="flex size-9 shrink-0 items-center justify-center rounded-[13px] bg-[var(--sunken)] text-[var(--ink-2)]">
 								<Icon className="size-4" />

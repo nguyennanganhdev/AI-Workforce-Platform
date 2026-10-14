@@ -10,8 +10,11 @@ import {
 	type MockConversation,
 	type MockEvent,
 } from './chat-mock-data';
+import { Enter, FlyIn } from './motion';
 import { Participants } from './participants';
+import { durationOf } from './playback';
 import { AgentSticker, StateBadge, TranscriptEvent } from './transcript';
+import { ChoiceCard } from '@/components/chat/ChoiceCard';
 import { TextInput } from '@/components/chat/TextInput';
 import { Brand } from '@/components/layout/Brand';
 import { SELECTED_ROW } from '@/components/layout/selected-row';
@@ -19,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { WorkforceApprovalCard } from '@/features/workforce/approvals';
-import { useClayTheme } from '@/hooks/useClayTheme';
+import { useCueTheme } from '@/hooks/useCueTheme';
 import { cn } from '@/lib/utils';
 import 'streamdown/styles.css';
 
@@ -36,28 +39,8 @@ interface Playback {
 
 const START: Playback = { count: 1, busy: true };
 
-/** How long an event stays "under way" before the next one appears. */
-function durationOf(event: MockEvent): number {
-	switch (event.kind) {
-		case 'user':
-			return 600;
-		case 'step':
-			return 900;
-		case 'thinking':
-			return Math.min(2600, event.seconds * 650);
-		case 'tool':
-			return 1100;
-		case 'agent':
-			return 1000;
-		case 'state':
-			return 350;
-		case 'gate':
-			return 0;
-	}
-}
-
 /** The roster's one-line preview: the last thing anybody said, without markdown. */
-function previewOf(events: MockEvent[]): string {
+export function previewOf(events: MockEvent[]): string {
 	for (let index = events.length - 1; index >= 0; index -= 1) {
 		const event = events[index];
 		if (event.kind === 'user' || event.kind === 'agent') {
@@ -67,13 +50,18 @@ function previewOf(events: MockEvent[]): string {
 	return '';
 }
 
-/** Every agent that has acted or been brought in so far, in order of appearance. */
-function participantsOf(events: MockEvent[]): MockAgentId[] {
+/**
+ * Every agent that has acted or been brought in so far, in order of
+ * appearance. A step's joins count once the step is done — that is when their
+ * chips appear, and the participants list waits for the chips to fly from.
+ */
+function participantsOf(events: MockEvent[], busy: boolean): MockAgentId[] {
 	const seen = new Set<MockAgentId>();
-	for (const event of events) {
+	events.forEach((event, index) => {
 		if ('agent' in event && event.agent) seen.add(event.agent);
-		if (event.kind === 'step') event.joins?.forEach((agent) => seen.add(agent));
-	}
+		const done = !busy || index < events.length - 1;
+		if (event.kind === 'step' && done) event.joins?.forEach((agent) => seen.add(agent));
+	});
 	return [...seen];
 }
 
@@ -99,24 +87,24 @@ function ConversationRow({
 				// `border-transparent` is reserved at rest so the selected slab's
 				// border costs no layout.
 				className={cn(
-					'flex min-h-[60px] w-full items-center gap-2.5 rounded-[var(--r-tile)] border border-transparent px-2 text-left hover:bg-[var(--canvas)]',
+					'flex h-[60px] w-full items-center gap-3 rounded-xl border border-transparent px-3 text-left hover:bg-[var(--row-hover)]',
 					active && SELECTED_ROW,
 				)}
 			>
 				<ClayAvatar id={conversation.id} label={conversation.name} size={36} />
 				<span className="min-w-0 flex-1">
-					<span className="flex items-center gap-1.5">
-						<span className="min-w-0 flex-1 truncate text-[12px]/[16px] text-muted-foreground">
+					<span className="flex items-baseline gap-1.5">
+						<span className="min-w-0 flex-1 truncate text-[15px]/5 font-medium text-foreground">
 							{conversation.name}
 						</span>
-						<span className="shrink-0 text-[12px]/[16px] text-[var(--ink-3)]">
+						<span className="shrink-0 text-xs/4 text-muted-foreground">
 							{conversation.lastMessageAt}
 						</span>
 						{conversation.pinned && (
 							<Pin className="size-3 shrink-0 fill-current text-[var(--ink-3)]" />
 						)}
 					</span>
-					<span className="mt-0.5 block max-w-[24ch] truncate text-[13px]/[18px] text-muted-foreground">
+					<span className="block truncate text-[13px]/[18px] text-muted-foreground">
 						{preview}
 					</span>
 				</span>
@@ -144,7 +132,7 @@ function Gate({
 
 	if (gate.action === 'approval') {
 		return (
-			<div className="rounded-[var(--r-card)] border border-white bg-[var(--raised)] shadow-[var(--clay-bubble)]">
+			<div className="max-w-[480px] rounded-[20px] border border-[var(--cue-border,var(--border))] bg-background">
 				<WorkforceApprovalCard
 					approval={{ ...gate.approval, expires_at: expiresAt }}
 					canDecide
@@ -157,16 +145,27 @@ function Gate({
 		);
 	}
 
-	const fromProvider = gate.action === 'provider';
+	// The session waits on the reader: Cue's choice card, with the scripted
+	// answer as the option and the composer as the way out.
+	if (gate.action === 'reply') {
+		return (
+			<ChoiceCard
+				question="Bạn muốn trả lời thế nào?"
+				options={[gate.label]}
+				hint="Không có lựa chọn phù hợp? Cứ gõ câu trả lời của bạn."
+				continueLabel="Tiếp tục"
+				onSubmit={onAdvance}
+			/>
+		);
+	}
+
 	return (
-		<div className="flex flex-col items-start gap-2 rounded-[var(--r-tile)] border border-dashed border-[var(--ink-3)] px-3 py-2.5">
-			<span className="text-[12px]/[16px] text-muted-foreground">
-				{fromProvider
-					? 'Phiên đang nghỉ chờ nhà cung cấp. Mô phỏng sự kiện tiếp theo:'
-					: 'Phiên đang chờ người dùng. Bấm câu trả lời theo kịch bản, hoặc tự gõ ở ô bên dưới:'}
+		<div className="flex w-[384px] max-w-full flex-col items-start gap-3 rounded-[20px] border border-[var(--cue-border,var(--border))] p-4">
+			<span className="text-[13px]/[18px] text-muted-foreground">
+				Phiên đang nghỉ chờ nhà cung cấp. Mô phỏng sự kiện tiếp theo:
 			</span>
-			<Button variant="outline" size="sm" className="h-auto min-h-7 py-1" onClick={onAdvance}>
-				{fromProvider && <RadioTower />}
+			<Button variant="outline" className="h-auto min-h-8 w-full py-1.5" onClick={onAdvance}>
+				<RadioTower />
 				<span className="whitespace-normal text-left">{gate.label}</span>
 			</Button>
 		</div>
@@ -187,13 +186,23 @@ function Gate({
 export function MockChat({
 	notice,
 	footer,
+	headerActions,
+	conversationId,
+	hideSidebar = false,
 }: {
+	/** Opens this conversation and keeps it open, e.g. one picked elsewhere. */
+	conversationId?: string;
+	/** Just the transcript, for a page that brings its own sidebar. */
+	hideSidebar?: boolean;
+	/** Beside the mark at the top of the sidebar, e.g. the "+" menu. */
+	headerActions?: ReactNode;
 	/** Rendered under the roster, e.g. to say this is sample data. */
 	notice?: ReactNode;
 	/** The foot of the sidebar: the chat page passes the account menu. */
 	footer?: ReactNode;
 }) {
-	const [activeId, setActiveId] = useState(MOCK_CONVERSATIONS[0].id);
+	const [pickedId, setActiveId] = useState(MOCK_CONVERSATIONS[0].id);
+	const activeId = conversationId ?? pickedId;
 	const [search, setSearch] = useState('');
 	const [playback, setPlayback] = useState<Record<string, Playback>>({});
 	/** What was typed into the composer in place of a scripted reply, by event id. */
@@ -208,7 +217,7 @@ export function MockChat({
 	const gate = current.kind === 'gate' && !play.busy ? current : null;
 	const finished = !play.busy && !gate;
 
-	const participants = participantsOf(shown);
+	const participants = participantsOf(shown, play.busy);
 	const activeAgent = play.busy && 'agent' in current ? (current.agent ?? null) : null;
 	const state = shown.findLast((event) => event.kind === 'state')?.state;
 
@@ -282,26 +291,32 @@ export function MockChat({
 					: 'Agent đang xử lý…';
 
 	return (
-		<div className="flex size-full gap-2 p-2">
-			<aside className="clay-panel flex w-[316px] shrink-0 flex-col gap-2 rounded-[16px] bg-canvas p-2 text-sidebar-foreground max-md:hidden">
-				<Brand className="px-2 pt-1 pb-1" />
+		<div className="flex size-full">
+			<aside
+				className={cn(
+					'cue-column flex w-[320px] shrink-0 flex-col gap-2 border-r border-sidebar-border px-2 pb-2 text-sidebar-foreground max-md:hidden',
+					hideSidebar && 'hidden',
+				)}
+			>
+				<div className="flex h-12 shrink-0 items-center justify-between gap-2 pl-2">
+					<Brand />
+					{headerActions}
+				</div>
 
-				{/* Sunken, like the composer: raised things are pressed, sunken
-				    things receive. */}
 				<div className="relative">
-					<Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+					<Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
 					<input
 						type="search"
 						aria-label="Tìm cuộc trò chuyện"
 						placeholder="Tìm kiếm…"
 						value={search}
 						onChange={(e) => setSearch(e.target.value)}
-						className="h-9 w-full rounded-[var(--r-tile)] border border-transparent bg-[var(--sunken)] pl-8 pr-3 text-sm shadow-[var(--clay-sunken)] placeholder:text-muted-foreground"
+						className="h-9 w-full rounded-xl border border-[var(--cue-border,var(--border))] bg-background pl-9 pr-3 text-[15px] outline-none placeholder:text-[var(--cue-text-tertiary,var(--muted-foreground))] focus-visible:border-[var(--ring)]"
 					/>
 				</div>
 
 				{visible.length > 0 ? (
-					<ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
+					<ul className="flex min-h-0 flex-1 flex-col overflow-y-auto">
 						{visible.map((conversation) => {
 							const its = playback[conversation.id] ?? START;
 							return (
@@ -329,31 +344,48 @@ export function MockChat({
 			</aside>
 
 			<main className="flex min-w-0 flex-1 flex-col">
-				<header className="flex min-h-[52px] shrink-0 flex-wrap items-center gap-x-3 gap-y-1 px-1 py-1">
-					<ClayAvatar id={active.id} label={active.name} size={36} />
-					<div className="min-w-0 flex-1">
-						<h1 className="truncate text-[16px]/[24px] font-semibold">{active.name}</h1>
-						<p className="truncate text-[12px]/[16px] text-muted-foreground">
+				<header className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 px-4 py-1">
+					<ClayAvatar id={active.id} label={active.name} size={20} />
+					<div className="flex min-w-0 flex-1 items-baseline gap-2">
+						<h1 className="truncate text-[17px]/6 font-medium">{active.name}</h1>
+						<p className="truncate text-[13px]/[18px] text-[var(--cue-text-tertiary,var(--muted-foreground))]">
 							{active.subtitle}
 						</p>
 					</div>
-					{state && <StateBadge state={state} />}
+					{state && (
+						// Keyed by state, so a change swaps the badge in rather than recolouring it.
+						<span key={state} className="cue-pop inline-flex">
+							<StateBadge state={state} />
+						</span>
+					)}
 					{/* Who is in the session so far. A narrow window has no room for
 					    the rail on the right, so the stickers stand in for it here. */}
 					{participants.length > 0 && (
 						<ul
 							aria-label="Agent đang tham gia phiên"
-							className="flex items-center gap-1 lg:hidden"
+							className="flex items-center -space-x-1.5 lg:hidden"
 						>
 							{participants.map((agent) => (
-								<li key={agent}>
+								// Overlapping tiles; the one at work lifts above the rest.
+								<li
+									key={agent}
+									className={cn(
+										'relative transition-transform duration-300',
+										agent === activeAgent && 'z-10 -translate-y-0.5',
+									)}
+								>
 									<Tooltip>
 										<TooltipTrigger asChild>
-											<span tabIndex={0} className="block rounded-[10px]">
-												<AgentSticker
-													agent={agent}
-													working={agent === activeAgent}
-												/>
+											<span
+												tabIndex={0}
+												className="block rounded-[10px] ring-2 ring-background"
+											>
+												<FlyIn agent={agent}>
+													<AgentSticker
+														agent={agent}
+														working={agent === activeAgent}
+													/>
+												</FlyIn>
 											</span>
 										</TooltipTrigger>
 										<TooltipContent>
@@ -378,19 +410,27 @@ export function MockChat({
 				</header>
 
 				<div className="min-h-0 flex-1 overflow-y-auto">
-					<div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-2 py-6">
+					<div className="flex w-full max-w-3xl flex-col gap-6 px-4 py-4">
 						{shown.map((event, index) =>
 							event.kind === 'gate' ? null : (
-								<TranscriptEvent
+								// Only the event that just arrived rises in; reopening a
+								// conversation draws its history still.
+								<Enter
 									key={event.id}
-									event={event}
-									running={play.busy && index === shown.length - 1}
-									typedText={typed[event.id]}
-								/>
+									animate={play.busy && index === shown.length - 1}
+								>
+									<TranscriptEvent
+										event={event}
+										running={play.busy && index === shown.length - 1}
+										typedText={typed[event.id]}
+									/>
+								</Enter>
 							),
 						)}
 						{gate && (
-							<Gate key={gate.id} gate={gate} onAdvance={advance} onReject={reject} />
+							<Enter key={gate.id} animate>
+								<Gate gate={gate} onAdvance={advance} onReject={reject} />
+							</Enter>
 						)}
 						<div ref={transcriptEnd} />
 					</div>
@@ -401,7 +441,7 @@ export function MockChat({
 				    off: the mock has nowhere to upload to. */}
 				<TextInput
 					key={`${active.id}:${gate?.id ?? 'closed'}`}
-					className="mx-auto w-full max-w-2xl shrink-0 px-2 pb-2"
+					className="w-full shrink-0 px-4 pb-4"
 					placeholder={composerHint}
 					disabled={gate?.action !== 'reply'}
 					onSend={handleSend}
@@ -424,7 +464,7 @@ export function MockChat({
  * serves it at `/mock/chat` ahead of the auth check.
  */
 export function MockChatPage() {
-	useClayTheme();
+	useCueTheme();
 	return (
 		<div className="h-screen bg-canvas">
 			<MockChat />

@@ -78,11 +78,11 @@ export function clayInitials(label: string): string {
 const PORTRAIT_FLOOR = 28;
 
 /**
- * One clay tile, `size` pixels square.
+ * One agent tile, `size` pixels square: the agent's portrait, or its initials
+ * on Cue's mascot grey below {@link PORTRAIT_FLOOR}.
  *
  * The radius tracks the size so a small mark keeps the same SHAPE as a large
- * one. The clay itself is only drawn once there is room for it — three
- * stacked shadows inside an 18px square read as a smudge.
+ * one (36px in the sidebar, 20px in the chat header, 52px on a profile).
  */
 export function ClayAvatar({
 	className,
@@ -92,20 +92,19 @@ export function ClayAvatar({
 	working = false,
 }: {
 	className?: string;
-	/** Decides the colour, including that of a plain robot when the name names no role. */
+	/** Identifies the agent; also the fallback label. */
 	id: string;
 	/** What the initials and the role are read from. Falls back to `id`. */
 	label?: string;
 	size: number;
 	working?: boolean;
 }) {
-	const tone = clayTone(id);
 	const name = label ?? id;
-	const roomForClay = size >= 22;
 	const drawPortrait = size >= PORTRAIT_FLOOR;
 	return (
 		<span
 			aria-hidden="true"
+			data-agent={id}
 			data-working={working || undefined}
 			className={cn(
 				'flex shrink-0 items-center justify-center overflow-hidden font-bold',
@@ -115,12 +114,12 @@ export function ClayAvatar({
 			style={{
 				width: size,
 				height: size,
-				// A sticker brings its own ground.
-				background: drawPortrait ? undefined : tone.background,
-				color: tone.color,
-				border: drawPortrait ? '1px solid #e5e7eb' : `1px solid ${tone.border}`,
-				borderRadius: Math.max(5, Math.round(size * 0.37)),
-				boxShadow: !drawPortrait && roomForClay ? tone.shadow : undefined,
+				// Cue: a monochrome grey mascot tile; a sticker brings its own ground.
+				background: drawPortrait ? '#ffffff' : 'var(--cue-mascot, #8a8a8a)',
+				color: '#ffffff',
+				border: '1px solid var(--cue-border, #e8e8e8)',
+				// 12px at the 36px sidebar size, scaling with the tile.
+				borderRadius: Math.max(5, Math.round(size / 3)),
 				// Scaled to the tile, so two letters fit at every size.
 				fontSize: Math.max(8, Math.round(size * 0.34)),
 				letterSpacing: '0.01em',

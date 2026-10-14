@@ -54,6 +54,9 @@ const GROUPS: { label?: string; items: SettingsItem[] }[] = [
 	},
 ];
 
+/** A Cue nav row: 40px, 15px text, 12px corners, 20px thin icons. */
+const ITEM = 'h-10 gap-3 rounded-xl px-3 text-[15px]/5 [&_svg]:size-[18px]';
+
 /**
  * The settings shell's navigation: the way back to the chat on top, the
  * settings pages below, the account at the foot.
@@ -74,12 +77,12 @@ export function SettingsSidebar() {
 		// off-canvas drawer the layout's menu button opens.
 		<Sidebar
 			collapsible={isMobile ? 'offcanvas' : 'none'}
-			className="clay-panel rounded-[22px]"
+			className="cue-column border-r border-sidebar-border"
 		>
-			<SidebarHeader>
+			<SidebarHeader className="h-12 shrink-0 justify-center px-2 py-0">
 				<SidebarMenu>
 					<SidebarMenuItem>
-						<SidebarMenuButton onClick={() => go('/chat')}>
+						<SidebarMenuButton className={ITEM} onClick={() => go('/chat')}>
 							<ArrowLeft />
 							<span>{t('shell.backToChat')}</span>
 						</SidebarMenuButton>
@@ -88,13 +91,18 @@ export function SettingsSidebar() {
 			</SidebarHeader>
 			<SidebarContent>
 				{GROUPS.map((group) => (
-					<SidebarGroup key={group.label ?? group.items[0].path}>
-						{group.label && <SidebarGroupLabel>{t(group.label)}</SidebarGroupLabel>}
+					<SidebarGroup key={group.label ?? group.items[0].path} className="px-2 py-1">
+						{group.label && (
+							<SidebarGroupLabel className="h-7 px-3 text-[13px]/[18px] font-normal text-[var(--cue-text-secondary,var(--muted-foreground))]">
+								{t(group.label)}
+							</SidebarGroupLabel>
+						)}
 						<SidebarGroupContent>
 							<SidebarMenu>
 								{group.items.map((item) => (
 									<SidebarMenuItem key={item.path}>
 										<SidebarMenuButton
+											className={ITEM}
 											isActive={
 												item.prefix
 													? location.pathname.startsWith(item.path)
@@ -112,7 +120,7 @@ export function SettingsSidebar() {
 					</SidebarGroup>
 				))}
 			</SidebarContent>
-			<SidebarFooter>
+			<SidebarFooter className="border-t border-sidebar-border p-2">
 				<AccountMenu />
 			</SidebarFooter>
 		</Sidebar>

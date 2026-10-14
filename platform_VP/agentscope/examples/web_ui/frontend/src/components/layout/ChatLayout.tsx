@@ -1,6 +1,6 @@
 import { Outlet } from 'react-router-dom';
 
-import { useClayTheme } from '@/hooks/useClayTheme';
+import { useCueTheme } from '@/hooks/useCueTheme';
 
 /**
  * The chat shell: the conversation and nothing else. Its sidebar — the
@@ -10,7 +10,7 @@ import { useClayTheme } from '@/hooks/useClayTheme';
  * The sign-in page renders outside both shells and is left as it was.
  */
 export function ChatLayout() {
-	useClayTheme();
+	useCueTheme();
 
 	return (
 		<div className="h-screen bg-canvas">

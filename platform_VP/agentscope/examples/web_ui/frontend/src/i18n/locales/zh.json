@@ -168,7 +168,47 @@
 			"emptyNoAgent": "请先选择一个智能体。",
 			"emptyHasAgent": "创建会话开始对话。",
 			"today": "今天",
-			"earlier": "更早"
+			"earlier": "更早",
+			"search": "搜索对话",
+			"searchPlaceholder": "搜索对话…",
+			"recent": "最近对话",
+			"results": "结果",
+			"noResults": "没有匹配“{{query}}”的对话。",
+			"previewAgent": "智能体：{{name}}",
+			"previewRunning": "处理中…",
+			"previewAwaiting": "等待你的操作",
+			"demoSection": "示例场景",
+			"newMenu": "新建",
+			"newAgent": "新建智能体",
+			"close": "关闭"
+		},
+		"header": {
+			"openProfile": "打开 {{name}} 的设置",
+			"panels": "侧边面板"
+		},
+		"messagePlaceholder": "发消息给 {{name}}",
+		"onboarding": {
+			"greeting": "你好 {{name}}，很高兴认识你，我来帮你。",
+			"greetingNoName": "你好，很高兴认识你，我来帮你。",
+			"question": "你想从哪件事开始？",
+			"hint": "没有合适的选项？直接输入你的回复。",
+			"continue": "继续",
+			"options": [
+				"查找本周末附近的活动",
+				"制定工作日晚餐计划并附购物清单",
+				"查看我的日程并建议一个可行的周计划",
+				"总结需要我关注的邮件并列出下一步",
+				"比较我正在考虑的几个产品或服务"
+			]
+		},
+		"agents": {
+			"label": "智能体",
+			"emptyTitle": "还没有智能体",
+			"emptyDescription": "点击 + 创建第一个智能体。",
+			"sessions": "对话",
+			"renameSession": "重命名此对话",
+			"deleteSession": "删除此对话",
+			"chatsOf": "与 {{name}} 的对话"
 		}
 	},
 	"shell": {
@@ -1007,5 +1047,61 @@
 		"empty": "此文件夹为空",
 		"pressEnter": "先按回车校验该路径",
 		"gitTooltip": "{{staged}} 已暂存 · {{unstaged}} 已修改 · {{untracked}} 未跟踪\n行数不含未跟踪文件"
+	},
+	"quickAgent": {
+		"title": "新建智能体",
+		"description": "起个名字并说明它做什么，其余使用默认设置。",
+		"templates": "快速开始",
+		"name": "名称",
+		"namePlaceholder": "例如：Mia",
+		"role": "这个智能体帮你做什么？",
+		"rolePlaceholder": "告诉智能体如何工作、优先什么、避免什么。",
+		"advanced": "高级设置",
+		"create": "创建智能体",
+		"creating": "创建中…",
+		"presets": {
+			"assistant": {
+				"name": "个人助理",
+				"prompt": "你是一位友好的个人助理。帮助用户安排日程、总结信息、规划待办。回答简洁，信息不足时先提问。"
+			},
+			"reception": {
+				"name": "前台",
+				"prompt": "你是物业管理处的前台。接收住户的请求，收集完整信息（房号、问题、时间）并转给对应部门。始终礼貌、清晰。"
+			},
+			"technician": {
+				"name": "技术员",
+				"prompt": "你是水电技术员。根据住户描述诊断问题，给出安全的临时处理建议，必要时创建维修单。"
+			},
+			"planner": {
+				"name": "规划师",
+				"prompt": "你帮助规划旅行和活动：询问预算、人数和时间，然后给出带费用估算的具体方案。"
+			}
+		}
+	},
+	"groupChat": {
+		"menuAgent": "创建智能体",
+		"menuGroup": "创建群聊",
+		"title": "新建群聊",
+		"description": "选择一起工作的智能体。组长负责协调并给成员分配任务。",
+		"name": "群聊名称",
+		"namePlaceholder": "例如：住户服务团队",
+		"members": "成员",
+		"selected": "已选 {{count}} 个",
+		"searchPlaceholder": "搜索智能体…",
+		"leader": "组长",
+		"makeLeader": "设为组长",
+		"goal": "这个群聊做什么？（可选）",
+		"goalPlaceholder": "群聊的共同目标，例如：受理并处理住户的维修请求。",
+		"willEnable": "将为 {{names}} 开启“允许被邀请”，以便组长邀请其加入。",
+		"blocked": "无法邀请 {{names}}：未开启“允许被邀请”，且你无权编辑该智能体。",
+		"notEnough": "群聊至少需要 2 个智能体，你目前有 {{count}} 个。",
+		"needTwo": "至少选择 2 个智能体",
+		"create": "创建群聊",
+		"creating": "创建中…",
+		"delete": "删除群聊",
+		"entity": "群聊",
+		"kickoff": "这是群聊“{{name}}”。{{goal}}请使用 TeamCreate 创建团队并由你担任组长，然后使用 AgentInvite 邀请成员：{{members}}。成员到齐后，请简要介绍团队并等待我的请求。",
+		"kickoffGoal": "目标：{{goal}}。",
+		"headerNote": "组长 {{leader}} · {{count}} 个智能体"
 	}
 }

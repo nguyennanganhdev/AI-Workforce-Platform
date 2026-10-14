@@ -74,7 +74,7 @@ export function EditChannelDialog({ channel, open, onOpenChange, onUpdated }: Pr
 					<DialogDescription>{t('channel.edit.description')}</DialogDescription>
 				</DialogHeader>
 
-				<div className="no-scrollbar -mx-4 max-h-[75vh] overflow-y-auto px-4 pt-1">
+				<div className="no-scrollbar -mx-6 max-h-[75vh] overflow-y-auto px-6 pt-1">
 					<ChannelForm
 						mode="edit"
 						value={form}

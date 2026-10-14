@@ -3,9 +3,9 @@
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/geist-mono';
-/* The clay design layer. It only declares tokens under `.clay-theme`, so this
-   import alone changes nothing — `useClayTheme` is what switches it on. */
-@import './styles/clay.css';
+/* The Cue design layer. It only declares tokens under `.cue-theme`, so this
+   import alone changes nothing — `useCueTheme` is what switches it on. */
+@import './styles/cue.css';
 @source '../node_modules/streamdown/dist/*.js';
 @source '../node_modules/@streamdown/*/dist/*.js';
 
@@ -32,9 +32,9 @@ svg.lucide {
 	stroke-width: 1.7;
 }
 
-/* Off under `.clay-theme`: clay is light only, and `.dark` follows the OS, so
+/* Off under `.cue-theme`: Cue is light only, and `.dark` follows the OS, so
    without this a dark-mode machine paints dark utilities over light tokens. */
-@custom-variant dark (&:is(.dark *):not(.clay-theme *));
+@custom-variant dark (&:is(.dark *):not(.cue-theme *));
 
 :root {
 	/* --text: #6b6375; */

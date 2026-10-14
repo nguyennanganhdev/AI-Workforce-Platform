@@ -13,13 +13,7 @@ import type { ApprovalView } from '@/features/workforce/approvals';
 import type { NextAction, WorkflowState } from '@/features/workforce/shared/contracts/workforce-v1';
 
 export type MockAgentId =
-	| 'leader'
-	| 'planner'
-	| 'hotel'
-	| 'car'
-	| 'calculator'
-	| 'technical'
-	| 'builder';
+	'leader' | 'planner' | 'hotel' | 'car' | 'calculator' | 'technical' | 'builder';
 
 export interface MockAgent {
 	/** Also picks the sticker: see `portraitFor` in `ui/clay-portrait.tsx`. */
@@ -130,13 +124,7 @@ export type GateEvent = EventBase &
 	);
 
 export type MockEvent =
-	| UserEvent
-	| StepEvent
-	| ThinkingEvent
-	| ToolEvent
-	| AgentEvent
-	| StateEvent
-	| GateEvent;
+	UserEvent | StepEvent | ThinkingEvent | ToolEvent | AgentEvent | StateEvent | GateEvent;
 
 export interface MockConversation {
 	id: string;
@@ -635,9 +623,7 @@ const TRIP: MockConversation = {
 			kind: 'state',
 			state: 'awaiting_confirmation',
 			nextAction: 'confirm_close',
-			detail: [
-				'Cả hai công cụ trả kết quả ngay nên không cần chờ sự kiện từ nhà cung cấp',
-			],
+			detail: ['Cả hai công cụ trả kết quả ngay nên không cần chờ sự kiện từ nhà cung cấp'],
 		},
 		{ id: 'b-35', kind: 'gate', action: 'reply', label: 'Xác nhận, cảm ơn.' },
 		{ id: 'b-36', kind: 'user', sender: RESIDENT, text: 'Xác nhận, cảm ơn.' },
@@ -793,7 +779,9 @@ const BUILD: MockConversation = {
 			input: 'Lập kế hoạch, Xe, Tính chi phí',
 			summary: 'Đủ công cụ cho cả ba agent',
 			result: 'Xe: tìm xe, đặt xe\nLập kế hoạch: trao đổi trong nhóm\nTính chi phí: công cụ tính có sẵn',
-			detail: ['Chỉ lấy công cụ đúng phạm vi; bật kết nối không tự thêm công cụ vào agent cũ'],
+			detail: [
+				'Chỉ lấy công cụ đúng phạm vi; bật kết nối không tự thêm công cụ vào agent cũ',
+			],
 		},
 		{
 			id: 'd-10',

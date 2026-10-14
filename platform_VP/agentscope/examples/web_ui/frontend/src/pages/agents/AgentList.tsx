@@ -130,7 +130,11 @@ export function AgentList({
 							<TableRow key={agent.id} className="h-14">
 								<TableCell className="whitespace-normal">
 									<div className="flex items-center gap-3">
-										<ClayAvatar id={agent.id} label={agent.data.name} size={36} />
+										<ClayAvatar
+											id={agent.id}
+											label={agent.data.name}
+											size={36}
+										/>
 										<div className="min-w-0">
 											<p className="truncate text-[14px]/[20px] font-medium">
 												{agent.data.name}
@@ -145,7 +149,9 @@ export function AgentList({
 									{agent.data.invite_config?.invitable ? (
 										<Badge tone="ok">{t('agents.graph.invitable')}</Badge>
 									) : (
-										<Badge tone="neutral">{t('agents.graph.notInvitable')}</Badge>
+										<Badge tone="neutral">
+											{t('agents.graph.notInvitable')}
+										</Badge>
 									)}
 								</TableCell>
 								<TableCell className="text-muted-foreground">

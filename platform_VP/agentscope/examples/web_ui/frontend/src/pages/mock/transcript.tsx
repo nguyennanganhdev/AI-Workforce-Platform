@@ -1,5 +1,5 @@
 import { Check, ChevronRight, Loader2, Waypoints } from 'lucide-react';
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, type ReactNode, useMemo } from 'react';
 
 import {
 	MOCK_AGENTS,
@@ -13,6 +13,8 @@ import {
 	type ToolEvent,
 	type UserEvent,
 } from './chat-mock-data';
+import { streamPlan, thinkingMs, TYPING_MS } from './playback';
+import { useElapsed, useLive } from './use-motion';
 import { Markdown } from '@/components/markdown';
 import { Bubble, BubbleContent } from '@/components/ui/bubble';
 import { ClayAvatar } from '@/components/ui/clay-avatar';
@@ -27,12 +29,24 @@ export function AgentSticker({
 	agent,
 	size = STICKER,
 	working = false,
+	flySource = false,
 }: {
 	agent: MockAgentId;
 	size?: number;
 	working?: boolean;
+	/** Marks this tile as a place the agent can fly up from (see `FlyIn`). */
+	flySource?: boolean;
 }) {
-	return <ClayAvatar id={agent} label={MOCK_AGENTS[agent].name} size={size} working={working} />;
+	const tile = (
+		<ClayAvatar id={agent} label={MOCK_AGENTS[agent].name} size={size} working={working} />
+	);
+	return flySource ? (
+		<span data-fly-from={agent} className="inline-flex shrink-0">
+			{tile}
+		</span>
+	) : (
+		tile
+	);
 }
 
 /** `**name**` → bold. The scripts mark names this way; nothing else is parsed. */
@@ -78,10 +92,27 @@ function TechDetail({ lines }: { lines?: string[] }) {
 	);
 }
 
-/** Spinner while the step is under way, a check once it is done. */
-function Progress({ running }: { running: boolean }) {
-	return running ? (
-		<Loader2 className="size-4 shrink-0 animate-spin" aria-label="Đang xử lý" />
+/**
+ * Spinner while the step is under way, a check once it is done. A check that
+ * replaces a spinner on screen draws itself in; one drawn done just sits.
+ */
+function Progress({ running, live }: { running: boolean; live: boolean }) {
+	if (running) {
+		return <Loader2 className="size-4 shrink-0 animate-spin" aria-label="Đang xử lý" />;
+	}
+	return live ? (
+		<svg
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth={2}
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			className="cue-check size-4 shrink-0"
+			aria-label="Xong"
+		>
+			<path d="M20 6 9 17l-5-5" />
+		</svg>
 	) : (
 		<Check className="size-4 shrink-0" aria-label="Xong" />
 	);
@@ -105,6 +136,7 @@ function UserMessage({ event, text }: { event: UserEvent; text: string }) {
  * platform did — so who acted reads before the words do.
  */
 function StepLine({ event, running }: { event: StepEvent; running: boolean }) {
+	const live = useLive(running);
 	return (
 		<div className="flex flex-col gap-1.5">
 			<div
@@ -116,21 +148,27 @@ function StepLine({ event, running }: { event: StepEvent; running: boolean }) {
 				)}
 			>
 				{event.agent ? (
-					<AgentSticker agent={event.agent} working={running} />
+					<AgentSticker agent={event.agent} working={running} flySource />
 				) : (
 					<Waypoints className="size-4 shrink-0" />
 				)}
 				<span className="min-w-0 flex-1">{withBold(event.text)}</span>
-				<Progress running={running} />
+				<Progress running={running} live={live} />
 			</div>
 			{event.joins && !running && (
 				<ul className="flex flex-wrap gap-1.5 pl-1">
-					{event.joins.map((agent) => (
+					{event.joins.map((agent, index) => (
+						// Pops out of the step that added it, one after another, before its
+						// tile flies on up to the participants.
 						<li
 							key={agent}
-							className="flex items-center gap-1.5 rounded-full border border-white bg-[var(--raised)] py-0.5 pl-0.5 pr-2.5 text-[12px]/[16px] shadow-[var(--clay-bubble)]"
+							className={cn(
+								'flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--raised)] py-0.5 pl-0.5 pr-2.5 text-[12px]/[16px] shadow-[var(--clay-bubble)]',
+								live && 'cue-pop',
+							)}
+							style={live ? { animationDelay: `${index * 120}ms` } : undefined}
 						>
-							<AgentSticker agent={agent} />
+							<AgentSticker agent={agent} flySource />
 							<span className="font-semibold">{MOCK_AGENTS[agent].name}</span>
 							<span className="text-muted-foreground">{MOCK_AGENTS[agent].role}</span>
 						</li>
@@ -145,11 +183,22 @@ function StepLine({ event, running }: { event: StepEvent; running: boolean }) {
 /** An agent reasoning before it acts. Left open, since the reasoning is the point here. */
 function Thinking({ event, running }: { event: ThinkingEvent; running: boolean }) {
 	const name = MOCK_AGENTS[event.agent].name;
+	const live = useLive(running);
+	const elapsed = useElapsed(running);
 	if (running) {
+		// Scaled so the counter reaches the script's seconds just as the
+		// playback moves on, however much the playback shortens the wait.
+		const seconds = Math.min(
+			event.seconds,
+			(elapsed / thinkingMs(event.seconds)) * event.seconds,
+		);
 		return (
 			<div className="flex items-center gap-2.5 text-sm text-muted-foreground">
-				<AgentSticker agent={event.agent} working={running} />
+				<AgentSticker agent={event.agent} working={running} flySource />
 				<span className="shimmer">{name} đang suy nghĩ…</span>
+				<span className="tabular-nums text-[var(--cue-text-tertiary,var(--muted-foreground))]">
+					{seconds.toFixed(1).replace('.', ',')} giây
+				</span>
 			</div>
 		);
 	}
@@ -160,7 +209,7 @@ function Thinking({ event, running }: { event: ThinkingEvent; running: boolean }
 					type="button"
 					className="group flex items-center gap-2.5 text-left text-sm text-muted-foreground hover:text-foreground"
 				>
-					<AgentSticker agent={event.agent} working={running} />
+					<AgentSticker agent={event.agent} working={running} flySource />
 					<span>
 						{name} đã suy nghĩ {event.seconds} giây
 					</span>
@@ -168,7 +217,12 @@ function Thinking({ event, running }: { event: ThinkingEvent; running: boolean }
 				</button>
 			</CollapsibleTrigger>
 			<CollapsibleContent>
-				<p className="ml-[38px] mt-1.5 rounded-[var(--r-tile)] bg-muted px-3 py-2 text-[13px]/[20px] text-muted-foreground">
+				<p
+					className={cn(
+						'ml-[38px] mt-1.5 rounded-[var(--r-tile)] bg-muted px-3 py-2 text-[13px]/[20px] text-muted-foreground',
+						live && 'cue-unfold',
+					)}
+				>
 					{event.text}
 				</p>
 			</CollapsibleContent>
@@ -179,6 +233,7 @@ function Thinking({ event, running }: { event: ThinkingEvent; running: boolean }
 /** A tool call: who called what, whether it writes, and what came back. */
 function ToolCall({ event, running }: { event: ToolEvent; running: boolean }) {
 	const name = MOCK_AGENTS[event.agent].name;
+	const live = useLive(running);
 	return (
 		<Collapsible>
 			<CollapsibleTrigger asChild>
@@ -186,12 +241,17 @@ function ToolCall({ event, running }: { event: ToolEvent; running: boolean }) {
 					type="button"
 					className="group flex w-full items-center gap-2.5 text-left text-[13px]/[20px] text-muted-foreground hover:text-foreground"
 				>
-					<AgentSticker agent={event.agent} working={running} />
-					<span className={cn('min-w-0', running && 'shimmer')}>
+					<AgentSticker agent={event.agent} working={running} flySource />
+					<span className={cn('min-w-0 flex-1', running && 'shimmer')}>
 						{name} {running ? 'đang dùng' : 'đã dùng'} công cụ{' '}
 						<strong className="font-semibold text-foreground">{event.label}</strong>
-						{!running && <>, kết quả: {event.summary}</>}
+						{!running && (
+							<span className={live ? 'cue-fade' : undefined}>
+								, kết quả: {event.summary}
+							</span>
+						)}
 					</span>
+					<Progress running={running} live={live} />
 					{/* A write is a side effect, so it is marked apart from a read. */}
 					<span
 						className={cn(
@@ -199,6 +259,8 @@ function ToolCall({ event, running }: { event: ToolEvent; running: boolean }) {
 							event.effect === 'write'
 								? 'bg-[var(--amber-soft)] text-[var(--amber-ink)]'
 								: 'bg-[var(--sunken)] text-[var(--ink-2)]',
+							// A write that just landed rings once, so the side effect is noticed.
+							live && !running && event.effect === 'write' && 'cue-flash',
 						)}
 					>
 						{event.effect === 'write' ? 'Ghi' : 'Đọc'}
@@ -243,17 +305,30 @@ function TypingDots() {
 
 /** An agent's answer, headed by which agent it is. */
 function AgentAnswer({ event, running }: { event: AgentEvent; running: boolean }) {
+	const elapsed = useElapsed(running);
+	// Words and the whitespace between them, so a prefix keeps the line breaks.
+	const tokens = useMemo(() => event.text.split(/(\s+)/), [event.text]);
+	const words = running
+		? Math.floor((elapsed - TYPING_MS) / streamPlan(event.text).wordMs)
+		: Infinity;
 	return (
 		<div className="flex flex-col items-start gap-1.5">
 			<div className="flex items-center gap-2">
-				<AgentSticker agent={event.agent} working={running} />
+				<AgentSticker agent={event.agent} working={running} flySource />
 				<span className="text-[13px]/[20px] font-semibold">
 					{MOCK_AGENTS[event.agent].name}
 				</span>
 			</div>
 			<Bubble variant="agent">
 				<BubbleContent>
-					{running ? <TypingDots /> : <Markdown>{event.text}</Markdown>}
+					{/* Dots first, then the answer word by word, as a stream would. */}
+					{words <= 0 ? (
+						<TypingDots />
+					) : (
+						<Markdown isAnimating={running}>
+							{running ? tokens.slice(0, words * 2).join('') : event.text}
+						</Markdown>
+					)}
 				</BubbleContent>
 			</Bubble>
 		</div>

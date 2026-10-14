@@ -1,4 +1,4 @@
-import { ChevronsUpDown, CircleUserRound, Compass, Languages, LogOut, Settings } from 'lucide-react';
+import { ChevronRight, ChevronsUpDown, Compass, Languages, LogOut, Settings } from 'lucide-react';
 import { useOnborda } from 'onborda';
 import { useNavigate } from 'react-router-dom';
 
@@ -16,11 +16,12 @@ import { useCurrentUser } from '@/context/CurrentUserContext';
 import i18n from '@/i18n';
 import { useTranslation } from '@/i18n/useI18n';
 
-const ROW = 'h-10 w-full justify-start gap-3 px-2.5 font-normal';
+const ROW = 'h-12 w-full justify-start gap-3 rounded-xl px-2 text-[15px]/5 font-normal';
 
 /**
- * The foot of a sidebar: the way into Settings, and the account's own menu
- * (language, tour, sign out).
+ * The foot of a sidebar, after Cue's two-line footer: a 48px row into
+ * Settings (a bordered 32px icon circle), then the account — a 32px letter
+ * avatar and the name — whose menu holds language, tour and sign out.
  *
  * Shared by both shells so the account sits in the same place whichever one
  * is open. The chat shell shows the Settings row; the settings shell does not,
@@ -40,6 +41,7 @@ export function AccountMenu({
 	const user = useCurrentUser();
 
 	const inVietnamese = i18n.language.startsWith('vi');
+	const displayName = user?.username || user?.email || t('shell.account');
 
 	const handleLogout = async () => {
 		try {
@@ -53,17 +55,22 @@ export function AccountMenu({
 		<div className="flex flex-col gap-px">
 			{showSettings && (
 				<Button variant="ghost" className={ROW} onClick={() => navigate('/settings')}>
-					<Settings />
-					{t('common.settings')}
+					<span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-[var(--cue-border,var(--border))]">
+						<Settings className="size-4" />
+					</span>
+					<span className="min-w-0 flex-1 truncate text-left">
+						{t('common.settings')}
+					</span>
+					<ChevronRight className="size-4 text-muted-foreground" />
 				</Button>
 			)}
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
 					<Button variant="ghost" className={ROW}>
-						<CircleUserRound />
-						<span className="min-w-0 flex-1 truncate text-left">
-							{user?.username || user?.email || t('shell.account')}
+						<span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--cue-avatar-user,#e5484d)] text-[15px] font-medium text-white">
+							{displayName.charAt(0).toUpperCase()}
 						</span>
+						<span className="min-w-0 flex-1 truncate text-left">{displayName}</span>
 						<ChevronsUpDown className="size-3.5 text-muted-foreground" />
 					</Button>
 				</DropdownMenuTrigger>

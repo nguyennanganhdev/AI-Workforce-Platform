@@ -112,7 +112,7 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 						<DialogDescription>{t('dialog-agent-edit.description')}</DialogDescription>
 					</div>
 				</DialogHeader>
-				<div className="no-scrollbar -mx-4 max-h-[75vh] overflow-y-auto px-4">
+				<div className="no-scrollbar -mx-6 max-h-[75vh] overflow-y-auto px-6">
 					{schema && values ? (
 						<AgentFormFields schema={schema} values={values} onChange={handleChange} />
 					) : (
@@ -139,11 +139,7 @@ export function EditAgentDialog({ open, onOpenChange, agent, onUpdated }: Props)
 						onClick={handleSubmit}
 						disabled={!nameValid || submitting || !schema || !values}
 					>
-						{submitting ? (
-							<Loader2 className="animate-spin" />
-						) : (
-							<Save />
-						)}
+						{submitting ? <Loader2 className="animate-spin" /> : <Save />}
 						{submitting ? t('common.saving') : t('dialog-agent-edit.submit')}
 					</Button>
 				</DialogFooter>

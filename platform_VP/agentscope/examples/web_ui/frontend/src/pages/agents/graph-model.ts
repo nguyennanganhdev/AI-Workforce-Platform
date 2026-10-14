@@ -27,10 +27,22 @@ export type AgentMetrics = {
 	responseSeconds: number;
 };
 
-export type EntryData = { kind: 'entry'; icon: 'resident' | 'manager'; title: string; note: string };
-export type AgentData = { kind: 'agent'; agent: GraphAgent; metrics: AgentMetrics };
-export type SupervisorData = { kind: 'supervisor'; title: string; note: string; running: number };
-export type HumanData = { kind: 'human'; title: string; note: string };
+/** `delay`: when, in ms after the canvas opens, the node fades in — left to right. */
+type Staged = { delay: number };
+export type EntryData = Staged & {
+	kind: 'entry';
+	icon: 'resident' | 'manager';
+	title: string;
+	note: string;
+};
+export type AgentData = Staged & { kind: 'agent'; agent: GraphAgent; metrics: AgentMetrics };
+export type SupervisorData = Staged & {
+	kind: 'supervisor';
+	title: string;
+	note: string;
+	running: number;
+};
+export type HumanData = Staged & { kind: 'human'; title: string; note: string; count: number };
 
 export type FlowNode =
 	| Node<EntryData, 'entry'>
@@ -38,8 +50,15 @@ export type FlowNode =
 	| Node<SupervisorData, 'supervisor'>
 	| Node<HumanData, 'human'>;
 
-/** `live`: sessions flowing now. `human`: waiting on a person. `idle`: configured, quiet. */
-export type FlowEdgeData = { state: 'live' | 'human' | 'idle'; label?: string };
+/**
+ * `live`: sessions flowing now. `human`: waiting on a person. `idle`:
+ * configured, quiet. `delay` staggers the draw-in like the nodes'.
+ */
+export type FlowEdgeData = {
+	state: 'live' | 'human' | 'idle';
+	label?: string;
+	delay?: number;
+};
 export type FlowEdge = Edge<FlowEdgeData, 'flow'>;
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
@@ -86,8 +105,8 @@ export function sampleMetrics(agent: GraphAgent): AgentMetrics {
 	};
 }
 
-const AGENT_X = 640;
-const AGENT_GAP = 112;
+const AGENT_X = 680;
+const AGENT_GAP = 116;
 const SUPERVISOR_ID = 'leader';
 /** Sample count of plans waiting on the manager. */
 const PENDING_APPROVALS = 2;
@@ -116,6 +135,7 @@ export function buildGraph(
 			position: { x: 0, y: centre - 44 },
 			data: {
 				kind: 'entry',
+				delay: 0,
 				icon: 'resident',
 				title: t('agents.graph.resident'),
 				note: t('agents.graph.residentNote'),
@@ -127,6 +147,7 @@ export function buildGraph(
 			position: { x: 0, y: centre + 56 },
 			data: {
 				kind: 'entry',
+				delay: 60,
 				icon: 'manager',
 				title: t('agents.graph.you'),
 				note: t('agents.graph.youNote'),
@@ -138,6 +159,7 @@ export function buildGraph(
 			position: { x: 290, y: centre },
 			data: {
 				kind: 'supervisor',
+				delay: 160,
 				title: t('agents.graph.leader'),
 				note: t('agents.graph.leaderNote'),
 				running: totalRunning,
@@ -146,21 +168,26 @@ export function buildGraph(
 		{
 			id: 'approval',
 			type: 'human',
-			position: { x: 316, y: centre + 150 },
+			position: { x: 316, y: centre + 210 },
 			data: {
 				kind: 'human',
+				delay: 320,
+				count: PENDING_APPROVALS,
 				title: t('agents.graph.approval'),
 				note: t('agents.graph.approvalNote', { count: PENDING_APPROVALS }),
 			},
 		},
-		...agents.map(
-			(agent, index): FlowNode => ({
-				id: agent.id,
-				type: 'agent',
-				position: { x: AGENT_X, y: index * AGENT_GAP },
-				data: { kind: 'agent', agent, metrics: metrics.get(agent.id)! },
-			}),
-		),
+		...agents.map((agent, index): FlowNode => ({
+			id: agent.id,
+			type: 'agent',
+			position: { x: AGENT_X, y: index * AGENT_GAP },
+			data: {
+				kind: 'agent',
+				delay: 320 + index * 70,
+				agent,
+				metrics: metrics.get(agent.id)!,
+			},
+		})),
 	];
 
 	const edges: FlowEdge[] = [
@@ -169,14 +196,14 @@ export function buildGraph(
 			type: 'flow',
 			source: 'resident',
 			target: SUPERVISOR_ID,
-			data: { state: totalRunning > 0 ? 'live' : 'idle' },
+			data: { state: totalRunning > 0 ? 'live' : 'idle', delay: 120 },
 		},
 		{
 			id: 'manager-leader',
 			type: 'flow',
 			source: 'manager',
 			target: SUPERVISOR_ID,
-			data: { state: 'idle' },
+			data: { state: 'idle', delay: 160 },
 		},
 		{
 			id: 'leader-approval',
@@ -184,14 +211,19 @@ export function buildGraph(
 			source: SUPERVISOR_ID,
 			sourceHandle: 'bottom',
 			target: 'approval',
-			data: { state: 'human', label: t('agents.graph.pending', { count: PENDING_APPROVALS }) },
+			data: {
+				state: 'human',
+				label: t('agents.graph.pending', { count: PENDING_APPROVALS }),
+				delay: 280,
+			},
 		},
 		// Only an agent that allows itself to be invited is one the Leader can
 		// reach, so only those get an edge.
 		...agents
 			.filter((agent) => agent.invitable)
-			.map((agent): FlowEdge => {
+			.map((agent, index): FlowEdge => {
 				const running = metrics.get(agent.id)!.running;
+				const delay = 280 + index * 70;
 				return {
 					id: `leader-${agent.id}`,
 					type: 'flow',
@@ -199,8 +231,12 @@ export function buildGraph(
 					target: agent.id,
 					data:
 						running > 0
-							? { state: 'live', label: t('agents.graph.sessionCount', { count: running }) }
-							: { state: 'idle' },
+							? {
+									state: 'live',
+									label: t('agents.graph.sessionCount', { count: running }),
+									delay,
+								}
+							: { state: 'idle', delay },
 				};
 			}),
 	];
