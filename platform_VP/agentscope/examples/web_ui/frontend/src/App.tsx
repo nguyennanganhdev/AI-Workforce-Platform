@@ -16,6 +16,7 @@ import { buildChatTour } from '@/components/tour/chatTourSteps';
 import { TourCard } from '@/components/tour/TourCard';
 import { CurrentUserProvider } from '@/context/CurrentUserContext';
 import { UploadProvider } from '@/context/UploadContext';
+import { BuilderDemoPage } from '@/features/workforce/builder/demo/BuilderDemoPage';
 import { useTranslation } from '@/i18n/useI18n';
 import { queryClient } from '@/lib/query-client';
 import { AgentsPage } from '@/pages/agents';
@@ -78,7 +79,7 @@ const router = createBrowserRouter([
 	{ path: '/setup', element: <Navigate to="/" replace />, errorElement: <RouteError /> },
 ]);
 
-function App() {
+function PlatformApp() {
 	const { t } = useTranslation();
 	const [authStatus, setAuthStatus] = useState<'checking' | 'authenticated' | 'anonymous'>(
 		'checking',
@@ -148,4 +149,10 @@ function App() {
 	);
 }
 
-export default App;
+// The local Builder sandbox has no dependency on authentication or backend APIs.
+export default function App() {
+	if (window.location.pathname.replace(/\/$/, '') === '/builder/demo') {
+		return <BuilderDemoPage />;
+	}
+	return <PlatformApp />;
+}

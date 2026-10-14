@@ -1,4 +1,4 @@
-import { Library, List, Plus, Workflow } from 'lucide-react';
+import { Library, List, Plus, Sparkles, Workflow } from 'lucide-react';
 import { useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 
@@ -83,7 +83,13 @@ export function AgentsPage() {
 							))}
 						</TabsList>
 					</Tabs>
-					<div className="ml-auto">
+					<div className="ml-auto flex items-center gap-2">
+						<Button variant="outline" asChild>
+							<a href="/builder/demo">
+								<Sparkles />
+								Builder Demo
+							</a>
+						</Button>
 						<AgentDialog onCreated={() => void refetch()}>
 							<Button>
 								<Plus />
