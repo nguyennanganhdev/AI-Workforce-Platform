@@ -57,7 +57,9 @@ class BackgroundTierTest(TestCase):
             async def generate_structured_output(self, **_):
                 self.tiers.append((self.extra_body or {}).get("service_tier"))
                 if (self.extra_body or {}).get("service_tier") == "flex":
-                    raise RuntimeError("429 Resource Unavailable")
+                    error = RuntimeError("Resource Unavailable")
+                    error.status_code = 429
+                    raise error
                 return "ok"
 
         model = Model()
@@ -68,3 +70,23 @@ class BackgroundTierTest(TestCase):
         self.assertEqual({"prompt_cache_key": "k"}, model.extra_body)  # restored
         with patch.dict(os.environ, {"WORKFORCE_BACKGROUND_SERVICE_TIER": ""}):
             self.assertIs(model, _background(model))
+
+    def test_a_bad_output_is_not_retried_on_the_standard_tier(self) -> None:
+        import asyncio
+
+        from agentscope.app._service._chat import _background
+
+        class Model:
+            extra_body = None
+            calls = 0
+
+            async def generate_structured_output(self, **_):
+                self.calls += 1
+                raise ValueError("Failed to generate structured output")
+
+        model = Model()
+        with patch.dict(os.environ, {"WORKFORCE_BACKGROUND_SERVICE_TIER": "flex"}):
+            wrapped = _background(model)
+        with self.assertRaises(ValueError):
+            asyncio.run(wrapped.generate_structured_output(messages=[]))
+        self.assertEqual(1, model.calls)

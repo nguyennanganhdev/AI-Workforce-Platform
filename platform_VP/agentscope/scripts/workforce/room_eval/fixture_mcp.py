@@ -17,6 +17,7 @@ from mcp.types import ToolAnnotations
 
 SCENARIOS = {s["id"]: s for s in json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["scenarios"]}
 CALLS = Path(sys.argv[2])
+CALLS.parent.mkdir(parents=True, exist_ok=True)
 server = FastMCP("room-eval-partner")
 
 

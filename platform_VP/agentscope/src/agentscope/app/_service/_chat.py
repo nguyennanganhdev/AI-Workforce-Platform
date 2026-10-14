@@ -104,7 +104,7 @@ from ..storage._model._session import SessionKnowledgeConfig
 from ..storage._utils import _ensure_team_members, _resolve_team_leader
 from ..workspace_manager import WorkspaceManagerBase
 from ._access import ResourceAccessService
-from ._errors import _classify_error, _classify_setup_error
+from ._errors import _classify_error, _classify_setup_error, _classify_type
 from ._model import get_model
 from ._projectors import SubagentHitlProjector
 from ._session_projection import SessionProjection
@@ -217,8 +217,13 @@ class _FlexFirst:
         model.extra_body = {**(standard or {}), "service_tier": "flex"}
         try:
             return await model.generate_structured_output(*args, **kwargs)
-        except Exception:  # noqa: BLE001 - retried on the standard tier
-            logger.info("Flex call failed; retrying on the standard tier", exc_info=True)
+        except Exception as exc:
+            # Only what the tier can cause: no Flex capacity (429), a provider
+            # error, or a request refused for this tier. A bad output would
+            # fail the same way on the standard tier.
+            if _classify_type(exc).value not in {"rate_limit", "upstream", "invalid_request"}:
+                raise
+            logger.info("Flex call failed (%s); retrying on the standard tier", type(exc).__name__)
             model.extra_body = standard
             return await model.generate_structured_output(*args, **kwargs)
         finally:

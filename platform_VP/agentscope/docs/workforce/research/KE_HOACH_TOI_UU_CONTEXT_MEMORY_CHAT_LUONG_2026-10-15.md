@@ -100,7 +100,29 @@ Nguyên tắc: mỗi thay đổi có một chỉ số chứng minh và một tes
 
 Fine-tune/RFT trên OpenAI; chuyển kiểm thử sang OpenAI Evals; dùng compaction mã hoá của OpenAI thay Shared Context (không đọc và trích dẫn được); Predicted Outputs (không hỗ trợ GPT-5.x và tools); tăng `reasoning_effort` khi chưa có bằng chứng từ kiểm thử.
 
-## 4. Ước tính tác động (cần đo lại bằng số thật khi có key)
+## 4. Đã triển khai (15/10, PR #87)
+
+PM chọn làm Đợt 1 và Đợt 2.
+
+| Việc | Trạng thái | Cấu hình / chỗ xem |
+|---|---|---|
+| 1.1 Nén lịch sử riêng theo token | Xong | `WORKFORCE_PRIVATE_CONTEXT_TOKENS=16000`; không còn thông báo "sắp nén" khi dưới trần |
+| 1.2 Thu dọn kết quả tool cũ của thành viên | Xong | Kết quả > 400 ký tự của các lượt trước còn lại mã E; chỉ làm khi giải phóng ≥ 6.000 ký tự |
+| 1.3 Recall ra cuối prompt | Xong | Tin `memory_recall` ngay trước gói `shared_context` |
+| 1.4 Reasoning cố định theo vai trò | Xong | `WORKFORCE_REASONING_EFFORT_LEADER` (để trống: mặc định của model), `WORKFORCE_REASONING_EFFORT_AGENT=low` ở local |
+| 1.5 Gọn tool Leader | Xong | Bỏ TeamDelete khỏi Leader phiếu đối tác |
+| 1.6 Học khi cư dân xác nhận | Xong | `route.config.success_close_reasons` (mặc định `resident_confirmed`); hủy không học |
+| 1.7 Chỉ số chất lượng | Xong | `GET /workforce/console/studio/quality`, đầu hộp "Hoạt động"; giá theo bảng OpenAI 15/10, đổi bằng `WORKFORCE_MODEL_PRICES` |
+| 2.1 Lọc ký ức chặt | Xong | Ký ức loại "fact" phải dựa trên kết quả tool hoặc lời khách |
+| 2.2 Theo dõi ký ức | Xong | Ghi phiếu đã dùng; điểm tốt/xấu theo kết quả; tự gỡ khi xấu ≥ 2 và nhiều hơn tốt |
+| 2.3 Bộ đánh giá phòng | Xong (khung + 5 kịch bản) | `scripts/workforce/room_eval`: chạy model thật k lần, pass^k, chi phí. Chạy thử bằng model giả: 3/5 kịch bản đơn giản đạt, 2 kịch bản cần suy luận không đạt (đúng như mong đợi) |
+| 2.4 Việc nền chạy Flex | Xong | `WORKFORCE_BACKGROUND_SERVICE_TIER=flex`; lỗi do Flex (429/5xx/từ chối) thì chạy lại ở mức thường |
+| 2.5 Thay đổi = bản phát hành | Đã có sẵn | `self_improve`: version + bộ test + quay lại; không thêm |
+| 2.6 Tự chạy lại lượt lỗi | Xong | Lỗi tạm thời (rate limit, 5xx, mạng) chạy lại tối đa 2 lần; hết tiền thì không |
+
+Cần có key để làm tiếp: chạy `room_eval` với model thật (k=3) để lấy mốc pass^3 và chi phí/phiếu; sau đó thử `WORKFORCE_REASONING_EFFORT_LEADER=low` và so.
+
+## 5. Ước tính tác động (cần đo lại bằng số thật khi có key)
 
 Giá gpt-5.5: $5 / 1M input, $0,50 cached, $30 output; gpt-5.4-mini: $0,75 / $0,075 / $4,50.
 Trước thiết kế phòng ước khoảng $0,64 model mạnh mỗi phiếu (12 lần × 14k token, cache 65%, giả định 800 token output/lần).
